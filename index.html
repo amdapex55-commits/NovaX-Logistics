@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NovaX Logistics</title>
+  <title>NovaX Logistics | Home</title>
   <style>
     :root {
       color-scheme: light;
@@ -3249,6 +3249,15 @@
         padding: 20px 14px;
       }
     }
+  
+
+    /* Split-file navigation: anchors behave like the original buttons. */
+    a.tab-btn, a.action-btn, a.ghost-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+    }
   </style>
 </head>
 <body>
@@ -3263,14 +3272,14 @@
           </div>
         </div>
         <nav class="nav-tabs" aria-label="Primary">
-          <button class="tab-btn active" data-view="landing">Home</button>
-          <button class="tab-btn" data-view="client">Seller Suite</button>
-          <button class="tab-btn" data-view="admin">Control Room</button>
-          <button class="tab-btn" data-view="rider">Rider App</button>
+          <a class="tab-btn active" href="index.html">Home</a>
+          <a class="tab-btn " href="client.html">Seller Suite</a>
+          <a class="tab-btn " href="admin.html">Control Room</a>
+          <a class="tab-btn " href="rider.html">Rider App</a>
         </nav>
         <div class="auth-actions">
-          <button class="ghost-btn auth-btn" data-auth="signin">Sign In</button>
-          <button class="action-btn auth-btn" data-auth="signup">Sign Up</button>
+          <a class="ghost-btn auth-btn" href="client.html">Sign In</a>
+          <a class="action-btn auth-btn" href="client.html">Sign Up</a>
         </div>
       </div>
     </header>
@@ -3283,12 +3292,12 @@
             <h1>Ship faster. Collect COD cleaner. Pay sellers with truth.</h1>
             <p class="lead">NovaX brings courier delivery, COD reconciliation, seller balances, rider cash control, and live tracking into one platform built for Pakistani e-commerce.</p>
             <div class="hero-actions">
-              <button class="action-btn" data-view-link="client">Get Started</button>
+              <a class="action-btn" href="client.html">Get Started</a>
               <button class="ghost-btn" id="trackParcelCta">Track Order</button>
-              <button class="ghost-btn" data-view-link="admin">Admin Control</button>
-              <button class="ghost-btn" data-view-link="rider">Rider App</button>
-              <button class="ghost-btn auth-btn" data-auth="signin">Sign In</button>
-              <button class="action-btn auth-btn" data-auth="signup">Sign Up</button>
+              <a class="ghost-btn" href="admin.html">Admin Control</a>
+              <a class="ghost-btn" href="rider.html">Rider App</a>
+              <a class="ghost-btn auth-btn" href="client.html">Sign In</a>
+              <a class="action-btn auth-btn" href="client.html">Sign Up</a>
             </div>
             <div class="proof-grid" style="margin-top:18px">
               <div class="proof-tile"><label>Delivered</label><strong>100K+</strong></div>
@@ -3387,9 +3396,9 @@
             <h2>Give sellers a courier account that feels like a business bank account.</h2>
             <p>Book orders, track deliveries, collect COD, generate invoices, request payouts, and escalate problems from one live NovaX workspace.</p>
             <div class="hero-actions" style="margin-top:16px">
-              <button class="action-btn" data-view-link="client">Create Seller Account</button>
+              <a class="action-btn" href="client.html">Create Seller Account</a>
               <button class="ghost-btn" id="trackParcelCtaBottom">Track Order</button>
-              <button class="ghost-btn" data-view-link="admin">View Control Room</button>
+              <a class="ghost-btn" href="admin.html">View Control Room</a>
             </div>
           </section>
         </div>
@@ -4097,6 +4106,13 @@
   </div>
 
   <script>
+    const NOVAX_PAGE = "landing";
+    document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === NOVAX_PAGE));
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      const href = btn.getAttribute("href") || "";
+      btn.classList.toggle("active", (NOVAX_PAGE === "landing" && href.endsWith("index.html")) || href.endsWith(NOVAX_PAGE + ".html"));
+    });
+
     const PKR = new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 });
     const now = () => new Date();
     const time = () => now().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -6245,6 +6261,7 @@
     window.markInvoicePaid = markInvoicePaid;
     window.addReturnProof = addReturnProof;
     window.showView = showView;
+    // In split HTML files, cross-portal navigation uses separate files from the header and CTA links.
     window.showAdminTab = showAdminTab;
     window.openTrackedParcel = openTrackedParcel;
     render();
