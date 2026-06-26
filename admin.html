@@ -4385,9 +4385,22 @@
               <div class="grid two">
                 <div class="panel">
                   <div class="section-head">
-                    <div><h3>Payments & COD</h3><p>COD collected, client payables, rider cash, branch cash, and settlement logs.</p></div>
+                    <div><h3>Add Invoice</h3><p>Select a client, then invoice only delivered parcels. Refused, transit, returned, or open parcels stay out of settlement.</p></div>
                   </div>
-                  <div class="money-grid" id="adminAccounting"></div>
+                  <div class="mini-form" style="grid-template-columns:minmax(220px,.45fr) minmax(0,1fr) auto">
+                    <div class="field"><label>Client</label><select id="invoiceClientSelect"></select></div>
+                    <div class="field"><label>Invoice rule</label><input value="Delivered parcels only. COD - delivery charges = wallet payable." readonly></div>
+                    <button class="action-btn" id="createSelectedInvoiceBtn">Generate Invoice</button>
+                  </div>
+                  <div class="table-wrap" style="margin-top:14px">
+                    <div class="wide-scroll">
+                      <table>
+                        <thead><tr><th>Select</th><th>AWB</th><th>Consignee</th><th>Status</th><th>COD</th><th>Delivery Charge</th><th>Payable</th></tr></thead>
+                        <tbody id="invoiceParcelRows"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div class="money-grid" id="invoiceTotals" style="margin-top:14px"></div>
                 </div>
                 <div class="panel">
                   <div class="section-head"><div><h3>Payment Logs</h3><p>Every money movement gets a reference.</p></div></div>
@@ -4395,11 +4408,11 @@
                 </div>
               </div>
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Client Settlement Desk</h3><p>Create invoices only from delivered parcels with cash collected. Paid invoices close both admin and client ledgers.</p></div></div>
+                <div class="section-head"><div><h3>Delivered Parcel Pool</h3><p>Client-wise delivered parcels that are eligible for invoice. Open parcels remain outside payable truth.</p></div></div>
                 <div class="ops-list" id="clientSettlementList"></div>
               </div>
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Invoices</h3><p>Pending and completed invoices with invoice number, client summary, payable, and payment status.</p></div></div>
+                <div class="section-head"><div><h3>Invoices</h3><p>Generated invoices are visible first. Push to wallet only when finance approves the payable amount.</p></div></div>
                 <div class="ops-list" id="adminInvoiceList"></div>
               </div>
             </section>
@@ -4413,6 +4426,9 @@
                   </div>
                   <div class="form-grid">
                     <div class="field"><label>Expense Type</label><select id="expenseType"><option>Fuel</option><option>Branch rent</option><option>Rider payroll</option><option>Labels and sacks</option><option>Vendor payment</option></select></div>
+                    <div class="field"><label>Reason</label><input id="expenseReason" placeholder="Fuel for Lahore riders, branch rent, vendor bill"></div>
+                    <div class="field"><label>Logged By</label><input id="expenseLoggedBy" value="Admin Control"></div>
+                    <div class="field"><label>Owner / Branch</label><select id="expenseOwner"><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option><option>Rawalpindi Hub</option><option>Finance</option><option>Admin Store</option></select></div>
                     <div class="field"><label>Amount</label><input id="expenseAmount" type="number" value="12500" min="1" required></div>
                   </div>
                 </div>
@@ -4620,26 +4636,53 @@
             </section>
 
             <section class="admin-module" id="admin-finance-wallets">
-              <div class="panel">
-                <div class="section-head"><div><h3>Wallets</h3><p>Wallet navigation is ready. Client payable wallet, NovaX revenue, rider cash, branch cash, and unsettled COD will stay separate.</p></div></div>
+              <div class="grid two">
+                <div class="panel">
+                  <div class="section-head"><div><h3>Client Wallets</h3><p>Only pushed invoices increase wallet balance. Withdrawals subtract available balance and create an admin payout signal.</p></div></div>
+                  <div class="grid metrics" id="walletBalanceCards"></div>
+                  <div class="section-head" style="margin-top:14px"><div><h3>Withdraw Request</h3><p>Model for future fintech rails. Fees create extra NovaX revenue while the payout queue stays auditable.</p></div></div>
+                  <div class="mini-form">
+                    <div class="field"><label>Client</label><select id="walletClientSelect"></select></div>
+                    <div class="field"><label>Amount</label><input id="walletAmount" type="number" min="1" value="10000"></div>
+                    <div class="field"><label>IBAN</label><input id="walletIban" placeholder="PK00 BANK 0000 0000 0000 0000"></div>
+                    <div class="field"><label>Speed</label><select id="walletSpeed"><option value="24h">24 hour withdraw - 0.1% fee</option><option value="12h">12 hour withdraw - 0.3% fee</option><option value="instant">Instant 2-3 hours - 0.7% fee</option></select></div>
+                    <button class="action-btn" id="walletWithdrawBtn">Request Withdraw</button>
+                  </div>
+                  <div class="grid three" style="margin-top:14px">
+                    <div class="metric"><label>24 hour withdraw</label><strong>0.1%</strong><div class="meter"><span style="width:30%"></span></div><div class="meter-caption"><span>lowest fee</span><span>T+1</span></div></div>
+                    <div class="metric"><label>12 hour withdraw</label><strong>0.3%</strong><div class="meter amber"><span style="width:60%"></span></div><div class="meter-caption"><span>same day</span><span>premium</span></div></div>
+                    <div class="metric"><label>Instant withdraw</label><strong>0.7%</strong><div class="meter red"><span style="width:90%"></span></div><div class="meter-caption"><span>2-3 hours</span><span>highest fee</span></div></div>
+                  </div>
+                </div>
+                <div class="panel">
+                  <div class="section-head"><div><h3>Who To Pay</h3><p>Admin payout queue created from wallet withdrawals.</p></div></div>
+                  <div class="ops-list" id="walletPayoutQueue"></div>
+                </div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Wallet Invoice Feed</h3><p>Invoices pushed to wallet, pending generated invoices, and deleted/paid states.</p></div></div>
+                <div class="ops-list" id="walletInvoiceList"></div>
               </div>
             </section>
 
             <section class="admin-module" id="admin-finance-summary">
               <div class="panel">
                 <div class="section-head"><div><h3>Finance Summary</h3><p>Finance summary is ready for COD collected, client payable, delivery charges, expenses, net cash, and settlement health.</p></div></div>
+                <div class="grid metrics" id="financeSummaryCards"></div>
               </div>
             </section>
 
             <section class="admin-module" id="admin-finance-overall">
               <div class="panel">
                 <div class="section-head"><div><h3>Finance Overall</h3><p>Overall finance navigation is ready. This will combine all revenue, liability, expense, payout, and ledger truth in one screen.</p></div></div>
+                <div class="ops-list" id="financeOverallList"></div>
               </div>
             </section>
 
             <section class="admin-module" id="admin-finance-revenue">
               <div class="panel">
                 <div class="section-head"><div><h3>Revenue</h3><p>Revenue navigation is ready. This will show NovaX earned delivery charges only, not client COD payable.</p></div></div>
+                <div class="ops-list" id="financeRevenueList"></div>
               </div>
             </section>
 
@@ -4947,6 +4990,9 @@
       invoices: [
         { id: "INV-0001", clientId: "CL-0001", parcelRefs: ["NX-2406-1002"], cod: 12400, charges: 310, payable: 12090, status: "Pending", createdAt: "2026-06-24 10:30", paidAt: "", summary: "1 delivered parcel, rider cash pending collection" }
       ],
+      walletWithdrawals: [
+        { id: "WDR-0001", clientId: "CL-0001", amount: 5000, fee: 5, net: 4995, iban: "PK00 NOVAX DEMO IBAN", speed: "24h", status: "Pending admin payout", createdAt: "2026-06-24 11:20" }
+      ],
       transit: [
         { id: "SACK-KHI-LHE-44", from: "Karachi Hub", to: "Lahore Hub", expected: 1000, scanned: 998, demanifested: 991, health: 88, status: "Active", type: "parcel sack" },
         { id: "SACK-LHE-ISB-19", from: "Lahore Hub", to: "Islamabad Hub", expected: 640, scanned: 640, demanifested: 640, health: 99, status: "Complete", type: "parcel sack" },
@@ -5242,6 +5288,15 @@
       state.demanifestScanAwbs = Array.isArray(state.demanifestScanAwbs) ? state.demanifestScanAwbs : [];
       state.activeDemanifestId = state.activeDemanifestId || state.transit.find(t => t.status !== "Complete")?.id || "";
       state.pendingProcessingStatus = state.pendingProcessingStatus || "";
+      state.walletWithdrawals = Array.isArray(state.walletWithdrawals) ? state.walletWithdrawals : [];
+      state.activeInvoiceClient = state.activeInvoiceClient || state.clients[0]?.id || "";
+      state.invoiceDraftRefs = Array.isArray(state.invoiceDraftRefs) ? state.invoiceDraftRefs : [];
+      state.activeWalletClient = state.activeWalletClient || state.clients[0]?.id || "";
+      state.clients.forEach(client => {
+        client.walletBalance = Number(client.walletBalance || 0);
+        client.withdrawnTotal = Number(client.withdrawnTotal || 0);
+        client.withdrawFeeTotal = Number(client.withdrawFeeTotal || 0);
+      });
       syncTicketAutomation();
     }
 
@@ -5373,8 +5428,37 @@
     }
 
     function clientInvoiceParcels(clientId) {
-      const invoicedRefs = new Set(state.invoices.flatMap(invoice => invoice.parcelRefs || []));
-      return state.parcels.filter(p => p.clientId === clientId && isCashCollectedParcel(p) && !invoicedRefs.has(p.awb));
+      const invoicedRefs = new Set(state.invoices.filter(invoice => invoice.status !== "Deleted").flatMap(invoice => invoice.parcelRefs || []));
+      return state.parcels.filter(p => p.clientId === clientId && isDeliveredLedgerParcel(p) && !invoicedRefs.has(p.awb));
+    }
+
+    function selectedInvoiceParcels() {
+      const clientId = state.activeInvoiceClient || state.clients[0]?.id || "";
+      const candidates = clientInvoiceParcels(clientId);
+      const selected = new Set(state.invoiceDraftRefs || []);
+      return candidates.filter(parcel => selected.has(parcel.awb));
+    }
+
+    function invoiceTotals(parcels) {
+      const cod = parcels.reduce((sum, parcel) => sum + Number(parcel.cod || 0), 0);
+      const charges = parcels.reduce((sum, parcel) => sum + Number(parcel.fee || 0), 0);
+      return { cod, charges, payable: Math.max(0, cod - charges) };
+    }
+
+    function walletFeeRate(speed) {
+      if (speed === "instant") return 0.007;
+      if (speed === "12h") return 0.003;
+      return 0.001;
+    }
+
+    function walletSpeedLabel(speed) {
+      if (speed === "instant") return "Instant 2-3 hours";
+      if (speed === "12h") return "12 hours";
+      return "24 hours";
+    }
+
+    function walletBalance(clientId) {
+      return Number(clientById(clientId)?.walletBalance || 0);
     }
 
     function nextId(prefix, items) {
@@ -5712,14 +5796,17 @@
         moneyBox("Fast settlement", "T+1 ready", "premium fintech path")
       ].join("");
 
-      document.getElementById("adminAccounting").innerHTML = [
-        moneyBox("Company revenue", money(m.revenue), "delivery fees only"),
-        moneyBox("Client COD payable", money(m.payable), "liability ledger"),
-        moneyBox("Cash in hand true", money(branchCashInHand), "cash received from riders"),
-        moneyBox("Rider receivable", money(riderReceivableTotal), "delivered COD not collected"),
-        moneyBox("Operating expenses", money(m.expenses), "expense tab"),
-        moneyBox("Rider cash held", money(m.cashHeld), "cash control wallet")
-      ].join("");
+      const adminAccounting = document.getElementById("adminAccounting");
+      if (adminAccounting) {
+        adminAccounting.innerHTML = [
+          moneyBox("Company revenue", money(m.revenue), "delivery fees only"),
+          moneyBox("Client COD payable", money(m.payable), "liability ledger"),
+          moneyBox("Cash in hand true", money(branchCashInHand), "cash received from riders"),
+          moneyBox("Rider receivable", money(riderReceivableTotal), "delivered COD not collected"),
+          moneyBox("Operating expenses", money(m.expenses), "expense tab"),
+          moneyBox("Rider cash held", money(m.cashHeld), "cash control wallet")
+        ].join("");
+      }
 
       const rider = state.riders[1];
       document.getElementById("riderWallet").innerHTML = [
@@ -6379,39 +6466,73 @@
         `;
       }).join("");
 
+      const invoiceClientSelect = document.getElementById("invoiceClientSelect");
+      if (invoiceClientSelect) {
+        invoiceClientSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
+        if (!state.activeInvoiceClient || !state.clients.some(client => client.id === state.activeInvoiceClient)) state.activeInvoiceClient = state.clients[0]?.id || "";
+        invoiceClientSelect.value = state.activeInvoiceClient;
+      }
+      const invoiceCandidates = clientInvoiceParcels(state.activeInvoiceClient);
+      const candidateRefs = new Set(invoiceCandidates.map(parcel => parcel.awb));
+      state.invoiceDraftRefs = (state.invoiceDraftRefs || []).filter(awb => candidateRefs.has(awb));
+      const selectedSet = new Set(state.invoiceDraftRefs);
+      document.getElementById("invoiceParcelRows").innerHTML = invoiceCandidates.map(parcel => {
+        const payable = Math.max(0, Number(parcel.cod || 0) - Number(parcel.fee || 0));
+        return `
+          <tr>
+            <td><input type="checkbox" data-invoice-parcel="${parcel.awb}" onchange="toggleInvoiceParcel('${parcel.awb}', this.checked)" ${selectedSet.has(parcel.awb) ? "checked" : ""}></td>
+            <td><strong>${parcel.awb}</strong><br><span class="footer-note">${parcel.branch}</span></td>
+            <td>${parcel.consignee}<br><span class="footer-note">${parcel.city}</span></td>
+            <td><span class="chip good">${parcel.status}</span></td>
+            <td>${money(parcel.cod)}</td>
+            <td>${money(parcel.fee)}</td>
+            <td><strong>${money(payable)}</strong></td>
+          </tr>
+        `;
+      }).join("") || `<tr><td colspan="7">No delivered parcels available for this client. Open parcels are not invoice eligible.</td></tr>`;
+      const selectedTotals = invoiceTotals(selectedInvoiceParcels());
+      document.getElementById("invoiceTotals").innerHTML = [
+        moneyBox("Selected parcels", selectedInvoiceParcels().length, "delivered only"),
+        moneyBox("COD total", money(selectedTotals.cod), "gross collected value"),
+        moneyBox("Delivery charges", money(selectedTotals.charges), "NovaX revenue"),
+        moneyBox("Wallet payable", money(selectedTotals.payable), "after charges")
+      ].join("");
+
       document.getElementById("clientSettlementList").innerHTML = state.clients.map(client => {
         const ready = clientInvoiceParcels(client.id);
-        const cod = ready.reduce((sum, p) => sum + p.cod, 0);
-        const charges = ready.reduce((sum, p) => sum + p.fee, 0);
-        const payable = Math.max(0, cod - charges);
+        const totals = invoiceTotals(ready);
         return `
           <div class="ops-card">
             <div class="ops-card-head"><strong>${client.id} | ${client.name}</strong><span class="chip ${ready.length ? "good" : "info"}">${ready.length} ready</span></div>
-            <p>Delivered parcels with cash collected: ${ready.map(p => p.awb).join(", ") || "none yet"}.</p>
+            <p>Delivered invoice-ready parcels: ${ready.map(p => p.awb).join(", ") || "none yet"}.</p>
             <div class="money-grid" style="margin-top:10px">
-              ${moneyBox("COD collected", money(cod), "invoice source")}
-              ${moneyBox("Delivery charges", money(charges), "NovaX revenue")}
-              ${moneyBox("Client payable", money(payable), "invoice payable")}
-              ${moneyBox("Invoice state", ready.length ? "Ready" : "Waiting", ready.length ? "Create invoice now" : "Collect rider cash first")}
+              ${moneyBox("COD total", money(totals.cod), "invoice source")}
+              ${moneyBox("Delivery charges", money(totals.charges), "NovaX revenue")}
+              ${moneyBox("Client payable", money(totals.payable), "invoice payable")}
+              ${moneyBox("Invoice state", ready.length ? "Ready" : "Waiting", ready.length ? "Select in Add Invoice" : "Wait until delivered")}
             </div>
-            <button class="action-btn" style="margin-top:10px" onclick="createInvoice('${client.id}')" ${ready.length ? "" : "disabled"}>Create Invoice</button>
+            <button class="action-btn" style="margin-top:10px" onclick="selectInvoiceClient('${client.id}')" ${ready.length ? "" : "disabled"}>Open In Add Invoice</button>
           </div>
         `;
       }).join("");
 
-      document.getElementById("adminInvoiceList").innerHTML = state.invoices.map(invoice => {
+      const visibleInvoices = state.invoices.filter(invoice => invoice.status !== "Deleted");
+      document.getElementById("adminInvoiceList").innerHTML = visibleInvoices.map(invoice => {
         const client = clientById(invoice.clientId);
+        const pushed = invoice.status === "Pushed to wallet" || invoice.status === "Paid";
         return `
           <div class="invoice-card">
-            <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${invoice.status === "Paid" ? "good" : "warn"}">${invoice.status}</span></div>
+            <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${pushed ? "good" : "warn"}">${invoice.status}</span></div>
             <p>${invoice.summary}</p>
             <div class="money-grid" style="margin-top:10px">
               ${moneyBox("COD", money(invoice.cod), `${invoice.parcelRefs.length} parcel(s)`)}
               ${moneyBox("Charges", money(invoice.charges), "NovaX revenue")}
               ${moneyBox("Payable", money(invoice.payable), "client amount")}
-              ${moneyBox("Created", invoice.createdAt, invoice.paidAt ? `Paid ${invoice.paidAt}` : "pending payment")}
+              ${moneyBox("Wallet", pushed ? "Entered" : "Not pushed", pushed ? invoice.walletPushedAt || invoice.paidAt : "invoice only")}
             </div>
-            ${invoice.status === "Paid" ? "" : `<button class="action-btn" style="margin-top:10px" onclick="markInvoicePaid('${invoice.id}')">Mark Paid</button>`}
+            <div class="inline-actions" style="margin-top:10px">
+              ${pushed ? "" : `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Wallet</button><button class="ghost-btn" onclick="deleteInvoice('${invoice.id}')">Delete</button>`}
+            </div>
           </div>
         `;
       }).join("") || `<div class="ops-card"><strong>No invoices</strong><p>Create invoices after rider cash is collected for delivered parcels.</p></div>`;
@@ -6419,10 +6540,12 @@
       document.getElementById("adminExpenseLogs").innerHTML = state.expenses.map(expense => `
         <div class="log-item">
           <strong>${expense.id || "EXP"}</strong>
-          <div><strong>${expense.name}</strong><div class="footer-note" style="margin-top:2px">${expense.owner || "Finance"} | ${expense.type || expense.name}</div></div>
+          <div><strong>${expense.name}</strong><div class="footer-note" style="margin-top:2px">${expense.owner || "Finance"} | ${expense.type || expense.name} | ${expense.reason || "No reason"} | logged by ${expense.loggedBy || "System"}</div></div>
           <span class="chip ${expense.status === "Pending" ? "warn" : "good"}">${money(expense.amount)} | ${expense.status || "Approved"}</span>
         </div>
       `).join("");
+
+      renderFinanceWallets();
 
       document.getElementById("adminUserList").innerHTML = state.users.map(user => `
         <div class="ops-card">
@@ -6713,6 +6836,88 @@
       const resolvedList = document.getElementById("ticketResolvedList");
       if (resolvedList) {
         resolvedList.innerHTML = resolved.map(ticketCard).join("") || `<div class="ops-card"><strong>No resolved tickets yet</strong><p>Resolved ticket replies, proof references, and solve timers will archive here.</p></div>`;
+      }
+    }
+
+    function renderFinanceWallets() {
+      const activeClientId = state.activeWalletClient || state.clients[0]?.id || "";
+      const activeClient = clientById(activeClientId);
+      const walletSelect = document.getElementById("walletClientSelect");
+      if (walletSelect) {
+        walletSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
+        walletSelect.value = activeClientId;
+      }
+      const walletTotal = state.clients.reduce((sum, client) => sum + walletBalance(client.id), 0);
+      const pushedInvoices = state.invoices.filter(invoice => invoice.status === "Pushed to wallet" || invoice.status === "Paid");
+      const pendingInvoices = state.invoices.filter(invoice => invoice.status === "Generated" || invoice.status === "Pending");
+      const pendingWithdrawals = state.walletWithdrawals.filter(item => item.status !== "Paid");
+      const feeRevenue = state.walletWithdrawals.reduce((sum, item) => sum + Number(item.fee || 0), 0);
+      const deliveryRevenue = state.invoices.filter(invoice => invoice.status !== "Deleted").reduce((sum, invoice) => sum + Number(invoice.charges || 0), 0);
+
+      const balanceCards = document.getElementById("walletBalanceCards");
+      if (balanceCards) {
+        balanceCards.innerHTML = [
+          moneyBox("Selected wallet", money(walletBalance(activeClientId)), activeClient.name),
+          moneyBox("All wallet liability", money(walletTotal), "payable to clients"),
+          moneyBox("Pending payouts", money(pendingWithdrawals.reduce((sum, item) => sum + Number(item.amount || 0), 0)), `${pendingWithdrawals.length} request(s)`),
+          moneyBox("Withdraw fee revenue", money(feeRevenue), "extra charge model")
+        ].join("");
+      }
+
+      const walletInvoices = document.getElementById("walletInvoiceList");
+      if (walletInvoices) {
+        walletInvoices.innerHTML = state.invoices.filter(invoice => invoice.status !== "Deleted").map(invoice => {
+          const client = clientById(invoice.clientId);
+          const inWallet = invoice.status === "Pushed to wallet" || invoice.status === "Paid";
+          return `<div class="ops-card ${inWallet ? "" : "alert-row"}">
+            <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${inWallet ? "good" : "warn"}">${invoice.status}</span></div>
+            <p>${invoice.parcelRefs.join(", ")} | Payable ${money(invoice.payable)} | Charges ${money(invoice.charges)}</p>
+            <div class="footer-note">${inWallet ? `Entered wallet at ${invoice.walletPushedAt || invoice.paidAt}` : "Visible invoice only. Not in wallet until pushed."}</div>
+          </div>`;
+        }).join("") || `<div class="ops-card"><strong>No wallet invoices</strong><p>Push generated invoices into wallets to start payout flow.</p></div>`;
+      }
+
+      const payoutQueue = document.getElementById("walletPayoutQueue");
+      if (payoutQueue) {
+        payoutQueue.innerHTML = state.walletWithdrawals.map(item => {
+          const client = clientById(item.clientId);
+          return `<div class="ops-card ${item.status === "Paid" ? "" : "alert-row"}">
+            <div class="ops-card-head"><strong>${item.id} | ${client.name}</strong><span class="chip ${item.status === "Paid" ? "good" : "warn"}">${item.status}</span></div>
+            <p>Pay ${money(item.net)} to IBAN ${item.iban}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed)}).</p>
+            <div class="footer-note">Created ${item.createdAt}. ${item.paidAt ? `Paid ${item.paidAt}` : "Admin must verify bank transfer."}</div>
+            ${item.status === "Paid" ? "" : `<button class="action-btn" style="margin-top:10px" onclick="markWalletWithdrawalPaid('${item.id}')">Mark Payout Paid</button>`}
+          </div>`;
+        }).join("") || `<div class="ops-card"><strong>No payout signals</strong><p>Withdrawal requests will appear here with IBAN and net payable.</p></div>`;
+      }
+
+      const summaryCards = document.getElementById("financeSummaryCards");
+      if (summaryCards) {
+        const m = metrics();
+        summaryCards.innerHTML = [
+          metricCard("Delivery Revenue", money(deliveryRevenue), Math.min(100, percent(deliveryRevenue, 100000)), "invoice charges only", "good"),
+          metricCard("Wallet Liability", money(walletTotal), Math.min(100, percent(walletTotal, 150000)), "client balance owed", walletTotal ? "amber" : "good"),
+          metricCard("Expenses", money(m.expenses), Math.min(100, percent(m.expenses, 450000)), "logged expenses", "amber"),
+          metricCard("Withdraw Fees", money(feeRevenue), Math.min(100, percent(feeRevenue, 5000)), "speed charges", "blue")
+        ].join("");
+      }
+
+      const overallList = document.getElementById("financeOverallList");
+      if (overallList) {
+        overallList.innerHTML = [
+          `Generated invoices not pushed to wallet: ${pendingInvoices.length}. These are visible but not payable yet.`,
+          `Pushed wallet invoices: ${pushedInvoices.length}. Wallet liability is ${money(walletTotal)}.`,
+          `Pending payout queue: ${pendingWithdrawals.length}. Net bank transfer due is ${money(pendingWithdrawals.reduce((sum, item) => sum + Number(item.net || 0), 0))}.`,
+          `No leakage rule: a parcel can appear in only one non-deleted invoice. Deleted invoices release parcels back to delivered pool.`
+        ].map(text => `<div class="ops-card"><strong>${text}</strong></div>`).join("");
+      }
+
+      const revenueList = document.getElementById("financeRevenueList");
+      if (revenueList) {
+        revenueList.innerHTML = `
+          <div class="ops-card"><div class="ops-card-head"><strong>Delivery charges earned</strong><span class="chip good">${money(deliveryRevenue)}</span></div><p>NovaX revenue comes from delivery charges on invoices, not client COD payable.</p></div>
+          <div class="ops-card"><div class="ops-card-head"><strong>Withdrawal speed fees</strong><span class="chip info">${money(feeRevenue)}</span></div><p>24h = 0.1%, 12h = 0.3%, instant = 0.7%. Fee is deducted from requested withdrawal amount.</p></div>
+          <div class="ops-card"><div class="ops-card-head"><strong>Pending invoice charges</strong><span class="chip warn">${money(pendingInvoices.reduce((sum, invoice) => sum + Number(invoice.charges || 0), 0))}</span></div><p>These charges are known, but invoice is not wallet-active until pushed.</p></div>
+        `;
       }
     }
 
@@ -7133,19 +7338,162 @@
       toast(`${id} rate card saved. Open parcels now use overnight base ${money(card.overnight)}.`);
     }
 
+    function selectInvoiceClient(clientId) {
+      state.activeInvoiceClient = clientId;
+      state.invoiceDraftRefs = clientInvoiceParcels(clientId).map(parcel => parcel.awb);
+      saveState();
+      render();
+      showAdminTab("finance-invoices");
+    }
+
+    function toggleInvoiceParcel(awb, checked) {
+      const set = new Set(state.invoiceDraftRefs || []);
+      if (checked) set.add(awb);
+      else set.delete(awb);
+      state.invoiceDraftRefs = [...set];
+      saveState();
+      renderAdmin();
+    }
+
+    function createSelectedInvoice() {
+      const parcels = selectedInvoiceParcels();
+      if (!parcels.length) {
+        toast("Select at least one delivered parcel for invoice.");
+        return;
+      }
+      createInvoice(state.activeInvoiceClient, parcels);
+    }
+
+    function pushInvoiceToWallet(id) {
+      const invoice = state.invoices.find(item => item.id === id);
+      if (!invoice || invoice.status === "Deleted") return;
+      if (invoice.status === "Pushed to wallet" || invoice.status === "Paid") {
+        toast(`${id} is already in wallet.`);
+        return;
+      }
+      const client = clientById(invoice.clientId);
+      client.walletBalance = Number(client.walletBalance || 0) + Number(invoice.payable || 0);
+      invoice.status = "Pushed to wallet";
+      invoice.walletPushedAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId: invoice.clientId,
+        type: "Invoice pushed to wallet",
+        amount: invoice.payable,
+        status: "Wallet credited",
+        ref: id
+      });
+      saveState();
+      render();
+      toast(`${id} pushed to ${client.name} wallet.`);
+    }
+
+    function deleteInvoice(id) {
+      const invoice = state.invoices.find(item => item.id === id);
+      if (!invoice) return;
+      if (invoice.status === "Pushed to wallet" || invoice.status === "Paid") {
+        toast("Wallet-active invoice cannot be deleted. Reverse through payout/ledger flow later.");
+        return;
+      }
+      invoice.status = "Deleted";
+      invoice.deletedAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId: invoice.clientId,
+        type: "Invoice deleted",
+        amount: invoice.payable,
+        status: "Released parcels back to invoice pool",
+        ref: id
+      });
+      saveState();
+      render();
+      toast(`${id} deleted. Parcels returned to delivered invoice pool.`);
+    }
+
+    function requestWalletWithdrawal() {
+      const clientId = document.getElementById("walletClientSelect").value;
+      const amount = Number(document.getElementById("walletAmount").value);
+      const iban = document.getElementById("walletIban").value.trim();
+      const speed = document.getElementById("walletSpeed").value;
+      const client = clientById(clientId);
+      if (!amount || amount < 1 || !iban) {
+        toast("Withdrawal amount and IBAN are mandatory.");
+        return;
+      }
+      if (amount > walletBalance(clientId)) {
+        toast("Withdrawal blocked. Amount is higher than available wallet balance.");
+        return;
+      }
+      const fee = Math.round(amount * walletFeeRate(speed));
+      const net = Math.max(0, amount - fee);
+      client.walletBalance = Math.max(0, Number(client.walletBalance || 0) - amount);
+      client.withdrawnTotal = Number(client.withdrawnTotal || 0) + amount;
+      client.withdrawFeeTotal = Number(client.withdrawFeeTotal || 0) + fee;
+      const withdrawal = {
+        id: nextId("WDR", state.walletWithdrawals),
+        clientId,
+        amount,
+        fee,
+        net,
+        iban,
+        speed,
+        status: "Pending admin payout",
+        createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}`
+      };
+      state.walletWithdrawals.unshift(withdrawal);
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId,
+        type: "Wallet withdrawal requested",
+        amount,
+        status: `${money(net)} payable after ${money(fee)} fee`,
+        ref: withdrawal.id
+      });
+      saveState();
+      render();
+      toast(`${client.name} withdrawal sent to admin payout queue.`);
+    }
+
+    function markWalletWithdrawalPaid(id) {
+      const withdrawal = state.walletWithdrawals.find(item => item.id === id);
+      if (!withdrawal || withdrawal.status === "Paid") return;
+      withdrawal.status = "Paid";
+      withdrawal.paidAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId: withdrawal.clientId,
+        type: "Wallet payout paid",
+        amount: withdrawal.net,
+        status: "Paid to IBAN",
+        ref: withdrawal.id
+      });
+      saveState();
+      render();
+      toast(`${id} marked paid to client IBAN.`);
+    }
+
     function addExpense() {
       const type = document.getElementById("expenseType").value;
       const amount = Number(document.getElementById("expenseAmount").value);
+      const reason = document.getElementById("expenseReason").value.trim();
+      const loggedBy = document.getElementById("expenseLoggedBy").value.trim();
+      const owner = document.getElementById("expenseOwner").value;
       if (!amount || amount < 1) {
         toast("Expense amount is mandatory.");
         return;
       }
+      if (!reason || !loggedBy) {
+        toast("Expense reason and logged by are mandatory.");
+        return;
+      }
       state.expenses.unshift({
         id: nextId("EXP", state.expenses),
-        name: type,
+        name: `${type} - ${reason}`,
         type,
         amount,
-        owner: "Admin",
+        owner,
+        reason,
+        loggedBy,
         status: "Pending"
       });
       state.paymentLogs.unshift({
@@ -7154,11 +7502,11 @@
         type: "Operating expense logged",
         amount,
         status: "Pending approval",
-        ref: type
+        ref: `${type} | ${owner}`
       });
       saveState();
       render();
-      showAdminTab("expenses");
+      showAdminTab("finance-expense");
       toast(`${money(amount)} expense added for approval.`);
     }
 
@@ -7517,44 +7865,49 @@
       toast(`${money(amount)} cash collected from ${rider.name}. Delivered parcels are invoice-ready.`);
     }
 
-    function createInvoice(clientId) {
-      const parcels = clientInvoiceParcels(clientId);
+    function createInvoice(clientId, selectedParcels = null) {
+      const parcels = selectedParcels || clientInvoiceParcels(clientId);
       if (!parcels.length) {
-        toast("No delivered cash-collected parcels are ready for invoice.");
+        toast("No delivered parcels are ready for invoice.");
         return;
       }
-      const cod = parcels.reduce((sum, p) => sum + p.cod, 0);
-      const charges = parcels.reduce((sum, p) => sum + p.fee, 0);
+      const totals = invoiceTotals(parcels);
       const id = nextId("INV", state.invoices);
       const invoice = {
         id,
         clientId,
         parcelRefs: parcels.map(p => p.awb),
-        cod,
-        charges,
-        payable: Math.max(0, cod - charges),
-        status: "Pending",
+        cod: totals.cod,
+        charges: totals.charges,
+        payable: totals.payable,
+        status: "Generated",
         createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}`,
         paidAt: "",
-        summary: `${parcels.length} delivered parcel(s), COD ${money(cod)}, delivery charges ${money(charges)}`
+        walletPushedAt: "",
+        summary: `${parcels.length} delivered parcel(s), COD ${money(totals.cod)}, delivery charges ${money(totals.charges)}, payable ${money(totals.payable)}`
       };
       state.invoices.unshift(invoice);
+      state.invoiceDraftRefs = [];
       state.paymentLogs.unshift({
         id: nextId("PAY", state.paymentLogs),
         clientId,
         type: "Invoice created",
         amount: invoice.payable,
-        status: "Pending client payout",
+        status: "Generated only, not in wallet",
         ref: id
       });
       saveState();
       render();
-      toast(`${id} created and visible on client payments.`);
+      toast(`${id} generated. Push to wallet when finance approves.`);
     }
 
     function markInvoicePaid(id) {
       const invoice = state.invoices.find(item => item.id === id);
       if (!invoice || invoice.status === "Paid") return;
+      if (invoice.status !== "Pushed to wallet") {
+        toast("Push invoice to wallet before marking it paid.");
+        return;
+      }
       invoice.status = "Paid";
       invoice.paidAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
       state.paymentLogs.unshift({
@@ -7864,6 +8217,19 @@
     document.getElementById("riderExpenseBtn").addEventListener("click", addRiderExpense);
     document.getElementById("collectRiderCashBtn").addEventListener("click", collectRiderCash);
     document.getElementById("addExpenseBtn").addEventListener("click", addExpense);
+    document.getElementById("invoiceClientSelect").addEventListener("change", event => {
+      state.activeInvoiceClient = event.target.value;
+      state.invoiceDraftRefs = clientInvoiceParcels(state.activeInvoiceClient).map(parcel => parcel.awb);
+      saveState();
+      renderAdmin();
+    });
+    document.getElementById("createSelectedInvoiceBtn").addEventListener("click", createSelectedInvoice);
+    document.getElementById("walletClientSelect").addEventListener("change", event => {
+      state.activeWalletClient = event.target.value;
+      saveState();
+      renderAdmin();
+    });
+    document.getElementById("walletWithdrawBtn").addEventListener("click", requestWalletWithdrawal);
     document.getElementById("createUserBtn").addEventListener("click", createUser);
     document.getElementById("adminRunBtn").addEventListener("click", runAdminAction);
     document.getElementById("riderScanBtn").addEventListener("click", riderScan);
@@ -7914,7 +8280,12 @@
     window.updateClientRate = updateClientRate;
     window.resolveOperationIssue = resolveOperationIssue;
     window.createInvoice = createInvoice;
+    window.selectInvoiceClient = selectInvoiceClient;
+    window.toggleInvoiceParcel = toggleInvoiceParcel;
+    window.pushInvoiceToWallet = pushInvoiceToWallet;
+    window.deleteInvoice = deleteInvoice;
     window.markInvoicePaid = markInvoicePaid;
+    window.markWalletWithdrawalPaid = markWalletWithdrawalPaid;
     window.addReturnProof = addReturnProof;
     window.showView = showView;
     // In split HTML files, cross-portal navigation uses separate files from the header and CTA links.
