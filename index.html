@@ -220,6 +220,19 @@ h2.title{font-size:clamp(30px,5vw,58px);line-height:1.02;margin:16px 0 12px;lett
 .final h2{font-size:clamp(28px,5vw,52px);margin:0 0 10px;letter-spacing:-.02em;}
 .final p{margin:0 auto 22px;max-width:560px;font-weight:600;opacity:.85;}
 .final .btn.primary{background:#04130d;color:#eafff5;}
+.signin-modal{position:fixed;inset:0;z-index:95;display:none;place-items:center;padding:18px;background:rgba(4,19,13,.62);backdrop-filter:blur(10px);}
+.signin-modal.show{display:grid;}
+.signin-card{width:min(520px,100%);border-radius:22px;background:#f8fffb;color:var(--ink);border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.28);padding:22px;position:relative;animation:fadeUp .28s ease both;}
+.signin-close{position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:10px;background:#e9f7f0;color:var(--ink);font-weight:900;}
+.signin-card h3{margin:0 44px 8px 0;font-size:28px;line-height:1.05;}
+.signin-card p{margin:0 0 16px;color:var(--muted);line-height:1.45;}
+.signin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0;}
+.role-btn{height:54px;border-radius:14px;border:1px solid var(--line);background:#fff;color:var(--ink);font-weight:900;}
+.role-btn.active{background:#071d17;color:#eafff5;border-color:#071d17;}
+.signin-field{display:grid;gap:6px;margin-top:10px;}
+.signin-field label{font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:900;color:#5b7168;}
+.signin-field input{height:48px;border-radius:13px;border:1px solid var(--line);background:#fff;padding:0 13px;color:var(--ink);font-weight:700;}
+.signin-note{font-size:12px;color:var(--muted);margin-top:10px;}
 footer{padding:34px 0;text-align:center;color:var(--muted);font-size:13px;}
 
 @media (max-width:980px){
@@ -259,6 +272,7 @@ img,svg,canvas,video{max-width:100%;}
   .track-card{padding:16px;border-radius:16px;}
   .track-row{display:grid;grid-template-columns:1fr;gap:8px;}
   .track-row input,.track-row button{width:100%;}
+  .signin-grid{grid-template-columns:1fr;}
   .split,.split.rev{gap:24px;}
   .art-pane{min-height:260px;border-radius:18px;padding:16px;}
   h2.title{font-size:clamp(28px,9vw,38px);line-height:1.05;}
@@ -286,11 +300,9 @@ img,svg,canvas,video{max-width:100%;}
       <div><strong>NovaX Logistics</strong><span>AI-run courier · COD · seller payouts</span></div>
     </a>
     <nav class="nav" id="nav">
-      <a href="index.html">Home</a>
-      <a href="client.html" data-link>Seller Suite</a>
-      <a href="admin.html" data-link>Control Room</a>
-      <a href="rider.html" data-link>Rider App</a>
-      <a href="client.html" class="solid" data-link>Get Started</a>
+      <a href="#track">Track Your Order</a>
+      <a href="client.html" data-link>Signup As NovaX Merchant</a>
+      <a href="#signin" class="solid" data-signin>Sign In</a>
     </nav>
     <button class="nav-toggle" id="navToggle" aria-label="Menu"><span></span><span></span><span></span></button>
   </div>
@@ -305,8 +317,9 @@ img,svg,canvas,video{max-width:100%;}
       <p class="lead reveal in d2">Humans do the lifting. <strong>AI does everything technical</strong> — tracking, COD reconciliation, exceptions, payouts — watched 24/7 so a parcel can't slip through a crack.</p>
 
       <div class="hero-cta reveal in d3">
-        <a class="btn primary" href="client.html" data-link>Start shipping ➜</a>
-        <a class="btn ghost" href="#track">Track a parcel</a>
+        <a class="btn primary" href="#track">Track Your Order</a>
+        <a class="btn ghost" href="client.html" data-link>Signup As NovaX Merchant</a>
+        <a class="btn ghost" href="#signin" data-signin>Sign In</a>
       </div>
 
       <div class="stats reveal in d4">
@@ -323,7 +336,7 @@ img,svg,canvas,video{max-width:100%;}
         <h3>Where is my order?</h3>
         <p>Consignees check live NovaX status straight from the control room — no calls, no waiting.</p>
         <div class="track-row">
-          <input id="trackInput" value="NX-2406-1001" aria-label="Tracking ID" placeholder="Enter tracking ID e.g. NX-2406-1001">
+          <input id="trackInput" value="N0010001" aria-label="Tracking ID" placeholder="Enter tracking ID e.g. N0010001">
           <button id="trackBtn">Track</button>
         </div>
         <div class="track-result" id="trackResult"></div>
@@ -407,10 +420,10 @@ img,svg,canvas,video{max-width:100%;}
     <div class="art-pane dark reveal">
       <div class="chat">
         <div class="wa-head"><div class="wa-dot">🤖</div><div><b style="color:#eafff5">NovaX AI</b><div style="font-size:11px;color:#7fae9b">online · reads live portal</div></div></div>
-        <div class="msg u m1">Where is NX-2406-1001?</div>
+        <div class="msg u m1">Where is N0010001?</div>
         <div class="msg b m2">It's <b>out for delivery</b> from Lahore Hub, updated 09:38. ETA today before 6 PM. 🚚</div>
-        <div class="msg u m3">What's my total payable?</div>
-        <div class="msg b m4">You have <b>Rs 12,090</b> wallet-ready + 1 invoice. Want me to start an instant payout? ⚡</div>
+        <div class="msg u m3">Which invoice is generated?</div>
+        <div class="msg b m4">Invoice <b>INV-0001</b> is generated for Rs 12,090 payable. Payment status is pending admin confirmation.</div>
       </div>
     </div>
     <div class="copy reveal d1">
@@ -426,29 +439,29 @@ img,svg,canvas,video{max-width:100%;}
   </div>
 </section>
 
-<!-- ===== WALLET ===== -->
+<!-- ===== INVOICES ===== -->
 <section class="band">
   <div class="wrap split">
     <div class="copy reveal">
-      <span class="eyebrow"><span class="pulse"></span> Wallet &amp; instant payout</span>
-      <h2 class="title">Your COD, in your bank <span style="color:var(--green)">in hours.</span></h2>
-      <p class="lead">NovaX feels like a business bank account. Delivered COD lands in your wallet, then you choose how fast you want it — the rest of the market still makes you wait days.</p>
+      <span class="eyebrow"><span class="pulse"></span> Invoice discipline</span>
+      <h2 class="title">Only delivered parcels become <span style="color:var(--green)">payable invoices.</span></h2>
+      <p class="lead">NovaX keeps seller money clean: booked, refused, returned, and in-transit parcels stay open. Delivered parcels generate invoice-ready COD after charges are deducted.</p>
       <div class="feat-list">
-        <div class="feat reveal d1"><div class="ic">⚡</div><div><b>Three payout speeds</b><span>24h at 0.1%, 12h at 0.3%, or instant 2–3 hours at 0.7%.</span></div></div>
-        <div class="feat reveal d2"><div class="ic">🔐</div><div><b>Proof-locked</b><span>Money only moves after delivery proof + rider cash + bank deposit reconcile.</span></div></div>
-        <div class="feat reveal d3"><div class="ic">📈</div><div><b>Builds your credit</b><span>Clean history unlocks premium tiers and working-capital later.</span></div></div>
+        <div class="feat reveal d1"><div class="ic">✓</div><div><b>Delivered only</b><span>Invoiceable amount appears only when delivery proof is true.</span></div></div>
+        <div class="feat reveal d2"><div class="ic">Rs</div><div><b>Charges deducted</b><span>COD minus delivery charges is shown clearly before payment.</span></div></div>
+        <div class="feat reveal d3"><div class="ic">!</div><div><b>Exceptions stay open</b><span>Refused, reattempt, and return parcels stay visible until resolved.</span></div></div>
       </div>
     </div>
     <div class="art-pane reveal d2">
       <div class="wallet-card">
         <div class="coin c1"></div><div class="coin c2"></div><div class="coin c3"></div>
-        <div style="font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:#9fe9c8;font-weight:800">Wallet balance</div>
-        <div class="bal">Rs 12,090</div>
-        <div style="font-size:12px;color:#9fe9c8">Credited from admin · INV-0001</div>
+        <div style="font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:#9fe9c8;font-weight:800">Generated invoice</div>
+        <div class="bal">INV-0001</div>
+        <div style="font-size:12px;color:#9fe9c8">Payable Rs 12,090 · 1 delivered parcel</div>
         <div class="tiers">
-          <div class="tier"><b>0.1%</b><span>24 hours</span></div>
-          <div class="tier"><b>0.3%</b><span>12 hours</span></div>
-          <div class="tier"><b>0.7%</b><span>2–3 hrs</span></div>
+          <div class="tier"><b>COD</b><span>Rs 12,400</span></div>
+          <div class="tier"><b>Fee</b><span>Rs 310</span></div>
+          <div class="tier"><b>Net</b><span>Rs 12,090</span></div>
         </div>
       </div>
     </div>
@@ -518,14 +531,32 @@ img,svg,canvas,video{max-width:100%;}
       <h2>Give your store a courier that thinks.</h2>
       <p>Book, track, collect COD, and cash out — all watched by AI, all in one NovaX account.</p>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-        <a class="btn primary" href="client.html" data-link>Create seller account</a>
-        <a class="btn ghost" href="#track" style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.4);color:#04130d">Track a parcel</a>
+        <a class="btn primary" href="#track">Track Your Order</a>
+        <a class="btn ghost" href="client.html" data-link style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.4);color:#04130d">Signup As NovaX Merchant</a>
+        <a class="btn ghost" href="#signin" data-signin style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.4);color:#04130d">Sign In</a>
       </div>
     </div>
   </div>
 </section>
 
 <footer>© 2026 NovaX Logistics · Engineered in the UAE · Launching across Pakistan</footer>
+
+<div class="signin-modal" id="signinModal" aria-hidden="true">
+  <div class="signin-card">
+    <button class="signin-close" id="signinClose" aria-label="Close sign in">X</button>
+    <h3>Sign in to NovaX</h3>
+    <p>One login for seller, admin, and rider. The role decides the workspace after verification.</p>
+    <div class="signin-grid" id="roleGrid">
+      <button class="role-btn active" data-target="client.html">Seller</button>
+      <button class="role-btn" data-target="admin.html">Admin</button>
+      <button class="role-btn" data-target="rider.html">Rider</button>
+    </div>
+    <div class="signin-field"><label>Email or username</label><input id="signinEmail" placeholder="name@novax.pk"></div>
+    <div class="signin-field"><label>Password</label><input id="signinPassword" type="password" placeholder="Password"></div>
+    <button class="btn primary" id="signinContinue" style="width:100%;justify-content:center;margin-top:14px">Continue</button>
+    <div class="signin-note">Demo preview: continue opens the selected workspace. In production this will verify credentials and permissions first.</div>
+  </div>
+</div>
 
 <script>
 (function(){
@@ -534,10 +565,10 @@ img,svg,canvas,video{max-width:100%;}
   var STATUS_TAGS=["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Refused","Consignee not available","Reattempt","Reassigned","Out of service area","Ready for return","Return in transit","Return received at origin","Return out for delivery","Parcel returned to consignee"];
   // demo fallback so tracking works even before admin/client seed the state
   var DEMO=[
-    {awb:"NX-2406-1001",consignee:"Sana Khan",city:"Lahore",status:"Parcel out for delivery",updated:"09:38",statusAgeHours:8,stage:6,totalStages:16,branch:"Lahore Hub",resolutionRemark:""},
-    {awb:"NX-2406-1002",consignee:"M. Ahmed",city:"Karachi",status:"Delivered",updated:"10:12",statusAgeHours:11,stage:6,totalStages:16,branch:"Karachi Hub",resolutionRemark:""},
-    {awb:"NX-2406-1003",consignee:"Noor Studio",city:"Islamabad",status:"Parcel now in transit",updated:"08:57",statusAgeHours:76,stage:3,totalStages:16,branch:"Islamabad Hub",resolutionRemark:""},
-    {awb:"NX-2406-1005",consignee:"Zeeshan Ali",city:"Lahore",status:"Refused",updated:"07:31",statusAgeHours:31,stage:6,totalStages:16,branch:"Lahore Hub",resolutionRemark:""}
+    {awb:"N0010001",consignee:"Sana Khan",city:"Lahore",status:"Parcel out for delivery",updated:"09:38",statusAgeHours:8,stage:6,totalStages:16,branch:"Lahore Hub",resolutionRemark:""},
+    {awb:"N0010002",consignee:"M. Ahmed",city:"Karachi",status:"Delivered",updated:"10:12",statusAgeHours:11,stage:6,totalStages:16,branch:"Karachi Hub",resolutionRemark:""},
+    {awb:"N0020001",consignee:"Noor Studio",city:"Islamabad",status:"Parcel now in transit",updated:"08:57",statusAgeHours:76,stage:3,totalStages:16,branch:"Islamabad Hub",resolutionRemark:""},
+    {awb:"N0010003",consignee:"Zeeshan Ali",city:"Lahore",status:"Refused",updated:"07:31",statusAgeHours:31,stage:6,totalStages:16,branch:"Lahore Hub",resolutionRemark:""}
   ];
   function parcels(){
     try{ var s=JSON.parse(localStorage.getItem(STORAGE_KEY)); if(s&&Array.isArray(s.parcels)&&s.parcels.length) return s.parcels; }catch(e){}
@@ -586,6 +617,41 @@ img,svg,canvas,video{max-width:100%;}
     });
   });
 
+  /* ---- one sign-in function for seller, admin, and rider ---- */
+  var signinTarget="client.html";
+  var signinModal=document.getElementById("signinModal");
+  function openSignin(){
+    if(!signinModal) return;
+    signinModal.classList.add("show");
+    signinModal.setAttribute("aria-hidden","false");
+    setTimeout(function(){ var email=document.getElementById("signinEmail"); if(email) email.focus(); },50);
+  }
+  function closeSignin(){
+    if(!signinModal) return;
+    signinModal.classList.remove("show");
+    signinModal.setAttribute("aria-hidden","true");
+    if(location.hash==="#signin") history.replaceState(null,"",location.pathname+location.search);
+  }
+  document.querySelectorAll("[data-signin]").forEach(function(a){
+    a.addEventListener("click",function(e){ e.preventDefault(); openSignin(); });
+  });
+  document.querySelectorAll(".role-btn").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      signinTarget=btn.getAttribute("data-target")||"client.html";
+      document.querySelectorAll(".role-btn").forEach(function(b){ b.classList.toggle("active",b===btn); });
+    });
+  });
+  document.getElementById("signinClose").addEventListener("click",closeSignin);
+  signinModal.addEventListener("click",function(e){ if(e.target===signinModal) closeSignin(); });
+  document.getElementById("signinContinue").addEventListener("click",function(){
+    var email=(document.getElementById("signinEmail").value||"").trim();
+    var pass=(document.getElementById("signinPassword").value||"").trim();
+    if(!email||!pass){ alert("Email/username and password are required."); return; }
+    playHandoff(function(){ window.location.href=signinTarget; });
+  });
+  if(location.hash==="#signin") setTimeout(openSignin,500);
+  if(location.hash==="#signup") setTimeout(function(){ playHandoff(function(){ window.location.href="client.html"; }); },250);
+
   /* ---- nav toggle ---- */
   document.getElementById("navToggle").addEventListener("click",function(){document.getElementById("nav").classList.toggle("open");});
 
@@ -632,7 +698,7 @@ img,svg,canvas,video{max-width:100%;}
     var awb=(document.getElementById("trackInput").value||"").trim().toUpperCase();
     var box=document.getElementById("trackResult");
     var p=parcels().find(function(x){return (x.awb||"").toUpperCase()===awb;});
-    if(!p){ box.innerHTML='<div class="tr-card bad"><div class="tr-head"><strong>No parcel found</strong><span class="chip bad">check ID</span></div><div style="color:#9fe9c8;font-size:13px">Try NX-2406-1001 or paste your NovaX tracking ID.</div></div>'; return; }
+    if(!p){ box.innerHTML='<div class="tr-card bad"><div class="tr-head"><strong>No parcel found</strong><span class="chip bad">check ID</span></div><div style="color:#9fe9c8;font-size:13px">Try N0010001 or paste your NovaX tracking ID.</div></div>'; return; }
     var total=p.totalStages||16, prog=Math.max(6,Math.round(((p.stage||0)/total)*100));
     box.innerHTML='<div class="tr-card"><div class="tr-head"><strong>'+p.awb+'</strong><span class="chip '+statusChip(p)+'">'+p.status+'</span></div>'+
       '<div style="color:#cdeede;font-size:13px">'+(p.consignee||"")+' · '+(p.city||"")+' · updated '+(p.updated||"")+' · clock '+agingLabel(p.statusAgeHours)+'</div>'+

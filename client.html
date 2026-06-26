@@ -179,6 +179,15 @@
     .wallet-hero label{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#9fe9c8;font-weight:800;}
     .wallet-balance{font-size:clamp(32px,7vw,54px);font-weight:900;margin:8px 0 6px;line-height:1;}
     .wallet-pulse{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:#bff3da;}
+    .ticket-cta{background:#ff3158!important;color:#fff!important;box-shadow:0 16px 34px rgba(255,49,88,.28)!important;animation:ticketPulse 1.8s ease-in-out infinite;}
+    @keyframes ticketPulse{50%{transform:translateY(-1px);box-shadow:0 20px 42px rgba(255,49,88,.38);}}
+    .seller-journey-card{display:grid;gap:10px;}
+    .seller-step{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff;}
+    .seller-step.current{border-color:var(--green);background:#effdf6;}
+    .seller-step.problem{border-color:var(--red);background:#fff2ef;}
+    .seller-step .step-dot{width:34px;height:34px;}
+    .order-log-card{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr) auto;gap:12px;align-items:center;padding:14px;border:1px solid var(--line);border-radius:14px;background:#fff;}
+    .order-log-card strong{overflow-wrap:anywhere;}
     .count-up{animation:countPop .5s ease both;}
     @keyframes countPop{from{opacity:0;transform:translateY(6px) scale(.96);}to{opacity:1;transform:none;}}
     .done-check{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;margin:0 auto 14px;background:rgba(20,199,123,.14);border:2px solid var(--green);}
@@ -251,12 +260,11 @@
         <nav class="nav-tabs" aria-label="Primary">
           <a class="tab-btn" href="index.html">Home</a>
           <a class="tab-btn active" href="client.html">Seller Suite</a>
-          <a class="tab-btn" href="admin.html">Control Room</a>
-          <a class="tab-btn" href="rider.html">Rider App</a>
+          <a class="tab-btn" href="index.html#signin">Sign In</a>
         </nav>
         <div class="auth-actions">
-          <a class="ghost-btn" href="client.html">Sign In</a>
-          <a class="action-btn" href="client.html">Sign Up</a>
+          <a class="ghost-btn" href="index.html#signin">Sign In</a>
+          <a class="action-btn" href="index.html#signup">Sign Up</a>
         </div>
       </div>
     </header>
@@ -265,7 +273,7 @@
         <div class="portal-title">
           <div>
             <h2>Client Portal</h2>
-            <p>For e-commerce sellers: book parcels, track real journeys, see COD payable, download invoices, ask WhatsApp AI, manage wallet payouts, and raise tickets from one controlled dashboard.</p>
+            <p>For e-commerce sellers: book parcels, track real status, see invoices, download reports, and raise tickets from one controlled dashboard.</p>
           </div>
           <span class="realtime"><span class="pulse"></span><span id="clockB">Live</span></span>
         </div>
@@ -285,7 +293,6 @@
               <button class="client-tab" data-client-tab="bulkBooking">Bulk Booking</button>
               <button class="client-tab" data-client-tab="reports">Full Report</button>
               <button class="client-tab" data-client-tab="payments">Payments</button>
-              <button class="client-tab" data-client-tab="wallet">Wallet</button>
               <button class="client-tab" data-client-tab="logs">Order Logs</button>
               <button class="client-tab" data-client-tab="subAccounts">Sub Accounts</button>
               <button class="client-tab" data-client-tab="support">AI Support</button>
@@ -327,15 +334,11 @@
                 <aside class="grid">
                   <div class="panel">
                     <div class="section-head">
-                      <div><h3>Selected Parcel Journey</h3><p id="selectedParcelText">Every step is timestamped and owned by a user, rider, branch, or ledger entry.</p></div>
-                      <button class="ghost-btn" id="openTicketBtn">Create Ticket</button>
+                      <div><h3>Selected Parcel Status</h3><p id="selectedParcelText">Only the important seller-facing movement is shown here.</p></div>
+                      <button class="action-btn ticket-cta" id="openTicketBtn">Create Ticket</button>
                     </div>
                     <div class="journey" id="clientJourney"></div>
                     <div id="refusalReview"></div>
-                  </div>
-                  <div class="panel">
-                    <div class="section-head"><div><h3>Wallet And Settlement</h3><p>Client COD and shipping balance are separated from NovaX company funds.</p></div></div>
-                    <div class="money-grid" id="clientWallet"></div>
                   </div>
                 </aside>
               </div>
@@ -386,7 +389,7 @@
             <!-- FULL REPORT -->
             <section class="client-module" id="client-reports">
               <div class="panel">
-                <div class="section-head"><div><h3>Full Report</h3><p>Operational and financial reporting from the same parcels shown in dashboard.</p></div><div class="inline-actions"><button class="ghost-btn" id="reportCsvBtn">Export CSV</button><button class="ghost-btn" id="reportPdfBtn">Download PDF</button></div></div>
+                <div class="section-head"><div><h3>Full Report</h3><p>Operational and financial reporting from the same parcels shown in dashboard.</p></div><div class="inline-actions"><button class="action-btn ticket-cta" onclick="openTicketModal()">Create Ticket</button><button class="ghost-btn" id="reportCsvBtn">Export CSV</button><button class="ghost-btn" id="reportPdfBtn">Download PDF</button></div></div>
                 <div class="grid metrics" id="clientReportMetrics"></div>
               </div>
               <div class="panel" style="margin-top:14px">
@@ -419,11 +422,11 @@
             <section class="client-module" id="client-payments">
               <div class="grid two">
                 <div class="panel">
-                  <div class="section-head"><div><h3>Payments</h3><p>COD payable, shipping wallet, invoices, deductions, fast settlement, and settlement history.</p></div><button class="action-btn" id="requestPayoutBtn">Request Payout</button></div>
+                  <div class="section-head"><div><h3>Payments</h3><p>Only admin-generated invoices are shown here so payment numbers stay clean.</p></div><button class="action-btn ticket-cta" onclick="openTicketModal()">Create Ticket</button></div>
                   <div class="money-grid" id="paymentSummary"></div>
                 </div>
                 <div class="panel">
-                  <div class="section-head"><div><h3>Settlement Timeline</h3><p>Each payment movement must have proof and ledger reference.</p></div></div>
+                  <div class="section-head"><div><h3>Invoice Rules</h3><p>Payable amount appears only after admin creates an invoice from delivered parcels.</p></div></div>
                   <div class="journey" id="paymentTimeline"></div>
                 </div>
               </div>
@@ -432,7 +435,7 @@
                 <div id="clientLatestInvoice"></div>
               </div>
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Payment History</h3><p>Past settlement events and pending payout requests for your account.</p></div></div>
+                <div class="section-head"><div><h3>Payment History</h3><p>Generated invoices only. COD scans, rider cash, and internal ledger events stay on the admin side.</p></div></div>
                 <div class="log-feed" id="clientPaymentHistory"></div>
               </div>
               <div class="panel" style="margin-top:14px">
@@ -465,7 +468,7 @@
             <!-- ORDER LOGS -->
             <section class="client-module" id="client-logs">
               <div class="panel">
-                <div class="section-head"><div><h3>Order Logs</h3><p>Every scan, status change, exception, and support answer creates a permanent event.</p></div></div>
+                <div class="section-head"><div><h3>Order Logs</h3><p>Clean parcel activity summary. Open a ticket when anything looks wrong.</p></div><button class="action-btn ticket-cta" onclick="openTicketModal()">Create Ticket</button></div>
                 <div class="log-feed" id="orderLogFeed"></div>
               </div>
             </section>
@@ -548,8 +551,8 @@
     const STORAGE_KEY = "novaxLogisticsStateV8";
     const STATUS_TAGS = ["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Refused","Consignee not available","Reattempt","Reassigned","Out of service area","Ready for return","Return in transit","Return received at origin","Return out for delivery","Parcel returned to consignee"];
     const baseState = {
-      selectedAwb:"NX-2406-1001", activeStatusQueue:"Parcel now in transit", activeRateClient:"", activeSackMode:"create",
-      clientDateFrom:"2026-06-01", clientDateTo:"2026-06-24", lastGeneratedAwb:"NX-2406-1001",
+      selectedAwb:"N0010001", activeStatusQueue:"Parcel now in transit", activeRateClient:"", activeSackMode:"create",
+      clientDateFrom:"2026-06-01", clientDateTo:"2026-06-24", lastGeneratedAwb:"N0010001",
       walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"",
       client:{ id:"CL-0001", name:"Apex Fashion", walletTopup:85000, shippingDue:18400, premiumTier:"Gold", subAccounts:6, walletBalance:12090 },
       clients:[
@@ -573,35 +576,37 @@
         { id:"R-31", name:"Hamza", username:"hamza.r31", password:"NX-3131", manager:"Islamabad Hub Manager", cashHeld:19500, cashLimit:60000, scans:29, fakeRisk:6, access:"Active", expenses:0 }
       ],
       parcels:[
-        { awb:"NX-2406-1001", clientId:"CL-0001", date:"2026-06-24", consignee:"Sana Khan", city:"Lahore", cod:7200, fee:240, status:"Parcel out for delivery", statusAgeHours:8, stage:6, totalStages:9, rider:"R-17", branch:"Lahore Hub", risk:14, updated:"09:38", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000001", address:"House 21, Main Market, Lahore", service:"COD Standard", weight:"0.8 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery"] },
-        { awb:"NX-2406-1002", clientId:"CL-0001", date:"2026-06-23", consignee:"M. Ahmed", city:"Karachi", cod:12400, fee:310, status:"Delivered", statusAgeHours:11, stage:8, totalStages:9, rider:"R-22", branch:"Karachi Hub", risk:32, updated:"10:12", exception:"Cash above rider limit", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000002", address:"Block 6, PECHS, Karachi", service:"COD Express", weight:"1.2 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","COD collected","Rider holding cash"] },
-        { awb:"NX-2406-1003", clientId:"CL-0002", date:"2026-06-22", consignee:"Noor Studio", city:"Islamabad", cod:4500, fee:220, status:"Parcel now in transit", statusAgeHours:76, stage:4, totalStages:9, rider:"R-17", branch:"Islamabad Hub", risk:18, updated:"08:57", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000003", address:"F-7 Markaz, Islamabad", service:"COD Standard", weight:"0.6 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit"] },
-        { awb:"NX-2406-1004", clientId:"CL-0003", date:"2026-06-20", consignee:"Hira Boutique", city:"Rawalpindi", cod:15800, fee:360, status:"Collected by rider", statusAgeHours:19, stage:2, totalStages:9, rider:"R-17", branch:"Karachi Hub", risk:11, updated:"10:45", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000004", address:"Saddar, Rawalpindi", service:"COD Standard", weight:"1.0 kg", steps:["New booked","Collected by rider"] },
-        { awb:"NX-2406-1005", clientId:"CL-0001", date:"2026-06-19", consignee:"Zeeshan Ali", city:"Lahore", cod:9800, fee:280, status:"Refused", statusAgeHours:31, stage:6, totalStages:9, rider:"R-22", branch:"Lahore Hub", risk:78, updated:"07:31", exception:"Consignee denies refusal attempt", cashReceived:false, returnProof:"Return proof pending from rider manager", resolutionRemark:"", phone:"+92 300 0000005", address:"DHA Phase 5, Lahore", service:"COD Standard", weight:"0.9 kg", riderInput:{ attemptTime:"07:31", gps:"31.5204, 74.3587", callProof:"1 call, 18 seconds", riderNote:"Consignee refused delivery at gate", photoProof:"Door photo captured" }, steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Refused"] }
+        { awb:"N0010001", clientId:"CL-0001", date:"2026-06-24", consignee:"Sana Khan", city:"Lahore", cod:7200, fee:240, status:"Parcel out for delivery", statusAgeHours:8, stage:6, totalStages:9, rider:"R-17", branch:"Lahore Hub", risk:14, updated:"09:38", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000001", address:"House 21, Main Market, Lahore", service:"COD Standard", weight:"0.8 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery"] },
+        { awb:"N0010002", clientId:"CL-0001", date:"2026-06-23", consignee:"M. Ahmed", city:"Karachi", cod:12400, fee:310, status:"Delivered", statusAgeHours:11, stage:8, totalStages:9, rider:"R-22", branch:"Karachi Hub", risk:32, updated:"10:12", exception:"Cash above rider limit", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000002", address:"Block 6, PECHS, Karachi", service:"COD Express", weight:"1.2 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","COD collected","Rider holding cash"] },
+        { awb:"N0020001", clientId:"CL-0002", date:"2026-06-22", consignee:"Noor Studio", city:"Islamabad", cod:4500, fee:220, status:"Parcel now in transit", statusAgeHours:76, stage:4, totalStages:9, rider:"R-17", branch:"Islamabad Hub", risk:18, updated:"08:57", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000003", address:"F-7 Markaz, Islamabad", service:"COD Standard", weight:"0.6 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit"] },
+        { awb:"N0030001", clientId:"CL-0003", date:"2026-06-20", consignee:"Hira Boutique", city:"Rawalpindi", cod:15800, fee:360, status:"Collected by rider", statusAgeHours:19, stage:2, totalStages:9, rider:"R-17", branch:"Karachi Hub", risk:11, updated:"10:45", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000004", address:"Saddar, Rawalpindi", service:"COD Standard", weight:"1.0 kg", steps:["New booked","Collected by rider"] },
+        { awb:"N0010003", clientId:"CL-0001", date:"2026-06-19", consignee:"Zeeshan Ali", city:"Lahore", cod:9800, fee:280, status:"Refused", statusAgeHours:31, stage:6, totalStages:9, rider:"R-22", branch:"Lahore Hub", risk:78, updated:"07:31", exception:"Consignee denies refusal attempt", cashReceived:false, returnProof:"Return proof pending from rider manager", resolutionRemark:"", phone:"+92 300 0000005", address:"DHA Phase 5, Lahore", service:"COD Standard", weight:"0.9 kg", riderInput:{ attemptTime:"07:31", gps:"31.5204, 74.3587", callProof:"1 call, 18 seconds", riderNote:"Consignee refused delivery at gate", photoProof:"Door photo captured" }, steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Refused"] }
       ],
       expenses:[
         { id:"EXP-001", name:"Fuel", amount:38000, type:"Fuel", owner:"Karachi Hub", status:"Approved" },
         { id:"EXP-002", name:"Branch rent", amount:110000, type:"Branch rent", owner:"Lahore Hub", status:"Approved" }
       ],
       paymentLogs:[
-        { id:"PAY-001", clientId:"CL-0001", type:"COD collected", amount:12400, status:"Rider holding", ref:"NX-2406-1002" },
-        { id:"PAY-002", clientId:"CL-0001", type:"Shipping fee deducted", amount:310, status:"Ledger posted", ref:"NX-2406-1002" },
+        { id:"PAY-001", clientId:"CL-0001", type:"COD collected", amount:12400, status:"Rider holding", ref:"N0010002" },
+        { id:"PAY-002", clientId:"CL-0001", type:"Shipping fee deducted", amount:310, status:"Ledger posted", ref:"N0010002" },
         { id:"PAY-003", clientId:"CL-0001", type:"Invoice pushed to wallet", amount:12090, status:"Wallet credited", ref:"INV-0001" }
       ],
       invoices:[
-        { id:"INV-0001", clientId:"CL-0001", parcelRefs:["NX-2406-1002"], cod:12400, charges:310, payable:12090, status:"Pushed to wallet", createdAt:"2026-06-24 10:30", paidAt:"", walletPushedAt:"2026-06-24 10:31", summary:"1 delivered parcel, payable pushed to wallet" }
+        { id:"INV-0001", clientId:"CL-0001", parcelRefs:["N0010002"], cod:12400, charges:310, payable:12090, status:"Pushed to wallet", createdAt:"2026-06-24 10:30", paidAt:"", walletPushedAt:"2026-06-24 10:31", summary:"1 delivered parcel, payable pushed to wallet" }
       ],
       transit:[
         { id:"SACK-KHI-LHE-44", from:"Karachi Hub", to:"Lahore Hub", expected:1000, scanned:998, demanifested:991, health:88, status:"Active", type:"parcel sack" }
       ],
       completedSacks:[],
       operationsIssues:[
-        { id:"OPS-001", branch:"Lahore Hub", urgency:"super urgent", problem:"Transit aging over 3 days", awb:"NX-2406-1003", openedHours:6, resolved:false }
+        { id:"OPS-001", branch:"Lahore Hub", urgency:"super urgent", problem:"Transit aging over 3 days", awb:"N0020001", openedHours:6, resolved:false }
       ],
       resolvedAlerts:[]
     };
     let state = loadState();
+    normalizeStateAwbs(state);
     state.activeClientTab = state.activeClientTab || "dashboard";
+    if (state.activeClientTab === "wallet") state.activeClientTab = "payments";
     state.activeStatusQueue = state.activeStatusQueue || STATUS_TAGS[0];
     state.walletWithdrawals = Array.isArray(state.walletWithdrawals) ? state.walletWithdrawals : [];
     state.tickets = Array.isArray(state.tickets) ? state.tickets : [];
@@ -622,6 +627,29 @@
     function inClientDateRange(p){ const d=p.date||"2026-06-24"; const f=state.clientDateFrom||"2026-06-01"; const t=state.clientDateTo||"2026-06-24"; return d>=f && d<=t; }
     function clientScopedParcels(){ const id=state.client.id||"CL-0001"; return state.parcels.filter(p=>p.clientId===id && inClientDateRange(p)); }
     function clientById(id){ return state.clients.find(c=>c.id===id) || state.clients[0]; }
+    function clientCode(id){ const digits=String(id||"1").replace(/\D/g,""); return digits.slice(-3).padStart(3,"0"); }
+    function shortAwbFor(clientId,counter){ return `N${clientCode(clientId)}${String(counter).padStart(4,"0")}`; }
+    function nextAwbForClient(clientId){
+      const prefix=`N${clientCode(clientId)}`;
+      const max=state.parcels.filter(p=>String(p.awb||"").startsWith(prefix)).reduce((n,p)=>Math.max(n,Number(String(p.awb).slice(4))||0),0);
+      return shortAwbFor(clientId,max+1);
+    }
+    function replaceAwbRefs(value,map){
+      if(typeof value==="string") return map[value]||value;
+      if(Array.isArray(value)) return value.map(v=>replaceAwbRefs(v,map));
+      if(value&&typeof value==="object"){ Object.keys(value).forEach(k=>{ value[k]=replaceAwbRefs(value[k],map); }); }
+      return value;
+    }
+    function normalizeStateAwbs(appState){
+      const map={}, counts={};
+      (appState.parcels||[]).forEach(p=>{
+        if(!/^NX-/i.test(String(p.awb||""))) return;
+        const code=clientCode(p.clientId);
+        counts[code]=(counts[code]||0)+1;
+        map[p.awb]=shortAwbFor(p.clientId,counts[code]);
+      });
+      if(Object.keys(map).length) replaceAwbRefs(appState,map);
+    }
     function isDeliveredLedgerParcel(p){ return p.status==="Delivered" || p.steps.includes("COD collected"); }
     function paidParcelRefs(){ return new Set(state.invoices.filter(i=>i.status==="Paid").flatMap(i=>i.parcelRefs||[])); }
     function isUnpaidDeliveredParcel(p){ return isDeliveredLedgerParcel(p) && !paidParcelRefs().has(p.awb); }
@@ -686,22 +714,38 @@
     function renderJourney(){
       const p=state.parcels.find(x=>x.awb===state.selectedAwb)||state.parcels[0];
       document.getElementById("selectedParcelText").textContent=`${p.awb} for ${p.consignee}. Current status: ${p.status}.`;
-      document.getElementById("clientJourney").innerHTML=STATUS_TAGS.map((step,i)=>{ const done=p.steps.includes(step)||p.status===step; const alert=p.exception&&p.status===step; const detail=done?`${p.branch} | ${i===p.stage?p.updated:"system logged"}`:"Waiting for previous control"; return `<div class="journey-item ${done?"":"pending"} ${alert?"alert":""}"><div class="step-dot">${done?"OK":i+1}</div><div><strong>${step}</strong><span>${alert?p.exception:detail}</span></div><span class="chip ${done?(alert?"bad":"good"):"info"}">${done?"locked":"next"}</span></div>`; }).join("");
-      if(p.resolutionRemark){ document.getElementById("clientJourney").innerHTML+=`<div class="journey-item"><div class="step-dot">OK</div><div><strong>Admin remarks</strong><span>${p.resolutionRemark}</span></div><span class="chip good">resolved</span></div>`; }
+      const important=[
+        ["New booked","Booked"],
+        ["Collected by rider","Picked up"],
+        ["Parcel now in transit","In transit"],
+        ["Parcel received at destination","Reached destination"],
+        ["Parcel out for delivery","Out for delivery"],
+        ["Delivered","Delivered"],
+        ["Refused","Refused"],
+        ["Consignee not available","Consignee not available"],
+        ["Reattempt","Reattempt"],
+        ["Ready for return","Ready for return"],
+        ["Parcel returned to consignee","Returned"]
+      ];
+      const rows=important
+        .filter(([status])=>p.steps.includes(status)||p.status===status||(["Refused","Consignee not available","Reattempt"].includes(status)&&isRefusalReview(p)))
+        .map(([status,label],i)=>{
+          const current=p.status===status;
+          const problem=current && (p.exception||/Refused|not available/i.test(status));
+          const note=problem?(p.exception||"Needs client review"):(current?`${p.branch} | ${p.updated}`:`${p.branch} | verified`);
+          return `<div class="seller-step ${current?"current":""} ${problem?"problem":""}"><div class="step-dot">${i+1}</div><div><strong>${label}</strong><span>${note}</span></div><span class="chip ${problem?"bad":current?"info":"good"}">${problem?"review":current?"current":"done"}</span></div>`;
+        });
+      document.getElementById("clientJourney").innerHTML=`<div class="seller-journey-card">${rows.join("")}${p.resolutionRemark?`<div class="seller-step"><div class="step-dot">OK</div><div><strong>Admin remarks</strong><span>${p.resolutionRemark}</span></div><span class="chip good">resolved</span></div>`:""}</div>`;
       const review=document.getElementById("refusalReview"); if(!review) return;
       if(!isRefusalReview(p)){ review.innerHTML=""; return; }
       const input=p.riderInput||{attemptTime:p.updated,gps:"GPS attached",callProof:"Call proof pending",riderNote:"Rider marked delivery exception",photoProof:"Photo proof pending"};
       review.innerHTML=`<div class="review-panel"><div class="section-head" style="margin-bottom:8px"><div><h3>Review Rider Attempt</h3><p>Rider input is shown automatically so you can decide whether to request redelivery.</p></div><span class="chip warn">review needed</span></div><div class="money-grid">${moneyBox("Attempt time",input.attemptTime,"rider timestamp")}${moneyBox("GPS",input.gps,"attempt location")}${moneyBox("Call proof",input.callProof,"call from rider app")}${moneyBox("Rider note",input.riderNote,input.photoProof)}</div><textarea id="redeliveryFeedback">Consignee confirmed they want delivery again. Please re-attempt and call before arrival.</textarea><button class="action-btn" onclick="requestRedelivery('${p.awb}')">Send Consignee Feedback And Reassign</button></div>`;
     }
     function renderWallets(){
+      const box=document.getElementById("clientWallet");
+      if(!box) return;
       const cm=clientMetrics();
-      const avail=Math.max(0,state.client.walletTopup-state.client.shippingDue);
-      document.getElementById("clientWallet").innerHTML=[
-        moneyBox("COD payable",money(cm.payable),"Your account only"),
-        moneyBox("Shipping wallet",money(avail),`${state.client.premiumTier} tier balance`),
-        moneyBox("Wallet balance",money(walletBalance(state.client.id)),"ready to withdraw"),
-        moneyBox("Fast settlement","T+1 ready","premium fintech path")
-      ].join("");
+      box.innerHTML=[moneyBox("Client payable",money(cm.payable),"Generated from delivered invoices only")].join("");
     }
     function renderAwbLabel(){ const p=state.parcels.find(x=>x.awb===(state.lastGeneratedAwb||state.selectedAwb))||selectedParcel(); document.getElementById("awbLabelPreview").innerHTML=awbLabelHtml(p); }
     function renderClientTabs(){
@@ -732,22 +776,21 @@
         metricCard("Open Parcels",open,percent(open,Math.max(1,cm.total)),"not delivered yet",open?"blue":"good")
       ].join("");
       document.getElementById("clientReportRows").innerHTML=cityReport(cm.parcels).map(r=>`<tr><td><strong>${r.city}</strong></td><td>${r.parcels}</td><td>${money(r.cod)}</td><td>${money(r.revenue)}</td><td><span class="chip ${r.delivered?"good":"info"}">${r.delivered}/${r.parcels}</span></td></tr>`).join("");
+      const invoices=state.invoices.filter(i=>i.clientId===(state.client.id||"CL-0001")&&i.status!=="Deleted");
       document.getElementById("paymentSummary").innerHTML=[
-        moneyBox("COD collected",money(cm.codCollected),"locked by delivery journey"),
-        moneyBox("Client payable",money(cm.payable),"COD minus charges"),
-        moneyBox("Shipping wallet",money(Math.max(0,state.client.walletTopup-state.client.shippingDue)),"prepaid balance"),
-        moneyBox("Wallet balance",money(walletBalance(state.client.id)),"withdrawable")
+        moneyBox("Generated invoices",invoices.length,"admin created only"),
+        moneyBox("Invoice COD",money(invoices.reduce((s,i)=>s+i.cod,0)),"delivered parcels only"),
+        moneyBox("Delivery charges",money(invoices.reduce((s,i)=>s+i.charges,0)),"deducted from COD"),
+        moneyBox("Payable",money(invoices.reduce((s,i)=>s+i.payable,0)),"shown on invoices")
       ].join("");
       document.getElementById("paymentTimeline").innerHTML=[
-        ["COD expected","Created when parcel was booked",true],
-        ["COD collected",`${money(cm.codCollected)} collected`,cm.codCollected>0],
-        ["Delivery charges",`${money(cm.deliveryCharges)} deducted`,cm.deliveryCharges>0],
-        ["Wallet credit","Admin pushes invoice payable to wallet",walletBalance(state.client.id)>0],
-        ["Client payout",`${money(cm.payable)} payable after reconciliation`,cm.payable>0]
+        ["Delivered parcel selected","Admin can invoice delivered parcels only",true],
+        ["Invoice generated","Invoice appears in seller payments",invoices.length>0],
+        ["Payment status","Paid or pending is controlled by admin ledger",invoices.some(i=>i.status==="Paid")]
       ].map((r,i)=>`<div class="journey-item ${r[2]?"":"pending"}"><div class="step-dot">${r[2]?"OK":i+1}</div><div><strong>${r[0]}</strong><span>${r[1]}</span></div><span class="chip ${r[2]?"good":"info"}">${r[2]?"verified":"waiting"}</span></div>`).join("");
-      document.getElementById("clientPaymentHistory").innerHTML=state.paymentLogs.filter(l=>l.clientId===(state.client.id||"CL-0001")).map(l=>`<div class="log-item"><strong>${l.id}</strong><div><strong>${l.type}</strong><div class="footer-note" style="margin-top:2px">${l.ref} | ${l.status}</div></div><span class="chip ${/Pending|Awaiting/i.test(l.status)?"warn":"good"}">${money(l.amount)}</span></div>`).join("")||`<div class="ops-card"><strong>No payment history</strong></div>`;
-      document.getElementById("clientInvoiceList").innerHTML=state.invoices.filter(i=>i.clientId===(state.client.id||"CL-0001")&&i.status!=="Deleted").map(inv=>`<div class="invoice-card"><div class="ops-card-head"><strong>${inv.id}</strong><span class="chip ${inv.status==="Paid"?"good":"warn"}">${inv.status}</span></div><p>${inv.summary}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${moneyBox("Payable",money(inv.payable),"due to you")}${moneyBox("Date",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div></div>`).join("")||`<div class="ops-card"><strong>No invoices yet</strong></div>`;
-      document.getElementById("orderLogFeed").innerHTML=cm.parcels.flatMap(p=>{ const rem=p.resolutionRemark?[{awb:p.awb,step:`Admin remarks: ${p.resolutionRemark}`,status:"Resolved",time:p.resolvedAt||p.updated,risk:0}]:[]; return [...p.steps.map(s=>({awb:p.awb,step:s,status:p.status,time:p.updated,risk:p.risk})),...rem]; }).slice(0,16).map(l=>`<div class="log-item clickable-row" onclick="openClientParcelJourney('${l.awb}')"><strong>${l.time}</strong><div><strong>${l.awb}</strong><div class="footer-note" style="margin-top:2px">${l.step} | ${l.status}</div></div><span class="chip ${l.risk>60?"bad":"good"}">${l.risk>60?"review":"locked"}</span></div>`).join("");
+      document.getElementById("clientPaymentHistory").innerHTML=invoices.map(inv=>`<div class="log-item"><strong>${inv.id}</strong><div><strong>${inv.status}</strong><div class="footer-note" style="margin-top:2px">${inv.createdAt} | ${inv.parcelRefs.length} parcel(s)</div></div><span class="chip ${inv.status==="Paid"?"good":"warn"}">${money(inv.payable)}</span></div>`).join("")||`<div class="ops-card"><strong>No generated invoices</strong><p>Delivered parcels will show here once admin creates an invoice.</p></div>`;
+      document.getElementById("clientInvoiceList").innerHTML=invoices.map(inv=>`<div class="invoice-card"><div class="ops-card-head"><strong>${inv.id}</strong><span class="chip ${inv.status==="Paid"?"good":"warn"}">${inv.status}</span></div><p>${inv.summary}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${moneyBox("Payable",money(inv.payable),"due to you")}${moneyBox("Date",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div></div>`).join("")||`<div class="ops-card"><strong>No invoices yet</strong></div>`;
+      document.getElementById("orderLogFeed").innerHTML=cm.parcels.map(p=>{ const alert=alertForParcel(p); return `<div class="order-log-card clickable-row" onclick="openClientParcelJourney('${p.awb}')"><div><strong>${p.awb}</strong><div class="footer-note">${p.consignee} | ${p.city}</div></div><div><strong>${p.status}</strong><div class="footer-note">Last update ${p.updated} | ${alert.label}</div></div><button class="ghost-btn" onclick="event.stopPropagation();openTicketModal('${p.awb}')">Ticket</button></div>`; }).join("")||`<div class="ops-card"><strong>No order logs</strong></div>`;
       document.getElementById("subAccountList").innerHTML=[["Owner","Full visibility, payout approvals","active"],["Finance","Payments, invoices, reports","active"],["Warehouse","New and bulk booking only","active"],["Support","Tracking and WhatsApp replies","limited"]].map(r=>`<div class="ops-card"><div class="ops-card-head"><strong>${r[0]}</strong><span class="chip ${r[2]==="limited"?"warn":"good"}">${r[2]}</span></div><p>${r[1]}</p></div>`).join("");
       document.getElementById("supportEscalations").innerHTML=[...state.parcels.filter(p=>p.exception&&p.clientId===state.client.id).map(p=>[p.awb,p.exception,"bad"])].map(r=>`<div class="ops-card"><div class="ops-card-head"><strong>${r[0]}</strong><span class="chip ${r[2]}">escalated</span></div><p>${r[1]}</p></div>`).join("")||`<div class="ops-card"><strong>No escalations</strong><p>AI has complete portal data right now.</p></div>`;
     }
@@ -879,9 +922,9 @@
 
     /* Booking */
     function bookParcel(o={}){
-      const next=state.parcels.length+1001; const awb=`NX-2406-${next}`;
       const cod=o.cod||3500+Math.round(Math.random()*11000);
       const clientId=o.clientId||state.client.id||"CL-0001"; const client=clientById(clientId);
+      const awb=nextAwbForClient(clientId);
       state.parcels.unshift({ awb, clientId, date:o.date||new Date().toISOString().slice(0,10), consignee:o.consignee||"New COD Order", city:o.city||["Lahore","Karachi","Islamabad","Rawalpindi"][Math.floor(Math.random()*4)], cod, fee:o.fee||client.rate||250, phone:o.phone||"+92 300 1111111", pickupCity:o.pickupCity||"Karachi", service:o.service||"COD Standard", category:o.category||"Fashion", fragile:o.fragile||"No", weight:o.weight||"0.8 kg", paymentMode:o.paymentMode||"Cash on Delivery", address:o.address||"Address pending", status:"New booked", statusAgeHours:0, stage:0, totalStages:STATUS_TAGS.length-1, rider:"R-17", branch:"Karachi Hub", risk:8, updated:time(), exception:"", steps:["New booked"] });
       state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId, type:"COD expected", amount:cod, status:"Awaiting delivery", ref:awb });
       state.selectedAwb=awb; state.lastGeneratedAwb=awb; saveState(); render();
@@ -931,7 +974,7 @@
     document.getElementById("printAwbBtn").addEventListener("click",printAwb);
     document.getElementById("awbModalPrint").addEventListener("click",()=>printLabels([state.lastGeneratedAwb]));
     document.getElementById("openTicketBtn").addEventListener("click",()=>openTicketModal(state.selectedAwb));
-    document.getElementById("requestPayoutBtn").addEventListener("click",requestPayout);
+    document.getElementById("requestPayoutBtn")?.addEventListener("click",requestPayout);
     document.getElementById("reportCsvBtn").addEventListener("click",exportReportCsv);
     document.getElementById("reportPdfBtn").addEventListener("click",exportReportPdf);
     document.getElementById("repClearBtn").addEventListener("click",()=>{ ["repSearch","repFrom","repTo"].forEach(i=>{const e=document.getElementById(i);if(e)e.value="";}); const s=document.getElementById("repStatus"); if(s)s.value=""; renderClientReportFull(); });
