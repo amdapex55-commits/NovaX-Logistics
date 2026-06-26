@@ -3553,6 +3553,196 @@
         padding: 20px 14px;
       }
     }
+
+    /* Investor-preview mobile hardening: prevents clipped buttons, runaway tables,
+       stuck scan text, and menu overflow on small screens. */
+    html, body {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    img, svg, video, canvas {
+      max-width: 100%;
+    }
+
+    .topbar-inner,
+    .brand,
+    .nav-tabs,
+    .auth-actions,
+    .view,
+    .panel,
+    .metric,
+    .table-wrap,
+    .admin-shell,
+    .client-shell,
+    .admin-main,
+    .client-main,
+    .processing-desk,
+    .processing-preview,
+    .processing-console,
+    .ticket-hub,
+    .ticket-board,
+    .wallet-hero,
+    .ops-card,
+    .money-box {
+      min-width: 0;
+    }
+
+    .action-btn,
+    .ghost-btn,
+    .tab-btn,
+    .admin-nav-main,
+    .admin-subtab,
+    .admin-tab,
+    .client-tab {
+      min-width: 0;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      text-align: center;
+    }
+
+    .field,
+    .field input,
+    .field select,
+    .field textarea,
+    .search,
+    .segmented {
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .table-wrap {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .wide-scroll {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    th,
+    td {
+      overflow-wrap: anywhere;
+    }
+
+    .scan-textarea {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 760px) {
+      .topbar-inner {
+        max-width: 100vw;
+        overflow: hidden;
+      }
+
+      .nav-tabs {
+        scroll-snap-type: x proximity;
+      }
+
+      .tab-btn {
+        scroll-snap-align: start;
+      }
+
+      .admin-menu {
+        max-height: 52vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .admin-subnav {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+        padding-left: 0;
+      }
+
+      .admin-subtab,
+      .admin-tab {
+        justify-content: center;
+      }
+
+      .processing-desk,
+      .manifest-grid,
+      .demanifest-grid,
+      .ticket-hub .mini-form,
+      .finance-grid,
+      .client-grid,
+      .users-grid,
+      .rate-grid {
+        grid-template-columns: 1fr !important;
+      }
+
+      .processing-console .inline-actions,
+      .processing-console .mini-form,
+      .manifest-panel .mini-form,
+      .demanifest-panel .mini-form {
+        display: grid;
+        grid-template-columns: 1fr !important;
+      }
+
+      .processing-console .action-btn,
+      .processing-console .ghost-btn {
+        width: 100%;
+        white-space: normal;
+      }
+    }
+
+    @media (max-width: 520px) {
+      main {
+        padding: 8px;
+      }
+
+      .portal-title h2 {
+        font-size: 26px;
+      }
+
+      .portal-title p,
+      .section-head p,
+      .footer-note {
+        font-size: 12px;
+      }
+
+      .admin-subnav {
+        grid-template-columns: 1fr;
+      }
+
+      .admin-menu {
+        max-height: 46vh;
+      }
+
+      .grid.metrics,
+      .control-room .grid.metrics,
+      .money-grid,
+      .metric-grid,
+      .placeholder-grid {
+        grid-template-columns: 1fr !important;
+      }
+
+      .table-wrap {
+        border-radius: 12px;
+      }
+
+      .wide-scroll table {
+        min-width: 640px;
+      }
+
+      .scan-textarea {
+        min-height: 132px;
+        font-size: 15px;
+      }
+
+      .toast {
+        left: 8px;
+        right: 8px;
+        bottom: 8px;
+      }
+    }
   
 
     /* Split-file navigation: anchors behave like the original buttons. */
@@ -5363,8 +5553,19 @@
       return state.parcels.find(p => p.awb === state.activeProcessingAwb) || null;
     }
 
+    function normalizeScanText(value) {
+      return String(value || "")
+        .toUpperCase()
+        .replace(/\u00a0/g, " ")
+        .replace(/(NX-\d{4}-\d{4,})(?=NX-\d{4}-\d{4,})/g, "$1, ")
+        .replace(/[;\t\r\n]+/g, ", ")
+        .replace(/\s+/g, " ")
+        .replace(/\s*,\s*/g, ", ")
+        .trim();
+    }
+
     function parseAwbList(value) {
-      return [...new Set(String(value || "").toUpperCase().match(/NX-\d{4}-\d{4,}/g) || [])];
+      return [...new Set(normalizeScanText(value).match(/NX-\d{4}-\d{4,}/g) || [])];
     }
 
     function formatScanInput(id) {
@@ -5372,7 +5573,7 @@
       if (!el) return;
       const awbs = parseAwbList(el.value);
       if (awbs.length) {
-        el.value = `${awbs.join(", ")}${awbs.length ? ", " : ""}`;
+        el.value = `${awbs.join(", ")}, `;
         el.selectionStart = el.selectionEnd = el.value.length;
       }
     }
