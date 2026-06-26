@@ -5017,7 +5017,15 @@
       const el = document.getElementById(id);
       if (!el) return;
       const awbs = parseAwbList(el.value);
-      if (awbs.length) el.value = `${awbs.join(", ")}, `;
+      if (awbs.length) {
+        el.value = `${awbs.join(", ")}${awbs.length ? ", " : ""}`;
+        el.selectionStart = el.selectionEnd = el.value.length;
+      }
+    }
+
+    function scheduleScanFormat(id) {
+      clearTimeout(window[`scanFormat_${id}`]);
+      window[`scanFormat_${id}`] = setTimeout(() => formatScanInput(id), 160);
     }
 
     function parcelsByAwbs(awbs) {
@@ -5031,6 +5039,30 @@
 
     function manifestLogs() {
       return state.transit.filter(t => t.type === "parcel manifest" || t.type === "parcel sack");
+    }
+
+    function manifestExpected(log) {
+      return Number(log.expected || log.parcels?.length || 0);
+    }
+
+    function manifestDone(log) {
+      return Math.min(Number(log.demanifestedAwbs?.length || log.demanifested || 0), manifestExpected(log));
+    }
+
+    function manifestMissingCount(log) {
+      return Math.max(0, manifestExpected(log) - manifestDone(log));
+    }
+
+    function manifestMissingAwbs(log) {
+      const explicit = log.missingAwbs || [];
+      const expected = log.parcels || [];
+      const received = log.demanifestedAwbs || [];
+      const hasReceivedList = received.length > 0 || (log.status === "Complete" && expected.length);
+      const concrete = hasReceivedList ? expected.filter(awb => !received.includes(awb)) : [];
+      const missing = [...new Set([...explicit, ...concrete])];
+      const shortage = Math.max(0, manifestMissingCount(log) - missing.length);
+      if (shortage > 0) missing.push(`${shortage} CN(s) pending scan list`);
+      return missing;
     }
 
     function defaultRateCard(rate = 250) {
@@ -5979,15 +6011,17 @@
       document.getElementById("demanifestSackBtn").style.display = state.activeSackMode === "demanifest" ? "inline-flex" : "none";
       document.getElementById("transitList").innerHTML = activeTransit.map(t => {
         const missingIn = Math.max(0, t.expected - t.scanned);
-        const missingOut = Math.max(0, t.scanned - t.demanifested);
+        const expected = manifestExpected(t);
+        const done = manifestDone(t);
+        const missingOut = manifestMissingCount(t);
         return `
         <div class="ops-card ${missingOut || missingIn ? "alert-row" : ""}">
           <div class="ops-card-head">
             <strong>${t.id}</strong>
-            <span class="chip ${t.health > 94 ? "good" : "warn"}">${t.demanifested}/${t.expected}</span>
+            <span class="chip ${missingOut ? "warn" : "good"}">${done}/${expected}</span>
           </div>
           <div class="meter ${t.health < 90 ? "amber" : ""}"><span style="width:${t.health}%"></span></div>
-          <p>${t.from} to ${t.to}. Warehouse scanned ${t.scanned}/${t.expected}. Destination demanifested ${t.demanifested}/${t.expected}.</p>
+          <p>${t.from} to ${t.to}. Warehouse scanned ${Math.min(t.scanned, expected)}/${expected}. Destination demanifested ${done}/${expected}.</p>
           <div class="footer-note">${missingIn ? `${missingIn} parcel(s) still not scanned into sack.` : "Manifest scan complete."} ${missingOut ? `${missingOut} parcel(s) still inside sack.` : "Demanifest clear."}</div>
         </div>
       `;
@@ -6133,10 +6167,11 @@
 
       const profit = m.revenue - m.expenses;
       const lateParcels = state.parcels.filter(p => alertForParcel(p).level === "critical");
-      const missingManifestCns = state.completedSacks.flatMap(log => log.missingAwbs || []);
+      const allSummaryManifests = [...manifestLogs().filter(log => log.status !== "Complete"), ...state.completedSacks.filter(log => log.type === "parcel manifest" || log.id?.startsWith("MAN-") || log.id?.startsWith("SACK-"))];
+      const missingManifestCns = allSummaryManifests.flatMap(log => manifestMissingAwbs(log).map(awb => `${awb} (${log.id})`));
       const openOps = state.operationsIssues.filter(issue => !issue.resolved);
       const latestIssue = openOps[0] || lateParcels[0] || null;
-      const activeManifestCount = manifestLogs().filter(log => log.status !== "Complete").length;
+      const activeManifestCount = allSummaryManifests.filter(log => log.status !== "Complete").length;
       document.getElementById("adminReportMetrics").innerHTML = [
         metricCard("Open Issues", openOps.length + lateParcels.length, Math.min(100, (openOps.length + lateParcels.length) * 14), "tickets + aging alerts", openOps.length || lateParcels.length ? "red" : "good"),
         metricCard("Active Manifests", activeManifestCount, Math.min(100, activeManifestCount * 20), "in transit logs", "blue"),
@@ -6147,7 +6182,7 @@
       document.getElementById("totalSummaryIssues").innerHTML = [
         latestIssue ? `Latest issue: ${latestIssue.problem || `${latestIssue.awb} ${latestIssue.status}`}` : "No urgent issue found right now.",
         lateParcels.length ? `${lateParcels.length} parcel(s) are late versus SLA.` : "No parcel is breaching current SLA.",
-        missingManifestCns.length ? `${missingManifestCns.length} CN(s) missing after demanifest: ${missingManifestCns.slice(0, 6).join(", ")}` : "No missing manifest CNs.",
+        missingManifestCns.length ? `${missingManifestCns.length} CN issue(s) in manifests: ${missingManifestCns.slice(0, 6).join(", ")}` : "No missing manifest CNs.",
         m.cashHeld > m.cashLimit ? "Rider cash is above allowed limit. Block new route assignment." : "Rider cash exposure is inside configured limit."
       ].map(text => `<div class="ops-card ${/late|missing|above|Latest issue/i.test(text) && !/^No /.test(text) ? "alert-row" : ""}"><strong>${text}</strong></div>`).join("");
 
@@ -6198,10 +6233,11 @@
     function renderManifestScreens() {
       const activeManifestLogs = manifestLogs().filter(log => log.status !== "Complete");
       const completedManifestLogs = state.completedSacks.filter(log => log.type === "parcel manifest" || log.id?.startsWith("MAN-") || log.id?.startsWith("SACK-"));
-      const disputedLogs = completedManifestLogs.filter(log => (log.missingAwbs || []).length);
-      const missingCount = disputedLogs.reduce((sum, log) => sum + (log.missingAwbs || []).length, 0);
-      const totalManifestParcels = [...activeManifestLogs, ...completedManifestLogs].reduce((sum, log) => sum + (log.parcels?.length || log.expected || 0), 0);
-      const reachedCount = completedManifestLogs.reduce((sum, log) => sum + Math.min(log.demanifestedAwbs?.length || log.demanifested || 0, log.parcels?.length || log.expected || 0), 0);
+      const allManifestLogs = [...activeManifestLogs, ...completedManifestLogs];
+      const disputedLogs = allManifestLogs.filter(log => manifestMissingCount(log) > 0);
+      const missingCount = disputedLogs.reduce((sum, log) => sum + manifestMissingCount(log), 0);
+      const totalManifestParcels = allManifestLogs.reduce((sum, log) => sum + manifestExpected(log), 0);
+      const reachedCount = allManifestLogs.reduce((sum, log) => sum + manifestDone(log), 0);
       const avgTransitHours = completedManifestLogs.length ? Math.round(completedManifestLogs.reduce((sum, log) => sum + (log.transitHours || log.openHours || 18), 0) / completedManifestLogs.length) : 0;
       const manifestMetrics = document.getElementById("manifestSummaryMetrics");
       if (manifestMetrics) {
@@ -6215,11 +6251,11 @@
       const routeChart = document.getElementById("manifestRouteChart");
       if (routeChart) {
         const routes = {};
-        [...activeManifestLogs, ...completedManifestLogs].forEach(log => {
+        allManifestLogs.forEach(log => {
           const key = `${log.from} -> ${log.to}`;
           routes[key] = routes[key] || { count: 0, missing: 0 };
-          routes[key].count += log.parcels?.length || log.expected || 0;
-          routes[key].missing += (log.missingAwbs || []).length;
+          routes[key].count += manifestExpected(log);
+          routes[key].missing += manifestMissingCount(log);
         });
         const max = Math.max(1, ...Object.values(routes).map(r => r.count));
         routeChart.innerHTML = Object.entries(routes).map(([route, row]) => `
@@ -6249,7 +6285,7 @@
         `;
       }
 
-      const activeLogs = manifestLogs().filter(log => log.status !== "Complete");
+        const activeLogs = manifestLogs().filter(log => log.status !== "Complete");
       const select = document.getElementById("demanifestSelect");
       if (select) {
         select.innerHTML = activeLogs.map(log => `<option value="${log.id}">${log.id} | ${log.from} to ${log.to} | ${log.parcels.length} parcels</option>`).join("") || `<option value="">No active manifest logs</option>`;
@@ -6279,10 +6315,10 @@
       }
       const logList = document.getElementById("manifestLogList");
       if (logList) {
-        logList.innerHTML = [...state.transit, ...state.completedSacks].filter(log => log.type === "parcel manifest" || log.id?.startsWith("MAN-") || log.id?.startsWith("SACK-")).map(log => {
-          const expected = log.parcels?.length || log.expected || 0;
-          const done = Math.min(log.demanifestedAwbs?.length || log.demanifested || 0, expected);
-          const missing = log.missingAwbs || [];
+        logList.innerHTML = allManifestLogs.map(log => {
+          const expected = manifestExpected(log);
+          const done = manifestDone(log);
+          const missing = manifestMissingAwbs(log);
           return `<div class="ops-card ${missing.length ? "alert-row critical" : ""}">
             <div class="ops-card-head"><strong>${log.id}</strong><span class="chip ${missing.length ? "bad" : log.status === "Complete" ? "good" : "info"}">${log.status || "Complete"}</span></div>
             <p>${log.from} to ${log.to}. Demanifested ${done}/${expected}.</p>
@@ -6292,15 +6328,16 @@
       }
       const reached = document.getElementById("manifestReachedList");
       if (reached) {
-        reached.innerHTML = completedManifestLogs.filter(log => !(log.missingAwbs || []).length).map(log => {
-          const expected = log.parcels?.length || log.expected || 0;
-          const done = Math.min(log.demanifestedAwbs?.length || log.demanifested || 0, expected);
-          return `<div class="ops-card"><div class="ops-card-head"><strong>${log.id}</strong><span class="chip good">${done}/${expected}</span></div><p>${log.from} to ${log.to}. Reached ${log.completedAt || "destination time logged"}.</p></div>`;
-        }).join("") || `<div class="ops-card"><strong>No clean reached manifests yet</strong><p>Completed clean logs will show here.</p></div>`;
+        reached.innerHTML = allManifestLogs.filter(log => manifestDone(log) > 0).map(log => {
+          const expected = manifestExpected(log);
+          const done = manifestDone(log);
+          const missing = manifestMissingCount(log);
+          return `<div class="ops-card ${missing ? "alert-row" : ""}"><div class="ops-card-head"><strong>${log.id}</strong><span class="chip ${missing ? "warn" : "good"}">${done}/${expected}</span></div><p>${log.from} to ${log.to}. ${log.status === "Complete" ? `Reached ${log.completedAt || "destination time logged"}` : "Partial destination receiving in progress"}.</p>${missing ? `<div class="resolved-note"><strong>Pending:</strong> ${missing} CN(s) still not received.</div>` : ""}</div>`;
+        }).join("") || `<div class="ops-card"><strong>No reached manifests yet</strong><p>Any destination receiving scan will show here.</p></div>`;
       }
       const dispute = document.getElementById("manifestDisputeList");
       if (dispute) {
-        dispute.innerHTML = disputedLogs.flatMap(log => (log.missingAwbs || []).map(awb => `<div class="ops-card alert-row critical"><div class="ops-card-head"><strong>${awb}</strong><span class="chip bad">${log.id}</span></div><p>Missing in demanifest from ${log.from} to ${log.to}. Admin ping already created.</p></div>`)).join("") || `<div class="ops-card"><strong>No manifest disputes</strong><p>Missing CNs after demanifest will appear here.</p></div>`;
+        dispute.innerHTML = disputedLogs.flatMap(log => manifestMissingAwbs(log).map(awb => `<div class="ops-card alert-row critical"><div class="ops-card-head"><strong>${awb}</strong><span class="chip bad">${log.id}</span></div><p>Missing in demanifest from ${log.from} to ${log.to}. Admin escalation required.</p></div>`)).join("") || `<div class="ops-card"><strong>No manifest disputes</strong><p>Missing CNs after demanifest will appear here.</p></div>`;
       }
     }
 
@@ -7329,6 +7366,7 @@
     });
     ["processingAwbInput", "manifestScanInput", "demanifestScanInput"].forEach(id => {
       document.getElementById(id).addEventListener("paste", () => setTimeout(() => formatScanInput(id), 0));
+      document.getElementById(id).addEventListener("input", () => scheduleScanFormat(id));
     });
     document.getElementById("processingLoadBatchBtn").addEventListener("click", lookupProcessingParcel);
     document.getElementById("processingClearBatchBtn").addEventListener("click", clearProcessingBatch);
