@@ -2244,6 +2244,21 @@
       text-transform: uppercase;
     }
 
+    .scan-textarea {
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      border: 1px solid rgba(31,209,142,.28);
+      border-radius: 18px;
+      background: rgba(3,10,8,.72);
+      color: #fff;
+      padding: 14px;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+    }
+
     .processing-current {
       border: 1px dashed rgba(31,209,142,.24);
       border-radius: var(--radius);
@@ -4326,15 +4341,19 @@
                 <div class="processing-desk">
                   <aside class="processing-preview" id="processingPreview">
                     <strong>No parcel selected</strong>
-                    <p>Enter a tracking ID in the processing box to see current status, branch, clock, and last processed details.</p>
+                    <p>Scan or paste one or many tracking IDs to see live status before bulk updating.</p>
                   </aside>
                   <div class="processing-console">
-                    <label for="processingAwbInput">Tracking ID</label>
-                    <input id="processingAwbInput" placeholder="Type AWB then press Enter, e.g. NX-2406-1003" autocomplete="off">
+                    <label for="processingAwbInput">Tracking IDs</label>
+                    <textarea id="processingAwbInput" class="scan-textarea" placeholder="Scan or paste AWBs. One per line, comma, or space. Example: NX-2406-1001 NX-2406-1003"></textarea>
+                    <div class="inline-actions">
+                      <button class="ghost-btn" id="processingLoadBatchBtn">Load Batch</button>
+                      <button class="ghost-btn" id="processingClearBatchBtn">Clear Batch</button>
+                    </div>
                     <div class="processing-current" id="processingCurrentStatus">Waiting for tracking ID...</div>
                     <div class="mini-form">
                       <div class="field"><label>Update Status</label><select id="processingStatusSelect"></select></div>
-                      <button class="action-btn" id="processingConfirmBtn">Confirm Status Update</button>
+                      <button class="action-btn" id="processingConfirmBtn">Confirm Batch Status Update</button>
                     </div>
                     <div class="processing-auth" id="processingAuthBox">
                       <div class="mini-form">
@@ -4354,15 +4373,34 @@
 
             <section class="admin-module" id="admin-orders-manifest">
               <div class="panel">
-                <div class="section-head"><div><h3>Order Manifest</h3><p>Manifest navigation is ready. We will connect this to sack creation, origin scan counts, and route dispatch controls.</p></div></div>
-                <div class="placeholder-grid"><div class="metric"><span>Manifest Type</span><strong>Origin</strong><small>Create sacks from verified scans</small></div><div class="metric"><span>Mismatch Rule</span><strong>Alert</strong><small>Any missing AWB escalates</small></div></div>
+                <div class="section-head"><div><h3>Manifest</h3><p>Origin warehouse scans parcels into a manifest. When manifest is created, selected AWBs move to Parcel now in transit.</p></div></div>
+                <div class="mini-form">
+                  <div class="field"><label>From Branch</label><select id="manifestFrom"><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option><option>Rawalpindi Hub</option></select></div>
+                  <div class="field"><label>To Branch</label><select id="manifestTo"><option>Lahore Hub</option><option>Karachi Hub</option><option>Islamabad Hub</option><option>Rawalpindi Hub</option></select></div>
+                </div>
+                <textarea id="manifestScanInput" class="scan-textarea" placeholder="Scan QR codes / AWBs here. One per line, comma, or space."></textarea>
+                <div class="inline-actions" style="margin-top:10px">
+                  <button class="ghost-btn" id="manifestLoadBtn">Read Scans</button>
+                  <button class="ghost-btn" id="manifestClearBtn">Clear</button>
+                  <button class="action-btn" id="manifestCreateBtn">Create Manifest</button>
+                </div>
+                <div class="ops-list" id="manifestScanPreview" style="margin-top:14px"></div>
               </div>
             </section>
 
             <section class="admin-module" id="admin-orders-demanifest">
               <div class="panel">
-                <div class="section-head"><div><h3>Order Demanifest</h3><p>Demanifest navigation is ready. This will be destination scanning, shortage detection, and branch receiving proof.</p></div></div>
-                <div class="placeholder-grid"><div class="metric"><span>Demanifest Type</span><strong>Destination</strong><small>Scan every parcel out of sack</small></div><div class="metric"><span>Shortage</span><strong>Highest alert</strong><small>Unscanned parcels cannot disappear</small></div></div>
+                <div class="section-head"><div><h3>Demanifest</h3><p>Destination branch selects a manifest log, scans received parcels, then closes receiving. Missing AWBs become red alerts.</p></div></div>
+                <div class="field"><label>Select Manifest Log</label><select id="demanifestSelect"></select></div>
+                <textarea id="demanifestScanInput" class="scan-textarea" placeholder="Scan received AWBs from selected manifest."></textarea>
+                <div class="inline-actions" style="margin-top:10px">
+                  <button class="ghost-btn" id="demanifestLoadBtn">Read Received Scans</button>
+                  <button class="ghost-btn" id="demanifestClearBtn">Clear Scans</button>
+                  <button class="action-btn" id="demanifestDoneBtn">Done Demanifest</button>
+                </div>
+                <div class="ops-list" id="demanifestScanPreview" style="margin-top:14px"></div>
+                <div class="section-head" style="margin-top:14px"><div><h3>Manifest Logs</h3><p>Active and completed receiving logs.</p></div></div>
+                <div class="ops-list" id="manifestLogList"></div>
               </div>
             </section>
 
@@ -4568,7 +4606,11 @@
       activeFilter: "all",
       activeStatusQueue: "Parcel now in transit",
       activeProcessingAwb: "NX-2406-1003",
+      processingBatchAwbs: [],
       pendingProcessingStatus: "",
+      manifestDraftAwbs: [],
+      demanifestScanAwbs: [],
+      activeDemanifestId: "",
       activeRateClient: "",
       activeSackMode: "create",
       clientDateFrom: "2026-06-01",
@@ -4883,7 +4925,17 @@
         parcel.lastProcessedBy = parcel.lastProcessedBy || parcel.processHistory.at(-1)?.processor || "System import";
         parcel.lastProcessedAt = parcel.lastProcessedAt || parcel.processHistory.at(-1)?.at || `${parcel.date || "2026-06-24"} ${parcel.updated}`;
       });
+      state.transit.forEach((log, index) => {
+        log.parcels = Array.isArray(log.parcels) ? log.parcels : state.parcels.slice(0, Math.min(state.parcels.length, Math.max(1, Math.min(5, Number(log.expected || 1))))).map(p => p.awb);
+        log.demanifestedAwbs = Array.isArray(log.demanifestedAwbs) ? log.demanifestedAwbs : [];
+        log.createdAt = log.createdAt || `2026-06-24 09:${String(index + 10).padStart(2, "0")}`;
+        log.type = log.type === "parcel sack" ? "parcel manifest" : log.type;
+      });
       state.activeProcessingAwb = state.activeProcessingAwb || state.parcels[0]?.awb || "";
+      state.processingBatchAwbs = Array.isArray(state.processingBatchAwbs) ? state.processingBatchAwbs : [];
+      state.manifestDraftAwbs = Array.isArray(state.manifestDraftAwbs) ? state.manifestDraftAwbs : [];
+      state.demanifestScanAwbs = Array.isArray(state.demanifestScanAwbs) ? state.demanifestScanAwbs : [];
+      state.activeDemanifestId = state.activeDemanifestId || state.transit.find(t => t.status !== "Complete")?.id || "";
       state.pendingProcessingStatus = state.pendingProcessingStatus || "";
     }
 
@@ -4916,6 +4968,23 @@
 
     function processingParcel() {
       return state.parcels.find(p => p.awb === state.activeProcessingAwb) || null;
+    }
+
+    function parseAwbList(value) {
+      return [...new Set(String(value || "").toUpperCase().match(/NX-\d{4}-\d{4,}/g) || [])];
+    }
+
+    function parcelsByAwbs(awbs) {
+      return awbs.map(awb => state.parcels.find(p => p.awb.toUpperCase() === awb)).filter(Boolean);
+    }
+
+    function processingParcels() {
+      const batch = parcelsByAwbs(state.processingBatchAwbs || []);
+      return batch.length ? batch : (processingParcel() ? [processingParcel()] : []);
+    }
+
+    function manifestLogs() {
+      return state.transit.filter(t => t.type === "parcel manifest" || t.type === "parcel sack");
     }
 
     function defaultRateCard(rate = 250) {
@@ -5757,29 +5826,30 @@
         `;
       }).join("") || `<tr><td colspan="8">No report rows match these filters.</td></tr>`;
 
-      const processParcel = processingParcel();
+      const processBatch = processingParcels();
+      const processParcel = processBatch[0] || processingParcel();
       const preview = document.getElementById("processingPreview");
       const currentStatus = document.getElementById("processingCurrentStatus");
       const processingInput = document.getElementById("processingAwbInput");
-      if (processingInput && state.activeProcessingAwb && !processingInput.value) processingInput.value = state.activeProcessingAwb;
+      if (processingInput && !processingInput.value) processingInput.value = (state.processingBatchAwbs?.length ? state.processingBatchAwbs : [state.activeProcessingAwb]).filter(Boolean).join("\n");
       if (preview && currentStatus) {
-        if (processParcel) {
+        if (processBatch.length) {
           const client = clientById(processParcel.clientId);
           const process = lastProcess(processParcel);
           const alert = alertForParcel(processParcel);
           preview.innerHTML = `
-            <span class="chip ${statusClass(processParcel)}">${processParcel.status}</span>
-            <strong>${processParcel.awb}</strong>
-            <p>${processParcel.consignee} | ${processParcel.address}</p>
+            <span class="chip ${processBatch.length > 1 ? "good" : statusClass(processParcel)}">${processBatch.length} loaded</span>
+            <strong>${processBatch.length === 1 ? processParcel.awb : "Batch Processing"}</strong>
+            <p>${processBatch.length === 1 ? `${processParcel.consignee} | ${processParcel.address}` : "Ready to update all loaded AWBs together."}</p>
             <div class="money-grid">
               ${moneyBox("Shipper", client.name, client.id)}
-              ${moneyBox("City", processParcel.city, `Origin ${parcelOrigin(processParcel)}`)}
-              ${moneyBox("COD", money(processParcel.cod), `Weight ${processParcel.weight}`)}
+              ${moneyBox("Parcels", processBatch.length, `${processBatch.map(p => p.status).slice(0, 2).join(", ")}`)}
+              ${moneyBox("COD", money(processBatch.reduce((s, p) => s + p.cod, 0)), "batch total")}
               ${moneyBox("Clock", agingLabel(processParcel.statusAgeHours), alert.label)}
             </div>
             <div class="resolved-note"><strong>Last processed:</strong> ${process.by} at ${process.at}. Branch: ${process.branch}.</div>
           `;
-          currentStatus.innerHTML = `<strong>Current status:</strong> ${processParcel.status} | ${processParcel.branch} | ${processParcel.updated}`;
+          currentStatus.innerHTML = processBatch.map(p => `<div><strong>${p.awb}</strong> | ${p.status} | ${p.branch} | ${p.updated}</div>`).join("");
         } else {
           preview.innerHTML = `<strong>No parcel selected</strong><p>Enter a tracking ID in the processing box to see current status, branch, clock, and last processed details.</p>`;
           currentStatus.textContent = "Waiting for tracking ID...";
@@ -5795,6 +5865,8 @@
           <span class="chip info">${log.processor} | ${log.at}</span>
         </div>
       `).join("") || `<div class="ops-card"><strong>No processing log yet</strong><p>Scan a parcel and update status to create the first audit entry.</p></div>`;
+
+      renderManifestScreens();
 
       document.getElementById("pendingClientList").innerHTML = state.pendingClients.map(client => `
         <div class="ops-card">
@@ -6059,6 +6131,64 @@
       `;
     }
 
+    function renderManifestScreens() {
+      const draftParcels = parcelsByAwbs(state.manifestDraftAwbs || []);
+      const manifestPreview = document.getElementById("manifestScanPreview");
+      if (manifestPreview) {
+        const missing = (state.manifestDraftAwbs || []).filter(awb => !state.parcels.some(p => p.awb === awb));
+        manifestPreview.innerHTML = `
+          <div class="ops-card">
+            <div class="ops-card-head"><strong>${draftParcels.length} valid scans</strong><span class="chip ${missing.length ? "warn" : "good"}">${missing.length} missing</span></div>
+            <p>${draftParcels.map(p => p.awb).join(", ") || "Scan AWBs to prepare a manifest."}</p>
+          </div>
+          ${draftParcels.map(p => `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip ${statusClass(p)}">${p.status}</span></div><p>${p.consignee} | ${p.city} | ${p.branch}</p></div>`).join("")}
+          ${missing.map(awb => `<div class="ops-card alert-row critical"><strong>${awb}</strong><p>Not found in parcel database.</p></div>`).join("")}
+        `;
+      }
+
+      const activeLogs = manifestLogs().filter(log => log.status !== "Complete");
+      const select = document.getElementById("demanifestSelect");
+      if (select) {
+        select.innerHTML = activeLogs.map(log => `<option value="${log.id}">${log.id} | ${log.from} to ${log.to} | ${log.parcels.length} parcels</option>`).join("") || `<option value="">No active manifest logs</option>`;
+        if (state.activeDemanifestId && [...select.options].some(o => o.value === state.activeDemanifestId)) select.value = state.activeDemanifestId;
+        state.activeDemanifestId = select.value || "";
+      }
+      const active = state.transit.find(log => log.id === state.activeDemanifestId);
+      const scanned = state.demanifestScanAwbs || [];
+      const demanifestPreview = document.getElementById("demanifestScanPreview");
+      if (demanifestPreview) {
+        if (!active) {
+          demanifestPreview.innerHTML = `<div class="ops-card"><strong>No manifest selected</strong><p>Create a manifest first, then destination branch can demanifest it.</p></div>`;
+        } else {
+          const expected = active.parcels || [];
+          const received = scanned.filter(awb => expected.includes(awb));
+          const missing = expected.filter(awb => !received.includes(awb));
+          const extra = scanned.filter(awb => !expected.includes(awb));
+          demanifestPreview.innerHTML = `
+            <div class="ops-card ${missing.length ? "alert-row" : ""}">
+              <div class="ops-card-head"><strong>${active.id}</strong><span class="chip ${missing.length ? "warn" : "good"}">${received.length}/${expected.length} received</span></div>
+              <p>${active.from} to ${active.to}. Scan all parcels before pressing Done.</p>
+            </div>
+            ${missing.map(awb => `<div class="ops-card alert-row critical"><strong>${awb}</strong><p>Not demanifested yet. This will ping admin if closed missing.</p></div>`).join("")}
+            ${extra.map(awb => `<div class="ops-card alert-row"><strong>${awb}</strong><p>Scanned but not inside selected manifest.</p></div>`).join("")}
+          `;
+        }
+      }
+      const logList = document.getElementById("manifestLogList");
+      if (logList) {
+        logList.innerHTML = [...state.transit, ...state.completedSacks].filter(log => log.type === "parcel manifest" || log.id?.startsWith("MAN-") || log.id?.startsWith("SACK-")).map(log => {
+          const expected = log.parcels?.length || log.expected || 0;
+          const done = log.demanifestedAwbs?.length || log.demanifested || 0;
+          const missing = log.missingAwbs || [];
+          return `<div class="ops-card ${missing.length ? "alert-row critical" : ""}">
+            <div class="ops-card-head"><strong>${log.id}</strong><span class="chip ${missing.length ? "bad" : log.status === "Complete" ? "good" : "info"}">${log.status || "Complete"}</span></div>
+            <p>${log.from} to ${log.to}. Demanifested ${done}/${expected}.</p>
+            ${missing.length ? `<div class="resolved-note"><strong>Missing:</strong> ${missing.join(", ")}</div>` : ""}
+          </div>`;
+        }).join("") || `<div class="ops-card"><strong>No manifests yet</strong><p>Create one from the Manifest tab.</p></div>`;
+      }
+    }
+
     function render() {
       normalizeStateShape();
       renderMetrics();
@@ -6135,20 +6265,22 @@
 
     function lookupProcessingParcel() {
       const input = document.getElementById("processingAwbInput");
-      const awb = (input?.value || "").trim().toUpperCase();
-      const parcel = state.parcels.find(p => p.awb.toUpperCase() === awb);
-      if (!parcel) {
+      const awbs = parseAwbList(input?.value || "");
+      const found = parcelsByAwbs(awbs);
+      if (!found.length) {
         state.activeProcessingAwb = "";
+        state.processingBatchAwbs = [];
         saveState();
         renderAdmin();
-        toast("No parcel found for this tracking ID.");
+        toast("No valid parcels found in this scan batch.");
         return;
       }
-      state.activeProcessingAwb = parcel.awb;
-      state.pendingProcessingStatus = parcel.status;
+      state.processingBatchAwbs = found.map(p => p.awb);
+      state.activeProcessingAwb = found[0].awb;
+      state.pendingProcessingStatus = found[0].status;
       saveState();
       renderAdmin();
-      toast(`${parcel.awb} loaded for processing.`);
+      toast(`${found.length} parcel(s) loaded for processing.`);
     }
 
     function processingBranchForStatus(parcel, status) {
@@ -6159,9 +6291,9 @@
     }
 
     function requestProcessingAuth() {
-      const parcel = processingParcel();
-      if (!parcel) {
-        toast("Enter a valid tracking ID first.");
+      const batch = processingParcels();
+      if (!batch.length) {
+        toast("Load valid tracking IDs first.");
         return;
       }
       const status = document.getElementById("processingStatusSelect")?.value || "";
@@ -6192,9 +6324,9 @@
     }
 
     function submitProcessingUpdate() {
-      const parcel = processingParcel();
-      if (!parcel) {
-        toast("Enter a valid tracking ID first.");
+      const batch = processingParcels();
+      if (!batch.length) {
+        toast("Load valid tracking IDs first.");
         return;
       }
       const username = document.getElementById("processingUsername")?.value || "";
@@ -6204,16 +6336,98 @@
         toast("Valid username and password are required.");
         return;
       }
-      const status = state.pendingProcessingStatus || document.getElementById("processingStatusSelect")?.value || parcel.status;
-      const branch = processingBranchForStatus(parcel, status);
-      setParcelStatus(parcel, status, { name: processor.name, username: processor.username, branch });
-      parcel.exception = status === "Delivered" ? parcel.exception.replace("Consignee denies refusal attempt", "").trim() : parcel.exception;
-      state.selectedAwb = parcel.awb;
+      const status = state.pendingProcessingStatus || document.getElementById("processingStatusSelect")?.value || batch[0].status;
+      batch.forEach(parcel => {
+        const branch = processingBranchForStatus(parcel, status);
+        setParcelStatus(parcel, status, { name: processor.name, username: processor.username, branch });
+        parcel.exception = status === "Delivered" ? parcel.exception.replace("Consignee denies refusal attempt", "").trim() : parcel.exception;
+      });
+      state.selectedAwb = batch[0].awb;
+      state.activeProcessingAwb = batch[0].awb;
       saveState();
       document.getElementById("processingAuthBox")?.classList.remove("open");
       document.getElementById("processingPassword").value = "";
       render();
-      toast(`${parcel.awb} updated to ${status}. Journey synced to admin and client data.`);
+      toast(`${batch.length} parcel(s) updated to ${status}.`);
+    }
+
+    function clearProcessingBatch() {
+      state.processingBatchAwbs = [];
+      state.activeProcessingAwb = "";
+      document.getElementById("processingAwbInput").value = "";
+      saveState();
+      renderAdmin();
+      toast("Processing batch cleared.");
+    }
+
+    function loadManifestScans() {
+      const awbs = parseAwbList(document.getElementById("manifestScanInput").value);
+      state.manifestDraftAwbs = awbs;
+      saveState();
+      renderAdmin();
+      toast(`${parcelsByAwbs(awbs).length} valid parcel(s) ready for manifest.`);
+    }
+
+    function clearManifestScans() {
+      state.manifestDraftAwbs = [];
+      document.getElementById("manifestScanInput").value = "";
+      saveState();
+      renderAdmin();
+    }
+
+    function createManifestFromScans() {
+      const parcels = parcelsByAwbs(state.manifestDraftAwbs || []);
+      if (!parcels.length) {
+        toast("Scan valid parcels before creating manifest.");
+        return;
+      }
+      const from = document.getElementById("manifestFrom").value;
+      const to = document.getElementById("manifestTo").value;
+      const id = `MAN-${from.slice(0,3).toUpperCase()}-${to.slice(0,3).toUpperCase()}-${String(state.transit.length + state.completedSacks.length + 1).padStart(3, "0")}`.replace(/\s/g, "");
+      parcels.forEach(parcel => setParcelStatus(parcel, "Parcel now in transit", { name: "Manifest Desk", username: "manifest", branch: `${from} to ${to}` }));
+      state.transit.unshift({ id, from, to, expected: parcels.length, scanned: parcels.length, demanifested: 0, health: 100, status: "Active", type: "parcel manifest", parcels: parcels.map(p => p.awb), demanifestedAwbs: [], createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}` });
+      clearManifestScans();
+      toast(`${id} created. ${parcels.length} parcel(s) moved to transit.`);
+    }
+
+    function loadDemanifestScans() {
+      state.demanifestScanAwbs = parseAwbList(document.getElementById("demanifestScanInput").value);
+      saveState();
+      renderAdmin();
+      toast(`${state.demanifestScanAwbs.length} received scan(s) loaded.`);
+    }
+
+    function clearDemanifestScans() {
+      state.demanifestScanAwbs = [];
+      document.getElementById("demanifestScanInput").value = "";
+      saveState();
+      renderAdmin();
+    }
+
+    function completeDemanifest() {
+      const log = state.transit.find(t => t.id === state.activeDemanifestId);
+      if (!log) {
+        toast("Select a manifest log first.");
+        return;
+      }
+      const expected = log.parcels || [];
+      const received = (state.demanifestScanAwbs || []).filter(awb => expected.includes(awb));
+      const missing = expected.filter(awb => !received.includes(awb));
+      received.forEach(awb => {
+        const parcel = state.parcels.find(p => p.awb === awb);
+        if (parcel) setParcelStatus(parcel, "Parcel received at destination", { name: "Demanifest Desk", username: "demanifest", branch: log.to });
+      });
+      if (missing.length) {
+        state.operationsIssues.unshift({ id: nextId("OPS", state.operationsIssues), branch: log.to, urgency: "super urgent", problem: `${missing.length} parcel(s) missing in demanifest ${log.id}: ${missing.join(", ")}`, awb: missing[0], openedHours: 0, resolved: false });
+      }
+      state.completedSacks.unshift({ ...log, status: "Complete", demanifested: received.length, demanifestedAwbs: received, missingAwbs: missing, completedAt: `${new Date().toISOString().slice(0, 10)} ${time()}` });
+      state.transit = state.transit.filter(t => t.id !== log.id);
+      state.demanifestScanAwbs = [];
+      state.activeDemanifestId = "";
+      document.getElementById("demanifestScanInput").value = "";
+      saveState();
+      render();
+      toast(missing.length ? `${missing.length} missing parcel alert sent to admin.` : `${log.id} completed clean.`);
     }
 
     function toast(message) {
@@ -6993,12 +7207,25 @@
         lookupProcessingParcel();
       }
     });
+    document.getElementById("processingLoadBatchBtn").addEventListener("click", lookupProcessingParcel);
+    document.getElementById("processingClearBatchBtn").addEventListener("click", clearProcessingBatch);
     document.getElementById("processingStatusSelect").addEventListener("change", event => {
       state.pendingProcessingStatus = event.target.value;
       saveState();
     });
     document.getElementById("processingConfirmBtn").addEventListener("click", requestProcessingAuth);
     document.getElementById("processingSubmitBtn").addEventListener("click", submitProcessingUpdate);
+    document.getElementById("manifestLoadBtn").addEventListener("click", loadManifestScans);
+    document.getElementById("manifestClearBtn").addEventListener("click", clearManifestScans);
+    document.getElementById("manifestCreateBtn").addEventListener("click", createManifestFromScans);
+    document.getElementById("demanifestSelect").addEventListener("change", event => {
+      state.activeDemanifestId = event.target.value;
+      saveState();
+      renderAdmin();
+    });
+    document.getElementById("demanifestLoadBtn").addEventListener("click", loadDemanifestScans);
+    document.getElementById("demanifestClearBtn").addEventListener("click", clearDemanifestScans);
+    document.getElementById("demanifestDoneBtn").addEventListener("click", completeDemanifest);
     document.getElementById("opsBranchFilter").addEventListener("change", renderAdmin);
     document.getElementById("opsUrgencyFilter").addEventListener("change", renderAdmin);
     document.getElementById("opsResolvedFilter").addEventListener("change", renderAdmin);
