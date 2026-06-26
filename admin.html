@@ -4105,7 +4105,7 @@
                 <div class="admin-subnav">
                   <button type="button" class="admin-subtab" data-admin-tab="clients-summary">Client Summary</button>
                   <button type="button" class="admin-subtab" data-admin-tab="clients-create-new">Create New Client</button>
-                  <button type="button" class="admin-subtab" data-admin-tab="clients-clients">Clients</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="clients-clients">Edit Rates</button>
                 </div>
               </div>
 
@@ -4209,15 +4209,22 @@
               <div class="panel">
                 <div class="section-head">
                   <div>
-                    <h3>Client Database</h3>
-                    <p>Every client receives a unique number and can be tracked by activity, COD, payable, risk, and assigned account owner.</p>
+                    <h3>Create New Client</h3>
+                    <p>Every client receives a unique number and stays pending until approved by admin or super admin.</p>
                   </div>
                   <button class="action-btn" id="adminCreateClientBtn">Create Pending Client</button>
                 </div>
-                <div class="mini-form">
+                <div class="form-grid">
                   <div class="field"><label>Client Name</label><input id="newClientName" value="New Seller Account"></div>
+                  <div class="field"><label>Owner / Account Manager</label><input id="newClientOwner" value="Pending"></div>
+                  <div class="field"><label>Email</label><input id="newClientEmail" type="email" placeholder="client@store.com"></div>
+                  <div class="field"><label>Phone</label><input id="newClientPhone" placeholder="+92 300 0000000"></div>
+                  <div class="field"><label>Business Type</label><select id="newClientBusiness"><option>E-commerce seller</option><option>Retail store</option><option>Marketplace seller</option><option>Wholesale shipper</option></select></div>
                   <div class="field"><label>City</label><select id="newClientCity"><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
                   <div class="field"><label>Tier</label><select id="newClientTier"><option>Starter</option><option>Silver</option><option>Gold</option><option>Premium</option></select></div>
+                  <div class="field"><label>CNIC / NTN</label><input id="newClientTax" placeholder="CNIC or NTN"></div>
+                  <div class="field" style="grid-column:span 2"><label>Pickup Address</label><input id="newClientAddress" placeholder="Complete pickup address"></div>
+                  <div class="field" style="grid-column:span 2"><label>Settlement IBAN</label><input id="newClientIban" placeholder="PK00 BANK 0000 0000 0000 0000"></div>
                 </div>
               </div>
               <div class="panel" style="margin-top:14px">
@@ -4229,7 +4236,11 @@
                 </div>
                 <div class="ops-list" id="pendingClientList"></div>
               </div>
-              <div class="panel" style="margin-top:14px">
+            </section>
+
+            <section class="admin-module" id="admin-clients-rates">
+              <div class="panel">
+                <div class="section-head"><div><h3>Edit Rates</h3><p>Tap Add Rates for any client to open and update their rate card.</p></div></div>
                 <div class="table-wrap">
                   <div class="wide-scroll">
                     <table>
@@ -4443,12 +4454,15 @@
               <div class="grid two">
                 <div class="panel">
                   <div class="section-head">
-                    <div><h3>User Signup & Assignment</h3><p>Create staff users and assign branch, role, client, or rider responsibility.</p></div>
+                    <div><h3>Create Users</h3><p>Create staff users with email, password, role, branch, and web/admin access.</p></div>
                     <button class="action-btn" id="createUserBtn">Create User</button>
                   </div>
                   <div class="form-grid">
                     <div class="field"><label>User Name</label><input id="userName" value="New Operations User" required></div>
+                    <div class="field"><label>Email</label><input id="userEmail" type="email" placeholder="user@novax.pk" required></div>
+                    <div class="field"><label>Password</label><input id="userPassword" type="password" value="NovaX@123" required></div>
                     <div class="field"><label>Role</label><select id="userRole"><option>Admin</option><option>Branch Manager</option><option>Finance</option><option>Rider Supervisor</option><option>Client Support</option></select></div>
+                    <div class="field"><label>Access Side</label><select id="userAccessSide"><option>Admin Portal</option><option>Client Web Portal</option><option>Both Admin And Web</option></select></div>
                     <div class="field"><label>Assign Branch</label><select id="userBranch"><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option></select></div>
                     <div class="field"><label>Assign Client</label><select id="userClientSelect"></select></div>
                   </div>
@@ -4689,12 +4703,15 @@
             <section class="admin-module" id="admin-clients-summary">
               <div class="panel">
                 <div class="section-head"><div><h3>Client Summary</h3><p>Client summary navigation is ready. We will show each client's revenue, payable, problems, resolve rate, rate card, and account health.</p></div></div>
+                <div class="grid metrics" id="clientSummaryMetrics"></div>
+                <div class="ops-list" id="clientSummaryList" style="margin-top:14px"></div>
               </div>
             </section>
 
             <section class="admin-module" id="admin-users-edit">
               <div class="panel">
-                <div class="section-head"><div><h3>Edit Users</h3><p>Edit users navigation is ready. We will add role changes, branch assignments, access blocking, and audit history here.</p></div></div>
+                <div class="section-head"><div><h3>Edit Users</h3><p>View user emails, roles, access side, assigned branch, and account status.</p></div></div>
+                <div class="ops-list" id="userAccessList"></div>
               </div>
             </section>
 
@@ -5055,7 +5072,7 @@
       "finance-expense": "admin-expenses",
       "finance-invoices": "admin-payments",
       "clients-create-new": "admin-clients",
-      "clients-clients": "admin-clients",
+      "clients-clients": "admin-clients-rates",
       "users-create": "admin-users",
       "total-summary": "admin-reports"
     };
@@ -5253,6 +5270,21 @@
     }
 
     function normalizeStateShape() {
+      [...state.clients, ...state.pendingClients].forEach(client => {
+        client.owner = client.owner || "Unassigned";
+        client.email = client.email || `${String(client.name || "client").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "") || "client"}@example.com`;
+        client.phone = client.phone || "+92 300 0000000";
+        client.businessType = client.businessType || "E-commerce seller";
+        client.address = client.address || `${client.city || "Karachi"} pickup address`;
+        client.taxId = client.taxId || "Not added";
+        client.iban = client.iban || "Not added";
+        client.rateCard = client.rateCard || defaultRateCard(client.rate);
+      });
+      state.users.forEach(user => {
+        user.email = user.email || `${String(user.name || user.id).toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "")}@novax.pk`;
+        user.password = user.password || "NovaX@123";
+        user.accessSide = user.accessSide || (user.role === "Admin" ? "Admin Portal" : "Client Web Portal");
+      });
       state.parcels.forEach((parcel, index) => {
         const client = clientById(parcel.clientId);
         parcel.phone = parcel.phone || `+92 300 000${String(index + 1).padStart(4, "0")}`;
@@ -6307,10 +6339,43 @@
             <strong>${client.id} | ${client.name}</strong>
             <span class="chip warn">${client.status}</span>
           </div>
-          <p>${client.city} | ${client.tier} | delivery charge ${money(client.rate)}. Account is blocked until admin approval.</p>
+          <p>${client.city} | ${client.tier} | ${client.email} | ${client.phone}. Account is blocked until admin approval.</p>
+          <div class="footer-note">Business: ${client.businessType}. Pickup: ${client.address}. IBAN: ${client.iban}.</div>
           <button class="action-btn" onclick="approveClient('${client.id}')">Approve Account</button>
         </div>
       `).join("") || `<div class="ops-card"><strong>No pending approvals</strong><p>New client requests will wait here before account creation.</p></div>`;
+
+      const allClients = [...state.clients, ...state.pendingClients];
+      const activeClients = state.clients.filter(client => client.status !== "Pending approval");
+      const pendingClients = state.pendingClients.length;
+      const walletLiability = state.clients.reduce((sum, client) => sum + Number(client.walletBalance || 0), 0);
+      const avgClientHealth = activeClients.length ? Math.round(activeClients.reduce((sum, client) => sum + Number(client.health || 0), 0) / activeClients.length) : 0;
+      document.getElementById("clientSummaryMetrics").innerHTML = [
+        metricCard("Total Clients", allClients.length, Math.min(100, allClients.length * 18), `${activeClients.length} active`, "blue"),
+        metricCard("Pending", pendingClients, Math.min(100, pendingClients * 25), "needs approval", pendingClients ? "amber" : "good"),
+        metricCard("Wallet Liability", money(walletLiability), Math.min(100, percent(walletLiability, 150000)), "client payable", walletLiability ? "amber" : "good"),
+        metricCard("Avg Health", `${avgClientHealth}%`, avgClientHealth, "delivery + issue health", avgClientHealth > 80 ? "good" : "amber")
+      ].join("");
+      document.getElementById("clientSummaryList").innerHTML = allClients.map(client => {
+        const parcels = state.parcels.filter(p => p.clientId === client.id);
+        const delivered = parcels.filter(isDeliveredLedgerParcel);
+        const issues = state.operationsIssues.filter(issue => issue.awb && parcels.some(parcel => parcel.awb === issue.awb) && !issue.resolved);
+        const card = client.rateCard || defaultRateCard(client.rate);
+        return `
+          <div class="ops-card ${client.status === "Pending approval" ? "alert-row" : ""}">
+            <div class="ops-card-head"><strong>${client.id} | ${client.name}</strong><span class="chip ${client.status === "Active" ? "good" : "warn"}">${client.status}</span></div>
+            <p>${client.businessType} | ${client.city} | Owner: ${client.owner} | ${client.email} | ${client.phone}</p>
+            <div class="money-grid" style="margin-top:10px">
+              ${moneyBox("Parcels", parcels.length, `${delivered.length} delivered`)}
+              ${moneyBox("Wallet", money(client.walletBalance || 0), "available balance")}
+              ${moneyBox("Open Issues", issues.length, issues.length ? "needs support" : "clean")}
+              ${moneyBox("Overnight Rate", money(card.overnight), "0.1-1kg")}
+            </div>
+            <div class="footer-note" style="margin-top:8px">Address: ${client.address}. Tax: ${client.taxId}. IBAN: ${client.iban}.</div>
+            <button class="ghost-btn" style="margin-top:10px" onclick="showAdminTab('clients-clients')">Edit Rates</button>
+          </div>
+        `;
+      }).join("");
 
       document.getElementById("adminClientRows").innerHTML = state.clients.map(client => {
         const parcels = state.parcels.filter(p => p.clientId === client.id);
@@ -6325,8 +6390,8 @@
         return `
           <tr>
             <td><strong>${client.id}</strong><br><span class="footer-note">${client.status}</span></td>
-            <td>${client.name}<br><span class="footer-note">${client.city} | ${client.tier}</span></td>
-            <td>${client.owner}</td>
+            <td>${client.name}<br><span class="footer-note">${client.city} | ${client.tier} | ${client.email}</span></td>
+            <td>${client.owner}<br><span class="footer-note">${client.phone}</span></td>
             <td>
               <button class="action-btn" onclick="toggleRateForm('${client.id}')">${rateOpen ? "Close Rates" : "Add Rates"}</button>
               <div class="footer-note">Overnight ${money(card.overnight)} | Overland ${money(card.overlandBase)}</div>
@@ -6550,11 +6615,24 @@
       document.getElementById("adminUserList").innerHTML = state.users.map(user => `
         <div class="ops-card">
           <div class="ops-card-head"><strong>${user.id} | ${user.name}</strong><span class="chip good">${user.status}</span></div>
-          <p>${user.role} assigned to ${user.branch}. Client: ${clientById(user.clientId).id} ${clientById(user.clientId).name}.</p>
+          <p>${user.role} assigned to ${user.branch}. Access: ${user.accessSide}. Client: ${clientById(user.clientId).id} ${clientById(user.clientId).name}.</p>
+          <div class="footer-note">Email: ${user.email}. Password: ${user.password}.</div>
         </div>
       `).join("");
 
       document.getElementById("userClientSelect").innerHTML = state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
+      document.getElementById("userAccessList").innerHTML = state.users.map(user => `
+        <div class="ops-card">
+          <div class="ops-card-head"><strong>${user.id} | ${user.email}</strong><span class="chip ${user.accessSide.includes("Admin") ? "warn" : "info"}">${user.accessSide}</span></div>
+          <p>${user.name} can access ${user.accessSide}. Role: ${user.role}. Branch: ${user.branch}. Assigned client: ${clientById(user.clientId).name}.</p>
+          <div class="money-grid" style="margin-top:10px">
+            ${moneyBox("Role", user.role, "permission group")}
+            ${moneyBox("Password", user.password, "demo credential")}
+            ${moneyBox("Status", user.status, "login state")}
+            ${moneyBox("Client", user.clientId, "assigned account")}
+          </div>
+        </div>
+      `).join("") || `<div class="ops-card"><strong>No users yet</strong><p>Create users from the Create Users tab.</p></div>`;
 
       const profit = m.revenue - m.expenses;
       const lateParcels = state.parcels.filter(p => alertForParcel(p).level === "critical");
@@ -7266,8 +7344,15 @@
 
     function createClient() {
       const name = document.getElementById("newClientName").value.trim();
+      const email = document.getElementById("newClientEmail").value.trim();
+      const phone = document.getElementById("newClientPhone").value.trim();
+      const address = document.getElementById("newClientAddress").value.trim();
       if (!name) {
         toast("Client name is mandatory.");
+        return;
+      }
+      if (!email || !phone || !address) {
+        toast("Client email, phone, and pickup address are mandatory.");
         return;
       }
       const id = nextId("CL", [...state.clients, ...state.pendingClients]);
@@ -7275,7 +7360,13 @@
       state.pendingClients.push({
         id,
         name,
-        owner: "Pending",
+        owner: document.getElementById("newClientOwner").value.trim() || "Pending",
+        email,
+        phone,
+        businessType: document.getElementById("newClientBusiness").value,
+        address,
+        taxId: document.getElementById("newClientTax").value.trim() || "Not added",
+        iban: document.getElementById("newClientIban").value.trim() || "Not added",
         tier: document.getElementById("newClientTier").value,
         city: document.getElementById("newClientCity").value,
         walletTopup: 0,
@@ -7289,7 +7380,7 @@
       });
       saveState();
       render();
-      showAdminTab("clients");
+      showAdminTab("clients-create-new");
       toast(`${id} created as pending. Admin approval is required before account activation.`);
     }
 
@@ -7512,22 +7603,31 @@
 
     function createUser() {
       const name = document.getElementById("userName").value.trim();
+      const email = document.getElementById("userEmail").value.trim();
+      const password = document.getElementById("userPassword").value.trim();
       if (!name) {
         toast("User name is mandatory.");
+        return;
+      }
+      if (!email || !password) {
+        toast("User email and password are mandatory.");
         return;
       }
       state.users.unshift({
         id: nextId("USR", state.users),
         name,
+        email,
+        password,
         role: document.getElementById("userRole").value,
+        accessSide: document.getElementById("userAccessSide").value,
         branch: document.getElementById("userBranch").value,
         clientId: document.getElementById("userClientSelect").value || state.clients[0].id,
         status: "Active"
       });
       saveState();
       render();
-      showAdminTab("users");
-      toast(`${name} created and assigned.`);
+      showAdminTab("users-edit");
+      toast(`${name} created with ${document.getElementById("userAccessSide").value} access.`);
     }
 
     function applyClientDateRange() {
