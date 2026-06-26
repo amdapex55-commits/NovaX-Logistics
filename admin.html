@@ -1510,6 +1510,88 @@
       border: 1px solid rgba(31,209,142,.18);
     }
 
+    .ticket-hub {
+      margin-bottom: 14px;
+      border-color: rgba(31, 209, 142, .18);
+      background:
+        radial-gradient(circle at 8% 20%, rgba(31,209,142,.14), transparent 30%),
+        linear-gradient(145deg, rgba(18,56,41,.72), rgba(8,16,13,.94));
+    }
+
+    .ticket-hub .mini-form {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .ticket-hub textarea,
+    .ticket-reply textarea {
+      min-height: 74px;
+      resize: none;
+      overflow-wrap: anywhere;
+    }
+
+    .ticket-board {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .ticket-card {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .ticket-card.escalated::before {
+      content: "24H ESCALATED";
+      position: absolute;
+      top: 12px;
+      right: -34px;
+      width: 150px;
+      transform: rotate(35deg);
+      background: linear-gradient(135deg, #c6281e, #ff6b5c);
+      color: #fff;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: .06em;
+      padding: 4px 0;
+      box-shadow: 0 10px 22px rgba(255,107,92,.2);
+    }
+
+    .ticket-meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 8px 0;
+    }
+
+    .ticket-route {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      font-weight: 800;
+      margin-top: 8px;
+    }
+
+    .ticket-route strong {
+      color: var(--ink);
+      overflow-wrap: anywhere;
+    }
+
+    .ticket-reply {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(180px, .6fr) auto;
+      gap: 8px;
+      align-items: end;
+      margin-top: 10px;
+    }
+
+    .ticket-notice {
+      border: 1px solid rgba(29,111,159,.22);
+      background: linear-gradient(135deg, rgba(29,111,159,.14), rgba(7,16,13,.62));
+    }
+
     .filter-bar {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
@@ -2458,6 +2540,19 @@
 
       .grid.metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .ticket-hub .mini-form,
+      .ticket-board {
+        grid-template-columns: 1fr;
+      }
+
+      .ticket-reply {
+        grid-template-columns: 1fr;
+      }
+
+      .ticket-hub .field {
+        grid-column: auto !important;
       }
 
       .grid.three {
@@ -3974,6 +4069,7 @@
                   <button type="button" class="admin-subtab" data-admin-tab="tickets-medium">Medium</button>
                   <button type="button" class="admin-subtab" data-admin-tab="tickets-okay">Okay</button>
                   <button type="button" class="admin-subtab" data-admin-tab="tickets-summary">Summary</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="tickets-resolved">Resolved</button>
                 </div>
               </div>
 
@@ -4037,6 +4133,26 @@
           </aside>
 
           <div class="admin-content">
+            <div class="panel ticket-hub">
+              <div class="section-head">
+                <div>
+                  <h3>Ticket Hub</h3>
+                  <p>Create a logged issue from any admin screen. Tickets route to the selected branch/team, carry a 24-hour clock, and escalate to admin if unresolved.</p>
+                </div>
+                <span class="chip warn" id="ticketOpenBadge">0 open</span>
+              </div>
+              <div class="mini-form">
+                <div class="field"><label>Issue title</label><input id="ticketTitle" placeholder="Missing CN, fake refusal, cash issue"></div>
+                <div class="field"><label>Linked AWB / CN</label><input id="ticketAwb" placeholder="NX-2406-1003"></div>
+                <div class="field"><label>From</label><select id="ticketFrom"><option>Customer Support</option><option>Warehouse</option><option>Lahore Branch</option><option>Karachi Branch</option><option>Admin Control</option><option>Finance</option></select></div>
+                <div class="field"><label>Send to</label><select id="ticketTo"><option>Lahore Branch Manager</option><option>Karachi Branch Manager</option><option>Islamabad Branch Manager</option><option>Rawalpindi Branch Manager</option><option>Warehouse Manager</option><option>Rider Manager</option><option>Finance Manager</option><option>Admin Control</option></select></div>
+                <div class="field"><label>Tier</label><select id="ticketTier"><option value="emergency">Emergency</option><option value="medium">Medium</option><option value="okay">Okay</option></select></div>
+                <div class="field"><label>Branch</label><select id="ticketBranch"><option>Lahore Hub</option><option>Karachi Hub</option><option>Islamabad Hub</option><option>Rawalpindi Hub</option><option>Finance</option><option>Admin</option></select></div>
+                <div class="field" style="grid-column: span 2"><label>Message</label><textarea id="ticketMessage" placeholder="Write the exact problem, proof needed, and who must act."></textarea></div>
+                <button class="action-btn" id="createTicketBtn">Create Ticket</button>
+              </div>
+              <div class="ops-list" id="ticketNotificationList" style="margin-top:12px"></div>
+            </div>
             <section class="admin-module active" id="admin-dashboard">
               <div class="grid metrics" id="adminMetrics"></div>
               <div class="panel" style="margin-top:14px">
@@ -4456,25 +4572,38 @@
 
             <section class="admin-module" id="admin-tickets-emergency">
               <div class="panel">
-                <div class="section-head"><div><h3>Emergency Tickets</h3><p>Emergency ticket navigation is ready. This will scream for 24-hour breaches, 3-day transit alerts, cash exposure, and sack shortages.</p></div></div>
+                <div class="section-head"><div><h3>Emergency Tickets</h3><p>24-hour breaches, missing CNs, fake return/refusal, rider cash exposure, and escalated branch tickets.</p></div><span class="siren-chip">Support + AI now</span></div>
+                <div class="grid metrics" id="ticketEmergencyMetrics"></div>
+                <div class="ticket-board" id="ticketEmergencyList" style="margin-top:14px"></div>
               </div>
             </section>
 
             <section class="admin-module" id="admin-tickets-medium">
               <div class="panel">
-                <div class="section-head"><div><h3>Medium Tickets</h3><p>Medium priority queue is ready for problems that need action but are not yet business-critical.</p></div></div>
+                <div class="section-head"><div><h3>Medium Tickets</h3><p>Directed branch or warehouse issues that need action before the 24-hour escalation clock hits admin.</p></div></div>
+                <div class="ticket-board" id="ticketMediumList"></div>
               </div>
             </section>
 
             <section class="admin-module" id="admin-tickets-okay">
               <div class="panel">
-                <div class="section-head"><div><h3>Okay Tickets</h3><p>Okay queue is ready for low-risk follow-ups, remarks, and non-urgent operational checks.</p></div></div>
+                <div class="section-head"><div><h3>Okay Tickets</h3><p>Low-risk follow-ups, remarks, proof checks, and non-urgent operational communication.</p></div></div>
+                <div class="ticket-board" id="ticketOkayList"></div>
               </div>
             </section>
 
             <section class="admin-module" id="admin-tickets-summary">
               <div class="panel">
-                <div class="section-head"><div><h3>Ticket Summary</h3><p>Ticket summary is ready. We will show open, resolved, solve time, owner performance, and repeated branch problems.</p></div></div>
+                <div class="section-head"><div><h3>Ticket Summary</h3><p>Interconnected communication hub: open tickets, escalation health, owner routing, repeated issues, and missed 24-hour timers.</p></div></div>
+                <div class="grid metrics" id="ticketSummaryMetrics"></div>
+                <div class="ops-list" id="ticketSummaryList" style="margin-top:14px"></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-tickets-resolved">
+              <div class="panel">
+                <div class="section-head"><div><h3>Resolved Tickets</h3><p>Every closed ticket stores the reply, proof reference, resolver, solve timer, and notification back to the person who opened it.</p></div></div>
+                <div class="ops-list" id="ticketResolvedList"></div>
               </div>
             </section>
 
@@ -4834,6 +4963,13 @@
       ],
       resolvedAlerts: [
         { id: "DONE-001", awb: "NX-2406-1001", branch: "Islamabad Hub", resolvedBy: "Ali Ops", reason: "Address corrected and branch confirmed rider route.", solvedHours: 1.4, resolvedAt: "2026-06-24 09:52" }
+      ],
+      tickets: [
+        { id: "TCK-0001", sourceKey: "parcel:NX-2406-1003:critical", tier: "emergency", title: "Transit over 3 days", from: "Customer Support", to: "Lahore Branch Manager", branch: "Lahore Hub", awb: "NX-2406-1003", message: "Parcel is over transit SLA and needs branch proof before client asks again.", createdAt: "2026-06-25 07:45", ageHours: 25, status: "Open", escalated: true, replies: [] },
+        { id: "TCK-0002", sourceKey: "parcel:NX-2406-1005:refusal", tier: "medium", title: "Refused delivery needs review", from: "Customer Support", to: "Lahore Branch Manager", branch: "Lahore Hub", awb: "NX-2406-1005", message: "Consignee denies refusal attempt. Branch must verify rider input and proof.", createdAt: "2026-06-26 01:10", ageHours: 7, status: "Open", escalated: false, replies: [] }
+      ],
+      ticketNotifications: [
+        { text: "TCK-0001 escalated to Admin Control after 24h SLA breach.", at: "2026-06-26 08:00", level: "bad" }
       ]
     };
 
@@ -4845,7 +4981,7 @@
     const ADMIN_NAV_GROUPS = {
       orders: ["orders-view-all", "orders-report", "orders-processing", "orders-manifest", "orders-demanifest"],
       manifest: ["manifest-summary", "manifest-transit", "manifest-reached", "manifest-dispute"],
-      tickets: ["tickets-emergency", "tickets-medium", "tickets-okay", "tickets-summary"],
+      tickets: ["tickets-emergency", "tickets-medium", "tickets-okay", "tickets-summary", "tickets-resolved"],
       riders: ["riders-route", "riders-report", "riders-summary"],
       finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-summary", "finance-overall", "finance-revenue"],
       clients: ["clients-summary", "clients-create-new", "clients-clients"],
@@ -4940,6 +5076,136 @@
       return "Admin Control";
     }
 
+    function ticketAgeHours(ticket) {
+      const created = new Date(String(ticket.createdAt || "").replace(" ", "T"));
+      const savedAge = Number.isFinite(Number(ticket.ageHours)) ? Number(ticket.ageHours) : 0;
+      if (!Number.isNaN(created.getTime())) return Math.max(savedAge, Math.round((Date.now() - created.getTime()) / 36e5));
+      return Math.max(0, savedAge);
+    }
+
+    function ticketEffectiveTier(ticket) {
+      if (ticket.status === "Resolved") return "resolved";
+      if (ticket.escalated || ticketAgeHours(ticket) >= 24) return "emergency";
+      return ticket.tier || "medium";
+    }
+
+    function ticketSlaText(ticket) {
+      const age = ticketAgeHours(ticket);
+      if (ticket.status === "Resolved") return `Solved in ${agingLabel(ticket.solvedHours || age)}`;
+      if (age >= 24) return `Admin escalation ${agingLabel(age - 24)} overdue`;
+      return `${24 - Math.round(age)}h left before admin escalation`;
+    }
+
+    function ensureTicketFromIssue(sourceKey, payload) {
+      state.tickets = Array.isArray(state.tickets) ? state.tickets : [];
+      const existing = state.tickets.find(ticket => ticket.sourceKey === sourceKey && ticket.status !== "Resolved");
+      if (existing) {
+        existing.ageHours = Math.max(ticketAgeHours(existing), Number(payload.ageHours || 0));
+        existing.escalated = existing.escalated || existing.ageHours >= 24 || payload.escalated;
+        if (existing.escalated) existing.to = "Admin Control";
+        return existing;
+      }
+      const ticket = {
+        id: nextId("TCK", state.tickets),
+        sourceKey,
+        tier: payload.tier || "medium",
+        title: payload.title || "Operational issue",
+        from: payload.from || "System Monitor",
+        to: payload.to || "Admin Control",
+        branch: payload.branch || "Admin",
+        awb: payload.awb || "",
+        message: payload.message || "",
+        createdAt: payload.createdAt || `${new Date().toISOString().slice(0, 10)} ${time()}`,
+        ageHours: Number(payload.ageHours || 0),
+        status: "Open",
+        escalated: Boolean(payload.escalated || Number(payload.ageHours || 0) >= 24),
+        replies: []
+      };
+      if (ticket.escalated) ticket.to = "Admin Control";
+      state.tickets.unshift(ticket);
+      return ticket;
+    }
+
+    function syncTicketAutomation() {
+      state.tickets = Array.isArray(state.tickets) ? state.tickets : [];
+      state.ticketNotifications = Array.isArray(state.ticketNotifications) ? state.ticketNotifications : [];
+
+      state.parcels.forEach(parcel => {
+        const alert = alertForParcel(parcel);
+        if (alert.level === "critical") {
+          ensureTicketFromIssue(`parcel:${parcel.awb}:critical`, {
+            tier: "emergency",
+            title: alert.label,
+            from: "AI Status Clock",
+            to: `${parcel.branch || parcel.city + " Hub"} Manager`,
+            branch: parcel.branch || `${parcel.city} Hub`,
+            awb: parcel.awb,
+            message: `${parcel.awb} is breaching SLA. ${alert.due}. Current status: ${parcel.status}.`,
+            ageHours: Number(parcel.statusAgeHours || 0),
+            escalated: Number(parcel.statusAgeHours || 0) >= 24
+          });
+        }
+        if (/refus|fake|denies|return proof|proof pending/i.test(`${parcel.status} ${parcel.exception || ""} ${parcel.returnProof || ""}`)) {
+          ensureTicketFromIssue(`parcel:${parcel.awb}:proof`, {
+            tier: parcel.statusAgeHours >= 24 ? "emergency" : "medium",
+            title: "Rider proof / refusal review",
+            from: "Customer Support",
+            to: `${parcel.branch || parcel.city + " Hub"} Manager`,
+            branch: parcel.branch || `${parcel.city} Hub`,
+            awb: parcel.awb,
+            message: `${parcel.consignee} issue needs proof review. ${parcel.exception || parcel.returnProof || "Check rider attempt data."}`,
+            ageHours: Number(parcel.statusAgeHours || 0)
+          });
+        }
+      });
+
+      state.operationsIssues.filter(issue => !issue.resolved).forEach(issue => {
+        ensureTicketFromIssue(`ops:${issue.id}`, {
+          tier: issue.urgency === "super urgent" ? "emergency" : issue.urgency === "medium" ? "medium" : "okay",
+          title: issue.problem,
+          from: "Operations Control",
+          to: issue.urgency === "super urgent" ? "Admin Control" : `${issue.branch} Manager`,
+          branch: issue.branch,
+          awb: issue.awb || "",
+          message: `${issue.problem}${issue.awb ? ` for ${issue.awb}` : ""}.`,
+          ageHours: Number(issue.openedHours || 0),
+          escalated: issue.urgency === "super urgent" || Number(issue.openedHours || 0) >= 24
+        });
+      });
+
+      manifestLogs().forEach(log => {
+        manifestMissingAwbs(log).forEach(awb => {
+          ensureTicketFromIssue(`manifest:${log.id}:${awb}`, {
+            tier: "emergency",
+            title: "Missing CN in demanifest",
+            from: "Demanifest Scan",
+            to: "Admin Control",
+            branch: log.to || "Destination Hub",
+            awb,
+            message: `${awb} is missing from ${log.id}. Route ${log.from} to ${log.to}. Admin must verify leakage before closing sack.`,
+            ageHours: Number(log.openHours || 25),
+            escalated: true
+          });
+        });
+      });
+
+      state.tickets.forEach(ticket => {
+        const age = ticketAgeHours(ticket);
+        ticket.ageHours = age;
+        if (ticket.status !== "Resolved" && age >= 24 && !ticket.escalated) {
+          ticket.escalated = true;
+          ticket.tier = "emergency";
+          ticket.previousTo = ticket.to;
+          ticket.to = "Admin Control";
+          state.ticketNotifications.unshift({
+            text: `${ticket.id} escalated to Admin Control after 24h. Original owner: ${ticket.previousTo || "unknown"}.`,
+            at: `${new Date().toISOString().slice(0, 10)} ${time()}`,
+            level: "bad"
+          });
+        }
+      });
+    }
+
     function normalizeStateShape() {
       state.parcels.forEach((parcel, index) => {
         const client = clientById(parcel.clientId);
@@ -4976,6 +5242,7 @@
       state.demanifestScanAwbs = Array.isArray(state.demanifestScanAwbs) ? state.demanifestScanAwbs : [];
       state.activeDemanifestId = state.activeDemanifestId || state.transit.find(t => t.status !== "Complete")?.id || "";
       state.pendingProcessingStatus = state.pendingProcessingStatus || "";
+      syncTicketAutomation();
     }
 
     function parcelOrigin(parcel) {
@@ -5945,6 +6212,7 @@
       `).join("") || `<div class="ops-card"><strong>No processing log yet</strong><p>Scan a parcel and update status to create the first audit entry.</p></div>`;
 
       renderManifestScreens();
+      renderTickets();
 
       document.getElementById("pendingClientList").innerHTML = state.pendingClients.map(client => `
         <div class="ops-card">
@@ -6170,10 +6438,12 @@
       const allSummaryManifests = [...manifestLogs().filter(log => log.status !== "Complete"), ...state.completedSacks.filter(log => log.type === "parcel manifest" || log.id?.startsWith("MAN-") || log.id?.startsWith("SACK-"))];
       const missingManifestCns = allSummaryManifests.flatMap(log => manifestMissingAwbs(log).map(awb => `${awb} (${log.id})`));
       const openOps = state.operationsIssues.filter(issue => !issue.resolved);
+      const openTickets = (state.tickets || []).filter(ticket => ticket.status !== "Resolved");
+      const emergencyTickets = openTickets.filter(ticket => ticketEffectiveTier(ticket) === "emergency");
       const latestIssue = openOps[0] || lateParcels[0] || null;
       const activeManifestCount = allSummaryManifests.filter(log => log.status !== "Complete").length;
       document.getElementById("adminReportMetrics").innerHTML = [
-        metricCard("Open Issues", openOps.length + lateParcels.length, Math.min(100, (openOps.length + lateParcels.length) * 14), "tickets + aging alerts", openOps.length || lateParcels.length ? "red" : "good"),
+        metricCard("Open Tickets", openTickets.length, Math.min(100, openTickets.length * 12), `${emergencyTickets.length} emergency`, emergencyTickets.length ? "red" : openTickets.length ? "amber" : "good"),
         metricCard("Active Manifests", activeManifestCount, Math.min(100, activeManifestCount * 20), "in transit logs", "blue"),
         metricCard("Missing CNs", missingManifestCns.length, Math.min(100, missingManifestCns.length * 22), "demanifest disputes", missingManifestCns.length ? "red" : "good"),
         metricCard("Cash + Profit", money(profit), Math.min(100, Math.abs(percent(profit, 450000))), "operating view", profit >= 0 ? "good" : "red")
@@ -6181,6 +6451,7 @@
 
       document.getElementById("totalSummaryIssues").innerHTML = [
         latestIssue ? `Latest issue: ${latestIssue.problem || `${latestIssue.awb} ${latestIssue.status}`}` : "No urgent issue found right now.",
+        emergencyTickets.length ? `${emergencyTickets.length} emergency ticket(s) need admin or branch action now.` : "No emergency ticket is pending.",
         lateParcels.length ? `${lateParcels.length} parcel(s) are late versus SLA.` : "No parcel is breaching current SLA.",
         missingManifestCns.length ? `${missingManifestCns.length} CN issue(s) in manifests: ${missingManifestCns.slice(0, 6).join(", ")}` : "No missing manifest CNs.",
         m.cashHeld > m.cashLimit ? "Rider cash is above allowed limit. Block new route assignment." : "Rider cash exposure is inside configured limit."
@@ -6338,6 +6609,110 @@
       const dispute = document.getElementById("manifestDisputeList");
       if (dispute) {
         dispute.innerHTML = disputedLogs.flatMap(log => manifestMissingAwbs(log).map(awb => `<div class="ops-card alert-row critical"><div class="ops-card-head"><strong>${awb}</strong><span class="chip bad">${log.id}</span></div><p>Missing in demanifest from ${log.from} to ${log.to}. Admin escalation required.</p></div>`)).join("") || `<div class="ops-card"><strong>No manifest disputes</strong><p>Missing CNs after demanifest will appear here.</p></div>`;
+      }
+    }
+
+    function ticketCard(ticket) {
+      const tier = ticketEffectiveTier(ticket);
+      const isResolved = ticket.status === "Resolved";
+      const chip = isResolved ? "good" : tier === "emergency" ? "bad" : tier === "medium" ? "warn" : "info";
+      const sourceParcel = state.parcels.find(p => p.awb === ticket.awb);
+      return `
+        <div class="ops-card ticket-card ${ticket.escalated && !isResolved ? "alert-row critical escalated" : tier === "medium" && !isResolved ? "alert-row" : ""}">
+          <div class="ops-card-head">
+            <strong>${ticket.id} | ${ticket.title}</strong>
+            <span class="chip ${chip}">${isResolved ? "resolved" : tier}</span>
+          </div>
+          <div class="ticket-route"><strong>${ticket.from}</strong><span>-></span><strong>${ticket.to}</strong></div>
+          <div class="ticket-meta">
+            <span class="chip info">${ticket.branch}</span>
+            ${ticket.awb ? `<span class="chip ${sourceParcel ? statusClass(sourceParcel) : "warn"}">${ticket.awb}</span>` : ""}
+            <span class="chip ${ticketAgeHours(ticket) >= 24 && !isResolved ? "bad" : "good"}">${ticketSlaText(ticket)}</span>
+          </div>
+          <p>${ticket.message || "No message added."}</p>
+          ${ticket.previousTo && !isResolved ? `<div class="resolved-note"><strong>Escalated:</strong> originally assigned to ${ticket.previousTo}, now visible to Admin Control.</div>` : ""}
+          ${isResolved ? `
+            <div class="resolved-note"><strong>Reply:</strong> ${ticket.resolutionReply || "Resolved."}</div>
+            <div class="footer-note">Resolved by ${ticket.resolvedBy || "admin"} at ${ticket.resolvedAt || "now"}. Proof: ${ticket.proof || "not attached"}. Notification sent to ${ticket.from}.</div>
+          ` : `
+            <div class="ticket-reply">
+              <div class="field"><label>Resolve reply</label><textarea id="ticketReply-${ticket.id}" placeholder="Explain what was fixed, who confirmed it, and the next action."></textarea></div>
+              <div class="field"><label>Image / proof</label><input id="ticketProof-${ticket.id}" placeholder="photo.jpg or proof link"></div>
+              <button class="action-btn" onclick="resolveTicket('${ticket.id}')">Resolve Ticket</button>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    function renderTickets() {
+      const tickets = state.tickets || [];
+      const open = tickets.filter(ticket => ticket.status !== "Resolved");
+      const resolved = tickets.filter(ticket => ticket.status === "Resolved");
+      const emergency = open.filter(ticket => ticketEffectiveTier(ticket) === "emergency");
+      const medium = open.filter(ticket => ticketEffectiveTier(ticket) === "medium");
+      const okay = open.filter(ticket => ticketEffectiveTier(ticket) === "okay");
+      const overdue = open.filter(ticket => ticketAgeHours(ticket) >= 24);
+      const avgSolve = resolved.length ? Math.round(resolved.reduce((sum, ticket) => sum + Number(ticket.solvedHours || 0), 0) / resolved.length) : 0;
+
+      const openBadge = document.getElementById("ticketOpenBadge");
+      if (openBadge) {
+        openBadge.textContent = `${open.length} open`;
+        openBadge.className = `chip ${emergency.length ? "bad" : open.length ? "warn" : "good"}`;
+      }
+
+      const notifications = document.getElementById("ticketNotificationList");
+      if (notifications) {
+        notifications.innerHTML = (state.ticketNotifications || []).slice(0, 4).map(note => `
+          <div class="ops-card ticket-notice">
+            <div class="ops-card-head"><strong>${note.text}</strong><span class="chip ${note.level || "info"}">${note.at}</span></div>
+          </div>
+        `).join("") || `<div class="ops-card"><strong>No ticket notifications yet</strong><p>Resolved replies and 24-hour escalations will appear here.</p></div>`;
+      }
+
+      const emergencyMetrics = document.getElementById("ticketEmergencyMetrics");
+      if (emergencyMetrics) {
+        emergencyMetrics.innerHTML = [
+          metricCard("Emergency", emergency.length, Math.min(100, emergency.length * 18), "admin visible now", emergency.length ? "red" : "good"),
+          metricCard("Over 24h", overdue.length, Math.min(100, overdue.length * 20), "auto escalated", overdue.length ? "red" : "good"),
+          metricCard("Missing CN", emergency.filter(t => /missing cn|demanifest/i.test(`${t.title} ${t.message}`)).length, 70, "manifest leakage", "red"),
+          metricCard("Resolved", resolved.length, Math.min(100, resolved.length * 16), "closed with reply", "good")
+        ].join("");
+      }
+
+      const summaryMetrics = document.getElementById("ticketSummaryMetrics");
+      if (summaryMetrics) {
+        summaryMetrics.innerHTML = [
+          metricCard("Open Tickets", open.length, Math.min(100, open.length * 10), "all active tiers", open.length ? "amber" : "good"),
+          metricCard("Emergency", emergency.length, Math.min(100, emergency.length * 18), "needs action now", emergency.length ? "red" : "good"),
+          metricCard("Resolved", resolved.length, Math.min(100, resolved.length * 12), "stored archive", "good"),
+          metricCard("Avg Solve", avgSolve ? agingLabel(avgSolve) : "0h", Math.min(100, percent(avgSolve, 24)), "resolved ticket timer", avgSolve > 24 ? "red" : "good")
+        ].join("");
+      }
+
+      const setList = (id, rows, empty) => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = rows.map(ticketCard).join("") || `<div class="ops-card"><strong>${empty}</strong><p>This queue is clean right now.</p></div>`;
+      };
+      setList("ticketEmergencyList", emergency, "No emergency tickets");
+      setList("ticketMediumList", medium, "No medium tickets");
+      setList("ticketOkayList", okay, "No okay tickets");
+
+      const summary = document.getElementById("ticketSummaryList");
+      if (summary) {
+        const byOwner = open.reduce((map, ticket) => {
+          map[ticket.to] = (map[ticket.to] || 0) + 1;
+          return map;
+        }, {});
+        summary.innerHTML = `
+          ${Object.entries(byOwner).map(([owner, count]) => `<div class="ops-card ${count > 2 ? "alert-row" : ""}"><div class="ops-card-head"><strong>${owner}</strong><span class="chip ${count > 2 ? "warn" : "info"}">${count} open</span></div><p>Routed queue visible only to the intended branch/team plus Admin Control after escalation.</p></div>`).join("") || `<div class="ops-card"><strong>No open ticket owners</strong><p>All routed tickets are closed.</p></div>`}
+          ${open.slice(0, 6).map(ticketCard).join("")}
+        `;
+      }
+
+      const resolvedList = document.getElementById("ticketResolvedList");
+      if (resolvedList) {
+        resolvedList.innerHTML = resolved.map(ticketCard).join("") || `<div class="ops-card"><strong>No resolved tickets yet</strong><p>Resolved ticket replies, proof references, and solve timers will archive here.</p></div>`;
       }
     }
 
@@ -6900,6 +7275,91 @@
       toast(`${id} moved to resolved with solve time.`);
     }
 
+    function createTicket() {
+      const title = document.getElementById("ticketTitle")?.value.trim();
+      const awb = document.getElementById("ticketAwb")?.value.trim().toUpperCase();
+      const message = document.getElementById("ticketMessage")?.value.trim();
+      if (!title || !message) {
+        toast("Ticket title and message are required.");
+        return;
+      }
+      const ticket = {
+        id: nextId("TCK", state.tickets || []),
+        sourceKey: `manual:${Date.now()}`,
+        tier: document.getElementById("ticketTier").value,
+        title,
+        from: document.getElementById("ticketFrom").value,
+        to: document.getElementById("ticketTo").value,
+        branch: document.getElementById("ticketBranch").value,
+        awb,
+        message,
+        createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}`,
+        ageHours: 0,
+        status: "Open",
+        escalated: false,
+        replies: []
+      };
+      state.tickets.unshift(ticket);
+      state.ticketNotifications.unshift({ text: `${ticket.id} created by ${ticket.from} and routed to ${ticket.to}.`, at: ticket.createdAt, level: ticket.tier === "emergency" ? "bad" : "info" });
+      ["ticketTitle", "ticketAwb", "ticketMessage"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+      saveState();
+      render();
+      toast(`${ticket.id} created and sent to ${ticket.to}.`);
+    }
+
+    function resolveTicket(id) {
+      const ticket = state.tickets.find(item => item.id === id);
+      if (!ticket) return;
+      const reply = document.getElementById(`ticketReply-${id}`)?.value.trim();
+      const proof = document.getElementById(`ticketProof-${id}`)?.value.trim();
+      if (!reply) {
+        toast("Resolve reply is required.");
+        return;
+      }
+      const resolvedAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+      ticket.status = "Resolved";
+      ticket.resolutionReply = reply;
+      ticket.proof = proof || "No image/proof reference added";
+      ticket.resolvedBy = currentAdminName();
+      ticket.resolvedAt = resolvedAt;
+      ticket.solvedHours = ticketAgeHours(ticket);
+      ticket.replies = Array.isArray(ticket.replies) ? ticket.replies : [];
+      ticket.replies.push({ by: ticket.resolvedBy, at: resolvedAt, message: reply, proof: ticket.proof });
+
+      state.operationsIssues.forEach(issue => {
+        if (!issue.resolved && (ticket.sourceKey === `ops:${issue.id}` || issue.awb === ticket.awb)) {
+          issue.resolved = true;
+          issue.resolvedHours = ticket.solvedHours || issue.openedHours || 1;
+          issue.resolvedBy = ticket.resolvedBy;
+          issue.resolutionReason = reply;
+          issue.resolvedAt = resolvedAt;
+        }
+      });
+
+      const parcel = state.parcels.find(p => p.awb === ticket.awb);
+      if (parcel) {
+        parcel.resolutionRemark = reply;
+        parcel.resolvedBy = ticket.resolvedBy;
+        parcel.resolvedAt = resolvedAt;
+        parcel.risk = Math.max(5, Number(parcel.risk || 0) - 10);
+      }
+
+      state.resolvedAlerts.unshift({
+        id: nextId("DONE", state.resolvedAlerts),
+        awb: ticket.awb || ticket.id,
+        branch: ticket.branch,
+        resolvedBy: ticket.resolvedBy,
+        reason: reply,
+        alert: ticket.title,
+        solvedHours: ticket.solvedHours,
+        resolvedAt
+      });
+      state.ticketNotifications.unshift({ text: `${ticket.id} resolved by ${ticket.resolvedBy}. ${ticket.from} has been notified.`, at: resolvedAt, level: "good" });
+      saveState();
+      render();
+      toast(`${ticket.id} resolved and notification sent to ${ticket.from}.`);
+    }
+
     function createSack() {
       const [from, to] = document.getElementById("sackRoute").value.split("|");
       const expected = Number(document.getElementById("sackExpected").value);
@@ -7390,6 +7850,7 @@
     document.getElementById("opsBranchFilter").addEventListener("change", renderAdmin);
     document.getElementById("opsUrgencyFilter").addEventListener("change", renderAdmin);
     document.getElementById("opsResolvedFilter").addEventListener("change", renderAdmin);
+    document.getElementById("createTicketBtn").addEventListener("click", createTicket);
     document.getElementById("bookParcelBtn").addEventListener("click", () => showClientTab("newBooking"));
     document.getElementById("quickBookingBtn").addEventListener("click", quickBooking);
     document.getElementById("bulkBookingBtn").addEventListener("click", bulkBooking);
