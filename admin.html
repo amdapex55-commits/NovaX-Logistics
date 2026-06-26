@@ -2247,7 +2247,8 @@
     .scan-textarea {
       width: 100%;
       min-height: 120px;
-      resize: vertical;
+      max-width: 100%;
+      resize: none;
       border: 1px solid rgba(31,209,142,.28);
       border-radius: 18px;
       background: rgba(3,10,8,.72);
@@ -2256,7 +2257,12 @@
       font-size: 18px;
       font-weight: 800;
       letter-spacing: .02em;
+      line-height: 1.45;
       text-transform: uppercase;
+      white-space: pre-wrap;
+      overflow-x: hidden;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .processing-current {
@@ -2265,6 +2271,26 @@
       padding: 12px;
       color: var(--muted);
       background: rgba(0,0,0,.16);
+    }
+
+    .processing-current div,
+    .ops-card p,
+    .resolved-note {
+      overflow-wrap: anywhere;
+    }
+
+    .manifest-chart {
+      display: grid;
+      gap: 10px;
+    }
+
+    .chart-row {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr) 56px;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-weight: 800;
     }
 
     .processing-auth {
@@ -3930,6 +3956,7 @@
                   <span>MANIFEST</span><span class="chevron">v</span>
                 </button>
                 <div class="admin-subnav">
+                  <button type="button" class="admin-subtab" data-admin-tab="manifest-summary">Summary</button>
                   <button type="button" class="admin-subtab" data-admin-tab="manifest-transit">Transit Manifest</button>
                   <button type="button" class="admin-subtab" data-admin-tab="manifest-reached">Reached</button>
                   <button type="button" class="admin-subtab" data-admin-tab="manifest-dispute">Dispute</button>
@@ -4302,14 +4329,23 @@
             </section>
 
             <section class="admin-module" id="admin-reports">
-              <div class="grid two">
-                <div class="panel">
-                  <div class="section-head"><div><h3>Admin Reports</h3><p>Company revenue, expenses, COD liability, client profitability, and risk.</p></div></div>
-                  <div class="grid metrics" id="adminReportMetrics"></div>
+              <div class="panel">
+                <div class="section-head"><div><h3>Total Summary</h3><p>Smart command summary across orders, manifests, tickets, riders, finance, clients, and operations.</p></div></div>
+                <div class="grid metrics" id="adminReportMetrics"></div>
+                <div class="grid two" style="margin-top:14px">
+                  <div class="panel soft-panel"><div class="section-head"><div><h3>What Needs Attention</h3><p>Late, missing, disputed, cash-risk, and process weaknesses.</p></div></div><div class="ops-list" id="totalSummaryIssues"></div></div>
+                  <div class="panel soft-panel"><div class="section-head"><div><h3>What Can Improve</h3><p>AI suggestions based on the current portal truth.</p></div></div><div class="journey" id="fintechJourney"></div></div>
                 </div>
-                <div class="panel">
-                  <div class="section-head"><div><h3>Fintech Roadmap</h3><p>Start with internal ledgers and partner rails. Earn licensing later with clean data.</p></div></div>
-                  <div class="journey" id="fintechJourney"></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-manifest-summary">
+              <div class="panel">
+                <div class="section-head"><div><h3>Manifest Summary</h3><p>Transit speed, reached logs, missing CNs, route health, and destination receiving performance.</p></div></div>
+                <div class="grid metrics" id="manifestSummaryMetrics"></div>
+                <div class="grid two" style="margin-top:14px">
+                  <div class="panel soft-panel"><div class="section-head"><div><h3>Route Demographics</h3><p>Volume and scan health by manifest lane.</p></div></div><div class="manifest-chart" id="manifestRouteChart"></div></div>
+                  <div class="panel soft-panel"><div class="section-head"><div><h3>Manifest Intelligence</h3><p>Live updates for admins.</p></div></div><div class="ops-list" id="manifestSummaryList"></div></div>
                 </div>
               </div>
             </section>
@@ -4406,13 +4442,15 @@
 
             <section class="admin-module" id="admin-manifest-reached">
               <div class="panel">
-                <div class="section-head"><div><h3>Reached Manifest</h3><p>Reached tab is ready. It will show sacks received at destination, time received, scan completion, and branch owner.</p></div></div>
+                <div class="section-head"><div><h3>Reached Manifest</h3><p>Completed demanifest logs with reached time, receiving branch, and scan completion.</p></div></div>
+                <div class="ops-list" id="manifestReachedList"></div>
               </div>
             </section>
 
             <section class="admin-module" id="admin-manifest-dispute">
               <div class="panel">
-                <div class="section-head"><div><h3>Manifest Dispute</h3><p>Dispute tab is ready. Short scans, damaged parcels, wrong-route sacks, and missing proof will live here.</p></div></div>
+                <div class="section-head"><div><h3>Manifest Dispute</h3><p>All missing CNs and demanifest shortages appear here for escalation.</p></div></div>
+                <div class="ops-list" id="manifestDisputeList"></div>
               </div>
             </section>
 
@@ -4806,7 +4844,7 @@
 
     const ADMIN_NAV_GROUPS = {
       orders: ["orders-view-all", "orders-report", "orders-processing", "orders-manifest", "orders-demanifest"],
-      manifest: ["manifest-transit", "manifest-reached", "manifest-dispute"],
+      manifest: ["manifest-summary", "manifest-transit", "manifest-reached", "manifest-dispute"],
       tickets: ["tickets-emergency", "tickets-medium", "tickets-okay", "tickets-summary"],
       riders: ["riders-route", "riders-report", "riders-summary"],
       finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-summary", "finance-overall", "finance-revenue"],
@@ -4829,6 +4867,7 @@
 
     const ADMIN_TAB_MODULES = {
       "orders-view-all": "admin-orders",
+      "manifest-summary": "admin-manifest-summary",
       "manifest-transit": "admin-transit",
       "riders-route": "admin-riders",
       "finance-expense": "admin-expenses",
@@ -4972,6 +5011,13 @@
 
     function parseAwbList(value) {
       return [...new Set(String(value || "").toUpperCase().match(/NX-\d{4}-\d{4,}/g) || [])];
+    }
+
+    function formatScanInput(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const awbs = parseAwbList(el.value);
+      if (awbs.length) el.value = `${awbs.join(", ")}, `;
     }
 
     function parcelsByAwbs(awbs) {
@@ -6086,18 +6132,36 @@
       document.getElementById("userClientSelect").innerHTML = state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
 
       const profit = m.revenue - m.expenses;
+      const lateParcels = state.parcels.filter(p => alertForParcel(p).level === "critical");
+      const missingManifestCns = state.completedSacks.flatMap(log => log.missingAwbs || []);
+      const openOps = state.operationsIssues.filter(issue => !issue.resolved);
+      const latestIssue = openOps[0] || lateParcels[0] || null;
+      const activeManifestCount = manifestLogs().filter(log => log.status !== "Complete").length;
       document.getElementById("adminReportMetrics").innerHTML = [
-        metricCard("Client Database", state.clients.length, percent(state.clients.length, 10), "unique client numbers", "blue"),
-        metricCard("COD Liability", money(m.payable), percent(m.payable, 60000), "client money owed", "amber"),
-        metricCard("Operating Profit", money(profit), Math.min(100, Math.abs(percent(profit, 450000))), profit >= 0 ? "positive" : "negative", profit >= 0 ? "good" : "red"),
-        metricCard("Payment Logs", state.paymentLogs.length, percent(state.paymentLogs.length, 20), "ledger events", "good")
+        metricCard("Open Issues", openOps.length + lateParcels.length, Math.min(100, (openOps.length + lateParcels.length) * 14), "tickets + aging alerts", openOps.length || lateParcels.length ? "red" : "good"),
+        metricCard("Active Manifests", activeManifestCount, Math.min(100, activeManifestCount * 20), "in transit logs", "blue"),
+        metricCard("Missing CNs", missingManifestCns.length, Math.min(100, missingManifestCns.length * 22), "demanifest disputes", missingManifestCns.length ? "red" : "good"),
+        metricCard("Cash + Profit", money(profit), Math.min(100, Math.abs(percent(profit, 450000))), "operating view", profit >= 0 ? "good" : "red")
       ].join("");
 
-      document.getElementById("fintechJourney").innerHTML = ["Ledger clean", "Client balances", "Fast settlements", "Payment links", "Partner wallets", "Risk scoring", "Working capital"].map((step, index) => `
-        <div class="journey-item ${index <= 2 ? "" : "pending"}">
-          <div class="step-dot">${index <= 2 ? "OK" : index + 1}</div>
-          <div><strong>${step}</strong><span>${index <= 2 ? "Build inside courier OS first" : "Partner or license after proof"}</span></div>
-          <span class="chip ${index <= 2 ? "good" : "info"}">${index <= 2 ? "now" : "next"}</span>
+      document.getElementById("totalSummaryIssues").innerHTML = [
+        latestIssue ? `Latest issue: ${latestIssue.problem || `${latestIssue.awb} ${latestIssue.status}`}` : "No urgent issue found right now.",
+        lateParcels.length ? `${lateParcels.length} parcel(s) are late versus SLA.` : "No parcel is breaching current SLA.",
+        missingManifestCns.length ? `${missingManifestCns.length} CN(s) missing after demanifest: ${missingManifestCns.slice(0, 6).join(", ")}` : "No missing manifest CNs.",
+        m.cashHeld > m.cashLimit ? "Rider cash is above allowed limit. Block new route assignment." : "Rider cash exposure is inside configured limit."
+      ].map(text => `<div class="ops-card ${/late|missing|above|Latest issue/i.test(text) && !/^No /.test(text) ? "alert-row" : ""}"><strong>${text}</strong></div>`).join("");
+
+      document.getElementById("fintechJourney").innerHTML = [
+        ["Fix", lateParcels.length ? "Reduce overdue parcel clocks before adding more automation." : "Parcel aging is controlled right now.", !lateParcels.length],
+        ["Fix", missingManifestCns.length ? "Demanifest missing CNs need branch manager proof and escalation." : "Manifest receiving is clean.", !missingManifestCns.length],
+        ["Improve", "Auto-suggest next branch action from status clock, manifest health, and rider cash.", true],
+        ["Improve", "Add role-specific dashboards for warehouse, branch manager, finance, and support.", true],
+        ["Next", "When data remains clean, client wallet and faster payout rails become realistic.", m.risk < 45]
+      ].map((row, index) => `
+        <div class="journey-item ${row[2] ? "" : "alert"}">
+          <div class="step-dot">${index + 1}</div>
+          <div><strong>${row[0]}</strong><span>${row[1]}</span></div>
+          <span class="chip ${row[2] ? "good" : "bad"}">${row[2] ? "ok" : "act"}</span>
         </div>
       `).join("");
     }
@@ -6132,6 +6196,45 @@
     }
 
     function renderManifestScreens() {
+      const activeManifestLogs = manifestLogs().filter(log => log.status !== "Complete");
+      const completedManifestLogs = state.completedSacks.filter(log => log.type === "parcel manifest" || log.id?.startsWith("MAN-") || log.id?.startsWith("SACK-"));
+      const disputedLogs = completedManifestLogs.filter(log => (log.missingAwbs || []).length);
+      const missingCount = disputedLogs.reduce((sum, log) => sum + (log.missingAwbs || []).length, 0);
+      const totalManifestParcels = [...activeManifestLogs, ...completedManifestLogs].reduce((sum, log) => sum + (log.parcels?.length || log.expected || 0), 0);
+      const reachedCount = completedManifestLogs.reduce((sum, log) => sum + Math.min(log.demanifestedAwbs?.length || log.demanifested || 0, log.parcels?.length || log.expected || 0), 0);
+      const avgTransitHours = completedManifestLogs.length ? Math.round(completedManifestLogs.reduce((sum, log) => sum + (log.transitHours || log.openHours || 18), 0) / completedManifestLogs.length) : 0;
+      const manifestMetrics = document.getElementById("manifestSummaryMetrics");
+      if (manifestMetrics) {
+        manifestMetrics.innerHTML = [
+          metricCard("Active Manifests", activeManifestLogs.length, Math.min(100, activeManifestLogs.length * 22), "currently in transit", "blue"),
+          metricCard("Reached CNs", reachedCount, percent(reachedCount, totalManifestParcels || 1), "destination received", "good"),
+          metricCard("Missing CNs", missingCount, Math.min(100, missingCount * 18), "demanifest disputes", missingCount ? "red" : "good"),
+          metricCard("Avg Transit", avgTransitHours ? agingLabel(avgTransitHours) : "0h", Math.min(100, percent(avgTransitHours, 72)), "manifest create to reached", avgTransitHours > 48 ? "amber" : "good")
+        ].join("");
+      }
+      const routeChart = document.getElementById("manifestRouteChart");
+      if (routeChart) {
+        const routes = {};
+        [...activeManifestLogs, ...completedManifestLogs].forEach(log => {
+          const key = `${log.from} -> ${log.to}`;
+          routes[key] = routes[key] || { count: 0, missing: 0 };
+          routes[key].count += log.parcels?.length || log.expected || 0;
+          routes[key].missing += (log.missingAwbs || []).length;
+        });
+        const max = Math.max(1, ...Object.values(routes).map(r => r.count));
+        routeChart.innerHTML = Object.entries(routes).map(([route, row]) => `
+          <div class="chart-row"><span>${route}</span><div class="meter ${row.missing ? "red" : ""}"><span style="width:${percent(row.count, max)}%"></span></div><strong>${row.count}</strong></div>
+        `).join("") || `<div class="ops-card"><strong>No route data yet</strong><p>Create manifests to build route demographics.</p></div>`;
+      }
+      const summaryList = document.getElementById("manifestSummaryList");
+      if (summaryList) {
+        summaryList.innerHTML = [
+          activeManifestLogs.length ? `${activeManifestLogs.length} manifest(s) are still in transit.` : "No active manifest is in transit.",
+          missingCount ? `${missingCount} CN(s) are missing after demanifest and need admin escalation.` : "No missing CN dispute is currently open.",
+          avgTransitHours > 48 ? "Average manifest transit is slower than usual. Check route dispatch and receiving scan discipline." : "Manifest transit speed is within expected control range."
+        ].map(text => `<div class="ops-card"><strong>${text}</strong></div>`).join("");
+      }
+
       const draftParcels = parcelsByAwbs(state.manifestDraftAwbs || []);
       const manifestPreview = document.getElementById("manifestScanPreview");
       if (manifestPreview) {
@@ -6178,7 +6281,7 @@
       if (logList) {
         logList.innerHTML = [...state.transit, ...state.completedSacks].filter(log => log.type === "parcel manifest" || log.id?.startsWith("MAN-") || log.id?.startsWith("SACK-")).map(log => {
           const expected = log.parcels?.length || log.expected || 0;
-          const done = log.demanifestedAwbs?.length || log.demanifested || 0;
+          const done = Math.min(log.demanifestedAwbs?.length || log.demanifested || 0, expected);
           const missing = log.missingAwbs || [];
           return `<div class="ops-card ${missing.length ? "alert-row critical" : ""}">
             <div class="ops-card-head"><strong>${log.id}</strong><span class="chip ${missing.length ? "bad" : log.status === "Complete" ? "good" : "info"}">${log.status || "Complete"}</span></div>
@@ -6186,6 +6289,18 @@
             ${missing.length ? `<div class="resolved-note"><strong>Missing:</strong> ${missing.join(", ")}</div>` : ""}
           </div>`;
         }).join("") || `<div class="ops-card"><strong>No manifests yet</strong><p>Create one from the Manifest tab.</p></div>`;
+      }
+      const reached = document.getElementById("manifestReachedList");
+      if (reached) {
+        reached.innerHTML = completedManifestLogs.filter(log => !(log.missingAwbs || []).length).map(log => {
+          const expected = log.parcels?.length || log.expected || 0;
+          const done = Math.min(log.demanifestedAwbs?.length || log.demanifested || 0, expected);
+          return `<div class="ops-card"><div class="ops-card-head"><strong>${log.id}</strong><span class="chip good">${done}/${expected}</span></div><p>${log.from} to ${log.to}. Reached ${log.completedAt || "destination time logged"}.</p></div>`;
+        }).join("") || `<div class="ops-card"><strong>No clean reached manifests yet</strong><p>Completed clean logs will show here.</p></div>`;
+      }
+      const dispute = document.getElementById("manifestDisputeList");
+      if (dispute) {
+        dispute.innerHTML = disputedLogs.flatMap(log => (log.missingAwbs || []).map(awb => `<div class="ops-card alert-row critical"><div class="ops-card-head"><strong>${awb}</strong><span class="chip bad">${log.id}</span></div><p>Missing in demanifest from ${log.from} to ${log.to}. Admin ping already created.</p></div>`)).join("") || `<div class="ops-card"><strong>No manifest disputes</strong><p>Missing CNs after demanifest will appear here.</p></div>`;
       }
     }
 
@@ -6266,6 +6381,7 @@
     function lookupProcessingParcel() {
       const input = document.getElementById("processingAwbInput");
       const awbs = parseAwbList(input?.value || "");
+      if (awbs.length && input) input.value = `${awbs.join(", ")}, `;
       const found = parcelsByAwbs(awbs);
       if (!found.length) {
         state.activeProcessingAwb = "";
@@ -6361,7 +6477,9 @@
     }
 
     function loadManifestScans() {
-      const awbs = parseAwbList(document.getElementById("manifestScanInput").value);
+      const input = document.getElementById("manifestScanInput");
+      const awbs = parseAwbList(input.value);
+      if (awbs.length) input.value = `${awbs.join(", ")}, `;
       state.manifestDraftAwbs = awbs;
       saveState();
       renderAdmin();
@@ -6391,7 +6509,9 @@
     }
 
     function loadDemanifestScans() {
-      state.demanifestScanAwbs = parseAwbList(document.getElementById("demanifestScanInput").value);
+      const input = document.getElementById("demanifestScanInput");
+      state.demanifestScanAwbs = parseAwbList(input.value);
+      if (state.demanifestScanAwbs.length) input.value = `${state.demanifestScanAwbs.join(", ")}, `;
       saveState();
       renderAdmin();
       toast(`${state.demanifestScanAwbs.length} received scan(s) loaded.`);
@@ -7206,6 +7326,9 @@
         event.preventDefault();
         lookupProcessingParcel();
       }
+    });
+    ["processingAwbInput", "manifestScanInput", "demanifestScanInput"].forEach(id => {
+      document.getElementById(id).addEventListener("paste", () => setTimeout(() => formatScanInput(id), 0));
     });
     document.getElementById("processingLoadBatchBtn").addEventListener("click", lookupProcessingParcel);
     document.getElementById("processingClearBatchBtn").addEventListener("click", clearProcessingBatch);
