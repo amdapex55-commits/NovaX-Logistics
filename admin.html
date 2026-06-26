@@ -2088,6 +2088,13 @@
       box-shadow: var(--shadow);
     }
 
+    .admin-nav-group {
+      display: grid;
+      gap: 6px;
+    }
+
+    .admin-nav-main,
+    .admin-subtab,
     .admin-tab {
       width: 100%;
       min-height: 42px;
@@ -2100,14 +2107,62 @@
       transition: background var(--speed), color var(--speed), transform var(--speed);
     }
 
+    .admin-nav-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .admin-nav-main .chevron {
+      color: var(--green-2);
+      font-size: 12px;
+      transition: transform var(--speed);
+    }
+
+    .admin-nav-main:hover,
+    .admin-subtab:hover,
     .admin-tab:hover {
       background: rgba(31, 209, 142, .1);
       transform: translateX(2px);
     }
 
+    .admin-nav-main.active,
+    .admin-subtab.active,
     .admin-tab.active {
       background: var(--green);
       color: #04110d;
+    }
+
+    .admin-nav-main.active .chevron {
+      color: #04110d;
+    }
+
+    .admin-nav-group.open .admin-nav-main .chevron {
+      transform: rotate(180deg);
+    }
+
+    .admin-subnav {
+      display: none;
+      gap: 6px;
+      padding: 2px 0 6px 12px;
+      border-left: 1px solid rgba(31, 209, 142, .2);
+      animation: fadeUp .18s ease both;
+    }
+
+    .admin-nav-group.open .admin-subnav {
+      display: grid;
+    }
+
+    .admin-subtab {
+      min-height: 36px;
+      padding-left: 12px;
+      color: #c7d8cf;
+      font-size: 13px;
+      font-weight: 720;
+      text-transform: capitalize;
     }
 
     .admin-module {
@@ -2117,6 +2172,13 @@
 
     .admin-module.active {
       display: block;
+    }
+
+    .placeholder-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
     }
 
     .required-star {
@@ -2785,12 +2847,12 @@
       }
 
       .admin-menu {
-        display: flex;
+        display: grid;
         gap: 7px;
         width: 100%;
         min-width: 0;
         max-width: 100%;
-        overflow-x: auto;
+        overflow: visible;
         padding: 9px;
         scrollbar-width: none;
       }
@@ -2799,12 +2861,18 @@
         display: none;
       }
 
+      .admin-nav-main,
+      .admin-subtab,
       .admin-tab {
-        width: auto;
-        min-width: max-content;
+        width: 100%;
+        min-width: 0;
         min-height: 38px;
         padding: 0 12px;
         font-size: 12px;
+      }
+
+      .admin-subnav {
+        padding-left: 8px;
       }
 
       .client-tab {
@@ -3140,6 +3208,8 @@
         color: #526b61;
       }
 
+      .admin-nav-main,
+      .admin-subtab,
       .admin-tab,
       .client-tab {
         color: #d8e8df;
@@ -3175,16 +3245,17 @@
       }
 
       .client-tab,
+      .admin-nav-main,
+      .admin-subtab,
       .admin-tab {
         min-height: 38px;
         padding: 0 9px;
         font-size: 12px;
-        text-align: center;
       }
 
       .admin-menu {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr;
         gap: 7px;
         width: 100%;
         max-width: 100%;
@@ -3193,10 +3264,16 @@
         padding: 9px;
       }
 
+      .admin-nav-main,
+      .admin-subtab,
       .admin-tab {
         width: 100%;
         min-width: 0;
         white-space: normal;
+      }
+
+      .placeholder-grid {
+        grid-template-columns: 1fr;
       }
 
       .section-head,
@@ -3727,16 +3804,102 @@
               </div>
             </div>
             <nav class="admin-menu" aria-label="Admin portal sections">
-              <button class="admin-tab active" data-admin-tab="dashboard">Dashboard</button>
-              <button class="admin-tab" data-admin-tab="clients">Client Database</button>
-              <button class="admin-tab" data-admin-tab="orders">Orders & Parcels</button>
-              <button class="admin-tab" data-admin-tab="operations">Operations Control</button>
-              <button class="admin-tab" data-admin-tab="transit">Transit & Sacks</button>
-              <button class="admin-tab" data-admin-tab="riders">Riders & Cash</button>
-              <button class="admin-tab" data-admin-tab="payments">Payments & COD</button>
-              <button class="admin-tab" data-admin-tab="expenses">Expenses</button>
-              <button class="admin-tab" data-admin-tab="users">Users & Assignment</button>
-              <button class="admin-tab" data-admin-tab="reports">Reports</button>
+              <button type="button" class="admin-nav-main active" data-admin-tab="dashboard">DASHBOARD</button>
+
+              <div class="admin-nav-group" data-admin-group="orders">
+                <button type="button" class="admin-nav-main" data-admin-group-toggle="orders" aria-expanded="false">
+                  <span>ORDERS</span><span class="chevron">v</span>
+                </button>
+                <div class="admin-subnav">
+                  <button type="button" class="admin-subtab" data-admin-tab="orders-view-all">View All</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="orders-report">Order Report</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="orders-processing">Order Processing</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="orders-manifest">Manifest</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="orders-demanifest">Demanifest</button>
+                </div>
+              </div>
+
+              <div class="admin-nav-group" data-admin-group="manifest">
+                <button type="button" class="admin-nav-main" data-admin-group-toggle="manifest" aria-expanded="false">
+                  <span>MANIFEST</span><span class="chevron">v</span>
+                </button>
+                <div class="admin-subnav">
+                  <button type="button" class="admin-subtab" data-admin-tab="manifest-transit">Transit Manifest</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="manifest-reached">Reached</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="manifest-dispute">Dispute</button>
+                </div>
+              </div>
+
+              <button type="button" class="admin-nav-main" data-admin-tab="total-summary">TOTAL SUMMARY</button>
+
+              <div class="admin-nav-group" data-admin-group="tickets">
+                <button type="button" class="admin-nav-main" data-admin-group-toggle="tickets" aria-expanded="false">
+                  <span>TICKETS</span><span class="chevron">v</span>
+                </button>
+                <div class="admin-subnav">
+                  <button type="button" class="admin-subtab" data-admin-tab="tickets-emergency">Emergency</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="tickets-medium">Medium</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="tickets-okay">Okay</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="tickets-summary">Summary</button>
+                </div>
+              </div>
+
+              <div class="admin-nav-group" data-admin-group="riders">
+                <button type="button" class="admin-nav-main" data-admin-group-toggle="riders" aria-expanded="false">
+                  <span>RIDERS</span><span class="chevron">v</span>
+                </button>
+                <div class="admin-subnav">
+                  <button type="button" class="admin-subtab" data-admin-tab="riders-route">Rider On Route</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="riders-report">Rider Report</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="riders-summary">Rider Summary</button>
+                </div>
+              </div>
+
+              <div class="admin-nav-group" data-admin-group="finance">
+                <button type="button" class="admin-nav-main" data-admin-group-toggle="finance" aria-expanded="false">
+                  <span>FINANCE</span><span class="chevron">v</span>
+                </button>
+                <div class="admin-subnav">
+                  <button type="button" class="admin-subtab" data-admin-tab="finance-expense">Expense</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="finance-invoices">Invoices</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="finance-wallets">Wallets</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="finance-summary">Summary</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="finance-overall">Overall</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="finance-revenue">Revenue</button>
+                </div>
+              </div>
+
+              <div class="admin-nav-group" data-admin-group="clients">
+                <button type="button" class="admin-nav-main" data-admin-group-toggle="clients" aria-expanded="false">
+                  <span>CLIENTS</span><span class="chevron">v</span>
+                </button>
+                <div class="admin-subnav">
+                  <button type="button" class="admin-subtab" data-admin-tab="clients-summary">Client Summary</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="clients-create-new">Create New Client</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="clients-clients">Clients</button>
+                </div>
+              </div>
+
+              <div class="admin-nav-group" data-admin-group="users">
+                <button type="button" class="admin-nav-main" data-admin-group-toggle="users" aria-expanded="false">
+                  <span>USERS</span><span class="chevron">v</span>
+                </button>
+                <div class="admin-subnav">
+                  <button type="button" class="admin-subtab" data-admin-tab="users-create">Create Users</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="users-edit">Edit Users</button>
+                </div>
+              </div>
+
+              <div class="admin-nav-group" data-admin-group="api">
+                <button type="button" class="admin-nav-main" data-admin-group-toggle="api" aria-expanded="false">
+                  <span>API</span><span class="chevron">v</span>
+                </button>
+                <div class="admin-subnav">
+                  <button type="button" class="admin-subtab" data-admin-tab="api-shopify">Shopify</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="api-web">Web</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="api-woo-commerce">Woo Commerce</button>
+                </div>
+              </div>
             </nav>
           </aside>
 
@@ -4041,6 +4204,136 @@
                 </div>
               </div>
             </section>
+
+            <section class="admin-module" id="admin-orders-report">
+              <div class="panel">
+                <div class="section-head"><div><h3>Order Report</h3><p>Report navigation is ready. Next we will add city, client, status, rider, aging, and date filters for high-volume parcel reporting.</p></div></div>
+                <div class="placeholder-grid"><div class="metric"><span>Report Scope</span><strong>100K parcels</strong><small>Built for exports and summaries</small></div><div class="metric"><span>Next Build</span><strong>Filters</strong><small>Client, branch, status, date</small></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-orders-processing">
+              <div class="panel">
+                <div class="section-head"><div><h3>Order Processing</h3><p>Processing queue is ready. This will become the desk for fresh bookings, pickup assignment, branch receipt, and missing scan pressure.</p></div></div>
+                <div class="placeholder-grid"><div class="metric"><span>Queue</span><strong>New booked</strong><small>Pickup and origin controls</small></div><div class="metric"><span>Control</span><strong>Scan required</strong><small>No parcel moves without proof</small></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-orders-manifest">
+              <div class="panel">
+                <div class="section-head"><div><h3>Order Manifest</h3><p>Manifest navigation is ready. We will connect this to sack creation, origin scan counts, and route dispatch controls.</p></div></div>
+                <div class="placeholder-grid"><div class="metric"><span>Manifest Type</span><strong>Origin</strong><small>Create sacks from verified scans</small></div><div class="metric"><span>Mismatch Rule</span><strong>Alert</strong><small>Any missing AWB escalates</small></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-orders-demanifest">
+              <div class="panel">
+                <div class="section-head"><div><h3>Order Demanifest</h3><p>Demanifest navigation is ready. This will be destination scanning, shortage detection, and branch receiving proof.</p></div></div>
+                <div class="placeholder-grid"><div class="metric"><span>Demanifest Type</span><strong>Destination</strong><small>Scan every parcel out of sack</small></div><div class="metric"><span>Shortage</span><strong>Highest alert</strong><small>Unscanned parcels cannot disappear</small></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-manifest-reached">
+              <div class="panel">
+                <div class="section-head"><div><h3>Reached Manifest</h3><p>Reached tab is ready. It will show sacks received at destination, time received, scan completion, and branch owner.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-manifest-dispute">
+              <div class="panel">
+                <div class="section-head"><div><h3>Manifest Dispute</h3><p>Dispute tab is ready. Short scans, damaged parcels, wrong-route sacks, and missing proof will live here.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-tickets-emergency">
+              <div class="panel">
+                <div class="section-head"><div><h3>Emergency Tickets</h3><p>Emergency ticket navigation is ready. This will scream for 24-hour breaches, 3-day transit alerts, cash exposure, and sack shortages.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-tickets-medium">
+              <div class="panel">
+                <div class="section-head"><div><h3>Medium Tickets</h3><p>Medium priority queue is ready for problems that need action but are not yet business-critical.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-tickets-okay">
+              <div class="panel">
+                <div class="section-head"><div><h3>Okay Tickets</h3><p>Okay queue is ready for low-risk follow-ups, remarks, and non-urgent operational checks.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-tickets-summary">
+              <div class="panel">
+                <div class="section-head"><div><h3>Ticket Summary</h3><p>Ticket summary is ready. We will show open, resolved, solve time, owner performance, and repeated branch problems.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-riders-report">
+              <div class="panel">
+                <div class="section-head"><div><h3>Rider Report</h3><p>Rider report navigation is ready. It will track route attempts, fake refusals, delivery proof, cash held, and block rules.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-riders-summary">
+              <div class="panel">
+                <div class="section-head"><div><h3>Rider Summary</h3><p>Rider summary is ready for branch-wise rider health, cash risk, productivity, and breach history.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-finance-wallets">
+              <div class="panel">
+                <div class="section-head"><div><h3>Wallets</h3><p>Wallet navigation is ready. Client payable wallet, NovaX revenue, rider cash, branch cash, and unsettled COD will stay separate.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-finance-summary">
+              <div class="panel">
+                <div class="section-head"><div><h3>Finance Summary</h3><p>Finance summary is ready for COD collected, client payable, delivery charges, expenses, net cash, and settlement health.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-finance-overall">
+              <div class="panel">
+                <div class="section-head"><div><h3>Finance Overall</h3><p>Overall finance navigation is ready. This will combine all revenue, liability, expense, payout, and ledger truth in one screen.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-finance-revenue">
+              <div class="panel">
+                <div class="section-head"><div><h3>Revenue</h3><p>Revenue navigation is ready. This will show NovaX earned delivery charges only, not client COD payable.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-clients-summary">
+              <div class="panel">
+                <div class="section-head"><div><h3>Client Summary</h3><p>Client summary navigation is ready. We will show each client's revenue, payable, problems, resolve rate, rate card, and account health.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-users-edit">
+              <div class="panel">
+                <div class="section-head"><div><h3>Edit Users</h3><p>Edit users navigation is ready. We will add role changes, branch assignments, access blocking, and audit history here.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-api-shopify">
+              <div class="panel">
+                <div class="section-head"><div><h3>Shopify API</h3><p>Shopify navigation is ready. This will hold store connection, token status, order sync, COD mapping, and webhook logs.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-api-web">
+              <div class="panel">
+                <div class="section-head"><div><h3>Web API</h3><p>Web API navigation is ready. This will become the custom API area for sellers booking from their own websites.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-api-woo-commerce">
+              <div class="panel">
+                <div class="section-head"><div><h3>Woo Commerce API</h3><p>Woo Commerce navigation is ready. This will hold connection health, auto-booking rules, COD sync, and order logs.</p></div></div>
+              </div>
+            </section>
           </div>
         </div>
       </section>
@@ -4333,6 +4626,49 @@
     state.activeClientTab = state.activeClientTab || "dashboard";
     state.activeAdminTab = state.activeAdminTab || "dashboard";
     state.activeStatusQueue = state.activeStatusQueue || STATUS_TAGS[0];
+
+    const ADMIN_NAV_GROUPS = {
+      orders: ["orders-view-all", "orders-report", "orders-processing", "orders-manifest", "orders-demanifest"],
+      manifest: ["manifest-transit", "manifest-reached", "manifest-dispute"],
+      tickets: ["tickets-emergency", "tickets-medium", "tickets-okay", "tickets-summary"],
+      riders: ["riders-route", "riders-report", "riders-summary"],
+      finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-summary", "finance-overall", "finance-revenue"],
+      clients: ["clients-summary", "clients-create-new", "clients-clients"],
+      users: ["users-create", "users-edit"],
+      api: ["api-shopify", "api-web", "api-woo-commerce"]
+    };
+
+    const ADMIN_TAB_ALIASES = {
+      orders: "orders-view-all",
+      clients: "clients-clients",
+      operations: "tickets-emergency",
+      transit: "manifest-transit",
+      riders: "riders-route",
+      payments: "finance-invoices",
+      expenses: "finance-expense",
+      users: "users-create",
+      reports: "total-summary"
+    };
+
+    const ADMIN_TAB_MODULES = {
+      "orders-view-all": "admin-orders",
+      "manifest-transit": "admin-transit",
+      "riders-route": "admin-riders",
+      "finance-expense": "admin-expenses",
+      "finance-invoices": "admin-payments",
+      "clients-create-new": "admin-clients",
+      "clients-clients": "admin-clients",
+      "users-create": "admin-users",
+      "total-summary": "admin-reports"
+    };
+
+    function normalizeAdminTab(id) {
+      return ADMIN_TAB_ALIASES[id] || id || "dashboard";
+    }
+
+    function getAdminGroupForTab(id) {
+      return Object.entries(ADMIN_NAV_GROUPS).find(([, tabs]) => tabs.includes(id))?.[0] || "";
+    }
 
     function loadState() {
       try {
@@ -4994,11 +5330,27 @@
 
     function renderAdmin() {
       syncRiderAccess();
-      document.querySelectorAll(".admin-tab").forEach(btn => {
+      state.activeAdminTab = normalizeAdminTab(state.activeAdminTab);
+      const activeAdminModule = ADMIN_TAB_MODULES[state.activeAdminTab] || `admin-${state.activeAdminTab}`;
+      const activeAdminGroup = getAdminGroupForTab(state.activeAdminTab);
+
+      document.querySelectorAll(".admin-nav-main[data-admin-tab], .admin-tab").forEach(btn => {
         btn.classList.toggle("active", btn.dataset.adminTab === state.activeAdminTab);
       });
+      document.querySelectorAll(".admin-subtab").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.adminTab === state.activeAdminTab);
+      });
+      document.querySelectorAll(".admin-nav-group").forEach(group => {
+        const isActiveGroup = group.dataset.adminGroup === activeAdminGroup;
+        group.classList.toggle("open", isActiveGroup || group.classList.contains("manual-open"));
+        const trigger = group.querySelector("[data-admin-group-toggle]");
+        if (trigger) {
+          trigger.classList.toggle("active", isActiveGroup);
+          trigger.setAttribute("aria-expanded", String(group.classList.contains("open")));
+        }
+      });
       document.querySelectorAll(".admin-module").forEach(module => {
-        module.classList.toggle("active", module.id === `admin-${state.activeAdminTab}`);
+        module.classList.toggle("active", module.id === activeAdminModule);
       });
 
       const m = metrics();
@@ -5442,7 +5794,7 @@
     }
 
     function showAdminTab(id) {
-      state.activeAdminTab = id;
+      state.activeAdminTab = normalizeAdminTab(id);
       saveState();
       renderAdmin();
       tickMeters();
@@ -6175,8 +6527,18 @@
       btn.addEventListener("click", () => showClientTab(btn.dataset.clientTab));
     });
 
-    document.querySelectorAll(".admin-tab").forEach(btn => {
+    document.querySelectorAll(".admin-nav-main[data-admin-tab], .admin-subtab, .admin-tab").forEach(btn => {
       btn.addEventListener("click", () => showAdminTab(btn.dataset.adminTab));
+    });
+
+    document.querySelectorAll("[data-admin-group-toggle]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const group = btn.closest(".admin-nav-group");
+        if (!group) return;
+        group.classList.toggle("manual-open");
+        const isOpen = group.classList.toggle("open");
+        btn.setAttribute("aria-expanded", String(isOpen));
+      });
     });
 
     document.getElementById("clientMenuToggle").addEventListener("click", () => {
