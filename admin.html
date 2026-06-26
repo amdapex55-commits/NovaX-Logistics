@@ -2181,6 +2181,88 @@
       margin-top: 14px;
     }
 
+    .processing-desk {
+      display: grid;
+      grid-template-columns: minmax(260px, .8fr) minmax(320px, 1.2fr);
+      gap: 14px;
+      align-items: stretch;
+      margin-top: 14px;
+    }
+
+    .processing-preview,
+    .processing-console,
+    .soft-panel {
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius);
+      background: linear-gradient(145deg, rgba(18,56,41,.72), rgba(16,24,21,.92));
+      padding: 16px;
+    }
+
+    .processing-preview {
+      display: grid;
+      align-content: center;
+      gap: 12px;
+      min-height: 260px;
+      border-color: rgba(31,209,142,.18);
+    }
+
+    .processing-preview strong {
+      font-size: 24px;
+      letter-spacing: -.03em;
+    }
+
+    .processing-preview p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .processing-console {
+      display: grid;
+      gap: 12px;
+      min-height: 260px;
+    }
+
+    .processing-console > label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .processing-console > input {
+      min-height: 72px;
+      border-radius: 18px;
+      border-color: rgba(31,209,142,.28);
+      background: rgba(3,10,8,.72);
+      color: #ffffff;
+      font-size: clamp(22px, 4vw, 38px);
+      font-weight: 900;
+      letter-spacing: .02em;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .processing-current {
+      border: 1px dashed rgba(31,209,142,.24);
+      border-radius: var(--radius);
+      padding: 12px;
+      color: var(--muted);
+      background: rgba(0,0,0,.16);
+    }
+
+    .processing-auth {
+      display: none;
+      border-top: 1px solid rgba(255,255,255,.08);
+      padding-top: 12px;
+    }
+
+    .processing-auth.open {
+      display: block;
+      animation: fadeUp .22s ease both;
+    }
+
     .required-star {
       color: var(--green-2);
       font-weight: 900;
@@ -3276,6 +3358,15 @@
         grid-template-columns: 1fr;
       }
 
+      .processing-desk {
+        grid-template-columns: 1fr;
+      }
+
+      .processing-preview,
+      .processing-console {
+        min-height: auto;
+      }
+
       .section-head,
       .toolbar {
         display: grid;
@@ -4001,8 +4092,11 @@
                   </div>
                 </div>
                 <div class="filter-bar">
-                  <div class="field"><label>Search</label><input id="adminOrderSearch" placeholder="AWB, client, city, status"></div>
+                  <div class="field"><label>Search</label><input id="adminOrderSearch" placeholder="AWB, consignee, shipper, city, address"></div>
+                  <div class="field"><label>Client</label><select id="adminOrderClientFilter"></select></div>
                   <div class="field"><label>Status</label><select id="adminOrderStatusFilter"></select></div>
+                  <div class="field"><label>City</label><select id="adminOrderCityFilter"></select></div>
+                  <div class="field"><label>Origin</label><select id="adminOrderOriginFilter"></select></div>
                   <div class="field"><label>Branch</label><select id="adminOrderBranchFilter"><option value="">All branches</option><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option></select></div>
                   <div class="field"><label>Alert</label><select id="adminOrderAlertFilter"><option value="">All alerts</option><option value="critical">Critical</option><option value="warning">Warning</option><option value="ok">OK</option></select></div>
                   <button class="ghost-btn" id="clearAdminFiltersBtn">Clear</button>
@@ -4010,7 +4104,7 @@
                 <div class="table-wrap">
                   <div class="wide-scroll">
                     <table>
-                      <thead><tr><th>AWB</th><th>Client</th><th>Consignee</th><th>City</th><th>COD</th><th>Status</th><th>Aging</th><th>Alert</th><th>Owner</th></tr></thead>
+                      <thead><tr><th>AWB</th><th>Consignee Name</th><th>Address</th><th>City</th><th>Shipper Name</th><th>Origin</th><th>COD</th><th>Weight</th><th>Current Status</th><th>Timer</th><th>Last Process</th></tr></thead>
                       <tbody id="adminOrderRows"></tbody>
                     </table>
                   </div>
@@ -4207,15 +4301,54 @@
 
             <section class="admin-module" id="admin-orders-report">
               <div class="panel">
-                <div class="section-head"><div><h3>Order Report</h3><p>Report navigation is ready. Next we will add city, client, status, rider, aging, and date filters for high-volume parcel reporting.</p></div></div>
-                <div class="placeholder-grid"><div class="metric"><span>Report Scope</span><strong>100K parcels</strong><small>Built for exports and summaries</small></div><div class="metric"><span>Next Build</span><strong>Filters</strong><small>Client, branch, status, date</small></div></div>
+                <div class="section-head"><div><h3>Order Report</h3><p>Parcel journey aging report with delivery time, current status clock, SLA alert, scan count, and last processor.</p></div></div>
+                <div class="grid metrics" id="orderReportMetrics"></div>
+                <div class="filter-bar" style="margin-top:14px">
+                  <div class="field"><label>Report Search</label><input id="orderReportSearch" placeholder="AWB, consignee, client, city"></div>
+                  <div class="field"><label>Status</label><select id="orderReportStatusFilter"></select></div>
+                  <div class="field"><label>Client</label><select id="orderReportClientFilter"></select></div>
+                  <button class="ghost-btn" id="clearOrderReportFiltersBtn">Clear Report Filters</button>
+                </div>
+                <div class="table-wrap" style="margin-top:14px">
+                  <div class="wide-scroll">
+                    <table>
+                      <thead><tr><th>AWB</th><th>Client</th><th>Consignee</th><th>Journey Aging</th><th>Current Clock</th><th>Progress</th><th>Report</th><th>Last Processed</th></tr></thead>
+                      <tbody id="orderReportRows"></tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             </section>
 
             <section class="admin-module" id="admin-orders-processing">
               <div class="panel">
-                <div class="section-head"><div><h3>Order Processing</h3><p>Processing queue is ready. This will become the desk for fresh bookings, pickup assignment, branch receipt, and missing scan pressure.</p></div></div>
-                <div class="placeholder-grid"><div class="metric"><span>Queue</span><strong>New booked</strong><small>Pickup and origin controls</small></div><div class="metric"><span>Control</span><strong>Scan required</strong><small>No parcel moves without proof</small></div></div>
+                <div class="section-head"><div><h3>Order Processing</h3><p>Warehouse and branch status update desk. Type an AWB, press Enter, choose the next status, then verify the processor before the journey updates.</p></div></div>
+                <div class="processing-desk">
+                  <aside class="processing-preview" id="processingPreview">
+                    <strong>No parcel selected</strong>
+                    <p>Enter a tracking ID in the processing box to see current status, branch, clock, and last processed details.</p>
+                  </aside>
+                  <div class="processing-console">
+                    <label for="processingAwbInput">Tracking ID</label>
+                    <input id="processingAwbInput" placeholder="Type AWB then press Enter, e.g. NX-2406-1003" autocomplete="off">
+                    <div class="processing-current" id="processingCurrentStatus">Waiting for tracking ID...</div>
+                    <div class="mini-form">
+                      <div class="field"><label>Update Status</label><select id="processingStatusSelect"></select></div>
+                      <button class="action-btn" id="processingConfirmBtn">Confirm Status Update</button>
+                    </div>
+                    <div class="processing-auth" id="processingAuthBox">
+                      <div class="mini-form">
+                        <div class="field"><label>Processor Username</label><input id="processingUsername" placeholder="username"></div>
+                        <div class="field"><label>Password</label><input id="processingPassword" type="password" placeholder="password"></div>
+                        <button class="action-btn" id="processingSubmitBtn">Verify And Update Journey</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="panel soft-panel" style="margin-top:14px">
+                  <div class="section-head"><div><h3>Recent Processing Log</h3><p>Admin sees who processed the parcel and when. Client journey only shows branch and exact time.</p></div></div>
+                  <div class="log-feed" id="processingLogFeed"></div>
+                </div>
               </div>
             </section>
 
@@ -4434,6 +4567,8 @@
       selectedAwb: "NX-2406-1001",
       activeFilter: "all",
       activeStatusQueue: "Parcel now in transit",
+      activeProcessingAwb: "NX-2406-1003",
+      pendingProcessingStatus: "",
       activeRateClient: "",
       activeSackMode: "create",
       clientDateFrom: "2026-06-01",
@@ -4724,6 +4859,65 @@
       return "Admin Control";
     }
 
+    function normalizeStateShape() {
+      state.parcels.forEach((parcel, index) => {
+        const client = clientById(parcel.clientId);
+        parcel.phone = parcel.phone || `+92 300 000${String(index + 1).padStart(4, "0")}`;
+        parcel.address = parcel.address || `${parcel.consignee} delivery address, ${parcel.city}`;
+        parcel.pickupCity = parcel.pickupCity || client.city || "Karachi";
+        parcel.origin = parcel.origin || parcel.pickupCity;
+        parcel.weight = parcel.weight || `${(0.6 + index * 0.35).toFixed(1)} kg`;
+        parcel.service = parcel.service || "COD Standard";
+        parcel.totalStages = STATUS_TAGS.length - 1;
+        parcel.stage = Math.max(0, STATUS_TAGS.indexOf(parcel.status));
+        parcel.steps = Array.isArray(parcel.steps) && parcel.steps.length ? parcel.steps : ["New booked"];
+        parcel.processHistory = Array.isArray(parcel.processHistory) ? parcel.processHistory : parcel.steps.map((step, stepIndex) => ({
+          status: step,
+          branch: step.includes("destination") || step.includes("delivery") || step === "Delivered" ? `${parcel.city} Hub` : parcel.branch,
+          time: stepIndex === parcel.steps.length - 1 ? parcel.updated : "system logged",
+          processor: stepIndex === parcel.steps.length - 1 ? "System import" : "Journey engine",
+          username: "system",
+          at: `${parcel.date || "2026-06-24"} ${stepIndex === parcel.steps.length - 1 ? parcel.updated : "08:00"}`
+        }));
+        parcel.journeyStartedAt = parcel.journeyStartedAt || `${parcel.date || "2026-06-24"} 08:00`;
+        parcel.lastProcessedBy = parcel.lastProcessedBy || parcel.processHistory.at(-1)?.processor || "System import";
+        parcel.lastProcessedAt = parcel.lastProcessedAt || parcel.processHistory.at(-1)?.at || `${parcel.date || "2026-06-24"} ${parcel.updated}`;
+      });
+      state.activeProcessingAwb = state.activeProcessingAwb || state.parcels[0]?.awb || "";
+      state.pendingProcessingStatus = state.pendingProcessingStatus || "";
+    }
+
+    function parcelOrigin(parcel) {
+      return parcel.origin || parcel.pickupCity || clientById(parcel.clientId).city || "Karachi";
+    }
+
+    function parcelJourneyHours(parcel) {
+      const start = new Date(`${parcel.journeyStartedAt || parcel.date || "2026-06-24"} ${String(parcel.journeyStartedAt || "").includes(":") ? "" : "08:00"}`.trim());
+      const nowTime = new Date();
+      if (!Number.isNaN(start.getTime())) {
+        return Math.max(0, Math.round((nowTime - start) / 36e5));
+      }
+      return Math.max(0, (parcel.steps.length * 8) + Number(parcel.statusAgeHours || 0));
+    }
+
+    function deliveryJourneyLabel(parcel) {
+      if (isDeliveredLedgerParcel(parcel)) return `Delivered in ${agingLabel(parcelJourneyHours(parcel))}`;
+      return `${agingLabel(parcelJourneyHours(parcel))} open journey`;
+    }
+
+    function lastProcess(parcel) {
+      const last = parcel.processHistory?.at(-1);
+      return {
+        by: parcel.lastProcessedBy || last?.processor || "System import",
+        at: parcel.lastProcessedAt || last?.at || `${parcel.date || "2026-06-24"} ${parcel.updated}`,
+        branch: last?.branch || parcel.branch
+      };
+    }
+
+    function processingParcel() {
+      return state.parcels.find(p => p.awb === state.activeProcessingAwb) || null;
+    }
+
     function defaultRateCard(rate = 250) {
       return {
         overnight: rate,
@@ -4804,12 +4998,22 @@
       return "good";
     }
 
-    function setParcelStatus(parcel, status) {
+    function setParcelStatus(parcel, status, processor = {}) {
+      const exactTime = time();
+      const stamp = `${new Date().toISOString().slice(0, 10)} ${exactTime}`;
       parcel.status = status;
       parcel.statusAgeHours = 0;
-      parcel.updated = time();
+      parcel.updated = exactTime;
       parcel.stage = Math.max(0, STATUS_TAGS.indexOf(status));
       if (!parcel.steps.includes(status)) parcel.steps.push(status);
+      const processorName = processor.name || currentAdminName();
+      const username = processor.username || "admin";
+      const branch = processor.branch || parcel.branch || `${parcel.city} Hub`;
+      parcel.branch = branch;
+      parcel.lastProcessedBy = processorName;
+      parcel.lastProcessedAt = stamp;
+      parcel.processHistory = Array.isArray(parcel.processHistory) ? parcel.processHistory : [];
+      parcel.processHistory.push({ status, branch, time: exactTime, processor: processorName, username, at: stamp });
     }
 
     function setStatusQueue(status) {
@@ -5355,16 +5559,54 @@
 
       const m = metrics();
       const statusFilterEl = document.getElementById("adminOrderStatusFilter");
+      const clientFilterEl = document.getElementById("adminOrderClientFilter");
+      const cityFilterEl = document.getElementById("adminOrderCityFilter");
+      const originFilterEl = document.getElementById("adminOrderOriginFilter");
       const branchFilterEl = document.getElementById("adminOrderBranchFilter");
       const alertFilterEl = document.getElementById("adminOrderAlertFilter");
+      const reportStatusFilterEl = document.getElementById("orderReportStatusFilter");
+      const reportClientFilterEl = document.getElementById("orderReportClientFilter");
       const adminOrderSearch = document.getElementById("adminOrderSearch")?.value.trim().toLowerCase() || "";
+      const orderReportSearch = document.getElementById("orderReportSearch")?.value.trim().toLowerCase() || "";
       const statusFilter = statusFilterEl?.value || "";
+      const clientFilter = clientFilterEl?.value || "";
+      const cityFilter = cityFilterEl?.value || "";
+      const originFilter = originFilterEl?.value || "";
       const branchFilter = branchFilterEl?.value || "";
       const alertFilter = alertFilterEl?.value || "";
+      const reportStatusFilter = reportStatusFilterEl?.value || "";
+      const reportClientFilter = reportClientFilterEl?.value || "";
       const activeStatus = state.activeStatusQueue || STATUS_TAGS[0];
       if (statusFilterEl) {
         statusFilterEl.innerHTML = `<option value="">All statuses</option>${STATUS_TAGS.map(status => `<option value="${status}">${status}</option>`).join("")}`;
         statusFilterEl.value = statusFilter;
+      }
+      if (reportStatusFilterEl) {
+        reportStatusFilterEl.innerHTML = `<option value="">All statuses</option>${STATUS_TAGS.map(status => `<option value="${status}">${status}</option>`).join("")}`;
+        reportStatusFilterEl.value = reportStatusFilter;
+      }
+      if (clientFilterEl) {
+        clientFilterEl.innerHTML = `<option value="">All clients</option>${state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("")}`;
+        clientFilterEl.value = clientFilter;
+      }
+      if (reportClientFilterEl) {
+        reportClientFilterEl.innerHTML = `<option value="">All clients</option>${state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("")}`;
+        reportClientFilterEl.value = reportClientFilter;
+      }
+      if (cityFilterEl) {
+        const cities = [...new Set(state.parcels.map(p => p.city).filter(Boolean))];
+        cityFilterEl.innerHTML = `<option value="">All cities</option>${cities.map(city => `<option value="${city}">${city}</option>`).join("")}`;
+        cityFilterEl.value = cityFilter;
+      }
+      if (originFilterEl) {
+        const origins = [...new Set(state.parcels.map(parcelOrigin).filter(Boolean))];
+        originFilterEl.innerHTML = `<option value="">All origins</option>${origins.map(origin => `<option value="${origin}">${origin}</option>`).join("")}`;
+        originFilterEl.value = originFilter;
+      }
+      const processingStatusSelect = document.getElementById("processingStatusSelect");
+      if (processingStatusSelect) {
+        processingStatusSelect.innerHTML = STATUS_TAGS.map(status => `<option value="${status}">${status}</option>`).join("");
+        processingStatusSelect.value = state.pendingProcessingStatus || processingParcel()?.status || STATUS_TAGS[0];
       }
 
       const queueCounts = STATUS_TAGS.reduce((acc, status) => {
@@ -5436,34 +5678,123 @@
       document.getElementById("adminOrderRows").innerHTML = state.parcels.filter(p => {
         const client = clientById(p.clientId);
         const alert = alertForParcel(p);
-        const haystack = `${p.awb} ${client.name} ${client.id} ${p.consignee} ${p.city} ${p.status} ${p.branch}`.toLowerCase();
+        const haystack = `${p.awb} ${client.name} ${client.id} ${p.consignee} ${p.address} ${p.city} ${p.status} ${p.branch} ${parcelOrigin(p)} ${p.weight}`.toLowerCase();
         return haystack.includes(adminOrderSearch)
+          && (!clientFilter || p.clientId === clientFilter)
           && (!statusFilter || p.status === statusFilter)
+          && (!cityFilter || p.city === cityFilter)
+          && (!originFilter || parcelOrigin(p) === originFilter)
           && (!branchFilter || p.branch === branchFilter)
           && (!alertFilter || alert.level === alertFilter);
       }).map(p => {
         const client = clientById(p.clientId);
         const alert = alertForParcel(p);
+        const process = lastProcess(p);
+        const transitStarted = STATUS_TAGS.indexOf(p.status) >= STATUS_TAGS.indexOf("Parcel now in transit");
         return `
           <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="selectParcel('${p.awb}')">
             <td><strong>${p.awb}</strong><br><span class="footer-note">${p.updated}</span></td>
-            <td>${client.id}<br><strong>${client.name}</strong></td>
             <td>${p.consignee}<br><span class="footer-note">${p.phone || "phone pending"}</span></td>
+            <td>${p.address || "Address pending"}</td>
             <td>${p.city}</td>
+            <td>${client.name}<br><span class="footer-note">${client.id}</span></td>
+            <td>${parcelOrigin(p)}</td>
             <td>${money(p.cod)}</td>
-            <td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span></td>
+            <td>${p.weight || "0.8 kg"}</td>
+            <td>
+              <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>
+              <div class="footer-note">${alert.label}</div>
+            </td>
             <td><strong>${agingLabel(p.statusAgeHours)}</strong><br><span class="footer-note">${p.status === "Parcel now in transit" ? "transit clock" : "status clock"}</span></td>
             <td>
-              ${alert.level === "critical" ? `<span class="siren-chip">Support + AI now</span><br>` : ""}
-              <span class="chip ${urgencyClass(alert.level)}">${alert.label}</span><br><span class="footer-note">${alert.due}</span>
-            </td>
-            <td>
-              ${p.rider}<br><span class="footer-note">${p.branch}</span>
+              <strong>${process.by}</strong><br><span class="footer-note">${process.at}</span><br>
+              <span class="footer-note">${process.branch} | ${transitStarted ? "transit timer active" : "pre-transit"}</span>
               ${/refused|return/i.test(p.status) ? `<div class="footer-note">${p.returnProof || "Return proof required before manager acceptance."}</div><div class="field"><label>Return proof</label><input id="proof-${p.awb}" value="${p.returnProof || "Photo proof + rider scan + branch receiving signature"}"></div><button class="ghost-btn" onclick="event.stopPropagation(); addReturnProof('${p.awb}')">Add Proof</button>` : ""}
             </td>
           </tr>
         `;
-      }).join("") || `<tr><td colspan="9">No parcels match these filters.</td></tr>`;
+      }).join("") || `<tr><td colspan="11">No parcels match these filters.</td></tr>`;
+
+      const reportRows = state.parcels.filter(p => {
+        const client = clientById(p.clientId);
+        const haystack = `${p.awb} ${client.name} ${client.id} ${p.consignee} ${p.city} ${p.status} ${p.address}`.toLowerCase();
+        return haystack.includes(orderReportSearch)
+          && (!reportStatusFilter || p.status === reportStatusFilter)
+          && (!reportClientFilter || p.clientId === reportClientFilter);
+      });
+      const deliveredReport = reportRows.filter(isDeliveredLedgerParcel).length;
+      const breachedReport = reportRows.filter(p => alertForParcel(p).level === "critical").length;
+      const avgJourney = reportRows.length ? Math.round(reportRows.reduce((sum, p) => sum + parcelJourneyHours(p), 0) / reportRows.length) : 0;
+      const avgProgress = reportRows.length ? Math.round(reportRows.reduce((sum, p) => sum + percent(p.stage, p.totalStages), 0) / reportRows.length) : 0;
+      document.getElementById("orderReportMetrics").innerHTML = [
+        metricCard("Reported Parcels", reportRows.length, percent(reportRows.length, state.parcels.length || 1), "filtered report set", "blue"),
+        metricCard("Delivered", deliveredReport, percent(deliveredReport, reportRows.length || 1), "completed journeys", "good"),
+        metricCard("Avg Journey Aging", agingLabel(avgJourney), Math.min(100, percent(avgJourney, 96)), "booking to current point", avgJourney > 72 ? "red" : "amber"),
+        metricCard("Critical Breaches", breachedReport, Math.min(100, breachedReport * 18), "needs escalation", breachedReport ? "red" : "good")
+      ].join("");
+      document.getElementById("orderReportRows").innerHTML = reportRows.map(p => {
+        const client = clientById(p.clientId);
+        const alert = alertForParcel(p);
+        const process = lastProcess(p);
+        const progress = percent(p.stage, p.totalStages);
+        return `
+          <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}">
+            <td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${parcelOrigin(p)}</span></td>
+            <td>${client.id}<br><strong>${client.name}</strong></td>
+            <td>${p.consignee}<br><span class="footer-note">${p.address}</span></td>
+            <td><strong>${deliveryJourneyLabel(p)}</strong><br><span class="footer-note">Booked ${p.date || "system date"}</span></td>
+            <td><strong>${agingLabel(p.statusAgeHours)}</strong><br><span class="footer-note">${p.status}</span></td>
+            <td>
+              <div class="meter ${progress < 45 ? "amber" : ""}"><span style="width:${progress}%"></span></div>
+              <div class="meter-caption"><span>${p.steps.length} scan logs</span><span>${progress}%</span></div>
+            </td>
+            <td>
+              ${alert.level === "critical" ? `<span class="siren-chip">Escalate now</span><br>` : ""}
+              <span class="chip ${urgencyClass(alert.level)}">${alert.label}</span><br><span class="footer-note">${alert.due}</span>
+            </td>
+            <td><strong>${process.by}</strong><br><span class="footer-note">${process.at}</span><br><span class="footer-note">${process.branch}</span></td>
+          </tr>
+        `;
+      }).join("") || `<tr><td colspan="8">No report rows match these filters.</td></tr>`;
+
+      const processParcel = processingParcel();
+      const preview = document.getElementById("processingPreview");
+      const currentStatus = document.getElementById("processingCurrentStatus");
+      const processingInput = document.getElementById("processingAwbInput");
+      if (processingInput && state.activeProcessingAwb && !processingInput.value) processingInput.value = state.activeProcessingAwb;
+      if (preview && currentStatus) {
+        if (processParcel) {
+          const client = clientById(processParcel.clientId);
+          const process = lastProcess(processParcel);
+          const alert = alertForParcel(processParcel);
+          preview.innerHTML = `
+            <span class="chip ${statusClass(processParcel)}">${processParcel.status}</span>
+            <strong>${processParcel.awb}</strong>
+            <p>${processParcel.consignee} | ${processParcel.address}</p>
+            <div class="money-grid">
+              ${moneyBox("Shipper", client.name, client.id)}
+              ${moneyBox("City", processParcel.city, `Origin ${parcelOrigin(processParcel)}`)}
+              ${moneyBox("COD", money(processParcel.cod), `Weight ${processParcel.weight}`)}
+              ${moneyBox("Clock", agingLabel(processParcel.statusAgeHours), alert.label)}
+            </div>
+            <div class="resolved-note"><strong>Last processed:</strong> ${process.by} at ${process.at}. Branch: ${process.branch}.</div>
+          `;
+          currentStatus.innerHTML = `<strong>Current status:</strong> ${processParcel.status} | ${processParcel.branch} | ${processParcel.updated}`;
+        } else {
+          preview.innerHTML = `<strong>No parcel selected</strong><p>Enter a tracking ID in the processing box to see current status, branch, clock, and last processed details.</p>`;
+          currentStatus.textContent = "Waiting for tracking ID...";
+        }
+      }
+      document.getElementById("processingLogFeed").innerHTML = state.parcels.flatMap(parcel => {
+        const client = clientById(parcel.clientId);
+        return (parcel.processHistory || []).slice(-3).map(log => ({ parcel, client, log }));
+      }).slice(-12).reverse().map(({ parcel, client, log }) => `
+        <div class="log-item">
+          <strong>${parcel.awb}</strong>
+          <div><strong>${log.status}</strong><div class="footer-note" style="margin-top:2px">${client.name} | ${parcel.consignee} | ${log.branch}</div></div>
+          <span class="chip info">${log.processor} | ${log.at}</span>
+        </div>
+      `).join("") || `<div class="ops-card"><strong>No processing log yet</strong><p>Scan a parcel and update status to create the first audit entry.</p></div>`;
 
       document.getElementById("pendingClientList").innerHTML = state.pendingClients.map(client => `
         <div class="ops-card">
@@ -5729,6 +6060,7 @@
     }
 
     function render() {
+      normalizeStateShape();
       renderMetrics();
       renderClientParcels();
       renderJourney();
@@ -5799,6 +6131,89 @@
       renderAdmin();
       tickMeters();
       window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function lookupProcessingParcel() {
+      const input = document.getElementById("processingAwbInput");
+      const awb = (input?.value || "").trim().toUpperCase();
+      const parcel = state.parcels.find(p => p.awb.toUpperCase() === awb);
+      if (!parcel) {
+        state.activeProcessingAwb = "";
+        saveState();
+        renderAdmin();
+        toast("No parcel found for this tracking ID.");
+        return;
+      }
+      state.activeProcessingAwb = parcel.awb;
+      state.pendingProcessingStatus = parcel.status;
+      saveState();
+      renderAdmin();
+      toast(`${parcel.awb} loaded for processing.`);
+    }
+
+    function processingBranchForStatus(parcel, status) {
+      if (/destination|delivery|delivered|refused|consignee|reattempt|reassigned/i.test(status)) return `${parcel.city} Hub`;
+      if (/return received at origin|return out for delivery|returned/i.test(status)) return `${parcelOrigin(parcel)} Hub`;
+      if (/transit/i.test(status)) return `${parcelOrigin(parcel)} to ${parcel.city}`;
+      return `${parcelOrigin(parcel)} Hub`;
+    }
+
+    function requestProcessingAuth() {
+      const parcel = processingParcel();
+      if (!parcel) {
+        toast("Enter a valid tracking ID first.");
+        return;
+      }
+      const status = document.getElementById("processingStatusSelect")?.value || "";
+      if (!status) {
+        toast("Select a status to update.");
+        return;
+      }
+      state.pendingProcessingStatus = status;
+      saveState();
+      document.getElementById("processingAuthBox")?.classList.add("open");
+      document.getElementById("processingUsername")?.focus();
+      toast("Processor username and password required.");
+    }
+
+    function processorFromCredentials(username, password) {
+      const clean = username.trim().toLowerCase();
+      if (!clean || !password.trim()) return null;
+      const user = state.users.find(item => {
+        const aliases = [item.id, item.name, item.role].map(value => String(value || "").toLowerCase().replace(/\s+/g, "."));
+        return aliases.includes(clean) || String(item.name || "").toLowerCase() === clean;
+      });
+      return {
+        name: user ? user.name : username.trim(),
+        username: username.trim(),
+        role: user ? user.role : "Warehouse Processor",
+        branch: user ? user.branch : ""
+      };
+    }
+
+    function submitProcessingUpdate() {
+      const parcel = processingParcel();
+      if (!parcel) {
+        toast("Enter a valid tracking ID first.");
+        return;
+      }
+      const username = document.getElementById("processingUsername")?.value || "";
+      const password = document.getElementById("processingPassword")?.value || "";
+      const processor = processorFromCredentials(username, password);
+      if (!processor || password.trim().length < 3) {
+        toast("Valid username and password are required.");
+        return;
+      }
+      const status = state.pendingProcessingStatus || document.getElementById("processingStatusSelect")?.value || parcel.status;
+      const branch = processingBranchForStatus(parcel, status);
+      setParcelStatus(parcel, status, { name: processor.name, username: processor.username, branch });
+      parcel.exception = status === "Delivered" ? parcel.exception.replace("Consignee denies refusal attempt", "").trim() : parcel.exception;
+      state.selectedAwb = parcel.awb;
+      saveState();
+      document.getElementById("processingAuthBox")?.classList.remove("open");
+      document.getElementById("processingPassword").value = "";
+      render();
+      toast(`${parcel.awb} updated to ${status}. Journey synced to admin and client data.`);
     }
 
     function toast(message) {
@@ -6456,11 +6871,22 @@
 
     function clearAdminFilters() {
       document.getElementById("adminOrderSearch").value = "";
+      document.getElementById("adminOrderClientFilter").value = "";
       document.getElementById("adminOrderStatusFilter").value = "";
+      document.getElementById("adminOrderCityFilter").value = "";
+      document.getElementById("adminOrderOriginFilter").value = "";
       document.getElementById("adminOrderBranchFilter").value = "";
       document.getElementById("adminOrderAlertFilter").value = "";
       renderAdmin();
       toast("Admin parcel filters cleared.");
+    }
+
+    function clearOrderReportFilters() {
+      document.getElementById("orderReportSearch").value = "";
+      document.getElementById("orderReportStatusFilter").value = "";
+      document.getElementById("orderReportClientFilter").value = "";
+      renderAdmin();
+      toast("Order report filters cleared.");
     }
 
     function printAwb() {
@@ -6550,10 +6976,29 @@
     document.getElementById("clientSearch").addEventListener("input", renderClientParcels);
     document.getElementById("applyDateRangeBtn").addEventListener("click", applyClientDateRange);
     document.getElementById("adminOrderSearch").addEventListener("input", renderAdmin);
+    document.getElementById("adminOrderClientFilter").addEventListener("change", renderAdmin);
     document.getElementById("adminOrderStatusFilter").addEventListener("change", renderAdmin);
+    document.getElementById("adminOrderCityFilter").addEventListener("change", renderAdmin);
+    document.getElementById("adminOrderOriginFilter").addEventListener("change", renderAdmin);
     document.getElementById("adminOrderBranchFilter").addEventListener("change", renderAdmin);
     document.getElementById("adminOrderAlertFilter").addEventListener("change", renderAdmin);
     document.getElementById("clearAdminFiltersBtn").addEventListener("click", clearAdminFilters);
+    document.getElementById("orderReportSearch").addEventListener("input", renderAdmin);
+    document.getElementById("orderReportStatusFilter").addEventListener("change", renderAdmin);
+    document.getElementById("orderReportClientFilter").addEventListener("change", renderAdmin);
+    document.getElementById("clearOrderReportFiltersBtn").addEventListener("click", clearOrderReportFilters);
+    document.getElementById("processingAwbInput").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        lookupProcessingParcel();
+      }
+    });
+    document.getElementById("processingStatusSelect").addEventListener("change", event => {
+      state.pendingProcessingStatus = event.target.value;
+      saveState();
+    });
+    document.getElementById("processingConfirmBtn").addEventListener("click", requestProcessingAuth);
+    document.getElementById("processingSubmitBtn").addEventListener("click", submitProcessingUpdate);
     document.getElementById("opsBranchFilter").addEventListener("change", renderAdmin);
     document.getElementById("opsUrgencyFilter").addEventListener("change", renderAdmin);
     document.getElementById("opsResolvedFilter").addEventListener("change", renderAdmin);
