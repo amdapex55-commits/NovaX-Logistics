@@ -160,7 +160,7 @@
   <script>
     const PKR = new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 });
     const time = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    const STORAGE_KEY = "novaxLogisticsStateV8";
+    const STORAGE_KEY = "novaxLogisticsStateV9";
     const STATUS_TAGS = ["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Refused","Consignee not available","Reattempt","Reassigned","Out of service area","Ready for return","Return in transit","Return received at origin","Return out for delivery","Parcel returned to consignee"];
     const baseState = {
       selectedAwb:"N0010001", activeRider:"R-17",
@@ -184,8 +184,23 @@
       paymentLogs:[], operationsIssues:[], invoices:[],
       branches:[], expenses:[], transit:[], completedSacks:[], resolvedAlerts:[], pendingClients:[], users:[], tickets:[], ticketNotifications:[], walletWithdrawals:[]
     };
+    function cleanStartState(){
+      return {
+        _cleanStartV1:true,
+        selectedAwb:"", activeRider:"",
+        client:{ id:"CL-0000", name:"New Merchant Workspace" },
+        clients:[{ id:"CL-0000", name:"New Merchant Workspace", city:"" }],
+        riders:[], parcels:[],
+        paymentLogs:[], operationsIssues:[], invoices:[],
+        branches:[], expenses:[], transit:[], completedSacks:[], resolvedAlerts:[], pendingClients:[], users:[], tickets:[], ticketNotifications:[], walletWithdrawals:[]
+      };
+    }
     let state = loadState();
-    state.activeRider = state.activeRider || (state.riders[0] && state.riders[0].id) || "R-17";
+    if (!state._cleanStartV1) {
+      state = cleanStartState();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+    state.activeRider = state.activeRider || (state.riders[0] && state.riders[0].id) || "";
     state.riders = Array.isArray(state.riders) ? state.riders : baseState.riders;
 
     function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?JSON.parse(s):structuredClone(baseState); }catch(e){ return structuredClone(baseState); } }
@@ -208,6 +223,19 @@
         sel.value = state.activeRider;
       }
       const rider = riderById(state.activeRider);
+      if (!rider) {
+        document.getElementById("riderWallet").innerHTML = [
+          moneyBox("COD in my account", money(0), "no rider selected"),
+          moneyBox("Cash limit", money(0), "create rider in admin"),
+          moneyBox("Delivered by me", 0, "no history"),
+          moneyBox("Access", "Waiting", "no rider login yet")
+        ].join("");
+        const note = document.getElementById("riderRouteNote");
+        if (note) note.textContent = "Create a rider in admin, then assign parcels out for delivery.";
+        document.getElementById("riderStops").innerHTML = `<div class="ops-card"><strong>No rider account yet</strong><p>Create a rider user from admin to start receiving assigned parcels.</p></div>`;
+        document.getElementById("riderHistory").innerHTML = `<div class="ops-card"><strong>No rider history yet</strong><p>Delivered, refused, and not-available updates will appear here after real activity.</p></div>`;
+        return;
+      }
       const receivable = riderReceivable(rider.id);
       const deliveredByMe = (state.parcels||[]).filter(p=>p.deliveredBy===rider.id).length;
       const blocked = (rider.cashHeld + receivable) > rider.cashLimit;
@@ -312,7 +340,7 @@
     }
 
     document.getElementById("riderSelect").addEventListener("change", e => { state.activeRider = e.target.value; saveState(); renderRider(); });
-    document.getElementById("riderRefreshBtn").addEventListener("click", () => { state = loadState(); state.activeRider = state.activeRider || "R-17"; renderRider(); toast("Route refreshed from portal."); });
+    document.getElementById("riderRefreshBtn").addEventListener("click", () => { state = loadState(); state.activeRider = state.activeRider || (state.riders[0] && state.riders[0].id) || ""; renderRider(); toast("Route refreshed from portal."); });
     document.getElementById("riderPhotoInput").addEventListener("change", e => handleRiderPhoto(e.target.files && e.target.files[0]));
     document.getElementById("deliverFlash").addEventListener("click", () => document.getElementById("deliverFlash").classList.remove("show"));
     setInterval(()=>{ const el=document.getElementById("clockD"); if(el) el.textContent=`Live ${time()}`; }, 1000);

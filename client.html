@@ -548,7 +548,7 @@
     const PKR = new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 });
     const now = () => new Date();
     const time = () => now().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    const STORAGE_KEY = "novaxLogisticsStateV8";
+    const STORAGE_KEY = "novaxLogisticsStateV9";
     const STATUS_TAGS = ["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Refused","Consignee not available","Reattempt","Reassigned","Out of service area","Ready for return","Return in transit","Return received at origin","Return out for delivery","Parcel returned to consignee"];
     const baseState = {
       selectedAwb:"N0010001", activeStatusQueue:"Parcel now in transit", activeRateClient:"", activeSackMode:"create",
@@ -603,7 +603,23 @@
       ],
       resolvedAlerts:[]
     };
+    function cleanStartState(){
+      const blankClient={ id:"CL-0000", name:"New Merchant Workspace", owner:"", tier:"Starter", city:"", walletTopup:0, shippingDue:0, risk:0, status:"Draft", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, problemsResolved:0, health:0, walletBalance:0 };
+      return {
+        _cleanStartV1:true,
+        selectedAwb:"", activeStatusQueue:STATUS_TAGS[0], activeRateClient:"", activeSackMode:"create",
+        clientDateFrom:new Date().toISOString().slice(0,10), clientDateTo:new Date().toISOString().slice(0,10), lastGeneratedAwb:"",
+        walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"",
+        client:{ id:"CL-0000", name:"New Merchant Workspace", walletTopup:0, shippingDue:0, premiumTier:"Starter", subAccounts:0, walletBalance:0 },
+        clients:[blankClient], pendingClients:[], users:[], branches:[], riders:[], parcels:[], expenses:[], paymentLogs:[], invoices:[], transit:[], completedSacks:[], operationsIssues:[], resolvedAlerts:[],
+        activeClientTab:"dashboard"
+      };
+    }
     let state = loadState();
+    if (!state._cleanStartV1) {
+      state = cleanStartState();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
     normalizeStateAwbs(state);
     state.activeClientTab = state.activeClientTab || "dashboard";
     if (state.activeClientTab === "wallet") state.activeClientTab = "payments";
@@ -614,16 +630,12 @@
     state.lastBulkAwbs = Array.isArray(state.lastBulkAwbs) ? state.lastBulkAwbs : [];
     state.walletWithdrawSpeed = state.walletWithdrawSpeed || "";
     state.clients.forEach(c => { c.walletBalance = Number(c.walletBalance || 0); });
-    if (!state._walletSeeded) {
-      const c = clientById(state.client.id);
-      if (c && !c.walletBalance) { c.walletBalance = 12090; }
-      if (!state.lastWalletPush) state.lastWalletPush = { amount: 12090, invoice: "INV-0001", at: (state.clientDateTo || "2026-06-24") + " 10:31" };
-      state._walletSeeded = true; saveState();
-    }
+    state._walletSeeded = true;
 
     function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?JSON.parse(s):structuredClone(baseState); }catch(e){ return structuredClone(baseState); } }
     function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-    function selectedParcel(){ return state.parcels.find(p=>p.awb===state.selectedAwb) || state.parcels[0]; }
+    function emptyParcel(){ return { awb:"", clientId:state.client.id||"CL-0000", date:new Date().toISOString().slice(0,10), consignee:"No parcel selected", city:"", cod:0, fee:0, status:"New booked", statusAgeHours:0, stage:0, totalStages:STATUS_TAGS.length, rider:"", branch:"", risk:0, updated:"", exception:"", cashReceived:false, phone:"", address:"", service:"COD Standard", weight:"", steps:[] }; }
+    function selectedParcel(){ return state.parcels.find(p=>p.awb===state.selectedAwb) || state.parcels[0] || emptyParcel(); }
     function inClientDateRange(p){ const d=p.date||"2026-06-24"; const f=state.clientDateFrom||"2026-06-01"; const t=state.clientDateTo||"2026-06-24"; return d>=f && d<=t; }
     function clientScopedParcels(){ const id=state.client.id||"CL-0001"; return state.parcels.filter(p=>p.clientId===id && inClientDateRange(p)); }
     function clientById(id){ return state.clients.find(c=>c.id===id) || state.clients[0]; }
@@ -712,7 +724,7 @@
       el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${s}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].map(p=>`<div class="sb-parcel" onclick="openClientParcelJourney('${p.awb}')"><strong>${p.awb}</strong><span>${p.consignee} &middot; ${p.city}</span><br><span>${money(p.cod)} &middot; ${alertForParcel(p).label} &middot; upd ${p.updated}</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
     }
     function renderJourney(){
-      const p=state.parcels.find(x=>x.awb===state.selectedAwb)||state.parcels[0];
+      const p=state.parcels.find(x=>x.awb===state.selectedAwb)||state.parcels[0]||emptyParcel();
       document.getElementById("selectedParcelText").textContent=`${p.awb} for ${p.consignee}. Current status: ${p.status}.`;
       const important=[
         ["New booked","Booked"],
@@ -795,7 +807,11 @@
       document.getElementById("supportEscalations").innerHTML=[...state.parcels.filter(p=>p.exception&&p.clientId===state.client.id).map(p=>[p.awb,p.exception,"bad"])].map(r=>`<div class="ops-card"><div class="ops-card-head"><strong>${r[0]}</strong><span class="chip ${r[2]}">escalated</span></div><p>${r[1]}</p></div>`).join("")||`<div class="ops-card"><strong>No escalations</strong><p>AI has complete portal data right now.</p></div>`;
     }
     function renderAi(){
-      const p=state.parcels.find(x=>x.awb===state.selectedAwb)||state.parcels[0];
+      const p=state.parcels.find(x=>x.awb===state.selectedAwb)||state.parcels[0]||emptyParcel();
+      if (!p.awb) {
+        document.getElementById("clientAi").innerHTML=`<div class="bubble ai">AI: No parcel data exists yet. Book your first parcel and I will answer only from live portal data.</div>`;
+        return;
+      }
       const reply=p.exception?`${p.awb} has an exception: ${p.exception}. I have escalated it to ${p.branch} and admin finance.`:`${p.awb} is ${p.status}. Last verified update was ${p.updated} from ${p.branch}.`;
       document.getElementById("clientAi").innerHTML=`<div class="bubble">Client: Where is ${p.awb}, and when will COD settle?</div><div class="bubble ai">AI: ${reply} COD payable updates only after rider cash and bank deposit controls close.</div>`;
     }
