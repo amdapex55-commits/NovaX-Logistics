@@ -4303,6 +4303,7 @@
                 </button>
                 <div class="admin-subnav">
                   <button type="button" class="admin-subtab" data-admin-tab="clients-summary">Client Summary</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="clients-leads">Leads</button>
                   <button type="button" class="admin-subtab" data-admin-tab="clients-create-new">Create New Client</button>
                   <button type="button" class="admin-subtab" data-admin-tab="clients-clients">Edit Rates</button>
                 </div>
@@ -4342,7 +4343,7 @@
               </div>
               <div class="mini-form">
                 <div class="field"><label>Issue title</label><input id="ticketTitle" placeholder="Missing CN, fake refusal, cash issue"></div>
-                <div class="field"><label>Linked AWB / CN</label><input id="ticketAwb" placeholder="N0020001"></div>
+                <div class="field"><label>CN Number / AWB (optional)</label><input id="ticketAwb" name="ticketCnNumber" autocomplete="off" autocapitalize="characters" placeholder="N0010001"></div>
                 <div class="field"><label>From</label><select id="ticketFrom"><option>Customer Support</option><option>Warehouse</option><option>Lahore Branch</option><option>Karachi Branch</option><option>Admin Control</option><option>Finance</option></select></div>
                 <div class="field"><label>Send to</label><select id="ticketTo"><option>Lahore Branch Manager</option><option>Karachi Branch Manager</option><option>Islamabad Branch Manager</option><option>Rawalpindi Branch Manager</option><option>Warehouse Manager</option><option>Rider Manager</option><option>Finance Manager</option><option>Admin Control</option></select></div>
                 <div class="field"><label>Tier</label><select id="ticketTier"><option value="emergency">Emergency</option><option value="medium">Medium</option><option value="okay">Okay</option></select></div>
@@ -4409,9 +4410,9 @@
                 <div class="section-head">
                   <div>
                     <h3>Create New Client</h3>
-                    <p>Every client receives a unique number and stays pending until approved by admin or super admin.</p>
+                    <p>Create a real client account with assigned login email and password. Merchant signups stay separate in Leads until approved.</p>
                   </div>
-                  <button class="action-btn" id="adminCreateClientBtn">Create Client Lead</button>
+                  <button class="action-btn" id="adminCreateClientBtn">Create Client Account</button>
                 </div>
                 <div class="form-grid">
                   <div class="field"><label>Client Name</label><input id="newClientName" value="New Seller Account"></div>
@@ -4429,9 +4430,22 @@
               <div class="panel" style="margin-top:14px">
                 <div class="section-head">
                   <div>
-                    <h3>Pending Client Approvals</h3>
-                    <p>Client accounts stay pending until approved by admin or super admin.</p>
+                    <h3>Client Creation Result</h3>
+                    <p>New accounts appear instantly in Client Summary and can sign in with the assigned email/password.</p>
                   </div>
+                </div>
+                <div class="ops-list" id="clientCreateResult"><div class="ops-card"><strong>No client created in this session yet</strong><p>Fill the form and press Create Client Account.</p></div></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-clients-leads">
+              <div class="panel">
+                <div class="section-head">
+                  <div>
+                    <h3>Merchant Leads</h3>
+                    <p>Every public signup form lands here as a lead. Assign email/password, then approve to create the real client account.</p>
+                  </div>
+                  <span class="chip warn" id="leadCountChip">0 leads</span>
                 </div>
                 <div class="ops-list" id="pendingClientList"></div>
               </div>
@@ -5299,7 +5313,7 @@
       tickets: ["tickets-emergency", "tickets-medium", "tickets-okay", "tickets-summary", "tickets-resolved"],
       riders: ["riders-route", "riders-report", "riders-summary"],
       finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-summary", "finance-overall", "finance-revenue"],
-      clients: ["clients-summary", "clients-create-new", "clients-clients"],
+      clients: ["clients-summary", "clients-leads", "clients-create-new", "clients-clients"],
       users: ["users-create", "users-edit"],
       api: ["api-shopify", "api-web", "api-woo-commerce"]
     };
@@ -5323,6 +5337,7 @@
       "riders-route": "admin-riders",
       "finance-expense": "admin-expenses",
       "finance-invoices": "admin-payments",
+      "clients-leads": "admin-clients-leads",
       "clients-create-new": "admin-clients",
       "clients-clients": "admin-clients-rates",
       "users-create": "admin-users",
@@ -6668,6 +6683,8 @@
           <button class="action-btn" onclick="approveClient('${client.id}')">Approve And Create Client Login</button>
         </div>
       `).join("") || `<div class="ops-card"><strong>No pending approvals</strong><p>New client requests will wait here before account creation.</p></div>`;
+      const leadChip = document.getElementById("leadCountChip");
+      if (leadChip) leadChip.textContent = `${state.pendingClients.length} lead${state.pendingClients.length === 1 ? "" : "s"}`;
 
       const allClients = state.clients.filter(client => client.id !== "CL-0000");
       const activeClients = allClients.filter(client => client.status === "Active");
@@ -7704,18 +7721,18 @@
         toast("Phone must be 11 digits and start with 03. Example: 03113323923.");
         return;
       }
-      if ((state.users || []).some(user => String(user.email || "").toLowerCase() === email.toLowerCase()) || state.clients.some(client => String(client.email || "").toLowerCase() === email.toLowerCase())) {
+      if ((state.users || []).some(user => String(user.email || "").toLowerCase() === email.toLowerCase()) || state.clients.some(client => String(client.email || "").toLowerCase() === email.toLowerCase()) || state.pendingClients.some(client => String(client.email || "").toLowerCase() === email.toLowerCase())) {
         toast("This login email already exists.");
         return;
       }
-      const id = `LEAD-${String(Date.now()).slice(-5)}`;
       const rateCard = defaultRateCard(250);
-      state.pendingClients.unshift({
-        id,
+      state.clients = state.clients.filter(item => item.id !== "CL-0000");
+      const id = nextId("CL", state.clients);
+      const newClient = {
         name,
         owner: document.getElementById("newClientOwner").value.trim() || "Pending",
+        id,
         email,
-        password,
         phone,
         businessType,
         address,
@@ -7726,15 +7743,32 @@
         shippingDue: 0,
         rate: rateCard.overnight,
         rateCard,
-        risk: 20,
-        health: 0,
+        risk: 0,
+        health: 100,
         problemsResolved: 0,
-        status: "Lead pending approval"
+        status: "Active",
+        walletBalance: 0
+      };
+      state.clients.unshift(newClient);
+      state.client = { id, name: newClient.name, walletTopup: 0, shippingDue: 0, subAccounts: 0, walletBalance: 0 };
+      state.users.unshift({
+        id: nextId("USR", state.users),
+        name: newClient.owner || newClient.name,
+        email,
+        password,
+        role: "Client",
+        accessSide: "Client Web Portal",
+        branch: `${newClient.city || "Karachi"} Hub`,
+        clientId: id,
+        status: "Active",
+        permissions: ["dashboard", "booking", "bulk booking", "reports", "payments", "tickets"]
       });
       saveState();
       render();
-      showAdminTab("clients-create-new");
-      toast(`${id} saved as a lead. Approval creates the client account and login.`);
+      showAdminTab("clients-summary");
+      const result = document.getElementById("clientCreateResult");
+      if (result) result.innerHTML = `<div class="ops-card"><strong>${id} created</strong><p>${name} is active. Login email: ${email}</p></div>`;
+      toast(`${id} created as active client. Login is ready.`);
     }
 
     function toggleRateForm(id) {
@@ -7789,6 +7823,7 @@
       });
       saveState();
       render();
+      showAdminTab("clients-summary");
       toast(`${id} approved as ${clientId}. Client can now sign in with assigned email/password.`);
     }
 
