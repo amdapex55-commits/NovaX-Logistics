@@ -555,7 +555,7 @@ img,svg,canvas,video{max-width:100%;}
     <div class="signin-field"><label>Email or username</label><input id="signinEmail" placeholder="name@novax.pk"></div>
     <div class="signin-field"><label>Password</label><input id="signinPassword" type="password" placeholder="Password"></div>
     <button class="btn primary" id="signinContinue" style="width:100%;justify-content:center;margin-top:14px">Continue</button>
-    <div class="signin-note">Demo preview: continue opens the selected workspace. In production this will verify credentials and permissions first.</div>
+    <div class="signin-note">Login is strict: only approved seller, admin, or rider credentials can open a workspace.</div>
   </div>
 </div>
 
@@ -566,7 +566,7 @@ img,svg,canvas,video{max-width:100%;}
     <p>Fill this once. NovaX sales will review the request and contact you as soon as possible.</p>
     <div class="signin-field"><label>What city are you based in?</label><select id="merchantCity"><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option><option>Faisalabad</option><option>Multan</option><option>Other</option></select></div>
     <div class="signin-field"><label>Your name</label><input id="merchantName" placeholder="Your full name"></div>
-    <div class="signin-field"><label>Your phone number</label><input id="merchantPhone" placeholder="+92 300 0000000"></div>
+    <div class="signin-field"><label>Your phone number</label><input id="merchantPhone" placeholder="03113323923" maxlength="11"></div>
     <div class="signin-field"><label>Your address</label><textarea id="merchantAddress" placeholder="Pickup address"></textarea></div>
     <div class="signin-field"><label>What product do you sell?</label><input id="merchantProduct" placeholder="Fashion, cosmetics, electronics, etc."></div>
     <div class="signin-field"><label>Website link if any</label><input id="merchantWebsite" placeholder="https://yourstore.com"></div>
@@ -578,7 +578,7 @@ img,svg,canvas,video{max-width:100%;}
 <script>
 (function(){
   "use strict";
-  var STORAGE_KEY="novaxLogisticsStateV9";
+  var STORAGE_KEY="novaxLogisticsStateV10";
   var STATUS_TAGS=["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Refused","Consignee not available","Reattempt","Reassigned","Out of service area","Ready for return","Return in transit","Return received at origin","Return out for delivery","Parcel returned to consignee"];
   // demo fallback so tracking works even before admin/client seed the state
   var DEMO=[];
@@ -634,18 +634,25 @@ img,svg,canvas,video{max-width:100%;}
   var signinModal=document.getElementById("signinModal");
   var signupModal=document.getElementById("signupModal");
   function readState(){
-    try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}")||{};}catch(e){return{};}
+    try{
+      var state=JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}")||{};
+      if(!Array.isArray(state.users)||!state.users.length){
+        state.users=[{id:"USR-0001",name:"NovaX Admin",email:"admin@novax.pk",password:"NovaX@123",role:"Admin",accessSide:"Admin Portal",status:"Active",permissions:["all"]}];
+        saveState(state);
+      }
+      return state;
+    }catch(e){return{users:[{id:"USR-0001",name:"NovaX Admin",email:"admin@novax.pk",password:"NovaX@123",role:"Admin",accessSide:"Admin Portal",status:"Active",permissions:["all"]}]};}
   }
   function saveState(state){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}
   function routeForCredentials(email,password){
     var e=String(email||"").trim().toLowerCase();
-    var p=String(password||"").trim().toLowerCase();
+    var rawPassword=String(password||"").trim();
     var state=readState();
     var users=Array.isArray(state.users)?state.users:[];
     var matchedUser=users.find(function(user){
       return String(user.email||"").toLowerCase()===e || String(user.name||"").toLowerCase().replace(/\s+/g,".")===e || String(user.id||"").toLowerCase()===e;
     });
-    if(matchedUser && String(matchedUser.password||"")===password){
+    if(matchedUser && String(matchedUser.status||"Active").toLowerCase()!=="blocked" && String(matchedUser.password||"")===rawPassword){
       var side=String(matchedUser.accessSide||matchedUser.role||"").toLowerCase();
       if(side.includes("rider")) return "rider.html";
       if(side.includes("admin")) return "admin.html";
@@ -656,10 +663,8 @@ img,svg,canvas,video{max-width:100%;}
       var aliases=[rider.id,rider.name,rider.username].map(function(v){return String(v||"").toLowerCase().replace(/\s+/g,".");});
       return aliases.includes(e);
     });
-    if(matchedRider && (p==="rider" || p==="rider123" || String(matchedRider.password||"").toLowerCase()===p)) return "rider.html";
-    if((e.includes("admin") || e==="control") && ["admin","admin123","novaxadmin"].includes(p)) return "admin.html";
-    if(e.includes("rider") || ["usman.r17","bilal.r22","hamza.r31"].includes(e) || p==="rider") return "rider.html";
-    return "client.html";
+    if(matchedRider && String(matchedRider.access||"Active").toLowerCase()!=="blocked" && String(matchedRider.password||"")===rawPassword) return "rider.html";
+    return "";
   }
   function openSignin(){
     if(!signinModal) return;
@@ -689,6 +694,7 @@ img,svg,canvas,video{max-width:100%;}
     var pass=(document.getElementById("signinPassword").value||"").trim();
     if(!email||!pass){ alert("Email/username and password are required."); return; }
     signinTarget=routeForCredentials(email,pass);
+    if(!signinTarget){ alert("Login blocked. This email/username and password is not approved in NovaX database."); return; }
     playHandoff(function(){ window.location.href=signinTarget; });
   });
   if(location.hash==="#signin") setTimeout(openSignin,500);
@@ -716,6 +722,10 @@ img,svg,canvas,video{max-width:100%;}
       alert("City, name, phone, address, and product are mandatory.");
       return;
     }
+    if(!/^03\d{9}$/.test(phone)){
+      alert("Phone must be 11 digits and start with 03. Example: 03113323923.");
+      return;
+    }
     var state=readState();
     state.pendingClients=Array.isArray(state.pendingClients)?state.pendingClients:[];
     var id="LEAD-"+String(Date.now()).slice(-5);
@@ -729,7 +739,7 @@ img,svg,canvas,video{max-width:100%;}
       address:address,
       businessType:product,
       website:website||"No website",
-      tier:"New merchant lead",
+      password:"",
       status:"Pending sales contact",
       iban:"",
       taxId:"",

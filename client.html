@@ -196,10 +196,26 @@
     @keyframes tickDraw{to{stroke-dashoffset:0;}}
     #printStage{display:none;}
     @media print{
+      @page{size:A4 landscape;margin:6mm;}
       body{background:#fff !important;}
       body *{visibility:hidden;}
       #printStage,#printStage *{visibility:visible;}
-      #printStage{display:block !important;position:absolute;left:0;top:0;width:100%;padding:18px;}
+      #printStage{display:block !important;position:absolute;left:0;top:0;width:100%;padding:0;}
+      #printStage.bulk-print{display:grid !important;grid-template-columns:repeat(3,1fr);gap:4mm;align-items:start;}
+      #printStage .print-label-wrap{break-inside:avoid;page-break-inside:avoid;margin:0;}
+      #printStage.bulk-print .print-label-wrap{page-break-after:auto!important;}
+      .awb-label{grid-template-columns:minmax(0,1fr) 132px!important;gap:6px!important;padding:7px!important;border:2px solid #000!important;border-radius:6px!important;box-shadow:none!important;break-inside:avoid;page-break-inside:avoid;max-height:62mm;overflow:hidden;}
+      .awb-title{padding-bottom:4px!important;margin-bottom:5px!important;gap:6px!important;}
+      .awb-title h3{font-size:16px!important;}
+      .awb-title strong{font-size:14px!important;overflow-wrap:anywhere;}
+      .awb-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:4px!important;}
+      .awb-field{padding:4px!important;}
+      .awb-field span{font-size:6.5px!important;margin-bottom:2px!important;}
+      .awb-field strong{font-size:9.5px!important;line-height:1.15!important;overflow-wrap:anywhere;}
+      .awb-codes{gap:5px!important;}
+      .qr-img{height:92px!important;width:92px!important;padding:3px!important;margin:auto;}
+      .barcode-img{height:32px!important;padding:2px!important;}
+      .chip{font-size:8px!important;padding:3px 5px!important;}
     }
     @media (max-width:1080px){.client-shell{grid-template-columns:1fr;}.client-side{position:static;}.grid.two,.grid.three{grid-template-columns:1fr;}.grid.metrics{grid-template-columns:repeat(2,minmax(0,1fr));}}
     @media (max-width:760px){
@@ -349,15 +365,15 @@
                 <div class="section-head"><div><h3>New Booking</h3><p>Create one AWB with COD, consignee, address, service type, and pickup instructions. Submitting writes to the same parcel ledger and opens the printable AWB.</p></div><button class="action-btn" id="quickBookingBtn">Create AWB</button></div>
                 <div class="form-grid">
                   <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" value="New COD Customer" required></div>
-                  <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" value="+92 300 1111111" required></div>
+                  <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" placeholder="03113323923" maxlength="11" required></div>
                   <div class="field"><label>Pickup City <span class="required-star">*</span></label><select id="bookingPickupCity" required><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
                   <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
                   <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" value="6500" min="0" required></div>
                   <div class="field"><label>Service Type <span class="required-star">*</span></label><select id="bookingService" required><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option><option>Prepaid Delivery</option></select></div>
-                  <div class="field"><label>Product Category <span class="required-star">*</span></label><select id="bookingCategory" required><option>Fashion</option><option>Cosmetics</option><option>Electronics</option><option>Documents</option><option>Home Goods</option></select></div>
+                  <div class="field"><label>Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" required></div>
                   <div class="field"><label>Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
                   <div class="field"><label>Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required></div>
-                  <div class="field"><label>Payment Mode <span class="required-star">*</span></label><select id="bookingPaymentMode" required><option>Cash on Delivery</option><option>QR on Delivery</option><option>Prepaid</option></select></div>
+                  <div class="field"><label>Payment Mode <span class="required-star">*</span></label><select id="bookingPaymentMode" required><option>COD</option><option>Non COD Prepaid</option></select></div>
                   <div class="field" style="grid-column:1/-1"><label>Address <span class="required-star">*</span></label><textarea id="bookingAddress" required>House 21, Main Market, delivery before 6 PM.</textarea></div>
                 </div>
               </div>
@@ -373,8 +389,8 @@
             <section class="client-module" id="client-bulkBooking">
               <div class="grid two">
                 <div class="panel">
-                  <div class="section-head"><div><h3>Bulk Booking</h3><p>Upload CSV or Excel later. For now this creates five clean AWBs and shows how validation works before booking.</p></div><button class="action-btn" id="bulkBookingBtn">Simulate Bulk Upload</button></div>
-                  <div class="bulk-drop"><div><strong>Drop Excel or CSV here</strong><p class="footer-note">Required columns: consignee, phone, city, address, COD, weight, order ID.</p></div></div>
+                  <div class="section-head"><div><h3>Bulk Booking</h3><p>Download the accepted CSV format, fill it, then upload. No demo parcels are generated.</p></div><button class="action-btn" id="downloadBulkTemplateBtn">Download CSV Format</button></div>
+                  <div class="bulk-drop"><div><strong>Upload completed CSV here</strong><p class="footer-note">Required columns: consignee, phone, city, address, cod, weight, order_id, product, payment_mode.</p><input id="bulkCsvInput" type="file" accept=".csv,text/csv" style="margin-top:12px"><button class="ghost-btn" id="bulkUploadBtn" style="margin-top:12px">Upload CSV</button></div></div>
                 </div>
                 <div class="panel">
                   <div class="section-head"><div><h3>AI Validation</h3><p>Invalid city, duplicate order ID, missing phone, and impossible COD values are blocked before AWB generation.</p></div></div>
@@ -548,7 +564,7 @@
     const PKR = new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 });
     const now = () => new Date();
     const time = () => now().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    const STORAGE_KEY = "novaxLogisticsStateV9";
+    const STORAGE_KEY = "novaxLogisticsStateV10";
     const STATUS_TAGS = ["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Refused","Consignee not available","Reattempt","Reassigned","Out of service area","Ready for return","Return in transit","Return received at origin","Return out for delivery","Parcel returned to consignee"];
     const baseState = {
       selectedAwb:"N0010001", activeStatusQueue:"Parcel now in transit", activeRateClient:"", activeSackMode:"create",
@@ -604,13 +620,13 @@
       resolvedAlerts:[]
     };
     function cleanStartState(){
-      const blankClient={ id:"CL-0000", name:"New Merchant Workspace", owner:"", tier:"Starter", city:"", walletTopup:0, shippingDue:0, risk:0, status:"Draft", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, problemsResolved:0, health:0, walletBalance:0 };
+      const blankClient={ id:"CL-0000", name:"New Merchant Workspace", owner:"", city:"", walletTopup:0, shippingDue:0, risk:0, status:"Draft", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, problemsResolved:0, health:0, walletBalance:0 };
       return {
         _cleanStartV1:true,
         selectedAwb:"", activeStatusQueue:STATUS_TAGS[0], activeRateClient:"", activeSackMode:"create",
         clientDateFrom:new Date().toISOString().slice(0,10), clientDateTo:new Date().toISOString().slice(0,10), lastGeneratedAwb:"",
         walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"",
-        client:{ id:"CL-0000", name:"New Merchant Workspace", walletTopup:0, shippingDue:0, premiumTier:"Starter", subAccounts:0, walletBalance:0 },
+        client:{ id:"CL-0000", name:"New Merchant Workspace", walletTopup:0, shippingDue:0, subAccounts:0, walletBalance:0 },
         clients:[blankClient], pendingClients:[], users:[], branches:[], riders:[], parcels:[], expenses:[], paymentLogs:[], invoices:[], transit:[], completedSacks:[], operationsIssues:[], resolvedAlerts:[],
         activeClientTab:"dashboard"
       };
@@ -819,13 +835,14 @@
     /* ===== Added: AWB label, print, modals, bulk preview, report, invoice download, tickets, wallet ===== */
     function awbLabelHtml(p){
       const client=clientById(p.clientId);
-      return `<div class="awb-label"><div><div class="awb-title"><div><h3>NovaX AWB</h3><p class="footer-note" style="margin:6px 0 0;color:#41524a">Scan ID: ${p.awb}</p></div><strong>${p.awb}</strong></div><div class="awb-grid"><div class="awb-field"><span>Destination</span><strong>${p.city}</strong></div><div class="awb-field"><span>COD</span><strong>${money(p.cod)}</strong></div><div class="awb-field"><span>Consignee</span><strong>${p.consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${p.phone||"+92 phone pending"}</strong></div><div class="awb-field"><span>Client</span><strong>${client.id} | ${client.name}</strong></div><div class="awb-field"><span>Service</span><strong>${p.service||"COD Standard"}</strong></div><div class="awb-field"><span>Weight</span><strong>${p.weight||"0.8 kg"}</strong></div><div class="awb-field"><span>Handling</span><strong>${p.fragile==="Yes"?"Fragile":"Standard"}</strong></div><div class="awb-field" style="grid-column:1/-1"><span>Address</span><strong>${p.address||"Address attached in portal"}</strong></div></div></div><div class="awb-codes"><div><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"></div><div><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"></div><span class="chip info">${p.awb}</span></div></div>`;
+      return `<div class="awb-label"><div><div class="awb-title"><div><h3>NovaX AWB</h3><p class="footer-note" style="margin:6px 0 0;color:#41524a">Scan ID: ${p.awb}</p></div><strong>${p.awb}</strong></div><div class="awb-grid"><div class="awb-field"><span>Destination</span><strong>${p.city}</strong></div><div class="awb-field"><span>COD</span><strong>${money(p.cod)}</strong></div><div class="awb-field"><span>Consignee</span><strong>${p.consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${p.phone||"phone pending"}</strong></div><div class="awb-field"><span>Client</span><strong>${client.id} | ${client.name}</strong></div><div class="awb-field"><span>Service</span><strong>${p.service||"COD Standard"}</strong></div><div class="awb-field"><span>Weight</span><strong>${p.weight||"0.8 kg"}</strong></div><div class="awb-field"><span>Handling</span><strong>${p.fragile==="Yes"?"Fragile":"Standard"}</strong></div><div class="awb-field" style="grid-column:1/-1"><span>Address</span><strong>${p.address||"Address attached in portal"}</strong></div></div></div><div class="awb-codes"><div><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"></div><div><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"></div><span class="chip info">${p.awb}</span></div></div>`;
     }
     function printLabels(awbs){
       const stage=document.getElementById("printStage"); if(!stage) return;
       const valid=(awbs||[]).map(a=>state.parcels.find(p=>p.awb===a)).filter(Boolean);
       if(!valid.length){ toast("No AWB available to print."); return; }
-      stage.innerHTML=valid.map(p=>`<div style="page-break-after:always;margin-bottom:18px">${awbLabelHtml(p)}</div>`).join("");
+      stage.classList.toggle("bulk-print", valid.length > 1);
+      stage.innerHTML=valid.map(p=>`<div class="print-label-wrap" style="${valid.length===1?"page-break-after:auto":"page-break-after:auto"}">${awbLabelHtml(p)}</div>`).join("");
       stage.style.display="block"; window.print(); setTimeout(()=>{ stage.style.display="none"; },500);
     }
     function printAwb(){ printLabels([state.lastGeneratedAwb||state.selectedAwb]); }
@@ -938,10 +955,10 @@
 
     /* Booking */
     function bookParcel(o={}){
-      const cod=o.cod||3500+Math.round(Math.random()*11000);
+      const cod=o.cod!==undefined?Number(o.cod):3500+Math.round(Math.random()*11000);
       const clientId=o.clientId||state.client.id||"CL-0001"; const client=clientById(clientId);
       const awb=nextAwbForClient(clientId);
-      state.parcels.unshift({ awb, clientId, date:o.date||new Date().toISOString().slice(0,10), consignee:o.consignee||"New COD Order", city:o.city||["Lahore","Karachi","Islamabad","Rawalpindi"][Math.floor(Math.random()*4)], cod, fee:o.fee||client.rate||250, phone:o.phone||"+92 300 1111111", pickupCity:o.pickupCity||"Karachi", service:o.service||"COD Standard", category:o.category||"Fashion", fragile:o.fragile||"No", weight:o.weight||"0.8 kg", paymentMode:o.paymentMode||"Cash on Delivery", address:o.address||"Address pending", status:"New booked", statusAgeHours:0, stage:0, totalStages:STATUS_TAGS.length-1, rider:"R-17", branch:"Karachi Hub", risk:8, updated:time(), exception:"", steps:["New booked"] });
+      state.parcels.unshift({ awb, clientId, date:o.date||new Date().toISOString().slice(0,10), consignee:o.consignee||"New COD Order", city:o.city||["Lahore","Karachi","Islamabad","Rawalpindi"][Math.floor(Math.random()*4)], cod, fee:o.fee||client.rate||250, phone:o.phone||"", pickupCity:o.pickupCity||"Karachi", service:o.service||"COD Standard", category:o.category||"", fragile:o.fragile||"No", weight:o.weight||"0.8 kg", paymentMode:o.paymentMode||"COD", orderId:o.orderId||"", address:o.address||"Address pending", status:"New booked", statusAgeHours:0, stage:0, totalStages:STATUS_TAGS.length-1, rider:o.rider||"", branch:"Karachi Hub", risk:8, updated:time(), exception:"", steps:["New booked"] });
       state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId, type:"COD expected", amount:cod, status:"Awaiting delivery", ref:awb });
       state.selectedAwb=awb; state.lastGeneratedAwb=awb; saveState(); render();
       return awb;
@@ -949,14 +966,88 @@
     function quickBooking(){
       const required=["bookingName","bookingPhone","bookingPickupCity","bookingCity","bookingCod","bookingService","bookingCategory","bookingFragile","bookingWeight","bookingPaymentMode","bookingAddress"];
       if(required.some(id=>!String(document.getElementById(id).value||"").trim())){ toast("All booking fields are mandatory before AWB creation."); return; }
+      const phone=document.getElementById("bookingPhone").value.trim();
+      if(!/^03\d{9}$/.test(phone)){ toast("Phone must be 11 digits and start with 03."); return; }
       const awb=bookParcel({ consignee:document.getElementById("bookingName").value.trim(), city:document.getElementById("bookingCity").value, cod:Number(document.getElementById("bookingCod").value)||6500, phone:document.getElementById("bookingPhone").value.trim(), pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address:document.getElementById("bookingAddress").value.trim() });
       openAwbModal(awb); toast(`${awb} booked. Print the AWB from the popup.`);
     }
-    function bulkBooking(){
-      const samples=[["Bulk Order 01","Lahore",4200],["Bulk Order 02","Karachi",5800],["Bulk Order 03","Islamabad",7600],["Bulk Order 04","Rawalpindi",3900],["Bulk Order 05","Lahore",11800]];
-      const awbs=samples.map(r=>bookParcel({consignee:r[0],city:r[1],cod:r[2]}));
-      state.lastBulkAwbs=awbs; saveState(); showClientTab("bulkBooking"); renderBulkPreview();
-      toast(`${awbs.length} AWBs booked. Preview ready to print.`);
+    function csvEscape(value){ return `"${String(value??"").replace(/"/g,'""')}"`; }
+    function downloadBulkTemplate(){
+      const rows=[
+        ["consignee","phone","city","address","cod","weight","order_id","product","payment_mode"],
+        ["Ahmed Customer","03113323923","Lahore","House 21 Main Market Lahore","2500","0.8 kg","ORDER-1001","Black hoodie size medium","COD"],
+        ["Sara Customer","03112223344","Karachi","Block 6 PECHS Karachi","0","1 kg","ORDER-1002","Prepaid skincare parcel","Non COD Prepaid"]
+      ];
+      const csv=rows.map(row=>row.map(csvEscape).join(",")).join("\n");
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+      a.download="novax-bulk-booking-template.csv";
+      a.click();
+      toast("CSV format downloaded.");
+    }
+    function parseCsv(text){
+      const rows=[]; let row=[], cell="", q=false;
+      for(let i=0;i<text.length;i++){
+        const ch=text[i], next=text[i+1];
+        if(ch==='"' && q && next==='"'){ cell+='"'; i++; continue; }
+        if(ch==='"'){ q=!q; continue; }
+        if(ch==="," && !q){ row.push(cell.trim()); cell=""; continue; }
+        if((ch==="\n"||ch==="\r") && !q){ if(ch==="\r"&&next==="\n") i++; row.push(cell.trim()); if(row.some(Boolean)) rows.push(row); row=[]; cell=""; continue; }
+        cell+=ch;
+      }
+      row.push(cell.trim()); if(row.some(Boolean)) rows.push(row);
+      return rows;
+    }
+    function validateBulkRows(rows){
+      const headers=(rows[0]||[]).map(h=>h.toLowerCase().trim());
+      const required=["consignee","phone","city","address","cod","weight","order_id","product","payment_mode"];
+      const missing=required.filter(h=>!headers.includes(h));
+      if(missing.length) return { errors:[`Missing columns: ${missing.join(", ")}`], records:[] };
+      const idx=name=>headers.indexOf(name);
+      const seen=new Set(), errors=[], records=[];
+      rows.slice(1).forEach((row,i)=>{
+        const line=i+2;
+        const rec={
+          consignee:row[idx("consignee")]||"",
+          phone:row[idx("phone")]||"",
+          city:row[idx("city")]||"",
+          address:row[idx("address")]||"",
+          cod:Number(row[idx("cod")]||0),
+          weight:row[idx("weight")]||"",
+          orderId:row[idx("order_id")]||"",
+          product:row[idx("product")]||"",
+          paymentMode:row[idx("payment_mode")]||""
+        };
+        if(!rec.consignee||!rec.phone||!rec.city||!rec.address||!rec.weight||!rec.orderId||!rec.product||!rec.paymentMode) errors.push(`Line ${line}: every field is mandatory.`);
+        if(!/^03\d{9}$/.test(rec.phone)) errors.push(`Line ${line}: phone must be 11 digits starting with 03.`);
+        if(!["Karachi","Lahore","Islamabad","Rawalpindi"].includes(rec.city)) errors.push(`Line ${line}: city is not serviceable yet.`);
+        if(Number.isNaN(rec.cod)||rec.cod<0) errors.push(`Line ${line}: COD must be 0 or higher.`);
+        if(!["COD","Non COD Prepaid"].includes(rec.paymentMode)) errors.push(`Line ${line}: payment_mode must be COD or Non COD Prepaid.`);
+        if(seen.has(rec.orderId)) errors.push(`Line ${line}: duplicate order_id ${rec.orderId}.`);
+        seen.add(rec.orderId);
+        records.push(rec);
+      });
+      return { errors, records };
+    }
+    function renderBulkValidation(result){
+      const el=document.getElementById("bulkValidationList");
+      if(!el) return;
+      if(!result){ el.innerHTML=`<div class="ops-card"><strong>Waiting for CSV</strong><p>Download the template, fill it, and upload it here.</p></div>`; return; }
+      if(result.errors.length){
+        el.innerHTML=result.errors.map(err=>`<div class="ops-card alert-row"><strong>Blocked</strong><p>${err}</p></div>`).join("");
+        return;
+      }
+      el.innerHTML=`<div class="ops-card"><strong>${result.records.length} clean rows</strong><p>All phones, cities, COD values, products, and order IDs passed validation.</p></div>`;
+    }
+    async function uploadBulkCsv(){
+      const file=document.getElementById("bulkCsvInput")?.files?.[0];
+      if(!file){ toast("Select a CSV file first."); return; }
+      const result=validateBulkRows(parseCsv(await file.text()));
+      renderBulkValidation(result);
+      if(result.errors.length){ toast("CSV blocked. Fix the highlighted rows."); return; }
+      const awbs=result.records.map(r=>bookParcel({ consignee:r.consignee, city:r.city, cod:r.cod, phone:r.phone, weight:r.weight, orderId:r.orderId, category:r.product, paymentMode:r.paymentMode, address:r.address }));
+      state.lastBulkAwbs=awbs; saveState(); renderBulkPreview();
+      toast(`${awbs.length} AWBs created from CSV.`);
     }
     function requestRedelivery(awb){
       const p=state.parcels.find(x=>x.awb===awb); if(!p) return;
@@ -985,7 +1076,8 @@
     document.getElementById("applyDateRangeBtn").addEventListener("click",applyClientDateRange);
     document.getElementById("bookParcelBtn").addEventListener("click",()=>showClientTab("newBooking"));
     document.getElementById("quickBookingBtn").addEventListener("click",quickBooking);
-    document.getElementById("bulkBookingBtn").addEventListener("click",bulkBooking);
+    document.getElementById("downloadBulkTemplateBtn").addEventListener("click",downloadBulkTemplate);
+    document.getElementById("bulkUploadBtn").addEventListener("click",uploadBulkCsv);
     document.getElementById("bulkPrintAllBtn").addEventListener("click",()=>printLabels(state.lastBulkAwbs||[]));
     document.getElementById("printAwbBtn").addEventListener("click",printAwb);
     document.getElementById("awbModalPrint").addEventListener("click",()=>printLabels([state.lastGeneratedAwb]));
