@@ -1600,6 +1600,19 @@
       margin-bottom: 14px;
     }
 
+    .check-line {
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(7, 16, 13, .68);
+      color: var(--muted);
+      font-weight: 800;
+    }
+
     .ledger-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4647,10 +4660,38 @@
                     <div class="field"><label>User Name</label><input id="userName" value="New Operations User" required></div>
                     <div class="field"><label>Email</label><input id="userEmail" type="email" placeholder="user@novax.pk" required></div>
                     <div class="field"><label>Password</label><input id="userPassword" type="password" value="NovaX@123" required></div>
-                    <div class="field"><label>Role</label><select id="userRole"><option>Admin</option><option>Branch Manager</option><option>Finance</option><option>Rider Supervisor</option><option>Client Support</option></select></div>
-                    <div class="field"><label>Access Side</label><select id="userAccessSide"><option>Admin Portal</option><option>Client Web Portal</option><option>Both Admin And Web</option></select></div>
+                    <div class="field"><label>Role</label><select id="userRole"><option>Admin</option><option>Branch Manager</option><option>Finance</option><option>Rider Supervisor</option><option>Client Support</option><option>Rider</option></select></div>
+                    <div class="field"><label>Access Side</label><select id="userAccessSide"><option>Admin Portal</option><option>Client Web Portal</option><option>Rider App</option><option>Both Admin And Web</option></select></div>
                     <div class="field"><label>Assign Branch</label><select id="userBranch"><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option></select></div>
                     <div class="field"><label>Assign Client</label><select id="userClientSelect"></select></div>
+                  </div>
+                  <div class="panel soft-panel" style="margin-top:14px">
+                    <div class="section-head"><div><h3>Allowed Controls</h3><p>Select exactly what this user can see or operate.</p></div></div>
+                    <div class="filter-bar">
+                      <label class="check-line"><input type="checkbox" data-user-permission value="dashboard" checked> Dashboard</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="orders-view" checked> Orders view all/report</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="orders-processing"> Order processing</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="manifest"> Manifest</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="demanifest"> Demanifest</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="tickets"> Tickets</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="finance-expense"> Expenses</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="finance-invoices"> Invoices</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="clients"> Clients</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="users"> Users</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="riders"> Riders</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="api"> API</label>
+                    </div>
+                  </div>
+                  <div class="panel soft-panel" style="margin-top:14px">
+                    <div class="section-head">
+                      <div><h3>Create Rider User</h3><p>Create a login tied directly to a rider account.</p></div>
+                      <button class="ghost-btn" id="createRiderUserBtn">Create Rider Login</button>
+                    </div>
+                    <div class="form-grid">
+                      <div class="field"><label>Rider</label><select id="riderUserSelect"></select></div>
+                      <div class="field"><label>Rider Email / Username</label><input id="riderUserEmail" placeholder="usman.r17"></div>
+                      <div class="field"><label>Password</label><input id="riderUserPassword" type="password" value="rider123"></div>
+                    </div>
                   </div>
                 </div>
                 <div class="panel">
@@ -4684,7 +4725,7 @@
 
             <section class="admin-module" id="admin-orders-report">
               <div class="panel">
-                <div class="section-head"><div><h3>Order Report</h3><p>Parcel journey aging report with delivery time, current status clock, SLA alert, scan count, and last processor.</p></div></div>
+                <div class="section-head"><div><h3>Order Report</h3><p>Parcel journey aging report with delivery time, current status clock, SLA alert, scan count, and last processor.</p></div><button class="ghost-btn" id="downloadOrderReportCsvBtn">Download CSV</button></div>
                 <div class="grid metrics" id="orderReportMetrics"></div>
                 <div class="filter-bar" style="margin-top:14px">
                   <div class="field"><label>Report Search</label><input id="orderReportSearch" placeholder="AWB, consignee, client, city"></div>
@@ -4721,6 +4762,7 @@
                     <div class="processing-current" id="processingCurrentStatus">Waiting for tracking ID...</div>
                     <div class="mini-form">
                       <div class="field"><label>Update Status</label><select id="processingStatusSelect"></select></div>
+                      <div class="field" id="processingRiderField"><label>Assign Rider</label><select id="processingRiderSelect"></select></div>
                       <button class="action-btn" id="processingConfirmBtn">Confirm Batch Status Update</button>
                     </div>
                     <div class="processing-auth" id="processingAuthBox">
@@ -4836,32 +4878,9 @@
             </section>
 
             <section class="admin-module" id="admin-finance-wallets">
-              <div class="grid two">
-                <div class="panel">
-                  <div class="section-head"><div><h3>Client Wallets</h3><p>Only pushed invoices increase wallet balance. Withdrawals subtract available balance and create an admin payout signal.</p></div></div>
-                  <div class="grid metrics" id="walletBalanceCards"></div>
-                  <div class="section-head" style="margin-top:14px"><div><h3>Withdraw Request</h3><p>Model for future fintech rails. Fees create extra NovaX revenue while the payout queue stays auditable.</p></div></div>
-                  <div class="mini-form">
-                    <div class="field"><label>Client</label><select id="walletClientSelect"></select></div>
-                    <div class="field"><label>Amount</label><input id="walletAmount" type="number" min="1" value="10000"></div>
-                    <div class="field"><label>IBAN</label><input id="walletIban" placeholder="PK00 BANK 0000 0000 0000 0000"></div>
-                    <div class="field"><label>Speed</label><select id="walletSpeed"><option value="24h">24 hour withdraw - 0.1% fee</option><option value="12h">12 hour withdraw - 0.3% fee</option><option value="instant">Instant 2-3 hours - 0.7% fee</option></select></div>
-                    <button class="action-btn" id="walletWithdrawBtn">Request Withdraw</button>
-                  </div>
-                  <div class="grid three" style="margin-top:14px">
-                    <div class="metric"><label>24 hour withdraw</label><strong>0.1%</strong><div class="meter"><span style="width:30%"></span></div><div class="meter-caption"><span>lowest fee</span><span>T+1</span></div></div>
-                    <div class="metric"><label>12 hour withdraw</label><strong>0.3%</strong><div class="meter amber"><span style="width:60%"></span></div><div class="meter-caption"><span>same day</span><span>premium</span></div></div>
-                    <div class="metric"><label>Instant withdraw</label><strong>0.7%</strong><div class="meter red"><span style="width:90%"></span></div><div class="meter-caption"><span>2-3 hours</span><span>highest fee</span></div></div>
-                  </div>
-                </div>
-                <div class="panel">
-                  <div class="section-head"><div><h3>Who To Pay</h3><p>Admin payout queue created from wallet withdrawals.</p></div></div>
-                  <div class="ops-list" id="walletPayoutQueue"></div>
-                </div>
-              </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Wallet Invoice Feed</h3><p>Invoices pushed to wallet, pending generated invoices, and deleted/paid states.</p></div></div>
-                <div class="ops-list" id="walletInvoiceList"></div>
+              <div class="panel">
+                <div class="section-head"><div><h3>User Withdrawal Requests</h3><p>Admin only sees withdrawal signals requested by users: who to pay, IBAN, net amount, fee, speed, and payout status.</p></div></div>
+                <div class="ops-list" id="walletPayoutQueue"></div>
               </div>
             </section>
 
@@ -6379,6 +6398,15 @@
         processingStatusSelect.innerHTML = STATUS_TAGS.map(status => `<option value="${status}">${status}</option>`).join("");
         processingStatusSelect.value = state.pendingProcessingStatus || processingParcel()?.status || STATUS_TAGS[0];
       }
+      const processingRiderSelect = document.getElementById("processingRiderSelect");
+      if (processingRiderSelect) {
+        processingRiderSelect.innerHTML = state.riders.map(rider => `<option value="${rider.id}">${rider.id} | ${rider.name} | ${rider.branch}</option>`).join("");
+        processingRiderSelect.value = state.pendingProcessingRider || state.riders[0]?.id || "";
+      }
+      const processingRiderField = document.getElementById("processingRiderField");
+      if (processingRiderField && processingStatusSelect) {
+        processingRiderField.style.display = processingStatusSelect.value === "Parcel out for delivery" ? "grid" : "none";
+      }
 
       const queueCounts = STATUS_TAGS.reduce((acc, status) => {
         acc[status] = state.parcels.filter(p => p.status === status).length;
@@ -6600,17 +6628,16 @@
         const issues = state.operationsIssues.filter(issue => issue.awb && parcels.some(parcel => parcel.awb === issue.awb) && !issue.resolved);
         const card = client.rateCard || defaultRateCard(client.rate);
         return `
-          <div class="ops-card ${client.status === "Pending approval" ? "alert-row" : ""}">
-            <div class="ops-card-head"><strong>${client.id} | ${client.name}</strong><span class="chip ${client.status === "Active" ? "good" : "warn"}">${client.status}</span></div>
-            <p>${client.businessType} | ${client.city} | Owner: ${client.owner} | ${client.email} | ${client.phone}</p>
-            <div class="money-grid" style="margin-top:10px">
-              ${moneyBox("Parcels", parcels.length, `${delivered.length} delivered`)}
-              ${moneyBox("Wallet", money(client.walletBalance || 0), "available balance")}
-              ${moneyBox("Open Issues", issues.length, issues.length ? "needs support" : "clean")}
-              ${moneyBox("Overnight Rate", money(card.overnight), "0.1-1kg")}
+          <div class="log-item ${client.status === "Pending approval" ? "alert-row" : ""}">
+            <strong>${client.id}<br>${client.name}</strong>
+            <div>
+              <strong>${client.businessType || "Merchant"} | ${client.city}</strong>
+              <div class="footer-note">${client.owner || client.name} | ${client.email || "email pending"} | ${client.phone || "phone pending"} | ${client.address || "address pending"}</div>
             </div>
-            <div class="footer-note" style="margin-top:8px">Address: ${client.address}. Tax: ${client.taxId}. IBAN: ${client.iban}.</div>
-            <button class="ghost-btn" style="margin-top:10px" onclick="showAdminTab('clients-clients')">Edit Rates</button>
+            <span class="chip ${client.status === "Active" ? "good" : "warn"}">${client.status}</span>
+            <span class="chip info">${parcels.length} parcels | ${delivered.length} delivered</span>
+            <span class="chip ${issues.length ? "bad" : "good"}">${issues.length} issue(s)</span>
+            <button class="ghost-btn" onclick="showAdminTab('clients-clients')">Edit Rates: ${money(card.overnight)}</button>
           </div>
         `;
       }).join("");
@@ -6798,7 +6825,7 @@
         moneyBox("Selected parcels", selectedInvoiceParcels().length, "delivered only"),
         moneyBox("COD total", money(selectedTotals.cod), "gross collected value"),
         moneyBox("Delivery charges", money(selectedTotals.charges), "NovaX revenue"),
-        moneyBox("Wallet payable", money(selectedTotals.payable), "after charges")
+        moneyBox("Client payable", money(selectedTotals.payable), "after charges")
       ].join("");
 
       document.getElementById("clientSettlementList").innerHTML = state.clients.map(client => {
@@ -6824,17 +6851,17 @@
         const client = clientById(invoice.clientId);
         const pushed = invoice.status === "Pushed to wallet" || invoice.status === "Paid";
         return `
-          <div class="invoice-card">
-            <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${pushed ? "good" : "warn"}">${invoice.status}</span></div>
-            <p>${invoice.summary}</p>
-            <div class="money-grid" style="margin-top:10px">
-              ${moneyBox("COD", money(invoice.cod), `${invoice.parcelRefs.length} parcel(s)`)}
-              ${moneyBox("Charges", money(invoice.charges), "NovaX revenue")}
-              ${moneyBox("Payable", money(invoice.payable), "client amount")}
-              ${moneyBox("Wallet", pushed ? "Entered" : "Not pushed", pushed ? invoice.walletPushedAt || invoice.paidAt : "invoice only")}
+          <div class="log-item">
+            <strong>${invoice.id}<br>${client.name}</strong>
+            <div>
+              <strong>${invoice.parcelRefs.join(", ")}</strong>
+              <div class="footer-note">${invoice.summary || "Delivered parcel invoice"} | Created ${invoice.createdAt || "now"}</div>
             </div>
-            <div class="inline-actions" style="margin-top:10px">
-              ${pushed ? "" : `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Wallet</button><button class="ghost-btn" onclick="deleteInvoice('${invoice.id}')">Delete</button>`}
+            <span class="chip info">COD ${money(invoice.cod)}</span>
+            <span class="chip warn">Charges ${money(invoice.charges)}</span>
+            <span class="chip ${pushed ? "good" : "warn"}">${invoice.status} | Payable ${money(invoice.payable)}</span>
+            <div class="inline-actions">
+              ${pushed ? `<button class="ghost-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Paid</button>` : `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button><button class="ghost-btn" onclick="deleteInvoice('${invoice.id}')">Delete</button>`}
             </div>
           </div>
         `;
@@ -6854,11 +6881,15 @@
         <div class="ops-card">
           <div class="ops-card-head"><strong>${user.id} | ${user.name}</strong><span class="chip good">${user.status}</span></div>
           <p>${user.role} assigned to ${user.branch}. Access: ${user.accessSide}. Client: ${clientById(user.clientId).id} ${clientById(user.clientId).name}.</p>
-          <div class="footer-note">Email: ${user.email}. Password: ${user.password}.</div>
+          <div class="footer-note">Email: ${user.email}. Password: ${user.password}. Controls: ${(user.permissions || []).join(", ") || "default dashboard only"}.</div>
         </div>
       `).join("");
 
       document.getElementById("userClientSelect").innerHTML = state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
+      const riderUserSelect = document.getElementById("riderUserSelect");
+      if (riderUserSelect) {
+        riderUserSelect.innerHTML = state.riders.map(rider => `<option value="${rider.id}">${rider.id} | ${rider.name} | ${rider.branch}</option>`).join("");
+      }
       document.getElementById("userAccessList").innerHTML = state.users.map(user => `
         <div class="ops-card">
           <div class="ops-card-head"><strong>${user.id} | ${user.email}</strong><span class="chip ${user.accessSide.includes("Admin") ? "warn" : "info"}">${user.accessSide}</span></div>
@@ -6869,6 +6900,7 @@
             ${moneyBox("Status", user.status, "login state")}
             ${moneyBox("Client", user.clientId, "assigned account")}
           </div>
+          <div class="footer-note" style="margin-top:8px">Allowed controls: ${(user.permissions || []).join(", ") || "dashboard"}.</div>
         </div>
       `).join("") || `<div class="ops-card"><strong>No users yet</strong><p>Create users from the Create Users tab.</p></div>`;
 
@@ -7350,7 +7382,13 @@
         toast("Select a status to update.");
         return;
       }
+      const riderId = document.getElementById("processingRiderSelect")?.value || "";
+      if (status === "Parcel out for delivery" && !riderId) {
+        toast("Select a rider before pushing parcels out for delivery.");
+        return;
+      }
       state.pendingProcessingStatus = status;
+      state.pendingProcessingRider = riderId;
       saveState();
       document.getElementById("processingAuthBox")?.classList.add("open");
       document.getElementById("processingUsername")?.focus();
@@ -7386,9 +7424,19 @@
         return;
       }
       const status = state.pendingProcessingStatus || document.getElementById("processingStatusSelect")?.value || batch[0].status;
+      const riderId = state.pendingProcessingRider || document.getElementById("processingRiderSelect")?.value || "";
+      if (status === "Parcel out for delivery" && !riderId) {
+        toast("Rider assignment is mandatory for out-for-delivery parcels.");
+        return;
+      }
       batch.forEach(parcel => {
         const branch = processingBranchForStatus(parcel, status);
         setParcelStatus(parcel, status, { name: processor.name, username: processor.username, branch });
+        if (status === "Parcel out for delivery") {
+          parcel.rider = riderId;
+          parcel.assignedRiderAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+          parcel.exception = parcel.exception.replace("No rider assigned for delivery", "").trim();
+        }
         parcel.exception = status === "Delivered" ? parcel.exception.replace("Consignee denies refusal attempt", "").trim() : parcel.exception;
       });
       state.selectedAwb = batch[0].awb;
@@ -7850,6 +7898,7 @@
         toast("User email and password are mandatory.");
         return;
       }
+      const permissions = [...document.querySelectorAll("[data-user-permission]:checked")].map(item => item.value);
       state.users.unshift({
         id: nextId("USR", state.users),
         name,
@@ -7859,12 +7908,43 @@
         accessSide: document.getElementById("userAccessSide").value,
         branch: document.getElementById("userBranch").value,
         clientId: document.getElementById("userClientSelect").value || state.clients[0].id,
+        permissions,
         status: "Active"
       });
       saveState();
       render();
       showAdminTab("users-edit");
       toast(`${name} created with ${document.getElementById("userAccessSide").value} access.`);
+    }
+
+    function createRiderUser() {
+      const riderId = document.getElementById("riderUserSelect")?.value || state.riders[0]?.id || "";
+      const rider = state.riders.find(item => item.id === riderId) || state.riders[0];
+      const email = (document.getElementById("riderUserEmail")?.value || rider?.username || rider?.id || "").trim();
+      const password = (document.getElementById("riderUserPassword")?.value || "").trim();
+      if (!rider || !email || !password) {
+        toast("Rider, username, and password are mandatory.");
+        return;
+      }
+      rider.username = email;
+      rider.password = password;
+      state.users.unshift({
+        id: nextId("USR", state.users),
+        name: rider.name,
+        email,
+        password,
+        role: "Rider",
+        accessSide: "Rider App",
+        branch: rider.branch,
+        clientId: state.clients[0]?.id || "CL-0001",
+        riderId: rider.id,
+        permissions: ["rider-route", "scan", "delivery-proof", "cash-submit"],
+        status: "Active"
+      });
+      saveState();
+      render();
+      showAdminTab("users-edit");
+      toast(`${rider.name} rider login created.`);
     }
 
     function applyClientDateRange() {
@@ -8410,6 +8490,55 @@
       toast("Order report filters cleared.");
     }
 
+    function orderReportFilteredParcels() {
+      const search = document.getElementById("orderReportSearch")?.value.trim().toLowerCase() || "";
+      const status = document.getElementById("orderReportStatusFilter")?.value || "";
+      const clientId = document.getElementById("orderReportClientFilter")?.value || "";
+      return state.parcels.filter(parcel => {
+        const client = clientById(parcel.clientId);
+        const haystack = `${parcel.awb} ${client.name} ${client.id} ${parcel.consignee} ${parcel.city} ${parcel.status} ${parcel.address}`.toLowerCase();
+        return haystack.includes(search)
+          && (!status || parcel.status === status)
+          && (!clientId || parcel.clientId === clientId);
+      });
+    }
+
+    function downloadOrderReportCsv() {
+      const rows = orderReportFilteredParcels();
+      const header = ["AWB","Client ID","Client Name","Consignee","Address","City","Origin","COD","Weight","Status","Current Clock","Journey Aging","Alert","Last Processed By","Last Processed At","Last Processed Branch"];
+      const csvRows = [header, ...rows.map(parcel => {
+        const client = clientById(parcel.clientId);
+        const alert = alertForParcel(parcel);
+        const process = lastProcess(parcel);
+        return [
+          parcel.awb,
+          client.id,
+          client.name,
+          parcel.consignee,
+          parcel.address,
+          parcel.city,
+          parcelOrigin(parcel),
+          parcel.cod,
+          parcel.weight,
+          parcel.status,
+          agingLabel(parcel.statusAgeHours),
+          deliveryJourneyLabel(parcel),
+          `${alert.label} - ${alert.due}`,
+          process.by,
+          process.at,
+          process.branch
+        ];
+      })].map(row => row.map(value => `"${String(value ?? "").replaceAll('"','""')}"`).join(",")).join("\n");
+      const blob = new Blob([csvRows], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `novax-order-report-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast(`${rows.length} order report row(s) downloaded.`);
+    }
+
     function printAwb() {
       state.activeClientTab = "awbLabel";
       saveState();
@@ -8508,6 +8637,7 @@
     document.getElementById("orderReportStatusFilter").addEventListener("change", renderAdmin);
     document.getElementById("orderReportClientFilter").addEventListener("change", renderAdmin);
     document.getElementById("clearOrderReportFiltersBtn").addEventListener("click", clearOrderReportFilters);
+    document.getElementById("downloadOrderReportCsvBtn").addEventListener("click", downloadOrderReportCsv);
     document.getElementById("processingAwbInput").addEventListener("keydown", event => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -8522,6 +8652,11 @@
     document.getElementById("processingClearBatchBtn").addEventListener("click", clearProcessingBatch);
     document.getElementById("processingStatusSelect").addEventListener("change", event => {
       state.pendingProcessingStatus = event.target.value;
+      saveState();
+      renderAdmin();
+    });
+    document.getElementById("processingRiderSelect").addEventListener("change", event => {
+      state.pendingProcessingRider = event.target.value;
       saveState();
     });
     document.getElementById("processingConfirmBtn").addEventListener("click", requestProcessingAuth);
@@ -8561,13 +8696,14 @@
       renderAdmin();
     });
     document.getElementById("createSelectedInvoiceBtn").addEventListener("click", createSelectedInvoice);
-    document.getElementById("walletClientSelect").addEventListener("change", event => {
+    document.getElementById("walletClientSelect")?.addEventListener("change", event => {
       state.activeWalletClient = event.target.value;
       saveState();
       renderAdmin();
     });
-    document.getElementById("walletWithdrawBtn").addEventListener("click", requestWalletWithdrawal);
+    document.getElementById("walletWithdrawBtn")?.addEventListener("click", requestWalletWithdrawal);
     document.getElementById("createUserBtn").addEventListener("click", createUser);
+    document.getElementById("createRiderUserBtn").addEventListener("click", createRiderUser);
     document.getElementById("adminRunBtn").addEventListener("click", runAdminAction);
     document.getElementById("riderScanBtn").addEventListener("click", riderScan);
     document.getElementById("askAiBtn").addEventListener("click", () => {

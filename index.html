@@ -231,7 +231,8 @@ h2.title{font-size:clamp(30px,5vw,58px);line-height:1.02;margin:16px 0 12px;lett
 .role-btn.active{background:#071d17;color:#eafff5;border-color:#071d17;}
 .signin-field{display:grid;gap:6px;margin-top:10px;}
 .signin-field label{font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:900;color:#5b7168;}
-.signin-field input{height:48px;border-radius:13px;border:1px solid var(--line);background:#fff;padding:0 13px;color:var(--ink);font-weight:700;}
+.signin-field input,.signin-field select,.signin-field textarea{width:100%;min-height:48px;border-radius:13px;border:1px solid var(--line);background:#fff;padding:0 13px;color:var(--ink);font-weight:700;font:inherit;}
+.signin-field textarea{min-height:76px;padding:12px 13px;resize:vertical;}
 .signin-note{font-size:12px;color:var(--muted);margin-top:10px;}
 footer{padding:34px 0;text-align:center;color:var(--muted);font-size:13px;}
 
@@ -301,7 +302,7 @@ img,svg,canvas,video{max-width:100%;}
     </a>
     <nav class="nav" id="nav">
       <a href="#track">Track Your Order</a>
-      <a href="client.html" data-link>Signup As NovaX Merchant</a>
+      <a href="#signup" data-signup>Signup As NovaX Merchant</a>
       <a href="#signin" class="solid" data-signin>Sign In</a>
     </nav>
     <button class="nav-toggle" id="navToggle" aria-label="Menu"><span></span><span></span><span></span></button>
@@ -318,7 +319,7 @@ img,svg,canvas,video{max-width:100%;}
 
       <div class="hero-cta reveal in d3">
         <a class="btn primary" href="#track">Track Your Order</a>
-        <a class="btn ghost" href="client.html" data-link>Signup As NovaX Merchant</a>
+        <a class="btn ghost" href="#signup" data-signup>Signup As NovaX Merchant</a>
         <a class="btn ghost" href="#signin" data-signin>Sign In</a>
       </div>
 
@@ -532,7 +533,7 @@ img,svg,canvas,video{max-width:100%;}
       <p>Book, track, collect COD, and cash out — all watched by AI, all in one NovaX account.</p>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
         <a class="btn primary" href="#track">Track Your Order</a>
-        <a class="btn ghost" href="client.html" data-link style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.4);color:#04130d">Signup As NovaX Merchant</a>
+        <a class="btn ghost" href="#signup" data-signup style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.4);color:#04130d">Signup As NovaX Merchant</a>
         <a class="btn ghost" href="#signin" data-signin style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.4);color:#04130d">Sign In</a>
       </div>
     </div>
@@ -555,6 +556,22 @@ img,svg,canvas,video{max-width:100%;}
     <div class="signin-field"><label>Password</label><input id="signinPassword" type="password" placeholder="Password"></div>
     <button class="btn primary" id="signinContinue" style="width:100%;justify-content:center;margin-top:14px">Continue</button>
     <div class="signin-note">Demo preview: continue opens the selected workspace. In production this will verify credentials and permissions first.</div>
+  </div>
+</div>
+
+<div class="signin-modal" id="signupModal" aria-hidden="true">
+  <div class="signin-card">
+    <button class="signin-close" id="signupClose" aria-label="Close signup">X</button>
+    <h3>Signup As NovaX Merchant</h3>
+    <p>Fill this once. NovaX sales will review the request and contact you as soon as possible.</p>
+    <div class="signin-field"><label>What city are you based in?</label><select id="merchantCity"><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option><option>Faisalabad</option><option>Multan</option><option>Other</option></select></div>
+    <div class="signin-field"><label>Your name</label><input id="merchantName" placeholder="Your full name"></div>
+    <div class="signin-field"><label>Your phone number</label><input id="merchantPhone" placeholder="+92 300 0000000"></div>
+    <div class="signin-field"><label>Your address</label><textarea id="merchantAddress" placeholder="Pickup address"></textarea></div>
+    <div class="signin-field"><label>What product do you sell?</label><input id="merchantProduct" placeholder="Fashion, cosmetics, electronics, etc."></div>
+    <div class="signin-field"><label>Website link if any</label><input id="merchantWebsite" placeholder="https://yourstore.com"></div>
+    <button class="btn primary" id="merchantSubmit" style="width:100%;justify-content:center;margin-top:14px">Submit Merchant Request</button>
+    <div class="signin-note" id="merchantSignupNote">Your account will stay pending until NovaX sales or admin approves it.</div>
   </div>
 </div>
 
@@ -620,6 +637,35 @@ img,svg,canvas,video{max-width:100%;}
   /* ---- one sign-in function for seller, admin, and rider ---- */
   var signinTarget="client.html";
   var signinModal=document.getElementById("signinModal");
+  var signupModal=document.getElementById("signupModal");
+  function readState(){
+    try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}")||{};}catch(e){return{};}
+  }
+  function saveState(state){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}
+  function routeForCredentials(email,password){
+    var e=String(email||"").trim().toLowerCase();
+    var p=String(password||"").trim().toLowerCase();
+    var state=readState();
+    var users=Array.isArray(state.users)?state.users:[];
+    var matchedUser=users.find(function(user){
+      return String(user.email||"").toLowerCase()===e || String(user.name||"").toLowerCase().replace(/\s+/g,".")===e || String(user.id||"").toLowerCase()===e;
+    });
+    if(matchedUser && String(matchedUser.password||"")===password){
+      var side=String(matchedUser.accessSide||matchedUser.role||"").toLowerCase();
+      if(side.includes("rider")) return "rider.html";
+      if(side.includes("admin")) return "admin.html";
+      return "client.html";
+    }
+    var riders=Array.isArray(state.riders)?state.riders:[];
+    var matchedRider=riders.find(function(rider){
+      var aliases=[rider.id,rider.name,rider.username].map(function(v){return String(v||"").toLowerCase().replace(/\s+/g,".");});
+      return aliases.includes(e);
+    });
+    if(matchedRider && (p==="rider" || p==="rider123" || String(matchedRider.password||"").toLowerCase()===p)) return "rider.html";
+    if((e.includes("admin") || e==="control") && ["admin","admin123","novaxadmin"].includes(p)) return "admin.html";
+    if(e.includes("rider") || ["usman.r17","bilal.r22","hamza.r31"].includes(e) || p==="rider") return "rider.html";
+    return "client.html";
+  }
   function openSignin(){
     if(!signinModal) return;
     signinModal.classList.add("show");
@@ -647,10 +693,63 @@ img,svg,canvas,video{max-width:100%;}
     var email=(document.getElementById("signinEmail").value||"").trim();
     var pass=(document.getElementById("signinPassword").value||"").trim();
     if(!email||!pass){ alert("Email/username and password are required."); return; }
+    signinTarget=routeForCredentials(email,pass);
     playHandoff(function(){ window.location.href=signinTarget; });
   });
   if(location.hash==="#signin") setTimeout(openSignin,500);
-  if(location.hash==="#signup") setTimeout(function(){ playHandoff(function(){ window.location.href="client.html"; }); },250);
+
+  function openSignup(){
+    if(!signupModal) return;
+    signupModal.classList.add("show");
+    signupModal.setAttribute("aria-hidden","false");
+    setTimeout(function(){var name=document.getElementById("merchantName"); if(name) name.focus();},50);
+  }
+  function closeSignup(){
+    if(!signupModal) return;
+    signupModal.classList.remove("show");
+    signupModal.setAttribute("aria-hidden","true");
+    if(location.hash==="#signup") history.replaceState(null,"",location.pathname+location.search);
+  }
+  function submitMerchantSignup(){
+    var city=document.getElementById("merchantCity").value;
+    var name=(document.getElementById("merchantName").value||"").trim();
+    var phone=(document.getElementById("merchantPhone").value||"").trim();
+    var address=(document.getElementById("merchantAddress").value||"").trim();
+    var product=(document.getElementById("merchantProduct").value||"").trim();
+    var website=(document.getElementById("merchantWebsite").value||"").trim();
+    if(!city||!name||!phone||!address||!product){
+      alert("City, name, phone, address, and product are mandatory.");
+      return;
+    }
+    var state=readState();
+    state.pendingClients=Array.isArray(state.pendingClients)?state.pendingClients:[];
+    var id="LEAD-"+String(Date.now()).slice(-5);
+    state.pendingClients.unshift({
+      id:id,
+      name:name,
+      owner:name,
+      city:city,
+      phone:phone,
+      email:"",
+      address:address,
+      businessType:product,
+      website:website||"No website",
+      tier:"New merchant lead",
+      status:"Pending sales contact",
+      iban:"",
+      taxId:"",
+      rate:240,
+      createdAt:new Date().toISOString().slice(0,10)+" "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})
+    });
+    saveState(state);
+    document.getElementById("merchantSignupNote").innerHTML="<strong>Request received.</strong> Our sales team will get in touch with you as soon as possible.";
+    ["merchantName","merchantPhone","merchantAddress","merchantProduct","merchantWebsite"].forEach(function(id){document.getElementById(id).value="";});
+  }
+  document.querySelectorAll("[data-signup]").forEach(function(a){a.addEventListener("click",function(e){e.preventDefault();openSignup();});});
+  document.getElementById("signupClose").addEventListener("click",closeSignup);
+  document.getElementById("merchantSubmit").addEventListener("click",submitMerchantSignup);
+  signupModal.addEventListener("click",function(e){if(e.target===signupModal) closeSignup();});
+  if(location.hash==="#signup") setTimeout(openSignup,500);
 
   /* ---- nav toggle ---- */
   document.getElementById("navToggle").addEventListener("click",function(){document.getElementById("nav").classList.toggle("open");});
