@@ -153,14 +153,14 @@
     .wide-scroll table{min-width:760px;}
     .required-star{color:var(--green-2);font-weight:900;}
     /* ===== Added feature styling ===== */
-    .status-board{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;}
-    .status-col{border:1px solid var(--line);border-radius:var(--radius);background:#fafdfb;padding:12px;display:grid;gap:8px;align-content:start;}
-    .status-col-head{display:flex;justify-content:space-between;align-items:center;gap:8px;}
-    .status-col-head strong{font-size:13px;}
-    .sb-parcel{padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;transition:transform var(--speed),border-color var(--speed),box-shadow var(--speed);}
+    .status-board{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;}
+    .status-col{flex:1 1 268px;min-width:248px;max-width:340px;border:1px solid var(--line);border-radius:14px;background:var(--panel-soft);padding:14px;display:flex;flex-direction:column;gap:10px;}
+    .status-col-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--line);}
+    .status-col-head strong{font-size:13px;font-weight:700;letter-spacing:.01em;}
+    .sb-parcel{padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:4px;transition:transform var(--speed),border-color var(--speed),box-shadow var(--speed);}
     .sb-parcel:hover{transform:translateY(-2px);border-color:var(--green);box-shadow:0 10px 22px rgba(12,124,89,.12);}
-    .sb-parcel strong{font-size:13px;display:block;}
-    .sb-parcel span{font-size:11px;color:var(--muted);}
+    .sb-awb{font-size:13px;font-weight:700;color:var(--ink);}
+    .sb-meta{font-size:11px;color:var(--muted);line-height:1.4;}
     .modal-overlay{position:fixed;inset:0;z-index:130;display:none;place-items:start center;background:rgba(7,16,13,.62);backdrop-filter:blur(8px);padding:24px 16px;overflow:auto;}
     .modal-overlay.show{display:grid;}
     .modal-card{width:min(720px,100%);background:#fff;border:1px solid var(--line-strong);border-radius:14px;box-shadow:var(--shadow);padding:18px;animation:fadeUp .3s ease both;margin:auto;}
@@ -201,9 +201,11 @@
       body *{visibility:hidden;}
       #printStage,#printStage *{visibility:visible;}
       #printStage{display:block !important;position:absolute;left:0;top:0;width:100%;padding:0;}
-      #printStage.bulk-print{display:grid !important;grid-template-columns:repeat(3,1fr);gap:4mm;align-items:start;}
+      #printStage.bulk-print{display:block !important;}
       #printStage .print-label-wrap{break-inside:avoid;page-break-inside:avoid;margin:0;}
-      #printStage.bulk-print .print-label-wrap{page-break-after:auto!important;}
+      #printStage.bulk-print .print-page{display:flex;flex-direction:row;gap:4mm;align-items:stretch;page-break-after:always;break-after:page;break-inside:avoid;page-break-inside:avoid;}
+      #printStage.bulk-print .print-page:last-child{page-break-after:auto;break-after:auto;}
+      #printStage.bulk-print .print-page .print-label-wrap{flex:1 1 0;width:33.33%;min-width:0;page-break-after:auto!important;}
       .awb-label{grid-template-columns:minmax(0,1fr) 132px!important;gap:6px!important;padding:7px!important;border:2px solid #000!important;border-radius:6px!important;box-shadow:none!important;break-inside:avoid;page-break-inside:avoid;max-height:62mm;overflow:hidden;}
       .awb-title{padding-bottom:4px!important;margin-bottom:5px!important;gap:6px!important;}
       .awb-title h3{font-size:16px!important;}
@@ -737,7 +739,7 @@
       const parcels=clientScopedParcels(); const groups={};
       parcels.forEach(p=>{ (groups[p.status]=groups[p.status]||[]).push(p); });
       const order=STATUS_TAGS.filter(s=>groups[s]);
-      el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${s}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].map(p=>`<div class="sb-parcel" onclick="openClientParcelJourney('${p.awb}')"><strong>${p.awb}</strong><span>${p.consignee} &middot; ${p.city}</span><br><span>${money(p.cod)} &middot; ${alertForParcel(p).label} &middot; upd ${p.updated}</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
+      el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${s}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].map(p=>`<div class="sb-parcel" onclick="openClientParcelJourney('${p.awb}')"><span class="sb-awb">${p.awb}</span><span class="sb-meta">${p.consignee} &middot; ${p.city}</span><span class="sb-meta">${money(p.cod)} &middot; ${alertForParcel(p).label} &middot; upd ${p.updated}</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
     }
     function renderJourney(){
       const p=state.parcels.find(x=>x.awb===state.selectedAwb)||state.parcels[0]||emptyParcel();
@@ -841,8 +843,15 @@
       const stage=document.getElementById("printStage"); if(!stage) return;
       const valid=(awbs||[]).map(a=>state.parcels.find(p=>p.awb===a)).filter(Boolean);
       if(!valid.length){ toast("No AWB available to print."); return; }
-      stage.classList.toggle("bulk-print", valid.length > 1);
-      stage.innerHTML=valid.map(p=>`<div class="print-label-wrap" style="${valid.length===1?"page-break-after:auto":"page-break-after:auto"}">${awbLabelHtml(p)}</div>`).join("");
+      const bulk=valid.length>1;
+      stage.classList.toggle("bulk-print", bulk);
+      if(bulk){
+        let html="";
+        for(let i=0;i<valid.length;i+=3){ html+=`<div class="print-page">`+valid.slice(i,i+3).map(p=>`<div class="print-label-wrap">${awbLabelHtml(p)}</div>`).join("")+`</div>`; }
+        stage.innerHTML=html;
+      } else {
+        stage.innerHTML=valid.map(p=>`<div class="print-label-wrap">${awbLabelHtml(p)}</div>`).join("");
+      }
       stage.style.display="block"; window.print(); setTimeout(()=>{ stage.style.display="none"; },500);
     }
     function printAwb(){ printLabels([state.lastGeneratedAwb||state.selectedAwb]); }
@@ -1011,6 +1020,7 @@
       if(missing.length) return { errors:[`Missing columns: ${missing.join(", ")}`], records:[] };
       const idx=name=>headers.indexOf(name);
       const seen=new Set(), errors=[], records=[];
+      const existingOrderIds=new Set((state.parcels||[]).map(p=>p.orderId).filter(Boolean));
       rows.slice(1).forEach((row,i)=>{
         const line=i+2;
         const rec={
@@ -1029,7 +1039,8 @@
         if(!["Karachi","Lahore","Islamabad","Rawalpindi"].includes(rec.city)) errors.push(`Line ${line}: city is not serviceable yet.`);
         if(Number.isNaN(rec.cod)||rec.cod<0) errors.push(`Line ${line}: COD must be 0 or higher.`);
         if(!["COD","Non COD Prepaid"].includes(rec.paymentMode)) errors.push(`Line ${line}: payment_mode must be COD or Non COD Prepaid.`);
-        if(seen.has(rec.orderId)) errors.push(`Line ${line}: duplicate order_id ${rec.orderId}.`);
+        if(seen.has(rec.orderId)) errors.push(`Line ${line}: duplicate order_id ${rec.orderId} in this file.`);
+        else if(existingOrderIds.has(rec.orderId)) errors.push(`Line ${line}: order_id ${rec.orderId} was already booked. This sheet looks like it was already uploaded.`);
         seen.add(rec.orderId);
         records.push(rec);
       });
