@@ -229,7 +229,7 @@
       .mobile-card-list{display:grid;}
       .log-item{grid-template-columns:1fr;}
     }
-
+​
     /* Mobile polish layer for investor preview and seller use on phones. */
     html,body{width:100%;max-width:100%;}
     img,svg,canvas,video{max-width:100%;}
@@ -522,10 +522,10 @@
       </section>
     </main>
   </div>
-
+​
   <div class="toast" id="toast"></div>
   <div id="printStage"></div>
-
+​
   <!-- AWB modal -->
   <div class="modal-overlay" id="awbModal">
     <div class="modal-card">
@@ -534,7 +534,7 @@
       <div class="inline-actions" style="margin-top:14px"><button class="action-btn" id="awbModalPrint">Print Air Way Bill</button><button class="ghost-btn" onclick="closeAwbModal()">Close</button></div>
     </div>
   </div>
-
+​
   <!-- Ticket modal -->
   <div class="modal-overlay" id="ticketModal">
     <div class="modal-card">
@@ -549,7 +549,7 @@
       <div class="inline-actions" style="margin-top:14px"><button class="action-btn" onclick="submitClientTicket()">Send Ticket</button><button class="ghost-btn" onclick="closeTicketModal()">Cancel</button></div>
     </div>
   </div>
-
+​
   <!-- Wallet done modal -->
   <div class="modal-overlay" id="walletDoneModal">
     <div class="modal-card" style="text-align:center;max-width:460px">
@@ -559,7 +559,7 @@
       <button class="action-btn" style="margin-top:10px" onclick="closeWalletDone()">Done</button>
     </div>
   </div>
-
+​
   <script>
     const PKR = new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 });
     const now = () => new Date();
@@ -647,7 +647,7 @@
     state.walletWithdrawSpeed = state.walletWithdrawSpeed || "";
     state.clients.forEach(c => { c.walletBalance = Number(c.walletBalance || 0); });
     state._walletSeeded = true;
-
+​
     function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?JSON.parse(s):structuredClone(baseState); }catch(e){ return structuredClone(baseState); } }
     function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
     function emptyParcel(){ return { awb:"", clientId:state.client.id||"CL-0000", date:new Date().toISOString().slice(0,10), consignee:"No parcel selected", city:"", cod:0, fee:0, status:"New booked", statusAgeHours:0, stage:0, totalStages:STATUS_TAGS.length, rider:"", branch:"", risk:0, updated:"", exception:"", cashReceived:false, phone:"", address:"", service:"COD Standard", weight:"", steps:[] }; }
@@ -712,7 +712,7 @@
     function moneyBox(label,value,note){ return `<div class="money-box"><span>${label}</span><strong>${value}</strong><div class="footer-note">${note}</div></div>`; }
     function qrUrl(awb){ return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodeURIComponent(awb)}`; }
     function barcodeUrl(awb){ return `https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(awb)}&code=Code128&translate-esc=on&dpi=96`; }
-
+​
     function renderMetrics(){
       const cm=clientMetrics();
       const rate=percent(cm.delivered,cm.total);
@@ -831,7 +831,7 @@
       const reply=p.exception?`${p.awb} has an exception: ${p.exception}. I have escalated it to ${p.branch} and admin finance.`:`${p.awb} is ${p.status}. Last verified update was ${p.updated} from ${p.branch}.`;
       document.getElementById("clientAi").innerHTML=`<div class="bubble">Client: Where is ${p.awb}, and when will COD settle?</div><div class="bubble ai">AI: ${reply} COD payable updates only after rider cash and bank deposit controls close.</div>`;
     }
-
+​
     /* ===== Added: AWB label, print, modals, bulk preview, report, invoice download, tickets, wallet ===== */
     function awbLabelHtml(p){
       const client=clientById(p.clientId);
@@ -848,7 +848,7 @@
     function printAwb(){ printLabels([state.lastGeneratedAwb||state.selectedAwb]); }
     function openAwbModal(awb){ const p=state.parcels.find(x=>x.awb===awb)||selectedParcel(); state.lastGeneratedAwb=p.awb; saveState(); document.getElementById("awbModalBody").innerHTML=awbLabelHtml(p); document.getElementById("awbModal").classList.add("show"); }
     function closeAwbModal(){ document.getElementById("awbModal").classList.remove("show"); }
-
+​
     function renderBulkPreview(){
       const panel=document.getElementById("bulkPreviewPanel"), list=document.getElementById("bulkPreviewList");
       if(!panel||!list) return;
@@ -857,7 +857,7 @@
       panel.style.display="block";
       list.innerHTML=awbs.map(a=>{ const p=state.parcels.find(x=>x.awb===a); return `<div style="margin-bottom:14px">${awbLabelHtml(p)}<div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" onclick="printLabels(['${a}'])">Print ${a}</button></div></div>`; }).join("");
     }
-
+​
     function renderClientReportFull(){
       const tbody=document.getElementById("clientReportFullRows"); if(!tbody) return;
       const sel=document.getElementById("repStatus");
@@ -869,7 +869,7 @@
       const rows=state.parcels.filter(p=>p.clientId===state.client.id).filter(p=>{ const d=p.date||""; return (!from||d>=from)&&(!to||d<=to)&&(!status||p.status===status)&&`${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase().includes(search); });
       tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${p.awb}</strong></td><td>${p.date||"-"}</td><td>${p.consignee}<br><span class="footer-note">${p.city}</span></td><td><span class="status ${statusClass(p)}">${p.status}</span></td><td>${money(p.cod)}</td><td>${money(p.fee)}</td><td>${agingLabel(p.statusAgeHours)}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
     }
-
+​
     function renderLatestInvoice(){
       const el=document.getElementById("clientLatestInvoice"); if(!el) return;
       const inv=state.invoices.filter(i=>i.clientId===state.client.id && i.status!=="Deleted")[0];
@@ -890,7 +890,7 @@
       stage.innerHTML=`<div style="font-family:sans-serif;color:#000;padding:24px"><h2>NovaX Full Report — ${state.client.name}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th></tr>${rows.map(p=>`<tr><td>${p.awb}</td><td>${p.date}</td><td>${p.consignee}</td><td>${p.status}</td><td>${money(p.cod)}</td></tr>`).join("")}</table></div>`;
       stage.style.display="block"; window.print(); setTimeout(()=>{ stage.style.display="none"; },500);
     }
-
+​
     /* Tickets — pushed into shared state.tickets so admin windows pick them up */
     function openTicketModal(awb){ document.getElementById("ticketAwbField").value=awb||state.selectedAwb||""; document.getElementById("ticketFromField").value=`Seller (${state.client.name})`; document.getElementById("ticketMsgField").value=""; document.getElementById("ticketModal").classList.add("show"); }
     function closeTicketModal(){ document.getElementById("ticketModal").classList.remove("show"); }
@@ -908,7 +908,7 @@
       saveState(); render(); closeTicketModal();
       toast(`${t.id} sent to ${m.to}.`);
     }
-
+​
     /* Wallet */
     const WALLET_FEE={ "24h":0.001, "12h":0.003, "instant":0.007 };
     function walletFeeRate(s){ return WALLET_FEE[s] ?? 0.001; }
@@ -952,7 +952,7 @@
     }
     function openWalletDone(){ const m=document.getElementById("walletDoneModal"); m.classList.add("show"); const t=m.querySelector(".tick"); if(t){ t.style.animation="none"; void t.offsetWidth; t.style.animation=""; } }
     function closeWalletDone(){ document.getElementById("walletDoneModal").classList.remove("show"); }
-
+​
     /* Booking */
     function bookParcel(o={}){
       const cod=o.cod!==undefined?Number(o.cod):3500+Math.round(Math.random()*11000);
@@ -971,19 +971,25 @@
       const awb=bookParcel({ consignee:document.getElementById("bookingName").value.trim(), city:document.getElementById("bookingCity").value, cod:Number(document.getElementById("bookingCod").value)||6500, phone:document.getElementById("bookingPhone").value.trim(), pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address:document.getElementById("bookingAddress").value.trim() });
       openAwbModal(awb); toast(`${awb} booked. Print the AWB from the popup.`);
     }
-    function csvEscape(value){ return `"${String(value??"").replace(/"/g,'""')}"`; }
+    function csvEscape(value){
+      const text=String(value??"");
+      return /[",\n\r]/.test(text)?`"${text.replace(/"/g,'""')}"`:text;
+    }
     function downloadBulkTemplate(){
       const rows=[
         ["consignee","phone","city","address","cod","weight","order_id","product","payment_mode"],
         ["Ahmed Customer","03113323923","Lahore","House 21 Main Market Lahore","2500","0.8 kg","ORDER-1001","Black hoodie size medium","COD"],
         ["Sara Customer","03112223344","Karachi","Block 6 PECHS Karachi","0","1 kg","ORDER-1002","Prepaid skincare parcel","Non COD Prepaid"]
       ];
-      const csv=rows.map(row=>row.map(csvEscape).join(",")).join("\n");
+      const csv="\ufeff"+rows.map(row=>row.map(csvEscape).join(",")).join("\r\n")+"\r\n";
+      const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
       const a=document.createElement("a");
-      a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-      a.download="novax-bulk-booking-template.csv";
+      a.href=url;
+      a.download="NovaX-bulk-booking-template.csv";
+      document.body.appendChild(a);
       a.click();
-      toast("CSV format downloaded.");
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1000);
+      toast("CSV format downloaded. Open it with Numbers, Excel, or Google Sheets.");
     }
     function parseCsv(text){
       const rows=[]; let row=[], cell="", q=false;
@@ -1058,7 +1064,7 @@
     }
     function applyClientDateRange(){ state.clientDateFrom=document.getElementById("clientDateFrom").value||state.clientDateFrom; state.clientDateTo=document.getElementById("clientDateTo").value||state.clientDateTo; saveState(); render(); toast(`History filtered ${state.clientDateFrom} to ${state.clientDateTo}.`); }
     function requestPayout(){ const cm=clientMetrics(); const id=nextId("PAY",state.paymentLogs); state.paymentLogs.unshift({ id, clientId:state.client.id||"CL-0001", type:"Payout requested", amount:cm.payable, status:"Pending admin approval", ref:`PAYOUT-${id}` }); saveState(); render(); showClientTab("payments"); toast("Payout request sent to admin."); }
-
+​
     function render(){
       renderMetrics(); renderClientStatusBoard(); renderClientParcels(); renderJourney(); renderWallets(); renderAi();
       renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview();
@@ -1067,7 +1073,7 @@
     function tickMeters(){ requestAnimationFrame(()=>{ document.querySelectorAll(".meter>span").forEach(s=>{ const w=s.style.width; s.style.width="0"; requestAnimationFrame(()=>{ s.style.width=w; }); }); }); }
     function showClientTab(id){ state.activeClientTab=id; saveState(); renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); tickMeters(); if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
     function toast(msg){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
-
+​
     /* Events */
     document.querySelectorAll(".client-tab").forEach(b=>b.addEventListener("click",()=>showClientTab(b.dataset.clientTab)));
     document.querySelectorAll("[data-client-tab]:not(.client-tab)").forEach(b=>b.addEventListener("click",()=>showClientTab(b.dataset.clientTab)));
@@ -1093,10 +1099,13 @@
     document.getElementById("askAiBtn2").addEventListener("click",()=>{ renderAi(); toast("WhatsApp AI checked live parcel data."); });
     document.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{ if(b.textContent.trim()==="Invite User") toast("Invite user flow opened for this workspace."); }));
     setInterval(()=>{ const el=document.getElementById("clockB"); if(el) el.textContent=`Live ${time()}`; },1000);
-
+​
     Object.assign(window,{ openClientParcelJourney, selectParcel, requestRedelivery, openAwbModal, closeAwbModal, openTicketModal, closeTicketModal, submitClientTicket, downloadInvoiceCsv, printInvoice, printLabels, confirmWalletWithdraw, selectWalletSpeed, closeWalletDone });
     render();
     window.scrollTo({ top:0, left:0 });
   </script>
 </body>
 </html>
+​
+Notion AI finished.
+Projects
