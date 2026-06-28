@@ -1613,6 +1613,21 @@
       font-weight: 800;
     }
 
+    .perm-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .perm-grid .check-line {
+      min-height: 48px;
+      flex-wrap: wrap;
+      line-height: 1.2;
+      white-space: normal;
+      word-break: break-word;
+    }
+
     .ledger-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4581,6 +4596,8 @@
                   <div class="mini-form">
                     <div class="field"><label>Rider Name</label><input id="newRiderName" value="New Rider"></div>
                     <div class="field"><label>Username</label><input id="newRiderUser" value="rider.login"></div>
+                    <div class="field"><label>Password</label><input id="newRiderPassword" value="rider123"></div>
+                    <div class="field"><label>Branch</label><select id="newRiderBranch"><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option><option>Rawalpindi Hub</option></select></div>
                     <div class="field"><label>Cash Limit</label><input id="newRiderLimit" type="number" value="75000"></div>
                     <div class="field"><label>Manager</label><select id="newRiderManager"><option>Karachi Hub Manager</option><option>Lahore Hub Manager</option><option>Islamabad Hub Manager</option></select></div>
                   </div>
@@ -4681,7 +4698,7 @@
                   </div>
                   <div class="panel soft-panel" style="margin-top:14px">
                     <div class="section-head"><div><h3>Allowed Controls</h3><p>Select exactly what this user can see or operate.</p></div></div>
-                    <div class="filter-bar">
+                    <div class="filter-bar perm-grid">
                       <label class="check-line"><input type="checkbox" data-user-permission value="dashboard" checked> Dashboard</label>
                       <label class="check-line"><input type="checkbox" data-user-permission value="orders-view" checked> Orders view all/report</label>
                       <label class="check-line"><input type="checkbox" data-user-permission value="orders-processing"> Order processing</label>
@@ -5753,6 +5770,35 @@
       return missing;
     }
 
+    const DISPUTE_DELAY_MIN = 2;
+
+    function manifestRemainingAwbs(log) {
+      const expected = log.parcels || [];
+      const received = (log.demanifestedAwbs && log.demanifestedAwbs.length) ? log.demanifestedAwbs : (log.demanifestPartial || []);
+      return expected.filter(awb => !received.includes(awb));
+    }
+
+    function manifestRemainingCount(log) {
+      return manifestRemainingAwbs(log).length;
+    }
+
+    function manifestScanStarted(log) {
+      return !!(log.demanifestStartedAt || log.status === "Complete" || (log.demanifestedAwbs && log.demanifestedAwbs.length) || (log.demanifestPartial && log.demanifestPartial.length));
+    }
+
+    function manifestDisputeMinutes(log) {
+      if (log.status === "Complete") return DISPUTE_DELAY_MIN;
+      if (!log.demanifestStartedAt) return 0;
+      const ms = Date.now() - new Date(log.demanifestStartedAt).getTime();
+      return Number.isFinite(ms) ? ms / 60000 : 0;
+    }
+
+    function manifestInDispute(log) {
+      if (!manifestScanStarted(log)) return false;
+      if (manifestRemainingCount(log) <= 0) return false;
+      return manifestDisputeMinutes(log) >= DISPUTE_DELAY_MIN;
+    }
+
     function defaultRateCard(rate = 250) {
       return {
         overnight: rate,
@@ -6736,6 +6782,7 @@
             <span class="chip info">${parcels.length} parcels | ${delivered.length} delivered</span>
             <span class="chip ${issues.length ? "bad" : "good"}">${issues.length} issue(s)</span>
             <button class="ghost-btn" onclick="showAdminTab('clients-clients')">Edit Rates: ${money(card.overnight)}</button>
+            <button class="ghost-btn" onclick="editClientLogin('${client.id}')">Edit Login</button>
           </div>
         `;
       }).join("");
@@ -7005,7 +7052,7 @@
       const profit = m.revenue - m.expenses;
       const lateParcels = state.parcels.filter(p => alertForParcel(p).level === "critical");
       const allSummaryManifests = [...manifestLogs().filter(log => log.status !== "Complete"), ...state.completedSacks.filter(log => log.type === "parcel manifest" || log.id?.startsWith("MAN-") || log.id?.startsWith("SACK-"))];
-      const missingManifestCns = allSummaryManifests.flatMap(log => manifestMissingAwbs(log).map(awb => `${awb} (${log.id})`));
+      const missingManifestCns = allSummaryManifests.filter(manifestInDispute).flatMap(log => manifestRemainingAwbs(log).map(awb => `${awb} (${log.id})`));
       const openOps = state.operationsIssues.filter(issue => !issue.resolved);
       const openTickets = (state.tickets || []).filter(ticket => ticket.status !== "Resolved");
       const emergencyTickets = openTickets.filter(ticket => ticketEffectiveTier(ticket) === "emergency");
@@ -7074,8 +7121,8 @@
       const activeManifestLogs = manifestLogs().filter(log => log.status !== "Complete");
       const completedManifestLogs = state.completedSacks.filter(log => log.type === "parcel manifest" || log.id?.startsWith("MAN-") || log.id?.startsWith("SACK-"));
       const allManifestLogs = [...activeManifestLogs, ...completedManifestLogs];
-      const disputedLogs = allManifestLogs.filter(log => manifestMissingCount(log) > 0);
-      const missingCount = disputedLogs.reduce((sum, log) => sum + manifestMissingCount(log), 0);
+      const disputedLogs = allManifestLogs.filter(manifestInDispute);
+      const missingCount = disputedLogs.reduce((sum, log) => sum + manifestRemainingCount(log), 0);
       const totalManifestParcels = allManifestLogs.reduce((sum, log) => sum + manifestExpected(log), 0);
       const reachedCount = allManifestLogs.reduce((sum, log) => sum + manifestDone(log), 0);
       const avgTransitHours = completedManifestLogs.length ? Math.round(completedManifestLogs.reduce((sum, log) => sum + (log.transitHours || log.openHours || 18), 0) / completedManifestLogs.length) : 0;
@@ -7182,7 +7229,17 @@
       }
       const dispute = document.getElementById("manifestDisputeList");
       if (dispute) {
-        dispute.innerHTML = disputedLogs.flatMap(log => manifestMissingAwbs(log).map(awb => `<div class="ops-card alert-row critical"><div class="ops-card-head"><strong>${awb}</strong><span class="chip bad">${log.id}</span></div><p>Missing in demanifest from ${log.from} to ${log.to}. Admin escalation required.</p></div>`)).join("") || `<div class="ops-card"><strong>No manifest disputes</strong><p>Missing CNs after demanifest will appear here.</p></div>`;
+        let disputePinged = false;
+        disputedLogs.forEach(log => {
+          if (!log.branchManagerPinged) {
+            log.branchManagerPinged = true;
+            disputePinged = true;
+            state.ticketNotifications.unshift({ text: `${log.id}: ${manifestRemainingCount(log)} CN(s) still missing ${Math.round(manifestDisputeMinutes(log))} min after demanifest scan. ${log.to} branch manager pinged.`, at: `${new Date().toISOString().slice(0, 10)} ${time()}`, level: "bad" });
+            state.operationsIssues.unshift({ id: nextId("OPS", state.operationsIssues), branch: log.to, urgency: "super urgent", problem: `${manifestRemainingCount(log)} CN(s) pending after demanifest of ${log.id}: ${manifestRemainingAwbs(log).join(", ")}`, awb: manifestRemainingAwbs(log)[0] || "", openedHours: 0, resolved: false });
+          }
+        });
+        if (disputePinged) saveState();
+        dispute.innerHTML = disputedLogs.flatMap(log => manifestRemainingAwbs(log).map(awb => `<div class="ops-card alert-row critical"><div class="ops-card-head"><strong>${awb}</strong><span class="chip bad">${log.id}</span></div><p>Still missing after demanifest from ${log.from} to ${log.to}. ${log.to} branch manager pinged ${Math.round(manifestDisputeMinutes(log))} min after scan. Admin escalation required.</p></div>`)).join("") || `<div class="ops-card"><strong>No manifest disputes</strong><p>A dispute appears only after a sack is scanned and parcels are still missing past ${DISPUTE_DELAY_MIN} minutes.</p></div>`;
       }
     }
 
@@ -7604,6 +7661,12 @@
       const input = document.getElementById("demanifestScanInput");
       state.demanifestScanAwbs = parseAwbList(input.value);
       if (state.demanifestScanAwbs.length) input.value = `${state.demanifestScanAwbs.join(", ")}, `;
+      const activeLog = state.transit.find(t => t.id === state.activeDemanifestId);
+      if (activeLog && state.demanifestScanAwbs.length) {
+        activeLog.demanifestStartedAt = activeLog.demanifestStartedAt || new Date().toISOString();
+        const expectedAwbs = activeLog.parcels || [];
+        activeLog.demanifestPartial = state.demanifestScanAwbs.filter(awb => expectedAwbs.includes(awb));
+      }
       saveState();
       renderAdmin();
       toast(`${state.demanifestScanAwbs.length} received scan(s) loaded.`);
@@ -8119,6 +8182,38 @@
       toast(`${rider.name} rider login created.`);
     }
 
+    function editClientLogin(clientId) {
+      const client = state.clients.find(c => c.id === clientId);
+      if (!client) { toast("Client not found."); return; }
+      let user = state.users.find(u => u.clientId === clientId && /client/i.test(`${u.accessSide || ""} ${u.role || ""}`));
+      const currentLogin = user ? (user.email || user.username || user.name) : (client.email || "");
+      const newLogin = (window.prompt(`Client login username / email for ${client.name}:`, currentLogin) || "").trim();
+      if (!newLogin) { toast("Login username is required."); return; }
+      const newPass = (window.prompt(`Login password for ${client.name}:`, user ? user.password : "") || "").trim();
+      if (!newPass) { toast("Login password is required."); return; }
+      if (!user) {
+        user = {
+          id: nextId("USR", state.users),
+          name: client.owner || client.name,
+          role: "Client",
+          accessSide: "Client Web Portal",
+          branch: `${client.city || "Karachi"} Hub`,
+          clientId,
+          permissions: ["dashboard", "booking", "bulk booking", "reports", "payments", "tickets"],
+          status: "Active"
+        };
+        state.users.unshift(user);
+      }
+      user.email = newLogin;
+      user.username = newLogin;
+      user.password = newPass;
+      user.status = "Active";
+      client.email = newLogin;
+      saveState();
+      render();
+      toast(`${client.name} login updated. They can sign in instantly with the new username and password.`);
+    }
+
     function applyClientDateRange() {
       state.clientDateFrom = document.getElementById("clientDateFrom").value || state.clientDateFrom;
       state.clientDateTo = document.getElementById("clientDateTo").value || state.clientDateTo;
@@ -8369,9 +8464,11 @@
     function addRider() {
       const name = document.getElementById("newRiderName").value.trim();
       const username = document.getElementById("newRiderUser").value.trim();
+      const password = (document.getElementById("newRiderPassword").value || "").trim();
+      const branch = document.getElementById("newRiderBranch").value;
       const cashLimit = Number(document.getElementById("newRiderLimit").value);
-      if (!name || !username || !cashLimit || cashLimit < 1) {
-        toast("Rider name, username, and cash limit are mandatory.");
+      if (!name || !username || !password || !cashLimit || cashLimit < 1) {
+        toast("Rider name, username, password, and cash limit are mandatory.");
         return;
       }
       const id = nextId("R", state.riders);
@@ -8379,7 +8476,8 @@
         id,
         name,
         username,
-        password: `NX-${String(Math.floor(1000 + Math.random() * 9000))}`,
+        password,
+        branch,
         manager: document.getElementById("newRiderManager").value,
         cashHeld: 0,
         cashLimit,
@@ -8388,9 +8486,24 @@
         access: "Active",
         expenses: 0
       });
+      state.users.unshift({
+        id: nextId("USR", state.users),
+        name,
+        email: username,
+        username,
+        password,
+        role: "Rider",
+        accessSide: "Rider App",
+        branch,
+        clientId: "",
+        riderId: id,
+        permissions: ["rider-route", "scan", "delivery-proof", "cash-submit"],
+        status: "Active"
+      });
       saveState();
       render();
-      toast(`${id} created. Rider app credential is active until cash limit is breached.`);
+      showAdminTab("riders-summary");
+      toast(`${id} created for ${branch}. Rider can log in with username "${username}" and the set password.`);
     }
 
     function addRiderExpense() {
