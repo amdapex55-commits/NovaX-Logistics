@@ -820,16 +820,25 @@ img,svg,canvas,video{max-width:100%;}
   }
   setInterval(gpsTick,1800);
 
-  /* ---- track parcel (real admin data) ---- */
+  /* ---- track parcel (demo / random preview - NOT tied to client or admin data) ---- */
+  var DEMO_NAMES=["Ali Raza","Sara Khan","Bilal Ahmed","Hina Tariq","Usman Malik","Ayesha Noor","Fahad Iqbal","Zainab Ali","Omar Farooq","Maria Shah","Hassan Javed","Nida Aslam"];
+  var DEMO_CITIES=["Karachi","Lahore","Islamabad","Rawalpindi","Faisalabad","Multan","Peshawar","Quetta","Sialkot","Hyderabad","Gujranwala","Bahawalpur"];
+  var DEMO_FLOW=["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered"];
+  function nvHash(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return Math.abs(h);}
   function track(){
     var awb=(document.getElementById("trackInput").value||"").trim().toUpperCase();
     var box=document.getElementById("trackResult");
-    var p=parcels().find(function(x){return (x.awb||"").toUpperCase()===awb;});
-    if(!p){ box.innerHTML='<div class="tr-card bad"><div class="tr-head"><strong>No parcel found</strong><span class="chip bad">check ID</span></div><div style="color:#9fe9c8;font-size:13px">Try N0010001 or paste your NovaX tracking ID.</div></div>'; return; }
-    var total=p.totalStages||16, prog=Math.max(6,Math.round(((p.stage||0)/total)*100));
-    box.innerHTML='<div class="tr-card"><div class="tr-head"><strong>'+p.awb+'</strong><span class="chip '+statusChip(p)+'">'+p.status+'</span></div>'+
-      '<div style="color:#cdeede;font-size:13px">'+(p.consignee||"")+' · '+(p.city||"")+' · updated '+(p.updated||"")+' · clock '+agingLabel(p.statusAgeHours)+'</div>'+
-      (p.resolutionRemark?'<div style="margin-top:8px;font-size:12px;color:#9fe9c8">Note: '+p.resolutionRemark+'</div>':'')+
+    if(!awb){ box.innerHTML='<div class="tr-card bad"><div class="tr-head"><strong>No parcel found</strong><span class="chip bad">check ID</span></div><div style="color:#9fe9c8;font-size:13px">Enter a tracking ID e.g. N0010001 to see a live preview.</div></div>'; return; }
+    var h=nvHash(awb);
+    var name=DEMO_NAMES[h%DEMO_NAMES.length];
+    var city=DEMO_CITIES[(Math.floor(h/7))%DEMO_CITIES.length];
+    var si=(Math.floor(h/31))%DEMO_FLOW.length;
+    var status=DEMO_FLOW[si];
+    var total=DEMO_FLOW.length-1, prog=Math.max(8,Math.round((si/total)*100));
+    var ageH=(h%70)+2;
+    var chip=/Delivered/i.test(status)?"good":(si<4?"info":"warn");
+    box.innerHTML='<div class="tr-card"><div class="tr-head"><strong>'+awb+'</strong><span class="chip '+chip+'">'+status+'</span></div>'+
+      '<div style="color:#cdeede;font-size:13px">'+name+' \u00b7 '+city+' \u00b7 clock '+agingLabel(ageH)+'</div>'+
       '<div class="tr-prog"><i style="width:0"></i></div></div>';
     requestAnimationFrame(function(){var bar=box.querySelector(".tr-prog i");if(bar)bar.style.width=prog+"%";});
   }
