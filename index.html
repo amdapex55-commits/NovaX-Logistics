@@ -216,13 +216,13 @@ h2.title{font-size:clamp(30px,5vw,58px);line-height:1.02;margin:16px 0 12px;lett
 /* final cta */
 .final{text-align:center;}
 .final-card{border-radius:28px;padding:clamp(34px,6vw,64px);background:linear-gradient(135deg,#0c7c59,#14c77b);color:#04130d;box-shadow:0 30px 70px rgba(20,199,123,.34);position:relative;overflow:hidden;}
-.final-card::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 80% 10%,rgba(255,255,255,.3),transparent 40%);}
+.final-card::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 80% 10%,rgba(255,255,255,.3),transparent 40%);pointer-events:none;}
 .final h2{font-size:clamp(28px,5vw,52px);margin:0 0 10px;letter-spacing:-.02em;}
 .final p{margin:0 auto 22px;max-width:560px;font-weight:600;opacity:.85;}
 .final .btn.primary{background:#04130d;color:#eafff5;}
-.signin-modal{position:fixed;inset:0;z-index:95;display:none;place-items:center;padding:18px;background:rgba(4,19,13,.62);backdrop-filter:blur(10px);}
+.signin-modal{position:fixed;inset:0;z-index:95;display:none;place-items:center;padding:18px;background:rgba(4,19,13,.62);backdrop-filter:blur(10px);overflow-y:auto;}
 .signin-modal.show{display:grid;}
-.signin-card{width:min(520px,100%);border-radius:22px;background:#f8fffb;color:var(--ink);border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.28);padding:22px;position:relative;animation:fadeUp .28s ease both;}
+.signin-card{width:min(520px,100%);border-radius:22px;background:#f8fffb;color:var(--ink);border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.28);padding:22px;position:relative;animation:fadeUp .28s ease both;max-height:calc(100vh - 36px);max-height:calc(100dvh - 36px);overflow-y:auto;-webkit-overflow-scrolling:touch;}
 .signin-close{position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:10px;background:#e9f7f0;color:var(--ink);font-weight:900;}
 .signin-card h3{margin:0 44px 8px 0;font-size:28px;line-height:1.05;}
 .signin-card p{margin:0 0 16px;color:var(--muted);line-height:1.45;}
@@ -278,6 +278,16 @@ img,svg,canvas,video{max-width:100%;}
   .art-pane{min-height:260px;border-radius:18px;padding:16px;}
   h2.title{font-size:clamp(28px,9vw,38px);line-height:1.05;}
   .tiers,.cities-soon{grid-template-columns:1fr;}
+}
+.final-card .btn{position:relative;z-index:2;}
+@media (max-width:640px){
+  .handoff{padding:16px;}
+  .drop-box{width:40px;height:30px;}
+  .hw-mark{font-size:clamp(40px,16vw,72px);}
+  .hw-sub{font-size:11px;padding:0 12px;}
+  .signin-card{padding:18px;border-radius:18px;}
+  .signin-card h3{font-size:23px;}
+  .final-card .btn{width:100%;white-space:normal;height:auto;min-height:46px;padding:12px;line-height:1.3;}
 }
 </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -429,9 +439,9 @@ img,svg,canvas,video{max-width:100%;}
       </div>
     </div>
     <div class="copy reveal d1">
-      <span class="eyebrow"><span class="pulse"></span> WhatsApp AI</span>
+      <span class="eyebrow"><span class="pulse"></span> Ask AI</span>
       <h2 class="title">Stop fighting humans. <span style="color:var(--green)">Just ask the bot.</span></h2>
-      <p class="lead">No hold music, no rude agents, no "let me check." The WhatsApp assistant reads the live portal and answers with exact, correct numbers and real-time status — for sellers and their customers.</p>
+      <p class="lead">No hold music, no rude agents, no "let me check." The AI assistant reads the live portal and answers with exact, correct numbers and real-time status — for sellers and their customers.</p>
       <div class="feat-list">
         <div class="feat reveal d1"><div class="ic">💬</div><div><b>Real answers, instantly</b><span>Tracking, COD payable, summaries — pulled live, never guessed.</span></div></div>
         <div class="feat reveal d2"><div class="ic">🔔</div><div><b>Proactive updates</b><span>Delivery, exception, and payout alerts pushed to chat automatically.</span></div></div>
@@ -547,12 +557,7 @@ img,svg,canvas,video{max-width:100%;}
   <div class="signin-card">
     <button class="signin-close" id="signinClose" aria-label="Close sign in">X</button>
     <h3>Sign in to NovaX</h3>
-    <p>One login for seller, admin, and rider. The role decides the workspace after verification.</p>
-    <div class="signin-grid" id="roleGrid">
-      <button class="role-btn active" data-target="client.html">Seller</button>
-      <button class="role-btn" data-target="admin.html">Admin</button>
-      <button class="role-btn" data-target="rider.html">Rider</button>
-    </div>
+    <p>One login for everyone - enter your email and password and NovaX opens the right workspace (seller, admin, or rider) automatically.</p>
     <div class="signin-field"><label>Email or username</label><input id="signinEmail" placeholder="name@novax.pk"></div>
     <div class="signin-field"><label>Password</label><input id="signinPassword" type="password" placeholder="Password"></div>
     <button class="btn primary" id="signinContinue" style="width:100%;justify-content:center;margin-top:14px">Continue</button>
@@ -603,7 +608,8 @@ img,svg,canvas,video{max-width:100%;}
   function buildDrops(){
     var f=document.getElementById("dropField"); if(!f) return;
     var html="";
-    for(var i=0;i<100;i++){
+    var __dn=(window.innerWidth&&window.innerWidth<640)?34:100;
+    for(var i=0;i<__dn;i++){
       var l=(2+Math.random()*94).toFixed(1);
       var b=(Math.random()*92).toFixed(0);
       var r=(-40+Math.random()*80).toFixed(0);
@@ -712,6 +718,7 @@ img,svg,canvas,video{max-width:100%;}
       btn.disabled=false; btn.textContent=oldTxt;
       var target=routeForCredentials(email,pass);
       if(!target){ alert("Login blocked. This email/username and password is not approved in NovaX database."); return; }
+      closeSignin();
       playHandoff(function(){ window.location.href=target; });
     });
   });
