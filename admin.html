@@ -8969,4 +8969,107 @@
     document.getElementById("manifestTo").addEventListener("change", renderAdmin);
     document.getElementById("demanifestSelect").addEventListener("change", event => {
       state.activeDemanifestId = event.target.value;
-    
+      saveState();
+      renderAdmin();
+    });
+    document.getElementById("demanifestLoadBtn").addEventListener("click", loadDemanifestScans);
+    document.getElementById("demanifestClearBtn").addEventListener("click", clearDemanifestScans);
+    document.getElementById("demanifestDoneBtn").addEventListener("click", completeDemanifest);
+    document.getElementById("opsBranchFilter").addEventListener("change", renderAdmin);
+    document.getElementById("opsUrgencyFilter").addEventListener("change", renderAdmin);
+    document.getElementById("opsResolvedFilter").addEventListener("change", renderAdmin);
+    document.getElementById("createTicketBtn").addEventListener("click", createTicket);
+    document.getElementById("bookParcelBtn").addEventListener("click", () => showClientTab("newBooking"));
+    document.getElementById("quickBookingBtn").addEventListener("click", quickBooking);
+    document.getElementById("bulkBookingBtn").addEventListener("click", bulkBooking);
+    document.getElementById("printAwbBtn").addEventListener("click", printAwb);
+    document.getElementById("adminCreateClientBtn").addEventListener("click", createClient);
+    document.getElementById("sackModeCreateBtn").addEventListener("click", () => setSackMode("create"));
+    document.getElementById("sackModeDemanifestBtn").addEventListener("click", () => setSackMode("demanifest"));
+    document.getElementById("createSackBtn").addEventListener("click", createSack);
+    document.getElementById("demanifestSackBtn").addEventListener("click", demanifestSack);
+    document.getElementById("addRiderBtn").addEventListener("click", addRider);
+    document.getElementById("riderExpenseBtn").addEventListener("click", addRiderExpense);
+    document.getElementById("collectRiderCashBtn").addEventListener("click", collectRiderCash);
+    document.getElementById("addExpenseBtn").addEventListener("click", addExpense);
+    document.getElementById("invoiceClientSelect").addEventListener("change", event => {
+      state.activeInvoiceClient = event.target.value;
+      state.invoiceDraftRefs = clientInvoiceParcels(state.activeInvoiceClient).map(parcel => parcel.awb);
+      saveState();
+      renderAdmin();
+    });
+    document.getElementById("createSelectedInvoiceBtn").addEventListener("click", createSelectedInvoice);
+    document.getElementById("walletClientSelect")?.addEventListener("change", event => {
+      state.activeWalletClient = event.target.value;
+      saveState();
+      renderAdmin();
+    });
+    document.getElementById("walletWithdrawBtn")?.addEventListener("click", requestWalletWithdrawal);
+    document.getElementById("createUserBtn").addEventListener("click", createUser);
+    document.getElementById("createRiderUserBtn").addEventListener("click", createRiderUser);
+    document.getElementById("adminRunBtn").addEventListener("click", runAdminAction);
+    document.getElementById("riderScanBtn").addEventListener("click", riderScan);
+    document.getElementById("askAiBtn").addEventListener("click", () => {
+      renderAi();
+      toast("WhatsApp AI answered from live portal data.");
+    });
+    document.getElementById("askAiBtn2").addEventListener("click", () => {
+      renderAi();
+      toast("WhatsApp AI checked live parcel and escalation data.");
+    });
+    document.getElementById("requestPayoutBtn").addEventListener("click", requestPayout);
+    function scrollToLandingTracker() {
+      showHandoffLoader(() => {
+        showView("landing");
+        document.getElementById("landingTrackCard").scrollIntoView({ behavior: "smooth", block: "center" });
+        renderLandingTrack();
+      });
+    }
+
+    document.getElementById("trackParcelCta").addEventListener("click", scrollToLandingTracker);
+    document.getElementById("trackParcelCtaBottom").addEventListener("click", scrollToLandingTracker);
+    document.getElementById("landingTrackBtn").addEventListener("click", renderLandingTrack);
+
+    document.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const text = btn.textContent.trim();
+        if (text === "Export CSV") toast("CSV export queued for the selected account and date range.");
+        if (text === "Download PDF") toast("PDF report queued for the selected account and date range.");
+        if (text === "Invite User") toast("Invite user flow opened for this client workspace.");
+      });
+    });
+
+    setInterval(() => {
+      ["clockA", "clockB", "clockC", "clockD"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = `Live ${time()}`;
+      });
+    }, 1000);
+
+    window.selectParcel = selectParcel;
+    window.openClientParcelJourney = openClientParcelJourney;
+    window.requestRedelivery = requestRedelivery;
+    window.setStatusQueue = setStatusQueue;
+    window.resolveParcelAlert = resolveParcelAlert;
+    window.approveClient = approveClient;
+    window.toggleRateForm = toggleRateForm;
+    window.updateClientRate = updateClientRate;
+    window.resolveOperationIssue = resolveOperationIssue;
+    window.createInvoice = createInvoice;
+    window.selectInvoiceClient = selectInvoiceClient;
+    window.toggleInvoiceParcel = toggleInvoiceParcel;
+    window.pushInvoiceToWallet = pushInvoiceToWallet;
+    window.deleteInvoice = deleteInvoice;
+    window.markInvoicePaid = markInvoicePaid;
+    window.markWalletWithdrawalPaid = markWalletWithdrawalPaid;
+    window.addReturnProof = addReturnProof;
+    window.showView = showView;
+    // In split HTML files, cross-portal navigation uses separate files from the header and CTA links.
+    window.showAdminTab = showAdminTab;
+    window.openTrackedParcel = openTrackedParcel;
+    render();
+    renderLandingTrack();
+    window.scrollTo({ top: 0, left: 0 });
+  </script>
+</body>
+</html>
