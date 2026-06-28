@@ -342,7 +342,7 @@
                     <div class="search"><span>#</span><input id="clientSearch" placeholder="Track by AWB, city, status"></div>
                     <div class="inline-actions">
                       <button class="action-btn" id="bookParcelBtn">Book New Parcel</button>
-                      <button class="ghost-btn" id="askAiBtn">Ask WhatsApp AI</button>
+                      <button class="ghost-btn" id="askAiBtn">Ask AI</button>
                     </div>
                   </div>
                   <div class="wide-scroll desktop-table">
@@ -542,7 +542,7 @@
             <section class="client-module" id="client-support">
               <div class="grid two">
                 <div class="panel">
-                  <div class="section-head"><div><h3>AI WhatsApp Assistant</h3><p>AI reads portal truth, then answers or escalates missing data.</p></div><button class="ghost-btn" id="askAiBtn2">Ask WhatsApp AI</button></div>
+                  <div class="section-head"><div><h3>Full AI in Web</h3><p>AI reads portal truth, then answers or escalates missing data.</p></div><button class="ghost-btn" id="askAiBtn2">Ask AI</button></div>
                   <div class="ai-chat" id="clientAi"></div>
                 </div>
                 <div class="panel">
@@ -763,10 +763,11 @@
     function filteredParcels(){ const t=(document.getElementById("clientSearch")?.value||"").trim().toLowerCase(); return clientScopedParcels().filter(p=>`${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase().includes(t)); }
     function openClientParcelJourney(awb){ state.selectedAwb=awb; state.activeClientTab="dashboard"; saveState(); render(); const j=document.getElementById("clientJourney"); if(j) j.scrollIntoView({behavior:"smooth",block:"center"}); toast(`${awb} journey opened.`); }
     function selectParcel(awb){ state.selectedAwb=awb; saveState(); render(); }
+    function pickupNotice(p){ if(p && p.status==='New booked' && (p.rider||p.riderId)){ var r=p.rider||p.riderId; var from=p.pickupCity||(state.client&&state.client.name)||'pickup point'; return `<div class="footer-note" style="color:#0c7c59;font-weight:800;margin-top:4px">Rider ${r} assigned - will collect parcel from ${from}</div>`; } return ''; }
     function renderClientParcels(){
       const parcels=filteredParcels();
-      document.getElementById("clientParcelRows").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<tr class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${p.updated}</span></td><td>${p.consignee}<br><span class="footer-note">${p.branch}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span></td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${p.stage}/${p.totalStages}</span><span>${pr}%</span></div></td></tr>`; }).join("")||`<tr><td colspan="5">No parcels in range.</td></tr>`;
-      document.getElementById("clientParcelCards").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<article class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><div class="top"><strong>${p.awb}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span></div><dl><div><dt>Consignee</dt><dd>${p.consignee}</dd></div><div><dt>City</dt><dd>${p.city}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${p.updated}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div></article>`; }).join("");
+      document.getElementById("clientParcelRows").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<tr class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${p.updated}</span></td><td>${p.consignee}<br><span class="footer-note">${p.branch}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${p.stage}/${p.totalStages}</span><span>${pr}%</span></div></td></tr>`; }).join("")||`<tr><td colspan="5">No parcels in range.</td></tr>`;
+      document.getElementById("clientParcelCards").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<article class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><div class="top"><strong>${p.awb}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${p.consignee}</dd></div><div><dt>City</dt><dd>${p.city}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${p.updated}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div></article>`; }).join("");
     }
     function toggleStatusBoard(){ state.statusBoardOpen=!state.statusBoardOpen; renderClientStatusBoard(); }
     function renderClientStatusBoard(){
@@ -1194,8 +1195,8 @@
     ["repSearch","repStatus","repFrom","repTo"].forEach(id=>{ const e=document.getElementById(id); if(e) e.addEventListener(e.tagName==="SELECT"?"change":"input",renderClientReportFull); });
     document.querySelectorAll(".tier-card").forEach(t=>t.addEventListener("click",()=>selectWalletSpeed(t.dataset.speed)));
     document.getElementById("withdrawAmount").addEventListener("input",renderClientWallet);
-    document.getElementById("askAiBtn").addEventListener("click",()=>{ renderAi(); toast("WhatsApp AI answered from live portal data."); });
-    document.getElementById("askAiBtn2").addEventListener("click",()=>{ renderAi(); toast("WhatsApp AI checked live parcel data."); });
+    document.getElementById("askAiBtn").addEventListener("click",()=>{ renderAi(); toast("AI answered from live portal data."); });
+    document.getElementById("askAiBtn2").addEventListener("click",()=>{ renderAi(); toast("AI checked live parcel data."); });
     document.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{ if(b.textContent.trim()==="Invite User") toast("Invite user flow opened for this workspace."); }));
     setInterval(()=>{ const el=document.getElementById("clockB"); if(el) el.textContent=`Live ${time()}`; },1000);
 
