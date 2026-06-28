@@ -132,6 +132,13 @@
         <div class="money-grid" id="riderWallet" style="margin-top:12px"></div>
       </div>
 
+      <div class="panel" style="margin-bottom:14px">
+        <div class="section-head">
+          <div><h3>My Pickups</h3><p id="riderPickupNote">Clients assigned to you. When they book, the number of parcels to collect shows here.</p></div>
+        </div>
+        <div class="ops-list" id="riderPickups"></div>
+      </div>
+
       <div class="panel">
         <div class="section-head">
           <div><h3>My Delivery Route</h3><p id="riderRouteNote">Stops assigned to you that are out for delivery.</p></div>
@@ -246,17 +253,28 @@
         moneyBox("Access", blocked ? "Blocked" : "Active", rider.username || "")
       ].join("");
 
-      const stops = (state.parcels||[]).filter(p => p.rider === rider.id && p.status === "Parcel out for delivery");
+      const myPickups = document.getElementById("riderPickups");
+      if (myPickups) {
+        const myClients = (state.clients||[]).filter(c => c.assignedRider === rider.id);
+        myPickups.innerHTML = myClients.map(c => {
+          const pending = (state.parcels||[]).filter(p => p.clientId === c.id && p.status === "New booked");
+          return `<div class="ops-card"><div class="ops-card-head"><strong>${c.name}</strong><span class="chip ${pending.length ? "warn" : "info"}">${pending.length} to pick up</span></div><p class="footer-note">${c.city || ""}${c.address ? " · " + c.address : ""}</p></div>`;
+        }).join("") || `<div class="ops-card"><strong>No clients assigned</strong><p>When admin assigns a client to you, your pickups and parcel counts appear here.</p></div>`;
+      }
+
+      const stops = (state.parcels||[]).filter(p => p.rider === rider.id && (p.status === "Parcel out for delivery" || p.status === "Return out for delivery"));
       const note = document.getElementById("riderRouteNote");
-      if (note) note.textContent = `${stops.length} stop(s) out for delivery for ${rider.name}.`;
+      const returnCount = stops.filter(p => p.status === "Return out for delivery").length;
+      if (note) note.textContent = `${stops.length} stop(s) for ${rider.name}${returnCount ? ` · ${returnCount} return pickup(s)` : ""}.`;
       document.getElementById("riderStops").innerHTML = stops.map(p => {
         const client = clientById(p.clientId);
         const tel = (p.phone||"").replace(/[^0-9+]/g,"");
+        const isReturn = p.status === "Return out for delivery";
         return `
           <div class="ops-card">
             <div class="ops-card-head">
               <strong>${p.awb} · ${money(p.cod)} COD</strong>
-              <span class="chip info">${p.city}</span>
+              <span class="chip ${isReturn ? "warn" : "info"}">${isReturn ? "🔁 Return · " : "📦 Delivery · "}${p.city}</span>
             </div>
             <div class="money-grid" style="margin-top:6px">
               ${moneyBox("Consignee", p.consignee, client.name)}
@@ -266,7 +284,7 @@
             ${p.proofPhoto ? `<img src="${p.proofPhoto}" alt="proof" style="margin-top:8px;width:100%;max-height:190px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">` : ""}
             <div class="inline-actions" style="margin-top:10px">
               <a class="ghost-btn" href="tel:${tel}">📞 Call</a>
-              <button class="action-btn" onclick="riderDeliver('${p.awb}')">✓ Mark Delivered</button>
+              <button class="action-btn" onclick="riderDeliver('${p.awb}')">${isReturn ? "✓ Mark Returned" : "✓ Mark Delivered"}</button>
             </div>
             <div class="inline-actions" style="margin-top:8px">
               <button class="ghost-btn" onclick="riderPhotoThen('${p.awb}','notresponding')">📷 Not Responding</button>
@@ -325,13 +343,14 @@
     function riderDeliver(awb){
       const p = state.parcels.find(x=>x.awb===awb); if(!p) return;
       const rider = riderById(state.activeRider);
-      setParcelStatus(p, "Delivered");
-      if(!p.steps.includes("COD collected")) p.steps.push("COD collected");
+      const wasReturn = p.status === "Return out for delivery";
+      setParcelStatus(p, wasReturn ? "Parcel returned to consignee" : "Delivered");
+      if(!wasReturn && !p.steps.includes("COD collected")) p.steps.push("COD collected");
       p.deliveredBy = rider.id;
       p.cashReceived = false;        // stays in rider account until admin clears
       p.exception = "";
       state.paymentLogs = Array.isArray(state.paymentLogs) ? state.paymentLogs : [];
-      state.paymentLogs.unshift({ id: nextId("PAY", state.paymentLogs), clientId: p.clientId, type: "COD collected by rider", amount: p.cod, status: "Held by " + rider.name + " until admin clears", ref: awb });
+      if (!wasReturn) state.paymentLogs.unshift({ id: nextId("PAY", state.paymentLogs), clientId: p.clientId, type: "COD collected by rider", amount: p.cod, status: "Held by " + rider.name + " until admin clears", ref: awb });
       saveState(); renderRider();
       document.getElementById("deliverText").textContent = `${awb} delivered by ${rider.name}. ${money(p.cod)} added to your account — held until admin clears it.`;
       const f = document.getElementById("deliverFlash"); f.classList.add("show");
@@ -341,6 +360,7 @@
 
     document.getElementById("riderSelect").addEventListener("change", e => { state.activeRider = e.target.value; saveState(); renderRider(); });
     document.getElementById("riderRefreshBtn").addEventListener("click", () => { state = loadState(); state.activeRider = state.activeRider || (state.riders[0] && state.riders[0].id) || ""; renderRider(); toast("Route refreshed from portal."); });
+    window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); state.activeRider = state.activeRider || (state.riders[0] && state.riders[0].id) || ""; renderRider(); } });
     document.getElementById("riderPhotoInput").addEventListener("change", e => handleRiderPhoto(e.target.files && e.target.files[0]));
     document.getElementById("deliverFlash").addEventListener("click", () => document.getElementById("deliverFlash").classList.remove("show"));
     setInterval(()=>{ const el=document.getElementById("clockD"); if(el) el.textContent=`Live ${time()}`; }, 1000);
