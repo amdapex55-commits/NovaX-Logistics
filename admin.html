@@ -4759,7 +4759,6 @@
                     <div class="field"><label>Role</label><select id="userRole"><option>Admin</option><option>Branch Manager</option><option>Finance</option><option>Rider Supervisor</option><option>Client Support</option><option>Rider</option></select></div>
                     <div class="field"><label>Access Side</label><select id="userAccessSide"><option>Admin Portal</option><option>Client Web Portal</option><option>Rider App</option><option>Both Admin And Web</option></select></div>
                     <div class="field"><label>Assign Branch</label><select id="userBranch"><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option></select></div>
-                    <div class="field"><label>Assign Client</label><select id="userClientSelect"></select></div>
                   </div>
                   <div class="panel soft-panel" style="margin-top:14px">
                     <div class="section-head"><div><h3>Allowed Controls</h3><p>Select exactly what this user can see or operate.</p></div></div>
@@ -4776,17 +4775,6 @@
                       <label class="check-line"><input type="checkbox" data-user-permission value="users"> Users</label>
                       <label class="check-line"><input type="checkbox" data-user-permission value="riders"> Riders</label>
                       <label class="check-line"><input type="checkbox" data-user-permission value="api"> API</label>
-                    </div>
-                  </div>
-                  <div class="panel soft-panel" style="margin-top:14px">
-                    <div class="section-head">
-                      <div><h3>Create Rider User</h3><p>Create a login tied directly to a rider account.</p></div>
-                      <button class="ghost-btn" id="createRiderUserBtn">Create Rider Login</button>
-                    </div>
-                    <div class="form-grid">
-                      <div class="field"><label>Rider</label><select id="riderUserSelect"></select></div>
-                      <div class="field"><label>Rider Email / Username</label><input id="riderUserEmail" placeholder="usman.r17"></div>
-                      <div class="field"><label>Password</label><input id="riderUserPassword" type="password" value="rider123"></div>
                     </div>
                   </div>
                 </div>
@@ -6602,13 +6590,20 @@
         processingStatusSelect.value = state.pendingProcessingStatus || processingParcel()?.status || STATUS_TAGS[0];
       }
       const processingRiderSelect = document.getElementById("processingRiderSelect");
+      const riderPushStatuses = ["Parcel out for delivery", "Return out for delivery"];
+      const isReturnPush = processingStatusSelect && processingStatusSelect.value === "Return out for delivery";
+      const batchForRider = processingParcels();
+      const batchRiderBranch = batchForRider.length ? (isReturnPush ? `${parcelOrigin(batchForRider[0])} Hub` : `${batchForRider[0].city} Hub`) : "";
+      const ridersInBranch = batchRiderBranch ? state.riders.filter(rider => rider.branch === batchRiderBranch) : state.riders;
+      const riderPool = ridersInBranch.length ? ridersInBranch : state.riders;
       if (processingRiderSelect) {
-        processingRiderSelect.innerHTML = state.riders.map(rider => `<option value="${rider.id}">${rider.id} | ${rider.name} | ${rider.branch}</option>`).join("");
-        processingRiderSelect.value = state.pendingProcessingRider || state.riders[0]?.id || "";
+        processingRiderSelect.innerHTML = riderPool.length ? riderPool.map(rider => `<option value="${rider.id}">${rider.id} | ${rider.name} | ${rider.branch}</option>`).join("") : `<option value="">No riders — create a rider first</option>`;
+        const poolHasPending = riderPool.some(rider => rider.id === state.pendingProcessingRider);
+        processingRiderSelect.value = poolHasPending ? state.pendingProcessingRider : (riderPool[0] && riderPool[0].id || "");
       }
       const processingRiderField = document.getElementById("processingRiderField");
       if (processingRiderField && processingStatusSelect) {
-        processingRiderField.style.display = processingStatusSelect.value === "Parcel out for delivery" ? "grid" : "none";
+        processingRiderField.style.display = riderPushStatuses.includes(processingStatusSelect.value) ? "grid" : "none";
       }
 
       const queueCounts = STATUS_TAGS.reduce((acc, status) => {
@@ -6848,6 +6843,10 @@
             <span class="chip ${issues.length ? "bad" : "good"}">${issues.length} issue(s)</span>
             <button class="ghost-btn" onclick="showAdminTab('clients-clients')">Edit Rates: ${money(card.overnight)}</button>
             <button class="ghost-btn" onclick="editClientLogin('${client.id}')">Edit Login</button>
+            <select class="ghost-btn client-rider-pick" onchange="assignRiderToClient('${client.id}', this.value)">
+              <option value="" ${!client.assignedRider ? "selected" : ""}>Assign pickup rider…</option>
+              ${state.riders.map(r => `<option value="${r.id}" ${client.assignedRider === r.id ? "selected" : ""}>${r.name} | ${r.branch}</option>`).join("")}
+            </select>
           </div>
         `;
       }).join("");
@@ -7095,7 +7094,8 @@
         </div>
       `).join("");
 
-      document.getElementById("userClientSelect").innerHTML = state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
+      const userClientSelectEl = document.getElementById("userClientSelect");
+      if (userClientSelectEl) userClientSelectEl.innerHTML = state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
       const riderUserSelect = document.getElementById("riderUserSelect");
       if (riderUserSelect) {
         riderUserSelect.innerHTML = state.riders.length ? state.riders.map(rider => `<option value="${rider.id}">${rider.id} | ${rider.name} | ${rider.branch || "No branch"}</option>`).join("") : `<option value="">No riders yet — add a rider first</option>`;
@@ -7618,7 +7618,7 @@
         return;
       }
       const riderId = document.getElementById("processingRiderSelect")?.value || "";
-      if (status === "Parcel out for delivery" && !riderId) {
+      if (["Parcel out for delivery", "Return out for delivery"].includes(status) && !riderId) {
         toast("Select a rider before pushing parcels out for delivery.");
         return;
       }
@@ -7660,14 +7660,15 @@
       }
       const status = state.pendingProcessingStatus || document.getElementById("processingStatusSelect")?.value || batch[0].status;
       const riderId = state.pendingProcessingRider || document.getElementById("processingRiderSelect")?.value || "";
-      if (status === "Parcel out for delivery" && !riderId) {
+      const riderPushStatuses = ["Parcel out for delivery", "Return out for delivery"];
+      if (riderPushStatuses.includes(status) && !riderId) {
         toast("Rider assignment is mandatory for out-for-delivery parcels.");
         return;
       }
       batch.forEach(parcel => {
         const branch = processingBranchForStatus(parcel, status);
         setParcelStatus(parcel, status, { name: processor.name, username: processor.username, branch });
-        if (status === "Parcel out for delivery") {
+        if (riderPushStatuses.includes(status)) {
           parcel.rider = riderId;
           parcel.assignedRiderAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
           parcel.exception = parcel.exception.replace("No rider assigned for delivery", "").trim();
@@ -8217,7 +8218,7 @@
         role: document.getElementById("userRole").value,
         accessSide: document.getElementById("userAccessSide").value,
         branch: document.getElementById("userBranch").value,
-        clientId: document.getElementById("userClientSelect").value || state.clients[0].id,
+        clientId: (state.clients[0] && state.clients[0].id) || "CL-0000",
         permissions,
         status: "Active"
       });
@@ -8255,6 +8256,16 @@
       render();
       showAdminTab("users-edit");
       toast(`${rider.name} rider login created.`);
+    }
+
+    function assignRiderToClient(clientId, riderId) {
+      const client = state.clients.find(c => c.id === clientId);
+      if (!client) { toast("Client not found."); return; }
+      client.assignedRider = riderId || "";
+      saveState();
+      render();
+      const rider = state.riders.find(r => r.id === riderId);
+      toast(riderId ? `${rider ? rider.name : riderId} will handle pickups for ${client.name}.` : `Pickup rider cleared for ${client.name}.`);
     }
 
     function editClientLogin(clientId) {
@@ -9071,7 +9082,7 @@
     });
     document.getElementById("walletWithdrawBtn")?.addEventListener("click", requestWalletWithdrawal);
     document.getElementById("createUserBtn").addEventListener("click", createUser);
-    document.getElementById("createRiderUserBtn").addEventListener("click", createRiderUser);
+
     document.getElementById("adminRunBtn").addEventListener("click", runAdminAction);
     document.getElementById("riderScanBtn").addEventListener("click", riderScan);
     document.getElementById("askAiBtn").addEventListener("click", () => {
@@ -9134,6 +9145,8 @@
     window.openTrackedParcel = openTrackedParcel;
     window.toggleTicketHub = toggleTicketHub;
     window.editClientLogin = editClientLogin;
+    window.assignRiderToClient = assignRiderToClient;
+    window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); render(); } });
     render();
     renderLandingTrack();
     window.scrollTo({ top: 0, left: 0 });
