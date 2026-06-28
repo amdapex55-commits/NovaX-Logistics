@@ -265,6 +265,7 @@
       .toast{left:8px;right:8px;bottom:8px;max-width:none;}
     }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -1194,6 +1195,30 @@
 
     Object.assign(window,{ openClientParcelJourney, selectParcel, requestRedelivery, openAwbModal, closeAwbModal, openTicketModal, closeTicketModal, submitClientTicket, downloadInvoiceCsv, printInvoice, printLabels, confirmWalletWithdraw, selectWalletSpeed, closeWalletDone });
     window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); render(); } });
+    /* ===== NovaX Supabase live cloud sync (additive, fail-safe) ===== */
+    (function(){
+      var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
+      var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+      var ROW_ID=1;
+      function cloudRerender(){ try{ render(); }catch(e){} }
+      if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, using local storage only."); return; }
+      var sb; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); return; }
+      var applyingRemote=false, pushTimer=null;
+      var _origSave=saveState;
+      saveState=function(){ _origSave.apply(this,arguments); if(applyingRemote) return; clearTimeout(pushTimer); pushTimer=setTimeout(pushCloud,400); };
+      function pushCloud(){ try{ sb.from("novax_state").upsert({id:ROW_ID,data:state,updated_at:new Date().toISOString()}).then(function(r){ if(r&&r.error) console.warn("NovaX cloud save:",r.error.message); }); }catch(e){ console.warn("NovaX push failed",e); } }
+      function applyRemote(data){ if(!data||typeof data!=="object") return; applyingRemote=true; try{ state=data; localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); cloudRerender(); }catch(e){ console.warn("NovaX applyRemote failed",e); } applyingRemote=false; }
+      (async function(){
+        try{
+          var res=await sb.from("novax_state").select("data").eq("id",ROW_ID).maybeSingle();
+          if(res&&res.error){ console.warn("NovaX cloud load:",res.error.message); }
+          else { var remote=res&&res.data&&res.data.data; if(!remote||Object.keys(remote).length===0){ pushCloud(); } else { applyRemote(remote); } }
+        }catch(e){ console.warn("NovaX cloud load failed, local only.",e); }
+        try{
+          sb.channel("novax_state_live").on("postgres_changes",{event:"*",schema:"public",table:"novax_state",filter:"id=eq."+ROW_ID},function(payload){ var row=payload&&payload.new; if(row&&row.data) applyRemote(row.data); }).subscribe();
+        }catch(e){ console.warn("NovaX realtime failed",e); }
+      })();
+    })();
     render();
     window.scrollTo({ top:0, left:0 });
   </script>
