@@ -310,6 +310,7 @@
               <button class="client-tab" data-client-tab="newBooking">New Booking</button>
               <button class="client-tab" data-client-tab="awbLabel">AWB Label</button>
               <button class="client-tab" data-client-tab="bulkBooking">Bulk Booking</button>
+              <button class="client-tab" data-client-tab="integrations">API</button>
               <button class="client-tab" data-client-tab="reports">Full Report</button>
               <button class="client-tab" data-client-tab="payments">Payments</button>
               <button class="client-tab" data-client-tab="wallet">Wallet</button>
@@ -388,6 +389,10 @@
                 <div class="section-head"><div><h3>Generated Air Way Bill</h3><p>QR and barcode both carry the assigned tracking ID.</p></div><div class="inline-actions"><button class="action-btn" id="printAwbBtn">Print Now</button><button class="ghost-btn" data-client-tab="dashboard">View Journey</button></div></div>
                 <div id="awbLabelPreview"></div>
               </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>New Booked AWBs &mdash; Bulk Print</h3><p>Freshly booked parcels awaiting rider pickup. Select and print labels together.</p></div><div class="inline-actions"><button class="ghost-btn" id="newBookedSelectAllBtn">Select All</button><button class="action-btn" id="newBookedPrintBtn">Print Selected AWBs</button></div></div>
+                <div id="newBookedList"></div>
+              </div>
             </section>
             <!-- BULK BOOKING -->
             <section class="client-module" id="client-bulkBooking">
@@ -404,6 +409,36 @@
               <div class="panel" id="bulkPreviewPanel" style="display:none;margin-top:14px">
                 <div class="section-head"><div><h3>Bulk Booking Preview</h3><p>All AWBs created. Print them individually or all at once.</p></div><button class="action-btn" id="bulkPrintAllBtn">Print All AWBs</button></div>
                 <div id="bulkPreviewList"></div>
+              </div>
+            </section>
+            <!-- STORE INTEGRATIONS -->
+            <section class="client-module" id="client-integrations">
+              <div class="panel">
+                <div class="section-head"><div><h3>Store Integrations</h3><p>Connect your online store to auto-import orders as new bookings. Each imported order starts its journey when a rider scans it for pickup.</p></div><span class="chip info">Demo import</span></div>
+                <p class="footer-note">Live order sync for real Shopify, WooCommerce, and website orders activates once the backend is connected. Connection details you save here are kept and reused at go-live.</p>
+              </div>
+              <div class="grid two" style="margin-top:14px">
+                <div class="panel">
+                  <div class="section-head"><div><h3>Shopify</h3><p>Connect with your store URL and Admin API access token.</p></div><span class="chip" id="shopifyStatusChip">Not connected</span></div>
+                  <div class="field"><label>Store URL</label><input id="shopifyStoreUrl" placeholder="your-store.myshopify.com"></div>
+                  <div class="field"><label>Admin API Access Token</label><input id="shopifyToken" placeholder="shpat_..."></div>
+                  <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('shopify')">Save Connection</button><button class="ghost-btn" onclick="syncStoreOrders('shopify')">Sync Orders</button></div>
+                </div>
+                <div class="panel">
+                  <div class="section-head"><div><h3>WooCommerce</h3><p>Connect with your site URL and REST consumer key/secret.</p></div><span class="chip" id="wooStatusChip">Not connected</span></div>
+                  <div class="field"><label>Store URL</label><input id="wooStoreUrl" placeholder="https://yourstore.com"></div>
+                  <div class="field"><label>Consumer Key</label><input id="wooKey" placeholder="ck_..."></div>
+                  <div class="field"><label>Consumer Secret</label><input id="wooSecret" placeholder="cs_..."></div>
+                  <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('woocommerce')">Save Connection</button><button class="ghost-btn" onclick="syncStoreOrders('woocommerce')">Sync Orders</button></div>
+                </div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Custom Web / API</h3><p>Any other platform or your own website. Push orders to the endpoint/webhook, or paste an orders endpoint to pull.</p></div><span class="chip" id="webStatusChip">Not connected</span></div>
+                <div class="grid two">
+                  <div class="field"><label>Orders Endpoint / Webhook URL</label><input id="webEndpoint" placeholder="https://yourstore.com/api/orders"></div>
+                  <div class="field"><label>API Key (optional)</label><input id="webKey" placeholder="api key or bearer token"></div>
+                </div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('web')">Save Connection</button><button class="ghost-btn" onclick="syncStoreOrders('web')">Sync Orders</button></div>
               </div>
             </section>
             <!-- FULL REPORT -->
@@ -641,6 +676,7 @@
     state.tickets = Array.isArray(state.tickets) ? state.tickets : [];
     state.ticketNotifications = Array.isArray(state.ticketNotifications) ? state.ticketNotifications : [];
     state.lastBulkAwbs = Array.isArray(state.lastBulkAwbs) ? state.lastBulkAwbs : [];
+    state.storeConnections = Array.isArray(state.storeConnections) ? state.storeConnections : [];
     state.walletWithdrawSpeed = state.walletWithdrawSpeed || "";
     state.clients.forEach(c => { c.walletBalance = Number(c.walletBalance || 0); });
     (state.parcels || []).forEach(p => { if (!p.statusSince) p.statusSince = new Date(Date.now() - Number(p.statusAgeHours || 0) * 3600000).toISOString(); });
@@ -965,7 +1001,7 @@
       const cod=o.cod!==undefined?Number(o.cod):3500+Math.round(Math.random()*11000);
       const clientId=o.clientId||state.client.id||"CL-0001"; const client=clientById(clientId);
       const awb=nextAwbForClient(clientId);
-      state.parcels.unshift({ awb, clientId, date:o.date||new Date().toISOString().slice(0,10), consignee:o.consignee||"New COD Order", city:o.city||["Lahore","Karachi","Islamabad","Rawalpindi"][Math.floor(Math.random()*4)], cod, fee:o.fee||client.rate||250, phone:o.phone||"", pickupCity:o.pickupCity||"Karachi", service:o.service||"COD Standard", category:o.category||"", fragile:o.fragile||"No", weight:o.weight||"0.8 kg", paymentMode:o.paymentMode||"COD", orderId:o.orderId||"", address:o.address||"Address pending", status:"New booked", statusAgeHours:0, statusSince:new Date().toISOString(), stage:0, totalStages:STATUS_TAGS.length-1, rider:o.rider||"", branch:"Karachi Hub", risk:8, updated:time(), exception:"", steps:["New booked"] });
+      state.parcels.unshift({ awb, clientId, date:o.date||new Date().toISOString().slice(0,10), consignee:o.consignee||"New COD Order", city:o.city||["Lahore","Karachi","Islamabad","Rawalpindi"][Math.floor(Math.random()*4)], cod, fee:o.fee||client.rate||250, phone:o.phone||"", pickupCity:o.pickupCity||"Karachi", service:o.service||"COD Standard", category:o.category||"", fragile:o.fragile||"No", weight:o.weight||"0.8 kg", paymentMode:o.paymentMode||"COD", orderId:o.orderId||"", address:o.address||"Address pending", status:"New booked", statusAgeHours:0, statusSince:new Date().toISOString(), stage:0, totalStages:STATUS_TAGS.length-1, rider:o.rider||"", branch:"Karachi Hub", risk:8, updated:time(), exception:"", source:o.source||"", steps:["New booked"] });
       state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId, type:"COD expected", amount:cod, status:"Awaiting delivery", ref:awb });
       state.selectedAwb=awb; state.lastGeneratedAwb=awb; saveState(); render();
       return awb;
@@ -1074,13 +1110,58 @@
     function applyClientDateRange(){ state.clientDateFrom=document.getElementById("clientDateFrom").value||state.clientDateFrom; state.clientDateTo=document.getElementById("clientDateTo").value||state.clientDateTo; saveState(); render(); toast(`History filtered ${state.clientDateFrom} to ${state.clientDateTo}.`); }
     function requestPayout(){ const cm=clientMetrics(); const id=nextId("PAY",state.paymentLogs); state.paymentLogs.unshift({ id, clientId:state.client.id||"CL-0001", type:"Payout requested", amount:cm.payable, status:"Pending admin approval", ref:`PAYOUT-${id}` }); saveState(); render(); showClientTab("payments"); toast("Payout request sent to admin."); }
 
+    /* ===== Store Integrations + New Booked bulk print ===== */
+    function activeClientId(){ return (state.client&&state.client.id)||"CL-0001"; }
+    function storeConn(platform){ return (state.storeConnections||[]).find(c=>c.clientId===activeClientId()&&c.platform===platform); }
+    function platformLabel(p){ return p==="shopify"?"Shopify":p==="woocommerce"?"WooCommerce":"Custom Web/API"; }
+    function connectStore(platform){
+      if(!Array.isArray(state.storeConnections)) state.storeConnections=[];
+      const map={ shopify:{url:"shopifyStoreUrl",fields:{token:"shopifyToken"}}, woocommerce:{url:"wooStoreUrl",fields:{key:"wooKey",secret:"wooSecret"}}, web:{url:"webEndpoint",fields:{key:"webKey"}} };
+      const cfg=map[platform]; if(!cfg) return;
+      const storeUrl=(document.getElementById(cfg.url).value||"").trim();
+      if(!storeUrl){ toast("Enter your store URL / endpoint first."); return; }
+      const creds={}; Object.keys(cfg.fields).forEach(k=>{ creds[k]=(document.getElementById(cfg.fields[k]).value||"").trim(); });
+      let conn=storeConn(platform);
+      if(!conn){ conn={ clientId:activeClientId(), platform }; state.storeConnections.push(conn); }
+      conn.storeUrl=storeUrl; conn.creds=creds; conn.connected=true; conn.connectedAt=time();
+      saveState(); renderIntegrations(); toast(platformLabel(platform)+" connection saved.");
+    }
+    function syncStoreOrders(platform){
+      const conn=storeConn(platform);
+      if(!conn||!conn.connected){ toast("Save the "+platformLabel(platform)+" connection first."); return; }
+      const names=["Ayesha Tariq","Bilal Hussain","Fatima Noor","Usman Raza","Hina Shah","Kamran Ali"];
+      const cities=["Lahore","Karachi","Islamabad","Rawalpindi"];
+      const n=2+Math.floor(Math.random()*3); const created=[];
+      for(let i=0;i<n;i++){
+        const awb=bookParcel({ consignee:names[Math.floor(Math.random()*names.length)], city:cities[Math.floor(Math.random()*cities.length)], cod:1500+Math.round(Math.random()*9000), phone:"03"+(100000000+Math.floor(Math.random()*899999999)), service:"COD Standard", category:"Fashion", weight:"0.8 kg", paymentMode:"COD", address:"Imported from "+platformLabel(platform), orderId:platform.toUpperCase()+"-"+String(Date.now()).slice(-6)+i, source:platformLabel(platform) });
+        created.push(awb);
+      }
+      conn.lastSync=time(); conn.importedCount=(conn.importedCount||0)+created.length; state.lastBulkAwbs=created;
+      saveState(); render(); toast(created.length+" "+platformLabel(platform)+" order(s) imported as new bookings.");
+    }
+    function renderIntegrations(){
+      const chip=(p,id)=>{ const c=storeConn(p); const el=document.getElementById(id); if(!el) return; const on=c&&c.connected; el.textContent=on?("Connected"+(c.importedCount?(" &middot; "+c.importedCount+" imported"):"")):"Not connected"; el.className="chip "+(on?"good":""); };
+      chip("shopify","shopifyStatusChip"); chip("woocommerce","wooStatusChip"); chip("web","webStatusChip");
+      const prefill={shopify:"shopifyStoreUrl",woocommerce:"wooStoreUrl",web:"webEndpoint"};
+      Object.keys(prefill).forEach(p=>{ const c=storeConn(p); const el=document.getElementById(prefill[p]); if(c&&el&&!el.value) el.value=c.storeUrl||""; });
+    }
+    function newBookedParcels(){ return (state.parcels||[]).filter(p=>p.clientId===activeClientId()&&p.status==="New booked"); }
+    function renderNewBookedList(){
+      const list=document.getElementById("newBookedList"); if(!list) return;
+      const items=newBookedParcels();
+      if(!items.length){ list.innerHTML=`<p class="footer-note">No new booked parcels yet. Create a booking or sync your store to see printable AWBs here.</p>`; return; }
+      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${p.awb}" checked><span style="flex:1"><strong>${p.awb}</strong> &middot; ${p.consignee} &middot; ${p.city} &middot; ${money(p.cod)}${p.source?` &middot; <span class="chip info">${p.source}</span>`:""}</span><button class="ghost-btn" onclick="printLabels(['${p.awb}'])">Print</button></label>`).join("");
+    }
+    function selectAllNewBooked(){ const boxes=document.querySelectorAll(".newbooked-check"); const allOn=Array.from(boxes).every(b=>b.checked); boxes.forEach(b=>{ b.checked=!allOn; }); }
+    function printNewBookedSelected(){ const awbs=Array.from(document.querySelectorAll(".newbooked-check")).filter(b=>b.checked).map(b=>b.value); if(!awbs.length){ toast("Select at least one new booked AWB."); return; } printLabels(awbs); }
     function render(){
       renderMetrics(); renderClientStatusBoard(); renderClientParcels(); renderJourney(); renderWallets(); renderAi();
       renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview();
+      renderIntegrations(); renderNewBookedList();
       tickMeters();
     }
     function tickMeters(){ requestAnimationFrame(()=>{ document.querySelectorAll(".meter>span").forEach(s=>{ const w=s.style.width; s.style.width="0"; requestAnimationFrame(()=>{ s.style.width=w; }); }); }); }
-    function showClientTab(id){ state.activeClientTab=id; saveState(); renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); tickMeters(); if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
+    function showClientTab(id){ state.activeClientTab=id; saveState(); renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); tickMeters(); if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
     function toast(msg){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
     /* Events */
@@ -1095,6 +1176,8 @@
     document.getElementById("bulkUploadBtn").addEventListener("click",uploadBulkCsv);
     document.getElementById("bulkPrintAllBtn").addEventListener("click",()=>printLabels(state.lastBulkAwbs||[]));
     document.getElementById("printAwbBtn").addEventListener("click",printAwb);
+    document.getElementById("newBookedSelectAllBtn")?.addEventListener("click",selectAllNewBooked);
+    document.getElementById("newBookedPrintBtn")?.addEventListener("click",printNewBookedSelected);
     document.getElementById("awbModalPrint").addEventListener("click",()=>printLabels([state.lastGeneratedAwb]));
     document.getElementById("openTicketBtn").addEventListener("click",()=>openTicketModal(state.selectedAwb));
     document.getElementById("requestPayoutBtn")?.addEventListener("click",requestPayout);
