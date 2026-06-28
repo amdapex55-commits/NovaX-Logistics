@@ -5013,19 +5013,50 @@
 
             <section class="admin-module" id="admin-api-shopify">
               <div class="panel">
-                <div class="section-head"><div><h3>Shopify API</h3><p>Shopify navigation is ready. This will hold store connection, token status, order sync, COD mapping, and webhook logs.</p></div></div>
+                <div class="section-head"><div><h3>Shopify API</h3><p>Connect a client's Shopify store, then pull their orders in as new bookings. Live webhook sync activates with the backend.</p></div><span class="chip info">Demo import</span></div>
+                <div class="grid two">
+                  <div class="field"><label>Client</label><select id="shopifyClientSelect"></select></div>
+                  <div class="field"><label>Store URL</label><input id="adminShopifyUrl" placeholder="store.myshopify.com"></div>
+                  <div class="field"><label>Admin API Access Token</label><input id="adminShopifyToken" placeholder="shpat_..."></div>
+                </div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="adminConnectStore('shopify')">Save Connection</button><button class="ghost-btn" onclick="adminSyncStore('shopify')">Pull Orders</button></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Connected Shopify Stores</h3></div></div>
+                <div id="shopifyConnList"></div>
               </div>
             </section>
 
             <section class="admin-module" id="admin-api-web">
               <div class="panel">
-                <div class="section-head"><div><h3>Web API</h3><p>Web API navigation is ready. This will become the custom API area for sellers booking from their own websites.</p></div></div>
+                <div class="section-head"><div><h3>Web API</h3><p>Custom API area for sellers booking from their own websites. Connect an endpoint per client and pull orders as new bookings.</p></div><span class="chip info">Demo import</span></div>
+                <div class="grid two">
+                  <div class="field"><label>Client</label><select id="webClientSelect"></select></div>
+                  <div class="field"><label>Orders Endpoint / Webhook URL</label><input id="adminWebUrl" placeholder="https://store.com/api/orders"></div>
+                  <div class="field"><label>API Key (optional)</label><input id="adminWebKey" placeholder="api key or bearer token"></div>
+                </div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="adminConnectStore('web')">Save Connection</button><button class="ghost-btn" onclick="adminSyncStore('web')">Pull Orders</button></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Connected Web Stores</h3></div></div>
+                <div id="webConnList"></div>
               </div>
             </section>
 
             <section class="admin-module" id="admin-api-woo-commerce">
               <div class="panel">
-                <div class="section-head"><div><h3>Woo Commerce API</h3><p>Woo Commerce navigation is ready. This will hold connection health, auto-booking rules, COD sync, and order logs.</p></div></div>
+                <div class="section-head"><div><h3>Woo Commerce API</h3><p>Connect a client's WooCommerce store with REST keys, then pull orders as new bookings. Live sync activates with the backend.</p></div><span class="chip info">Demo import</span></div>
+                <div class="grid two">
+                  <div class="field"><label>Client</label><select id="wooClientSelect"></select></div>
+                  <div class="field"><label>Store URL</label><input id="adminWooUrl" placeholder="https://store.com"></div>
+                  <div class="field"><label>Consumer Key</label><input id="adminWooKey" placeholder="ck_..."></div>
+                  <div class="field"><label>Consumer Secret</label><input id="adminWooSecret" placeholder="cs_..."></div>
+                </div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="adminConnectStore('woocommerce')">Save Connection</button><button class="ghost-btn" onclick="adminSyncStore('woocommerce')">Pull Orders</button></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Connected Woo Commerce Stores</h3></div></div>
+                <div id="wooConnList"></div>
               </div>
             </section>
           </div>
@@ -6546,6 +6577,7 @@
       });
 
       const m = metrics();
+      renderAdminIntegrations();
       const statusFilterEl = document.getElementById("adminOrderStatusFilter");
       const clientFilterEl = document.getElementById("adminOrderClientFilter");
       const cityFilterEl = document.getElementById("adminOrderCityFilter");
@@ -7909,6 +7941,43 @@
       window.toastTimer = setTimeout(() => el.classList.remove("show"), 2800);
     }
 
+    function renderAdminIntegrations(){
+      if(!Array.isArray(state.storeConnections)) state.storeConnections=[];
+      const fillSelect=(id)=>{ const sel=document.getElementById(id); if(!sel) return; const cur=sel.value; sel.innerHTML=(state.clients||[]).filter(c=>c.id&&c.id!=="CL-0000").map(c=>`<option value="${c.id}">${c.id} &middot; ${c.name}</option>`).join("")||`<option value="">No clients</option>`; if(cur) sel.value=cur; };
+      fillSelect("shopifyClientSelect"); fillSelect("wooClientSelect"); fillSelect("webClientSelect");
+      const renderList=(platform,elId)=>{ const el=document.getElementById(elId); if(!el) return; const rows=(state.storeConnections||[]).filter(c=>c.platform===platform); el.innerHTML=rows.length?rows.map(c=>{ const cl=clientById(c.clientId); return `<div class="ops-card" style="margin-bottom:8px"><div class="ops-card-head"><strong>${cl?cl.name:c.clientId}</strong><span class="chip ${c.connected?"good":""}">${c.connected?"Connected":"Pending"}</span></div><p class="footer-note">${c.storeUrl||""}${c.lastSync?` &middot; last sync ${c.lastSync}`:""}${c.importedCount?` &middot; ${c.importedCount} imported`:""}</p><div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" onclick="adminSyncStoreFor('${platform}','${c.clientId}')">Pull Orders</button></div></div>`; }).join(""):`<p class="footer-note">No stores connected yet.</p>`; };
+      renderList("shopify","shopifyConnList"); renderList("woocommerce","wooConnList"); renderList("web","webConnList");
+    }
+    function adminPlatformLabel(p){ return p==="shopify"?"Shopify":p==="woocommerce"?"WooCommerce":"Custom Web/API"; }
+    function adminConnectStore(platform){
+      if(!Array.isArray(state.storeConnections)) state.storeConnections=[];
+      const map={ shopify:{client:"shopifyClientSelect",url:"adminShopifyUrl",fields:{token:"adminShopifyToken"}}, woocommerce:{client:"wooClientSelect",url:"adminWooUrl",fields:{key:"adminWooKey",secret:"adminWooSecret"}}, web:{client:"webClientSelect",url:"adminWebUrl",fields:{key:"adminWebKey"}} };
+      const cfg=map[platform]; if(!cfg) return;
+      const clientId=document.getElementById(cfg.client)?.value||""; if(!clientId){ toast("Select a client first."); return; }
+      const storeUrl=(document.getElementById(cfg.url)?.value||"").trim(); if(!storeUrl){ toast("Enter the store URL / endpoint."); return; }
+      const creds={}; Object.keys(cfg.fields).forEach(k=>{ creds[k]=(document.getElementById(cfg.fields[k])?.value||"").trim(); });
+      let conn=state.storeConnections.find(c=>c.clientId===clientId&&c.platform===platform);
+      if(!conn){ conn={ clientId, platform }; state.storeConnections.push(conn); }
+      conn.storeUrl=storeUrl; conn.creds=creds; conn.connected=true; conn.connectedAt=time();
+      saveState(); renderAdmin(); toast(adminPlatformLabel(platform)+" connected for "+clientId+".");
+    }
+    function adminSyncStoreFor(platform,clientId){
+      if(!clientId){ toast("No client selected."); return; }
+      const names=["Ayesha Tariq","Bilal Hussain","Fatima Noor","Usman Raza","Hina Shah","Kamran Ali"];
+      const cities=["Lahore","Karachi","Islamabad","Rawalpindi"];
+      const n=2+Math.floor(Math.random()*3); let count=0;
+      for(let i=0;i<n;i++){ bookParcel({ clientId, consignee:names[Math.floor(Math.random()*names.length)], city:cities[Math.floor(Math.random()*cities.length)], cod:1500+Math.round(Math.random()*9000), phone:"03"+(100000000+Math.floor(Math.random()*899999999)), service:"COD Standard", category:"Fashion", weight:"0.8 kg", address:"Imported from "+adminPlatformLabel(platform), source:adminPlatformLabel(platform), silent:true }); count++; }
+      const conn=(state.storeConnections||[]).find(c=>c.clientId===clientId&&c.platform===platform);
+      if(conn){ conn.lastSync=time(); conn.importedCount=(conn.importedCount||0)+count; }
+      saveState(); renderAdmin(); toast(count+" "+adminPlatformLabel(platform)+" order(s) imported as new bookings for "+clientId+".");
+    }
+    function adminSyncStore(platform){
+      const sel={ shopify:"shopifyClientSelect", woocommerce:"wooClientSelect", web:"webClientSelect" }[platform];
+      const clientId=document.getElementById(sel)?.value||"";
+      const conn=(state.storeConnections||[]).find(c=>c.clientId===clientId&&c.platform===platform);
+      if(!conn||!conn.connected){ toast("Save the connection for this client first."); return; }
+      adminSyncStoreFor(platform,clientId);
+    }
     function bookParcel(overrides = {}) {
       const codAmount = overrides.cod || 3500 + Math.round(Math.random() * 11000);
       const clientId = overrides.clientId || state.client.id || "CL-0001";
@@ -7939,6 +8008,7 @@
         risk: 8,
         updated: time(),
         exception: "",
+        source: overrides.source || "",
         steps: ["New booked"]
       });
       state.paymentLogs.unshift({
@@ -7952,8 +8022,7 @@
       state.selectedAwb = awb;
       state.lastGeneratedAwb = awb;
       saveState();
-      render();
-      toast(`${awb} booked. Admin portal already sees the same parcel.`);
+      if (!overrides.silent) { render(); toast(`${awb} booked. Admin portal already sees the same parcel.`); }
       return awb;
     }
 
