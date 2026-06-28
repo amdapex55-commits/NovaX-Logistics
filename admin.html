@@ -1516,7 +1516,55 @@
       background:
         radial-gradient(circle at 8% 20%, rgba(31,209,142,.14), transparent 30%),
         linear-gradient(145deg, rgba(18,56,41,.72), rgba(8,16,13,.94));
+      padding: 0;
+      overflow: hidden;
     }
+
+    .ticket-hub-tab {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      justify-content: flex-start;
+      padding: 14px 18px;
+      background: transparent;
+      color: var(--ink);
+      font-weight: 800;
+      font-size: 15px;
+      letter-spacing: .01em;
+    }
+
+    .ticket-hub-tab-label { flex: 0 0 auto; }
+
+    .ticket-hub-count {
+      flex: 0 0 auto;
+      min-width: 24px;
+      text-align: center;
+      padding: 2px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.12);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .ticket-hub-count.has-alerts {
+      background: #e5484d;
+      color: #fff;
+      box-shadow: 0 0 0 3px rgba(229,72,77,.18);
+    }
+
+    .ticket-hub-caret {
+      margin-left: auto;
+      transition: transform .2s ease;
+      opacity: .7;
+    }
+
+    .ticket-hub:not(.collapsed) .ticket-hub-caret { transform: rotate(180deg); }
+
+    .ticket-hub-body { padding: 0 18px 18px; }
+
+    .ticket-hub.collapsed .ticket-hub-body { display: none; }
 
     .ticket-hub .mini-form {
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4358,7 +4406,13 @@
           </aside>
 
           <div class="admin-content">
-            <div class="panel ticket-hub">
+            <div class="panel ticket-hub collapsed" id="ticketHubPanel">
+              <button type="button" class="ticket-hub-tab" id="ticketHubToggle" onclick="toggleTicketHub()">
+                <span class="ticket-hub-tab-label">🎫 Ticket Hub</span>
+                <span class="ticket-hub-count" id="ticketHubCount">0</span>
+                <span class="ticket-hub-caret">▾</span>
+              </button>
+              <div class="ticket-hub-body">
               <div class="section-head">
                 <div>
                   <h3>Ticket Hub</h3>
@@ -4377,6 +4431,7 @@
                 <button class="action-btn" id="createTicketBtn">Create Ticket</button>
               </div>
               <div class="ops-list" id="ticketNotificationList" style="margin-top:12px"></div>
+              </div>
             </div>
             <section class="admin-module active" id="admin-dashboard">
               <div class="grid metrics" id="adminMetrics"></div>
@@ -7043,7 +7098,7 @@
       document.getElementById("userClientSelect").innerHTML = state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
       const riderUserSelect = document.getElementById("riderUserSelect");
       if (riderUserSelect) {
-        riderUserSelect.innerHTML = state.riders.map(rider => `<option value="${rider.id}">${rider.id} | ${rider.name} | ${rider.branch}</option>`).join("");
+        riderUserSelect.innerHTML = state.riders.length ? state.riders.map(rider => `<option value="${rider.id}">${rider.id} | ${rider.name} | ${rider.branch || "No branch"}</option>`).join("") : `<option value="">No riders yet — add a rider first</option>`;
       }
       document.getElementById("userAccessList").innerHTML = state.users.map(user => `
         <div class="ops-card">
@@ -7301,6 +7356,11 @@
         openBadge.textContent = `${open.length} open`;
         openBadge.className = `chip ${emergency.length ? "bad" : open.length ? "warn" : "good"}`;
       }
+      const hubCount = document.getElementById("ticketHubCount");
+      if (hubCount) {
+        hubCount.textContent = open.length;
+        hubCount.classList.toggle("has-alerts", open.length > 0);
+      }
 
       const notifications = document.getElementById("ticketNotificationList");
       if (notifications) {
@@ -7503,6 +7563,11 @@
         document.getElementById("clientMenu").classList.remove("open");
         document.getElementById("clientMenuToggle").setAttribute("aria-expanded", "false");
       }
+    }
+
+    function toggleTicketHub() {
+      const panel = document.getElementById("ticketHubPanel");
+      if (panel) panel.classList.toggle("collapsed");
     }
 
     function showAdminTab(id) {
@@ -9067,6 +9132,8 @@
     // In split HTML files, cross-portal navigation uses separate files from the header and CTA links.
     window.showAdminTab = showAdminTab;
     window.openTrackedParcel = openTrackedParcel;
+    window.toggleTicketHub = toggleTicketHub;
+    window.editClientLogin = editClientLogin;
     render();
     renderLandingTrack();
     window.scrollTo({ top: 0, left: 0 });
