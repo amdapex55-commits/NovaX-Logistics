@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NovaX - Reset to Zero</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#06140e;color:#eafff5;display:grid;place-items:center;min-height:100vh;padding:20px}
+  .card{width:100%;max-width:480px;background:#0c241a;border:1px solid #1f5f44;border-radius:18px;padding:26px 24px;box-shadow:0 26px 70px rgba(0,0,0,.45)}
+  h1{margin:0 0 6px;font-size:20px}
+  p{margin:6px 0;font-size:14px;line-height:1.5;color:#bfe9d6}
+  .warn{background:#3a1212;border:1px solid #7a2a2a;color:#ffd9d9;border-radius:10px;padding:10px 12px;font-size:13px;margin:14px 0}
+  button{width:100%;height:48px;border:0;border-radius:12px;font-weight:800;font-size:15px;cursor:pointer;margin-top:10px}
+  .danger{background:linear-gradient(145deg,#c0392b,#e74c3c);color:#fff}
+  .ghost{background:#15392a;color:#cdeede}
+  #log{margin-top:14px;font-size:13px;white-space:pre-wrap;background:#06170f;border:1px solid #1f5f44;border-radius:10px;padding:10px 12px;min-height:42px}
+  .ok{color:#7CFCB0}.bad{color:#ff9d9d}
+  a{color:#7CFCB0}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>NovaX - Reset to Zero</h1>
+    <p>This wipes ALL shared data in the cloud database (clients, sellers, riders, parcels, bookings, invoices, tickets) and resets the system to a clean, empty workspace.</p>
+    <p>The only account kept is the default admin login: <b>admin@novax.pk</b> / <b>NovaX@123</b>. You can then sign up sellers and create riders/bookings from scratch.</p>
+    <div class="warn">This cannot be undone. Make sure you really want to start from zero.</div>
+    <button class="danger" id="resetBtn">Wipe everything &amp; reset to zero</button>
+    <button class="ghost" id="localBtn">Clear only this device (local cache)</button>
+    <div id="log">Ready.</div>
+    <p style="margin-top:14px">After it says <b>Done</b>, open the portals fresh: <a href="index.html">index.html</a></p>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    var STORAGE_KEY="novaxLogisticsStateV10";
+    var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
+    var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+    var logEl=document.getElementById("log");
+    function log(msg,cls){ logEl.innerHTML+="\n"+(cls?'<span class="'+cls+'">'+msg+'</span>':msg); }
+    function today(){ return new Date().toISOString().slice(0,10); }
+    function cleanState(){
+      return {
+        _cleanStartV2:true,
+        selectedAwb:"", activeFilter:"all", activeStatusQueue:"New booked",
+        activeProcessingAwb:"", processingBatchAwbs:[], pendingProcessingStatus:"", pendingProcessingRider:"",
+        manifestDraftAwbs:[], demanifestScanAwbs:[], activeDemanifestId:"",
+        activeRider:"", activeRateClient:"", activeSackMode:"create",
+        clientDateFrom:today(), clientDateTo:today(), lastGeneratedAwb:"",
+        client:{ id:"CL-0000", name:"New Merchant Workspace", walletTopup:0, shippingDue:0, subAccounts:0, walletBalance:0 },
+        clients:[{ id:"CL-0000", name:"New Merchant Workspace", owner:"", city:"", walletTopup:0, shippingDue:0, risk:0, status:"Draft", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, problemsResolved:0, health:0, walletBalance:0 }],
+        pendingClients:[],
+        users:[{ id:"USR-0001", name:"NovaX Admin", email:"admin@novax.pk", password:"NovaX@123", role:"Admin", accessSide:"Admin Portal", branch:"Admin Control", clientId:"", status:"Active", permissions:["all"] }],
+        branches:[], riders:[], parcels:[], expenses:[], paymentLogs:[], invoices:[],
+        transit:[], completedSacks:[], operationsIssues:[], resolvedAlerts:[],
+        walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[],
+        storeConnections:[], walletWithdrawSpeed:"", activeClientTab:"dashboard", activeAdminTab:"dashboard"
+      };
+    }
+    function clearLocal(){
+      try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
+      try{ localStorage.removeItem("novaxLogisticsStateV9"); localStorage.removeItem("novaxLogisticsStateV8"); }catch(e){}
+    }
+    document.getElementById("localBtn").onclick=function(){
+      clearLocal();
+      log("Local cache on THIS device cleared. (Cloud not touched.)","ok");
+    };
+    document.getElementById("resetBtn").onclick=function(){
+      logEl.textContent="Working...";
+      var sb=null;
+      try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ sb=null; }
+      if(!sb){ log("Could not load the cloud library. Check your internet and reload.","bad"); return; }
+      var clean=cleanState();
+      sb.from("novax_state").upsert({ id:1, data:clean, updated_at:new Date().toISOString() }).then(function(r){
+        if(r&&r.error){ log("Cloud reset FAILED: "+r.error.message,"bad"); return; }
+        log("Cloud database wiped and reset to a clean empty workspace.","ok");
+        clearLocal();
+        log("Local cache on this device cleared.","ok");
+        log("Done. Open the portals fresh and sign in as admin@novax.pk / NovaX@123.","ok");
+      }).catch(function(err){ log("Cloud reset error: "+(err&&err.message||err),"bad"); });
+    };
+  </script>
+</body>
+</html>
