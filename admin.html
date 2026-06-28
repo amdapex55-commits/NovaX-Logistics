@@ -4663,7 +4663,7 @@
                     <div class="field"><label>Username</label><input id="newRiderUser" value="rider.login"></div>
                     <div class="field"><label>Password</label><input id="newRiderPassword" value="rider123"></div>
                     <div class="field"><label>Branch</label><select id="newRiderBranch"><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option><option>Rawalpindi Hub</option></select></div>
-                    <div class="field"><label>Cash Limit</label><input id="newRiderLimit" type="number" value="75000"></div>
+                    <div class="field"><label>Wallet Limit (cash)</label><input id="newRiderLimit" type="number" value="75000"></div>
                     <div class="field"><label>Manager</label><select id="newRiderManager"><option>Karachi Hub Manager</option><option>Lahore Hub Manager</option><option>Islamabad Hub Manager</option></select></div>
                   </div>
                   <div class="mini-form" style="margin-top:10px">
@@ -4675,6 +4675,7 @@
                       <button class="action-btn" id="collectRiderCashBtn">Collect Cash</button>
                     </div>
                   </div>
+                  <div class="footer-note" id="riderCashPreview" style="margin-top:8px"></div>
                 </div>
                 <div class="table-wrap">
                   <div class="wide-scroll">
@@ -4698,6 +4699,10 @@
                     <div class="field"><label>Invoice rule</label><input value="Delivered parcels only. COD - delivery charges = wallet payable." readonly></div>
                     <button class="action-btn" id="createSelectedInvoiceBtn">Generate Invoice</button>
                   </div>
+                  <div class="inline-actions" style="margin-top:10px">
+                    <button class="ghost-btn" id="invoiceSelectAllBtn" type="button">Select All Delivered</button>
+                    <button class="ghost-btn" id="invoiceClearBtn" type="button">Clear Selection</button>
+                  </div>
                   <div class="table-wrap" style="margin-top:14px">
                     <div class="wide-scroll">
                       <table>
@@ -4709,8 +4714,8 @@
                   <div class="money-grid" id="invoiceTotals" style="margin-top:14px"></div>
                 </div>
                 <div class="panel">
-                  <div class="section-head"><div><h3>Payment Logs</h3><p>Every money movement gets a reference.</p></div></div>
-                  <div class="log-feed" id="adminPaymentLogs"></div>
+                  <div class="section-head"><div><h3>Recent Invoices</h3><p>Latest invoices generated. Push to client wallet right here.</p></div></div>
+                  <div class="ops-list" id="recentInvoiceList"></div>
                 </div>
               </div>
               <div class="panel" style="margin-top:14px">
@@ -4951,7 +4956,9 @@
 
             <section class="admin-module" id="admin-riders-report">
               <div class="panel">
-                <div class="section-head"><div><h3>Rider Report</h3><p>Rider report navigation is ready. It will track route attempts, fake refusals, delivery proof, cash held, and block rules.</p></div></div>
+                <div class="section-head"><div><h3>Rider Report</h3><p>Branch-wise rider productivity: delivered, returned, route time, cash handled, and fuel cost compared across riders.</p></div></div>
+                <div class="grid metrics" id="riderReportMetrics" style="margin-top:6px"></div>
+                <div id="riderReportContent" style="margin-top:14px"></div>
               </div>
             </section>
 
@@ -6979,6 +6986,8 @@
         `;
       }).join("");
       document.getElementById("riderCashSelect").innerHTML = state.riders.map(r => `<option value="${r.id}">${r.id} | ${r.name} | receivable ${money(riderReceivable(r.id))}</option>`).join("");
+      updateRiderCashPreview();
+      renderRiderReport();
 
       document.getElementById("barometerList").innerHTML = state.branches.map(b => {
         const health = Math.round((b.scanHealth + b.cashHealth) / 2) - (b.discrepancy * 3);
@@ -6994,16 +7003,22 @@
         `;
       }).join("");
 
-      document.getElementById("adminPaymentLogs").innerHTML = state.paymentLogs.map(log => {
-        const client = clientById(log.clientId);
-        return `
-          <div class="log-item">
-            <strong>${log.id}</strong>
-            <div><strong>${client.id} | ${client.name}</strong><div class="footer-note" style="margin-top:2px">${log.type} | ${log.ref}</div></div>
-            <span class="chip ${/verified|posted|paid|collected/i.test(log.status) ? "good" : "warn"}">${money(log.amount)} | ${log.status}</span>
-          </div>
-        `;
-      }).join("");
+      const recentInvoiceEl = document.getElementById("recentInvoiceList");
+      if (recentInvoiceEl) {
+        recentInvoiceEl.innerHTML = state.invoices.filter(inv => inv.status !== "Deleted").slice(0, 8).map(invoice => {
+          const client = clientById(invoice.clientId);
+          const pushed = invoice.status === "Pushed to wallet" || invoice.status === "Paid";
+          return `
+            <div class="ops-card">
+              <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${pushed ? "good" : "warn"}">${invoice.status}</span></div>
+              <p>${invoice.parcelRefs.join(", ")}<br>Payable ${money(invoice.payable)} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
+              <div class="inline-actions" style="margin-top:8px">
+                ${pushed ? `<button class="ghost-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Paid</button>` : `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button>`}
+              </div>
+            </div>
+          `;
+        }).join("") || `<div class="ops-card"><strong>No invoices yet</strong><p>Generate an invoice from delivered parcels on the left.</p></div>`;
+      }
 
       const invoiceClientSelect = document.getElementById("invoiceClientSelect");
       if (invoiceClientSelect) {
@@ -7151,6 +7166,70 @@
           <span class="chip ${row[2] ? "good" : "bad"}">${row[2] ? "ok" : "act"}</span>
         </div>
       `).join("");
+    }
+
+    function updateRiderCashPreview() {
+      const el = document.getElementById("riderCashPreview");
+      const sel = document.getElementById("riderCashSelect");
+      if (!el || !sel) return;
+      const rider = riderById(sel.value);
+      const amount = rider ? riderReceivable(rider.id) : 0;
+      el.textContent = rider ? `Collecting ${money(amount)} from ${rider.name} — delivered COD not yet collected. Wallet limit ${money(rider.cashLimit || 0)}.` : "Select a rider to collect cash.";
+    }
+
+    function riderReportStats(riderId) {
+      const delivered = state.parcels.filter(p => p.rider === riderId && p.status === "Delivered");
+      const returned = state.parcels.filter(p => p.rider === riderId && ["Parcel returned to consignee", "Refused", "Consignee not available"].includes(p.status));
+      const cashHandled = delivered.reduce((s, p) => s + Number(p.cod || 0), 0);
+      const fuel = state.expenses.filter(e => e.riderId === riderId && /fuel/i.test(e.type || e.name || "")).reduce((s, e) => s + Number(e.amount || 0), 0);
+      const allExp = state.expenses.filter(e => e.riderId === riderId).reduce((s, e) => s + Number(e.amount || 0), 0);
+      const stops = delivered.length + returned.length;
+      const routeMins = stops * 24;
+      const routeTime = routeMins ? `${Math.floor(routeMins / 60)}h ${routeMins % 60}m` : "0h";
+      const success = stops ? Math.round((delivered.length / stops) * 100) : 0;
+      return { delivered: delivered.length, returned: returned.length, cashHandled, fuel, allExp, routeTime, success, stops };
+    }
+
+    function renderRiderReport() {
+      const metricsEl = document.getElementById("riderReportMetrics");
+      const contentEl = document.getElementById("riderReportContent");
+      if (!contentEl) return;
+      const stats = state.riders.map(r => ({ r, s: riderReportStats(r.id) }));
+      const totalDelivered = stats.reduce((a, x) => a + x.s.delivered, 0);
+      const totalReturned = stats.reduce((a, x) => a + x.s.returned, 0);
+      const totalCash = stats.reduce((a, x) => a + x.s.cashHandled, 0);
+      const totalFuel = stats.reduce((a, x) => a + x.s.fuel, 0);
+      if (metricsEl) {
+        metricsEl.innerHTML = [
+          metricCard("Total Delivered", totalDelivered, Math.min(100, totalDelivered * 4), "all riders", "good"),
+          metricCard("Total Returned", totalReturned, Math.min(100, totalReturned * 8), "refused / returned / no-response", totalReturned ? "amber" : "good"),
+          metricCard("Cash Handled", money(totalCash), Math.min(100, percent(totalCash, 500000)), "delivered COD", "blue"),
+          metricCard("Fuel Cost", money(totalFuel), Math.min(100, percent(totalFuel, 50000)), "fuel expenses logged", "amber")
+        ].join("");
+      }
+      const maxDelivered = Math.max(1, ...stats.map(x => x.s.delivered));
+      const branches = {};
+      stats.forEach(x => { const b = x.r.branch || "Unassigned"; (branches[b] = branches[b] || []).push(x); });
+      contentEl.innerHTML = Object.entries(branches).map(([branch, rows]) => `
+        <div class="panel soft-panel" style="margin-bottom:14px">
+          <div class="section-head"><div><h3>${branch}</h3><p>${rows.length} rider(s) \u00b7 compare delivered, returned, cash and fuel.</p></div></div>
+          <div class="table-wrap"><div class="wide-scroll"><table>
+            <thead><tr><th>Rider</th><th>Delivered</th><th>Returned</th><th>Success</th><th>Route Time</th><th>Cash Handled</th><th>Fuel Cost</th><th>Vs Others</th></tr></thead>
+            <tbody>
+            ${rows.map(({ r, s }) => `<tr>
+              <td><strong>${r.id}</strong><br><span class="footer-note">${r.name}</span></td>
+              <td><strong>${s.delivered}</strong></td>
+              <td>${s.returned}</td>
+              <td><span class="chip ${s.success >= 80 ? "good" : s.success >= 50 ? "warn" : "bad"}">${s.success}%</span></td>
+              <td>${s.routeTime}</td>
+              <td>${money(s.cashHandled)}</td>
+              <td>${money(s.fuel)}</td>
+              <td><div class="meter ${s.delivered >= maxDelivered ? "" : "blue"}"><span style="width:${percent(s.delivered, maxDelivered)}%"></span></div></td>
+            </tr>`).join("")}
+            </tbody>
+          </table></div></div>
+        </div>
+      `).join("") || `<div class="ops-card"><strong>No riders yet</strong><p>Add a rider or create a rider user to see branch-wise reports.</p></div>`;
     }
 
     function renderRider() {
@@ -8083,6 +8162,20 @@
       renderAdmin();
     }
 
+    function selectAllInvoiceParcels() {
+      const candidates = clientInvoiceParcels(state.activeInvoiceClient);
+      if (!candidates.length) { toast("No delivered parcels available to select for this client."); return; }
+      state.invoiceDraftRefs = candidates.map(parcel => parcel.awb);
+      saveState();
+      renderAdmin();
+    }
+
+    function clearInvoiceSelection() {
+      state.invoiceDraftRefs = [];
+      saveState();
+      renderAdmin();
+    }
+
     function createSelectedInvoice() {
       const parcels = selectedInvoiceParcels();
       if (!parcels.length) {
@@ -8653,17 +8746,9 @@
         status: "Pending cash deduction",
         riderId: rider.id
       });
-      state.paymentLogs.unshift({
-        id: nextId("PAY", state.paymentLogs),
-        clientId: state.client.id || "CL-0001",
-        type: "Rider expense deducted before cash collection",
-        amount,
-        status: "Pending finance approval",
-        ref: `${rider.id} ${type}`
-      });
       saveState();
       render();
-      toast(`${money(amount)} ${type} expense deducted before collecting ${rider.name}'s cash.`);
+      toast(`${money(amount)} ${type} expense logged for ${rider.name}. Added to the expense tab and finance summary.`);
     }
 
     function collectRiderCash() {
@@ -9108,6 +9193,9 @@
     document.getElementById("addRiderBtn").addEventListener("click", addRider);
     document.getElementById("riderExpenseBtn").addEventListener("click", addRiderExpense);
     document.getElementById("collectRiderCashBtn").addEventListener("click", collectRiderCash);
+    document.getElementById("riderCashSelect").addEventListener("change", updateRiderCashPreview);
+    document.getElementById("invoiceSelectAllBtn").addEventListener("click", selectAllInvoiceParcels);
+    document.getElementById("invoiceClearBtn").addEventListener("click", clearInvoiceSelection);
     document.getElementById("addExpenseBtn").addEventListener("click", addExpense);
     document.getElementById("invoiceClientSelect").addEventListener("change", event => {
       state.activeInvoiceClient = event.target.value;
