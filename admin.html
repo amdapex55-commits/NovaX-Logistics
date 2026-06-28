@@ -9206,3 +9206,228 @@
     document.getElementById("adminOrderBranchFilter").addEventListener("change", renderAdmin);
     document.getElementById("adminOrderAlertFilter").addEventListener("change", renderAdmin);
     document.getElementById("clearAdminFiltersBtn").addEventListener("click", clearAdminFilters);
+    document.getElementById("orderReportSearch").addEventListener("input", renderAdmin);
+    document.getElementById("orderReportStatusFilter").addEventListener("change", renderAdmin);
+    document.getElementById("orderReportClientFilter").addEventListener("change", renderAdmin);
+    document.getElementById("clearOrderReportFiltersBtn").addEventListener("click", clearOrderReportFilters);
+    document.getElementById("downloadOrderReportCsvBtn").addEventListener("click", downloadOrderReportCsv);
+    document.getElementById("processingAwbInput").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        lookupProcessingParcel();
+      }
+    });
+    ["processingAwbInput", "manifestScanInput", "demanifestScanInput"].forEach(id => {
+      document.getElementById(id).addEventListener("paste", () => setTimeout(() => formatScanInput(id), 0));
+      document.getElementById(id).addEventListener("input", () => scheduleScanFormat(id));
+    });
+    document.getElementById("processingLoadBatchBtn").addEventListener("click", lookupProcessingParcel);
+    document.getElementById("processingClearBatchBtn").addEventListener("click", clearProcessingBatch);
+    document.getElementById("processingStatusSelect").addEventListener("change", event => {
+      state.pendingProcessingStatus = event.target.value;
+      saveState();
+      renderAdmin();
+    });
+    document.getElementById("processingRiderSelect").addEventListener("change", event => {
+      state.pendingProcessingRider = event.target.value;
+      saveState();
+    });
+    document.getElementById("processingConfirmBtn").addEventListener("click", requestProcessingAuth);
+    document.getElementById("processingSubmitBtn").addEventListener("click", submitProcessingUpdate);
+    document.getElementById("manifestLoadBtn").addEventListener("click", loadManifestScans);
+    document.getElementById("manifestClearBtn").addEventListener("click", clearManifestScans);
+    document.getElementById("manifestCreateBtn").addEventListener("click", createManifestFromScans);
+    document.getElementById("manifestFrom").addEventListener("change", renderAdmin);
+    document.getElementById("manifestTo").addEventListener("change", renderAdmin);
+    document.getElementById("demanifestSelect").addEventListener("change", event => {
+      state.activeDemanifestId = event.target.value;
+      saveState();
+      renderAdmin();
+    });
+    document.getElementById("demanifestLoadBtn").addEventListener("click", loadDemanifestScans);
+    document.getElementById("demanifestClearBtn").addEventListener("click", clearDemanifestScans);
+    document.getElementById("demanifestDoneBtn").addEventListener("click", completeDemanifest);
+    document.getElementById("opsBranchFilter").addEventListener("change", renderAdmin);
+    document.getElementById("opsUrgencyFilter").addEventListener("change", renderAdmin);
+    document.getElementById("opsResolvedFilter").addEventListener("change", renderAdmin);
+    document.getElementById("createTicketBtn").addEventListener("click", createTicket);
+    document.getElementById("bookParcelBtn").addEventListener("click", () => showClientTab("newBooking"));
+    document.getElementById("quickBookingBtn").addEventListener("click", quickBooking);
+    document.getElementById("bulkBookingBtn").addEventListener("click", bulkBooking);
+    document.getElementById("printAwbBtn").addEventListener("click", printAwb);
+    document.getElementById("adminCreateClientBtn").addEventListener("click", createClient);
+    document.getElementById("sackModeCreateBtn").addEventListener("click", () => setSackMode("create"));
+    document.getElementById("sackModeDemanifestBtn").addEventListener("click", () => setSackMode("demanifest"));
+    document.getElementById("createSackBtn").addEventListener("click", createSack);
+    document.getElementById("demanifestSackBtn").addEventListener("click", demanifestSack);
+    document.getElementById("addRiderBtn").addEventListener("click", addRider);
+    document.getElementById("riderExpenseBtn").addEventListener("click", addRiderExpense);
+    document.getElementById("collectRiderCashBtn").addEventListener("click", collectRiderCash);
+    document.getElementById("riderCashSelect").addEventListener("change", updateRiderCashPreview);
+    document.getElementById("invoiceSelectAllBtn").addEventListener("click", selectAllInvoiceParcels);
+    document.getElementById("invoiceClearBtn").addEventListener("click", clearInvoiceSelection);
+    document.getElementById("addExpenseBtn").addEventListener("click", addExpense);
+    document.getElementById("invoiceClientSelect").addEventListener("change", event => {
+      state.activeInvoiceClient = event.target.value;
+      state.invoiceDraftRefs = clientInvoiceParcels(state.activeInvoiceClient).map(parcel => parcel.awb);
+      saveState();
+      renderAdmin();
+    });
+    document.getElementById("createSelectedInvoiceBtn").addEventListener("click", createSelectedInvoice);
+    document.getElementById("walletClientSelect")?.addEventListener("change", event => {
+      state.activeWalletClient = event.target.value;
+      saveState();
+      renderAdmin();
+    });
+    document.getElementById("walletWithdrawBtn")?.addEventListener("click", requestWalletWithdrawal);
+    document.getElementById("createUserBtn").addEventListener("click", createUser);
+
+    document.getElementById("adminRunBtn").addEventListener("click", runAdminAction);
+    document.getElementById("riderScanBtn").addEventListener("click", riderScan);
+    document.getElementById("askAiBtn").addEventListener("click", () => {
+      renderAi();
+      toast("WhatsApp AI answered from live portal data.");
+    });
+    document.getElementById("askAiBtn2").addEventListener("click", () => {
+      renderAi();
+      toast("WhatsApp AI checked live parcel and escalation data.");
+    });
+    document.getElementById("requestPayoutBtn").addEventListener("click", requestPayout);
+    function scrollToLandingTracker() {
+      showHandoffLoader(() => {
+        showView("landing");
+        document.getElementById("landingTrackCard").scrollIntoView({ behavior: "smooth", block: "center" });
+        renderLandingTrack();
+      });
+    }
+
+    document.getElementById("trackParcelCta").addEventListener("click", scrollToLandingTracker);
+    document.getElementById("trackParcelCtaBottom").addEventListener("click", scrollToLandingTracker);
+    document.getElementById("landingTrackBtn").addEventListener("click", renderLandingTrack);
+
+    document.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const text = btn.textContent.trim();
+        if (text === "Export CSV") toast("CSV export queued for the selected account and date range.");
+        if (text === "Download PDF") toast("PDF report queued for the selected account and date range.");
+        if (text === "Invite User") toast("Invite user flow opened for this client workspace.");
+      });
+    });
+
+    setInterval(() => {
+      ["clockA", "clockB", "clockC", "clockD"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = `Live ${time()}`;
+      });
+    }, 1000);
+
+    window.selectParcel = selectParcel;
+    window.openClientParcelJourney = openClientParcelJourney;
+    window.requestRedelivery = requestRedelivery;
+    window.setStatusQueue = setStatusQueue;
+    window.resolveParcelAlert = resolveParcelAlert;
+    window.approveClient = approveClient;
+    window.toggleRateForm = toggleRateForm;
+    window.updateClientRate = updateClientRate;
+    window.resolveOperationIssue = resolveOperationIssue;
+    window.createInvoice = createInvoice;
+    window.selectInvoiceClient = selectInvoiceClient;
+    window.toggleInvoiceParcel = toggleInvoiceParcel;
+    window.pushInvoiceToWallet = pushInvoiceToWallet;
+    window.deleteInvoice = deleteInvoice;
+    window.markInvoicePaid = markInvoicePaid;
+    window.markWalletWithdrawalPaid = markWalletWithdrawalPaid;
+    window.addReturnProof = addReturnProof;
+    window.showView = showView;
+    // In split HTML files, cross-portal navigation uses separate files from the header and CTA links.
+    window.showAdminTab = showAdminTab;
+    window.openTrackedParcel = openTrackedParcel;
+    window.toggleTicketHub = toggleTicketHub;
+    window.editClientLogin = editClientLogin;
+    window.assignRiderToClient = assignRiderToClient;
+    window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); render(); } });
+    /* ===== NovaX Supabase live cloud sync (additive, fail-safe) ===== */
+    (function(){
+      var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
+      var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+      var ROW_ID=1;
+      function cloudRerender(){ try{ render(); }catch(e){} }
+      if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, using local storage only."); return; }
+      var sb; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); return; }
+      var applyingRemote=false, pushTimer=null;
+      var _origSave=saveState;
+      saveState=function(){ _origSave.apply(this,arguments); if(applyingRemote) return; clearTimeout(pushTimer); pushTimer=setTimeout(pushCloud,400); };
+      function pushCloud(){ try{ sb.from("novax_state").upsert({id:ROW_ID,data:state,updated_at:new Date().toISOString()}).then(function(r){ if(r&&r.error) console.warn("NovaX cloud save:",r.error.message); }); }catch(e){ console.warn("NovaX push failed",e); } }
+      function applyRemote(data){ if(!data||typeof data!=="object") return; applyingRemote=true; try{ state=data; localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); cloudRerender(); }catch(e){ console.warn("NovaX applyRemote failed",e); } applyingRemote=false; }
+      (async function(){
+        try{
+          var res=await sb.from("novax_state").select("data").eq("id",ROW_ID).maybeSingle();
+          if(res&&res.error){ console.warn("NovaX cloud load:",res.error.message); }
+          else { var remote=res&&res.data&&res.data.data; if(!remote||Object.keys(remote).length===0){ pushCloud(); } else { applyRemote(remote); } }
+        }catch(e){ console.warn("NovaX cloud load failed, local only.",e); }
+        try{
+          sb.channel("novax_state_live").on("postgres_changes",{event:"*",schema:"public",table:"novax_state",filter:"id=eq."+ROW_ID},function(payload){ var row=payload&&payload.new; if(row&&row.data) applyRemote(row.data); }).subscribe();
+        }catch(e){ console.warn("NovaX realtime failed",e); }
+      })();
+    })();
+    render();
+    renderLandingTrack();
+    window.scrollTo({ top: 0, left: 0 });
+    /* ===== NovaX Admin AI Assistant (rule-based, live control-room data) ===== */
+    (function(){
+      try{
+        if(window.__novaxAiLoaded) return; window.__novaxAiLoaded=true;
+        var esc=function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
+        var fmt=function(n){ return Number(n||0).toLocaleString('en-US'); };
+        function invLine(iv){ return 'Invoice <b>'+esc(iv.id)+'</b> - status <b>'+esc(iv.status)+'</b><br>Payable <b>Rs '+fmt(iv.payable)+'</b> (COD Rs '+fmt(iv.cod)+' - charges Rs '+fmt(iv.charges)+') · '+((iv.parcelRefs||[]).length)+' parcel(s)'; }
+        function pLine(p){ return '<b>'+esc(p.awb)+'</b> - <b>'+esc(p.status)+'</b><br>'+esc(p.consignee||'')+(p.city?' · '+esc(p.city):'')+(p.branch?' · '+esc(p.branch):'')+((p.rider||p.riderId)?' · rider '+esc(p.rider||p.riderId):'')+(p.updated?' · updated '+esc(p.updated):'')+(p.exception?'<br>⚠️ '+esc(p.exception):''); }
+        function makeTicket(q,awb){
+          var key='ai:'+q.toLowerCase().replace(/\s+/g,' ').slice(0,60);
+          var t=ensureTicketFromIssue(key,{ tier:'medium', title:q.length>42?q.slice(0,42)+'…':q, from:'Admin AI Assistant', to:'Admin Control', branch:'Admin', awb:awb||'', message:q });
+          state.ticketNotifications=Array.isArray(state.ticketNotifications)?state.ticketNotifications:[];
+          state.ticketNotifications.unshift({ text:(t&&t.id?t.id:'TCK')+' opened by Admin AI Assistant to Admin Control.', at:(t&&t.createdAt)||'', level:'info' });
+          try{ saveState(); }catch(e){} try{ render(); }catch(e){}
+          return t&&t.id?t.id:'a ticket';
+        }
+        function engine(raw){
+          var q=String(raw||'').trim(); if(!q) return {text:'Ask me: <b>where is N0010001</b>, <b>open tickets</b>, <b>rider cash</b>, <b>total COD</b>, <b>invoice INV-0001</b>, or a client wallet (e.g. CL-0001).'};
+          var low=q.toLowerCase();
+          if(/^(hi|hey|hello|salam|assalam|aoa|yo)\b/.test(low)) return {text:'Hi! I read the live NovaX control-room data. Try: <i>where is N0010001</i>, <i>open tickets</i>, <i>rider cash</i>, <i>total payable</i>.'};
+          if(/^(thanks|thank you|ok|okay|great|cool)\b/.test(low)) return {text:'👍'};
+          var awb=(q.match(/N\d{7}/i)||[])[0];
+          if(awb){ var p=(state.parcels||[]).find(function(x){return String(x.awb||'').toUpperCase()===awb.toUpperCase();}); if(p) return {text:pLine(p)+(p.steps&&p.steps.length?'<br><span class=nvai-dim>Journey: '+esc(p.steps.join(' to '))+'</span>':'')}; return {ticket:true,text:'No parcel <b>'+esc(awb.toUpperCase())+'</b> exists in the system.'}; }
+          var invId=(q.match(/INV-\d+/i)||[])[0];
+          if(invId){ var iv=(state.invoices||[]).find(function(i){return String(i.id||'').toUpperCase()===invId.toUpperCase();}); if(iv) return {text:invLine(iv)}; return {ticket:true,text:'Invoice <b>'+esc(invId.toUpperCase())+'</b> not found.'}; }
+          var tkId=(q.match(/TCK-\d+/i)||[])[0];
+          if(tkId){ var tk=(state.tickets||[]).find(function(t){return String(t.id||'').toUpperCase()===tkId.toUpperCase();}); if(tk) return {text:'Ticket <b>'+esc(tk.id)+'</b> - <b>'+esc(tk.status)+'</b><br>'+esc(tk.title)+'<br>To: '+esc(tk.to)+(tk.awb?' · AWB '+esc(tk.awb):'')+(tk.resolutionReply?'<br>Reply: '+esc(tk.resolutionReply):'')}; return {ticket:true,text:'Ticket <b>'+esc(tkId.toUpperCase())+'</b> not found.'}; }
+          if(/ticket|complaint|escalation|open issue|pending issue/.test(low)){ var open=(state.tickets||[]).filter(function(t){return t.status!=='Resolved';}); if(!open.length) return {text:'No open tickets - all clear. ✅'}; return {text:'<b>'+open.length+'</b> open ticket(s):<br>'+open.slice(0,6).map(function(t){return '• <b>'+esc(t.id)+'</b> '+esc(t.title)+' to '+esc(t.to);}).join('<br>')}; }
+          if(/rider|cash held|cash limit|cash in hand/.test(low)){ var rs=(state.riders||[]); if(!rs.length) return {text:'No riders on file.'}; var over=rs.filter(function(r){return Number(r.cashHeld||0)>Number(r.cashLimit||0);}); var top=rs.slice().sort(function(a,b){return Number(b.cashHeld||0)-Number(a.cashHeld||0);}).slice(0,5); return {text:'Rider cash (top holders):<br>'+top.map(function(r){return '• '+esc(r.name)+': Rs '+fmt(r.cashHeld)+' / limit Rs '+fmt(r.cashLimit)+(Number(r.cashHeld||0)>Number(r.cashLimit||0)?' ⚠️ over':'');}).join('<br>')+(over.length?'<br><b>'+over.length+'</b> rider(s) over limit.':'')}; }
+          if(/wallet|balance/.test(low)){ var clid=(q.match(/CL-\d+/i)||[])[0]; if(clid){ var bal=walletBalance(clid.toUpperCase()); return {text:'Wallet balance for <b>'+esc(clid.toUpperCase())+'</b>: <b>Rs '+fmt(bal)+'</b>.'}; } return {text:'Tell me which client (e.g. <b>CL-0001</b>) and I will show their wallet balance.'}; }
+          if(/cod|finance|revenue|payable|collected|total/.test(low)){ var ps=state.parcels||[]; var delivered=ps.filter(function(p){return /delivered/i.test(p.status);}); var cod=delivered.reduce(function(s,p){return s+Number(p.cod||0);},0); var invs=state.invoices||[]; var payable=invs.filter(function(i){return i.status!=='Paid'&&i.status!=='Deleted';}).reduce(function(s,i){return s+Number(i.payable||0);},0); var pend=(state.walletWithdrawals||[]).filter(function(w){return /pending|process/i.test(w.status||'');}).reduce(function(s,w){return s+Number(w.net||w.amount||0);},0); return {text:'Finance snapshot:<br>• Delivered COD: <b>Rs '+fmt(cod)+'</b><br>• Unpaid invoices payable: <b>Rs '+fmt(payable)+'</b><br>• Withdrawals in progress: <b>Rs '+fmt(pend)+'</b>'}; }
+          if(/exception|refus|delay|stuck|fail|breach|sla/.test(low)){ var ex=(state.parcels||[]).filter(function(p){return p.exception||/refus|return|not available|reattempt/i.test(p.status||'')||Number(p.statusAgeHours||0)>=24;}); if(!ex.length) return {text:'No exceptions or SLA breaches right now. ✅'}; return {text:'<b>'+ex.length+'</b> parcel(s) need attention:<br>'+ex.slice(0,5).map(pLine).join('<br><br>')}; }
+          if(/how many|count|summary|overview|today|deliver/.test(low)){ var ps2=state.parcels||[]; var del=ps2.filter(function(p){return /delivered/i.test(p.status);}).length; var exn=ps2.filter(function(p){return p.exception;}).length; return {text:'Network: <b>'+ps2.length+'</b> parcels - <b>'+del+'</b> delivered, <b>'+exn+'</b> with issues. Clients: <b>'+((state.clients||[]).length)+'</b>, riders: <b>'+((state.riders||[]).length)+'</b>.'}; }
+          if(/track|where|status/.test(low)) return {text:'Give me the AWB (e.g. <b>N0010001</b>) for exact live status.'};
+          if(q.length<6) return {text:'Ask me about a parcel, ticket, rider cash, finance totals, or a client wallet.'};
+          return {ticket:true,text:''};
+        }
+        var style=document.createElement('style');
+        style.textContent='.nvai-btn{position:fixed;right:18px;bottom:18px;z-index:99999;width:58px;height:58px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#14c77b);color:#fff;font-size:24px;box-shadow:0 12px 30px rgba(20,199,123,.45);display:grid;place-items:center;border:0;cursor:pointer}.nvai-dim{opacity:.7}.nvai-panel{position:fixed;right:18px;bottom:86px;z-index:99999;width:360px;max-width:calc(100vw - 36px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #cfe6dc;border-radius:18px;box-shadow:0 26px 70px rgba(13,91,64,.28);display:none;flex-direction:column;overflow:hidden}.nvai-panel.open{display:flex}.nvai-head{background:linear-gradient(135deg,#0b2a1f,#0c7c59);color:#eafff5;padding:13px 16px;display:flex;align-items:center;gap:10px}.nvai-head b{font-size:15px;line-height:1.1}.nvai-head small{font-size:11px;opacity:.8}.nvai-x{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:0;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px}.nvai-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f3fff9}.nvai-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}.nvai-m.u{align-self:flex-end;background:#dcffe9;color:#08311f;border-bottom-right-radius:4px}.nvai-m.b{align-self:flex-start;background:#fff;border:1px solid #e1f0e8;color:#0b2a1f;border-bottom-left-radius:4px}.nvai-bar{display:flex;gap:8px;padding:10px;border-top:1px solid #e1f0e8;background:#fff}.nvai-bar input{flex:1;min-width:0;height:42px;border-radius:11px;border:1px solid #cfe6dc;padding:0 12px;font:inherit;font-size:14px}.nvai-bar button{height:42px;padding:0 16px;border-radius:11px;background:#14c77b;color:#04130d;font-weight:800;border:0;cursor:pointer}@media (max-width:520px){.nvai-panel{right:10px;left:10px;width:auto;bottom:78px;height:72vh}.nvai-btn{right:14px;bottom:14px}}';
+        document.head.appendChild(style);
+        var btn=document.createElement('button'); btn.className='nvai-btn'; btn.title='NovaX Admin AI'; btn.innerHTML='🤖';
+        var panel=document.createElement('div'); panel.className='nvai-panel';
+        panel.innerHTML='<div class=nvai-head><div><b>NovaX Admin AI</b><br><small>live control-room data · never guesses</small></div><button class=nvai-x type=button>×</button></div><div class=nvai-msgs></div><div class=nvai-bar><input type=text><button type=button>Send</button></div>';
+        document.body.appendChild(btn); document.body.appendChild(panel);
+        var msgs=panel.querySelector('.nvai-msgs'); var inp=panel.querySelector('.nvai-bar input'); var sendBtn=panel.querySelector('.nvai-bar button'); var closeBtn=panel.querySelector('.nvai-x');
+        inp.placeholder='Ask about parcels, tickets, finance…';
+        function addMsg(html,cls){ var d=document.createElement('div'); d.className='nvai-m '+cls; d.innerHTML=html; msgs.appendChild(d); msgs.scrollTop=msgs.scrollHeight; }
+        function botSay(h){ addMsg(h,'b'); }
+        function send(){ var v=inp.value.trim(); if(!v) return; addMsg(esc(v),'u'); inp.value=''; setTimeout(function(){ try{ var r=engine(v); if(r.ticket){ var id=makeTicket(v,(v.match(/N\d{7}/i)||[])[0]||''); botSay((r.text?r.text+'<br><br>':'')+'I have opened ticket <b>'+esc(id)+'</b> in the tickets queue for follow-up.'); } else botSay(r.text); }catch(e){ botSay('Sorry, something went wrong reading the data. Please try again.'); } },160); }
+        var greeted=false;
+        btn.addEventListener('click',function(){ panel.classList.toggle('open'); if(panel.classList.contains('open')){ if(!greeted){ greeted=true; botSay('Hi! 👋 I am the NovaX Admin AI. Ask me <i>where is N0010001</i>, <i>open tickets</i>, <i>rider cash</i>, or <i>finance totals</i>.'); } inp.focus(); } });
+        closeBtn.addEventListener('click',function(){ panel.classList.remove('open'); });
+        sendBtn.addEventListener('click',send); inp.addEventListener('keydown',function(e){ if(e.key==='Enter') send(); });
+      }catch(e){ console.warn('NovaX AI init failed',e); }
+    })();
+  </script>
+</body>
+</html>
