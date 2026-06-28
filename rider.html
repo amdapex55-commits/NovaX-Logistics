@@ -155,6 +155,35 @@
     </section>
   </main>
 
+  <style>
+    .sig-overlay{position:fixed;inset:0;background:rgba(8,20,16,.62);display:none;align-items:center;justify-content:center;z-index:60;padding:16px}
+    .sig-overlay.show{display:flex}
+    .sig-sheet{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;width:100%;max-width:460px;box-shadow:0 18px 50px rgba(21,45,36,.25)}
+    .sig-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+    .sig-pad{width:100%;height:220px;border:1px dashed var(--line-strong);border-radius:14px;background:#fff;touch-action:none;cursor:crosshair}
+    .sig-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
+    @media(max-width:560px){
+      .sig-actions{justify-content:stretch}
+      .sig-actions button{flex:1;min-height:48px}
+      .inline-actions{flex-wrap:wrap}
+      .inline-actions button{flex:1;min-height:46px}
+      .ops-card-head{flex-wrap:wrap;gap:4px}
+    }
+  </style>
+
+  <div class="sig-overlay" id="sigModal">
+    <div class="sig-sheet">
+      <div class="sig-head"><strong>Consignee signature</strong><span id="sigAwb" class="footer-note"></span></div>
+      <p class="footer-note" style="margin:0 0 8px">Ask the consignee to sign below to confirm delivery.</p>
+      <canvas id="sigPad" class="sig-pad"></canvas>
+      <div class="sig-actions">
+        <button class="ghost-btn" id="sigClearBtn" type="button">Clear</button>
+        <button class="ghost-btn" id="sigCancelBtn" type="button">Cancel</button>
+        <button class="action-btn" id="sigConfirmBtn" type="button">Confirm Delivery</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
   <div class="deliver-flash" id="deliverFlash">
     <div class="deliver-card">
@@ -301,13 +330,14 @@
           <p>${p.consignee} · ${p.city} · ${p.updated}${p.status==="Delivered" ? ` · ${money(p.cod)} in your account` : ""}</p>
           ${p.exception ? `<p class="footer-note">${p.exception}</p>` : ""}
           ${p.proofPhoto ? `<img src="${p.proofPhoto}" alt="proof" style="margin-top:8px;width:100%;max-height:150px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">` : ""}
+          ${p.signature ? `<div class="footer-note" style="margin-top:6px">Signature captured ${p.signedAt || ""}</div><img src="${p.signature}" alt="signature" style="margin-top:4px;width:100%;max-height:120px;object-fit:contain;border-radius:12px;border:1px solid var(--line);background:#fff">` : ""}
         </div>`;
       }).join("") || `<div class="ops-card"><strong>Nothing yet</strong><p>Delivered, refused and not-responding updates show here.</p></div>`;
     }
 
     /* ---- rider actions ---- */
     let riderPhotoCtx = null;
-    function riderPhotoThen(awb, kind){ riderPhotoCtx = { awb, kind }; const inp=document.getElementById("riderPhotoInput"); inp.value=""; inp.click(); }
+    function riderPhotoThen(awb, kind){ riderPhotoCtx = { awb, kind }; const inp=document.getElementById("riderPhotoInput"); inp.value=""; if(kind==="notresponding"){ inp.removeAttribute("capture"); } else { inp.setAttribute("capture","environment"); } inp.click(); }
     function handleRiderPhoto(file){
       if(!riderPhotoCtx || !file) return;
       const { awb, kind } = riderPhotoCtx;
@@ -323,8 +353,9 @@
       state.paymentLogs = Array.isArray(state.paymentLogs) ? state.paymentLogs : [];
       if (kind === "notresponding"){
         setParcelStatus(p, "Consignee not available");
-        p.exception = "Consignee not responding — parcel photo attached by " + rider.name;
-        p.returnProof = "Parcel photo attached by " + rider.name;
+        p.exception = "Consignee not responding — call record attached by " + rider.name;
+        p.returnProof = "Call record screenshot attached by " + rider.name;
+        p.callRecord = dataUrl;
         state.operationsIssues.unshift({ id: nextId("OPS", state.operationsIssues), branch: p.branch, urgency: "urgent", problem: "Consignee not responding (" + awb + ")", awb, openedHours: 0, resolved: false });
         state.paymentLogs.unshift({ id: nextId("PAY", state.paymentLogs), clientId: p.clientId, type: "Rider update: consignee not responding", amount: 0, status: "Photo proof attached", ref: awb });
         toast(awb + " → consignee not available. Update + photo pushed to portal.");
@@ -342,6 +373,42 @@
     }
     function riderDeliver(awb){
       const p = state.parcels.find(x=>x.awb===awb); if(!p) return;
+      if (p.status === "Return out for delivery"){ finalizeDeliver(awb, ""); return; }
+      openSignaturePad(awb);
+    }
+
+    let sigCtx = null, sigDrawing = false, sigHasInk = false;
+    function openSignaturePad(awb){
+      sigCtx = awb; sigHasInk = false;
+      const modal = document.getElementById("sigModal");
+      document.getElementById("sigAwb").textContent = awb;
+      modal.classList.add("show");
+      const canvas = document.getElementById("sigPad");
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width; canvas.height = rect.height;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.lineWidth = 2.6; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#10201b";
+    }
+    function sigPos(e){
+      const canvas = document.getElementById("sigPad"); const r = canvas.getBoundingClientRect();
+      const t = e.touches && e.touches[0];
+      return { x:(t?t.clientX:e.clientX)-r.left, y:(t?t.clientY:e.clientY)-r.top };
+    }
+    function sigStart(e){ e.preventDefault(); sigDrawing=true; const ctx=document.getElementById("sigPad").getContext("2d"); const pnt=sigPos(e); ctx.beginPath(); ctx.moveTo(pnt.x,pnt.y); }
+    function sigMove(e){ if(!sigDrawing) return; e.preventDefault(); const ctx=document.getElementById("sigPad").getContext("2d"); const pnt=sigPos(e); ctx.lineTo(pnt.x,pnt.y); ctx.stroke(); sigHasInk=true; }
+    function sigEnd(){ sigDrawing=false; }
+    function clearSignature(){ const canvas=document.getElementById("sigPad"); canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height); sigHasInk=false; }
+    function cancelSignature(){ document.getElementById("sigModal").classList.remove("show"); sigCtx=null; }
+    function confirmSignature(){
+      if(!sigCtx) return;
+      if(!sigHasInk){ toast("Ask the consignee to sign before confirming."); return; }
+      const dataUrl = document.getElementById("sigPad").toDataURL("image/png");
+      const awb = sigCtx; document.getElementById("sigModal").classList.remove("show"); sigCtx=null;
+      finalizeDeliver(awb, dataUrl);
+    }
+    function finalizeDeliver(awb, signatureDataUrl){
+      const p = state.parcels.find(x=>x.awb===awb); if(!p) return;
       const rider = riderById(state.activeRider);
       const wasReturn = p.status === "Return out for delivery";
       setParcelStatus(p, wasReturn ? "Parcel returned to consignee" : "Delivered");
@@ -349,10 +416,11 @@
       p.deliveredBy = rider.id;
       p.cashReceived = false;        // stays in rider account until admin clears
       p.exception = "";
+      if(!wasReturn && signatureDataUrl){ p.signature = signatureDataUrl; p.signedAt = time(); }
       state.paymentLogs = Array.isArray(state.paymentLogs) ? state.paymentLogs : [];
       if (!wasReturn) state.paymentLogs.unshift({ id: nextId("PAY", state.paymentLogs), clientId: p.clientId, type: "COD collected by rider", amount: p.cod, status: "Held by " + rider.name + " until admin clears", ref: awb });
       saveState(); renderRider();
-      document.getElementById("deliverText").textContent = `${awb} delivered by ${rider.name}. ${money(p.cod)} added to your account — held until admin clears it.`;
+      document.getElementById("deliverText").textContent = wasReturn ? `${awb} marked returned by ${rider.name}.` : `${awb} delivered by ${rider.name}. ${money(p.cod)} added to your account — held until admin clears it.`;
       const f = document.getElementById("deliverFlash"); f.classList.add("show");
       const tk = f.querySelector(".tk"); if(tk){ tk.style.animation="none"; void tk.offsetWidth; tk.style.animation=""; }
       clearTimeout(window.__df); window.__df = setTimeout(()=>f.classList.remove("show"), 2200);
@@ -363,6 +431,14 @@
     window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); state.activeRider = state.activeRider || (state.riders[0] && state.riders[0].id) || ""; renderRider(); } });
     document.getElementById("riderPhotoInput").addEventListener("change", e => handleRiderPhoto(e.target.files && e.target.files[0]));
     document.getElementById("deliverFlash").addEventListener("click", () => document.getElementById("deliverFlash").classList.remove("show"));
+    (function(){
+      const canvas=document.getElementById("sigPad");
+      canvas.addEventListener("mousedown",sigStart); canvas.addEventListener("mousemove",sigMove); window.addEventListener("mouseup",sigEnd);
+      canvas.addEventListener("touchstart",sigStart,{passive:false}); canvas.addEventListener("touchmove",sigMove,{passive:false}); canvas.addEventListener("touchend",sigEnd);
+      document.getElementById("sigClearBtn").addEventListener("click",clearSignature);
+      document.getElementById("sigCancelBtn").addEventListener("click",cancelSignature);
+      document.getElementById("sigConfirmBtn").addEventListener("click",confirmSignature);
+    })();
     setInterval(()=>{ const el=document.getElementById("clockD"); if(el) el.textContent=`Live ${time()}`; }, 1000);
 
     window.riderDeliver = riderDeliver;
