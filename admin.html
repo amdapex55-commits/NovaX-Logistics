@@ -5662,4 +5662,3311 @@
       state.walletWithdrawals = Array.isArray(state.walletWithdrawals) ? state.walletWithdrawals : [];
       state.activeInvoiceClient = state.activeInvoiceClient || state.clients[0]?.id || "";
       state.invoiceDraftRefs = Array.isArray(state.invoiceDraftRefs) ? state.invoiceDraftRefs : [];
-      state.activeWalletClient = state.activeWalletClient || state.clients[0]?.i
+      state.activeWalletClient = state.activeWalletClient || state.clients[0]?.id || "";
+      state.clients.forEach(client => {
+        client.walletBalance = Number(client.walletBalance || 0);
+        client.withdrawnTotal = Number(client.withdrawnTotal || 0);
+        client.withdrawFeeTotal = Number(client.withdrawFeeTotal || 0);
+      });
+      syncTicketAutomation();
+    }
+
+    function parcelOrigin(parcel) {
+      return parcel.origin || parcel.pickupCity || clientById(parcel.clientId).city || "Karachi";
+    }
+
+    function parcelJourneyHours(parcel) {
+      const start = new Date(`${parcel.journeyStartedAt || parcel.date || "2026-06-24"} ${String(parcel.journeyStartedAt || "").includes(":") ? "" : "08:00"}`.trim());
+      const nowTime = new Date();
+      if (!Number.isNaN(start.getTime())) {
+        return Math.max(0, Math.round((nowTime - start) / 36e5));
+      }
+      return Math.max(0, (parcel.steps.length * 8) + Number(parcel.statusAgeHours || 0));
+    }
+
+    function deliveryJourneyLabel(parcel) {
+      if (isDeliveredLedgerParcel(parcel)) return `Delivered in ${agingLabel(parcelJourneyHours(parcel))}`;
+      return `${agingLabel(parcelJourneyHours(parcel))} open journey`;
+    }
+
+    function lastProcess(parcel) {
+      const last = parcel.processHistory?.at(-1);
+      return {
+        by: parcel.lastProcessedBy || last?.processor || "System import",
+        at: parcel.lastProcessedAt || last?.at || `${parcel.date || "2026-06-24"} ${parcel.updated}`,
+        branch: last?.branch || parcel.branch
+      };
+    }
+
+    function processingParcel() {
+      return state.parcels.find(p => p.awb === state.activeProcessingAwb) || null;
+    }
+
+    function normalizeScanText(value) {
+      return String(value || "")
+        .toUpperCase()
+        .replace(/\u00a0/g, " ")
+        .replace(/(N\d{7}|NX-\d{4}-\d{4,})(?=N\d{7}|NX-\d{4}-\d{4,})/g, "$1, ")
+        .replace(/[;\t\r\n]+/g, ", ")
+        .replace(/\s+/g, " ")
+        .replace(/\s*,\s*/g, ", ")
+        .trim();
+    }
+
+    function parseAwbList(value) {
+      return [...new Set(normalizeScanText(value).match(/N\d{7}|NX-\d{4}-\d{4,}/g) || [])];
+    }
+
+    function formatScanInput(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const awbs = parseAwbList(el.value);
+      if (awbs.length) {
+        el.value = `${awbs.join(", ")}, `;
+        el.selectionStart = el.selectionEnd = el.value.length;
+      }
+    }
+
+    function scheduleScanFormat(id) {
+      clearTimeout(window[`scanFormat_${id}`]);
+      window[`scanFormat_${id}`] = setTimeout(() => formatScanInput(id), 160);
+    }
+
+    function parcelsByAwbs(awbs) {
+      return awbs.map(awb => state.parcels.find(p => p.awb.toUpperCase() === awb)).filter(Boolean);
+    }
+
+    function processingParcels() {
+      const batch = parcelsByAwbs(state.processingBatchAwbs || []);
+      return batch.length ? batch : (processingParcel() ? [processingParcel()] : []);
+    }
+
+    function hubCity(branch) {
+      return String(branch || "").replace(/\s*Hub$/i, "").trim();
+    }
+
+    function manifestRouteMismatch(parcel, toBranch) {
+      const dest = String((parcel && parcel.city) || "").trim().toLowerCase();
+      const to = hubCity(toBranch).toLowerCase();
+      if (!dest || !to) return false;
+      return dest !== to;
+    }
+
+    function manifestLogs() {
+      return state.transit.filter(t => t.type === "parcel manifest" || t.type === "parcel sack");
+    }
+
+    function manifestExpected(log) {
+      return Number(log.expected || log.parcels?.length || 0);
+    }
+
+    function manifestDone(log) {
+      return Math.min(Number(log.demanifestedAwbs?.length || log.demanifested || 0), manifestExpected(log));
+    }
+
+    function manifestMissingCount(log) {
+      return Math.max(0, manifestExpected(log) - manifestDone(log));
+    }
+
+    function manifestMissingAwbs(log) {
+      const explicit = log.missingAwbs || [];
+      const expected = log.parcels || [];
+      const received = log.demanifestedAwbs || [];
+      const hasReceivedList = received.length > 0 || (log.status === "Complete" && expected.length);
+      const concrete = hasReceivedList ? expected.filter(awb => !received.includes(awb)) : [];
+      const missing = [...new Set([...explicit, ...concrete])];
+      const shortage = Math.max(0, manifestMissingCount(log) - missing.length);
+      if (shortage > 0) missing.push(`${shortage} CN(s) pending scan list`);
+      return missing;
+    }
+
+    const DISPUTE_DELAY_MIN = 2;
+
+    function manifestRemainingAwbs(log) {
+      const expected = log.parcels || [];
+      const received = (log.demanifestedAwbs && log.demanifestedAwbs.length) ? log.demanifestedAwbs : (log.demanifestPartial || []);
+      return expected.filter(awb => !received.includes(awb));
+    }
+
+    function manifestRemainingCount(log) {
+      return manifestRemainingAwbs(log).length;
+    }
+
+    function manifestScanStarted(log) {
+      return !!(log.demanifestStartedAt || log.status === "Complete" || (log.demanifestedAwbs && log.demanifestedAwbs.length) || (log.demanifestPartial && log.demanifestPartial.length));
+    }
+
+    function manifestDisputeMinutes(log) {
+      if (log.status === "Complete") return DISPUTE_DELAY_MIN;
+      if (!log.demanifestStartedAt) return 0;
+      const ms = Date.now() - new Date(log.demanifestStartedAt).getTime();
+      return Number.isFinite(ms) ? ms / 60000 : 0;
+    }
+
+    function manifestInDispute(log) {
+      if (!manifestScanStarted(log)) return false;
+      if (manifestRemainingCount(log) <= 0) return false;
+      return manifestDisputeMinutes(log) >= DISPUTE_DELAY_MIN;
+    }
+
+    function defaultRateCard(rate = 250) {
+      return {
+        overnight: rate,
+        additionalKg: 85,
+        detainBase: 540,
+        detainAdditionalKg: 125,
+        overlandBase: 900,
+        overlandAdditionalKg: 45
+      };
+    }
+
+    function isDeliveredLedgerParcel(parcel) {
+      return parcel.status === "Delivered" || parcel.steps.includes("COD collected");
+    }
+
+    function isCashCollectedParcel(parcel) {
+      return isDeliveredLedgerParcel(parcel) && parcel.cashReceived;
+    }
+
+    function paidParcelRefs() {
+      return new Set(state.invoices.filter(invoice => invoice.status === "Paid").flatMap(invoice => invoice.parcelRefs || []));
+    }
+
+    function isUnpaidDeliveredParcel(parcel) {
+      return isDeliveredLedgerParcel(parcel) && !paidParcelRefs().has(parcel.awb);
+    }
+
+    function riderReceivable(riderId) {
+      return state.parcels
+        .filter(p => p.rider === riderId && isDeliveredLedgerParcel(p) && !p.cashReceived)
+        .reduce((sum, p) => sum + p.cod, 0);
+    }
+
+    function syncRiderAccess() {
+      state.riders.forEach(rider => {
+        const exposure = rider.cashHeld + riderReceivable(rider.id);
+        rider.access = exposure > rider.cashLimit ? "Blocked" : "Active";
+      });
+    }
+
+    function clientInvoiceParcels(clientId) {
+      const invoicedRefs = new Set(state.invoices.filter(invoice => invoice.status !== "Deleted").flatMap(invoice => invoice.parcelRefs || []));
+      return state.parcels.filter(p => p.clientId === clientId && isDeliveredLedgerParcel(p) && !invoicedRefs.has(p.awb));
+    }
+
+    function selectedInvoiceParcels() {
+      const clientId = state.activeInvoiceClient || state.clients[0]?.id || "";
+      const candidates = clientInvoiceParcels(clientId);
+      const selected = new Set(state.invoiceDraftRefs || []);
+      return candidates.filter(parcel => selected.has(parcel.awb));
+    }
+
+    function invoiceTotals(parcels) {
+      const cod = parcels.reduce((sum, parcel) => sum + Number(parcel.cod || 0), 0);
+      const charges = parcels.reduce((sum, parcel) => sum + Number(parcel.fee || 0), 0);
+      return { cod, charges, payable: Math.max(0, cod - charges) };
+    }
+
+    function walletFeeRate(speed) {
+      if (speed === "instant") return 0.007;
+      if (speed === "12h") return 0.003;
+      return 0.001;
+    }
+
+    function walletSpeedLabel(speed) {
+      if (speed === "instant") return "Instant 2-3 hours";
+      if (speed === "12h") return "12 hours";
+      return "24 hours";
+    }
+
+    function walletBalance(clientId) {
+      return Number(clientById(clientId)?.walletBalance || 0);
+    }
+
+    function nextId(prefix, items) {
+      const max = items.reduce((value, item) => {
+        const number = Number(String(item.id || "").replace(`${prefix}-`, ""));
+        return Number.isFinite(number) ? Math.max(value, number) : value;
+      }, 0);
+      return `${prefix}-${String(max + 1).padStart(4, "0")}`;
+    }
+
+    function agingLabel(hours = 0) {
+      if (hours < 1) return "just now";
+      if (hours < 24) return `${Math.max(0, Math.round(hours))}h`;
+      const days = Math.floor(hours / 24);
+      const remaining = Math.round(hours % 24);
+      return remaining ? `${days}d ${remaining}h` : `${days}d`;
+    }
+
+    function agingHours(parcel) {
+      if (parcel && parcel.statusSince) {
+        const ms = Date.now() - new Date(parcel.statusSince).getTime();
+        if (Number.isFinite(ms)) return Math.max(0, ms / 3600000);
+      }
+      return Number((parcel && parcel.statusAgeHours) || 0);
+    }
+
+    function alertForParcel(parcel) {
+      const hours = agingHours(parcel);
+      if (parcel.status === "Parcel now in transit") {
+        if (hours >= 72) return { level: "critical", label: "Red alert: transit over 3 days", due: "AI + support must act now" };
+        if (hours >= 48) return { level: "warning", label: "Transit aging", due: "Escalate before 3 days" };
+        return { level: "ok", label: "In transit", due: "Transit clock running" };
+      }
+      if (["Delivered", "Parcel returned to consignee"].includes(parcel.status)) {
+        return { level: "ok", label: "Closed", due: "No open alert" };
+      }
+      if (hours >= 24) return { level: "critical", label: "24h status breach", due: "AI + support must act now" };
+      return { level: "ok", label: "Within SLA", due: `${24 - Math.round(hours)}h left` };
+    }
+
+    function urgencyClass(level) {
+      if (level === "critical" || level === "super urgent") return "bad";
+      if (level === "warning" || level === "urgent") return "warn";
+      return "good";
+    }
+
+    function setParcelStatus(parcel, status, processor = {}) {
+      const exactTime = time();
+      const stamp = `${new Date().toISOString().slice(0, 10)} ${exactTime}`;
+      parcel.status = status;
+      parcel.statusAgeHours = 0;
+      parcel.statusSince = new Date().toISOString();
+      parcel.updated = exactTime;
+      parcel.stage = Math.max(0, STATUS_TAGS.indexOf(status));
+      if (!parcel.steps.includes(status)) parcel.steps.push(status);
+      const processorName = processor.name || currentAdminName();
+      const username = processor.username || "admin";
+      const branch = processor.branch || parcel.branch || `${parcel.city} Hub`;
+      parcel.branch = branch;
+      parcel.lastProcessedBy = processorName;
+      parcel.lastProcessedAt = stamp;
+      parcel.processHistory = Array.isArray(parcel.processHistory) ? parcel.processHistory : [];
+      parcel.processHistory.push({ status, branch, time: exactTime, processor: processorName, username, at: stamp });
+    }
+
+    function setStatusQueue(status) {
+      state.activeStatusQueue = status;
+      saveState();
+      renderAdmin();
+      tickMeters();
+    }
+
+    function resolveParcelAlert(awb) {
+      const parcel = state.parcels.find(p => p.awb === awb);
+      if (!parcel) return;
+      const reason = document.getElementById(`resolve-${awb}`)?.value.trim();
+      if (!reason || !reason.trim()) {
+        toast("Resolution reason is required.");
+        return;
+      }
+      const alert = alertForParcel(parcel);
+      const resolver = currentAdminName();
+      const solvedHours = Number(parcel.statusAgeHours || 0);
+      parcel.statusAgeHours = 0;
+      parcel.exception = "";
+      parcel.resolutionRemark = reason.trim();
+      parcel.resolvedBy = resolver;
+      parcel.resolvedAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+      parcel.risk = Math.max(5, parcel.risk - 12);
+      state.operationsIssues.forEach(issue => {
+        if (issue.awb === awb && !issue.resolved) {
+          issue.resolved = true;
+          issue.resolvedHours = issue.openedHours || solvedHours;
+          issue.resolvedBy = resolver;
+          issue.resolutionReason = reason.trim();
+          issue.resolvedAt = parcel.resolvedAt;
+        }
+      });
+      state.resolvedAlerts.unshift({
+        id: nextId("DONE", state.resolvedAlerts),
+        awb,
+        branch: parcel.branch,
+        resolvedBy: resolver,
+        reason: reason.trim(),
+        alert: alert.label,
+        solvedHours,
+        resolvedAt: parcel.resolvedAt
+      });
+      saveState();
+      render();
+      toast(`${awb} alert resolved and status clock restarted.`);
+    }
+
+    function metrics() {
+      const parcels = state.parcels;
+      const delivered = parcels.filter(p => p.status.includes("Delivered")).length;
+      const deliveredParcels = parcels.filter(isDeliveredLedgerParcel);
+      const unpaidDeliveredParcels = parcels.filter(isUnpaidDeliveredParcel);
+      const codCollected = deliveredParcels.reduce((s, p) => s + p.cod, 0);
+      const revenue = deliveredParcels.reduce((s, p) => s + p.fee, 0);
+      const expenses = state.expenses.reduce((s, e) => s + e.amount, 0);
+      const payable = Math.max(0, unpaidDeliveredParcels.reduce((s, p) => s + p.cod - p.fee, 0));
+      const avgProgress = parcels.reduce((s, p) => s + (p.stage / p.totalStages), 0) / parcels.length;
+      const risk = Math.round(parcels.reduce((s, p) => s + p.risk, 0) / parcels.length);
+      const cashHeld = state.riders.reduce((s, r) => s + r.cashHeld, 0);
+      const cashLimit = state.riders.reduce((s, r) => s + r.cashLimit, 0);
+      const exceptions = parcels.filter(p => p.exception).length + state.transit.filter(t => t.scanned !== t.expected).length;
+      return { delivered, total: parcels.length, codCollected, revenue, expenses, payable, avgProgress, risk, cashHeld, cashLimit, exceptions };
+    }
+
+    function percent(value, max) {
+      if (!max) return 0;
+      return Math.max(0, Math.min(100, Math.round((value / max) * 100)));
+    }
+
+    function money(value) {
+      return PKR.format(value).replace("PKR", "Rs");
+    }
+
+    function statusClass(parcel) {
+      const alert = alertForParcel(parcel);
+      if (alert.level === "critical" || parcel.risk >= 65 || parcel.exception) return "bad";
+      if (alert.level === "warning") return "warn";
+      if (["Delivered", "Parcel returned to consignee"].includes(parcel.status)) return "good";
+      if (parcel.stage < 5) return "info";
+      if (parcel.stage < 8) return "warn";
+      return "good";
+    }
+
+    function isRefusalReview(parcel) {
+      return /refus|attempt disputed|consignee denies|not available/i.test(`${parcel.status} ${parcel.exception || ""} ${parcel.steps.join(" ")}`);
+    }
+
+    function meterClass(value) {
+      if (value >= 75) return "red";
+      if (value >= 45) return "amber";
+      return "blue";
+    }
+
+    function metricCard(label, value, fill, caption, kind = "") {
+      return `
+        <article class="metric">
+          <label>${label}</label>
+          <strong>${value}</strong>
+          <div class="meter ${kind}"><span style="width:${fill}%"></span></div>
+          <div class="meter-caption"><span>${caption}</span><span>${fill}%</span></div>
+        </article>
+      `;
+    }
+
+    function renderMetrics() {
+      const m = metrics();
+      const deliveryRate = percent(m.delivered, m.total);
+      const cashExposure = percent(m.cashHeld, m.cashLimit);
+      const opsHealth = Math.round(m.avgProgress * 100);
+      const cleanData = Math.max(0, 100 - m.risk);
+      const cm = clientMetrics();
+      const clientDeliveryRate = percent(cm.delivered, cm.total);
+      const clientOpsHealth = Math.round(cm.avgProgress * 100);
+      const html = [
+        metricCard("Live Parcels", m.total, opsHealth, "journey completion", "blue"),
+        metricCard("COD Collected", money(m.codCollected), percent(m.codCollected, 60000), "ledger backed", "good"),
+        metricCard("Data Cleanliness", `${cleanData}%`, cleanData, "risk adjusted", cleanData < 65 ? "amber" : ""),
+        metricCard("Cash Exposure", money(m.cashHeld), cashExposure, "rider cash limit", cashExposure > 100 ? "red" : "amber")
+      ].join("");
+      const landingMetrics = document.getElementById("landingMetrics");
+      if (landingMetrics) landingMetrics.innerHTML = html;
+      document.getElementById("clientMetrics").innerHTML = [
+        metricCard("My Parcels", cm.total, clientOpsHealth, "assigned account only", "blue"),
+        metricCard("Delivered", `${cm.delivered}/${cm.total}`, clientDeliveryRate, "confirmed deliveries", clientDeliveryRate < 40 ? "amber" : ""),
+        metricCard("Delivery Charges", money(cm.deliveryCharges), percent(cm.deliveryCharges, 3000), "courier charges", "amber"),
+        metricCard("Payable Balance", money(cm.payable), percent(cm.payable, 60000), "client COD payable", "good")
+      ].join("");
+      document.getElementById("adminMetrics").innerHTML = [
+        metricCard("Exceptions", m.exceptions, Math.min(100, m.exceptions * 18), "auto escalations", m.exceptions ? "red" : ""),
+        metricCard("Revenue", money(m.revenue), percent(m.revenue, 2400), "shipping fees only", "good"),
+        metricCard("Expenses", money(m.expenses), percent(m.expenses, 450000), "operating burn", "amber"),
+        metricCard("Cash Exposure", `${cashExposure}%`, Math.min(100, cashExposure), "blocked over limit", cashExposure > 100 ? "red" : "amber")
+      ].join("");
+    }
+
+    function filteredParcels() {
+      const term = document.getElementById("clientSearch")?.value.trim().toLowerCase() || "";
+      return clientScopedParcels().filter(p => {
+        const haystack = `${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase();
+        return haystack.includes(term);
+      });
+    }
+
+    function selectParcel(awb) {
+      state.selectedAwb = awb;
+      saveState();
+      render();
+    }
+
+    function openClientParcelJourney(awb) {
+      state.selectedAwb = awb;
+      state.activeClientTab = "dashboard";
+      saveState();
+      render();
+      const journeyPanel = document.getElementById("clientJourney");
+      if (journeyPanel) journeyPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+      toast(`${awb} journey opened.`);
+    }
+
+    function renderClientParcels() {
+      const parcels = filteredParcels();
+      document.getElementById("clientParcelRows").innerHTML = parcels.map(p => {
+        const progress = percent(p.stage, p.totalStages);
+        return `
+          <tr class="clickable-row ${p.awb === state.selectedAwb ? "selected" : ""}" onclick="openClientParcelJourney('${p.awb}')">
+            <td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${p.updated}</span></td>
+            <td>${p.consignee}<br><span class="footer-note">${p.branch}</span></td>
+            <td>${money(p.cod)}</td>
+            <td>
+              <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>
+              ${isRefusalReview(p) ? `<button class="ghost-btn" style="margin-top:8px" onclick="event.stopPropagation(); openClientParcelJourney('${p.awb}')">Review</button>` : ""}
+            </td>
+            <td>
+              <div class="meter ${statusClass(p) === "bad" ? "red" : "blue"}"><span style="width:${progress}%"></span></div>
+              <div class="meter-caption"><span>${p.stage}/${p.totalStages} steps</span><span>${progress}%</span></div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      document.getElementById("clientParcelCards").innerHTML = parcels.map(p => {
+        const progress = percent(p.stage, p.totalStages);
+        return `
+          <article class="parcel-card ${p.awb === state.selectedAwb ? "selected" : ""}" onclick="openClientParcelJourney('${p.awb}')">
+            <div class="top">
+              <strong>${p.awb}</strong>
+              <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>
+            </div>
+            <dl>
+              <div><dt>Consignee</dt><dd>${p.consignee}</dd></div>
+              <div><dt>City</dt><dd>${p.city}</dd></div>
+              <div><dt>COD</dt><dd>${money(p.cod)}</dd></div>
+              <div><dt>Updated</dt><dd>${p.updated}</dd></div>
+            </dl>
+            ${isRefusalReview(p) ? `<button class="ghost-btn" style="margin-top:10px" onclick="event.stopPropagation(); openClientParcelJourney('${p.awb}')">Review Rider Input</button>` : ""}
+            <div class="meter ${statusClass(p) === "bad" ? "red" : "blue"}" style="margin-top:12px"><span style="width:${progress}%"></span></div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderJourney() {
+      const p = state.parcels.find(parcel => parcel.awb === state.selectedAwb) || state.parcels[0] || emptyParcel();
+      document.getElementById("selectedParcelText").textContent = `${p.awb} for ${p.consignee}. Current status: ${p.status}.`;
+      const allSteps = STATUS_TAGS;
+      document.getElementById("clientJourney").innerHTML = allSteps.map((step, index) => {
+        const done = p.steps.includes(step) || p.status === step;
+        const alert = p.exception && p.status === step;
+        const detail = done ? `${p.branch} | ${index === p.stage ? p.updated : "system logged"}` : "Waiting for previous control";
+        return `
+          <div class="journey-item ${done ? "" : "pending"} ${alert ? "alert" : ""}">
+            <div class="step-dot">${done ? "OK" : index + 1}</div>
+            <div>
+              <strong>${step}</strong>
+              <span>${alert ? p.exception : detail}</span>
+            </div>
+            <span class="chip ${done ? (alert ? "bad" : "good") : "info"}">${done ? "locked" : "next"}</span>
+          </div>
+        `;
+      }).join("");
+      if (p.resolutionRemark) {
+        document.getElementById("clientJourney").innerHTML += `
+          <div class="journey-item">
+            <div class="step-dot">OK</div>
+            <div>
+              <strong>Admin remarks</strong>
+              <span>${p.resolutionRemark}</span>
+            </div>
+            <span class="chip good">resolved</span>
+          </div>
+        `;
+      }
+      const review = document.getElementById("refusalReview");
+      if (!review) return;
+      const canReview = isRefusalReview(p);
+      if (!canReview) {
+        review.innerHTML = "";
+        return;
+      }
+      const input = p.riderInput || {
+        attemptTime: p.updated,
+        gps: "GPS attached",
+        callProof: "Call proof pending",
+        riderNote: "Rider marked delivery exception",
+        photoProof: "Photo proof pending"
+      };
+      review.innerHTML = `
+        <div class="review-panel">
+          <div class="section-head" style="margin-bottom:8px">
+            <div>
+              <h3>Review Rider Attempt</h3>
+              <p>Rider input is shown automatically so the client can decide whether to request redelivery.</p>
+            </div>
+            <span class="chip warn">review needed</span>
+          </div>
+          <div class="money-grid">
+            ${moneyBox("Attempt time", input.attemptTime, "rider timestamp")}
+            ${moneyBox("GPS", input.gps, "attempt location")}
+            ${moneyBox("Call proof", input.callProof, "call from rider app")}
+            ${moneyBox("Rider note", input.riderNote, input.photoProof)}
+          </div>
+          <textarea id="redeliveryFeedback">Consignee confirmed they want delivery again. Please re-attempt and call before arrival.</textarea>
+          <button class="action-btn" onclick="requestRedelivery('${p.awb}')">Send Consignee Feedback And Reassign</button>
+        </div>
+      `;
+    }
+
+    function renderWallets() {
+      const m = metrics();
+      const cm = clientMetrics();
+      const clientAvailable = Math.max(0, state.client.walletTopup - state.client.shippingDue);
+      const paidRefs = paidParcelRefs();
+      const branchCashInHand = state.parcels.filter(p => isCashCollectedParcel(p) && !paidRefs.has(p.awb)).reduce((sum, p) => sum + p.cod, 0);
+      const riderReceivableTotal = state.riders.reduce((sum, rider) => sum + riderReceivable(rider.id), 0);
+      document.getElementById("clientWallet").innerHTML = [
+        moneyBox("COD payable", money(cm.payable), "Your account only"),
+        moneyBox("Shipping wallet", money(clientAvailable), `${state.client.premiumTier} tier balance`),
+        moneyBox("Sub accounts", state.client.subAccounts, "role based permissions"),
+        moneyBox("Fast settlement", "T+1 ready", "premium fintech path")
+      ].join("");
+
+      const adminAccounting = document.getElementById("adminAccounting");
+      if (adminAccounting) {
+        adminAccounting.innerHTML = [
+          moneyBox("Company revenue", money(m.revenue), "delivery fees only"),
+          moneyBox("Client COD payable", money(m.payable), "liability ledger"),
+          moneyBox("Cash in hand true", money(branchCashInHand), "cash received from riders"),
+          moneyBox("Rider receivable", money(riderReceivableTotal), "delivered COD not collected"),
+          moneyBox("Operating expenses", money(m.expenses), "expense tab"),
+          moneyBox("Rider cash held", money(m.cashHeld), "cash control wallet")
+        ].join("");
+      }
+
+      const rider = state.riders[1];
+      document.getElementById("riderWallet").innerHTML = [
+        moneyBox("Cash held", money(rider.cashHeld), "must submit before new route"),
+        moneyBox("Cash limit", money(rider.cashLimit), "auto block threshold"),
+        moneyBox("Scan count", rider.scans, "today verified actions"),
+        moneyBox("Fake attempt risk", `${rider.fakeRisk}%`, "GPS and call proof")
+      ].join("");
+    }
+
+    function moneyBox(label, value, note) {
+      return `<div class="money-box"><span>${label}</span><strong>${value}</strong><div class="footer-note">${note}</div></div>`;
+    }
+
+    function trackingPayload(awb) {
+      return awb;
+    }
+
+    function qrUrl(awb) {
+      return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodeURIComponent(trackingPayload(awb))}`;
+    }
+
+    function barcodeUrl(awb) {
+      return `https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(awb)}&code=Code128&translate-esc=on&dpi=96`;
+    }
+
+    function renderAwbLabel() {
+      const p = state.parcels.find(parcel => parcel.awb === (state.lastGeneratedAwb || state.selectedAwb)) || selectedParcel();
+      const client = clientById(p.clientId);
+      document.getElementById("awbLabelPreview").innerHTML = `
+        <div class="awb-label">
+          <div>
+            <div class="awb-title">
+              <div>
+                <h3>NovaX AWB</h3>
+                <p class="footer-note" style="margin:6px 0 0;color:#41524a">Scan ID: ${p.awb}</p>
+              </div>
+              <strong>${p.awb}</strong>
+            </div>
+            <div class="awb-grid">
+              <div class="awb-field"><span>Destination</span><strong>${p.city}</strong></div>
+              <div class="awb-field"><span>COD</span><strong>${money(p.cod)}</strong></div>
+              <div class="awb-field"><span>Consignee</span><strong>${p.consignee}</strong></div>
+              <div class="awb-field"><span>Phone</span><strong>${p.phone || "phone pending"}</strong></div>
+              <div class="awb-field"><span>Client</span><strong>${client.id} | ${client.name}</strong></div>
+              <div class="awb-field"><span>Service</span><strong>${p.service || "COD Standard"}</strong></div>
+              <div class="awb-field"><span>Weight</span><strong>${p.weight || "0.8 kg"}</strong></div>
+              <div class="awb-field"><span>Handling</span><strong>${p.fragile === "Yes" ? "Fragile" : "Standard"}</strong></div>
+              <div class="awb-field" style="grid-column:1/-1"><span>Address</span><strong>${p.address || "Address attached in portal"}</strong></div>
+            </div>
+          </div>
+          <div class="awb-codes">
+            <div>
+              <img class="qr-img" src="${qrUrl(p.awb)}" alt="QR code for ${p.awb}">
+            </div>
+            <div>
+              <img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode for ${p.awb}">
+            </div>
+            <span class="chip info">${p.awb}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderClientTabs() {
+      document.querySelectorAll(".client-tab").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.clientTab === state.activeClientTab);
+      });
+      document.querySelectorAll(".client-module").forEach(module => {
+        module.classList.toggle("active", module.id === `client-${state.activeClientTab}`);
+      });
+    }
+
+    function cityReport(parcels = state.parcels) {
+      const grouped = {};
+      parcels.forEach(p => {
+        grouped[p.city] = grouped[p.city] || { city: p.city, parcels: 0, cod: 0, revenue: 0, delivered: 0 };
+        grouped[p.city].parcels += 1;
+        grouped[p.city].cod += p.cod;
+        if (isDeliveredLedgerParcel(p)) {
+          grouped[p.city].revenue += p.fee;
+          grouped[p.city].delivered += 1;
+        }
+      });
+      return Object.values(grouped);
+    }
+
+    function renderClientModules() {
+      renderClientTabs();
+      renderAwbLabel();
+      const cm = clientMetrics();
+      const deliveredCod = cm.parcels.filter(isDeliveredLedgerParcel).reduce((s, p) => s + p.cod, 0);
+      const pendingCod = cm.parcels.filter(p => !isDeliveredLedgerParcel(p)).reduce((s, p) => s + p.cod, 0);
+      const deliveryRate = percent(cm.delivered, cm.total);
+      const openParcels = Math.max(0, cm.total - cm.delivered);
+      const fromInput = document.getElementById("clientDateFrom");
+      const toInput = document.getElementById("clientDateTo");
+      if (fromInput && fromInput.value !== state.clientDateFrom) fromInput.value = state.clientDateFrom || "";
+      if (toInput && toInput.value !== state.clientDateTo) toInput.value = state.clientDateTo || "";
+
+      document.getElementById("bulkValidationList").innerHTML = [
+        { label: "City validation", value: "4 serviceable cities", fill: 92, kind: "good" },
+        { label: "Duplicate order ID", value: "0 duplicates found", fill: 100, kind: "good" },
+        { label: "COD sanity check", value: "2 orders need review", fill: 64, kind: "warn" },
+        { label: "Phone completeness", value: "97% valid numbers", fill: 97, kind: "good" }
+      ].map(item => `
+        <div class="ops-card">
+          <div class="ops-card-head"><strong>${item.label}</strong><span class="chip ${item.kind}">${item.value}</span></div>
+          <div class="meter ${item.kind === "warn" ? "amber" : ""}"><span style="width:${item.fill}%"></span></div>
+        </div>
+      `).join("");
+
+      document.getElementById("clientReportMetrics").innerHTML = [
+        metricCard("Delivery Rate", `${deliveryRate}%`, deliveryRate, "delivered parcels", deliveryRate < 45 ? "amber" : ""),
+        metricCard("Delivered COD", money(deliveredCod), percent(deliveredCod, deliveredCod + pendingCod), "cash collected", "good"),
+        metricCard("Pending COD", money(pendingCod), percent(pendingCod, deliveredCod + pendingCod), "not closed yet", "amber"),
+        metricCard("Open Parcels", openParcels, percent(openParcels, Math.max(1, cm.total)), "not delivered yet", openParcels ? "blue" : "good")
+      ].join("");
+
+      document.getElementById("clientReportRows").innerHTML = cityReport(cm.parcels).map(row => `
+        <tr>
+          <td><strong>${row.city}</strong></td>
+          <td>${row.parcels}</td>
+          <td>${money(row.cod)}</td>
+          <td>${money(row.revenue)}</td>
+          <td>
+            <span class="chip ${row.delivered ? "good" : "info"}">${row.delivered}/${row.parcels}</span>
+          </td>
+        </tr>
+      `).join("");
+
+      document.getElementById("paymentSummary").innerHTML = [
+        moneyBox("COD collected", money(cm.codCollected), "Proof locked by delivery journey"),
+        moneyBox("Client payable", money(cm.payable), "COD minus delivery charges"),
+        moneyBox("Shipping wallet", money(Math.max(0, state.client.walletTopup - state.client.shippingDue)), "Prepaid shipping balance"),
+        moneyBox("Fast settlement", "Eligible", "Premium T+1 payout path")
+      ].join("");
+
+      document.getElementById("paymentTimeline").innerHTML = [
+        ["COD expected", "Created when parcel was booked", true],
+        ["COD collected", `${money(cm.codCollected)} collected from delivered parcels`, cm.codCollected > 0],
+        ["Delivery charges", `${money(cm.deliveryCharges)} deducted for courier service`, cm.deliveryCharges > 0],
+        ["Branch bank deposit", "Requires daily deposit proof", false],
+        ["Client payout", `${money(cm.payable)} payable after reconciliation`, cm.payable > 0]
+      ].map((row, index) => `
+        <div class="journey-item ${row[2] ? "" : "pending"}">
+          <div class="step-dot">${row[2] ? "OK" : index + 1}</div>
+          <div><strong>${row[0]}</strong><span>${row[1]}</span></div>
+          <span class="chip ${row[2] ? "good" : "info"}">${row[2] ? "verified" : "waiting"}</span>
+        </div>
+      `).join("");
+
+      document.getElementById("clientPaymentHistory").innerHTML = state.paymentLogs
+        .filter(log => log.clientId === (state.client.id || "CL-0001"))
+        .map(log => `
+          <div class="log-item">
+            <strong>${log.id}</strong>
+            <div><strong>${log.type}</strong><div class="footer-note" style="margin-top:2px">${log.ref} | ${log.status}</div></div>
+            <span class="chip ${log.status.includes("Pending") || log.status.includes("Awaiting") ? "warn" : "good"}">${money(log.amount)}</span>
+          </div>
+        `).join("") || `<div class="ops-card"><strong>No payment history</strong><p>Payment history will appear after COD or payout activity.</p></div>`;
+
+      document.getElementById("clientInvoiceList").innerHTML = state.invoices
+        .filter(invoice => invoice.clientId === (state.client.id || "CL-0001"))
+        .map(invoice => `
+          <div class="invoice-card">
+            <div class="ops-card-head">
+              <strong>${invoice.id}</strong>
+              <span class="chip ${invoice.status === "Paid" ? "good" : "warn"}">${invoice.status}</span>
+            </div>
+            <p>${invoice.summary}</p>
+            <div class="money-grid" style="margin-top:10px">
+              ${moneyBox("COD collected", money(invoice.cod), `${invoice.parcelRefs.length} parcel(s)`)}
+              ${moneyBox("Delivery charges", money(invoice.charges), "NovaX revenue")}
+              ${moneyBox("Client payable", money(invoice.payable), "Amount due to client")}
+              ${moneyBox("Invoice date", invoice.createdAt, invoice.paidAt ? `Paid ${invoice.paidAt}` : "Pending payment")}
+            </div>
+          </div>
+        `).join("") || `<div class="ops-card"><strong>No invoices yet</strong><p>Invoices appear here after admin creates them from delivered parcels with cash collected.</p></div>`;
+
+      document.getElementById("orderLogFeed").innerHTML = cm.parcels.flatMap(p => {
+        const remarks = p.resolutionRemark ? [{ awb: p.awb, step: `Admin remarks: ${p.resolutionRemark}`, status: "Resolved", time: p.resolvedAt || p.updated, risk: 0 }] : [];
+        return [...p.steps.map(step => ({ awb: p.awb, step, status: p.status, time: p.updated, risk: p.risk })), ...remarks];
+      }).slice(0, 14).map(log => `
+        <div class="log-item clickable-row" onclick="openClientParcelJourney('${log.awb}')">
+          <strong>${log.time}</strong>
+          <div><strong>${log.awb}</strong><div class="footer-note" style="margin-top:2px">${log.step} | ${log.status}</div></div>
+          <span class="chip ${log.risk > 60 ? "bad" : "good"}">${log.risk > 60 ? "review" : "locked"}</span>
+        </div>
+      `).join("");
+
+      document.getElementById("subAccountList").innerHTML = [
+        ["Owner", "Full visibility, payout approvals", "active"],
+        ["Finance", "Payments, invoices, reports", "active"],
+        ["Warehouse", "New and bulk booking only", "active"],
+        ["Support", "Tracking and WhatsApp replies", "limited"],
+        ["API User", "Booking integration token", "active"]
+      ].map(row => `
+        <div class="ops-card">
+          <div class="ops-card-head"><strong>${row[0]}</strong><span class="chip ${row[2] === "limited" ? "warn" : "good"}">${row[2]}</span></div>
+          <p>${row[1]}</p>
+        </div>
+      `).join("");
+
+      document.getElementById("supportEscalations").innerHTML = [
+        ...state.parcels.filter(p => p.exception).map(p => [`${p.awb}`, p.exception, "bad"]),
+        ...state.transit.filter(t => t.scanned !== t.expected).map(t => [t.id, `${t.expected - t.scanned} scan mismatch`, "warn"])
+      ].map(row => `
+        <div class="ops-card">
+          <div class="ops-card-head"><strong>${row[0]}</strong><span class="chip ${row[2]}">escalated</span></div>
+          <p>${row[1]}</p>
+        </div>
+      `).join("") || `<div class="ops-card"><strong>No escalations</strong><p>AI has complete portal data right now.</p></div>`;
+    }
+
+    function renderAi() {
+      const p = state.parcels.find(parcel => parcel.awb === state.selectedAwb) || state.parcels[0] || emptyParcel();
+      if (!p.awb) {
+        document.getElementById("clientAi").innerHTML = `<div class="bubble ai">AI: No parcel data exists yet. Book or import the first real parcel and I will answer from live portal data only.</div>`;
+        return;
+      }
+      const reply = p.exception
+        ? `${p.awb} has an exception: ${p.exception}. I have escalated it to ${p.branch} and admin finance.`
+        : `${p.awb} is ${p.status}. Last verified update was ${p.updated} from ${p.branch}.`;
+      document.getElementById("clientAi").innerHTML = `
+        <div class="bubble">Client: Where is ${p.awb}, and when will COD settle?</div>
+        <div class="bubble ai">AI: ${reply} COD payable updates only after rider cash and bank deposit controls close.</div>
+      `;
+    }
+
+    function renderAdmin() {
+      syncRiderAccess();
+      state.activeAdminTab = normalizeAdminTab(state.activeAdminTab);
+      const activeAdminModule = ADMIN_TAB_MODULES[state.activeAdminTab] || `admin-${state.activeAdminTab}`;
+      const activeAdminGroup = getAdminGroupForTab(state.activeAdminTab);
+
+      document.querySelectorAll(".admin-nav-main[data-admin-tab], .admin-tab").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.adminTab === state.activeAdminTab);
+      });
+      document.querySelectorAll(".admin-subtab").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.adminTab === state.activeAdminTab);
+      });
+      document.querySelectorAll(".admin-nav-group").forEach(group => {
+        const isActiveGroup = group.dataset.adminGroup === activeAdminGroup;
+        if (!isActiveGroup) group.classList.remove("manual-open");
+        group.classList.toggle("open", isActiveGroup || group.classList.contains("manual-open"));
+        const trigger = group.querySelector("[data-admin-group-toggle]");
+        if (trigger) {
+          trigger.classList.toggle("active", isActiveGroup);
+          trigger.setAttribute("aria-expanded", String(group.classList.contains("open")));
+        }
+      });
+      document.querySelectorAll(".admin-module").forEach(module => {
+        module.classList.toggle("active", module.id === activeAdminModule);
+      });
+
+      const m = metrics();
+      const statusFilterEl = document.getElementById("adminOrderStatusFilter");
+      const clientFilterEl = document.getElementById("adminOrderClientFilter");
+      const cityFilterEl = document.getElementById("adminOrderCityFilter");
+      const originFilterEl = document.getElementById("adminOrderOriginFilter");
+      const branchFilterEl = document.getElementById("adminOrderBranchFilter");
+      const alertFilterEl = document.getElementById("adminOrderAlertFilter");
+      const reportStatusFilterEl = document.getElementById("orderReportStatusFilter");
+      const reportClientFilterEl = document.getElementById("orderReportClientFilter");
+      const adminOrderSearch = document.getElementById("adminOrderSearch")?.value.trim().toLowerCase() || "";
+      const orderReportSearch = document.getElementById("orderReportSearch")?.value.trim().toLowerCase() || "";
+      const statusFilter = statusFilterEl?.value || "";
+      const clientFilter = clientFilterEl?.value || "";
+      const cityFilter = cityFilterEl?.value || "";
+      const originFilter = originFilterEl?.value || "";
+      const branchFilter = branchFilterEl?.value || "";
+      const alertFilter = alertFilterEl?.value || "";
+      const reportStatusFilter = reportStatusFilterEl?.value || "";
+      const reportClientFilter = reportClientFilterEl?.value || "";
+      const activeStatus = state.activeStatusQueue || STATUS_TAGS[0];
+      if (statusFilterEl) {
+        statusFilterEl.innerHTML = `<option value="">All statuses</option>${STATUS_TAGS.map(status => `<option value="${status}">${status}</option>`).join("")}`;
+        statusFilterEl.value = statusFilter;
+      }
+      if (reportStatusFilterEl) {
+        reportStatusFilterEl.innerHTML = `<option value="">All statuses</option>${STATUS_TAGS.map(status => `<option value="${status}">${status}</option>`).join("")}`;
+        reportStatusFilterEl.value = reportStatusFilter;
+      }
+      if (clientFilterEl) {
+        clientFilterEl.innerHTML = `<option value="">All clients</option>${state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("")}`;
+        clientFilterEl.value = clientFilter;
+      }
+      if (reportClientFilterEl) {
+        reportClientFilterEl.innerHTML = `<option value="">All clients</option>${state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("")}`;
+        reportClientFilterEl.value = reportClientFilter;
+      }
+      if (cityFilterEl) {
+        const cities = [...new Set(state.parcels.map(p => p.city).filter(Boolean))];
+        cityFilterEl.innerHTML = `<option value="">All cities</option>${cities.map(city => `<option value="${city}">${city}</option>`).join("")}`;
+        cityFilterEl.value = cityFilter;
+      }
+      if (originFilterEl) {
+        const origins = [...new Set(state.parcels.map(parcelOrigin).filter(Boolean))];
+        originFilterEl.innerHTML = `<option value="">All origins</option>${origins.map(origin => `<option value="${origin}">${origin}</option>`).join("")}`;
+        originFilterEl.value = originFilter;
+      }
+      const processingStatusSelect = document.getElementById("processingStatusSelect");
+      if (processingStatusSelect) {
+        processingStatusSelect.innerHTML = STATUS_TAGS.map(status => `<option value="${status}">${status}</option>`).join("");
+        processingStatusSelect.value = state.pendingProcessingStatus || processingParcel()?.status || STATUS_TAGS[0];
+      }
+      const processingRiderSelect = document.getElementById("processingRiderSelect");
+      if (processingRiderSelect) {
+        processingRiderSelect.innerHTML = state.riders.map(rider => `<option value="${rider.id}">${rider.id} | ${rider.name} | ${rider.branch}</option>`).join("");
+        processingRiderSelect.value = state.pendingProcessingRider || state.riders[0]?.id || "";
+      }
+      const processingRiderField = document.getElementById("processingRiderField");
+      if (processingRiderField && processingStatusSelect) {
+        processingRiderField.style.display = processingStatusSelect.value === "Parcel out for delivery" ? "grid" : "none";
+      }
+
+      const queueCounts = STATUS_TAGS.reduce((acc, status) => {
+        acc[status] = state.parcels.filter(p => p.status === status).length;
+        return acc;
+      }, {});
+      document.getElementById("statusQueueTabs").innerHTML = STATUS_TAGS.map(status => `
+        <button class="queue-btn ${activeStatus === status ? "active" : ""}" onclick="setStatusQueue('${status}')">
+          <span>${status}</span><strong>${queueCounts[status] || 0}</strong>
+        </button>
+      `).join("");
+
+      const queueRows = state.parcels.filter(p => p.status === activeStatus);
+      document.getElementById("statusQueueRows").innerHTML = queueRows.map(p => {
+        const client = clientById(p.clientId);
+        const alert = alertForParcel(p);
+        return `
+          <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="selectParcel('${p.awb}')">
+            <td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${p.updated}</span></td>
+            <td>${client.id}<br><strong>${client.name}</strong></td>
+            <td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span></td>
+            <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">status clock</span></td>
+            <td>
+              ${alert.level === "critical" ? `<span class="siren-chip">AI escalate now</span><br>` : ""}
+              <span class="chip ${urgencyClass(alert.level)}">${alert.label}</span><br><span class="footer-note">${alert.due}</span>
+            </td>
+            <td>
+              <div class="field"><label>Reason</label><input id="resolve-${p.awb}" value="${alert.label} checked by operations"></div>
+              <button class="ghost-btn" onclick="event.stopPropagation(); resolveParcelAlert('${p.awb}')">Resolve With Reason</button>
+            </td>
+          </tr>
+        `;
+      }).join("") || `<tr><td colspan="6">No parcels in ${activeStatus}.</td></tr>`;
+
+      const exceptionRows = [
+        ...state.parcels.filter(p => p.exception).map(p => ({
+          risk: p.risk,
+          parcel: p.awb,
+          owner: `${clientById(p.clientId).id} | ${p.rider} | ${p.branch}`,
+          problem: p.exception
+        })),
+        ...state.parcels.filter(p => alertForParcel(p).level !== "ok").map(p => ({
+          risk: alertForParcel(p).level === "critical" ? 95 : 58,
+          parcel: p.awb,
+          owner: `${clientById(p.clientId).id} | ${p.rider} | ${p.branch}`,
+          problem: `${alertForParcel(p).label}. ${alertForParcel(p).due}`
+        })),
+        ...state.transit.filter(t => t.scanned !== t.expected).map(t => ({
+          risk: 100 - t.health,
+          parcel: t.id,
+          owner: `${t.from} to ${t.to}`,
+          problem: `${t.expected - t.scanned} item scan mismatch`
+        }))
+      ];
+
+      document.getElementById("adminExceptionRows").innerHTML = exceptionRows.map(row => `
+        <tr>
+          <td><span class="status ${row.risk > 55 ? "bad" : "warn"}"><span class="mini-dot"></span>${row.risk}%</span></td>
+          <td><strong>${row.parcel}</strong></td>
+          <td>${row.owner}</td>
+          <td>${row.problem}</td>
+          <td>
+            <div class="meter ${meterClass(row.risk)}"><span style="width:${Math.min(100, row.risk)}%"></span></div>
+            <div class="meter-caption"><span>escalation pressure</span><span>${row.risk}%</span></div>
+          </td>
+        </tr>
+      `).join("") || `<tr><td colspan="5">No exceptions. Every journey is clean.</td></tr>`;
+
+      document.getElementById("adminOrderRows").innerHTML = state.parcels.filter(p => {
+        const client = clientById(p.clientId);
+        const alert = alertForParcel(p);
+        const haystack = `${p.awb} ${client.name} ${client.id} ${p.consignee} ${p.address} ${p.city} ${p.status} ${p.branch} ${parcelOrigin(p)} ${p.weight}`.toLowerCase();
+        return haystack.includes(adminOrderSearch)
+          && (!clientFilter || p.clientId === clientFilter)
+          && (!statusFilter || p.status === statusFilter)
+          && (!cityFilter || p.city === cityFilter)
+          && (!originFilter || parcelOrigin(p) === originFilter)
+          && (!branchFilter || p.branch === branchFilter)
+          && (!alertFilter || alert.level === alertFilter);
+      }).map(p => {
+        const client = clientById(p.clientId);
+        const alert = alertForParcel(p);
+        const process = lastProcess(p);
+        const transitStarted = STATUS_TAGS.indexOf(p.status) >= STATUS_TAGS.indexOf("Parcel now in transit");
+        return `
+          <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="selectParcel('${p.awb}')">
+            <td><strong>${p.awb}</strong><br><span class="footer-note">${p.updated}</span></td>
+            <td>${p.consignee}<br><span class="footer-note">${p.phone || "phone pending"}</span></td>
+            <td>${p.address || "Address pending"}</td>
+            <td>${p.city}</td>
+            <td>${client.name}<br><span class="footer-note">${client.id}</span></td>
+            <td>${parcelOrigin(p)}</td>
+            <td>${money(p.cod)}</td>
+            <td>${p.weight || "0.8 kg"}</td>
+            <td>
+              <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>
+              <div class="footer-note">${alert.label}</div>
+            </td>
+            <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status === "Parcel now in transit" ? "transit clock" : "status clock"}</span></td>
+            <td>
+              <strong>${process.by}</strong><br><span class="footer-note">${process.at}</span><br>
+              <span class="footer-note">${process.branch} | ${transitStarted ? "transit timer active" : "pre-transit"}</span>
+              ${/refused|return/i.test(p.status) ? `<div class="footer-note">${p.returnProof || "Return proof required before manager acceptance."}</div><div class="field"><label>Return proof</label><input id="proof-${p.awb}" value="${p.returnProof || "Photo proof + rider scan + branch receiving signature"}"></div><button class="ghost-btn" onclick="event.stopPropagation(); addReturnProof('${p.awb}')">Add Proof</button>` : ""}
+            </td>
+          </tr>
+        `;
+      }).join("") || `<tr><td colspan="11">No parcels match these filters.</td></tr>`;
+
+      const reportRows = state.parcels.filter(p => {
+        const client = clientById(p.clientId);
+        const haystack = `${p.awb} ${client.name} ${client.id} ${p.consignee} ${p.city} ${p.status} ${p.address}`.toLowerCase();
+        return haystack.includes(orderReportSearch)
+          && (!reportStatusFilter || p.status === reportStatusFilter)
+          && (!reportClientFilter || p.clientId === reportClientFilter);
+      });
+      const deliveredReport = reportRows.filter(isDeliveredLedgerParcel).length;
+      const breachedReport = reportRows.filter(p => alertForParcel(p).level === "critical").length;
+      const avgJourney = reportRows.length ? Math.round(reportRows.reduce((sum, p) => sum + parcelJourneyHours(p), 0) / reportRows.length) : 0;
+      const avgProgress = reportRows.length ? Math.round(reportRows.reduce((sum, p) => sum + percent(p.stage, p.totalStages), 0) / reportRows.length) : 0;
+      document.getElementById("orderReportMetrics").innerHTML = [
+        metricCard("Reported Parcels", reportRows.length, percent(reportRows.length, state.parcels.length || 1), "filtered report set", "blue"),
+        metricCard("Delivered", deliveredReport, percent(deliveredReport, reportRows.length || 1), "completed journeys", "good"),
+        metricCard("Avg Journey Aging", agingLabel(avgJourney), Math.min(100, percent(avgJourney, 96)), "booking to current point", avgJourney > 72 ? "red" : "amber"),
+        metricCard("Critical Breaches", breachedReport, Math.min(100, breachedReport * 18), "needs escalation", breachedReport ? "red" : "good")
+      ].join("");
+      document.getElementById("orderReportRows").innerHTML = reportRows.map(p => {
+        const client = clientById(p.clientId);
+        const alert = alertForParcel(p);
+        const process = lastProcess(p);
+        const progress = percent(p.stage, p.totalStages);
+        return `
+          <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}">
+            <td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${parcelOrigin(p)}</span></td>
+            <td>${client.id}<br><strong>${client.name}</strong></td>
+            <td>${p.consignee}<br><span class="footer-note">${p.address}</span></td>
+            <td><strong>${deliveryJourneyLabel(p)}</strong><br><span class="footer-note">Booked ${p.date || "system date"}</span></td>
+            <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status}</span></td>
+            <td>
+              <div class="meter ${progress < 45 ? "amber" : ""}"><span style="width:${progress}%"></span></div>
+              <div class="meter-caption"><span>${p.steps.length} scan logs</span><span>${progress}%</span></div>
+            </td>
+            <td>
+              ${alert.level === "critical" ? `<span class="siren-chip">Escalate now</span><br>` : ""}
+              <span class="chip ${urgencyClass(alert.level)}">${alert.label}</span><br><span class="footer-note">${alert.due}</span>
+            </td>
+            <td><strong>${process.by}</strong><br><span class="footer-note">${process.at}</span><br><span class="footer-note">${process.branch}</span></td>
+          </tr>
+        `;
+      }).join("") || `<tr><td colspan="8">No report rows match these filters.</td></tr>`;
+
+      const processBatch = processingParcels();
+      const processParcel = processBatch[0] || processingParcel();
+      const preview = document.getElementById("processingPreview");
+      const currentStatus = document.getElementById("processingCurrentStatus");
+      const processingInput = document.getElementById("processingAwbInput");
+      if (processingInput && !processingInput.value) processingInput.value = (state.processingBatchAwbs?.length ? state.processingBatchAwbs : [state.activeProcessingAwb]).filter(Boolean).join("\n");
+      if (preview && currentStatus) {
+        if (processBatch.length) {
+          const client = clientById(processParcel.clientId);
+          const process = lastProcess(processParcel);
+          const alert = alertForParcel(processParcel);
+          preview.innerHTML = `
+            <span class="chip ${processBatch.length > 1 ? "good" : statusClass(processParcel)}">${processBatch.length} loaded</span>
+            <strong>${processBatch.length === 1 ? processParcel.awb : "Batch Processing"}</strong>
+            <p>${processBatch.length === 1 ? `${processParcel.consignee} | ${processParcel.address}` : "Ready to update all loaded AWBs together."}</p>
+            <div class="money-grid">
+              ${moneyBox("Shipper", client.name, client.id)}
+              ${moneyBox("Parcels", processBatch.length, `${processBatch.map(p => p.status).slice(0, 2).join(", ")}`)}
+              ${moneyBox("COD", money(processBatch.reduce((s, p) => s + p.cod, 0)), "batch total")}
+              ${moneyBox("Clock", agingLabel(agingHours(processParcel)), alert.label)}
+            </div>
+            <div class="resolved-note"><strong>Last processed:</strong> ${process.by} at ${process.at}. Branch: ${process.branch}.</div>
+          `;
+          currentStatus.innerHTML = processBatch.map(p => `<div><strong>${p.awb}</strong> | ${p.status} | ${p.branch} | ${p.updated}</div>`).join("");
+        } else {
+          preview.innerHTML = `<strong>No parcel selected</strong><p>Enter a tracking ID in the processing box to see current status, branch, clock, and last processed details.</p>`;
+          currentStatus.textContent = "Waiting for tracking ID...";
+        }
+      }
+      document.getElementById("processingLogFeed").innerHTML = state.parcels.flatMap(parcel => {
+        const client = clientById(parcel.clientId);
+        return (parcel.processHistory || []).slice(-3).map(log => ({ parcel, client, log }));
+      }).slice(-12).reverse().map(({ parcel, client, log }) => `
+        <div class="log-item">
+          <strong>${parcel.awb}</strong>
+          <div><strong>${log.status}</strong><div class="footer-note" style="margin-top:2px">${client.name} | ${parcel.consignee} | ${log.branch}</div></div>
+          <span class="chip info">${log.processor} | ${log.at}</span>
+        </div>
+      `).join("") || `<div class="ops-card"><strong>No processing log yet</strong><p>Scan a parcel and update status to create the first audit entry.</p></div>`;
+
+      renderManifestScreens();
+      renderTickets();
+
+      document.getElementById("pendingClientList").innerHTML = state.pendingClients.map(client => `
+        <div class="ops-card">
+          <div class="ops-card-head">
+            <strong>${client.id} | ${client.name}</strong>
+            <span class="chip warn">${client.status}</span>
+          </div>
+          <p>${client.city} | ${client.email || "email not assigned"} | ${client.phone}. This is a lead only. Account and login are created after approval.</p>
+          <div class="footer-note">Products: ${client.businessType}. Pickup: ${client.address}. IBAN: ${client.iban || "Not added"}.</div>
+          <div class="form-grid" style="margin-top:12px">
+            <div class="field"><label>Assign Login Email</label><input id="approveEmail-${client.id}" type="email" value="${client.email || ""}" placeholder="client@store.com"></div>
+            <div class="field"><label>Assign Password</label><input id="approvePassword-${client.id}" type="password" value="${client.password || ""}" placeholder="Create password"></div>
+          </div>
+          <button class="action-btn" onclick="approveClient('${client.id}')">Approve And Create Client Login</button>
+        </div>
+      `).join("") || `<div class="ops-card"><strong>No pending approvals</strong><p>New client requests will wait here before account creation.</p></div>`;
+      const leadChip = document.getElementById("leadCountChip");
+      if (leadChip) leadChip.textContent = `${state.pendingClients.length} lead${state.pendingClients.length === 1 ? "" : "s"}`;
+
+      const allClients = state.clients.filter(client => client.id !== "CL-0000");
+      const activeClients = allClients.filter(client => client.status === "Active");
+      const pendingClients = state.pendingClients.length;
+      const walletLiability = state.clients.reduce((sum, client) => sum + Number(client.walletBalance || 0), 0);
+      const avgClientHealth = activeClients.length ? Math.round(activeClients.reduce((sum, client) => sum + Number(client.health || 0), 0) / activeClients.length) : 0;
+      document.getElementById("clientSummaryMetrics").innerHTML = [
+        metricCard("Total Clients", allClients.length, Math.min(100, allClients.length * 18), `${activeClients.length} active`, "blue"),
+        metricCard("Pending", pendingClients, Math.min(100, pendingClients * 25), "needs approval", pendingClients ? "amber" : "good"),
+        metricCard("Wallet Liability", money(walletLiability), Math.min(100, percent(walletLiability, 150000)), "client payable", walletLiability ? "amber" : "good"),
+        metricCard("Avg Health", `${avgClientHealth}%`, avgClientHealth, "delivery + issue health", avgClientHealth > 80 ? "good" : "amber")
+      ].join("");
+      document.getElementById("clientSummaryList").innerHTML = allClients.map(client => {
+        const parcels = state.parcels.filter(p => p.clientId === client.id);
+        const delivered = parcels.filter(isDeliveredLedgerParcel);
+        const issues = state.operationsIssues.filter(issue => issue.awb && parcels.some(parcel => parcel.awb === issue.awb) && !issue.resolved);
+        const card = client.rateCard || defaultRateCard(client.rate);
+        return `
+          <div class="log-item">
+            <strong>${client.id}<br>${client.name}</strong>
+            <div>
+              <strong>${client.businessType || "Merchant"} | ${client.city}</strong>
+              <div class="footer-note">${client.owner || client.name} | ${client.email || "email pending"} | ${client.phone || "phone pending"} | ${client.address || "address pending"}</div>
+            </div>
+            <span class="chip ${client.status === "Active" ? "good" : "warn"}">${client.status}</span>
+            <span class="chip info">${parcels.length} parcels | ${delivered.length} delivered</span>
+            <span class="chip ${issues.length ? "bad" : "good"}">${issues.length} issue(s)</span>
+            <button class="ghost-btn" onclick="showAdminTab('clients-clients')">Edit Rates: ${money(card.overnight)}</button>
+            <button class="ghost-btn" onclick="editClientLogin('${client.id}')">Edit Login</button>
+          </div>
+        `;
+      }).join("");
+
+      document.getElementById("adminClientRows").innerHTML = state.clients.filter(client => client.id !== "CL-0000").map(client => {
+        const parcels = state.parcels.filter(p => p.clientId === client.id);
+        const cod = parcels.reduce((s, p) => s + p.cod, 0);
+      const deliveredParcels = parcels.filter(isUnpaidDeliveredParcel);
+        const fees = deliveredParcels.reduce((s, p) => s + p.fee, 0);
+        const collected = deliveredParcels.reduce((s, p) => s + p.cod, 0);
+        const payable = Math.max(0, collected - fees);
+        const deliveryRate = percent(deliveredParcels.length, parcels.length || 1);
+        const card = client.rateCard || defaultRateCard(client.rate);
+        const rateOpen = state.activeRateClient === client.id;
+        return `
+          <tr>
+            <td><strong>${client.id}</strong><br><span class="footer-note">${client.status}</span></td>
+            <td>${client.name}<br><span class="footer-note">${client.city} | ${client.email}</span></td>
+            <td>${client.owner}<br><span class="footer-note">${client.phone}</span></td>
+            <td>
+              <button class="action-btn" onclick="toggleRateForm('${client.id}')">${rateOpen ? "Close Rates" : "Add Rates"}</button>
+              <div class="footer-note">Overnight ${money(card.overnight)} | Overland ${money(card.overlandBase)}</div>
+              ${rateOpen ? `
+                <div class="rate-form">
+                  <div class="form-grid">
+                    <div class="field"><label>Overnight 0.1-1kg</label><input id="rate-${client.id}-overnight" type="number" value="${card.overnight}"></div>
+                    <div class="field"><label>Additional kg</label><input id="rate-${client.id}-additionalKg" type="number" value="${card.additionalKg}"></div>
+                    <div class="field"><label>Detain 5kg base</label><input id="rate-${client.id}-detainBase" type="number" value="${card.detainBase}"></div>
+                    <div class="field"><label>Detain 5+1kg till 9kg</label><input id="rate-${client.id}-detainAdditionalKg" type="number" value="${card.detainAdditionalKg}"></div>
+                    <div class="field"><label>Overland 9kg+ base</label><input id="rate-${client.id}-overlandBase" type="number" value="${card.overlandBase}"></div>
+                    <div class="field"><label>Overland 9+1 till 999kg</label><input id="rate-${client.id}-overlandAdditionalKg" type="number" value="${card.overlandAdditionalKg}"></div>
+                  </div>
+                  <button class="action-btn" style="margin-top:10px" onclick="updateClientRate('${client.id}')">Save Rate Card</button>
+                </div>
+              ` : ""}
+            </td>
+            <td>
+              ${parcels.length} parcels | COD ${money(cod)}<br>
+              <span class="footer-note">NovaX payable ${money(payable)} only after delivered ledger. Problems resolved ${client.problemsResolved || 0}.</span>
+            </td>
+            <td>
+              <div class="meter ${deliveryRate < 55 ? "amber" : "good"}"><span style="width:${deliveryRate}%"></span></div>
+              <div class="meter-caption"><span>delivery health ${client.health || deliveryRate}%</span><span>${deliveryRate}%</span></div>
+            </td>
+            <td><button class="ghost-btn" onclick="showAdminTab('orders')">Track Parcels</button></td>
+          </tr>
+        `;
+      }).join("");
+
+      const activeTransit = state.transit.filter(t => t.status !== "Complete");
+      const activeSackSelect = document.getElementById("activeSackSelect");
+      if (activeSackSelect) activeSackSelect.innerHTML = activeTransit.map(t => `<option value="${t.id}">${t.id} | ${t.from} to ${t.to}</option>`).join("");
+      document.getElementById("sackModeCreateBtn").classList.toggle("active", state.activeSackMode === "create");
+      document.getElementById("sackModeDemanifestBtn").classList.toggle("active", state.activeSackMode === "demanifest");
+      document.getElementById("createSackBtn").style.display = state.activeSackMode === "create" ? "inline-flex" : "none";
+      document.getElementById("demanifestSackBtn").style.display = state.activeSackMode === "demanifest" ? "inline-flex" : "none";
+      document.getElementById("transitList").innerHTML = activeTransit.map(t => {
+        const missingIn = Math.max(0, t.expected - t.scanned);
+        const expected = manifestExpected(t);
+        const done = manifestDone(t);
+        const missingOut = manifestMissingCount(t);
+        return `
+        <div class="ops-card ${missingOut || missingIn ? "alert-row" : ""}">
+          <div class="ops-card-head">
+            <strong>${t.id}</strong>
+            <span class="chip ${missingOut ? "warn" : "good"}">${done}/${expected}</span>
+          </div>
+          <div class="meter ${t.health < 90 ? "amber" : ""}"><span style="width:${t.health}%"></span></div>
+          <p>${t.from} to ${t.to}. Warehouse scanned ${Math.min(t.scanned, expected)}/${expected}. Destination demanifested ${done}/${expected}.</p>
+          <div class="footer-note">${missingIn ? `${missingIn} parcel(s) still not scanned into sack.` : "Manifest scan complete."} ${missingOut ? `${missingOut} parcel(s) still inside sack.` : "Demanifest clear."}</div>
+        </div>
+      `;
+      }).join("") || `<div class="ops-card"><strong>No active sacks</strong><p>Create a sack to begin manifest scan custody.</p></div>`;
+
+      document.getElementById("completedSackList").innerHTML = state.completedSacks.map(t => `
+        <div class="ops-card">
+          <div class="ops-card-head"><strong>${t.id}</strong><span class="chip good">complete</span></div>
+          <p>${t.from} to ${t.to}. ${t.demanifested}/${t.expected} demanifested and closed at ${t.completedAt}.</p>
+        </div>
+      `).join("") || `<div class="ops-card"><strong>No completed sacks yet</strong><p>100% demanifested sacks move here automatically.</p></div>`;
+
+      const opsBranch = document.getElementById("opsBranchFilter")?.value || "";
+      const opsUrgency = document.getElementById("opsUrgencyFilter")?.value || "";
+      const opsResolved = document.getElementById("opsResolvedFilter")?.value || "open";
+      document.getElementById("operationsIssueList").innerHTML = state.operationsIssues.filter(issue => {
+        return (!opsBranch || issue.branch === opsBranch)
+          && (!opsUrgency || issue.urgency === opsUrgency)
+          && (opsResolved === "resolved" ? issue.resolved : !issue.resolved);
+      }).map(issue => `
+        <div class="ops-card ${issue.urgency === "super urgent" && !issue.resolved ? "alert-row critical" : issue.resolved ? "" : "alert-row"}">
+          <div class="ops-card-head">
+            <strong>${issue.id} | ${issue.branch}</strong>
+            <span class="chip ${urgencyClass(issue.resolved ? "ok" : issue.urgency)}">${issue.resolved ? "resolved" : issue.urgency}</span>
+          </div>
+          ${!issue.resolved && issue.urgency === "super urgent" ? `<span class="siren-chip">Support + AI now</span>` : ""}
+          <p>${issue.problem}. ${issue.awb ? `Parcel ${issue.awb}.` : ""}</p>
+          <div class="footer-note">Open for ${agingLabel(issue.openedHours)}${issue.resolved ? ` | solved in ${agingLabel(issue.resolvedHours || issue.openedHours)} by ${issue.resolvedBy || "admin"}` : " | SLA clock active"}</div>
+          ${issue.resolutionReason ? `<div class="resolved-note"><strong>Reason:</strong> ${issue.resolutionReason}</div>` : ""}
+          ${issue.resolved ? "" : `<div class="field" style="margin-top:10px"><label>Resolution reason</label><input id="issueReason-${issue.id}" value="${issue.problem} checked and assigned action completed"></div><button class="action-btn" data-resolve-issue="${issue.id}" onclick="resolveOperationIssue('${issue.id}')">Resolve With Reason</button>`}
+        </div>
+      `).join("") || `<div class="ops-card"><strong>No ${opsResolved} issues</strong><p>Filters are clear for this view.</p></div>`;
+
+      document.getElementById("completedEvaluationList").innerHTML = state.resolvedAlerts.map(done => `
+        <div class="ops-card">
+          <div class="ops-card-head"><strong>${done.id} | ${done.awb}</strong><span class="chip good">completed</span></div>
+          <p>${done.reason}</p>
+          <div class="footer-note">Resolved by ${done.resolvedBy} at ${done.resolvedAt}. Solve timer: ${agingLabel(done.solvedHours || 0)}. Branch: ${done.branch}.</div>
+        </div>
+      `).join("") || `<div class="ops-card"><strong>No completed evaluations yet</strong><p>Resolved alerts will collect here for end-of-day review.</p></div>`;
+
+      document.getElementById("adminRiderRows").innerHTML = state.riders.map(r => {
+        const receivable = riderReceivable(r.id);
+        const exposureAmount = r.cashHeld + receivable;
+        const exposure = percent(exposureAmount, r.cashLimit);
+        const blocked = exposureAmount > r.cashLimit;
+        return `
+          <tr>
+            <td><strong>${r.id}</strong><br><span class="footer-note">${r.name}</span></td>
+            <td>${r.username || "pending"}<br><span class="footer-note">Pass: ${r.password || "pending"} | ${r.manager || "No manager"}</span></td>
+            <td><strong>${money(receivable)}</strong><br><span class="footer-note">Delivered COD not collected by branch</span></td>
+            <td>${money(r.cashHeld)}<br><span class="footer-note">Expenses deducted ${money(r.expenses || 0)}</span></td>
+            <td>${money(r.cashLimit)}</td>
+            <td>${r.scans}</td>
+            <td>
+              <div class="meter ${meterClass(r.fakeRisk)}"><span style="width:${r.fakeRisk}%"></span></div>
+              <div class="meter-caption"><span>fake attempt risk</span><span>${r.fakeRisk}%</span></div>
+            </td>
+            <td><span class="chip ${blocked ? "bad" : "good"}">${blocked ? "app blocked" : "active"}</span><br><span class="footer-note">${exposure}% cash exposure. ${blocked ? "No rider app or portal access." : "Credentials valid."}</span></td>
+          </tr>
+        `;
+      }).join("");
+      document.getElementById("riderCashSelect").innerHTML = state.riders.map(r => `<option value="${r.id}">${r.id} | ${r.name} | receivable ${money(riderReceivable(r.id))}</option>`).join("");
+
+      document.getElementById("barometerList").innerHTML = state.branches.map(b => {
+        const health = Math.round((b.scanHealth + b.cashHealth) / 2) - (b.discrepancy * 3);
+        return `
+          <div class="ops-card">
+            <div class="ops-card-head">
+              <strong>${b.name}</strong>
+              <span class="chip ${health > 88 ? "good" : "warn"}">${health}%</span>
+            </div>
+            <div class="meter ${health < 82 ? "amber" : ""}"><span style="width:${health}%"></span></div>
+            <p>Scan health ${b.scanHealth}%, cash health ${b.cashHealth}%, discrepancies ${b.discrepancy}.</p>
+          </div>
+        `;
+      }).join("");
+
+      document.getElementById("adminPaymentLogs").innerHTML = state.paymentLogs.map(log => {
+        const client = clientById(log.clientId);
+        return `
+          <div class="log-item">
+            <strong>${log.id}</strong>
+            <div><strong>${client.id} | ${client.name}</strong><div class="footer-note" style="margin-top:2px">${log.type} | ${log.ref}</div></div>
+            <span class="chip ${/verified|posted|paid|collected/i.test(log.status) ? "good" : "warn"}">${money(log.amount)} | ${log.status}</span>
+          </div>
+        `;
+      }).join("");
+
+      const invoiceClientSelect = document.getElementById("invoiceClientSelect");
+      if (invoiceClientSelect) {
+        invoiceClientSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
+        if (!state.activeInvoiceClient || !state.clients.some(client => client.id === state.activeInvoiceClient)) state.activeInvoiceClient = state.clients[0]?.id || "";
+        invoiceClientSelect.value = state.activeInvoiceClient;
+      }
+      const invoiceCandidates = clientInvoiceParcels(state.activeInvoiceClient);
+      const candidateRefs = new Set(invoiceCandidates.map(parcel => parcel.awb));
+      state.invoiceDraftRefs = (state.invoiceDraftRefs || []).filter(awb => candidateRefs.has(awb));
+      const selectedSet = new Set(state.invoiceDraftRefs);
+      document.getElementById("invoiceParcelRows").innerHTML = invoiceCandidates.map(parcel => {
+        const payable = Math.max(0, Number(parcel.cod || 0) - Number(parcel.fee || 0));
+        return `
+          <tr>
+            <td><input type="checkbox" data-invoice-parcel="${parcel.awb}" onchange="toggleInvoiceParcel('${parcel.awb}', this.checked)" ${selectedSet.has(parcel.awb) ? "checked" : ""}></td>
+            <td><strong>${parcel.awb}</strong><br><span class="footer-note">${parcel.branch}</span></td>
+            <td>${parcel.consignee}<br><span class="footer-note">${parcel.city}</span></td>
+            <td><span class="chip good">${parcel.status}</span></td>
+            <td>${money(parcel.cod)}</td>
+            <td>${money(parcel.fee)}</td>
+            <td><strong>${money(payable)}</strong></td>
+          </tr>
+        `;
+      }).join("") || `<tr><td colspan="7">No delivered parcels available for this client. Open parcels are not invoice eligible.</td></tr>`;
+      const selectedTotals = invoiceTotals(selectedInvoiceParcels());
+      document.getElementById("invoiceTotals").innerHTML = [
+        moneyBox("Selected parcels", selectedInvoiceParcels().length, "delivered only"),
+        moneyBox("COD total", money(selectedTotals.cod), "gross collected value"),
+        moneyBox("Delivery charges", money(selectedTotals.charges), "NovaX revenue"),
+        moneyBox("Client payable", money(selectedTotals.payable), "after charges")
+      ].join("");
+
+      document.getElementById("clientSettlementList").innerHTML = state.clients.map(client => {
+        const ready = clientInvoiceParcels(client.id);
+        const totals = invoiceTotals(ready);
+        return `
+          <div class="ops-card">
+            <div class="ops-card-head"><strong>${client.id} | ${client.name}</strong><span class="chip ${ready.length ? "good" : "info"}">${ready.length} ready</span></div>
+            <p>Delivered invoice-ready parcels: ${ready.map(p => p.awb).join(", ") || "none yet"}.</p>
+            <div class="money-grid" style="margin-top:10px">
+              ${moneyBox("COD total", money(totals.cod), "invoice source")}
+              ${moneyBox("Delivery charges", money(totals.charges), "NovaX revenue")}
+              ${moneyBox("Client payable", money(totals.payable), "invoice payable")}
+              ${moneyBox("Invoice state", ready.length ? "Ready" : "Waiting", ready.length ? "Select in Add Invoice" : "Wait until delivered")}
+            </div>
+            <button class="action-btn" style="margin-top:10px" onclick="selectInvoiceClient('${client.id}')" ${ready.length ? "" : "disabled"}>Open In Add Invoice</button>
+          </div>
+        `;
+      }).join("");
+
+      const visibleInvoices = state.invoices.filter(invoice => invoice.status !== "Deleted");
+      document.getElementById("adminInvoiceList").innerHTML = visibleInvoices.map(invoice => {
+        const client = clientById(invoice.clientId);
+        const pushed = invoice.status === "Pushed to wallet" || invoice.status === "Paid";
+        return `
+          <div class="log-item">
+            <strong>${invoice.id}<br>${client.name}</strong>
+            <div>
+              <strong>${invoice.parcelRefs.join(", ")}</strong>
+              <div class="footer-note">${invoice.summary || "Delivered parcel invoice"} | Created ${invoice.createdAt || "now"}</div>
+            </div>
+            <span class="chip info">COD ${money(invoice.cod)}</span>
+            <span class="chip warn">Charges ${money(invoice.charges)}</span>
+            <span class="chip ${pushed ? "good" : "warn"}">${invoice.status} | Payable ${money(invoice.payable)}</span>
+            <div class="inline-actions">
+              ${pushed ? `<button class="ghost-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Paid</button>` : `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button><button class="ghost-btn" onclick="deleteInvoice('${invoice.id}')">Delete</button>`}
+            </div>
+          </div>
+        `;
+      }).join("") || `<div class="ops-card"><strong>No invoices</strong><p>Create invoices after rider cash is collected for delivered parcels.</p></div>`;
+
+      document.getElementById("adminExpenseLogs").innerHTML = state.expenses.map(expense => `
+        <div class="log-item">
+          <strong>${expense.id || "EXP"}</strong>
+          <div><strong>${expense.name}</strong><div class="footer-note" style="margin-top:2px">${expense.owner || "Finance"} | ${expense.type || expense.name} | ${expense.reason || "No reason"} | logged by ${expense.loggedBy || "System"}</div></div>
+          <span class="chip ${expense.status === "Pending" ? "warn" : "good"}">${money(expense.amount)} | ${expense.status || "Approved"}</span>
+        </div>
+      `).join("");
+
+      renderFinanceWallets();
+
+      document.getElementById("adminUserList").innerHTML = state.users.map(user => `
+        <div class="ops-card">
+          <div class="ops-card-head"><strong>${user.id} | ${user.name}</strong><span class="chip good">${user.status}</span></div>
+          <p>${user.role} assigned to ${user.branch}. Access: ${user.accessSide}. Client: ${clientById(user.clientId).id} ${clientById(user.clientId).name}.</p>
+          <div class="footer-note">Email: ${user.email}. Password: ${user.password}. Controls: ${(user.permissions || []).join(", ") || "default dashboard only"}.</div>
+        </div>
+      `).join("");
+
+      document.getElementById("userClientSelect").innerHTML = state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
+      const riderUserSelect = document.getElementById("riderUserSelect");
+      if (riderUserSelect) {
+        riderUserSelect.innerHTML = state.riders.map(rider => `<option value="${rider.id}">${rider.id} | ${rider.name} | ${rider.branch}</option>`).join("");
+      }
+      document.getElementById("userAccessList").innerHTML = state.users.map(user => `
+        <div class="ops-card">
+          <div class="ops-card-head"><strong>${user.id} | ${user.email}</strong><span class="chip ${user.accessSide.includes("Admin") ? "warn" : "info"}">${user.accessSide}</span></div>
+          <p>${user.name} can access ${user.accessSide}. Role: ${user.role}. Branch: ${user.branch}. Assigned client: ${clientById(user.clientId).name}.</p>
+          <div class="money-grid" style="margin-top:10px">
+            ${moneyBox("Role", user.role, "permission group")}
+            ${moneyBox("Password", user.password, "demo credential")}
+            ${moneyBox("Status", user.status, "login state")}
+            ${moneyBox("Client", user.clientId, "assigned account")}
+          </div>
+          <div class="footer-note" style="margin-top:8px">Allowed controls: ${(user.permissions || []).join(", ") || "dashboard"}.</div>
+        </div>
+      `).join("") || `<div class="ops-card"><strong>No users yet</strong><p>Create users from the Create Users tab.</p></div>`;
+
+      const profit = m.revenue - m.expenses;
+      const lateParcels = state.parcels.filter(p => alertForParcel(p).level === "critical");
+      const allSummaryManifests = [...manifestLogs().filter(log => log.status !== "Complete"), ...state.completedSacks.filter(log => log.type === "parcel manifest" || log.id?.startsWith("MAN-") || log.id?.startsWith("SACK-"))];
+      const missingManifestCns = allSummaryManifests.filter(manifestInDispute).flatMap(log => manifestRemainingAwbs(log).map(awb => `${awb} (${log.id})`));
+      const openOps = state.operationsIssues.filter(issue => !issue.resolved);
+      const openTickets = (state.tickets || []).filter(ticket => ticket.status !== "Resolved");
+      const emergencyTickets = openTickets.filter(ticket => ticketEffectiveTier(ticket) === "emergency");
+      const latestIssue = openOps[0] || lateParcels[0] || null;
+      const activeManifestCount = allSummaryManifests.filter(log => log.status !== "Complete").length;
+      document.getElementById("adminReportMetrics").innerHTML = [
+        metricCard("Open Tickets", openTickets.length, Math.min(100, openTickets.length * 12), `${emergencyTickets.length} emergency`, emergencyTickets.length ? "red" : openTickets.length ? "amber" : "good"),
+        metricCard("Active Manifests", activeManifestCount, Math.min(100, activeManifestCount * 20), "in transit logs", "blue"),
+        metricCard("Missing CNs", missingManifestCns.length, Math.min(100, missingManifestCns.length * 22), "demanifest disputes", missingManifestCns.length ? "red" : "good"),
+        metricCard("Cash + Profit", money(profit), Math.min(100, Math.abs(percent(profit, 450000))), "operating view", profit >= 0 ? "good" : "red")
+      ].join("");
+
+      document.getElementById("totalSummaryIssues").innerHTML = [
+        latestIssue ? `Latest issue: ${latestIssue.problem || `${latestIssue.awb} ${latestIssue.status}`}` : "No urgent issue found right now.",
+        emergencyTickets.length ? `${emergencyTickets.length} emergency ticket(s) need admin or branch action now.` : "No emergency ticket is pending.",
+        lateParcels.length ? `${lateParcels.length} parcel(s) are late versus SLA.` : "No parcel is breaching current SLA.",
+        missingManifestCns.length ? `${missingManifestCns.length} CN issue(s) in manifests: ${missingManifestCns.slice(0, 6).join(", ")}` : "No missing manifest CNs.",
+        m.cashHeld > m.cashLimit ? "Rider cash is above allowed limit. Block new route assignment." : "Rider cash exposure is inside configured limit."
+      ].map(text => `<div class="ops-card ${/late|missing|above|Latest issue/i.test(text) && !/^No /.test(text) ? "alert-row" : ""}"><strong>${text}</strong></div>`).join("");
+
+      document.getElementById("fintechJourney").innerHTML = [
+        ["Fix", lateParcels.length ? "Reduce overdue parcel clocks before adding more automation." : "Parcel aging is controlled right now.", !lateParcels.length],
+        ["Fix", missingManifestCns.length ? "Demanifest missing CNs need branch manager proof and escalation." : "Manifest receiving is clean.", !missingManifestCns.length],
+        ["Improve", "Auto-suggest next branch action from status clock, manifest health, and rider cash.", true],
+        ["Improve", "Add role-specific dashboards for warehouse, branch manager, finance, and support.", true],
+        ["Next", "When data remains clean, client wallet and faster payout rails become realistic.", m.risk < 45]
+      ].map((row, index) => `
+        <div class="journey-item ${row[2] ? "" : "alert"}">
+          <div class="step-dot">${index + 1}</div>
+          <div><strong>${row[0]}</strong><span>${row[1]}</span></div>
+          <span class="chip ${row[2] ? "good" : "bad"}">${row[2] ? "ok" : "act"}</span>
+        </div>
+      `).join("");
+    }
+
+    function renderRider() {
+      const assigned = state.parcels.filter(p => p.rider === "R-22" || p.stage >= 5).slice(0, 4);
+      document.getElementById("riderStops").innerHTML = assigned.map(p => {
+        const blocked = state.riders.find(r => r.id === p.rider)?.cashHeld > state.riders.find(r => r.id === p.rider)?.cashLimit;
+        return `
+          <article class="parcel-card">
+            <div class="top">
+              <strong>${p.awb}</strong>
+              <span class="status ${blocked ? "bad" : statusClass(p)}"><span class="mini-dot"></span>${blocked ? "Cash block" : p.status}</span>
+            </div>
+            <dl>
+              <div><dt>Consignee</dt><dd>${p.consignee}</dd></div>
+              <div><dt>City</dt><dd>${p.city}</dd></div>
+              <div><dt>COD</dt><dd>${money(p.cod)}</dd></div>
+              <div><dt>Required</dt><dd>Scan + GPS + Call</dd></div>
+            </dl>
+          </article>
+        `;
+      }).join("");
+
+      const p = state.parcels.find(parcel => parcel.awb === state.selectedAwb) || state.parcels[0] || emptyParcel();
+      document.getElementById("awbPreview").innerHTML = `
+        <code>${p.awb}</code>
+        <strong>${p.city} | COD ${money(p.cod)}</strong>
+        <span>${p.consignee}</span>
+        <span class="chip ${statusClass(p)}">${p.status}</span>
+      `;
+    }
+
+    function renderManifestScreens() {
+      const activeManifestLogs = manifestLogs().filter(log => log.status !== "Complete");
+      const completedManifestLogs = state.completedSacks.filter(log => log.type === "parcel manifest" || log.id?.startsWith("MAN-") || log.id?.startsWith("SACK-"));
+      const allManifestLogs = [...activeManifestLogs, ...completedManifestLogs];
+      const disputedLogs = allManifestLogs.filter(manifestInDispute);
+      const missingCount = disputedLogs.reduce((sum, log) => sum + manifestRemainingCount(log), 0);
+      const totalManifestParcels = allManifestLogs.reduce((sum, log) => sum + manifestExpected(log), 0);
+      const reachedCount = allManifestLogs.reduce((sum, log) => sum + manifestDone(log), 0);
+      const avgTransitHours = completedManifestLogs.length ? Math.round(completedManifestLogs.reduce((sum, log) => sum + (log.transitHours || log.openHours || 18), 0) / completedManifestLogs.length) : 0;
+      const manifestMetrics = document.getElementById("manifestSummaryMetrics");
+      if (manifestMetrics) {
+        manifestMetrics.innerHTML = [
+          metricCard("Active Manifests", activeManifestLogs.length, Math.min(100, activeManifestLogs.length * 22), "currently in transit", "blue"),
+          metricCard("Reached CNs", reachedCount, percent(reachedCount, totalManifestParcels || 1), "destination received", "good"),
+          metricCard("Missing CNs", missingCount, Math.min(100, missingCount * 18), "demanifest disputes", missingCount ? "red" : "good"),
+          metricCard("Avg Transit", avgTransitHours ? agingLabel(avgTransitHours) : "0h", Math.min(100, percent(avgTransitHours, 72)), "manifest create to reached", avgTransitHours > 48 ? "amber" : "good")
+        ].join("");
+      }
+      const routeChart = document.getElementById("manifestRouteChart");
+      if (routeChart) {
+        const routes = {};
+        allManifestLogs.forEach(log => {
+          const key = `${log.from} -> ${log.to}`;
+          routes[key] = routes[key] || { count: 0, missing: 0 };
+          routes[key].count += manifestExpected(log);
+          routes[key].missing += manifestMissingCount(log);
+        });
+        const max = Math.max(1, ...Object.values(routes).map(r => r.count));
+        routeChart.innerHTML = Object.entries(routes).map(([route, row]) => `
+          <div class="chart-row"><span>${route}</span><div class="meter ${row.missing ? "red" : ""}"><span style="width:${percent(row.count, max)}%"></span></div><strong>${row.count}</strong></div>
+        `).join("") || `<div class="ops-card"><strong>No route data yet</strong><p>Create manifests to build route demographics.</p></div>`;
+      }
+      const summaryList = document.getElementById("manifestSummaryList");
+      if (summaryList) {
+        summaryList.innerHTML = [
+          activeManifestLogs.length ? `${activeManifestLogs.length} manifest(s) are still in transit.` : "No active manifest is in transit.",
+          missingCount ? `${missingCount} CN(s) are missing after demanifest and need admin escalation.` : "No missing CN dispute is currently open.",
+          avgTransitHours > 48 ? "Average manifest transit is slower than usual. Check route dispatch and receiving scan discipline." : "Manifest transit speed is within expected control range."
+        ].map(text => `<div class="ops-card"><strong>${text}</strong></div>`).join("");
+      }
+
+      const draftParcels = parcelsByAwbs(state.manifestDraftAwbs || []);
+      const manifestPreview = document.getElementById("manifestScanPreview");
+      if (manifestPreview) {
+        const manifestToVal = document.getElementById("manifestTo")?.value || "";
+        const missing = (state.manifestDraftAwbs || []).filter(awb => !state.parcels.some(p => p.awb === awb));
+        const offRoute = draftParcels.filter(p => manifestRouteMismatch(p, manifestToVal));
+        const onRoute = draftParcels.filter(p => !manifestRouteMismatch(p, manifestToVal));
+        manifestPreview.innerHTML = `
+          <div class="ops-card ${offRoute.length ? "alert-row critical" : ""}">
+            <div class="ops-card-head"><strong>${draftParcels.length} valid scans</strong><span class="chip ${(missing.length || offRoute.length) ? "bad" : "good"}">${missing.length} missing | ${offRoute.length} off-route</span></div>
+            <p>${draftParcels.map(p => p.awb).join(", ") || "Scan AWBs to prepare a manifest."}</p>
+            ${offRoute.length ? `<div class="footer-note" style="color:#8c271f;font-weight:800">Remove ${offRoute.length} off-route parcel(s) before this manifest to ${hubCity(manifestToVal) || "destination"} can be created.</div>` : ""}
+          </div>
+          ${offRoute.map(p => `<div class="ops-card alert-row critical"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip bad">WRONG ROUTE</span></div><p>Destined for ${p.city}, not ${hubCity(manifestToVal) || "this route"}. Remove before creating manifest.</p></div>`).join("")}
+          ${onRoute.map(p => `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip ${statusClass(p)}">${p.status}</span></div><p>${p.consignee} | ${p.city} | ${p.branch}</p></div>`).join("")}
+          ${missing.map(awb => `<div class="ops-card alert-row critical"><strong>${awb}</strong><p>Not found in parcel database.</p></div>`).join("")}
+        `;
+      }
+
+        const activeLogs = manifestLogs().filter(log => log.status !== "Complete");
+      const select = document.getElementById("demanifestSelect");
+      if (select) {
+        select.innerHTML = activeLogs.map(log => `<option value="${log.id}">${log.id} | ${log.from} to ${log.to} | ${log.parcels.length} parcels</option>`).join("") || `<option value="">No active manifest logs</option>`;
+        if (state.activeDemanifestId && [...select.options].some(o => o.value === state.activeDemanifestId)) select.value = state.activeDemanifestId;
+        state.activeDemanifestId = select.value || "";
+      }
+      const active = state.transit.find(log => log.id === state.activeDemanifestId);
+      const scanned = state.demanifestScanAwbs || [];
+      const demanifestPreview = document.getElementById("demanifestScanPreview");
+      if (demanifestPreview) {
+        if (!active) {
+          demanifestPreview.innerHTML = `<div class="ops-card"><strong>No manifest selected</strong><p>Create a manifest first, then destination branch can demanifest it.</p></div>`;
+        } else {
+          const expected = active.parcels || [];
+          const received = scanned.filter(awb => expected.includes(awb));
+          const missing = expected.filter(awb => !received.includes(awb));
+          const extra = scanned.filter(awb => !expected.includes(awb));
+          demanifestPreview.innerHTML = `
+            <div class="ops-card ${missing.length ? "alert-row" : ""}">
+              <div class="ops-card-head"><strong>${active.id}</strong><span class="chip ${missing.length ? "warn" : "good"}">${received.length}/${expected.length} received</span></div>
+              <p>${active.from} to ${active.to}. Scan all parcels before pressing Done.</p>
+            </div>
+            ${missing.map(awb => `<div class="ops-card alert-row critical"><strong>${awb}</strong><p>Not demanifested yet. This will ping admin if closed missing.</p></div>`).join("")}
+            ${extra.map(awb => `<div class="ops-card alert-row"><strong>${awb}</strong><p>Scanned but not inside selected manifest.</p></div>`).join("")}
+          `;
+        }
+      }
+      const logList = document.getElementById("manifestLogList");
+      if (logList) {
+        logList.innerHTML = allManifestLogs.map(log => {
+          const expected = manifestExpected(log);
+          const done = manifestDone(log);
+          const missing = manifestMissingAwbs(log);
+          return `<div class="ops-card ${missing.length ? "alert-row critical" : ""}">
+            <div class="ops-card-head"><strong>${log.id}</strong><span class="chip ${missing.length ? "bad" : log.status === "Complete" ? "good" : "info"}">${log.status || "Complete"}</span></div>
+            <p>${log.from} to ${log.to}. Demanifested ${done}/${expected}.</p>
+            ${missing.length ? `<div class="resolved-note"><strong>Missing:</strong> ${missing.join(", ")}</div>` : ""}
+          </div>`;
+        }).join("") || `<div class="ops-card"><strong>No manifests yet</strong><p>Create one from the Manifest tab.</p></div>`;
+      }
+      const reached = document.getElementById("manifestReachedList");
+      if (reached) {
+        reached.innerHTML = allManifestLogs.filter(log => manifestDone(log) > 0).map(log => {
+          const expected = manifestExpected(log);
+          const done = manifestDone(log);
+          const missing = manifestMissingCount(log);
+          return `<div class="ops-card ${missing ? "alert-row" : ""}"><div class="ops-card-head"><strong>${log.id}</strong><span class="chip ${missing ? "warn" : "good"}">${done}/${expected}</span></div><p>${log.from} to ${log.to}. ${log.status === "Complete" ? `Reached ${log.completedAt || "destination time logged"}` : "Partial destination receiving in progress"}.</p>${missing ? `<div class="resolved-note"><strong>Pending:</strong> ${missing} CN(s) still not received.</div>` : ""}</div>`;
+        }).join("") || `<div class="ops-card"><strong>No reached manifests yet</strong><p>Any destination receiving scan will show here.</p></div>`;
+      }
+      const dispute = document.getElementById("manifestDisputeList");
+      if (dispute) {
+        let disputePinged = false;
+        disputedLogs.forEach(log => {
+          if (!log.branchManagerPinged) {
+            log.branchManagerPinged = true;
+            disputePinged = true;
+            state.ticketNotifications.unshift({ text: `${log.id}: ${manifestRemainingCount(log)} CN(s) still missing ${Math.round(manifestDisputeMinutes(log))} min after demanifest scan. ${log.to} branch manager pinged.`, at: `${new Date().toISOString().slice(0, 10)} ${time()}`, level: "bad" });
+            state.operationsIssues.unshift({ id: nextId("OPS", state.operationsIssues), branch: log.to, urgency: "super urgent", problem: `${manifestRemainingCount(log)} CN(s) pending after demanifest of ${log.id}: ${manifestRemainingAwbs(log).join(", ")}`, awb: manifestRemainingAwbs(log)[0] || "", openedHours: 0, resolved: false });
+          }
+        });
+        if (disputePinged) saveState();
+        dispute.innerHTML = disputedLogs.flatMap(log => manifestRemainingAwbs(log).map(awb => `<div class="ops-card alert-row critical"><div class="ops-card-head"><strong>${awb}</strong><span class="chip bad">${log.id}</span></div><p>Still missing after demanifest from ${log.from} to ${log.to}. ${log.to} branch manager pinged ${Math.round(manifestDisputeMinutes(log))} min after scan. Admin escalation required.</p></div>`)).join("") || `<div class="ops-card"><strong>No manifest disputes</strong><p>A dispute appears only after a sack is scanned and parcels are still missing past ${DISPUTE_DELAY_MIN} minutes.</p></div>`;
+      }
+    }
+
+    function ticketCard(ticket) {
+      const tier = ticketEffectiveTier(ticket);
+      const isResolved = ticket.status === "Resolved";
+      const chip = isResolved ? "good" : tier === "emergency" ? "bad" : tier === "medium" ? "warn" : "info";
+      const sourceParcel = state.parcels.find(p => p.awb === ticket.awb);
+      return `
+        <div class="ops-card ticket-card ${ticket.escalated && !isResolved ? "alert-row critical escalated" : tier === "medium" && !isResolved ? "alert-row" : ""}">
+          <div class="ops-card-head">
+            <strong>${ticket.id} | ${ticket.title}</strong>
+            <span class="chip ${chip}">${isResolved ? "resolved" : tier}</span>
+          </div>
+          <div class="ticket-route"><strong>${ticket.from}</strong><span>-></span><strong>${ticket.to}</strong></div>
+          <div class="ticket-meta">
+            <span class="chip info">${ticket.branch}</span>
+            ${ticket.awb ? `<span class="chip ${sourceParcel ? statusClass(sourceParcel) : "warn"}">${ticket.awb}</span>` : ""}
+            <span class="chip ${ticketAgeHours(ticket) >= 24 && !isResolved ? "bad" : "good"}">${ticketSlaText(ticket)}</span>
+          </div>
+          <p>${ticket.message || "No message added."}</p>
+          ${ticket.previousTo && !isResolved ? `<div class="resolved-note"><strong>Escalated:</strong> originally assigned to ${ticket.previousTo}, now visible to Admin Control.</div>` : ""}
+          ${isResolved ? `
+            <div class="resolved-note"><strong>Reply:</strong> ${ticket.resolutionReply || "Resolved."}</div>
+            <div class="footer-note">Resolved by ${ticket.resolvedBy || "admin"} at ${ticket.resolvedAt || "now"}. Proof: ${ticket.proof || "not attached"}. Notification sent to ${ticket.from}.</div>
+          ` : `
+            <div class="ticket-reply">
+              <div class="field"><label>Resolve reply</label><textarea id="ticketReply-${ticket.id}" placeholder="Explain what was fixed, who confirmed it, and the next action."></textarea></div>
+              <div class="field"><label>Image / proof</label><input id="ticketProof-${ticket.id}" placeholder="photo.jpg or proof link"></div>
+              <button class="action-btn" onclick="resolveTicket('${ticket.id}')">Resolve Ticket</button>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    function renderTickets() {
+      const tickets = state.tickets || [];
+      const open = tickets.filter(ticket => ticket.status !== "Resolved");
+      const resolved = tickets.filter(ticket => ticket.status === "Resolved");
+      const emergency = open.filter(ticket => ticketEffectiveTier(ticket) === "emergency");
+      const medium = open.filter(ticket => ticketEffectiveTier(ticket) === "medium");
+      const okay = open.filter(ticket => ticketEffectiveTier(ticket) === "okay");
+      const overdue = open.filter(ticket => ticketAgeHours(ticket) >= 24);
+      const avgSolve = resolved.length ? Math.round(resolved.reduce((sum, ticket) => sum + Number(ticket.solvedHours || 0), 0) / resolved.length) : 0;
+
+      const openBadge = document.getElementById("ticketOpenBadge");
+      if (openBadge) {
+        openBadge.textContent = `${open.length} open`;
+        openBadge.className = `chip ${emergency.length ? "bad" : open.length ? "warn" : "good"}`;
+      }
+
+      const notifications = document.getElementById("ticketNotificationList");
+      if (notifications) {
+        notifications.innerHTML = (state.ticketNotifications || []).slice(0, 4).map(note => `
+          <div class="ops-card ticket-notice">
+            <div class="ops-card-head"><strong>${note.text}</strong><span class="chip ${note.level || "info"}">${note.at}</span></div>
+          </div>
+        `).join("") || `<div class="ops-card"><strong>No ticket notifications yet</strong><p>Resolved replies and 24-hour escalations will appear here.</p></div>`;
+      }
+
+      const emergencyMetrics = document.getElementById("ticketEmergencyMetrics");
+      if (emergencyMetrics) {
+        emergencyMetrics.innerHTML = [
+          metricCard("Emergency", emergency.length, Math.min(100, emergency.length * 18), "admin visible now", emergency.length ? "red" : "good"),
+          metricCard("Over 24h", overdue.length, Math.min(100, overdue.length * 20), "auto escalated", overdue.length ? "red" : "good"),
+          metricCard("Missing CN", emergency.filter(t => /missing cn|demanifest/i.test(`${t.title} ${t.message}`)).length, 70, "manifest leakage", "red"),
+          metricCard("Resolved", resolved.length, Math.min(100, resolved.length * 16), "closed with reply", "good")
+        ].join("");
+      }
+
+      const summaryMetrics = document.getElementById("ticketSummaryMetrics");
+      if (summaryMetrics) {
+        summaryMetrics.innerHTML = [
+          metricCard("Open Tickets", open.length, Math.min(100, open.length * 10), "all active tiers", open.length ? "amber" : "good"),
+          metricCard("Emergency", emergency.length, Math.min(100, emergency.length * 18), "needs action now", emergency.length ? "red" : "good"),
+          metricCard("Resolved", resolved.length, Math.min(100, resolved.length * 12), "stored archive", "good"),
+          metricCard("Avg Solve", avgSolve ? agingLabel(avgSolve) : "0h", Math.min(100, percent(avgSolve, 24)), "resolved ticket timer", avgSolve > 24 ? "red" : "good")
+        ].join("");
+      }
+
+      const setList = (id, rows, empty) => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = rows.map(ticketCard).join("") || `<div class="ops-card"><strong>${empty}</strong><p>This queue is clean right now.</p></div>`;
+      };
+      setList("ticketEmergencyList", emergency, "No emergency tickets");
+      setList("ticketMediumList", medium, "No medium tickets");
+      setList("ticketOkayList", okay, "No okay tickets");
+
+      const summary = document.getElementById("ticketSummaryList");
+      if (summary) {
+        const byOwner = open.reduce((map, ticket) => {
+          map[ticket.to] = (map[ticket.to] || 0) + 1;
+          return map;
+        }, {});
+        summary.innerHTML = `
+          ${Object.entries(byOwner).map(([owner, count]) => `<div class="ops-card ${count > 2 ? "alert-row" : ""}"><div class="ops-card-head"><strong>${owner}</strong><span class="chip ${count > 2 ? "warn" : "info"}">${count} open</span></div><p>Routed queue visible only to the intended branch/team plus Admin Control after escalation.</p></div>`).join("") || `<div class="ops-card"><strong>No open ticket owners</strong><p>All routed tickets are closed.</p></div>`}
+          ${open.slice(0, 6).map(ticketCard).join("")}
+        `;
+      }
+
+      const resolvedList = document.getElementById("ticketResolvedList");
+      if (resolvedList) {
+        resolvedList.innerHTML = resolved.map(ticketCard).join("") || `<div class="ops-card"><strong>No resolved tickets yet</strong><p>Resolved ticket replies, proof references, and solve timers will archive here.</p></div>`;
+      }
+    }
+
+    function renderFinanceWallets() {
+      const activeClientId = state.activeWalletClient || state.clients[0]?.id || "";
+      const activeClient = clientById(activeClientId);
+      const walletSelect = document.getElementById("walletClientSelect");
+      if (walletSelect) {
+        walletSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
+        walletSelect.value = activeClientId;
+      }
+      const walletTotal = state.clients.reduce((sum, client) => sum + walletBalance(client.id), 0);
+      const pushedInvoices = state.invoices.filter(invoice => invoice.status === "Pushed to wallet" || invoice.status === "Paid");
+      const pendingInvoices = state.invoices.filter(invoice => invoice.status === "Generated" || invoice.status === "Pending");
+      const pendingWithdrawals = state.walletWithdrawals.filter(item => item.status !== "Paid");
+      const feeRevenue = state.walletWithdrawals.reduce((sum, item) => sum + Number(item.fee || 0), 0);
+      const deliveryRevenue = state.invoices.filter(invoice => invoice.status !== "Deleted").reduce((sum, invoice) => sum + Number(invoice.charges || 0), 0);
+
+      const balanceCards = document.getElementById("walletBalanceCards");
+      if (balanceCards) {
+        balanceCards.innerHTML = [
+          moneyBox("Selected wallet", money(walletBalance(activeClientId)), activeClient.name),
+          moneyBox("All wallet liability", money(walletTotal), "payable to clients"),
+          moneyBox("Pending payouts", money(pendingWithdrawals.reduce((sum, item) => sum + Number(item.amount || 0), 0)), `${pendingWithdrawals.length} request(s)`),
+          moneyBox("Withdraw fee revenue", money(feeRevenue), "extra charge model")
+        ].join("");
+      }
+
+      const walletInvoices = document.getElementById("walletInvoiceList");
+      if (walletInvoices) {
+        walletInvoices.innerHTML = state.invoices.filter(invoice => invoice.status !== "Deleted").map(invoice => {
+          const client = clientById(invoice.clientId);
+          const inWallet = invoice.status === "Pushed to wallet" || invoice.status === "Paid";
+          return `<div class="ops-card ${inWallet ? "" : "alert-row"}">
+            <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${inWallet ? "good" : "warn"}">${invoice.status}</span></div>
+            <p>${invoice.parcelRefs.join(", ")} | Payable ${money(invoice.payable)} | Charges ${money(invoice.charges)}</p>
+            <div class="footer-note">${inWallet ? `Entered wallet at ${invoice.walletPushedAt || invoice.paidAt}` : "Visible invoice only. Not in wallet until pushed."}</div>
+          </div>`;
+        }).join("") || `<div class="ops-card"><strong>No wallet invoices</strong><p>Push generated invoices into wallets to start payout flow.</p></div>`;
+      }
+
+      const payoutQueue = document.getElementById("walletPayoutQueue");
+      if (payoutQueue) {
+        payoutQueue.innerHTML = state.walletWithdrawals.map(item => {
+          const client = clientById(item.clientId);
+          return `<div class="ops-card ${item.status === "Paid" ? "" : "alert-row"}">
+            <div class="ops-card-head"><strong>${item.id} | ${client.name}</strong><span class="chip ${item.status === "Paid" ? "good" : "warn"}">${item.status}</span></div>
+            <p>Pay ${money(item.net)} to IBAN ${item.iban}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed)}).</p>
+            <div class="footer-note">Created ${item.createdAt}. ${item.paidAt ? `Paid ${item.paidAt}` : "Admin must verify bank transfer."}</div>
+            ${item.status === "Paid" ? "" : `<button class="action-btn" style="margin-top:10px" onclick="markWalletWithdrawalPaid('${item.id}')">Mark Payout Paid</button>`}
+          </div>`;
+        }).join("") || `<div class="ops-card"><strong>No payout signals</strong><p>Withdrawal requests will appear here with IBAN and net payable.</p></div>`;
+      }
+
+      const summaryCards = document.getElementById("financeSummaryCards");
+      if (summaryCards) {
+        const m = metrics();
+        summaryCards.innerHTML = [
+          metricCard("Delivery Revenue", money(deliveryRevenue), Math.min(100, percent(deliveryRevenue, 100000)), "invoice charges only", "good"),
+          metricCard("Wallet Liability", money(walletTotal), Math.min(100, percent(walletTotal, 150000)), "client balance owed", walletTotal ? "amber" : "good"),
+          metricCard("Expenses", money(m.expenses), Math.min(100, percent(m.expenses, 450000)), "logged expenses", "amber"),
+          metricCard("Withdraw Fees", money(feeRevenue), Math.min(100, percent(feeRevenue, 5000)), "speed charges", "blue")
+        ].join("");
+      }
+
+      const overallList = document.getElementById("financeOverallList");
+      if (overallList) {
+        overallList.innerHTML = [
+          `Generated invoices not pushed to wallet: ${pendingInvoices.length}. These are visible but not payable yet.`,
+          `Pushed wallet invoices: ${pushedInvoices.length}. Wallet liability is ${money(walletTotal)}.`,
+          `Pending payout queue: ${pendingWithdrawals.length}. Net bank transfer due is ${money(pendingWithdrawals.reduce((sum, item) => sum + Number(item.net || 0), 0))}.`,
+          `No leakage rule: a parcel can appear in only one non-deleted invoice. Deleted invoices release parcels back to delivered pool.`
+        ].map(text => `<div class="ops-card"><strong>${text}</strong></div>`).join("");
+      }
+
+      const revenueList = document.getElementById("financeRevenueList");
+      if (revenueList) {
+        revenueList.innerHTML = `
+          <div class="ops-card"><div class="ops-card-head"><strong>Delivery charges earned</strong><span class="chip good">${money(deliveryRevenue)}</span></div><p>NovaX revenue comes from delivery charges on invoices, not client COD payable.</p></div>
+          <div class="ops-card"><div class="ops-card-head"><strong>Withdrawal speed fees</strong><span class="chip info">${money(feeRevenue)}</span></div><p>24h = 0.1%, 12h = 0.3%, instant = 0.7%. Fee is deducted from requested withdrawal amount.</p></div>
+          <div class="ops-card"><div class="ops-card-head"><strong>Pending invoice charges</strong><span class="chip warn">${money(pendingInvoices.reduce((sum, invoice) => sum + Number(invoice.charges || 0), 0))}</span></div><p>These charges are known, but invoice is not wallet-active until pushed.</p></div>
+        `;
+      }
+    }
+
+    function render() {
+      normalizeStateShape();
+      renderMetrics();
+      renderClientParcels();
+      renderJourney();
+      renderWallets();
+      renderAi();
+      renderClientModules();
+      renderAdmin();
+      renderRider();
+      tickMeters();
+    }
+
+    function tickMeters() {
+      requestAnimationFrame(() => {
+        document.querySelectorAll(".meter > span").forEach(span => {
+          const width = span.style.width;
+          span.style.width = "0";
+          requestAnimationFrame(() => { span.style.width = width; });
+        });
+      });
+    }
+
+    function showView(id) {
+      document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === id));
+      document.querySelectorAll(".tab-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.view === id));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function showHandoffLoader(callback) {
+      const loader = document.getElementById("handoffLoader");
+      loader.classList.remove("show");
+      loader.querySelectorAll(".hand, .handoff-parcel").forEach(el => {
+        el.style.animation = "none";
+        void el.offsetWidth;
+        el.style.animation = "";
+      });
+      void loader.offsetWidth;
+      loader.classList.add("show");
+      loader.setAttribute("aria-hidden", "false");
+      clearTimeout(window.handoffTimer);
+      window.handoffTimer = setTimeout(() => {
+        loader.classList.remove("show");
+        loader.setAttribute("aria-hidden", "true");
+        if (typeof callback === "function") callback();
+      }, 600);
+    }
+
+    function navigateWithHandoff(targetView, after) {
+      showHandoffLoader(() => {
+        showView(targetView);
+        if (typeof after === "function") after();
+      });
+    }
+
+    function showClientTab(id) {
+      state.activeClientTab = id;
+      saveState();
+      renderClientModules();
+      tickMeters();
+      if (window.innerWidth < 760) {
+        document.getElementById("clientMenu").classList.remove("open");
+        document.getElementById("clientMenuToggle").setAttribute("aria-expanded", "false");
+      }
+    }
+
+    function showAdminTab(id) {
+      state.activeAdminTab = normalizeAdminTab(id);
+      saveState();
+      renderAdmin();
+      tickMeters();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function lookupProcessingParcel() {
+      const input = document.getElementById("processingAwbInput");
+      const awbs = parseAwbList(input?.value || "");
+      if (awbs.length && input) input.value = `${awbs.join(", ")}, `;
+      const found = parcelsByAwbs(awbs);
+      if (!found.length) {
+        state.activeProcessingAwb = "";
+        state.processingBatchAwbs = [];
+        saveState();
+        renderAdmin();
+        toast("No valid parcels found in this scan batch.");
+        return;
+      }
+      state.processingBatchAwbs = found.map(p => p.awb);
+      state.activeProcessingAwb = found[0].awb;
+      state.pendingProcessingStatus = found[0].status;
+      saveState();
+      renderAdmin();
+      toast(`${found.length} parcel(s) loaded for processing.`);
+    }
+
+    function processingBranchForStatus(parcel, status) {
+      if (/destination|delivery|delivered|refused|consignee|reattempt|reassigned/i.test(status)) return `${parcel.city} Hub`;
+      if (/return received at origin|return out for delivery|returned/i.test(status)) return `${parcelOrigin(parcel)} Hub`;
+      if (/transit/i.test(status)) return `${parcelOrigin(parcel)} to ${parcel.city}`;
+      return `${parcelOrigin(parcel)} Hub`;
+    }
+
+    function requestProcessingAuth() {
+      const batch = processingParcels();
+      if (!batch.length) {
+        toast("Load valid tracking IDs first.");
+        return;
+      }
+      const status = document.getElementById("processingStatusSelect")?.value || "";
+      if (!status) {
+        toast("Select a status to update.");
+        return;
+      }
+      const riderId = document.getElementById("processingRiderSelect")?.value || "";
+      if (status === "Parcel out for delivery" && !riderId) {
+        toast("Select a rider before pushing parcels out for delivery.");
+        return;
+      }
+      state.pendingProcessingStatus = status;
+      state.pendingProcessingRider = riderId;
+      saveState();
+      document.getElementById("processingAuthBox")?.classList.add("open");
+      document.getElementById("processingUsername")?.focus();
+      toast("Processor username and password required.");
+    }
+
+    function processorFromCredentials(username, password) {
+      const clean = username.trim().toLowerCase();
+      if (!clean || !password.trim()) return null;
+      const user = state.users.find(item => {
+        const aliases = [item.id, item.name, item.role].map(value => String(value || "").toLowerCase().replace(/\s+/g, "."));
+        return aliases.includes(clean) || String(item.name || "").toLowerCase() === clean;
+      });
+      return {
+        name: user ? user.name : username.trim(),
+        username: username.trim(),
+        role: user ? user.role : "Warehouse Processor",
+        branch: user ? user.branch : ""
+      };
+    }
+
+    function submitProcessingUpdate() {
+      const batch = processingParcels();
+      if (!batch.length) {
+        toast("Load valid tracking IDs first.");
+        return;
+      }
+      const username = document.getElementById("processingUsername")?.value || "";
+      const password = document.getElementById("processingPassword")?.value || "";
+      const processor = processorFromCredentials(username, password);
+      if (!processor || password.trim().length < 3) {
+        toast("Valid username and password are required.");
+        return;
+      }
+      const status = state.pendingProcessingStatus || document.getElementById("processingStatusSelect")?.value || batch[0].status;
+      const riderId = state.pendingProcessingRider || document.getElementById("processingRiderSelect")?.value || "";
+      if (status === "Parcel out for delivery" && !riderId) {
+        toast("Rider assignment is mandatory for out-for-delivery parcels.");
+        return;
+      }
+      batch.forEach(parcel => {
+        const branch = processingBranchForStatus(parcel, status);
+        setParcelStatus(parcel, status, { name: processor.name, username: processor.username, branch });
+        if (status === "Parcel out for delivery") {
+          parcel.rider = riderId;
+          parcel.assignedRiderAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+          parcel.exception = parcel.exception.replace("No rider assigned for delivery", "").trim();
+        }
+        parcel.exception = status === "Delivered" ? parcel.exception.replace("Consignee denies refusal attempt", "").trim() : parcel.exception;
+      });
+      state.selectedAwb = batch[0].awb;
+      state.activeProcessingAwb = batch[0].awb;
+      saveState();
+      document.getElementById("processingAuthBox")?.classList.remove("open");
+      document.getElementById("processingPassword").value = "";
+      render();
+      toast(`${batch.length} parcel(s) updated to ${status}.`);
+    }
+
+    function clearProcessingBatch() {
+      state.processingBatchAwbs = [];
+      state.activeProcessingAwb = "";
+      document.getElementById("processingAwbInput").value = "";
+      saveState();
+      renderAdmin();
+      toast("Processing batch cleared.");
+    }
+
+    function loadManifestScans() {
+      const input = document.getElementById("manifestScanInput");
+      const awbs = parseAwbList(input.value);
+      if (awbs.length) input.value = `${awbs.join(", ")}, `;
+      state.manifestDraftAwbs = awbs;
+      saveState();
+      renderAdmin();
+      toast(`${parcelsByAwbs(awbs).length} valid parcel(s) ready for manifest.`);
+    }
+
+    function clearManifestScans() {
+      state.manifestDraftAwbs = [];
+      document.getElementById("manifestScanInput").value = "";
+      saveState();
+      renderAdmin();
+    }
+
+    function createManifestFromScans() {
+      const parcels = parcelsByAwbs(state.manifestDraftAwbs || []);
+      if (!parcels.length) {
+        toast("Scan valid parcels before creating manifest.");
+        return;
+      }
+      const from = document.getElementById("manifestFrom").value;
+      const to = document.getElementById("manifestTo").value;
+      const offRoute = parcels.filter(p => manifestRouteMismatch(p, to));
+      if (offRoute.length) {
+        toast(`${offRoute.length} off-route parcel(s) (${offRoute.map(p => p.awb).join(", ")}) are not going to ${hubCity(to)}. Remove them before creating this manifest.`);
+        return;
+      }
+      const id = `MAN-${from.slice(0,3).toUpperCase()}-${to.slice(0,3).toUpperCase()}-${String(state.transit.length + state.completedSacks.length + 1).padStart(3, "0")}`.replace(/\s/g, "");
+      parcels.forEach(parcel => setParcelStatus(parcel, "Parcel now in transit", { name: "Manifest Desk", username: "manifest", branch: `${from} to ${to}` }));
+      state.transit.unshift({ id, from, to, expected: parcels.length, scanned: parcels.length, demanifested: 0, health: 100, status: "Active", type: "parcel manifest", parcels: parcels.map(p => p.awb), demanifestedAwbs: [], createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}` });
+      state.manifestDraftAwbs = [];
+      document.getElementById("manifestScanInput").value = "";
+      saveState();
+      showAdminTab("manifest-transit");
+      toast(`${id} created. ${parcels.length} parcel(s) now in transit and listed in Manifest Summary.`);
+    }
+
+    function loadDemanifestScans() {
+      const input = document.getElementById("demanifestScanInput");
+      state.demanifestScanAwbs = parseAwbList(input.value);
+      if (state.demanifestScanAwbs.length) input.value = `${state.demanifestScanAwbs.join(", ")}, `;
+      const activeLog = state.transit.find(t => t.id === state.activeDemanifestId);
+      if (activeLog && state.demanifestScanAwbs.length) {
+        activeLog.demanifestStartedAt = activeLog.demanifestStartedAt || new Date().toISOString();
+        const expectedAwbs = activeLog.parcels || [];
+        activeLog.demanifestPartial = state.demanifestScanAwbs.filter(awb => expectedAwbs.includes(awb));
+      }
+      saveState();
+      renderAdmin();
+      toast(`${state.demanifestScanAwbs.length} received scan(s) loaded.`);
+    }
+
+    function clearDemanifestScans() {
+      state.demanifestScanAwbs = [];
+      document.getElementById("demanifestScanInput").value = "";
+      saveState();
+      renderAdmin();
+    }
+
+    function completeDemanifest() {
+      const log = state.transit.find(t => t.id === state.activeDemanifestId);
+      if (!log) {
+        toast("Select a manifest log first.");
+        return;
+      }
+      const expected = log.parcels || [];
+      const received = (state.demanifestScanAwbs || []).filter(awb => expected.includes(awb));
+      const missing = expected.filter(awb => !received.includes(awb));
+      received.forEach(awb => {
+        const parcel = state.parcels.find(p => p.awb === awb);
+        if (parcel) setParcelStatus(parcel, "Parcel received at destination", { name: "Demanifest Desk", username: "demanifest", branch: log.to });
+      });
+      if (missing.length) {
+        state.operationsIssues.unshift({ id: nextId("OPS", state.operationsIssues), branch: log.to, urgency: "super urgent", problem: `${missing.length} parcel(s) missing in demanifest ${log.id}: ${missing.join(", ")}`, awb: missing[0], openedHours: 0, resolved: false });
+      }
+      state.completedSacks.unshift({ ...log, status: "Complete", demanifested: received.length, demanifestedAwbs: received, missingAwbs: missing, completedAt: `${new Date().toISOString().slice(0, 10)} ${time()}` });
+      state.transit = state.transit.filter(t => t.id !== log.id);
+      state.demanifestScanAwbs = [];
+      state.activeDemanifestId = "";
+      document.getElementById("demanifestScanInput").value = "";
+      saveState();
+      render();
+      toast(missing.length ? `${missing.length} missing parcel alert sent to admin.` : `${log.id} completed clean.`);
+    }
+
+    function toast(message) {
+      const el = document.getElementById("toast");
+      el.textContent = message;
+      el.classList.add("show");
+      clearTimeout(window.toastTimer);
+      window.toastTimer = setTimeout(() => el.classList.remove("show"), 2800);
+    }
+
+    function bookParcel(overrides = {}) {
+      const codAmount = overrides.cod || 3500 + Math.round(Math.random() * 11000);
+      const clientId = overrides.clientId || state.client.id || "CL-0001";
+      const client = clientById(clientId);
+      const awb = nextAwbForClient(clientId);
+      state.parcels.unshift({
+        awb,
+        clientId,
+        date: overrides.date || new Date().toISOString().slice(0, 10),
+        consignee: overrides.consignee || "New COD Order",
+        city: overrides.city || ["Lahore", "Karachi", "Islamabad", "Rawalpindi"][Math.floor(Math.random() * 4)],
+        cod: codAmount,
+        fee: overrides.fee || client.rate || 250,
+        phone: overrides.phone || "+92 300 1111111",
+        pickupCity: overrides.pickupCity || "Karachi",
+        service: overrides.service || "COD Standard",
+        category: overrides.category || "Fashion",
+        fragile: overrides.fragile || "No",
+        weight: overrides.weight || "0.8 kg",
+        paymentMode: overrides.paymentMode || "Cash on Delivery",
+        address: overrides.address || "Address pending",
+        status: "New booked",
+        statusAgeHours: 0,
+        stage: 0,
+        totalStages: STATUS_TAGS.length - 1,
+        rider: "R-17",
+        branch: "Karachi Hub",
+        risk: 8,
+        updated: time(),
+        exception: "",
+        steps: ["New booked"]
+      });
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId,
+        type: "COD expected",
+        amount: codAmount,
+        status: "Awaiting delivery",
+        ref: awb
+      });
+      state.selectedAwb = awb;
+      state.lastGeneratedAwb = awb;
+      saveState();
+      render();
+      toast(`${awb} booked. Admin portal already sees the same parcel.`);
+      return awb;
+    }
+
+    function quickBooking() {
+      const required = ["bookingName", "bookingPhone", "bookingPickupCity", "bookingCity", "bookingCod", "bookingService", "bookingCategory", "bookingFragile", "bookingWeight", "bookingPaymentMode", "bookingAddress"];
+      const missing = required.filter(id => !String(document.getElementById(id).value || "").trim());
+      if (missing.length) {
+        toast("All booking fields are mandatory before AWB creation.");
+        return;
+      }
+      const consignee = document.getElementById("bookingName").value.trim();
+      const city = document.getElementById("bookingCity").value;
+      const cod = Number(document.getElementById("bookingCod").value) || 6500;
+      const awb = bookParcel({
+        consignee,
+        city,
+        cod,
+        phone: document.getElementById("bookingPhone").value.trim(),
+        pickupCity: document.getElementById("bookingPickupCity").value,
+        service: document.getElementById("bookingService").value,
+        category: document.getElementById("bookingCategory").value,
+        fragile: document.getElementById("bookingFragile").value,
+        weight: document.getElementById("bookingWeight").value.trim(),
+        paymentMode: document.getElementById("bookingPaymentMode").value,
+        address: document.getElementById("bookingAddress").value.trim()
+      });
+      state.lastGeneratedAwb = awb;
+      showClientTab("awbLabel");
+    }
+
+    function bulkBooking() {
+      const samples = [
+        ["Bulk Order 01", "Lahore", 4200],
+        ["Bulk Order 02", "Karachi", 5800],
+        ["Bulk Order 03", "Islamabad", 7600],
+        ["Bulk Order 04", "Rawalpindi", 3900],
+        ["Bulk Order 05", "Lahore", 11800]
+      ];
+      samples.forEach(row => bookParcel({ consignee: row[0], city: row[1], cod: row[2] }));
+      showClientTab("dashboard");
+      toast("Bulk upload created 5 AWBs and updated reports, payments, and logs.");
+    }
+
+    function createClient() {
+      const name = document.getElementById("newClientName").value.trim();
+      const email = document.getElementById("newClientEmail").value.trim();
+      const password = document.getElementById("newClientPassword").value.trim();
+      const phone = document.getElementById("newClientPhone").value.trim();
+      const businessType = document.getElementById("newClientBusiness").value.trim();
+      const address = document.getElementById("newClientAddress").value.trim();
+      if (!name) {
+        toast("Client name is mandatory.");
+        return;
+      }
+      if (!email || !password || !phone || !businessType || !address) {
+        toast("Client email, password, phone, product details, and pickup address are mandatory.");
+        return;
+      }
+      if (!/^03\d{9}$/.test(phone)) {
+        toast("Phone must be 11 digits and start with 03. Example: 03113323923.");
+        return;
+      }
+      if ((state.users || []).some(user => String(user.email || "").toLowerCase() === email.toLowerCase()) || state.clients.some(client => String(client.email || "").toLowerCase() === email.toLowerCase()) || state.pendingClients.some(client => String(client.email || "").toLowerCase() === email.toLowerCase())) {
+        toast("This login email already exists.");
+        return;
+      }
+      const rateCard = defaultRateCard(250);
+      state.clients = state.clients.filter(item => item.id !== "CL-0000");
+      const id = nextId("CL", state.clients);
+      const newClient = {
+        name,
+        owner: document.getElementById("newClientOwner").value.trim() || "Pending",
+        id,
+        email,
+        phone,
+        businessType,
+        address,
+        taxId: document.getElementById("newClientTax").value.trim() || "Not added",
+        iban: document.getElementById("newClientIban").value.trim() || "Not added",
+        city: document.getElementById("newClientCity").value,
+        walletTopup: 0,
+        shippingDue: 0,
+        rate: rateCard.overnight,
+        rateCard,
+        risk: 0,
+        health: 100,
+        problemsResolved: 0,
+        status: "Active",
+        walletBalance: 0
+      };
+      state.clients.unshift(newClient);
+      state.client = { id, name: newClient.name, walletTopup: 0, shippingDue: 0, subAccounts: 0, walletBalance: 0 };
+      state.users.unshift({
+        id: nextId("USR", state.users),
+        name: newClient.owner || newClient.name,
+        email,
+        password,
+        role: "Client",
+        accessSide: "Client Web Portal",
+        branch: `${newClient.city || "Karachi"} Hub`,
+        clientId: id,
+        status: "Active",
+        permissions: ["dashboard", "booking", "bulk booking", "reports", "payments", "tickets"]
+      });
+      saveState();
+      render();
+      showAdminTab("clients-summary");
+      const result = document.getElementById("clientCreateResult");
+      if (result) result.innerHTML = `<div class="ops-card"><strong>${id} created</strong><p>${name} is active. Login email: ${email}</p></div>`;
+      toast(`${id} created as active client. Login is ready.`);
+    }
+
+    function toggleRateForm(id) {
+      state.activeRateClient = state.activeRateClient === id ? "" : id;
+      saveState();
+      renderAdmin();
+    }
+
+    function approveClient(id) {
+      const index = state.pendingClients.findIndex(client => client.id === id);
+      if (index < 0) return;
+      const [client] = state.pendingClients.splice(index, 1);
+      const assignedEmail = (document.getElementById(`approveEmail-${id}`)?.value || client.email || "").trim();
+      const assignedPassword = (document.getElementById(`approvePassword-${id}`)?.value || client.password || "").trim();
+      client.email = assignedEmail;
+      client.password = assignedPassword;
+      if (!client.email || !client.password) {
+        state.pendingClients.splice(index, 0, client);
+        toast("Lead needs assigned email and password before approval.");
+        return;
+      }
+      if ((state.users || []).some(user => String(user.email || "").toLowerCase() === assignedEmail.toLowerCase()) || state.clients.some(item => String(item.email || "").toLowerCase() === assignedEmail.toLowerCase())) {
+        state.pendingClients.splice(index, 0, client);
+        toast("This login email already exists. Assign another email before approval.");
+        return;
+      }
+      state.clients = state.clients.filter(item => item.id !== "CL-0000");
+      const clientId = nextId("CL", state.clients);
+      const approvedClient = {
+        ...client,
+        id: clientId,
+        owner: client.owner || client.name,
+        status: "Active",
+        health: 100,
+        risk: 0,
+        walletBalance: Number(client.walletBalance || 0)
+      };
+      delete approvedClient.password;
+      state.clients.push(approvedClient);
+      state.client = { id: clientId, name: approvedClient.name, walletTopup: 0, shippingDue: 0, subAccounts: 0, walletBalance: Number(approvedClient.walletBalance || 0) };
+      state.users.unshift({
+        id: nextId("USR", state.users),
+        name: approvedClient.owner || approvedClient.name,
+        email: assignedEmail,
+        password: assignedPassword,
+        role: "Client",
+        accessSide: "Client Web Portal",
+        branch: `${approvedClient.city || "Karachi"} Hub`,
+        clientId,
+        status: "Active",
+        permissions: ["dashboard", "booking", "bulk booking", "reports", "payments", "tickets"]
+      });
+      saveState();
+      render();
+      showAdminTab("clients-summary");
+      toast(`${id} approved as ${clientId}. Client can now sign in with assigned email/password.`);
+    }
+
+    function updateClientRate(id) {
+      const client = state.clients.find(item => item.id === id);
+      const card = {
+        overnight: Number(document.getElementById(`rate-${id}-overnight`)?.value),
+        additionalKg: Number(document.getElementById(`rate-${id}-additionalKg`)?.value),
+        detainBase: Number(document.getElementById(`rate-${id}-detainBase`)?.value),
+        detainAdditionalKg: Number(document.getElementById(`rate-${id}-detainAdditionalKg`)?.value),
+        overlandBase: Number(document.getElementById(`rate-${id}-overlandBase`)?.value),
+        overlandAdditionalKg: Number(document.getElementById(`rate-${id}-overlandAdditionalKg`)?.value)
+      };
+      if (!client || Object.values(card).some(value => !value || value < 1)) {
+        toast("Every rate-card field is mandatory.");
+        return;
+      }
+      client.rateCard = card;
+      client.rate = card.overnight;
+      state.parcels.filter(p => p.clientId === id && !isDeliveredLedgerParcel(p)).forEach(p => { p.fee = card.overnight; });
+      state.activeRateClient = "";
+      saveState();
+      render();
+      toast(`${id} rate card saved. Open parcels now use overnight base ${money(card.overnight)}.`);
+    }
+
+    function selectInvoiceClient(clientId) {
+      state.activeInvoiceClient = clientId;
+      state.invoiceDraftRefs = clientInvoiceParcels(clientId).map(parcel => parcel.awb);
+      saveState();
+      render();
+      showAdminTab("finance-invoices");
+    }
+
+    function toggleInvoiceParcel(awb, checked) {
+      const set = new Set(state.invoiceDraftRefs || []);
+      if (checked) set.add(awb);
+      else set.delete(awb);
+      state.invoiceDraftRefs = [...set];
+      saveState();
+      renderAdmin();
+    }
+
+    function createSelectedInvoice() {
+      const parcels = selectedInvoiceParcels();
+      if (!parcels.length) {
+        toast("Select at least one delivered parcel for invoice.");
+        return;
+      }
+      createInvoice(state.activeInvoiceClient, parcels);
+    }
+
+    function pushInvoiceToWallet(id) {
+      const invoice = state.invoices.find(item => item.id === id);
+      if (!invoice || invoice.status === "Deleted") return;
+      if (invoice.status === "Pushed to wallet" || invoice.status === "Paid") {
+        toast(`${id} is already in wallet.`);
+        return;
+      }
+      const client = clientById(invoice.clientId);
+      client.walletBalance = Number(client.walletBalance || 0) + Number(invoice.payable || 0);
+      invoice.status = "Pushed to wallet";
+      invoice.walletPushedAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId: invoice.clientId,
+        type: "Invoice pushed to wallet",
+        amount: invoice.payable,
+        status: "Wallet credited",
+        ref: id
+      });
+      saveState();
+      render();
+      toast(`${id} pushed to ${client.name} wallet.`);
+    }
+
+    function deleteInvoice(id) {
+      const invoice = state.invoices.find(item => item.id === id);
+      if (!invoice) return;
+      if (invoice.status === "Pushed to wallet" || invoice.status === "Paid") {
+        toast("Wallet-active invoice cannot be deleted. Reverse through payout/ledger flow later.");
+        return;
+      }
+      invoice.status = "Deleted";
+      invoice.deletedAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId: invoice.clientId,
+        type: "Invoice deleted",
+        amount: invoice.payable,
+        status: "Released parcels back to invoice pool",
+        ref: id
+      });
+      saveState();
+      render();
+      toast(`${id} deleted. Parcels returned to delivered invoice pool.`);
+    }
+
+    function requestWalletWithdrawal() {
+      const clientId = document.getElementById("walletClientSelect").value;
+      const amount = Number(document.getElementById("walletAmount").value);
+      const iban = document.getElementById("walletIban").value.trim();
+      const speed = document.getElementById("walletSpeed").value;
+      const client = clientById(clientId);
+      if (!amount || amount < 1 || !iban) {
+        toast("Withdrawal amount and IBAN are mandatory.");
+        return;
+      }
+      if (amount > walletBalance(clientId)) {
+        toast("Withdrawal blocked. Amount is higher than available wallet balance.");
+        return;
+      }
+      const fee = Math.round(amount * walletFeeRate(speed));
+      const net = Math.max(0, amount - fee);
+      client.walletBalance = Math.max(0, Number(client.walletBalance || 0) - amount);
+      client.withdrawnTotal = Number(client.withdrawnTotal || 0) + amount;
+      client.withdrawFeeTotal = Number(client.withdrawFeeTotal || 0) + fee;
+      const withdrawal = {
+        id: nextId("WDR", state.walletWithdrawals),
+        clientId,
+        amount,
+        fee,
+        net,
+        iban,
+        speed,
+        status: "Pending admin payout",
+        createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}`
+      };
+      state.walletWithdrawals.unshift(withdrawal);
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId,
+        type: "Wallet withdrawal requested",
+        amount,
+        status: `${money(net)} payable after ${money(fee)} fee`,
+        ref: withdrawal.id
+      });
+      saveState();
+      render();
+      toast(`${client.name} withdrawal sent to admin payout queue.`);
+    }
+
+    function markWalletWithdrawalPaid(id) {
+      const withdrawal = state.walletWithdrawals.find(item => item.id === id);
+      if (!withdrawal || withdrawal.status === "Paid") return;
+      withdrawal.status = "Paid";
+      withdrawal.paidAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId: withdrawal.clientId,
+        type: "Wallet payout paid",
+        amount: withdrawal.net,
+        status: "Paid to IBAN",
+        ref: withdrawal.id
+      });
+      saveState();
+      render();
+      toast(`${id} marked paid to client IBAN.`);
+    }
+
+    function addExpense() {
+      const type = document.getElementById("expenseType").value;
+      const amount = Number(document.getElementById("expenseAmount").value);
+      const reason = document.getElementById("expenseReason").value.trim();
+      const loggedBy = document.getElementById("expenseLoggedBy").value.trim();
+      const owner = document.getElementById("expenseOwner").value;
+      if (!amount || amount < 1) {
+        toast("Expense amount is mandatory.");
+        return;
+      }
+      if (!reason || !loggedBy) {
+        toast("Expense reason and logged by are mandatory.");
+        return;
+      }
+      state.expenses.unshift({
+        id: nextId("EXP", state.expenses),
+        name: `${type} - ${reason}`,
+        type,
+        amount,
+        owner,
+        reason,
+        loggedBy,
+        status: "Pending"
+      });
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId: state.client.id || "CL-0001",
+        type: "Operating expense logged",
+        amount,
+        status: "Pending approval",
+        ref: `${type} | ${owner}`
+      });
+      saveState();
+      render();
+      showAdminTab("finance-expense");
+      toast(`${money(amount)} expense added for approval.`);
+    }
+
+    function createUser() {
+      const name = document.getElementById("userName").value.trim();
+      const email = document.getElementById("userEmail").value.trim();
+      const password = document.getElementById("userPassword").value.trim();
+      if (!name) {
+        toast("User name is mandatory.");
+        return;
+      }
+      if (!email || !password) {
+        toast("User email and password are mandatory.");
+        return;
+      }
+      const permissions = [...document.querySelectorAll("[data-user-permission]:checked")].map(item => item.value);
+      state.users.unshift({
+        id: nextId("USR", state.users),
+        name,
+        email,
+        password,
+        role: document.getElementById("userRole").value,
+        accessSide: document.getElementById("userAccessSide").value,
+        branch: document.getElementById("userBranch").value,
+        clientId: document.getElementById("userClientSelect").value || state.clients[0].id,
+        permissions,
+        status: "Active"
+      });
+      saveState();
+      render();
+      showAdminTab("users-edit");
+      toast(`${name} created with ${document.getElementById("userAccessSide").value} access.`);
+    }
+
+    function createRiderUser() {
+      const riderId = document.getElementById("riderUserSelect")?.value || state.riders[0]?.id || "";
+      const rider = state.riders.find(item => item.id === riderId) || state.riders[0];
+      const email = (document.getElementById("riderUserEmail")?.value || rider?.username || rider?.id || "").trim();
+      const password = (document.getElementById("riderUserPassword")?.value || "").trim();
+      if (!rider || !email || !password) {
+        toast("Rider, username, and password are mandatory.");
+        return;
+      }
+      rider.username = email;
+      rider.password = password;
+      state.users.unshift({
+        id: nextId("USR", state.users),
+        name: rider.name,
+        email,
+        password,
+        role: "Rider",
+        accessSide: "Rider App",
+        branch: rider.branch,
+        clientId: state.clients[0]?.id || "CL-0001",
+        riderId: rider.id,
+        permissions: ["rider-route", "scan", "delivery-proof", "cash-submit"],
+        status: "Active"
+      });
+      saveState();
+      render();
+      showAdminTab("users-edit");
+      toast(`${rider.name} rider login created.`);
+    }
+
+    function editClientLogin(clientId) {
+      const client = state.clients.find(c => c.id === clientId);
+      if (!client) { toast("Client not found."); return; }
+      let user = state.users.find(u => u.clientId === clientId && /client/i.test(`${u.accessSide || ""} ${u.role || ""}`));
+      const currentLogin = user ? (user.email || user.username || user.name) : (client.email || "");
+      const newLogin = (window.prompt(`Client login username / email for ${client.name}:`, currentLogin) || "").trim();
+      if (!newLogin) { toast("Login username is required."); return; }
+      const newPass = (window.prompt(`Login password for ${client.name}:`, user ? user.password : "") || "").trim();
+      if (!newPass) { toast("Login password is required."); return; }
+      if (!user) {
+        user = {
+          id: nextId("USR", state.users),
+          name: client.owner || client.name,
+          role: "Client",
+          accessSide: "Client Web Portal",
+          branch: `${client.city || "Karachi"} Hub`,
+          clientId,
+          permissions: ["dashboard", "booking", "bulk booking", "reports", "payments", "tickets"],
+          status: "Active"
+        };
+        state.users.unshift(user);
+      }
+      user.email = newLogin;
+      user.username = newLogin;
+      user.password = newPass;
+      user.status = "Active";
+      client.email = newLogin;
+      saveState();
+      render();
+      toast(`${client.name} login updated. They can sign in instantly with the new username and password.`);
+    }
+
+    function applyClientDateRange() {
+      state.clientDateFrom = document.getElementById("clientDateFrom").value || state.clientDateFrom;
+      state.clientDateTo = document.getElementById("clientDateTo").value || state.clientDateTo;
+      saveState();
+      render();
+      toast(`Client history filtered from ${state.clientDateFrom} to ${state.clientDateTo}.`);
+    }
+
+    function requestPayout() {
+      const cm = clientMetrics();
+      const id = nextId("PAY", state.paymentLogs);
+      state.paymentLogs.unshift({
+        id,
+        clientId: state.client.id || "CL-0001",
+        type: "Payout requested",
+        amount: cm.payable,
+        status: "Pending admin approval",
+        ref: `PAYOUT-${id}`
+      });
+      saveState();
+      render();
+      showClientTab("payments");
+      toast("Payout request sent to admin Payments & COD.");
+    }
+
+    function requestRedelivery(awb) {
+      const parcel = state.parcels.find(p => p.awb === awb);
+      if (!parcel) return;
+      const feedback = document.getElementById("redeliveryFeedback")?.value.trim() || "Client requested redelivery.";
+      setParcelStatus(parcel, "Reattempt");
+      parcel.exception = "Client requested redelivery after review";
+      parcel.clientFeedback = feedback;
+      parcel.risk = Math.max(20, parcel.risk - 18);
+      state.operationsIssues.unshift({
+        id: nextId("OPS", state.operationsIssues),
+        branch: parcel.branch,
+        urgency: "urgent",
+        problem: "Client requested reattempt with consignee feedback",
+        awb: parcel.awb,
+        openedHours: 0,
+        resolved: false
+      });
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId: parcel.clientId,
+        type: "Redelivery request logged",
+        amount: 0,
+        status: "Pending operations reassignment",
+        ref: parcel.awb
+      });
+      saveState();
+      render();
+      toast(`${awb} sent to operations for redelivery with consignee feedback.`);
+    }
+
+    function resolveOperationIssue(id) {
+      const issue = state.operationsIssues.find(item => item.id === id);
+      if (!issue) return;
+      const reason = document.getElementById(`issueReason-${id}`)?.value.trim();
+      if (!reason || !reason.trim()) {
+        toast("Resolution reason is required.");
+        return;
+      }
+      const resolver = currentAdminName();
+      issue.resolved = true;
+      issue.resolvedHours = issue.openedHours || 1;
+      issue.resolvedBy = resolver;
+      issue.resolutionReason = reason.trim();
+      issue.resolvedAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+      const parcel = state.parcels.find(p => p.awb === issue.awb);
+      if (parcel) {
+        parcel.risk = Math.max(5, parcel.risk - 10);
+        parcel.statusAgeHours = Math.min(parcel.statusAgeHours || 0, 4);
+        parcel.resolutionRemark = reason.trim();
+        parcel.resolvedBy = resolver;
+        parcel.resolvedAt = issue.resolvedAt;
+        if (!parcel.exception.includes("Client requested")) parcel.exception = "";
+      }
+      state.resolvedAlerts.unshift({
+        id: nextId("DONE", state.resolvedAlerts),
+        awb: issue.awb || issue.id,
+        branch: issue.branch,
+        resolvedBy: resolver,
+        reason: reason.trim(),
+        alert: issue.problem,
+        solvedHours: issue.resolvedHours,
+        resolvedAt: issue.resolvedAt
+      });
+      saveState();
+      render();
+      toast(`${id} moved to resolved with solve time.`);
+    }
+
+    function createTicket() {
+      const title = document.getElementById("ticketTitle")?.value.trim();
+      const awb = document.getElementById("ticketAwb")?.value.trim().toUpperCase();
+      const message = document.getElementById("ticketMessage")?.value.trim();
+      if (!title || !message) {
+        toast("Ticket title and message are required.");
+        return;
+      }
+      const ticket = {
+        id: nextId("TCK", state.tickets || []),
+        sourceKey: `manual:${Date.now()}`,
+        tier: document.getElementById("ticketTier").value,
+        title,
+        from: document.getElementById("ticketFrom").value,
+        to: document.getElementById("ticketTo").value,
+        branch: document.getElementById("ticketBranch").value,
+        awb,
+        message,
+        createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}`,
+        ageHours: 0,
+        status: "Open",
+        escalated: false,
+        replies: []
+      };
+      state.tickets.unshift(ticket);
+      state.ticketNotifications.unshift({ text: `${ticket.id} created by ${ticket.from} and routed to ${ticket.to}.`, at: ticket.createdAt, level: ticket.tier === "emergency" ? "bad" : "info" });
+      ["ticketTitle", "ticketAwb", "ticketMessage"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+      saveState();
+      render();
+      toast(`${ticket.id} created and sent to ${ticket.to}.`);
+    }
+
+    function resolveTicket(id) {
+      const ticket = state.tickets.find(item => item.id === id);
+      if (!ticket) return;
+      const reply = document.getElementById(`ticketReply-${id}`)?.value.trim();
+      const proof = document.getElementById(`ticketProof-${id}`)?.value.trim();
+      if (!reply) {
+        toast("Resolve reply is required.");
+        return;
+      }
+      const resolvedAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+      ticket.status = "Resolved";
+      ticket.resolutionReply = reply;
+      ticket.proof = proof || "No image/proof reference added";
+      ticket.resolvedBy = currentAdminName();
+      ticket.resolvedAt = resolvedAt;
+      ticket.solvedHours = ticketAgeHours(ticket);
+      ticket.replies = Array.isArray(ticket.replies) ? ticket.replies : [];
+      ticket.replies.push({ by: ticket.resolvedBy, at: resolvedAt, message: reply, proof: ticket.proof });
+
+      state.operationsIssues.forEach(issue => {
+        if (!issue.resolved && (ticket.sourceKey === `ops:${issue.id}` || issue.awb === ticket.awb)) {
+          issue.resolved = true;
+          issue.resolvedHours = ticket.solvedHours || issue.openedHours || 1;
+          issue.resolvedBy = ticket.resolvedBy;
+          issue.resolutionReason = reply;
+          issue.resolvedAt = resolvedAt;
+        }
+      });
+
+      const parcel = state.parcels.find(p => p.awb === ticket.awb);
+      if (parcel) {
+        parcel.resolutionRemark = reply;
+        parcel.resolvedBy = ticket.resolvedBy;
+        parcel.resolvedAt = resolvedAt;
+        parcel.risk = Math.max(5, Number(parcel.risk || 0) - 10);
+      }
+
+      state.resolvedAlerts.unshift({
+        id: nextId("DONE", state.resolvedAlerts),
+        awb: ticket.awb || ticket.id,
+        branch: ticket.branch,
+        resolvedBy: ticket.resolvedBy,
+        reason: reply,
+        alert: ticket.title,
+        solvedHours: ticket.solvedHours,
+        resolvedAt
+      });
+      state.ticketNotifications.unshift({ text: `${ticket.id} resolved by ${ticket.resolvedBy}. ${ticket.from} has been notified.`, at: resolvedAt, level: "good" });
+      saveState();
+      render();
+      toast(`${ticket.id} resolved and notification sent to ${ticket.from}.`);
+    }
+
+    function createSack() {
+      const [from, to] = document.getElementById("sackRoute").value.split("|");
+      const expected = Number(document.getElementById("sackExpected").value);
+      if (!expected || expected < 1) {
+        toast("Expected parcel count is required before creating a sack.");
+        return;
+      }
+      const routeCode = `${from.slice(0, 3).toUpperCase()}-${to.slice(0, 3).toUpperCase()}`.replace(/\s/g, "");
+      const sack = {
+        id: `SACK-${routeCode}-${String(state.transit.length + state.completedSacks.length + 1).padStart(2, "0")}`,
+        from,
+        to,
+        expected,
+        scanned: expected,
+        demanifested: 0,
+        health: 100,
+        status: "Active",
+        type: "parcel sack"
+      };
+      state.transit.unshift(sack);
+      saveState();
+      render();
+      toast(`${sack.id} created. Warehouse manifest scanned ${expected}/${expected} parcels into the sack.`);
+    }
+
+    function demanifestSack() {
+      const id = document.getElementById("activeSackSelect").value;
+      const sack = state.transit.find(t => t.id === id);
+      const batch = Number(document.getElementById("sackScanBatch").value);
+      if (!sack) {
+        toast("Select an active sack first.");
+        return;
+      }
+      sack.demanifested = Math.min(sack.scanned, sack.demanifested + Math.max(1, batch || 1));
+      sack.health = percent(sack.demanifested, sack.expected);
+      if (sack.demanifested >= sack.expected) {
+        sack.status = "Complete";
+        state.completedSacks.unshift({
+          id: sack.id,
+          from: sack.from,
+          to: sack.to,
+          expected: sack.expected,
+          scanned: sack.scanned,
+          demanifested: sack.demanifested,
+          completedAt: `${new Date().toISOString().slice(0, 10)} ${time()}`
+        });
+        toast(`${sack.id} demanifested 100% and moved to completion history.`);
+      } else {
+        state.operationsIssues.unshift({
+          id: nextId("OPS", state.operationsIssues),
+          branch: sack.to,
+          urgency: "super urgent",
+          problem: `${sack.expected - sack.demanifested} parcels missing during demanifest for ${sack.id}`,
+          awb: sack.id,
+          openedHours: 0,
+          resolved: false
+        });
+        toast(`${sack.id} not fully demanifested. Highest escalation created.`);
+      }
+      saveState();
+      render();
+    }
+
+    function setSackMode(mode) {
+      state.activeSackMode = mode;
+      saveState();
+      renderAdmin();
+    }
+
+    function addRider() {
+      const name = document.getElementById("newRiderName").value.trim();
+      const username = document.getElementById("newRiderUser").value.trim();
+      const password = (document.getElementById("newRiderPassword").value || "").trim();
+      const branch = document.getElementById("newRiderBranch").value;
+      const cashLimit = Number(document.getElementById("newRiderLimit").value);
+      if (!name || !username || !password || !cashLimit || cashLimit < 1) {
+        toast("Rider name, username, password, and cash limit are mandatory.");
+        return;
+      }
+      const id = nextId("R", state.riders);
+      state.riders.push({
+        id,
+        name,
+        username,
+        password,
+        branch,
+        manager: document.getElementById("newRiderManager").value,
+        cashHeld: 0,
+        cashLimit,
+        scans: 0,
+        fakeRisk: 5,
+        access: "Active",
+        expenses: 0
+      });
+      state.users.unshift({
+        id: nextId("USR", state.users),
+        name,
+        email: username,
+        username,
+        password,
+        role: "Rider",
+        accessSide: "Rider App",
+        branch,
+        clientId: "",
+        riderId: id,
+        permissions: ["rider-route", "scan", "delivery-proof", "cash-submit"],
+        status: "Active"
+      });
+      saveState();
+      render();
+      showAdminTab("riders-summary");
+      toast(`${id} created for ${branch}. Rider can log in with username "${username}" and the set password.`);
+    }
+
+    function addRiderExpense() {
+      const rider = riderById(document.getElementById("riderCashSelect").value);
+      const amount = Number(document.getElementById("riderExpenseAmount").value);
+      const type = document.getElementById("riderExpenseType").value;
+      if (!rider || !amount || amount < 1) {
+        toast("Expense amount is mandatory.");
+        return;
+      }
+      rider.expenses = (rider.expenses || 0) + amount;
+      rider.cashHeld = Math.max(0, rider.cashHeld - amount);
+      const id = nextId("EXP", state.expenses);
+      state.expenses.unshift({
+        id,
+        name: `${type} - ${rider.name}`,
+        type,
+        amount,
+        owner: rider.manager || rider.name,
+        status: "Pending cash deduction",
+        riderId: rider.id
+      });
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId: state.client.id || "CL-0001",
+        type: "Rider expense deducted before cash collection",
+        amount,
+        status: "Pending finance approval",
+        ref: `${rider.id} ${type}`
+      });
+      saveState();
+      render();
+      toast(`${money(amount)} ${type} expense deducted before collecting ${rider.name}'s cash.`);
+    }
+
+    function collectRiderCash() {
+      const rider = riderById(document.getElementById("riderCashSelect").value);
+      const parcels = state.parcels.filter(p => p.rider === rider.id && isDeliveredLedgerParcel(p) && !p.cashReceived);
+      const amount = parcels.reduce((sum, p) => sum + p.cod, 0);
+      if (!parcels.length) {
+        toast("No delivered COD parcels are pending cash collection for this rider.");
+        return;
+      }
+      parcels.forEach(parcel => {
+        parcel.cashReceived = true;
+        parcel.exception = parcel.exception.replace("Cash above rider limit", "");
+        if (!parcel.steps.includes("Branch cash received")) parcel.steps.push("Branch cash received");
+      });
+      rider.cashHeld = Math.max(0, rider.cashHeld - amount);
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId: parcels[0].clientId,
+        type: "Rider cash received",
+        amount,
+        status: "Cash in hand true",
+        ref: `${rider.id} | ${parcels.map(p => p.awb).join(", ")}`
+      });
+      syncRiderAccess();
+      saveState();
+      render();
+      toast(`${money(amount)} cash collected from ${rider.name}. Delivered parcels are invoice-ready.`);
+    }
+
+    function createInvoice(clientId, selectedParcels = null) {
+      const parcels = selectedParcels || clientInvoiceParcels(clientId);
+      if (!parcels.length) {
+        toast("No delivered parcels are ready for invoice.");
+        return;
+      }
+      const totals = invoiceTotals(parcels);
+      const id = nextId("INV", state.invoices);
+      const invoice = {
+        id,
+        clientId,
+        parcelRefs: parcels.map(p => p.awb),
+        cod: totals.cod,
+        charges: totals.charges,
+        payable: totals.payable,
+        status: "Generated",
+        createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}`,
+        paidAt: "",
+        walletPushedAt: "",
+        summary: `${parcels.length} delivered parcel(s), COD ${money(totals.cod)}, delivery charges ${money(totals.charges)}, payable ${money(totals.payable)}`
+      };
+      state.invoices.unshift(invoice);
+      state.invoiceDraftRefs = [];
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId,
+        type: "Invoice created",
+        amount: invoice.payable,
+        status: "Generated only, not in wallet",
+        ref: id
+      });
+      saveState();
+      render();
+      toast(`${id} generated. Push to wallet when finance approves.`);
+    }
+
+    function markInvoicePaid(id) {
+      const invoice = state.invoices.find(item => item.id === id);
+      if (!invoice || invoice.status === "Paid") return;
+      if (invoice.status !== "Pushed to wallet") {
+        toast("Push invoice to wallet before marking it paid.");
+        return;
+      }
+      invoice.status = "Paid";
+      invoice.paidAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+      state.paymentLogs.unshift({
+        id: nextId("PAY", state.paymentLogs),
+        clientId: invoice.clientId,
+        type: "Invoice paid",
+        amount: invoice.payable,
+        status: "Paid",
+        ref: invoice.id
+      });
+      saveState();
+      render();
+      toast(`${id} marked paid. Client side invoice is completed.`);
+    }
+
+    function addReturnProof(awb) {
+      const parcel = state.parcels.find(p => p.awb === awb);
+      if (!parcel) return;
+      const proof = document.getElementById(`proof-${awb}`)?.value.trim();
+      if (!proof || !proof.trim()) {
+        toast("Return proof is required before manager can accept the return.");
+        return;
+      }
+      parcel.returnProof = proof.trim();
+      parcel.resolutionRemark = `Return proof attached: ${proof.trim()}`;
+      parcel.resolvedBy = currentAdminName();
+      parcel.resolvedAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+      saveState();
+      render();
+      toast(`${awb} return proof attached. Manager acceptance is now allowed.`);
+    }
+
+    function runAdminAction() {
+      const action = document.getElementById("adminAction").value;
+      const target = state.parcels.find(p => p.awb === state.selectedAwb) || state.parcels[0];
+      if (action === "advance") {
+        const nextSteps = ["Collected by rider", "Arrived at warehouse", "Parcel now in transit", "Parcel received at destination", "Parcel out for delivery", "Delivered"];
+        const currentIndex = Math.max(-1, nextSteps.indexOf(target.status));
+        const step = nextSteps[Math.min(nextSteps.length - 1, currentIndex + 1)];
+        if (step) {
+          setParcelStatus(target, step);
+          target.risk = Math.max(4, target.risk - 6);
+          if (step === "Delivered" && !target.steps.includes("COD collected")) {
+            target.steps.push("COD collected");
+            state.paymentLogs.unshift({
+              id: nextId("PAY", state.paymentLogs),
+              clientId: target.clientId,
+              type: "COD collected",
+              amount: target.cod,
+              status: "Rider holding",
+              ref: target.awb
+            });
+            state.paymentLogs.unshift({
+              id: nextId("PAY", state.paymentLogs),
+              clientId: target.clientId,
+              type: "Shipping fee deducted",
+              amount: target.fee,
+              status: "Ledger posted",
+              ref: target.awb
+            });
+          }
+          if (step === "Delivered") target.exception = "";
+        }
+        toast(`${target.awb} advanced. Client timeline updated instantly.`);
+      }
+      if (action === "cash") {
+        const rider = state.riders.find(r => r.id === target.rider) || state.riders[0];
+        if (!isDeliveredLedgerParcel(target)) {
+          toast(`${target.awb} is not delivered yet. Cash can only be received after delivered status.`);
+          saveState();
+          render();
+          return;
+        }
+        const deposit = target.cashReceived ? 0 : target.cod;
+        target.cashReceived = true;
+        if (!target.steps.includes("Branch cash received")) target.steps.push("Branch cash received");
+        rider.cashHeld = Math.max(0, rider.cashHeld - deposit);
+        target.exception = target.exception.replace("Cash above rider limit", "");
+        target.risk = Math.max(4, target.risk - 12);
+        state.paymentLogs.unshift({
+          id: nextId("PAY", state.paymentLogs),
+          clientId: target.clientId,
+          type: "Rider cash deposit",
+          amount: deposit,
+          status: "Cash in hand true",
+          ref: target.awb
+        });
+        syncRiderAccess();
+        toast(`${rider.name} cash deposit confirmed: ${money(deposit)}.`);
+      }
+      if (action === "settle") {
+        if (!isDeliveredLedgerParcel(target)) {
+          toast(`${target.awb} cannot settle. NovaX only pays delivered/COD-collected parcels.`);
+          saveState();
+          render();
+          return;
+        }
+        if (!target.steps.includes("Client settled")) target.steps.push("Client settled");
+        target.updated = time();
+        target.statusAgeHours = 0;
+        state.paymentLogs.unshift({
+          id: nextId("PAY", state.paymentLogs),
+          clientId: target.clientId,
+          type: "Client payout posted",
+          amount: Math.max(0, target.cod - target.fee),
+          status: "Ledger posted",
+          ref: target.awb
+        });
+        toast(`${target.awb} delivered ledger is ready for client payable settlement.`);
+      }
+      if (action === "flag") {
+        target.exception = "Manual audit required by operations head";
+        target.risk = Math.min(96, target.risk + 26);
+        target.statusAgeHours = Math.max(24, target.statusAgeHours || 0);
+        state.operationsIssues.unshift({
+          id: nextId("OPS", state.operationsIssues),
+          branch: target.branch,
+          urgency: "urgent",
+          problem: "Manual audit required by operations head",
+          awb: target.awb,
+          openedHours: 0,
+          resolved: false
+        });
+        target.updated = time();
+        toast(`${target.awb} flagged. AI escalation created.`);
+      }
+      saveState();
+      render();
+    }
+
+    function riderScan() {
+      const target = state.parcels.find(p => p.rider === "R-22") || state.parcels[0];
+      state.selectedAwb = target.awb;
+      if (target.stage < target.totalStages) {
+        const nextStatus = target.status === "Parcel out for delivery" ? "Delivered" : "Collected by rider";
+        setParcelStatus(target, nextStatus);
+        if (nextStatus === "Delivered" && !target.steps.includes("COD collected")) target.steps.push("COD collected");
+        if (!target.steps.includes("GPS scan verified")) target.steps.push("GPS scan verified");
+        target.risk = Math.max(5, target.risk - 8);
+      }
+      saveState();
+      render();
+      toast(`Rider scan verified for ${target.awb}. Admin and client views refreshed.`);
+    }
+
+    function clearAdminFilters() {
+      document.getElementById("adminOrderSearch").value = "";
+      document.getElementById("adminOrderClientFilter").value = "";
+      document.getElementById("adminOrderStatusFilter").value = "";
+      document.getElementById("adminOrderCityFilter").value = "";
+      document.getElementById("adminOrderOriginFilter").value = "";
+      document.getElementById("adminOrderBranchFilter").value = "";
+      document.getElementById("adminOrderAlertFilter").value = "";
+      renderAdmin();
+      toast("Admin parcel filters cleared.");
+    }
+
+    function clearOrderReportFilters() {
+      document.getElementById("orderReportSearch").value = "";
+      document.getElementById("orderReportStatusFilter").value = "";
+      document.getElementById("orderReportClientFilter").value = "";
+      renderAdmin();
+      toast("Order report filters cleared.");
+    }
+
+    function orderReportFilteredParcels() {
+      const search = document.getElementById("orderReportSearch")?.value.trim().toLowerCase() || "";
+      const status = document.getElementById("orderReportStatusFilter")?.value || "";
+      const clientId = document.getElementById("orderReportClientFilter")?.value || "";
+      return state.parcels.filter(parcel => {
+        const client = clientById(parcel.clientId);
+        const haystack = `${parcel.awb} ${client.name} ${client.id} ${parcel.consignee} ${parcel.city} ${parcel.status} ${parcel.address}`.toLowerCase();
+        return haystack.includes(search)
+          && (!status || parcel.status === status)
+          && (!clientId || parcel.clientId === clientId);
+      });
+    }
+
+    function downloadOrderReportCsv() {
+      const rows = orderReportFilteredParcels();
+      const header = ["AWB","Client ID","Client Name","Consignee","Address","City","Origin","COD","Weight","Status","Current Clock","Journey Aging","Alert","Last Processed By","Last Processed At","Last Processed Branch"];
+      const csvRows = [header, ...rows.map(parcel => {
+        const client = clientById(parcel.clientId);
+        const alert = alertForParcel(parcel);
+        const process = lastProcess(parcel);
+        return [
+          parcel.awb,
+          client.id,
+          client.name,
+          parcel.consignee,
+          parcel.address,
+          parcel.city,
+          parcelOrigin(parcel),
+          parcel.cod,
+          parcel.weight,
+          parcel.status,
+          agingLabel(agingHours(parcel)),
+          deliveryJourneyLabel(parcel),
+          `${alert.label} - ${alert.due}`,
+          process.by,
+          process.at,
+          process.branch
+        ];
+      })].map(row => row.map(value => `"${String(value ?? "").replaceAll('"','""')}"`).join(",")).join("\n");
+      const blob = new Blob([csvRows], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `novax-order-report-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast(`${rows.length} order report row(s) downloaded.`);
+    }
+
+    function printAwb() {
+      state.activeClientTab = "awbLabel";
+      saveState();
+      renderClientModules();
+      window.print();
+    }
+
+    function renderLandingTrack() {
+      const input = document.getElementById("landingTrackInput");
+      const result = document.getElementById("landingTrackResult");
+      if (!input || !result) return;
+      const awb = input.value.trim().toUpperCase();
+      const parcel = state.parcels.find(p => p.awb.toUpperCase() === awb);
+      if (!parcel) {
+        result.innerHTML = `<div class="ops-card alert-row"><strong>No parcel found</strong><p>Check the NovaX tracking ID and try again.</p></div>`;
+        return;
+      }
+      const alert = alertForParcel(parcel);
+      result.innerHTML = `
+        <div class="ops-card ${alert.level === "critical" ? "alert-row critical" : ""}">
+          <div class="ops-card-head">
+            <strong>${parcel.awb}</strong>
+            <span class="chip ${statusClass(parcel)}">${parcel.status}</span>
+          </div>
+          <p>${parcel.consignee} | ${parcel.city} | Updated ${parcel.updated}. Current clock: ${agingLabel(agingHours(parcel))}.</p>
+          ${parcel.resolutionRemark ? `<div class="resolved-note"><strong>Admin remarks:</strong> ${parcel.resolutionRemark}</div>` : ""}
+          <button class="ghost-btn" style="margin-top:10px" onclick="openTrackedParcel('${parcel.awb}')">Open Full Journey</button>
+        </div>
+      `;
+    }
+
+    function openTrackedParcel(awb) {
+      state.selectedAwb = awb;
+      state.activeClientTab = "dashboard";
+      saveState();
+      navigateWithHandoff("client", () => {
+        render();
+        const journeyPanel = document.getElementById("clientJourney");
+        if (journeyPanel) journeyPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    }
+
+    document.querySelectorAll("[data-view], [data-view-link]").forEach(btn => {
+      btn.addEventListener("click", () => navigateWithHandoff(btn.dataset.view || btn.dataset.viewLink));
+    });
+
+    document.querySelectorAll("[data-auth]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const action = btn.dataset.auth === "signup" ? "signup" : "signin";
+        navigateWithHandoff("client", () => {
+          showClientTab(action === "signup" ? "newBooking" : "dashboard");
+          toast(action === "signup" ? "Signup flow opens the client onboarding and first booking workspace." : "Sign in opens the live client dashboard.");
+        });
+      });
+    });
+
+    document.querySelectorAll(".client-tab").forEach(btn => {
+      btn.addEventListener("click", () => showClientTab(btn.dataset.clientTab));
+    });
+
+    document.querySelectorAll("[data-client-tab]:not(.client-tab)").forEach(btn => {
+      btn.addEventListener("click", () => showClientTab(btn.dataset.clientTab));
+    });
+
+    document.querySelectorAll(".admin-nav-main[data-admin-tab], .admin-subtab, .admin-tab").forEach(btn => {
+      btn.addEventListener("click", () => showAdminTab(btn.dataset.adminTab));
+    });
+
+    document.querySelectorAll("[data-admin-group-toggle]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const group = btn.closest(".admin-nav-group");
+        if (!group) return;
+        const groupName = btn.dataset.adminGroupToggle;
+        const groupTabs = ADMIN_NAV_GROUPS[groupName] || [];
+        const alreadyActive = group.dataset.adminGroup === getAdminGroupForTab(state.activeAdminTab);
+        if (alreadyActive && group.classList.contains("open")) {
+          group.classList.remove("manual-open", "open");
+          btn.setAttribute("aria-expanded", "false");
+          return;
+        }
+        if (groupTabs.length) showAdminTab(groupTabs[0]);
+      });
+    });
+
+    document.getElementById("clientMenuToggle").addEventListener("click", () => {
+      const menu = document.getElementById("clientMenu");
+      const open = menu.classList.toggle("open");
+      document.getElementById("clientMenuToggle").setAttribute("aria-expanded", String(open));
+    });
+
+    document.getElementById("clientSearch").addEventListener("input", renderClientParcels);
+    document.getElementById("applyDateRangeBtn").addEventListener("click", applyClientDateRange);
+    document.getElementById("adminOrderSearch").addEventListener("input", renderAdmin);
+    document.getElementById("adminOrderClientFilter").addEventListener("change", renderAdmin);
+    document.getElementById("adminOrderStatusFilter").addEventListener("change", renderAdmin);
+    document.getElementById("adminOrderCityFilter").addEventListener("change", renderAdmin);
+    document.getElementById("adminOrderOriginFilter").addEventListener("change", renderAdmin);
+    document.getElementById("adminOrderBranchFilter").addEventListener("change", renderAdmin);
+    document.getElementById("adminOrderAlertFilter").addEventListener("change", renderAdmin);
+    document.getElementById("clearAdminFiltersBtn").addEventListener("click", clearAdminFilters);
+    document.getElementById("orderReportSearch").addEventListener("input", renderAdmin);
+    document.getElementById("orderReportStatusFilter").addEventListener("change", renderAdmin);
+    document.getElementById("orderReportClientFilter").addEventListener("change", renderAdmin);
+    document.getElementById("clearOrderReportFiltersBtn").addEventListener("click", clearOrderReportFilters);
+    document.getElementById("downloadOrderReportCsvBtn").addEventListener("click", downloadOrderReportCsv);
+    document.getElementById("processingAwbInput").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        lookupProcessingParcel();
+      }
+    });
+    ["processingAwbInput", "manifestScanInput", "demanifestScanInput"].forEach(id => {
+      document.getElementById(id).addEventListener("paste", () => setTimeout(() => formatScanInput(id), 0));
+      document.getElementById(id).addEventListener("input", () => scheduleScanFormat(id));
+    });
+    document.getElementById("processingLoadBatchBtn").addEventListener("click", lookupProcessingParcel);
+    document.getElementById("processingClearBatchBtn").addEventListener("click", clearProcessingBatch);
+    document.getElementById("processingStatusSelect").addEventListener("change", event => {
+      state.pendingProcessingStatus = event.target.value;
+      saveState();
+      renderAdmin();
+    });
+    document.getElementById("processingRiderSelect").addEventListener("change", event => {
+      state.pendingProcessingRider = event.target.value;
+      saveState();
+    });
+    document.getElementById("processingConfirmBtn").addEventListener("click", requestProcessingAuth);
+    document.getElementById("processingSubmitBtn").addEventListener("click", submitProcessingUpdate);
+    document.getElementById("manifestLoadBtn").addEventListener("click", loadManifestScans);
+    document.getElementById("manifestClearBtn").addEventListener("click", clearManifestScans);
+    document.getElementById("manifestCreateBtn").addEventListener("click", createManifestFromScans);
+    document.getElementById("manifestFrom").addEventListener("change", renderAdmin);
+    document.getElementById("manifestTo").addEventListener("change", renderAdmin);
+    document.getElementById("demanifestSelect").addEventListener("change", event => {
+      state.activeDemanifestId = event.target.value;
+    
