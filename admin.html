@@ -5606,6 +5606,7 @@
         parcel.service = parcel.service || "COD Standard";
         parcel.totalStages = STATUS_TAGS.length - 1;
         parcel.stage = Math.max(0, STATUS_TAGS.indexOf(parcel.status));
+        parcel.statusSince = parcel.statusSince || new Date(Date.now() - Number(parcel.statusAgeHours || 0) * 3600000).toISOString();
         parcel.steps = Array.isArray(parcel.steps) && parcel.steps.length ? parcel.steps : ["New booked"];
         parcel.processHistory = Array.isArray(parcel.processHistory) ? parcel.processHistory : parcel.steps.map((step, stepIndex) => ({
           status: step,
@@ -5711,6 +5712,17 @@
     function processingParcels() {
       const batch = parcelsByAwbs(state.processingBatchAwbs || []);
       return batch.length ? batch : (processingParcel() ? [processingParcel()] : []);
+    }
+
+    function hubCity(branch) {
+      return String(branch || "").replace(/\s*Hub$/i, "").trim();
+    }
+
+    function manifestRouteMismatch(parcel, toBranch) {
+      const dest = String((parcel && parcel.city) || "").trim().toLowerCase();
+      const to = hubCity(toBranch).toLowerCase();
+      if (!dest || !to) return false;
+      return dest !== to;
     }
 
     function manifestLogs() {
@@ -5824,14 +5836,23 @@
     }
 
     function agingLabel(hours = 0) {
+      if (hours < 1) return "just now";
       if (hours < 24) return `${Math.max(0, Math.round(hours))}h`;
       const days = Math.floor(hours / 24);
       const remaining = Math.round(hours % 24);
       return remaining ? `${days}d ${remaining}h` : `${days}d`;
     }
 
+    function agingHours(parcel) {
+      if (parcel && parcel.statusSince) {
+        const ms = Date.now() - new Date(parcel.statusSince).getTime();
+        if (Number.isFinite(ms)) return Math.max(0, ms / 3600000);
+      }
+      return Number((parcel && parcel.statusAgeHours) || 0);
+    }
+
     function alertForParcel(parcel) {
-      const hours = Number(parcel.statusAgeHours || 0);
+      const hours = agingHours(parcel);
       if (parcel.status === "Parcel now in transit") {
         if (hours >= 72) return { level: "critical", label: "Red alert: transit over 3 days", due: "AI + support must act now" };
         if (hours >= 48) return { level: "warning", label: "Transit aging", due: "Escalate before 3 days" };
@@ -5855,6 +5876,7 @@
       const stamp = `${new Date().toISOString().slice(0, 10)} ${exactTime}`;
       parcel.status = status;
       parcel.statusAgeHours = 0;
+      parcel.statusSince = new Date().toISOString();
       parcel.updated = exactTime;
       parcel.stage = Math.max(0, STATUS_TAGS.indexOf(status));
       if (!parcel.steps.includes(status)) parcel.steps.push(status);
@@ -6405,6 +6427,7 @@
       });
       document.querySelectorAll(".admin-nav-group").forEach(group => {
         const isActiveGroup = group.dataset.adminGroup === activeAdminGroup;
+        if (!isActiveGroup) group.classList.remove("manual-open");
         group.classList.toggle("open", isActiveGroup || group.classList.contains("manual-open"));
         const trigger = group.querySelector("[data-admin-group-toggle]");
         if (trigger) {
@@ -6496,7 +6519,7 @@
             <td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${p.updated}</span></td>
             <td>${client.id}<br><strong>${client.name}</strong></td>
             <td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span></td>
-            <td><strong>${agingLabel(p.statusAgeHours)}</strong><br><span class="footer-note">status clock</span></td>
+            <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">status clock</span></td>
             <td>
               ${alert.level === "critical" ? `<span class="siren-chip">AI escalate now</span><br>` : ""}
               <span class="chip ${urgencyClass(alert.level)}">${alert.label}</span><br><span class="footer-note">${alert.due}</span>
@@ -6573,7 +6596,7 @@
               <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>
               <div class="footer-note">${alert.label}</div>
             </td>
-            <td><strong>${agingLabel(p.statusAgeHours)}</strong><br><span class="footer-note">${p.status === "Parcel now in transit" ? "transit clock" : "status clock"}</span></td>
+            <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status === "Parcel now in transit" ? "transit clock" : "status clock"}</span></td>
             <td>
               <strong>${process.by}</strong><br><span class="footer-note">${process.at}</span><br>
               <span class="footer-note">${process.branch} | ${transitStarted ? "transit timer active" : "pre-transit"}</span>
@@ -6611,7 +6634,7 @@
             <td>${client.id}<br><strong>${client.name}</strong></td>
             <td>${p.consignee}<br><span class="footer-note">${p.address}</span></td>
             <td><strong>${deliveryJourneyLabel(p)}</strong><br><span class="footer-note">Booked ${p.date || "system date"}</span></td>
-            <td><strong>${agingLabel(p.statusAgeHours)}</strong><br><span class="footer-note">${p.status}</span></td>
+            <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status}</span></td>
             <td>
               <div class="meter ${progress < 45 ? "amber" : ""}"><span style="width:${progress}%"></span></div>
               <div class="meter-caption"><span>${p.steps.length} scan logs</span><span>${progress}%</span></div>
@@ -6644,7 +6667,7 @@
               ${moneyBox("Shipper", client.name, client.id)}
               ${moneyBox("Parcels", processBatch.length, `${processBatch.map(p => p.status).slice(0, 2).join(", ")}`)}
               ${moneyBox("COD", money(processBatch.reduce((s, p) => s + p.cod, 0)), "batch total")}
-              ${moneyBox("Clock", agingLabel(processParcel.statusAgeHours), alert.label)}
+              ${moneyBox("Clock", agingLabel(agingHours(processParcel)), alert.label)}
             </div>
             <div class="resolved-note"><strong>Last processed:</strong> ${process.by} at ${process.at}. Branch: ${process.branch}.</div>
           `;
@@ -7091,13 +7114,18 @@
       const draftParcels = parcelsByAwbs(state.manifestDraftAwbs || []);
       const manifestPreview = document.getElementById("manifestScanPreview");
       if (manifestPreview) {
+        const manifestToVal = document.getElementById("manifestTo")?.value || "";
         const missing = (state.manifestDraftAwbs || []).filter(awb => !state.parcels.some(p => p.awb === awb));
+        const offRoute = draftParcels.filter(p => manifestRouteMismatch(p, manifestToVal));
+        const onRoute = draftParcels.filter(p => !manifestRouteMismatch(p, manifestToVal));
         manifestPreview.innerHTML = `
-          <div class="ops-card">
-            <div class="ops-card-head"><strong>${draftParcels.length} valid scans</strong><span class="chip ${missing.length ? "warn" : "good"}">${missing.length} missing</span></div>
+          <div class="ops-card ${offRoute.length ? "alert-row critical" : ""}">
+            <div class="ops-card-head"><strong>${draftParcels.length} valid scans</strong><span class="chip ${(missing.length || offRoute.length) ? "bad" : "good"}">${missing.length} missing | ${offRoute.length} off-route</span></div>
             <p>${draftParcels.map(p => p.awb).join(", ") || "Scan AWBs to prepare a manifest."}</p>
+            ${offRoute.length ? `<div class="footer-note" style="color:#8c271f;font-weight:800">Remove ${offRoute.length} off-route parcel(s) before this manifest to ${hubCity(manifestToVal) || "destination"} can be created.</div>` : ""}
           </div>
-          ${draftParcels.map(p => `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip ${statusClass(p)}">${p.status}</span></div><p>${p.consignee} | ${p.city} | ${p.branch}</p></div>`).join("")}
+          ${offRoute.map(p => `<div class="ops-card alert-row critical"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip bad">WRONG ROUTE</span></div><p>Destined for ${p.city}, not ${hubCity(manifestToVal) || "this route"}. Remove before creating manifest.</p></div>`).join("")}
+          ${onRoute.map(p => `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip ${statusClass(p)}">${p.status}</span></div><p>${p.consignee} | ${p.city} | ${p.branch}</p></div>`).join("")}
           ${missing.map(awb => `<div class="ops-card alert-row critical"><strong>${awb}</strong><p>Not found in parcel database.</p></div>`).join("")}
         `;
       }
@@ -7389,7 +7417,7 @@
         loader.classList.remove("show");
         loader.setAttribute("aria-hidden", "true");
         if (typeof callback === "function") callback();
-      }, 3000);
+      }, 600);
     }
 
     function navigateWithHandoff(targetView, after) {
@@ -7557,11 +7585,19 @@
       }
       const from = document.getElementById("manifestFrom").value;
       const to = document.getElementById("manifestTo").value;
+      const offRoute = parcels.filter(p => manifestRouteMismatch(p, to));
+      if (offRoute.length) {
+        toast(`${offRoute.length} off-route parcel(s) (${offRoute.map(p => p.awb).join(", ")}) are not going to ${hubCity(to)}. Remove them before creating this manifest.`);
+        return;
+      }
       const id = `MAN-${from.slice(0,3).toUpperCase()}-${to.slice(0,3).toUpperCase()}-${String(state.transit.length + state.completedSacks.length + 1).padStart(3, "0")}`.replace(/\s/g, "");
       parcels.forEach(parcel => setParcelStatus(parcel, "Parcel now in transit", { name: "Manifest Desk", username: "manifest", branch: `${from} to ${to}` }));
       state.transit.unshift({ id, from, to, expected: parcels.length, scanned: parcels.length, demanifested: 0, health: 100, status: "Active", type: "parcel manifest", parcels: parcels.map(p => p.awb), demanifestedAwbs: [], createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}` });
-      clearManifestScans();
-      toast(`${id} created. ${parcels.length} parcel(s) moved to transit.`);
+      state.manifestDraftAwbs = [];
+      document.getElementById("manifestScanInput").value = "";
+      saveState();
+      showAdminTab("manifest-transit");
+      toast(`${id} created. ${parcels.length} parcel(s) now in transit and listed in Manifest Summary.`);
     }
 
     function loadDemanifestScans() {
@@ -8657,7 +8693,7 @@
           parcel.cod,
           parcel.weight,
           parcel.status,
-          agingLabel(parcel.statusAgeHours),
+          agingLabel(agingHours(parcel)),
           deliveryJourneyLabel(parcel),
           `${alert.label} - ${alert.due}`,
           process.by,
@@ -8699,7 +8735,7 @@
             <strong>${parcel.awb}</strong>
             <span class="chip ${statusClass(parcel)}">${parcel.status}</span>
           </div>
-          <p>${parcel.consignee} | ${parcel.city} | Updated ${parcel.updated}. Current clock: ${agingLabel(parcel.statusAgeHours)}.</p>
+          <p>${parcel.consignee} | ${parcel.city} | Updated ${parcel.updated}. Current clock: ${agingLabel(agingHours(parcel))}.</p>
           ${parcel.resolutionRemark ? `<div class="resolved-note"><strong>Admin remarks:</strong> ${parcel.resolutionRemark}</div>` : ""}
           <button class="ghost-btn" style="margin-top:10px" onclick="openTrackedParcel('${parcel.awb}')">Open Full Journey</button>
         </div>
@@ -8747,9 +8783,15 @@
       btn.addEventListener("click", () => {
         const group = btn.closest(".admin-nav-group");
         if (!group) return;
-        group.classList.toggle("manual-open");
-        const isOpen = group.classList.toggle("open");
-        btn.setAttribute("aria-expanded", String(isOpen));
+        const groupName = btn.dataset.adminGroupToggle;
+        const groupTabs = ADMIN_NAV_GROUPS[groupName] || [];
+        const alreadyActive = group.dataset.adminGroup === getAdminGroupForTab(state.activeAdminTab);
+        if (alreadyActive && group.classList.contains("open")) {
+          group.classList.remove("manual-open", "open");
+          btn.setAttribute("aria-expanded", "false");
+          return;
+        }
+        if (groupTabs.length) showAdminTab(groupTabs[0]);
       });
     });
 
@@ -8800,6 +8842,8 @@
     document.getElementById("manifestLoadBtn").addEventListener("click", loadManifestScans);
     document.getElementById("manifestClearBtn").addEventListener("click", clearManifestScans);
     document.getElementById("manifestCreateBtn").addEventListener("click", createManifestFromScans);
+    document.getElementById("manifestFrom").addEventListener("change", renderAdmin);
+    document.getElementById("manifestTo").addEventListener("change", renderAdmin);
     document.getElementById("demanifestSelect").addEventListener("change", event => {
       state.activeDemanifestId = event.target.value;
       saveState();
