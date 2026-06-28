@@ -6283,12 +6283,12 @@
         ].join("");
       }
 
-      const rider = state.riders[1];
+      const rider = state.riders[1] || state.riders[0] || {};
       document.getElementById("riderWallet").innerHTML = [
-        moneyBox("Cash held", money(rider.cashHeld), "must submit before new route"),
-        moneyBox("Cash limit", money(rider.cashLimit), "auto block threshold"),
-        moneyBox("Scan count", rider.scans, "today verified actions"),
-        moneyBox("Fake attempt risk", `${rider.fakeRisk}%`, "GPS and call proof")
+        moneyBox("Cash held", money(rider.cashHeld||0), "must submit before new route"),
+        moneyBox("Cash limit", money(rider.cashLimit||0), "auto block threshold"),
+        moneyBox("Scan count", rider.scans||0, "today verified actions"),
+        moneyBox("Fake attempt risk", `${rider.fakeRisk||0}%`, "GPS and call proof")
       ].join("");
     }
 
@@ -7499,8 +7499,49 @@
       }
     }
 
+    function syncRidersFromUsers() {
+      if (!Array.isArray(state.riders)) state.riders = [];
+      if (!Array.isArray(state.users)) return;
+      let changed = false;
+      const claimed = new Set(state.users.map(u => u.riderId).filter(Boolean));
+      state.users.forEach(u => {
+        const isRider = u.accessSide === "Rider App" || u.role === "Rider";
+        if (!isRider) return;
+        if (u.riderId && state.riders.some(r => r.id === u.riderId)) return;
+        let rider = state.riders.find(r => r.name === u.name && r.branch === u.branch && !claimed.has(r.id));
+        if (rider) {
+          u.riderId = rider.id;
+          claimed.add(rider.id);
+          if (!rider.username) rider.username = u.username || u.email || rider.id;
+          if (!rider.password) rider.password = u.password || "";
+          changed = true;
+          return;
+        }
+        const id = (u.riderId && !state.riders.some(r => r.id === u.riderId)) ? u.riderId : nextId("R", state.riders);
+        state.riders.push({
+          id,
+          name: u.name,
+          username: u.username || u.email || id,
+          password: u.password || "",
+          branch: u.branch || "Karachi Hub",
+          manager: "Operations",
+          cashHeld: 0,
+          cashLimit: 50000,
+          scans: 0,
+          fakeRisk: 5,
+          access: "Active",
+          expenses: 0
+        });
+        u.riderId = id;
+        claimed.add(id);
+        changed = true;
+      });
+      if (changed) saveState();
+    }
+
     function render() {
       normalizeStateShape();
+      syncRidersFromUsers();
       renderMetrics();
       renderClientParcels();
       renderJourney();
