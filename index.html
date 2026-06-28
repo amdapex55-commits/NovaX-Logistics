@@ -36,9 +36,9 @@ a{text-decoration:none;color:inherit;}
 .nav a{padding:9px 13px;border-radius:10px;font-weight:700;font-size:14px;color:#294139;transition:background var(--speed),color var(--speed);}
 .nav a:hover{background:#e2f7ec;}
 .nav a.solid{background:#14c77b;color:#04130d;box-shadow:0 12px 24px rgba(20,199,123,.28);}
-.nav-toggle{display:none;width:42px;height:40px;border-radius:10px;background:var(--ink);place-items:center;}
+.nav-toggle{display:none;width:42px;height:40px;border-radius:10px;background:var(--ink);align-items:center;justify-content:center;flex-direction:column;gap:4px;border:0;padding:0;cursor:pointer;}
 .nav-toggle span{display:block;width:18px;height:2px;background:#fff;border-radius:2px;}
-.nav-toggle span+span{margin-top:4px;}
+.nav-toggle span+span{margin-top:0;}
 
 /* ===== Handoff intro ===== */
 .handoff{position:fixed;inset:0;z-index:90;display:grid;place-items:center;background:radial-gradient(circle at 50% 40%,#0b2a1f,#06140f 70%);transition:opacity .6s ease,visibility .6s;}
@@ -243,7 +243,7 @@ footer{padding:34px 0;text-align:center;color:var(--muted);font-size:13px;}
   .nav{display:none;}
   .nav.open{display:flex;position:absolute;top:64px;right:14px;left:14px;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:16px;padding:10px;box-shadow:var(--shadow);}
   .nav.open a{width:100%;}
-  .nav-toggle{display:grid;}
+  .nav-toggle{display:flex;}
   .cities-soon{grid-template-columns:1fr;}
 }
 @media (max-width:520px){ .stats{grid-template-columns:1fr 1fr;} .btn{flex:1;justify-content:center;} }
@@ -570,6 +570,8 @@ img,svg,canvas,video{max-width:100%;}
     <div class="signin-field"><label>Your phone number</label><input id="merchantPhone" placeholder="03113323923" maxlength="11"></div>
     <div class="signin-field"><label>Your address</label><textarea id="merchantAddress" placeholder="Pickup address"></textarea></div>
     <div class="signin-field"><label>What product do you sell?</label><input id="merchantProduct" placeholder="Fashion, cosmetics, electronics, etc."></div>
+    <div class="signin-field"><label>Login email</label><input id="merchantEmail" type="email" placeholder="you@store.com"></div>
+    <div class="signin-field"><label>Create password</label><input id="merchantPassword" type="password" placeholder="Choose a password"></div>
     <div class="signin-field"><label>Website link if any</label><input id="merchantWebsite" placeholder="https://yourstore.com"></div>
     <button class="btn primary" id="merchantSubmit" style="width:100%;justify-content:center;margin-top:14px">Submit Merchant Request</button>
     <div class="signin-note" id="merchantSignupNote">Your account will stay pending until NovaX sales or admin approves it.</div>
@@ -657,21 +659,24 @@ img,svg,canvas,video{max-width:100%;}
     var e=String(email||"").trim().toLowerCase();
     var rawPassword=String(password||"").trim();
     var state=readState();
+    function alias(o){ return [o.email,o.username,o.name,o.id,o.phone].some(function(v){ v=String(v||"").toLowerCase().trim(); return v && (v===e || v.replace(/\s+/g,".")===e || v.replace(/\s+/g,"")===e.replace(/\s+/g,"")); }); }
+    function notBlocked(s){ return String(s||"Active").toLowerCase()!=="blocked"; }
+    function setClient(c){ try{ state.client={ id:c.id, name:c.name, walletTopup:c.walletTopup||0, shippingDue:c.shippingDue||0, subAccounts:0, walletBalance:Number(c.walletBalance||0) }; saveState(state); }catch(err){} }
     var users=Array.isArray(state.users)?state.users:[];
-    var matchedUser=users.find(function(user){
-      return String(user.email||"").toLowerCase()===e || String(user.username||"").toLowerCase()===e || String(user.name||"").toLowerCase().replace(/\s+/g,".")===e || String(user.id||"").toLowerCase()===e;
-    });
-    if(matchedUser && String(matchedUser.status||"Active").toLowerCase()!=="blocked" && String(matchedUser.password||"")===rawPassword){
+    var matchedUser=users.find(function(u){ return alias(u); });
+    if(matchedUser && notBlocked(matchedUser.status) && String(matchedUser.password||"")===rawPassword){
       var side=String(matchedUser.accessSide||matchedUser.role||"").toLowerCase();
       if(side.includes("rider")) return "rider.html";
       if(side.includes("admin")) return "admin.html";
+      var cli=(state.clients||[]).find(function(c){ return c.id===matchedUser.clientId || String(c.email||"").toLowerCase()===String(matchedUser.email||"").toLowerCase(); });
+      if(cli) setClient(cli);
       return "client.html";
     }
+    var clients=Array.isArray(state.clients)?state.clients:[];
+    var matchedClient=clients.find(function(c){ return alias(c); });
+    if(matchedClient && notBlocked(matchedClient.status) && String(matchedClient.password||"")===rawPassword){ setClient(matchedClient); return "client.html"; }
     var riders=Array.isArray(state.riders)?state.riders:[];
-    var matchedRider=riders.find(function(rider){
-      var aliases=[rider.id,rider.name,rider.username].map(function(v){return String(v||"").toLowerCase().replace(/\s+/g,".");});
-      return aliases.includes(e);
-    });
+    var matchedRider=riders.find(function(r){ return alias(r); });
     if(matchedRider && String(matchedRider.access||"Active").toLowerCase()!=="blocked" && String(matchedRider.password||"")===rawPassword) return "rider.html";
     return "";
   }
@@ -702,9 +707,13 @@ img,svg,canvas,video{max-width:100%;}
     var email=(document.getElementById("signinEmail").value||"").trim();
     var pass=(document.getElementById("signinPassword").value||"").trim();
     if(!email||!pass){ alert("Email/username and password are required."); return; }
-    signinTarget=routeForCredentials(email,pass);
-    if(!signinTarget){ alert("Login blocked. This email/username and password is not approved in NovaX database."); return; }
-    playHandoff(function(){ window.location.href=signinTarget; });
+    var btn=this; btn.disabled=true; var oldTxt=btn.textContent; btn.textContent="Checking database…";
+    __nvPullCloud(function(){
+      btn.disabled=false; btn.textContent=oldTxt;
+      var target=routeForCredentials(email,pass);
+      if(!target){ alert("Login blocked. This email/username and password is not approved in NovaX database."); return; }
+      playHandoff(function(){ window.location.href=target; });
+    });
   });
   if(location.hash==="#signin") setTimeout(openSignin,500);
 
@@ -727,37 +736,33 @@ img,svg,canvas,video{max-width:100%;}
     var address=(document.getElementById("merchantAddress").value||"").trim();
     var product=(document.getElementById("merchantProduct").value||"").trim();
     var website=(document.getElementById("merchantWebsite").value||"").trim();
-    if(!city||!name||!phone||!address||!product){
-      alert("City, name, phone, address, and product are mandatory.");
+    var email=(document.getElementById("merchantEmail").value||"").trim();
+    var password=(document.getElementById("merchantPassword").value||"").trim();
+    if(!city||!name||!phone||!address||!product||!email||!password){
+      alert("City, name, phone, address, product, email, and password are all required.");
       return;
     }
     if(!/^03\d{9}$/.test(phone)){
       alert("Phone must be 11 digits and start with 03. Example: 03113323923.");
       return;
     }
+    if(!/^\S+@\S+\.\S+$/.test(email)){ alert("Please enter a valid email address."); return; }
     var state=readState();
+    state.clients=Array.isArray(state.clients)?state.clients:[];
+    state.users=Array.isArray(state.users)?state.users:[];
     state.pendingClients=Array.isArray(state.pendingClients)?state.pendingClients:[];
-    var id="LEAD-"+String(Date.now()).slice(-5);
-    state.pendingClients.unshift({
-      id:id,
-      name:name,
-      owner:name,
-      city:city,
-      phone:phone,
-      email:"",
-      address:address,
-      businessType:product,
-      website:website||"No website",
-      password:"",
-      status:"Pending sales contact",
-      iban:"",
-      taxId:"",
-      rate:240,
-      createdAt:new Date().toISOString().slice(0,10)+" "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})
-    });
+    var dup=state.users.some(function(u){return String(u.email||"").toLowerCase()===email.toLowerCase();})||state.clients.some(function(c){return String(c.email||"").toLowerCase()===email.toLowerCase();});
+    if(dup){ alert("This email already has an account. Please sign in instead."); return; }
+    function nextId(prefix,arr){ var max=0; (arr||[]).forEach(function(it){ var n=parseInt(String(it.id||"").replace(/\D/g,""),10)||0; if(n>max) max=n; }); return prefix+"-"+String(max+1).padStart(4,"0"); }
+    state.clients=state.clients.filter(function(c){return c.id!=="CL-0000";});
+    var cid=nextId("CL",state.clients);
+    state.clients.unshift({ id:cid, name:name, owner:name, email:email, password:password, phone:phone, city:city, address:address, businessType:product, website:website||"No website", taxId:"Not added", iban:"Not added", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, walletTopup:0, shippingDue:0, walletBalance:0, risk:0, health:100, problemsResolved:0, status:"Active" });
+    state.users.unshift({ id:nextId("USR",state.users), name:name, email:email, password:password, role:"Client", accessSide:"Client Portal", branch:"", clientId:cid, status:"Active", permissions:["client"] });
+    state.pendingClients.unshift({ id:cid, name:name, owner:name, city:city, phone:phone, email:email, address:address, businessType:product, website:website||"No website", password:password, status:"Active", iban:"", taxId:"", rate:240, createdAt:new Date().toISOString().slice(0,10)+" "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) });
+    state.client={ id:cid, name:name, walletTopup:0, shippingDue:0, subAccounts:0, walletBalance:0 };
     saveState(state);
     var card=signupModal.querySelector(".signin-card");
-    card.innerHTML='<button class="signin-close" id="signupCloseDone" aria-label="Close signup">X</button><div style="display:grid;place-items:center;text-align:center;padding:34px 10px"><div style="width:92px;height:92px;border-radius:999px;background:#18c77a;display:grid;place-items:center;color:white;font-size:54px;font-weight:900;box-shadow:0 22px 50px rgba(24,199,122,.32)">✓</div><h3 style="margin:22px 0 8px">Request Received</h3><p style="margin:0;color:#60726b;font-size:18px;line-height:1.5">Our team will contact you as soon as possible.</p><div class="signin-note" style="margin-top:18px">This is saved as a merchant lead. NovaX will approve and create your login after review.</div></div>';
+    card.innerHTML='<button class="signin-close" id="signupCloseDone" aria-label="Close signup">X</button><div style="display:grid;place-items:center;text-align:center;padding:34px 10px"><div style="width:92px;height:92px;border-radius:999px;background:#18c77a;display:grid;place-items:center;color:white;font-size:54px;font-weight:900;box-shadow:0 22px 50px rgba(24,199,122,.32)">✓</div><h3 style="margin:22px 0 8px">Account Created</h3><p style="margin:0;color:#60726b;font-size:18px;line-height:1.5">Your seller account is ready. Close this and tap Sign In to open your workspace.</p><div class="signin-note" style="margin-top:18px">Sign in with the email and password you just chose. You will also appear under Clients in the admin portal.</div></div>';
     document.getElementById("signupCloseDone").addEventListener("click",closeSignup);
   }
   document.querySelectorAll("[data-signup]").forEach(function(a){a.addEventListener("click",function(e){e.preventDefault();openSignup();});});
@@ -768,6 +773,7 @@ img,svg,canvas,video{max-width:100%;}
 
   /* ---- nav toggle ---- */
   document.getElementById("navToggle").addEventListener("click",function(){document.getElementById("nav").classList.toggle("open");});
+  document.querySelectorAll("#nav a").forEach(function(a){ a.addEventListener("click",function(){ document.getElementById("nav").classList.remove("open"); }); });
 
   /* ---- count up ---- */
   function fmt(n){return n.toLocaleString("en-US");}
