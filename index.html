@@ -705,12 +705,9 @@ footer{color:#86a99b;}
   function readState(){
     try{
       var state=JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}")||{};
-      if(!Array.isArray(state.users)||!state.users.length){
-        state.users=[{id:"USR-0001",name:"NovaX Admin",email:"admin@novax.pk",password:"NovaX@123",role:"Admin",accessSide:"Admin Portal",status:"Active",permissions:["all"]}];
-        saveState(state);
-      }
+      if(!Array.isArray(state.users)) state.users=[];
       return state;
-    }catch(e){return{users:[{id:"USR-0001",name:"NovaX Admin",email:"admin@novax.pk",password:"NovaX@123",role:"Admin",accessSide:"Admin Portal",status:"Active",permissions:["all"]}]};}
+    }catch(e){return{users:[]};}
   }
   function saveState(state){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}
   /* ---- NovaX Supabase live cloud sync (additive, fail-safe; landing page reads cloud so tracking + login work cross-device) ---- */
@@ -774,13 +771,20 @@ footer{color:#86a99b;}
     var pass=(document.getElementById("signinPassword").value||"").trim();
     if(!email||!pass){ alert("Email/username and password are required."); return; }
     var btn=this; btn.disabled=true; var oldTxt=btn.textContent; btn.textContent="Checking database…";
-    __nvPullCloud(function(){
-      btn.disabled=false; btn.textContent=oldTxt;
-      var target=routeForCredentials(email,pass);
-      if(!target){ alert("Login blocked. This email/username and password is not approved in NovaX database."); return; }
-      try{ localStorage.setItem("novaxSession",JSON.stringify({role:target.replace(".html",""),email:email,at:Date.now()})); }catch(e){}
-      closeSignin();
-      playHandoff(function(){ window.location.href=target; });
+    if(!__nvSb||!__nvSb.auth){ btn.disabled=false; btn.textContent=oldTxt; alert("Login service is unavailable. Please refresh and try again."); return; }
+    __nvSb.auth.signInWithPassword({email:email.toLowerCase(),password:pass}).then(function(res){
+      if(res.error||!res.data||!res.data.user){ btn.disabled=false; btn.textContent=oldTxt; alert("Sign in failed: "+((res.error&&res.error.message)||"invalid email or password")); return; }
+      var uid=res.data.user.id;
+      __nvSb.from("profiles").select("role,client_id,rider_id,status").eq("id",uid).single().then(function(p){
+        btn.disabled=false; btn.textContent=oldTxt;
+        if(p.error||!p.data){ alert("No profile is linked to this account yet. Please contact your NovaX admin."); return; }
+        if(String(p.data.status||"active").toLowerCase()==="blocked"){ try{ __nvSb.auth.signOut(); }catch(e){} alert("This account is blocked."); return; }
+        var role=String(p.data.role||"client").toLowerCase();
+        var target=role==="admin"?"admin.html":(role==="rider"?"rider.html":"client.html");
+        try{ localStorage.setItem("novaxSession",JSON.stringify({role:target.replace(".html",""),email:email.toLowerCase(),uid:uid,client_id:p.data.client_id||null,rider_id:p.data.rider_id||null,at:Date.now()})); }catch(e){}
+        closeSignin();
+        playHandoff(function(){ window.location.href=target; });
+      });
     });
   });
   if(location.hash==="#signin") setTimeout(openSignin,500);
@@ -815,6 +819,7 @@ footer{color:#86a99b;}
       return;
     }
     if(!/^\S+@\S+\.\S+$/.test(email)){ alert("Please enter a valid email address."); return; }
+    if(__nvSb&&__nvSb.auth){ try{ __nvSb.auth.signUp({ email:email.toLowerCase(), password:password, options:{ data:{ full_name:name, role:"client", phone:phone, city:city, address:address, business_type:product, website:website||"" } } }).then(function(r){ if(r&&r.error) console.warn("NovaX signup:",r.error.message); }); }catch(e){} }
     var state=readState();
     state.clients=Array.isArray(state.clients)?state.clients:[];
     state.users=Array.isArray(state.users)?state.users:[];
@@ -824,9 +829,9 @@ footer{color:#86a99b;}
     function nextId(prefix,arr){ var max=0; (arr||[]).forEach(function(it){ var n=parseInt(String(it.id||"").replace(/\D/g,""),10)||0; if(n>max) max=n; }); return prefix+"-"+String(max+1).padStart(4,"0"); }
     state.clients=state.clients.filter(function(c){return c.id!=="CL-0000";});
     var cid=nextId("CL",state.clients);
-    state.clients.unshift({ id:cid, name:name, owner:name, email:email, password:password, phone:phone, city:city, address:address, businessType:product, website:website||"No website", taxId:"Not added", iban:"Not added", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, walletTopup:0, shippingDue:0, walletBalance:0, risk:0, health:100, problemsResolved:0, status:"Active" });
-    state.users.unshift({ id:nextId("USR",state.users), name:name, email:email, password:password, role:"Client", accessSide:"Client Portal", branch:"", clientId:cid, status:"Active", permissions:["client"] });
-    state.pendingClients.unshift({ id:cid, name:name, owner:name, city:city, phone:phone, email:email, address:address, businessType:product, website:website||"No website", password:password, status:"Active", iban:"", taxId:"", rate:240, createdAt:new Date().toISOString().slice(0,10)+" "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) });
+    state.clients.unshift({ id:cid, name:name, owner:name, email:email, phone:phone, city:city, address:address, businessType:product, website:website||"No website", taxId:"Not added", iban:"Not added", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, walletTopup:0, shippingDue:0, walletBalance:0, risk:0, health:100, problemsResolved:0, status:"Active" });
+    state.users.unshift({ id:nextId("USR",state.users), name:name, email:email, role:"Client", accessSide:"Client Portal", branch:"", clientId:cid, status:"Active", permissions:["client"] });
+    state.pendingClients.unshift({ id:cid, name:name, owner:name, city:city, phone:phone, email:email, address:address, businessType:product, website:website||"No website", status:"Active", iban:"", taxId:"", rate:240, createdAt:new Date().toISOString().slice(0,10)+" "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) });
     state.client={ id:cid, name:name, walletTopup:0, shippingDue:0, subAccounts:0, walletBalance:0 };
     saveState(state);
     var card=signupModal.querySelector(".signin-card");
