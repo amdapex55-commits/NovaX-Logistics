@@ -9346,29 +9346,85 @@
     window.editClientLogin = editClientLogin;
     window.assignRiderToClient = assignRiderToClient;
     window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); render(); } });
-    /* ===== NovaX Supabase live cloud sync (additive, fail-safe) ===== */
+    /* ===== NovaX secure admin data layer (live tables, admin-scoped) ===== */
     (function(){
       var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
       var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
-      var ROW_ID=1;
-      function cloudRerender(){ try{ render(); }catch(e){} }
-      if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, using local storage only."); return; }
+      if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, local only."); return; }
       var sb; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); return; }
-      var applyingRemote=false, pushTimer=null;
-      var _origSave=saveState;
-      saveState=function(){ _origSave.apply(this,arguments); if(applyingRemote) return; clearTimeout(pushTimer); pushTimer=setTimeout(pushCloud,400); };
-      function pushCloud(){ try{ sb.from("novax_state").upsert({id:ROW_ID,data:state,updated_at:new Date().toISOString()}).then(function(r){ if(r&&r.error) console.warn("NovaX cloud save:",r.error.message); }); }catch(e){ console.warn("NovaX push failed",e); } }
-      function applyRemote(data){ if(!data||typeof data!=="object") return; applyingRemote=true; try{ state=data; localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); cloudRerender(); }catch(e){ console.warn("NovaX applyRemote failed",e); } applyingRemote=false; }
-      (async function(){
-        try{
-          var res=await sb.from("novax_state").select("data").eq("id",ROW_ID).maybeSingle();
-          if(res&&res.error){ console.warn("NovaX cloud load:",res.error.message); }
-          else { var remote=res&&res.data&&res.data.data; if(!remote||Object.keys(remote).length===0){ pushCloud(); } else { applyRemote(remote); } }
-        }catch(e){ console.warn("NovaX cloud load failed, local only.",e); }
-        try{
-          sb.channel("novax_state_live").on("postgres_changes",{event:"*",schema:"public",table:"novax_state",filter:"id=eq."+ROW_ID},function(payload){ var row=payload&&payload.new; if(row&&row.data) applyRemote(row.data); }).subscribe();
-        }catch(e){ console.warn("NovaX realtime failed",e); }
-      })();
+      window.__nvSb=sb;
+      var ADMIN_UID=null, loaded=false, shadow={}, resyncT=null;
+      function isUuid(v){ return typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v); }
+      function dtpart(t){ return t?String(t).replace("T"," ").slice(0,16):""; }
+      function dpart(t){ return t?String(t).slice(0,10):new Date().toISOString().slice(0,10); }
+      function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
+      function sigOf(row){ return JSON.stringify(row,function(k,v){ return k==="updated_at"?undefined:v; }); }
+      var DRC={ overnight:240, additionalKg:80, detainBase:520, detainAdditionalKg:120, overlandBase:900, overlandAdditionalKg:45 };
+      function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||240), rateCard:r.rate_card||DRC, problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0) }; }
+      function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
+      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", steps:Array.isArray(m.steps)?m.steps:[] }; }
+      function rInvoice(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.code||r.id, clientId:r.client_id, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:Number(r.cod_total||0), charges:Number(r.fee_total||0), payable:Number(r.net_payable||0), status:r.status||"Pending", createdAt:dtpart(r.created_at), paidAt:m.paidAt||"", summary:m.summary||"" }; }
+      function rTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:r.client_id, parcelId:r.parcel_id||"", sourceKey:m.sourceKey||"", tier:m.tier||"medium", title:r.subject||"", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", message:r.body||"", createdAt:dtpart(r.created_at), ageHours:Number(m.ageHours||0), status:r.status||"Open", escalated:!!m.escalated, replies:Array.isArray(m.replies)?m.replies:[] }; }
+      function rExpense(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:m.name||r.note||r.category||"Expense", amount:Number(r.amount||0), type:r.category||"", owner:r.branch||"", status:m.status||"Pending", note:r.note||"" }; }
+      function rWd(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at) }; }
+      function rPl(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, type:r.type||"", amount:Number(r.amount||0), status:r.status||"", ref:r.reference||"" }; }
+      function cuid(id){ var c=(state.clients||[]).find(function(x){return x.id===id;}); return (c&&c._uuid)||(isUuid(id)?id:null); }
+      function ruid(id){ var r=(state.riders||[]).find(function(x){return x.id===id;}); return (r&&r._uuid)||(isUuid(id)?id:null); }
+      function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||240), rate_card:c.rateCard||DRC, wallet_balance:Number(c.walletBalance||0), risk_score:Number(c.risk||0), meta:{ tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health } }; }
+      function fRider(r){ return { name:r.name||"", phone:r.phone||"", branch:r.branch||r.manager||"", access:r.access||"Active", cash_limit:Number(r.cashLimit||0), meta:{ username:r.username, manager:r.manager, cashHeld:r.cashHeld, scans:r.scans, fakeRisk:r.fakeRisk, expenses:r.expenses } }; }
+      function fParcel(p){ var cid=cuid(p.clientId); if(!cid) return null; var rid=ruid(p.rider); return { awb:p.awb, client_id:cid, rider_id:rid, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:(p.date?new Date(p.date).toISOString():new Date().toISOString()), updated_at:new Date().toISOString(), meta:{ statusAgeHours:p.statusAgeHours, stage:p.stage, totalStages:p.totalStages, steps:p.steps, risk:p.risk, branch:p.branch, cashReceived:p.cashReceived, returnProof:p.returnProof, resolutionRemark:p.resolutionRemark, riderInput:p.riderInput, service:p.service, weight:p.weight } }; }
+      function fInvoice(iv){ var cid=cuid(iv.clientId); if(!cid) return null; return { code:iv.id, client_id:cid, parcel_refs:iv.parcelRefs||[], cod_total:Number(iv.cod||0), fee_total:Number(iv.charges||0), net_payable:Number(iv.payable||0), status:iv.status||"Pending", meta:{ paidAt:iv.paidAt, summary:iv.summary } }; }
+      function fTicket(t){ var cid=cuid(t.clientId); return { client_id:isUuid(cid)?cid:null, parcel_id:null, subject:t.title||"", body:t.message||"", status:t.status||"Open", created_by:ADMIN_UID, meta:{ code:t.id, sourceKey:t.sourceKey, tier:t.tier, from:t.from, to:t.to, branch:t.branch, awb:t.awb, ageHours:t.ageHours, escalated:t.escalated, replies:t.replies||[] } }; }
+      function fExpense(e){ return { branch:e.owner||"", category:e.type||"", amount:Number(e.amount||0), note:e.note||e.name||"", created_by:ADMIN_UID, meta:{ name:e.name, status:e.status } }; }
+      function fWd(w){ var cid=cuid(w.clientId); if(!cid) return null; return { client_id:cid, amount:Number(w.amount||0), fee:Number(w.fee||0), net:Number(w.net||0), iban:w.iban||"", speed:w.speed||"", status:w.status||"Pending admin payout" }; }
+      function fPl(p){ var cid=cuid(p.clientId); if(!cid) return null; return { client_id:cid, type:p.type||"", amount:Number(p.amount||0), status:p.status||"", reference:p.ref||"" }; }
+      var SETS=[["clients",fClient,"clients"],["riders",fRider,"riders"],["parcels",fParcel,"parcels"],["invoices",fInvoice,"invoices"],["tickets",fTicket,"tickets"],["expenses",fExpense,"expenses"],["walletWithdrawals",fWd,"withdrawals"],["paymentLogs",fPl,"payment_logs"]];
+      function scheduleResync(){ clearTimeout(resyncT); resyncT=setTimeout(function(){ try{ syncAll(); }catch(e){} },700); }
+      function loadAll(){
+        return Promise.all([
+          sb.from("clients").select("*").order("created_at",{ascending:true}),
+          sb.from("riders").select("*").order("created_at",{ascending:true}),
+          sb.from("parcels").select("*").order("booked_at",{ascending:false}),
+          sb.from("invoices").select("*").order("created_at",{ascending:false}),
+          sb.from("tickets").select("*").order("created_at",{ascending:false}),
+          sb.from("expenses").select("*").order("created_at",{ascending:false}),
+          sb.from("withdrawals").select("*").order("created_at",{ascending:false}),
+          sb.from("payment_logs").select("*").order("created_at",{ascending:false})
+        ]).then(function(res){
+          function D(i){ return (res[i]&&res[i].data)||[]; }
+          state.clients=D(0).map(rClient);
+          state.riders=D(1).map(rRider);
+          state.parcels=D(2).map(rParcel);
+          state.invoices=D(3).map(rInvoice);
+          state.tickets=D(4).map(rTicket);
+          state.expenses=D(5).map(rExpense);
+          state.walletWithdrawals=D(6).map(rWd);
+          state.paymentLogs=D(7).map(rPl);
+          if(state.clients.length){ var c0=state.clients[0]; state.client={ id:c0.id, name:c0.name, walletTopup:c0.walletTopup, shippingDue:c0.shippingDue, walletBalance:c0.walletBalance, subAccounts:0 }; }
+          rebuildShadow();
+          loaded=true;
+          try{ if(typeof normalizeStateAwbs==="function") normalizeStateAwbs(state); }catch(e){}
+          try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); }catch(e){}
+          try{ render(); }catch(e){ console.warn("NovaX admin render",e); }
+        }).catch(function(e){ console.warn("NovaX admin load failed",e); });
+      }
+      function rebuildShadow(){ shadow={}; SETS.forEach(function(s){ (state[s[0]]||[]).forEach(function(o){ if(o._uuid){ try{ var row=s[1](o); if(row) shadow[o._uuid]=sigOf(row); }catch(e){} } }); }); }
+      function syncEntity(arr, build, table){
+        (arr||[]).forEach(function(o){
+          if(o._pending) return;
+          var row; try{ row=build(o); }catch(e){ return; }
+          if(!row) return;
+          var sig=sigOf(row);
+          if(o._uuid){ if(shadow[o._uuid]===sig) return; shadow[o._uuid]=sig; sb.from(table).update(row).eq("id",o._uuid).then(function(r){ if(r&&r.error) console.warn("NovaX "+table+" update",r.error.message); }); }
+          else { o._pending=true; sb.from(table).insert(row).select("id").maybeSingle().then(function(r){ o._pending=false; if(r&&r.error){ console.warn("NovaX "+table+" insert",r.error.message); return; } if(r&&r.data){ o._uuid=r.data.id; shadow[o._uuid]=sig; scheduleResync(); } }); }
+        });
+      }
+      function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
+      var _save=saveState; saveState=function(){ try{ _save.apply(this,arguments); }catch(e){} try{ syncAll(); }catch(e){} };
+      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.tickets=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[];
+      window.nvListSellers=function(){ sb.from("profiles").select("email,role,status,client_id").eq("role","client").then(function(r){ if(r&&r.error){ console.warn(r.error.message); return; } console.table((r&&r.data)||[]); }); };
+      window.nvLinkSeller=function(email, clientUuid){ if(!email||!clientUuid){ console.warn("usage: nvLinkSeller('seller@email.com','<client uuid>')"); return; } sb.from("profiles").update({ client_id:clientUuid }).eq("email",email).then(function(r){ if(r&&r.error){ console.warn("link failed",r.error.message); } else { try{ alert("Linked "+email+" to client "+clientUuid); }catch(e){} console.log("Linked",email,"->",clientUuid); } }); };
+      if(sb.auth){ sb.auth.getSession().then(function(r){ var s=r&&r.data&&r.data.session; if(!s){ return; } ADMIN_UID=s.user.id; loadAll(); }); }
     })();
     render();
     renderLandingTrack();
