@@ -1292,5 +1292,54 @@
       }catch(e){ console.warn('NovaX AI init failed',e); }
     })();
   </script>
+<script>
+(function(){
+  var __SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
+  var __SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+  var __REQUIRED_ROLE="client";
+  var __sb=null; try{ if(window.supabase&&window.supabase.createClient){ __sb=window.supabase.createClient(__SB_URL,__SB_KEY); window.__nvGuardSb=__sb; } }catch(__e){}
+  function ses(){ try{ return JSON.parse(localStorage.getItem("novaxSession")||"null"); }catch(e){ return null; } }
+  function logout(e){ if(e&&e.preventDefault) e.preventDefault(); try{ localStorage.removeItem("novaxSession"); }catch(_){ } try{ if(__sb&&__sb.auth) __sb.auth.signOut(); }catch(_2){ } window.location.href="index.html"; }
+  window.nvLogout=logout;
+  function __guard(){
+    if(!__sb||!__sb.auth) return;
+    __sb.auth.getSession().then(function(r){
+      var session=r&&r.data&&r.data.session;
+      if(!session){ window.location.replace("index.html"); return; }
+      __sb.from("profiles").select("role,status").eq("id",session.user.id).single().then(function(p){
+        if(p&&p.error) return;
+        var role=p&&p.data?String(p.data.role||"").toLowerCase():"";
+        var status=p&&p.data?String(p.data.status||"").toLowerCase():"";
+        if(!role||role!==__REQUIRED_ROLE||status==="blocked"||status==="disabled"){ try{ __sb.auth.signOut(); }catch(_3){ } window.location.replace("index.html"); }
+      });
+    });
+  }
+  __guard();
+  function apply(){
+    if(!ses()) return;
+    var kill=document.querySelectorAll(".auth-btn, a[href*='#signin'], a[href*='#signup']");
+    Array.prototype.forEach.call(kill,function(el){ el.style.display="none"; });
+    var actions=document.querySelector(".auth-actions");
+    var reused=null;
+    if(actions){
+      var links=actions.querySelectorAll("a");
+      for(var i=0;i<links.length;i++){ var t=(links[i].textContent||"").toLowerCase(); if(t.indexOf("sign out")>-1||t.indexOf("log out")>-1||t.indexOf("signout")>-1){ reused=links[i]; break; } }
+      if(reused){ reused.textContent="Log out"; reused.style.display=""; reused.style.cursor="pointer"; reused.removeAttribute("href"); reused.addEventListener("click",logout); }
+    }
+    if(!reused){
+      var nav=document.querySelector(".nav-tabs")||actions;
+      if(nav && !document.getElementById("nvLogoutBtn")){
+        var lo=document.createElement("a");
+        lo.id="nvLogoutBtn";
+        lo.className=(nav.className&&nav.className.indexOf("nav-tabs")>-1)?"tab-btn":"ghost-btn";
+        lo.textContent="Log out"; lo.style.cursor="pointer";
+        lo.addEventListener("click",logout);
+        nav.appendChild(lo);
+      }
+    }
+  }
+  if(document.readyState!=="loading") apply(); else document.addEventListener("DOMContentLoaded",apply);
+})();
+</script>
 </body>
 </html>
