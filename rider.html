@@ -430,29 +430,62 @@
     document.getElementById("riderSelect").addEventListener("change", e => { state.activeRider = e.target.value; saveState(); renderRider(); });
     document.getElementById("riderRefreshBtn").addEventListener("click", () => { state = loadState(); state.activeRider = state.activeRider || (state.riders[0] && state.riders[0].id) || ""; renderRider(); toast("Route refreshed from portal."); });
     window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); state.activeRider = state.activeRider || (state.riders[0] && state.riders[0].id) || ""; renderRider(); } });
-    /* ===== NovaX Supabase live cloud sync (additive, fail-safe) ===== */
+    /* ===== NovaX secure rider data layer (live tables, rider-scoped) ===== */
     (function(){
       var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
       var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
-      var ROW_ID=1;
-      function cloudRerender(){ try{ state.activeRider = state.activeRider || (state.riders[0] && state.riders[0].id) || ""; renderRider(); }catch(e){} }
-      if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, using local storage only."); return; }
+      if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, local only."); return; }
       var sb; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); return; }
-      var applyingRemote=false, pushTimer=null;
-      var _origSave=saveState;
-      saveState=function(){ _origSave.apply(this,arguments); if(applyingRemote) return; clearTimeout(pushTimer); pushTimer=setTimeout(pushCloud,400); };
-      function pushCloud(){ try{ sb.from("novax_state").upsert({id:ROW_ID,data:state,updated_at:new Date().toISOString()}).then(function(r){ if(r&&r.error) console.warn("NovaX cloud save:",r.error.message); }); }catch(e){ console.warn("NovaX push failed",e); } }
-      function applyRemote(data){ if(!data||typeof data!=="object") return; applyingRemote=true; try{ state=data; localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); cloudRerender(); }catch(e){ console.warn("NovaX applyRemote failed",e); } applyingRemote=false; }
-      (async function(){
-        try{
-          var res=await sb.from("novax_state").select("data").eq("id",ROW_ID).maybeSingle();
-          if(res&&res.error){ console.warn("NovaX cloud load:",res.error.message); }
-          else { var remote=res&&res.data&&res.data.data; if(!remote||Object.keys(remote).length===0){ pushCloud(); } else { applyRemote(remote); } }
-        }catch(e){ console.warn("NovaX cloud load failed, local only.",e); }
-        try{
-          sb.channel("novax_state_live").on("postgres_changes",{event:"*",schema:"public",table:"novax_state",filter:"id=eq."+ROW_ID},function(payload){ var row=payload&&payload.new; if(row&&row.data) applyRemote(row.data); }).subscribe();
-        }catch(e){ console.warn("NovaX realtime failed",e); }
-      })();
+      window.__nvSb=sb;
+      var RIDER_UUID=null, loaded=false, subscribed=false, shadow={};
+      var TERMINAL=["Delivered","Refused","Consignee not available","Parcel returned to consignee"];
+      function dpart(t){ return t?String(t).slice(0,10):new Date().toISOString().slice(0,10); }
+      function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
+      function sigOf(row){ return JSON.stringify(row,function(k,v){ return k==="updated_at"?undefined:v; }); }
+      function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
+      function rClient(r){ return { _uuid:r.id, id:r.id, name:r.name||"", city:r.city||"", address:r.address||"" }; }
+      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||16), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", deliveredBy:m.deliveredBy||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", riderInput:m.riderInput||null, steps:Array.isArray(m.steps)?m.steps:[] }; }
+      function fParcel(p){ return { status:p.status||"New booked", exception:p.exception||"", updated_at:new Date().toISOString(), meta:{ statusAgeHours:p.statusAgeHours, stage:p.stage, totalStages:p.totalStages, steps:p.steps, risk:p.risk, branch:p.branch, cashReceived:p.cashReceived, returnProof:p.returnProof, resolutionRemark:p.resolutionRemark, riderInput:p.riderInput, service:p.service, weight:p.weight, deliveredBy:p.deliveredBy, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord } }; }
+      function markLoaded(p){ p._scanned=p._scanned||{}; if(TERMINAL.indexOf(p.status)>-1){ p._scanned[p.status]=true; if(p.status==="Delivered") p._codPosted=true; } }
+      function maybeAudit(p){
+        if(!RIDER_UUID||!p._uuid) return;
+        p._scanned=p._scanned||{};
+        if(TERMINAL.indexOf(p.status)>-1 && !p._scanned[p.status]){
+          p._scanned[p.status]=true;
+          var srow={ parcel_id:p._uuid, rider_id:RIDER_UUID, type:(p.status==="Delivered"||p.status==="Parcel returned to consignee")?"delivery":"exception", status:p.status, note:p.exception||"", photo_url:"", meta:{ awb:p.awb, signedAt:p.signedAt||"", hasPhoto:!!p.proofPhoto, hasSignature:!!p.signature, riderInput:p.riderInput||null } };
+          sb.from("scans").insert(srow).then(function(r){ if(r&&r.error) console.warn("NovaX scan insert",r.error.message); });
+          if(p.status==="Delivered" && Number(p.cod)>0 && !p._codPosted){
+            p._codPosted=true;
+            sb.from("cod_ledger").insert({ parcel_id:p._uuid, client_id:p.clientId, rider_id:RIDER_UUID, direction:"in", amount:Number(p.cod), reference:p.awb }).then(function(r){ if(r&&r.error) console.warn("NovaX cod insert",r.error.message); });
+          }
+        }
+      }
+      function rebuildShadow(){ shadow={}; (state.parcels||[]).forEach(function(p){ if(p._uuid){ markLoaded(p); try{ shadow[p._uuid]=sigOf(fParcel(p)); }catch(e){} } }); }
+      function syncParcels(){ if(!loaded||!RIDER_UUID) return; (state.parcels||[]).forEach(function(p){ if(!p._uuid) return; var row; try{ row=fParcel(p); }catch(e){ return; } var sig=sigOf(row); if(shadow[p._uuid]!==sig){ shadow[p._uuid]=sig; sb.from("parcels").update(row).eq("id",p._uuid).then(function(r){ if(r&&r.error) console.warn("NovaX parcel update",r.error.message); }); } maybeAudit(p); }); }
+      function loadAll(){
+        return Promise.all([
+          sb.from("riders").select("*"),
+          sb.from("parcels").select("*").order("booked_at",{ascending:false}),
+          sb.from("clients").select("*")
+        ]).then(function(res){
+          function D(i){ return (res[i]&&res[i].data)||[]; }
+          state.riders=D(0).map(rRider);
+          state.parcels=D(1).map(rParcel);
+          state.clients=D(2).map(rClient);
+          RIDER_UUID=(state.riders[0]&&state.riders[0]._uuid)||null;
+          state.activeRider=RIDER_UUID||"";
+          rebuildShadow();
+          loaded=true;
+          try{ var sel=document.getElementById("riderSelect"); if(sel) sel.dataset.filled=""; }catch(e){}
+          try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); }catch(e){}
+          try{ renderRider(); }catch(e){ console.warn("NovaX rider render",e); }
+          if(!subscribed && RIDER_UUID){ subscribed=true; try{ sb.channel("novax_rider_"+RIDER_UUID).on("postgres_changes",{event:"*",schema:"public",table:"parcels",filter:"rider_id=eq."+RIDER_UUID},function(){ loadAll(); }).subscribe(); }catch(e){ console.warn("NovaX rider realtime",e); } }
+        }).catch(function(e){ console.warn("NovaX rider load failed",e); });
+      }
+      var _save=saveState; saveState=function(){ try{ _save.apply(this,arguments); }catch(e){} try{ syncParcels(); }catch(e){} };
+      state.parcels=[]; state.riders=[]; state.clients=[]; state.activeRider="";
+      try{ var rb=document.getElementById("riderRefreshBtn"); if(rb) rb.addEventListener("click", function(){ loadAll(); }); }catch(e){}
+      if(sb.auth){ sb.auth.getSession().then(function(r){ var s=r&&r.data&&r.data.session; if(!s){ return; } loadAll(); }); }
     })();
     document.getElementById("riderPhotoInput").addEventListener("change", e => handleRiderPhoto(e.target.files && e.target.files[0]));
     document.getElementById("deliverFlash").addEventListener("click", () => document.getElementById("deliverFlash").classList.remove("show"));
