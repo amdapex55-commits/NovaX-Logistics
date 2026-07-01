@@ -463,23 +463,30 @@
       function rebuildShadow(){ shadow={}; (state.parcels||[]).forEach(function(p){ if(p._uuid){ markLoaded(p); try{ shadow[p._uuid]=sigOf(fParcel(p)); }catch(e){} } }); }
       function syncParcels(){ if(!loaded||!RIDER_UUID) return; (state.parcels||[]).forEach(function(p){ if(!p._uuid) return; var row; try{ row=fParcel(p); }catch(e){ return; } var sig=sigOf(row); if(shadow[p._uuid]!==sig){ shadow[p._uuid]=sig; sb.from("parcels").update(row).eq("id",p._uuid).then(function(r){ if(r&&r.error) console.warn("NovaX parcel update",r.error.message); }); } maybeAudit(p); }); }
       function loadAll(){
-        return Promise.all([
-          sb.from("riders").select("*"),
-          sb.from("parcels").select("*").order("booked_at",{ascending:false}),
-          sb.from("clients").select("*")
-        ]).then(function(res){
-          function D(i){ return (res[i]&&res[i].data)||[]; }
-          state.riders=D(0).map(rRider);
-          state.parcels=D(1).map(rParcel);
-          state.clients=D(2).map(rClient);
-          RIDER_UUID=(state.riders[0]&&state.riders[0]._uuid)||null;
-          state.activeRider=RIDER_UUID||"";
-          rebuildShadow();
-          loaded=true;
-          try{ var sel=document.getElementById("riderSelect"); if(sel) sel.dataset.filled=""; }catch(e){}
-          try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); }catch(e){}
-          try{ renderRider(); }catch(e){ console.warn("NovaX rider render",e); }
-          if(!subscribed && RIDER_UUID){ subscribed=true; try{ sb.channel("novax_rider_"+RIDER_UUID).on("postgres_changes",{event:"*",schema:"public",table:"parcels",filter:"rider_id=eq."+RIDER_UUID},function(){ loadAll(); }).subscribe(); }catch(e){ console.warn("NovaX rider realtime",e); } }
+        return sb.auth.getSession().then(function(sr){
+          var session=sr&&sr.data&&sr.data.session;
+          var profP=session?sb.from("profiles").select("rider_id").eq("id",session.user.id).single():Promise.resolve(null);
+          return profP.then(function(pr){
+            var linkedId=pr&&pr.data&&pr.data.rider_id;
+            return Promise.all([
+              sb.from("riders").select("*"),
+              sb.from("parcels").select("*").order("booked_at",{ascending:false}),
+              sb.from("clients").select("*")
+            ]).then(function(res){
+              function D(i){ return (res[i]&&res[i].data)||[]; }
+              state.riders=D(0).map(rRider);
+              state.parcels=D(1).map(rParcel);
+              state.clients=D(2).map(rClient);
+              RIDER_UUID=linkedId||(state.riders[0]&&state.riders[0]._uuid)||null;
+              state.activeRider=RIDER_UUID||"";
+              rebuildShadow();
+              loaded=true;
+              try{ var sel=document.getElementById("riderSelect"); if(sel) sel.dataset.filled=""; }catch(e){}
+              try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); }catch(e){}
+              try{ renderRider(); }catch(e){ console.warn("NovaX rider render",e); }
+              if(!subscribed && RIDER_UUID){ subscribed=true; try{ sb.channel("novax_rider_"+RIDER_UUID).on("postgres_changes",{event:"*",schema:"public",table:"parcels",filter:"rider_id=eq."+RIDER_UUID},function(){ loadAll(); }).subscribe(); }catch(e){ console.warn("NovaX rider realtime",e); } }
+            });
+          });
         }).catch(function(e){ console.warn("NovaX rider load failed",e); });
       }
       var _save=saveState; saveState=function(){ try{ _save.apply(this,arguments); }catch(e){} try{ syncParcels(); }catch(e){} };
