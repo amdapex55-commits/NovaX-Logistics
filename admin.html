@@ -4755,7 +4755,7 @@
               <div class="grid two">
                 <div class="panel">
                   <div class="section-head">
-                    <div><h3>Create Users</h3><p>Create staff users with email, password, role, branch, and web/admin access.</p></div>
+                    <div><h3>Create Users</h3><p>Create staff users with email, password, role, branch, and web/admin access. This saves an internal record only — it does not create a working login. For real access, create the account in Supabase Authentication, then link it from the browser console with nvLinkRider (riders) or nvLinkSeller (clients).</p></div>
                     <button class="action-btn" id="createUserBtn">Create User</button>
                   </div>
                   <div class="form-grid">
@@ -8386,7 +8386,6 @@
         status: "Active"
       });
       saveState();
-      render();
       showAdminTab("users-edit");
       toast(`${name} created with ${document.getElementById("userAccessSide").value} access.`);
     }
@@ -8416,7 +8415,6 @@
         status: "Active"
       });
       saveState();
-      render();
       showAdminTab("users-edit");
       toast(`${rider.name} rider login created.`);
     }
@@ -9379,10 +9377,12 @@
         });
       }
       function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
-      var _save=saveState; saveState=function(){ try{ _save.apply(this,arguments); }catch(e){} try{ syncAll(); }catch(e){} };
+      var _save=saveState; saveState=function(){ try{ if(typeof syncRidersFromUsers==="function") syncRidersFromUsers(); }catch(e){} try{ _save.apply(this,arguments); }catch(e){} try{ syncAll(); }catch(e){} };
       state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.tickets=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[];
       window.nvListSellers=function(){ sb.from("profiles").select("email,role,status,client_id").eq("role","client").then(function(r){ if(r&&r.error){ console.warn(r.error.message); return; } console.table((r&&r.data)||[]); }); };
       window.nvLinkSeller=function(email, clientUuid){ if(!email||!clientUuid){ console.warn("usage: nvLinkSeller('seller@email.com','<client uuid>')"); return; } sb.from("profiles").update({ client_id:clientUuid }).eq("email",email).then(function(r){ if(r&&r.error){ console.warn("link failed",r.error.message); } else { try{ alert("Linked "+email+" to client "+clientUuid); }catch(e){} console.log("Linked",email,"->",clientUuid); } }); };
+      window.nvListRiders=function(){ sb.from("riders").select("id,name,branch").then(function(r){ if(r&&r.error){ console.warn(r.error.message); return; } console.table((r&&r.data)||[]); }); };
+      window.nvLinkRider=function(email, riderUuid){ if(!email||!riderUuid){ console.warn("usage: nvLinkRider('rider@email.com','<rider uuid>')"); return; } sb.from("profiles").update({ role:"rider", rider_id:riderUuid }).eq("email",email).then(function(r){ if(r&&r.error){ console.warn("link failed",r.error.message); } else { try{ alert("Linked "+email+" to rider "+riderUuid); }catch(e){} console.log("Linked",email,"->",riderUuid); } }); };
       if(sb.auth){ sb.auth.getSession().then(function(r){ var s=r&&r.data&&r.data.session; if(!s){ return; } ADMIN_UID=s.user.id; loadAll(); }); }
     })();
     render();
