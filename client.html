@@ -1342,6 +1342,86 @@
         sendBtn.addEventListener('click',send); inp.addEventListener('keydown',function(e){ if(e.key==='Enter') send(); });
       }catch(e){ console.warn('NovaX AI init failed',e); }
     })();
+
+    /* ===== NovaX AI Onboarding Tour (post-signup welcome + guided walkthrough) ===== */
+    (function(){
+      try{
+        if(window.__novaxTourLoaded) return; window.__novaxTourLoaded=true;
+        var qp=new URLSearchParams(location.search);
+        var shouldRun = qp.get("onboarding")==="1";
+        if(!shouldRun) return;
+
+        var STEPS=[
+          { tab:"dashboard", title:"Your Dashboard", text:"Everything starts here: live parcel counts, COD totals, and delivery health at a glance." },
+          { tab:"newBooking", title:"New Booking", text:"Tap Create AWB here to book a single parcel. Add the consignee, city, and COD amount, and you are done." },
+          { tab:"awbLabel", title:"AWB Label", text:"Every booking instantly generates a printable AWB with QR and barcode. Hand it to your rider or print it." },
+          { tab:"bulkBooking", title:"Bulk Booking", text:"Shipping many orders at once? Download the CSV format, fill it in, and upload it here to create AWBs in bulk." },
+          { tab:"integrations", title:"Store Integrations", text:"Connect Shopify, WooCommerce, or your own website here so new orders import automatically." },
+          { tab:"reports", title:"Full Report", text:"See every parcel with filters, export CSV or PDF, and raise a ticket straight from any row." },
+          { tab:"payments", title:"Payments", text:"Delivered parcels turn into payable invoices here. Download them or raise a ticket if something looks off." },
+          { tab:"wallet", title:"Wallet", text:"Track your balance and request a payout in a few taps whenever you are ready." },
+          { tab:"logs", title:"Order Logs", text:"A clean audit trail of every status change for every parcel you have booked." },
+          { tab:"subAccounts", title:"Sub Accounts", text:"Invite your team, finance, warehouse, or support, with their own scoped logins." },
+          { tab:"support", title:"Talk To Your AI", text:"Tap the green bubble in the corner anytime. I read your live data and answer instantly, or open a ticket for you." }
+        ];
+        var idx=-1;
+
+        var style=document.createElement("style");
+        style.textContent=".nvtour-overlay{position:fixed;inset:0;z-index:999999;background:rgba(4,12,9,.55);display:flex;align-items:center;justify-content:center;padding:18px;opacity:0;transition:opacity .3s ease;-webkit-tap-highlight-color:transparent;}.nvtour-overlay.show{opacity:1;}.nvtour-overlay.closing{opacity:0;}.nvtour-card{position:relative;box-sizing:border-box;width:min(94vw,410px);max-height:82vh;overflow:auto;background:#0b1f18;color:#eafff5;border:1px solid rgba(24,199,122,.35);border-radius:20px;padding:28px 22px 22px;box-shadow:0 30px 70px rgba(0,0,0,.5);text-align:center;-webkit-overflow-scrolling:touch;}.nvtour-x{position:absolute;top:8px;right:10px;background:transparent;border:none;color:#8fd8b9;font-size:22px;line-height:1;cursor:pointer;padding:6px 9px;}.nvtour-avatar{width:64px;height:64px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#18c77a);display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 14px;box-shadow:0 14px 30px rgba(24,199,122,.35);}.nvtour-avatar.sm{width:38px;height:38px;font-size:18px;margin:0;flex-shrink:0;}.nvtour-card h3{margin:0 0 8px;font-size:20px;}.nvtour-card p{margin:0 0 18px;color:#bfe9d8;font-size:15px;line-height:1.5;}.nvtour-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}.nvtour-btn{box-sizing:border-box;min-height:46px;padding:0 18px;border-radius:12px;font-weight:700;font-size:15px;border:none;cursor:pointer;flex:1;min-width:120px;transition:transform .15s ease;}.nvtour-btn:active{transform:scale(.96);}.nvtour-btn.primary{background:linear-gradient(145deg,#0d6b4d,#18c77a);color:#04130d;}.nvtour-btn.ghost{background:rgba(255,255,255,.08);color:#eafff5;}.nvtour-stephead{display:flex;align-items:center;gap:10px;text-align:left;margin-bottom:14px;}.nvtour-stephead b{font-size:13px;color:#8fd8b9;display:block;}.nvtour-dots{display:flex;gap:5px;margin-top:4px;}.nvtour-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.25);transition:all .2s ease;}.nvtour-dot.on{background:#18c77a;width:16px;border-radius:4px;}@keyframes nvtourPop{0%{transform:scale(.9);}60%{transform:scale(1.03);}100%{transform:scale(1);}}@media (max-width:480px){.nvtour-card{padding:24px 16px 18px;border-radius:16px;}.nvtour-btn{min-width:0;}}";
+        document.head.appendChild(style);
+
+        var overlay=document.createElement("div"); overlay.className="nvtour-overlay";
+        overlay.innerHTML='<div class="nvtour-card" id="nvtourCard"></div>';
+        document.body.appendChild(overlay);
+        var card=overlay.querySelector("#nvtourCard");
+
+        function paint(html){
+          card.style.transition="none"; card.style.opacity="0"; card.style.transform="translateY(10px) scale(.98)";
+          card.innerHTML=html;
+          void card.offsetWidth;
+          card.style.transition="opacity .26s ease, transform .26s cubic-bezier(.22,.9,.32,1)";
+          card.style.opacity="1"; card.style.transform="translateY(0) scale(1)";
+        }
+        function xBtn(){ return '<button class="nvtour-x" id="nvtourX" aria-label="Close">\u00d7</button>'; }
+        function bindX(){ var b=document.getElementById("nvtourX"); if(b) b.addEventListener("click",finish); }
+
+        function renderIntro(){
+          paint(xBtn()+'<div class="nvtour-avatar">\ud83e\udd16</div><h3>Hi, I am Nova</h3><p>Your NovaX AI assistant. I can walk you through your new workspace, or you can dive in yourself.</p><div class="nvtour-actions"><button class="nvtour-btn primary" id="nvtourStart">Take the Tour</button><button class="nvtour-btn ghost" id="nvtourSkip">I will Surf Myself</button></div>');
+          bindX();
+          document.getElementById("nvtourStart").addEventListener("click",startTour);
+          document.getElementById("nvtourSkip").addEventListener("click",renderSurf);
+        }
+
+        function renderSurf(){
+          paint(xBtn()+'<div class="nvtour-avatar">\ud83e\udd16</div><h3>All yours</h3><p>Feel free to explore. You can reach me anytime from the green AI bubble in the corner.</p><div class="nvtour-actions"><button class="nvtour-btn primary" id="nvtourExit">Exit</button></div>');
+          bindX();
+          document.getElementById("nvtourExit").addEventListener("click",finish);
+        }
+
+        function renderStep(){
+          var s=STEPS[idx];
+          try{ if(typeof showClientTab==="function") showClientTab(s.tab); }catch(e){}
+          try{ window.scrollTo({top:0,behavior:"smooth"}); }catch(e){ window.scrollTo(0,0); }
+          var dots=STEPS.map(function(_,i){ return '<span class="nvtour-dot'+(i===idx?" on":"")+'"></span>'; }).join("");
+          var backHtml = idx>0 ? '<button class="nvtour-btn ghost" id="nvtourBack">Back</button>' : "";
+          var nextLabel = idx===STEPS.length-1 ? "Finish" : "Next";
+          paint(xBtn()+'<div class="nvtour-stephead"><span class="nvtour-avatar sm">\ud83e\udd16</span><div><b>Step '+(idx+1)+' of '+STEPS.length+'</b><div class="nvtour-dots">'+dots+'</div></div></div><h3>'+s.title+'</h3><p>'+s.text+'</p><div class="nvtour-actions">'+backHtml+'<button class="nvtour-btn primary" id="nvtourNext">'+nextLabel+'</button></div>');
+          bindX();
+          var backBtn=document.getElementById("nvtourBack"); if(backBtn) backBtn.addEventListener("click",function(){ idx--; renderStep(); });
+          document.getElementById("nvtourNext").addEventListener("click",function(){ if(idx===STEPS.length-1){ finish(); return; } idx++; renderStep(); });
+        }
+
+        function startTour(){ idx=0; renderStep(); }
+
+        function finish(){
+          overlay.classList.add("closing");
+          setTimeout(function(){ try{ overlay.remove(); }catch(e){} },300);
+          try{ var u=new URL(window.location.href); u.searchParams.delete("onboarding"); history.replaceState(null,"",u.pathname+(u.search||"")); }catch(e){}
+        }
+
+        requestAnimationFrame(function(){ overlay.classList.add("show"); renderIntro(); });
+      }catch(e){ console.warn("NovaX tour init failed",e); }
+    })();
   </script>
 <script>
 (function(){
