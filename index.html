@@ -639,7 +639,7 @@ footer{color:#86a99b;}
     <div class="signin-field"><label>Create password</label><input id="merchantPassword" type="password" placeholder="Choose a password"></div>
     <div class="signin-field"><label>Website link if any</label><input id="merchantWebsite" placeholder="https://yourstore.com"></div>
     <button class="btn primary" id="merchantSubmit" style="width:100%;justify-content:center;margin-top:14px">Submit Merchant Request</button>
-    <div class="signin-note" id="merchantSignupNote">Your account will stay pending until NovaX sales or admin approves it.</div>
+    <div class="signin-note" id="merchantSignupNote">You'll get instant access - your workspace opens right after signup.</div>
   </div>
 </div>
 
@@ -819,24 +819,32 @@ footer{color:#86a99b;}
       return;
     }
     if(!/^\S+@\S+\.\S+$/.test(email)){ alert("Please enter a valid email address."); return; }
-    if(__nvSb&&__nvSb.auth){ try{ __nvSb.auth.signUp({ email:email.toLowerCase(), password:password, options:{ data:{ full_name:name, role:"client", phone:phone, city:city, address:address, business_type:product, website:website||"" } } }).then(function(r){ if(r&&r.error) console.warn("NovaX signup:",r.error.message); }); }catch(e){} }
-    var state=readState();
-    state.clients=Array.isArray(state.clients)?state.clients:[];
-    state.users=Array.isArray(state.users)?state.users:[];
-    state.pendingClients=Array.isArray(state.pendingClients)?state.pendingClients:[];
-    var dup=state.users.some(function(u){return String(u.email||"").toLowerCase()===email.toLowerCase();})||state.clients.some(function(c){return String(c.email||"").toLowerCase()===email.toLowerCase();});
-    if(dup){ alert("This email already has an account. Please sign in instead."); return; }
-    function nextId(prefix,arr){ var max=0; (arr||[]).forEach(function(it){ var n=parseInt(String(it.id||"").replace(/\D/g,""),10)||0; if(n>max) max=n; }); return prefix+"-"+String(max+1).padStart(4,"0"); }
-    state.clients=state.clients.filter(function(c){return c.id!=="CL-0000";});
-    var cid=nextId("CL",state.clients);
-    state.clients.unshift({ id:cid, name:name, owner:name, email:email, phone:phone, city:city, address:address, businessType:product, website:website||"No website", taxId:"Not added", iban:"Not added", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, walletTopup:0, shippingDue:0, walletBalance:0, risk:0, health:100, problemsResolved:0, status:"Active" });
-    state.users.unshift({ id:nextId("USR",state.users), name:name, email:email, role:"Client", accessSide:"Client Portal", branch:"", clientId:cid, status:"Active", permissions:["client"] });
-    state.pendingClients.unshift({ id:cid, name:name, owner:name, city:city, phone:phone, email:email, address:address, businessType:product, website:website||"No website", status:"Active", iban:"", taxId:"", rate:240, createdAt:new Date().toISOString().slice(0,10)+" "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) });
-    state.client={ id:cid, name:name, walletTopup:0, shippingDue:0, subAccounts:0, walletBalance:0 };
-    saveState(state);
-    var card=signupModal.querySelector(".signin-card");
-    card.innerHTML='<button class="signin-close" id="signupCloseDone" aria-label="Close signup">X</button><div style="display:grid;place-items:center;text-align:center;padding:34px 10px"><div style="width:92px;height:92px;border-radius:999px;background:#18c77a;display:grid;place-items:center;color:white;font-size:54px;font-weight:900;box-shadow:0 22px 50px rgba(24,199,122,.32)">✓</div><h3 style="margin:22px 0 8px">Account Created</h3><p style="margin:0;color:#60726b;font-size:18px;line-height:1.5">Your seller account is ready. Close this and tap Sign In to open your workspace.</p><div class="signin-note" style="margin-top:18px">Sign in with the email and password you just chose. You will also appear under Clients in the admin portal.</div></div>';
-    document.getElementById("signupCloseDone").addEventListener("click",closeSignup);
+    if(password.length<6){ alert("Password must be at least 6 characters."); return; }
+    if(!__nvSb||!__nvSb.auth){ alert("Signup service is unavailable. Please refresh and try again."); return; }
+    var submitBtn=document.getElementById("merchantSubmit"); var oldTxt=submitBtn.textContent;
+    submitBtn.disabled=true; submitBtn.textContent="Creating your workspace...";
+    __nvSb.auth.signUp({ email:email.toLowerCase(), password:password, options:{ data:{ full_name:name, role:"client", phone:phone, city:city, address:address, business_type:product, website:website||"" } } }).then(function(r){
+      if(r&&r.error){ submitBtn.disabled=false; submitBtn.textContent=oldTxt; alert(r.error.message||"Could not create your account. Please try again."); return; }
+      var newUser=r&&r.data&&r.data.user;
+      if(newUser&&Array.isArray(newUser.identities)&&newUser.identities.length===0){
+        submitBtn.disabled=false; submitBtn.textContent=oldTxt;
+        alert("This email already has an account. Please sign in instead.");
+        return;
+      }
+      __nvSb.rpc("create_client_workspace",{ p_name:name, p_owner:name, p_phone:phone, p_city:city, p_address:address, p_business_type:product, p_website:website||"" }).then(function(rpcRes){
+        submitBtn.disabled=false; submitBtn.textContent=oldTxt;
+        if(rpcRes&&rpcRes.error){
+          console.warn("NovaX workspace:",rpcRes.error.message);
+          alert("Your login was created, but your workspace could not be set up automatically. Please sign in and contact NovaX admin.");
+          closeSignup();
+          return;
+        }
+        try{ localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email.toLowerCase(),uid:(newUser&&newUser.id)||null,client_id:(rpcRes&&rpcRes.data)||null,rider_id:null,at:Date.now()})); }catch(e){}
+        var card=signupModal.querySelector(".signin-card");
+        card.innerHTML='<button class="signin-close" id="signupCloseDone" aria-label="Close signup">X</button><div style="display:grid;place-items:center;text-align:center;padding:34px 10px"><div style="width:92px;height:92px;border-radius:999px;background:#18c77a;display:grid;place-items:center;color:white;font-size:54px;font-weight:900;box-shadow:0 22px 50px rgba(24,199,122,.32)">✓</div><h3 style="margin:22px 0 8px">Workspace Ready</h3><p style="margin:0;color:#60726b;font-size:18px;line-height:1.5">Taking you to your NovaX seller workspace now...</p></div>';
+        setTimeout(function(){ window.location.href="client.html"; },1100);
+      });
+    });
   }
   document.querySelectorAll("[data-signup]").forEach(function(a){a.addEventListener("click",function(e){e.preventDefault();openSignup();});});
   document.getElementById("signupClose").addEventListener("click",closeSignup);
