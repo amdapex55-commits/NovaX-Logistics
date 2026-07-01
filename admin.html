@@ -8372,22 +8372,61 @@
         toast("User email and password are mandatory.");
         return;
       }
+      if (!window.__nvSignupClient || !window.__nvSb) {
+        toast("Cloud connection not ready — wait a moment and try again.");
+        return;
+      }
       const permissions = [...document.querySelectorAll("[data-user-permission]:checked")].map(item => item.value);
-      state.users.unshift({
-        id: nextId("USR", state.users),
-        name,
-        email,
-        password,
-        role: document.getElementById("userRole").value,
-        accessSide: document.getElementById("userAccessSide").value,
-        branch: document.getElementById("userBranch").value,
-        clientId: (state.clients[0] && state.clients[0].id) || "CL-0000",
-        permissions,
-        status: "Active"
+      const role = document.getElementById("userRole").value;
+      const accessSide = document.getElementById("userAccessSide").value;
+      const branch = document.getElementById("userBranch").value;
+      const btn = document.getElementById("createUserBtn");
+      if (btn) { btn.disabled = true; btn.textContent = "Creating account..."; }
+      window.__nvSignupClient.auth.signUp({ email, password }).then(res => {
+        if (res.error) {
+          toast(`Account creation failed: ${res.error.message}`);
+          if (btn) { btn.disabled = false; btn.textContent = "Create User"; }
+          return;
+        }
+        const newUserId = res.data && res.data.user && res.data.user.id;
+        const newUser = {
+          id: nextId("USR", state.users),
+          name,
+          email,
+          password,
+          role,
+          accessSide,
+          branch,
+          clientId: (state.clients[0] && state.clients[0].id) || "CL-0000",
+          permissions,
+          status: "Active"
+        };
+        state.users.unshift(newUser);
+        saveState();
+        showAdminTab("users-edit");
+        const profileRole = /admin/i.test(accessSide) ? "admin" : (/rider/i.test(accessSide) ? "rider" : (/client/i.test(accessSide) ? "client" : "admin"));
+        const linkProfile = attemptsLeft => {
+          const riderObj = newUser.riderId ? state.riders.find(r => r.id === newUser.riderId) : null;
+          const riderUuid = riderObj && riderObj._uuid;
+          if (profileRole === "rider" && !riderUuid && attemptsLeft > 0) {
+            setTimeout(() => linkProfile(attemptsLeft - 1), 700);
+            return;
+          }
+          const patch = Object.assign({ role: profileRole }, (profileRole === "rider" && riderUuid) ? { rider_id: riderUuid } : {});
+          const q = newUserId
+            ? window.__nvSb.from("profiles").update(patch).eq("id", newUserId)
+            : window.__nvSb.from("profiles").update(patch).eq("email", email);
+          q.then(r => {
+            if (btn) { btn.disabled = false; btn.textContent = "Create User"; }
+            if (r && r.error) {
+              toast(`${name} account created, but login link failed: ${r.error.message}`);
+              return;
+            }
+            toast(`${name} created with a real, working ${accessSide} login.`);
+          });
+        };
+        setTimeout(() => linkProfile(4), 900);
       });
-      saveState();
-      showAdminTab("users-edit");
-      toast(`${name} created with ${document.getElementById("userAccessSide").value} access.`);
     }
 
     function createRiderUser() {
@@ -8399,24 +8438,53 @@
         toast("Rider, username, and password are mandatory.");
         return;
       }
-      rider.username = email;
-      rider.password = password;
-      state.users.unshift({
-        id: nextId("USR", state.users),
-        name: rider.name,
-        email,
-        password,
-        role: "Rider",
-        accessSide: "Rider App",
-        branch: rider.branch,
-        clientId: state.clients[0]?.id || "CL-0001",
-        riderId: rider.id,
-        permissions: ["rider-route", "scan", "delivery-proof", "cash-submit"],
-        status: "Active"
+      if (!window.__nvSignupClient || !window.__nvSb) {
+        toast("Cloud connection not ready — wait a moment and try again.");
+        return;
+      }
+      window.__nvSignupClient.auth.signUp({ email, password }).then(res => {
+        if (res.error) {
+          toast(`Account creation failed: ${res.error.message}`);
+          return;
+        }
+        const newUserId = res.data && res.data.user && res.data.user.id;
+        rider.username = email;
+        rider.password = password;
+        state.users.unshift({
+          id: nextId("USR", state.users),
+          name: rider.name,
+          email,
+          password,
+          role: "Rider",
+          accessSide: "Rider App",
+          branch: rider.branch,
+          clientId: state.clients[0]?.id || "CL-0001",
+          riderId: rider.id,
+          permissions: ["rider-route", "scan", "delivery-proof", "cash-submit"],
+          status: "Active"
+        });
+        saveState();
+        showAdminTab("users-edit");
+        const linkProfile = attemptsLeft => {
+          const riderUuid = rider._uuid;
+          if (!riderUuid && attemptsLeft > 0) {
+            setTimeout(() => linkProfile(attemptsLeft - 1), 700);
+            return;
+          }
+          const patch = Object.assign({ role: "rider" }, riderUuid ? { rider_id: riderUuid } : {});
+          const q = newUserId
+            ? window.__nvSb.from("profiles").update(patch).eq("id", newUserId)
+            : window.__nvSb.from("profiles").update(patch).eq("email", email);
+          q.then(r => {
+            if (r && r.error) {
+              toast(`${rider.name} account created, but login link failed: ${r.error.message}`);
+              return;
+            }
+            toast(`${rider.name} rider login created and linked.`);
+          });
+        };
+        setTimeout(() => linkProfile(4), 900);
       });
-      saveState();
-      showAdminTab("users-edit");
-      toast(`${rider.name} rider login created.`);
     }
 
     function assignRiderToClient(clientId, riderId) {
@@ -9310,6 +9378,8 @@
       if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, local only."); return; }
       var sb; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); return; }
       window.__nvSb=sb;
+      var sbSignup=null; try{ sbSignup=window.supabase.createClient(SB_URL,SB_KEY,{ auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false } }); }catch(e){ console.warn("NovaX: signup client init failed.",e); }
+      window.__nvSignupClient=sbSignup;
       var ADMIN_UID=null, loaded=false, shadow={}, resyncT=null;
       function isUuid(v){ return typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v); }
       function dtpart(t){ return t?String(t).replace("T"," ").slice(0,16):""; }
