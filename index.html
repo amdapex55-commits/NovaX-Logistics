@@ -43,13 +43,15 @@ a{text-decoration:none;color:inherit;}
 /* ===== Handoff intro ===== */
 .handoff{position:fixed;inset:0;z-index:90;display:grid;place-items:center;background:radial-gradient(circle at 50% 40%,#0b2a1f,#06140f 70%);transition:opacity .6s ease,visibility .6s;}
 .handoff.hide{opacity:0;visibility:hidden;}
+#handoffSkip{position:absolute;right:18px;bottom:18px;z-index:3;background:rgba(255,255,255,.12);color:#eafff5;border:1px solid rgba(255,255,255,.28);padding:8px 16px;border-radius:999px;font-weight:800;font-size:12px;cursor:pointer;}
+#handoffSkip:hover{background:rgba(255,255,255,.22);}
 .drop-ground{position:absolute;left:0;right:0;bottom:0;height:130px;background:linear-gradient(180deg,transparent,rgba(20,199,123,.12));}
 .drop-field{position:absolute;inset:0;overflow:hidden;}
 .drop-box{position:absolute;bottom:var(--b);left:var(--l);width:62px;height:46px;border-radius:8px;background:linear-gradient(150deg,#ffd98a,#f1a230);box-shadow:0 10px 20px rgba(0,0,0,.34),inset 0 -9px 0 rgba(0,0,0,.13);transform:translateY(-118vh) rotate(var(--r));opacity:0;display:grid;place-items:center;animation:dropFall 1.3s var(--d) cubic-bezier(.3,1.1,.45,1) forwards;}
 .drop-box::before{content:"";position:absolute;left:0;right:0;top:50%;height:8px;transform:translateY(-50%);background:rgba(255,255,255,.45);}
 .drop-box b{position:relative;font-size:13px;font-weight:900;color:#06140f;letter-spacing:.01em;}
 @keyframes dropFall{0%{transform:translateY(-118vh) rotate(var(--r));opacity:0;}8%{opacity:1;}100%{transform:translateY(0) rotate(var(--r2));opacity:1;}}
-.handoff-word{position:relative;z-index:2;text-align:center;opacity:0;transform:scale(.92);animation:hword .8s 3s cubic-bezier(.2,.85,.2,1) forwards;}
+.handoff-word{position:relative;z-index:2;text-align:center;opacity:0;transform:scale(.92);animation:hword .6s .2s cubic-bezier(.2,.85,.2,1) forwards;}
 .hw-mark{font-size:clamp(48px,13vw,112px);font-weight:900;letter-spacing:-.03em;line-height:1;background:linear-gradient(120deg,#14c77b,#5bb8d6);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 14px 44px rgba(20,199,123,.35));}
 .hw-sub{color:#9fe9c8;font-size:clamp(12px,2.6vw,15px);font-weight:700;margin-top:8px;letter-spacing:.05em;}
 @keyframes hword{to{opacity:1;transform:scale(1);}}
@@ -234,6 +236,7 @@ h2.title{font-size:clamp(30px,5vw,58px);line-height:1.02;margin:16px 0 12px;lett
 .signin-field input,.signin-field select,.signin-field textarea{width:100%;min-height:48px;border-radius:13px;border:1px solid var(--line);background:#fff;padding:0 13px;color:var(--ink);font-weight:700;font:inherit;}
 .signin-field textarea{min-height:76px;padding:12px 13px;resize:vertical;}
 .signin-note{font-size:12px;color:var(--muted);margin-top:10px;}
+.form-error{color:#b3261e;background:#fdecea;border:1px solid #f3b3ab;border-radius:10px;padding:9px 12px;font-size:13px;margin-top:10px;line-height:1.4;}
 footer{padding:34px 0;text-align:center;color:var(--muted);font-size:13px;}
 
 @media (max-width:980px){
@@ -362,6 +365,7 @@ footer{color:#86a99b;}
     <div class="hw-mark">NovaX</div>
     <div class="hw-sub">Engineered in the UAE · Launching in Pakistan</div>
   </div>
+  <button type="button" id="handoffSkip" aria-label="Skip intro">Skip ›</button>
 </div>
 
 <!-- ===== TOPBAR ===== -->
@@ -389,14 +393,13 @@ footer{color:#86a99b;}
       <p class="lead reveal in d2">Humans do the lifting. <strong>AI does everything technical</strong> — tracking, COD reconciliation, exceptions, payouts — watched 24/7 so a parcel can't slip through a crack.</p>
 
       <div class="hero-cta reveal in d3">
-        <a class="btn primary" href="#track">Track Your Order</a>
-        <a class="btn ghost" href="#signup" data-signup>Signup As NovaX Merchant</a>
-        <a class="btn ghost" href="#signin" data-signin>Sign In</a>
+        <a class="btn primary" href="#signup" data-signup>Signup As NovaX Merchant</a>
+        <a class="btn ghost" href="#track">Track Your Order</a>
       </div>
 
       <div class="stats reveal in d4">
-        <div class="stat"><b data-count="128450" data-suffix="+">0</b><span>Parcels handled</span></div>
-        <div class="stat"><b data-count="1240" data-prefix="Rs " data-suffix="M+">0</b><span>COD reconciled</span></div>
+        <div class="stat"><b>100%</b><span>Delivery proof on every parcel</span></div>
+        <div class="stat"><b>AI-checked</b><span>Every COD reconciliation</span></div>
         <div class="stat"><b data-count="4">0</b><span>Cities live now</span></div>
         <div class="stat"><b data-count="24" data-suffix="/7">0</b><span>AI oversight</span></div>
       </div>
@@ -408,10 +411,10 @@ footer{color:#86a99b;}
         <h3>Where is my order?</h3>
         <p>Consignees check live NovaX status straight from the control room — no calls, no waiting.</p>
         <div class="track-row">
-          <input id="trackInput" value="N0010001" aria-label="Tracking ID" placeholder="Enter tracking ID e.g. N0010001">
+          <input id="trackInput" aria-label="Tracking ID" placeholder="Enter tracking ID e.g. N0010001">
           <button id="trackBtn">Track</button>
         </div>
-        <div class="track-result" id="trackResult"></div>
+        <div class="track-result" id="trackResult"><p style="color:#9fe9c8;font-size:13px">Enter a tracking ID above to see its live status.</p></div>
       </div>
     </div>
   </div>
@@ -500,8 +503,8 @@ footer{color:#86a99b;}
     </div>
     <div class="copy reveal d1">
       <span class="eyebrow"><span class="pulse"></span> Ask AI</span>
-      <h2 class="title">Stop fighting humans. <span style="color:var(--green)">Just ask the bot.</span></h2>
-      <p class="lead">No hold music, no rude agents, no "let me check." The AI assistant reads the live portal and answers with exact, correct numbers and real-time status — for sellers and their customers.</p>
+      <h2 class="title">Skip the queue. <span style="color:var(--green)">Just ask the bot.</span></h2>
+      <p class="lead">Instant answers, no hold music, no "let me check." The AI assistant reads the live portal and answers with exact, correct numbers and real-time status — for sellers and their customers.</p>
       <div class="feat-list">
         <div class="feat reveal d1"><div class="ic">💬</div><div><b>Real answers, instantly</b><span>Tracking, COD payable, summaries — pulled live, never guessed.</span></div></div>
         <div class="feat reveal d2"><div class="ic">🔔</div><div><b>Proactive updates</b><span>Delivery, exception, and payout alerts pushed to chat automatically.</span></div></div>
@@ -615,11 +618,12 @@ footer{color:#86a99b;}
 
 <div class="signin-modal" id="signinModal" aria-hidden="true">
   <div class="signin-card">
-    <button class="signin-close" id="signinClose" aria-label="Close sign in">X</button>
+    <button class="signin-close" id="signinClose" aria-label="Close sign in">×</button>
     <h3>Sign in to NovaX</h3>
     <p>One login for everyone - enter your email and password and NovaX opens the right workspace (seller, admin, or rider) automatically.</p>
     <div class="signin-field"><label>Email or username</label><input id="signinEmail" placeholder="name@novax.pk"></div>
     <div class="signin-field"><label>Password</label><input id="signinPassword" type="password" placeholder="Password"></div>
+    <div class="form-error" id="signinError" style="display:none"></div>
     <button class="btn primary" id="signinContinue" style="width:100%;justify-content:center;margin-top:14px">Continue</button>
     <div class="signin-note">Login is strict: only approved seller, admin, or rider credentials can open a workspace.</div>
   </div>
@@ -627,19 +631,20 @@ footer{color:#86a99b;}
 
 <div class="signin-modal" id="signupModal" aria-hidden="true">
   <div class="signin-card">
-    <button class="signin-close" id="signupClose" aria-label="Close signup">X</button>
+    <button class="signin-close" id="signupClose" aria-label="Close signup">×</button>
     <h3>Signup As NovaX Merchant</h3>
-    <p>Fill this once. NovaX sales will review the request and contact you as soon as possible.</p>
+    <p>Fill this once — your NovaX seller workspace opens immediately after you submit. No sales calls, no waiting.</p>
     <div class="signin-field"><label>What city are you based in?</label><select id="merchantCity"><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option><option>Faisalabad</option><option>Multan</option><option>Other</option></select></div>
     <div class="signin-field"><label>Your name</label><input id="merchantName" placeholder="Your full name"></div>
-    <div class="signin-field"><label>Your phone number</label><input id="merchantPhone" placeholder="03113323923" maxlength="11"></div>
+    <div class="signin-field"><label>Your phone number (Pakistan, e.g. 03113323923 or +923113323923)</label><input id="merchantPhone" placeholder="03113323923 or +923113323923" maxlength="13"></div>
     <div class="signin-field"><label>Your address</label><textarea id="merchantAddress" placeholder="Pickup address"></textarea></div>
     <div class="signin-field"><label>What product do you sell?</label><input id="merchantProduct" placeholder="Fashion, cosmetics, electronics, etc."></div>
     <div class="signin-field"><label>Login email</label><input id="merchantEmail" type="email" placeholder="you@store.com"></div>
     <div class="signin-field"><label>Create password</label><input id="merchantPassword" type="password" placeholder="Choose a password"></div>
     <div class="signin-field"><label>Website link if any</label><input id="merchantWebsite" placeholder="https://yourstore.com"></div>
+    <div class="form-error" id="signupError" style="display:none"></div>
     <button class="btn primary" id="merchantSubmit" style="width:100%;justify-content:center;margin-top:14px">Submit Merchant Request</button>
-    <div class="signin-note" id="merchantSignupNote">You'll get instant access - your workspace opens right after signup.</div>
+    <div class="signin-note" id="merchantSignupNote">Takes about 2 minutes — you'll land straight in your new seller workspace.</div>
   </div>
 </div>
 
@@ -680,12 +685,19 @@ footer{color:#86a99b;}
     f.innerHTML=html;
   }
   function playHandoff(then){
+    var seen=false; try{ seen=sessionStorage.getItem("nvIntroSeen")==="1"; }catch(e){}
+    if(seen){ if(typeof then==="function") then(); return; }
+    try{ sessionStorage.setItem("nvIntroSeen","1"); }catch(e){}
     handoff.classList.remove("hide");
     buildDrops();
     var w=document.getElementById("handoffWord");
     if(w){w.style.animation="none";void w.offsetWidth;w.style.animation="";}
     clearTimeout(window.__hf);
-    window.__hf=setTimeout(function(){ handoff.classList.add("hide"); if(typeof then==="function") then(); },4400);
+    var done=false;
+    function finishNow(){ if(done) return; done=true; handoff.classList.add("hide"); if(typeof then==="function") then(); }
+    window.__hf=setTimeout(finishNow,1500);
+    var skip=document.getElementById("handoffSkip");
+    if(skip) skip.onclick=finishNow;
   }
   // initial load
   playHandoff();
@@ -710,14 +722,9 @@ footer{color:#86a99b;}
     }catch(e){return{users:[]};}
   }
   function saveState(state){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}
-  /* ---- NovaX Supabase live cloud sync (additive, fail-safe; landing page reads cloud so tracking + login work cross-device) ---- */
+  /* ---- NovaX Supabase client (used for real sign-in/signup and live parcel tracking only; no shared writable state blob) ---- */
   var __nvSb=null;
   try{ if(window.supabase&&window.supabase.createClient){ __nvSb=window.supabase.createClient("https://rhzunbzbdzicajqtohwp.supabase.co","sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA"); } }catch(e){ __nvSb=null; }
-  var __nvOrigSave=saveState;
-  saveState=function(st){ __nvOrigSave(st); if(__nvSb){ try{ __nvSb.from("novax_state").upsert({id:1,data:st,updated_at:new Date().toISOString()}).then(function(r){ if(r&&r.error) console.warn("NovaX cloud save:",r.error.message); }); }catch(e){} } };
-  function __nvPullCloud(cb){ if(!__nvSb){ if(typeof cb==="function") cb(); return; } try{ __nvSb.from("novax_state").select("data").eq("id",1).maybeSingle().then(function(r){ try{ if(r&&!r.error&&r.data&&r.data.data&&Object.keys(r.data.data).length){ localStorage.setItem(STORAGE_KEY,JSON.stringify(r.data.data)); } }catch(e){} if(typeof cb==="function") cb(); }); }catch(e){ if(typeof cb==="function") cb(); } }
-  if(__nvSb){ try{ __nvSb.channel("novax_state_live").on("postgres_changes",{event:"*",schema:"public",table:"novax_state",filter:"id=eq.1"},function(payload){ var row=payload&&payload.new; if(row&&row.data){ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(row.data)); if(typeof track==="function") track(); }catch(e){} } }).subscribe(); }catch(e){} }
-  __nvPullCloud(function(){ if(typeof track==="function"){ try{ track(); }catch(e){} } });
   function routeForCredentials(email,password){
     var e=String(email||"").trim().toLowerCase();
     var rawPassword=String(password||"").trim();
@@ -764,21 +771,24 @@ footer{color:#86a99b;}
       document.querySelectorAll(".role-btn").forEach(function(b){ b.classList.toggle("active",b===btn); });
     });
   });
+  function showSigninError(msg){ var e=document.getElementById("signinError"); if(e){ e.textContent=msg; e.style.display="block"; } }
+  function clearSigninError(){ var e=document.getElementById("signinError"); if(e){ e.style.display="none"; e.textContent=""; } }
   document.getElementById("signinClose").addEventListener("click",closeSignin);
   signinModal.addEventListener("click",function(e){ if(e.target===signinModal) closeSignin(); });
   document.getElementById("signinContinue").addEventListener("click",function(){
+    clearSigninError();
     var email=(document.getElementById("signinEmail").value||"").trim();
     var pass=(document.getElementById("signinPassword").value||"").trim();
-    if(!email||!pass){ alert("Email/username and password are required."); return; }
+    if(!email||!pass){ showSigninError("Email/username and password are required."); return; }
     var btn=this; btn.disabled=true; var oldTxt=btn.textContent; btn.textContent="Checking database…";
-    if(!__nvSb||!__nvSb.auth){ btn.disabled=false; btn.textContent=oldTxt; alert("Login service is unavailable. Please refresh and try again."); return; }
+    if(!__nvSb||!__nvSb.auth){ btn.disabled=false; btn.textContent=oldTxt; showSigninError("Login service is unavailable. Please refresh and try again."); return; }
     __nvSb.auth.signInWithPassword({email:email.toLowerCase(),password:pass}).then(function(res){
-      if(res.error||!res.data||!res.data.user){ btn.disabled=false; btn.textContent=oldTxt; alert("Sign in failed: "+((res.error&&res.error.message)||"invalid email or password")); return; }
+      if(res.error||!res.data||!res.data.user){ btn.disabled=false; btn.textContent=oldTxt; showSigninError("Sign in failed: "+((res.error&&res.error.message)||"invalid email or password")); return; }
       var uid=res.data.user.id;
       __nvSb.from("profiles").select("role,client_id,rider_id,status").eq("id",uid).single().then(function(p){
         btn.disabled=false; btn.textContent=oldTxt;
-        if(p.error||!p.data){ alert("No profile is linked to this account yet. Please contact your NovaX admin."); return; }
-        if(String(p.data.status||"active").toLowerCase()==="blocked"){ try{ __nvSb.auth.signOut(); }catch(e){} alert("This account is blocked."); return; }
+        if(p.error||!p.data){ showSigninError("No profile is linked to this account yet. Please contact your NovaX admin."); return; }
+        if(String(p.data.status||"active").toLowerCase()==="blocked"){ try{ __nvSb.auth.signOut(); }catch(e){} showSigninError("This account is blocked."); return; }
         var role=String(p.data.role||"client").toLowerCase();
         var target=role==="admin"?"admin.html":(role==="rider"?"rider.html":"client.html");
         try{ localStorage.setItem("novaxSession",JSON.stringify({role:target.replace(".html",""),email:email.toLowerCase(),uid:uid,client_id:p.data.client_id||null,rider_id:p.data.rider_id||null,at:Date.now()})); }catch(e){}
@@ -801,7 +811,10 @@ footer{color:#86a99b;}
     signupModal.setAttribute("aria-hidden","true");
     if(location.hash==="#signup") history.replaceState(null,"",location.pathname+location.search);
   }
+  function showSignupError(msg){ var e=document.getElementById("signupError"); if(e){ e.textContent=msg; e.style.display="block"; } }
+  function clearSignupError(){ var e=document.getElementById("signupError"); if(e){ e.style.display="none"; e.textContent=""; } }
   function submitMerchantSignup(){
+    clearSignupError();
     var city=document.getElementById("merchantCity").value;
     var name=(document.getElementById("merchantName").value||"").trim();
     var phone=(document.getElementById("merchantPhone").value||"").trim();
@@ -811,37 +824,37 @@ footer{color:#86a99b;}
     var email=(document.getElementById("merchantEmail").value||"").trim();
     var password=(document.getElementById("merchantPassword").value||"").trim();
     if(!city||!name||!phone||!address||!product||!email||!password){
-      alert("City, name, phone, address, product, email, and password are all required.");
+      showSignupError("City, name, phone, address, product, email, and password are all required.");
       return;
     }
-    if(!/^03\d{9}$/.test(phone)){
-      alert("Phone must be 11 digits and start with 03. Example: 03113323923.");
+    if(!/^(03\d{9}|\+92\d{10})$/.test(phone)){
+      showSignupError("Enter a Pakistan number as 03XXXXXXXXX or +92XXXXXXXXXX. Example: 03113323923.");
       return;
     }
-    if(!/^\S+@\S+\.\S+$/.test(email)){ alert("Please enter a valid email address."); return; }
-    if(password.length<6){ alert("Password must be at least 6 characters."); return; }
-    if(!__nvSb||!__nvSb.auth){ alert("Signup service is unavailable. Please refresh and try again."); return; }
+    if(!/^\S+@\S+\.\S+$/.test(email)){ showSignupError("Please enter a valid email address."); return; }
+    if(password.length<6){ showSignupError("Password must be at least 6 characters."); return; }
+    if(!__nvSb||!__nvSb.auth){ showSignupError("Signup service is unavailable. Please refresh and try again."); return; }
     var submitBtn=document.getElementById("merchantSubmit"); var oldTxt=submitBtn.textContent;
     submitBtn.disabled=true; submitBtn.textContent="Creating your workspace...";
     __nvSb.auth.signUp({ email:email.toLowerCase(), password:password, options:{ data:{ full_name:name, role:"client", phone:phone, city:city, address:address, business_type:product, website:website||"" } } }).then(function(r){
-      if(r&&r.error){ submitBtn.disabled=false; submitBtn.textContent=oldTxt; alert(r.error.message||"Could not create your account. Please try again."); return; }
+      if(r&&r.error){ submitBtn.disabled=false; submitBtn.textContent=oldTxt; showSignupError(r.error.message||"Could not create your account. Please try again."); return; }
       var newUser=r&&r.data&&r.data.user;
       if(newUser&&Array.isArray(newUser.identities)&&newUser.identities.length===0){
         submitBtn.disabled=false; submitBtn.textContent=oldTxt;
-        alert("This email already has an account. Please sign in instead.");
+        showSignupError("This email already has an account. Please sign in instead.");
         return;
       }
       __nvSb.rpc("create_client_workspace",{ p_name:name, p_owner:name, p_phone:phone, p_city:city, p_address:address, p_business_type:product, p_website:website||"" }).then(function(rpcRes){
         submitBtn.disabled=false; submitBtn.textContent=oldTxt;
         if(rpcRes&&rpcRes.error){
           console.warn("NovaX workspace:",rpcRes.error.message);
-          alert("Your login was created, but your workspace could not be set up automatically. Please sign in and contact NovaX admin.");
+          showSignupError("Your login was created, but your workspace could not be set up automatically. Please sign in and contact NovaX admin.");
           closeSignup();
           return;
         }
         try{ localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email.toLowerCase(),uid:(newUser&&newUser.id)||null,client_id:(rpcRes&&rpcRes.data)||null,rider_id:null,at:Date.now()})); }catch(e){}
         var card=signupModal.querySelector(".signin-card");
-        card.innerHTML='<button class="signin-close" id="signupCloseDone" aria-label="Close signup">X</button><div style="display:grid;place-items:center;text-align:center;padding:34px 10px"><div style="width:92px;height:92px;border-radius:999px;background:#18c77a;display:grid;place-items:center;color:white;font-size:54px;font-weight:900;box-shadow:0 22px 50px rgba(24,199,122,.32)">✓</div><h3 style="margin:22px 0 8px">Workspace Ready</h3><p style="margin:0;color:#60726b;font-size:18px;line-height:1.5">Taking you to your NovaX seller workspace now...</p></div>';
+        card.innerHTML='<button class="signin-close" id="signupCloseDone" aria-label="Close signup">×</button><div style="display:grid;place-items:center;text-align:center;padding:34px 10px"><div style="width:92px;height:92px;border-radius:999px;background:#18c77a;display:grid;place-items:center;color:white;font-size:54px;font-weight:900;box-shadow:0 22px 50px rgba(24,199,122,.32)">✓</div><h3 style="margin:22px 0 8px">Workspace Ready</h3><p style="margin:0;color:#60726b;font-size:18px;line-height:1.5">Taking you to your NovaX seller workspace now...</p></div>';
         setTimeout(function(){ window.location.href="client.html?onboarding=1"; },1100);
       });
     });
@@ -892,33 +905,34 @@ footer{color:#86a99b;}
     var la=(c[1]+(Math.random()-.5)*0.01).toFixed(4), lo=(c[2]+(Math.random()-.5)*0.01).toFixed(4);
     gEl.textContent=c[0]+" "+la+"°N, "+lo+"°E";
   }
-  setInterval(gpsTick,1800);
+  setInterval(gpsTick,6000);
 
-  /* ---- track parcel (demo / random preview - NOT tied to client or admin data) ---- */
-  var DEMO_NAMES=["Ali Raza","Sara Khan","Bilal Ahmed","Hina Tariq","Usman Malik","Ayesha Noor","Fahad Iqbal","Zainab Ali","Omar Farooq","Maria Shah","Hassan Javed","Nida Aslam"];
-  var DEMO_CITIES=["Karachi","Lahore","Islamabad","Rawalpindi","Faisalabad","Multan","Peshawar","Quetta","Sialkot","Hyderabad","Gujranwala","Bahawalpur"];
-  var DEMO_FLOW=["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered"];
-  function nvHash(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return Math.abs(h);}
+  /* ---- track parcel: queries the real parcels table, no fake/random data ---- */
   function track(){
     var awb=(document.getElementById("trackInput").value||"").trim().toUpperCase();
     var box=document.getElementById("trackResult");
-    if(!awb){ box.innerHTML='<div class="tr-card bad"><div class="tr-head"><strong>No parcel found</strong><span class="chip bad">check ID</span></div><div style="color:#9fe9c8;font-size:13px">Enter a tracking ID e.g. N0010001 to see a live preview.</div></div>'; return; }
-    var h=nvHash(awb);
-    var name=DEMO_NAMES[h%DEMO_NAMES.length];
-    var city=DEMO_CITIES[(Math.floor(h/7))%DEMO_CITIES.length];
-    var si=(Math.floor(h/31))%DEMO_FLOW.length;
-    var status=DEMO_FLOW[si];
-    var total=DEMO_FLOW.length-1, prog=Math.max(8,Math.round((si/total)*100));
-    var ageH=(h%70)+2;
-    var chip=/Delivered/i.test(status)?"good":(si<4?"info":"warn");
-    box.innerHTML='<div class="tr-card"><div class="tr-head"><strong>'+awb+'</strong><span class="chip '+chip+'">'+status+'</span></div>'+
-      '<div style="color:#cdeede;font-size:13px">'+name+' \u00b7 '+city+' \u00b7 clock '+agingLabel(ageH)+'</div>'+
-      '<div class="tr-prog"><i style="width:0"></i></div></div>';
-    requestAnimationFrame(function(){var bar=box.querySelector(".tr-prog i");if(bar)bar.style.width=prog+"%";});
+    if(!awb){ box.innerHTML='<p style="color:#9fe9c8;font-size:13px">Enter a tracking ID above to see its live status.</p>'; return; }
+    if(!__nvSb){ box.innerHTML='<div class="tr-card bad"><div class="tr-head"><strong>'+awb+'</strong><span class="chip bad">unavailable</span></div><div style="color:#9fe9c8;font-size:13px">Tracking is unavailable right now. Please refresh and try again.</div></div>'; return; }
+    box.innerHTML='<div class="tr-card"><div class="tr-head"><strong>'+awb+'</strong><span class="chip info">Looking up…</span></div></div>';
+    __nvSb.from("parcels").select("awb,city,status").eq("awb",awb).maybeSingle().then(function(r){
+      if(!r||r.error||!r.data){
+        box.innerHTML='<div class="tr-card bad"><div class="tr-head"><strong>'+awb+'</strong><span class="chip bad">not found</span></div><div style="color:#9fe9c8;font-size:13px">We could not find a parcel with this tracking ID. Double-check the ID and try again.</div></div>';
+        return;
+      }
+      var p=r.data, status=p.status||"New booked";
+      var si=STATUS_TAGS.indexOf(status); if(si<0) si=0;
+      var total=STATUS_TAGS.length-1, prog=Math.max(8,Math.round((si/total)*100));
+      var chip=/Delivered|returned to consignee/i.test(status)?"good":(si<4?"info":"warn");
+      box.innerHTML='<div class="tr-card"><div class="tr-head"><strong>'+awb+'</strong><span class="chip '+chip+'">'+status+'</span></div>'+
+        '<div style="color:#cdeede;font-size:13px">'+(p.city||"")+'</div>'+
+        '<div class="tr-prog"><i style="width:0"></i></div></div>';
+      requestAnimationFrame(function(){var bar=box.querySelector(".tr-prog i");if(bar)bar.style.width=prog+"%";});
+    }).catch(function(){
+      box.innerHTML='<div class="tr-card bad"><div class="tr-head"><strong>'+awb+'</strong><span class="chip bad">error</span></div><div style="color:#9fe9c8;font-size:13px">Something went wrong looking this up. Please try again.</div></div>';
+    });
   }
   document.getElementById("trackBtn").addEventListener("click",track);
   document.getElementById("trackInput").addEventListener("keydown",function(e){if(e.key==="Enter")track();});
-  track();
 })();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
