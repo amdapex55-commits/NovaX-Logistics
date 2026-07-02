@@ -1,6 +1,15 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <style>html:not(.nv-auth-ok) body{visibility:hidden}</style>
+  <script>
+  (function(){
+    try{
+      var ses=JSON.parse(localStorage.getItem("novaxSession")||"null");
+      if(!ses||!ses.uid){ window.location.replace("index.html#signin"); }
+    }catch(e){ window.location.replace("index.html#signin"); }
+  })();
+  </script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NovaX Logistics | Seller Suite</title>
@@ -1449,17 +1458,22 @@
   function logout(e){ if(e&&e.preventDefault) e.preventDefault(); try{ localStorage.removeItem("novaxSession"); }catch(_){ } try{ if(__sb&&__sb.auth) __sb.auth.signOut(); }catch(_2){ } window.location.href="index.html"; }
   window.nvLogout=logout;
   function __guard(){
-    if(!__sb||!__sb.auth) return;
+    var revealed=false;
+    function reveal(){ if(revealed) return; revealed=true; document.documentElement.classList.add("nv-auth-ok"); }
+    var failOpen=setTimeout(reveal,4000);
+    if(!__sb||!__sb.auth){ reveal(); return; }
     __sb.auth.getSession().then(function(r){
       var session=r&&r.data&&r.data.session;
-      if(!session){ window.location.replace("index.html"); return; }
+      if(!session){ window.location.replace("index.html#signin"); return; }
       __sb.from("profiles").select("role,status").eq("id",session.user.id).single().then(function(p){
-        if(p&&p.error) return;
+        clearTimeout(failOpen);
+        if(p&&p.error){ reveal(); return; }
         var role=p&&p.data?String(p.data.role||"").toLowerCase():"";
         var status=p&&p.data?String(p.data.status||"").toLowerCase():"";
-        if(!role||role!==__REQUIRED_ROLE||status==="blocked"||status==="disabled"){ try{ __sb.auth.signOut(); }catch(_3){ } window.location.replace("index.html"); }
+        if(!role||role!==__REQUIRED_ROLE||status==="blocked"||status==="disabled"){ try{ __sb.auth.signOut(); }catch(_3){ } window.location.replace("index.html"); return; }
+        reveal();
       });
-    });
+    }).catch(function(){ reveal(); });
   }
   __guard();
   function apply(){
