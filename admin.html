@@ -1,6 +1,15 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <style>html:not(.nv-auth-ok) body{visibility:hidden}</style>
+  <script>
+  (function(){
+    try{
+      var ses=JSON.parse(localStorage.getItem("novaxSession")||"null");
+      if(!ses||!ses.uid){ window.location.replace("index.html#signin"); }
+    }catch(e){ window.location.replace("index.html#signin"); }
+  })();
+  </script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NovaX Logistics | Control Room</title>
@@ -3877,9 +3886,9 @@
               <a class="ghost-btn auth-btn" href="index.html#signin">Sign In</a>
             </div>
             <div class="proof-grid" style="margin-top:18px">
-              <div class="proof-tile"><label>Delivered</label><strong>100K+</strong></div>
-              <div class="proof-tile"><label>COD tracked</label><strong>Rs 1.2B</strong></div>
-              <div class="proof-tile"><label>Launch cities</label><strong>5</strong></div>
+              <div class="proof-tile"><label>Delivery proof</label><strong>100%</strong></div>
+              <div class="proof-tile"><label>COD reconciliation</label><strong>AI-checked</strong></div>
+              <div class="proof-tile"><label>Launch cities</label><strong>4</strong></div>
               <div class="proof-tile"><label>Support</label><strong>AI + Ops</strong></div>
             </div>
           </div>
@@ -3895,8 +3904,8 @@
               <div class="moving-parcel p2">NX</div>
               <div class="moving-parcel p3">NX</div>
               <div class="live-widget-stack">
-                <div class="live-widget"><strong>Rs 1.2B COD tracked</strong><span>Seller payable protected by delivery proof</span></div>
-                <div class="live-widget"><strong>100K+ delivered parcels</strong><span>Launch target across five city lanes</span></div>
+                <div class="live-widget"><strong>Every COD reconciled</strong><span>Seller payable protected by delivery proof</span></div>
+                <div class="live-widget"><strong>Live in 4 cities</strong><span>Launching wider across Pakistan next</span></div>
                 <div class="live-widget"><strong>Same data for seller and ops</strong><span>Tracking, invoices, rider cash, and payout</span></div>
               </div>
             </div>
@@ -4094,17 +4103,17 @@
                   <button class="action-btn" id="quickBookingBtn">Create AWB</button>
                 </div>
                 <div class="form-grid">
-                  <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" value="New COD Customer" required></div>
-                  <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" value="+92 300 1111111" required></div>
+                  <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
+                  <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" placeholder="+92 300 1234567" required></div>
                   <div class="field"><label>Pickup City <span class="required-star">*</span></label><select id="bookingPickupCity" required><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
                   <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
-                  <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" value="6500" min="0" required></div>
+                  <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="0" min="0" required></div>
                   <div class="field"><label>Service Type <span class="required-star">*</span></label><select id="bookingService" required><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option><option>Prepaid Delivery</option></select></div>
                   <div class="field"><label>Product Category <span class="required-star">*</span></label><select id="bookingCategory" required><option>Fashion</option><option>Cosmetics</option><option>Electronics</option><option>Documents</option><option>Home Goods</option></select></div>
                   <div class="field"><label>Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
                   <div class="field"><label>Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required></div>
                   <div class="field"><label>Payment Mode <span class="required-star">*</span></label><select id="bookingPaymentMode" required><option>Cash on Delivery</option><option>QR on Delivery</option><option>Prepaid</option></select></div>
-                  <div class="field" style="grid-column:1/-1"><label>Address <span class="required-star">*</span></label><textarea id="bookingAddress" required>House 21, Main Market, delivery before 6 PM.</textarea></div>
+                  <div class="field" style="grid-column:1/-1"><label>Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full delivery address, landmark, delivery instructions" required></textarea></div>
                 </div>
               </div>
             </section>
@@ -4755,7 +4764,7 @@
               <div class="grid two">
                 <div class="panel">
                   <div class="section-head">
-                    <div><h3>Create Users</h3><p>Create staff users with email, password, role, branch, and web/admin access. This saves an internal record only — it does not create a working login. For real access, create the account in Supabase Authentication, then link it from the browser console with nvLinkRider (riders) or nvLinkSeller (clients).</p></div>
+                    <div><h3>Create Users</h3><p>Create staff users with email, password, role, and branch access. This creates a real, working login immediately — the person can sign in right away using the email and password you set here.</p></div>
                     <button class="action-btn" id="createUserBtn">Create User</button>
                   </div>
                   <div class="form-grid">
@@ -6422,7 +6431,7 @@
       if (toInput && toInput.value !== state.clientDateTo) toInput.value = state.clientDateTo || "";
 
       document.getElementById("bulkValidationList").innerHTML = [
-        { label: "City validation", value: "4 serviceable cities", fill: 92, kind: "good" },
+        { label: "City validation", value: "4 serviceable cities", fill: 92, kind: "good" }, // matches landing/admin launch-city count (kept consistent 2026-07-02 audit fix)
         { label: "Duplicate order ID", value: "0 duplicates found", fill: 100, kind: "good" },
         { label: "COD sanity check", value: "2 orders need review", fill: 64, kind: "warn" },
         { label: "Phone completeness", value: "97% valid numbers", fill: 97, kind: "good" }
@@ -8033,7 +8042,7 @@
       }
       const consignee = document.getElementById("bookingName").value.trim();
       const city = document.getElementById("bookingCity").value;
-      const cod = Number(document.getElementById("bookingCod").value) || 6500;
+      const cod = Number(document.getElementById("bookingCod").value) || 0;
       const awb = bookParcel({
         consignee,
         city,
@@ -9527,17 +9536,22 @@
   function logout(e){ if(e&&e.preventDefault) e.preventDefault(); try{ localStorage.removeItem("novaxSession"); }catch(_){ } try{ if(__sb&&__sb.auth) __sb.auth.signOut(); }catch(_2){ } window.location.href="index.html"; }
   window.nvLogout=logout;
   function __guard(){
-    if(!__sb||!__sb.auth) return;
+    var revealed=false;
+    function reveal(){ if(revealed) return; revealed=true; document.documentElement.classList.add("nv-auth-ok"); }
+    var failOpen=setTimeout(reveal,4000);
+    if(!__sb||!__sb.auth){ reveal(); return; }
     __sb.auth.getSession().then(function(r){
       var session=r&&r.data&&r.data.session;
-      if(!session){ window.location.replace("index.html"); return; }
+      if(!session){ window.location.replace("index.html#signin"); return; }
       __sb.from("profiles").select("role,status").eq("id",session.user.id).single().then(function(p){
-        if(p&&p.error) return;
+        clearTimeout(failOpen);
+        if(p&&p.error){ reveal(); return; }
         var role=p&&p.data?String(p.data.role||"").toLowerCase():"";
         var status=p&&p.data?String(p.data.status||"").toLowerCase():"";
-        if(!role||role!==__REQUIRED_ROLE||status==="blocked"||status==="disabled"){ try{ __sb.auth.signOut(); }catch(_3){ } window.location.replace("index.html"); }
+        if(!role||role!==__REQUIRED_ROLE||status==="blocked"||status==="disabled"){ try{ __sb.auth.signOut(); }catch(_3){ } window.location.replace("index.html"); return; }
+        reveal();
       });
-    });
+    }).catch(function(){ reveal(); });
   }
   __guard();
   function apply(){
