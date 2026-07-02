@@ -2,7 +2,9 @@
 (function(){
   var cvs=document.getElementById('nv3dbg'); if(!cvs||!window.THREE) return;
   var host=cvs.parentElement||document.body;
-  var isTouch=(window.matchMedia&&window.matchMedia('(pointer:coarse)').matches)||window.innerWidth<820;
+  var isLowEnd=(navigator.hardwareConcurrency&&navigator.hardwareConcurrency<=4)||window.innerWidth<640;
+  var isTouch=(window.matchMedia&&window.matchMedia('(pointer:coarse)').matches)||window.innerWidth<820||isLowEnd;
+  if(isLowEnd){ try{ if(cvs&&cvs.parentNode) cvs.parentNode.removeChild(cvs); }catch(e){} return; }
   var lowMo=(window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches);
   var renderer; try{ renderer=new THREE.WebGLRenderer({canvas:cvs,antialias:!isTouch,alpha:true,powerPreference:isTouch?'low-power':'high-performance'}); }catch(e){ return; }
   renderer.setPixelRatio(isTouch?Math.min(window.devicePixelRatio||1,0.9):Math.min(window.devicePixelRatio||1,1.8));
