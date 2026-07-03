@@ -2265,13 +2265,14 @@
     .admin-subtab,
     .admin-tab {
       width: 100%;
-      min-height: 42px;
+      min-height: 32px;
       border-radius: var(--radius);
       background: transparent;
       color: var(--muted);
       text-align: left;
-      padding: 0 12px;
-      font-weight: 760;
+      padding: 0 10px;
+      font-weight: 650;
+      font-size: 13px;
       transition: background var(--speed), color var(--speed), transform var(--speed);
     }
 
@@ -2279,9 +2280,9 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      letter-spacing: .08em;
-      text-transform: uppercase;
+      gap: 8px;
+      letter-spacing: .03em;
+      text-transform: none;
     }
 
     .admin-nav-main .chevron {
@@ -4094,17 +4095,17 @@
                   <button class="action-btn" id="quickBookingBtn">Create AWB</button>
                 </div>
                 <div class="form-grid">
-                  <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" value="New COD Customer" required></div>
-                  <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" value="+92 300 1111111" required></div>
+                  <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
+                  <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" placeholder="03xxxxxxxxx" maxlength="11" required></div>
                   <div class="field"><label>Pickup City <span class="required-star">*</span></label><select id="bookingPickupCity" required><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
                   <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
-                  <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" value="6500" min="0" required></div>
+                  <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required></div>
                   <div class="field"><label>Service Type <span class="required-star">*</span></label><select id="bookingService" required><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option><option>Prepaid Delivery</option></select></div>
                   <div class="field"><label>Product Category <span class="required-star">*</span></label><select id="bookingCategory" required><option>Fashion</option><option>Cosmetics</option><option>Electronics</option><option>Documents</option><option>Home Goods</option></select></div>
                   <div class="field"><label>Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
                   <div class="field"><label>Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required></div>
                   <div class="field"><label>Payment Mode <span class="required-star">*</span></label><select id="bookingPaymentMode" required><option>Cash on Delivery</option><option>QR on Delivery</option><option>Prepaid</option></select></div>
-                  <div class="field" style="grid-column:1/-1"><label>Address <span class="required-star">*</span></label><textarea id="bookingAddress" required>House 21, Main Market, delivery before 6 PM.</textarea></div>
+                  <div class="field" style="grid-column:1/-1"><label>Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full pickup/delivery address" required></textarea></div>
                 </div>
               </div>
             </section>
@@ -5365,7 +5366,7 @@
     };
 
     function cleanStartState() {
-      const blankClient = { id: "CL-0000", name: "New Merchant Workspace", owner: "", city: "", walletTopup: 0, shippingDue: 0, risk: 0, status: "Draft", rate: 240, rateCard: { overnight: 240, additionalKg: 80, detainBase: 520, detainAdditionalKg: 120, overlandBase: 900, overlandAdditionalKg: 45 }, problemsResolved: 0, health: 0, walletBalance: 0 };
+      const blankClient = { id: "CL-0000", name: "New Merchant Workspace", owner: "", city: "", walletTopup: 0, shippingDue: 0, risk: 0, status: "Draft", rate: 250, rateCard: defaultRateCard(250), problemsResolved: 0, health: 0, walletBalance: 0 };
       return {
         _cleanStartV2: true,
         selectedAwb: "",
@@ -5508,7 +5509,7 @@
     }
 
     function clientById(id) {
-      return state.clients.find(client => client.id === id) || state.clients[0] || { id: "CL-0000", name: "New Merchant Workspace", city: "", rate: 240, walletBalance: 0, status: "Draft" };
+      return state.clients.find(client => client.id === id) || state.clients[0] || { id: "CL-0000", name: "New Merchant Workspace", city: "", rate: 250, walletBalance: 0, status: "Draft" };
     }
 
     function clientCode(id) {
@@ -7156,6 +7157,7 @@
             ${moneyBox("Client", user.clientId, "assigned account")}
           </div>
           <div class="footer-note" style="margin-top:8px">Allowed controls: ${(user.permissions || []).join(", ") || "dashboard"}.</div>
+          <div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="deleteUser('${user.id}')">Delete User</button></div>
         </div>
       `).join("") || `<div class="ops-card"><strong>No users yet</strong><p>Create users from the Create Users tab.</p></div>`;
 
@@ -8487,10 +8489,23 @@
       });
     }
 
+    function deleteUser(userId) {
+      const user = state.users.find(u => u.id === userId);
+      if (!user) { toast("User not found."); return; }
+      if (!window.confirm(`Delete user ${user.name} (${user.email})? This removes their app access immediately.`)) return;
+      state.users = state.users.filter(u => u.id !== userId);
+      saveState();
+      render();
+      toast(`${user.name} removed from Users.`);
+    }
+
     function assignRiderToClient(clientId, riderId) {
       const client = state.clients.find(c => c.id === clientId);
       if (!client) { toast("Client not found."); return; }
       client.assignedRider = riderId || "";
+      if (riderId) {
+        state.parcels.filter(p => p.clientId === clientId && p.status === "New booked" && !p.rider).forEach(p => { p.rider = riderId; });
+      }
       saveState();
       render();
       const rider = state.riders.find(r => r.id === riderId);
@@ -9370,6 +9385,7 @@
     window.toggleTicketHub = toggleTicketHub;
     window.editClientLogin = editClientLogin;
     window.assignRiderToClient = assignRiderToClient;
+    window.deleteUser = deleteUser;
     window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); render(); } });
     /* ===== NovaX secure admin data layer (live tables, admin-scoped) ===== */
     (function(){
@@ -9386,8 +9402,8 @@
       function dpart(t){ return t?String(t).slice(0,10):new Date().toISOString().slice(0,10); }
       function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
       function sigOf(row){ return JSON.stringify(row,function(k,v){ return k==="updated_at"?undefined:v; }); }
-      var DRC={ overnight:240, additionalKg:80, detainBase:520, detainAdditionalKg:120, overlandBase:900, overlandAdditionalKg:45 };
-      function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||240), rateCard:r.rate_card||DRC, problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
+      var DRC={ overnight:250, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 };
+      function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||250), rateCard:r.rate_card||DRC, problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
       function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", steps:Array.isArray(m.steps)?m.steps:[] }; }
       function rInvoice(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.code||r.id, clientId:r.client_id, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:Number(r.cod_total||0), charges:Number(r.fee_total||0), payable:Number(r.net_payable||0), status:r.status||"Pending", createdAt:dtpart(r.created_at), paidAt:m.paidAt||"", summary:m.summary||"" }; }
@@ -9397,7 +9413,7 @@
       function rPl(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, type:r.type||"", amount:Number(r.amount||0), status:r.status||"", ref:r.reference||"" }; }
       function cuid(id){ var c=(state.clients||[]).find(function(x){return x.id===id;}); return (c&&c._uuid)||(isUuid(id)?id:null); }
       function ruid(id){ var r=(state.riders||[]).find(function(x){return x.id===id;}); return (r&&r._uuid)||(isUuid(id)?id:null); }
-      function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||240), rate_card:c.rateCard||DRC, wallet_balance:Number(c.walletBalance||0), risk_score:Number(c.risk||0), meta:{ tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"" } }; }
+      function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||250), rate_card:c.rateCard||DRC, wallet_balance:Number(c.walletBalance||0), risk_score:Number(c.risk||0), meta:{ tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"" } }; }
       function fRider(r){ return { name:r.name||"", phone:r.phone||"", branch:r.branch||r.manager||"", access:r.access||"Active", cash_limit:Number(r.cashLimit||0), meta:{ username:r.username, manager:r.manager, cashHeld:r.cashHeld, scans:r.scans, fakeRisk:r.fakeRisk, expenses:r.expenses } }; }
       function fParcel(p){ var cid=cuid(p.clientId); if(!cid) return null; var rid=ruid(p.rider); return { awb:p.awb, client_id:cid, rider_id:rid, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:(p.date?new Date(p.date).toISOString():new Date().toISOString()), updated_at:new Date().toISOString(), meta:{ statusAgeHours:p.statusAgeHours, stage:p.stage, totalStages:p.totalStages, steps:p.steps, risk:p.risk, branch:p.branch, cashReceived:p.cashReceived, returnProof:p.returnProof, resolutionRemark:p.resolutionRemark, riderInput:p.riderInput, service:p.service, weight:p.weight } }; }
       function fInvoice(iv){ var cid=cuid(iv.clientId); if(!cid) return null; return { code:iv.id, client_id:cid, parcel_refs:iv.parcelRefs||[], cod_total:Number(iv.cod||0), fee_total:Number(iv.charges||0), net_payable:Number(iv.payable||0), status:iv.status||"Pending", meta:{ paidAt:iv.paidAt, summary:iv.summary } }; }
