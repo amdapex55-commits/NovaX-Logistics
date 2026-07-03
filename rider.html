@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://rhzunbzbdzicajqtohwp.supabase.co">
+  <link rel="dns-prefetch" href="https://rhzunbzbdzicajqtohwp.supabase.co">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <title>NovaX Logistics | Rider App</title>
   <style>
     :root{
@@ -340,7 +344,7 @@
               ${moneyBox("Phone", p.phone || "n/a", "tap Call below")}
             </div>
             <p style="margin-top:8px"><strong>Address:</strong> ${p.address || "Address pending"}</p>
-            ${p.proofPhoto ? `<img src="${p.proofPhoto}" alt="proof" style="margin-top:8px;width:100%;max-height:190px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">` : ""}
+            ${p.proofPhoto ? `<img src="${p.proofPhoto}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:190px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">` : ""}
             <div class="inline-actions" style="margin-top:10px">
               <a class="ghost-btn" href="tel:${tel}">📞 Call</a>
               <button class="action-btn" onclick="riderDeliver('${p.awb}')">${isReturn ? "✓ Mark Returned" : "✓ Mark Delivered"}</button>
@@ -359,8 +363,8 @@
         return `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip ${cls}">${p.status}</span></div>
           <p>${p.consignee} · ${p.city} · ${p.updated}${p.status==="Delivered" ? ` · ${money(p.cod)} in your account` : ""}</p>
           ${p.exception ? `<p class="footer-note">${p.exception}</p>` : ""}
-          ${p.proofPhoto ? `<img src="${p.proofPhoto}" alt="proof" style="margin-top:8px;width:100%;max-height:150px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">` : ""}
-          ${p.signature ? `<div class="footer-note" style="margin-top:6px">Signature captured ${p.signedAt || ""}</div><img src="${p.signature}" alt="signature" style="margin-top:4px;width:100%;max-height:120px;object-fit:contain;border-radius:12px;border:1px solid var(--line);background:#fff">` : ""}
+          ${p.proofPhoto ? `<img src="${p.proofPhoto}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:150px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">` : ""}
+          ${p.signature ? `<div class="footer-note" style="margin-top:6px">Signature captured ${p.signedAt || ""}</div><img src="${p.signature}" alt="signature" loading="lazy" style="margin-top:4px;width:100%;max-height:120px;object-fit:contain;border-radius:12px;border:1px solid var(--line);background:#fff">` : ""}
         </div>`;
       }).join("") || `<div class="ops-card"><strong>Nothing yet</strong><p>Delivered, refused and not-responding updates show here.</p></div>`;
     }
@@ -692,5 +696,34 @@
   if(document.readyState!=="loading") apply(); else document.addEventListener("DOMContentLoaded",apply);
 })();
 </script>
+  <script>
+  (function(){
+    var __SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
+    var __SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+    var __PORTAL="Rider App";
+    function uid(){ try{ return crypto.randomUUID(); }catch(e){ return "v-"+Date.now()+"-"+Math.random().toString(16).slice(2); } }
+    function sid(){ try{ var k="novaxVisitorId"; var v=sessionStorage.getItem(k); if(!v){ v=uid(); sessionStorage.setItem(k,v); } return v; }catch(e){ return uid(); } }
+    var SESSION_ID=sid();
+    var __vsb=null;
+    try{ if(window.supabase&&window.supabase.createClient) __vsb=window.supabase.createClient(__SB_URL,__SB_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}); }catch(e){}
+    function activityLabel(){
+      try{
+        var rider=(typeof riderById==="function"&&window.state)?riderById(window.state.activeRider):null;
+        var base=rider?("Rider "+rider.name+" ("+rider.id+")"):"No rider selected";
+        var scanning=document.getElementById("scanModal")&&document.getElementById("scanModal").classList.contains("show");
+        return base+(scanning?" · scanning a parcel":" · viewing route");
+      }catch(e){}
+      return "Browsing rider app";
+    }
+    function ping(){
+      if(!__vsb) return;
+      __vsb.from("visitor_sessions").upsert({ session_id:SESSION_ID, portal:__PORTAL, activity:activityLabel(), path:location.pathname+location.hash, referrer:document.referrer||"", user_agent:navigator.userAgent, last_seen:new Date().toISOString() },{ onConflict:"session_id" }).then(function(r){ if(r&&r.error) console.warn("NovaX visitor ping",r.error.message); });
+    }
+    document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") ping(); });
+    document.addEventListener("click",function(){ setTimeout(ping,150); });
+    setInterval(function(){ if(document.visibilityState==="visible") ping(); },20000);
+    ping();
+  })();
+  </script>
 </body>
 </html>
