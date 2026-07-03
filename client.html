@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://rhzunbzbdzicajqtohwp.supabase.co">
+  <link rel="dns-prefetch" href="https://rhzunbzbdzicajqtohwp.supabase.co">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <title>NovaX Logistics | Seller Suite</title>
   <style>
     :root{
@@ -806,7 +810,7 @@
           const note=problem?(p.exception||"Needs client review"):(current?`${p.branch} | ${p.updated}`:`${p.branch} | verified`);
           return `<div class="seller-step ${current?"current":""} ${problem?"problem":""}"><div class="step-dot">${i+1}</div><div><strong>${label}</strong><span>${note}</span></div><span class="chip ${problem?"bad":current?"info":"good"}">${problem?"review":current?"current":"done"}</span></div>`;
         });
-      document.getElementById("clientJourney").innerHTML=`<div class="seller-journey-card">${rows.join("")}${p.resolutionRemark?`<div class="seller-step"><div class="step-dot">OK</div><div><strong>Admin remarks</strong><span>${p.resolutionRemark}</span></div><span class="chip good">resolved</span></div>`:""}${p.proofPhoto?`<div class="seller-step problem"><div class="step-dot">📷</div><div><strong>Rider remark + proof</strong><span>${p.exception||p.returnProof||"Photo proof attached by rider"}</span></div><span class="chip bad">live</span></div><div style="padding:0 14px 14px"><img src="${p.proofPhoto}" alt="rider proof" style="width:100%;max-height:240px;object-fit:cover;border-radius:12px;border:1px solid var(--line)"></div>`:""}</div>`;
+      document.getElementById("clientJourney").innerHTML=`<div class="seller-journey-card">${rows.join("")}${p.resolutionRemark?`<div class="seller-step"><div class="step-dot">OK</div><div><strong>Admin remarks</strong><span>${p.resolutionRemark}</span></div><span class="chip good">resolved</span></div>`:""}${p.proofPhoto?`<div class="seller-step problem"><div class="step-dot">📷</div><div><strong>Rider remark + proof</strong><span>${p.exception||p.returnProof||"Photo proof attached by rider"}</span></div><span class="chip bad">live</span></div><div style="padding:0 14px 14px"><img src="${p.proofPhoto}" alt="rider proof" loading="lazy" style="width:100%;max-height:240px;object-fit:cover;border-radius:12px;border:1px solid var(--line)"></div>`:""}</div>`;
       const review=document.getElementById("refusalReview"); if(!review) return;
       if(!isRefusalReview(p)){ review.innerHTML=""; return; }
       const input=p.riderInput||{attemptTime:p.updated,gps:"GPS attached",callProof:"Call proof pending",riderNote:"Rider marked delivery exception",photoProof:"Photo proof pending"};
@@ -864,7 +868,7 @@
       document.getElementById("clientInvoiceList").innerHTML=invoices.map(inv=>`<div class="invoice-card"><div class="ops-card-head"><strong>${inv.id}</strong><span class="chip ${inv.status==="Paid"?"good":"warn"}">${inv.status}</span></div><p>${inv.summary}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${moneyBox("Payable",money(inv.payable),"due to you")}${moneyBox("Date",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div></div>`).join("")||`<div class="ops-card"><strong>No invoices yet</strong></div>`;
       document.getElementById("orderLogFeed").innerHTML=cm.parcels.map(p=>{ const alert=alertForParcel(p); return `<div class="order-log-card clickable-row" onclick="openClientParcelJourney('${p.awb}')"><div><strong>${p.awb}</strong><div class="footer-note">${p.consignee} | ${p.city}</div></div><div><strong>${p.status}</strong><div class="footer-note">Last update ${p.updated} | ${alert.label}</div></div><button class="ghost-btn" onclick="event.stopPropagation();openTicketModal('${p.awb}')">Ticket</button></div>`; }).join("")||`<div class="ops-card"><strong>No order logs</strong></div>`;
       document.getElementById("subAccountList").innerHTML=[["Owner","Full visibility, payout approvals","active"],["Finance","Payments, invoices, reports","active"],["Warehouse","New and bulk booking only","active"],["Support","Tracking and WhatsApp replies","limited"]].map(r=>`<div class="ops-card"><div class="ops-card-head"><strong>${r[0]}</strong><span class="chip ${r[2]==="limited"?"warn":"good"}">${r[2]}</span></div><p>${r[1]}</p></div>`).join("");
-      document.getElementById("supportEscalations").innerHTML=state.parcels.filter(p=>p.exception&&p.clientId===state.client.id).map(p=>`<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip bad">escalated</span></div><p>${p.exception}</p>${p.proofPhoto?`<img src="${p.proofPhoto}" alt="proof" style="margin-top:8px;width:100%;max-height:200px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">`:""}</div>`).join("")||`<div class="ops-card"><strong>No escalations</strong><p>AI has complete portal data right now.</p></div>`;
+      document.getElementById("supportEscalations").innerHTML=state.parcels.filter(p=>p.exception&&p.clientId===state.client.id).map(p=>`<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip bad">escalated</span></div><p>${p.exception}</p>${p.proofPhoto?`<img src="${p.proofPhoto}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:200px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">`:""}</div>`).join("")||`<div class="ops-card"><strong>No escalations</strong><p>AI has complete portal data right now.</p></div>`;
     }
     function renderAi(){
       const p=state.parcels.find(x=>x.awb===state.selectedAwb)||state.parcels[0]||emptyParcel();
@@ -879,7 +883,7 @@
     /* ===== Added: AWB label, print, modals, bulk preview, report, invoice download, tickets, wallet ===== */
     function awbLabelHtml(p){
       const client=clientById(p.clientId);
-      return `<div class="awb-label"><div><div class="awb-title"><div><h3>NovaX AWB</h3><p class="footer-note" style="margin:6px 0 0;color:#41524a">Scan ID: ${p.awb}</p></div><strong>${p.awb}</strong></div><div class="awb-grid"><div class="awb-field"><span>Destination</span><strong>${p.city}</strong></div><div class="awb-field"><span>COD</span><strong>${money(p.cod)}</strong></div><div class="awb-field"><span>Consignee</span><strong>${p.consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${p.phone||"phone pending"}</strong></div><div class="awb-field"><span>Client</span><strong>${client.id} | ${client.name}</strong></div><div class="awb-field"><span>Service</span><strong>${p.service||"COD Standard"}</strong></div><div class="awb-field"><span>Weight</span><strong>${p.weight||"0.8 kg"}</strong></div><div class="awb-field"><span>Handling</span><strong>${p.fragile==="Yes"?"Fragile":"Standard"}</strong></div><div class="awb-field" style="grid-column:1/-1"><span>Address</span><strong>${p.address||"Address attached in portal"}</strong></div></div></div><div class="awb-codes"><div><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"></div><div><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"></div><span class="chip info">${p.awb}</span></div></div>`;
+      return `<div class="awb-label"><div><div class="awb-title"><div><h3>NovaX AWB</h3><p class="footer-note" style="margin:6px 0 0;color:#41524a">Scan ID: ${p.awb}</p></div><strong>${p.awb}</strong></div><div class="awb-grid"><div class="awb-field"><span>Destination</span><strong>${p.city}</strong></div><div class="awb-field"><span>COD</span><strong>${money(p.cod)}</strong></div><div class="awb-field"><span>Consignee</span><strong>${p.consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${p.phone||"phone pending"}</strong></div><div class="awb-field"><span>Client</span><strong>${client.id} | ${client.name}</strong></div><div class="awb-field"><span>Service</span><strong>${p.service||"COD Standard"}</strong></div><div class="awb-field"><span>Weight</span><strong>${p.weight||"0.8 kg"}</strong></div><div class="awb-field"><span>Handling</span><strong>${p.fragile==="Yes"?"Fragile":"Standard"}</strong></div><div class="awb-field" style="grid-column:1/-1"><span>Address</span><strong>${p.address||"Address attached in portal"}</strong></div></div></div><div class="awb-codes"><div><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}" loading="lazy"></div><div><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}" loading="lazy"></div><span class="chip info">${p.awb}</span></div></div>`;
     }
     function printLabels(awbs){
       const stage=document.getElementById("printStage"); if(!stage) return;
@@ -1488,5 +1492,30 @@
   if(document.readyState!=="loading") apply(); else document.addEventListener("DOMContentLoaded",apply);
 })();
 </script>
+  <script>
+  (function(){
+    var __SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
+    var __SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+    var __PORTAL="Client Portal";
+    function uid(){ try{ return crypto.randomUUID(); }catch(e){ return "v-"+Date.now()+"-"+Math.random().toString(16).slice(2); } }
+    function sid(){ try{ var k="novaxVisitorId"; var v=sessionStorage.getItem(k); if(!v){ v=uid(); sessionStorage.setItem(k,v); } return v; }catch(e){ return uid(); } }
+    var SESSION_ID=sid();
+    var __vsb=null;
+    try{ if(window.supabase&&window.supabase.createClient) __vsb=window.supabase.createClient(__SB_URL,__SB_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}); }catch(e){}
+    function humanizeTab(id){ if(!id) return "Dashboard"; return String(id).replace(/([a-z])([A-Z])/g,"$1 $2").replace(/[-_]/g," ").replace(/^./,function(c){ return c.toUpperCase(); }); }
+    function activityLabel(){
+      try{ if(window.state&&window.state.activeClientTab) return "Viewing "+humanizeTab(window.state.activeClientTab)+" tab"; }catch(e){}
+      return "Browsing client portal";
+    }
+    function ping(){
+      if(!__vsb) return;
+      __vsb.from("visitor_sessions").upsert({ session_id:SESSION_ID, portal:__PORTAL, activity:activityLabel(), path:location.pathname+location.hash, referrer:document.referrer||"", user_agent:navigator.userAgent, last_seen:new Date().toISOString() },{ onConflict:"session_id" }).then(function(r){ if(r&&r.error) console.warn("NovaX visitor ping",r.error.message); });
+    }
+    document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") ping(); });
+    document.addEventListener("click",function(){ setTimeout(ping,150); });
+    setInterval(function(){ if(document.visibilityState==="visible") ping(); },20000);
+    ping();
+  })();
+  </script>
 </body>
 </html>
