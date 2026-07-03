@@ -4334,6 +4334,8 @@
 
               <button type="button" class="admin-nav-main" data-admin-tab="total-summary">TOTAL SUMMARY</button>
 
+              <button type="button" class="admin-nav-main" data-admin-tab="live-visitors">LIVE VISITORS <span id="liveVisitorNavBadge" class="chip good" style="margin-left:6px;display:none">0</span></button>
+
               <div class="admin-nav-group" data-admin-group="tickets">
                 <button type="button" class="admin-nav-main" data-admin-group-toggle="tickets" aria-expanded="false">
                   <span>TICKETS</span><span class="chevron">v</span>
@@ -4484,6 +4486,22 @@
                   </div>
                   <div class="ops-list" id="barometerList"></div>
                 </div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-live-visitors">
+              <div class="panel" style="margin-bottom:14px">
+                <div class="section-head">
+                  <div><h3>Live Visitors</h3><p>Real people on your site right now, refreshed every few seconds. Counts include anyone active in the last 45 seconds.</p></div>
+                  <span class="chip info" id="liveVisitorsUpdated">Live</span>
+                </div>
+                <div class="money-grid" id="liveVisitorSummary" style="grid-template-columns:repeat(3,minmax(0,1fr))"></div>
+              </div>
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>What They're Doing</h3><p>Current screen/activity for every active visitor across the landing page, client portal, and rider app.</p></div>
+                </div>
+                <div class="ops-list" id="liveVisitorList"></div>
               </div>
             </section>
 
@@ -9531,6 +9549,53 @@
         closeBtn.addEventListener('click',function(){ panel.classList.remove('open'); });
         sendBtn.addEventListener('click',send); inp.addEventListener('keydown',function(e){ if(e.key==='Enter') send(); });
       }catch(e){ console.warn('NovaX AI init failed',e); }
+    })();
+
+    /* ===== NovaX live visitors (real-time visitor tracking) ===== */
+    (function(){
+      var LV_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
+      var LV_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+      if(!window.supabase||!window.supabase.createClient) return;
+      var lvsb; try{ lvsb=window.supabase.createClient(LV_URL,LV_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}); }catch(e){ return; }
+      function timeAgo(iso){
+        var s=Math.max(0,Math.round((Date.now()-new Date(iso).getTime())/1000));
+        if(s<60) return s+"s ago";
+        var m=Math.round(s/60); return m+"m ago";
+      }
+      function deviceOf(ua){
+        ua=ua||"";
+        if(/Mobi|Android|iPhone/i.test(ua)) return "Mobile";
+        if(/iPad|Tablet/i.test(ua)) return "Tablet";
+        return "Desktop";
+      }
+      function renderLiveVisitors(rows){
+        var badge=document.getElementById("liveVisitorNavBadge");
+        if(badge){ badge.textContent=String(rows.length); badge.style.display=rows.length?"inline-flex":"none"; }
+        var summaryEl=document.getElementById("liveVisitorSummary");
+        var listEl=document.getElementById("liveVisitorList");
+        var updatedEl=document.getElementById("liveVisitorsUpdated");
+        if(!summaryEl||!listEl) return;
+        var byPortal={};
+        rows.forEach(function(r){ byPortal[r.portal]=(byPortal[r.portal]||0)+1; });
+        var portals=["Landing / Signup","Client Portal","Rider App"];
+        summaryEl.innerHTML=portals.map(function(p){ var n=byPortal[p]||0; return moneyBox(p,n,n===1?"visitor now":"visitors now"); }).join("");
+        listEl.innerHTML = rows.length ? rows.map(function(r){
+          return '<div class="ops-card"><div class="ops-card-head"><strong>'+esc(r.portal||"Visitor")+'</strong><span class="chip good">'+timeAgo(r.last_seen)+'</span></div><p>'+esc(r.activity||"Active on site")+'</p><p class="footer-note">'+deviceOf(r.user_agent)+(r.path?(" · "+esc(r.path)):"")+'</p></div>';
+        }).join("") : '<div class="ops-card"><strong>No one online right now</strong><p>As soon as a visitor opens the site, they will show up here in real time.</p></div>';
+        if(updatedEl) updatedEl.textContent="Live · updated "+new Date().toLocaleTimeString([],{ hour:"2-digit", minute:"2-digit", second:"2-digit" });
+      }
+      function pollLiveVisitors(){
+        var since=new Date(Date.now()-45000).toISOString();
+        lvsb.from("visitor_sessions").select("*").gte("last_seen",since).order("last_seen",{ascending:false}).then(function(res){
+          if(res&&res.error){ console.warn("NovaX live visitors",res.error.message); return; }
+          renderLiveVisitors((res&&res.data)||[]);
+        });
+      }
+      pollLiveVisitors();
+      setInterval(pollLiveVisitors,5000);
+      try{
+        lvsb.channel("novax_live_visitors").on("postgres_changes",{event:"*",schema:"public",table:"visitor_sessions"},function(){ pollLiveVisitors(); }).subscribe();
+      }catch(e){}
     })();
   </script>
 <script>
