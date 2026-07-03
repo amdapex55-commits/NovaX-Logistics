@@ -136,8 +136,25 @@
       <div class="panel" style="margin-bottom:14px">
         <div class="section-head">
           <div><h3>My Pickups</h3><p id="riderPickupNote">Clients assigned to you. When they book, the number of parcels to collect shows here.</p></div>
+          <button class="action-btn" id="scanPickupBtn" type="button">📷 Scan to Pick Up</button>
         </div>
         <div class="ops-list" id="riderPickups"></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:14px">
+        <div class="section-head">
+          <div><h3>Order Processing (Manual CN Update)</h3><p>Camera not working? Type the AWB / CN number and choose an action. You can only update parcels assigned to you.</p></div>
+        </div>
+        <div class="mini-form" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto">
+          <div class="field"><label>AWB / CN Number</label><input id="manualAwbInput" placeholder="e.g. N0010001"></div>
+          <div class="field"><label>Action</label><select id="manualActionSelect">
+            <option value="pickup">Mark Picked Up</option>
+            <option value="delivered">Mark Delivered</option>
+            <option value="refused">Mark Refused</option>
+            <option value="cnr">Consignee Not Available</option>
+          </select></div>
+          <button class="action-btn" id="manualUpdateBtn" type="button" style="min-height:46px">Update</button>
+        </div>
       </div>
 
       <div class="panel">
@@ -181,6 +198,18 @@
         <button class="ghost-btn" id="sigClearBtn" type="button">Clear</button>
         <button class="ghost-btn" id="sigCancelBtn" type="button">Cancel</button>
         <button class="action-btn" id="sigConfirmBtn" type="button">Confirm Delivery</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sig-overlay" id="scanModal">
+    <div class="sig-sheet">
+      <div class="sig-head"><strong>Scan AWB / CN barcode or QR</strong><button class="ghost-btn" id="scanCloseBtn" type="button">Close</button></div>
+      <p class="footer-note" id="scanStatusNote" style="margin:0 0 8px">Point the camera at the parcel's barcode or QR code.</p>
+      <video id="scanVideo" playsinline muted style="width:100%;border-radius:14px;border:1px dashed var(--line-strong);background:#000;max-height:320px;object-fit:cover"></video>
+      <div class="sig-actions">
+        <button class="ghost-btn" id="scanManualBtn" type="button">Enter Manually Instead</button>
+        <button class="ghost-btn" id="scanCancelBtn" type="button">Cancel</button>
       </div>
     </div>
   </div>
@@ -338,7 +367,14 @@
 
     /* ---- rider actions ---- */
     let riderPhotoCtx = null;
-    function riderPhotoThen(awb, kind){ riderPhotoCtx = { awb, kind }; const inp=document.getElementById("riderPhotoInput"); inp.value=""; if(kind==="notresponding"){ inp.removeAttribute("capture"); } else { inp.setAttribute("capture","environment"); } inp.click(); }
+    function riderPhotoThen(awb, kind){
+      const p = state.parcels.find(x=>x.awb===awb);
+      const rider = riderById(state.activeRider);
+      if(!p){ toast(`${awb} not found.`); return; }
+      if(!rider || p.rider !== rider.id){ toast(`${awb} is not on your delivery route — you can only action parcels assigned to you.`); return; }
+      if(p.status !== "Parcel out for delivery" && p.status !== "Return out for delivery"){ toast(`${awb} is not out for delivery.`); return; }
+      riderPhotoCtx = { awb, kind }; const inp=document.getElementById("riderPhotoInput"); inp.value=""; if(kind==="notresponding"){ inp.removeAttribute("capture"); } else { inp.setAttribute("capture","environment"); } inp.click();
+    }
     function handleRiderPhoto(file){
       if(!riderPhotoCtx || !file) return;
       const { awb, kind } = riderPhotoCtx;
@@ -373,7 +409,10 @@
       saveState(); renderRider();
     }
     function riderDeliver(awb){
-      const p = state.parcels.find(x=>x.awb===awb); if(!p) return;
+      const p = state.parcels.find(x=>x.awb===awb); if(!p){ toast(`${awb} not found.`); return; }
+      const rider = riderById(state.activeRider);
+      if(!rider || p.rider !== rider.id){ toast(`${awb} is not on your delivery route — you can only action parcels assigned to you.`); return; }
+      if(p.status !== "Parcel out for delivery" && p.status !== "Return out for delivery"){ toast(`${awb} is not out for delivery.`); return; }
       if (p.status === "Return out for delivery"){ finalizeDeliver(awb, ""); return; }
       openSignaturePad(awb);
     }
@@ -425,6 +464,92 @@
       const f = document.getElementById("deliverFlash"); f.classList.add("show");
       const tk = f.querySelector(".tk"); if(tk){ tk.style.animation="none"; void tk.offsetWidth; tk.style.animation=""; }
       clearTimeout(window.__df); window.__df = setTimeout(()=>f.classList.remove("show"), 2200);
+    }
+
+    /* ---- strict CN pickup + manual order processing ---- */
+    function findParcelForPickup(awbRaw){
+      const rider = riderById(state.activeRider);
+      const awb = String(awbRaw||"").trim().toUpperCase();
+      if(!awb) return { error: "Enter an AWB / CN number first." };
+      if(!rider) return { error: "Select a rider first." };
+      const p = state.parcels.find(x => String(x.awb||"").toUpperCase() === awb);
+      if(!p) return { error: `${awb} was not found in the system.` };
+      const client = clientById(p.clientId);
+      const assignedToMe = (client && client.assignedRider === rider.id) || p.rider === rider.id;
+      if(!assignedToMe){ return { error: `${p.awb} is not assigned to you for pickup — check with admin.` }; }
+      if(p.status !== "New booked"){ return { error: `${p.awb} is already "${p.status}" — nothing to pick up.` }; }
+      return { parcel: p, rider };
+    }
+    function scanPickup(awbRaw){
+      const res = findParcelForPickup(awbRaw);
+      if(res.error){ toast(res.error); return false; }
+      const { parcel, rider } = res;
+      parcel.rider = rider.id;
+      setParcelStatus(parcel, "Collected by rider");
+      saveState(); renderRider();
+      toast(`${parcel.awb} marked picked up by ${rider.name}.`);
+      return true;
+    }
+    function manualUpdateCn(){
+      const awbInput = document.getElementById("manualAwbInput");
+      const actionSel = document.getElementById("manualActionSelect");
+      const awb = (awbInput.value||"").trim();
+      const action = actionSel.value;
+      if(!awb){ toast("Enter an AWB / CN number first."); return; }
+      if(action === "pickup"){
+        if(scanPickup(awb)) awbInput.value = "";
+        return;
+      }
+      const p = state.parcels.find(x => String(x.awb||"").toUpperCase() === awb.toUpperCase());
+      const rider = riderById(state.activeRider);
+      if(!p){ toast(`${awb} was not found in the system.`); return; }
+      if(!rider || p.rider !== rider.id){ toast(`${p.awb} is not on your delivery route — you can only action parcels assigned to you.`); return; }
+      if(p.status !== "Parcel out for delivery" && p.status !== "Return out for delivery"){ toast(`${p.awb} is not out for delivery.`); return; }
+      if(action === "delivered") riderDeliver(p.awb);
+      else if(action === "refused") riderPhotoThen(p.awb, "refused");
+      else if(action === "cnr") riderPhotoThen(p.awb, "notresponding");
+      awbInput.value = "";
+    }
+
+    /* ---- camera scan modal (BarcodeDetector where supported) ---- */
+    let scanStream = null, scanRAF = null, scanDetector = null;
+    function stopScan(){
+      if(scanRAF){ cancelAnimationFrame(scanRAF); scanRAF = null; }
+      if(scanStream){ scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+      document.getElementById("scanModal").classList.remove("show");
+    }
+    async function openScanModal(){
+      const modal = document.getElementById("scanModal");
+      const note = document.getElementById("scanStatusNote");
+      modal.classList.add("show");
+      note.textContent = "Point the camera at the parcel's barcode or QR code.";
+      if(!("BarcodeDetector" in window)){
+        note.textContent = "Camera scanning isn't supported in this browser. Use the Order Processing box below to enter the AWB manually.";
+        return;
+      }
+      try{
+        scanDetector = new window.BarcodeDetector({ formats: ["qr_code","code_128","code_39","ean_13","ean_8","upc_a","upc_e"] });
+        scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        const video = document.getElementById("scanVideo");
+        video.srcObject = scanStream;
+        await video.play();
+        const tick = async () => {
+          if(!scanStream) return;
+          try{
+            const codes = await scanDetector.detect(video);
+            if(codes && codes.length){
+              const value = codes[0].rawValue;
+              stopScan();
+              scanPickup(value);
+              return;
+            }
+          }catch(e){ /* keep trying */ }
+          scanRAF = requestAnimationFrame(tick);
+        };
+        scanRAF = requestAnimationFrame(tick);
+      }catch(e){
+        note.textContent = "Camera access failed or was denied. Use the Order Processing box below to enter the AWB manually.";
+      }
     }
 
     document.getElementById("riderSelect").addEventListener("change", e => { state.activeRider = e.target.value; saveState(); renderRider(); });
@@ -504,10 +629,18 @@
       document.getElementById("sigCancelBtn").addEventListener("click",cancelSignature);
       document.getElementById("sigConfirmBtn").addEventListener("click",confirmSignature);
     })();
+    document.getElementById("scanPickupBtn").addEventListener("click", openScanModal);
+    document.getElementById("scanCloseBtn").addEventListener("click", stopScan);
+    document.getElementById("scanCancelBtn").addEventListener("click", stopScan);
+    document.getElementById("scanManualBtn").addEventListener("click", () => { stopScan(); const el=document.getElementById("manualAwbInput"); if(el) el.focus(); });
+    document.getElementById("manualUpdateBtn").addEventListener("click", manualUpdateCn);
     setInterval(()=>{ const el=document.getElementById("clockD"); if(el) el.textContent=`Live ${time()}`; }, 1000);
 
     window.riderDeliver = riderDeliver;
     window.riderPhotoThen = riderPhotoThen;
+    window.scanPickup = scanPickup;
+    window.manualUpdateCn = manualUpdateCn;
+    window.openScanModal = openScanModal;
     renderRider();
   </script>
 <script>
