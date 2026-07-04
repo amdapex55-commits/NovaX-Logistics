@@ -1407,13 +1407,40 @@
           document.getElementById("nvtourExit").addEventListener("click",finish);
         }
 
+        function openMobileMenuForTour(){
+          try{
+            if(window.innerWidth<=760){
+              var menuEl=document.getElementById("clientMenu");
+              var toggleBtn=document.getElementById("clientMenuToggle");
+              if(menuEl) menuEl.classList.add("open");
+              if(toggleBtn) toggleBtn.setAttribute("aria-expanded","true");
+            }
+          }catch(e){}
+        }
+        function closeMobileMenuForTour(){
+          try{
+            if(window.innerWidth<=760){
+              var menuEl=document.getElementById("clientMenu");
+              var toggleBtn=document.getElementById("clientMenuToggle");
+              if(menuEl) menuEl.classList.remove("open");
+              if(toggleBtn) toggleBtn.setAttribute("aria-expanded","false");
+            }
+          }catch(e){}
+        }
         function renderStep(dir){
           var s=STEPS[idx];
           try{ if(typeof showClientTab==="function") showClientTab(s.tab); }catch(e){}
+          openMobileMenuForTour();
           try{ window.scrollTo({top:0,behavior:"smooth"}); }catch(e){ window.scrollTo(0,0); }
           clearGlow();
           var navBtn=document.querySelector('[data-client-tab="'+s.tab+'"]');
-          if(navBtn){ void navBtn.offsetWidth; navBtn.classList.add("nvtour-glow"); }
+          if(navBtn){
+            void navBtn.offsetWidth;
+            navBtn.classList.add("nvtour-glow");
+            if(window.innerWidth<=760){
+              try{ navBtn.scrollIntoView({behavior:"smooth",block:"center"}); }catch(e){}
+            }
+          }
           var dots=STEPS.map(function(_,i){ return '<span class="nvtour-dot'+(i===idx?" on":"")+'"></span>'; }).join("");
           var backHtml = idx>0 ? '<button class="nvtour-btn ghost" id="nvtourBack">Back</button>' : "";
           var nextLabel = idx===STEPS.length-1 ? "Finish" : "Next";
@@ -1434,6 +1461,7 @@
 
         function finish(){
           clearGlow();
+          closeMobileMenuForTour();
           overlay.classList.add("closing");
           setTimeout(function(){ try{ overlay.remove(); }catch(e){} },300);
           try{ var u=new URL(window.location.href); u.searchParams.delete("onboarding"); history.replaceState(null,"",u.pathname+(u.search||"")); }catch(e){}
