@@ -108,6 +108,7 @@ h2.title{font-size:clamp(30px,5vw,58px);line-height:1.02;margin:16px 0 12px;lett
 .btn.ghost:hover{transform:translateY(-2px);background:#f0fbf5;}
 .btn.vivid{background:linear-gradient(135deg,#ff5f2e,#ff2e93);color:#fff;box-shadow:0 18px 36px rgba(255,46,147,.4);border:none;}
 .btn.vivid:hover{transform:translateY(-2px);box-shadow:0 24px 48px rgba(255,46,147,.5);}
+.nav a.nav-cta{height:38px;padding:0 16px;font-size:13px;}
 
 /* stat counters */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:34px;}
@@ -247,8 +248,9 @@ footer{padding:34px 0;text-align:center;color:var(--muted);font-size:13px;}
   .split.rev .copy{order:0;}
   .stats{grid-template-columns:repeat(2,1fr);}
   .nav{display:none;}
-  .nav.open{display:flex;position:absolute;top:64px;right:14px;left:14px;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:16px;padding:10px;box-shadow:var(--shadow);}
-  .nav.open a{width:100%;}
+  .nav.open{display:flex;position:absolute;top:64px;right:14px;left:14px;flex-direction:column;gap:8px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:10px;box-shadow:var(--shadow);}
+  .nav.open a{width:100%;box-sizing:border-box;height:46px;padding:0 14px;display:flex;align-items:center;justify-content:center;font-size:14px;}
+  .nav.open a.nav-cta{height:46px;padding:0 14px;font-size:14px;}
   .nav-toggle{display:flex;}
   .cities-soon{grid-template-columns:1fr;}
 }
@@ -264,8 +266,10 @@ img,svg,canvas,video{max-width:100%;}
   .topbar-inner{padding:10px 12px;gap:8px;}
   .brand span{display:none;}
   .brand strong{font-size:14px;}
-  .nav-toggle{width:38px;height:36px;border-radius:10px;}
+  .nav-toggle{width:38px;height:36px;border-radius:10px;flex-shrink:0;}
   .nav.open{top:58px;left:10px;right:10px;border-radius:14px;}
+  .nav.open a{height:44px;font-size:13px;}
+  .nav.open a.nav-cta{height:44px;}
   .wrap{padding:0 10px;}
   .hero{padding:34px 0 28px;}
   .hero h1{font-size:clamp(36px,12vw,48px);line-height:.98;letter-spacing:-.015em;}
@@ -380,7 +384,7 @@ footer{color:#86a99b;}
     <nav class="nav" id="nav">
       <a href="#track">Track Your Order</a>
       <a href="#signup" data-signup>Signup As NovaX Merchant</a>
-      <a href="#contact-sales" data-contact-sales class="btn vivid" style="height:38px;padding:0 16px;font-size:13px">Talk To Sales Today</a>
+      <a href="#contact-sales" data-contact-sales class="btn vivid nav-cta">Talk To Sales Today</a>
       <a href="#signin" class="solid" data-signin>Sign In</a>
     </nav>
     <button class="nav-toggle" id="navToggle" aria-label="Menu"><span></span><span></span><span></span></button>
@@ -738,7 +742,7 @@ footer{color:#86a99b;}
   var __nvOrigSave=saveState;
   saveState=function(st){ __nvOrigSave(st); if(__nvSb){ try{ __nvSb.from("novax_state").upsert({id:1,data:st,updated_at:new Date().toISOString()}).then(function(r){ if(r&&r.error) console.warn("NovaX cloud save:",r.error.message); }); }catch(e){} } };
   function __nvPullCloud(cb){ if(!__nvSb){ if(typeof cb==="function") cb(); return; } try{ __nvSb.from("novax_state").select("data").eq("id",1).maybeSingle().then(function(r){ try{ if(r&&!r.error&&r.data&&r.data.data&&Object.keys(r.data.data).length){ localStorage.setItem(STORAGE_KEY,JSON.stringify(r.data.data)); } }catch(e){} if(typeof cb==="function") cb(); }); }catch(e){ if(typeof cb==="function") cb(); } }
-  if(__nvSb){ try{ __nvSb.channel("novax_state_live").on("postgres_changes",{event:"*",schema:"public",table:"novax_state",filter:"id=eq.1"},function(payload){ var row=payload&&payload.new; if(row&&row.data){ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(row.data)); if(typeof track==="function") track(); }catch(e){} } }).subscribe(); }catch(e){} }
+  if(__nvSb){ try{ __nvSb.channel("novax_state_live").on("postgres_changes",{event:"*",schema:"public",table:"novax_state",filter:"id=eq.1"},function(payload){ var row=payload&&payload.new; if(row&&row.data){ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(row.data)); if(typeof track==="function") track(); }catch(e){} } }).subscribe(function(status,err){ if(err) console.warn("NovaX live sync channel",status,err.message||err); }); }catch(e){} }
   __nvPullCloud(function(){ if(typeof track==="function"){ try{ track(); }catch(e){} } });
   function routeForCredentials(email,password){
     var e=String(email||"").trim().toLowerCase();
@@ -997,7 +1001,7 @@ footer{color:#86a99b;}
     function sid(){ try{ var k="novaxVisitorId"; var v=sessionStorage.getItem(k); if(!v){ v=uid(); sessionStorage.setItem(k,v); } return v; }catch(e){ return uid(); } }
     var SESSION_ID=sid();
     var __vsb=null;
-    try{ if(window.supabase&&window.supabase.createClient) __vsb=window.supabase.createClient(__SB_URL,__SB_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}); }catch(e){}
+    try{ if(window.supabase&&window.supabase.createClient) __vsb=window.supabase.createClient(__SB_URL,__SB_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:"sb-nv-visitor-ping"}}); }catch(e){}
     function activityLabel(){
       try{
         var signup=document.getElementById("signupModal");
