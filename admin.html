@@ -4550,7 +4550,7 @@
                 <div class="section-head">
                   <div>
                     <h3>Merchant Leads</h3>
-                    <p>Every public signup already has a working login. Review the details and activate to unlock their full workspace.</p>
+                    <p>Contact requests need a callback (no login yet). Self-signups already have a working login - review and activate.</p>
                   </div>
                   <span class="chip warn" id="leadCountChip">0 leads</span>
                 </div>
@@ -6864,19 +6864,34 @@
       renderTickets();
 
       state.pendingClients = state.clients.filter(client => client.leadSource === "self_signup" && !client.leadVerified);
-      document.getElementById("pendingClientList").innerHTML = state.pendingClients.map(client => `
+      const signupLeadCards = state.pendingClients.map(client => `
         <div class="ops-card">
           <div class="ops-card-head">
             <strong>${client.id} | ${client.name}</strong>
-            <span class="chip good">Login already active</span>
+            <span class="chip good">Signup - login already active</span>
           </div>
           <p>${client.city} | ${client.email || "email on file"} | ${client.phone}. This seller already has a working login - review and activate to unlock their full workspace.</p>
           <div class="footer-note">Products: ${client.businessType}. Pickup: ${client.address}. Signed up: ${client.appliedAt || "recently"}.</div>
           <button class="action-btn" onclick="approveClient('${client.id}')">Verify And Activate Seller</button>
         </div>
-      `).join("") || `<div class="ops-card"><strong>No pending approvals</strong><p>New self-signup sellers will wait here for a quick review.</p></div>`;
+      `);
+      const salesLeads = state.salesLeads || [];
+      const salesLeadCards = salesLeads.map(lead => `
+        <div class="ops-card">
+          <div class="ops-card-head">
+            <strong>${lead.name}</strong>
+            <span class="chip ${lead.status === "Contacted" ? "good" : "warn"}">Contact request - ${lead.status}</span>
+          </div>
+          <p>Phone: ${lead.phone}. Ships about ${lead.parcels || "an unknown amount of"} parcels/month. No workspace or login created yet - call them back.</p>
+          <div class="footer-note">Requested: ${lead.createdAt || "recently"}.</div>
+          ${lead.status === "Contacted" ? "" : `<button class="action-btn" onclick="markSalesLeadContacted('${lead.id}')">Mark Contacted</button>`}
+          <button class="ghost-btn" style="margin-top:6px;color:#b3261e" onclick="deleteSalesLead('${lead.id}')">Delete Lead</button>
+        </div>
+      `);
+      document.getElementById("pendingClientList").innerHTML = salesLeadCards.concat(signupLeadCards).join("") || `<div class="ops-card"><strong>No pending approvals</strong><p>New self-signups and sales contact requests will wait here.</p></div>`;
       const leadChip = document.getElementById("leadCountChip");
-      if (leadChip) leadChip.textContent = `${state.pendingClients.length} lead${state.pendingClients.length === 1 ? "" : "s"}`;
+      const totalLeadCount = state.pendingClients.length + salesLeads.length;
+      if (leadChip) leadChip.textContent = `${totalLeadCount} lead${totalLeadCount === 1 ? "" : "s"}`;
 
       const allClients = state.clients.filter(client => client.id !== "CL-0000");
       const activeClients = allClients.filter(client => client.status === "Active");
@@ -8531,12 +8546,34 @@
       const parcelCount = state.parcels.filter(p => p.clientId === clientId).length;
       const invoiceCount = (state.invoices || []).filter(i => i.clientId === clientId).length;
       const warnMsg = (parcelCount || invoiceCount)
-        ? `Delete client ${client.name} (${client.id})? This will also remove their ${parcelCount} parcel(s), ${invoiceCount} invoice(s), wallet history, and any linked login. This cannot be undone.`
+        ? `Delete client ${client.name} (${client.id})? This will also remove their ${parcelCount} parcel(s), ${invoiceCount} invoice(s), wallet history, and any linked login from the live database. This cannot be undone.`
         : `Delete client ${client.name} (${client.id})? This cannot be undone.`;
       if (!window.confirm(warnMsg)) return;
+
+      // Cloud-first delete: the generic sync layer only inserts/updates, it never
+      // deletes rows, so removing a client from local state alone would leave it
+      // in Supabase and it would reappear on next reload. Delete directly instead.
+      const cid = client._uuid;
+      const sb = window.__nvSb;
+      if (sb && cid) {
+        Promise.all([
+          sb.from("parcels").delete().eq("client_id", cid),
+          sb.from("invoices").delete().eq("client_id", cid),
+          sb.from("withdrawals").delete().eq("client_id", cid),
+          sb.from("payment_logs").delete().eq("client_id", cid),
+          sb.from("tickets").delete().eq("client_id", cid),
+          sb.from("profiles").update({ status: "blocked", client_id: null }).eq("client_id", cid)
+        ]).catch(() => {}).then(() => {
+          sb.from("clients").delete().eq("id", cid).then(r => {
+            if (r && r.error) toast(`Cloud delete failed: ${r.error.message}`);
+          });
+        });
+      }
+
       state.parcels = state.parcels.filter(p => p.clientId !== clientId);
       state.invoices = (state.invoices || []).filter(i => i.clientId !== clientId);
       state.walletWithdrawals = (state.walletWithdrawals || []).filter(w => w.clientId !== clientId);
+      state.paymentLogs = (state.paymentLogs || []).filter(pl => pl.clientId !== clientId);
       state.users = (state.users || []).filter(u => u.clientId !== clientId);
       if (state.activeRateClient === clientId) state.activeRateClient = null;
       state.clients = state.clients.filter(c => c.id !== clientId);
@@ -9457,6 +9494,7 @@
       function rTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:r.client_id, parcelId:r.parcel_id||"", sourceKey:m.sourceKey||"", tier:m.tier||"medium", title:r.subject||"", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", message:r.body||"", createdAt:dtpart(r.created_at), ageHours:Number(m.ageHours||0), status:r.status||"Open", escalated:!!m.escalated, replies:Array.isArray(m.replies)?m.replies:[] }; }
       function rExpense(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:m.name||r.note||r.category||"Expense", amount:Number(r.amount||0), type:r.category||"", owner:r.branch||"", status:m.status||"Pending", note:r.note||"" }; }
       function rWd(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at) }; }
+      function rSalesLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", parcels:r.parcels_per_month||"", status:r.status||"New", createdAt:dtpart(r.created_at) }; }
       function rPl(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, type:r.type||"", amount:Number(r.amount||0), status:r.status||"", ref:r.reference||"" }; }
       function cuid(id){ var c=(state.clients||[]).find(function(x){return x.id===id;}); return (c&&c._uuid)||(isUuid(id)?id:null); }
       function ruid(id){ var r=(state.riders||[]).find(function(x){return x.id===id;}); return (r&&r._uuid)||(isUuid(id)?id:null); }
@@ -9479,7 +9517,8 @@
           sb.from("tickets").select("*").order("created_at",{ascending:false}),
           sb.from("expenses").select("*").order("created_at",{ascending:false}),
           sb.from("withdrawals").select("*").order("created_at",{ascending:false}),
-          sb.from("payment_logs").select("*").order("created_at",{ascending:false})
+          sb.from("payment_logs").select("*").order("created_at",{ascending:false}),
+          sb.from("sales_leads").select("*").order("created_at",{ascending:false})
         ]).then(function(res){
           function D(i){ return (res[i]&&res[i].data)||[]; }
           state.clients=D(0).map(rClient);
@@ -9490,6 +9529,7 @@
           state.expenses=D(5).map(rExpense);
           state.walletWithdrawals=D(6).map(rWd);
           state.paymentLogs=D(7).map(rPl);
+          state.salesLeads=D(8).map(rSalesLead);
           if(state.clients.length){ var c0=state.clients[0]; state.client={ id:c0.id, name:c0.name, walletTopup:c0.walletTopup, shippingDue:c0.shippingDue, walletBalance:c0.walletBalance, subAccounts:0 }; }
           rebuildShadow();
           loaded=true;
@@ -9511,7 +9551,22 @@
       }
       function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
       var _save=saveState; saveState=function(){ try{ if(typeof syncRidersFromUsers==="function") syncRidersFromUsers(); }catch(e){} try{ _save.apply(this,arguments); }catch(e){} try{ syncAll(); }catch(e){} };
-      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.tickets=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[];
+      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.tickets=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[];
+      window.markSalesLeadContacted=function(id){
+        var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
+        if(!lead) return;
+        lead.status="Contacted";
+        try{ if(typeof render==="function") render(); }catch(e){}
+        sb.from("sales_leads").update({ status:"Contacted" }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads update",r.error.message); });
+      };
+      window.deleteSalesLead=function(id){
+        var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
+        if(!lead) return;
+        if(!window.confirm("Delete this sales lead ("+lead.name+")? This cannot be undone.")) return;
+        state.salesLeads=(state.salesLeads||[]).filter(function(l){return l.id!==id;});
+        try{ if(typeof render==="function") render(); }catch(e){}
+        sb.from("sales_leads").delete().eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads delete",r.error.message); });
+      };
       window.nvListSellers=function(){ sb.from("profiles").select("email,role,status,client_id").eq("role","client").then(function(r){ if(r&&r.error){ console.warn(r.error.message); return; } console.table((r&&r.data)||[]); }); };
       window.nvLinkSeller=function(email, clientUuid){ if(!email||!clientUuid){ console.warn("usage: nvLinkSeller('seller@email.com','<client uuid>')"); return; } sb.from("profiles").update({ client_id:clientUuid }).eq("email",email).then(function(r){ if(r&&r.error){ console.warn("link failed",r.error.message); } else { try{ alert("Linked "+email+" to client "+clientUuid); }catch(e){} console.log("Linked",email,"->",clientUuid); } }); };
       window.nvListRiders=function(){ sb.from("riders").select("id,name,branch").then(function(r){ if(r&&r.error){ console.warn(r.error.message); return; } console.table((r&&r.data)||[]); }); };
