@@ -2265,13 +2265,13 @@
     .admin-subtab,
     .admin-tab {
       width: 100%;
-      min-height: 32px;
+      min-height: 36px;
       border-radius: var(--radius);
       background: transparent;
       color: var(--muted);
       text-align: left;
       padding: 0 10px;
-      font-weight: 650;
+      font-weight: 680;
       font-size: 13px;
       transition: background var(--speed), color var(--speed), transform var(--speed);
     }
@@ -2326,11 +2326,8 @@
     }
 
     .admin-subtab {
-      min-height: 36px;
       padding-left: 12px;
       color: #c7d8cf;
-      font-size: 13px;
-      font-weight: 720;
       text-transform: capitalize;
     }
 
@@ -5928,6 +5925,17 @@
       };
     }
 
+    function shortClientCode(client) {
+      const id = (client && client.id) || "";
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id)) return "CL-" + id.slice(0, 6).toUpperCase();
+      return id || "CL-NEW";
+    }
+
+    function safeRateCard(client) {
+      const card = client && client.rateCard;
+      return (card && typeof card.overnight === "number" && !isNaN(card.overnight)) ? card : defaultRateCard(client ? client.rate : 250);
+    }
+
     function isDeliveredLedgerParcel(parcel) {
       return parcel.status === "Delivered" || parcel.steps.includes("COD collected");
     }
@@ -6391,7 +6399,7 @@
               <div class="awb-field"><span>COD</span><strong>${money(p.cod)}</strong></div>
               <div class="awb-field"><span>Consignee</span><strong>${p.consignee}</strong></div>
               <div class="awb-field"><span>Phone</span><strong>${p.phone || "phone pending"}</strong></div>
-              <div class="awb-field"><span>Client</span><strong>${client.id} | ${client.name}</strong></div>
+              <div class="awb-field"><span>Client</span><strong>${shortClientCode(client)} | ${client.name}</strong></div>
               <div class="awb-field"><span>Service</span><strong>${p.service || "COD Standard"}</strong></div>
               <div class="awb-field"><span>Weight</span><strong>${p.weight || "0.8 kg"}</strong></div>
               <div class="awb-field"><span>Handling</span><strong>${p.fragile === "Yes" ? "Fragile" : "Standard"}</strong></div>
@@ -6633,11 +6641,11 @@
         reportStatusFilterEl.value = reportStatusFilter;
       }
       if (clientFilterEl) {
-        clientFilterEl.innerHTML = `<option value="">All clients</option>${state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("")}`;
+        clientFilterEl.innerHTML = `<option value="">All clients</option>${state.clients.map(client => `<option value="${client.id}">${shortClientCode(client)} | ${client.name}</option>`).join("")}`;
         clientFilterEl.value = clientFilter;
       }
       if (reportClientFilterEl) {
-        reportClientFilterEl.innerHTML = `<option value="">All clients</option>${state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("")}`;
+        reportClientFilterEl.innerHTML = `<option value="">All clients</option>${state.clients.map(client => `<option value="${client.id}">${shortClientCode(client)} | ${client.name}</option>`).join("")}`;
         reportClientFilterEl.value = reportClientFilter;
       }
       if (cityFilterEl) {
@@ -6689,7 +6697,7 @@
         return `
           <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="selectParcel('${p.awb}')">
             <td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${p.updated}</span></td>
-            <td>${client.id}<br><strong>${client.name}</strong></td>
+            <td>${shortClientCode(client)}<br><strong>${client.name}</strong></td>
             <td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span></td>
             <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">status clock</span></td>
             <td>
@@ -6760,7 +6768,7 @@
             <td>${p.consignee}<br><span class="footer-note">${p.phone || "phone pending"}</span></td>
             <td>${p.address || "Address pending"}</td>
             <td>${p.city}</td>
-            <td>${client.name}<br><span class="footer-note">${client.id}</span></td>
+            <td>${client.name}<br><span class="footer-note">${shortClientCode(client)}</span></td>
             <td>${parcelOrigin(p)}</td>
             <td>${money(p.cod)}</td>
             <td>${p.weight || "0.8 kg"}</td>
@@ -6803,7 +6811,7 @@
         return `
           <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}">
             <td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${parcelOrigin(p)}</span></td>
-            <td>${client.id}<br><strong>${client.name}</strong></td>
+            <td>${shortClientCode(client)}<br><strong>${client.name}</strong></td>
             <td>${p.consignee}<br><span class="footer-note">${p.address}</span></td>
             <td><strong>${deliveryJourneyLabel(p)}</strong><br><span class="footer-note">Booked ${p.date || "system date"}</span></td>
             <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status}</span></td>
@@ -6867,7 +6875,7 @@
       const signupLeadCards = state.pendingClients.map(client => `
         <div class="ops-card">
           <div class="ops-card-head">
-            <strong>${client.id} | ${client.name}</strong>
+            <strong>${shortClientCode(client)} | ${client.name}</strong>
             <span class="chip good">Signup - login already active</span>
           </div>
           <p>${client.city} | ${client.email || "email on file"} | ${client.phone}. This seller already has a working login - review and activate to unlock their full workspace.</p>
@@ -6908,10 +6916,10 @@
         const parcels = state.parcels.filter(p => p.clientId === client.id);
         const delivered = parcels.filter(isDeliveredLedgerParcel);
         const issues = state.operationsIssues.filter(issue => issue.awb && parcels.some(parcel => parcel.awb === issue.awb) && !issue.resolved);
-        const card = client.rateCard || defaultRateCard(client.rate);
+        const card = safeRateCard(client);
         return `
           <div class="log-item">
-            <strong>${client.id}<br>${client.name}</strong>
+            <strong>${shortClientCode(client)}<br>${client.name}</strong>
             <div>
               <strong>${client.businessType || "Merchant"} | ${client.city}</strong>
               <div class="footer-note">${client.owner || client.name} | ${client.email || "email pending"} | ${client.phone || "phone pending"} | ${client.address || "address pending"}</div>
@@ -6925,6 +6933,7 @@
               <option value="" ${!client.assignedRider ? "selected" : ""}>Assign pickup rider…</option>
               ${state.riders.map(r => `<option value="${r.id}" ${client.assignedRider === r.id ? "selected" : ""}>${r.name} | ${r.branch}</option>`).join("")}
             </select>
+            <button class="ghost-btn" style="color:#b3261e" onclick="deleteClient('${client.id}')">Delete Client</button>
           </div>
         `;
       }).join("");
@@ -6937,11 +6946,11 @@
         const collected = deliveredParcels.reduce((s, p) => s + p.cod, 0);
         const payable = Math.max(0, collected - fees);
         const deliveryRate = percent(deliveredParcels.length, parcels.length || 1);
-        const card = client.rateCard || defaultRateCard(client.rate);
+        const card = safeRateCard(client);
         const rateOpen = state.activeRateClient === client.id;
         return `
           <tr>
-            <td><strong>${client.id}</strong><br><span class="footer-note">${client.status}</span></td>
+            <td><strong>${shortClientCode(client)}</strong><br><span class="footer-note">${client.status}</span></td>
             <td>${client.name}<br><span class="footer-note">${client.city} | ${client.email}</span></td>
             <td>${client.owner}<br><span class="footer-note">${client.phone}</span></td>
             <td>
@@ -7093,7 +7102,7 @@
 
       const invoiceClientSelect = document.getElementById("invoiceClientSelect");
       if (invoiceClientSelect) {
-        invoiceClientSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
+        invoiceClientSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${shortClientCode(client)} | ${client.name}</option>`).join("");
         if (!state.activeInvoiceClient || !state.clients.some(client => client.id === state.activeInvoiceClient)) state.activeInvoiceClient = state.clients[0]?.id || "";
         invoiceClientSelect.value = state.activeInvoiceClient;
       }
@@ -7128,7 +7137,7 @@
         const totals = invoiceTotals(ready);
         return `
           <div class="ops-card">
-            <div class="ops-card-head"><strong>${client.id} | ${client.name}</strong><span class="chip ${ready.length ? "good" : "info"}">${ready.length} ready</span></div>
+            <div class="ops-card-head"><strong>${shortClientCode(client)} | ${client.name}</strong><span class="chip ${ready.length ? "good" : "info"}">${ready.length} ready</span></div>
             <p>Delivered invoice-ready parcels: ${ready.map(p => p.awb).join(", ") || "none yet"}.</p>
             <div class="money-grid" style="margin-top:10px">
               ${moneyBox("COD total", money(totals.cod), "invoice source")}
@@ -7181,7 +7190,7 @@
       `).join("");
 
       const userClientSelectEl = document.getElementById("userClientSelect");
-      if (userClientSelectEl) userClientSelectEl.innerHTML = state.clients.map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
+      if (userClientSelectEl) userClientSelectEl.innerHTML = state.clients.map(client => `<option value="${client.id}">${shortClientCode(client)} | ${client.name}</option>`).join("");
       const riderUserSelect = document.getElementById("riderUserSelect");
       if (riderUserSelect) {
         riderUserSelect.innerHTML = state.riders.length ? state.riders.map(rider => `<option value="${rider.id}">${rider.id} | ${rider.name} | ${rider.branch || "No branch"}</option>`).join("") : `<option value="">No riders yet — add a rider first</option>`;
@@ -7573,7 +7582,7 @@
       const activeClient = clientById(activeClientId);
       const walletSelect = document.getElementById("walletClientSelect");
       if (walletSelect) {
-        walletSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${client.id} | ${client.name}</option>`).join("");
+        walletSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${shortClientCode(client)} | ${client.name}</option>`).join("");
         walletSelect.value = activeClientId;
       }
       const walletTotal = state.clients.reduce((sum, client) => sum + walletBalance(client.id), 0);
@@ -8546,8 +8555,8 @@
       const parcelCount = state.parcels.filter(p => p.clientId === clientId).length;
       const invoiceCount = (state.invoices || []).filter(i => i.clientId === clientId).length;
       const warnMsg = (parcelCount || invoiceCount)
-        ? `Delete client ${client.name} (${client.id})? This will also remove their ${parcelCount} parcel(s), ${invoiceCount} invoice(s), wallet history, and any linked login from the live database. This cannot be undone.`
-        : `Delete client ${client.name} (${client.id})? This cannot be undone.`;
+        ? `Delete client ${client.name} (${shortClientCode(client)})? This will also remove their ${parcelCount} parcel(s), ${invoiceCount} invoice(s), wallet history, and any linked login from the live database. This cannot be undone.`
+        : `Delete client ${client.name} (${shortClientCode(client)})? This cannot be undone.`;
       if (!window.confirm(warnMsg)) return;
 
       // Cloud-first delete: the generic sync layer only inserts/updates, it never
@@ -9478,7 +9487,7 @@
       if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, local only."); return; }
       var sb; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); return; }
       window.__nvSb=sb;
-      var sbSignup=null; try{ sbSignup=window.supabase.createClient(SB_URL,SB_KEY,{ auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false } }); }catch(e){ console.warn("NovaX: signup client init failed.",e); }
+      var sbSignup=null; try{ sbSignup=window.supabase.createClient(SB_URL,SB_KEY,{ auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:"sb-nv-admin-signup-client" } }); }catch(e){ console.warn("NovaX: signup client init failed.",e); }
       window.__nvSignupClient=sbSignup;
       var ADMIN_UID=null, loaded=false, shadow={}, resyncT=null;
       function isUuid(v){ return typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v); }
@@ -9641,7 +9650,7 @@
       var LV_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
       var PORTALS=["Landing / Signup","Client Portal","Rider App"];
       if(!window.supabase||!window.supabase.createClient) return;
-      var lvsb; try{ lvsb=window.supabase.createClient(LV_URL,LV_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}); }catch(e){ return; }
+      var lvsb; try{ lvsb=window.supabase.createClient(LV_URL,LV_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:"sb-nv-live-visitors"}}); }catch(e){ return; }
       function timeAgo(iso){
         var s=Math.max(0,Math.round((Date.now()-new Date(iso).getTime())/1000));
         if(s<60) return s+"s ago";
@@ -9708,7 +9717,7 @@
       setInterval(pollLiveVisitors,5000);
       setInterval(pollOverallVisitors,10000);
       try{
-        lvsb.channel("novax_live_visitors").on("postgres_changes",{event:"*",schema:"public",table:"visitor_sessions"},function(){ pollLiveVisitors(); pollOverallVisitors(); }).subscribe();
+        lvsb.channel("novax_live_visitors").on("postgres_changes",{event:"*",schema:"public",table:"visitor_sessions"},function(){ pollLiveVisitors(); pollOverallVisitors(); }).subscribe(function(status,err){ if(err) console.warn("NovaX live visitors channel",status,err.message||err); });
       }catch(e){}
     })();
   </script>
