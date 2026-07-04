@@ -4497,9 +4497,16 @@
                 </div>
                 <div class="money-grid" id="liveVisitorSummary" style="grid-template-columns:repeat(3,minmax(0,1fr))"></div>
               </div>
+              <div class="panel" style="margin-bottom:14px">
+                <div class="section-head">
+                  <div><h3>Overall Sessions</h3><p>All visitor sessions ever recorded, plus how many started today, across every portal.</p></div>
+                </div>
+                <div class="money-grid" id="overallVisitorTotals" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:12px"></div>
+                <div class="money-grid" id="overallVisitorSummary" style="grid-template-columns:repeat(3,minmax(0,1fr))"></div>
+              </div>
               <div class="panel">
                 <div class="section-head">
-                  <div><h3>What They're Doing</h3><p>Current screen/activity for every active visitor across the landing page, client portal, and rider app.</p></div>
+                  <div><h3>Recent Sessions</h3><p>Latest visitor sessions across the landing page, client portal, and rider app - live ones are marked, ended ones show their last activity.</p></div>
                 </div>
                 <div class="ops-list" id="liveVisitorList"></div>
               </div>
@@ -6947,7 +6954,7 @@
               <div class="meter ${deliveryRate < 55 ? "amber" : "good"}"><span style="width:${deliveryRate}%"></span></div>
               <div class="meter-caption"><span>delivery health ${client.health || deliveryRate}%</span><span>${deliveryRate}%</span></div>
             </td>
-            <td><button class="ghost-btn" onclick="showAdminTab('orders')">Track Parcels</button></td>
+            <td><button class="ghost-btn" onclick="showAdminTab('orders')">Track Parcels</button><button class="ghost-btn" style="margin-top:6px;color:#b3261e" onclick="deleteClient('${client.id}')">Delete Client</button></td>
           </tr>
         `;
       }).join("");
@@ -8517,6 +8524,27 @@
       toast(`${user.name} removed from Users.`);
     }
 
+    function deleteClient(clientId) {
+      const client = state.clients.find(c => c.id === clientId);
+      if (!client) { toast("Client not found."); return; }
+      if (clientId === "CL-0000") { toast("This workspace record cannot be deleted."); return; }
+      const parcelCount = state.parcels.filter(p => p.clientId === clientId).length;
+      const invoiceCount = (state.invoices || []).filter(i => i.clientId === clientId).length;
+      const warnMsg = (parcelCount || invoiceCount)
+        ? `Delete client ${client.name} (${client.id})? This will also remove their ${parcelCount} parcel(s), ${invoiceCount} invoice(s), wallet history, and any linked login. This cannot be undone.`
+        : `Delete client ${client.name} (${client.id})? This cannot be undone.`;
+      if (!window.confirm(warnMsg)) return;
+      state.parcels = state.parcels.filter(p => p.clientId !== clientId);
+      state.invoices = (state.invoices || []).filter(i => i.clientId !== clientId);
+      state.walletWithdrawals = (state.walletWithdrawals || []).filter(w => w.clientId !== clientId);
+      state.users = (state.users || []).filter(u => u.clientId !== clientId);
+      if (state.activeRateClient === clientId) state.activeRateClient = null;
+      state.clients = state.clients.filter(c => c.id !== clientId);
+      saveState();
+      render();
+      toast(`${client.name} and related records removed.`);
+    }
+
     function assignRiderToClient(clientId, riderId) {
       const client = state.clients.find(c => c.id === clientId);
       if (!client) { toast("Client not found."); return; }
@@ -9404,6 +9432,7 @@
     window.editClientLogin = editClientLogin;
     window.assignRiderToClient = assignRiderToClient;
     window.deleteUser = deleteUser;
+    window.deleteClient = deleteClient;
     window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); render(); } });
     /* ===== NovaX secure admin data layer (live tables, admin-scoped) ===== */
     (function(){
@@ -9551,17 +9580,21 @@
       }catch(e){ console.warn('NovaX AI init failed',e); }
     })();
 
-    /* ===== NovaX live visitors (real-time visitor tracking) ===== */
+    /* ===== NovaX live visitors (real-time + overall session tracking) ===== */
     (function(){
       var LV_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
       var LV_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+      var PORTALS=["Landing / Signup","Client Portal","Rider App"];
       if(!window.supabase||!window.supabase.createClient) return;
       var lvsb; try{ lvsb=window.supabase.createClient(LV_URL,LV_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}); }catch(e){ return; }
       function timeAgo(iso){
         var s=Math.max(0,Math.round((Date.now()-new Date(iso).getTime())/1000));
         if(s<60) return s+"s ago";
-        var m=Math.round(s/60); return m+"m ago";
+        var m=Math.round(s/60); if(m<60) return m+"m ago";
+        var h=Math.round(m/60); if(h<24) return h+"h ago";
+        var d=Math.round(h/24); return d+"d ago";
       }
+      function isLive(iso){ return (Date.now()-new Date(iso).getTime())<=45000; }
       function deviceOf(ua){
         ua=ua||"";
         if(/Mobi|Android|iPhone/i.test(ua)) return "Mobile";
@@ -9572,17 +9605,26 @@
         var badge=document.getElementById("liveVisitorNavBadge");
         if(badge){ badge.textContent=String(rows.length); badge.style.display=rows.length?"inline-flex":"none"; }
         var summaryEl=document.getElementById("liveVisitorSummary");
-        var listEl=document.getElementById("liveVisitorList");
         var updatedEl=document.getElementById("liveVisitorsUpdated");
-        if(!summaryEl||!listEl) return;
+        if(!summaryEl) return;
         var byPortal={};
         rows.forEach(function(r){ byPortal[r.portal]=(byPortal[r.portal]||0)+1; });
-        var portals=["Landing / Signup","Client Portal","Rider App"];
-        summaryEl.innerHTML=portals.map(function(p){ var n=byPortal[p]||0; return moneyBox(p,n,n===1?"visitor now":"visitors now"); }).join("");
-        listEl.innerHTML = rows.length ? rows.map(function(r){
-          return '<div class="ops-card"><div class="ops-card-head"><strong>'+esc(r.portal||"Visitor")+'</strong><span class="chip good">'+timeAgo(r.last_seen)+'</span></div><p>'+esc(r.activity||"Active on site")+'</p><p class="footer-note">'+deviceOf(r.user_agent)+(r.path?(" · "+esc(r.path)):"")+'</p></div>';
-        }).join("") : '<div class="ops-card"><strong>No one online right now</strong><p>As soon as a visitor opens the site, they will show up here in real time.</p></div>';
+        summaryEl.innerHTML=PORTALS.map(function(p){ var n=byPortal[p]||0; return moneyBox(p,n,n===1?"visitor now":"visitors now"); }).join("");
         if(updatedEl) updatedEl.textContent="Live · updated "+new Date().toLocaleTimeString([],{ hour:"2-digit", minute:"2-digit", second:"2-digit" });
+      }
+      function renderOverallVisitors(totalAll, totalToday, byPortalAll){
+        var totalsEl=document.getElementById("overallVisitorTotals");
+        var summaryEl=document.getElementById("overallVisitorSummary");
+        if(totalsEl) totalsEl.innerHTML=moneyBox("Total Sessions (All Time)",totalAll,"since tracking started")+moneyBox("Sessions Today",totalToday,"since midnight, your time");
+        if(summaryEl) summaryEl.innerHTML=PORTALS.map(function(p){ var n=byPortalAll[p]||0; return moneyBox(p,n,"total sessions"); }).join("");
+      }
+      function renderRecentSessions(rows){
+        var listEl=document.getElementById("liveVisitorList");
+        if(!listEl) return;
+        listEl.innerHTML = rows.length ? rows.map(function(r){
+          var live=isLive(r.last_seen);
+          return '<div class="ops-card"><div class="ops-card-head"><strong>'+esc(r.portal||"Visitor")+'</strong><span class="chip '+(live?"good":"warn")+'">'+(live?"live · ":"ended · ")+timeAgo(r.last_seen)+'</span></div><p>'+esc(r.activity||"Active on site")+'</p><p class="footer-note">'+deviceOf(r.user_agent)+(r.path?(" · "+esc(r.path)):"")+(r.first_seen?(" · started "+timeAgo(r.first_seen)):"")+'</p></div>';
+        }).join("") : '<div class="ops-card"><strong>No sessions recorded yet</strong><p>As soon as a visitor opens the site, their session will show up here.</p></div>';
       }
       function pollLiveVisitors(){
         var since=new Date(Date.now()-45000).toISOString();
@@ -9591,10 +9633,27 @@
           renderLiveVisitors((res&&res.data)||[]);
         });
       }
+      function pollOverallVisitors(){
+        var todayStart=new Date(); todayStart.setHours(0,0,0,0);
+        var totalP=lvsb.from("visitor_sessions").select("*",{count:"exact",head:true});
+        var todayP=lvsb.from("visitor_sessions").select("*",{count:"exact",head:true}).gte("first_seen",todayStart.toISOString());
+        var portalPs=PORTALS.map(function(p){ return lvsb.from("visitor_sessions").select("*",{count:"exact",head:true}).eq("portal",p); });
+        var recentP=lvsb.from("visitor_sessions").select("*").order("last_seen",{ascending:false}).limit(30);
+        Promise.all([totalP,todayP,recentP].concat(portalPs)).then(function(results){
+          var totalRes=results[0], todayRes=results[1], recentRes=results[2], portalRess=results.slice(3);
+          if(totalRes&&totalRes.error){ console.warn("NovaX overall visitors",totalRes.error.message); return; }
+          var byPortalAll={};
+          PORTALS.forEach(function(p,i){ byPortalAll[p]=(portalRess[i]&&portalRess[i].count)||0; });
+          renderOverallVisitors((totalRes&&totalRes.count)||0,(todayRes&&todayRes.count)||0,byPortalAll);
+          if(recentRes&&!recentRes.error) renderRecentSessions(recentRes.data||[]);
+        }).catch(function(e){ console.warn("NovaX overall visitors",e); });
+      }
       pollLiveVisitors();
+      pollOverallVisitors();
       setInterval(pollLiveVisitors,5000);
+      setInterval(pollOverallVisitors,10000);
       try{
-        lvsb.channel("novax_live_visitors").on("postgres_changes",{event:"*",schema:"public",table:"visitor_sessions"},function(){ pollLiveVisitors(); }).subscribe();
+        lvsb.channel("novax_live_visitors").on("postgres_changes",{event:"*",schema:"public",table:"visitor_sessions"},function(){ pollLiveVisitors(); pollOverallVisitors(); }).subscribe();
       }catch(e){}
     })();
   </script>
