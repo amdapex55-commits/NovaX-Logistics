@@ -106,6 +106,8 @@ h2.title{font-size:clamp(30px,5vw,58px);line-height:1.02;margin:16px 0 12px;lett
 .btn.primary:hover{transform:translateY(-2px);box-shadow:0 24px 48px rgba(20,199,123,.42);}
 .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink);}
 .btn.ghost:hover{transform:translateY(-2px);background:#f0fbf5;}
+.btn.vivid{background:linear-gradient(135deg,#ff5f2e,#ff2e93);color:#fff;box-shadow:0 18px 36px rgba(255,46,147,.4);border:none;}
+.btn.vivid:hover{transform:translateY(-2px);box-shadow:0 24px 48px rgba(255,46,147,.5);}
 
 /* stat counters */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:34px;}
@@ -378,6 +380,7 @@ footer{color:#86a99b;}
     <nav class="nav" id="nav">
       <a href="#track">Track Your Order</a>
       <a href="#signup" data-signup>Signup As NovaX Merchant</a>
+      <a href="#contact-sales" data-contact-sales class="btn vivid" style="height:38px;padding:0 16px;font-size:13px">Talk To Sales Today</a>
       <a href="#signin" class="solid" data-signin>Sign In</a>
     </nav>
     <button class="nav-toggle" id="navToggle" aria-label="Menu"><span></span><span></span><span></span></button>
@@ -394,6 +397,7 @@ footer{color:#86a99b;}
 
       <div class="hero-cta reveal in d3">
         <a class="btn primary" href="#track">Track Your Order</a>
+        <a class="btn vivid" href="#contact-sales" data-contact-sales>Talk To Sales Today</a>
         <a class="btn ghost" href="#signup" data-signup>Signup As NovaX Merchant</a>
         <a class="btn ghost" href="#signin" data-signin>Sign In</a>
       </div>
@@ -608,6 +612,7 @@ footer{color:#86a99b;}
       <p>Book, track, collect COD, and cash out — all watched by AI, all in one NovaX account.</p>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
         <a class="btn primary" href="#track">Track Your Order</a>
+        <a class="btn vivid" href="#contact-sales" data-contact-sales>Talk To Sales Today</a>
         <a class="btn ghost" href="#signup" data-signup style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.4);color:#04130d">Signup As NovaX Merchant</a>
         <a class="btn ghost" href="#signin" data-signin style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.4);color:#04130d">Sign In</a>
       </div>
@@ -644,6 +649,19 @@ footer{color:#86a99b;}
     <div class="signin-field"><label>Website link if any</label><input id="merchantWebsite" placeholder="https://yourstore.com"></div>
     <button class="btn primary" id="merchantSubmit" style="width:100%;justify-content:center;margin-top:14px">Submit Merchant Request</button>
     <div class="signin-note" id="merchantSignupNote">You'll get instant access - your workspace opens right after signup.</div>
+  </div>
+</div>
+
+<div class="signin-modal" id="contactSalesModal" aria-hidden="true">
+  <div class="signin-card">
+    <button class="signin-close" id="contactSalesClose" aria-label="Close contact sales">X</button>
+    <h3>Talk To Sales Today</h3>
+    <p>No workspace, no password - just leave your details and a NovaX sales rep will call you back today.</p>
+    <div class="signin-field"><label>Your name</label><input id="salesLeadName" placeholder="Your full name"></div>
+    <div class="signin-field"><label>Your phone number</label><input id="salesLeadPhone" placeholder="03113323923" maxlength="11"></div>
+    <div class="signin-field"><label>How many parcels do you ship per month?</label><select id="salesLeadParcels"><option>1-10</option><option>11-50</option><option>51-200</option><option>201-500</option><option>500+</option></select></div>
+    <button class="btn vivid" id="salesLeadSubmit" style="width:100%;justify-content:center;margin-top:14px">Request A Callback</button>
+    <div class="signin-note" id="salesLeadNote">A NovaX sales rep will call you back today. No password or workspace needed.</div>
   </div>
 </div>
 
@@ -855,6 +873,49 @@ footer{color:#86a99b;}
   document.getElementById("merchantSubmit").addEventListener("click",submitMerchantSignup);
   signupModal.addEventListener("click",function(e){if(e.target===signupModal) closeSignup();});
   if(location.hash==="#signup") setTimeout(openSignup,500);
+
+  /* ---- Talk To Sales Today (lightweight lead capture, no account created) ---- */
+  var contactSalesModal=document.getElementById("contactSalesModal");
+  function openContactSales(){
+    if(!contactSalesModal) return;
+    contactSalesModal.classList.add("show");
+    contactSalesModal.setAttribute("aria-hidden","false");
+    setTimeout(function(){var name=document.getElementById("salesLeadName"); if(name) name.focus();},50);
+  }
+  function closeContactSales(){
+    if(!contactSalesModal) return;
+    contactSalesModal.classList.remove("show");
+    contactSalesModal.setAttribute("aria-hidden","true");
+    if(location.hash==="#contact-sales") history.replaceState(null,"",location.pathname+location.search);
+  }
+  function submitSalesLead(){
+    var name=(document.getElementById("salesLeadName").value||"").trim();
+    var phone=(document.getElementById("salesLeadPhone").value||"").trim();
+    var parcels=(document.getElementById("salesLeadParcels").value||"").trim();
+    if(!name||!phone){ alert("Name and phone number are required."); return; }
+    if(!/^03\d{9}$/.test(phone)){ alert("Phone must be 11 digits and start with 03. Example: 03113323923."); return; }
+    if(!__nvSb){ alert("Sales request service is unavailable. Please refresh and try again."); return; }
+    var btn=document.getElementById("salesLeadSubmit"); var oldTxt=btn.textContent;
+    btn.disabled=true; btn.textContent="Sending your request...";
+    __nvSb.from("sales_leads").insert({ name:name, phone:phone, parcels_per_month:parcels, status:"New" }).then(function(r){
+      btn.disabled=false; btn.textContent=oldTxt;
+      if(r&&r.error){ alert(r.error.message||"Could not send your request. Please try again."); return; }
+      var card=contactSalesModal.querySelector(".signin-card");
+      card.innerHTML='<button class="signin-close" id="contactSalesCloseDone" aria-label="Close">X</button><div style="display:grid;place-items:center;text-align:center;padding:34px 10px"><div style="width:92px;height:92px;border-radius:999px;background:linear-gradient(135deg,#ff5f2e,#ff2e93);display:grid;place-items:center;color:white;font-size:54px;font-weight:900;box-shadow:0 22px 50px rgba(255,46,147,.32)">✓</div><h3 style="margin:22px 0 8px">Request Received</h3><p style="margin:0;color:#60726b;font-size:18px;line-height:1.5">Our sales team will call you back today.</p></div>';
+      document.getElementById("contactSalesCloseDone").addEventListener("click",closeContactSales);
+      setTimeout(closeContactSales,2200);
+    }).catch(function(){
+      btn.disabled=false; btn.textContent=oldTxt;
+      alert("Could not send your request. Please try again.");
+    });
+  }
+  document.querySelectorAll("[data-contact-sales]").forEach(function(a){a.addEventListener("click",function(e){e.preventDefault();openContactSales();});});
+  var contactSalesCloseBtn=document.getElementById("contactSalesClose");
+  if(contactSalesCloseBtn) contactSalesCloseBtn.addEventListener("click",closeContactSales);
+  var salesLeadSubmitBtn=document.getElementById("salesLeadSubmit");
+  if(salesLeadSubmitBtn) salesLeadSubmitBtn.addEventListener("click",submitSalesLead);
+  if(contactSalesModal) contactSalesModal.addEventListener("click",function(e){if(e.target===contactSalesModal) closeContactSales();});
+  if(location.hash==="#contact-sales") setTimeout(openContactSales,500);
 
   /* ---- nav toggle ---- */
   document.getElementById("navToggle").addEventListener("click",function(){document.getElementById("nav").classList.toggle("open");});
