@@ -6896,9 +6896,21 @@
           <button class="ghost-btn" style="margin-top:6px;color:#b3261e" onclick="deleteSalesLead('${lead.id}')">Delete Lead</button>
         </div>
       `);
-      document.getElementById("pendingClientList").innerHTML = salesLeadCards.concat(signupLeadCards).join("") || `<div class="ops-card"><strong>No pending approvals</strong><p>New self-signups and sales contact requests will wait here.</p></div>`;
+      const stuckSignups = state.signupLeads || [];
+      const stuckSignupCards = stuckSignups.map(lead => `
+        <div class="ops-card">
+          <div class="ops-card-head">
+            <strong>${lead.name}</strong>
+            <span class="chip warn">Signup stuck - workspace never created</span>
+          </div>
+          <p>Phone: ${lead.phone}. Email: ${lead.email || "n/a"}. City: ${lead.city || "n/a"}. Sells: ${lead.businessType || "n/a"}. This person already has a login but no client workspace was created - set one up manually then mark resolved.</p>
+          <div class="footer-note">Signed up: ${lead.createdAt || "recently"}.${lead.errorMessage ? " Error: " + lead.errorMessage : ""}</div>
+          <button class="action-btn" onclick="resolveSignupLead('${lead.id}')">Mark Resolved</button>
+        </div>
+      `);
+      document.getElementById("pendingClientList").innerHTML = stuckSignupCards.concat(salesLeadCards).concat(signupLeadCards).join("") || `<div class="ops-card"><strong>No pending approvals</strong><p>New self-signups and sales contact requests will wait here.</p></div>`;
       const leadChip = document.getElementById("leadCountChip");
-      const totalLeadCount = state.pendingClients.length + salesLeads.length;
+      const totalLeadCount = state.pendingClients.length + salesLeads.length + stuckSignups.length;
       if (leadChip) leadChip.textContent = `${totalLeadCount} lead${totalLeadCount === 1 ? "" : "s"}`;
 
       const allClients = state.clients.filter(client => client.id !== "CL-0000");
@@ -9504,6 +9516,7 @@
       function rExpense(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:m.name||r.note||r.category||"Expense", amount:Number(r.amount||0), type:r.category||"", owner:r.branch||"", status:m.status||"Pending", note:r.note||"" }; }
       function rWd(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at) }; }
       function rSalesLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", parcels:r.parcels_per_month||"", status:r.status||"New", createdAt:dtpart(r.created_at) }; }
+      function rSignupLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", email:r.email||"", city:r.city||"", address:r.address||"", businessType:r.business_type||"", website:r.website||"", status:r.status||"pending_workspace", errorMessage:r.error_message||"", createdAt:dtpart(r.created_at) }; }
       function rPl(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, type:r.type||"", amount:Number(r.amount||0), status:r.status||"", ref:r.reference||"" }; }
       function cuid(id){ var c=(state.clients||[]).find(function(x){return x.id===id;}); return (c&&c._uuid)||(isUuid(id)?id:null); }
       function ruid(id){ var r=(state.riders||[]).find(function(x){return x.id===id;}); return (r&&r._uuid)||(isUuid(id)?id:null); }
@@ -9527,7 +9540,8 @@
           sb.from("expenses").select("*").order("created_at",{ascending:false}),
           sb.from("withdrawals").select("*").order("created_at",{ascending:false}),
           sb.from("payment_logs").select("*").order("created_at",{ascending:false}),
-          sb.from("sales_leads").select("*").order("created_at",{ascending:false})
+          sb.from("sales_leads").select("*").order("created_at",{ascending:false}),
+          sb.from("signup_leads").select("*").neq("status","workspace_created").order("created_at",{ascending:false})
         ]).then(function(res){
           function D(i){ return (res[i]&&res[i].data)||[]; }
           state.clients=D(0).map(rClient);
@@ -9539,6 +9553,7 @@
           state.walletWithdrawals=D(6).map(rWd);
           state.paymentLogs=D(7).map(rPl);
           state.salesLeads=D(8).map(rSalesLead);
+          state.signupLeads=D(9).map(rSignupLead);
           if(state.clients.length){ var c0=state.clients[0]; state.client={ id:c0.id, name:c0.name, walletTopup:c0.walletTopup, shippingDue:c0.shippingDue, walletBalance:c0.walletBalance, subAccounts:0 }; }
           rebuildShadow();
           loaded=true;
@@ -9560,7 +9575,7 @@
       }
       function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
       var _save=saveState; saveState=function(){ try{ if(typeof syncRidersFromUsers==="function") syncRidersFromUsers(); }catch(e){} try{ _save.apply(this,arguments); }catch(e){} try{ syncAll(); }catch(e){} };
-      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.tickets=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[];
+      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.tickets=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[]; state.signupLeads=[];
       window.markSalesLeadContacted=function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
@@ -9575,6 +9590,14 @@
         state.salesLeads=(state.salesLeads||[]).filter(function(l){return l.id!==id;});
         try{ if(typeof render==="function") render(); }catch(e){}
         sb.from("sales_leads").delete().eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads delete",r.error.message); });
+      };
+      window.resolveSignupLead=function(id){
+        var lead=(state.signupLeads||[]).find(function(l){return l.id===id;});
+        if(!lead) return;
+        if(!window.confirm("Mark this stuck signup ("+lead.name+") as resolved? Only do this after you've manually created their workspace or contacted them.")) return;
+        state.signupLeads=(state.signupLeads||[]).filter(function(l){return l.id!==id;});
+        try{ if(typeof render==="function") render(); }catch(e){}
+        sb.from("signup_leads").update({ status:"workspace_created" }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX signup_leads update",r.error.message); });
       };
       window.nvListSellers=function(){ sb.from("profiles").select("email,role,status,client_id").eq("role","client").then(function(r){ if(r&&r.error){ console.warn(r.error.message); return; } console.table((r&&r.data)||[]); }); };
       window.nvLinkSeller=function(email, clientUuid){ if(!email||!clientUuid){ console.warn("usage: nvLinkSeller('seller@email.com','<client uuid>')"); return; } sb.from("profiles").update({ client_id:clientUuid }).eq("email",email).then(function(r){ if(r&&r.error){ console.warn("link failed",r.error.message); } else { try{ alert("Linked "+email+" to client "+clientUuid); }catch(e){} console.log("Linked",email,"->",clientUuid); } }); };
