@@ -873,18 +873,27 @@ footer{color:#86a99b;}
         alert("This email already has an account. Please sign in instead.");
         return;
       }
-      __nvSb.rpc("create_client_workspace",{ p_name:name, p_owner:name, p_phone:phone, p_city:city, p_address:address, p_business_type:product, p_website:website||"" }).then(function(rpcRes){
-        submitBtn.disabled=false; submitBtn.textContent=oldTxt;
-        if(rpcRes&&rpcRes.error){
-          console.warn("NovaX workspace:",rpcRes.error.message);
-          alert("Your login was created, but your workspace could not be set up automatically. Please sign in and contact NovaX admin.");
-          closeSignup();
-          return;
-        }
-        try{ localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email.toLowerCase(),uid:(newUser&&newUser.id)||null,client_id:(rpcRes&&rpcRes.data)||null,rider_id:null,at:Date.now()})); }catch(e){}
-        var card=signupModal.querySelector(".signin-card");
-        card.innerHTML='<button class="signin-close" id="signupCloseDone" aria-label="Close signup">X</button><div style="display:grid;place-items:center;text-align:center;padding:34px 10px"><div style="width:92px;height:92px;border-radius:999px;background:#18c77a;display:grid;place-items:center;color:white;font-size:54px;font-weight:900;box-shadow:0 22px 50px rgba(24,199,122,.32)">✓</div><h3 style="margin:22px 0 8px">Workspace Ready</h3><p style="margin:0;color:#60726b;font-size:18px;line-height:1.5">Taking you to your NovaX seller workspace now...</p></div>';
-        setTimeout(function(){ window.location.href="client.html?onboarding=1"; },1100);
+      /* Safety-net: capture this signup as its own durable row BEFORE calling the workspace RPC.
+         This guarantees the lead is visible to admin even if create_client_workspace fails
+         (e.g. no session yet because email confirmation is required) or the RPC times out. */
+      __nvSb.from("signup_leads").insert({ name:name, phone:phone, email:email.toLowerCase(), city:city, address:address, business_type:product, website:website||"", auth_user_id:(newUser&&newUser.id)||null, status:"pending_workspace" }).select("id").maybeSingle().then(function(leadRes){
+        if(leadRes&&leadRes.error) console.warn("NovaX signup_leads insert:",leadRes.error.message);
+        var leadId=leadRes&&leadRes.data&&leadRes.data.id;
+        __nvSb.rpc("create_client_workspace",{ p_name:name, p_owner:name, p_phone:phone, p_city:city, p_address:address, p_business_type:product, p_website:website||"" }).then(function(rpcRes){
+          submitBtn.disabled=false; submitBtn.textContent=oldTxt;
+          if(rpcRes&&rpcRes.error){
+            console.warn("NovaX workspace:",rpcRes.error.message);
+            if(leadId){ __nvSb.from("signup_leads").update({ status:"failed", error_message:String(rpcRes.error.message||"").slice(0,300) }).eq("id",leadId).then(function(){}); }
+            alert("Your login was created, but your workspace could not be set up automatically. Please sign in and contact NovaX admin.");
+            closeSignup();
+            return;
+          }
+          if(leadId){ __nvSb.from("signup_leads").update({ status:"workspace_created" }).eq("id",leadId).then(function(){}); }
+          try{ localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email.toLowerCase(),uid:(newUser&&newUser.id)||null,client_id:(rpcRes&&rpcRes.data)||null,rider_id:null,at:Date.now()})); }catch(e){}
+          var card=signupModal.querySelector(".signin-card");
+          card.innerHTML='<button class="signin-close" id="signupCloseDone" aria-label="Close signup">X</button><div style="display:grid;place-items:center;text-align:center;padding:34px 10px"><div style="width:92px;height:92px;border-radius:999px;background:#18c77a;display:grid;place-items:center;color:white;font-size:54px;font-weight:900;box-shadow:0 22px 50px rgba(24,199,122,.32)">✓</div><h3 style="margin:22px 0 8px">Workspace Ready</h3><p style="margin:0;color:#60726b;font-size:18px;line-height:1.5">Taking you to your NovaX seller workspace now...</p></div>';
+          setTimeout(function(){ window.location.href="client.html?onboarding=1"; },1100);
+        });
       });
     });
   }
