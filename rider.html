@@ -613,7 +613,7 @@
               try{ var sel=document.getElementById("riderSelect"); if(sel) sel.dataset.filled=""; }catch(e){}
               try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); }catch(e){}
               try{ renderRider(); }catch(e){ console.warn("NovaX rider render",e); }
-              if(!subscribed && RIDER_UUID){ subscribed=true; try{ sb.channel("novax_rider_"+RIDER_UUID).on("postgres_changes",{event:"*",schema:"public",table:"parcels",filter:"rider_id=eq."+RIDER_UUID},function(){ loadAll(); }).subscribe(); }catch(e){ console.warn("NovaX rider realtime",e); } }
+              if(!subscribed && RIDER_UUID){ subscribed=true; try{ sb.channel("novax_rider_"+RIDER_UUID).on("postgres_changes",{event:"*",schema:"public",table:"parcels",filter:"rider_id=eq."+RIDER_UUID},function(){ loadAll(); }).subscribe(function(status,err){ if(err) console.warn("NovaX rider realtime",status,err.message||err); }); }catch(e){ console.warn("NovaX rider realtime",e); } }
             });
           });
         }).catch(function(e){ console.warn("NovaX rider load failed",e); });
@@ -705,7 +705,7 @@
     function sid(){ try{ var k="novaxVisitorId"; var v=sessionStorage.getItem(k); if(!v){ v=uid(); sessionStorage.setItem(k,v); } return v; }catch(e){ return uid(); } }
     var SESSION_ID=sid();
     var __vsb=null;
-    try{ if(window.supabase&&window.supabase.createClient) __vsb=window.supabase.createClient(__SB_URL,__SB_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}); }catch(e){}
+    try{ if(window.supabase&&window.supabase.createClient) __vsb=window.supabase.createClient(__SB_URL,__SB_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:"sb-nv-visitor-ping"}}); }catch(e){}
     function activityLabel(){
       try{
         var rider=(typeof riderById==="function"&&window.state)?riderById(window.state.activeRider):null;
