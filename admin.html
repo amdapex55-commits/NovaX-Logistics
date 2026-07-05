@@ -4781,7 +4781,7 @@
               <div class="grid two">
                 <div class="panel">
                   <div class="section-head">
-                    <div><h3>Create Users</h3><p>Create staff users with email, password, role, branch, and web/admin access. This saves an internal record only — it does not create a working login. For real access, create the account in Supabase Authentication, then link it from the browser console with nvLinkRider (riders) or nvLinkSeller (clients).</p></div>
+                    <div><h3>Create Users</h3><p>Create staff users with email, password, role, branch, and web/admin access. This creates a real, working Supabase Authentication login automatically and links it to this user — no manual console step is needed.</p></div>
                     <button class="action-btn" id="createUserBtn">Create User</button>
                   </div>
                   <div class="form-grid">
@@ -8165,50 +8165,83 @@
         toast("This login email already exists.");
         return;
       }
-      const rateCard = defaultRateCard(250);
-      state.clients = state.clients.filter(item => item.id !== "CL-0000");
-      const id = nextId("CL", state.clients);
-      const newClient = {
-        name,
-        owner: document.getElementById("newClientOwner").value.trim() || "Pending",
-        id,
-        email,
-        phone,
-        businessType,
-        address,
-        taxId: document.getElementById("newClientTax").value.trim() || "Not added",
-        iban: document.getElementById("newClientIban").value.trim() || "Not added",
-        city: document.getElementById("newClientCity").value,
-        walletTopup: 0,
-        shippingDue: 0,
-        rate: rateCard.overnight,
-        rateCard,
-        risk: 0,
-        health: 100,
-        problemsResolved: 0,
-        status: "Active",
-        walletBalance: 0
-      };
-      state.clients.unshift(newClient);
-      state.client = { id, name: newClient.name, walletTopup: 0, shippingDue: 0, subAccounts: 0, walletBalance: 0 };
-      state.users.unshift({
-        id: nextId("USR", state.users),
-        name: newClient.owner || newClient.name,
-        email,
-        password,
-        role: "Client",
-        accessSide: "Client Web Portal",
-        branch: `${newClient.city || "Karachi"} Hub`,
-        clientId: id,
-        status: "Active",
-        permissions: ["dashboard", "booking", "bulk booking", "reports", "payments", "tickets"]
+      if (!window.__nvSignupClient || !window.__nvSb) {
+        toast("Cloud connection not ready — wait a moment and try again.");
+        return;
+      }
+      const btn = document.getElementById("adminCreateClientBtn");
+      if (btn) { btn.disabled = true; btn.textContent = "Creating account..."; }
+      window.__nvSignupClient.auth.signUp({ email, password }).then(res => {
+        if (res.error) {
+          toast(`Client account creation failed: ${res.error.message}`);
+          if (btn) { btn.disabled = false; btn.textContent = "Create Client"; }
+          return;
+        }
+        const newUserId = res.data && res.data.user && res.data.user.id;
+        const rateCard = defaultRateCard(250);
+        state.clients = state.clients.filter(item => item.id !== "CL-0000");
+        const id = nextId("CL", state.clients);
+        const newClient = {
+          name,
+          owner: document.getElementById("newClientOwner").value.trim() || "Pending",
+          id,
+          email,
+          phone,
+          businessType,
+          address,
+          taxId: document.getElementById("newClientTax").value.trim() || "Not added",
+          iban: document.getElementById("newClientIban").value.trim() || "Not added",
+          city: document.getElementById("newClientCity").value,
+          walletTopup: 0,
+          shippingDue: 0,
+          rate: rateCard.overnight,
+          rateCard,
+          risk: 0,
+          health: 100,
+          problemsResolved: 0,
+          status: "Active",
+          walletBalance: 0
+        };
+        state.clients.unshift(newClient);
+        state.client = { id, name: newClient.name, walletTopup: 0, shippingDue: 0, subAccounts: 0, walletBalance: 0 };
+        state.users.unshift({
+          id: nextId("USR", state.users),
+          name: newClient.owner || newClient.name,
+          email,
+          password,
+          role: "Client",
+          accessSide: "Client Web Portal",
+          branch: `${newClient.city || "Karachi"} Hub`,
+          clientId: id,
+          status: "Active",
+          permissions: ["dashboard", "booking", "bulk booking", "reports", "payments", "tickets"]
+        });
+        saveState();
+        render();
+        showAdminTab("clients-summary");
+        const result = document.getElementById("clientCreateResult");
+        if (result) result.innerHTML = `<div class="ops-card"><strong>${id} created</strong><p>${name} is active. Login email: ${email}</p></div>`;
+        const linkProfile = attemptsLeft => {
+          const clientUuid = newClient._uuid;
+          if (!clientUuid && attemptsLeft > 0) {
+            setTimeout(() => linkProfile(attemptsLeft - 1), 700);
+            return;
+          }
+          const patch = Object.assign({ role: "client" }, clientUuid ? { client_id: clientUuid } : {});
+          const q = newUserId
+            ? window.__nvSb.from("profiles").update(patch).eq("id", newUserId)
+            : window.__nvSb.from("profiles").update(patch).eq("email", email);
+          q.then(r => {
+            if (btn) { btn.disabled = false; btn.textContent = "Create Client"; }
+            if (r && r.error) {
+              toast(`${id} created, but login link failed: ${r.error.message}`);
+              return;
+            }
+            toast(`${id} created as active client with a real, working login.`);
+          });
+        };
+        setTimeout(() => linkProfile(4), 900);
       });
-      saveState();
-      render();
-      showAdminTab("clients-summary");
-      const result = document.getElementById("clientCreateResult");
-      if (result) result.innerHTML = `<div class="ops-card"><strong>${id} created</strong><p>${name} is active. Login email: ${email}</p></div>`;
-      toast(`${id} created as active client. Login is ready.`);
     }
 
     function toggleRateForm(id) {
