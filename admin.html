@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>NovaX Logistics | Control Room</title>
   <style>
     :root {
@@ -4390,6 +4392,7 @@
                 <div class="admin-subnav">
                   <button type="button" class="admin-subtab" data-admin-tab="users-create">Create Users</button>
                   <button type="button" class="admin-subtab" data-admin-tab="users-edit">Edit Users</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="users-staff" data-staff-nav>Staff</button>
                 </div>
               </div>
 
@@ -4785,9 +4788,11 @@
                     <div class="field"><label>User Name</label><input id="userName" value="New Operations User" required></div>
                     <div class="field"><label>Email</label><input id="userEmail" type="email" placeholder="user@novax.pk" required></div>
                     <div class="field"><label>Password</label><input id="userPassword" type="password" value="NovaX@123" required></div>
-                    <div class="field"><label>Role</label><select id="userRole"><option>Admin</option><option>Branch Manager</option><option>Finance</option><option>Rider Supervisor</option><option>Client Support</option><option>Rider</option></select></div>
+                    <div class="field"><label>Role</label><select id="userRole"><option>Admin</option><option>Ops Manager</option><option>Branch Manager</option><option>Finance</option><option>Rider Supervisor</option><option>Client Support</option><option>Rider</option></select></div>
                     <div class="field"><label>Access Side</label><select id="userAccessSide"><option>Admin Portal</option><option>Client Web Portal</option><option>Rider App</option><option>Both Admin And Web</option></select></div>
                     <div class="field"><label>Assign Branch</label><select id="userBranch"><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option></select></div>
+                    <div class="field"><label>Show Staff Tab</label><select id="userStaffTab"><option value="no">No</option><option value="yes">Yes — give this user the Staff tab</option></select></div>
+                    <div class="field"><label>Staff Role</label><select id="userStaffRole"><option>Support</option><option>Sales</option><option>HR</option></select></div>
                   </div>
                   <div class="panel soft-panel" style="margin-top:14px">
                     <div class="section-head"><div><h3>Allowed Controls</h3><p>Select exactly what this user can see or operate.</p></div></div>
@@ -4812,6 +4817,10 @@
                   <div class="ops-list" id="adminUserList"></div>
                 </div>
               </div>
+            </section>
+
+            <section class="admin-module" id="admin-staff">
+              <div id="staffTabRoot"></div>
             </section>
 
             <section class="admin-module" id="admin-reports">
@@ -5215,6 +5224,9 @@
         { id: "USR-002", name: "Ali Ops", role: "Branch Manager", branch: "Islamabad Hub", clientId: "CL-0002", status: "Active" },
         { id: "USR-003", name: "Mina Support", role: "Client Support", branch: "Lahore Hub", clientId: "CL-0003", status: "Active" }
       ],
+      staffTickets: [],
+      staffActivity: [],
+      staffSeeded: false,
       branches: [
         { name: "Karachi Hub", scanHealth: 94, cashHealth: 88, discrepancy: 1 },
         { name: "Lahore Hub", scanHealth: 91, cashHealth: 96, discrepancy: 0 },
@@ -5446,7 +5458,7 @@
       riders: ["riders-route", "riders-report", "riders-summary"],
       finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-summary", "finance-overall", "finance-revenue"],
       clients: ["clients-summary", "clients-leads", "clients-create-new", "clients-clients"],
-      users: ["users-create", "users-edit"],
+      users: ["users-create", "users-edit", "users-staff"],
       api: ["api-shopify", "api-web", "api-woo-commerce"]
     };
 
@@ -5473,6 +5485,7 @@
       "clients-create-new": "admin-clients",
       "clients-clients": "admin-clients-rates",
       "users-create": "admin-users",
+      "users-staff": "admin-staff",
       "total-summary": "admin-reports"
     };
 
@@ -7723,6 +7736,7 @@
       renderAdmin();
       renderRider();
       tickMeters();
+      if (typeof renderStaffTab === "function") { try { renderStaffTab(); } catch(e){} }
     }
 
     function tickMeters() {
@@ -7789,6 +7803,7 @@
       renderAdmin();
       tickMeters();
       window.scrollTo({ top: 0, behavior: "smooth" });
+      if (typeof renderStaffTab === "function") { try { renderStaffTab(); } catch(e){} }
     }
 
     function lookupProcessingParcel() {
@@ -8443,6 +8458,8 @@
       const role = document.getElementById("userRole").value;
       const accessSide = document.getElementById("userAccessSide").value;
       const branch = document.getElementById("userBranch").value;
+      const wantsStaff = (document.getElementById("userStaffTab")||{}).value === "yes";
+      const staffRole = (document.getElementById("userStaffRole")||{}).value || "Support";
       const btn = document.getElementById("createUserBtn");
       if (btn) { btn.disabled = true; btn.textContent = "Creating account..."; }
       window.__nvSignupClient.auth.signUp({ email, password }).then(res => {
@@ -8462,7 +8479,10 @@
           branch,
           clientId: (state.clients[0] && state.clients[0].id) || "CL-0000",
           permissions,
-          status: "Active"
+          status: "Active",
+          staffTab: wantsStaff,
+          staffRole: wantsStaff ? staffRole : "",
+          staffTargets: wantsStaff ? defaultStaffTargets(staffRole) : []
         };
         state.users.unshift(newUser);
         saveState();
@@ -9528,7 +9548,23 @@
       function fExpense(e){ return { branch:e.owner||"", category:e.type||"", amount:Number(e.amount||0), note:e.note||e.name||"", created_by:ADMIN_UID, meta:{ name:e.name, status:e.status } }; }
       function fWd(w){ var cid=cuid(w.clientId); if(!cid) return null; return { client_id:cid, amount:Number(w.amount||0), fee:Number(w.fee||0), net:Number(w.net||0), iban:w.iban||"", speed:w.speed||"", status:w.status||"Pending admin payout" }; }
       function fPl(p){ var cid=cuid(p.clientId); if(!cid) return null; return { client_id:cid, type:p.type||"", amount:Number(p.amount||0), status:p.status||"", reference:p.ref||"" }; }
-      var SETS=[["clients",fClient,"clients"],["riders",fRider,"riders"],["parcels",fParcel,"parcels"],["invoices",fInvoice,"invoices"],["tickets",fTicket,"tickets"],["expenses",fExpense,"expenses"],["walletWithdrawals",fWd,"withdrawals"],["paymentLogs",fPl,"payment_logs"]];
+      function rOpsIssue(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.localId||r.id, branch:r.branch||"", urgency:r.urgency||"", problem:r.problem||"", awb:r.awb||"", openedHours:Number(m.openedHours||0), resolved:!!r.resolved, resolvedHours:Number(r.resolved_hours||0), resolvedBy:r.resolved_by||"", resolutionReason:r.resolution_reason||"", resolvedAt:r.resolved_at||"" }; }
+      function fOpsIssue(o){ return { branch:o.branch||"", urgency:o.urgency||"", problem:o.problem||"", awb:o.awb||"", resolved:!!o.resolved, resolved_hours:o.resolvedHours||null, resolved_by:o.resolvedBy||"", resolution_reason:o.resolutionReason||"", resolved_at:o.resolvedAt||null, meta:{ localId:o.id, openedHours:o.openedHours } }; }
+      function rResolvedAlert(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.localId||r.id, awb:r.awb||"", branch:r.branch||"", resolvedBy:r.resolved_by||"", reason:r.reason||"", alert:r.alert||"", solvedHours:Number(r.solved_hours||0), resolvedAt:r.resolved_at||"" }; }
+      function fResolvedAlert(o){ return { awb:o.awb||"", branch:o.branch||"", resolved_by:o.resolvedBy||"", reason:o.reason||"", alert:o.alert||"", solved_hours:o.solvedHours||null, resolved_at:o.resolvedAt||null, meta:{ localId:o.id } }; }
+      function rManifest(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.code||m.localId||r.id, from:r.from_branch||"", to:r.to_branch||"", expected:Number(r.expected||0), scanned:Number(r.scanned||0), demanifested:Number(r.demanifested||0), health:Number(r.health||0), status:r.status||"Active", type:r.type||"parcel manifest", parcels:Array.isArray(m.parcels)?m.parcels:[], demanifestedAwbs:Array.isArray(m.demanifestedAwbs)?m.demanifestedAwbs:[], missingAwbs:Array.isArray(m.missingAwbs)?m.missingAwbs:[], createdAt:m.createdAt||"", completedAt:r.completed_at||"" }; }
+      function fManifest(o){ return { code:o.id||"", from_branch:o.from||"", to_branch:o.to||"", expected:o.expected||0, scanned:o.scanned||0, demanifested:o.demanifested||0, health:o.health||0, status:o.status||"Active", type:o.type||"parcel manifest", completed_at:o.completedAt||null, meta:{ parcels:o.parcels||[], demanifestedAwbs:o.demanifestedAwbs||[], missingAwbs:o.missingAwbs||[], createdAt:o.createdAt } }; }
+      function rTicketNotif(r){ return { _uuid:r.id, text:r.text||"", at:r.at||"", level:r.level||"info" }; }
+      function fTicketNotif(o){ return { text:o.text||"", at:o.at||"", level:o.level||"info" }; }
+      function suid(id){ var u=(state.users||[]).find(function(x){return x.id===id;}); return (u&&u._uuid)||(isUuid(id)?id:null); }
+      function suidToLocal(uid){ var u=(state.users||[]).find(function(x){return x._uuid===uid;}); return u?u.id:(uid||""); }
+      function rStaffUser(r){ var m=r.meta||{}; var cl=(state.clients||[]).find(function(x){return x._uuid===r.client_id;}); var rd=(state.riders||[]).find(function(x){return x._uuid===r.rider_id;}); return { _uuid:r.id, id:r.code||r.id, name:r.name||"", email:r.email||"", role:r.role||"", accessSide:r.access_side||"", branch:r.branch||"", clientId:cl?cl.id:(r.client_id||""), riderId:rd?rd.id:(r.rider_id||""), permissions:Array.isArray(r.permissions)?r.permissions:[], status:r.status||"Active", staffTab:!!r.staff_tab, staffRole:r.staff_role||"", staffTargets:Array.isArray(m.staffTargets)?m.staffTargets:[] }; }
+      function fStaffUser(o){ return { code:o.id||"", name:o.name||"", email:o.email||"", role:o.role||"", access_side:o.accessSide||"", branch:o.branch||"", client_id:cuid(o.clientId), rider_id:ruid(o.riderId), permissions:o.permissions||[], status:o.status||"Active", staff_tab:!!o.staffTab, staff_role:o.staffRole||"", meta:{ staffTargets:o.staffTargets||[] } }; }
+      function rStaffTicket(r){ return { _uuid:r.id, id:r.code||r.id, title:r.title||"", owner:suidToLocal(r.owner_id), priority:r.priority||"medium", status:r.status||"open", created:r.created_at||"", by:r.created_by||"" }; }
+      function fStaffTicket(t){ return { code:t.id||"", owner_id:suid(t.owner), title:t.title||"", priority:t.priority||"medium", status:t.status||"open", created_by:t.by||"" }; }
+      function rStaffActivity(r){ return { _uuid:r.id, who:suidToLocal(r.owner_id), t:r.note||"", time:r.created_at||"" }; }
+      function fStaffActivity(a){ return { owner_id:suid(a.who), note:a.t||"" }; }
+      var SETS=[["clients",fClient,"clients"],["riders",fRider,"riders"],["parcels",fParcel,"parcels"],["invoices",fInvoice,"invoices"],["tickets",fTicket,"tickets"],["expenses",fExpense,"expenses"],["walletWithdrawals",fWd,"withdrawals"],["paymentLogs",fPl,"payment_logs"],["operationsIssues",fOpsIssue,"operations_issues"],["resolvedAlerts",fResolvedAlert,"resolved_alerts"],["transit",fManifest,"manifest_logs"],["completedSacks",fManifest,"manifest_logs"],["ticketNotifications",fTicketNotif,"ticket_notifications"],["users",fStaffUser,"staff_users"],["staffTickets",fStaffTicket,"staff_tickets"],["staffActivity",fStaffActivity,"staff_activity"]];
       function scheduleResync(){ clearTimeout(resyncT); resyncT=setTimeout(function(){ try{ syncAll(); }catch(e){} },700); }
       function loadAll(){
         return Promise.all([
@@ -9541,7 +9577,14 @@
           sb.from("withdrawals").select("*").order("created_at",{ascending:false}),
           sb.from("payment_logs").select("*").order("created_at",{ascending:false}),
           sb.from("sales_leads").select("*").order("created_at",{ascending:false}),
-          sb.from("signup_leads").select("*").neq("status","workspace_created").order("created_at",{ascending:false})
+          sb.from("signup_leads").select("*").neq("status","workspace_created").order("created_at",{ascending:false}),
+          sb.from("operations_issues").select("*").order("created_at",{ascending:false}),
+          sb.from("resolved_alerts").select("*").order("created_at",{ascending:false}),
+          sb.from("manifest_logs").select("*").order("created_at",{ascending:false}),
+          sb.from("ticket_notifications").select("*").order("created_at",{ascending:false}).limit(20),
+          sb.from("staff_users").select("*").order("created_at",{ascending:true}),
+          sb.from("staff_tickets").select("*").order("created_at",{ascending:false}),
+          sb.from("staff_activity").select("*").order("created_at",{ascending:false}).limit(100)
         ]).then(function(res){
           function D(i){ return (res[i]&&res[i].data)||[]; }
           state.clients=D(0).map(rClient);
@@ -9554,6 +9597,15 @@
           state.paymentLogs=D(7).map(rPl);
           state.salesLeads=D(8).map(rSalesLead);
           state.signupLeads=D(9).map(rSignupLead);
+          state.operationsIssues=D(10).map(rOpsIssue);
+          state.resolvedAlerts=D(11).map(rResolvedAlert);
+          var manifestRows=D(12).map(rManifest);
+          state.transit=manifestRows.filter(function(m){ return m.status!=="Complete"; });
+          state.completedSacks=manifestRows.filter(function(m){ return m.status==="Complete"; });
+          state.ticketNotifications=D(13).map(rTicketNotif);
+          state.users=D(14).map(rStaffUser);
+          state.staffTickets=D(15).map(rStaffTicket);
+          state.staffActivity=D(16).map(rStaffActivity);
           if(state.clients.length){ var c0=state.clients[0]; state.client={ id:c0.id, name:c0.name, walletTopup:c0.walletTopup, shippingDue:c0.shippingDue, walletBalance:c0.walletBalance, subAccounts:0 }; }
           rebuildShadow();
           loaded=true;
@@ -9575,7 +9627,7 @@
       }
       function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
       var _save=saveState; saveState=function(){ try{ if(typeof syncRidersFromUsers==="function") syncRidersFromUsers(); }catch(e){} try{ _save.apply(this,arguments); }catch(e){} try{ syncAll(); }catch(e){} };
-      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.tickets=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[]; state.signupLeads=[];
+      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.tickets=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[]; state.signupLeads=[]; state.operationsIssues=[]; state.resolvedAlerts=[]; state.transit=[]; state.completedSacks=[]; state.ticketNotifications=[]; state.users=[]; state.staffTickets=[]; state.staffActivity=[];
       window.markSalesLeadContacted=function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
@@ -9608,6 +9660,13 @@
     render();
     renderLandingTrack();
     window.scrollTo({ top: 0, left: 0 });
+    (function gateStaffNav(){
+      try{
+        var me = currentStaffUser();
+        var show = staffCanSeeTab(me);
+        document.querySelectorAll("[data-staff-nav]").forEach(function(b){ b.style.display = show ? "" : "none"; });
+      }catch(e){}
+    })();
     /* ===== NovaX Admin AI Assistant (rule-based, live control-room data) ===== */
     (function(){
       try{
@@ -9743,6 +9802,150 @@
         lvsb.channel("novax_live_visitors").on("postgres_changes",{event:"*",schema:"public",table:"visitor_sessions"},function(){ pollLiveVisitors(); pollOverallVisitors(); }).subscribe(function(status,err){ if(err) console.warn("NovaX live visitors channel",status,err.message||err); });
       }catch(e){}
     })();
+
+    /* ===================== NOVAX STAFF TAB ===================== */
+    /* SUPABASE RLS NOTE: state currently rides along inside novax_state (single row),
+       so staff tickets/targets/activity sync automatically — no new tables required
+       to make this WORK today. But the publishable key is public, so if this is split
+       into real tables later (staff_tickets, staff_targets, staff_activity), add RLS:
+         SELECT: (auth.uid() = owner_uid) OR (role in ('admin','ops'))
+         INSERT: auth.uid() = owner_uid
+       Until then, the JS access gate below hides other staff's data in the UI only —
+       that is UX-level, not security-level. Add the RLS before staff are external. */
+    /* who is logged in on THIS device */
+    function staffSession(){ try{ return JSON.parse(localStorage.getItem("novaxSession")||"null"); }catch(e){ return null; } }
+    function currentStaffUser(){
+      const ses = staffSession();
+      let u = null;
+      if(ses){ const e=String(ses.email||"").toLowerCase();
+        u = (state.users||[]).find(x=>String(x.email||"").toLowerCase()===e) || null; }
+      if(!u) u = (state.users||[]).find(x=>/admin/i.test(x.role)) || {id:"admin",name:"Admin",role:"Admin",accessSide:"Admin Portal"};
+      return u;
+    }
+    function staffIsManager(u){
+      const s = `${u.role||""} ${u.accessSide||""}`.toLowerCase();
+      return /admin/.test(s) || /ops manager|coo|operations manager/.test(s);
+    }
+    function staffCanSeeTab(u){ return staffIsManager(u) || u.staffTab === true; }
+
+    function defaultStaffTargets(role){
+      const map = {
+        Support:[{id:"T"+Date.now()+"a",label:"Tickets closed / day",now:0,goal:40,pct:false}],
+        Sales:[{id:"T"+Date.now()+"a",label:"Calls / day",now:0,goal:30,pct:false},
+               {id:"T"+Date.now()+"b",label:"Leads converted / week",now:0,goal:10,pct:false}],
+        HR:[{id:"T"+Date.now()+"a",label:"Weekly 1-on-1s done",now:0,goal:5,pct:false}]
+      };
+      return map[role] || [];
+    }
+    function staffList(){ return (state.users||[]).filter(u=>u.staffTab===true); }
+    function staffTicketsFor(id){ return (state.staffTickets||[]).filter(t=>t.owner===id); }
+    function staffActivityFor(id){ return (state.staffActivity||[]).filter(a=>a.who===id).slice(0,8); }
+    function staffTimeNow(){ return new Date().toTimeString().slice(0,5); }
+    function staffLog(who,text){ (state.staffActivity=state.staffActivity||[]).unshift({who,t:text,time:staffTimeNow()}); }
+    function staffInitials(n){ return String(n||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase(); }
+    function staffScore(u){ const t=u.staffTargets||[]; if(!t.length) return 50;
+      return Math.round(t.reduce((a,x)=>a+(x.pct?x.now:Math.min(100,(x.now/x.goal)*100)),0)/t.length); }
+    function staffRoleBlurb(r){ return {Support:"Customer tickets, response time, and CSAT.",Sales:"Lead calls, conversions, and pipeline.",HR:"Onboarding, attendance, and staff wellbeing."}[r]||"Team member."; }
+
+    /* ---- ACTIONS (all persist via saveState) ---- */
+    function staffAddTicket(ownerId){
+      const inp=document.getElementById("stk_in_"+ownerId), pri=document.getElementById("stk_pri_"+ownerId);
+      const title=(inp.value||"").trim(); if(!title){ toast("Type the ticket first."); return; }
+      const owner=(state.users||[]).find(u=>u.id===ownerId);
+      const n=(state.staffTickets||[]).length+1;
+      (state.staffTickets=state.staffTickets||[]).unshift({id:"STK-"+String(n).padStart(4,"0"),title,owner:ownerId,priority:pri.value,status:"open",created:staffTimeNow(),by:owner?owner.name:""});
+      staffLog(ownerId,"Created ticket: "+title); saveState(); renderStaffTab(); toast("Ticket added.");
+    }
+    function staffSetTicket(id,status){
+      const t=(state.staffTickets||[]).find(x=>x.id===id); if(!t) return; t.status=status;
+      staffLog(t.owner,(status==="resolved"?"Resolved ":"Reopened ")+id);
+      if(status==="resolved"){ const u=(state.users||[]).find(x=>x.id===t.owner);
+        const tg=u&&(u.staffTargets||[]).find(g=>/ticket/i.test(g.label)&&!g.pct); if(tg) tg.now++; }
+      saveState(); renderStaffTab(); toast(id+" "+status+".");
+    }
+    function staffLogCall(ownerId){
+      const el=document.getElementById("stk_call_"+ownerId); const txt=(el.value||"").trim()||"Called a lead";
+      staffLog(ownerId,"📞 "+txt); const u=(state.users||[]).find(x=>x.id===ownerId);
+      const tg=u&&(u.staffTargets||[]).find(g=>/call/i.test(g.label)&&!g.pct); if(tg) tg.now++;
+      el.value=""; saveState(); renderStaffTab(); toast("Call logged.");
+    }
+    function staffBump(uid,tid,d){ const u=(state.users||[]).find(x=>x.id===uid); const t=u&&(u.staffTargets||[]).find(g=>g.id===tid); if(!t) return; t.now=Math.max(0,t.now+d); saveState(); renderStaffTab(); }
+    function staffNote(ownerId){ const el=document.getElementById("stk_note_"+ownerId); const v=(el.value||"").trim(); if(!v) return; staffLog(ownerId,v); el.value=""; saveState(); renderStaffTab(); toast("Activity logged."); }
+    function staffAssignTarget(uid){
+      const label=prompt("Target label (e.g. Calls / day):"); if(!label) return;
+      const goal=Number(prompt("Goal number:","30"))||0;
+      const u=(state.users||[]).find(x=>x.id===uid); (u.staffTargets=u.staffTargets||[]).push({id:"T"+Date.now(),label,now:0,goal,pct:false});
+      saveState(); renderStaffTab(); toast("Target assigned.");
+    }
+    function staffRemoveTarget(uid,tid){ const u=(state.users||[]).find(x=>x.id===uid); u.staffTargets=(u.staffTargets||[]).filter(g=>g.id!==tid); saveState(); renderStaffTab(); }
+    let staffSelected=null;
+    function staffOpen(id){ staffSelected=(staffSelected===id?null:id); renderStaffTab(); }
+    function staffClose(){ staffSelected=null; renderStaffTab(); }
+
+    /* ---- RENDER ---- */
+    function renderStaffTab(){
+      const root=document.getElementById("staffTabRoot"); if(!root) return;
+      const me=currentStaffUser();
+      if(!staffCanSeeTab(me)){ root.innerHTML=`<div class="panel"><h3>Staff</h3><p>You don't have access to the Staff tab.</p></div>`; return; }
+      root.innerHTML = staffIsManager(me) ? staffManagerView() : staffOwnView(me.id);
+    }
+    function staffManagerView(){
+      const list=staffList();
+      const openTix=(state.staffTickets||[]).filter(t=>t.status==="open").length;
+      const avg=list.length?Math.round(list.reduce((a,u)=>a+staffScore(u),0)/list.length):0;
+      let html=`
+      <div class="panel">
+        <div class="section-head"><div><h3>Staff Control</h3><p>Everyone in one place. Add staff, assign targets, and resolve tickets for any member. Click a person to manage their workspace.</p></div>
+          <button class="action-btn" onclick="showAdminTab('users-create')">+ Add Staff</button></div>
+        <div class="grid metrics">
+          <div class="metric"><span>Team</span><strong>${list.length}</strong></div>
+          <div class="metric"><span>Open tickets</span><strong>${openTix}</strong></div>
+          <div class="metric"><span>Actions</span><strong>${(state.staffActivity||[]).length}</strong></div>
+          <div class="metric"><span>Avg score</span><strong>${avg}</strong></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><h3>Team</h3><p>Status, workload, and performance. Click to manage.</p></div></div>
+        <div class="ops-list">
+        ${list.length? list.map(u=>{const openN=staffTicketsFor(u.id).filter(t=>t.status==="open").length;
+          return `<div class="ops-card" style="cursor:pointer" onclick="staffOpen('${u.id}')">
+            <div class="ops-card-head"><strong>${u.name}</strong><span class="chip info">${u.staffRole||"Staff"}</span></div>
+            <p>${openN} open ticket(s) · score ${staffScore(u)}</p></div>`;}).join("")
+          : `<p class="footer-note">No staff yet. Create a user with "Show Staff Tab = Yes".</p>`}
+        </div>
+      </div>`;
+      if(staffSelected){ const u=list.find(x=>x.id===staffSelected); if(u) html+=staffWorkspacePanels(u,true); }
+      const ranked=list.slice().sort((a,b)=>staffScore(b)-staffScore(a));
+      html+=`<div class="panel"><div class="section-head"><div><h3>Leaderboard</h3><p>Ranked by score this week.</p></div></div>
+        <div class="ops-list">${ranked.map((u,i)=>`<div class="ops-card" style="cursor:pointer" onclick="staffOpen('${u.id}')"><div class="ops-card-head"><strong>#${i+1} ${u.name}</strong><span class="chip ${i===0?'warn':'info'}">${staffScore(u)}</span></div><p>${u.staffRole||""}</p></div>`).join("")}</div></div>`;
+      return html;
+    }
+    function staffOwnView(id){
+      const u=(state.users||[]).find(x=>x.id===id);
+      if(!u) return `<div class="panel"><h3>No workspace</h3><p class="footer-note">Ask admin to enable your Staff tab.</p></div>`;
+      return `<div class="panel"><div class="section-head"><div><h3>My Workspace</h3><p>${u.name} · ${u.staffRole||"Staff"}. You only see your own work here.</p></div><span class="realtime"><span class="pulse"></span> Live</span></div></div>${staffWorkspacePanels(u,false)}`;
+    }
+    function staffWorkspacePanels(u,forManager){
+      const mine=staffTicketsFor(u.id), openT=mine.filter(t=>t.status==="open"), doneT=mine.filter(t=>t.status==="resolved");
+      const isSales=u.staffRole==="Sales";
+      const tRow=t=>{const pc={okay:"info",medium:"warn",emergency:"bad"}[t.priority]||"info";
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${t.id} <span class="chip ${pc}">${t.priority}</span></strong>${t.status==="open"?`<button class="action-btn" onclick="staffSetTicket('${t.id}','resolved')">Resolve</button>`:`<button class="ghost-btn" onclick="staffSetTicket('${t.id}','open')">Reopen</button>`}</div><p>${t.title} <span class="footer-note">· by ${t.by} ${t.created}</span></p></div>`;};
+      return `
+      <div class="panel"><div class="section-head"><div><h3>${forManager?u.name+" — workspace":"My performance"}</h3><p>${staffRoleBlurb(u.staffRole)}</p></div>${forManager?`<button class="ghost-btn" onclick="staffClose()">Close</button>`:""}</div>
+        <div class="grid metrics"><div class="metric"><span>Open tickets</span><strong>${openT.length}</strong></div><div class="metric"><span>Resolved</span><strong>${doneT.length}</strong></div><div class="metric"><span>Score</span><strong>${staffScore(u)}</strong></div><div class="metric"><span>Status</span><strong style="font-size:16px">${u.status||"Active"}</strong></div></div></div>
+      <div class="panel"><div class="section-head"><div><h3>Tickets${isSales?" & calls":""}</h3><p>Create a ticket, resolve when done.${isSales?" Log calls for the leaderboard.":""}</p></div></div>
+        ${isSales?`<div class="filter-bar"><input id="stk_call_${u.id}" placeholder="Who did you call?"><button class="action-btn" onclick="staffLogCall('${u.id}')">Log Call</button></div>`:""}
+        <div class="filter-bar"><input id="stk_in_${u.id}" placeholder="New ticket — describe the issue"><select id="stk_pri_${u.id}"><option value="okay">Okay</option><option value="medium" selected>Medium</option><option value="emergency">Emergency</option></select><button class="action-btn" onclick="staffAddTicket('${u.id}')">Add Ticket</button></div>
+        ${openT.length?openT.map(tRow).join(""):'<p class="footer-note">No open tickets.</p>'}
+        ${doneT.length?`<p class="footer-note" style="margin-top:10px">Resolved (${doneT.length})</p>`+doneT.slice(0,4).map(tRow).join(""):""}</div>
+      <div class="panel"><div class="section-head"><div><h3>Targets</h3><p>Tap +/- to update progress.</p></div>${forManager?`<button class="ghost-btn" onclick="staffAssignTarget('${u.id}')">+ Assign Target</button>`:""}</div>
+        ${(u.staffTargets||[]).map(t=>{const pct=t.pct?t.now:Math.min(100,Math.round((t.now/t.goal)*100));
+          return `<div class="ops-card"><div class="ops-card-head"><strong>${t.label}</strong><span>${t.pct?t.now+"%":t.now+" / "+t.goal} ${!t.pct?`<button class="ghost-btn" onclick="staffBump('${u.id}','${t.id}',-1)">−</button><button class="ghost-btn" onclick="staffBump('${u.id}','${t.id}',1)">+</button>`:""}${forManager?`<button class="ghost-btn" onclick="staffRemoveTarget('${u.id}','${t.id}')">✕</button>`:""}</span></div><div class="meter" style="margin-top:8px"><span style="width:${pct}%"></span></div></div>`;}).join("")||'<p class="footer-note">No targets yet.</p>'}</div>
+      <div class="panel"><div class="section-head"><div><h3>Activity</h3><p>Logins and key actions, newest first.</p></div></div>
+        <div class="filter-bar"><input id="stk_note_${u.id}" placeholder="Log an activity note…"><button class="action-btn" onclick="staffNote('${u.id}')">Add</button></div>
+        <div class="ops-list">${staffActivityFor(u.id).map(a=>`<div class="ops-card"><p>${a.t} <span class="footer-note">· ${a.time}</span></p></div>`).join("")||'<p class="footer-note">No activity yet.</p>'}</div></div>`;
+    }
+    /* =================== END NOVAX STAFF TAB =================== */
   </script>
 <script>
 (function(){
