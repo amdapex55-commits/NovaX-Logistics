@@ -9571,23 +9571,33 @@
       var SETS=[["clients",fClient,"clients"],["riders",fRider,"riders"],["parcels",fParcel,"parcels"],["invoices",fInvoice,"invoices"],["tickets",fTicket,"tickets"],["expenses",fExpense,"expenses"],["walletWithdrawals",fWd,"withdrawals"],["paymentLogs",fPl,"payment_logs"],["operationsIssues",fOpsIssue,"operations_issues"],["resolvedAlerts",fResolvedAlert,"resolved_alerts"],["transit",fManifest,"manifest_logs"],["completedSacks",fManifest,"manifest_logs"],["ticketNotifications",fTicketNotif,"ticket_notifications"],["users",fStaffUser,"staff_users"],["staffTickets",fStaffTicket,"staff_tickets"],["staffActivity",fStaffActivity,"staff_activity"]];
       function scheduleResync(){ clearTimeout(resyncT); resyncT=setTimeout(function(){ try{ syncAll(); }catch(e){} },700); }
       function loadAll(){
+        /* NOTE: every query below now has an explicit .limit(). Supabase's own
+           server already silently caps unbounded selects (commonly at 1000 rows)
+           with no warning, so without an explicit limit + correct ordering, the
+           dashboard could quietly start dropping data once a table grows past
+           that cap -- and worse, it could drop the WRONG rows (e.g. newest
+           clients) if the query isn't ordered to keep the most relevant rows
+           first. These limits are a safety net, not a real pagination system --
+           if any of these tables are expected to exceed a few thousand rows,
+           the admin views for that table should get real pagination/infinite
+           scroll instead of a single full-table load. */
         return Promise.all([
-          sb.from("clients").select("*").order("created_at",{ascending:true}),
-          sb.from("riders").select("*").order("created_at",{ascending:true}),
-          sb.from("parcels").select("*").order("booked_at",{ascending:false}),
-          sb.from("invoices").select("*").order("created_at",{ascending:false}),
-          sb.from("tickets").select("*").order("created_at",{ascending:false}),
-          sb.from("expenses").select("*").order("created_at",{ascending:false}),
-          sb.from("withdrawals").select("*").order("created_at",{ascending:false}),
-          sb.from("payment_logs").select("*").order("created_at",{ascending:false}),
-          sb.from("sales_leads").select("*").order("created_at",{ascending:false}),
-          sb.from("signup_leads").select("*").neq("status","workspace_created").order("created_at",{ascending:false}),
-          sb.from("operations_issues").select("*").order("created_at",{ascending:false}),
-          sb.from("resolved_alerts").select("*").order("created_at",{ascending:false}),
-          sb.from("manifest_logs").select("*").order("created_at",{ascending:false}),
+          sb.from("clients").select("*").order("created_at",{ascending:false}).limit(5000),
+          sb.from("riders").select("*").order("created_at",{ascending:false}).limit(5000),
+          sb.from("parcels").select("*").order("booked_at",{ascending:false}).limit(5000),
+          sb.from("invoices").select("*").order("created_at",{ascending:false}).limit(5000),
+          sb.from("tickets").select("*").order("created_at",{ascending:false}).limit(3000),
+          sb.from("expenses").select("*").order("created_at",{ascending:false}).limit(3000),
+          sb.from("withdrawals").select("*").order("created_at",{ascending:false}).limit(3000),
+          sb.from("payment_logs").select("*").order("created_at",{ascending:false}).limit(3000),
+          sb.from("sales_leads").select("*").order("created_at",{ascending:false}).limit(2000),
+          sb.from("signup_leads").select("*").neq("status","workspace_created").order("created_at",{ascending:false}).limit(2000),
+          sb.from("operations_issues").select("*").order("created_at",{ascending:false}).limit(2000),
+          sb.from("resolved_alerts").select("*").order("created_at",{ascending:false}).limit(2000),
+          sb.from("manifest_logs").select("*").order("created_at",{ascending:false}).limit(2000),
           sb.from("ticket_notifications").select("*").order("created_at",{ascending:false}).limit(20),
-          sb.from("staff_users").select("*").order("created_at",{ascending:true}),
-          sb.from("staff_tickets").select("*").order("created_at",{ascending:false}),
+          sb.from("staff_users").select("*").order("created_at",{ascending:false}).limit(2000),
+          sb.from("staff_tickets").select("*").order("created_at",{ascending:false}).limit(2000),
           sb.from("staff_activity").select("*").order("created_at",{ascending:false}).limit(100)
         ]).then(function(res){
           function D(i){ return (res[i]&&res[i].data)||[]; }
