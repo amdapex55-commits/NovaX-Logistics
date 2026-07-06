@@ -1134,10 +1134,16 @@
       const cfg=map[platform]; if(!cfg) return;
       const storeUrl=(document.getElementById(cfg.url).value||"").trim();
       if(!storeUrl){ toast("Enter your store URL / endpoint first."); return; }
-      const creds={}; Object.keys(cfg.fields).forEach(k=>{ creds[k]=(document.getElementById(cfg.fields[k]).value||"").trim(); });
+      // NovaX security note: API keys/tokens/secrets are intentionally NOT stored
+      // (not in state, not in localStorage, not synced to Supabase). This sync flow
+      // is a demo/mock -- it never actually calls Shopify/WooCommerce with these
+      // credentials, so there is no reason to persist the raw secret anywhere.
+      // We only remember whether credentials were provided, for the UI badge.
+      const hasCreds=Object.keys(cfg.fields).some(k=>(document.getElementById(cfg.fields[k]).value||"").trim());
+      Object.keys(cfg.fields).forEach(k=>{ const el=document.getElementById(cfg.fields[k]); if(el) el.value=""; });
       let conn=storeConn(platform);
       if(!conn){ conn={ clientId:activeClientId(), platform }; state.storeConnections.push(conn); }
-      conn.storeUrl=storeUrl; conn.creds=creds; conn.connected=true; conn.connectedAt=time();
+      conn.storeUrl=storeUrl; conn.hasCreds=hasCreds||conn.hasCreds||false; conn.connected=true; conn.connectedAt=time();
       saveState(); renderIntegrations(); toast(platformLabel(platform)+" connection saved.");
     }
     function syncStoreOrders(platform){
@@ -1229,7 +1235,7 @@
       function mapTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:MY, title:r.subject||"", message:r.body||"", status:r.status||"Open", createdAt:dtpart(r.created_at), tier:m.tier||"medium", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", replies:Array.isArray(m.replies)?m.replies:[], escalated:!!m.escalated, sourceKey:m.sourceKey||"" }; }
       function mapWd(r){ return { _uuid:r.id, id:r.id, clientId:MY, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at) }; }
       function mapPl(r){ return { _uuid:r.id, id:r.id, clientId:MY, type:r.type||"", amount:Number(r.amount||0), status:r.status||"", ref:r.reference||"", createdAt:dtpart(r.created_at) }; }
-      function mapSc(r){ var m=r.meta||{}; return { _uuid:r.id, clientId:MY, platform:r.platform, storeUrl:r.store_url||"", connected:!!r.connected, importedCount:Number(r.imported_count||0), creds:m.creds||{}, connectedAt:m.connectedAt||"", lastSync:m.lastSync||"" }; }
+      function mapSc(r){ var m=r.meta||{}; return { _uuid:r.id, clientId:MY, platform:r.platform, storeUrl:r.store_url||"", connected:!!r.connected, importedCount:Number(r.imported_count||0), hasCreds:!!m.hasCreds, connectedAt:m.connectedAt||"", lastSync:m.lastSync||"" }; }
       function loadAll(){
         return Promise.all([
           sb.from("clients").select("*").eq("id",MY).maybeSingle(),
@@ -1264,7 +1270,7 @@
         (state.walletWithdrawals||[]).forEach(function(w){ if(w._uuid||w._pending) return; w._pending=true; sb.from("withdrawals").insert({ client_id:MY, amount:Number(w.amount||0), fee:Number(w.fee||0), net:Number(w.net||0), iban:w.iban||"", speed:w.speed||"", status:w.status||"Pending admin payout" }).select("id").maybeSingle().then(function(r){ w._pending=false; if(r&&r.data) w._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX withdrawal insert",r.error.message); }); });
         (state.tickets||[]).forEach(function(t){ if(t._uuid||t._pending) return; t._pending=true; sb.from("tickets").insert({ client_id:MY, subject:t.title||"", body:t.message||"", status:t.status||"Open", meta:{ code:t.id, tier:t.tier, from:t.from, to:t.to, branch:t.branch, awb:t.awb, replies:t.replies||[], sourceKey:t.sourceKey } }).select("id").maybeSingle().then(function(r){ t._pending=false; if(r&&r.data) t._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX ticket insert",r.error.message); }); });
         (state.paymentLogs||[]).forEach(function(pl){ if(pl._uuid||pl._pending) return; pl._pending=true; sb.from("payment_logs").insert({ client_id:MY, type:pl.type||"", amount:Number(pl.amount||0), status:pl.status||"", reference:pl.ref||"" }).select("id").maybeSingle().then(function(r){ pl._pending=false; if(r&&r.data) pl._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX paylog insert",r.error.message); }); });
-        (state.storeConnections||[]).forEach(function(c){ if(c._pending) return; var row={ client_id:MY, platform:c.platform, store_url:c.storeUrl||"", connected:!!c.connected, imported_count:Number(c.importedCount||0), meta:{ creds:c.creds||{}, connectedAt:c.connectedAt||"", lastSync:c.lastSync||"" }, updated_at:new Date().toISOString() }; var sig=JSON.stringify(row); if(c._sig===sig) return; c._sig=sig; if(c._uuid){ sb.from("store_connections").update(row).eq("id",c._uuid).then(function(r){ if(r&&r.error) console.warn("NovaX store update",r.error.message); }); } else { c._pending=true; sb.from("store_connections").insert(row).select("id").maybeSingle().then(function(r){ c._pending=false; if(r&&r.data) c._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX store insert",r.error.message); }); } });
+        (state.storeConnections||[]).forEach(function(c){ if(c._pending) return; var row={ client_id:MY, platform:c.platform, store_url:c.storeUrl||"", connected:!!c.connected, imported_count:Number(c.importedCount||0), meta:{ hasCreds:!!c.hasCreds, connectedAt:c.connectedAt||"", lastSync:c.lastSync||"" }, updated_at:new Date().toISOString() }; var sig=JSON.stringify(row); if(c._sig===sig) return; c._sig=sig; if(c._uuid){ sb.from("store_connections").update(row).eq("id",c._uuid).then(function(r){ if(r&&r.error) console.warn("NovaX store update",r.error.message); }); } else { c._pending=true; sb.from("store_connections").insert(row).select("id").maybeSingle().then(function(r){ c._pending=false; if(r&&r.data) c._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX store insert",r.error.message); }); } });
       }
       var _save=saveState; saveState=function(){ try{ _save.apply(this,arguments); }catch(e){} try{ syncNew(); }catch(e){} };
       state.parcels=[]; state.invoices=[]; state.tickets=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[];
