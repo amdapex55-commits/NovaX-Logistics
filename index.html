@@ -756,11 +756,13 @@ footer{color:#86a99b;}
   /* ---- NovaX Supabase live cloud sync (additive, fail-safe; landing page reads cloud so tracking + login work cross-device) ---- */
   var __nvSb=null;
   try{ if(window.supabase&&window.supabase.createClient){ __nvSb=window.supabase.createClient("https://rhzunbzbdzicajqtohwp.supabase.co","sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA"); } }catch(e){ __nvSb=null; }
-  var __nvOrigSave=saveState;
-  saveState=function(st){ __nvOrigSave(st); if(__nvSb){ try{ __nvSb.from("novax_state").upsert({id:1,data:st,updated_at:new Date().toISOString()}).then(function(r){ if(r&&r.error) console.warn("NovaX cloud save:",r.error.message); }); }catch(e){} } };
-  function __nvPullCloud(cb){ if(!__nvSb){ if(typeof cb==="function") cb(); return; } try{ __nvSb.from("novax_state").select("data").eq("id",1).maybeSingle().then(function(r){ try{ if(r&&!r.error&&r.data&&r.data.data&&Object.keys(r.data.data).length){ localStorage.setItem(STORAGE_KEY,JSON.stringify(r.data.data)); } }catch(e){} if(typeof cb==="function") cb(); }); }catch(e){ if(typeof cb==="function") cb(); } }
-  if(__nvSb){ try{ __nvSb.channel("novax_state_live").on("postgres_changes",{event:"*",schema:"public",table:"novax_state",filter:"id=eq.1"},function(payload){ var row=payload&&payload.new; if(row&&row.data){ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(row.data)); if(typeof track==="function") track(); }catch(e){} } }).subscribe(function(status,err){ if(err) console.warn("NovaX live sync channel",status,err.message||err); }); }catch(e){} }
-  __nvPullCloud(function(){ if(typeof track==="function"){ try{ track(); }catch(e){} } });
+  /* NOTE: this page used to mirror the ENTIRE local app state (all clients,
+     riders, parcels, invoices, users incl. passwords) into a single public
+     "novax_state" row, readable/writable by the anon key and live-broadcast
+     to every visitor. That bypassed all per-table RLS and was a critical data
+     leak. Removed. All real data now flows only through the proper tables
+     (clients/riders/parcels/etc.) which have RLS. This page keeps state local
+     to the visitor's own browser only. */
   function routeForCredentials(email,password){
     var e=String(email||"").trim().toLowerCase();
     var rawPassword=String(password||"").trim();
