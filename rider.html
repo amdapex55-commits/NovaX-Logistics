@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow, noarchive">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <link rel="preconnect" href="https://rhzunbzbdzicajqtohwp.supabase.co">
   <link rel="dns-prefetch" href="https://rhzunbzbdzicajqtohwp.supabase.co">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
-  <title>NovaX Logistics | Seller Suite</title>
+  <title>NovaX Logistics | Rider App</title>
   <style>
     :root{
       color-scheme: light;
@@ -21,654 +21,250 @@
     }
     *{box-sizing:border-box;}
     body{margin:0;min-height:100vh;color:var(--ink);overflow-x:hidden;background:linear-gradient(135deg,rgba(12,124,89,.08),transparent 28%),linear-gradient(315deg,rgba(29,111,159,.08),transparent 32%),var(--bg);}
-    button,input,select,textarea{font:inherit;}
+    button,input,select{font:inherit;}
     button{border:0;cursor:pointer;}
-    .app-shell{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr;overflow-x:hidden;}
-    .topbar{position:sticky;top:0;z-index:20;border-bottom:1px solid rgba(16,32,27,.08);background:rgba(244,248,245,.88);backdrop-filter:blur(18px);width:100%;max-width:100vw;}
+    a{color:inherit;}
+    .topbar{position:sticky;top:0;z-index:20;border-bottom:1px solid rgba(9,33,26,.08);background:rgba(255,255,255,.9);backdrop-filter:blur(18px);box-shadow:0 10px 30px rgba(13,91,64,.06);}
     .topbar-inner{width:100%;max-width:1440px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;gap:14px;justify-content:space-between;}
-    .brand{display:flex;align-items:center;gap:10px;min-width:0;max-width:100%;}
-    .mark{width:38px;height:38px;border-radius:8px;display:grid;place-items:center;color:white;font-weight:900;background:linear-gradient(145deg,#0d6b4d,#19a171);box-shadow:0 10px 25px rgba(12,124,89,.24);}
+    .brand{display:flex;align-items:center;gap:10px;min-width:0;}
+    .mark{width:38px;height:38px;border-radius:8px;display:grid;place-items:center;color:#fff;font-weight:900;background:linear-gradient(145deg,#0d6b4d,#19a171);box-shadow:0 10px 25px rgba(12,124,89,.24);}
     .brand-text strong{display:block;font-size:15px;line-height:1.05;color:#071d17;}
-    .brand-text span{display:block;color:#60786e;font-size:12px;margin-top:2px;white-space:nowrap;}
-    .nav-tabs{display:flex;gap:8px;align-items:center;overflow-x:auto;scrollbar-width:none;max-width:100%;min-width:0;}
+    .brand-text span{display:block;color:#60786e;font-size:12px;margin-top:2px;}
+    .nav-tabs{display:flex;gap:8px;align-items:center;overflow-x:auto;scrollbar-width:none;}
     .nav-tabs::-webkit-scrollbar{display:none;}
-    .tab-btn,.action-btn,.ghost-btn{min-height:38px;border-radius:8px;padding:0 13px;color:var(--ink);background:transparent;transition:transform var(--speed),background var(--speed),color var(--speed),box-shadow var(--speed);white-space:nowrap;}
-    .tab-btn{color:#294139;}
-    .tab-btn:hover,.ghost-btn:hover{background:#e9f8f0;}
-    .tab-btn.active{background:#071d17;color:#fff;box-shadow:0 10px 22px rgba(16,32,27,.18);}
-    .auth-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto;}
-    .account-pill{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;background:rgba(12,124,89,.10);border:1px solid rgba(12,124,89,.22);color:var(--ink);font-weight:760;font-size:13px;}
-    .account-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(12,124,89,.18);}
-    .action-btn{background:#14c77b;color:#03130d;font-weight:750;box-shadow:0 12px 26px rgba(12,124,89,.22);}
-    .action-btn:hover{transform:translateY(-1px);background:#10b870;}
+    .tab-btn{min-height:38px;border-radius:8px;padding:0 13px;color:#294139;background:transparent;white-space:nowrap;display:inline-flex;align-items:center;text-decoration:none;transition:background var(--speed);}
+    .tab-btn:hover{background:#e9f8f0;}
+    .tab-btn.active{background:#071d17;color:#fff;}
+    .action-btn,.ghost-btn{min-height:38px;border-radius:8px;padding:0 13px;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;transition:transform var(--speed),background var(--speed);}
+    .action-btn{background:#14c77b;color:#04130d;font-weight:750;box-shadow:0 12px 26px rgba(20,199,123,.22);}
+    .action-btn:hover{transform:translateY(-1px);}
     .ghost-btn{border:1px solid #cfe6dc;background:#fff;color:#071d17;}
-    a.tab-btn,a.action-btn,a.ghost-btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;}
-    main{max-width:1440px;width:100%;margin:0 auto;padding:18px;min-width:0;max-width:min(1440px,100vw);}
-    .view{display:none;animation:fadeUp .32s ease both;min-width:0;max-width:100%;}
-    .view.active{display:block;}
-    @keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
-    .portal-title{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin:6px 0 16px;}
-    .portal-title h2{margin:0;font-size:clamp(28px,5vw,48px);line-height:1;color:#071d17;}
+    .ghost-btn:hover{background:#f0fbf5;}
+    .auth-actions{display:flex;gap:8px;}
+    main{max-width:1100px;width:100%;margin:0 auto;padding:18px;}
+    .portal-title{margin:6px 0 16px;}
+    .portal-title h2{margin:0;font-size:clamp(28px,5vw,42px);color:#071d17;line-height:1;}
     .portal-title p{margin:8px 0 0;color:#526b61;max-width:760px;line-height:1.45;}
-    .realtime{display:inline-flex;align-items:center;gap:8px;color:#526b61;font-size:12px;white-space:nowrap;}
+    .realtime{display:inline-flex;align-items:center;gap:8px;color:#526b61;font-size:12px;}
     .pulse{width:8px;height:8px;border-radius:999px;background:var(--green-2);box-shadow:0 0 0 0 rgba(19,163,111,.55);animation:pulse 1.6s infinite;}
     @keyframes pulse{70%{box-shadow:0 0 0 10px rgba(19,163,111,0);}100%{box-shadow:0 0 0 0 rgba(19,163,111,0);}}
-    .client-shell{display:grid;grid-template-columns:248px minmax(0,1fr);gap:14px;align-items:start;}
-    .client-side{position:sticky;top:82px;display:grid;gap:10px;}
-    .client-menu-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid rgba(16,32,27,.08);border-radius:var(--radius);background:#fff;box-shadow:0 12px 32px rgba(21,45,36,.08);}
-    .hamburger-btn{width:42px;height:38px;border-radius:var(--radius);background:var(--ink);display:none;place-items:center;gap:4px;padding:9px;}
-    .hamburger-btn span{display:block;width:18px;height:2px;border-radius:999px;background:white;}
-    .client-menu{display:grid;gap:8px;padding:10px;border:1px solid rgba(16,32,27,.08);border-radius:var(--radius);background:#fff;box-shadow:0 12px 32px rgba(21,45,36,.08);}
-    .client-tab{width:100%;min-height:32px;border-radius:var(--radius);background:transparent;color:var(--muted);text-align:left;padding:0 10px;font-weight:650;font-size:13px;transition:background var(--speed),color var(--speed),transform var(--speed);}
-    .client-tab:hover{background:rgba(12,124,89,.08);transform:translateX(2px);}
-    .client-tab.active{background:var(--ink);color:white;}
-    .client-module{display:none;animation:fadeUp .28s ease both;}
-    .client-module.active{display:block;}
-    .grid{display:grid;gap:14px;min-width:0;max-width:100%;}
-    .grid.metrics{grid-template-columns:repeat(4,minmax(0,1fr));}
-    .grid.two{grid-template-columns:minmax(0,1.16fr) minmax(340px,.84fr);align-items:start;}
-    .grid.three{grid-template-columns:repeat(3,minmax(0,1fr));}
-    .panel,.metric,.table-wrap{background:#fff;border:1px solid rgba(16,32,27,.08);border-radius:var(--radius);box-shadow:0 12px 32px rgba(21,45,36,.08);}
-    .panel{padding:16px;}
+    .panel{background:#fff;border:1px solid rgba(16,32,27,.08);border-radius:14px;box-shadow:0 12px 32px rgba(21,45,36,.08);padding:16px;}
     .section-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px;}
-    .section-head h2,.section-head h3{margin:0;line-height:1.1;}
-    .section-head h2{font-size:28px;}
-    .section-head h3{font-size:18px;}
-    .section-head p{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:1.4;}
-    .metric{padding:14px;position:relative;overflow:hidden;}
-    .metric::after{content:"";position:absolute;inset:auto -24px -38px auto;width:96px;height:96px;border-radius:50%;background:rgba(12,124,89,.08);}
-    .metric label{display:block;color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;}
-    .metric strong{display:block;font-size:clamp(24px,3vw,34px);margin:8px 0 10px;line-height:1;overflow-wrap:anywhere;}
-    .meter{width:100%;height:9px;border-radius:999px;background:#e5eee9;overflow:hidden;position:relative;}
-    .meter>span{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--green),var(--green-2));transition:width .8s cubic-bezier(.2,.7,.2,1);}
-    .meter.amber>span{background:linear-gradient(90deg,#c77913,#f1a230);}
-    .meter.red>span{background:linear-gradient(90deg,#b03a2e,#e25b48);}
-    .meter.blue>span{background:linear-gradient(90deg,#1d6f9f,#35a9cf);}
-    .meter-caption{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:7px;gap:8px;}
-    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:14px;}
-    .search{display:flex;align-items:center;gap:8px;min-width:min(100%,320px);padding:0 12px;height:42px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
-    .search input{border:0;outline:0;background:transparent;width:100%;color:var(--ink);}
-    .table-wrap{overflow:hidden;}
-    table{width:100%;border-collapse:collapse;}
-    th,td{padding:13px 14px;text-align:left;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top;}
-    th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:rgba(237,245,241,.75);}
-    tr:last-child td{border-bottom:0;}
-    tbody tr{transition:background var(--speed);}
-    tbody tr:hover{background:rgba(12,124,89,.04);}
-    .status,.chip{display:inline-flex;align-items:center;gap:6px;padding:6px 8px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap;}
-    .status.good,.chip.good{color:#075f43;background:var(--mint);}
-    .status.warn,.chip.warn{color:#8b4d09;background:var(--amber-soft);}
-    .status.bad,.chip.bad{color:#8c271f;background:var(--red-soft);}
-    .status.info,.chip.info{color:#155a82;background:var(--blue-soft);}
-    .mini-dot{width:7px;height:7px;border-radius:50%;background:currentColor;}
-    .journey{display:grid;gap:10px;}
-    .journey-item{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:start;padding:10px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
-    .step-dot{width:28px;height:28px;border-radius:999px;display:grid;place-items:center;color:white;background:var(--green);font-size:12px;font-weight:900;}
-    .journey-item.pending .step-dot{background:#9aaca4;}
-    .journey-item.alert .step-dot{background:var(--red);}
-    .journey-item strong{display:block;font-size:13px;}
-    .journey-item span{color:var(--muted);font-size:12px;}
-    .money-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
-    .money-box{padding:12px;border-radius:var(--radius);border:1px solid var(--line);background:#fff;}
-    .money-box span{display:block;color:var(--muted);font-size:12px;margin-bottom:7px;}
-    .money-box strong{display:block;font-size:19px;}
-    .ops-list{display:grid;gap:10px;}
-    .ops-card{padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
-    .ops-card-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:9px;}
-    .ops-card p{margin:7px 0 0;color:var(--muted);font-size:12px;line-height:1.4;overflow-wrap:anywhere;}
-    .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+    .section-head h3{margin:0;font-size:18px;}
+    .section-head p{margin:6px 0 0;color:var(--muted);font-size:13px;}
+    .mini-form{display:grid;gap:10px;align-items:end;}
     .field{display:grid;gap:6px;}
     .field label{font-size:12px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
-    .field input,.field textarea,.field select{width:100%;min-height:42px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:0 12px;color:var(--ink);}
-    .field textarea{min-height:94px;padding-top:10px;resize:vertical;}
+    .field input,.field select{width:100%;min-height:46px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:0 12px;color:var(--ink);}
+    .money-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+    .money-box{padding:12px;border-radius:12px;border:1px solid var(--line);background:#fbfffd;}
+    .money-box span{display:block;color:var(--muted);font-size:12px;margin-bottom:6px;}
+    .money-box strong{display:block;font-size:18px;overflow-wrap:anywhere;}
+    .footer-note{color:var(--muted);font-size:12px;line-height:1.5;}
+    .ops-list{display:grid;gap:12px;}
+    .ops-card{padding:14px;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:0 10px 26px rgba(13,91,64,.06);}
+    .ops-card-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px;}
+    .ops-card p{margin:7px 0 0;color:var(--ink);font-size:13px;line-height:1.4;overflow-wrap:anywhere;}
+    .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap;}
+    .chip.good{color:#075f43;background:var(--mint);}
+    .chip.warn{color:#8b4d09;background:var(--amber-soft);}
+    .chip.bad{color:#8c271f;background:var(--red-soft);}
+    .chip.info{color:#155a82;background:var(--blue-soft);}
     .inline-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
-    .bulk-drop{min-height:160px;display:grid;place-items:center;text-align:center;padding:20px;border:1px dashed var(--line-strong);border-radius:var(--radius);background:linear-gradient(135deg,rgba(12,124,89,.08),transparent 42%),#fff;}
-    .log-feed{display:grid;gap:10px;}
-    .log-item{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:start;padding:11px 12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
-    .date-range{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:14px;}
-    .date-range .field{min-width:170px;}
-    .filter-bar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:10px;align-items:end;margin-bottom:14px;}
-    .clickable-row,.parcel-card{cursor:pointer;}
-    .clickable-row.selected,.parcel-card.selected{outline:2px solid var(--green);outline-offset:-2px;background:rgba(31,209,142,.09);}
-    .awb-label{display:grid;grid-template-columns:minmax(0,1.1fr) 220px;gap:16px;padding:18px;border:1px solid var(--line-strong);border-radius:var(--radius);background:#fff;color:#07100d;box-shadow:var(--shadow);}
-    .awb-label *{color:inherit;}
-    .awb-title{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding-bottom:12px;border-bottom:2px solid #07100d;margin-bottom:12px;}
-    .awb-title h3{margin:0;font-size:28px;line-height:1;}
-    .awb-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
-    .awb-field{padding:10px;border:1px solid #c8d2cc;border-radius:6px;background:#f6faf8;}
-    .awb-field span{display:block;font-size:10px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:#41524a;margin-bottom:5px;}
-    .awb-field strong{display:block;font-size:16px;}
-    .awb-codes{display:grid;gap:12px;align-content:start;text-align:center;}
-    .qr-img,.barcode-img{width:100%;border:1px solid #c8d2cc;border-radius:6px;background:#fff;}
-    .qr-img{aspect-ratio:1/1;object-fit:contain;padding:8px;}
-    .barcode-img{height:82px;object-fit:contain;padding:6px;}
-    .review-panel{margin-top:12px;padding:12px;border:1px solid var(--amber);border-radius:var(--radius);background:rgba(242,169,59,.1);}
-    .review-panel textarea{width:100%;min-height:74px;margin:10px 0;border:1px solid var(--line);border-radius:var(--radius);background:#fff;color:var(--ink);padding:10px;resize:vertical;}
-    .invoice-card{margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
-    .footer-note{margin-top:14px;color:var(--muted);font-size:12px;line-height:1.5;}
-    .ai-chat{display:grid;gap:10px;}
-    .bubble{padding:11px 12px;border-radius:var(--radius);background:var(--panel-soft);color:var(--ink);font-size:13px;line-height:1.45;}
-    .bubble.ai{background:var(--ink);color:white;}
-    .toast{position:fixed;right:18px;bottom:18px;z-index:120;max-width:min(360px,calc(100vw - 36px));padding:13px 14px;border-radius:var(--radius);background:var(--ink);color:white;box-shadow:var(--shadow);transform:translateY(20px);opacity:0;pointer-events:none;transition:opacity var(--speed),transform var(--speed);font-size:13px;}
+    .inline-actions .action-btn,.inline-actions .ghost-btn{flex:1 1 auto;min-height:46px;border-radius:11px;font-weight:750;}
+    .toast{position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:120;margin:0 auto;max-width:520px;padding:13px 14px;border-radius:12px;background:var(--ink);color:#fff;box-shadow:var(--shadow);transform:translateY(20px);opacity:0;pointer-events:none;transition:opacity var(--speed),transform var(--speed);font-size:13px;text-align:center;}
     .toast.show{opacity:1;transform:translateY(0);}
-    .mobile-card-list{display:none;gap:10px;}
-    .parcel-card{padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
-    .parcel-card .top{display:flex;justify-content:space-between;gap:8px;margin-bottom:10px;}
-    .parcel-card dl{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;}
-    .parcel-card dt{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;}
-    .parcel-card dd{margin:3px 0 0;font-weight:750;font-size:13px;}
-    .wide-scroll{overflow-x:auto;}
-    .wide-scroll table{min-width:760px;}
-    .required-star{color:var(--green-2);font-weight:900;}
-    /* ===== Added feature styling ===== */
-    .status-board{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;}
-    .status-col{flex:1 1 268px;min-width:248px;max-width:340px;border:1px solid var(--line);border-radius:14px;background:var(--panel-soft);padding:14px;display:flex;flex-direction:column;gap:10px;}
-    .status-col-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--line);}
-    .status-col-head strong{font-size:13px;font-weight:700;letter-spacing:.01em;}
-    .sb-parcel{padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:4px;transition:transform var(--speed),border-color var(--speed),box-shadow var(--speed);}
-    .sb-parcel:hover{transform:translateY(-2px);border-color:var(--green);box-shadow:0 10px 22px rgba(12,124,89,.12);}
-    .sb-awb{font-size:13px;font-weight:700;color:var(--ink);}
-    .sb-meta{font-size:11px;color:var(--muted);line-height:1.4;}
-    .modal-overlay{position:fixed;inset:0;z-index:130;display:none;place-items:start center;background:rgba(7,16,13,.62);backdrop-filter:blur(8px);padding:24px 16px;overflow:auto;}
-    .modal-overlay.show{display:grid;}
-    .modal-card{width:min(720px,100%);background:#fff;border:1px solid var(--line-strong);border-radius:14px;box-shadow:var(--shadow);padding:18px;animation:fadeUp .3s ease both;margin:auto;}
-    .modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;}
-    .modal-head h3{margin:0;}
-    .modal-close{width:36px;height:36px;border-radius:8px;background:var(--panel-soft);color:var(--ink);font-size:20px;line-height:1;}
-    .tier-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px;}
-    .tier-card{border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:16px;cursor:pointer;text-align:center;transition:transform var(--speed),border-color var(--speed),box-shadow var(--speed);}
-    .tier-card:hover{transform:translateY(-3px);border-color:var(--green);}
-    .tier-card.active{border-color:var(--green);box-shadow:0 16px 34px rgba(20,199,123,.22);background:linear-gradient(145deg,rgba(20,199,123,.14),#fff);}
-    .tier-card strong{display:block;font-size:24px;}
-    .tier-card span{font-size:12px;color:var(--muted);}
-    .wallet-hero{position:relative;overflow:hidden;border-radius:16px;padding:24px;border:1px solid rgba(20,199,123,.32);background:linear-gradient(135deg,#0c3f2c,#0a2a1f 60%,#08231a);color:#eafff5;box-shadow:0 22px 50px rgba(13,91,64,.25);}
-    .wallet-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.16) 48%,transparent 66%);transform:translateX(-100%);animation:sheen 4.6s ease-in-out infinite;pointer-events:none;}
-    @keyframes sheen{45%,100%{transform:translateX(120%);}}
-    .wallet-hero label{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#9fe9c8;font-weight:800;}
-    .wallet-balance{font-size:clamp(32px,7vw,54px);font-weight:900;margin:8px 0 6px;line-height:1;}
-    .wallet-pulse{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:#bff3da;}
-    .ticket-cta{background:#ff3158!important;color:#fff!important;box-shadow:0 16px 34px rgba(255,49,88,.28)!important;animation:ticketPulse 1.8s ease-in-out infinite;}
-    @keyframes ticketPulse{50%{transform:translateY(-1px);box-shadow:0 20px 42px rgba(255,49,88,.38);}}
-    .seller-journey-card{display:grid;gap:10px;}
-    .seller-step{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff;}
-    .seller-step.current{border-color:var(--green);background:#effdf6;}
-    .seller-step.problem{border-color:var(--red);background:#fff2ef;}
-    .seller-step .step-dot{width:34px;height:34px;}
-    .order-log-card{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr) auto;gap:12px;align-items:center;padding:14px;border:1px solid var(--line);border-radius:14px;background:#fff;}
-    .order-log-card strong{overflow-wrap:anywhere;}
-    .count-up{animation:countPop .5s ease both;}
-    @keyframes countPop{from{opacity:0;transform:translateY(6px) scale(.96);}to{opacity:1;transform:none;}}
-    .done-check{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;margin:0 auto 14px;background:rgba(20,199,123,.14);border:2px solid var(--green);}
-    .done-check svg{width:54px;height:54px;}
-    .done-check .tick{stroke:#14c77b;stroke-width:6;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:60;stroke-dashoffset:60;animation:tickDraw .7s .12s ease forwards;}
-    @keyframes tickDraw{to{stroke-dashoffset:0;}}
-    #printStage{display:none;}
-    @media print{
-      @page{size:A4 landscape;margin:6mm;}
-      body{background:#fff !important;}
-      body *{visibility:hidden;}
-      #printStage,#printStage *{visibility:visible;}
-      #printStage{display:block !important;position:absolute;left:0;top:0;width:100%;padding:0;}
-      #printStage.bulk-print{display:block !important;}
-      #printStage .print-label-wrap{break-inside:avoid;page-break-inside:avoid;margin:0;}
-      #printStage.bulk-print .print-page{display:flex;flex-direction:row;gap:4mm;align-items:stretch;page-break-after:always;break-after:page;break-inside:avoid;page-break-inside:avoid;}
-      #printStage.bulk-print .print-page:last-child{page-break-after:auto;break-after:auto;}
-      #printStage.bulk-print .print-page .print-label-wrap{flex:1 1 0;width:33.33%;min-width:0;page-break-after:auto!important;}
-      .awb-label{grid-template-columns:minmax(0,1fr) 132px!important;gap:6px!important;padding:7px!important;border:2px solid #000!important;border-radius:6px!important;box-shadow:none!important;break-inside:avoid;page-break-inside:avoid;max-height:62mm;overflow:hidden;}
-      .awb-title{padding-bottom:4px!important;margin-bottom:5px!important;gap:6px!important;}
-      .awb-title h3{font-size:16px!important;}
-      .awb-title strong{font-size:14px!important;overflow-wrap:anywhere;}
-      .awb-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:4px!important;}
-      .awb-field{padding:4px!important;}
-      .awb-field span{font-size:6.5px!important;margin-bottom:2px!important;}
-      .awb-field strong{font-size:9.5px!important;line-height:1.15!important;overflow-wrap:anywhere;}
-      .awb-codes{gap:5px!important;}
-      .qr-img{height:92px!important;width:92px!important;padding:3px!important;margin:auto;}
-      .barcode-img{height:32px!important;padding:2px!important;}
-      .chip{font-size:8px!important;padding:3px 5px!important;}
-    }
-    @media (max-width:1080px){.client-shell{grid-template-columns:1fr;}.client-side{position:static;}.grid.two,.grid.three{grid-template-columns:1fr;}.grid.metrics{grid-template-columns:repeat(2,minmax(0,1fr));}}
-    @media (max-width:760px){
-      .hamburger-btn{display:grid;}
-      .client-menu{display:none;}
-      .client-menu.open{display:grid;}
-      .topbar-inner{flex-direction:column;align-items:stretch;}
-      .grid.metrics,.money-grid,.form-grid,.filter-bar,.tier-grid{grid-template-columns:1fr;}
-      .awb-label,.awb-grid{grid-template-columns:1fr;}
-      .desktop-table{display:none;}
-      .mobile-card-list{display:grid;}
-      .log-item{grid-template-columns:1fr;}
-    }
+    .deliver-flash{position:fixed;inset:0;z-index:130;display:none;place-items:center;background:rgba(7,16,13,.82);backdrop-filter:blur(10px);}
+    .deliver-flash.show{display:grid;}
+    .deliver-card{background:#fff;border-radius:18px;padding:26px;text-align:center;max-width:360px;width:calc(100% - 32px);box-shadow:var(--shadow);}
+    .tickwrap{width:84px;height:84px;border-radius:50%;display:grid;place-items:center;margin:0 auto 12px;background:rgba(20,199,123,.14);border:2px solid #14c77b;}
+    .tickwrap svg{width:46px;height:46px;}
+    .tickwrap .tk{stroke:#14c77b;stroke-width:6;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:60;stroke-dashoffset:60;animation:tk .6s .1s ease forwards;}
+    @keyframes tk{to{stroke-dashoffset:0;}}
+    @media (max-width:560px){ .money-grid{grid-template-columns:1fr 1fr;} }
 
-    /* Mobile polish layer for investor preview and seller use on phones. */
+    /* Phone-first rider polish: large tap targets, no squeezed header, no clipped cash cards. */
     html,body{width:100%;max-width:100%;}
     img,svg,canvas,video{max-width:100%;}
-    .topbar-inner,.brand,.nav-tabs,.auth-actions,.client-shell,.client-side,.client-main,.view,.panel,.metric,.table-wrap,.awb-label,.awb-codes,.ops-card,.money-box{min-width:0;}
-    .action-btn,.ghost-btn,.tab-btn,.client-tab{min-width:0;max-width:100%;overflow-wrap:anywhere;text-align:center;}
-    .field,.field input,.field select,.field textarea,.search,.segmented{min-width:0;max-width:100%;}
-    .wide-scroll{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
-    th,td,.awb-field strong,.money-box strong{overflow-wrap:anywhere;}
-    @media (max-width:760px){
+    .topbar-inner,.brand,.nav-tabs,.auth-actions,main,.panel,.ops-card,.money-box,.section-head,.mini-form{min-width:0;}
+    .action-btn,.ghost-btn,.tab-btn{min-width:0;max-width:100%;overflow-wrap:anywhere;text-align:center;}
+    .field,.field input,.field select{min-width:0;max-width:100%;}
+    @media (max-width:720px){
       .topbar-inner{display:grid;grid-template-columns:1fr;gap:8px;padding:9px 10px;overflow:hidden;}
-      .brand-text span{display:block;white-space:normal;font-size:11px;}
-      .topbar .auth-actions{display:none;}
+      .brand-text span{font-size:11px;white-space:normal;}
+      .auth-actions{display:none;}
       .nav-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;overflow:visible;padding:0;}
-      .tab-btn{width:100%;min-height:34px;padding:0 5px;border-radius:10px;font-size:11px;font-weight:850;white-space:normal;line-height:1.05;}
-      main{padding:8px;}
-      .portal-title h2{font-size:28px;}
+      .tab-btn{width:100%;min-height:34px;padding:0 5px;border-radius:10px;font-size:11px;font-weight:850;white-space:normal;line-height:1.05;justify-content:center;}
+      main{padding:10px;}
+      .portal-title h2{font-size:30px;}
       .portal-title p,.section-head p,.footer-note{font-size:12px;}
-      .client-menu.open{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
-      .client-tab{min-height:38px;padding:0 9px;font-size:12px;text-align:center;}
-      .toolbar,.section-head{display:grid;gap:8px;}
-      .inline-actions,.filter-bar,.form-grid,.mini-form,.money-grid,.grid.two,.grid.three{grid-template-columns:1fr!important;}
-      .inline-actions .action-btn,.inline-actions .ghost-btn,.action-btn,.ghost-btn{width:100%;white-space:normal;}
-      .grid.metrics{grid-template-columns:1fr!important;}
-      .desktop-table{display:none!important;}
-      .mobile-card-list{display:grid!important;}
-      .awb-title{display:grid;gap:8px;}
-      .awb-title h3{font-size:22px;}
-      .awb-codes{max-width:240px;margin:0 auto;}
-      .toast{left:8px;right:8px;bottom:8px;max-width:none;}
+      .panel{padding:13px;border-radius:14px;}
+      .mini-form{grid-template-columns:1fr!important;}
+      .section-head,.ops-card-head{display:grid;gap:8px;}
+      .inline-actions{display:grid;grid-template-columns:1fr;gap:8px;}
+      .inline-actions .action-btn,.inline-actions .ghost-btn,.ghost-btn,.action-btn{width:100%;min-height:46px;white-space:normal;}
     }
+    @media (max-width:420px){.money-grid{grid-template-columns:1fr;}}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="topbar-inner">
-        <div class="brand">
-          <div class="mark">NX</div>
-          <div class="brand-text">
-            <strong>NovaX Logistics</strong>
-            <span>E-commerce logistics, COD, and seller payouts</span>
-          </div>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="mark">NX</div>
+        <div class="brand-text"><strong>NovaX Logistics</strong><span>Rider delivery app</span></div>
+      </div>
+      <nav class="nav-tabs" aria-label="Primary">
+        <a class="tab-btn" href="index.html">Home</a>
+        <a class="tab-btn active" href="rider.html">Rider App</a>
+        <a class="tab-btn" href="index.html#signin">Sign In</a>
+      </nav>
+      <div class="auth-actions"><a class="ghost-btn" href="index.html#signin">Sign In</a></div>
+    </div>
+  </header>
+  <main>
+    <section id="rider">
+      <div class="portal-title">
+        <h2>Rider App</h2>
+        <p>Parcels pushed to "Out for delivery" by admin land here for your route. Read the address, call the consignee, then deliver, mark not-responding (with a photo), or post doorstep refusal proof.</p>
+        <div class="realtime" style="margin-top:8px"><span class="pulse"></span><span id="clockD">Live</span></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:14px">
+        <div class="mini-form" style="grid-template-columns:minmax(0,1fr) auto">
+          <div class="field"><label>Logged in rider</label><select id="riderSelect"></select></div>
+          <button class="ghost-btn" id="riderRefreshBtn" style="min-height:46px">Refresh Route</button>
         </div>
-        <nav class="nav-tabs" aria-label="Primary">
-          <a class="tab-btn" href="index.html">Home</a>
-          <a class="tab-btn active" href="client.html">Seller Suite</a>
-        </nav>
-        <div class="auth-actions">
-          <span class="account-pill"><span class="account-dot"></span><span id="topAccountName">Client</span></span>
-          <a class="ghost-btn" href="index.html">Sign Out</a>
+        <div class="money-grid" id="riderWallet" style="margin-top:12px"></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:14px">
+        <div class="section-head">
+          <div><h3>My Pickups</h3><p id="riderPickupNote">Clients assigned to you. When they book, the number of parcels to collect shows here.</p></div>
+          <button class="action-btn" id="scanPickupBtn" type="button">📷 Scan to Pick Up</button>
+        </div>
+        <div class="ops-list" id="riderPickups"></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:14px">
+        <div class="section-head">
+          <div><h3>Order Processing (Manual CN Update)</h3><p>Camera not working? Type the AWB / CN number and choose an action. You can only update parcels assigned to you.</p></div>
+        </div>
+        <div class="mini-form" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto">
+          <div class="field"><label>AWB / CN Number</label><input id="manualAwbInput" placeholder="e.g. N0010001"></div>
+          <div class="field"><label>Action</label><select id="manualActionSelect">
+            <option value="pickup">Mark Picked Up</option>
+            <option value="delivered">Mark Delivered</option>
+            <option value="refused">Mark Refused</option>
+            <option value="cnr">Consignee Not Available</option>
+          </select></div>
+          <button class="action-btn" id="manualUpdateBtn" type="button" style="min-height:46px">Update</button>
         </div>
       </div>
-    </header>
-    <main>
-      <section class="view active" id="client">
-        <div class="portal-title">
-          <div>
-            <h2>Client Portal</h2>
-            <p>For e-commerce sellers: book parcels, track real status, see invoices, download reports, and raise tickets from one controlled dashboard.</p>
-          </div>
-          <span class="realtime"><span class="pulse"></span><span id="clockB">Live</span></span>
+
+      <div class="panel">
+        <div class="section-head">
+          <div><h3>My Delivery Route</h3><p id="riderRouteNote">Stops assigned to you that are out for delivery.</p></div>
         </div>
-        <div class="client-shell">
-          <aside class="client-side">
-            <div class="client-menu-head">
-              <div>
-                <strong>Client Menu</strong>
-                <div class="footer-note" style="margin-top:2px">Apex Fashion workspace</div>
-              </div>
-              <button class="hamburger-btn" id="clientMenuToggle" aria-label="Open client menu" aria-expanded="true"><span></span><span></span><span></span></button>
-            </div>
-            <nav class="client-menu open" id="clientMenu" aria-label="Client portal sections">
-              <button class="client-tab active" data-client-tab="dashboard">Dashboard</button>
-              <button class="client-tab" data-client-tab="newBooking">New Booking</button>
-              <button class="client-tab" data-client-tab="awbLabel">AWB Label</button>
-              <button class="client-tab" data-client-tab="bulkBooking">Bulk Booking</button>
-              <button class="client-tab" data-client-tab="integrations">API</button>
-              <button class="client-tab" data-client-tab="reports">Full Report</button>
-              <button class="client-tab" data-client-tab="payments">Payments</button>
-              <button class="client-tab" data-client-tab="wallet">Wallet</button>
-              <button class="client-tab" data-client-tab="logs">Order Logs</button>
-              <button class="client-tab" data-client-tab="subAccounts">Sub Accounts</button>
-              <button class="client-tab" data-client-tab="support">AI Support</button>
-            </nav>
-          </aside>
-          <div class="client-content">
-            <!-- DASHBOARD -->
-            <section class="client-module active" id="client-dashboard">
-              <div class="panel">
-                <div class="section-head"><div><h3>Account History</h3><p>Dashboard data is scoped to your account and selected date range.</p></div></div>
-                <div class="date-range">
-                  <div class="field"><label>From</label><input type="date" id="clientDateFrom"></div>
-                  <div class="field"><label>To</label><input type="date" id="clientDateTo"></div>
-                  <button class="action-btn" id="applyDateRangeBtn">Apply Range</button>
-                </div>
-              </div>
-              <div class="grid metrics" id="clientMetrics" style="margin-top:14px"></div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head" id="statusBoardHead" onclick="toggleStatusBoard()" style="cursor:pointer;user-select:none"><div><h3>Live Status Board <span id="statusBoardChevron" style="font-size:13px;color:var(--green)">▸</span></h3><p id="statusBoardSummary">Tap to expand your parcels grouped by status.</p></div></div>
-                <div class="status-board" id="clientStatusBoard" style="display:none"></div>
-              </div>
-              <div class="grid two" style="margin-top:14px">
-                <div class="panel">
-                  <div class="toolbar">
-                    <div class="search"><span>#</span><input id="clientSearch" placeholder="Track by AWB, city, status"></div>
-                    <div class="inline-actions">
-                      <button class="action-btn" id="bookParcelBtn">Book New Parcel</button>
-                      <button class="ghost-btn" id="askAiBtn">Ask AI</button>
-                    </div>
-                  </div>
-                  <div class="wide-scroll desktop-table">
-                    <table>
-                      <thead><tr><th>AWB</th><th>Consignee</th><th>COD</th><th>Status</th><th>Journey</th></tr></thead>
-                      <tbody id="clientParcelRows"></tbody>
-                    </table>
-                  </div>
-                  <div class="mobile-card-list" id="clientParcelCards"></div>
-                </div>
-                <aside class="grid">
-                  <div class="panel">
-                    <div class="section-head">
-                      <div><h3>Selected Parcel Status</h3><p id="selectedParcelText">Only the important seller-facing movement is shown here.</p></div>
-                      <button class="action-btn ticket-cta" id="openTicketBtn">Create Ticket</button>
-                    </div>
-                    <div class="journey" id="clientJourney"></div>
-                    <div id="refusalReview"></div>
-                  </div>
-                </aside>
-              </div>
-            </section>
-            <!-- NEW BOOKING -->
-            <section class="client-module" id="client-newBooking">
-              <div class="panel">
-                <div class="section-head"><div><h3>New Booking</h3><p>Create one AWB with COD, consignee, address, service type, and pickup instructions. Submitting writes to the same parcel ledger and opens the printable AWB.</p></div><button class="action-btn" id="quickBookingBtn">Create AWB</button></div>
-                <div class="form-grid">
-                  <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
-                  <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" placeholder="03113323923" maxlength="11" required></div>
-                  <div class="field"><label>Pickup City <span class="required-star">*</span></label><select id="bookingPickupCity" required><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
-                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
-                  <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required></div>
-                  <div class="field"><label>Service Type <span class="required-star">*</span></label><select id="bookingService" required><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option><option>Prepaid Delivery</option></select></div>
-                  <div class="field"><label>Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" required></div>
-                  <div class="field"><label>Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
-                  <div class="field"><label>Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required></div>
-                  <div class="field"><label>Payment Mode <span class="required-star">*</span></label><select id="bookingPaymentMode" required><option>COD</option><option>Non COD Prepaid</option></select></div>
-                  <div class="field" style="grid-column:1/-1"><label>Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full pickup/delivery address" required></textarea></div>
-                </div>
-              </div>
-            </section>
-            <!-- AWB LABEL -->
-            <section class="client-module" id="client-awbLabel">
-              <div class="panel">
-                <div class="section-head"><div><h3>Generated Air Way Bill</h3><p>QR and barcode both carry the assigned tracking ID.</p></div><div class="inline-actions"><button class="action-btn" id="printAwbBtn">Print Now</button><button class="ghost-btn" data-client-tab="dashboard">View Journey</button></div></div>
-                <div id="awbLabelPreview"></div>
-              </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>New Booked AWBs &mdash; Bulk Print</h3><p>Freshly booked parcels awaiting rider pickup. Select and print labels together.</p></div><div class="inline-actions"><button class="ghost-btn" id="newBookedSelectAllBtn">Select All</button><button class="action-btn" id="newBookedPrintBtn">Print Selected AWBs</button></div></div>
-                <div id="newBookedList"></div>
-              </div>
-            </section>
-            <!-- BULK BOOKING -->
-            <section class="client-module" id="client-bulkBooking">
-              <div class="grid two">
-                <div class="panel">
-                  <div class="section-head"><div><h3>Bulk Booking</h3><p>Download the accepted CSV format, fill it, then upload. No demo parcels are generated.</p></div><button class="action-btn" id="downloadBulkTemplateBtn">Download CSV Format</button></div>
-                  <div class="bulk-drop"><div><strong>Upload completed CSV here</strong><p class="footer-note">Required columns: consignee, phone, city, address, cod, weight, order_id, product, payment_mode.</p><input id="bulkCsvInput" type="file" accept=".csv,text/csv" style="margin-top:12px"><button class="ghost-btn" id="bulkUploadBtn" style="margin-top:12px">Upload CSV</button></div></div>
-                </div>
-                <div class="panel">
-                  <div class="section-head"><div><h3>AI Validation</h3><p>Invalid city, duplicate order ID, missing phone, and impossible COD values are blocked before AWB generation.</p></div></div>
-                  <div class="ops-list" id="bulkValidationList"></div>
-                </div>
-              </div>
-              <div class="panel" id="bulkPreviewPanel" style="display:none;margin-top:14px">
-                <div class="section-head"><div><h3>Bulk Booking Preview</h3><p>All AWBs created. Print them individually or all at once.</p></div><button class="action-btn" id="bulkPrintAllBtn">Print All AWBs</button></div>
-                <div id="bulkPreviewList"></div>
-              </div>
-            </section>
-            <!-- STORE INTEGRATIONS -->
-            <section class="client-module" id="client-integrations">
-              <div class="panel">
-                <div class="section-head"><div><h3>Store Integrations</h3><p>Connect your online store to auto-import orders as new bookings. Each imported order starts its journey when a rider scans it for pickup.</p></div><span class="chip info">Demo import</span></div>
-                <p class="footer-note">Live order sync for real Shopify, WooCommerce, and website orders activates once the backend is connected. Connection details you save here are kept and reused at go-live.</p>
-              </div>
-              <div class="grid two" style="margin-top:14px">
-                <div class="panel">
-                  <div class="section-head"><div><h3>Shopify</h3><p>Connect with your store URL and Admin API access token.</p></div><span class="chip" id="shopifyStatusChip">Not connected</span></div>
-                  <div class="field"><label>Store URL</label><input id="shopifyStoreUrl" placeholder="your-store.myshopify.com"></div>
-                  <div class="field"><label>Admin API Access Token</label><input id="shopifyToken" placeholder="shpat_..."></div>
-                  <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('shopify')">Save Connection</button><button class="ghost-btn" onclick="syncStoreOrders('shopify')">Sync Orders</button></div>
-                </div>
-                <div class="panel">
-                  <div class="section-head"><div><h3>WooCommerce</h3><p>Connect with your site URL and REST consumer key/secret.</p></div><span class="chip" id="wooStatusChip">Not connected</span></div>
-                  <div class="field"><label>Store URL</label><input id="wooStoreUrl" placeholder="https://yourstore.com"></div>
-                  <div class="field"><label>Consumer Key</label><input id="wooKey" placeholder="ck_..."></div>
-                  <div class="field"><label>Consumer Secret</label><input id="wooSecret" placeholder="cs_..."></div>
-                  <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('woocommerce')">Save Connection</button><button class="ghost-btn" onclick="syncStoreOrders('woocommerce')">Sync Orders</button></div>
-                </div>
-              </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Custom Web / API</h3><p>Any other platform or your own website. Push orders to the endpoint/webhook, or paste an orders endpoint to pull.</p></div><span class="chip" id="webStatusChip">Not connected</span></div>
-                <div class="grid two">
-                  <div class="field"><label>Orders Endpoint / Webhook URL</label><input id="webEndpoint" placeholder="https://yourstore.com/api/orders"></div>
-                  <div class="field"><label>API Key (optional)</label><input id="webKey" placeholder="api key or bearer token"></div>
-                </div>
-                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('web')">Save Connection</button><button class="ghost-btn" onclick="syncStoreOrders('web')">Sync Orders</button></div>
-              </div>
-            </section>
-            <!-- FULL REPORT -->
-            <section class="client-module" id="client-reports">
-              <div class="panel">
-                <div class="section-head"><div><h3>Full Report</h3><p>Operational and financial reporting from the same parcels shown in dashboard.</p></div><div class="inline-actions"><button class="action-btn ticket-cta" onclick="openTicketModal()">Create Ticket</button><button class="ghost-btn" id="reportCsvBtn">Export CSV</button><button class="ghost-btn" id="reportPdfBtn">Download PDF</button></div></div>
-                <div class="grid metrics" id="clientReportMetrics"></div>
-              </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>All Parcels</h3><p>Filter the full parcel list by search, status, and date range.</p></div></div>
-                <div class="filter-bar">
-                  <div class="field"><label>Search</label><input id="repSearch" placeholder="AWB, consignee, city, status"></div>
-                  <div class="field"><label>Status</label><select id="repStatus"></select></div>
-                  <div class="field"><label>From</label><input type="date" id="repFrom"></div>
-                  <div class="field"><label>To</label><input type="date" id="repTo"></div>
-                  <button class="ghost-btn" id="repClearBtn">Clear</button>
-                </div>
-                <div class="wide-scroll">
-                  <table>
-                    <thead><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th><th>Fee</th><th>Aging</th></tr></thead>
-                    <tbody id="clientReportFullRows"></tbody>
-                  </table>
-                </div>
-              </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>City Summary</h3></div></div>
-                <div class="wide-scroll">
-                  <table>
-                    <thead><tr><th>City</th><th>Parcels</th><th>COD</th><th>Delivery Charges</th><th>Delivered</th></tr></thead>
-                    <tbody id="clientReportRows"></tbody>
-                  </table>
-                </div>
-              </div>
-            </section>
-            <!-- PAYMENTS -->
-            <section class="client-module" id="client-payments">
-              <div class="panel">
-                <div class="section-head"><div><h3>Payments</h3><p>Only admin-generated invoices are shown here so payment numbers stay clean.</p></div><button class="action-btn ticket-cta" onclick="openTicketModal()">Create Ticket</button></div>
-                <div class="money-grid" id="paymentSummary"></div>
-              </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Latest Invoice</h3><p>Most recent invoice generated by admin. Download as CSV or PDF, or raise a ticket about it.</p></div></div>
-                <div id="clientLatestInvoice"></div>
-              </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Payment History</h3><p>Generated invoices only. COD scans, rider cash, and internal ledger events stay on the admin side.</p></div></div>
-                <div class="log-feed" id="clientPaymentHistory"></div>
-              </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>All Invoices</h3><p>Admin-created invoice numbers, payment summaries, and paid confirmations.</p></div></div>
-                <div class="ops-list" id="clientInvoiceList"></div>
-              </div>
-            </section>
-            <!-- WALLET -->
-            <section class="client-module" id="client-wallet">
-              <div class="wallet-hero">
-                <label>Wallet Balance</label>
-                <div class="wallet-balance count-up" id="walletBalanceText">Rs 0</div>
-                <span class="wallet-pulse"><span class="pulse"></span><span id="walletPushNote">No admin credit yet</span></span>
-              </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Withdraw Funds</h3><p>Choose a payout speed, confirm the net after fee, then add your IBAN.</p></div></div>
-                <div class="field" style="max-width:280px"><label>Amount to withdraw</label><input id="withdrawAmount" type="number" min="1"></div>
-                <div class="tier-grid">
-                  <div class="tier-card" data-speed="24h"><strong>0.1%</strong><span>24 hour payout</span></div>
-                  <div class="tier-card" data-speed="12h"><strong>0.3%</strong><span>12 hour payout</span></div>
-                  <div class="tier-card" data-speed="instant"><strong>0.7%</strong><span>Instant 2-3 hours</span></div>
-                </div>
-                <div id="withdrawSummary" style="display:none;margin-top:14px"></div>
-              </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Withdrawal History</h3><p>Your payout requests and their status.</p></div></div>
-                <div class="ops-list" id="withdrawHistory"></div>
-              </div>
-            </section>
-            <!-- ORDER LOGS -->
-            <section class="client-module" id="client-logs">
-              <div class="panel">
-                <div class="section-head"><div><h3>Order Logs</h3><p>Clean parcel activity summary. Open a ticket when anything looks wrong.</p></div><button class="action-btn ticket-cta" onclick="openTicketModal()">Create Ticket</button></div>
-                <div class="log-feed" id="orderLogFeed"></div>
-              </div>
-            </section>
-            <!-- SUB ACCOUNTS -->
-            <section class="client-module" id="client-subAccounts">
-              <div class="grid two">
-                <div class="panel">
-                  <div class="section-head"><div><h3>Sub Accounts</h3><p>Owners, finance, warehouse staff, and support users get separate permissions.</p></div><button class="action-btn">Invite User</button></div>
-                  <div class="ops-list" id="subAccountList"></div>
-                </div>
-                <div class="panel">
-                  <div class="section-head"><div><h3>Permission Rules</h3><p>Finance can see settlements. Warehouse can book. Support can track.</p></div></div>
-                  <div class="money-grid">
-                    <div class="money-box"><span>Maker Checker</span><strong>On</strong><div class="footer-note">Payouts require approval.</div></div>
-                    <div class="money-box"><span>Manual Status Edit</span><strong>Blocked</strong><div class="footer-note">Only reversal entries allowed.</div></div>
-                  </div>
-                </div>
-              </div>
-            </section>
-            <!-- AI SUPPORT -->
-            <section class="client-module" id="client-support">
-              <div class="grid two">
-                <div class="panel">
-                  <div class="section-head"><div><h3>Full AI in Web</h3><p>AI reads portal truth, then answers or escalates missing data.</p></div><button class="ghost-btn" id="askAiBtn2">Ask AI</button></div>
-                  <div class="ai-chat" id="clientAi"></div>
-                </div>
-                <div class="panel">
-                  <div class="section-head"><div><h3>Escalation Inbox</h3><p>AI pings branch managers and admin when portal data is incomplete.</p></div></div>
-                  <div class="ops-list" id="supportEscalations"></div>
-                </div>
-              </div>
-            </section>
-          </div>
-        </div>
-      </section>
-    </main>
+        <div class="ops-list" id="riderStops"></div>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <div class="section-head"><div><h3>Recently Actioned</h3><p>Your latest delivered / refused / not-responding updates pushed to the portal.</p></div></div>
+        <div class="ops-list" id="riderHistory"></div>
+      </div>
+
+      <input type="file" id="riderPhotoInput" accept="image/*" capture="environment" style="display:none">
+    </section>
+  </main>
+
+  <style>
+    .sig-overlay{position:fixed;inset:0;background:rgba(8,20,16,.62);display:none;align-items:center;justify-content:center;z-index:60;padding:16px}
+    .sig-overlay.show{display:flex}
+    .sig-sheet{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;width:100%;max-width:460px;box-shadow:0 18px 50px rgba(21,45,36,.25)}
+    .sig-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+    .sig-pad{width:100%;height:220px;border:1px dashed var(--line-strong);border-radius:14px;background:#fff;touch-action:none;cursor:crosshair}
+    .sig-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
+    @media(max-width:560px){
+      .sig-actions{justify-content:stretch}
+      .sig-actions button{flex:1;min-height:48px}
+      .inline-actions{flex-wrap:wrap}
+      .inline-actions button{flex:1;min-height:46px}
+      .ops-card-head{flex-wrap:wrap;gap:4px}
+    }
+  </style>
+
+  <div class="sig-overlay" id="sigModal">
+    <div class="sig-sheet">
+      <div class="sig-head"><strong>Consignee signature</strong><span id="sigAwb" class="footer-note"></span></div>
+      <p class="footer-note" style="margin:0 0 8px">Ask the consignee to sign below to confirm delivery.</p>
+      <canvas id="sigPad" class="sig-pad"></canvas>
+      <div class="sig-actions">
+        <button class="ghost-btn" id="sigClearBtn" type="button">Clear</button>
+        <button class="ghost-btn" id="sigCancelBtn" type="button">Cancel</button>
+        <button class="action-btn" id="sigConfirmBtn" type="button">Confirm Delivery</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sig-overlay" id="scanModal">
+    <div class="sig-sheet">
+      <div class="sig-head"><strong>Scan AWB / CN barcode or QR</strong><button class="ghost-btn" id="scanCloseBtn" type="button">Close</button></div>
+      <p class="footer-note" id="scanStatusNote" style="margin:0 0 8px">Point the camera at the parcel's barcode or QR code.</p>
+      <video id="scanVideo" playsinline muted style="width:100%;border-radius:14px;border:1px dashed var(--line-strong);background:#000;max-height:320px;object-fit:cover"></video>
+      <div class="sig-actions">
+        <button class="ghost-btn" id="scanManualBtn" type="button">Enter Manually Instead</button>
+        <button class="ghost-btn" id="scanCancelBtn" type="button">Cancel</button>
+      </div>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>
-  <div id="printStage"></div>
-
-  <!-- AWB modal -->
-  <div class="modal-overlay" id="awbModal">
-    <div class="modal-card">
-      <div class="modal-head"><h3>AWB Created</h3><button class="modal-close" onclick="closeAwbModal()">&times;</button></div>
-      <div id="awbModalBody"></div>
-      <div class="inline-actions" style="margin-top:14px"><button class="action-btn" id="awbModalPrint">Print Air Way Bill</button><button class="ghost-btn" onclick="closeAwbModal()">Close</button></div>
-    </div>
-  </div>
-
-  <!-- Ticket modal -->
-  <div class="modal-overlay" id="ticketModal">
-    <div class="modal-card">
-      <div class="modal-head"><h3>Create Ticket</h3><button class="modal-close" onclick="closeTicketModal()">&times;</button></div>
-      <div class="form-grid">
-        <div class="field"><label>From</label><input id="ticketFromField" readonly></div>
-        <div class="field"><label>Send To</label><select id="ticketToField"><option>Sales</option><option>Finance</option><option>Warehouse</option><option>Karachi Operations</option><option>Lahore Operations</option><option>Others</option></select></div>
-        <div class="field"><label>Linked AWB</label><input id="ticketAwbField" readonly></div>
-        <div class="field"><label>Priority</label><select id="ticketTierField"><option value="okay">Okay</option><option value="medium" selected>Medium</option><option value="emergency">Emergency</option></select></div>
-        <div class="field" style="grid-column:1/-1"><label>Message</label><textarea id="ticketMsgField" placeholder="Describe the issue, what proof you need, and who must act."></textarea></div>
-      </div>
-      <div class="inline-actions" style="margin-top:14px"><button class="action-btn" onclick="submitClientTicket()">Send Ticket</button><button class="ghost-btn" onclick="closeTicketModal()">Cancel</button></div>
-    </div>
-  </div>
-
-  <!-- Wallet done modal -->
-  <div class="modal-overlay" id="walletDoneModal">
-    <div class="modal-card" style="text-align:center;max-width:460px">
-      <div class="done-check"><svg viewBox="0 0 64 64"><path class="tick" d="M18 33 L28 43 L46 22"/></svg></div>
-      <h3>Withdrawal Requested</h3>
-      <p class="footer-note" id="walletDoneText"></p>
-      <button class="action-btn" style="margin-top:10px" onclick="closeWalletDone()">Done</button>
+  <div class="deliver-flash" id="deliverFlash">
+    <div class="deliver-card">
+      <div class="tickwrap"><svg viewBox="0 0 64 64"><path class="tk" d="M18 33 L28 43 L46 22"/></svg></div>
+      <h3 style="margin:0 0 6px">Delivered</h3>
+      <p class="footer-note" id="deliverText"></p>
     </div>
   </div>
 
   <script>
     const PKR = new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 });
-    const now = () => new Date();
-    const time = () => now().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const time = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const STORAGE_KEY = "novaxLogisticsStateV10";
     const STATUS_TAGS = ["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Refused","Consignee not available","Reattempt","Reassigned","Out of service area","Ready for return","Return in transit","Return received at origin","Return out for delivery","Parcel returned to consignee"];
     const baseState = {
-      selectedAwb:"N0010001", activeStatusQueue:"Parcel now in transit", activeRateClient:"", activeSackMode:"create",
-      clientDateFrom:"2026-06-01", clientDateTo:"2026-06-24", lastGeneratedAwb:"N0010001",
-      walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"",
-      client:{ id:"CL-0001", name:"Apex Fashion", walletTopup:85000, shippingDue:18400, premiumTier:"Gold", subAccounts:6, walletBalance:12090 },
+      selectedAwb:"N0010001", activeRider:"R-17",
+      client:{ id:"CL-0001", name:"Apex Fashion" },
       clients:[
-        { id:"CL-0001", name:"Apex Fashion", owner:"Sara Finance", tier:"Gold", city:"Karachi", walletTopup:85000, shippingDue:18400, risk:18, status:"Active", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, problemsResolved:18, health:91, walletBalance:12090 },
-        { id:"CL-0002", name:"Noor Studio", owner:"Ali Ops", tier:"Silver", city:"Islamabad", walletTopup:52000, shippingDue:9200, risk:24, status:"Active", rate:220, rateCard:{overnight:220,additionalKg:75,detainBase:500,detainAdditionalKg:110,overlandBase:860,overlandAdditionalKg:42}, problemsResolved:9, health:86, walletBalance:0 },
-        { id:"CL-0003", name:"Hira Boutique", owner:"Mina Support", tier:"Starter", city:"Rawalpindi", walletTopup:28000, shippingDue:5100, risk:36, status:"Watch", rate:260, rateCard:{overnight:260,additionalKg:90,detainBase:560,detainAdditionalKg:130,overlandBase:940,overlandAdditionalKg:48}, problemsResolved:5, health:73, walletBalance:0 }
-      ],
-      pendingClients:[],
-      users:[
-        { id:"USR-001", name:"Sara Finance", role:"Finance", branch:"Karachi Hub", clientId:"CL-0001", status:"Active" },
-        { id:"USR-002", name:"Ali Ops", role:"Branch Manager", branch:"Islamabad Hub", clientId:"CL-0002", status:"Active" }
-      ],
-      branches:[
-        { name:"Karachi Hub", scanHealth:94, cashHealth:88, discrepancy:1 },
-        { name:"Lahore Hub", scanHealth:91, cashHealth:96, discrepancy:0 },
-        { name:"Islamabad Hub", scanHealth:86, cashHealth:72, discrepancy:3 }
+        { id:"CL-0001", name:"Apex Fashion", city:"Karachi" },
+        { id:"CL-0002", name:"Noor Studio", city:"Islamabad" },
+        { id:"CL-0003", name:"Hira Boutique", city:"Rawalpindi" }
       ],
       riders:[
-        { id:"R-17", name:"Usman", username:"usman.r17", password:"NX-1717", manager:"Lahore Hub Manager", cashHeld:62500, cashLimit:75000, scans:38, fakeRisk:9, access:"Active", expenses:0 },
-        { id:"R-22", name:"Bilal", username:"bilal.r22", password:"NX-2222", manager:"Karachi Hub Manager", cashHeld:103000, cashLimit:90000, scans:44, fakeRisk:22, access:"Blocked", expenses:0 },
-        { id:"R-31", name:"Hamza", username:"hamza.r31", password:"NX-3131", manager:"Islamabad Hub Manager", cashHeld:19500, cashLimit:60000, scans:29, fakeRisk:6, access:"Active", expenses:0 }
+        { id:"R-17", name:"Usman", username:"usman.r17", manager:"Lahore Hub Manager", cashHeld:0, cashLimit:75000, scans:38, fakeRisk:9, access:"Active", expenses:0 },
+        { id:"R-22", name:"Bilal", username:"bilal.r22", manager:"Karachi Hub Manager", cashHeld:0, cashLimit:90000, scans:44, fakeRisk:22, access:"Active", expenses:0 },
+        { id:"R-31", name:"Hamza", username:"hamza.r31", manager:"Islamabad Hub Manager", cashHeld:0, cashLimit:60000, scans:29, fakeRisk:6, access:"Active", expenses:0 }
       ],
       parcels:[
-        { awb:"N0010001", clientId:"CL-0001", date:"2026-06-24", consignee:"Sana Khan", city:"Lahore", cod:7200, fee:240, status:"Parcel out for delivery", statusAgeHours:8, stage:6, totalStages:9, rider:"R-17", branch:"Lahore Hub", risk:14, updated:"09:38", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000001", address:"House 21, Main Market, Lahore", service:"COD Standard", weight:"0.8 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery"] },
-        { awb:"N0010002", clientId:"CL-0001", date:"2026-06-23", consignee:"M. Ahmed", city:"Karachi", cod:12400, fee:310, status:"Delivered", statusAgeHours:11, stage:8, totalStages:9, rider:"R-22", branch:"Karachi Hub", risk:32, updated:"10:12", exception:"Cash above rider limit", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000002", address:"Block 6, PECHS, Karachi", service:"COD Express", weight:"1.2 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","COD collected","Rider holding cash"] },
-        { awb:"N0020001", clientId:"CL-0002", date:"2026-06-22", consignee:"Noor Studio", city:"Islamabad", cod:4500, fee:220, status:"Parcel now in transit", statusAgeHours:76, stage:4, totalStages:9, rider:"R-17", branch:"Islamabad Hub", risk:18, updated:"08:57", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000003", address:"F-7 Markaz, Islamabad", service:"COD Standard", weight:"0.6 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit"] },
-        { awb:"N0030001", clientId:"CL-0003", date:"2026-06-20", consignee:"Hira Boutique", city:"Rawalpindi", cod:15800, fee:360, status:"Collected by rider", statusAgeHours:19, stage:2, totalStages:9, rider:"R-17", branch:"Karachi Hub", risk:11, updated:"10:45", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000004", address:"Saddar, Rawalpindi", service:"COD Standard", weight:"1.0 kg", steps:["New booked","Collected by rider"] },
-        { awb:"N0010003", clientId:"CL-0001", date:"2026-06-19", consignee:"Zeeshan Ali", city:"Lahore", cod:9800, fee:280, status:"Refused", statusAgeHours:31, stage:6, totalStages:9, rider:"R-22", branch:"Lahore Hub", risk:78, updated:"07:31", exception:"Consignee denies refusal attempt", cashReceived:false, returnProof:"Return proof pending from rider manager", resolutionRemark:"", phone:"+92 300 0000005", address:"DHA Phase 5, Lahore", service:"COD Standard", weight:"0.9 kg", riderInput:{ attemptTime:"07:31", gps:"31.5204, 74.3587", callProof:"1 call, 18 seconds", riderNote:"Consignee refused delivery at gate", photoProof:"Door photo captured" }, steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Refused"] }
+        { awb:"N0010001", clientId:"CL-0001", date:"2026-06-24", consignee:"Sana Khan", phone:"+92 300 0000001", address:"House 21, Main Market, Gulberg III, Lahore", city:"Lahore", cod:7200, fee:240, status:"Parcel out for delivery", statusAgeHours:8, stage:5, totalStages:16, rider:"R-17", branch:"Lahore Hub", risk:14, updated:"09:38", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", deliveredBy:"", proofPhoto:"", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery"] },
+        { awb:"N0010004", clientId:"CL-0001", date:"2026-06-24", consignee:"Ayesha Malik", phone:"+92 301 2223344", address:"Flat 4B, Askari 11, Lahore", city:"Lahore", cod:5400, fee:240, status:"Parcel out for delivery", statusAgeHours:3, stage:5, totalStages:16, rider:"R-17", branch:"Lahore Hub", risk:10, updated:"10:05", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", deliveredBy:"", proofPhoto:"", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery"] },
+        { awb:"N0020002", clientId:"CL-0002", date:"2026-06-24", consignee:"Bilal Raza", phone:"+92 333 5556677", address:"St 9, G-11/3, Islamabad", city:"Islamabad", cod:9900, fee:220, status:"Parcel out for delivery", statusAgeHours:2, stage:5, totalStages:16, rider:"R-31", branch:"Islamabad Hub", risk:12, updated:"10:20", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", deliveredBy:"", proofPhoto:"", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery"] },
+        { awb:"N0010002", clientId:"CL-0001", date:"2026-06-23", consignee:"M. Ahmed", phone:"+92 300 0000002", address:"Block 6, PECHS, Karachi", city:"Karachi", cod:12400, fee:310, status:"Delivered", statusAgeHours:11, stage:6, totalStages:16, rider:"R-22", branch:"Karachi Hub", risk:32, updated:"10:12", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", deliveredBy:"R-22", proofPhoto:"", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","COD collected"] }
       ],
-      expenses:[
-        { id:"EXP-001", name:"Fuel", amount:38000, type:"Fuel", owner:"Karachi Hub", status:"Approved" },
-        { id:"EXP-002", name:"Branch rent", amount:110000, type:"Branch rent", owner:"Lahore Hub", status:"Approved" }
-      ],
-      paymentLogs:[
-        { id:"PAY-001", clientId:"CL-0001", type:"COD collected", amount:12400, status:"Rider holding", ref:"N0010002" },
-        { id:"PAY-002", clientId:"CL-0001", type:"Shipping fee deducted", amount:310, status:"Ledger posted", ref:"N0010002" },
-        { id:"PAY-003", clientId:"CL-0001", type:"Invoice pushed to wallet", amount:12090, status:"Wallet credited", ref:"INV-0001" }
-      ],
-      invoices:[
-        { id:"INV-0001", clientId:"CL-0001", parcelRefs:["N0010002"], cod:12400, charges:310, payable:12090, status:"Pushed to wallet", createdAt:"2026-06-24 10:30", paidAt:"", walletPushedAt:"2026-06-24 10:31", summary:"1 delivered parcel, payable pushed to wallet" }
-      ],
-      transit:[
-        { id:"SACK-KHI-LHE-44", from:"Karachi Hub", to:"Lahore Hub", expected:1000, scanned:998, demanifested:991, health:88, status:"Active", type:"parcel sack" }
-      ],
-      completedSacks:[],
-      operationsIssues:[
-        { id:"OPS-001", branch:"Lahore Hub", urgency:"super urgent", problem:"Transit aging over 3 days", awb:"N0020001", openedHours:6, resolved:false }
-      ],
-      resolvedAlerts:[]
+      paymentLogs:[], operationsIssues:[], invoices:[],
+      branches:[], expenses:[], transit:[], completedSacks:[], resolvedAlerts:[], pendingClients:[], users:[], tickets:[], ticketNotifications:[], walletWithdrawals:[]
     };
     function cleanStartState(){
-      const blankClient={ id:"CL-0000", name:"New Merchant Workspace", owner:"", city:"", walletTopup:0, shippingDue:0, risk:0, status:"Draft", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, problemsResolved:0, health:0, walletBalance:0 };
       return {
         _cleanStartV2:true,
-        selectedAwb:"", activeStatusQueue:STATUS_TAGS[0], activeRateClient:"", activeSackMode:"create",
-        clientDateFrom:new Date().toISOString().slice(0,10), clientDateTo:new Date().toISOString().slice(0,10), lastGeneratedAwb:"",
-        walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"",
-        client:{ id:"CL-0000", name:"New Merchant Workspace", walletTopup:0, shippingDue:0, subAccounts:0, walletBalance:0 },
-        clients:[blankClient], pendingClients:[], users:[], branches:[], riders:[], parcels:[], expenses:[], paymentLogs:[], invoices:[], transit:[], completedSacks:[], operationsIssues:[], resolvedAlerts:[],
-        activeClientTab:"dashboard"
+        selectedAwb:"", activeRider:"",
+        client:{ id:"CL-0000", name:"New Merchant Workspace" },
+        clients:[{ id:"CL-0000", name:"New Merchant Workspace", city:"" }],
+        riders:[], parcels:[],
+        paymentLogs:[], operationsIssues:[], invoices:[],
+        branches:[], expenses:[], transit:[], completedSacks:[], resolvedAlerts:[], pendingClients:[], users:[], tickets:[], ticketNotifications:[], walletWithdrawals:[]
       };
     }
     let state = loadState();
@@ -676,808 +272,388 @@
       state = cleanStartState();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
-    normalizeStateAwbs(state);
-    state.activeClientTab = state.activeClientTab || "dashboard";
-    state.activeStatusQueue = state.activeStatusQueue || STATUS_TAGS[0];
-    state.walletWithdrawals = Array.isArray(state.walletWithdrawals) ? state.walletWithdrawals : [];
-    state.tickets = Array.isArray(state.tickets) ? state.tickets : [];
-    state.ticketNotifications = Array.isArray(state.ticketNotifications) ? state.ticketNotifications : [];
-    state.lastBulkAwbs = Array.isArray(state.lastBulkAwbs) ? state.lastBulkAwbs : [];
-    state.storeConnections = Array.isArray(state.storeConnections) ? state.storeConnections : [];
-    state.walletWithdrawSpeed = state.walletWithdrawSpeed || "";
-    state.clients.forEach(c => { c.walletBalance = Number(c.walletBalance || 0); });
-    (state.parcels || []).forEach(p => { if (!p.statusSince) p.statusSince = new Date(Date.now() - Number(p.statusAgeHours || 0) * 3600000).toISOString(); });
-    state._walletSeeded = true;
+    state.activeRider = state.activeRider || (state.riders[0] && state.riders[0].id) || "";
+    state.riders = Array.isArray(state.riders) ? state.riders : baseState.riders;
 
     function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?JSON.parse(s):structuredClone(baseState); }catch(e){ return structuredClone(baseState); } }
     function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-    function emptyParcel(){ return { awb:"", clientId:state.client.id||"CL-0000", date:new Date().toISOString().slice(0,10), consignee:"No parcel selected", city:"", cod:0, fee:0, status:"New booked", statusAgeHours:0, stage:0, totalStages:STATUS_TAGS.length, rider:"", branch:"", risk:0, updated:"", exception:"", cashReceived:false, phone:"", address:"", service:"COD Standard", weight:"", steps:[] }; }
-    function selectedParcel(){ return state.parcels.find(p=>p.awb===state.selectedAwb) || state.parcels[0] || emptyParcel(); }
-    function inClientDateRange(p){ const d=p.date||"2026-06-24"; const f=state.clientDateFrom||"2026-06-01"; const t=state.clientDateTo||"2026-06-24"; return d>=f && d<=t; }
-    function clientScopedParcels(){ const id=state.client.id||"CL-0001"; return state.parcels.filter(p=>p.clientId===id && inClientDateRange(p)); }
-    function clientById(id){ return state.clients.find(c=>c.id===id) || state.clients[0]; }
-    function clientCode(id){ const digits=String(id||"1").replace(/\D/g,""); return digits.slice(-3).padStart(3,"0"); }
-    function shortAwbFor(clientId,counter){ return `N${clientCode(clientId)}${String(counter).padStart(4,"0")}`; }
-    function nextAwbForClient(clientId){
-      const prefix=`N${clientCode(clientId)}`;
-      const max=state.parcels.filter(p=>String(p.awb||"").startsWith(prefix)).reduce((n,p)=>Math.max(n,Number(String(p.awb).slice(4))||0),0);
-      return shortAwbFor(clientId,max+1);
-    }
-    function replaceAwbRefs(value,map){
-      if(typeof value==="string") return map[value]||value;
-      if(Array.isArray(value)) return value.map(v=>replaceAwbRefs(v,map));
-      if(value&&typeof value==="object"){ Object.keys(value).forEach(k=>{ value[k]=replaceAwbRefs(value[k],map); }); }
-      return value;
-    }
-    function normalizeStateAwbs(appState){
-      const map={}, counts={};
-      (appState.parcels||[]).forEach(p=>{
-        if(!/^NX-/i.test(String(p.awb||""))) return;
-        const code=clientCode(p.clientId);
-        counts[code]=(counts[code]||0)+1;
-        map[p.awb]=shortAwbFor(p.clientId,counts[code]);
-      });
-      if(Object.keys(map).length) replaceAwbRefs(appState,map);
-    }
-    function isDeliveredLedgerParcel(p){ return p.status==="Delivered" || p.steps.includes("COD collected"); }
-    function paidParcelRefs(){ return new Set(state.invoices.filter(i=>i.status==="Paid").flatMap(i=>i.parcelRefs||[])); }
-    function isUnpaidDeliveredParcel(p){ return isDeliveredLedgerParcel(p) && !paidParcelRefs().has(p.awb); }
-    function clientMetrics(){
-      const parcels=clientScopedParcels();
-      const delivered=parcels.filter(p=>p.status.includes("Delivered")).length;
-      const deliveredParcels=parcels.filter(isDeliveredLedgerParcel);
-      const unpaid=parcels.filter(isUnpaidDeliveredParcel);
-      const codCollected=deliveredParcels.reduce((s,p)=>s+p.cod,0);
-      const deliveryCharges=deliveredParcels.reduce((s,p)=>s+p.fee,0);
-      const payable=Math.max(0,unpaid.reduce((s,p)=>s+p.cod-p.fee,0));
-      const avgProgress=parcels.length?parcels.reduce((s,p)=>s+(p.stage/p.totalStages),0)/parcels.length:0;
-      return { parcels, delivered, total:parcels.length, codCollected, deliveryCharges, payable, avgProgress };
-    }
+    function clientById(id){ return (state.clients||[]).find(c=>c.id===id) || {id:id,name:id}; }
+    function riderById(id){ return (state.riders||[]).find(r=>r.id===id) || state.riders[0]; }
+    function money(v){ return PKR.format(v||0).replace("PKR","Rs"); }
+    function isDeliveredLedgerParcel(p){ return p.status==="Delivered" || (p.steps||[]).includes("COD collected"); }
+    function riderReceivable(riderId){ return (state.parcels||[]).filter(p => p.rider===riderId && isDeliveredLedgerParcel(p) && !p.cashReceived).reduce((s,p)=>s+(p.cod||0),0); }
     function nextId(prefix, items){ const max=(items||[]).reduce((v,it)=>{ const n=Number(String(it.id||"").replace(prefix+"-","")); return Number.isFinite(n)?Math.max(v,n):v; },0); return `${prefix}-${String(max+1).padStart(4,"0")}`; }
-    function agingHours(p){ if(p&&p.statusSince){ const ms=Date.now()-new Date(p.statusSince).getTime(); if(Number.isFinite(ms)) return Math.max(0,ms/3600000); } return Number((p&&p.statusAgeHours)||0); }
-    function agingLabel(h=0){ if(h<1) return "just now"; if(h<24) return `${Math.max(0,Math.round(h))}h`; const d=Math.floor(h/24); const r=Math.round(h%24); return r?`${d}d ${r}h`:`${d}d`; }
-    function alertForParcel(p){
-      const h=agingHours(p);
-      if(p.status==="Parcel now in transit"){ if(h>=72) return {level:"critical",label:"Red alert: transit over 3 days",due:"AI + support must act now"}; if(h>=48) return {level:"warning",label:"Transit aging",due:"Escalate before 3 days"}; return {level:"ok",label:"In transit",due:"Transit clock running"}; }
-      if(["Delivered","Parcel returned to consignee"].includes(p.status)) return {level:"ok",label:"Closed",due:"No open alert"};
-      if(h>=24) return {level:"critical",label:"24h status breach",due:"AI + support must act now"};
-      return {level:"ok",label:"Within SLA",due:`${24-Math.round(h)}h left`};
-    }
-    function urgencyClass(l){ if(l==="critical"||l==="super urgent") return "bad"; if(l==="warning"||l==="urgent") return "warn"; return "good"; }
-    function setParcelStatus(p,status){ p.status=status; p.statusAgeHours=0; p.statusSince=new Date().toISOString(); p.updated=time(); p.stage=Math.max(0,STATUS_TAGS.indexOf(status)); if(!p.steps.includes(status)) p.steps.push(status); }
-    function percent(v,m){ if(!m) return 0; return Math.max(0,Math.min(100,Math.round((v/m)*100))); }
-    function money(v){ return PKR.format(v).replace("PKR","Rs"); }
-    function statusClass(p){ const a=alertForParcel(p); if(a.level==="critical"||p.risk>=65||p.exception) return "bad"; if(a.level==="warning") return "warn"; if(["Delivered","Parcel returned to consignee"].includes(p.status)) return "good"; if(p.stage<5) return "info"; if(p.stage<8) return "warn"; return "good"; }
-    function isRefusalReview(p){ return /refus|attempt disputed|consignee denies|not available/i.test(`${p.status} ${p.exception||""} ${p.steps.join(" ")}`); }
-    function meterClass(v){ if(v>=75) return "red"; if(v>=45) return "amber"; return "blue"; }
-    function metricCard(label,value,fill,caption,kind=""){ return `<article class="metric"><label>${label}</label><strong>${value}</strong><div class="meter ${kind}"><span style="width:${fill}%"></span></div><div class="meter-caption"><span>${caption}</span><span>${fill}%</span></div></article>`; }
-    function moneyBox(label,value,note){ return `<div class="money-box"><span>${label}</span><strong>${value}</strong><div class="footer-note">${note}</div></div>`; }
-    function qrUrl(awb){ return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodeURIComponent(awb)}`; }
-    function barcodeUrl(awb){ return `https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(awb)}&code=Code128&translate-esc=on&dpi=96`; }
+    function setParcelStatus(p,status){ p.status=status; p.statusAgeHours=0; p.updated=time(); p.stage=Math.max(0,STATUS_TAGS.indexOf(status)); p.steps=Array.isArray(p.steps)?p.steps:[]; if(!p.steps.includes(status)) p.steps.push(status); }
+    function moneyBox(label,value,note){ return `<div class="money-box"><span>${label}</span><strong>${value}</strong><div class="footer-note">${note||""}</div></div>`; }
+    function toast(msg){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(window.__t); window.__t=setTimeout(()=>el.classList.remove("show"),3200); }
 
-    function renderMetrics(){
-      const cm=clientMetrics();
-      const rate=percent(cm.delivered,cm.total);
-      const ops=Math.round(cm.avgProgress*100);
-      document.getElementById("clientMetrics").innerHTML=[
-        metricCard("My Parcels",cm.total,ops,"in selected range","blue"),
-        metricCard("Delivered",`${cm.delivered}/${cm.total}`,rate,"confirmed deliveries",rate<40?"amber":""),
-        metricCard("Delivery Charges",money(cm.deliveryCharges),percent(cm.deliveryCharges,3000),"courier charges","amber"),
-        metricCard("Payable Balance",money(cm.payable),percent(cm.payable,60000),"client COD payable","good")
-      ].join("");
-    }
-    function filteredParcels(){ const t=(document.getElementById("clientSearch")?.value||"").trim().toLowerCase(); return clientScopedParcels().filter(p=>`${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase().includes(t)); }
-    function openClientParcelJourney(awb){ state.selectedAwb=awb; state.activeClientTab="dashboard"; saveState(); render(); const j=document.getElementById("clientJourney"); if(j) j.scrollIntoView({behavior:"smooth",block:"center"}); toast(`${awb} journey opened.`); }
-    function selectParcel(awb){ state.selectedAwb=awb; saveState(); render(); }
-    function pickupNotice(p){ if(p && p.status==='New booked' && (p.rider||p.riderId)){ var r=p.rider||p.riderId; var from=p.pickupCity||(state.client&&state.client.name)||'pickup point'; return `<div class="footer-note" style="color:#0c7c59;font-weight:800;margin-top:4px">Rider ${r} assigned - will collect parcel from ${from}</div>`; } return ''; }
-    function renderClientParcels(){
-      const parcels=filteredParcels();
-      document.getElementById("clientParcelRows").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<tr class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${p.updated}</span></td><td>${p.consignee}<br><span class="footer-note">${p.branch}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${p.stage}/${p.totalStages}</span><span>${pr}%</span></div></td></tr>`; }).join("")||`<tr><td colspan="5">No parcels in range.</td></tr>`;
-      document.getElementById("clientParcelCards").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<article class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><div class="top"><strong>${p.awb}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${p.consignee}</dd></div><div><dt>City</dt><dd>${p.city}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${p.updated}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div></article>`; }).join("");
-    }
-    function toggleStatusBoard(){ state.statusBoardOpen=!state.statusBoardOpen; renderClientStatusBoard(); }
-    function renderClientStatusBoard(){
-      const el=document.getElementById("clientStatusBoard"); if(!el) return;
-      const parcels=clientScopedParcels(); const groups={};
-      parcels.forEach(p=>{ (groups[p.status]=groups[p.status]||[]).push(p); });
-      const order=STATUS_TAGS.filter(s=>groups[s]);
-      const open=!!state.statusBoardOpen;
-      const sum=document.getElementById("statusBoardSummary"); if(sum) sum.textContent=parcels.length?`${parcels.length} parcel(s) in ${order.length} status group(s) — tap to ${open?"collapse":"expand"}.`:"No parcels in the selected range.";
-      const chev=document.getElementById("statusBoardChevron"); if(chev) chev.textContent=open?"▾":"▸";
-      el.style.display=open?"flex":"none";
-      if(!open){ el.innerHTML=""; return; }
-      el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${s}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].map(p=>`<div class="sb-parcel" onclick="openClientParcelJourney('${p.awb}')"><span class="sb-awb">${p.awb}</span><span class="sb-meta">${p.consignee} &middot; ${p.city}</span><span class="sb-meta">${money(p.cod)} &middot; ${alertForParcel(p).label} &middot; ${agingLabel(agingHours(p))} old</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
-    }
-    function renderJourney(){
-      const p=state.parcels.find(x=>x.awb===state.selectedAwb)||state.parcels[0]||emptyParcel();
-      document.getElementById("selectedParcelText").textContent=`${p.awb} for ${p.consignee}. Current status: ${p.status}.`;
-      const important=[
-        ["New booked","Booked"],
-        ["Collected by rider","Picked up"],
-        ["Parcel now in transit","In transit"],
-        ["Parcel received at destination","Reached destination"],
-        ["Parcel out for delivery","Out for delivery"],
-        ["Delivered","Delivered"],
-        ["Refused","Refused"],
-        ["Consignee not available","Consignee not available"],
-        ["Reattempt","Reattempt"],
-        ["Ready for return","Ready for return"],
-        ["Parcel returned to consignee","Returned"]
-      ];
-      const rows=important
-        .filter(([status])=>p.steps.includes(status)||p.status===status||(["Refused","Consignee not available","Reattempt"].includes(status)&&isRefusalReview(p)))
-        .map(([status,label],i)=>{
-          const current=p.status===status;
-          const problem=current && (p.exception||/Refused|not available/i.test(status));
-          const note=problem?(p.exception||"Needs client review"):(current?`${p.branch} | ${p.updated}`:`${p.branch} | verified`);
-          return `<div class="seller-step ${current?"current":""} ${problem?"problem":""}"><div class="step-dot">${i+1}</div><div><strong>${label}</strong><span>${note}</span></div><span class="chip ${problem?"bad":current?"info":"good"}">${problem?"review":current?"current":"done"}</span></div>`;
-        });
-      document.getElementById("clientJourney").innerHTML=`<div class="seller-journey-card">${rows.join("")}${p.resolutionRemark?`<div class="seller-step"><div class="step-dot">OK</div><div><strong>Admin remarks</strong><span>${p.resolutionRemark}</span></div><span class="chip good">resolved</span></div>`:""}${p.proofPhoto?`<div class="seller-step problem"><div class="step-dot">📷</div><div><strong>Rider remark + proof</strong><span>${p.exception||p.returnProof||"Photo proof attached by rider"}</span></div><span class="chip bad">live</span></div><div style="padding:0 14px 14px"><img src="${p.proofPhoto}" alt="rider proof" loading="lazy" style="width:100%;max-height:240px;object-fit:cover;border-radius:12px;border:1px solid var(--line)"></div>`:""}</div>`;
-      const review=document.getElementById("refusalReview"); if(!review) return;
-      if(!isRefusalReview(p)){ review.innerHTML=""; return; }
-      const input=p.riderInput||{attemptTime:p.updated,gps:"GPS attached",callProof:"Call proof pending",riderNote:"Rider marked delivery exception",photoProof:"Photo proof pending"};
-      review.innerHTML=`<div class="review-panel"><div class="section-head" style="margin-bottom:8px"><div><h3>Review Rider Attempt</h3><p>Rider input is shown automatically so you can decide whether to request redelivery.</p></div><span class="chip warn">review needed</span></div><div class="money-grid">${moneyBox("Attempt time",input.attemptTime,"rider timestamp")}${moneyBox("GPS",input.gps,"attempt location")}${moneyBox("Call proof",input.callProof,"call from rider app")}${moneyBox("Rider note",input.riderNote,input.photoProof)}</div><textarea id="redeliveryFeedback">Consignee confirmed they want delivery again. Please re-attempt and call before arrival.</textarea><button class="action-btn" onclick="requestRedelivery('${p.awb}')">Send Consignee Feedback And Reassign</button></div>`;
-    }
-    function renderWallets(){
-      const box=document.getElementById("clientWallet");
-      if(!box) return;
-      const cm=clientMetrics();
-      box.innerHTML=[moneyBox("Client payable",money(cm.payable),"Generated from delivered invoices only")].join("");
-    }
-    function renderAwbLabel(){ const p=state.parcels.find(x=>x.awb===(state.lastGeneratedAwb||state.selectedAwb))||selectedParcel(); document.getElementById("awbLabelPreview").innerHTML=awbLabelHtml(p); }
-    function renderClientTabs(){
-      document.querySelectorAll(".client-tab").forEach(b=>b.classList.toggle("active",b.dataset.clientTab===state.activeClientTab));
-      document.querySelectorAll(".client-module").forEach(m=>m.classList.toggle("active",m.id===`client-${state.activeClientTab}`));
-    }
-    function cityReport(parcels){ const g={}; parcels.forEach(p=>{ g[p.city]=g[p.city]||{city:p.city,parcels:0,cod:0,revenue:0,delivered:0}; g[p.city].parcels++; g[p.city].cod+=p.cod; if(isDeliveredLedgerParcel(p)){ g[p.city].revenue+=p.fee; g[p.city].delivered++; } }); return Object.values(g); }
-    function renderClientModules(){
-      renderClientTabs(); renderAwbLabel();
-      const _acc=document.getElementById("topAccountName"); if(_acc&&state.client&&state.client.name) _acc.textContent=state.client.name;
-      const cm=clientMetrics();
-      const deliveredCod=cm.parcels.filter(isDeliveredLedgerParcel).reduce((s,p)=>s+p.cod,0);
-      const pendingCod=cm.parcels.filter(p=>!isDeliveredLedgerParcel(p)).reduce((s,p)=>s+p.cod,0);
-      const rate=percent(cm.delivered,cm.total);
-      const open=Math.max(0,cm.total-cm.delivered);
-      const fromI=document.getElementById("clientDateFrom"), toI=document.getElementById("clientDateTo");
-      if(fromI && fromI.value!==state.clientDateFrom) fromI.value=state.clientDateFrom||"";
-      if(toI && toI.value!==state.clientDateTo) toI.value=state.clientDateTo||"";
-      document.getElementById("bulkValidationList").innerHTML=[
-        {label:"City validation",value:"4 serviceable cities",fill:92,kind:"good"},
-        {label:"Duplicate order ID",value:"0 duplicates",fill:100,kind:"good"},
-        {label:"COD sanity check",value:"2 need review",fill:64,kind:"warn"},
-        {label:"Phone completeness",value:"97% valid",fill:97,kind:"good"}
-      ].map(it=>`<div class="ops-card"><div class="ops-card-head"><strong>${it.label}</strong><span class="chip ${it.kind}">${it.value}</span></div><div class="meter ${it.kind==="warn"?"amber":""}"><span style="width:${it.fill}%"></span></div></div>`).join("");
-      document.getElementById("clientReportMetrics").innerHTML=[
-        metricCard("Delivery Rate",`${rate}%`,rate,"delivered parcels",rate<45?"amber":""),
-        metricCard("Delivered COD",money(deliveredCod),percent(deliveredCod,deliveredCod+pendingCod),"cash collected","good"),
-        metricCard("Pending COD",money(pendingCod),percent(pendingCod,deliveredCod+pendingCod),"not closed yet","amber"),
-        metricCard("Open Parcels",open,percent(open,Math.max(1,cm.total)),"not delivered yet",open?"blue":"good")
-      ].join("");
-      document.getElementById("clientReportRows").innerHTML=cityReport(cm.parcels).map(r=>`<tr><td><strong>${r.city}</strong></td><td>${r.parcels}</td><td>${money(r.cod)}</td><td>${money(r.revenue)}</td><td><span class="chip ${r.delivered?"good":"info"}">${r.delivered}/${r.parcels}</span></td></tr>`).join("");
-      const invoices=state.invoices.filter(i=>i.clientId===(state.client.id||"CL-0001")&&i.status!=="Deleted");
-      document.getElementById("paymentSummary").innerHTML=[
-        moneyBox("Generated invoices",invoices.length,"admin created only"),
-        moneyBox("Invoice COD",money(invoices.reduce((s,i)=>s+i.cod,0)),"delivered parcels only"),
-        moneyBox("Delivery charges",money(invoices.reduce((s,i)=>s+i.charges,0)),"deducted from COD"),
-        moneyBox("Payable",money(invoices.reduce((s,i)=>s+i.payable,0)),"shown on invoices")
-      ].join("");
-      (document.getElementById("paymentTimeline")||{}).innerHTML=[
-        ["Delivered parcel selected","Admin can invoice delivered parcels only",true],
-        ["Invoice generated","Invoice appears in seller payments",invoices.length>0],
-        ["Payment status","Paid or pending is controlled by admin ledger",invoices.some(i=>i.status==="Paid")]
-      ].map((r,i)=>`<div class="journey-item ${r[2]?"":"pending"}"><div class="step-dot">${r[2]?"OK":i+1}</div><div><strong>${r[0]}</strong><span>${r[1]}</span></div><span class="chip ${r[2]?"good":"info"}">${r[2]?"verified":"waiting"}</span></div>`).join("");
-      document.getElementById("clientPaymentHistory").innerHTML=invoices.map(inv=>`<div class="log-item"><strong>${inv.id}</strong><div><strong>${inv.status}</strong><div class="footer-note" style="margin-top:2px">${inv.createdAt} | ${inv.parcelRefs.length} parcel(s)</div></div><span class="chip ${inv.status==="Paid"?"good":"warn"}">${money(inv.payable)}</span></div>`).join("")||`<div class="ops-card"><strong>No generated invoices</strong><p>Delivered parcels will show here once admin creates an invoice.</p></div>`;
-      document.getElementById("clientInvoiceList").innerHTML=invoices.map(inv=>`<div class="invoice-card"><div class="ops-card-head"><strong>${inv.id}</strong><span class="chip ${inv.status==="Paid"?"good":"warn"}">${inv.status}</span></div><p>${inv.summary}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${moneyBox("Payable",money(inv.payable),"due to you")}${moneyBox("Date",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div></div>`).join("")||`<div class="ops-card"><strong>No invoices yet</strong></div>`;
-      document.getElementById("orderLogFeed").innerHTML=cm.parcels.map(p=>{ const alert=alertForParcel(p); return `<div class="order-log-card clickable-row" onclick="openClientParcelJourney('${p.awb}')"><div><strong>${p.awb}</strong><div class="footer-note">${p.consignee} | ${p.city}</div></div><div><strong>${p.status}</strong><div class="footer-note">Last update ${p.updated} | ${alert.label}</div></div><button class="ghost-btn" onclick="event.stopPropagation();openTicketModal('${p.awb}')">Ticket</button></div>`; }).join("")||`<div class="ops-card"><strong>No order logs</strong></div>`;
-      document.getElementById("subAccountList").innerHTML=[["Owner","Full visibility, payout approvals","active"],["Finance","Payments, invoices, reports","active"],["Warehouse","New and bulk booking only","active"],["Support","Tracking and WhatsApp replies","limited"]].map(r=>`<div class="ops-card"><div class="ops-card-head"><strong>${r[0]}</strong><span class="chip ${r[2]==="limited"?"warn":"good"}">${r[2]}</span></div><p>${r[1]}</p></div>`).join("");
-      document.getElementById("supportEscalations").innerHTML=state.parcels.filter(p=>p.exception&&p.clientId===state.client.id).map(p=>`<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip bad">escalated</span></div><p>${p.exception}</p>${p.proofPhoto?`<img src="${p.proofPhoto}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:200px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">`:""}</div>`).join("")||`<div class="ops-card"><strong>No escalations</strong><p>AI has complete portal data right now.</p></div>`;
-    }
-    function renderAi(){
-      const p=state.parcels.find(x=>x.awb===state.selectedAwb)||state.parcels[0]||emptyParcel();
-      if (!p.awb) {
-        document.getElementById("clientAi").innerHTML=`<div class="bubble ai">AI: No parcel data exists yet. Book your first parcel and I will answer only from live portal data.</div>`;
+    function renderRider(){
+      const sel = document.getElementById("riderSelect");
+      if (sel && !sel.dataset.filled){
+        sel.innerHTML = state.riders.map(r=>`<option value="${r.id}">${r.id} | ${r.name}</option>`).join("");
+        sel.dataset.filled = "1";
+        sel.value = state.activeRider;
+      }
+      const rider = riderById(state.activeRider);
+      if (!rider) {
+        document.getElementById("riderWallet").innerHTML = [
+          moneyBox("COD in my account", money(0), "no rider selected"),
+          moneyBox("Cash limit", money(0), "create rider in admin"),
+          moneyBox("Delivered by me", 0, "no history"),
+          moneyBox("Access", "Waiting", "no rider login yet")
+        ].join("");
+        const note = document.getElementById("riderRouteNote");
+        if (note) note.textContent = "Create a rider in admin, then assign parcels out for delivery.";
+        document.getElementById("riderStops").innerHTML = `<div class="ops-card"><strong>No rider account yet</strong><p>Create a rider user from admin to start receiving assigned parcels.</p></div>`;
+        document.getElementById("riderHistory").innerHTML = `<div class="ops-card"><strong>No rider history yet</strong><p>Delivered, refused, and not-available updates will appear here after real activity.</p></div>`;
         return;
       }
-      const reply=p.exception?`${p.awb} has an exception: ${p.exception}. I have escalated it to ${p.branch} and admin finance.`:`${p.awb} is ${p.status}. Last verified update was ${p.updated} from ${p.branch}.`;
-      document.getElementById("clientAi").innerHTML=`<div class="bubble">Client: Where is ${p.awb}, and when will COD settle?</div><div class="bubble ai">AI: ${reply} COD payable updates only after rider cash and bank deposit controls close.</div>`;
+      const receivable = riderReceivable(rider.id);
+      const deliveredByMe = (state.parcels||[]).filter(p=>p.deliveredBy===rider.id).length;
+      const blocked = (rider.cashHeld + receivable) > rider.cashLimit;
+      document.getElementById("riderWallet").innerHTML = [
+        moneyBox("COD in my account", money(receivable), "held until admin clears"),
+        moneyBox("Cash limit", money(rider.cashLimit), blocked ? "LIMIT REACHED" : "within limit"),
+        moneyBox("Delivered by me", deliveredByMe, "all time"),
+        moneyBox("Access", blocked ? "Blocked" : "Active", rider.username || "")
+      ].join("");
+
+      const myPickups = document.getElementById("riderPickups");
+      if (myPickups) {
+        const myClients = (state.clients||[]).filter(c => c.assignedRider === rider.id);
+        myPickups.innerHTML = myClients.map(c => {
+          const pending = (state.parcels||[]).filter(p => p.clientId === c.id && p.status === "New booked");
+          return `<div class="ops-card"><div class="ops-card-head"><strong>${c.name}</strong><span class="chip ${pending.length ? "warn" : "info"}">${pending.length} to pick up</span></div><p class="footer-note">${c.city || ""}${c.address ? " · " + c.address : ""}</p></div>`;
+        }).join("") || `<div class="ops-card"><strong>No clients assigned</strong><p>When admin assigns a client to you, your pickups and parcel counts appear here.</p></div>`;
+      }
+
+      const stops = (state.parcels||[]).filter(p => p.rider === rider.id && (p.status === "Parcel out for delivery" || p.status === "Return out for delivery"));
+      const note = document.getElementById("riderRouteNote");
+      const returnCount = stops.filter(p => p.status === "Return out for delivery").length;
+      if (note) note.textContent = `${stops.length} stop(s) for ${rider.name}${returnCount ? ` · ${returnCount} return pickup(s)` : ""}.`;
+      document.getElementById("riderStops").innerHTML = stops.map(p => {
+        const client = clientById(p.clientId);
+        const tel = (p.phone||"").replace(/[^0-9+]/g,"");
+        const isReturn = p.status === "Return out for delivery";
+        return `
+          <div class="ops-card">
+            <div class="ops-card-head">
+              <strong>${p.awb} · ${money(p.cod)} COD</strong>
+              <span class="chip ${isReturn ? "warn" : "info"}">${isReturn ? "🔁 Return · " : "📦 Delivery · "}${p.city}</span>
+            </div>
+            <div class="money-grid" style="margin-top:6px">
+              ${moneyBox("Consignee", p.consignee, client.name)}
+              ${moneyBox("Phone", p.phone || "n/a", "tap Call below")}
+            </div>
+            <p style="margin-top:8px"><strong>Address:</strong> ${p.address || "Address pending"}</p>
+            ${p.proofPhoto ? `<img src="${p.proofPhoto}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:190px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">` : ""}
+            <div class="inline-actions" style="margin-top:10px">
+              <a class="ghost-btn" href="tel:${tel}">📞 Call</a>
+              <button class="action-btn" onclick="riderDeliver('${p.awb}')">${isReturn ? "✓ Mark Returned" : "✓ Mark Delivered"}</button>
+            </div>
+            <div class="inline-actions" style="margin-top:8px">
+              <button class="ghost-btn" onclick="riderPhotoThen('${p.awb}','notresponding')">📷 Not Responding</button>
+              <button class="ghost-btn" onclick="riderPhotoThen('${p.awb}','refused')">📷 Refused (house photo)</button>
+            </div>
+          </div>
+        `;
+      }).join("") || `<div class="ops-card"><strong>No stops yet</strong><p>When admin moves a parcel to "Parcel out for delivery" assigned to ${rider.name}, it appears here automatically.</p></div>`;
+
+      const actioned = (state.parcels||[]).filter(p => p.rider===rider.id && ["Delivered","Refused","Consignee not available"].includes(p.status));
+      document.getElementById("riderHistory").innerHTML = actioned.map(p => {
+        const cls = p.status==="Delivered" ? "good" : p.status==="Refused" ? "bad" : "warn";
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip ${cls}">${p.status}</span></div>
+          <p>${p.consignee} · ${p.city} · ${p.updated}${p.status==="Delivered" ? ` · ${money(p.cod)} in your account` : ""}</p>
+          ${p.exception ? `<p class="footer-note">${p.exception}</p>` : ""}
+          ${p.proofPhoto ? `<img src="${p.proofPhoto}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:150px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">` : ""}
+          ${p.signature ? `<div class="footer-note" style="margin-top:6px">Signature captured ${p.signedAt || ""}</div><img src="${p.signature}" alt="signature" loading="lazy" style="margin-top:4px;width:100%;max-height:120px;object-fit:contain;border-radius:12px;border:1px solid var(--line);background:#fff">` : ""}
+        </div>`;
+      }).join("") || `<div class="ops-card"><strong>Nothing yet</strong><p>Delivered, refused and not-responding updates show here.</p></div>`;
     }
 
-    /* ===== Added: AWB label, print, modals, bulk preview, report, invoice download, tickets, wallet ===== */
-    function awbLabelHtml(p){
-      const client=clientById(p.clientId);
-      return `<div class="awb-label"><div><div class="awb-title"><div><h3>NovaX AWB</h3><p class="footer-note" style="margin:6px 0 0;color:#41524a">Scan ID: ${p.awb}</p></div><strong>${p.awb}</strong></div><div class="awb-grid"><div class="awb-field"><span>Destination</span><strong>${p.city}</strong></div><div class="awb-field"><span>COD</span><strong>${money(p.cod)}</strong></div><div class="awb-field"><span>Consignee</span><strong>${p.consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${p.phone||"phone pending"}</strong></div><div class="awb-field"><span>Client</span><strong>${client.id} | ${client.name}</strong></div><div class="awb-field"><span>Service</span><strong>${p.service||"COD Standard"}</strong></div><div class="awb-field"><span>Weight</span><strong>${p.weight||"0.8 kg"}</strong></div><div class="awb-field"><span>Handling</span><strong>${p.fragile==="Yes"?"Fragile":"Standard"}</strong></div><div class="awb-field" style="grid-column:1/-1"><span>Address</span><strong>${p.address||"Address attached in portal"}</strong></div></div></div><div class="awb-codes"><div><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}" loading="lazy"></div><div><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}" loading="lazy"></div><span class="chip info">${p.awb}</span></div></div>`;
+    /* ---- rider actions ---- */
+    let riderPhotoCtx = null;
+    function riderPhotoThen(awb, kind){
+      const p = state.parcels.find(x=>x.awb===awb);
+      const rider = riderById(state.activeRider);
+      if(!p){ toast(`${awb} not found.`); return; }
+      if(!rider || p.rider !== rider.id){ toast(`${awb} is not on your delivery route — you can only action parcels assigned to you.`); return; }
+      if(p.status !== "Parcel out for delivery" && p.status !== "Return out for delivery"){ toast(`${awb} is not out for delivery.`); return; }
+      riderPhotoCtx = { awb, kind }; const inp=document.getElementById("riderPhotoInput"); inp.value=""; if(kind==="notresponding"){ inp.removeAttribute("capture"); } else { inp.setAttribute("capture","environment"); } inp.click();
     }
-    function printLabels(awbs){
-      const stage=document.getElementById("printStage"); if(!stage) return;
-      const valid=(awbs||[]).map(a=>state.parcels.find(p=>p.awb===a)).filter(Boolean);
-      if(!valid.length){ toast("No AWB available to print."); return; }
-      const bulk=valid.length>1;
-      stage.classList.toggle("bulk-print", bulk);
-      if(bulk){
-        let html="";
-        for(let i=0;i<valid.length;i+=3){ html+=`<div class="print-page">`+valid.slice(i,i+3).map(p=>`<div class="print-label-wrap">${awbLabelHtml(p)}</div>`).join("")+`</div>`; }
-        stage.innerHTML=html;
+    function handleRiderPhoto(file){
+      if(!riderPhotoCtx || !file) return;
+      const { awb, kind } = riderPhotoCtx;
+      const reader = new FileReader();
+      reader.onload = () => applyRiderPhoto(awb, kind, reader.result);
+      reader.readAsDataURL(file);
+    }
+    function applyRiderPhoto(awb, kind, dataUrl){
+      const p = state.parcels.find(x=>x.awb===awb); if(!p) return;
+      const rider = riderById(state.activeRider);
+      p.proofPhoto = dataUrl;
+      state.operationsIssues = Array.isArray(state.operationsIssues) ? state.operationsIssues : [];
+      state.paymentLogs = Array.isArray(state.paymentLogs) ? state.paymentLogs : [];
+      if (kind === "notresponding"){
+        setParcelStatus(p, "Consignee not available");
+        p.exception = "Consignee not responding — call record attached by " + rider.name;
+        p.returnProof = "Call record screenshot attached by " + rider.name;
+        p.callRecord = dataUrl;
+        state.operationsIssues.unshift({ id: nextId("OPS", state.operationsIssues), branch: p.branch, urgency: "urgent", problem: "Consignee not responding (" + awb + ")", awb, openedHours: 0, resolved: false });
+        state.paymentLogs.unshift({ id: nextId("PAY", state.paymentLogs), clientId: p.clientId, type: "Rider update: consignee not responding", amount: 0, status: "Photo proof attached", ref: awb });
+        toast(awb + " → consignee not available. Update + photo pushed to portal.");
       } else {
-        stage.innerHTML=valid.map(p=>`<div class="print-label-wrap">${awbLabelHtml(p)}</div>`).join("");
+        setParcelStatus(p, "Refused");
+        p.exception = "Consignee refused the parcel on the doorstep — house photo attached by " + rider.name;
+        p.returnProof = "Doorstep refusal house photo by " + rider.name;
+        p.riderInput = { attemptTime: time(), gps: "GPS captured at doorstep", callProof: "Rider attempted contact", riderNote: "Consignee refused at doorstep", photoProof: "House photo captured" };
+        p.risk = Math.min(96, (p.risk||20) + 20);
+        state.operationsIssues.unshift({ id: nextId("OPS", state.operationsIssues), branch: p.branch, urgency: "urgent", problem: "Doorstep refusal (" + awb + ") — house photo attached", awb, openedHours: 0, resolved: false });
+        toast(awb + " → refused at doorstep. House photo posted to portal.");
       }
-      stage.style.display="block"; window.print(); setTimeout(()=>{ stage.style.display="none"; },500);
+      riderPhotoCtx = null;
+      saveState(); renderRider();
     }
-    function printAwb(){ printLabels([state.lastGeneratedAwb||state.selectedAwb]); }
-    function openAwbModal(awb){ const p=state.parcels.find(x=>x.awb===awb)||selectedParcel(); state.lastGeneratedAwb=p.awb; saveState(); document.getElementById("awbModalBody").innerHTML=awbLabelHtml(p); document.getElementById("awbModal").classList.add("show"); }
-    function closeAwbModal(){ document.getElementById("awbModal").classList.remove("show"); }
-
-    function renderBulkPreview(){
-      const panel=document.getElementById("bulkPreviewPanel"), list=document.getElementById("bulkPreviewList");
-      if(!panel||!list) return;
-      const awbs=(state.lastBulkAwbs||[]).filter(a=>state.parcels.some(p=>p.awb===a));
-      if(!awbs.length){ panel.style.display="none"; return; }
-      panel.style.display="block";
-      list.innerHTML=awbs.map(a=>{ const p=state.parcels.find(x=>x.awb===a); return `<div style="margin-bottom:14px">${awbLabelHtml(p)}<div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" onclick="printLabels(['${a}'])">Print ${a}</button></div></div>`; }).join("");
+    function riderDeliver(awb){
+      const p = state.parcels.find(x=>x.awb===awb); if(!p){ toast(`${awb} not found.`); return; }
+      const rider = riderById(state.activeRider);
+      if(!rider || p.rider !== rider.id){ toast(`${awb} is not on your delivery route — you can only action parcels assigned to you.`); return; }
+      if(p.status !== "Parcel out for delivery" && p.status !== "Return out for delivery"){ toast(`${awb} is not out for delivery.`); return; }
+      if (p.status === "Return out for delivery"){ finalizeDeliver(awb, ""); return; }
+      openSignaturePad(awb);
     }
 
-    function renderClientReportFull(){
-      const tbody=document.getElementById("clientReportFullRows"); if(!tbody) return;
-      const sel=document.getElementById("repStatus");
-      if(sel && !sel.dataset.filled){ sel.innerHTML=`<option value="">All statuses</option>`+STATUS_TAGS.map(s=>`<option value="${s}">${s}</option>`).join(""); sel.dataset.filled="1"; }
-      const search=(document.getElementById("repSearch")?.value||"").toLowerCase();
-      const status=document.getElementById("repStatus")?.value||"";
-      const from=document.getElementById("repFrom")?.value||"";
-      const to=document.getElementById("repTo")?.value||"";
-      const rows=state.parcels.filter(p=>p.clientId===state.client.id).filter(p=>{ const d=p.date||""; return (!from||d>=from)&&(!to||d<=to)&&(!status||p.status===status)&&`${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase().includes(search); });
-      tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${p.awb}</strong></td><td>${p.date||"-"}</td><td>${p.consignee}<br><span class="footer-note">${p.city}</span></td><td><span class="status ${statusClass(p)}">${p.status}</span></td><td>${money(p.cod)}</td><td>${money(p.fee)}</td><td>${agingLabel(agingHours(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
+    let sigCtx = null, sigDrawing = false, sigHasInk = false;
+    function openSignaturePad(awb){
+      sigCtx = awb; sigHasInk = false;
+      const modal = document.getElementById("sigModal");
+      document.getElementById("sigAwb").textContent = awb;
+      modal.classList.add("show");
+      const canvas = document.getElementById("sigPad");
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width; canvas.height = rect.height;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.lineWidth = 2.6; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#10201b";
+    }
+    function sigPos(e){
+      const canvas = document.getElementById("sigPad"); const r = canvas.getBoundingClientRect();
+      const t = e.touches && e.touches[0];
+      return { x:(t?t.clientX:e.clientX)-r.left, y:(t?t.clientY:e.clientY)-r.top };
+    }
+    function sigStart(e){ e.preventDefault(); sigDrawing=true; const ctx=document.getElementById("sigPad").getContext("2d"); const pnt=sigPos(e); ctx.beginPath(); ctx.moveTo(pnt.x,pnt.y); }
+    function sigMove(e){ if(!sigDrawing) return; e.preventDefault(); const ctx=document.getElementById("sigPad").getContext("2d"); const pnt=sigPos(e); ctx.lineTo(pnt.x,pnt.y); ctx.stroke(); sigHasInk=true; }
+    function sigEnd(){ sigDrawing=false; }
+    function clearSignature(){ const canvas=document.getElementById("sigPad"); canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height); sigHasInk=false; }
+    function cancelSignature(){ document.getElementById("sigModal").classList.remove("show"); sigCtx=null; }
+    function confirmSignature(){
+      if(!sigCtx) return;
+      if(!sigHasInk){ toast("Ask the consignee to sign before confirming."); return; }
+      const dataUrl = document.getElementById("sigPad").toDataURL("image/png");
+      const awb = sigCtx; document.getElementById("sigModal").classList.remove("show"); sigCtx=null;
+      finalizeDeliver(awb, dataUrl);
+    }
+    function finalizeDeliver(awb, signatureDataUrl){
+      const p = state.parcels.find(x=>x.awb===awb); if(!p) return;
+      const rider = riderById(state.activeRider);
+      const wasReturn = p.status === "Return out for delivery";
+      setParcelStatus(p, wasReturn ? "Parcel returned to consignee" : "Delivered");
+      if(!wasReturn && !p.steps.includes("COD collected")) p.steps.push("COD collected");
+      p.deliveredBy = rider.id;
+      p.cashReceived = false;        // stays in rider account until admin clears
+      p.exception = "";
+      if(!wasReturn && signatureDataUrl){ p.signature = signatureDataUrl; p.signedAt = time(); }
+      state.paymentLogs = Array.isArray(state.paymentLogs) ? state.paymentLogs : [];
+      if (!wasReturn) state.paymentLogs.unshift({ id: nextId("PAY", state.paymentLogs), clientId: p.clientId, type: "COD collected by rider", amount: p.cod, status: "Held by " + rider.name + " until admin clears", ref: awb });
+      saveState(); renderRider();
+      document.getElementById("deliverText").textContent = wasReturn ? `${awb} marked returned by ${rider.name}.` : `${awb} delivered by ${rider.name}. ${money(p.cod)} added to your account — held until admin clears it.`;
+      const f = document.getElementById("deliverFlash"); f.classList.add("show");
+      const tk = f.querySelector(".tk"); if(tk){ tk.style.animation="none"; void tk.offsetWidth; tk.style.animation=""; }
+      clearTimeout(window.__df); window.__df = setTimeout(()=>f.classList.remove("show"), 2200);
     }
 
-    function renderLatestInvoice(){
-      const el=document.getElementById("clientLatestInvoice"); if(!el) return;
-      const inv=state.invoices.filter(i=>i.clientId===state.client.id && i.status!=="Deleted")[0];
-      if(!inv){ el.innerHTML=`<div class="ops-card"><strong>No invoice yet</strong><p>Invoices created by admin will appear here.</p></div>`; return; }
-      el.innerHTML=`<div class="invoice-card"><div class="ops-card-head"><strong>${inv.id}</strong><span class="chip ${inv.status==="Paid"?"good":"warn"}">${inv.status}</span></div><p>${inv.summary}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${moneyBox("Payable",money(inv.payable),"due to you")}${moneyBox("Created",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div><div class="inline-actions" style="margin-top:12px"><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">Download CSV</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Download PDF</button><button class="action-btn" onclick="openTicketModal('${inv.parcelRefs[0]||""}')">Raise Ticket</button></div></div>`;
+    /* ---- strict CN pickup + manual order processing ---- */
+    function findParcelForPickup(awbRaw){
+      const rider = riderById(state.activeRider);
+      const awb = String(awbRaw||"").trim().toUpperCase();
+      if(!awb) return { error: "Enter an AWB / CN number first." };
+      if(!rider) return { error: "Select a rider first." };
+      const p = state.parcels.find(x => String(x.awb||"").toUpperCase() === awb);
+      if(!p) return { error: `${awb} was not found in the system.` };
+      const client = clientById(p.clientId);
+      const assignedToMe = (client && client.assignedRider === rider.id) || p.rider === rider.id;
+      if(!assignedToMe){ return { error: `${p.awb} is not assigned to you for pickup — check with admin.` }; }
+      if(p.status !== "New booked"){ return { error: `${p.awb} is already "${p.status}" — nothing to pick up.` }; }
+      return { parcel: p, rider };
     }
-    function downloadInvoiceCsv(id){ const inv=state.invoices.find(i=>i.id===id); if(!inv) return; const c=clientById(inv.clientId); const lines=[["Invoice",inv.id],["Client",c.name],["Status",inv.status],["COD",inv.cod],["Charges",inv.charges],["Payable",inv.payable],["Created",inv.createdAt],["Parcels",inv.parcelRefs.join(" ")]]; const csv=lines.map(r=>r.join(",")).join("\n"); const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download=`${inv.id}.csv`; a.click(); toast(`${inv.id} CSV downloaded.`); }
-    function printInvoice(id){ const inv=state.invoices.find(i=>i.id===id); if(!inv) return; const c=clientById(inv.clientId); const stage=document.getElementById("printStage"); stage.innerHTML=`<div style="font-family:sans-serif;color:#000;padding:24px"><h2>NovaX Invoice ${inv.id}</h2><p>Client: ${c.name} (${c.id})<br>Status: ${inv.status}<br>Created: ${inv.createdAt}</p><table style="width:100%;border-collapse:collapse" border="1" cellpadding="8"><tr><td>COD Collected</td><td>${money(inv.cod)}</td></tr><tr><td>Delivery Charges</td><td>${money(inv.charges)}</td></tr><tr><td><b>Payable</b></td><td><b>${money(inv.payable)}</b></td></tr><tr><td>Parcels</td><td>${inv.parcelRefs.join(", ")}</td></tr></table></div>`; stage.style.display="block"; window.print(); setTimeout(()=>{ stage.style.display="none"; },500); }
-    function exportReportCsv(){
-      const rows=state.parcels.filter(p=>p.clientId===state.client.id);
-      const head=["AWB","Date","Consignee","City","Status","COD","Fee","AgingHours"];
-      const csv=[head.join(",")].concat(rows.map(p=>[p.awb,p.date,`"${p.consignee}"`,p.city,`"${p.status}"`,p.cod,p.fee,Math.round(agingHours(p))].join(","))).join("\n");
-      const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="novax-report.csv"; a.click(); toast("Report CSV downloaded.");
+    function scanPickup(awbRaw){
+      const res = findParcelForPickup(awbRaw);
+      if(res.error){ toast(res.error); return false; }
+      const { parcel, rider } = res;
+      parcel.rider = rider.id;
+      setParcelStatus(parcel, "Collected by rider");
+      saveState(); renderRider();
+      toast(`${parcel.awb} marked picked up by ${rider.name}.`);
+      return true;
     }
-    function exportReportPdf(){
-      const rows=state.parcels.filter(p=>p.clientId===state.client.id);
-      const stage=document.getElementById("printStage");
-      stage.innerHTML=`<div style="font-family:sans-serif;color:#000;padding:24px"><h2>NovaX Full Report — ${state.client.name}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th></tr>${rows.map(p=>`<tr><td>${p.awb}</td><td>${p.date}</td><td>${p.consignee}</td><td>${p.status}</td><td>${money(p.cod)}</td></tr>`).join("")}</table></div>`;
-      stage.style.display="block"; window.print(); setTimeout(()=>{ stage.style.display="none"; },500);
-    }
-
-    /* Tickets — pushed into shared state.tickets so admin windows pick them up */
-    function openTicketModal(awb){ document.getElementById("ticketAwbField").value=awb||state.selectedAwb||""; document.getElementById("ticketFromField").value=`Seller (${state.client.name})`; document.getElementById("ticketMsgField").value=""; document.getElementById("ticketModal").classList.add("show"); }
-    function closeTicketModal(){ document.getElementById("ticketModal").classList.remove("show"); }
-    function submitClientTicket(){
-      const dept=document.getElementById("ticketToField").value;
-      const msg=document.getElementById("ticketMsgField").value.trim();
-      const awb=document.getElementById("ticketAwbField").value.trim();
-      const tier=document.getElementById("ticketTierField").value;
-      if(!msg){ toast("Ticket message is required."); return; }
-      const map={ "Sales":{to:"Sales",branch:"Admin"}, "Finance":{to:"Finance Manager",branch:"Finance"}, "Warehouse":{to:"Warehouse Manager",branch:"Warehouse"}, "Karachi Operations":{to:"Karachi Branch Manager",branch:"Karachi Hub"}, "Lahore Operations":{to:"Lahore Branch Manager",branch:"Lahore Hub"}, "Others":{to:"Admin Control",branch:"Admin"} };
-      const m=map[dept]||map["Others"];
-      const t={ id:nextId("TCK",state.tickets), sourceKey:`client:${Date.now()}`, tier, title:msg.length>42?msg.slice(0,42)+"…":msg, from:`Seller ${state.client.name}`, to:m.to, branch:m.branch, awb, message:msg, createdAt:`${new Date().toISOString().slice(0,10)} ${time()}`, ageHours:0, status:"Open", escalated:false, replies:[] };
-      state.tickets.unshift(t);
-      state.ticketNotifications.unshift({ text:`${t.id} created by ${t.from} → ${t.to}.`, at:t.createdAt, level:tier==="emergency"?"bad":"info" });
-      saveState(); render(); closeTicketModal();
-      toast(`${t.id} sent to ${m.to}.`);
-    }
-
-    /* Wallet */
-    const WALLET_FEE={ "24h":0.001, "12h":0.003, "instant":0.007 };
-    function walletFeeRate(s){ return WALLET_FEE[s] ?? 0.001; }
-    function walletFeePct(s){ return s==="instant"?"0.7%":s==="12h"?"0.3%":"0.1%"; }
-    function walletSpeedLabel(s){ return s==="instant"?"Instant 2-3 hours":s==="12h"?"12 hours":"24 hours"; }
-    function walletBalance(id){ return Number(clientById(id).walletBalance||0); }
-    function selectWalletSpeed(s){ state.walletWithdrawSpeed=s; saveState(); renderClientWallet(); }
-    function renderClientWallet(){
-      const bt=document.getElementById("walletBalanceText"); if(!bt) return;
-      const c=clientById(state.client.id); const balance=Number(c.walletBalance||0);
-      bt.textContent=money(balance); bt.classList.remove("count-up"); void bt.offsetWidth; bt.classList.add("count-up");
-      const push=state.lastWalletPush;
-      document.getElementById("walletPushNote").textContent=push?`Last credited ${money(push.amount)} from admin (${push.invoice}) at ${push.at}`:"No admin credit yet";
-      const amtInput=document.getElementById("withdrawAmount");
-      if(amtInput && (!amtInput.value || Number(amtInput.value)>balance)) amtInput.value=balance||"";
-      const speed=state.walletWithdrawSpeed||"";
-      document.querySelectorAll(".tier-card").forEach(t=>t.classList.toggle("active",t.dataset.speed===speed));
-      const summary=document.getElementById("withdrawSummary");
-      const useAmt=Math.min(Number(amtInput?.value||balance),balance);
-      if(speed && balance>0 && useAmt>0){
-        const fee=Math.round(useAmt*walletFeeRate(speed)); const net=useAmt-fee;
-        summary.style.display="block";
-        summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div><div class="field" style="margin-top:12px;max-width:380px"><label>IBAN</label><input id="withdrawIban" placeholder="PK00 BANK 0000 0000 0000 0000"></div><button class="action-btn" style="margin-top:12px" onclick="confirmWalletWithdraw()">Confirm Withdrawal</button>`;
-      } else { summary.style.display="none"; }
-      document.getElementById("withdrawHistory").innerHTML=(state.walletWithdrawals||[]).filter(w=>w.clientId===c.id).map(w=>`<div class="ops-card"><div class="ops-card-head"><strong>${w.id}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${w.status}</span></div><p>${money(w.net)} to ${w.iban} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}</div></div>`).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Pick a payout speed above to withdraw.</p></div>`;
-    }
-    function confirmWalletWithdraw(){
-      const c=clientById(state.client.id); const balance=Number(c.walletBalance||0);
-      const amt=Math.min(Number(document.getElementById("withdrawAmount").value||0),balance);
-      const speed=state.walletWithdrawSpeed; const iban=document.getElementById("withdrawIban")?.value.trim();
-      if(!amt||amt<1){ toast("Enter a valid amount."); return; }
-      if(!speed){ toast("Select a payout speed."); return; }
-      if(!iban){ toast("IBAN is required."); return; }
-      const fee=Math.round(amt*walletFeeRate(speed)); const net=amt-fee;
-      c.walletBalance=Math.max(0,balance-amt);
-      state.walletWithdrawals.unshift({ id:nextId("WDR",state.walletWithdrawals), clientId:c.id, amount:amt, fee, net, iban, speed, status:"Pending admin payout", createdAt:`${new Date().toISOString().slice(0,10)} ${time()}` });
-      state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:c.id, type:"Wallet withdrawal requested", amount:amt, status:`${money(net)} net after ${money(fee)} fee`, ref:walletSpeedLabel(speed) });
-      state.walletWithdrawSpeed=""; saveState();
-      document.getElementById("walletDoneText").textContent=`${money(net)} will reach ${iban} via ${walletSpeedLabel(speed)} payout. NovaX fee ${money(fee)}.`;
-      openWalletDone(); render();
-    }
-    function openWalletDone(){ const m=document.getElementById("walletDoneModal"); m.classList.add("show"); const t=m.querySelector(".tick"); if(t){ t.style.animation="none"; void t.offsetWidth; t.style.animation=""; } }
-    function closeWalletDone(){ document.getElementById("walletDoneModal").classList.remove("show"); }
-
-    /* Booking */
-    function bookParcel(o={}){
-      const cod=o.cod!==undefined?Number(o.cod):3500+Math.round(Math.random()*11000);
-      const clientId=o.clientId||state.client.id||"CL-0001"; const client=clientById(clientId);
-      const awb=nextAwbForClient(clientId);
-      state.parcels.unshift({ awb, clientId, date:o.date||new Date().toISOString().slice(0,10), consignee:o.consignee||"New COD Order", city:o.city||["Lahore","Karachi","Islamabad","Rawalpindi"][Math.floor(Math.random()*4)], cod, fee:o.fee||client.rate||250, phone:o.phone||"", pickupCity:o.pickupCity||"Karachi", service:o.service||"COD Standard", category:o.category||"", fragile:o.fragile||"No", weight:o.weight||"0.8 kg", paymentMode:o.paymentMode||"COD", orderId:o.orderId||"", address:o.address||"Address pending", status:"New booked", statusAgeHours:0, statusSince:new Date().toISOString(), stage:0, totalStages:STATUS_TAGS.length-1, rider:o.rider||"", branch:"Karachi Hub", risk:8, updated:time(), exception:"", source:o.source||"", steps:["New booked"] });
-      state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId, type:"COD expected", amount:cod, status:"Awaiting delivery", ref:awb });
-      state.selectedAwb=awb; state.lastGeneratedAwb=awb; saveState(); render();
-      return awb;
-    }
-    function quickBooking(){
-      const required=["bookingName","bookingPhone","bookingPickupCity","bookingCity","bookingCod","bookingService","bookingCategory","bookingFragile","bookingWeight","bookingPaymentMode","bookingAddress"];
-      if(required.some(id=>!String(document.getElementById(id).value||"").trim())){ toast("All booking fields are mandatory before AWB creation."); return; }
-      let phone=document.getElementById("bookingPhone").value.replace(/\D/g,"");
-      if(phone.length===10&&phone.startsWith("3")) phone="0"+phone;
-      const awb=bookParcel({ consignee:document.getElementById("bookingName").value.trim(), city:document.getElementById("bookingCity").value, cod:Number(document.getElementById("bookingCod").value)||6500, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address:document.getElementById("bookingAddress").value.trim() });
-      openAwbModal(awb); toast(`${awb} booked. Print the AWB from the popup.`);
-    }
-    function csvEscape(value){
-      const text=String(value??"");
-      return /[",\n\r]/.test(text)?`"${text.replace(/"/g,'""')}"`:text;
-    }
-    function downloadBulkTemplate(){
-      const rows=[
-        ["consignee","phone","city","address","cod","weight","order_id","product","payment_mode"],
-        ["Ahmed Customer","03113323923","Lahore","House 21 Main Market Lahore","2500","0.8 kg","ORDER-1001","Black hoodie size medium","COD"],
-        ["Sara Customer","03112223344","Karachi","Block 6 PECHS Karachi","0","1 kg","ORDER-1002","Prepaid skincare parcel","Non COD Prepaid"]
-      ];
-      const csv="\ufeff"+rows.map(row=>row.map(csvEscape).join(",")).join("\r\n")+"\r\n";
-      const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
-      const a=document.createElement("a");
-      a.href=url;
-      a.download="NovaX-bulk-booking-template.csv";
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1000);
-      toast("CSV format downloaded. Open it with Numbers, Excel, or Google Sheets.");
-    }
-    function parseCsv(text){
-      const rows=[]; let row=[], cell="", q=false;
-      for(let i=0;i<text.length;i++){
-        const ch=text[i], next=text[i+1];
-        if(ch==='"' && q && next==='"'){ cell+='"'; i++; continue; }
-        if(ch==='"'){ q=!q; continue; }
-        if(ch==="," && !q){ row.push(cell.trim()); cell=""; continue; }
-        if((ch==="\n"||ch==="\r") && !q){ if(ch==="\r"&&next==="\n") i++; row.push(cell.trim()); if(row.some(Boolean)) rows.push(row); row=[]; cell=""; continue; }
-        cell+=ch;
-      }
-      row.push(cell.trim()); if(row.some(Boolean)) rows.push(row);
-      return rows;
-    }
-    function validateBulkRows(rows){
-      const headers=(rows[0]||[]).map(h=>h.toLowerCase().trim());
-      const required=["consignee","phone","city","address","cod","weight","order_id","product","payment_mode"];
-      const missing=required.filter(h=>!headers.includes(h));
-      if(missing.length) return { errors:[`Missing columns: ${missing.join(", ")}`], records:[] };
-      const idx=name=>headers.indexOf(name);
-      const seen=new Set(), errors=[], records=[];
-      const existingOrderIds=new Set((state.parcels||[]).map(p=>p.orderId).filter(Boolean));
-      rows.slice(1).forEach((row,i)=>{
-        const line=i+2;
-        const rec={
-          consignee:row[idx("consignee")]||"",
-          phone:row[idx("phone")]||"",
-          city:row[idx("city")]||"",
-          address:row[idx("address")]||"",
-          cod:Number(row[idx("cod")]||0),
-          weight:row[idx("weight")]||"",
-          orderId:row[idx("order_id")]||"",
-          product:row[idx("product")]||"",
-          paymentMode:row[idx("payment_mode")]||""
-        };
-        if(!rec.consignee||!rec.phone||!rec.city||!rec.address||!rec.weight||!rec.orderId||!rec.product||!rec.paymentMode) errors.push(`Line ${line}: every field is mandatory.`);
-        rec.phone=rec.phone.replace(/\D/g,""); if(rec.phone.length===10&&rec.phone.startsWith("3")) rec.phone="0"+rec.phone;
-        if(!["Karachi","Lahore","Islamabad","Rawalpindi"].includes(rec.city)) errors.push(`Line ${line}: city is not serviceable yet.`);
-        if(Number.isNaN(rec.cod)||rec.cod<0) errors.push(`Line ${line}: COD must be 0 or higher.`);
-        if(!["COD","Non COD Prepaid"].includes(rec.paymentMode)) errors.push(`Line ${line}: payment_mode must be COD or Non COD Prepaid.`);
-        if(seen.has(rec.orderId)) errors.push(`Line ${line}: duplicate order_id ${rec.orderId} in this file.`);
-        else if(existingOrderIds.has(rec.orderId)) errors.push(`Line ${line}: order_id ${rec.orderId} was already booked. This sheet looks like it was already uploaded.`);
-        seen.add(rec.orderId);
-        records.push(rec);
-      });
-      return { errors, records };
-    }
-    function renderBulkValidation(result){
-      const el=document.getElementById("bulkValidationList");
-      if(!el) return;
-      if(!result){ el.innerHTML=`<div class="ops-card"><strong>Waiting for CSV</strong><p>Download the template, fill it, and upload it here.</p></div>`; return; }
-      if(result.errors.length){
-        el.innerHTML=result.errors.map(err=>`<div class="ops-card alert-row"><strong>Blocked</strong><p>${err}</p></div>`).join("");
+    function manualUpdateCn(){
+      const awbInput = document.getElementById("manualAwbInput");
+      const actionSel = document.getElementById("manualActionSelect");
+      const awb = (awbInput.value||"").trim();
+      const action = actionSel.value;
+      if(!awb){ toast("Enter an AWB / CN number first."); return; }
+      if(action === "pickup"){
+        if(scanPickup(awb)) awbInput.value = "";
         return;
       }
-      el.innerHTML=`<div class="ops-card"><strong>${result.records.length} clean rows</strong><p>All phones, cities, COD values, products, and order IDs passed validation.</p></div>`;
+      const p = state.parcels.find(x => String(x.awb||"").toUpperCase() === awb.toUpperCase());
+      const rider = riderById(state.activeRider);
+      if(!p){ toast(`${awb} was not found in the system.`); return; }
+      if(!rider || p.rider !== rider.id){ toast(`${p.awb} is not on your delivery route — you can only action parcels assigned to you.`); return; }
+      if(p.status !== "Parcel out for delivery" && p.status !== "Return out for delivery"){ toast(`${p.awb} is not out for delivery.`); return; }
+      if(action === "delivered") riderDeliver(p.awb);
+      else if(action === "refused") riderPhotoThen(p.awb, "refused");
+      else if(action === "cnr") riderPhotoThen(p.awb, "notresponding");
+      awbInput.value = "";
     }
-    async function uploadBulkCsv(){
-      const file=document.getElementById("bulkCsvInput")?.files?.[0];
-      if(!file){ toast("Select a CSV file first."); return; }
-      const result=validateBulkRows(parseCsv(await file.text()));
-      renderBulkValidation(result);
-      if(result.errors.length){ toast("CSV blocked. Fix the highlighted rows."); return; }
-      const awbs=result.records.map(r=>bookParcel({ consignee:r.consignee, city:r.city, cod:r.cod, phone:r.phone, weight:r.weight, orderId:r.orderId, category:r.product, paymentMode:r.paymentMode, address:r.address }));
-      state.lastBulkAwbs=awbs; saveState(); renderBulkPreview();
-      toast(`${awbs.length} AWBs created from CSV.`);
-    }
-    function requestRedelivery(awb){
-      const p=state.parcels.find(x=>x.awb===awb); if(!p) return;
-      const fb=document.getElementById("redeliveryFeedback")?.value.trim()||"Client requested redelivery.";
-      setParcelStatus(p,"Reattempt"); p.exception="Client requested redelivery after review"; p.clientFeedback=fb; p.risk=Math.max(20,p.risk-18);
-      state.operationsIssues.unshift({ id:nextId("OPS",state.operationsIssues), branch:p.branch, urgency:"urgent", problem:"Client requested reattempt with consignee feedback", awb:p.awb, openedHours:0, resolved:false });
-      saveState(); render(); toast(`${awb} sent to operations for redelivery.`);
-    }
-    function applyClientDateRange(){ state.clientDateFrom=document.getElementById("clientDateFrom").value||state.clientDateFrom; state.clientDateTo=document.getElementById("clientDateTo").value||state.clientDateTo; saveState(); render(); toast(`History filtered ${state.clientDateFrom} to ${state.clientDateTo}.`); }
-    function requestPayout(){ const cm=clientMetrics(); const id=nextId("PAY",state.paymentLogs); state.paymentLogs.unshift({ id, clientId:state.client.id||"CL-0001", type:"Payout requested", amount:cm.payable, status:"Pending admin approval", ref:`PAYOUT-${id}` }); saveState(); render(); showClientTab("payments"); toast("Payout request sent to admin."); }
 
-    /* ===== Store Integrations + New Booked bulk print ===== */
-    function activeClientId(){ return (state.client&&state.client.id)||"CL-0001"; }
-    function storeConn(platform){ return (state.storeConnections||[]).find(c=>c.clientId===activeClientId()&&c.platform===platform); }
-    function platformLabel(p){ return p==="shopify"?"Shopify":p==="woocommerce"?"WooCommerce":"Custom Web/API"; }
-    function connectStore(platform){
-      if(!Array.isArray(state.storeConnections)) state.storeConnections=[];
-      const map={ shopify:{url:"shopifyStoreUrl",fields:{token:"shopifyToken"}}, woocommerce:{url:"wooStoreUrl",fields:{key:"wooKey",secret:"wooSecret"}}, web:{url:"webEndpoint",fields:{key:"webKey"}} };
-      const cfg=map[platform]; if(!cfg) return;
-      const storeUrl=(document.getElementById(cfg.url).value||"").trim();
-      if(!storeUrl){ toast("Enter your store URL / endpoint first."); return; }
-      const creds={}; Object.keys(cfg.fields).forEach(k=>{ creds[k]=(document.getElementById(cfg.fields[k]).value||"").trim(); });
-      let conn=storeConn(platform);
-      if(!conn){ conn={ clientId:activeClientId(), platform }; state.storeConnections.push(conn); }
-      conn.storeUrl=storeUrl; conn.creds=creds; conn.connected=true; conn.connectedAt=time();
-      saveState(); renderIntegrations(); toast(platformLabel(platform)+" connection saved.");
+    /* ---- camera scan modal (BarcodeDetector where supported) ---- */
+    let scanStream = null, scanRAF = null, scanDetector = null;
+    function stopScan(){
+      if(scanRAF){ cancelAnimationFrame(scanRAF); scanRAF = null; }
+      if(scanStream){ scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+      document.getElementById("scanModal").classList.remove("show");
     }
-    function syncStoreOrders(platform){
-      const conn=storeConn(platform);
-      if(!conn||!conn.connected){ toast("Save the "+platformLabel(platform)+" connection first."); return; }
-      const names=["Ayesha Tariq","Bilal Hussain","Fatima Noor","Usman Raza","Hina Shah","Kamran Ali"];
-      const cities=["Lahore","Karachi","Islamabad","Rawalpindi"];
-      const n=2+Math.floor(Math.random()*3); const created=[];
-      for(let i=0;i<n;i++){
-        const awb=bookParcel({ consignee:names[Math.floor(Math.random()*names.length)], city:cities[Math.floor(Math.random()*cities.length)], cod:1500+Math.round(Math.random()*9000), phone:"03"+(100000000+Math.floor(Math.random()*899999999)), service:"COD Standard", category:"Fashion", weight:"0.8 kg", paymentMode:"COD", address:"Imported from "+platformLabel(platform), orderId:platform.toUpperCase()+"-"+String(Date.now()).slice(-6)+i, source:platformLabel(platform) });
-        created.push(awb);
+    async function openScanModal(){
+      const modal = document.getElementById("scanModal");
+      const note = document.getElementById("scanStatusNote");
+      modal.classList.add("show");
+      note.textContent = "Point the camera at the parcel's barcode or QR code.";
+      if(!("BarcodeDetector" in window)){
+        note.textContent = "Camera scanning isn't supported in this browser. Use the Order Processing box below to enter the AWB manually.";
+        return;
       }
-      conn.lastSync=time(); conn.importedCount=(conn.importedCount||0)+created.length; state.lastBulkAwbs=created;
-      saveState(); render(); toast(created.length+" "+platformLabel(platform)+" order(s) imported as new bookings.");
+      try{
+        scanDetector = new window.BarcodeDetector({ formats: ["qr_code","code_128","code_39","ean_13","ean_8","upc_a","upc_e"] });
+        scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        const video = document.getElementById("scanVideo");
+        video.srcObject = scanStream;
+        await video.play();
+        const tick = async () => {
+          if(!scanStream) return;
+          try{
+            const codes = await scanDetector.detect(video);
+            if(codes && codes.length){
+              const value = codes[0].rawValue;
+              stopScan();
+              scanPickup(value);
+              return;
+            }
+          }catch(e){ /* keep trying */ }
+          scanRAF = requestAnimationFrame(tick);
+        };
+        scanRAF = requestAnimationFrame(tick);
+      }catch(e){
+        note.textContent = "Camera access failed or was denied. Use the Order Processing box below to enter the AWB manually.";
+      }
     }
-    function renderIntegrations(){
-      const chip=(p,id)=>{ const c=storeConn(p); const el=document.getElementById(id); if(!el) return; const on=c&&c.connected; el.textContent=on?("Connected"+(c.importedCount?(" &middot; "+c.importedCount+" imported"):"")):"Not connected"; el.className="chip "+(on?"good":""); };
-      chip("shopify","shopifyStatusChip"); chip("woocommerce","wooStatusChip"); chip("web","webStatusChip");
-      const prefill={shopify:"shopifyStoreUrl",woocommerce:"wooStoreUrl",web:"webEndpoint"};
-      Object.keys(prefill).forEach(p=>{ const c=storeConn(p); const el=document.getElementById(prefill[p]); if(c&&el&&!el.value) el.value=c.storeUrl||""; });
-    }
-    function newBookedParcels(){ return (state.parcels||[]).filter(p=>p.clientId===activeClientId()&&p.status==="New booked"); }
-    function renderNewBookedList(){
-      const list=document.getElementById("newBookedList"); if(!list) return;
-      const items=newBookedParcels();
-      if(!items.length){ list.innerHTML=`<p class="footer-note">No new booked parcels yet. Create a booking or sync your store to see printable AWBs here.</p>`; return; }
-      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${p.awb}" checked><span style="flex:1"><strong>${p.awb}</strong> &middot; ${p.consignee} &middot; ${p.city} &middot; ${money(p.cod)}${p.source?` &middot; <span class="chip info">${p.source}</span>`:""}</span><button class="ghost-btn" onclick="printLabels(['${p.awb}'])">Print</button></label>`).join("");
-    }
-    function selectAllNewBooked(){ const boxes=document.querySelectorAll(".newbooked-check"); const allOn=Array.from(boxes).every(b=>b.checked); boxes.forEach(b=>{ b.checked=!allOn; }); }
-    function printNewBookedSelected(){ const awbs=Array.from(document.querySelectorAll(".newbooked-check")).filter(b=>b.checked).map(b=>b.value); if(!awbs.length){ toast("Select at least one new booked AWB."); return; } printLabels(awbs); }
-    function render(){
-      renderMetrics(); renderClientStatusBoard(); renderClientParcels(); renderJourney(); renderWallets(); renderAi();
-      renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview();
-      renderIntegrations(); renderNewBookedList();
-      tickMeters();
-    }
-    function tickMeters(){ requestAnimationFrame(()=>{ document.querySelectorAll(".meter>span").forEach(s=>{ const w=s.style.width; s.style.width="0"; requestAnimationFrame(()=>{ s.style.width=w; }); }); }); }
-    function showClientTab(id){ state.activeClientTab=id; saveState(); renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); tickMeters(); if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
-    function toast(msg){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
-    /* Events */
-    document.querySelectorAll(".client-tab").forEach(b=>b.addEventListener("click",()=>showClientTab(b.dataset.clientTab)));
-    document.querySelectorAll("[data-client-tab]:not(.client-tab)").forEach(b=>b.addEventListener("click",()=>showClientTab(b.dataset.clientTab)));
-    document.getElementById("clientMenuToggle").addEventListener("click",()=>{ const m=document.getElementById("clientMenu"); const o=m.classList.toggle("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded",String(o)); });
-    document.getElementById("clientSearch").addEventListener("input",renderClientParcels);
-    document.getElementById("applyDateRangeBtn").addEventListener("click",applyClientDateRange);
-    document.getElementById("bookParcelBtn").addEventListener("click",()=>showClientTab("newBooking"));
-    document.getElementById("quickBookingBtn").addEventListener("click",quickBooking);
-    document.getElementById("downloadBulkTemplateBtn").addEventListener("click",downloadBulkTemplate);
-    document.getElementById("bulkUploadBtn").addEventListener("click",uploadBulkCsv);
-    document.getElementById("bulkPrintAllBtn").addEventListener("click",()=>printLabels(state.lastBulkAwbs||[]));
-    document.getElementById("printAwbBtn").addEventListener("click",printAwb);
-    document.getElementById("newBookedSelectAllBtn")?.addEventListener("click",selectAllNewBooked);
-    document.getElementById("newBookedPrintBtn")?.addEventListener("click",printNewBookedSelected);
-    document.getElementById("awbModalPrint").addEventListener("click",()=>printLabels([state.lastGeneratedAwb]));
-    document.getElementById("openTicketBtn").addEventListener("click",()=>openTicketModal(state.selectedAwb));
-    document.getElementById("requestPayoutBtn")?.addEventListener("click",requestPayout);
-    document.getElementById("reportCsvBtn").addEventListener("click",exportReportCsv);
-    document.getElementById("reportPdfBtn").addEventListener("click",exportReportPdf);
-    document.getElementById("repClearBtn").addEventListener("click",()=>{ ["repSearch","repFrom","repTo"].forEach(i=>{const e=document.getElementById(i);if(e)e.value="";}); const s=document.getElementById("repStatus"); if(s)s.value=""; renderClientReportFull(); });
-    ["repSearch","repStatus","repFrom","repTo"].forEach(id=>{ const e=document.getElementById(id); if(e) e.addEventListener(e.tagName==="SELECT"?"change":"input",renderClientReportFull); });
-    document.querySelectorAll(".tier-card").forEach(t=>t.addEventListener("click",()=>selectWalletSpeed(t.dataset.speed)));
-    document.getElementById("withdrawAmount").addEventListener("input",renderClientWallet);
-    document.getElementById("askAiBtn").addEventListener("click",()=>{ renderAi(); toast("AI answered from live portal data."); });
-    document.getElementById("askAiBtn2").addEventListener("click",()=>{ renderAi(); toast("AI checked live parcel data."); });
-    document.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{ if(b.textContent.trim()==="Invite User") toast("Invite user flow opened for this workspace."); }));
-    setInterval(()=>{ const el=document.getElementById("clockB"); if(el) el.textContent=`Live ${time()}`; },1000);
-
-    Object.assign(window,{ openClientParcelJourney, selectParcel, requestRedelivery, openAwbModal, closeAwbModal, openTicketModal, closeTicketModal, submitClientTicket, downloadInvoiceCsv, printInvoice, printLabels, confirmWalletWithdraw, selectWalletSpeed, closeWalletDone });
-    window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); render(); } });
-    /* ===== NovaX secure per-seller data layer (RLS-scoped tables) ===== */
+    document.getElementById("riderSelect").addEventListener("change", e => { state.activeRider = e.target.value; saveState(); renderRider(); });
+    document.getElementById("riderRefreshBtn").addEventListener("click", () => { state = loadState(); state.activeRider = state.activeRider || (state.riders[0] && state.riders[0].id) || ""; renderRider(); toast("Route refreshed from portal."); });
+    window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); state.activeRider = state.activeRider || (state.riders[0] && state.riders[0].id) || ""; renderRider(); } });
+    /* ===== NovaX secure rider data layer (live tables, rider-scoped) ===== */
     (function(){
       var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
       var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
       if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, local only."); return; }
       var sb; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); return; }
       window.__nvSb=sb;
-      var MY=null, loaded=false, shadow={};
-      var TAGS=(typeof STATUS_TAGS!=="undefined"&&STATUS_TAGS&&STATUS_TAGS.length)?STATUS_TAGS:["New booked"];
-      function stageOf(s){ var i=TAGS.indexOf(s); return i<0?0:i; }
-      function stepsOf(s){ var i=stageOf(s); return i<=0?[TAGS[0]]:TAGS.slice(0,i+1); }
-      function hrs(t){ if(!t) return 0; var ms=Date.now()-new Date(t).getTime(); return Number.isFinite(ms)?Math.max(0,ms/3600000):0; }
+      var RIDER_UUID=null, loaded=false, subscribed=false, shadow={};
+      var TERMINAL=["Delivered","Refused","Consignee not available","Parcel returned to consignee"];
       function dpart(t){ return t?String(t).slice(0,10):new Date().toISOString().slice(0,10); }
       function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
-      function dtpart(t){ return t?String(t).replace("T"," ").slice(0,16):""; }
-      function pmeta(p){ return { service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, fragile:p.fragile, paymentMode:p.paymentMode, orderId:p.orderId, source:p.source, branch:p.branch, risk:p.risk, steps:p.steps, clientFeedback:p.clientFeedback, returnProof:p.returnProof }; }
-      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"" }; }
-      function mapInvoice(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.code||r.id, clientId:MY, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:Number(r.cod_total||0), charges:Number(r.fee_total||0), payable:Number(r.net_payable||0), status:r.status||"", createdAt:dtpart(r.created_at), paidAt:m.paidAt||"", walletPushedAt:m.walletPushedAt||"", summary:m.summary||"" }; }
-      function mapTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:MY, title:r.subject||"", message:r.body||"", status:r.status||"Open", createdAt:dtpart(r.created_at), tier:m.tier||"medium", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", replies:Array.isArray(m.replies)?m.replies:[], escalated:!!m.escalated, sourceKey:m.sourceKey||"" }; }
-      function mapWd(r){ return { _uuid:r.id, id:r.id, clientId:MY, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at) }; }
-      function mapPl(r){ return { _uuid:r.id, id:r.id, clientId:MY, type:r.type||"", amount:Number(r.amount||0), status:r.status||"", ref:r.reference||"", createdAt:dtpart(r.created_at) }; }
-      function mapSc(r){ var m=r.meta||{}; return { _uuid:r.id, clientId:MY, platform:r.platform, storeUrl:r.store_url||"", connected:!!r.connected, importedCount:Number(r.imported_count||0), creds:m.creds||{}, connectedAt:m.connectedAt||"", lastSync:m.lastSync||"" }; }
-      function loadAll(){
-        return Promise.all([
-          sb.from("clients").select("*").eq("id",MY).maybeSingle(),
-          sb.from("parcels").select("*").order("booked_at",{ascending:false}),
-          sb.from("invoices").select("*").order("created_at",{ascending:false}),
-          sb.from("tickets").select("*").order("created_at",{ascending:false}),
-          sb.from("withdrawals").select("*").order("created_at",{ascending:false}),
-          sb.from("payment_logs").select("*").order("created_at",{ascending:false}),
-          sb.from("store_connections").select("*")
-        ]).then(function(res){
-          var c=res[0]&&res[0].data;
-          var name=(c&&c.name)||(state.client&&state.client.name)||"My Store";
-          var rate=Number((c&&c.rate)||250), bal=Number((c&&c.wallet_balance)||0), rc=(c&&c.rate_card)||{};
-          state.client={ id:MY, name:name, walletBalance:bal, rate:rate, rateCard:rc, premiumTier:(c&&c.status)||"", walletTopup:0, shippingDue:0, subAccounts:0 };
-          state.clients=[{ id:MY, name:name, owner:(c&&c.owner)||"", city:(c&&c.city)||"", status:(c&&c.status)||"Active", tier:(c&&c.status)||"", rate:rate, rateCard:rc, walletBalance:bal, risk:Number((c&&c.risk_score)||0), health:90, problemsResolved:0 }];
-          state.parcels=((res[1]&&res[1].data)||[]).map(mapParcel);
-          state.invoices=((res[2]&&res[2].data)||[]).map(mapInvoice);
-          state.tickets=((res[3]&&res[3].data)||[]).map(mapTicket);
-          state.walletWithdrawals=((res[4]&&res[4].data)||[]).map(mapWd);
-          state.paymentLogs=((res[5]&&res[5].data)||[]).map(mapPl);
-          state.storeConnections=((res[6]&&res[6].data)||[]).map(mapSc);
-          shadow={}; state.parcels.forEach(function(p){ if(p._uuid) shadow[p._uuid]=(p.status||"")+"|"+(p.exception||""); });
-          loaded=true;
-          try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); }catch(e){}
-          try{ render(); }catch(e){ console.warn("NovaX render",e); }
-        }).catch(function(e){ console.warn("NovaX load failed",e); });
-      }
-      function syncNew(){
-        if(!loaded||!MY) return;
-        (state.parcels||[]).forEach(function(p){ if(p._uuid||p._pending) return; p._pending=true; sb.from("parcels").insert({ awb:p.awb, client_id:MY, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:new Date().toISOString(), updated_at:new Date().toISOString(), meta:pmeta(p) }).select("id").maybeSingle().then(function(r){ p._pending=false; if(r&&r.error){ console.warn("NovaX parcel insert",r.error.message); return; } if(r&&r.data){ p._uuid=r.data.id; shadow[p._uuid]=(p.status||"")+"|"+(p.exception||""); } }); });
-        (state.parcels||[]).forEach(function(p){ if(!p._uuid) return; var sig=(p.status||"")+"|"+(p.exception||""); if(shadow[p._uuid]===sig) return; shadow[p._uuid]=sig; sb.from("parcels").update({ status:p.status||"", exception:p.exception||"", updated_at:new Date().toISOString(), meta:pmeta(p) }).eq("id",p._uuid).then(function(r){ if(r&&r.error) console.warn("NovaX parcel update",r.error.message); }); });
-        (state.walletWithdrawals||[]).forEach(function(w){ if(w._uuid||w._pending) return; w._pending=true; sb.from("withdrawals").insert({ client_id:MY, amount:Number(w.amount||0), fee:Number(w.fee||0), net:Number(w.net||0), iban:w.iban||"", speed:w.speed||"", status:w.status||"Pending admin payout" }).select("id").maybeSingle().then(function(r){ w._pending=false; if(r&&r.data) w._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX withdrawal insert",r.error.message); }); });
-        (state.tickets||[]).forEach(function(t){ if(t._uuid||t._pending) return; t._pending=true; sb.from("tickets").insert({ client_id:MY, subject:t.title||"", body:t.message||"", status:t.status||"Open", meta:{ code:t.id, tier:t.tier, from:t.from, to:t.to, branch:t.branch, awb:t.awb, replies:t.replies||[], sourceKey:t.sourceKey } }).select("id").maybeSingle().then(function(r){ t._pending=false; if(r&&r.data) t._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX ticket insert",r.error.message); }); });
-        (state.paymentLogs||[]).forEach(function(pl){ if(pl._uuid||pl._pending) return; pl._pending=true; sb.from("payment_logs").insert({ client_id:MY, type:pl.type||"", amount:Number(pl.amount||0), status:pl.status||"", reference:pl.ref||"" }).select("id").maybeSingle().then(function(r){ pl._pending=false; if(r&&r.data) pl._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX paylog insert",r.error.message); }); });
-        (state.storeConnections||[]).forEach(function(c){ if(c._pending) return; var row={ client_id:MY, platform:c.platform, store_url:c.storeUrl||"", connected:!!c.connected, imported_count:Number(c.importedCount||0), meta:{ creds:c.creds||{}, connectedAt:c.connectedAt||"", lastSync:c.lastSync||"" }, updated_at:new Date().toISOString() }; var sig=JSON.stringify(row); if(c._sig===sig) return; c._sig=sig; if(c._uuid){ sb.from("store_connections").update(row).eq("id",c._uuid).then(function(r){ if(r&&r.error) console.warn("NovaX store update",r.error.message); }); } else { c._pending=true; sb.from("store_connections").insert(row).select("id").maybeSingle().then(function(r){ c._pending=false; if(r&&r.data) c._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX store insert",r.error.message); }); } });
-      }
-      var _save=saveState; saveState=function(){ try{ _save.apply(this,arguments); }catch(e){} try{ syncNew(); }catch(e){} };
-      state.parcels=[]; state.invoices=[]; state.tickets=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[];
-      state.client={ id:null, name:"Loading...", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
-      state.clients=[state.client];
-      state.clientDateFrom="2000-01-01"; state.clientDateTo=new Date(Date.now()+2*86400000).toISOString().slice(0,10);
-      if(sb.auth){
-        sb.auth.getSession().then(function(r){
-          var session=r&&r.data&&r.data.session; if(!session){ return; }
-          sb.from("profiles").select("client_id").eq("id",session.user.id).single().then(function(p){
-            if(p&&p.error){ console.warn("NovaX profile",p.error.message); return; }
-            MY=p&&p.data?p.data.client_id:null;
-            if(!MY){ console.warn("NovaX: this seller has no client_id linked yet (admin must link it)."); try{ render(); }catch(e){} return; }
-            loadAll();
-          });
-        });
-      }
-    })();
-    render();
-    window.scrollTo({ top:0, left:0 });
-    /* ===== NovaX AI Assistant (rule-based, live data, client scope) ===== */
-    (function(){
-      try{
-        if(window.__novaxAiLoaded) return; window.__novaxAiLoaded=true;
-        var esc=function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
-        var fmt=function(n){ return Number(n||0).toLocaleString('en-US'); };
-        var cid=function(){ return (state.client&&state.client.id)||'CL-0001'; };
-        var cname=function(){ return (state.client&&state.client.name)||'Seller'; };
-        var myParcels=function(){ return (state.parcels||[]).filter(function(p){return p.clientId===cid();}); };
-        var myInvoices=function(){ return (state.invoices||[]).filter(function(i){return i.clientId===cid()&&i.status!=='Deleted';}); };
-        var myWithdrawals=function(){ return (state.walletWithdrawals||[]).filter(function(w){return w.clientId===cid();}); };
-        function invLine(iv){ return 'Invoice <b>'+esc(iv.id)+'</b> - status <b>'+esc(iv.status)+'</b><br>Payable <b>Rs '+fmt(iv.payable)+'</b> (COD Rs '+fmt(iv.cod)+' - charges Rs '+fmt(iv.charges)+') · '+((iv.parcelRefs||[]).length)+' parcel(s)'; }
-        function pLine(p){ return '<b>'+esc(p.awb)+'</b> - <b>'+esc(p.status)+'</b><br>'+esc(p.consignee||'')+(p.city?' · '+esc(p.city):'')+(p.updated?' · updated '+esc(p.updated):'')+(p.exception?'<br>⚠��� '+esc(p.exception):''); }
-        function makeTicket(q,awb){
-          state.tickets=Array.isArray(state.tickets)?state.tickets:[];
-          var t={ id:nextId('TCK',state.tickets), sourceKey:'ai-client:'+Date.now(), tier:'medium', title:q.length>42?q.slice(0,42)+'…':q, from:'Seller '+cname(), to:'Admin Control', branch:'Admin', awb:awb||'', message:q, createdAt:new Date().toISOString().slice(0,10)+' '+time(), ageHours:0, status:'Open', escalated:false, replies:[] };
-          state.tickets.unshift(t);
-          state.ticketNotifications=Array.isArray(state.ticketNotifications)?state.ticketNotifications:[];
-          state.ticketNotifications.unshift({ text:t.id+' created by '+t.from+' to '+t.to+'.', at:t.createdAt, level:'info' });
-          try{ saveState(); }catch(e){} try{ render(); }catch(e){}
-          return t.id;
-        }
-        function engine(raw){
-          var q=String(raw||'').trim(); if(!q) return {text:'Ask me about a parcel (e.g. <b>N0010001</b>), your invoice, wallet balance, or any delivery issue.'};
-          var low=q.toLowerCase();
-          if(/^(hi|hey|hello|salam|assalam|aoa|yo)\b/.test(low)||/how are you/.test(low)) return {text:'Hi '+esc(cname())+'! I read your live NovaX data. Try: <i>where is N0010001</i>, <i>my invoice</i>, <i>wallet balance</i>, or report an issue.'};
-          if(/^(thanks|thank you|shukria|great|ok|okay|cool)\b/.test(low)) return {text:'Anytime. 🚚'};
-          var awb=(q.match(/N\d{7}/i)||[])[0];
-          if(awb){ var p=myParcels().find(function(x){return String(x.awb||'').toUpperCase()===awb.toUpperCase();}); if(p) return {text:pLine(p)+(p.steps&&p.steps.length?'<br><span class=nvai-dim>Journey: '+esc(p.steps.join(' to '))+'</span>':'')}; return {ticket:true,text:'I could not find <b>'+esc(awb.toUpperCase())+'</b> under your account.'}; }
-          var invId=(q.match(/INV-\d+/i)||[])[0];
-          if(invId){ var iv=myInvoices().find(function(i){return String(i.id||'').toUpperCase()===invId.toUpperCase();}); if(iv) return {text:invLine(iv)}; return {ticket:true,text:'I could not find invoice <b>'+esc(invId.toUpperCase())+'</b> on your account.'}; }
-          var tkId=(q.match(/TCK-\d+/i)||[])[0];
-          if(tkId){ var tk=(state.tickets||[]).find(function(t){return String(t.id||'').toUpperCase()===tkId.toUpperCase();}); if(tk) return {text:'Ticket <b>'+esc(tk.id)+'</b> - <b>'+esc(tk.status)+'</b><br>'+esc(tk.title)+(tk.resolutionReply?'<br>Reply: '+esc(tk.resolutionReply):'')}; }
-          if(/wallet|balance|payout|withdraw|cash ?out|money|payment/.test(low)){ var bal=walletBalance(cid()); var w=myWithdrawals(); var pend=w.filter(function(x){return /pending|process/i.test(x.status||'');}); if(/last|recent|history|withdraw/.test(low)&&w.length){ var lw=w[0]; return {text:'Your wallet balance is <b>Rs '+fmt(bal)+'</b>.<br>Last withdrawal <b>'+esc(lw.id||'')+'</b>: Rs '+fmt(lw.net||lw.amount)+' - <b>'+esc(lw.status||'')+'</b>.'+(pend.length?'<br>'+pend.length+' still in progress.':'')}; } return {text:'Your wallet balance is <b>Rs '+fmt(bal)+'</b>.'+(pend.length?' '+pend.length+' withdrawal(s) in progress.':' No withdrawals in progress.')}; }
-          if(/invoice|payable|bill|statement/.test(low)){ var ivs=myInvoices(); if(!ivs.length) return {text:'You have no invoices yet. Invoices are generated once parcels are delivered.'}; return {text:invLine(ivs[0])+(ivs.length>1?'<br><span class=nvai-dim>'+(ivs.length-1)+' older invoice(s) on file.</span>':'')}; }
-          if(/exception|refus|delay|stuck|problem|fail|issue|return/.test(low)){ var ex=myParcels().filter(function(p){return p.exception||/refus|return|not available|reattempt/i.test(p.status||'');}); if(!ex.length) return {text:'Good news - no parcels with exceptions right now. ✅'}; return {text:'You have <b>'+ex.length+'</b> parcel(s) needing attention:<br>'+ex.slice(0,5).map(pLine).join('<br><br>')}; }
-          if(/how many|count|summary|overview|total|delivered|status of my/.test(low)){ var ps=myParcels(); var del=ps.filter(function(p){return /delivered/i.test(p.status);}).length; var exn=ps.filter(function(p){return p.exception;}).length; var tr=ps.length-del-exn; return {text:'You have <b>'+ps.length+'</b> parcels - <b>'+del+'</b> delivered, <b>'+tr+'</b> in progress, <b>'+exn+'</b> with issues.'}; }
-          if(/list|show|recent|latest|all my|my parcels|my orders/.test(low)){ var ps3=myParcels(); if(!ps3.length) return {text:'You have no parcels yet.'}; return {text:'Your recent parcels:<br>'+ps3.slice(0,8).map(pLine).join('<br><br>')+(ps3.length>8?'<br><span class=nvai-dim>+'+(ps3.length-8)+' more.</span>':'')}; }
-          if(/rate|price|pricing|cost|tariff|fee|per parcel|per shipment|how much/.test(low)){ var c=clientById(cid()); var rate=(c&&(c.rate||(c.rateCard&&c.rateCard.overnight)))||240; return {text:'Your delivery rate is <b>Rs '+fmt(rate)+'</b> per shipment (COD standard). Charges are deducted from COD before your wallet payout.'}; }
-          if(/book|create|new parcel|new order|how.*(book|ship|send)|pickup|schedule/.test(low)) return {text:'To book a parcel, tap <b>Book New Parcel</b> on your dashboard, then add the consignee, city, COD and weight. Once a rider collects it I can track it live - just give me the AWB.'};
-          if(/raise|open.*(ticket|complaint)|file.*(ticket|complaint|issue)|complain|escalate|human|agent|customer (care|support)|contact|speak to|talk to/.test(low)) return {ticket:true,text:'Sure - I will log this with our support team right away.'};
-          if(/help|what can you|capabilit|how.*(use|work)|guide|menu|options|commands|what do you do/.test(low)) return {text:'I can track parcels (give an AWB like <b>N0010001</b>), show invoices and payable, wallet balance and withdrawals, exceptions and delays, your rate, and a full summary. Ask in plain words - or type <i>raise a ticket</i> to reach a human.'};
-          if(/track|where|status|location/.test(low)) return {text:'Share the tracking ID (e.g. <b>N0010001</b>) and I will give you the exact live status.'};
-          return {text:'I want to get this right. Ask me anything about <b>your</b> account - try <i>where is N0010001</i>, <i>my invoices</i>, <i>wallet balance</i>, <i>any delays?</i>, <i>my summary</i>, or <i>my rate</i>. To reach a person, type <i>raise a ticket</i>.'};
-        }
-        var style=document.createElement('style');
-        style.textContent='.nvai-btn{position:fixed;right:18px;bottom:18px;z-index:99999;width:58px;height:58px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#14c77b);color:#fff;font-size:24px;box-shadow:0 12px 30px rgba(20,199,123,.45);display:grid;place-items:center;border:0;cursor:pointer}.nvai-dim{opacity:.7}.nvai-panel{position:fixed;right:18px;bottom:86px;z-index:99999;width:360px;max-width:calc(100vw - 36px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #cfe6dc;border-radius:18px;box-shadow:0 26px 70px rgba(13,91,64,.28);display:none;flex-direction:column;overflow:hidden}.nvai-panel.open{display:flex}.nvai-head{background:linear-gradient(135deg,#0b2a1f,#0c7c59);color:#eafff5;padding:13px 16px;display:flex;align-items:center;gap:10px}.nvai-head b{font-size:15px;line-height:1.1}.nvai-head small{font-size:11px;opacity:.8}.nvai-x{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:0;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px}.nvai-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f3fff9}.nvai-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}.nvai-m.u{align-self:flex-end;background:#dcffe9;color:#08311f;border-bottom-right-radius:4px}.nvai-m.b{align-self:flex-start;background:#fff;border:1px solid #e1f0e8;color:#0b2a1f;border-bottom-left-radius:4px}.nvai-bar{display:flex;gap:8px;padding:10px;border-top:1px solid #e1f0e8;background:#fff}.nvai-bar input{flex:1;min-width:0;height:42px;border-radius:11px;border:1px solid #cfe6dc;padding:0 12px;font:inherit;font-size:14px}.nvai-bar button{height:42px;padding:0 16px;border-radius:11px;background:#14c77b;color:#04130d;font-weight:800;border:0;cursor:pointer}@media (max-width:520px){.nvai-panel{right:10px;left:10px;width:auto;bottom:78px;height:72vh}.nvai-btn{right:14px;bottom:14px}}';
-        document.head.appendChild(style);
-        var btn=document.createElement('button'); btn.className='nvai-btn'; btn.title='NovaX AI'; btn.innerHTML='🤖';
-        var panel=document.createElement('div'); panel.className='nvai-panel';
-        panel.innerHTML='<div class=nvai-head><div><b>NovaX AI</b><br><small>reads your live data · never guesses</small></div><button class=nvai-x type=button>×</button></div><div class=nvai-msgs></div><div class=nvai-bar><input type=text><button type=button>Send</button></div>';
-        document.body.appendChild(btn); document.body.appendChild(panel);
-        var msgs=panel.querySelector('.nvai-msgs'); var inp=panel.querySelector('.nvai-bar input'); var sendBtn=panel.querySelector('.nvai-bar button'); var closeBtn=panel.querySelector('.nvai-x');
-        inp.placeholder='Ask about a parcel, invoice, wallet…';
-        function addMsg(html,cls){ var d=document.createElement('div'); d.className='nvai-m '+cls; d.innerHTML=html; msgs.appendChild(d); msgs.scrollTop=msgs.scrollHeight; }
-        function botSay(h){ addMsg(h,'b'); }
-        function send(){ var v=inp.value.trim(); if(!v) return; addMsg(esc(v),'u'); inp.value=''; setTimeout(function(){ try{ var r=engine(v); if(r.ticket){ var id=makeTicket(v,(v.match(/N\d{7}/i)||[])[0]||''); botSay((r.text?r.text+'<br><br>':'')+'I have opened ticket <b>'+esc(id)+'</b> for our team - they will follow up shortly.'); } else botSay(r.text); }catch(e){ botSay('Sorry, something went wrong reading the data. Please try again.'); } },160); }
-        var greeted=false;
-        btn.addEventListener('click',function(){ panel.classList.toggle('open'); if(panel.classList.contains('open')){ if(!greeted){ greeted=true; botSay('Hi '+esc(cname())+'! 👋 I am your NovaX AI. Ask me <i>where is N0010001</i>, <i>my invoice</i>, or <i>wallet balance</i>.'); } inp.focus(); } });
-        closeBtn.addEventListener('click',function(){ panel.classList.remove('open'); });
-        sendBtn.addEventListener('click',send); inp.addEventListener('keydown',function(e){ if(e.key==='Enter') send(); });
-      }catch(e){ console.warn('NovaX AI init failed',e); }
-    })();
-
-    /* ===== NovaX AI Onboarding Tour (post-signup welcome + guided walkthrough) ===== */
-    (function(){
-      try{
-        if(window.__novaxTourLoaded) return; window.__novaxTourLoaded=true;
-        var qp=new URLSearchParams(location.search);
-        var shouldRun = qp.get("onboarding")==="1";
-        if(!shouldRun) return;
-
-        var STEPS=[
-          { tab:"dashboard", title:"Your Dashboard", text:"Everything starts here: live parcel counts, COD totals, and delivery health at a glance." },
-          { tab:"newBooking", title:"New Booking", text:"Tap Create AWB here to book a single parcel. Add the consignee, city, and COD amount, and you are done." },
-          { tab:"awbLabel", title:"AWB Label", text:"Every booking instantly generates a printable AWB with QR and barcode. Hand it to your rider or print it." },
-          { tab:"bulkBooking", title:"Bulk Booking", text:"Shipping many orders at once? Download the CSV format, fill it in, and upload it here to create AWBs in bulk." },
-          { tab:"integrations", title:"Store Integrations", text:"Connect Shopify, WooCommerce, or your own website here so new orders import automatically." },
-          { tab:"reports", title:"Full Report", text:"See every parcel with filters, export CSV or PDF, and raise a ticket straight from any row." },
-          { tab:"payments", title:"Payments", text:"Delivered parcels turn into payable invoices here. Download them or raise a ticket if something looks off." },
-          { tab:"wallet", title:"Wallet", text:"Track your balance and request a payout in a few taps whenever you are ready." },
-          { tab:"logs", title:"Order Logs", text:"A clean audit trail of every status change for every parcel you have booked." },
-          { tab:"subAccounts", title:"Sub Accounts", text:"Invite your team, finance, warehouse, or support, with their own scoped logins." },
-          { tab:"support", title:"Talk To Your AI", text:"Tap the green bubble in the corner anytime. I read your live data and answer instantly, or open a ticket for you." }
-        ];
-        var idx=-1;
-
-        var style=document.createElement("style");
-        style.textContent=".nvtour-overlay{position:fixed;inset:0;z-index:999999;background:rgba(4,12,9,.55);display:flex;align-items:center;justify-content:center;padding:18px;opacity:0;transition:opacity .3s ease;-webkit-tap-highlight-color:transparent;}.nvtour-overlay.show{opacity:1;}.nvtour-overlay.closing{opacity:0;}.nvtour-card{position:relative;box-sizing:border-box;width:min(94vw,410px);max-height:82vh;overflow:auto;background:#0b1f18;color:#eafff5;border:1px solid rgba(24,199,122,.35);border-radius:20px;padding:28px 22px 22px;box-shadow:0 30px 70px rgba(0,0,0,.5);text-align:center;-webkit-overflow-scrolling:touch;}.nvtour-x{position:absolute;top:8px;right:10px;background:transparent;border:none;color:#8fd8b9;font-size:22px;line-height:1;cursor:pointer;padding:6px 9px;}.nvtour-avatar{width:64px;height:64px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#18c77a);display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 14px;box-shadow:0 14px 30px rgba(24,199,122,.35);animation:nvtourFloat 2.6s ease-in-out infinite,nvtourPopIn .4s cubic-bezier(.34,1.56,.64,1);}.nvtour-avatar.sm{width:38px;height:38px;font-size:18px;margin:0;flex-shrink:0;}.nvtour-card h3{margin:0 0 8px;font-size:20px;animation:nvtourRise .3s ease both;}.nvtour-card p{margin:0 0 18px;color:#bfe9d8;font-size:15px;line-height:1.5;animation:nvtourRise .3s ease .05s both;}.nvtour-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}.nvtour-actions .nvtour-btn{animation:nvtourBtnIn .32s ease both;}.nvtour-actions .nvtour-btn:nth-child(2){animation-delay:.07s;}.nvtour-btn{box-sizing:border-box;min-height:46px;padding:0 18px;border-radius:12px;font-weight:700;font-size:15px;border:none;cursor:pointer;flex:1;min-width:120px;transition:transform .15s ease;}.nvtour-btn:active{transform:scale(.96);}.nvtour-btn.primary{background:linear-gradient(145deg,#0d6b4d,#18c77a);color:#04130d;}.nvtour-btn.ghost{background:rgba(255,255,255,.08);color:#eafff5;}.nvtour-stephead{display:flex;align-items:center;gap:10px;text-align:left;margin-bottom:14px;animation:nvtourSlideL .3s ease both;}.nvtour-stephead b{font-size:13px;color:#8fd8b9;display:block;}.nvtour-dots{display:flex;gap:5px;margin-top:4px;}.nvtour-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.25);transition:all .2s ease;}.nvtour-dot.on{background:#18c77a;width:16px;border-radius:4px;animation:nvtourDotPop .3s ease;}.nvtour-glow{position:relative;z-index:2;border-radius:10px;animation:nvtourGlowPulse 1s ease-in-out 2;}.nvtour-check{width:66px;height:66px;border-radius:50%;background:#18c77a;color:#04130d;font-size:32px;font-weight:900;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:0 14px 30px rgba(24,199,122,.35);animation:nvtourCheckPop .45s cubic-bezier(.34,1.56,.64,1);}@keyframes nvtourPop{0%{transform:scale(.9);}60%{transform:scale(1.03);}100%{transform:scale(1);}}@keyframes nvtourFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-5px);}}@keyframes nvtourPopIn{0%{transform:scale(.5);opacity:0;}100%{transform:scale(1);opacity:1;}}@keyframes nvtourRise{0%{opacity:0;transform:translateY(6px);}100%{opacity:1;transform:translateY(0);}}@keyframes nvtourBtnIn{0%{opacity:0;transform:translateY(8px);}100%{opacity:1;transform:translateY(0);}}@keyframes nvtourSlideL{0%{opacity:0;transform:translateX(-10px);}100%{opacity:1;transform:translateX(0);}}@keyframes nvtourDotPop{0%{transform:scale(.4);}70%{transform:scale(1.3);}100%{transform:scale(1);}}@keyframes nvtourGlowPulse{0%,100%{box-shadow:0 0 0 3px rgba(24,199,122,.85),0 0 16px 4px rgba(24,199,122,.5);}50%{box-shadow:0 0 0 6px rgba(24,199,122,.45),0 0 26px 10px rgba(24,199,122,.22);}}@keyframes nvtourCheckPop{0%{transform:scale(0);opacity:0;}60%{transform:scale(1.15);opacity:1;}100%{transform:scale(1);opacity:1;}}@media (max-width:760px){.nvtour-overlay{align-items:flex-end;padding:0;background:rgba(6,18,13,.4);}.nvtour-card{width:100%;max-width:100%;max-height:64vh;border-radius:20px 20px 0 0;box-shadow:0 -20px 60px rgba(0,0,0,.4);}}@media (max-width:480px){.nvtour-card{padding:22px 16px 16px;}.nvtour-btn{min-width:0;}}@media (prefers-reduced-motion:reduce){.nvtour-avatar,.nvtour-card h3,.nvtour-card p,.nvtour-actions .nvtour-btn,.nvtour-stephead,.nvtour-glow,.nvtour-check,.nvtour-dot.on{animation:none!important;}}";
-        document.head.appendChild(style);
-
-        var overlay=document.createElement("div"); overlay.className="nvtour-overlay";
-        overlay.innerHTML='<div class="nvtour-card" id="nvtourCard"></div>';
-        document.body.appendChild(overlay);
-        var card=overlay.querySelector("#nvtourCard");
-
-        function paint(html, dir){
-          var fx = dir===1 ? 22 : (dir===-1 ? -22 : 0);
-          var fy = dir ? 0 : 14;
-          card.style.transition="none"; card.style.opacity="0"; card.style.transform="translate("+fx+"px,"+fy+"px) scale(.95)";
-          card.innerHTML=html;
-          void card.offsetWidth;
-          card.style.transition="opacity .3s ease, transform .38s cubic-bezier(.34,1.56,.64,1)";
-          card.style.opacity="1"; card.style.transform="translate(0,0) scale(1)";
-        }
-        function xBtn(){ return '<button class="nvtour-x" id="nvtourX" aria-label="Close">\u00d7</button>'; }
-        function bindX(){ var b=document.getElementById("nvtourX"); if(b) b.addEventListener("click",finish); }
-        function clearGlow(){ document.querySelectorAll(".nvtour-glow").forEach(function(el){ el.classList.remove("nvtour-glow"); }); }
-
-        function renderIntro(){
-          clearGlow();
-          paint(xBtn()+'<div class="nvtour-avatar">\ud83e\udd16</div><h3>Hi, I am Nova</h3><p>Your NovaX AI assistant. I can walk you through your new workspace, or you can dive in yourself.</p><div class="nvtour-actions"><button class="nvtour-btn primary" id="nvtourStart">Take the Tour</button><button class="nvtour-btn ghost" id="nvtourSkip">I will Surf Myself</button></div>', 0);
-          bindX();
-          document.getElementById("nvtourStart").addEventListener("click",startTour);
-          document.getElementById("nvtourSkip").addEventListener("click",renderSurf);
-        }
-
-        function renderSurf(){
-          clearGlow();
-          paint(xBtn()+'<div class="nvtour-avatar">\ud83e\udd16</div><h3>All yours</h3><p>Feel free to explore. You can reach me anytime from the green AI bubble in the corner.</p><div class="nvtour-actions"><button class="nvtour-btn primary" id="nvtourExit">Exit</button></div>', 0);
-          bindX();
-          document.getElementById("nvtourExit").addEventListener("click",finish);
-        }
-
-        function openMobileMenuForTour(){
-          try{
-            if(window.innerWidth<=760){
-              var menuEl=document.getElementById("clientMenu");
-              var toggleBtn=document.getElementById("clientMenuToggle");
-              if(menuEl) menuEl.classList.add("open");
-              if(toggleBtn) toggleBtn.setAttribute("aria-expanded","true");
-            }
-          }catch(e){}
-        }
-        function closeMobileMenuForTour(){
-          try{
-            if(window.innerWidth<=760){
-              var menuEl=document.getElementById("clientMenu");
-              var toggleBtn=document.getElementById("clientMenuToggle");
-              if(menuEl) menuEl.classList.remove("open");
-              if(toggleBtn) toggleBtn.setAttribute("aria-expanded","false");
-            }
-          }catch(e){}
-        }
-        function renderStep(dir){
-          var s=STEPS[idx];
-          try{ if(typeof showClientTab==="function") showClientTab(s.tab); }catch(e){}
-          openMobileMenuForTour();
-          try{ window.scrollTo({top:0,behavior:"smooth"}); }catch(e){ window.scrollTo(0,0); }
-          clearGlow();
-          var navBtn=document.querySelector('[data-client-tab="'+s.tab+'"]');
-          if(navBtn){
-            void navBtn.offsetWidth;
-            navBtn.classList.add("nvtour-glow");
-            if(window.innerWidth<=760){
-              try{ navBtn.scrollIntoView({behavior:"smooth",block:"center"}); }catch(e){}
-            }
+      function sigOf(row){ return JSON.stringify(row,function(k,v){ return k==="updated_at"?undefined:v; }); }
+      function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
+      function rClient(r){ return { _uuid:r.id, id:r.id, name:r.name||"", city:r.city||"", address:r.address||"" }; }
+      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||16), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", deliveredBy:m.deliveredBy||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", riderInput:m.riderInput||null, steps:Array.isArray(m.steps)?m.steps:[] }; }
+      function fParcel(p){ return { status:p.status||"New booked", exception:p.exception||"", updated_at:new Date().toISOString(), meta:{ statusAgeHours:p.statusAgeHours, stage:p.stage, totalStages:p.totalStages, steps:p.steps, risk:p.risk, branch:p.branch, cashReceived:p.cashReceived, returnProof:p.returnProof, resolutionRemark:p.resolutionRemark, riderInput:p.riderInput, service:p.service, weight:p.weight, deliveredBy:p.deliveredBy, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord } }; }
+      function markLoaded(p){ p._scanned=p._scanned||{}; if(TERMINAL.indexOf(p.status)>-1){ p._scanned[p.status]=true; if(p.status==="Delivered") p._codPosted=true; } }
+      function maybeAudit(p){
+        if(!RIDER_UUID||!p._uuid) return;
+        p._scanned=p._scanned||{};
+        if(TERMINAL.indexOf(p.status)>-1 && !p._scanned[p.status]){
+          p._scanned[p.status]=true;
+          var srow={ parcel_id:p._uuid, rider_id:RIDER_UUID, type:(p.status==="Delivered"||p.status==="Parcel returned to consignee")?"delivery":"exception", status:p.status, note:p.exception||"", photo_url:"", meta:{ awb:p.awb, signedAt:p.signedAt||"", hasPhoto:!!p.proofPhoto, hasSignature:!!p.signature, riderInput:p.riderInput||null } };
+          sb.from("scans").insert(srow).then(function(r){ if(r&&r.error) console.warn("NovaX scan insert",r.error.message); });
+          if(p.status==="Delivered" && Number(p.cod)>0 && !p._codPosted){
+            p._codPosted=true;
+            sb.from("cod_ledger").insert({ parcel_id:p._uuid, client_id:p.clientId, rider_id:RIDER_UUID, direction:"in", amount:Number(p.cod), reference:p.awb }).then(function(r){ if(r&&r.error) console.warn("NovaX cod insert",r.error.message); });
           }
-          var dots=STEPS.map(function(_,i){ return '<span class="nvtour-dot'+(i===idx?" on":"")+'"></span>'; }).join("");
-          var backHtml = idx>0 ? '<button class="nvtour-btn ghost" id="nvtourBack">Back</button>' : "";
-          var nextLabel = idx===STEPS.length-1 ? "Finish" : "Next";
-          paint(xBtn()+'<div class="nvtour-stephead"><span class="nvtour-avatar sm">\ud83e\udd16</span><div><b>Step '+(idx+1)+' of '+STEPS.length+'</b><div class="nvtour-dots">'+dots+'</div></div></div><h3>'+s.title+'</h3><p>'+s.text+'</p><div class="nvtour-actions">'+backHtml+'<button class="nvtour-btn primary" id="nvtourNext">'+nextLabel+'</button></div>', dir);
-          bindX();
-          var backBtn=document.getElementById("nvtourBack"); if(backBtn) backBtn.addEventListener("click",function(){ idx--; renderStep(-1); });
-          document.getElementById("nvtourNext").addEventListener("click",function(){ if(idx===STEPS.length-1){ renderDone(); return; } idx++; renderStep(1); });
         }
-
-        function renderDone(){
-          clearGlow();
-          paint(xBtn()+'<div class="nvtour-check">\u2713</div><h3>You are all set</h3><p>Explore freely, and tap the green AI bubble anytime you need help.</p>', 0);
-          bindX();
-          setTimeout(finish,1300);
-        }
-
-        function startTour(){ idx=0; renderStep(1); }
-
-        function finish(){
-          clearGlow();
-          closeMobileMenuForTour();
-          overlay.classList.add("closing");
-          setTimeout(function(){ try{ overlay.remove(); }catch(e){} },300);
-          try{ var u=new URL(window.location.href); u.searchParams.delete("onboarding"); history.replaceState(null,"",u.pathname+(u.search||"")); }catch(e){}
-        }
-
-        requestAnimationFrame(function(){ overlay.classList.add("show"); renderIntro(); });
-      }catch(e){ console.warn("NovaX tour init failed",e); }
+      }
+      function rebuildShadow(){ shadow={}; (state.parcels||[]).forEach(function(p){ if(p._uuid){ markLoaded(p); try{ shadow[p._uuid]=sigOf(fParcel(p)); }catch(e){} } }); }
+      function syncParcels(){ if(!loaded||!RIDER_UUID) return; (state.parcels||[]).forEach(function(p){ if(!p._uuid) return; var row; try{ row=fParcel(p); }catch(e){ return; } var sig=sigOf(row); if(shadow[p._uuid]!==sig){ shadow[p._uuid]=sig; sb.from("parcels").update(row).eq("id",p._uuid).then(function(r){ if(r&&r.error) console.warn("NovaX parcel update",r.error.message); }); } maybeAudit(p); }); }
+      function loadAll(){
+        return sb.auth.getSession().then(function(sr){
+          var session=sr&&sr.data&&sr.data.session;
+          var profP=session?sb.from("profiles").select("rider_id").eq("id",session.user.id).single():Promise.resolve(null);
+          return profP.then(function(pr){
+            var linkedId=pr&&pr.data&&pr.data.rider_id;
+            return Promise.all([
+              sb.from("riders").select("*"),
+              sb.from("parcels").select("*").order("booked_at",{ascending:false}),
+              sb.from("clients").select("*")
+            ]).then(function(res){
+              function D(i){ return (res[i]&&res[i].data)||[]; }
+              state.riders=D(0).map(rRider);
+              state.parcels=D(1).map(rParcel);
+              state.clients=D(2).map(rClient);
+              RIDER_UUID=linkedId||(state.riders[0]&&state.riders[0]._uuid)||null;
+              state.activeRider=RIDER_UUID||"";
+              rebuildShadow();
+              loaded=true;
+              try{ var sel=document.getElementById("riderSelect"); if(sel) sel.dataset.filled=""; }catch(e){}
+              try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); }catch(e){}
+              try{ renderRider(); }catch(e){ console.warn("NovaX rider render",e); }
+              if(!subscribed && RIDER_UUID){ subscribed=true; try{ sb.channel("novax_rider_"+RIDER_UUID).on("postgres_changes",{event:"*",schema:"public",table:"parcels",filter:"rider_id=eq."+RIDER_UUID},function(){ loadAll(); }).subscribe(function(status,err){ if(err) console.warn("NovaX rider realtime",status,err.message||err); }); }catch(e){ console.warn("NovaX rider realtime",e); } }
+            });
+          });
+        }).catch(function(e){ console.warn("NovaX rider load failed",e); });
+      }
+      var _save=saveState; saveState=function(){ try{ _save.apply(this,arguments); }catch(e){} try{ syncParcels(); }catch(e){} };
+      state.parcels=[]; state.riders=[]; state.clients=[]; state.activeRider="";
+      try{ var rb=document.getElementById("riderRefreshBtn"); if(rb) rb.addEventListener("click", function(){ loadAll(); }); }catch(e){}
+      if(sb.auth){ sb.auth.getSession().then(function(r){ var s=r&&r.data&&r.data.session; if(!s){ return; } loadAll(); }); }
     })();
+    document.getElementById("riderPhotoInput").addEventListener("change", e => handleRiderPhoto(e.target.files && e.target.files[0]));
+    document.getElementById("deliverFlash").addEventListener("click", () => document.getElementById("deliverFlash").classList.remove("show"));
+    (function(){
+      const canvas=document.getElementById("sigPad");
+      canvas.addEventListener("mousedown",sigStart); canvas.addEventListener("mousemove",sigMove); window.addEventListener("mouseup",sigEnd);
+      canvas.addEventListener("touchstart",sigStart,{passive:false}); canvas.addEventListener("touchmove",sigMove,{passive:false}); canvas.addEventListener("touchend",sigEnd);
+      document.getElementById("sigClearBtn").addEventListener("click",clearSignature);
+      document.getElementById("sigCancelBtn").addEventListener("click",cancelSignature);
+      document.getElementById("sigConfirmBtn").addEventListener("click",confirmSignature);
+    })();
+    document.getElementById("scanPickupBtn").addEventListener("click", openScanModal);
+    document.getElementById("scanCloseBtn").addEventListener("click", stopScan);
+    document.getElementById("scanCancelBtn").addEventListener("click", stopScan);
+    document.getElementById("scanManualBtn").addEventListener("click", () => { stopScan(); const el=document.getElementById("manualAwbInput"); if(el) el.focus(); });
+    document.getElementById("manualUpdateBtn").addEventListener("click", manualUpdateCn);
+    setInterval(()=>{ const el=document.getElementById("clockD"); if(el) el.textContent=`Live ${time()}`; }, 1000);
+
+    window.riderDeliver = riderDeliver;
+    window.riderPhotoThen = riderPhotoThen;
+    window.scanPickup = scanPickup;
+    window.manualUpdateCn = manualUpdateCn;
+    window.openScanModal = openScanModal;
+    renderRider();
   </script>
 <script>
 (function(){
   var __SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
   var __SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
-  var __REQUIRED_ROLE="client";
+  var __REQUIRED_ROLE="rider";
   var __sb=null; try{ if(window.supabase&&window.supabase.createClient){ __sb=window.supabase.createClient(__SB_URL,__SB_KEY); window.__nvGuardSb=__sb; } }catch(__e){}
   function ses(){ try{ return JSON.parse(localStorage.getItem("novaxSession")||"null"); }catch(e){ return null; } }
   function logout(e){ if(e&&e.preventDefault) e.preventDefault(); try{ localStorage.removeItem("novaxSession"); }catch(_){ } try{ if(__sb&&__sb.auth) __sb.auth.signOut(); }catch(_2){ } window.location.href="index.html"; }
@@ -1526,16 +702,20 @@
   (function(){
     var __SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
     var __SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
-    var __PORTAL="Client Portal";
+    var __PORTAL="Rider App";
     function uid(){ try{ return crypto.randomUUID(); }catch(e){ return "v-"+Date.now()+"-"+Math.random().toString(16).slice(2); } }
     function sid(){ try{ var k="novaxVisitorId"; var v=sessionStorage.getItem(k); if(!v){ v=uid(); sessionStorage.setItem(k,v); } return v; }catch(e){ return uid(); } }
     var SESSION_ID=sid();
     var __vsb=null;
     try{ if(window.supabase&&window.supabase.createClient) __vsb=window.supabase.createClient(__SB_URL,__SB_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:"sb-nv-visitor-ping"}}); }catch(e){}
-    function humanizeTab(id){ if(!id) return "Dashboard"; return String(id).replace(/([a-z])([A-Z])/g,"$1 $2").replace(/[-_]/g," ").replace(/^./,function(c){ return c.toUpperCase(); }); }
     function activityLabel(){
-      try{ if(window.state&&window.state.activeClientTab) return "Viewing "+humanizeTab(window.state.activeClientTab)+" tab"; }catch(e){}
-      return "Browsing client portal";
+      try{
+        var rider=(typeof riderById==="function"&&window.state)?riderById(window.state.activeRider):null;
+        var base=rider?("Rider "+rider.name+" ("+rider.id+")"):"No rider selected";
+        var scanning=document.getElementById("scanModal")&&document.getElementById("scanModal").classList.contains("show");
+        return base+(scanning?" · scanning a parcel":" · viewing route");
+      }catch(e){}
+      return "Browsing rider app";
     }
     function ping(){
       if(!__vsb) return;
