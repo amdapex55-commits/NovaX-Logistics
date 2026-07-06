@@ -9524,7 +9524,8 @@
       window.__nvSb=sb;
       var sbSignup=null; try{ sbSignup=window.supabase.createClient(SB_URL,SB_KEY,{ auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:"sb-nv-admin-signup-client" } }); }catch(e){ console.warn("NovaX: signup client init failed.",e); }
       window.__nvSignupClient=sbSignup;
-      var ADMIN_UID=null, loaded=false, shadow={}, resyncT=null;
+      var ADMIN_UID=null, loaded=false, shadow={}, resyncT=null, liveSubscribed=false, reloadT=null;
+      function scheduleReload(){ clearTimeout(reloadT); reloadT=setTimeout(function(){ try{ loadAll(); }catch(e){} },800); }
       function isUuid(v){ return typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v); }
       function dtpart(t){ return t?String(t).replace("T"," ").slice(0,16):""; }
       function dpart(t){ return t?String(t).slice(0,10):new Date().toISOString().slice(0,10); }
@@ -9658,7 +9659,18 @@
       window.nvLinkSeller=function(email, clientUuid){ if(!email||!clientUuid){ console.warn("usage: nvLinkSeller('seller@email.com','<client uuid>')"); return; } sb.from("profiles").update({ client_id:clientUuid }).eq("email",email).then(function(r){ if(r&&r.error){ console.warn("link failed",r.error.message); } else { try{ alert("Linked "+email+" to client "+clientUuid); }catch(e){} console.log("Linked",email,"->",clientUuid); } }); };
       window.nvListRiders=function(){ sb.from("riders").select("id,name,branch").then(function(r){ if(r&&r.error){ console.warn(r.error.message); return; } console.table((r&&r.data)||[]); }); };
       window.nvLinkRider=function(email, riderUuid){ if(!email||!riderUuid){ console.warn("usage: nvLinkRider('rider@email.com','<rider uuid>')"); return; } sb.from("profiles").update({ role:"rider", rider_id:riderUuid }).eq("email",email).then(function(r){ if(r&&r.error){ console.warn("link failed",r.error.message); } else { try{ alert("Linked "+email+" to rider "+riderUuid); }catch(e){} console.log("Linked",email,"->",riderUuid); } }); };
-      if(sb.auth){ sb.auth.getSession().then(function(r){ var s=r&&r.data&&r.data.session; if(!s){ return; } ADMIN_UID=s.user.id; loadAll(); }); }
+      if(sb.auth){ sb.auth.getSession().then(function(r){ var s=r&&r.data&&r.data.session; if(!s){ return; } ADMIN_UID=s.user.id; loadAll();
+        if(!liveSubscribed){
+          liveSubscribed=true;
+          try{
+            var liveChannel=sb.channel("novax_admin_live");
+            ["clients","riders","parcels","invoices","tickets","expenses","withdrawals","payment_logs","sales_leads","signup_leads","operations_issues","resolved_alerts","manifest_logs","ticket_notifications","staff_users","staff_tickets","staff_activity"].forEach(function(t){
+              liveChannel.on("postgres_changes",{event:"*",schema:"public",table:t},function(){ scheduleReload(); });
+            });
+            liveChannel.subscribe(function(status,err){ if(err) console.warn("NovaX admin realtime",status,err.message||err); });
+          }catch(e){ console.warn("NovaX admin realtime",e); }
+        }
+      }); }
     })();
     render();
     renderLandingTrack();
