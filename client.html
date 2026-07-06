@@ -1215,7 +1215,7 @@
       if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, local only."); return; }
       var sb; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); return; }
       window.__nvSb=sb;
-      var MY=null, loaded=false, shadow={};
+      var MY=null, loaded=false, shadow={}, subscribed=false;
       var TAGS=(typeof STATUS_TAGS!=="undefined"&&STATUS_TAGS&&STATUS_TAGS.length)?STATUS_TAGS:["New booked"];
       function stageOf(s){ var i=TAGS.indexOf(s); return i<0?0:i; }
       function stepsOf(s){ var i=stageOf(s); return i<=0?[TAGS[0]]:TAGS.slice(0,i+1); }
@@ -1279,6 +1279,17 @@
             MY=p&&p.data?p.data.client_id:null;
             if(!MY){ console.warn("NovaX: this seller has no client_id linked yet (admin must link it)."); try{ render(); }catch(e){} return; }
             loadAll();
+            if(!subscribed){
+              subscribed=true;
+              try{
+                sb.channel("novax_client_"+MY)
+                  .on("postgres_changes",{event:"*",schema:"public",table:"parcels",filter:"client_id=eq."+MY},function(){ loadAll(); })
+                  .on("postgres_changes",{event:"*",schema:"public",table:"invoices",filter:"client_id=eq."+MY},function(){ loadAll(); })
+                  .on("postgres_changes",{event:"*",schema:"public",table:"tickets",filter:"client_id=eq."+MY},function(){ loadAll(); })
+                  .on("postgres_changes",{event:"*",schema:"public",table:"withdrawals",filter:"client_id=eq."+MY},function(){ loadAll(); })
+                  .subscribe(function(status,err){ if(err) console.warn("NovaX client realtime",status,err.message||err); });
+              }catch(e){ console.warn("NovaX client realtime",e); }
+            }
           });
         });
       }
