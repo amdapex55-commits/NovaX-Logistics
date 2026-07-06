@@ -8031,10 +8031,16 @@
       const cfg=map[platform]; if(!cfg) return;
       const clientId=document.getElementById(cfg.client)?.value||""; if(!clientId){ toast("Select a client first."); return; }
       const storeUrl=(document.getElementById(cfg.url)?.value||"").trim(); if(!storeUrl){ toast("Enter the store URL / endpoint."); return; }
-      const creds={}; Object.keys(cfg.fields).forEach(k=>{ creds[k]=(document.getElementById(cfg.fields[k])?.value||"").trim(); });
+      // NovaX security note: API keys/tokens/secrets are intentionally NOT stored
+      // (not in state, not in localStorage, not synced to Supabase). This sync flow
+      // is a demo/mock -- it never actually calls Shopify/WooCommerce with these
+      // credentials, so there is no reason to persist the raw secret anywhere.
+      // We only remember whether credentials were provided, for the UI badge.
+      const hasCreds=Object.keys(cfg.fields).some(k=>(document.getElementById(cfg.fields[k])?.value||"").trim());
+      Object.keys(cfg.fields).forEach(k=>{ const el=document.getElementById(cfg.fields[k]); if(el) el.value=""; });
       let conn=state.storeConnections.find(c=>c.clientId===clientId&&c.platform===platform);
       if(!conn){ conn={ clientId, platform }; state.storeConnections.push(conn); }
-      conn.storeUrl=storeUrl; conn.creds=creds; conn.connected=true; conn.connectedAt=time();
+      conn.storeUrl=storeUrl; conn.hasCreds=hasCreds||conn.hasCreds||false; conn.connected=true; conn.connectedAt=time();
       saveState(); renderAdmin(); toast(adminPlatformLabel(platform)+" connected for "+clientId+".");
     }
     function adminSyncStoreFor(platform,clientId){
