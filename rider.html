@@ -381,12 +381,30 @@
       if(p.status !== "Parcel out for delivery" && p.status !== "Return out for delivery"){ toast(`${awb} is not out for delivery.`); return; }
       riderPhotoCtx = { awb, kind }; const inp=document.getElementById("riderPhotoInput"); inp.value=""; if(kind==="notresponding"){ inp.removeAttribute("capture"); } else { inp.setAttribute("capture","environment"); } inp.click();
     }
+    function uploadProofFile(fileOrBlob, awb, label){
+      return new Promise(function(resolve){
+        function toBase64(){
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => resolve("");
+          reader.readAsDataURL(fileOrBlob);
+        }
+        const sbc = window.__nvSb;
+        if(!sbc || !sbc.storage || !fileOrBlob){ toBase64(); return; }
+        const ext = (fileOrBlob.type && fileOrBlob.type.indexOf("png") > -1) ? "png" : "jpg";
+        const path = (awb||"unknown") + "/" + label + "-" + Date.now() + "-" + Math.random().toString(36).slice(2,8) + "." + ext;
+        sbc.storage.from("delivery-proofs").upload(path, fileOrBlob, { contentType: fileOrBlob.type || "image/jpeg", upsert:false }).then(function(res){
+          if(res && res.error){ console.warn("NovaX proof upload failed, using local copy.", res.error.message); toBase64(); return; }
+          const pub = sbc.storage.from("delivery-proofs").getPublicUrl(path);
+          const url = pub && pub.data && pub.data.publicUrl;
+          if(url) resolve(url); else toBase64();
+        }).catch(function(){ toBase64(); });
+      });
+    }
     function handleRiderPhoto(file){
       if(!riderPhotoCtx || !file) return;
       const { awb, kind } = riderPhotoCtx;
-      const reader = new FileReader();
-      reader.onload = () => applyRiderPhoto(awb, kind, reader.result);
-      reader.readAsDataURL(file);
+      uploadProofFile(file, awb, kind==="notresponding"?"call":"photo").then(url => applyRiderPhoto(awb, kind, url));
     }
     function applyRiderPhoto(awb, kind, dataUrl){
       const p = state.parcels.find(x=>x.awb===awb); if(!p) return;
@@ -449,9 +467,12 @@
     function confirmSignature(){
       if(!sigCtx) return;
       if(!sigHasInk){ toast("Ask the consignee to sign before confirming."); return; }
-      const dataUrl = document.getElementById("sigPad").toDataURL("image/png");
       const awb = sigCtx; document.getElementById("sigModal").classList.remove("show"); sigCtx=null;
-      finalizeDeliver(awb, dataUrl);
+      const canvas = document.getElementById("sigPad");
+      canvas.toBlob(function(blob){
+        if(blob){ uploadProofFile(blob, awb, "signature").then(url => finalizeDeliver(awb, url)); }
+        else{ finalizeDeliver(awb, canvas.toDataURL("image/png")); }
+      }, "image/png");
     }
     function finalizeDeliver(awb, signatureDataUrl){
       const p = state.parcels.find(x=>x.awb===awb); if(!p) return;
