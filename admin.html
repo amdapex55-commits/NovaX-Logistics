@@ -8045,6 +8045,34 @@
       conn.storeUrl=storeUrl; conn.hasCreds=hasCreds||conn.hasCreds||false; conn.connected=true; conn.connectedAt=time();
       saveState(); renderAdmin(); toast(adminPlatformLabel(platform)+" connected for "+clientId+".");
     }
+    function adminConnectWooCommerce(clientId){
+      var client = clientById(clientId);
+      if(!client){ toast("Client not found."); return; }
+      if(!window.__nvSb){ toast("Cloud connection not ready yet, try again in a moment."); return; }
+      var storeUrl = prompt("WooCommerce store URL for "+client.name+" (e.g. https://clientstore.com):");
+      if(!storeUrl) return;
+      var consumerKey = prompt("WooCommerce Consumer Key (from their WooCommerce > Settings > Advanced > REST API):");
+      if(!consumerKey) return;
+      var consumerSecret = prompt("WooCommerce Consumer Secret:");
+      if(!consumerSecret) return;
+      window.__nvSb.rpc("admin_set_store_credentials", {
+        p_client_id: clientId,
+        p_platform: "woocommerce",
+        p_store_url: storeUrl.trim(),
+        p_consumer_key: consumerKey.trim(),
+        p_consumer_secret: consumerSecret.trim()
+      }).then(function(r){
+        if(r && r.error){ toast("Failed to save WooCommerce connection: "+r.error.message); return; }
+        var row = r && r.data && r.data[0];
+        if(row){
+          var intakeUrl = SB_URL.replace(/\/$/, "") + "/functions/v1/woo-order-intake/" + row.intake_token;
+          var msg = "Send this to the client for WooCommerce > Settings > Advanced > Webhooks:\n\nDelivery URL:\n" + intakeUrl + "\n\nSecret:\n" + row.webhook_secret + "\n\nTopic: Order created\nStatus: Active\nAPI version: WP REST API Integration v3";
+          alert(msg);
+        }
+        toast(client.name+" WooCommerce connection saved.");
+      });
+    }
+
     function adminSyncStoreFor(platform,clientId){
       if(!clientId){ toast("No client selected."); return; }
       const names=["Ayesha Tariq","Bilal Hussain","Fatima Noor","Usman Raza","Hina Shah","Kamran Ali"];
