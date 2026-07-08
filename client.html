@@ -66,7 +66,7 @@
     .client-module.active{display:block;}
     .grid{display:grid;gap:14px;min-width:0;max-width:100%;}
     .grid.metrics{grid-template-columns:repeat(4,minmax(0,1fr));}
-    .grid.two{grid-template-columns:minmax(0,1.16fr) minmax(340px,.84fr);align-items:start;}
+    .grid.two{grid-template-columns:minmax(0,1.16fr) minmax(340px,.84fr);align-items:stretch;}.grid.two>.panel{display:flex;flex-direction:column;}
     .grid.three{grid-template-columns:repeat(3,minmax(0,1fr));}
     .panel,.metric,.table-wrap{background:#fff;border:1px solid rgba(16,32,27,.08);border-radius:var(--radius);box-shadow:0 12px 32px rgba(21,45,36,.08);}
     .panel{padding:16px;}
@@ -379,7 +379,7 @@
                   <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
                   <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" placeholder="03113323923" maxlength="11" required></div>
                   <div class="field"><label>Pickup City <span class="required-star">*</span></label><select id="bookingPickupCity" required><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
-                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
+                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint()"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
                   <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required></div>
                   <div class="field"><label>Service Type <span class="required-star">*</span></label><select id="bookingService" required><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option><option>Prepaid Delivery</option></select></div>
                   <div class="field"><label>Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" required></div>
@@ -426,10 +426,17 @@
               </div>
               <div class="grid two" style="margin-top:14px">
                 <div class="panel">
-                  <div class="section-head"><div><h3>Shopify</h3><p>Connect with your store URL and Admin API access token.</p></div><span class="chip" id="shopifyStatusChip">Not connected</span></div>
-                  <div class="field"><label>Store URL</label><input id="shopifyStoreUrl" placeholder="your-store.myshopify.com"></div>
+                  <div class="section-head"><div><h3>Shopify</h3><p>Connect with your store domain, Admin API access token, and webhook signing secret.</p></div><span class="chip" id="shopifyStatusChip">Not connected</span></div>
+                  <div class="field"><label>Store Domain</label><input id="shopifyStoreUrl" placeholder="your-store.myshopify.com"></div>
                   <div class="field"><label>Admin API Access Token</label><input id="shopifyToken" placeholder="shpat_..."></div>
+                  <div class="field"><label>Webhook Signing Secret</label><input id="shopifySecret" placeholder="from Settings &gt; Notifications &gt; Webhooks"></div>
                   <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('shopify')">Save Connection</button><button class="ghost-btn" onclick="syncStoreOrders('shopify')">Sync Orders</button></div>
+                  <div class="field" id="shopifyWebhookResult" style="display:none;margin-top:10px">
+                    <label>Your Shopify Webhook Setup</label>
+                    <p class="footer-note">Go to Shopify Admin &rarr; Settings &rarr; Notifications &rarr; Webhooks &rarr; Create webhook. Event: <b>Order creation</b>. Format: <b>JSON</b>. Paste the URL below. Make sure the Webhook Signing Secret above matches the "Signing secret" shown on that same page.</p>
+                    <label style="margin-top:8px">Delivery URL</label>
+                    <div class="inline-actions"><input id="shopifyIntakeUrlOut" readonly style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('shopifyIntakeUrlOut')">Copy</button></div>
+                  </div>
                 </div>
                 <div class="panel">
                   <div class="section-head"><div><h3>WooCommerce</h3><p>Connect with your site URL and REST consumer key/secret.</p></div><span class="chip" id="wooStatusChip">Not connected</span></div>
@@ -448,12 +455,20 @@
                 </div>
               </div>
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Custom Web / API</h3><p>Any other platform or your own website. Push orders to the endpoint/webhook, or paste an orders endpoint to pull.</p></div><span class="chip" id="webStatusChip">Not connected</span></div>
+                <div class="section-head"><div><h3>Custom Web / API</h3><p>For your own custom-built store (not Shopify/WooCommerce). Your site pushes orders to us, and we push status updates back to your site.</p></div><span class="chip" id="webStatusChip">Not connected</span></div>
                 <div class="grid two">
-                  <div class="field"><label>Orders Endpoint / Webhook URL</label><input id="webEndpoint" placeholder="https://yourstore.com/api/orders"></div>
-                  <div class="field"><label>API Key (optional)</label><input id="webKey" placeholder="api key or bearer token"></div>
+                  <div class="field"><label>Status Update URL (we POST status changes here)</label><input id="webEndpoint" placeholder="https://yourstore.com/api/novax-status"></div>
+                  <div class="field"><label>API Key (optional, sent as Bearer token)</label><input id="webKey" placeholder="api key or bearer token"></div>
                 </div>
                 <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('web')">Save Connection</button><button class="ghost-btn" onclick="syncStoreOrders('web')">Sync Orders</button></div>
+                <div class="field" id="webWebhookResult" style="display:none;margin-top:10px">
+                  <label>Your Order Push Setup</label>
+                  <p class="footer-note">Give this to your developer. Your site should POST new orders as JSON to the URL below, with header <b>X-NovaX-Signature</b> set to the hex HMAC-SHA256 of the raw JSON body using the secret below.</p>
+                  <label style="margin-top:8px">Order Push URL</label>
+                  <div class="inline-actions"><input id="webIntakeUrlOut" readonly style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('webIntakeUrlOut')">Copy</button></div>
+                  <label style="margin-top:8px">Signing Secret</label>
+                  <div class="inline-actions"><input id="webSecretOut" readonly style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('webSecretOut')">Copy</button></div>
+                </div>
               </div>
             </section>
             <!-- FULL REPORT -->
@@ -558,6 +573,10 @@
                 <div class="panel">
                   <div class="section-head"><div><h3>Full AI in Web</h3><p>AI reads portal truth, then answers or escalates missing data.</p></div><button class="ghost-btn" id="askAiBtn2">Ask AI</button></div>
                   <div class="ai-chat" id="clientAi"></div>
+                  <div class="inline-actions" style="margin-top:10px">
+                    <input id="clientAiInput" placeholder="Ask about a parcel, invoice, wallet balance..." style="flex:1">
+                    <button class="action-btn" id="clientAiSendBtn">Send</button>
+                  </div>
                 </div>
                 <div class="panel">
                   <div class="section-head"><div><h3>Escalation Inbox</h3><p>AI pings branch managers and admin when portal data is incomplete.</p></div></div>
@@ -703,6 +722,18 @@
     function selectedParcel(){ return state.parcels.find(p=>p.awb===state.selectedAwb) || state.parcels[0] || emptyParcel(); }
     function inClientDateRange(p){ const d=p.date||"2026-06-24"; const f=state.clientDateFrom||"2026-06-01"; const t=state.clientDateTo||"2026-06-24"; return d>=f && d<=t; }
     function clientScopedParcels(){ const id=state.client.id||"CL-0001"; return state.parcels.filter(p=>p.clientId===id && inClientDateRange(p)); }
+    const ZONE_CITY_MAP={ karachi:"A", lahore:"B", islamabad:"B", rawalpindi:"B" };
+    function zoneForCity(city){ return ZONE_CITY_MAP[String(city||"").trim().toLowerCase()]||"B"; }
+    function zoneLabel(zone){ return zone==="A"?"Zone A (Karachi)":"Zone B (Lahore / Islamabad / Rawalpindi)"; }
+    function defaultRateCard(rate){ rate=rate||250; return { overnight:rate, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 }; }
+    function normalizeRateCard(raw, rate){
+      const fallback=defaultRateCard(rate);
+      if(raw && raw.A && raw.B && typeof raw.A.overnight==="number" && typeof raw.B.overnight==="number"){
+        return { A:Object.assign({},fallback,raw.A), B:Object.assign({},fallback,raw.B) };
+      }
+      const legacy=(raw && typeof raw.overnight==="number" && !isNaN(raw.overnight))?raw:fallback;
+      return { A:legacy, B:Object.assign({},legacy) };
+    }
     function clientById(id){ return state.clients.find(c=>c.id===id) || state.clients[0]; }
     function clientCode(id){ const digits=String(id||"1").replace(/\D/g,""); return digits.slice(-3).padStart(3,"0"); }
     function shortAwbFor(clientId,counter){ return `N${clientCode(clientId)}${String(counter).padStart(4,"0")}`; }
@@ -1019,11 +1050,24 @@
     function closeWalletDone(){ document.getElementById("walletDoneModal").classList.remove("show"); }
 
     /* Booking */
+    function updateZoneRateHint(){
+      const el=document.getElementById("bookingCity");
+      const hint=document.getElementById("bookingZoneHint");
+      if(!el||!hint) return;
+      const client=clientById(state.client&&state.client.id);
+      const rc=normalizeRateCard(client&&client.rateCard, client&&client.rate);
+      const zone=zoneForCity(el.value);
+      const card=rc[zone]||rc.B;
+      hint.textContent=zoneLabel(zone)+" rate: Rs "+fmt(card.overnight)+" per shipment";
+    }
     function bookParcel(o={}){
       const cod=o.cod!==undefined?Number(o.cod):3500+Math.round(Math.random()*11000);
       const clientId=o.clientId||state.client.id||"CL-0001"; const client=clientById(clientId);
       const awb=nextAwbForClient(clientId);
-      state.parcels.unshift({ awb, clientId, date:o.date||new Date().toISOString().slice(0,10), consignee:o.consignee||"New COD Order", city:o.city||["Lahore","Karachi","Islamabad","Rawalpindi"][Math.floor(Math.random()*4)], cod, fee:o.fee||client.rate||250, phone:o.phone||"", pickupCity:o.pickupCity||"Karachi", service:o.service||"COD Standard", category:o.category||"", fragile:o.fragile||"No", weight:o.weight||"0.8 kg", paymentMode:o.paymentMode||"COD", orderId:o.orderId||"", address:o.address||"Address pending", status:"New booked", statusAgeHours:0, statusSince:new Date().toISOString(), stage:0, totalStages:STATUS_TAGS.length-1, rider:o.rider||"", branch:"Karachi Hub", risk:8, updated:time(), exception:"", source:o.source||"", steps:["New booked"] });
+      const bookedCity=o.city||["Lahore","Karachi","Islamabad","Rawalpindi"][Math.floor(Math.random()*4)];
+      const bookedRc=normalizeRateCard(client&&client.rateCard, client&&client.rate);
+      const bookedZoneCard=bookedRc[zoneForCity(bookedCity)]||bookedRc.B;
+      state.parcels.unshift({ awb, clientId, date:o.date||new Date().toISOString().slice(0,10), consignee:o.consignee||"New COD Order", city:bookedCity, cod, fee:o.fee||bookedZoneCard.overnight, phone:o.phone||"", pickupCity:o.pickupCity||"Karachi", service:o.service||"COD Standard", category:o.category||"", fragile:o.fragile||"No", weight:o.weight||"0.8 kg", paymentMode:o.paymentMode||"COD", orderId:o.orderId||"", address:o.address||"Address pending", status:"New booked", statusAgeHours:0, statusSince:new Date().toISOString(), stage:0, totalStages:STATUS_TAGS.length-1, rider:o.rider||"", branch:"Karachi Hub", risk:8, updated:time(), exception:"", source:o.source||"", steps:["New booked"] });
       state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId, type:"COD expected", amount:cod, status:"Awaiting delivery", ref:awb });
       state.selectedAwb=awb; state.lastGeneratedAwb=awb; saveState(); render();
       return awb;
@@ -1138,58 +1182,56 @@
     function platformLabel(p){ return p==="shopify"?"Shopify":p==="woocommerce"?"WooCommerce":"Custom Web/API"; }
     function connectStore(platform){
       if(!Array.isArray(state.storeConnections)) state.storeConnections=[];
-      const map={ shopify:{url:"shopifyStoreUrl",fields:{token:"shopifyToken"}}, woocommerce:{url:"wooStoreUrl",fields:{key:"wooKey",secret:"wooSecret"}}, web:{url:"webEndpoint",fields:{key:"webKey"}} };
+      const map={
+        shopify:{url:"shopifyStoreUrl",fields:{key:"shopifyToken",secret:"shopifySecret"},intakeFn:"shopify-order-intake",requireSecret:true,label:"Shopify"},
+        woocommerce:{url:"wooStoreUrl",fields:{key:"wooKey",secret:"wooSecret"},intakeFn:"woo-order-intake",requireSecret:true,label:"WooCommerce"},
+        web:{url:"webEndpoint",fields:{key:"webKey"},intakeFn:"web-order-intake",requireSecret:false,label:"Custom Web/API"}
+      };
       const cfg=map[platform]; if(!cfg) return;
       const storeUrl=(document.getElementById(cfg.url).value||"").trim();
-      if(!storeUrl){ toast("Enter your store URL / endpoint first."); return; }
+      if(!storeUrl){ toast(platform==="web" ? "Enter your status update URL first." : "Enter your store URL first."); return; }
 
-      if(platform==="woocommerce"){
-        // Real, live connection: this calls the NovaX backend and actually wires
-        // up automated order intake + status sync for this store. Unlike the
-        // Shopify/Custom Web demo flows below, credentials here are stored
-        // securely server-side (never in browser state/localStorage) and used
-        // only by the WooCommerce automation.
-        const consumerKey=(document.getElementById("wooKey").value||"").trim();
-        const consumerSecret=(document.getElementById("wooSecret").value||"").trim();
-        if(!consumerKey||!consumerSecret){ toast("Enter your Consumer Key and Consumer Secret first."); return; }
-        if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment."); return; }
-        toast("Connecting to WooCommerce...");
-        window.__nvSb.rpc("client_set_store_credentials", {
-          p_platform: "woocommerce",
-          p_store_url: storeUrl,
-          p_consumer_key: consumerKey,
-          p_consumer_secret: consumerSecret
-        }).then(function(r){
-          if(r && r.error){ toast("Connection failed: "+r.error.message); return; }
-          const row = r && r.data && r.data[0];
-          document.getElementById("wooKey").value=""; document.getElementById("wooSecret").value="";
-          let conn=storeConn(platform);
-          if(!conn){ conn={ clientId:activeClientId(), platform }; state.storeConnections.push(conn); }
-          conn.storeUrl=storeUrl; conn.hasCreds=true; conn.connected=true; conn.connectedAt=time();
-          saveState(); renderIntegrations();
-          if(row){
-            const intakeUrl=SB_URL.replace(/\/$/,"")+"/functions/v1/woo-order-intake/"+row.intake_token;
+      // Real, live connection for all three platforms: calls the NovaX backend
+      // and actually wires up automated order intake + status sync. Credentials
+      // are stored securely server-side (never in browser state/localStorage).
+      const consumerKey=(document.getElementById(cfg.fields.key).value||"").trim();
+      const consumerSecret=cfg.fields.secret ? (document.getElementById(cfg.fields.secret).value||"").trim() : "";
+      if(platform!=="web" && !consumerKey){ toast(platform==="shopify" ? "Enter your Admin API Access Token first." : "Enter your Consumer Key first."); return; }
+      if(cfg.requireSecret && !consumerSecret){ toast(platform==="shopify" ? "Enter your Webhook Signing Secret first." : "Enter your Consumer Secret first."); return; }
+      if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment."); return; }
+      toast("Connecting to "+cfg.label+"...");
+      window.__nvSb.rpc("client_set_store_credentials", {
+        p_platform: platform,
+        p_store_url: storeUrl,
+        p_consumer_key: consumerKey,
+        p_consumer_secret: consumerSecret
+      }).then(function(r){
+        if(r && r.error){ toast("Connection failed: "+r.error.message); return; }
+        const row = r && r.data && r.data[0];
+        Object.keys(cfg.fields).forEach(k=>{ const el=document.getElementById(cfg.fields[k]); if(el) el.value=""; });
+        let conn=storeConn(platform);
+        if(!conn){ conn={ clientId:activeClientId(), platform }; state.storeConnections.push(conn); }
+        conn.storeUrl=storeUrl; conn.hasCreds=true; conn.connected=true; conn.connectedAt=time();
+        saveState(); renderIntegrations();
+        if(row){
+          const intakeUrl=SB_URL.replace(/\/$/,"")+"/functions/v1/"+cfg.intakeFn+"/"+row.intake_token;
+          if(platform==="woocommerce"){
             showWooWebhookResult(intakeUrl, row.webhook_secret);
             toast("WooCommerce connected. Copy the webhook details below into your store.");
+          } else if(platform==="shopify"){
+            const urlEl=document.getElementById("shopifyIntakeUrlOut"); if(urlEl) urlEl.value=intakeUrl;
+            const box=document.getElementById("shopifyWebhookResult"); if(box) box.style.display="block";
+            toast("Shopify connected. Copy the Delivery URL below into your Shopify webhook setup.");
           } else {
-            toast("WooCommerce connected.");
+            const urlEl=document.getElementById("webIntakeUrlOut"); if(urlEl) urlEl.value=intakeUrl;
+            const secretEl=document.getElementById("webSecretOut"); if(secretEl) secretEl.value=row.webhook_secret;
+            const box=document.getElementById("webWebhookResult"); if(box) box.style.display="block";
+            toast("Custom Web/API connected. Send the details below to your developer.");
           }
-        }).catch(function(e){ toast("Connection failed: "+e); });
-        return;
-      }
-
-      // NovaX security note: for Shopify/Custom Web (not yet automated), API
-      // keys/tokens/secrets are intentionally NOT stored (not in state, not in
-      // localStorage, not synced to Supabase). This sync flow is a demo/mock --
-      // it never actually calls Shopify with these credentials, so there is no
-      // reason to persist the raw secret anywhere. We only remember whether
-      // credentials were provided, for the UI badge.
-      const hasCreds=Object.keys(cfg.fields).some(k=>(document.getElementById(cfg.fields[k]).value||"").trim());
-      Object.keys(cfg.fields).forEach(k=>{ const el=document.getElementById(cfg.fields[k]); if(el) el.value=""; });
-      let conn=storeConn(platform);
-      if(!conn){ conn={ clientId:activeClientId(), platform }; state.storeConnections.push(conn); }
-      conn.storeUrl=storeUrl; conn.hasCreds=hasCreds||conn.hasCreds||false; conn.connected=true; conn.connectedAt=time();
-      saveState(); renderIntegrations(); toast(platformLabel(platform)+" connection saved.");
+        } else {
+          toast(cfg.label+" connected.");
+        }
+      }).catch(function(e){ toast("Connection failed: "+e); });
     }
 
     function showWooWebhookResult(intakeUrl, secret){
@@ -1239,7 +1281,7 @@
     function render(){
       renderMetrics(); renderClientStatusBoard(); renderClientParcels(); renderJourney(); renderWallets(); renderAi();
       renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview();
-      renderIntegrations(); renderNewBookedList();
+      renderIntegrations(); renderNewBookedList(); updateZoneRateHint();
       tickMeters();
     }
     function tickMeters(){ requestAnimationFrame(()=>{ document.querySelectorAll(".meter>span").forEach(s=>{ const w=s.style.width; s.style.width="0"; requestAnimationFrame(()=>{ s.style.width=w; }); }); }); }
@@ -1269,8 +1311,30 @@
     ["repSearch","repStatus","repFrom","repTo"].forEach(id=>{ const e=document.getElementById(id); if(e) e.addEventListener(e.tagName==="SELECT"?"change":"input",renderClientReportFull); });
     document.querySelectorAll(".tier-card").forEach(t=>t.addEventListener("click",()=>selectWalletSpeed(t.dataset.speed)));
     document.getElementById("withdrawAmount").addEventListener("input",renderClientWallet);
-    document.getElementById("askAiBtn").addEventListener("click",()=>{ renderAi(); toast("AI answered from live portal data."); });
-    document.getElementById("askAiBtn2").addEventListener("click",()=>{ renderAi(); toast("AI checked live parcel data."); });
+    function clientAiTabBubble(html,isBot){ const box=document.getElementById("clientAi"); if(!box) return; const d=document.createElement("div"); d.className="bubble"+(isBot?" ai":""); d.innerHTML=html; box.appendChild(d); box.scrollTop=box.scrollHeight; }
+    function sendClientAiTabMessage(){
+      const el=document.getElementById("clientAiInput"); if(!el) return;
+      const v=(el.value||"").trim(); if(!v) return;
+      const escFn=window.novaxAiEsc||(s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])));
+      clientAiTabBubble(escFn(v),false);
+      el.value="";
+      setTimeout(()=>{
+        try{
+          if(!window.novaxAiEngine){ clientAiTabBubble("AI is still loading, please try again in a moment.",true); return; }
+          const r=window.novaxAiEngine(v);
+          if(r.ticket){
+            const id=window.novaxAiMakeTicket(v,(v.match(/N\d{7}/i)||[])[0]||"");
+            clientAiTabBubble((r.text?r.text+"<br><br>":"")+"I have opened ticket <b>"+escFn(id)+"</b> for our team - they will follow up shortly.",true);
+          } else {
+            clientAiTabBubble(r.text,true);
+          }
+        }catch(e){ clientAiTabBubble("Sorry, something went wrong reading the data. Please try again.",true); }
+      },150);
+    }
+    document.getElementById("clientAiSendBtn").addEventListener("click",sendClientAiTabMessage);
+    document.getElementById("clientAiInput").addEventListener("keydown",e=>{ if(e.key==="Enter") sendClientAiTabMessage(); });
+    document.getElementById("askAiBtn").addEventListener("click",()=>{ showClientTab("support"); renderAi(); setTimeout(()=>{ const el=document.getElementById("clientAiInput"); if(el) el.focus(); },50); });
+    document.getElementById("askAiBtn2").addEventListener("click",()=>{ renderAi(); const el=document.getElementById("clientAiInput"); if(el) el.focus(); });
     document.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{ if(b.textContent.trim()==="Invite User") toast("Invite user flow opened for this workspace."); }));
     setInterval(()=>{ const el=document.getElementById("clockB"); if(el) el.textContent=`Live ${time()}`; },1000);
 
@@ -1310,7 +1374,7 @@
         ]).then(function(res){
           var c=res[0]&&res[0].data;
           var name=(c&&c.name)||(state.client&&state.client.name)||"My Store";
-          var rate=Number((c&&c.rate)||250), bal=Number((c&&c.wallet_balance)||0), rc=(c&&c.rate_card)||{};
+          var rate=Number((c&&c.rate)||250), bal=Number((c&&c.wallet_balance)||0), rc=normalizeRateCard((c&&c.rate_card), rate);
           state.client={ id:MY, name:name, walletBalance:bal, rate:rate, rateCard:rc, premiumTier:(c&&c.status)||"", walletTopup:0, shippingDue:0, subAccounts:0 };
           state.clients=[{ id:MY, name:name, owner:(c&&c.owner)||"", city:(c&&c.city)||"", status:(c&&c.status)||"Active", tier:(c&&c.status)||"", rate:rate, rateCard:rc, walletBalance:bal, risk:Number((c&&c.risk_score)||0), health:90, problemsResolved:0 }];
           state.parcels=((res[1]&&res[1].data)||[]).map(mapParcel);
@@ -1402,7 +1466,7 @@
           if(/exception|refus|delay|stuck|problem|fail|issue|return/.test(low)){ var ex=myParcels().filter(function(p){return p.exception||/refus|return|not available|reattempt/i.test(p.status||'');}); if(!ex.length) return {text:'Good news - no parcels with exceptions right now. ✅'}; return {text:'You have <b>'+ex.length+'</b> parcel(s) needing attention:<br>'+ex.slice(0,5).map(pLine).join('<br><br>')}; }
           if(/how many|count|summary|overview|total|delivered|status of my/.test(low)){ var ps=myParcels(); var del=ps.filter(function(p){return /delivered/i.test(p.status);}).length; var exn=ps.filter(function(p){return p.exception;}).length; var tr=ps.length-del-exn; return {text:'You have <b>'+ps.length+'</b> parcels - <b>'+del+'</b> delivered, <b>'+tr+'</b> in progress, <b>'+exn+'</b> with issues.'}; }
           if(/list|show|recent|latest|all my|my parcels|my orders/.test(low)){ var ps3=myParcels(); if(!ps3.length) return {text:'You have no parcels yet.'}; return {text:'Your recent parcels:<br>'+ps3.slice(0,8).map(pLine).join('<br><br>')+(ps3.length>8?'<br><span class=nvai-dim>+'+(ps3.length-8)+' more.</span>':'')}; }
-          if(/rate|price|pricing|cost|tariff|fee|per parcel|per shipment|how much/.test(low)){ var c=clientById(cid()); var rate=(c&&(c.rate||(c.rateCard&&c.rateCard.overnight)))||240; return {text:'Your delivery rate is <b>Rs '+fmt(rate)+'</b> per shipment (COD standard). Charges are deducted from COD before your wallet payout.'}; }
+          if(/rate|price|pricing|cost|tariff|fee|per parcel|per shipment|how much/.test(low)){ var c=clientById(cid()); var rc=normalizeRateCard(c&&c.rateCard, c&&c.rate); return {text:'Your delivery rate depends on destination: <b>Zone A (Karachi) Rs '+fmt(rc.A.overnight)+'</b> and <b>Zone B (Lahore / Islamabad / Rawalpindi) Rs '+fmt(rc.B.overnight)+'</b> per shipment (COD standard). Charges are deducted from COD before your wallet payout.'}; }
           if(/book|create|new parcel|new order|how.*(book|ship|send)|pickup|schedule/.test(low)) return {text:'To book a parcel, tap <b>Book New Parcel</b> on your dashboard, then add the consignee, city, COD and weight. Once a rider collects it I can track it live - just give me the AWB.'};
           if(/raise|open.*(ticket|complaint)|file.*(ticket|complaint|issue)|complain|escalate|human|agent|customer (care|support)|contact|speak to|talk to/.test(low)) return {ticket:true,text:'Sure - I will log this with our support team right away.'};
           if(/help|what can you|capabilit|how.*(use|work)|guide|menu|options|commands|what do you do/.test(low)) return {text:'I can track parcels (give an AWB like <b>N0010001</b>), show invoices and payable, wallet balance and withdrawals, exceptions and delays, your rate, and a full summary. Ask in plain words - or type <i>raise a ticket</i> to reach a human.'};
@@ -1418,11 +1482,34 @@
         document.body.appendChild(btn); document.body.appendChild(panel);
         var msgs=panel.querySelector('.nvai-msgs'); var inp=panel.querySelector('.nvai-bar input'); var sendBtn=panel.querySelector('.nvai-bar button'); var closeBtn=panel.querySelector('.nvai-x');
         inp.placeholder='Ask about a parcel, invoice, wallet…';
-        function addMsg(html,cls){ var d=document.createElement('div'); d.className='nvai-m '+cls; d.innerHTML=html; msgs.appendChild(d); msgs.scrollTop=msgs.scrollHeight; }
+        function addMsg(html,cls){ var d=document.createElement('div'); d.className='nvai-m '+cls; d.innerHTML=html; msgs.appendChild(d); msgs.scrollTop=msgs.scrollHeight; saveChatHistory(html,cls); }
+        function saveChatHistory(html,cls){
+          try{
+            var key='novaxAiChat_'+cid();
+            var hist=JSON.parse(localStorage.getItem(key)||'[]');
+            hist.push({h:html,c:cls});
+            if(hist.length>40) hist=hist.slice(hist.length-40);
+            localStorage.setItem(key,JSON.stringify(hist));
+          }catch(e){}
+        }
         function botSay(h){ addMsg(h,'b'); }
         function send(){ var v=inp.value.trim(); if(!v) return; addMsg(esc(v),'u'); inp.value=''; setTimeout(function(){ try{ var r=engine(v); if(r.ticket){ var id=makeTicket(v,(v.match(/N\d{7}/i)||[])[0]||''); botSay((r.text?r.text+'<br><br>':'')+'I have opened ticket <b>'+esc(id)+'</b> for our team - they will follow up shortly.'); } else botSay(r.text); }catch(e){ botSay('Sorry, something went wrong reading the data. Please try again.'); } },160); }
+        window.novaxAiEngine = engine;
+        window.novaxAiMakeTicket = makeTicket;
+        window.novaxAiName = cname;
+        window.novaxAiEsc = esc;
+        var STARTERS=['Where is my last parcel?','My invoices','Wallet balance','Any delays?','My summary'];
+        function renderStarters(){
+          var wrap=document.createElement('div'); wrap.style.display='flex'; wrap.style.flexWrap='wrap'; wrap.style.gap='6px'; wrap.style.margin='2px 0 4px';
+          STARTERS.forEach(function(t){ var c=document.createElement('button'); c.type='button'; c.textContent=t; c.style.cssText='background:#eafff5;border:1px solid #cfe6dc;color:#0b2a1f;border-radius:999px;padding:7px 12px;font-size:12.5px;cursor:pointer;'; c.addEventListener('click',function(){ inp.value=t; send(); }); wrap.appendChild(c); });
+          msgs.appendChild(wrap); msgs.scrollTop=msgs.scrollHeight;
+        }
         var greeted=false;
-        btn.addEventListener('click',function(){ panel.classList.toggle('open'); if(panel.classList.contains('open')){ if(!greeted){ greeted=true; botSay('Hi '+esc(cname())+'! 👋 I am your NovaX AI. Ask me <i>where is N0010001</i>, <i>my invoice</i>, or <i>wallet balance</i>.'); } inp.focus(); } });
+        try{
+          var savedChat=JSON.parse(localStorage.getItem('novaxAiChat_'+cid())||'[]');
+          if(savedChat.length){ greeted=true; savedChat.forEach(function(m){ addMsg(m.h,m.c); }); }
+        }catch(e){}
+        btn.addEventListener('click',function(){ panel.classList.toggle('open'); if(panel.classList.contains('open')){ if(!greeted){ greeted=true; botSay('Hi '+esc(cname())+'! 👋 I am your NovaX AI. Ask me <i>where is N0010001</i>, <i>my invoice</i>, or <i>wallet balance</i>.'); renderStarters(); } inp.focus(); } });
         closeBtn.addEventListener('click',function(){ panel.classList.remove('open'); });
         sendBtn.addEventListener('click',send); inp.addEventListener('keydown',function(e){ if(e.key==='Enter') send(); });
       }catch(e){ console.warn('NovaX AI init failed',e); }
