@@ -213,8 +213,8 @@
       #printStage .print-label-wrap{break-inside:avoid;page-break-inside:avoid;margin:0;}
       #printStage.bulk-print .print-page{display:flex;flex-direction:row;gap:4mm;align-items:stretch;page-break-after:always;break-after:page;break-inside:avoid;page-break-inside:avoid;}
       #printStage.bulk-print .print-page:last-child{page-break-after:auto;break-after:auto;}
-      #printStage.bulk-print .print-page .print-label-wrap{flex:1 1 0;width:33.33%;min-width:0;page-break-after:auto!important;}
-      .awb-label{grid-template-columns:minmax(0,1fr) 132px!important;gap:6px!important;padding:7px!important;border:2px solid #000!important;border-radius:6px!important;box-shadow:none!important;break-inside:avoid;page-break-inside:avoid;max-height:62mm;overflow:hidden;}
+      #printStage.bulk-print .print-page .print-label-wrap{flex:1 1 0;width:33.33%;min-width:0;page-break-after:auto!important;display:flex;}
+      .awb-label{grid-template-columns:minmax(0,1fr) 132px!important;gap:6px!important;padding:7px!important;border:2px solid #000!important;border-radius:6px!important;box-shadow:none!important;break-inside:avoid;page-break-inside:avoid;width:100%;height:auto;min-height:100%;overflow:visible;}
       .awb-title{padding-bottom:4px!important;margin-bottom:5px!important;gap:6px!important;}
       .awb-title h3{font-size:16px!important;}
       .awb-title strong{font-size:14px!important;overflow-wrap:anywhere;}
@@ -931,7 +931,7 @@
     function awbCompleteBadge(p){ return p.awbPrinted ? `<div class="chip good" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700">✅ AWB printed — booking complete${p.awbPrintedAt?" · "+p.awbPrintedAt:""}</div>` : `<div class="chip warn" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700">⏳ AWB not printed yet</div>`; }
     function awbLabelHtml(p){
       const client=clientById(p.clientId);
-      return `<div class="awb-label"><div><div class="awb-title"><div><h3>NovaX AWB</h3><p class="footer-note" style="margin:6px 0 0;color:#41524a">Scan ID: ${p.awb}</p></div><strong>${p.awb}</strong></div><div class="awb-grid"><div class="awb-field"><span>Destination</span><strong>${p.city}</strong></div><div class="awb-field"><span>COD</span><strong>${money(p.cod)}</strong></div><div class="awb-field"><span>Consignee</span><strong>${p.consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${p.phone||"phone pending"}</strong></div><div class="awb-field"><span>Client</span><strong>${client.id} | ${client.name}</strong></div><div class="awb-field"><span>Service</span><strong>${p.service||"COD Standard"}</strong></div><div class="awb-field"><span>Weight</span><strong>${p.weight||"0.8 kg"}</strong></div><div class="awb-field"><span>Handling</span><strong>${p.fragile==="Yes"?"Fragile":"Standard"}</strong></div><div class="awb-field" style="grid-column:1/-1"><span>Address</span><strong>${p.address||"Address attached in portal"}</strong></div></div></div><div class="awb-codes"><div><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}" loading="lazy"></div><div><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}" loading="lazy"></div><span class="chip info">${p.awb}</span></div></div>`;
+      return `<div class="awb-label"><div><div class="awb-title"><div><h3>NovaX AWB</h3><p class="footer-note" style="margin:6px 0 0;color:#41524a">Scan ID: ${p.awb}</p></div><strong>${p.awb}</strong></div><div class="awb-grid"><div class="awb-field"><span>Destination</span><strong>${p.city}</strong></div><div class="awb-field"><span>COD</span><strong>${money(p.cod)}</strong></div><div class="awb-field"><span>Consignee</span><strong>${p.consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${p.phone||"phone pending"}</strong></div><div class="awb-field"><span>Client</span><strong>${client.id} | ${client.name}</strong></div><div class="awb-field"><span>Service</span><strong>${p.service||"COD Standard"}</strong></div><div class="awb-field"><span>Weight</span><strong>${p.weight||"0.8 kg"}</strong></div><div class="awb-field"><span>Handling</span><strong>${p.fragile==="Yes"?"Fragile":"Standard"}</strong></div><div class="awb-field" style="grid-column:1/-1"><span>Address</span><strong>${p.address||"Address attached in portal"}</strong></div></div></div><div class="awb-codes"><div><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"></div><div><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"></div><span class="chip info">${p.awb}</span></div></div>`;
     }
     function printLabels(awbs){
       const stage=document.getElementById("printStage"); if(!stage) return;
@@ -946,12 +946,24 @@
       } else {
         stage.innerHTML=valid.map(p=>`<div class="print-label-wrap">${awbLabelHtml(p)}</div>`).join("");
       }
-      stage.style.display="block"; window.print(); setTimeout(()=>{ stage.style.display="none"; },500);
-      valid.forEach(p=>{ p.awbPrinted=true; p.awbPrintedAt=time(); });
-      saveState();
-      try{ if(document.getElementById("awbLabelPreview")) renderAwbLabel(); }catch(e){}
-      try{ if(valid.length===1 && document.getElementById("awbModal").classList.contains("show")) document.getElementById("awbModalBody").innerHTML=awbCompleteBadge(valid[0])+awbLabelHtml(valid[0]); }catch(e){}
-      try{ renderNewBookedList(); }catch(e){}
+      stage.style.display="block";
+      const imgs=Array.from(stage.querySelectorAll("img"));
+      const waitAll=Promise.all(imgs.map(img=>new Promise(resolve=>{
+        if(img.complete){ resolve(); return; }
+        const done=()=>{ img.removeEventListener("load",done); img.removeEventListener("error",done); resolve(); };
+        img.addEventListener("load",done);
+        img.addEventListener("error",done);
+      })));
+      const timeout=new Promise(resolve=>setTimeout(resolve,2500));
+      Promise.race([waitAll,timeout]).then(()=>{
+        window.print();
+        setTimeout(()=>{ stage.style.display="none"; },500);
+        valid.forEach(p=>{ p.awbPrinted=true; p.awbPrintedAt=time(); });
+        saveState();
+        try{ if(document.getElementById("awbLabelPreview")) renderAwbLabel(); }catch(e){}
+        try{ if(valid.length===1 && document.getElementById("awbModal").classList.contains("show")) document.getElementById("awbModalBody").innerHTML=awbCompleteBadge(valid[0])+awbLabelHtml(valid[0]); }catch(e){}
+        try{ renderNewBookedList(); }catch(e){}
+      });
     }
     function printAwb(){ printLabels([state.lastGeneratedAwb||state.selectedAwb]); }
     function openAwbModal(awb){ const p=state.parcels.find(x=>x.awb===awb)||selectedParcel(); state.lastGeneratedAwb=p.awb; saveState(); document.getElementById("awbModalBody").innerHTML=awbCompleteBadge(p)+awbLabelHtml(p); document.getElementById("awbModal").classList.add("show"); }
