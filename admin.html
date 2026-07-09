@@ -8,7 +8,7 @@
   <title>NovaX Logistics | Control Room</title>
   <style>
     :root {
-      color-scheme: light;
+      color-scheme: dark;
       --ink: #10201b;
       --muted: #60726b;
       --line: #d9e4df;
@@ -46,6 +46,17 @@
 
     button, input, select {
       font: inherit;
+    }
+
+    select, select option {
+      color-scheme: dark;
+      background: #0d251c;
+      color: #eafff5;
+    }
+
+    .orders-compact-table th, .orders-compact-table td {
+      font-size: 12px;
+      white-space: nowrap;
     }
 
     button {
@@ -4349,7 +4360,6 @@
 
               <button type="button" class="admin-nav-main" data-admin-tab="total-summary">TOTAL SUMMARY</button>
 
-              <button type="button" class="admin-nav-main" data-admin-tab="live-visitors">LIVE VISITORS <span id="liveVisitorNavBadge" class="chip good" style="margin-left:6px;display:none">0</span></button>
 
               <div class="admin-nav-group" data-admin-group="tickets">
                 <button type="button" class="admin-nav-main" data-admin-group-toggle="tickets" aria-expanded="false">
@@ -4505,28 +4515,6 @@
               </div>
             </section>
 
-            <section class="admin-module" id="admin-live-visitors">
-              <div class="panel" style="margin-bottom:14px">
-                <div class="section-head">
-                  <div><h3>Live Visitors</h3><p>Real people on your site right now, refreshed every few seconds. Counts include anyone active in the last 45 seconds.</p></div>
-                  <span class="chip info" id="liveVisitorsUpdated">Live</span>
-                </div>
-                <div class="money-grid" id="liveVisitorSummary" style="grid-template-columns:repeat(3,minmax(0,1fr))"></div>
-              </div>
-              <div class="panel" style="margin-bottom:14px">
-                <div class="section-head">
-                  <div><h3>Overall Sessions</h3><p>All visitor sessions ever recorded, plus how many started today, across every portal.</p></div>
-                </div>
-                <div class="money-grid" id="overallVisitorTotals" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:12px"></div>
-                <div class="money-grid" id="overallVisitorSummary" style="grid-template-columns:repeat(3,minmax(0,1fr))"></div>
-              </div>
-              <div class="panel">
-                <div class="section-head">
-                  <div><h3>Recent Sessions</h3><p>Latest visitor sessions across the landing page, client portal, and rider app - live ones are marked, ended ones show their last activity.</p></div>
-                </div>
-                <div class="ops-list" id="liveVisitorList"></div>
-              </div>
-            </section>
 
             <section class="admin-module" id="admin-clients">
               <div class="panel">
@@ -4608,7 +4596,7 @@
                 </div>
                 <div class="table-wrap">
                   <div class="wide-scroll">
-                    <table>
+                    <table class="orders-compact-table">
                       <thead><tr><th>AWB</th><th>Consignee Name</th><th>Address</th><th>City</th><th>Shipper Name</th><th>Origin</th><th>COD</th><th>Weight</th><th>Current Status</th><th>Timer</th><th>Last Process</th></tr></thead>
                       <tbody id="adminOrderRows"></tbody>
                     </table>
@@ -5834,10 +5822,14 @@
 
     function lastProcess(parcel) {
       const last = parcel.processHistory?.at(-1);
+      if (parcel.status === "New booked") {
+        return { by: "", at: "", branch: last?.branch || parcel.branch, scanned: false };
+      }
       return {
         by: parcel.lastProcessedBy || last?.processor || "System import",
         at: parcel.lastProcessedAt || last?.at || `${parcel.date || "2026-06-24"} ${parcel.updated}`,
-        branch: last?.branch || parcel.branch
+        branch: last?.branch || parcel.branch,
+        scanned: true
       };
     }
 
@@ -6749,7 +6741,7 @@
         const client = clientById(p.clientId);
         const alert = alertForParcel(p);
         return `
-          <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="selectParcel('${p.awb}')">
+          <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${p.awb}')">
             <td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${p.updated}</span></td>
             <td>${shortClientCode(client)}<br><strong>${client.name}</strong></td>
             <td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span></td>
@@ -6819,7 +6811,7 @@
         const process = lastProcess(p);
         const transitStarted = STATUS_TAGS.indexOf(p.status) >= STATUS_TAGS.indexOf("Parcel now in transit");
         return `
-          <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="selectParcel('${p.awb}')">
+          <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${p.awb}')">
             <td><strong>${p.awb}</strong><br><span class="footer-note">${p.updated}</span></td>
             <td>${p.consignee}<br><span class="footer-note">${p.phone || "phone pending"}</span></td>
             <td>${p.address || "Address pending"}</td>
@@ -6834,7 +6826,7 @@
             </td>
             <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status === "Parcel now in transit" ? "transit clock" : "status clock"}</span></td>
             <td>
-              <strong>${process.by}</strong><br><span class="footer-note">${process.at}</span><br>
+              ${process.scanned ? `<strong>${process.by}</strong><br><span class="footer-note">${process.at}</span><br>` : `<strong class="footer-note">Not yet scanned</strong><br>`}
               <span class="footer-note">${process.branch} | ${transitStarted ? "transit timer active" : "pre-transit"}</span>
               ${/refused|return/i.test(p.status) ? `<div class="footer-note">${p.returnProof || "Return proof required before manager acceptance."}</div><div class="field"><label>Return proof</label><input id="proof-${p.awb}" value="${p.returnProof || "Photo proof + rider scan + branch receiving signature"}"></div><button class="ghost-btn" onclick="event.stopPropagation(); addReturnProof('${p.awb}')">Add Proof</button>` : ""}
             </td>
@@ -6879,7 +6871,7 @@
               ${alert.level === "critical" ? `<span class="siren-chip">Escalate now</span><br>` : ""}
               <span class="chip ${urgencyClass(alert.level)}">${alert.label}</span><br><span class="footer-note">${alert.due}</span>
             </td>
-            <td><strong>${process.by}</strong><br><span class="footer-note">${process.at}</span><br><span class="footer-note">${process.branch}</span></td>
+            <td>${process.scanned ? `<strong>${process.by}</strong><br><span class="footer-note">${process.at}</span><br>` : `<strong class="footer-note">Not yet scanned</strong><br>`}<span class="footer-note">${process.branch}</span></td>
           </tr>
         `;
       }).join("") || `<tr><td colspan="8">No report rows match these filters.</td></tr>`;
@@ -6905,7 +6897,7 @@
               ${moneyBox("COD", money(processBatch.reduce((s, p) => s + p.cod, 0)), "batch total")}
               ${moneyBox("Clock", agingLabel(agingHours(processParcel)), alert.label)}
             </div>
-            <div class="resolved-note"><strong>Last processed:</strong> ${process.by} at ${process.at}. Branch: ${process.branch}.</div>
+            <div class="resolved-note"><strong>Last processed:</strong> ${process.scanned ? `${process.by} at ${process.at}` : "Not yet scanned"}. Branch: ${process.branch}.</div>
           `;
           currentStatus.innerHTML = processBatch.map(p => `<div><strong>${p.awb}</strong> | ${p.status} | ${p.branch} | ${p.updated}</div>`).join("");
         } else {
@@ -7149,7 +7141,7 @@
           </tr>
         `;
       }).join("");
-      document.getElementById("riderCashSelect").innerHTML = state.riders.map(r => `<option value="${r.id}">${r.id} | ${r.name} | receivable ${money(riderReceivable(r.id))}</option>`).join("");
+      document.getElementById("riderCashSelect").innerHTML = state.riders.map(r => `<option value="${r.id}">${r.name}</option>`).join("");
       updateRiderCashPreview();
       renderRiderReport();
 
@@ -7279,6 +7271,7 @@
       if (riderUserSelect) {
         riderUserSelect.innerHTML = state.riders.length ? state.riders.map(rider => `<option value="${rider.id}">${rider.id} | ${rider.name} | ${rider.branch || "No branch"}</option>`).join("") : `<option value="">No riders yet — add a rider first</option>`;
       }
+      const canDeleteUsers = /^admin$/i.test(String((typeof currentStaffUser === "function" ? (currentStaffUser() || {}).role : "Admin") || "").trim());
       document.getElementById("userAccessList").innerHTML = state.users.map(user => `
         <div class="ops-card">
           <div class="ops-card-head"><strong>${user.id} | ${user.email}</strong><span class="chip ${user.accessSide.includes("Admin") ? "warn" : "info"}">${user.accessSide}</span></div>
@@ -7290,7 +7283,7 @@
             ${moneyBox("Client", user.clientId, "assigned account")}
           </div>
           <div class="footer-note" style="margin-top:8px">Allowed controls: ${(user.permissions || []).join(", ") || "dashboard"}.</div>
-          <div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="deleteUser('${user.id}')">Delete User</button></div>
+          ${canDeleteUsers ? `<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="deleteUser('${user.id}')">Delete User</button></div>` : ""}
         </div>
       `).join("") || `<div class="ops-card"><strong>No users yet</strong><p>Create users from the Create Users tab.</p></div>`;
 
@@ -9916,83 +9909,6 @@
         closeBtn.addEventListener('click',function(){ panel.classList.remove('open'); });
         sendBtn.addEventListener('click',send); inp.addEventListener('keydown',function(e){ if(e.key==='Enter') send(); });
       }catch(e){ console.warn('NovaX AI init failed',e); }
-    })();
-
-    /* ===== NovaX live visitors (real-time + overall session tracking) ===== */
-    (function(){
-      var LV_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
-      var LV_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
-      var PORTALS=["Landing / Signup","Client Portal","Rider App"];
-      if(!window.supabase||!window.supabase.createClient) return;
-      var lvsb; try{ lvsb=window.supabase.createClient(LV_URL,LV_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:"sb-nv-live-visitors"}}); }catch(e){ return; }
-      function timeAgo(iso){
-        var s=Math.max(0,Math.round((Date.now()-new Date(iso).getTime())/1000));
-        if(s<60) return s+"s ago";
-        var m=Math.round(s/60); if(m<60) return m+"m ago";
-        var h=Math.round(m/60); if(h<24) return h+"h ago";
-        var d=Math.round(h/24); return d+"d ago";
-      }
-      function isLive(iso){ return (Date.now()-new Date(iso).getTime())<=45000; }
-      function deviceOf(ua){
-        ua=ua||"";
-        if(/Mobi|Android|iPhone/i.test(ua)) return "Mobile";
-        if(/iPad|Tablet/i.test(ua)) return "Tablet";
-        return "Desktop";
-      }
-      function renderLiveVisitors(rows){
-        var badge=document.getElementById("liveVisitorNavBadge");
-        if(badge){ badge.textContent=String(rows.length); badge.style.display=rows.length?"inline-flex":"none"; }
-        var summaryEl=document.getElementById("liveVisitorSummary");
-        var updatedEl=document.getElementById("liveVisitorsUpdated");
-        if(!summaryEl) return;
-        var byPortal={};
-        rows.forEach(function(r){ byPortal[r.portal]=(byPortal[r.portal]||0)+1; });
-        summaryEl.innerHTML=PORTALS.map(function(p){ var n=byPortal[p]||0; return moneyBox(p,n,n===1?"visitor now":"visitors now"); }).join("");
-        if(updatedEl) updatedEl.textContent="Live · updated "+new Date().toLocaleTimeString([],{ hour:"2-digit", minute:"2-digit", second:"2-digit" });
-      }
-      function renderOverallVisitors(totalAll, totalToday, byPortalAll){
-        var totalsEl=document.getElementById("overallVisitorTotals");
-        var summaryEl=document.getElementById("overallVisitorSummary");
-        if(totalsEl) totalsEl.innerHTML=moneyBox("Total Sessions (All Time)",totalAll,"since tracking started")+moneyBox("Sessions Today",totalToday,"since midnight, your time");
-        if(summaryEl) summaryEl.innerHTML=PORTALS.map(function(p){ var n=byPortalAll[p]||0; return moneyBox(p,n,"total sessions"); }).join("");
-      }
-      function renderRecentSessions(rows){
-        var listEl=document.getElementById("liveVisitorList");
-        if(!listEl) return;
-        listEl.innerHTML = rows.length ? rows.map(function(r){
-          var live=isLive(r.last_seen);
-          return '<div class="ops-card"><div class="ops-card-head"><strong>'+esc(r.portal||"Visitor")+'</strong><span class="chip '+(live?"good":"warn")+'">'+(live?"live · ":"ended · ")+timeAgo(r.last_seen)+'</span></div><p>'+esc(r.activity||"Active on site")+'</p><p class="footer-note">'+deviceOf(r.user_agent)+(r.path?(" · "+esc(r.path)):"")+(r.first_seen?(" · started "+timeAgo(r.first_seen)):"")+'</p></div>';
-        }).join("") : '<div class="ops-card"><strong>No sessions recorded yet</strong><p>As soon as a visitor opens the site, their session will show up here.</p></div>';
-      }
-      function pollLiveVisitors(){
-        var since=new Date(Date.now()-45000).toISOString();
-        lvsb.from("visitor_sessions").select("*").gte("last_seen",since).order("last_seen",{ascending:false}).then(function(res){
-          if(res&&res.error){ console.warn("NovaX live visitors",res.error.message); return; }
-          renderLiveVisitors((res&&res.data)||[]);
-        });
-      }
-      function pollOverallVisitors(){
-        var todayStart=new Date(); todayStart.setHours(0,0,0,0);
-        var totalP=lvsb.from("visitor_sessions").select("*",{count:"exact",head:true});
-        var todayP=lvsb.from("visitor_sessions").select("*",{count:"exact",head:true}).gte("first_seen",todayStart.toISOString());
-        var portalPs=PORTALS.map(function(p){ return lvsb.from("visitor_sessions").select("*",{count:"exact",head:true}).eq("portal",p); });
-        var recentP=lvsb.from("visitor_sessions").select("*").order("last_seen",{ascending:false}).limit(30);
-        Promise.all([totalP,todayP,recentP].concat(portalPs)).then(function(results){
-          var totalRes=results[0], todayRes=results[1], recentRes=results[2], portalRess=results.slice(3);
-          if(totalRes&&totalRes.error){ console.warn("NovaX overall visitors",totalRes.error.message); return; }
-          var byPortalAll={};
-          PORTALS.forEach(function(p,i){ byPortalAll[p]=(portalRess[i]&&portalRess[i].count)||0; });
-          renderOverallVisitors((totalRes&&totalRes.count)||0,(todayRes&&todayRes.count)||0,byPortalAll);
-          if(recentRes&&!recentRes.error) renderRecentSessions(recentRes.data||[]);
-        }).catch(function(e){ console.warn("NovaX overall visitors",e); });
-      }
-      pollLiveVisitors();
-      pollOverallVisitors();
-      setInterval(pollLiveVisitors,5000);
-      setInterval(pollOverallVisitors,10000);
-      try{
-        lvsb.channel("novax_live_visitors").on("postgres_changes",{event:"*",schema:"public",table:"visitor_sessions"},function(){ pollLiveVisitors(); pollOverallVisitors(); }).subscribe(function(status,err){ if(err) console.warn("NovaX live visitors channel",status,err.message||err); });
-      }catch(e){}
     })();
 
     /* ===================== NOVAX STAFF TAB ===================== */
