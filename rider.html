@@ -107,6 +107,7 @@
     @media (max-width:420px){.money-grid{grid-template-columns:1fr;}}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 </head>
 <body>
   <header class="topbar">
@@ -550,12 +551,26 @@
       const note = document.getElementById("scanStatusNote");
       modal.classList.add("show");
       note.textContent = "Point the camera at the parcel's barcode or QR code.";
-      if(!("BarcodeDetector" in window)){
+      const hasBarcodeDetector = "BarcodeDetector" in window;
+      const hasJsQr = typeof window.jsQR === "function";
+      if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+        note.textContent = "Camera access isn't available on this device. Use the Order Processing box below to enter the AWB manually.";
+        return;
+      }
+      if(!hasBarcodeDetector && !hasJsQr){
         note.textContent = "Camera scanning isn't supported in this browser. Use the Order Processing box below to enter the AWB manually.";
         return;
       }
+      let scanCanvas = null, scanCtx = null;
       try{
-        scanDetector = new window.BarcodeDetector({ formats: ["qr_code","code_128","code_39","ean_13","ean_8","upc_a","upc_e"] });
+        scanDetector = null;
+        if(hasBarcodeDetector){
+          try{ scanDetector = new window.BarcodeDetector({ formats: ["qr_code","code_128","code_39","ean_13","ean_8","upc_a","upc_e"] }); }catch(e){ scanDetector = null; }
+        }
+        if(!scanDetector && hasJsQr){
+          scanCanvas = document.createElement("canvas");
+          scanCtx = scanCanvas.getContext("2d", { willReadFrequently: true });
+        }
         scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
         const video = document.getElementById("scanVideo");
         video.srcObject = scanStream;
@@ -563,12 +578,25 @@
         const tick = async () => {
           if(!scanStream) return;
           try{
-            const codes = await scanDetector.detect(video);
-            if(codes && codes.length){
-              const value = codes[0].rawValue;
-              stopScan();
-              scanPickup(value);
-              return;
+            if(scanDetector){
+              const codes = await scanDetector.detect(video);
+              if(codes && codes.length){
+                const value = codes[0].rawValue;
+                stopScan();
+                scanPickup(value);
+                return;
+              }
+            } else if(scanCtx && video.videoWidth){
+              scanCanvas.width = video.videoWidth;
+              scanCanvas.height = video.videoHeight;
+              scanCtx.drawImage(video, 0, 0, scanCanvas.width, scanCanvas.height);
+              const img = scanCtx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
+              const result = window.jsQR(img.data, img.width, img.height);
+              if(result && result.data){
+                stopScan();
+                scanPickup(result.data);
+                return;
+              }
             }
           }catch(e){ /* keep trying */ }
           scanRAF = requestAnimationFrame(tick);
@@ -613,7 +641,7 @@
         }
       }
       function rebuildShadow(){ shadow={}; (state.parcels||[]).forEach(function(p){ if(p._uuid){ markLoaded(p); try{ shadow[p._uuid]=sigOf(fParcel(p)); }catch(e){} } }); }
-      function syncParcels(){ if(!loaded||!RIDER_UUID) return; (state.parcels||[]).forEach(function(p){ if(!p._uuid) return; var row; try{ row=fParcel(p); }catch(e){ return; } var sig=sigOf(row); if(shadow[p._uuid]!==sig){ shadow[p._uuid]=sig; sb.from("parcels").update(row).eq("id",p._uuid).then(function(r){ if(r&&r.error) console.warn("NovaX parcel update",r.error.message); }); } maybeAudit(p); }); }
+      function syncParcels(){ if(!loaded||!RIDER_UUID) return; (state.parcels||[]).forEach(function(p){ if(!p._uuid) return; var row; try{ row=fParcel(p); }catch(e){ return; } var sig=sigOf(row); if(shadow[p._uuid]!==sig){ var prevSig=shadow[p._uuid]; shadow[p._uuid]=sig; sb.from("parcels").update(row).eq("id",p._uuid).then(function(r){ if(r&&r.error){ console.warn("NovaX parcel update",r.error.message); if(shadow[p._uuid]===sig) shadow[p._uuid]=prevSig; } }); } maybeAudit(p); }); }
       function loadAll(){
         return sb.auth.getSession().then(function(sr){
           var session=sr&&sr.data&&sr.data.session;
