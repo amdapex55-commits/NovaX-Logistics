@@ -426,11 +426,16 @@
               </div>
               <div class="grid two" style="margin-top:14px">
                 <div class="panel">
-                  <div class="section-head"><div><h3>Shopify</h3><p>Connect with your store domain, Admin API access token, and webhook signing secret.</p></div><span class="chip" id="shopifyStatusChip">Not connected</span></div>
-                  <div class="field"><label>Store Domain</label><input id="shopifyStoreUrl" placeholder="your-store.myshopify.com"></div>
-                  <div class="field"><label>Admin API Access Token</label><input id="shopifyToken" placeholder="shpat_..."></div>
-                  <div class="field"><label>Webhook Signing Secret</label><input id="shopifySecret" placeholder="from Settings &gt; Notifications &gt; Webhooks"></div>
-                  <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('shopify')">Save Connection</button><button class="ghost-btn" onclick="syncStoreOrders('shopify')">Sync Orders</button></div>
+                  <div class="section-head"><div><h3>Shopify</h3><p>One-click connect: enter your shop domain and approve access on Shopify's own screen. No tokens to copy.</p></div><span class="chip" id="shopifyStatusChip">Not connected</span></div>
+                  <div class="field"><label>Shop Domain</label><input id="shopifyOauthShop" placeholder="your-store.myshopify.com"></div>
+                  <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="clientStartShopifyOauth()">Connect to Shopify (1-click)</button></div>
+                  <details style="margin-top:10px">
+                    <summary class="footer-note" style="cursor:pointer">Prefer to connect manually instead?</summary>
+                    <div class="field" style="margin-top:8px"><label>Store Domain</label><input id="shopifyStoreUrl" placeholder="your-store.myshopify.com"></div>
+                    <div class="field"><label>Admin API Access Token</label><input id="shopifyToken" placeholder="shpat_..."></div>
+                    <div class="field"><label>Webhook Signing Secret</label><input id="shopifySecret" placeholder="from Settings &gt; Notifications &gt; Webhooks"></div>
+                    <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('shopify')">Save Connection</button></div>
+                  </details>
                   <div class="field" id="shopifyWebhookResult" style="display:none;margin-top:10px">
                     <label>Your Shopify Webhook Setup</label>
                     <p class="footer-note">Go to Shopify Admin &rarr; Settings &rarr; Notifications &rarr; Webhooks &rarr; Create webhook. Event: <b>Order creation</b>. Format: <b>JSON</b>. Paste the URL below. Make sure the Webhook Signing Secret above matches the "Signing secret" shown on that same page.</p>
@@ -443,7 +448,7 @@
                   <div class="field"><label>Store URL</label><input id="wooStoreUrl" placeholder="https://yourstore.com"></div>
                   <div class="field"><label>Consumer Key</label><input id="wooKey" placeholder="ck_..."></div>
                   <div class="field"><label>Consumer Secret</label><input id="wooSecret" placeholder="cs_..."></div>
-                  <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('woocommerce')">Save Connection</button><button class="ghost-btn" onclick="syncStoreOrders('woocommerce')">Sync Orders</button></div>
+                  <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('woocommerce')">Save Connection</button></div>
                   <div class="field" id="wooWebhookResult" style="display:none;margin-top:10px">
                     <label>Your WooCommerce Webhook Setup</label>
                     <p class="footer-note">Go to WooCommerce &rarr; Settings &rarr; Advanced &rarr; Webhooks &rarr; Add webhook. Topic: <b>Order created</b>. Status: <b>Active</b>. Paste the two values below exactly.</p>
@@ -460,7 +465,7 @@
                   <div class="field"><label>Status Update URL (we POST status changes here)</label><input id="webEndpoint" placeholder="https://yourstore.com/api/novax-status"></div>
                   <div class="field"><label>API Key (optional, sent as Bearer token)</label><input id="webKey" placeholder="api key or bearer token"></div>
                 </div>
-                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('web')">Save Connection</button><button class="ghost-btn" onclick="syncStoreOrders('web')">Sync Orders</button></div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('web')">Save Connection</button></div>
                 <div class="field" id="webWebhookResult" style="display:none;margin-top:10px">
                   <label>Your Order Push Setup</label>
                   <p class="footer-note">Give this to your developer. Your site should POST new orders as JSON to the URL below, with header <b>X-NovaX-Signature</b> set to the hex HMAC-SHA256 of the raw JSON body using the secret below.</p>
@@ -632,6 +637,7 @@
     const now = () => new Date();
     const time = () => now().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const STORAGE_KEY = "novaxLogisticsStateV10";
+    const SB_URL = "https://rhzunbzbdzicajqtohwp.supabase.co"; // shared Supabase base URL (also used by connectStore, clientStartShopifyOauth)
     const STATUS_TAGS = ["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Refused","Consignee not available","Reattempt","Reassigned","Out of service area","Ready for return","Return in transit","Return received at origin","Return out for delivery","Parcel returned to consignee"];
     const baseState = {
       selectedAwb:"N0010001", activeStatusQueue:"Parcel now in transit", activeRateClient:"", activeSackMode:"create",
@@ -1077,7 +1083,7 @@
       if(required.some(id=>!String(document.getElementById(id).value||"").trim())){ toast("All booking fields are mandatory before AWB creation."); return; }
       let phone=document.getElementById("bookingPhone").value.replace(/\D/g,"");
       if(phone.length===10&&phone.startsWith("3")) phone="0"+phone;
-      const awb=bookParcel({ consignee:document.getElementById("bookingName").value.trim(), city:document.getElementById("bookingCity").value, cod:Number(document.getElementById("bookingCod").value)||6500, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address:document.getElementById("bookingAddress").value.trim() });
+      const awb=bookParcel({ consignee:document.getElementById("bookingName").value.trim(), city:document.getElementById("bookingCity").value, cod:Number(document.getElementById("bookingCod").value || 0), phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address:document.getElementById("bookingAddress").value.trim() });
       openAwbModal(awb); toast(`${awb} booked. Print the AWB from the popup.`);
     }
     function csvEscape(value){
@@ -1180,6 +1186,28 @@
     function activeClientId(){ return (state.client&&state.client.id)||"CL-0001"; }
     function storeConn(platform){ return (state.storeConnections||[]).find(c=>c.clientId===activeClientId()&&c.platform===platform); }
     function platformLabel(p){ return p==="shopify"?"Shopify":p==="woocommerce"?"WooCommerce":"Custom Web/API"; }
+
+    // One-click Shopify OAuth connect: approve access on Shopify's own screen,
+    // no tokens to copy. Requires a Shopify Partner app to be registered once;
+    // SHOPIFY_APP_CLIENT_ID is that app's public Client ID (safe to embed here).
+    const SHOPIFY_APP_CLIENT_ID = "REPLACE_WITH_YOUR_SHOPIFY_APP_CLIENT_ID";
+    function shopifyOauthRedirectUri(){ return SB_URL.replace(/\/$/, "") + "/functions/v1/shopify-oauth-callback"; }
+    function clientStartShopifyOauth(){
+      const shop = (document.getElementById("shopifyOauthShop")?.value || "").trim();
+      if(!shop){ toast("Enter your shop domain first (e.g. your-store.myshopify.com)."); return; }
+      if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment."); return; }
+      if(SHOPIFY_APP_CLIENT_ID.indexOf("REPLACE_WITH") === 0){ toast("Shopify 1-click connect isn't configured yet -- ask NovaX to finish setting up their Shopify app."); return; }
+      toast("Redirecting to Shopify...");
+      window.__nvSb.rpc("client_start_shopify_oauth", { p_shop: shop }).then(function(r){
+        if(r && r.error){ toast("Failed to start Shopify connect: "+r.error.message); return; }
+        const row = r && r.data && r.data[0];
+        if(!row){ toast("Failed to start Shopify connect."); return; }
+        const scope = "read_orders,write_fulfillments,read_fulfillments";
+        const authorizeUrl = "https://"+row.shop+"/admin/oauth/authorize?client_id="+encodeURIComponent(SHOPIFY_APP_CLIENT_ID)+"&scope="+encodeURIComponent(scope)+"&redirect_uri="+encodeURIComponent(shopifyOauthRedirectUri())+"&state="+encodeURIComponent(row.state);
+        window.location.href = authorizeUrl;
+      }).catch(function(e){ toast("Failed to start Shopify connect: "+e); });
+    }
+
     function connectStore(platform){
       if(!Array.isArray(state.storeConnections)) state.storeConnections=[];
       const map={
@@ -1686,6 +1714,24 @@
     }
   }
   if(document.readyState!=="loading") apply(); else document.addEventListener("DOMContentLoaded",apply);
+
+  // Show the result of a Shopify OAuth 1-click connect once the browser
+  // bounces back here from shopify-oauth-callback, then clean the URL.
+  (function shopifyOauthReturnCheck(){
+    var qs = new URLSearchParams(window.location.search);
+    var connected = qs.get("shopifyConnected");
+    var err = qs.get("shopifyError");
+    if(connected || err){
+      var say = function(){
+        if(typeof toast==="function"){ toast(err ? ("Shopify connect failed: "+err) : "Shopify connected. Orders and status updates are now live."); }
+        else if(err){ alert("Shopify connect failed: "+err); } else { alert("Shopify connected. Orders and status updates are now live."); }
+      };
+      if(document.readyState!=="loading") say(); else document.addEventListener("DOMContentLoaded",say);
+      qs.delete("shopifyConnected"); qs.delete("shopifyError");
+      var rest = qs.toString();
+      history.replaceState(null, "", window.location.pathname + (rest?("?"+rest):""));
+    }
+  })();
 })();
 </script>
   <script>
