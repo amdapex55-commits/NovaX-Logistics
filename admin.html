@@ -5062,14 +5062,21 @@
 
             <section class="admin-module" id="admin-api-shopify">
               <div class="panel">
-                <div class="section-head"><div><h3>Shopify API</h3><p>Connect a client's Shopify store for real, automated order push + status update (fulfillment + tracking), same as WooCommerce.</p></div><span class="chip good">Live</span></div>
+                <div class="section-head"><div><h3>Shopify API</h3><p>One-click connect: pick the client, enter their shop domain, and they'll approve access on Shopify's own screen. No token copying, no manual webhook setup.</p></div><span class="chip good">Live</span></div>
                 <div class="grid two">
                   <div class="field"><label>Client</label><select id="shopifyClientSelect"></select></div>
+                  <div class="field"><label>Shop Domain</label><input id="adminShopifyOauthShop" placeholder="store.myshopify.com"></div>
+                </div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="adminStartShopifyOauth()">Connect to Shopify (1-click)</button></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Manual Connect (fallback)</h3><p>Use this only if the client can't approve the 1-click screen -- e.g. they'd rather generate a custom app token themselves.</p></div></div>
+                <div class="grid two">
                   <div class="field"><label>Store Domain</label><input id="adminShopifyUrl" placeholder="store.myshopify.com"></div>
                   <div class="field"><label>Admin API Access Token</label><input id="adminShopifyToken" placeholder="shpat_..."></div>
                   <div class="field"><label>Webhook Signing Secret</label><input id="adminShopifySecret" placeholder="from Settings &gt; Notifications &gt; Webhooks"></div>
                 </div>
-                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="adminConnectLiveStore('shopify')">Connect Live</button><button class="ghost-btn" onclick="adminSyncStore('shopify')">Simulate Order (Demo)</button></div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="adminConnectLiveStore('shopify')">Connect Live</button></div>
               </div>
               <div class="panel" style="margin-top:14px">
                 <div class="section-head"><div><h3>Connected Shopify Stores</h3></div></div>
@@ -5085,7 +5092,7 @@
                   <div class="field"><label>Status Update URL (we POST status changes here)</label><input id="adminWebUrl" placeholder="https://store.com/api/novax-status"></div>
                   <div class="field"><label>API Key (optional, sent as Bearer token)</label><input id="adminWebKey" placeholder="api key or bearer token"></div>
                 </div>
-                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="adminConnectLiveStore('web')">Connect Live</button><button class="ghost-btn" onclick="adminSyncStore('web')">Simulate Order (Demo)</button></div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="adminConnectLiveStore('web')">Connect Live</button></div>
               </div>
               <div class="panel" style="margin-top:14px">
                 <div class="section-head"><div><h3>Connected Web Stores</h3></div></div>
@@ -5102,7 +5109,7 @@
                   <div class="field"><label>Consumer Key</label><input id="adminWooKey" placeholder="ck_..."></div>
                   <div class="field"><label>Consumer Secret</label><input id="adminWooSecret" placeholder="cs_..."></div>
                 </div>
-                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="adminConnectLiveStore('woocommerce')">Connect Live</button><button class="ghost-btn" onclick="adminSyncStore('woocommerce')">Simulate Order (Demo)</button></div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="adminConnectLiveStore('woocommerce')">Connect Live</button></div>
               </div>
               <div class="panel" style="margin-top:14px">
                 <div class="section-head"><div><h3>Connected Woo Commerce Stores</h3></div></div>
@@ -5185,6 +5192,7 @@
     const now = () => new Date();
     const time = () => now().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const STORAGE_KEY = "novaxLogisticsStateV10";
+    const SB_URL = "https://rhzunbzbdzicajqtohwp.supabase.co"; // shared Supabase base URL (also used by adminConnectLiveStore, adminStartShopifyOauth)
     const STATUS_TAGS = [
       "New booked",
       "Collected by rider",
@@ -8072,7 +8080,7 @@
       if(!Array.isArray(state.storeConnections)) state.storeConnections=[];
       const fillSelect=(id)=>{ const sel=document.getElementById(id); if(!sel) return; const cur=sel.value; sel.innerHTML=(state.clients||[]).filter(c=>c.id&&c.id!=="CL-0000").map(c=>`<option value="${c.id}">${c.id} &middot; ${c.name}</option>`).join("")||`<option value="">No clients</option>`; if(cur) sel.value=cur; };
       fillSelect("shopifyClientSelect"); fillSelect("wooClientSelect"); fillSelect("webClientSelect");
-      const renderList=(platform,elId)=>{ const el=document.getElementById(elId); if(!el) return; const rows=(state.storeConnections||[]).filter(c=>c.platform===platform); el.innerHTML=rows.length?rows.map(c=>{ const cl=clientById(c.clientId); return `<div class="ops-card" style="margin-bottom:8px"><div class="ops-card-head"><strong>${cl?cl.name:c.clientId}</strong><span class="chip ${c.connected?"good":""}">${c.connected?"Connected":"Pending"}</span></div><p class="footer-note">${c.storeUrl||""}${c.lastSync?` &middot; last sync ${c.lastSync}`:""}${c.importedCount?` &middot; ${c.importedCount} imported`:""}</p><div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" onclick="adminSyncStoreFor('${platform}','${c.clientId}')">Pull Orders</button></div></div>`; }).join(""):`<p class="footer-note">No stores connected yet.</p>`; };
+      const renderList=(platform,elId)=>{ const el=document.getElementById(elId); if(!el) return; const rows=(state.storeConnections||[]).filter(c=>c.platform===platform); el.innerHTML=rows.length?rows.map(c=>{ const cl=clientById(c.clientId); return `<div class="ops-card" style="margin-bottom:8px"><div class="ops-card-head"><strong>${cl?cl.name:c.clientId}</strong><span class="chip ${c.connected?"good":""}">${c.connected?"Connected":"Pending"}</span></div><p class="footer-note">${c.storeUrl||""}${c.lastSync?` &middot; last sync ${c.lastSync}`:""}${c.importedCount?` &middot; ${c.importedCount} imported`:""}</p><p class="footer-note" style="margin-top:8px">Orders arrive automatically via webhook -- no manual pull needed.</p></div>`; }).join(""):`<p class="footer-note">No stores connected yet.</p>`; };
       renderList("shopify","shopifyConnList"); renderList("woocommerce","wooConnList"); renderList("web","webConnList");
     }
     function adminPlatformLabel(p){ return p==="shopify"?"Shopify":p==="woocommerce"?"WooCommerce":"Custom Web/API"; }
@@ -8095,6 +8103,32 @@
       saveState(); renderAdmin(); toast(adminPlatformLabel(platform)+" connected for "+clientId+".");
     }
     function adminConnectWooCommerce(clientId){ adminConnectLiveStore("woocommerce", clientId); }
+
+    // One-click Shopify OAuth connect: the client approves access on Shopify's
+    // own screen, no token copying or manual webhook setup needed. Requires a
+    // Shopify Partner app to be registered once; SHOPIFY_APP_CLIENT_ID below is
+    // the app's public Client ID (safe to embed here). The matching Client
+    // Secret lives only in the shopify-oauth-callback Edge Function's secrets.
+    const SHOPIFY_APP_CLIENT_ID = "REPLACE_WITH_YOUR_SHOPIFY_APP_CLIENT_ID";
+    function shopifyOauthRedirectUri(){ return "https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/shopify-oauth-callback"; }
+    function adminStartShopifyOauth(){
+      const clientId = document.getElementById("shopifyClientSelect")?.value || "";
+      const client = clientById(clientId);
+      if(!clientId || !client){ toast("Select a client first."); return; }
+      const shop = (document.getElementById("adminShopifyOauthShop")?.value || "").trim();
+      if(!shop){ toast("Enter the client's shop domain first (e.g. store.myshopify.com)."); return; }
+      if(!window.__nvSb){ toast("Cloud connection not ready yet, try again in a moment."); return; }
+      if(SHOPIFY_APP_CLIENT_ID.indexOf("REPLACE_WITH") === 0){ toast("Shopify app not configured yet -- register a Shopify Partner app first and paste its Client ID into admin.html."); return; }
+      toast("Redirecting to Shopify...");
+      window.__nvSb.rpc("admin_start_shopify_oauth", { p_client_id: clientId, p_shop: shop }).then(function(r){
+        if(r && r.error){ toast("Failed to start Shopify connect: "+r.error.message); return; }
+        const row = r && r.data && r.data[0];
+        if(!row){ toast("Failed to start Shopify connect."); return; }
+        const scope = "read_orders,write_fulfillments,read_fulfillments";
+        const authorizeUrl = "https://"+row.shop+"/admin/oauth/authorize?client_id="+encodeURIComponent(SHOPIFY_APP_CLIENT_ID)+"&scope="+encodeURIComponent(scope)+"&redirect_uri="+encodeURIComponent(shopifyOauthRedirectUri())+"&state="+encodeURIComponent(row.state);
+        window.location.href = authorizeUrl;
+      }).catch(function(e){ toast("Failed to start Shopify connect: "+e); });
+    }
 
     // Real, live store connections for WooCommerce, Shopify, and Custom Web/API.
     // Unlike adminConnectStore() (the older local-only demo above), this calls
@@ -8177,7 +8211,7 @@
       adminSyncStoreFor(platform,clientId);
     }
     function bookParcel(overrides = {}) {
-      const codAmount = overrides.cod || 3500 + Math.round(Math.random() * 11000);
+      const codAmount = (overrides.cod !== undefined && overrides.cod !== null) ? overrides.cod : 3500 + Math.round(Math.random() * 11000);
       const clientId = overrides.clientId || state.client.id || "CL-0001";
       const client = clientById(clientId);
       const awb = nextAwbForClient(clientId);
@@ -8235,7 +8269,7 @@
       }
       const consignee = document.getElementById("bookingName").value.trim();
       const city = document.getElementById("bookingCity").value;
-      const cod = Number(document.getElementById("bookingCod").value) || 6500;
+      const cod = Number(document.getElementById("bookingCod").value || 0);
       const awb = bookParcel({
         consignee,
         city,
@@ -10152,6 +10186,24 @@
     }
   }
   if(document.readyState!=="loading") apply(); else document.addEventListener("DOMContentLoaded",apply);
+
+  // Show the result of a Shopify OAuth 1-click connect once the browser
+  // bounces back here from shopify-oauth-callback, then clean the URL.
+  (function shopifyOauthReturnCheck(){
+    var qs = new URLSearchParams(window.location.search);
+    var connected = qs.get("shopifyConnected");
+    var err = qs.get("shopifyError");
+    if(connected || err){
+      var say = function(){
+        if(typeof toast==="function"){ toast(err ? ("Shopify connect failed: "+err) : "Shopify connected. Orders and status updates are now live."); }
+        else if(err){ alert("Shopify connect failed: "+err); } else { alert("Shopify connected. Orders and status updates are now live."); }
+      };
+      if(document.readyState!=="loading") say(); else document.addEventListener("DOMContentLoaded",say);
+      qs.delete("shopifyConnected"); qs.delete("shopifyError");
+      var rest = qs.toString();
+      history.replaceState(null, "", window.location.pathname + (rest?("?"+rest):""));
+    }
+  })();
 })();
 </script>
 </body>
