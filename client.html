@@ -374,7 +374,7 @@
             <!-- NEW BOOKING -->
             <section class="client-module" id="client-newBooking">
               <div class="panel">
-                <div class="section-head"><div><h3>New Booking</h3><p>Create one AWB with COD, consignee, address, service type, and pickup instructions. Submitting writes to the same parcel ledger and opens the printable AWB.</p></div><button class="action-btn" id="quickBookingBtn">Create AWB</button></div>
+                <div class="section-head"><div><h3>New Booking</h3><p>Create one AWB with COD, consignee, address, service type, and pickup instructions. Submitting writes to the same parcel ledger and opens the printable AWB.</p></div><button class="action-btn" id="quickBookingBtn">Create Booking</button></div>
                 <div class="form-grid">
                   <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
                   <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" placeholder="03113323923" maxlength="11" required></div>
@@ -388,6 +388,7 @@
                   <div class="field"><label>Payment Mode <span class="required-star">*</span></label><select id="bookingPaymentMode" required><option>COD</option><option>Non COD Prepaid</option></select></div>
                   <div class="field" style="grid-column:1/-1"><label>Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full pickup/delivery address" required></textarea></div>
                 </div>
+                <div class="footer-note" id="bookingConfirmLine" style="display:none;margin-top:12px;font-weight:700;color:var(--green)"></div>
               </div>
             </section>
             <!-- AWB LABEL -->
@@ -1102,7 +1103,16 @@
       let phone=document.getElementById("bookingPhone").value.replace(/\D/g,"");
       if(phone.length===10&&phone.startsWith("3")) phone="0"+phone;
       const awb=bookParcel({ consignee:document.getElementById("bookingName").value.trim(), city:document.getElementById("bookingCity").value, cod:Number(document.getElementById("bookingCod").value || 0), phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address:document.getElementById("bookingAddress").value.trim() });
-      openAwbModal(awb); toast(`${awb} booked. Print the AWB from the popup.`);
+      state.lastGeneratedAwb=awb; saveState(); toast(`${awb} booked. Go to the AWB Label tab to print it.`);
+      resetBookingForm();
+      const confirmLine=document.getElementById("bookingConfirmLine");
+      if(confirmLine){ confirmLine.textContent=`Booking created. Print air way bill from AWB tab. Your tracking ID is ${awb}`; confirmLine.style.display="block"; }
+    }
+    function resetBookingForm(){
+      ["bookingName","bookingPhone","bookingCod","bookingCategory","bookingAddress"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
+      const weightEl=document.getElementById("bookingWeight"); if(weightEl) weightEl.value="0.8 kg";
+      ["bookingPickupCity","bookingCity","bookingService","bookingCategory","bookingFragile","bookingPaymentMode"].forEach(id=>{ const el=document.getElementById(id); if(el&&el.tagName==="SELECT") el.selectedIndex=0; });
+      try{ updateZoneRateHint(); }catch(e){}
     }
     function csvEscape(value){
       const text=String(value??"");
