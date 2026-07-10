@@ -5996,7 +5996,7 @@
     }
 
     function parcelsByAwbs(awbs) {
-      return awbs.map(awb => state.parcels.find(p => p.awb.toUpperCase() === awb)).filter(Boolean);
+      return awbs.map(awb => state.parcels.find(p => String(p.awb || "").toUpperCase() === awb)).filter(Boolean);
     }
 
     function processingParcels() {
@@ -7986,11 +7986,33 @@
       if (typeof renderStaffTab === "function") { try { renderStaffTab(); } catch(e){} }
     }
 
-    function lookupProcessingParcel() {
+    async function lookupProcessingParcel() {
       const input = document.getElementById("processingAwbInput");
       const awbs = parseAwbList(input?.value || "");
       if (awbs.length && input) input.value = `${awbs.join(", ")}, `;
-      const found = parcelsByAwbs(awbs);
+      let found = parcelsByAwbs(awbs);
+      // Local state.parcels is a capped/cached snapshot (most recent 5000, and it can
+      // lag behind realtime updates by up to ~1s). If a scanned AWB isn't in that
+      // cache -- e.g. it's an older parcel that fell outside the cap, or it was just
+      // created and hasn't synced down yet -- fall back to a direct live lookup
+      // instead of telling the user it doesn't exist.
+      const missing = awbs.filter(awb => !found.some(p => String(p.awb || "").toUpperCase() === awb));
+      if (missing.length) {
+        try {
+          const r = await sb.from("parcels").select("*").in("awb", missing);
+          if (r && !r.error && Array.isArray(r.data) && r.data.length) {
+            r.data.forEach(row => {
+              const parcel = rParcel(row);
+              if (!parcel || !parcel.awb) return;
+              const idx = state.parcels.findIndex(p => (p._uuid && p._uuid === parcel._uuid) || p.awb === parcel.awb);
+              if (idx >= 0) state.parcels[idx] = parcel; else state.parcels.push(parcel);
+            });
+            found = parcelsByAwbs(awbs);
+          } else if (r && r.error) {
+            console.warn("NovaX processing lookup fallback", r.error.message);
+          }
+        } catch (e) { console.warn("NovaX processing lookup fallback", e); }
+      }
       if (!found.length) {
         state.activeProcessingAwb = "";
         state.processingBatchAwbs = [];
