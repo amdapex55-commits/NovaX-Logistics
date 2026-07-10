@@ -1529,6 +1529,18 @@
           if(/track|where|status|location/.test(low)) return {text:'Share the tracking ID (e.g. <b>N0010001</b>) and I will give you the exact live status.'};
           return {text:'I want to get this right. Ask me anything about <b>your</b> account - try <i>where is N0010001</i>, <i>my invoices</i>, <i>wallet balance</i>, <i>any delays?</i>, <i>my summary</i>, or <i>my rate</i>. To reach a person, type <i>raise a ticket</i>.'};
         }
+        // Expose the engine to the "Full AI in Web" tab immediately, before any
+        // floating-widget DOM setup below. That widget is a secondary UI --
+        // if its DOM creation ever fails for any reason, it must not be able to
+        // block the main AI tab from working (previously a single try/catch
+        // wrapped both, so a floating-widget error silently prevented
+        // window.novaxAiEngine from ever being set, breaking the AI tab too).
+        window.novaxAiEngine = engine;
+        window.novaxAiMakeTicket = makeTicket;
+        window.novaxAiName = cname;
+        window.novaxAiEsc = esc;
+      }catch(e){ console.warn('NovaX AI engine init failed', e); }
+      try{
         var style=document.createElement('style');
         style.textContent='.nvai-btn{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:99999;width:58px;height:58px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#14c77b);color:#fff;font-size:24px;box-shadow:0 12px 30px rgba(20,199,123,.45);display:grid;place-items:center;border:0;cursor:pointer}.nvai-dim{opacity:.7}.nvai-panel{position:fixed;right:18px;bottom:calc(86px + env(safe-area-inset-bottom));z-index:99999;width:360px;max-width:calc(100vw - 36px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #cfe6dc;border-radius:18px;box-shadow:0 26px 70px rgba(13,91,64,.28);display:none;flex-direction:column;overflow:hidden}.nvai-panel.open{display:flex}.nvai-head{background:linear-gradient(135deg,#0b2a1f,#0c7c59);color:#eafff5;padding:13px 16px;display:flex;align-items:center;gap:10px}.nvai-head b{font-size:15px;line-height:1.1}.nvai-head small{font-size:11px;opacity:.8}.nvai-x{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:0;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px}.nvai-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f3fff9}.nvai-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}.nvai-m.u{align-self:flex-end;background:#dcffe9;color:#08311f;border-bottom-right-radius:4px}.nvai-m.b{align-self:flex-start;background:#fff;border:1px solid #e1f0e8;color:#0b2a1f;border-bottom-left-radius:4px}.nvai-bar{display:flex;gap:8px;padding:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom));border-top:1px solid #e1f0e8;background:#fff}.nvai-bar input{flex:1;min-width:0;height:42px;border-radius:11px;border:1px solid #cfe6dc;padding:0 12px;font:inherit;font-size:16px}.nvai-bar button{height:42px;padding:0 16px;border-radius:11px;background:#14c77b;color:#04130d;font-weight:800;border:0;cursor:pointer}@media (max-width:520px){.nvai-panel{right:10px;left:10px;width:auto;bottom:calc(78px + env(safe-area-inset-bottom));height:72vh}.nvai-btn{right:14px;bottom:calc(14px + env(safe-area-inset-bottom))}}';
         document.head.appendChild(style);
@@ -1537,6 +1549,7 @@
         panel.innerHTML='<div class=nvai-head><div><b>NovaX AI</b><br><small>reads your live data · never guesses</small></div><button class=nvai-x type=button>×</button></div><div class=nvai-msgs></div><div class=nvai-bar><input type=text><button type=button>Send</button></div>';
         document.body.appendChild(btn); document.body.appendChild(panel);
         var msgs=panel.querySelector('.nvai-msgs'); var inp=panel.querySelector('.nvai-bar input'); var sendBtn=panel.querySelector('.nvai-bar button'); var closeBtn=panel.querySelector('.nvai-x');
+        if (!msgs || !inp || !sendBtn || !closeBtn) throw new Error('NovaX AI widget: expected element not found in panel markup');
         inp.placeholder='Ask about a parcel, invoice, wallet…';
         function addMsg(html,cls){ var d=document.createElement('div'); d.className='nvai-m '+cls; d.innerHTML=html; msgs.appendChild(d); msgs.scrollTop=msgs.scrollHeight; saveChatHistory(html,cls); }
         function saveChatHistory(html,cls){
@@ -1550,10 +1563,6 @@
         }
         function botSay(h){ addMsg(h,'b'); }
         function send(){ var v=inp.value.trim(); if(!v) return; addMsg(esc(v),'u'); inp.value=''; setTimeout(function(){ try{ var r=engine(v); if(r.ticket){ var id=makeTicket(v,(v.match(/N\d{7}/i)||[])[0]||''); botSay((r.text?r.text+'<br><br>':'')+'I have opened ticket <b>'+esc(id)+'</b> for our team - they will follow up shortly.'); } else botSay(r.text); }catch(e){ botSay('Sorry, something went wrong reading the data. Please try again.'); } },160); }
-        window.novaxAiEngine = engine;
-        window.novaxAiMakeTicket = makeTicket;
-        window.novaxAiName = cname;
-        window.novaxAiEsc = esc;
         var STARTERS=['Where is my last parcel?','My invoices','Wallet balance','Any delays?','My summary'];
         function renderStarters(){
           var wrap=document.createElement('div'); wrap.style.display='flex'; wrap.style.flexWrap='wrap'; wrap.style.gap='6px'; wrap.style.margin='2px 0 4px';
