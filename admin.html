@@ -6138,6 +6138,13 @@
       return parcel.status === "Delivered" || parcel.steps.includes("COD collected");
     }
 
+    // Revenue recognition point: as soon as a rider has physically collected
+    // the parcel (stage index >= STATUS_TAGS.indexOf("Collected by rider")),
+    // NovaX has earned the shipping fee -- we don't wait for final delivery.
+    function isPickedUpParcel(parcel) {
+      return parcel.stage >= 1;
+    }
+
     function isCashCollectedParcel(parcel) {
       return isDeliveredLedgerParcel(parcel) && parcel.cashReceived;
     }
@@ -6312,9 +6319,10 @@
       const parcels = state.parcels;
       const delivered = parcels.filter(p => p.status.includes("Delivered")).length;
       const deliveredParcels = parcels.filter(isDeliveredLedgerParcel);
+      const pickedUpParcels = parcels.filter(isPickedUpParcel);
       const unpaidDeliveredParcels = parcels.filter(isUnpaidDeliveredParcel);
       const codCollected = deliveredParcels.reduce((s, p) => s + p.cod, 0);
-      const revenue = deliveredParcels.reduce((s, p) => s + p.fee, 0);
+      const revenue = pickedUpParcels.reduce((s, p) => s + p.fee, 0);
       const expenses = state.expenses.reduce((s, e) => s + e.amount, 0);
       const payable = Math.max(0, unpaidDeliveredParcels.reduce((s, p) => s + p.cod - p.fee, 0));
       const avgProgress = parcels.reduce((s, p) => s + (p.stage / p.totalStages), 0) / parcels.length;
@@ -6390,7 +6398,7 @@
       ].join("");
       document.getElementById("adminMetrics").innerHTML = [
         metricCard("Exceptions", m.exceptions, Math.min(100, m.exceptions * 18), "auto escalations", m.exceptions ? "red" : ""),
-        metricCard("Revenue", money(m.revenue), percent(m.revenue, 2400), "shipping fees only", "good"),
+        metricCard("Revenue", money(m.revenue), percent(m.revenue, 2400), "live, from rider pickup", "good"),
         metricCard("Expenses", money(m.expenses), percent(m.expenses, 450000), "operating burn", "amber"),
         metricCard("Cash Exposure", `${cashExposure}%`, Math.min(100, cashExposure), "blocked over limit", cashExposure > 100 ? "red" : "amber")
       ].join("");
@@ -7819,7 +7827,9 @@
       const pendingInvoices = state.invoices.filter(invoice => invoice.status === "Generated" || invoice.status === "Pending");
       const pendingWithdrawals = state.walletWithdrawals.filter(item => item.status !== "Paid");
       const feeRevenue = state.walletWithdrawals.reduce((sum, item) => sum + Number(item.fee || 0), 0);
-      const deliveryRevenue = state.invoices.filter(invoice => invoice.status !== "Deleted").reduce((sum, invoice) => sum + Number(invoice.charges || 0), 0);
+      // Recognized live from rider pickup, not gated on invoice generation --
+      // matches the top dashboard Revenue card so both stay in sync.
+      const deliveryRevenue = state.parcels.filter(isPickedUpParcel).reduce((sum, parcel) => sum + Number(parcel.fee || 0), 0);
 
       const balanceCards = document.getElementById("walletBalanceCards");
       if (balanceCards) {
@@ -7861,7 +7871,7 @@
       if (summaryCards) {
         const m = metrics();
         summaryCards.innerHTML = [
-          metricCard("Delivery Revenue", money(deliveryRevenue), Math.min(100, percent(deliveryRevenue, 100000)), "invoice charges only", "good"),
+          metricCard("Delivery Revenue", money(deliveryRevenue), Math.min(100, percent(deliveryRevenue, 100000)), "live, from rider pickup", "good"),
           metricCard("Wallet Liability", money(walletTotal), Math.min(100, percent(walletTotal, 150000)), "client balance owed", walletTotal ? "amber" : "good"),
           metricCard("Expenses", money(m.expenses), Math.min(100, percent(m.expenses, 450000)), "logged expenses", "amber"),
           metricCard("Withdraw Fees", money(feeRevenue), Math.min(100, percent(feeRevenue, 5000)), "speed charges", "blue")
@@ -7881,7 +7891,7 @@
       const revenueList = document.getElementById("financeRevenueList");
       if (revenueList) {
         revenueList.innerHTML = `
-          <div class="ops-card"><div class="ops-card-head"><strong>Delivery charges earned</strong><span class="chip good">${money(deliveryRevenue)}</span></div><p>NovaX revenue comes from delivery charges on invoices, not client COD payable.</p></div>
+          <div class="ops-card"><div class="ops-card-head"><strong>Delivery charges earned</strong><span class="chip good">${money(deliveryRevenue)}</span></div><p>NovaX revenue is recognized as soon as a rider picks up the parcel (shipping fee), not client COD payable and not gated on invoicing.</p></div>
           <div class="ops-card"><div class="ops-card-head"><strong>Withdrawal speed fees</strong><span class="chip info">${money(feeRevenue)}</span></div><p>24h = 0.1%, 12h = 0.3%, instant = 0.7%. Fee is deducted from requested withdrawal amount.</p></div>
           <div class="ops-card"><div class="ops-card-head"><strong>Pending invoice charges</strong><span class="chip warn">${money(pendingInvoices.reduce((sum, invoice) => sum + Number(invoice.charges || 0), 0))}</span></div><p>These charges are known, but invoice is not wallet-active until pushed.</p></div>
         `;
