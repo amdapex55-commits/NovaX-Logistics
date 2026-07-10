@@ -1733,6 +1733,59 @@
         position: fixed;
         inset: 18px;
       }
+
+      #adminPrintStage, #adminPrintStage * {
+        visibility: visible;
+      }
+
+      #adminPrintStage {
+        display: none;
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        padding: 6mm;
+        background: #fff;
+      }
+
+      #adminPrintStage.show {
+        display: block !important;
+      }
+
+      #adminPrintStage .print-label-wrap {
+        break-inside: avoid;
+        page-break-inside: avoid;
+        margin: 0 0 6mm 0;
+      }
+
+      #adminPrintStage.bulk-print .print-page {
+        display: flex;
+        flex-direction: row;
+        gap: 4mm;
+        align-items: stretch;
+        page-break-after: always;
+        break-after: page;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      #adminPrintStage.bulk-print .print-page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+
+      #adminPrintStage.bulk-print .print-page .print-label-wrap {
+        flex: 1 1 0;
+        width: 33.33%;
+        min-width: 0;
+        display: flex;
+        margin: 0;
+      }
+
+      #adminPrintStage .awb-label {
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
     }
 
     .data-note {
@@ -3869,6 +3922,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+    <div id="adminPrintStage"></div>
   <div class="app-shell">
     <header class="topbar">
       <div class="topbar-inner">
@@ -4884,6 +4938,7 @@
                     <div class="inline-actions">
                       <button class="ghost-btn" id="processingLoadBatchBtn">Load Batch</button>
                       <button class="ghost-btn" id="processingClearBatchBtn">Clear Batch</button>
+                      <button class="action-btn" id="processingPrintAwbBtn">Print AWB(s)</button>
                     </div>
                     <div class="processing-current" id="processingCurrentStatus">Waiting for tracking ID...</div>
                     <div class="mini-form">
@@ -9437,7 +9492,55 @@
       state.activeClientTab = "awbLabel";
       saveState();
       renderClientModules();
-      window.print();
+      const imgs = Array.from(document.querySelectorAll("#awbLabelPreview img"));
+      const waitAll = Promise.all(imgs.map(img => new Promise(resolve => {
+        if (img.complete) { resolve(); return; }
+        const done = () => { img.removeEventListener("load", done); img.removeEventListener("error", done); resolve(); };
+        img.addEventListener("load", done);
+        img.addEventListener("error", done);
+      })));
+      const timeout = new Promise(resolve => setTimeout(resolve, 2500));
+      Promise.race([waitAll, timeout]).then(() => { window.print(); });
+    }
+
+    function adminAwbLabelHtml(p) {
+      const client = clientById(p.clientId);
+      return `<div class="awb-label"><div><div class="awb-title"><div><h3>NovaX AWB</h3><p class="footer-note" style="margin:6px 0 0;color:#41524a">Scan ID: ${p.awb}</p></div><strong>${p.awb}</strong></div><div class="awb-grid"><div class="awb-field"><span>Destination</span><strong>${p.city}</strong></div><div class="awb-field"><span>COD</span><strong>${money(p.cod)}</strong></div><div class="awb-field"><span>Consignee</span><strong>${p.consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${p.phone || "phone pending"}</strong></div><div class="awb-field"><span>Client</span><strong>${shortClientCode(client)} | ${client.name}</strong></div><div class="awb-field"><span>Service</span><strong>${p.service || "COD Standard"}</strong></div><div class="awb-field"><span>Weight</span><strong>${p.weight || "0.8 kg"}</strong></div><div class="awb-field"><span>Handling</span><strong>${p.fragile === "Yes" ? "Fragile" : "Standard"}</strong></div><div class="awb-field" style="grid-column:1/-1"><span>Address</span><strong>${p.address || "Address attached in portal"}</strong></div></div></div><div class="awb-codes"><div><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"></div><div><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"></div><span class="chip info">${p.awb}</span></div></div>`;
+    }
+
+    function printAdminAwbs(awbs) {
+      const stage = document.getElementById("adminPrintStage");
+      if (!stage) return;
+      const valid = (awbs || []).map(a => state.parcels.find(p => p.awb === a)).filter(Boolean);
+      if (!valid.length) { toast("No AWB available to print."); return; }
+      const bulk = valid.length > 1;
+      stage.classList.toggle("bulk-print", bulk);
+      if (bulk) {
+        let html = "";
+        for (let i = 0; i < valid.length; i += 3) { html += `<div class="print-page">` + valid.slice(i, i + 3).map(p => `<div class="print-label-wrap">${adminAwbLabelHtml(p)}</div>`).join("") + `</div>`; }
+        stage.innerHTML = html;
+      } else {
+        stage.innerHTML = valid.map(p => `<div class="print-label-wrap">${adminAwbLabelHtml(p)}</div>`).join("");
+      }
+      stage.classList.add("show");
+      const imgs = Array.from(stage.querySelectorAll("img"));
+      const waitAll2 = Promise.all(imgs.map(img => new Promise(resolve => {
+        if (img.complete) { resolve(); return; }
+        const done = () => { img.removeEventListener("load", done); img.removeEventListener("error", done); resolve(); };
+        img.addEventListener("load", done);
+        img.addEventListener("error", done);
+      })));
+      const timeout2 = new Promise(resolve => setTimeout(resolve, 2500));
+      Promise.race([waitAll2, timeout2]).then(() => {
+        window.print();
+        setTimeout(() => { stage.classList.remove("show"); stage.innerHTML = ""; }, 500);
+        toast(`${valid.length} AWB label(s) sent to print.`);
+      });
+    }
+
+    function printProcessingBatchAwbs() {
+      const awbs = (state.processingBatchAwbs && state.processingBatchAwbs.length) ? state.processingBatchAwbs : [state.activeProcessingAwb].filter(Boolean);
+      printAdminAwbs(awbs);
     }
 
     function renderLandingTrack() {
@@ -9550,6 +9653,7 @@
     });
     document.getElementById("processingLoadBatchBtn").addEventListener("click", lookupProcessingParcel);
     document.getElementById("processingClearBatchBtn").addEventListener("click", clearProcessingBatch);
+    document.getElementById("processingPrintAwbBtn").addEventListener("click", printProcessingBatchAwbs);
     document.getElementById("processingStatusSelect").addEventListener("change", event => {
       state.pendingProcessingStatus = event.target.value;
       saveState();
