@@ -57,6 +57,7 @@
     .orders-compact-table th, .orders-compact-table td {
       font-size: 12px;
       white-space: nowrap;
+      padding: 8px 8px;
     }
 
     button {
@@ -142,13 +143,21 @@
     .nav-tabs::-webkit-scrollbar { display: none; }
 
     .tab-btn, .action-btn, .ghost-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
       min-height: 38px;
+      height: auto;
       border-radius: 8px;
-      padding: 0 13px;
+      padding: 9px 13px;
       color: var(--ink);
       background: transparent;
       transition: transform var(--speed), background var(--speed), color var(--speed), box-shadow var(--speed);
-      white-space: nowrap;
+      white-space: normal;
+      line-height: 1.3;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .tab-btn:hover, .ghost-btn:hover {
@@ -4724,7 +4733,7 @@
                 <div class="table-wrap">
                   <div class="wide-scroll">
                     <table class="orders-compact-table">
-                      <thead><tr><th>AWB</th><th>Consignee Name</th><th>Address</th><th>City</th><th>Shipper Name</th><th>Origin</th><th>COD</th><th>Weight</th><th>Current Status</th><th>Timer</th><th>Last Process</th></tr></thead>
+                      <thead><tr><th>AWB</th><th>Consignee Name</th><th>Destination</th><th>Shipper Name</th><th>Origin</th><th>Current Status</th><th>Address</th><th>COD</th><th>Weight</th><th>Timer</th><th>Last Process</th></tr></thead>
                       <tbody id="adminOrderRows"></tbody>
                     </table>
                   </div>
@@ -5029,7 +5038,7 @@
                   </div>
                 </div>
                 <div class="panel soft-panel" style="margin-top:14px">
-                  <div class="section-head"><div><h3>Recent Processing Log</h3><p>Admin sees who processed the parcel and when. Client journey only shows branch and exact time.</p></div></div>
+                  <div class="section-head"><div><h3>Last Scanned</h3><p>Shows only the most recently scanned parcel -- who processed it, its new status, and when. Client journey only shows branch and exact time.</p></div></div>
                   <div class="log-feed" id="processingLogFeed"></div>
                 </div>
               </div>
@@ -5156,7 +5165,7 @@
 
             <section class="admin-module" id="admin-finance-revenue">
               <div class="panel">
-                <div class="section-head"><div><h3>Revenue</h3><p>Revenue navigation is ready. This will show NovaX earned delivery charges only, not client COD payable.</p></div></div>
+                <div class="section-head"><div><h3>Revenue</h3><p>Live NovaX earned delivery charges only, counted the moment a rider picks up the parcel. Never client COD payable.</p></div></div>
                 <div class="ops-list" id="financeRevenueList"></div>
               </div>
             </section>
@@ -6114,6 +6123,10 @@
       return parcel.status === "Delivered" || parcel.steps.includes("COD collected");
     }
 
+    function isPickedUpParcel(parcel) {
+      return STATUS_TAGS.indexOf(parcel.status) >= STATUS_TAGS.indexOf("Collected by rider");
+    }
+
     function isCashCollectedParcel(parcel) {
       return isDeliveredLedgerParcel(parcel) && parcel.cashReceived;
     }
@@ -6290,7 +6303,8 @@
       const deliveredParcels = parcels.filter(isDeliveredLedgerParcel);
       const unpaidDeliveredParcels = parcels.filter(isUnpaidDeliveredParcel);
       const codCollected = deliveredParcels.reduce((s, p) => s + p.cod, 0);
-      const revenue = deliveredParcels.reduce((s, p) => s + p.fee, 0);
+      const pickedUpParcels = parcels.filter(isPickedUpParcel);
+      const revenue = pickedUpParcels.reduce((s, p) => s + Number(p.fee || 0), 0);
       const expenses = state.expenses.reduce((s, e) => s + e.amount, 0);
       const payable = Math.max(0, unpaidDeliveredParcels.reduce((s, p) => s + p.cod - p.fee, 0));
       const avgProgress = parcels.reduce((s, p) => s + (p.stage / p.totalStages), 0) / parcels.length;
@@ -6942,16 +6956,16 @@
           <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${p.awb}')">
             <td><strong>${p.awb}</strong><br><span class="footer-note">${p.updated}</span></td>
             <td>${p.consignee}<br><span class="footer-note">${p.phone || "phone pending"}</span></td>
-            <td>${p.address || "Address pending"}</td>
             <td>${p.city}</td>
             <td>${client.name}<br><span class="footer-note">${shortClientCode(client)}</span></td>
             <td>${parcelOrigin(p)}</td>
-            <td>${money(p.cod)}</td>
-            <td>${p.weight || "0.8 kg"}</td>
             <td>
               <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>
               <div class="footer-note">${alert.label}</div>
             </td>
+            <td>${p.address || "Address pending"}</td>
+            <td>${money(p.cod)}</td>
+            <td>${p.weight || "0.8 kg"}</td>
             <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status === "Parcel now in transit" ? "transit clock" : "status clock"}</span></td>
             <td>
               ${process.scanned ? `<strong>${process.by}</strong><br><span class="footer-note">${process.at}</span><br>` : `<strong class="footer-note">Not yet scanned</strong><br>`}
@@ -7033,16 +7047,18 @@
           currentStatus.textContent = "Waiting for tracking ID...";
         }
       }
-      document.getElementById("processingLogFeed").innerHTML = state.parcels.flatMap(parcel => {
+      const allScans = state.parcels.flatMap(parcel => {
         const client = clientById(parcel.clientId);
-        return (parcel.processHistory || []).slice(-3).map(log => ({ parcel, client, log }));
-      }).slice(-12).reverse().map(({ parcel, client, log }) => `
+        return (parcel.processHistory || []).map(log => ({ parcel, client, log }));
+      });
+      const lastScan = allScans.sort((a, b) => String(a.log.at).localeCompare(String(b.log.at))).at(-1);
+      document.getElementById("processingLogFeed").innerHTML = lastScan ? `
         <div class="log-item">
-          <strong>${parcel.awb}</strong>
-          <div><strong>${log.status}</strong><div class="footer-note" style="margin-top:2px">${client.name} | ${parcel.consignee} | ${log.branch}</div></div>
-          <span class="chip info">${log.processor} | ${log.at}</span>
+          <strong>${lastScan.parcel.awb}</strong>
+          <div><strong>${lastScan.log.status}</strong><div class="footer-note" style="margin-top:2px">${lastScan.client.name} | ${lastScan.parcel.consignee} | ${lastScan.log.branch}</div></div>
+          <span class="chip info">${lastScan.log.processor} | ${lastScan.log.at}</span>
         </div>
-      `).join("") || `<div class="ops-card"><strong>No processing log yet</strong><p>Scan a parcel and update status to create the first audit entry.</p></div>`;
+      ` : `<div class="ops-card"><strong>No parcel scanned yet</strong><p>Scan a parcel and update status to see it here.</p></div>`;
 
       renderManifestScreens();
       renderTickets();
@@ -7255,7 +7271,7 @@
         const blocked = exposureAmount > r.cashLimit;
         return `
           <tr>
-            <td><strong>${r.id}</strong><br><span class="footer-note">${r.name}</span></td>
+            <td><strong>${r.name}</strong><br><span class="footer-note">${r.username || "no username set"}</span></td>
             <td>${r.username || "pending"}<br><span class="footer-note">Pass: hidden | ${r.manager || "No manager"}</span></td>
             <td><strong>${money(receivable)}</strong><br><span class="footer-note">Delivered COD not collected by branch</span></td>
             <td>${money(r.cashHeld)}<br><span class="footer-note">Expenses deducted ${money(r.expenses || 0)}</span></td>
@@ -7503,7 +7519,7 @@
             <thead><tr><th>Rider</th><th>Delivered</th><th>Returned</th><th>Success</th><th>Route Time</th><th>Cash Handled</th><th>Fuel Cost</th><th>Vs Others</th></tr></thead>
             <tbody>
             ${rows.map(({ r, s }) => `<tr>
-              <td><strong>${r.id}</strong><br><span class="footer-note">${r.name}</span></td>
+              <td><strong>${r.name}</strong><br><span class="footer-note">${r.username || "no username set"}</span></td>
               <td><strong>${s.delivered}</strong></td>
               <td>${s.returned}</td>
               <td><span class="chip ${s.success >= 80 ? "good" : s.success >= 50 ? "warn" : "bad"}">${s.success}%</span></td>
@@ -7795,7 +7811,7 @@
       const pendingInvoices = state.invoices.filter(invoice => invoice.status === "Generated" || invoice.status === "Pending");
       const pendingWithdrawals = state.walletWithdrawals.filter(item => item.status !== "Paid");
       const feeRevenue = state.walletWithdrawals.reduce((sum, item) => sum + Number(item.fee || 0), 0);
-      const deliveryRevenue = state.invoices.filter(invoice => invoice.status !== "Deleted").reduce((sum, invoice) => sum + Number(invoice.charges || 0), 0);
+      const deliveryRevenue = state.parcels.filter(isPickedUpParcel).reduce((sum, parcel) => sum + Number(parcel.fee || 0), 0);
 
       const balanceCards = document.getElementById("walletBalanceCards");
       if (balanceCards) {
@@ -7837,7 +7853,7 @@
       if (summaryCards) {
         const m = metrics();
         summaryCards.innerHTML = [
-          metricCard("Delivery Revenue", money(deliveryRevenue), Math.min(100, percent(deliveryRevenue, 100000)), "invoice charges only", "good"),
+          metricCard("Delivery Revenue", money(deliveryRevenue), Math.min(100, percent(deliveryRevenue, 100000)), "live, from rider pickup", "good"),
           metricCard("Wallet Liability", money(walletTotal), Math.min(100, percent(walletTotal, 150000)), "client balance owed", walletTotal ? "amber" : "good"),
           metricCard("Expenses", money(m.expenses), Math.min(100, percent(m.expenses, 450000)), "logged expenses", "amber"),
           metricCard("Withdraw Fees", money(feeRevenue), Math.min(100, percent(feeRevenue, 5000)), "speed charges", "blue")
@@ -7857,7 +7873,7 @@
       const revenueList = document.getElementById("financeRevenueList");
       if (revenueList) {
         revenueList.innerHTML = `
-          <div class="ops-card"><div class="ops-card-head"><strong>Delivery charges earned</strong><span class="chip good">${money(deliveryRevenue)}</span></div><p>NovaX revenue comes from delivery charges on invoices, not client COD payable.</p></div>
+          <div class="ops-card"><div class="ops-card-head"><strong>Delivery charges earned</strong><span class="chip good">${money(deliveryRevenue)}</span></div><p>NovaX revenue is live delivery charges counted as soon as a rider picks up the parcel -- it never waits for invoicing and is never client COD payable.</p></div>
           <div class="ops-card"><div class="ops-card-head"><strong>Withdrawal speed fees</strong><span class="chip info">${money(feeRevenue)}</span></div><p>24h = 0.1%, 12h = 0.3%, instant = 0.7%. Fee is deducted from requested withdrawal amount.</p></div>
           <div class="ops-card"><div class="ops-card-head"><strong>Pending invoice charges</strong><span class="chip warn">${money(pendingInvoices.reduce((sum, invoice) => sum + Number(invoice.charges || 0), 0))}</span></div><p>These charges are known, but invoice is not wallet-active until pushed.</p></div>
         `;
