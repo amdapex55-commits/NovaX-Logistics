@@ -8646,14 +8646,7 @@
       createInvoice(state.activeInvoiceClient, parcels);
     }
 
-    function pushInvoiceToWallet(id) {
-      const invoice = state.invoices.find(item => item.id === id);
-      if (!invoice || invoice.status === "Deleted") return;
-      if (invoice.status === "Pushed to wallet" || invoice.status === "Paid") {
-        toast(`${id} is already in wallet.`);
-        return;
-      }
-      const client = clientById(invoice.clientId);
+    function applyPushInvoiceToWalletLocally(invoice, client, id) {
       client.walletBalance = Number(client.walletBalance || 0) + Number(invoice.payable || 0);
       invoice.status = "Pushed to wallet";
       invoice.walletPushedAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
@@ -8668,6 +8661,27 @@
       saveState();
       render();
       toast(`${id} pushed to ${client.name} wallet.`);
+    }
+    function pushInvoiceToWallet(id) {
+      const invoice = state.invoices.find(item => item.id === id);
+      if (!invoice || invoice.status === "Deleted") return;
+      if (invoice.status === "Pushed to wallet" || invoice.status === "Paid") {
+        toast(`${id} is already in wallet.`);
+        return;
+      }
+      const client = clientById(invoice.clientId);
+      // NovaX fix: this now runs as one atomic Postgres RPC (wallet credit +
+      // invoice status) instead of two separate browser-side writes, so a
+      // dropped connection can no longer leave the invoice half-applied
+      // (wallet credited but invoice still "unpaid", or vice versa).
+      if (window.__nvSb && invoice._uuid) {
+        window.__nvSb.rpc("admin_push_invoice_to_wallet", { p_invoice_id: invoice._uuid }).then(r => {
+          if (r && r.error) { toast(`Could not push ${id} to wallet: ${r.error.message}`, "error"); return; }
+          applyPushInvoiceToWalletLocally(invoice, client, id);
+        }).catch(e => toast(`Could not push ${id} to wallet: ${(e && e.message) || e}`, "error"));
+        return;
+      }
+      applyPushInvoiceToWalletLocally(invoice, client, id);
     }
 
     function deleteInvoice(id) {
@@ -9445,20 +9459,7 @@
       }
     }
 
-    function markInvoicePaid(id) {
-      const invoice = state.invoices.find(item => item.id === id);
-      if (!invoice || invoice.status === "Paid") return;
-      if (invoice.status !== "Pushed to wallet") {
-        toast("Push invoice to wallet before marking it paid.");
-        return;
-      }
-      // NovaX fix: "Pushed to wallet" credits invoice.payable into the
-      // client's wallet balance. Marking an invoice "Paid" means that money
-      // has now actually left the wallet (settled/paid out in full), so it
-      // must be deducted here -- otherwise the wallet balance kept showing
-      // the same amount forever even after admin confirmed it was paid,
-      // double-counting money that was no longer owed or held.
-      const client = clientById(invoice.clientId);
+    function applyMarkInvoicePaidLocally(invoice, client, id) {
       if (client) {
         client.walletBalance = Math.max(0, Number(client.walletBalance || 0) - Number(invoice.payable || 0));
       }
@@ -9475,6 +9476,31 @@
       saveState();
       render();
       toast(`${id} marked paid. Rs ${money(invoice.payable)} removed from wallet balance -- settled in full.`);
+    }
+    function markInvoicePaid(id) {
+      const invoice = state.invoices.find(item => item.id === id);
+      if (!invoice || invoice.status === "Paid") return;
+      if (invoice.status !== "Pushed to wallet") {
+        toast("Push invoice to wallet before marking it paid.");
+        return;
+      }
+      // NovaX fix: "Pushed to wallet" credits invoice.payable into the
+      // client's wallet balance. Marking an invoice "Paid" means that money
+      // has now actually left the wallet (settled/paid out in full), so it
+      // must be deducted here -- otherwise the wallet balance kept showing
+      // the same amount forever even after admin confirmed it was paid,
+      // double-counting money that was no longer owed or held. This now runs
+      // as one atomic Postgres RPC (wallet debit + invoice status) instead of
+      // two separate browser-side writes.
+      const client = clientById(invoice.clientId);
+      if (window.__nvSb && invoice._uuid) {
+        window.__nvSb.rpc("admin_mark_invoice_paid", { p_invoice_id: invoice._uuid }).then(r => {
+          if (r && r.error) { toast(`Could not mark ${id} paid: ${r.error.message}`, "error"); return; }
+          applyMarkInvoicePaidLocally(invoice, client, id);
+        }).catch(e => toast(`Could not mark ${id} paid: ${(e && e.message) || e}`, "error"));
+        return;
+      }
+      applyMarkInvoicePaidLocally(invoice, client, id);
     }
 
     function addReturnProof(awb) {
