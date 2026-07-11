@@ -7175,6 +7175,7 @@
             <span class="chip info">${parcels.length} parcels | ${delivered.length} delivered</span>
             <span class="chip ${issues.length ? "bad" : "good"}">${issues.length} issue(s)</span>
             <button class="ghost-btn" onclick="showAdminTab('clients-clients')">Edit Rates: Zone A ${money(rc.A.overnight)} | Zone B ${money(rc.B.overnight)}</button>
+            <button class="ghost-btn" onclick="editClientDetails('${client.id}')">Edit Details</button>
             <button class="ghost-btn" onclick="editClientLogin('${client.id}')">Edit Login</button>
             <select class="ghost-btn client-rider-pick" onchange="assignRiderToClient('${client.id}', this.value)">
               <option value="" ${!client.assignedRider ? "selected" : ""}>Assign pickup rider…</option>
@@ -9048,6 +9049,32 @@
       }
     }
 
+    function editClientDetails(clientId) {
+      const client = state.clients.find(c => c.id === clientId);
+      if (!client) { toast("Client not found."); return; }
+      const newName = (window.prompt(`Business / account name for ${client.name}:`, client.name || "") || "").trim();
+      if (!newName) { toast("Account name is required."); return; }
+      const newOwner = (window.prompt(`Owner / contact person name:`, client.owner || "") || "").trim();
+      const newPhone = (window.prompt(`Phone number:`, client.phone || "") || "").trim();
+      const newAddress = (window.prompt(`Address:`, client.address || "") || "").trim();
+      const newCity = (window.prompt(`City (Karachi, Lahore, Islamabad, Rawalpindi):`, client.city || "") || "").trim();
+      const newBusinessType = (window.prompt(`Business type (e.g. Fashion, Electronics):`, client.businessType || "") || "").trim();
+      const oldName = client.name;
+      client.name = newName;
+      if (newOwner) client.owner = newOwner;
+      client.phone = newPhone;
+      client.address = newAddress;
+      if (newCity) client.city = newCity;
+      if (newBusinessType) client.businessType = newBusinessType;
+      // Keep the client's own login/user record display name in sync too, so
+      // the rename shows up consistently across admin and the client portal.
+      const user = state.users.find(u => u.clientId === clientId && /client/i.test(`${u.accessSide || ""} ${u.role || ""}`));
+      if (user && (!user.name || user.name === oldName)) user.name = newOwner || newName;
+      saveState();
+      render();
+      toast(`${newName} account details updated.`);
+    }
+
     function applyClientDateRange() {
       state.clientDateFrom = document.getElementById("clientDateFrom").value || state.clientDateFrom;
       state.clientDateTo = document.getElementById("clientDateTo").value || state.clientDateTo;
@@ -9945,6 +9972,7 @@
     window.openTrackedParcel = openTrackedParcel;
     window.toggleTicketHub = toggleTicketHub;
     window.editClientLogin = editClientLogin;
+    window.editClientDetails = editClientDetails;
     window.assignRiderToClient = assignRiderToClient;
     window.deleteUser = deleteUser;
     window.deleteClient = deleteClient;
