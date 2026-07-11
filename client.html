@@ -242,19 +242,19 @@
       #printStage .print-label-wrap{break-inside:avoid;page-break-inside:avoid;margin:0;}
       #printStage.bulk-print .print-page{display:flex;flex-direction:row;gap:4mm;align-items:stretch;width:100%;page-break-after:always;break-after:page;break-inside:avoid;page-break-inside:avoid;}
       #printStage.bulk-print .print-page:last-child{page-break-after:auto;break-after:auto;}
-      #printStage.bulk-print .print-page .print-label-wrap{flex:0 0 32%;width:32%;min-width:0;box-sizing:border-box;page-break-after:auto!important;display:flex;}
-      .awb-label{grid-template-columns:minmax(0,1fr) 132px!important;gap:6px!important;padding:7px!important;border:2px solid #000!important;border-radius:6px!important;box-shadow:none!important;break-inside:avoid;page-break-inside:avoid;box-sizing:border-box;width:100%;height:auto;min-height:100%;overflow:visible;}
-      .awb-title{padding-bottom:4px!important;margin-bottom:5px!important;gap:6px!important;}
-      .awb-title h3{font-size:16px!important;}
-      .awb-title strong{font-size:14px!important;overflow-wrap:anywhere;}
-      .awb-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:4px!important;}
-      .awb-field{padding:4px!important;}
-      .awb-field span{font-size:6.5px!important;margin-bottom:2px!important;}
-      .awb-field strong{font-size:9.5px!important;line-height:1.15!important;overflow-wrap:anywhere;}
-      .awb-codes{gap:5px!important;}
-      .qr-img{height:92px!important;width:92px!important;padding:3px!important;margin:auto;}
-      .barcode-img{height:32px!important;padding:2px!important;}
-      .chip{font-size:8px!important;padding:3px 5px!important;}
+      #printStage.bulk-print .print-page .print-label-wrap{min-width:0;box-sizing:border-box;page-break-after:auto!important;display:flex;}
+      .awb-label{grid-template-columns:minmax(0,1fr) 140px!important;gap:7px!important;padding:9px!important;border:2px solid #000!important;border-radius:6px!important;box-shadow:none!important;break-inside:avoid;page-break-inside:avoid;box-sizing:border-box;width:100%;height:auto;max-height:100%;overflow:hidden;}
+      .awb-title{padding-bottom:5px!important;margin-bottom:6px!important;gap:6px!important;}
+      .awb-title h3{font-size:19px!important;}
+      .awb-title strong{font-size:16px!important;overflow-wrap:anywhere;}
+      .awb-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:5px!important;}
+      .awb-field{padding:5px!important;}
+      .awb-field span{font-size:8px!important;margin-bottom:2px!important;}
+      .awb-field strong{font-size:11.5px!important;line-height:1.2!important;overflow-wrap:anywhere;}
+      .awb-codes{gap:6px!important;}
+      .qr-img{height:100px!important;width:100px!important;padding:3px!important;margin:auto;}
+      .barcode-img{height:36px!important;padding:2px!important;}
+      .chip{font-size:9.5px!important;padding:3px 6px!important;}
     }
     @media (max-width:1080px){.client-shell{grid-template-columns:1fr;}.client-side{position:static;}.grid.two,.grid.three{grid-template-columns:1fr;}.grid.metrics{grid-template-columns:repeat(2,minmax(0,1fr));}}
     @media (max-width:760px){
@@ -828,6 +828,18 @@
     function meterClass(v){ if(v>=75) return "red"; if(v>=45) return "amber"; return "blue"; }
     function metricCard(label,value,fill,caption,kind=""){ return `<article class="metric"><label>${label}</label><strong>${value}</strong><div class="meter ${kind}"><span style="width:${fill}%"></span></div><div class="meter-caption"><span>${caption}</span><span>${fill}%</span></div></article>`; }
     function moneyBox(label,value,note){ return `<div class="money-box"><span>${label}</span><strong>${value}</strong><div class="footer-note">${note}</div></div>`; }
+    // NovaX fix: once an invoice is "Pushed to wallet" the money is already
+    // sitting in the client's wallet balance (ready to withdraw - any delay
+    // from there on is the client's own withdrawal request, not NovaX owing
+    // them). Once "Paid" it is fully settled. Neither state should still be
+    // labelled/shown as an outstanding "Payable" amount -- only a invoice
+    // that has not yet been pushed to wallet is genuinely payable/pending.
+    function invoiceMoneyBox(inv){
+      if(inv.status==="Paid") return moneyBox("Paid in full",money(inv.payable),"Settled - nothing owed");
+      if(inv.status==="Pushed to wallet") return moneyBox("In wallet",money(inv.payable),"Ready for you - withdraw anytime");
+      return moneyBox("Payable",money(inv.payable),"due to you");
+    }
+    function invoiceChipClass(status){ if(status==="Paid") return "good"; if(status==="Pushed to wallet") return "info"; return "warn"; }
     function qrUrl(awb){ return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodeURIComponent(awb)}`; }
     function barcodeUrl(awb){ return `https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(awb)}&code=Code128&translate-esc=on&dpi=96`; }
 
@@ -935,15 +947,17 @@
         moneyBox("Generated invoices",invoices.length,"admin created only"),
         moneyBox("Invoice COD",money(invoices.reduce((s,i)=>s+i.cod,0)),"delivered parcels only"),
         moneyBox("Delivery charges",money(invoices.reduce((s,i)=>s+i.charges,0)),"deducted from COD"),
-        moneyBox("Payable",money(invoices.reduce((s,i)=>s+i.payable,0)),"shown on invoices")
+        moneyBox("Payable (pending)",money(invoices.filter(i=>i.status!=="Paid"&&i.status!=="Pushed to wallet").reduce((s,i)=>s+i.payable,0)),"not yet pushed to wallet"),
+        moneyBox("In wallet",money(invoices.filter(i=>i.status==="Pushed to wallet").reduce((s,i)=>s+i.payable,0)),"ready to withdraw"),
+        moneyBox("Paid in full",money(invoices.filter(i=>i.status==="Paid").reduce((s,i)=>s+i.payable,0)),"settled - nothing owed")
       ].join("");
       (document.getElementById("paymentTimeline")||{}).innerHTML=[
         ["Delivered parcel selected","Admin can invoice delivered parcels only",true],
         ["Invoice generated","Invoice appears in seller payments",invoices.length>0],
         ["Payment status","Paid or pending is controlled by admin ledger",invoices.some(i=>i.status==="Paid")]
       ].map((r,i)=>`<div class="journey-item ${r[2]?"":"pending"}"><div class="step-dot">${r[2]?"OK":i+1}</div><div><strong>${r[0]}</strong><span>${r[1]}</span></div><span class="chip ${r[2]?"good":"info"}">${r[2]?"verified":"waiting"}</span></div>`).join("");
-      document.getElementById("clientPaymentHistory").innerHTML=invoices.map(inv=>`<div class="log-item"><strong>${inv.id}</strong><div><strong>${inv.status}</strong><div class="footer-note" style="margin-top:2px">${inv.createdAt} | ${inv.parcelRefs.length} parcel(s)</div></div><span class="chip ${inv.status==="Paid"?"good":"warn"}">${money(inv.payable)}</span></div>`).join("")||`<div class="ops-card"><strong>No generated invoices</strong><p>Delivered parcels will show here once admin creates an invoice.</p></div>`;
-      document.getElementById("clientInvoiceList").innerHTML=invoices.map(inv=>`<div class="invoice-card"><div class="ops-card-head"><strong>${inv.id}</strong><span class="chip ${inv.status==="Paid"?"good":"warn"}">${inv.status}</span></div><p>${inv.summary}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${moneyBox("Payable",money(inv.payable),"due to you")}${moneyBox("Date",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div></div>`).join("")||`<div class="ops-card"><strong>No invoices yet</strong></div>`;
+      document.getElementById("clientPaymentHistory").innerHTML=invoices.map(inv=>`<div class="log-item"><strong>${inv.id}</strong><div><strong>${inv.status}</strong><div class="footer-note" style="margin-top:2px">${inv.createdAt} | ${inv.parcelRefs.length} parcel(s)</div></div><span class="chip ${invoiceChipClass(inv.status)}">${money(inv.payable)}</span></div>`).join("")||`<div class="ops-card"><strong>No generated invoices</strong><p>Delivered parcels will show here once admin creates an invoice.</p></div>`;
+      document.getElementById("clientInvoiceList").innerHTML=invoices.map(inv=>`<div class="invoice-card"><div class="ops-card-head"><strong>${inv.id}</strong><span class="chip ${invoiceChipClass(inv.status)}">${inv.status}</span></div><p>${inv.summary}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${invoiceMoneyBox(inv)}${moneyBox("Date",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div></div>`).join("")||`<div class="ops-card"><strong>No invoices yet</strong></div>`;
       document.getElementById("orderLogFeed").innerHTML=cm.parcels.map(p=>{ const alert=alertForParcel(p); return `<div class="order-log-card clickable-row" onclick="openClientParcelJourney('${p.awb}')"><div><strong>${p.awb}</strong><div class="footer-note">${p.consignee} | ${p.city}</div></div><div><strong>${p.status}</strong><div class="footer-note">Last update ${p.updated} | ${alert.label}</div></div><button class="ghost-btn" onclick="event.stopPropagation();openTicketModal('${p.awb}')">Ticket</button></div>`; }).join("")||`<div class="ops-card"><strong>No order logs</strong></div>`;
       document.getElementById("subAccountList").innerHTML=[["Owner","Full visibility, payout approvals","active"],["Finance","Payments, invoices, reports","active"],["Warehouse","New and bulk booking only","active"],["Support","Tracking and WhatsApp replies","limited"]].map(r=>`<div class="ops-card"><div class="ops-card-head"><strong>${r[0]}</strong><span class="chip ${r[2]==="limited"?"warn":"good"}">${r[2]}</span></div><p>${r[1]}</p></div>`).join("");
       document.getElementById("supportEscalations").innerHTML=state.parcels.filter(p=>p.exception&&p.clientId===state.client.id).map(p=>`<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip bad">escalated</span></div><p>${p.exception}</p>${p.proofPhoto?`<img src="${p.proofPhoto}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:200px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">`:""}</div>`).join("")||`<div class="ops-card"><strong>No escalations</strong><p>AI has complete portal data right now.</p></div>`;
@@ -968,15 +982,21 @@
       const stage=document.getElementById("printStage"); if(!stage) return;
       const valid=(awbs||[]).map(a=>state.parcels.find(p=>p.awb===a)).filter(Boolean);
       if(!valid.length){ toast("No AWB available to print."); return; }
-      const bulk=valid.length>1;
-      stage.classList.toggle("bulk-print", bulk);
-      if(bulk){
-        let html="";
-        for(let i=0;i<valid.length;i+=3){ html+=`<div class="print-page">`+valid.slice(i,i+3).map(p=>`<div class="print-label-wrap">${awbLabelHtml(p)}</div>`).join("")+`</div>`; }
-        stage.innerHTML=html;
-      } else {
-        stage.innerHTML=valid.map(p=>`<div class="print-label-wrap">${awbLabelHtml(p)}</div>`).join("");
+      // NovaX fix: every print run -- whether it is 1 AWB or many -- now goes
+      // through the exact same page-chunked layout instead of a separate,
+      // unwrapped "single label" path. Each print-page holds up to 3 labels,
+      // and each label's width is sized to how many labels share that page
+      // (1 label = full width and bigger/readable, 2 = half each, 3 = a third
+      // each), which fixed a single-AWB print unpredictably spilling onto a
+      // blank second page.
+      stage.classList.add("bulk-print");
+      let html="";
+      for(let i=0;i<valid.length;i+=3){
+        const page=valid.slice(i,i+3);
+        const widthPct=(100/page.length).toFixed(4);
+        html+=`<div class="print-page">`+page.map(p=>`<div class="print-label-wrap" style="flex:0 0 ${widthPct}%;width:${widthPct}%;">${awbLabelHtml(p)}</div>`).join("")+`</div>`;
       }
+      stage.innerHTML=html;
       stage.style.display="block";
       const imgs=Array.from(stage.querySelectorAll("img"));
       const waitAll=Promise.all(imgs.map(img=>new Promise(resolve=>{
@@ -1025,10 +1045,67 @@
       const el=document.getElementById("clientLatestInvoice"); if(!el) return;
       const inv=state.invoices.filter(i=>i.clientId===state.client.id && i.status!=="Deleted")[0];
       if(!inv){ el.innerHTML=`<div class="ops-card"><strong>No invoice yet</strong><p>Invoices created by admin will appear here.</p></div>`; return; }
-      el.innerHTML=`<div class="invoice-card"><div class="ops-card-head"><strong>${inv.id}</strong><span class="chip ${inv.status==="Paid"?"good":"warn"}">${inv.status}</span></div><p>${inv.summary}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${moneyBox("Payable",money(inv.payable),"due to you")}${moneyBox("Created",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div><div class="inline-actions" style="margin-top:12px"><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">Download CSV</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Download PDF</button><button class="action-btn" onclick="openTicketModal('${inv.parcelRefs[0]||""}')">Raise Ticket</button></div></div>`;
+      el.innerHTML=`<div class="invoice-card"><div class="ops-card-head"><strong>${inv.id}</strong><span class="chip ${invoiceChipClass(inv.status)}">${inv.status}</span></div><p>${inv.summary}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${invoiceMoneyBox(inv)}${moneyBox("Created",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div><div class="inline-actions" style="margin-top:12px"><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">Download CSV</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Download PDF</button><button class="action-btn" onclick="openTicketModal('${inv.parcelRefs[0]||""}')">Raise Ticket</button></div></div>`;
     }
     function downloadInvoiceCsv(id){ const inv=state.invoices.find(i=>i.id===id); if(!inv) return; const c=clientById(inv.clientId); const lines=[["Invoice",inv.id],["Client",c.name],["Status",inv.status],["COD",inv.cod],["Charges",inv.charges],["Payable",inv.payable],["Created",inv.createdAt],["Parcels",inv.parcelRefs.join(" ")]]; const csv=lines.map(r=>r.join(",")).join("\n"); const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download=`${inv.id}.csv`; a.click(); toast(`${inv.id} CSV downloaded.`); }
-    function printInvoice(id){ const inv=state.invoices.find(i=>i.id===id); if(!inv) return; const c=clientById(inv.clientId); const stage=document.getElementById("printStage"); stage.innerHTML=`<div style="font-family:sans-serif;color:#000;padding:24px"><h2>NovaX Invoice ${inv.id}</h2><p>Client: ${c.name} (${c.id})<br>Status: ${inv.status}<br>Created: ${inv.createdAt}</p><table style="width:100%;border-collapse:collapse" border="1" cellpadding="8"><tr><td>COD Collected</td><td>${money(inv.cod)}</td></tr><tr><td>Delivery Charges</td><td>${money(inv.charges)}</td></tr><tr><td><b>Payable</b></td><td><b>${money(inv.payable)}</b></td></tr><tr><td>Parcels</td><td>${inv.parcelRefs.join(", ")}</td></tr></table></div>`; stage.style.display="block"; window.print(); setTimeout(()=>{ stage.style.display="none"; },500); }
+    // NovaX fix: replaced the old plain unbranded table (which just looked
+    // like "random numbers" to a client) with a professional branded NovaX
+    // invoice -- tracking number(s) with origin/delivered city per parcel,
+    // how long after delivery the payment was processed, the delivery
+    // charge deduction, an explicit tax/surcharge breakdown (GST, COD tax
+    // 1%, fuel surcharge -- all shown even when they are Rs 0), and a clear
+    // grand total.
+    function invoiceSettlementNote(inv){
+      if(inv.status==="Paid") return "Paid in full - settled, nothing owed";
+      if(inv.status==="Pushed to wallet") return "Credited to wallet - ready for you to withdraw";
+      return "Pending - not yet pushed to wallet";
+    }
+    function printInvoice(id){
+      const inv=state.invoices.find(i=>i.id===id); if(!inv) return;
+      const c=clientById(inv.clientId);
+      const stage=document.getElementById("printStage"); if(!stage) return;
+      const parcels=(inv.parcelRefs||[]).map(awb=>state.parcels.find(p=>p.awb===awb)).filter(Boolean);
+      const trackingRows=(parcels.length?parcels:inv.parcelRefs.map(awb=>({awb,pickupCity:"-",city:"-"}))).map(p=>`<tr><td>${p.awb}</td><td>${p.pickupCity||"Karachi"}</td><td>${p.city||"-"}</td></tr>`).join("");
+      const deliveredAt=parcels[0]?.updated||inv.createdAt;
+      const paidEvent=inv.status==="Paid"?inv.paidAt:(inv.status==="Pushed to wallet"?inv.walletPushedAt:"");
+      let elapsedLabel="Payment not yet processed";
+      if(paidEvent && deliveredAt){
+        const ms=new Date(String(paidEvent).replace(" ","T"))-new Date(String(deliveredAt).replace(" ","T"));
+        if(Number.isFinite(ms) && ms>=0){ const h=ms/3600000; elapsedLabel=h<1?"Processed within the hour of delivery":(h<24?`Processed ${Math.round(h)} hour(s) after delivery`:`Processed ${Math.floor(h/24)} day(s) ${Math.round(h%24)}h after delivery`); }
+        else elapsedLabel="Processed same day as delivery";
+      }
+      const cod=Number(inv.cod||0), charges=Number(inv.charges||0);
+      const subtotal=Math.max(0,cod-charges);
+      const gst=0, codTax=0, fuelSurcharge=0;
+      const grandTotal=Math.max(0,subtotal-gst-codTax-fuelSurcharge);
+      stage.innerHTML=`<div style="font-family:Arial,Helvetica,sans-serif;color:#0b1f16;padding:26px;max-width:760px;margin:0 auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #0c7c59;padding-bottom:14px;margin-bottom:18px">
+          <div><div style="font-size:24px;font-weight:800;color:#0c7c59;letter-spacing:.5px">NovaX Logistics</div><div style="font-size:11px;color:#5b6b64">Courier &amp; COD Operating Account | novaxlogistics.com</div></div>
+          <div style="text-align:right"><div style="font-size:18px;font-weight:800">INVOICE</div><div style="font-size:13px">${inv.id}</div></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:16px">
+          <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Billed to</div><div style="font-weight:700">${c?.name||inv.clientId}</div><div style="font-size:12px">${c?.id||inv.clientId}</div></div>
+          <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Invoice date</div><div style="font-weight:700">${inv.createdAt}</div></div>
+          <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Status</div><div style="font-weight:700">${inv.status}</div><div style="font-size:11px;color:#5b6b64">${invoiceSettlementNote(inv)}</div></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#5b6b64;margin-bottom:6px">Tracking numbers on this invoice</div>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px"><thead><tr style="background:#eef7f2"><th style="text-align:left;padding:7px;border:1px solid #d6e6de">AWB / Tracking No.</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Origin City</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Delivered City</th></tr></thead><tbody>${trackingRows}</tbody></table>
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#5b6b64;margin-bottom:6px">Payment timing</div>
+        <div style="background:#f6faf8;border:1px solid #d6e6de;border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:13px">Delivered: <b>${deliveredAt}</b> &nbsp;|&nbsp; ${elapsedLabel}${paidEvent?` (on ${paidEvent})`:""}</div>
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#5b6b64;margin-bottom:6px">Amount breakdown</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <tr><td style="padding:8px;border-bottom:1px solid #e5edea">COD Collected</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">${money(cod)}</td></tr>
+          <tr><td style="padding:8px;border-bottom:1px solid #e5edea">Less: Delivery Charges</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">-${money(charges)}</td></tr>
+          <tr><td style="padding:8px;border-bottom:1px solid #e5edea;font-weight:700">Subtotal</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right;font-weight:700">${money(subtotal)}</td></tr>
+          <tr><td style="padding:8px;border-bottom:1px solid #e5edea;color:#5b6b64">GST</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right;color:#5b6b64">${money(gst)}</td></tr>
+          <tr><td style="padding:8px;border-bottom:1px solid #e5edea;color:#5b6b64">COD Tax (1%)</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right;color:#5b6b64">${money(codTax)}</td></tr>
+          <tr><td style="padding:8px;border-bottom:1px solid #e5edea;color:#5b6b64">Fuel Surcharge</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right;color:#5b6b64">${money(fuelSurcharge)}</td></tr>
+          <tr><td style="padding:12px 8px;font-weight:800;font-size:16px;background:#eef7f2">Grand Total Payable</td><td style="padding:12px 8px;font-weight:800;font-size:16px;background:#eef7f2;text-align:right">${money(grandTotal)}</td></tr>
+        </table>
+        <div style="margin-top:22px;font-size:11px;color:#5b6b64;border-top:1px solid #e5edea;padding-top:12px">This is a system-generated NovaX invoice. Parcels: ${inv.parcelRefs.join(", ")}. For questions, raise a ticket from the Payments tab or ask the in-app AI assistant.</div>
+      </div>`;
+      stage.style.display="block"; window.print(); setTimeout(()=>{ stage.style.display="none"; },500);
+    }
     function exportReportCsv(){
       const rows=state.parcels.filter(p=>p.clientId===state.client.id);
       const head=["AWB","Date","Consignee","City","Status","COD","Fee","AgingHours"];
@@ -1487,9 +1564,22 @@
       const escFn=window.novaxAiEsc||(s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])));
       clientAiTabBubble(escFn(v),false);
       el.value="";
-      setTimeout(()=>{
+      // NovaX fix: the AI tab used to give up permanently with "AI is still
+      // loading" the instant window.novaxAiEngine was not yet set on that
+      // very first check. Since the engine is set synchronously right at
+      // page load, this should be near-instant -- but to make the assistant
+      // reliable (it is pitched as a full customer-support replacement) we
+      // now retry a few times over ~1.5s before giving up, instead of
+      // failing on the first check.
+      let attempts=0;
+      const tryAnswer=()=>{
+        attempts++;
+        if(!window.novaxAiEngine){
+          if(attempts<6){ setTimeout(tryAnswer,250); return; }
+          clientAiTabBubble("AI is still loading, please try again in a moment.",true);
+          return;
+        }
         try{
-          if(!window.novaxAiEngine){ clientAiTabBubble("AI is still loading, please try again in a moment.",true); return; }
           const r=window.novaxAiEngine(v);
           if(r.ticket){
             const id=window.novaxAiMakeTicket(v,(v.match(/N\d{7}/i)||[])[0]||"");
@@ -1498,7 +1588,8 @@
             clientAiTabBubble(r.text,true);
           }
         }catch(e){ clientAiTabBubble("Sorry, something went wrong reading the data. Please try again.",true); }
-      },150);
+      };
+      setTimeout(tryAnswer,150);
     }
     document.getElementById("clientAiSendBtn").addEventListener("click",sendClientAiTabMessage);
     document.getElementById("clientAiInput").addEventListener("keydown",e=>{ if(e.key==="Enter") sendClientAiTabMessage(); });
