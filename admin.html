@@ -1823,8 +1823,6 @@
       }
 
       #adminPrintStage.bulk-print .print-page .print-label-wrap {
-        flex: 0 0 32%;
-        width: 32%;
         min-width: 0;
         box-sizing: border-box;
         page-break-after: auto !important;
@@ -1832,9 +1830,9 @@
       }
 
       .awb-label {
-        grid-template-columns: minmax(0, 1fr) 132px !important;
-        gap: 6px !important;
-        padding: 7px !important;
+        grid-template-columns: minmax(0, 1fr) 140px !important;
+        gap: 7px !important;
+        padding: 9px !important;
         border: 2px solid #000 !important;
         border-radius: 6px !important;
         box-shadow: none !important;
@@ -1843,64 +1841,64 @@
         box-sizing: border-box;
         width: 100%;
         height: auto;
-        min-height: 100%;
-        overflow: visible;
+        max-height: 100%;
+        overflow: hidden;
       }
 
       .awb-title {
-        padding-bottom: 4px !important;
-        margin-bottom: 5px !important;
+        padding-bottom: 5px !important;
+        margin-bottom: 6px !important;
         gap: 6px !important;
       }
 
       .awb-title h3 {
-        font-size: 16px !important;
+        font-size: 19px !important;
       }
 
       .awb-title strong {
-        font-size: 14px !important;
+        font-size: 16px !important;
         overflow-wrap: anywhere;
       }
 
       .awb-grid {
         grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-        gap: 4px !important;
+        gap: 5px !important;
       }
 
       .awb-field {
-        padding: 4px !important;
+        padding: 5px !important;
       }
 
       .awb-field span {
-        font-size: 6.5px !important;
+        font-size: 8px !important;
         margin-bottom: 2px !important;
       }
 
       .awb-field strong {
-        font-size: 9.5px !important;
-        line-height: 1.15 !important;
+        font-size: 11.5px !important;
+        line-height: 1.2 !important;
         overflow-wrap: anywhere;
       }
 
       .awb-codes {
-        gap: 5px !important;
+        gap: 6px !important;
       }
 
       .qr-img {
-        height: 92px !important;
-        width: 92px !important;
+        height: 100px !important;
+        width: 100px !important;
         padding: 3px !important;
         margin: auto;
       }
 
       .barcode-img {
-        height: 32px !important;
+        height: 36px !important;
         padding: 2px !important;
       }
 
       .chip {
-        font-size: 8px !important;
-        padding: 3px 5px !important;
+        font-size: 9.5px !important;
+        padding: 3px 6px !important;
       }
     }
 
@@ -9454,6 +9452,16 @@
         toast("Push invoice to wallet before marking it paid.");
         return;
       }
+      // NovaX fix: "Pushed to wallet" credits invoice.payable into the
+      // client's wallet balance. Marking an invoice "Paid" means that money
+      // has now actually left the wallet (settled/paid out in full), so it
+      // must be deducted here -- otherwise the wallet balance kept showing
+      // the same amount forever even after admin confirmed it was paid,
+      // double-counting money that was no longer owed or held.
+      const client = clientById(invoice.clientId);
+      if (client) {
+        client.walletBalance = Math.max(0, Number(client.walletBalance || 0) - Number(invoice.payable || 0));
+      }
       invoice.status = "Paid";
       invoice.paidAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
       state.paymentLogs.unshift({
@@ -9461,12 +9469,12 @@
         clientId: invoice.clientId,
         type: "Invoice paid",
         amount: invoice.payable,
-        status: "Paid",
+        status: "Paid, deducted from wallet balance",
         ref: invoice.id
       });
       saveState();
       render();
-      toast(`${id} marked paid. Client side invoice is completed.`);
+      toast(`${id} marked paid. Rs ${money(invoice.payable)} removed from wallet balance -- settled in full.`);
     }
 
     function addReturnProof(awb) {
@@ -9693,15 +9701,19 @@
       if (!stage) return;
       const valid = (awbs || []).map(a => state.parcels.find(p => p.awb === a)).filter(Boolean);
       if (!valid.length) { toast("No AWB available to print."); return; }
-      const bulk = valid.length > 1;
-      stage.classList.toggle("bulk-print", bulk);
-      if (bulk) {
-        let html = "";
-        for (let i = 0; i < valid.length; i += 3) { html += `<div class="print-page">` + valid.slice(i, i + 3).map(p => `<div class="print-label-wrap">${adminAwbLabelHtml(p)}</div>`).join("") + `</div>`; }
-        stage.innerHTML = html;
-      } else {
-        stage.innerHTML = valid.map(p => `<div class="print-label-wrap">${adminAwbLabelHtml(p)}</div>`).join("");
+      // NovaX fix: same page-chunked layout as the client portal -- up to 3
+      // labels per page, each sized to how many labels share that page (1
+      // alone prints bigger/more readable, 3 together still fit one page).
+      // This also fixed a single-AWB print unexpectedly spilling onto a
+      // blank second page.
+      stage.classList.add("bulk-print");
+      let html = "";
+      for (let i = 0; i < valid.length; i += 3) {
+        const page = valid.slice(i, i + 3);
+        const widthPct = (100 / page.length).toFixed(4);
+        html += `<div class="print-page">` + page.map(p => `<div class="print-label-wrap" style="flex:0 0 ${widthPct}%;width:${widthPct}%;">${adminAwbLabelHtml(p)}</div>`).join("") + `</div>`;
       }
+      stage.innerHTML = html;
       stage.classList.add("show");
       const imgs = Array.from(stage.querySelectorAll("img"));
       const waitAll2 = Promise.all(imgs.map(img => new Promise(resolve => {
