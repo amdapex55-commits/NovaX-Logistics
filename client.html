@@ -5,6 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow, noarchive">
   <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <script>
+    (function () {
+      var APP_VERSION = "2026-07-10.1";
+      try {
+        var stored = localStorage.getItem("novaxAppVersion");
+        if (stored !== APP_VERSION) {
+          localStorage.setItem("novaxAppVersion", APP_VERSION);
+          if (stored !== null && "caches" in window) {
+            caches.keys().then(function (names) { names.forEach(function (n) { caches.delete(n); }); });
+          }
+          if (stored !== null && "serviceWorker" in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function (regs) { regs.forEach(function (r) { r.unregister(); }); });
+          }
+          if (stored !== null && !sessionStorage.getItem("novaxJustReloaded")) {
+            sessionStorage.setItem("novaxJustReloaded", "1");
+            location.reload(true);
+          }
+        }
+      } catch (e) {}
+    })();
+  </script>
   <link rel="preconnect" href="https://rhzunbzbdzicajqtohwp.supabase.co">
   <link rel="dns-prefetch" href="https://rhzunbzbdzicajqtohwp.supabase.co">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -1052,7 +1076,7 @@
       if(speed && balance>0 && useAmt>0){
         const fee=Math.round(useAmt*walletFeeRate(speed)); const net=useAmt-fee;
         summary.style.display="block";
-        summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div><div class="field" style="margin-top:12px;max-width:380px"><label>IBAN</label><input id="withdrawIban" placeholder="PK00 BANK 0000 0000 0000 0000"></div><button class="action-btn" style="margin-top:12px" onclick="confirmWalletWithdraw()">Confirm Withdrawal</button>`;
+        summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div><div class="field" style="margin-top:12px;max-width:380px"><label>IBAN</label><input id="withdrawIban" placeholder="PK00 BANK 0000 0000 0000 0000"></div><button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="confirmWalletWithdraw()">Confirm Withdrawal</button>`;
       } else { summary.style.display="none"; }
       document.getElementById("withdrawHistory").innerHTML=(state.walletWithdrawals||[]).filter(w=>w.clientId===c.id).map(w=>`<div class="ops-card"><div class="ops-card-head"><strong>${w.id}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${w.status}</span></div><p>${money(w.net)} to ${w.iban} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}</div></div>`).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Pick a payout speed above to withdraw.</p></div>`;
     }
@@ -1063,13 +1087,38 @@
       if(!amt||amt<1){ toast("Enter a valid amount."); return; }
       if(!speed){ toast("Select a payout speed."); return; }
       if(!iban){ toast("IBAN is required."); return; }
-      const fee=Math.round(amt*walletFeeRate(speed)); const net=amt-fee;
-      c.walletBalance=Math.max(0,balance-amt);
-      state.walletWithdrawals.unshift({ id:nextId("WDR",state.walletWithdrawals), clientId:c.id, amount:amt, fee, net, iban, speed, status:"Pending admin payout", createdAt:`${new Date().toISOString().slice(0,10)} ${time()}` });
-      state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:c.id, type:"Wallet withdrawal requested", amount:amt, status:`${money(net)} net after ${money(fee)} fee`, ref:walletSpeedLabel(speed) });
-      state.walletWithdrawSpeed=""; saveState();
-      document.getElementById("walletDoneText").textContent=`${money(net)} will reach ${iban} via ${walletSpeedLabel(speed)} payout. NovaX fee ${money(fee)}.`;
-      openWalletDone(); render();
+      const btn=document.getElementById("confirmWithdrawBtn");
+      if(btn){ btn.disabled=true; btn.textContent="Submitting..."; }
+      // NovaX fix: this used to show the "Withdrawal Requested" success modal
+      // immediately and only tried to persist the request afterward in the
+      // background (saveState -> syncNew -> request_wallet_withdrawal RPC). If
+      // that server call failed for any reason (stale/insufficient wallet
+      // balance, RPC missing, network error, etc.) the request was silently
+      // dropped from local state with only an easy-to-miss toast as evidence --
+      // so the client saw a false "success" while nothing was ever written to
+      // the withdrawals table, and admin's Wallet tab correctly showed nothing
+      // because nothing had actually been requested. Now we call the server
+      // first and only show success (and only deduct/record locally) once the
+      // server has actually accepted and created the withdrawal row.
+      sb.rpc("request_wallet_withdrawal",{ p_amount:amt, p_iban:iban, p_speed:speed }).then(function(r){
+        if(btn){ btn.disabled=false; btn.textContent="Confirm Withdrawal"; }
+        if(r&&r.error){
+          toast("Withdrawal request rejected: "+(r.error.message||"Server declined the request."));
+          return;
+        }
+        const d=r&&r.data;
+        const fee=Number(d&&d.fee!=null?d.fee:Math.round(amt*walletFeeRate(speed)));
+        const net=Number(d&&d.net!=null?d.net:amt-fee);
+        c.walletBalance=Math.max(0,balance-amt);
+        state.walletWithdrawals.unshift({ id:nextId("WDR",state.walletWithdrawals), _uuid:d&&d.id, clientId:c.id, amount:amt, fee, net, iban, speed, status:(d&&d.status)||"Pending admin payout", createdAt:`${new Date().toISOString().slice(0,10)} ${time()}` });
+        state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:c.id, type:"Wallet withdrawal requested", amount:amt, status:`${money(net)} net after ${money(fee)} fee`, ref:walletSpeedLabel(speed) });
+        state.walletWithdrawSpeed=""; saveState();
+        document.getElementById("walletDoneText").textContent=`${money(net)} will reach ${iban} via ${walletSpeedLabel(speed)} payout. NovaX fee ${money(fee)}.`;
+        openWalletDone(); render();
+      }).catch(function(e){
+        if(btn){ btn.disabled=false; btn.textContent="Confirm Withdrawal"; }
+        toast("Withdrawal request failed: "+(e&&e.message?e.message:"network error, please try again."));
+      });
     }
     function openWalletDone(){ const m=document.getElementById("walletDoneModal"); m.classList.add("show"); const t=m.querySelector(".tick"); if(t){ t.style.animation="none"; void t.offsetWidth; t.style.animation=""; } }
     function closeWalletDone(){ document.getElementById("walletDoneModal").classList.remove("show"); }
@@ -1097,16 +1146,31 @@
       state.selectedAwb=awb; state.lastGeneratedAwb=awb; saveState(); render();
       return awb;
     }
+    let __bookingInFlight=false;
     function quickBooking(){
+      if(__bookingInFlight) return;
       const required=["bookingName","bookingPhone","bookingPickupCity","bookingCity","bookingCod","bookingService","bookingCategory","bookingFragile","bookingWeight","bookingPaymentMode","bookingAddress"];
       if(required.some(id=>!String(document.getElementById(id).value||"").trim())){ toast("All booking fields are mandatory before AWB creation."); return; }
       let phone=document.getElementById("bookingPhone").value.replace(/\D/g,"");
       if(phone.length===10&&phone.startsWith("3")) phone="0"+phone;
-      const awb=bookParcel({ consignee:document.getElementById("bookingName").value.trim(), city:document.getElementById("bookingCity").value, cod:Number(document.getElementById("bookingCod").value || 0), phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address:document.getElementById("bookingAddress").value.trim() });
+      const consignee=document.getElementById("bookingName").value.trim();
+      const cod=Number(document.getElementById("bookingCod").value || 0);
+      const address=document.getElementById("bookingAddress").value.trim();
+      const clientId=state.client.id||"CL-0001";
+      const dupeWindowMs=15000;
+      const now=Date.now();
+      const possibleDupe=(state.parcels||[]).find(p=>p.clientId===clientId && p.consignee===consignee && Number(p.cod)===cod && p.address===address && p.phone===phone && p.statusSince && (now-new Date(p.statusSince).getTime())<dupeWindowMs);
+      if(possibleDupe){ toast(`Looks like a duplicate — ${possibleDupe.awb} was just booked for ${consignee} with the same details. Check the AWB tab before booking again.`); return; }
+      __bookingInFlight=true;
+      const btn=document.getElementById("quickBookingBtn");
+      const oldBtnText=btn?btn.textContent:"";
+      if(btn){ btn.disabled=true; btn.textContent="Creating booking..."; }
+      const awb=bookParcel({ consignee, city:document.getElementById("bookingCity").value, cod, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address });
       state.lastGeneratedAwb=awb; saveState(); toast(`${awb} booked. Go to the AWB Label tab to print it.`);
       resetBookingForm();
       const confirmLine=document.getElementById("bookingConfirmLine");
       if(confirmLine){ confirmLine.textContent=`Booking created. Print air way bill from AWB tab. Your tracking ID is ${awb}`; confirmLine.style.display="block"; }
+      setTimeout(()=>{ __bookingInFlight=false; if(btn){ btn.disabled=false; btn.textContent=oldBtnText||"Create Booking"; } },1200);
     }
     function resetBookingForm(){
       ["bookingName","bookingPhone","bookingCod","bookingCategory","bookingAddress"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
