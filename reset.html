@@ -10,24 +10,39 @@
   .card{width:100%;max-width:480px;background:#0c241a;border:1px solid #1f5f44;border-radius:18px;padding:26px 24px;box-shadow:0 26px 70px rgba(0,0,0,.45)}
   h1{margin:0 0 6px;font-size:20px}
   p{margin:6px 0;font-size:14px;line-height:1.5;color:#bfe9d6}
+  label{display:block;font-size:12px;color:#9fd8bd;margin:12px 0 4px}
+  input{width:100%;height:42px;border-radius:10px;border:1px solid #1f5f44;background:#06170f;color:#eafff5;padding:0 12px;font-size:14px}
   .warn{background:#3a1212;border:1px solid #7a2a2a;color:#ffd9d9;border-radius:10px;padding:10px 12px;font-size:13px;margin:14px 0}
   button{width:100%;height:48px;border:0;border-radius:12px;font-weight:800;font-size:15px;cursor:pointer;margin-top:10px}
   .danger{background:linear-gradient(145deg,#c0392b,#e74c3c);color:#fff}
   .ghost{background:#15392a;color:#cdeede}
+  .danger:disabled{opacity:.45;cursor:not-allowed}
   #log{margin-top:14px;font-size:13px;white-space:pre-wrap;background:#06170f;border:1px solid #1f5f44;border-radius:10px;padding:10px 12px;min-height:42px}
   .ok{color:#7CFCB0}.bad{color:#ff9d9d}
   a{color:#7CFCB0}
+  .gate-only .locked{display:none}
 </style>
 </head>
 <body>
   <div class="card">
     <h1>NovaX - Reset to Zero</h1>
-    <p>This wipes ALL shared data in the cloud database (clients, sellers, riders, parcels, bookings, invoices, tickets) and resets the system to a clean, empty workspace.</p>
-    <p>The only account kept is the default admin login: <b>admin@novax.pk</b> / <b>NovaX@123</b>. You can then sign up sellers and create riders/bookings from scratch.</p>
-    <div class="warn">This cannot be undone. Make sure you really want to start from zero.</div>
-    <button class="danger" id="resetBtn">Wipe everything &amp; reset to zero</button>
-    <button class="ghost" id="localBtn">Clear only this device (local cache)</button>
-    <div id="log">Ready.</div>
+    <p>This page is restricted to signed-in NovaX admins. Sign in with your admin account below to unlock the reset tools.</p>
+    <div class="warn">Legacy notice: this page only clears the old <code>novax_state</code> row, which is no longer how NovaX stores production data (clients, parcels, invoices, etc. now live in their own database tables). It will NOT wipe live clients, parcels, invoices, or riders.</div>
+
+    <div id="gate">
+      <label for="adminEmail">Admin email</label>
+      <input id="adminEmail" type="email" autocomplete="username" placeholder="you@novax.pk">
+      <label for="adminPassword">Admin password</label>
+      <input id="adminPassword" type="password" autocomplete="current-password" placeholder="Password">
+      <button class="ghost" id="verifyBtn">Verify admin &amp; unlock</button>
+    </div>
+
+    <div id="unlocked" style="display:none">
+      <button class="danger" id="resetBtn">Clear legacy novax_state row</button>
+      <button class="ghost" id="localBtn">Clear only this device (local cache)</button>
+    </div>
+
+    <div id="log">Ready. Sign in as an admin to continue.</div>
     <p style="margin-top:14px">After it says <b>Done</b>, open the portals fresh: <a href="index.html">index.html</a></p>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -36,9 +51,12 @@
     var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
     var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
     var logEl=document.getElementById("log");
+    var isAdmin=false;
+    var sb=null;
+    try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ sb=null; }
     function log(msg,cls){ logEl.innerHTML+="\n"+(cls?'<span class="'+cls+'">'+msg+'</span>':msg); }
     function today(){ return new Date().toISOString().slice(0,10); }
-    function cleanState(){
+    function cleanLegacyState(){
       return {
         _cleanStartV2:true,
         selectedAwb:"", activeFilter:"all", activeStatusQueue:"New booked",
@@ -46,37 +64,50 @@
         manifestDraftAwbs:[], demanifestScanAwbs:[], activeDemanifestId:"",
         activeRider:"", activeRateClient:"", activeSackMode:"create",
         clientDateFrom:today(), clientDateTo:today(), lastGeneratedAwb:"",
-        client:{ id:"CL-0000", name:"New Merchant Workspace", walletTopup:0, shippingDue:0, subAccounts:0, walletBalance:0 },
-        clients:[{ id:"CL-0000", name:"New Merchant Workspace", owner:"", city:"", walletTopup:0, shippingDue:0, risk:0, status:"Draft", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, problemsResolved:0, health:0, walletBalance:0 }],
-        pendingClients:[],
-        users:[{ id:"USR-0001", name:"NovaX Admin", email:"admin@novax.pk", password:"NovaX@123", role:"Admin", accessSide:"Admin Portal", branch:"Admin Control", clientId:"", status:"Active", permissions:["all"] }],
-        branches:[], riders:[], parcels:[], expenses:[], paymentLogs:[], invoices:[],
-        transit:[], completedSacks:[], operationsIssues:[], resolvedAlerts:[],
-        walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[],
-        storeConnections:[], walletWithdrawSpeed:"", activeClientTab:"dashboard", activeAdminTab:"dashboard"
+        _legacyPlaceholder:true
       };
     }
     function clearLocal(){
       try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
       try{ localStorage.removeItem("novaxLogisticsStateV9"); localStorage.removeItem("novaxLogisticsStateV8"); }catch(e){}
     }
+    document.getElementById("verifyBtn").onclick=function(){
+      if(!sb){ log("Could not load the cloud library. Check your internet and reload.","bad"); return; }
+      var email=(document.getElementById("adminEmail").value||"").trim();
+      var password=document.getElementById("adminPassword").value||"";
+      if(!email||!password){ log("Enter your admin email and password.","bad"); return; }
+      log("Verifying admin account...");
+      sb.auth.signInWithPassword({ email, password }).then(function(r){
+        if(r&&r.error){ log("Sign-in failed: "+r.error.message,"bad"); return; }
+        var user=r&&r.data&&r.data.user;
+        if(!user){ log("Sign-in failed. Try again.","bad"); return; }
+        return sb.from("profiles").select("role,status").eq("id",user.id).single().then(function(pr){
+          if(pr&&pr.error){ log("Could not verify admin role: "+pr.error.message,"bad"); sb.auth.signOut(); return; }
+          var role=pr&&pr.data&&pr.data.role;
+          var status=pr&&pr.data&&pr.data.status;
+          if(role!=="admin"||status==="blocked"){ log("This account is not an active admin. Access denied.","bad"); sb.auth.signOut(); return; }
+          isAdmin=true;
+          document.getElementById("gate").style.display="none";
+          document.getElementById("unlocked").style.display="block";
+          log("Admin verified. Reset tools unlocked.","ok");
+        });
+      }).catch(function(err){ log("Sign-in error: "+(err&&err.message||err),"bad"); });
+    };
     document.getElementById("localBtn").onclick=function(){
       clearLocal();
       log("Local cache on THIS device cleared. (Cloud not touched.)","ok");
     };
     document.getElementById("resetBtn").onclick=function(){
+      if(!isAdmin){ log("Admin verification required.","bad"); return; }
       logEl.textContent="Working...";
-      var sb=null;
-      try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ sb=null; }
-      if(!sb){ log("Could not load the cloud library. Check your internet and reload.","bad"); return; }
-      var clean=cleanState();
+      var clean=cleanLegacyState();
       sb.from("novax_state").upsert({ id:1, data:clean, updated_at:new Date().toISOString() }).then(function(r){
-        if(r&&r.error){ log("Cloud reset FAILED: "+r.error.message,"bad"); return; }
-        log("Cloud database wiped and reset to a clean empty workspace.","ok");
+        if(r&&r.error){ log("Legacy state clear FAILED: "+r.error.message,"bad"); return; }
+        log("Legacy novax_state row cleared.","ok");
         clearLocal();
         log("Local cache on this device cleared.","ok");
-        log("Done. Open the portals fresh and sign in as admin@novax.pk / NovaX@123.","ok");
-      }).catch(function(err){ log("Cloud reset error: "+(err&&err.message||err),"bad"); });
+        log("Done. Live clients/parcels/invoices/riders were NOT touched (they live in their own tables now).","ok");
+      }).catch(function(err){ log("Reset error: "+(err&&err.message||err),"bad"); });
     };
   </script>
 </body>
