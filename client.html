@@ -175,6 +175,11 @@
     .bubble.ai{background:var(--ink);color:white;}
     .toast{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:120;max-width:min(360px,calc(100vw - 36px));padding:13px 14px;border-radius:var(--radius);background:var(--ink);color:white;box-shadow:var(--shadow);transform:translateY(20px);opacity:0;pointer-events:none;transition:opacity var(--speed),transform var(--speed);font-size:13px;}
     .toast.show{opacity:1;transform:translateY(0);}
+    /* NovaX: color-grade the toast so it's obvious at a glance whether an
+       action succeeded or failed, instead of always showing as a plain
+       dark neutral box. White text on solid color for readability. */
+    .toast.success{background:#1e7d32;color:#ffffff;}
+    .toast.error{background:#b3261e;color:#ffffff;}
     .mobile-card-list{display:none;gap:10px;}
     .parcel-card{padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
     .parcel-card .top{display:flex;justify-content:space-between;gap:8px;margin-bottom:10px;}
@@ -1155,14 +1160,15 @@
       const bookedZoneCard=bookedRc[zoneForCity(bookedCity)]||bookedRc.B;
       state.parcels.unshift({ awb, clientId, date:o.date||new Date().toISOString().slice(0,10), consignee:o.consignee||"New COD Order", city:bookedCity, cod, fee:o.fee||bookedZoneCard.overnight, phone:o.phone||"", pickupCity:o.pickupCity||"Karachi", service:o.service||"COD Standard", category:o.category||"", fragile:o.fragile||"No", weight:o.weight||"0.8 kg", paymentMode:o.paymentMode||"COD", orderId:o.orderId||"", address:o.address||"Address pending", status:"New booked", statusAgeHours:0, statusSince:new Date().toISOString(), stage:0, totalStages:STATUS_TAGS.length-1, rider:o.rider||"", branch:"Karachi Hub", risk:8, updated:time(), exception:"", source:o.source||"", steps:["New booked"] });
       state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId, type:"COD expected", amount:cod, status:"Awaiting delivery", ref:awb });
-      state.selectedAwb=awb; state.lastGeneratedAwb=awb; saveState(); render();
+      state.selectedAwb=awb; state.lastGeneratedAwb=awb; saveState();
+      try{ render(); }catch(e){ console.error("Post-booking render failed", e); }
       return awb;
     }
     let __bookingInFlight=false;
     function quickBooking(){
       if(__bookingInFlight) return;
       const required=["bookingName","bookingPhone","bookingPickupCity","bookingCity","bookingCod","bookingService","bookingCategory","bookingFragile","bookingWeight","bookingPaymentMode","bookingAddress"];
-      if(required.some(id=>!String(document.getElementById(id).value||"").trim())){ toast("All booking fields are mandatory before AWB creation."); return; }
+      if(required.some(id=>!String(document.getElementById(id).value||"").trim())){ toast("All booking fields are mandatory before AWB creation.","error"); return; }
       let phone=document.getElementById("bookingPhone").value.replace(/\D/g,"");
       if(phone.length===10&&phone.startsWith("3")) phone="0"+phone;
       const consignee=document.getElementById("bookingName").value.trim();
@@ -1172,17 +1178,24 @@
       const dupeWindowMs=15000;
       const now=Date.now();
       const possibleDupe=(state.parcels||[]).find(p=>p.clientId===clientId && p.consignee===consignee && Number(p.cod)===cod && p.address===address && p.phone===phone && p.statusSince && (now-new Date(p.statusSince).getTime())<dupeWindowMs);
-      if(possibleDupe){ toast(`Looks like a duplicate — ${possibleDupe.awb} was just booked for ${consignee} with the same details. Check the AWB tab before booking again.`); return; }
+      if(possibleDupe){ toast(`Looks like a duplicate — ${possibleDupe.awb} was just booked for ${consignee} with the same details. Check the AWB tab before booking again.`,"error"); return; }
       __bookingInFlight=true;
       const btn=document.getElementById("quickBookingBtn");
       const oldBtnText=btn?btn.textContent:"";
       if(btn){ btn.disabled=true; btn.textContent="Creating booking..."; }
-      const awb=bookParcel({ consignee, city:document.getElementById("bookingCity").value, cod, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address });
-      state.lastGeneratedAwb=awb; saveState(); toast(`${awb} booked. Go to the AWB Label tab to print it.`);
-      resetBookingForm();
-      const confirmLine=document.getElementById("bookingConfirmLine");
-      if(confirmLine){ confirmLine.textContent=`Booking created. Print air way bill from AWB tab. Your tracking ID is ${awb}`; confirmLine.style.display="block"; }
-      setTimeout(()=>{ __bookingInFlight=false; if(btn){ btn.disabled=false; btn.textContent=oldBtnText||"Create Booking"; } },1200);
+      try{
+        const awb=bookParcel({ consignee, city:document.getElementById("bookingCity").value, cod, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address });
+        state.lastGeneratedAwb=awb; saveState();
+        toast(`${awb} booked successfully! Go to the AWB Label tab to print it.`,"success");
+        resetBookingForm();
+        const confirmLine=document.getElementById("bookingConfirmLine");
+        if(confirmLine){ confirmLine.textContent=`Booking created. Print air way bill from AWB tab. Your tracking ID is ${awb}`; confirmLine.style.display="block"; }
+      }catch(e){
+        console.error("Booking failed", e);
+        toast("Booking could not be completed. Please try again.","error");
+      }finally{
+        setTimeout(()=>{ __bookingInFlight=false; if(btn){ btn.disabled=false; btn.textContent=oldBtnText||"Create Booking"; } },600);
+      }
     }
     function resetBookingForm(){
       ["bookingName","bookingPhone","bookingCod","bookingCategory","bookingAddress"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
@@ -1442,7 +1455,7 @@
     }
     function tickMeters(){ requestAnimationFrame(()=>{ document.querySelectorAll(".meter>span").forEach(s=>{ const w=s.style.width; s.style.width="0"; requestAnimationFrame(()=>{ s.style.width=w; }); }); }); }
     function showClientTab(id){ state.activeClientTab=id; saveState(); renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); tickMeters(); if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
-    function toast(msg){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
+    function toast(msg,type){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.remove("success","error"); const kind=type||(/reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(msg)?"error":/success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach/i.test(msg)?"success":""); if(kind) el.classList.add(kind); el.classList.add("show"); clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
     /* Events */
     document.querySelectorAll(".client-tab").forEach(b=>b.addEventListener("click",()=>showClientTab(b.dataset.clientTab)));
