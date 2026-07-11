@@ -451,15 +451,16 @@
               </div>
               <div class="grid two" style="margin-top:14px">
                 <div class="panel">
-                  <div class="section-head"><div><h3>Shopify</h3><p>One-click connect: enter your shop domain and approve access on Shopify's own screen. No tokens to copy.</p></div><span class="chip" id="shopifyStatusChip">Not connected</span></div>
-                  <div class="field"><label>Shop Domain</label><input id="shopifyOauthShop" placeholder="your-store.myshopify.com"></div>
-                  <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="clientStartShopifyOauth()">Connect to Shopify (1-click)</button></div>
+                  <div class="section-head"><div><h3>Shopify</h3><p>Not available yet. NovaX is still finishing and testing this integration on our side.</p></div><span class="chip" id="shopifyStatusChip">Locked</span></div>
+                  <p class="footer-note">Shopify connections are temporarily locked to prevent bad test bookings while we finish integration testing. This will open up once NovaX confirms it's fully connected -- no action needed from you.</p>
+                  <div class="field"><label>Shop Domain</label><input id="shopifyOauthShop" placeholder="your-store.myshopify.com" disabled></div>
+                  <div class="inline-actions" style="margin-top:10px"><button class="action-btn" disabled title="Locked until NovaX finishes Shopify integration" style="opacity:.5;cursor:not-allowed">Connect to Shopify (1-click)</button></div>
                   <details style="margin-top:10px">
                     <summary class="footer-note" style="cursor:pointer">Prefer to connect manually instead?</summary>
-                    <div class="field" style="margin-top:8px"><label>Store Domain</label><input id="shopifyStoreUrl" placeholder="your-store.myshopify.com"></div>
-                    <div class="field"><label>Admin API Access Token</label><input id="shopifyToken" placeholder="shpat_..."></div>
-                    <div class="field"><label>Webhook Signing Secret</label><input id="shopifySecret" placeholder="from Settings &gt; Notifications &gt; Webhooks"></div>
-                    <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="connectStore('shopify')">Save Connection</button></div>
+                    <div class="field" style="margin-top:8px"><label>Store Domain</label><input id="shopifyStoreUrl" placeholder="your-store.myshopify.com" disabled></div>
+                    <div class="field"><label>Admin API Access Token</label><input id="shopifyToken" placeholder="shpat_..." disabled></div>
+                    <div class="field"><label>Webhook Signing Secret</label><input id="shopifySecret" placeholder="from Settings &gt; Notifications &gt; Webhooks" disabled></div>
+                    <div class="inline-actions" style="margin-top:10px"><button class="action-btn" disabled title="Locked until NovaX finishes Shopify integration" style="opacity:.5;cursor:not-allowed">Save Connection</button></div>
                   </details>
                   <div class="field" id="shopifyWebhookResult" style="display:none;margin-top:10px">
                     <label>Your Shopify Webhook Setup</label>
@@ -1219,6 +1220,17 @@
       const idx=name=>headers.indexOf(name);
       const seen=new Set(), errors=[], records=[];
       const existingOrderIds=new Set((state.parcels||[]).map(p=>p.orderId).filter(Boolean));
+      // NovaX fix: the consignee+phone+address+COD duplicate guard on the manual
+      // "Create Booking" form (quickBooking) never covered CSV bulk uploads --
+      // uploadBulkCsv() called bookParcel() directly for every row with only an
+      // order_id check, so re-uploading the same sheet (or a sheet with
+      // copy-pasted rows that only changed order_id) created real duplicate
+      // parcels with no warning. Add the same signature-based duplicate check
+      // here, both within this file and against parcels already booked recently.
+      const dupeWindowMs=24*60*60*1000;
+      const now=Date.now();
+      const myClientId=state.client&&state.client.id;
+      const seenSignatures=new Map();
       rows.slice(1).forEach((row,i)=>{
         const line=i+2;
         const rec={
@@ -1240,6 +1252,12 @@
         if(seen.has(rec.orderId)) errors.push(`Line ${line}: duplicate order_id ${rec.orderId} in this file.`);
         else if(existingOrderIds.has(rec.orderId)) errors.push(`Line ${line}: order_id ${rec.orderId} was already booked. This sheet looks like it was already uploaded.`);
         seen.add(rec.orderId);
+        const sig=`${rec.consignee}|${rec.phone}|${rec.address}|${rec.cod}`;
+        const dupeLineOfSig=seenSignatures.get(sig);
+        if(dupeLineOfSig) errors.push(`Line ${line}: same consignee, phone, address and COD as line ${dupeLineOfSig} in this file. Check for an accidental duplicate row.`);
+        seenSignatures.set(sig,line);
+        const possibleDupe=(state.parcels||[]).find(p=>p.clientId===myClientId && p.consignee===rec.consignee && p.phone===rec.phone && p.address===rec.address && Number(p.cod)===rec.cod && p.statusSince && (now-new Date(p.statusSince).getTime())<dupeWindowMs);
+        if(possibleDupe) errors.push(`Line ${line}: a parcel with the same consignee, phone, address and COD was already booked as ${possibleDupe.awb} recently. This sheet may have already been uploaded.`);
         records.push(rec);
       });
       return { errors, records };
@@ -1284,7 +1302,13 @@
     // SHOPIFY_APP_CLIENT_ID is that app's public Client ID (safe to embed here).
     const SHOPIFY_APP_CLIENT_ID = "REPLACE_WITH_YOUR_SHOPIFY_APP_CLIENT_ID";
     function shopifyOauthRedirectUri(){ return SB_URL.replace(/\/$/, "") + "/functions/v1/shopify-oauth-callback"; }
+    // Locked: Shopify integration isn't fully tested/connected yet on the NovaX
+    // side (it was causing bogus/duplicate test bookings), so client-side
+    // Shopify connect actions are blocked here in addition to disabling the
+    // buttons/inputs in the markup, in case this is ever called directly.
+    const SHOPIFY_INTEGRATION_LOCKED = true;
     function clientStartShopifyOauth(){
+      if(SHOPIFY_INTEGRATION_LOCKED){ toast("Shopify connections are temporarily locked until NovaX finishes integration testing."); return; }
       const shop = (document.getElementById("shopifyOauthShop")?.value || "").trim();
       if(!shop){ toast("Enter your shop domain first (e.g. your-store.myshopify.com)."); return; }
       if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment."); return; }
@@ -1308,6 +1332,7 @@
         web:{url:"webEndpoint",fields:{key:"webKey"},intakeFn:"web-order-intake",requireSecret:false,label:"Custom Web/API"}
       };
       const cfg=map[platform]; if(!cfg) return;
+      if(platform==="shopify" && SHOPIFY_INTEGRATION_LOCKED){ toast("Shopify connections are temporarily locked until NovaX finishes integration testing."); return; }
       const storeUrl=(document.getElementById(cfg.url).value||"").trim();
       if(!storeUrl){ toast(platform==="web" ? "Enter your status update URL first." : "Enter your store URL first."); return; }
 
@@ -1608,7 +1633,7 @@
         var style=document.createElement('style');
         style.textContent='.nvai-btn{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:99999;width:58px;height:58px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#14c77b);color:#fff;font-size:24px;box-shadow:0 12px 30px rgba(20,199,123,.45);display:grid;place-items:center;border:0;cursor:pointer}.nvai-dim{opacity:.7}.nvai-panel{position:fixed;right:18px;bottom:calc(86px + env(safe-area-inset-bottom));z-index:99999;width:360px;max-width:calc(100vw - 36px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #cfe6dc;border-radius:18px;box-shadow:0 26px 70px rgba(13,91,64,.28);display:none;flex-direction:column;overflow:hidden}.nvai-panel.open{display:flex}.nvai-head{background:linear-gradient(135deg,#0b2a1f,#0c7c59);color:#eafff5;padding:13px 16px;display:flex;align-items:center;gap:10px}.nvai-head b{font-size:15px;line-height:1.1}.nvai-head small{font-size:11px;opacity:.8}.nvai-x{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:0;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px}.nvai-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f3fff9}.nvai-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}.nvai-m.u{align-self:flex-end;background:#dcffe9;color:#08311f;border-bottom-right-radius:4px}.nvai-m.b{align-self:flex-start;background:#fff;border:1px solid #e1f0e8;color:#0b2a1f;border-bottom-left-radius:4px}.nvai-bar{display:flex;gap:8px;padding:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom));border-top:1px solid #e1f0e8;background:#fff}.nvai-bar input{flex:1;min-width:0;height:42px;border-radius:11px;border:1px solid #cfe6dc;padding:0 12px;font:inherit;font-size:16px}.nvai-bar button{height:42px;padding:0 16px;border-radius:11px;background:#14c77b;color:#04130d;font-weight:800;border:0;cursor:pointer}@media (max-width:520px){.nvai-panel{right:10px;left:10px;width:auto;bottom:calc(78px + env(safe-area-inset-bottom));height:72vh}.nvai-btn{right:14px;bottom:calc(14px + env(safe-area-inset-bottom))}}';
         document.head.appendChild(style);
-        var btn=document.createElement('button'); btn.className='nvai-btn'; btn.title='NovaX AI'; btn.innerHTML='🤖';
+        var btn=document.createElement('button'); btn.className='nvai-btn'; btn.title='NovaX AI'; btn.innerHTML='��';
         var panel=document.createElement('div'); panel.className='nvai-panel';
         panel.innerHTML='<div class=nvai-head><div><b>NovaX AI</b><br><small>reads your live data · never guesses</small></div><button class=nvai-x type=button>×</button></div><div class=nvai-msgs></div><div class=nvai-bar><input type=text><button type=button>Send</button></div>';
         document.body.appendChild(btn); document.body.appendChild(panel);
