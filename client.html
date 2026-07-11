@@ -823,6 +823,7 @@
     function setParcelStatus(p,status){ p.status=status; p.statusAgeHours=0; p.statusSince=new Date().toISOString(); p.updated=time(); p.stage=Math.max(0,STATUS_TAGS.indexOf(status)); if(!p.steps.includes(status)) p.steps.push(status); }
     function percent(v,m){ if(!m) return 0; return Math.max(0,Math.min(100,Math.round((v/m)*100))); }
     function money(v){ return PKR.format(v).replace("PKR","Rs"); }
+    function fmt(v){ return Number(v||0).toLocaleString('en-US'); }
     function statusClass(p){ const a=alertForParcel(p); if(a.level==="critical"||p.risk>=65||p.exception) return "bad"; if(a.level==="warning") return "warn"; if(["Delivered","Parcel returned to consignee"].includes(p.status)) return "good"; if(p.stage<5) return "info"; if(p.stage<8) return "warn"; return "good"; }
     function isRefusalReview(p){ return /refus|attempt disputed|consignee denies|not available/i.test(`${p.status} ${p.exception||""} ${p.steps.join(" ")}`); }
     function meterClass(v){ if(v>=75) return "red"; if(v>=45) return "amber"; return "blue"; }
@@ -1235,7 +1236,7 @@
       const bookedCity=o.city||["Lahore","Karachi","Islamabad","Rawalpindi"][Math.floor(Math.random()*4)];
       const bookedRc=normalizeRateCard(client&&client.rateCard, client&&client.rate);
       const bookedZoneCard=bookedRc[zoneForCity(bookedCity)]||bookedRc.B;
-      state.parcels.unshift({ awb, clientId, date:o.date||new Date().toISOString().slice(0,10), consignee:o.consignee||"New COD Order", city:bookedCity, cod, fee:o.fee||bookedZoneCard.overnight, phone:o.phone||"", pickupCity:o.pickupCity||"Karachi", service:o.service||"COD Standard", category:o.category||"", fragile:o.fragile||"No", weight:o.weight||"0.8 kg", paymentMode:o.paymentMode||"COD", orderId:o.orderId||"", address:o.address||"Address pending", status:"New booked", statusAgeHours:0, statusSince:new Date().toISOString(), stage:0, totalStages:STATUS_TAGS.length-1, rider:o.rider||"", branch:"Karachi Hub", risk:8, updated:time(), exception:"", source:o.source||"", steps:["New booked"] });
+      state.parcels.unshift({ awb, clientId, date:o.date||new Date().toISOString().slice(0,10), consignee:o.consignee||"New COD Order", city:bookedCity, cod, fee:o.fee||bookedZoneCard.overnight, phone:o.phone||"", pickupCity:o.pickupCity||"Karachi", service:o.service||"COD Standard", category:o.category||"", fragile:o.fragile||"No", weight:o.weight||"0.8 kg", paymentMode:o.paymentMode||"COD", orderId:o.orderId||"", address:o.address||"Address pending", status:"New booked", statusAgeHours:0, statusSince:new Date().toISOString(), stage:0, totalStages:STATUS_TAGS.length-1, rider:o.rider||"", branch:"Karachi Hub", risk:8, updated:time(), exception:"", source:o.source||"", steps:["New booked"], _syncPending:true, _syncFailed:false });
       state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId, type:"COD expected", amount:cod, status:"Awaiting delivery", ref:awb });
       state.selectedAwb=awb; state.lastGeneratedAwb=awb; saveState();
       try{ render(); }catch(e){ console.error("Post-booking render failed", e); }
@@ -1263,10 +1264,16 @@
       try{
         const awb=bookParcel({ consignee, city:document.getElementById("bookingCity").value, cod, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address });
         state.lastGeneratedAwb=awb; saveState();
-        toast(`${awb} booked successfully! Go to the AWB Label tab to print it.`,"success");
+        toast(`${awb} saved and syncing with the server...`,"success");
         resetBookingForm();
         const confirmLine=document.getElementById("bookingConfirmLine");
         if(confirmLine){ confirmLine.textContent=`Booking created. Print air way bill from AWB tab. Your tracking ID is ${awb}`; confirmLine.style.display="block"; }
+        setTimeout(()=>{
+          const p=(state.parcels||[]).find(x=>x.awb===awb);
+          if(!p) return;
+          if(p._syncFailed){ toast(`${awb} was NOT accepted by the server. Please retry this booking.`,"error"); }
+          else if(p._uuid){ toast(`${awb} confirmed by the server.`,"success"); }
+        },4000);
       }catch(e){
         console.error("Booking failed", e);
         toast("Booking could not be completed. Please try again.","error");
@@ -1651,7 +1658,7 @@
       }
       function syncNew(){
         if(!loaded||!MY) return;
-        (state.parcels||[]).forEach(function(p){ if(p._uuid||p._pending) return; p._pending=true; sb.from("parcels").insert({ awb:p.awb, client_id:MY, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:new Date().toISOString(), updated_at:new Date().toISOString(), meta:pmeta(p) }).select("id").maybeSingle().then(function(r){ p._pending=false; if(r&&r.error){ console.warn("NovaX parcel insert",r.error.message); return; } if(r&&r.data){ p._uuid=r.data.id; shadow[p._uuid]=(p.status||"")+"|"+(p.exception||""); } }); });
+        (state.parcels||[]).forEach(function(p){ if(p._uuid||p._pending) return; p._pending=true; sb.from("parcels").insert({ awb:p.awb, client_id:MY, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:new Date().toISOString(), updated_at:new Date().toISOString(), meta:pmeta(p) }).select("id").maybeSingle().then(function(r){ p._pending=false; if(r&&r.error){ console.warn("NovaX parcel insert",r.error.message); p._syncPending=false; p._syncFailed=true; p._syncError=r.error.message||"Server rejected this booking."; try{ toast(`${p.awb} could not be saved to the server: ${p._syncError}`,"error"); render(); }catch(e){} return; } p._syncPending=false; p._syncFailed=false; if(r&&r.data){ p._uuid=r.data.id; shadow[p._uuid]=(p.status||"")+"|"+(p.exception||""); } }); });
         (state.parcels||[]).forEach(function(p){ if(!p._uuid) return; var sig=(p.status||"")+"|"+(p.exception||""); if(shadow[p._uuid]===sig) return; var prevSig=shadow[p._uuid]; shadow[p._uuid]=sig; sb.from("parcels").update({ status:p.status||"", exception:p.exception||"", updated_at:new Date().toISOString(), meta:pmeta(p) }).eq("id",p._uuid).then(function(r){ if(r&&r.error){ console.warn("NovaX parcel update",r.error.message); if(shadow[p._uuid]===sig) shadow[p._uuid]=prevSig; } }); });
         (state.walletWithdrawals||[]).forEach(function(w){ if(w._uuid||w._pending) return; w._pending=true; sb.rpc("request_wallet_withdrawal",{ p_amount:Number(w.amount||0), p_iban:w.iban||"", p_speed:w.speed||"" }).then(function(r){ w._pending=false; if(r&&r.error){ console.warn("NovaX withdrawal request rejected",r.error.message); w._failed=true; w._failReason=r.error.message||"Request rejected by server."; try{ state.walletWithdrawals=(state.walletWithdrawals||[]).filter(function(x){ return x!==w; }); toast("Withdrawal request rejected: "+w._failReason); render(); }catch(e){} return; } var d=r&&r.data; if(d){ w._uuid=d.id; w.amount=Number(d.amount||w.amount); w.fee=Number(d.fee||w.fee); w.net=Number(d.net||w.net); w.status=d.status||w.status; try{ render(); }catch(e){} } }); });
         (state.tickets||[]).forEach(function(t){ if(t._uuid||t._pending) return; t._pending=true; sb.from("tickets").insert({ client_id:MY, subject:t.title||"", body:t.message||"", status:t.status||"Open", meta:{ code:t.id, tier:t.tier, from:t.from, to:t.to, branch:t.branch, awb:t.awb, replies:t.replies||[], sourceKey:t.sourceKey } }).select("id").maybeSingle().then(function(r){ t._pending=false; if(r&&r.data) t._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX ticket insert",r.error.message); }); });
