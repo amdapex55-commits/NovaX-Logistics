@@ -5716,8 +5716,9 @@
       const delivered = parcels.filter(p => p.status.includes("Delivered")).length;
       const deliveredParcels = parcels.filter(isDeliveredLedgerParcel);
       const unpaidDeliveredParcels = parcels.filter(isUnpaidDeliveredParcel);
+      const revenueParcels = parcels.filter(isPickedUpParcel);
       const codCollected = deliveredParcels.reduce((s, p) => s + p.cod, 0);
-      const deliveryCharges = deliveredParcels.reduce((s, p) => s + p.fee, 0);
+      const deliveryCharges = revenueParcels.reduce((s, p) => s + p.fee, 0);
       const payable = Math.max(0, unpaidDeliveredParcels.reduce((s, p) => s + p.cod - p.fee, 0));
       const avgProgress = parcels.length ? parcels.reduce((s, p) => s + (p.stage / p.totalStages), 0) / parcels.length : 0;
       const risk = parcels.length ? Math.round(parcels.reduce((s, p) => s + p.risk, 0) / parcels.length) : 0;
@@ -6154,6 +6155,15 @@
       return parcel.status === "Delivered" || parcel.steps.includes("COD collected");
     }
 
+    // Revenue should be earned as soon as a rider has physically picked up the
+    // parcel, and stay earned through every later stage of that same journey
+    // (in transit, delivered, refused, reattempt, or all the way through a
+    // return back to the consignee) -- not just once it reaches "Delivered".
+    // Only "New booked" (stage 0, not yet collected) should NOT count yet.
+    function isPickedUpParcel(parcel) {
+      return parcel.stage >= STATUS_TAGS.indexOf("Collected by rider");
+    }
+
     function isCashCollectedParcel(parcel) {
       return isDeliveredLedgerParcel(parcel) && parcel.cashReceived;
     }
@@ -6329,8 +6339,9 @@
       const delivered = parcels.filter(p => p.status.includes("Delivered")).length;
       const deliveredParcels = parcels.filter(isDeliveredLedgerParcel);
       const unpaidDeliveredParcels = parcels.filter(isUnpaidDeliveredParcel);
+      const revenueParcels = parcels.filter(isPickedUpParcel);
       const codCollected = deliveredParcels.reduce((s, p) => s + p.cod, 0);
-      const revenue = deliveredParcels.reduce((s, p) => s + p.fee, 0);
+      const revenue = revenueParcels.reduce((s, p) => s + p.fee, 0);
       const expenses = state.expenses.reduce((s, e) => s + e.amount, 0);
       const payable = Math.max(0, unpaidDeliveredParcels.reduce((s, p) => s + p.cod - p.fee, 0));
       const avgProgress = parcels.reduce((s, p) => s + (p.stage / p.totalStages), 0) / parcels.length;
@@ -6648,8 +6659,10 @@
         grouped[p.city] = grouped[p.city] || { city: p.city, parcels: 0, cod: 0, revenue: 0, delivered: 0 };
         grouped[p.city].parcels += 1;
         grouped[p.city].cod += p.cod;
-        if (isDeliveredLedgerParcel(p)) {
+        if (isPickedUpParcel(p)) {
           grouped[p.city].revenue += p.fee;
+        }
+        if (isDeliveredLedgerParcel(p)) {
           grouped[p.city].delivered += 1;
         }
       });
