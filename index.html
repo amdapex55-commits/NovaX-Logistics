@@ -991,27 +991,32 @@ footer{color:#86a99b;}
   }
   setInterval(gpsTick,1800);
 
-  /* ---- track parcel (demo / random preview - NOT tied to client or admin data) ---- */
-  var DEMO_NAMES=["Ali Raza","Sara Khan","Bilal Ahmed","Hina Tariq","Usman Malik","Ayesha Noor","Fahad Iqbal","Zainab Ali","Omar Farooq","Maria Shah","Hassan Javed","Nida Aslam"];
-  var DEMO_CITIES=["Karachi","Lahore","Islamabad","Rawalpindi","Faisalabad","Multan","Peshawar","Quetta","Sialkot","Hyderabad","Gujranwala","Bahawalpur"];
-  var DEMO_FLOW=["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered"];
-  function nvHash(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return Math.abs(h);}
+  /* ---- track parcel (REAL lookup against public.track_parcel_public RPC -
+     returns only awb/status/city/updated_at, never fabricated data) ---- */
+  var TRACK_FLOW=["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Return in transit","Return out for delivery","Parcel returned to consignee"];
+  var __trackSb=null;
+  try{ if(window.supabase&&window.supabase.createClient) __trackSb=window.supabase.createClient("https://rhzunbzbdzicajqtohwp.supabase.co","sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA",{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:"sb-nv-track-widget"}}); }catch(e){}
+  function trackAgeHours(iso){ if(!iso) return 0; var ms=Date.now()-new Date(iso).getTime(); return Number.isFinite(ms)?Math.max(0,ms/3600000):0; }
+  function renderNoParcel(box,msg){ box.innerHTML='<div class="tr-card bad"><div class="tr-head"><strong>No parcel found</strong><span class="chip bad">check ID</span></div><div style="color:#9fe9c8;font-size:13px">'+(msg||"Enter a valid tracking ID to see its live status.")+'</div></div>'; }
   function track(){
     var awb=(document.getElementById("trackInput").value||"").trim().toUpperCase();
     var box=document.getElementById("trackResult");
-    if(!awb){ box.innerHTML='<div class="tr-card bad"><div class="tr-head"><strong>No parcel found</strong><span class="chip bad">check ID</span></div><div style="color:#9fe9c8;font-size:13px">Enter a tracking ID e.g. N0010001 to see a live preview.</div></div>'; return; }
-    var h=nvHash(awb);
-    var name=DEMO_NAMES[h%DEMO_NAMES.length];
-    var city=DEMO_CITIES[(Math.floor(h/7))%DEMO_CITIES.length];
-    var si=(Math.floor(h/31))%DEMO_FLOW.length;
-    var status=DEMO_FLOW[si];
-    var total=DEMO_FLOW.length-1, prog=Math.max(8,Math.round((si/total)*100));
-    var ageH=(h%70)+2;
-    var chip=/Delivered/i.test(status)?"good":(si<4?"info":"warn");
-    box.innerHTML='<div class="tr-card"><div class="tr-head"><strong>'+awb+'</strong><span class="chip '+chip+'">'+status+'</span></div>'+
-      '<div style="color:#cdeede;font-size:13px">'+name+' \u00b7 '+city+' \u00b7 clock '+agingLabel(ageH)+'</div>'+
-      '<div class="tr-prog"><i style="width:0"></i></div></div>';
-    requestAnimationFrame(function(){var bar=box.querySelector(".tr-prog i");if(bar)bar.style.width=prog+"%";});
+    if(!awb){ renderNoParcel(box,"Enter a tracking ID e.g. N0010001 to look it up."); return; }
+    if(!__trackSb){ renderNoParcel(box,"Tracking is temporarily unavailable. Please try again in a moment."); return; }
+    box.innerHTML='<div class="tr-card"><div class="tr-head"><strong>'+awb+'</strong><span class="chip info">Looking up...</span></div></div>';
+    __trackSb.rpc("track_parcel_public",{ p_awb: awb }).then(function(r){
+      var row=r&&r.data&&r.data[0];
+      if(!row||r.error){ renderNoParcel(box,"We couldn't find a parcel with that tracking ID. Double-check and try again."); return; }
+      var status=row.status||"New booked";
+      var si=Math.max(0,TRACK_FLOW.indexOf(status));
+      var total=TRACK_FLOW.length-1, prog=Math.max(8,Math.round((si/total)*100));
+      var ageH=trackAgeHours(row.updated_at);
+      var chip=/Delivered|returned to consignee/i.test(status)?"good":(si<4?"info":"warn");
+      box.innerHTML='<div class="tr-card"><div class="tr-head"><strong>'+awb+'</strong><span class="chip '+chip+'">'+status+'</span></div>'+
+        '<div style="color:#cdeede;font-size:13px">'+(row.city||"In transit")+' \u00b7 clock '+agingLabel(ageH)+'</div>'+
+        '<div class="tr-prog"><i style="width:0"></i></div></div>';
+      requestAnimationFrame(function(){var bar=box.querySelector(".tr-prog i");if(bar)bar.style.width=prog+"%";});
+    }).catch(function(){ renderNoParcel(box,"We couldn't reach the tracking service. Please try again."); });
   }
   document.getElementById("trackBtn").addEventListener("click",track);
   document.getElementById("trackInput").addEventListener("keydown",function(e){if(e.key==="Enter")track();});
