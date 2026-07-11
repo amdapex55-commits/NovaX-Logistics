@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow, noarchive">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -183,12 +183,15 @@
 
     .tab-btn, .action-btn, .ghost-btn {
       min-height: 38px;
+      height: auto;
       border-radius: 8px;
-      padding: 0 13px;
+      padding: 9px 13px;
       color: var(--ink);
       background: transparent;
       transition: transform var(--speed), background var(--speed), color var(--speed), box-shadow var(--speed);
-      white-space: nowrap;
+      white-space: normal;
+      line-height: 1.3;
+      word-break: break-word;
     }
 
     .tab-btn:hover, .ghost-btn:hover {
@@ -2313,7 +2316,7 @@
     .toast {
       position: fixed;
       right: 18px;
-      bottom: 18px;
+      bottom: calc(18px + env(safe-area-inset-bottom));
       z-index: 30;
       max-width: min(360px, calc(100vw - 36px));
       padding: 13px 14px;
@@ -2331,6 +2334,19 @@
     .toast.show {
       opacity: 1;
       transform: translateY(0);
+    }
+
+    /* NovaX: color-grade the toast so it's obvious at a glance whether an
+       action succeeded or failed, instead of always showing as a plain
+       white/dark neutral box. White text on solid color for readability. */
+    .toast.success {
+      background: #1e7d32;
+      color: #ffffff;
+    }
+
+    .toast.error {
+      background: #b3261e;
+      color: #ffffff;
     }
 
     .mobile-card-list {
@@ -3418,8 +3434,8 @@
       .field select,
       .scan-grid input,
       select {
-        min-height: 42px;
-        font-size: 14px;
+        min-height: 44px;
+        font-size: 16px;
       }
 
       .segmented {
@@ -3473,7 +3489,7 @@
       .toast {
         left: 10px;
         right: 10px;
-        bottom: 10px;
+        bottom: calc(10px + env(safe-area-inset-bottom));
         max-width: none;
       }
 
@@ -4019,7 +4035,7 @@
       .toast {
         left: 8px;
         right: 8px;
-        bottom: 8px;
+        bottom: calc(8px + env(safe-area-inset-bottom));
       }
     }
   
@@ -5039,7 +5055,7 @@
 
             <section class="admin-module" id="admin-orders-processing">
               <div class="panel">
-                <div class="section-head"><div><h3>Order Processing</h3><p>Warehouse and branch status update desk. Type an AWB, press Enter, choose the next status, then verify the processor before the journey updates.</p></div></div>
+                <div class="section-head"><div><h3>Order Processing</h3><p>Warehouse and branch status update desk. Type an AWB, press Enter, choose the next status, then confirm to update the journey.</p></div></div>
                 <div class="processing-desk">
                   <aside class="processing-preview" id="processingPreview">
                     <strong>No parcel selected</strong>
@@ -5057,14 +5073,7 @@
                     <div class="mini-form">
                       <div class="field"><label>Update Status</label><select id="processingStatusSelect"></select></div>
                       <div class="field" id="processingRiderField"><label>Assign Rider</label><select id="processingRiderSelect"></select></div>
-                      <button class="action-btn" id="processingConfirmBtn">Confirm Batch Status Update</button>
-                    </div>
-                    <div class="processing-auth" id="processingAuthBox">
-                      <div class="mini-form">
-                        <div class="field"><label>Processor Username</label><input id="processingUsername" placeholder="username"></div>
-                        <div class="field"><label>Password</label><input id="processingPassword" type="password" placeholder="password"></div>
-                        <button class="action-btn" id="processingSubmitBtn">Verify And Update Journey</button>
-                      </div>
+                      <button class="action-btn" id="processingConfirmBtn">Confirm Status Update</button>
                     </div>
                   </div>
                 </div>
@@ -8096,82 +8105,50 @@
       return `${parcelOrigin(parcel)} Hub`;
     }
 
-    function requestProcessingAuth() {
+    function confirmBatchStatusUpdate() {
       const batch = processingParcels();
       if (!batch.length) {
-        toast("Load valid tracking IDs first.");
+        toast("Load valid tracking IDs first.", "error");
         return;
       }
       const status = document.getElementById("processingStatusSelect")?.value || "";
       if (!status) {
-        toast("Select a status to update.");
+        toast("Select a status to update.", "error");
         return;
       }
       const riderId = document.getElementById("processingRiderSelect")?.value || "";
-      if (["Parcel out for delivery", "Return out for delivery"].includes(status) && !riderId) {
-        toast("Select a rider before pushing parcels out for delivery.");
-        return;
-      }
-      state.pendingProcessingStatus = status;
-      state.pendingProcessingRider = riderId;
-      saveState();
-      document.getElementById("processingAuthBox")?.classList.add("open");
-      document.getElementById("processingUsername")?.focus();
-      toast("Processor username and password required.");
-    }
-
-    function processorFromCredentials(username, password) {
-      const clean = username.trim().toLowerCase();
-      if (!clean || !password.trim()) return null;
-      const user = state.users.find(item => {
-        const aliases = [item.id, item.name, item.role].map(value => String(value || "").toLowerCase().replace(/\s+/g, "."));
-        return aliases.includes(clean) || String(item.name || "").toLowerCase() === clean;
-      });
-      return {
-        name: user ? user.name : username.trim(),
-        username: username.trim(),
-        role: user ? user.role : "Warehouse Processor",
-        branch: user ? user.branch : ""
-      };
-    }
-
-    function submitProcessingUpdate() {
-      const batch = processingParcels();
-      if (!batch.length) {
-        toast("Load valid tracking IDs first.");
-        return;
-      }
-      const username = document.getElementById("processingUsername")?.value || "";
-      const password = document.getElementById("processingPassword")?.value || "";
-      const processor = processorFromCredentials(username, password);
-      if (!processor || password.trim().length < 3) {
-        toast("Valid username and password are required.");
-        return;
-      }
-      const status = state.pendingProcessingStatus || document.getElementById("processingStatusSelect")?.value || batch[0].status;
-      const riderId = state.pendingProcessingRider || document.getElementById("processingRiderSelect")?.value || "";
       const riderPushStatuses = ["Parcel out for delivery", "Return out for delivery"];
       if (riderPushStatuses.includes(status) && !riderId) {
-        toast("Rider assignment is mandatory for out-for-delivery parcels.");
+        toast("Select a rider before pushing parcels out for delivery.", "error");
         return;
       }
-      batch.forEach(parcel => {
-        const branch = processingBranchForStatus(parcel, status);
-        setParcelStatus(parcel, status, { name: processor.name, username: processor.username, branch });
-        if (riderPushStatuses.includes(status)) {
-          parcel.rider = riderId;
-          parcel.assignedRiderAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
-          parcel.exception = parcel.exception.replace("No rider assigned for delivery", "").trim();
-        }
-        parcel.exception = status === "Delivered" ? parcel.exception.replace("Consignee denies refusal attempt", "").trim() : parcel.exception;
-      });
-      state.selectedAwb = batch[0].awb;
-      state.activeProcessingAwb = batch[0].awb;
-      saveState();
-      document.getElementById("processingAuthBox")?.classList.remove("open");
-      document.getElementById("processingPassword").value = "";
-      render();
-      toast(`${batch.length} parcel(s) updated to ${status}.`);
+      const btn = document.getElementById("processingConfirmBtn");
+      const oldText = btn ? btn.textContent : "";
+      if (btn) { btn.disabled = true; btn.textContent = "Updating..."; }
+      try {
+        batch.forEach(parcel => {
+          const branch = processingBranchForStatus(parcel, status);
+          setParcelStatus(parcel, status, { name: currentAdminName(), username: "admin", branch });
+          if (riderPushStatuses.includes(status)) {
+            parcel.rider = riderId;
+            parcel.assignedRiderAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
+            parcel.exception = parcel.exception.replace("No rider assigned for delivery", "").trim();
+          }
+          parcel.exception = status === "Delivered" ? parcel.exception.replace("Consignee denies refusal attempt", "").trim() : parcel.exception;
+        });
+        state.selectedAwb = batch[0].awb;
+        state.activeProcessingAwb = batch[0].awb;
+        state.pendingProcessingStatus = "";
+        state.pendingProcessingRider = "";
+        saveState();
+        render();
+        toast(`${batch.length} parcel(s) updated to ${status}.`, "success");
+      } catch (e) {
+        console.error("Batch status update failed", e);
+        toast("Status update failed. Please try again.", "error");
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = oldText || "Confirm Status Update"; }
+      }
     }
 
     function clearProcessingBatch() {
@@ -8271,9 +8248,18 @@
       toast(missing.length ? `${missing.length} missing parcel alert sent to admin.` : `${log.id} completed clean.`);
     }
 
-    function toast(message) {
+    function toast(message, type) {
       const el = document.getElementById("toast");
       el.textContent = message;
+      el.classList.remove("success", "error");
+      // NovaX: auto color-grade by message content when no explicit type is
+      // passed, so existing toast("...") call sites across the app light up
+      // red/green without needing every call site rewritten individually.
+      const kind = type || (
+        /reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(message) ? "error" :
+        /success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach|will handle/i.test(message) ? "success" : ""
+      );
+      if (kind) el.classList.add(kind);
       el.classList.add("show");
       clearTimeout(window.toastTimer);
       window.toastTimer = setTimeout(() => el.classList.remove("show"), 2800);
@@ -9453,7 +9439,12 @@
       });
       saveState();
       render();
-      toast(`${id} generated. Push to wallet when finance approves.`);
+      const clientRecord = state.clients.find(c => c.id === clientId);
+      if (!clientRecord || !clientRecord._uuid) {
+        toast(`${id} generated, but this client's account isn't fully synced to the cloud yet -- it will appear on their portal automatically once sync completes. Refresh in a minute to confirm.`, "error");
+      } else {
+        toast(`${id} generated. Push to wallet when finance approves.`, "success");
+      }
     }
 
     function markInvoicePaid(id) {
@@ -9860,8 +9851,7 @@
       state.pendingProcessingRider = event.target.value;
       saveState();
     });
-    document.getElementById("processingConfirmBtn").addEventListener("click", requestProcessingAuth);
-    document.getElementById("processingSubmitBtn").addEventListener("click", submitProcessingUpdate);
+    document.getElementById("processingConfirmBtn").addEventListener("click", confirmBatchStatusUpdate);
     document.getElementById("manifestLoadBtn").addEventListener("click", loadManifestScans);
     document.getElementById("manifestClearBtn").addEventListener("click", clearManifestScans);
     document.getElementById("manifestCreateBtn").addEventListener("click", createManifestFromScans);
@@ -10009,7 +9999,7 @@
       function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||250), rate_card:normalizeRateCard(c.rateCard,Number(c.rate||250)), wallet_balance:Number(c.walletBalance||0), risk_score:Number(c.risk||0), meta:{ tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"" } }; }
       function fRider(r){ return { name:r.name||"", phone:r.phone||"", branch:r.branch||r.manager||"", access:r.access||"Active", cash_limit:Number(r.cashLimit||0), meta:{ username:r.username, manager:r.manager, cashHeld:r.cashHeld, scans:r.scans, fakeRisk:r.fakeRisk, expenses:r.expenses } }; }
       function fParcel(p){ var cid=cuid(p.clientId); if(!cid) return null; var rid=ruid(p.rider); return { awb:p.awb, client_id:cid, rider_id:rid, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:(p.date?new Date(p.date).toISOString():new Date().toISOString()), updated_at:new Date().toISOString(), meta:{ statusAgeHours:p.statusAgeHours, stage:p.stage, totalStages:p.totalStages, steps:p.steps, risk:p.risk, branch:p.branch, cashReceived:p.cashReceived, returnProof:p.returnProof, resolutionRemark:p.resolutionRemark, riderInput:p.riderInput, service:p.service, weight:p.weight, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord } }; }
-      function fInvoice(iv){ var cid=cuid(iv.clientId); if(!cid) return null; return { code:iv.id, client_id:cid, parcel_refs:iv.parcelRefs||[], cod_total:Number(iv.cod||0), fee_total:Number(iv.charges||0), net_payable:Number(iv.payable||0), status:iv.status||"Pending", meta:{ paidAt:iv.paidAt, summary:iv.summary } }; }
+      function fInvoice(iv){ var cid=cuid(iv.clientId); if(!cid){ console.warn("NovaX invoice sync skipped -- no resolvable client_id yet for invoice", iv.id, iv.clientId); return null; } return { code:iv.id, client_id:cid, parcel_refs:iv.parcelRefs||[], cod_total:Number(iv.cod||0), fee_total:Number(iv.charges||0), net_payable:Number(iv.payable||0), status:iv.status||"Pending", meta:{ paidAt:iv.paidAt, summary:iv.summary } }; }
       function fTicket(t){ var cid=cuid(t.clientId); return { client_id:isUuid(cid)?cid:null, parcel_id:null, subject:t.title||"", body:t.message||"", status:t.status||"Open", created_by:ADMIN_UID, meta:{ code:t.id, sourceKey:t.sourceKey, tier:t.tier, from:t.from, to:t.to, branch:t.branch, awb:t.awb, ageHours:t.ageHours, escalated:t.escalated, replies:t.replies||[] } }; }
       function fExpense(e){ return { branch:e.owner||"", category:e.type||"", amount:Number(e.amount||0), note:e.note||e.name||"", created_by:ADMIN_UID, meta:{ name:e.name, status:e.status } }; }
       function fWd(w){ var cid=cuid(w.clientId); if(!cid) return null; return { client_id:cid, amount:Number(w.amount||0), fee:Number(w.fee||0), net:Number(w.net||0), iban:w.iban||"", speed:w.speed||"", status:w.status||"Pending admin payout" }; }
