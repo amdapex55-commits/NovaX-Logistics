@@ -5182,10 +5182,65 @@
 
             <section class="admin-module" id="admin-finance-wallets">
               <div class="panel">
-                <div class="section-head"><div><h3>User Withdrawal Requests</h3><p>Admin only sees withdrawal signals requested by users: who to pay, IBAN, net amount, fee, speed, and payout status.</p></div></div>
+                <div class="section-head"><div><h3>Wallet Overview</h3><p>Every rupee in every client wallet: total liability, pending payouts, paid history, and fee revenue -- sourced live from the wallet ledger.</p></div></div>
+                <div class="grid metrics" id="walletBalanceCards"></div>
+              </div>
+
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Suspicious Wallet Alerts</h3><p>Repeated instant withdrawals, full-balance payouts, changed IBANs, and multiple withdrawals in one day.</p></div></div>
+                <div class="ops-list" id="walletAlertsList"></div>
+              </div>
+
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Request Withdrawal (Admin-Initiated)</h3><p>Start a payout request on behalf of a client, using the same atomic balance check the client portal uses.</p></div></div>
+                <div class="grid two">
+                  <div class="field"><label>Client</label><select id="walletClientSelect"></select></div>
+                  <div class="field"><label>Amount</label><input id="walletAmount" type="number" min="1" placeholder="e.g. 5000"></div>
+                  <div class="field"><label>IBAN</label><input id="walletIban" placeholder="Client bank IBAN"></div>
+                  <div class="field"><label>Payout Speed</label><select id="walletSpeed"><option value="24h">24 hours (0.1% fee)</option><option value="12h">12 hours (0.3% fee)</option><option value="instant">Instant (0.7% fee)</option></select></div>
+                </div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="requestWalletWithdrawal()">Submit Withdrawal Request</button></div>
+              </div>
+
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Pending Payout Queue</h3><p>Admin sees withdrawal signals requested by clients: who to pay, IBAN, net amount, fee, speed, and payout status.</p></div></div>
                 <div class="ops-list" id="walletPayoutQueue"></div>
               </div>
+
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Paid Payout History</h3><p>Settled withdrawals with their bank transaction reference, paid-by staff name, and proof.</p></div></div>
+                <div class="ops-list" id="walletPaidHistory"></div>
+              </div>
+
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Wallet Adjustment</h3><p>Manual credit or reversal for the selected client above. Always requires a note and always lands in the wallet ledger -- never a raw balance edit.</p></div></div>
+                <div class="grid two">
+                  <div class="field"><label>Amount (negative to reverse)</label><input id="walletAdjustAmount" type="number" placeholder="e.g. -500 or 500"></div>
+                  <div class="field"><label>Note (required)</label><input id="walletAdjustNote" placeholder="Reason for this adjustment"></div>
+                </div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="submitWalletAdjustment()">Apply Wallet Adjustment</button></div>
+              </div>
+
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Invoices Pushed To Wallet</h3><p>Invoices that have credited a wallet, and invoices still pending push.</p></div></div>
+                <div class="ops-list" id="walletInvoiceList"></div>
+              </div>
             </section>
+
+            <div id="markPaidModal" style="display:none;position:fixed;inset:0;z-index:9999;align-items:center;justify-content:center;background:rgba(15,18,26,0.6)">
+              <div class="panel" style="max-width:420px;width:92%;background:#12151c;border:1px solid #2a2f3a;border-radius:12px;padding:20px">
+                <div class="section-head"><div><h3>Mark Payout Paid</h3><p>Settlement proof is required. This is saved to the withdrawal record and shown to the client as "Paid with reference".</p></div></div>
+                <p id="markPaidSummary" style="margin:10px 0;font-size:13px;color:#c7ccd6"></p>
+                <input type="hidden" id="markPaidWithdrawalId">
+                <div class="field"><label>Bank Transaction ID (required)</label><input id="markPaidTxnId" placeholder="e.g. TXN-12345"></div>
+                <div class="field" style="margin-top:8px"><label>Paid By Staff Name (required)</label><input id="markPaidByName" placeholder="e.g. Aisha Khan"></div>
+                <div class="field" style="margin-top:8px"><label>Proof Note or Screenshot URL (optional)</label><input id="markPaidProof" placeholder="Optional note or screenshot link"></div>
+                <div class="inline-actions" style="margin-top:14px;justify-content:flex-end;gap:8px">
+                  <button class="action-btn" style="background:#2a2f3a" onclick="closeMarkPaidModal()">Cancel</button>
+                  <button class="action-btn" onclick="confirmMarkWalletWithdrawalPaid()">Confirm Paid</button>
+                </div>
+              </div>
+            </div>
 
             <section class="admin-module" id="admin-finance-summary">
               <div class="panel">
@@ -6242,6 +6297,52 @@
 
     function walletBalance(clientId) {
       return Number(clientById(clientId)?.walletBalance || 0);
+    }
+
+    function computeWalletAlerts(withdrawals, clients) {
+      // NovaX new (Wallet Ledger v1, item 3): all four signals are computed
+      // client-side from data already loaded into state -- no new DB objects
+      // needed. Thresholds are intentionally simple and explainable:
+      //   - repeated instant withdrawals: 3+ instant-speed requests by the
+      //     same client within the trailing 7 days.
+      //   - payout amount equals full balance: withdrawal.amount matches the
+      //     wallet balance captured right before that withdrawal.
+      //   - changed IBAN: a client's IBAN differs from their own previous
+      //     withdrawal's IBAN.
+      //   - multiple withdrawals in one day: 2+ requests from the same
+      //     client sharing the same calendar date.
+      const alerts = [];
+      const list = Array.isArray(withdrawals) ? withdrawals : [];
+      const byClient = {};
+      list.forEach(w => { (byClient[w.clientId] = byClient[w.clientId] || []).push(w); });
+      Object.keys(byClient).forEach(clientId => {
+        const client = clientById(clientId);
+        const clientName = (client && client.name) || clientId;
+        const rows = byClient[clientId].slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+        const now = Date.now();
+        const recentInstant = rows.filter(w => w.speed === "instant" && (now - new Date(String(w.createdAt).replace(" ", "T")).getTime()) <= 7 * 24 * 3600 * 1000);
+        if (recentInstant.length >= 3) {
+          alerts.push({ clientName, label: "Repeated instant withdrawals", detail: `${recentInstant.length} instant withdrawals in the last 7 days.` });
+        }
+        rows.forEach(w => {
+          if (w.balanceBefore > 0 && Number(w.amount) === Number(w.balanceBefore)) {
+            alerts.push({ clientName, label: "Full-balance payout", detail: `${w.id} withdrew the entire wallet balance of ${money(w.balanceBefore)}.` });
+          }
+        });
+        for (let i = 1; i < rows.length; i++) {
+          if (rows[i].iban && rows[i - 1].iban && rows[i].iban !== rows[i - 1].iban) {
+            alerts.push({ clientName, label: "Changed IBAN", detail: `IBAN changed from ${rows[i - 1].iban} to ${rows[i].iban} between ${rows[i - 1].id} and ${rows[i].id}.` });
+          }
+        }
+        const byDay = {};
+        rows.forEach(w => { const day = String(w.createdAt).slice(0, 10); (byDay[day] = byDay[day] || []).push(w); });
+        Object.keys(byDay).forEach(day => {
+          if (byDay[day].length >= 2) {
+            alerts.push({ clientName, label: "Multiple withdrawals in one day", detail: `${byDay[day].length} withdrawal requests on ${day}.` });
+          }
+        });
+      });
+      return alerts;
     }
 
     function nextId(prefix, items) {
@@ -7878,6 +7979,12 @@
       const pendingWithdrawals = state.walletWithdrawals.filter(item => item.status === "Pending admin payout");
       const paidWithdrawals = state.walletWithdrawals.filter(item => item.status === "Paid");
       const feeRevenue = state.walletWithdrawals.reduce((sum, item) => sum + Number(item.fee || 0), 0);
+      // NovaX new (Wallet Ledger v1, item 3): "fee revenue from fast
+      // withdrawals" means the 12h/instant speed tiers specifically, not the
+      // base 24h tier -- kept as a separate figure from the all-up feeRevenue
+      // card above.
+      const fastFeeRevenue = state.walletWithdrawals.filter(item => item.speed === "instant" || item.speed === "12h").reduce((sum, item) => sum + Number(item.fee || 0), 0);
+      const walletAlerts = computeWalletAlerts(state.walletWithdrawals, state.clients);
       ["financeGroupWalletBadge", "walletsSubtabBadge"].forEach(badgeId => {
         const badge = document.getElementById(badgeId);
         if (!badge) return;
@@ -7890,11 +7997,19 @@
       if (balanceCards) {
         balanceCards.innerHTML = [
           moneyBox("Selected wallet", money(walletBalance(activeClientId)), activeClient.name),
-          moneyBox("All wallet liability", money(walletTotal), "payable to clients"),
+          moneyBox("Total wallet liability", money(walletTotal), "payable to clients"),
           moneyBox("Pending payouts", money(pendingWithdrawals.reduce((sum, item) => sum + Number(item.amount || 0), 0)), `${pendingWithdrawals.length} request(s)`),
           moneyBox("Paid payouts", money(paidWithdrawals.reduce((sum, item) => sum + Number(item.net || 0), 0)), `${paidWithdrawals.length} settled`),
-          moneyBox("Withdraw fee revenue", money(feeRevenue), "extra charge model")
+          moneyBox("Withdraw fee revenue", money(feeRevenue), "all speeds"),
+          moneyBox("Fast payout fee revenue", money(fastFeeRevenue), "12h + instant only")
         ].join("");
+      }
+
+      const alertsList = document.getElementById("walletAlertsList");
+      if (alertsList) {
+        alertsList.innerHTML = walletAlerts.length
+          ? walletAlerts.map(alert => `<div class="ops-card alert-row"><div class="ops-card-head"><strong>${alert.clientName}</strong><span class="chip warn">${alert.label}</span></div><p>${alert.detail}</p></div>`).join("")
+          : `<div class="ops-card"><strong>No suspicious wallet signals</strong><p>Repeated instant withdrawals, full-balance payouts, changed IBANs, and same-day multiple withdrawals will show here.</p></div>`;
       }
 
       const walletInvoices = document.getElementById("walletInvoiceList");
@@ -7912,15 +8027,27 @@
 
       const payoutQueue = document.getElementById("walletPayoutQueue");
       if (payoutQueue) {
-        payoutQueue.innerHTML = state.walletWithdrawals.map(item => {
+        payoutQueue.innerHTML = pendingWithdrawals.map(item => {
           const client = clientById(item.clientId);
-          return `<div class="ops-card ${item.status === "Paid" ? "" : "alert-row"}">
-            <div class="ops-card-head"><strong>${item.id} | ${client.name}</strong><span class="chip ${item.status === "Paid" ? "good" : "warn"}">${item.status}</span></div>
+          return `<div class="ops-card alert-row">
+            <div class="ops-card-head"><strong>${item.id} | ${client.name}</strong><span class="chip warn">${item.status}</span></div>
             <p>Pay ${money(item.net)} to IBAN ${item.iban}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed)}).</p>
-            <div class="footer-note">Created ${item.createdAt}. ${item.paidAt ? `Paid ${item.paidAt}` : "Admin must verify bank transfer."}</div>
-            ${item.status === "Pending admin payout" ? `<button class="action-btn" style="margin-top:10px" onclick="markWalletWithdrawalPaid('${item.id}')">Mark Payout Paid</button>` : ""}
+            <div class="footer-note">Created ${item.createdAt}. Admin must verify bank transfer.</div>
+            <button class="action-btn" style="margin-top:10px" onclick="markWalletWithdrawalPaid('${item.id}')">Mark Payout Paid</button>
           </div>`;
-        }).join("") || `<div class="ops-card"><strong>No payout signals</strong><p>Withdrawal requests will appear here with IBAN and net payable.</p></div>`;
+        }).join("") || `<div class="ops-card"><strong>No pending payouts</strong><p>Withdrawal requests will appear here with IBAN and net payable until they're marked paid.</p></div>`;
+      }
+
+      const paidHistory = document.getElementById("walletPaidHistory");
+      if (paidHistory) {
+        paidHistory.innerHTML = paidWithdrawals.map(item => {
+          const client = clientById(item.clientId);
+          return `<div class="ops-card">
+            <div class="ops-card-head"><strong>${item.id} | ${client.name}</strong><span class="chip good">Paid</span></div>
+            <p>Paid ${money(item.net)} to IBAN ${item.iban} (${walletSpeedLabel(item.speed)}, fee ${money(item.fee)}).</p>
+            <div class="footer-note">${item.paidTxnId ? `Paid with reference ${item.paidTxnId}` : "Paid"}${item.paidBy ? ` by ${item.paidBy}` : ""}${item.paidAt ? ` on ${item.paidAt}` : ""}.${item.paidProof ? ` Proof: ${item.paidProof}` : ""}</div>
+          </div>`;
+        }).join("") || `<div class="ops-card"><strong>No paid payouts yet</strong><p>Settled withdrawals will show their bank transaction reference and paid-by staff name here.</p></div>`;
       }
 
       const summaryCards = document.getElementById("financeSummaryCards");
@@ -8802,24 +8929,90 @@
     function markWalletWithdrawalPaid(id) {
       const withdrawal = state.walletWithdrawals.find(item => item.id === id);
       if (!withdrawal || withdrawal.status === "Paid") return;
+      // NovaX new (Wallet Ledger v1, item 4): payout settlement proof is now
+      // required before a payout can be marked paid. Instead of calling the
+      // RPC directly, this opens a small proof-capture modal; the actual RPC
+      // call happens in confirmMarkWalletWithdrawalPaid() below once the
+      // admin has entered a bank transaction ID and their name.
+      const client = clientById(withdrawal.clientId);
+      document.getElementById("markPaidWithdrawalId").value = id;
+      document.getElementById("markPaidSummary").textContent = `${id} | ${client.name} | Pay ${money(withdrawal.net)} to IBAN ${withdrawal.iban} (${walletSpeedLabel(withdrawal.speed)}).`;
+      document.getElementById("markPaidTxnId").value = "";
+      document.getElementById("markPaidByName").value = "";
+      document.getElementById("markPaidProof").value = "";
+      document.getElementById("markPaidModal").style.display = "flex";
+    }
+
+    function closeMarkPaidModal() {
+      const modal = document.getElementById("markPaidModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    function confirmMarkWalletWithdrawalPaid() {
+      const id = document.getElementById("markPaidWithdrawalId").value;
+      const withdrawal = state.walletWithdrawals.find(item => item.id === id);
+      if (!withdrawal || withdrawal.status === "Paid") { closeMarkPaidModal(); return; }
+      const txnId = document.getElementById("markPaidTxnId").value.trim();
+      const paidBy = document.getElementById("markPaidByName").value.trim();
+      const proof = document.getElementById("markPaidProof").value.trim();
+      if (!txnId || !paidBy) {
+        toast("Bank transaction ID and paid-by staff name are mandatory.");
+        return;
+      }
       // NovaX fix: this used to just set withdrawal.status = "Paid" locally
       // with no server call at all, so a payout could look "Paid" in the
       // admin UI without Supabase ever recording it -- a refresh (or the
       // client's own portal) would still show it as pending, and the wallet
       // ledger could silently drift out of sync. Marking a payout paid must
       // now go through the atomic admin_mark_withdrawal_paid RPC, which is
-      // the only thing allowed to flip a withdrawal to "Paid". It does not
-      // touch wallet_balance again -- that amount was already reserved when
-      // the client requested the withdrawal.
+      // the only thing allowed to flip a withdrawal to "Paid" -- and it now
+      // requires settlement proof (txn id + staff name + optional proof note
+      // or screenshot URL) as part of Wallet Ledger v1. It does not touch
+      // wallet_balance again -- that amount was already reserved when the
+      // client requested the withdrawal.
       if (!(window.__nvSb && withdrawal._uuid)) {
         toast("Cloud connection not ready yet, please try again in a moment.", "error");
         return;
       }
-      window.__nvSb.rpc("admin_mark_withdrawal_paid", { p_withdrawal_id: withdrawal._uuid }).then(r => {
+      window.__nvSb.rpc("admin_mark_withdrawal_paid", { p_withdrawal_id: withdrawal._uuid, p_txn_id: txnId, p_paid_by: paidBy, p_proof: proof || null }).then(r => {
         if (r && r.error) { toast(`Could not mark ${id} paid: ${r.error.message}`, "error"); return; }
         if (typeof loadAll === "function") loadAll();
-        toast(`${id} marked paid to client IBAN.`);
+        closeMarkPaidModal();
+        toast(`${id} marked paid with reference ${txnId}.`);
       }).catch(e => toast(`Could not mark ${id} paid: ${(e && e.message) || e}`, "error"));
+    }
+
+    function submitWalletAdjustment() {
+      // NovaX new (Wallet Ledger v1, item 3/5): manual admin credits/reversals
+      // now go through admin_wallet_adjustment instead of a raw wallet_balance
+      // UPDATE, so every adjustment is proof-noted and lands in the ledger.
+      const clientId = document.getElementById("walletClientSelect").value;
+      const client = clientById(clientId);
+      const amount = Number(document.getElementById("walletAdjustAmount").value);
+      const note = document.getElementById("walletAdjustNote").value.trim();
+      if (!client) {
+        toast("Select a client first.");
+        return;
+      }
+      if (!amount) {
+        toast("Adjustment amount must be non-zero. Use a negative number to reverse a credit.");
+        return;
+      }
+      if (!note) {
+        toast("A note explaining the adjustment is mandatory.");
+        return;
+      }
+      if (!(window.__nvSb && client._uuid)) {
+        toast("Cloud connection not ready yet, please try again in a moment.", "error");
+        return;
+      }
+      window.__nvSb.rpc("admin_wallet_adjustment", { p_client_id: client._uuid, p_amount: amount, p_note: note }).then(r => {
+        if (r && r.error) { toast(`Adjustment failed: ${r.error.message}`, "error"); return; }
+        if (typeof loadAll === "function") loadAll();
+        document.getElementById("walletAdjustAmount").value = "";
+        document.getElementById("walletAdjustNote").value = "";
+        toast(`${client.name} wallet adjusted by ${money(amount)}.`);
+      }).catch(e => toast(`Adjustment failed: ${(e && e.message) || e}`, "error"));
     }
 
     function addExpense() {
@@ -10106,7 +10299,8 @@
       function rInvoice(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.code||r.id, clientId:r.client_id, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:Number(r.cod_total||0), charges:Number(r.fee_total||0), payable:Number(r.net_payable||0), status:r.status||"Pending", createdAt:dtpart(r.created_at), paidAt:m.paidAt||"", walletPushedAt:m.walletPushedAt||"", summary:m.summary||"" }; }
       function rTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:r.client_id, parcelId:r.parcel_id||"", sourceKey:m.sourceKey||"", tier:m.tier||"medium", title:r.subject||"", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", message:r.body||"", createdAt:dtpart(r.created_at), ageHours:Number(m.ageHours||0), status:r.status||"Open", escalated:!!m.escalated, replies:Array.isArray(m.replies)?m.replies:[], source:m.source||"", intent:m.intent||"", priority:m.priority||"", suggestedTeam:m.suggestedTeam||m.department||"", handoffReason:m.handoffReason||"", resolutionReply:m.resolutionReply||"", proof:m.proof||"", resolvedBy:m.resolvedBy||"", resolvedAt:m.resolvedAt||"", solvedHours:Number(m.solvedHours||0) }; }
       function rExpense(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:m.name||r.note||r.category||"Expense", amount:Number(r.amount||0), type:r.category||"", owner:r.branch||"", status:m.status||"Pending", note:r.note||"" }; }
-      function rWd(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at), paidAt:r.paid_at?dtpart(r.paid_at):"" }; }
+      function rWd(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at), paidAt:r.paid_at?dtpart(r.paid_at):"", balanceBefore:Number(r.balance_before||0), paidTxnId:r.paid_txn_id||"", paidBy:r.paid_by||"", paidProof:r.paid_proof||"" }; }
+      function rLedger(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, entryType:r.entry_type||"", amount:Number(r.amount||0), affectsBalance:!!r.affects_balance, status:r.status||"", referenceType:r.reference_type||"", referenceId:r.reference_id||"", referenceCode:r.reference_code||"", note:r.note||"", createdAt:dtpart(r.created_at) }; }
       function rSalesLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", parcels:r.parcels_per_month||"", status:r.status||"New", createdAt:dtpart(r.created_at) }; }
       function rSignupLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", email:r.email||"", city:r.city||"", address:r.address||"", businessType:r.business_type||"", website:r.website||"", status:r.status||"pending_workspace", errorMessage:r.error_message||"", createdAt:dtpart(r.created_at) }; }
       function rPl(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, type:r.type||"", amount:Number(r.amount||0), status:r.status||"", ref:r.reference||"" }; }
@@ -10156,7 +10350,17 @@
       function fStaffTicket(t){ return { code:t.id||"", owner_id:suid(t.owner), title:t.title||"", priority:t.priority||"medium", status:t.status||"open", created_by:t.by||"" }; }
       function rStaffActivity(r){ return { _uuid:r.id, who:suidToLocal(r.owner_id), t:r.note||"", time:r.created_at||"" }; }
       function fStaffActivity(a){ return { owner_id:suid(a.who), note:a.t||"" }; }
-      var SETS=[["clients",fClient,"clients"],["riders",fRider,"riders"],["parcels",fParcel,"parcels"],["invoices",fInvoice,"invoices"],["tickets",fTicket,"tickets"],["expenses",fExpense,"expenses"],["walletWithdrawals",fWd,"withdrawals"],["paymentLogs",fPl,"payment_logs"],["operationsIssues",fOpsIssue,"operations_issues"],["resolvedAlerts",fResolvedAlert,"resolved_alerts"],["transit",fManifest,"manifest_logs"],["completedSacks",fManifest,"manifest_logs"],["ticketNotifications",fTicketNotif,"ticket_notifications"],["users",fStaffUser,"staff_users"],["staffTickets",fStaffTicket,"staff_tickets"],["staffActivity",fStaffActivity,"staff_activity"]];
+      // NovaX fix (Wallet Ledger v1, item 5): "withdrawals" used to be in
+      // this generic sync list via fWd(), so any unrelated local mutation
+      // that triggered a full save/sync pass could push this browser's
+      // cached copy of a withdrawal's status/paid_at back to the server --
+      // a second, parallel leak path alongside the wallet_balance leak
+      // already fixed on fClient(). Every withdrawal write must now go
+      // through an RPC only (request/admin_request_wallet_withdrawal,
+      // admin_mark_withdrawal_paid), so "withdrawals" is intentionally
+      // removed from generic sync entirely. fWd() is kept only as a record
+      // of the old shape; it is no longer called anywhere.
+      var SETS=[["clients",fClient,"clients"],["riders",fRider,"riders"],["parcels",fParcel,"parcels"],["invoices",fInvoice,"invoices"],["tickets",fTicket,"tickets"],["expenses",fExpense,"expenses"],["paymentLogs",fPl,"payment_logs"],["operationsIssues",fOpsIssue,"operations_issues"],["resolvedAlerts",fResolvedAlert,"resolved_alerts"],["transit",fManifest,"manifest_logs"],["completedSacks",fManifest,"manifest_logs"],["ticketNotifications",fTicketNotif,"ticket_notifications"],["users",fStaffUser,"staff_users"],["staffTickets",fStaffTicket,"staff_tickets"],["staffActivity",fStaffActivity,"staff_activity"]];
       function scheduleResync(){ clearTimeout(resyncT); resyncT=setTimeout(function(){ try{ syncAll(); }catch(e){} },700); }
       function loadAll(){
         /* NOTE: every query below now has an explicit .limit(). Supabase's own
@@ -10186,7 +10390,8 @@
           sb.from("ticket_notifications").select("*").order("created_at",{ascending:false}).limit(20),
           sb.from("staff_users").select("*").order("created_at",{ascending:false}).limit(2000),
           sb.from("staff_tickets").select("*").order("created_at",{ascending:false}).limit(2000),
-          sb.from("staff_activity").select("*").order("created_at",{ascending:false}).limit(100)
+          sb.from("staff_activity").select("*").order("created_at",{ascending:false}).limit(100),
+          sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}).limit(5000)
         ]).then(function(res){
           function D(i){ return (res[i]&&res[i].data)||[]; }
           state.clients=D(0).map(rClient);
@@ -10208,6 +10413,7 @@
           state.users=D(14).map(rStaffUser);
           state.staffTickets=D(15).map(rStaffTicket);
           state.staffActivity=D(16).map(rStaffActivity);
+          state.walletLedger=D(17).map(rLedger);
           if(state.clients.length){ var c0=state.clients[0]; state.client={ id:c0.id, name:c0.name, walletTopup:c0.walletTopup, shippingDue:c0.shippingDue, walletBalance:c0.walletBalance, subAccounts:0 }; }
           rebuildShadow();
           loaded=true;
@@ -10229,7 +10435,7 @@
       }
       function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
       var _save=saveState; saveState=function(){ try{ if(typeof syncRidersFromUsers==="function") syncRidersFromUsers(); }catch(e){} try{ _save.apply(this,arguments); }catch(e){} try{ syncAll(); }catch(e){} };
-      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.tickets=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[]; state.signupLeads=[]; state.operationsIssues=[]; state.resolvedAlerts=[]; state.transit=[]; state.completedSacks=[]; state.ticketNotifications=[]; state.users=[]; state.staffTickets=[]; state.staffActivity=[];
+      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.tickets=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[]; state.signupLeads=[]; state.operationsIssues=[]; state.resolvedAlerts=[]; state.transit=[]; state.completedSacks=[]; state.ticketNotifications=[]; state.users=[]; state.staffTickets=[]; state.staffActivity=[]; state.walletLedger=[];
       window.markSalesLeadContacted=function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
@@ -10465,7 +10671,7 @@
       const mine=staffTicketsFor(u.id), openT=mine.filter(t=>t.status==="open"), doneT=mine.filter(t=>t.status==="resolved");
       const isSales=u.staffRole==="Sales";
       const tRow=t=>{const pc={okay:"info",medium:"warn",emergency:"bad"}[t.priority]||"info";
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${t.id} <span class="chip ${pc}">${t.priority}</span></strong>${t.status==="open"?`<button class="action-btn" onclick="staffSetTicket('${t.id}','resolved')">Resolve</button>`:`<button class="ghost-btn" onclick="staffSetTicket('${t.id}','open')">Reopen</button>`}</div><p>${t.title} <span class="footer-note">· by ${t.by} ${t.created}</span></p></div>`;};
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${t.id} <span class="chip ${pc}">${t.priority}</span></strong>${t.status==="open"?`<button class="action-btn" onclick="staffSetTicket('${t.id}','resolved')">Resolve</button>`:`<button class="ghost-btn" onclick="staffSetTicket('${t.id}','open')">Reopen</button>`}</div><p>${t.title} <span class="footer-note">�� by ${t.by} ${t.created}</span></p></div>`;};
       return `
       <div class="panel"><div class="section-head"><div><h3>${forManager?u.name+" — workspace":"My performance"}</h3><p>${staffRoleBlurb(u.staffRole)}</p></div>${forManager?`<button class="ghost-btn" onclick="staffClose()">Close</button>`:""}</div>
         <div class="grid metrics"><div class="metric"><span>Open tickets</span><strong>${openT.length}</strong></div><div class="metric"><span>Resolved</span><strong>${doneT.length}</strong></div><div class="metric"><span>Score</span><strong>${staffScore(u)}</strong></div><div class="metric"><span>Status</span><strong style="font-size:16px">${u.status||"Active"}</strong></div></div></div>
