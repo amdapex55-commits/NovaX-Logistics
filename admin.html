@@ -5421,9 +5421,9 @@
         { name: "Islamabad Hub", scanHealth: 86, cashHealth: 72, discrepancy: 3 }
       ],
       riders: [
-        { id: "R-17", name: "Usman", username: "usman.r17", password: "NX-1717", manager: "Lahore Hub Manager", cashHeld: 62500, cashLimit: 75000, scans: 38, fakeRisk: 9, access: "Active", expenses: 0 },
-        { id: "R-22", name: "Bilal", username: "bilal.r22", password: "NX-2222", manager: "Karachi Hub Manager", cashHeld: 103000, cashLimit: 90000, scans: 44, fakeRisk: 22, access: "Blocked", expenses: 0 },
-        { id: "R-31", name: "Hamza", username: "hamza.r31", password: "NX-3131", manager: "Islamabad Hub Manager", cashHeld: 19500, cashLimit: 60000, scans: 29, fakeRisk: 6, access: "Active", expenses: 0 }
+        { id: "R-17", name: "Usman", username: "usman.r17", manager: "Lahore Hub Manager", cashHeld: 62500, cashLimit: 75000, scans: 38, fakeRisk: 9, access: "Active", expenses: 0 },
+        { id: "R-22", name: "Bilal", username: "bilal.r22", manager: "Karachi Hub Manager", cashHeld: 103000, cashLimit: 90000, scans: 44, fakeRisk: 22, access: "Blocked", expenses: 0 },
+        { id: "R-31", name: "Hamza", username: "hamza.r31", manager: "Islamabad Hub Manager", cashHeld: 19500, cashLimit: 60000, scans: 29, fakeRisk: 6, access: "Active", expenses: 0 }
       ],
       parcels: [
         {
@@ -5609,7 +5609,11 @@
         client: { id: "CL-0000", name: "New Merchant Workspace", walletTopup: 0, shippingDue: 0, subAccounts: 0, walletBalance: 0 },
         clients: [blankClient],
         pendingClients: [],
-        users: [{ id: "USR-0001", name: "NovaX Admin", email: "admin@novax.pk", password: "NovaX@123", role: "Admin", accessSide: "Admin Portal", branch: "Admin Control", clientId: "", status: "Active", permissions: ["all"] }],
+        // NovaX fix (medium risk #1): plaintext demo passwords must not sit in
+        // browser state that saveState() persists to localStorage. Real login
+        // now happens through Supabase Auth (auth.signUp / getSession), not by
+        // comparing this field, so it is safe to drop from seed/browser state.
+        users: [{ id: "USR-0001", name: "NovaX Admin", email: "admin@novax.pk", role: "Admin", accessSide: "Admin Portal", branch: "Admin Control", clientId: "", status: "Active", permissions: ["all"] }],
         branches: [],
         riders: [],
         parcels: [],
@@ -5927,7 +5931,11 @@
       });
       state.users.forEach(user => {
         user.email = user.email || `${String(user.name || user.id).toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "")}@novax.pk`;
-        user.password = user.password || "NovaX@123";
+        // NovaX fix (medium risk #1): stopped auto-assigning a shared plaintext
+        // default password into browser-persisted state. Real access is
+        // through Supabase Auth; this field is legacy display-only and should
+        // not carry a live-looking secret value.
+        delete user.password;
         user.accessSide = user.accessSide || (user.role === "Admin" ? "Admin Portal" : "Client Web Portal");
       });
       state.parcels.forEach((parcel, index) => {
@@ -6176,7 +6184,13 @@
     }
 
     function paidParcelRefs() {
-      return new Set(state.invoices.filter(invoice => invoice.status === "Paid").flatMap(invoice => invoice.parcelRefs || []));
+      // NovaX fix: an invoice that has already been Pushed To Client Wallet
+      // has already been paid out to the client (clients.wallet_balance was
+      // credited then) -- only the later administrative "Paid" bank-payout
+      // status was still missing here. Both statuses must be excluded from
+      // payable/unpaid calculations, or admin finance keeps counting
+      // already-walleted parcels as still unpaid payable.
+      return new Set(state.invoices.filter(invoice => invoice.status === "Paid" || invoice.status === "Pushed to wallet").flatMap(invoice => invoice.parcelRefs || []));
     }
 
     function isUnpaidDeliveredParcel(parcel) {
@@ -7358,7 +7372,7 @@
               <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${pushed ? "good" : "warn"}">${invoice.status}</span></div>
               <p>${invoice.parcelRefs.join(", ")}<br>Payable ${money(invoice.payable)} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
               <div class="inline-actions" style="margin-top:8px">
-                ${pushed ? `<button class="ghost-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Paid</button>` : `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button>`}
+                ${invoice.status === "Paid" ? `<span class="chip good">Settled</span>` : pushed ? `<button class="ghost-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Invoice Settled</button>` : `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button>`}
               </div>
             </div>
           `;
@@ -7430,7 +7444,7 @@
             <span class="chip warn">Charges ${money(invoice.charges)}</span>
             <span class="chip ${pushed ? "good" : "warn"}">${invoice.status} | Payable ${money(invoice.payable)}</span>
             <div class="inline-actions">
-              ${pushed ? `<button class="ghost-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Paid</button>` : `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button><button class="ghost-btn" onclick="deleteInvoice('${invoice.id}')">Delete</button>`}
+              ${invoice.status === "Paid" ? `<span class="chip good">Settled</span>` : pushed ? `<button class="ghost-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Invoice Settled</button>` : `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button><button class="ghost-btn" onclick="deleteInvoice('${invoice.id}')">Delete</button>`}
             </div>
           </div>
         `;
@@ -7861,7 +7875,8 @@
       const walletTotal = state.clients.reduce((sum, client) => sum + walletBalance(client.id), 0);
       const pushedInvoices = state.invoices.filter(invoice => invoice.status === "Pushed to wallet" || invoice.status === "Paid");
       const pendingInvoices = state.invoices.filter(invoice => invoice.status === "Generated" || invoice.status === "Pending");
-      const pendingWithdrawals = state.walletWithdrawals.filter(item => item.status !== "Paid");
+      const pendingWithdrawals = state.walletWithdrawals.filter(item => item.status === "Pending admin payout");
+      const paidWithdrawals = state.walletWithdrawals.filter(item => item.status === "Paid");
       const feeRevenue = state.walletWithdrawals.reduce((sum, item) => sum + Number(item.fee || 0), 0);
       ["financeGroupWalletBadge", "walletsSubtabBadge"].forEach(badgeId => {
         const badge = document.getElementById(badgeId);
@@ -7877,6 +7892,7 @@
           moneyBox("Selected wallet", money(walletBalance(activeClientId)), activeClient.name),
           moneyBox("All wallet liability", money(walletTotal), "payable to clients"),
           moneyBox("Pending payouts", money(pendingWithdrawals.reduce((sum, item) => sum + Number(item.amount || 0), 0)), `${pendingWithdrawals.length} request(s)`),
+          moneyBox("Paid payouts", money(paidWithdrawals.reduce((sum, item) => sum + Number(item.net || 0), 0)), `${paidWithdrawals.length} settled`),
           moneyBox("Withdraw fee revenue", money(feeRevenue), "extra charge model")
         ].join("");
       }
@@ -7902,7 +7918,7 @@
             <div class="ops-card-head"><strong>${item.id} | ${client.name}</strong><span class="chip ${item.status === "Paid" ? "good" : "warn"}">${item.status}</span></div>
             <p>Pay ${money(item.net)} to IBAN ${item.iban}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed)}).</p>
             <div class="footer-note">Created ${item.createdAt}. ${item.paidAt ? `Paid ${item.paidAt}` : "Admin must verify bank transfer."}</div>
-            ${item.status === "Paid" ? "" : `<button class="action-btn" style="margin-top:10px" onclick="markWalletWithdrawalPaid('${item.id}')">Mark Payout Paid</button>`}
+            ${item.status === "Pending admin payout" ? `<button class="action-btn" style="margin-top:10px" onclick="markWalletWithdrawalPaid('${item.id}')">Mark Payout Paid</button>` : ""}
           </div>`;
         }).join("") || `<div class="ops-card"><strong>No payout signals</strong><p>Withdrawal requests will appear here with IBAN and net payable.</p></div>`;
       }
@@ -8279,22 +8295,15 @@
     }
     function adminPlatformLabel(p){ return p==="shopify"?"Shopify":p==="woocommerce"?"WooCommerce":"Custom Web/API"; }
     function adminConnectStore(platform){
-      if(!Array.isArray(state.storeConnections)) state.storeConnections=[];
-      const map={ shopify:{client:"shopifyClientSelect",url:"adminShopifyUrl",fields:{token:"adminShopifyToken"}}, woocommerce:{client:"wooClientSelect",url:"adminWooUrl",fields:{key:"adminWooKey",secret:"adminWooSecret"}}, web:{client:"webClientSelect",url:"adminWebUrl",fields:{key:"adminWebKey"}} };
-      const cfg=map[platform]; if(!cfg) return;
-      const clientId=document.getElementById(cfg.client)?.value||""; if(!clientId){ toast("Select a client first."); return; }
-      const storeUrl=(document.getElementById(cfg.url)?.value||"").trim(); if(!storeUrl){ toast("Enter the store URL / endpoint."); return; }
-      // NovaX security note: API keys/tokens/secrets are intentionally NOT stored
-      // (not in state, not in localStorage, not synced to Supabase). This sync flow
-      // is a demo/mock -- it never actually calls Shopify/WooCommerce with these
-      // credentials, so there is no reason to persist the raw secret anywhere.
-      // We only remember whether credentials were provided, for the UI badge.
-      const hasCreds=Object.keys(cfg.fields).some(k=>(document.getElementById(cfg.fields[k])?.value||"").trim());
-      Object.keys(cfg.fields).forEach(k=>{ const el=document.getElementById(cfg.fields[k]); if(el) el.value=""; });
-      let conn=state.storeConnections.find(c=>c.clientId===clientId&&c.platform===platform);
-      if(!conn){ conn={ clientId, platform }; state.storeConnections.push(conn); }
-      conn.storeUrl=storeUrl; conn.hasCreds=hasCreds||conn.hasCreds||false; conn.connected=true; conn.connectedAt=time();
-      saveState(); renderAdmin(); toast(adminPlatformLabel(platform)+" connected for "+clientId+".");
+      // NovaX fix (medium risk #2): this was the older local-only demo
+      // connect path -- it wrote a fake "connected" store_connections row
+      // straight into state (and from there into real Supabase via generic
+      // sync) without ever actually going through Shopify/WooCommerce/API
+      // OAuth or credential verification. It is not wired to any live button
+      // anymore; hard-disabled here so it can't silently fabricate a
+      // "connected" integration if something calls it again in the future.
+      toast("This local demo connect flow is disabled. Use the real Shopify OAuth, WooCommerce, or Custom Web/API connect flow in Integrations.", "error");
+      return;
     }
     function adminConnectWooCommerce(clientId){ adminConnectLiveStore("woocommerce", clientId); }
 
@@ -8388,14 +8397,17 @@
     }
 
     function adminSyncStoreFor(platform,clientId){
+      // NovaX fix (item 6): this used to generate 2-4 random fake bookings
+      // with made-up names/cities/COD amounts every time this ran -- a
+      // "sync" button that silently created fictional live orders. Real
+      // orders only ever arrive through the store's own webhook calling the
+      // order-intake edge function; there is no legitimate backend RPC to
+      // manually "pull" orders on demand, so this no longer creates any
+      // parcels. It only reports the connection's real last-sync info.
       if(!clientId){ toast("No client selected."); return; }
-      const names=["Ayesha Tariq","Bilal Hussain","Fatima Noor","Usman Raza","Hina Shah","Kamran Ali"];
-      const cities=["Lahore","Karachi","Islamabad","Rawalpindi"];
-      const n=2+Math.floor(Math.random()*3); let count=0;
-      for(let i=0;i<n;i++){ bookParcel({ clientId, consignee:names[Math.floor(Math.random()*names.length)], city:cities[Math.floor(Math.random()*cities.length)], cod:1500+Math.round(Math.random()*9000), phone:"03"+(100000000+Math.floor(Math.random()*899999999)), service:"COD Standard", category:"Fashion", weight:"0.8 kg", address:"Imported from "+adminPlatformLabel(platform), source:adminPlatformLabel(platform), silent:true }); count++; }
       const conn=(state.storeConnections||[]).find(c=>c.clientId===clientId&&c.platform===platform);
-      if(conn){ conn.lastSync=time(); conn.importedCount=(conn.importedCount||0)+count; }
-      saveState(); renderAdmin(); toast(count+" "+adminPlatformLabel(platform)+" order(s) imported as new bookings for "+clientId+".");
+      if(!conn||!conn.connected){ toast("This client's "+adminPlatformLabel(platform)+" connection is not active yet."); return; }
+      toast(adminPlatformLabel(platform)+" orders sync automatically via the store's webhook -- there is no manual import. Last sync: "+(conn.lastSync||"never yet")+".");
     }
     function adminSyncStore(platform){
       const sel={ shopify:"shopifyClientSelect", woocommerce:"wooClientSelect", web:"webClientSelect" }[platform];
@@ -8543,24 +8555,71 @@
       };
       state.clients.unshift(newClient);
       state.client = { id, name: newClient.name, walletTopup: 0, shippingDue: 0, subAccounts: 0, walletBalance: 0 };
-      state.users.unshift({
-        id: nextId("USR", state.users),
-        name: newClient.owner || newClient.name,
-        email,
-        password,
-        role: "Client",
-        accessSide: "Client Web Portal",
-        branch: `${newClient.city || "Karachi"} Hub`,
-        clientId: id,
-        status: "Active",
-        permissions: ["dashboard", "booking", "bulk booking", "reports", "payments", "tickets"]
-      });
       saveState();
       render();
       showAdminTab("clients-summary");
       const result = document.getElementById("clientCreateResult");
-      if (result) result.innerHTML = `<div class="ops-card"><strong>${id} created</strong><p>${name} is active. Login email: ${email}</p></div>`;
-      toast(`${id} created as active client. Login is ready.`);
+      if (result) result.innerHTML = `<div class="ops-card"><strong>${id} created</strong><p>${name}'s workspace is saved. Creating a real login next...</p></div>`;
+      toast(`${id} created. Setting up ${name}'s login...`);
+
+      // NovaX fix (item 5): this used to only ever push a local
+      // state.users row and immediately claim "Login is ready" -- no
+      // Supabase Auth account or profiles link was ever created, so the
+      // client could never actually sign in. This now reuses the same real
+      // auth.signUp() + profiles-link flow already used for staff/rider
+      // accounts, and only claims the login is ready once both steps
+      // actually succeed. Any failure along the way is reported clearly
+      // instead of being hidden behind a false success toast.
+      if (!window.__nvSignupClient || !window.__nvSb) {
+        if (result) result.innerHTML = `<div class="ops-card"><strong>${id} created</strong><p>${name}'s workspace is saved, but the cloud connection was not ready to create a login. Open Users and create the login manually, or refresh and try again.</p></div>`;
+        toast(`${id} created as a workspace. Login is NOT ready yet -- cloud connection was not ready.`);
+        return;
+      }
+
+      window.__nvSignupClient.auth.signUp({ email, password }).then(res => {
+        if (res.error) {
+          if (result) result.innerHTML = `<div class="ops-card"><strong>${id} created</strong><p>${name}'s workspace is saved, but the login could not be created: ${res.error.message}. Open Users and create/link the login manually.</p></div>`;
+          toast(`${id} created as a workspace. Login is NOT ready: ${res.error.message}`);
+          return;
+        }
+        const newUserId = res.data && res.data.user && res.data.user.id;
+        state.users.unshift({
+          id: nextId("USR", state.users),
+          name: newClient.owner || newClient.name,
+          email,
+          password,
+          role: "Client",
+          accessSide: "Client Web Portal",
+          branch: `${newClient.city || "Karachi"} Hub`,
+          clientId: id,
+          status: "Active",
+          permissions: ["dashboard", "booking", "bulk booking", "reports", "payments", "tickets"]
+        });
+        saveState();
+        const linkProfile = attemptsLeft => {
+          const clientUuid = newClient._uuid;
+          if (!clientUuid && attemptsLeft > 0) { setTimeout(() => linkProfile(attemptsLeft - 1), 700); return; }
+          const patch = Object.assign({ role: "client", status: "active" }, clientUuid ? { client_id: clientUuid } : {});
+          const q = newUserId
+            ? window.__nvSb.from("profiles").update(patch).eq("id", newUserId).select("id")
+            : window.__nvSb.from("profiles").update(patch).eq("email", email).select("id");
+          q.then(r => {
+            if (r && r.error) {
+              if (result) result.innerHTML = `<div class="ops-card"><strong>${id} created</strong><p>${name}'s login account exists, but linking it to the workspace failed: ${r.error.message}. Re-open Users and save this login again.</p></div>`;
+              toast(`${id} created. Login exists but is NOT linked yet: ${r.error.message}`);
+              return;
+            }
+            if (!clientUuid) {
+              if (result) result.innerHTML = `<div class="ops-card"><strong>${id} created</strong><p>${name}'s login was created, but the workspace has not finished saving to the cloud yet. Re-open Users and save this login again in a moment to link it.</p></div>`;
+              toast(`${id} created. Login is NOT linked yet -- try again shortly.`);
+              return;
+            }
+            if (result) result.innerHTML = `<div class="ops-card"><strong>${id} created</strong><p>${name} is active with a real, working login: ${email}.</p></div>`;
+            toast(`${id} created as active client with a real login. Login is ready.`);
+          });
+        };
+        setTimeout(() => linkProfile(6), 900);
+      });
     }
 
     function toggleRateForm(id) {
@@ -8684,7 +8743,12 @@
       if (window.__nvSb && invoice._uuid) {
         window.__nvSb.rpc("admin_push_invoice_to_wallet", { p_invoice_id: invoice._uuid }).then(r => {
           if (r && r.error) { toast(`Could not push ${id} to wallet: ${r.error.message}`, "error"); return; }
-          applyPushInvoiceToWalletLocally(invoice, client, id);
+          // NovaX fix: reload clients/invoices/payment logs straight from
+          // Supabase instead of recomputing the wallet credit locally, so the
+          // wallet balance shown always matches exactly what the atomic RPC
+          // wrote server-side (no drift, no double counting).
+          if (typeof loadAll === "function") loadAll();
+          toast(`${id} pushed to ${client.name} wallet.`);
         }).catch(e => toast(`Could not push ${id} to wallet: ${(e && e.message) || e}`, "error"));
         return;
       }
@@ -8760,19 +8824,24 @@
     function markWalletWithdrawalPaid(id) {
       const withdrawal = state.walletWithdrawals.find(item => item.id === id);
       if (!withdrawal || withdrawal.status === "Paid") return;
-      withdrawal.status = "Paid";
-      withdrawal.paidAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
-      state.paymentLogs.unshift({
-        id: nextId("PAY", state.paymentLogs),
-        clientId: withdrawal.clientId,
-        type: "Wallet payout paid",
-        amount: withdrawal.net,
-        status: "Paid to IBAN",
-        ref: withdrawal.id
-      });
-      saveState();
-      render();
-      toast(`${id} marked paid to client IBAN.`);
+      // NovaX fix: this used to just set withdrawal.status = "Paid" locally
+      // with no server call at all, so a payout could look "Paid" in the
+      // admin UI without Supabase ever recording it -- a refresh (or the
+      // client's own portal) would still show it as pending, and the wallet
+      // ledger could silently drift out of sync. Marking a payout paid must
+      // now go through the atomic admin_mark_withdrawal_paid RPC, which is
+      // the only thing allowed to flip a withdrawal to "Paid". It does not
+      // touch wallet_balance again -- that amount was already reserved when
+      // the client requested the withdrawal.
+      if (!(window.__nvSb && withdrawal._uuid)) {
+        toast("Cloud connection not ready yet, please try again in a moment.", "error");
+        return;
+      }
+      window.__nvSb.rpc("admin_mark_withdrawal_paid", { p_withdrawal_id: withdrawal._uuid }).then(r => {
+        if (r && r.error) { toast(`Could not mark ${id} paid: ${r.error.message}`, "error"); return; }
+        if (typeof loadAll === "function") loadAll();
+        toast(`${id} marked paid to client IBAN.`);
+      }).catch(e => toast(`Could not mark ${id} paid: ${(e && e.message) || e}`, "error"));
     }
 
     function addExpense() {
@@ -9089,20 +9158,17 @@
     }
 
     function requestPayout() {
-      const cm = clientMetrics();
-      const id = nextId("PAY", state.paymentLogs);
-      state.paymentLogs.unshift({
-        id,
-        clientId: state.client.id || "CL-0001",
-        type: "Payout requested",
-        amount: cm.payable,
-        status: "Pending admin approval",
-        ref: `PAYOUT-${id}`
-      });
-      saveState();
-      render();
+      // NovaX fix (item 2): this used to insert a fake "Payout requested"
+      // row straight into paymentLogs from the browser -- no RPC call, no
+      // real withdrawal record, and it used the invoice-payable-pending
+      // figure instead of the actual wallet balance. That local row also
+      // synced to the real payment_logs table, so it could look like a
+      // legitimate pending payout to admin finance without ever going
+      // through request_wallet_withdrawal. Real payouts must always be
+      // requested from the wallet balance with an IBAN and payout speed, so
+      // this no longer creates any local or synced record.
       showClientTab("payments");
-      toast("Payout request sent to admin Payments & COD.");
+      toast("Payout requests come from your wallet balance, not this button \u2014 use the Wallet withdrawal option with your IBAN and payout speed.");
     }
 
     function requestRedelivery(awb) {
@@ -9198,11 +9264,17 @@
         replies: []
       };
       state.tickets.unshift(ticket);
-      state.ticketNotifications.unshift({ text: `${ticket.id} created by ${ticket.from} and routed to ${ticket.to}.`, at: ticket.createdAt, level: ticket.tier === "emergency" ? "bad" : "info" });
+      pushTicketNotif(`${ticket.id} created by ${ticket.from} and routed to ${ticket.to}.`, ticket.tier === "emergency" ? "bad" : "info");
       ["ticketTitle", "ticketAwb", "ticketMessage"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
       saveState();
       render();
       toast(`${ticket.id} created and sent to ${ticket.to}.`);
+    }
+
+    function pushTicketNotif(text, level) {
+      state.ticketNotifications = state.ticketNotifications || [];
+      if (state.ticketNotifications.some(n => n.text === text)) return;
+      state.ticketNotifications.unshift({ text, at: `${new Date().toISOString().slice(0, 10)} ${time()}`, level: level || "info" });
     }
 
     function resolveTicket(id) {
@@ -9214,6 +9286,8 @@
         toast("Resolve reply is required.");
         return;
       }
+      const prevStatus = ticket.status;
+      const prevReplies = Array.isArray(ticket.replies) ? ticket.replies.slice() : [];
       const resolvedAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
       ticket.status = "Resolved";
       ticket.resolutionReply = reply;
@@ -9224,38 +9298,72 @@
       ticket.replies = Array.isArray(ticket.replies) ? ticket.replies : [];
       ticket.replies.push({ by: ticket.resolvedBy, at: resolvedAt, message: reply, proof: ticket.proof });
 
-      state.operationsIssues.forEach(issue => {
-        if (!issue.resolved && (ticket.sourceKey === `ops:${issue.id}` || issue.awb === ticket.awb)) {
-          issue.resolved = true;
-          issue.resolvedHours = ticket.solvedHours || issue.openedHours || 1;
-          issue.resolvedBy = ticket.resolvedBy;
-          issue.resolutionReason = reply;
-          issue.resolvedAt = resolvedAt;
+      const finalizeResolution = () => {
+        state.operationsIssues.forEach(issue => {
+          if (!issue.resolved && (ticket.sourceKey === `ops:${issue.id}` || issue.awb === ticket.awb)) {
+            issue.resolved = true;
+            issue.resolvedHours = ticket.solvedHours || issue.openedHours || 1;
+            issue.resolvedBy = ticket.resolvedBy;
+            issue.resolutionReason = reply;
+            issue.resolvedAt = resolvedAt;
+          }
+        });
+
+        const parcel = state.parcels.find(p => p.awb === ticket.awb);
+        if (parcel) {
+          parcel.resolutionRemark = reply;
+          parcel.resolvedBy = ticket.resolvedBy;
+          parcel.resolvedAt = resolvedAt;
+          parcel.risk = Math.max(5, Number(parcel.risk || 0) - 10);
         }
-      });
 
-      const parcel = state.parcels.find(p => p.awb === ticket.awb);
-      if (parcel) {
-        parcel.resolutionRemark = reply;
-        parcel.resolvedBy = ticket.resolvedBy;
-        parcel.resolvedAt = resolvedAt;
-        parcel.risk = Math.max(5, Number(parcel.risk || 0) - 10);
+        state.resolvedAlerts.unshift({
+          id: nextId("DONE", state.resolvedAlerts),
+          awb: ticket.awb || ticket.id,
+          branch: ticket.branch,
+          resolvedBy: ticket.resolvedBy,
+          reason: reply,
+          alert: ticket.title,
+          solvedHours: ticket.solvedHours,
+          resolvedAt
+        });
+        pushTicketNotif(`${ticket.id} resolved by ${ticket.resolvedBy}. ${ticket.from} has been notified.`, "good");
+        saveState();
+        render();
+        toast(`${ticket.id} resolved and notification sent to ${ticket.from}.`);
+      };
+
+      // NovaX fix: resolution details used to only ever be saved locally --
+      // rTicket()/fTicket() now round-trip resolutionReply/proof/resolvedBy/
+      // resolvedAt/solvedHours through Supabase meta, and this now waits for
+      // that write to actually succeed before showing a "resolved" toast, so a
+      // dropped connection can never leave a ticket looking resolved in the UI
+      // when the server still has it open.
+      if (window.__nvSb && ticket._uuid) {
+        window.__nvSb.from("tickets").update(fTicket(ticket)).eq("id", ticket._uuid).then(r => {
+          if (r && r.error) {
+            ticket.status = prevStatus;
+            ticket.resolutionReply = "";
+            ticket.proof = "";
+            ticket.resolvedBy = "";
+            ticket.resolvedAt = "";
+            ticket.solvedHours = 0;
+            ticket.replies = prevReplies;
+            toast(`Could not save the resolution to the server: ${r.error.message}`);
+            render();
+            return;
+          }
+          try { shadow[ticket._uuid] = sigOf(fTicket(ticket)); } catch (e) {}
+          finalizeResolution();
+        }).catch(e => {
+          ticket.status = prevStatus;
+          ticket.replies = prevReplies;
+          toast(`Could not save the resolution to the server: ${(e && e.message) || e}`);
+          render();
+        });
+        return;
       }
-
-      state.resolvedAlerts.unshift({
-        id: nextId("DONE", state.resolvedAlerts),
-        awb: ticket.awb || ticket.id,
-        branch: ticket.branch,
-        resolvedBy: ticket.resolvedBy,
-        reason: reply,
-        alert: ticket.title,
-        solvedHours: ticket.solvedHours,
-        resolvedAt
-      });
-      state.ticketNotifications.unshift({ text: `${ticket.id} resolved by ${ticket.resolvedBy}. ${ticket.from} has been notified.`, at: resolvedAt, level: "good" });
-      saveState();
-      render();
-      toast(`${ticket.id} resolved and notification sent to ${ticket.from}.`);
+      finalizeResolution();
     }
 
     function createSack() {
@@ -9467,22 +9575,28 @@
     }
 
     function applyMarkInvoicePaidLocally(invoice, client, id) {
-      if (client) {
-        client.walletBalance = Math.max(0, Number(client.walletBalance || 0) - Number(invoice.payable || 0));
-      }
+      // NovaX fix: marking an invoice "Paid" is a purely administrative
+      // bookkeeping status now -- it must NEVER touch wallet_balance. The
+      // wallet ledger only ever changes via Push To Client Wallet (credit)
+      // and the withdrawal queue (reserve at request, settle at Mark Payout
+      // Paid). "Invoice paid" and "wallet payout paid" are two different
+      // things; this used to (incorrectly) subtract the invoice's payable
+      // from the wallet a second time even though the wallet was already the
+      // authoritative ledger, which could double-deduct or push balances
+      // negative.
       invoice.status = "Paid";
       invoice.paidAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
       state.paymentLogs.unshift({
         id: nextId("PAY", state.paymentLogs),
         clientId: invoice.clientId,
-        type: "Invoice paid",
+        type: "Invoice marked settled",
         amount: invoice.payable,
-        status: "Paid, deducted from wallet balance",
+        status: "Bookkeeping only -- wallet unaffected",
         ref: invoice.id
       });
       saveState();
       render();
-      toast(`${id} marked paid. Rs ${money(invoice.payable)} removed from wallet balance -- settled in full.`);
+      toast(`${id} marked settled. Wallet balance is unaffected -- payouts happen from the withdrawal queue.`);
     }
     function markInvoicePaid(id) {
       const invoice = state.invoices.find(item => item.id === id);
@@ -9491,19 +9605,25 @@
         toast("Push invoice to wallet before marking it paid.");
         return;
       }
-      // NovaX fix: "Pushed to wallet" credits invoice.payable into the
-      // client's wallet balance. Marking an invoice "Paid" means that money
-      // has now actually left the wallet (settled/paid out in full), so it
-      // must be deducted here -- otherwise the wallet balance kept showing
-      // the same amount forever even after admin confirmed it was paid,
-      // double-counting money that was no longer owed or held. This now runs
-      // as one atomic Postgres RPC (wallet debit + invoice status) instead of
-      // two separate browser-side writes.
+      // NovaX fix: marking an invoice "Paid" is now purely an administrative
+      // status/reconciliation action and must never touch clients.wallet_balance.
+      // Wallet credit happens once, at Push To Client Wallet. Actual client
+      // payout settlement happens from the withdrawal queue via
+      // admin_mark_withdrawal_paid, not from invoice status. This now runs as
+      // one atomic Postgres RPC (invoice status only) instead of a browser-side
+      // write that used to also (incorrectly) debit the wallet.
       const client = clientById(invoice.clientId);
       if (window.__nvSb && invoice._uuid) {
+        // NovaX fix (item 8): used to call applyMarkInvoicePaidLocally() right
+        // after loadAll() here, which mutates the (now stale) local invoice
+        // object and calls saveState() -- that could trigger a generic sync
+        // push of the pre-reload invoice/ticket/withdrawal state a moment
+        // later and stomp on what the RPC + reload just wrote. loadAll()
+        // alone is the single source of truth once the RPC succeeds.
         window.__nvSb.rpc("admin_mark_invoice_paid", { p_invoice_id: invoice._uuid }).then(r => {
           if (r && r.error) { toast(`Could not mark ${id} paid: ${r.error.message}`, "error"); return; }
-          applyMarkInvoicePaidLocally(invoice, client, id);
+          if (typeof loadAll === "function") loadAll();
+          toast(`${id} marked settled. Wallet balance is unaffected -- payouts happen from the withdrawal queue.`);
         }).catch(e => toast(`Could not mark ${id} paid: ${(e && e.message) || e}`, "error"));
         return;
       }
@@ -10032,10 +10152,10 @@
       function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||250), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||250)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
       function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", steps:Array.isArray(m.steps)?m.steps:[], proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"" }; }
-      function rInvoice(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.code||r.id, clientId:r.client_id, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:Number(r.cod_total||0), charges:Number(r.fee_total||0), payable:Number(r.net_payable||0), status:r.status||"Pending", createdAt:dtpart(r.created_at), paidAt:m.paidAt||"", summary:m.summary||"" }; }
-      function rTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:r.client_id, parcelId:r.parcel_id||"", sourceKey:m.sourceKey||"", tier:m.tier||"medium", title:r.subject||"", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", message:r.body||"", createdAt:dtpart(r.created_at), ageHours:Number(m.ageHours||0), status:r.status||"Open", escalated:!!m.escalated, replies:Array.isArray(m.replies)?m.replies:[], source:m.source||"", intent:m.intent||"", priority:m.priority||"", suggestedTeam:m.suggestedTeam||m.department||"", handoffReason:m.handoffReason||"" }; }
+      function rInvoice(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.code||r.id, clientId:r.client_id, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:Number(r.cod_total||0), charges:Number(r.fee_total||0), payable:Number(r.net_payable||0), status:r.status||"Pending", createdAt:dtpart(r.created_at), paidAt:m.paidAt||"", walletPushedAt:m.walletPushedAt||"", summary:m.summary||"" }; }
+      function rTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:r.client_id, parcelId:r.parcel_id||"", sourceKey:m.sourceKey||"", tier:m.tier||"medium", title:r.subject||"", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", message:r.body||"", createdAt:dtpart(r.created_at), ageHours:Number(m.ageHours||0), status:r.status||"Open", escalated:!!m.escalated, replies:Array.isArray(m.replies)?m.replies:[], source:m.source||"", intent:m.intent||"", priority:m.priority||"", suggestedTeam:m.suggestedTeam||m.department||"", handoffReason:m.handoffReason||"", resolutionReply:m.resolutionReply||"", proof:m.proof||"", resolvedBy:m.resolvedBy||"", resolvedAt:m.resolvedAt||"", solvedHours:Number(m.solvedHours||0) }; }
       function rExpense(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:m.name||r.note||r.category||"Expense", amount:Number(r.amount||0), type:r.category||"", owner:r.branch||"", status:m.status||"Pending", note:r.note||"" }; }
-      function rWd(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at) }; }
+      function rWd(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at), paidAt:r.paid_at?dtpart(r.paid_at):"" }; }
       function rSalesLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", parcels:r.parcels_per_month||"", status:r.status||"New", createdAt:dtpart(r.created_at) }; }
       function rSignupLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", email:r.email||"", city:r.city||"", address:r.address||"", businessType:r.business_type||"", website:r.website||"", status:r.status||"pending_workspace", errorMessage:r.error_message||"", createdAt:dtpart(r.created_at) }; }
       function rPl(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, type:r.type||"", amount:Number(r.amount||0), status:r.status||"", ref:r.reference||"" }; }
@@ -10044,10 +10164,19 @@
       function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||250), rate_card:normalizeRateCard(c.rateCard,Number(c.rate||250)), wallet_balance:Number(c.walletBalance||0), risk_score:Number(c.risk||0), meta:{ tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"" } }; }
       function fRider(r){ return { name:r.name||"", phone:r.phone||"", branch:r.branch||r.manager||"", access:r.access||"Active", cash_limit:Number(r.cashLimit||0), meta:{ username:r.username, manager:r.manager, cashHeld:r.cashHeld, scans:r.scans, fakeRisk:r.fakeRisk, expenses:r.expenses } }; }
       function fParcel(p){ var cid=cuid(p.clientId); if(!cid) return null; var rid=ruid(p.rider); return { awb:p.awb, client_id:cid, rider_id:rid, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:(p.date?new Date(p.date).toISOString():new Date().toISOString()), updated_at:new Date().toISOString(), meta:{ statusAgeHours:p.statusAgeHours, stage:p.stage, totalStages:p.totalStages, steps:p.steps, risk:p.risk, branch:p.branch, cashReceived:p.cashReceived, returnProof:p.returnProof, resolutionRemark:p.resolutionRemark, riderInput:p.riderInput, service:p.service, weight:p.weight, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord } }; }
-      function fInvoice(iv){ var cid=cuid(iv.clientId); if(!cid){ console.warn("NovaX invoice sync skipped -- no resolvable client_id yet for invoice", iv.id, iv.clientId); return null; } return { code:iv.id, client_id:cid, parcel_refs:iv.parcelRefs||[], cod_total:Number(iv.cod||0), fee_total:Number(iv.charges||0), net_payable:Number(iv.payable||0), status:iv.status||"Pending", meta:{ paidAt:iv.paidAt, summary:iv.summary } }; }
-      function fTicket(t){ var cid=cuid(t.clientId); return { client_id:isUuid(cid)?cid:null, parcel_id:null, subject:t.title||"", body:t.message||"", status:t.status||"Open", created_by:ADMIN_UID, meta:{ code:t.id, sourceKey:t.sourceKey, tier:t.tier, from:t.from, to:t.to, branch:t.branch, awb:t.awb, ageHours:t.ageHours, escalated:t.escalated, replies:t.replies||[], source:t.source||"", intent:t.intent||"", priority:t.priority||"", suggestedTeam:t.suggestedTeam||"", handoffReason:t.handoffReason||"" } }; }
+      function fInvoice(iv){ var cid=cuid(iv.clientId); if(!cid){ console.warn("NovaX invoice sync skipped -- no resolvable client_id yet for invoice", iv.id, iv.clientId); return null; } return { code:iv.id, client_id:cid, parcel_refs:iv.parcelRefs||[], cod_total:Number(iv.cod||0), fee_total:Number(iv.charges||0), net_payable:Number(iv.payable||0), status:iv.status||"Pending", meta:{ paidAt:iv.paidAt||"", walletPushedAt:iv.walletPushedAt||"", summary:iv.summary||"" } }; }
+      function fTicket(t){ var cid=cuid(t.clientId); return { client_id:isUuid(cid)?cid:null, parcel_id:null, subject:t.title||"", body:t.message||"", status:t.status||"Open", created_by:ADMIN_UID, meta:{ code:t.id, sourceKey:t.sourceKey, tier:t.tier, from:t.from, to:t.to, branch:t.branch, awb:t.awb, ageHours:t.ageHours, escalated:t.escalated, replies:t.replies||[], source:t.source||"", intent:t.intent||"", priority:t.priority||"", suggestedTeam:t.suggestedTeam||"", handoffReason:t.handoffReason||"", resolutionReply:t.resolutionReply||"", proof:t.proof||"", resolvedBy:t.resolvedBy||"", resolvedAt:t.resolvedAt||"", solvedHours:t.solvedHours||0 } }; }
       function fExpense(e){ return { branch:e.owner||"", category:e.type||"", amount:Number(e.amount||0), note:e.note||e.name||"", created_by:ADMIN_UID, meta:{ name:e.name, status:e.status } }; }
-      function fWd(w){ var cid=cuid(w.clientId); if(!cid) return null; return { client_id:cid, amount:Number(w.amount||0), fee:Number(w.fee||0), net:Number(w.net||0), iban:w.iban||"", speed:w.speed||"", status:w.status||"Pending admin payout" }; }
+      function fWd(w){
+        var cid=cuid(w.clientId); if(!cid) return null;
+        // NovaX fix (item 4): paidAt was read back from paid_at via rWd()
+        // but never written back out here, so a later generic sync of this
+        // same withdrawal (e.g. after some unrelated local edit) could keep
+        // overwriting the row without preserving the payout timestamp.
+        var paidAtIso=null;
+        if(w.paidAt){ var parsed=new Date(String(w.paidAt).replace(" ","T")); if(!isNaN(parsed.getTime())) paidAtIso=parsed.toISOString(); }
+        return { client_id:cid, amount:Number(w.amount||0), fee:Number(w.fee||0), net:Number(w.net||0), iban:w.iban||"", speed:w.speed||"", status:w.status||"Pending admin payout", paid_at:paidAtIso };
+      }
       function fPl(p){ var cid=cuid(p.clientId); if(!cid) return null; return { client_id:cid, type:p.type||"", amount:Number(p.amount||0), status:p.status||"", reference:p.ref||"" }; }
       function rOpsIssue(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.localId||r.id, branch:r.branch||"", urgency:r.urgency||"", problem:r.problem||"", awb:r.awb||"", openedHours:Number(m.openedHours||0), resolved:!!r.resolved, resolvedHours:Number(r.resolved_hours||0), resolvedBy:r.resolved_by||"", resolutionReason:r.resolution_reason||"", resolvedAt:r.resolved_at||"" }; }
       function fOpsIssue(o){ return { branch:o.branch||"", urgency:o.urgency||"", problem:o.problem||"", awb:o.awb||"", resolved:!!o.resolved, resolved_hours:o.resolvedHours||null, resolved_by:o.resolvedBy||"", resolution_reason:o.resolutionReason||"", resolved_at:o.resolvedAt||null, meta:{ localId:o.id, openedHours:o.openedHours } }; }
