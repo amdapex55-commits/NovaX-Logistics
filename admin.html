@@ -8779,34 +8779,24 @@
         toast("Withdrawal blocked. Amount is higher than available wallet balance.");
         return;
       }
-      const fee = Math.round(amount * walletFeeRate(speed));
-      const net = Math.max(0, amount - fee);
-      client.walletBalance = Math.max(0, Number(client.walletBalance || 0) - amount);
-      client.withdrawnTotal = Number(client.withdrawnTotal || 0) + amount;
-      client.withdrawFeeTotal = Number(client.withdrawFeeTotal || 0) + fee;
-      const withdrawal = {
-        id: nextId("WDR", state.walletWithdrawals),
-        clientId,
-        amount,
-        fee,
-        net,
-        iban,
-        speed,
-        status: "Pending admin payout",
-        createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}`
-      };
-      state.walletWithdrawals.unshift(withdrawal);
-      state.paymentLogs.unshift({
-        id: nextId("PAY", state.paymentLogs),
-        clientId,
-        type: "Wallet withdrawal requested",
-        amount,
-        status: `${money(net)} payable after ${money(fee)} fee`,
-        ref: withdrawal.id
-      });
-      saveState();
-      render();
-      toast(`${client.name} withdrawal sent to admin payout queue.`);
+      // NovaX fix (wallet leakage): this used to subtract client.walletBalance
+      // and insert a withdrawals row purely in local browser state, relying on
+      // the generic sync loop to push both to Supabase afterward. That
+      // bypassed the locked, atomic balance check an RPC provides and was one
+      // of two causes of wallet balances staying wrong after a payout. Route
+      // this through admin_request_wallet_withdrawal, the same atomic
+      // lock-check-subtract-insert pattern used by the client's own
+      // request_wallet_withdrawal, so wallet_balance only ever changes inside
+      // a wallet RPC -- never via local mutation + generic sync.
+      if (!(window.__nvSb && client && client._uuid)) {
+        toast("Cloud connection not ready yet, please try again in a moment.", "error");
+        return;
+      }
+      window.__nvSb.rpc("admin_request_wallet_withdrawal", { p_client_id: client._uuid, p_amount: amount, p_iban: iban, p_speed: speed }).then(r => {
+        if (r && r.error) { toast(`Withdrawal request rejected: ${r.error.message}`, "error"); return; }
+        if (typeof loadAll === "function") loadAll();
+        toast(`${client.name} withdrawal sent to admin payout queue.`);
+      }).catch(e => toast(`Withdrawal request failed: ${(e && e.message) || e}`, "error"));
     }
 
     function markWalletWithdrawalPaid(id) {
@@ -10122,7 +10112,18 @@
       function rPl(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, type:r.type||"", amount:Number(r.amount||0), status:r.status||"", ref:r.reference||"" }; }
       function cuid(id){ var c=(state.clients||[]).find(function(x){return x.id===id;}); return (c&&c._uuid)||(isUuid(id)?id:null); }
       function ruid(id){ var r=(state.riders||[]).find(function(x){return x.id===id;}); return (r&&r._uuid)||(isUuid(id)?id:null); }
-      function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||250), rate_card:normalizeRateCard(c.rateCard,Number(c.rate||250)), wallet_balance:Number(c.walletBalance||0), risk_score:Number(c.risk||0), meta:{ tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"" } }; }
+      // NovaX fix (wallet leakage): wallet_balance must NEVER be part of the
+      // generic client sync payload. This function feeds the SETS-driven
+      // syncEntity() loop that runs on every saveState() across the whole
+      // admin app -- if wallet_balance were included here, any unrelated
+      // client edit (name, phone, rate, etc.) made from stale in-memory
+      // state would silently overwrite whatever the atomic wallet RPCs
+      // (admin_push_invoice_to_wallet / request_wallet_withdrawal /
+      // admin_request_wallet_withdrawal) had correctly written server-side.
+      // That overwrite was the root cause of withdrawals staying "withdrawable"
+      // after being marked Paid. wallet_balance is now read-only from this
+      // sync path; it only ever changes inside the wallet RPCs.
+      function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||250), rate_card:normalizeRateCard(c.rateCard,Number(c.rate||250)), risk_score:Number(c.risk||0), meta:{ tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"" } }; }
       function fRider(r){ return { name:r.name||"", phone:r.phone||"", branch:r.branch||r.manager||"", access:r.access||"Active", cash_limit:Number(r.cashLimit||0), meta:{ username:r.username, manager:r.manager, cashHeld:r.cashHeld, scans:r.scans, fakeRisk:r.fakeRisk, expenses:r.expenses } }; }
       function fParcel(p){ var cid=cuid(p.clientId); if(!cid) return null; var rid=ruid(p.rider); return { awb:p.awb, client_id:cid, rider_id:rid, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:(p.date?new Date(p.date).toISOString():new Date().toISOString()), updated_at:new Date().toISOString(), meta:{ statusAgeHours:p.statusAgeHours, stage:p.stage, totalStages:p.totalStages, steps:p.steps, risk:p.risk, branch:p.branch, cashReceived:p.cashReceived, returnProof:p.returnProof, resolutionRemark:p.resolutionRemark, riderInput:p.riderInput, service:p.service, weight:p.weight, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord } }; }
       function fInvoice(iv){ var cid=cuid(iv.clientId); if(!cid){ console.warn("NovaX invoice sync skipped -- no resolvable client_id yet for invoice", iv.id, iv.clientId); return null; } return { code:iv.id, client_id:cid, parcel_refs:iv.parcelRefs||[], cod_total:Number(iv.cod||0), fee_total:Number(iv.charges||0), net_payable:Number(iv.payable||0), status:iv.status||"Pending", meta:{ paidAt:iv.paidAt||"", walletPushedAt:iv.walletPushedAt||"", summary:iv.summary||"" } }; }
