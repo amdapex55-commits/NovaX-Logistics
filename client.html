@@ -1516,7 +1516,13 @@
       document.querySelectorAll(".tier-card").forEach(t=>t.classList.toggle("active",t.dataset.speed===speed));
       const summary=document.getElementById("withdrawSummary");
       const useAmt=Math.min(Number(amtInput?.value||balance),balance);
-      if(speed && balance>0 && useAmt>0){
+      // NovaX fix (wallet leakage, item E): a zero wallet balance used to just
+      // hide this whole panel with no explanation. Show a clear disabled
+      // state instead so the client understands why they can't withdraw yet.
+      if(balance<=0){
+        summary.style.display="block";
+        summary.innerHTML=`<div class="ops-card"><strong>No withdrawable balance</strong><p>You have Rs 0 available. Ask admin to push an invoice to your wallet, then come back to request a payout.</p></div><button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" disabled>Confirm Withdrawal</button>`;
+      } else if(speed && useAmt>0){
         const fee=Math.round(useAmt*walletFeeRate(speed)); const net=useAmt-fee;
         summary.style.display="block";
         summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div><div class="field" style="margin-top:12px;max-width:380px"><label>IBAN</label><input id="withdrawIban" placeholder="PK00 BANK 0000 0000 0000 0000"></div><button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="confirmWalletWithdraw()">Confirm Withdrawal</button>`;
@@ -2334,7 +2340,7 @@
         var myInvoices=function(){ return (state.invoices||[]).filter(function(i){return i.clientId===cid()&&i.status!=='Deleted';}); };
         var myWithdrawals=function(){ return (state.walletWithdrawals||[]).filter(function(w){return w.clientId===cid();}); };
         function invLine(iv){ return 'Invoice <b>'+esc(iv.id)+'</b> - status <b>'+esc(iv.status)+'</b><br>Payable <b>Rs '+fmt(iv.payable)+'</b> (COD Rs '+fmt(iv.cod)+' - charges Rs '+fmt(iv.charges)+') · '+((iv.parcelRefs||[]).length)+' parcel(s)'; }
-        function pLine(p){ return '<b>'+esc(p.awb)+'</b> - <b>'+esc(p.status)+'</b><br>'+esc(p.consignee||'')+(p.city?' · '+esc(p.city):'')+(p.updated?' · updated '+esc(p.updated):'')+(p.exception?'<br>⚠������ '+esc(p.exception):''); }
+        function pLine(p){ return '<b>'+esc(p.awb)+'</b> - <b>'+esc(p.status)+'</b><br>'+esc(p.consignee||'')+(p.city?' · '+esc(p.city):'')+(p.updated?' · updated '+esc(p.updated):'')+(p.exception?'<br>⚠������� '+esc(p.exception):''); }
         function makeTicket(q,awb){
           state.tickets=Array.isArray(state.tickets)?state.tickets:[];
           var t={ id:nextId('TCK',state.tickets), sourceKey:'ai-client:'+Date.now(), tier:'medium', title:q.length>42?q.slice(0,42)+'…':q, from:'Seller '+cname(), to:'Admin Control', branch:'Admin', awb:awb||'', message:q, createdAt:new Date().toISOString().slice(0,10)+' '+time(), ageHours:0, status:'Open', escalated:false, replies:[] };
