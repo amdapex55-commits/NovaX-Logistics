@@ -144,6 +144,7 @@
     .field{display:grid;gap:6px;}
     .field label{font-size:12px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
     .field input,.field textarea,.field select{width:100%;min-height:42px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:0 12px;color:var(--ink);}
+    .field.nvfield-missing input,.field.nvfield-missing select,.field.nvfield-missing textarea{border-color:#e0a100;background:#fff8ec;}
     .field textarea{min-height:94px;padding-top:10px;resize:vertical;}
     .inline-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
     .bulk-drop{min-height:160px;display:grid;place-items:center;text-align:center;padding:20px;border:1px dashed var(--line-strong);border-radius:var(--radius);background:linear-gradient(135deg,rgba(12,124,89,.08),transparent 42%),#fff;}
@@ -404,6 +405,15 @@
             <section class="client-module" id="client-newBooking">
               <div class="panel">
                 <div class="section-head"><div><h3>New Booking</h3><p>Create one AWB with COD, consignee, address, service type, and pickup instructions. Submitting writes to the same parcel ledger and opens the printable AWB.</p></div><button class="action-btn" id="quickBookingBtn">Create Booking</button></div>
+                <div id="nvPasteBox" style="background:var(--panel-soft);border:1px solid #d8ece3;border-radius:var(--radius);padding:12px 14px;margin-bottom:14px">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+                    <div><strong style="font-size:13.5px;color:var(--green)">Paste Order To Book</strong><div class="footer-note" style="margin-top:2px">Paste a WhatsApp or Instagram order and I'll fill the form for you.</div></div>
+                  </div>
+                  <textarea id="nvPasteInput" placeholder="e.g. Ali Khan 03123456789 Lahore COD 2500 black hoodie DHA Phase 5 house 22" style="width:100%;margin-top:10px;min-height:58px;border-radius:8px;border:1px solid #d8ece3;padding:8px 10px;font-size:13px;font-family:inherit;box-sizing:border-box"></textarea>
+                  <div style="margin-top:8px"><button class="ghost-btn" id="nvPasteFillBtn" type="button">Fill Form From Paste</button></div>
+                  <div class="footer-note" id="nvPasteSummary" style="display:none;margin-top:8px;font-weight:700;color:var(--green)"></div>
+                </div>
+                <div id="nvRiskWarning" class="footer-note" style="display:none;margin-bottom:10px;font-weight:700;color:#a15c00;background:#fff6e6;border:1px solid #f0d6a0;border-radius:8px;padding:8px 10px"></div>
                 <div class="form-grid">
                   <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
                   <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" placeholder="03113323923" maxlength="11" required></div>
@@ -742,6 +752,15 @@
     }
     normalizeStateAwbs(state);
     state.activeClientTab = state.activeClientTab || "dashboard";
+    (function(){
+      try{
+        var qp=new URLSearchParams(location.search);
+        if((qp.get("welcome")==="1"||qp.get("firstBooking")==="1") && !localStorage.getItem("novaxFirstBookingSeen")){
+          state.activeClientTab="newBooking";
+          localStorage.setItem("novaxFirstBookingSeen","1");
+        }
+      }catch(e){}
+    })();
     state.activeStatusQueue = state.activeStatusQueue || STATUS_TAGS[0];
     state.walletWithdrawals = Array.isArray(state.walletWithdrawals) ? state.walletWithdrawals : [];
     state.tickets = Array.isArray(state.tickets) ? state.tickets : [];
@@ -1253,10 +1272,24 @@
       const cod=Number(document.getElementById("bookingCod").value || 0);
       const address=document.getElementById("bookingAddress").value.trim();
       const clientId=state.client.id||"CL-0001";
+      const preBookingCount=(state.parcels||[]).filter(p=>p.clientId===clientId).length;
       const dupeWindowMs=15000;
       const now=Date.now();
       const possibleDupe=(state.parcels||[]).find(p=>p.clientId===clientId && p.consignee===consignee && Number(p.cod)===cod && p.address===address && p.phone===phone && p.statusSince && (now-new Date(p.statusSince).getTime())<dupeWindowMs);
       if(possibleDupe){ toast(`Looks like a duplicate — ${possibleDupe.awb} was just booked for ${consignee} with the same details. Check the AWB tab before booking again.`,"error"); return; }
+
+      const riskWarnEl=document.getElementById("nvRiskWarning");
+      const riskInput={ phone:phone, address, cod:document.getElementById("bookingCod").value, city:document.getElementById("bookingCity").value, product:document.getElementById("bookingCategory").value.trim(), weight:document.getElementById("bookingWeight").value.trim(), recentDuplicate:false };
+      const risk=checkBookingRisk(riskInput);
+      if(risk.serious.length){
+        if(riskWarnEl){ riskWarnEl.style.display="block"; riskWarnEl.style.color="#a1230e"; riskWarnEl.style.background="#fdecec"; riskWarnEl.style.borderColor="#f0b4ac"; riskWarnEl.textContent=risk.serious[0]; }
+        toast(risk.serious[0],"error");
+        return;
+      }
+      if(risk.minor.length){
+        if(riskWarnEl){ riskWarnEl.style.display="block"; riskWarnEl.style.color="#a15c00"; riskWarnEl.style.background="#fff6e6"; riskWarnEl.style.borderColor="#f0d6a0"; riskWarnEl.textContent=risk.minor[0]; }
+      } else if(riskWarnEl){ riskWarnEl.style.display="none"; }
+
       __bookingInFlight=true;
       const btn=document.getElementById("quickBookingBtn");
       const oldBtnText=btn?btn.textContent:"";
@@ -1264,16 +1297,13 @@
       try{
         const awb=bookParcel({ consignee, city:document.getElementById("bookingCity").value, cod, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address });
         state.lastGeneratedAwb=awb; saveState();
-        toast(`${awb} saved and syncing with the server...`,"success");
         resetBookingForm();
+        if(riskWarnEl){ riskWarnEl.style.display="none"; }
         const confirmLine=document.getElementById("bookingConfirmLine");
-        if(confirmLine){ confirmLine.textContent=`AWB reserved locally, waiting for server confirmation. Print air way bill from AWB tab once confirmed. Your tracking ID is ${awb}`; confirmLine.style.display="block"; }
-        setTimeout(()=>{
-          const p=(state.parcels||[]).find(x=>x.awb===awb);
-          if(!p) return;
-          if(p._syncFailed){ toast(`${awb} was NOT accepted by the server. Please retry this booking.`,"error"); }
-          else if(p._uuid){ toast(`${awb} confirmed by the server.`,"success"); }
-        },4000);
+        if(confirmLine){ confirmLine.textContent="AWB reserved locally."; confirmLine.style.display="block"; confirmLine.style.color=""; }
+        toast(`${awb} reserved locally.`,"success");
+        setTimeout(()=>{ if(confirmLine) confirmLine.textContent="Syncing with NovaX server..."; },500);
+        pollBookingConfirmation(awb, preBookingCount===0, 0);
       }catch(e){
         console.error("Booking failed", e);
         toast("Booking could not be completed. Please try again.","error");
@@ -1281,12 +1311,161 @@
         setTimeout(()=>{ __bookingInFlight=false; if(btn){ btn.disabled=false; btn.textContent=oldBtnText||"Create Booking"; } },600);
       }
     }
+    function pollBookingConfirmation(awb, isFirstParcel, tries){
+      tries=tries||0;
+      const p=(state.parcels||[]).find(x=>x.awb===awb);
+      const confirmLine=document.getElementById("bookingConfirmLine");
+      if(!p) return;
+      if(p._syncFailed){
+        toast("Booking was not accepted. Please fix the highlighted issue and try again.","error");
+        if(confirmLine){ confirmLine.textContent="Booking was not accepted. Please fix the highlighted issue and try again."; confirmLine.style.color="#c0392b"; confirmLine.style.display="block"; }
+        return;
+      }
+      if(p._uuid){
+        if(confirmLine){ confirmLine.textContent="Confirmed by server."; confirmLine.style.color=""; confirmLine.style.display="block"; }
+        setTimeout(()=>{ if(confirmLine) confirmLine.textContent=`Ready to print. Tracking ID ${awb} is available in the AWB tab.`; },500);
+        toast(`${awb} confirmed by the server. Ready to print.`,"success");
+        if(isFirstParcel && localStorage.getItem("novaxFirstBookingCompleted")!=="1"){
+          try{ localStorage.setItem("novaxFirstBookingCompleted","1"); }catch(e){}
+          if(window.novaxShowFirstBookingSuccess) window.novaxShowFirstBookingSuccess(awb);
+          if(window.novaxAutopilotSay) window.novaxAutopilotSay("Great. Your first parcel is booked. I\u2019ll watch it from pickup to delivery and tell you if anything needs attention.",[
+            { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:awb },
+            { label:"Print AWB", kind:"local", type:"go_awb_label" }
+          ]);
+        }
+        return;
+      }
+      if(tries<20){ setTimeout(()=>{ pollBookingConfirmation(awb, isFirstParcel, tries+1); },700); }
+      else if(isFirstParcel){
+        if(confirmLine){ confirmLine.textContent=`Still syncing ${awb} with the server. I\u2019ll keep watching in the background.`; }
+        setTimeout(()=>{ pollBookingConfirmation(awb, isFirstParcel, tries+1); },5000);
+      }
+      else if(confirmLine){ confirmLine.textContent=`Still syncing ${awb} with the server. Check the AWB tab shortly.`; }
+    }
+
     function resetBookingForm(){
       ["bookingName","bookingPhone","bookingCod","bookingCategory","bookingAddress"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
       const weightEl=document.getElementById("bookingWeight"); if(weightEl) weightEl.value="0.8 kg";
       ["bookingPickupCity","bookingCity","bookingService","bookingCategory","bookingFragile","bookingPaymentMode"].forEach(id=>{ const el=document.getElementById(id); if(el&&el.tagName==="SELECT") el.selectedIndex=0; });
+      document.querySelectorAll("#client-newBooking .field.nvfield-missing").forEach(f=>f.classList.remove("nvfield-missing"));
       try{ updateZoneRateHint(); }catch(e){}
     }
+
+    /* ===== Paste Order To Book (item 3) ===== */
+    var NV_CITY_LIST=["lahore","karachi","islamabad","rawalpindi"];
+    function nvFindCity(text){
+      var low=text.toLowerCase();
+      for(var i=0;i<NV_CITY_LIST.length;i++){ if(low.indexOf(NV_CITY_LIST[i])>-1) return NV_CITY_LIST[i][0].toUpperCase()+NV_CITY_LIST[i].slice(1); }
+      return "";
+    }
+    function parsePastedOrder(raw){
+      var text=String(raw||"").replace(/\r/g," ").trim();
+      var out={ name:"", phone:"", city:"", cod:"", product:"", address:"" };
+      if(!text) return out;
+
+      var phoneMatch=text.match(/(\+?92[\s-]?)?0?3\d{2}[\s-]?\d{7}/);
+      if(phoneMatch){
+        var digits=phoneMatch[0].replace(/[^\d]/g,"");
+        if(digits.length>11) digits=digits.slice(-11);
+        if(digits.length===10) digits="0"+digits;
+        out.phone=digits;
+      }
+
+      out.city=nvFindCity(text);
+
+      var codMatch=text.match(/(?:cod|amount|rs\.?|price)\D{0,4}(\d{2,6})/i);
+      if(codMatch){ out.cod=codMatch[1]; }
+      else{
+        var loneNum=text.match(/\b(\d{3,6})\b/);
+        if(loneNum && loneNum[1]!==out.phone) out.cod=loneNum[1];
+      }
+
+      var nameLabel=text.match(/name\s*[:\-]\s*([A-Za-z ]{2,30})/i);
+      if(nameLabel){ out.name=nameLabel[1].trim(); }
+      else{
+        var leadWords=text.match(/^([A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+){0,2})/);
+        if(leadWords) out.name=leadWords[1].trim();
+      }
+
+      var addrLabel=text.match(/address\s*[:\-]\s*([^,]{4,80})/i);
+      if(addrLabel){ out.address=addrLabel[1].trim(); }
+      else{
+        var addrClue=text.match(/([A-Za-z0-9 ]{0,20}(?:house|block|phase|street|sector|road|colony|town|society)[A-Za-z0-9 ]{0,25})/i);
+        if(addrClue) out.address=addrClue[1].trim();
+      }
+
+      var prodLabel=text.match(/product\s*[:\-]\s*([^,]{2,60})/i);
+      if(prodLabel){ out.product=prodLabel[1].trim(); }
+      else{
+        var leftover=text;
+        [out.name,out.phone,out.city,out.cod,out.address].forEach(function(v){ if(v) leftover=leftover.replace(v," "); });
+        leftover=leftover.replace(/\b(cod|amount|rs\.?|price|name|phone|city|address|product)\b/gi," ").replace(/[:,]/g," ").replace(/\s+/g," ").trim();
+        if(leftover.length>2 && leftover.length<60) out.product=leftover;
+      }
+      return out;
+    }
+    function applyPastedOrder(){
+      var input=document.getElementById("nvPasteInput");
+      var summary=document.getElementById("nvPasteSummary");
+      if(!input||!summary) return;
+      var parsed=parsePastedOrder(input.value);
+      var filled=[], missing=[];
+      document.querySelectorAll("#client-newBooking .field.nvfield-missing").forEach(function(f){ f.classList.remove("nvfield-missing"); });
+
+      function setField(id,val,label){
+        var el=document.getElementById(id);
+        if(!el) return;
+        if(val){ el.value=val; filled.push(label); }
+        else{ missing.push(label); var field=el.closest(".field"); if(field) field.classList.add("nvfield-missing"); }
+      }
+      setField("bookingName",parsed.name,"name");
+      setField("bookingPhone",parsed.phone,"phone");
+      setField("bookingCod",parsed.cod,"COD amount");
+      setField("bookingCategory",parsed.product,"product");
+      setField("bookingAddress",parsed.address,"address");
+
+      if(parsed.city){
+        var citySel=document.getElementById("bookingCity");
+        if(citySel){
+          for(var i=0;i<citySel.options.length;i++){ if(citySel.options[i].text.toLowerCase()===parsed.city.toLowerCase()){ citySel.selectedIndex=i; break; } }
+        }
+        filled.push("city");
+        try{ updateZoneRateHint(); }catch(e){}
+      } else { missing.push("city"); }
+
+      summary.style.display="block";
+      var msg="I filled "+filled.length+" field"+(filled.length===1?"":"s")+".";
+      if(missing.length){ msg+=" Please confirm "+missing.join(", ")+" before booking."; }
+      else{ msg+=" Please double-check everything before booking."; }
+      summary.textContent=msg;
+    }
+
+    /* ===== Booking Risk Check (item 4) ===== */
+    function checkBookingRisk(o){
+      var serious=[], minor=[];
+      var phoneDigits=String(o.phone||"").replace(/\D/g,"");
+      if(!/^03\d{9}$/.test(phoneDigits)){ serious.push("Phone number looks incomplete. Use 03XXXXXXXXX."); }
+
+      var addr=String(o.address||"").trim();
+      if(addr.length<8){ serious.push("Address looks too short. Add house/block/area details."); }
+      else if(!/house|block|phase|street|sector|road|colony|town|society|#|no\.|near/i.test(addr)){ minor.push("Address may be missing a house/block/area reference. Delivery could be delayed."); }
+
+      var cod=Number(o.cod);
+      if(o.cod===""||o.cod===null||o.cod===undefined||isNaN(cod)){ serious.push("COD amount is missing. Enter the amount to collect (or 0 for prepaid)."); }
+      else if(cod>100000){ minor.push("COD amount looks unusually high. Please confirm this is correct."); }
+
+      if(!nvFindCity(String(o.city||""))){ minor.push("City is not one of the recognized service cities. Please confirm delivery is available there."); }
+
+      if(!String(o.product||"").trim()){ serious.push("Product details are missing. Add what is being shipped."); }
+
+      var weight=String(o.weight||"").trim();
+      if(!weight || !/\d/.test(weight)){ serious.push("Package weight looks invalid. Enter a weight like 0.8 kg."); }
+
+      if(o.recentDuplicate){ minor.push("This looks similar to a booking made in the last few minutes. Please confirm it is not a duplicate."); }
+
+      return { serious: serious, minor: minor };
+    }
+
     function csvEscape(value){
       const text=String(value??"");
       return /[",\n\r]/.test(text)?`"${text.replace(/"/g,'""')}"`:text;
@@ -1549,6 +1728,7 @@
     document.getElementById("applyDateRangeBtn").addEventListener("click",applyClientDateRange);
     document.getElementById("bookParcelBtn").addEventListener("click",()=>showClientTab("newBooking"));
     document.getElementById("quickBookingBtn").addEventListener("click",quickBooking);
+    (function(){ var b=document.getElementById("nvPasteFillBtn"); if(b) b.addEventListener("click",applyPastedOrder); })();
     document.getElementById("downloadBulkTemplateBtn").addEventListener("click",downloadBulkTemplate);
     document.getElementById("bulkUploadBtn").addEventListener("click",uploadBulkCsv);
     document.getElementById("bulkPrintAllBtn").addEventListener("click",()=>printLabels(state.lastBulkAwbs||[]));
@@ -1753,6 +1933,144 @@
       }catch(e){ console.warn('NovaX AI engine init failed', e); }
     })();
 
+    /* ===== NovaX First-Booking Welcome Strip + Empty Dashboard + Autopilot Welcome ===== */
+    (function(){
+      try{
+        var qp0=new URLSearchParams(location.search);
+        var isWelcome0 = qp0.get("welcome")==="1" || qp0.get("firstBooking")==="1";
+        if(!isWelcome0) return;
+
+        var STRIP_HIDE_KEY="novaxFirstBookingWelcomeHidden";
+        var AUTOPILOT_WELCOME_KEY="novaxFirstBookingAutopilotSeen";
+
+        function injectStripStyles(){
+          if(document.getElementById("nvfbStripStyle")) return;
+          var css=".nvfb-strip{background:linear-gradient(135deg,#0c7c59,#13a36f);color:#fff;border-radius:12px;padding:14px 16px;margin:0 0 16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;box-shadow:0 10px 26px rgba(12,124,89,.25)}"
+            +".nvfb-strip .nvfb-text{flex:1;min-width:200px;font-size:13.5px;font-weight:600}"
+            +".nvfb-strip .nvfb-actions{display:flex;gap:8px;flex-wrap:wrap}"
+            +".nvfb-strip button{border:none;border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:700;cursor:pointer}"
+            +".nvfb-strip .nvfb-primary{background:#ffffff;color:#0c7c59}"
+            +".nvfb-strip .nvfb-ghost{background:rgba(255,255,255,.18);color:#fff}"
+            +".nvfb-strip .nvfb-x{background:transparent;color:rgba(255,255,255,.8);font-size:18px;padding:2px 6px}"
+            +"@media(max-width:480px){.nvfb-strip{flex-direction:column;align-items:stretch}.nvfb-strip .nvfb-actions{justify-content:stretch}.nvfb-strip button{flex:1}}";
+          var st=document.createElement("style"); st.id="nvfbStripStyle"; st.textContent=css; document.head.appendChild(st);
+        }
+
+        function hideWelcomeStrip(){
+          try{ localStorage.setItem(STRIP_HIDE_KEY,"1"); }catch(e){}
+          var el=document.getElementById("nvfbStrip"); if(el) el.remove();
+        }
+
+        function mountWelcomeStrip(){
+          try{
+            if(localStorage.getItem(STRIP_HIDE_KEY)==="1") return;
+            if((typeof state==="undefined") || state.activeClientTab!=="newBooking") return;
+            var host=document.getElementById("client-newBooking");
+            if(!host || document.getElementById("nvfbStrip")) return;
+            injectStripStyles();
+            var strip=document.createElement("div");
+            strip.id="nvfbStrip"; strip.className="nvfb-strip";
+            strip.innerHTML='<div class="nvfb-text">Let us get your first parcel booked \u2014 takes under a minute.</div>'
+              +'<div class="nvfb-actions">'
+              +'<button class="nvfb-primary" id="nvfbPaste">Paste WhatsApp Order</button>'
+              +'<button class="nvfb-ghost" id="nvfbManual">Fill Manually</button>'
+              +'<button class="nvfb-ghost" id="nvfbTour">Take 30-sec Tour</button>'
+              +'<button class="nvfb-x" id="nvfbClose" aria-label="Dismiss">\u00d7</button>'
+              +'</div>';
+            host.insertBefore(strip, host.firstChild);
+            document.getElementById("nvfbClose").addEventListener("click",hideWelcomeStrip);
+            document.getElementById("nvfbManual").addEventListener("click",function(){ hideWelcomeStrip(); if(window.novaxFocusFirstBookingField) window.novaxFocusFirstBookingField(); });
+            document.getElementById("nvfbTour").addEventListener("click",function(){
+              hideWelcomeStrip();
+              try{ var u=new URL(location.href); u.searchParams.set("onboarding","1"); location.href=u.toString(); }
+              catch(e){ location.search=(location.search?location.search+"&":"?")+"onboarding=1"; }
+            });
+            document.getElementById("nvfbPaste").addEventListener("click",function(){
+              hideWelcomeStrip();
+              try{ if(typeof showClientTab==="function") showClientTab("newBooking"); setTimeout(function(){ var el=document.getElementById("nvPasteInput"); if(el) el.focus(); },150); }catch(e){}
+            });
+          }catch(e){}
+        }
+
+        window.novaxFocusFirstBookingField=function(){
+          try{
+            if(typeof showClientTab==="function") showClientTab("newBooking");
+            setTimeout(function(){ var el=document.getElementById("bookingName"); if(el) el.focus(); },150);
+          }catch(e){}
+        };
+
+        function showFirstBookingAutopilotWelcome(){
+          if(localStorage.getItem(AUTOPILOT_WELCOME_KEY)==="1") return;
+          localStorage.setItem(AUTOPILOT_WELCOME_KEY,"1");
+          setTimeout(function(){
+            if(window.novaxAutopilotSay) window.novaxAutopilotSay("Welcome to your NovaX workspace. I\u2019ll help you book your first parcel, print the AWB, track delivery, and warn you if anything gets stuck.",[
+              { label:"Paste WhatsApp Order", kind:"local", type:"paste_whatsapp_order" },
+              { label:"Start Manual Booking", kind:"local", type:"focus_manual_booking" },
+              { label:"Take 30-sec Tour", kind:"local", type:"start_tour" }
+            ]);
+          },1600);
+        }
+
+        function cleanWelcomeUrl(){
+          try{
+            var u=new URL(location.href);
+            u.searchParams.delete("welcome");
+            u.searchParams.delete("firstBooking");
+            var clean=u.pathname+(u.search?u.search:"")+u.hash;
+            history.replaceState({}, "", clean);
+          }catch(e){}
+        }
+
+        setInterval(function(){ mountWelcomeStrip(); renderDashboardEmptyState(); },1200);
+        setTimeout(function(){ mountWelcomeStrip(); renderDashboardEmptyState(); if(window.novaxFocusFirstBookingField) window.novaxFocusFirstBookingField(); },300);
+        showFirstBookingAutopilotWelcome();
+        cleanWelcomeUrl();
+      }catch(e){}
+    })();
+
+    /* ===== Smart Empty Dashboard (always active, not limited to the welcome-redirect session) ===== */
+    function renderDashboardEmptyState(){
+      try{
+        if(typeof state==="undefined" || state.activeClientTab!=="dashboard") return;
+        var cid=(state.client&&state.client.id)||null;
+        var mine=(state.parcels||[]).filter(function(p){ return p.clientId===cid; });
+        if(mine.length>0) return;
+        var host=document.getElementById("client-dashboard");
+        if(!host || document.getElementById("nvfbEmptyState")) return;
+        var box=document.createElement("div");
+        box.id="nvfbEmptyState";
+        box.style.cssText="background:#edf5f1;border:1px dashed #bfe8d7;border-radius:12px;padding:22px 18px;text-align:center;margin-bottom:16px";
+        box.innerHTML='<div style="font-weight:800;color:#0c7c59;margin-bottom:6px">No parcels yet</div>'
+          +'<div style="font-size:13px;color:#3a6b5a;margin-bottom:14px">Book your first parcel and NovaX will track it end to end.</div>'
+          +'<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">'
+          +'<button id="nvfbEmptyBtn" style="border:none;border-radius:9px;background:#0c7c59;color:#fff;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer">Book First Parcel</button>'
+          +'<button id="nvfbEmptyPaste" style="border:1px solid #bfe8d7;border-radius:9px;background:#fff;color:#0c7c59;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer">Paste WhatsApp Order</button>'
+          +'<button id="nvfbEmptyCsv" style="border:1px solid #bfe8d7;border-radius:9px;background:#fff;color:#0c7c59;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer">Upload Bulk CSV</button>'
+          +'<button id="nvfbEmptyStore" style="border:1px solid #bfe8d7;border-radius:9px;background:#fff;color:#0c7c59;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer">Connect Store</button>'
+          +'<button id="nvfbEmptyAsk" style="border:1px solid #bfe8d7;border-radius:9px;background:#fff;color:#0c7c59;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer">Ask Autopilot</button>'
+          +'</div>';
+        host.insertBefore(box, host.firstChild);
+        document.getElementById("nvfbEmptyBtn").addEventListener("click",function(){ if(window.novaxFocusFirstBookingField) window.novaxFocusFirstBookingField(); else if(typeof showClientTab==="function") showClientTab("newBooking"); });
+        document.getElementById("nvfbEmptyPaste").addEventListener("click",function(){
+          try{ if(typeof showClientTab==="function") showClientTab("newBooking"); setTimeout(function(){ var el=document.getElementById("nvPasteInput"); if(el) el.focus(); },150); }catch(e){}
+        });
+        document.getElementById("nvfbEmptyCsv").addEventListener("click",function(){
+          try{ if(typeof showClientTab==="function") showClientTab("bulkBooking"); }catch(e){}
+        });
+        document.getElementById("nvfbEmptyStore").addEventListener("click",function(){
+          try{ if(typeof showClientTab==="function") showClientTab("integrations"); }catch(e){}
+        });
+        document.getElementById("nvfbEmptyAsk").addEventListener("click",function(){
+          try{ if(window.novaxOpenAutopilot) window.novaxOpenAutopilot(); }catch(e){}
+        });
+      }catch(e){}
+    }
+    (function(){
+      setInterval(renderDashboardEmptyState,1500);
+      setTimeout(renderDashboardEmptyState,400);
+      document.addEventListener("DOMContentLoaded",renderDashboardEmptyState);
+    })();
+
     /* ===== NovaX AI Onboarding Tour (post-signup welcome + guided walkthrough) ===== */
     (function(){
       try{
@@ -1772,7 +2090,7 @@
           { tab:"wallet", title:"Wallet", text:"Track your balance and request a payout in a few taps whenever you are ready." },
           { tab:"logs", title:"Order Logs", text:"A clean audit trail of every status change for every parcel you have booked." },
           { tab:"subAccounts", title:"Sub Accounts", text:"Invite your team, finance, warehouse, or support, with their own scoped logins." },
-          { tab:"support", title:"Talk To Your AI", text:"Tap the green Autopilot bubble in the corner anytime. I read your live data and answer instantly, or open a ticket for you." }
+          { tab:"support", title:"Talk To Your AI", text:"Tap the Autopilot button in the corner anytime. I read your live data and answer instantly, or open a ticket for you." }
         ];
         var idx=-1;
 
@@ -2070,7 +2388,24 @@
         addMsg("Journey for "+p.awb+": "+steps,"b");
         return;
       }
+      if(a.type==="show_journey_awb"){ if(typeof openClientParcelJourney==="function") openClientParcelJourney(a.awb); return; }
+      if(a.type==="rescue_open_ticket"){
+        try{
+          if(typeof state!=="undefined") state.selectedAwb=a.awb;
+          if(typeof showClientTab==="function") showClientTab("dashboard");
+          setTimeout(function(){
+            if(typeof openTicketModal==="function") openTicketModal(a.awb);
+          },200);
+        }catch(e){}
+        return;
+      }
       if(a.type==="go_booking"){ if(typeof showClientTab==="function") showClientTab("newBooking"); panel.classList.add("open"); return; }
+      if(a.type==="focus_manual_booking"){ if(window.novaxFocusFirstBookingField) window.novaxFocusFirstBookingField(); return; }
+      if(a.type==="paste_whatsapp_order"){
+        if(typeof showClientTab==="function") showClientTab("newBooking");
+        setTimeout(function(){ var el=document.getElementById("nvPasteInput"); if(el) el.focus(); },150);
+        return;
+      }
       if(a.type==="start_tour"){
         try{ var u=new URL(location.href); u.searchParams.set("onboarding","1"); location.href=u.toString(); }
         catch(e){ location.search=(location.search?location.search+"&":"?")+"onboarding=1"; }
@@ -2122,6 +2457,7 @@
   }
 
   window.novaxOpenAutopilot=function(){ panel.classList.add("open"); openPanel(); };
+  window.novaxAutopilotSay=function(text,actions){ try{ panel.classList.add("open"); greeted=true; addMsg(text,"b",actions); }catch(e){} };
 
   async function greetWithBriefing(){
     var loadingEl=addMsg("Pulling your daily briefing...","b");
@@ -2259,6 +2595,13 @@
     }
     if(tab==="newBooking"){
       var pct=bookingFormPercent();
+      if(total===0){
+        if(pct===0) return { h:"Create your first parcel.", a:"Fill name, phone, city, COD, product and full address, or paste an order above to fill it for you.", key:"nb_first_0", go:"newBooking" };
+        if(pct<100) return { h:"Almost there.", a:"Fill the remaining booking fields, then submit your first booking.", key:"nb_first_"+pct, go:"newBooking" };
+        return { h:"Looks complete.", a:"Review the details, then submit your first booking.", key:"nb_first_100", go:"newBooking" };
+      }
+      if(total===1) return { h:"Booking your second parcel?", a:"Paste the WhatsApp order text above and I\u2019ll fill the form for you.", key:"nb_second_paste", go:"newBooking" };
+      if(total===2) return { h:"Booking often?", a:"Bulk upload a CSV or connect your store so orders come in automatically.", key:"nb_third_bulk", go:"bulkBooking" };
       if(pct===0) return { h:"Create one clean AWB.", a:"Fill name, phone, city, COD, product and full address.", key:"nb_0", go:"newBooking" };
       if(pct<100) return { h:"Almost there.", a:"Fill the remaining booking fields, then submit.", key:"nb_"+pct, go:"newBooking" };
       return { h:"Looks complete.", a:"Review the details, then submit the booking.", key:"nb_100", go:"newBooking" };
@@ -2325,6 +2668,121 @@
   },1500);
 
   setTimeout(renderCoach,1200);
+})();
+</script>
+<script>
+(function(){
+  function fmtRs(v){ try{ return Number(v||0).toLocaleString("en-US"); }catch(e){ return v; } }
+
+  var FSTYLE_ID="nvfsStyle";
+  function injectFirstBookingStyles(){
+    if(document.getElementById(FSTYLE_ID)) return;
+    var css=".nvfs-overlay{position:fixed;inset:0;z-index:999998;background:rgba(4,20,14,.55);display:flex;align-items:center;justify-content:center;padding:16px;animation:nvfsFade .2s ease}"
+      +"@keyframes nvfsFade{from{opacity:0}to{opacity:1}}"
+      +".nvfs-card{position:relative;background:#ffffff;border-radius:16px;max-width:420px;width:100%;padding:32px 26px 26px;text-align:center;box-shadow:0 30px 70px rgba(0,0,0,.35)}"
+      +".nvfs-x{position:absolute;top:10px;right:12px;border:none;background:transparent;font-size:22px;line-height:1;color:#6b8f80;cursor:pointer}"
+      +".nvfs-check{width:60px;height:60px;border-radius:50%;background:linear-gradient(145deg,#0c7c59,#14c77b);color:#fff;font-size:28px;font-weight:900;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:0 14px 30px rgba(20,199,123,.35)}"
+      +".nvfs-card h3{margin:0 0 8px;font-size:19px;color:#0c7c59}"
+      +".nvfs-awb{font-weight:800;font-size:15px;color:#0f2e22;margin-bottom:10px;letter-spacing:.2px}"
+      +".nvfs-card p{margin:0 0 16px;font-size:13px;color:#3a6b5a;line-height:1.5}"
+      +".nvfs-journey{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px;margin-bottom:20px;font-size:10.5px}"
+      +".nvfs-chip{background:#eafff5;border:1px solid #bfe8d7;color:#3a6b5a;border-radius:999px;padding:4px 8px;font-weight:700;white-space:nowrap}"
+      +".nvfs-chip.on{background:#0c7c59;color:#fff;border-color:#0c7c59}"
+      +".nvfs-arrow{color:#8fd8b9}"
+      +".nvfs-actions{display:flex;gap:8px;flex-wrap:wrap}"
+      +".nvfs-btn{flex:1;min-width:110px;border:none;border-radius:10px;padding:11px 10px;font-size:12.5px;font-weight:700;cursor:pointer}"
+      +".nvfs-btn.primary{background:#0c7c59;color:#fff}"
+      +".nvfs-btn.ghost{background:#eafff5;color:#0c7c59;border:1px solid #bfe8d7}"
+      +"@media(max-width:480px){.nvfs-btn{min-width:100%;}}";
+    var st=document.createElement("style"); st.id=FSTYLE_ID; st.textContent=css; document.head.appendChild(st);
+  }
+
+  window.novaxShowFirstBookingSuccess=function(awb){
+    try{
+      injectFirstBookingStyles();
+      if(document.getElementById("nvfsOverlay")) return;
+      var stages=["Booked","Pickup Pending","In Transit","Out for Delivery","Delivered"];
+      var chips=stages.map(function(s,i){
+        return '<span class="nvfs-chip'+(i===0?' on':'')+'">'+s+'</span>'+(i<stages.length-1?'<span class="nvfs-arrow">\u2192</span>':'');
+      }).join("");
+      var ov=document.createElement("div");
+      ov.id="nvfsOverlay"; ov.className="nvfs-overlay";
+      ov.innerHTML='<div class="nvfs-card">'
+        +'<button class="nvfs-x" id="nvfsClose" aria-label="Close">\u00d7</button>'
+        +'<div class="nvfs-check">\u2713</div>'
+        +'<h3>Your first AWB is ready.</h3>'
+        +'<div class="nvfs-awb">Tracking ID: '+awb+'</div>'
+        +'<p>Next: print this label and attach it to the parcel before pickup.</p>'
+        +'<div class="nvfs-journey">'+chips+'</div>'
+        +'<div class="nvfs-actions">'
+        +'<button class="nvfs-btn primary" id="nvfsPrint">Print AWB</button>'
+        +'<button class="nvfs-btn ghost" id="nvfsTrack">Track Journey</button>'
+        +'<button class="nvfs-btn ghost" id="nvfsAgain">Book Another Parcel</button>'
+        +'</div></div>';
+      document.body.appendChild(ov);
+      function close(){ var el=document.getElementById("nvfsOverlay"); if(el) el.remove(); }
+      document.getElementById("nvfsClose").addEventListener("click",close);
+      ov.addEventListener("click",function(e){ if(e.target===ov) close(); });
+      document.getElementById("nvfsPrint").addEventListener("click",function(){ close(); if(typeof showClientTab==="function") showClientTab("awbLabel"); });
+      document.getElementById("nvfsTrack").addEventListener("click",function(){ close(); if(typeof openClientParcelJourney==="function") openClientParcelJourney(awb); });
+      document.getElementById("nvfsAgain").addEventListener("click",function(){
+        close();
+        if(typeof showClientTab==="function") showClientTab("newBooking");
+        setTimeout(function(){ var el=document.getElementById("bookingName"); if(el) el.focus(); },150);
+      });
+    }catch(e){}
+  };
+
+  var PAYOUT_KEY="novaxFirstPayoutMoment";
+  var DELIVERY_KEY="novaxFirstDeliveryMoment";
+  var ISSUE_KEY="novaxFirstIssueRescueMoment";
+
+  function myMomentParcels(){
+    try{
+      var cid=(typeof state!=="undefined"&&state.client&&state.client.id)||null;
+      return ((typeof state!=="undefined"&&state.parcels)||[]).filter(function(p){ return p.clientId===cid; });
+    }catch(e){ return []; }
+  }
+
+  function checkMoments(){
+    try{
+      if(typeof state==="undefined"||!state.client) return;
+
+      if(localStorage.getItem(PAYOUT_KEY)!=="1"){
+        var bal=(typeof walletBalance==="function")?walletBalance(state.client.id):Number(state.client.walletBalance||0);
+        if(bal>0){
+          localStorage.setItem(PAYOUT_KEY,"1");
+          if(window.novaxAutopilotSay) window.novaxAutopilotSay("Rs "+fmtRs(bal)+" is ready. Want to withdraw?",[
+            { label:"Go to Wallet", kind:"local", type:"go_wallet" }
+          ]);
+        }
+      }
+
+      var parcels=myMomentParcels();
+      if(localStorage.getItem(DELIVERY_KEY)!=="1"){
+        var delivered=parcels.find(function(p){ return p.status==="Delivered" || (p.steps&&p.steps.indexOf("Delivered")>-1); });
+        if(delivered){
+          localStorage.setItem(DELIVERY_KEY,"1");
+          if(window.novaxAutopilotSay) window.novaxAutopilotSay("Your first delivery is complete. COD is now moving toward wallet.",[
+            { label:"Go to Wallet", kind:"local", type:"go_wallet" }
+          ]);
+        }
+      }
+
+      if(localStorage.getItem(ISSUE_KEY)!=="1"){
+        var troubled=parcels.find(function(p){ return p.status==="Refused" || (typeof isDelayed==="function"&&isDelayed(p)); });
+        if(troubled){
+          localStorage.setItem(ISSUE_KEY,"1");
+          if(window.novaxAutopilotSay) window.novaxAutopilotSay("I found an issue before it becomes a complaint. Want me to open a ticket?",[
+            { label:"Open Ticket", kind:"local", type:"rescue_open_ticket", awb:troubled.awb }
+          ]);
+        }
+      }
+    }catch(e){}
+  }
+
+  setInterval(checkMoments,4000);
+  setTimeout(checkMoments,3000);
 })();
 </script>
 </body>
