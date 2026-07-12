@@ -8712,22 +8712,6 @@
       createInvoice(state.activeInvoiceClient, parcels);
     }
 
-    function applyPushInvoiceToWalletLocally(invoice, client, id) {
-      client.walletBalance = Number(client.walletBalance || 0) + Number(invoice.payable || 0);
-      invoice.status = "Pushed to wallet";
-      invoice.walletPushedAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
-      state.paymentLogs.unshift({
-        id: nextId("PAY", state.paymentLogs),
-        clientId: invoice.clientId,
-        type: "Invoice pushed to wallet",
-        amount: invoice.payable,
-        status: "Wallet credited",
-        ref: id
-      });
-      saveState();
-      render();
-      toast(`${id} pushed to ${client.name} wallet.`);
-    }
     function pushInvoiceToWallet(id) {
       const invoice = state.invoices.find(item => item.id === id);
       if (!invoice || invoice.status === "Deleted") return;
@@ -8752,7 +8736,11 @@
         }).catch(e => toast(`Could not push ${id} to wallet: ${(e && e.message) || e}`, "error"));
         return;
       }
-      applyPushInvoiceToWalletLocally(invoice, client, id);
+      // NovaX fix: this used to fall back to applyPushInvoiceToWalletLocally(),
+      // crediting a client's wallet balance purely in browser state whenever
+      // Supabase wasn't connected or the invoice had no cloud UUID yet. Live
+      // money movement must never succeed locally -- block instead.
+      toast(`${id} cannot be pushed to wallet yet -- this invoice is not synced to the cloud. Wait for sync and try again.`, "error");
     }
 
     function deleteInvoice(id) {
@@ -9436,13 +9424,20 @@
     }
 
     function addRider() {
+      // NovaX fix: this used to store a plaintext password on the rider/user
+      // record and tell admin the rider "can log in" -- but unlike
+      // createRiderUser(), it never called Supabase Auth, so no real login
+      // was ever created. That could send ops staff to a rider in the field
+      // with credentials that don't actually work anywhere. addRider() now
+      // only creates the roster/profile entry (name, branch, manager, cash
+      // limit) and explicitly tells admin to use "Create Rider Login" for a
+      // real, working account.
       const name = document.getElementById("newRiderName").value.trim();
       const username = document.getElementById("newRiderUser").value.trim();
-      const password = (document.getElementById("newRiderPassword").value || "").trim();
       const branch = document.getElementById("newRiderBranch").value;
       const cashLimit = Number(document.getElementById("newRiderLimit").value);
-      if (!name || !username || !password || !cashLimit || cashLimit < 1) {
-        toast("Rider name, username, password, and cash limit are mandatory.");
+      if (!name || !username || !cashLimit || cashLimit < 1) {
+        toast("Rider name, username, and cash limit are mandatory.");
         return;
       }
       const id = nextId("R", state.riders);
@@ -9450,7 +9445,6 @@
         id,
         name,
         username,
-        password,
         branch,
         manager: document.getElementById("newRiderManager").value,
         cashHeld: 0,
@@ -9460,24 +9454,10 @@
         access: "Active",
         expenses: 0
       });
-      state.users.unshift({
-        id: nextId("USR", state.users),
-        name,
-        email: username,
-        username,
-        password,
-        role: "Rider",
-        accessSide: "Rider App",
-        branch,
-        clientId: "",
-        riderId: id,
-        permissions: ["rider-route", "scan", "delivery-proof", "cash-submit"],
-        status: "Active"
-      });
       saveState();
       render();
       showAdminTab("riders-summary");
-      toast(`${id} created for ${branch}. Rider can log in with username "${username}" and the set password.`);
+      toast(`${id} roster profile created for ${branch}. This rider cannot log in yet -- use "Create Rider Login" to set up their real account.`, "success");
     }
 
     function addRiderExpense() {
@@ -9574,30 +9554,6 @@
       }
     }
 
-    function applyMarkInvoicePaidLocally(invoice, client, id) {
-      // NovaX fix: marking an invoice "Paid" is a purely administrative
-      // bookkeeping status now -- it must NEVER touch wallet_balance. The
-      // wallet ledger only ever changes via Push To Client Wallet (credit)
-      // and the withdrawal queue (reserve at request, settle at Mark Payout
-      // Paid). "Invoice paid" and "wallet payout paid" are two different
-      // things; this used to (incorrectly) subtract the invoice's payable
-      // from the wallet a second time even though the wallet was already the
-      // authoritative ledger, which could double-deduct or push balances
-      // negative.
-      invoice.status = "Paid";
-      invoice.paidAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
-      state.paymentLogs.unshift({
-        id: nextId("PAY", state.paymentLogs),
-        clientId: invoice.clientId,
-        type: "Invoice marked settled",
-        amount: invoice.payable,
-        status: "Bookkeeping only -- wallet unaffected",
-        ref: invoice.id
-      });
-      saveState();
-      render();
-      toast(`${id} marked settled. Wallet balance is unaffected -- payouts happen from the withdrawal queue.`);
-    }
     function markInvoicePaid(id) {
       const invoice = state.invoices.find(item => item.id === id);
       if (!invoice || invoice.status === "Paid") return;
@@ -9627,7 +9583,12 @@
         }).catch(e => toast(`Could not mark ${id} paid: ${(e && e.message) || e}`, "error"));
         return;
       }
-      applyMarkInvoicePaidLocally(invoice, client, id);
+      // NovaX fix: this used to fall back to applyMarkInvoicePaidLocally()
+      // whenever Supabase wasn't connected or the invoice had no cloud UUID
+      // yet, which let admin mark a real finance action "settled" even
+      // though nothing was actually written to the server. Live settlement
+      // must never succeed locally -- block and tell admin to wait for sync.
+      toast(`${id} cannot be marked settled yet -- this invoice is not synced to the cloud. Wait for sync and try again.`, "error");
     }
 
     function addReturnProof(awb) {
