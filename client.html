@@ -625,6 +625,7 @@
             <section class="client-module" id="client-payments">
               <div class="panel">
                 <div class="section-head"><div><h3>Payments</h3><p>Only admin-generated invoices are shown here so payment numbers stay clean.</p></div><button class="action-btn ticket-cta" onclick="openTicketModal()">Create Ticket</button></div>
+                <div class="footer-note" style="background:#eafff5;border:1px solid #bfe8d7;border-radius:10px;padding:10px 12px;margin-bottom:12px"><strong style="color:#0c7c59">How this works:</strong> An invoice is generated first (money owed, not yet available) &rarr; admin pushes it to your wallet (now withdrawable) &rarr; you request a payout from the Wallet tab (admin must pay it) &rarr; paid means fully settled.</div>
                 <div class="money-grid" id="paymentSummary"></div>
               </div>
               <div class="panel" style="margin-top:14px">
@@ -647,6 +648,7 @@
                 <div class="wallet-balance count-up" id="walletBalanceText">Rs 0</div>
                 <span class="wallet-pulse"><span class="pulse"></span><span id="walletPushNote">No admin credit yet</span></span>
               </div>
+              <div class="footer-note" style="background:#eafff5;border:1px solid #bfe8d7;border-radius:10px;padding:10px 12px;margin-top:12px"><strong style="color:#0c7c59">Wallet Balance</strong> is available to withdraw right now. Once you request a payout it moves to <strong>Pending admin payout</strong> (admin still needs to send it) until it shows <strong>Paid</strong>, which means the money has actually reached your IBAN.</div>
               <div class="panel" style="margin-top:14px">
                 <div class="section-head"><div><h3>Withdraw Funds</h3><p>Choose a payout speed, confirm the net after fee, then add your IBAN.</p></div></div>
                 <div class="field" style="max-width:280px"><label>Amount to withdraw</label><input id="withdrawAmount" type="number" min="1"></div>
@@ -690,6 +692,7 @@
               <div class="grid two">
                 <div class="panel">
                   <div class="section-head"><div><h3>Full AI in Web</h3><p>AI reads portal truth, then answers or escalates missing data.</p></div><button class="ghost-btn" id="askAiBtn2">Ask AI</button></div>
+                  <div class="footer-note" style="background:#eafff5;border:1px solid #bfe8d7;border-radius:10px;padding:10px 12px;margin-bottom:10px"><strong style="color:#0c7c59">AI can help instantly</strong> with parcel status, invoice/wallet questions, and printing AWBs. For refunds, disputes, or anything needing a person, it opens a real ticket for human support automatically.</div>
                   <div class="ai-chat" id="clientAi"></div>
                   <div class="inline-actions" style="margin-top:10px">
                     <input id="clientAiInput" placeholder="Ask about a parcel, invoice, wallet balance..." style="flex:1">
@@ -1565,6 +1568,11 @@
         state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:c.id, type:"Wallet withdrawal requested", amount:amt, status:`${money(net)} net after ${money(fee)} fee`, ref:walletSpeedLabel(speed) });
         state.walletWithdrawSpeed=""; saveState();
         document.getElementById("walletDoneText").textContent=`${money(net)} will reach ${iban} via ${walletSpeedLabel(speed)} payout. NovaX fee ${money(fee)}.`;
+        // NovaX fix (confidence messaging): the modal already explains the
+        // payout math, but a quick toast confirms what just happened and what
+        // to expect next, matching the same pattern used elsewhere (booking,
+        // tickets, store connect).
+        toast(`Payout requested. Admin will process it via ${walletSpeedLabel(speed)} payout.`,"success");
         openWalletDone(); render();
         // NovaX fix: the local balance mirror above already drops the
         // number on screen instantly, but pull the authoritative row back
@@ -1643,8 +1651,11 @@
         resetBookingForm();
         if(riskWarnEl){ riskWarnEl.style.display="none"; }
         const confirmLine=document.getElementById("bookingConfirmLine");
-        if(confirmLine){ confirmLine.textContent="AWB reserved locally."; confirmLine.style.display="block"; confirmLine.style.color=""; }
-        toast(`${awb} reserved locally.`,"success");
+        if(confirmLine){ confirmLine.textContent="Booking reserved. Syncing to NovaX..."; confirmLine.style.display="block"; confirmLine.style.color=""; }
+        // NovaX fix (confidence messaging): "reserved locally" sounded final and
+        // didn't tell the client anything was still happening. Now it's clear
+        // this is step one (reserved) and syncing is in progress next.
+        toast(`${awb} reserved. Syncing to NovaX now...`,"success");
         setTimeout(()=>{ if(confirmLine) confirmLine.textContent="Syncing with NovaX server..."; },500);
         pollBookingConfirmation(awb, preBookingCount===0, 0);
       }catch(e){
@@ -1665,9 +1676,12 @@
         return;
       }
       if(p._uuid){
-        if(confirmLine){ confirmLine.textContent="Confirmed by server."; confirmLine.style.color=""; confirmLine.style.display="block"; }
-        setTimeout(()=>{ if(confirmLine) confirmLine.textContent=`Ready to print. Tracking ID ${awb} is available in the AWB tab.`; },500);
-        toast(`${awb} confirmed by the server. Ready to print.`,"success");
+        if(confirmLine){ confirmLine.textContent="Synced to NovaX."; confirmLine.style.color=""; confirmLine.style.display="block"; }
+        setTimeout(()=>{ if(confirmLine) confirmLine.textContent=`Synced to NovaX. AWB ${awb} is ready to print.`; },500);
+        // NovaX fix (confidence messaging): explicit "synced" + "ready to
+        // print" pairing matches the two things the client actually needs to
+        // know once the server has confirmed the booking.
+        toast(`${awb} synced to NovaX. AWB ready to print.`,"success");
         if(isFirstParcel && localStorage.getItem("novaxFirstBookingCompleted")!=="1"){
           try{ localStorage.setItem("novaxFirstBookingCompleted","1"); }catch(e){}
           if(window.novaxShowFirstBookingSuccess) window.novaxShowFirstBookingSuccess(awb);
@@ -2049,7 +2063,11 @@
             toast("Custom Web/API connected. Send the details below to your developer.");
           }
         } else {
-          toast(cfg.label+" connected.");
+          // NovaX fix (confidence messaging): plain "connected" left it unclear
+          // whether orders would start flowing immediately. Distinguish
+          // "connected" (credentials saved, live) from "pending configuration"
+          // (still needs the webhook/URL step) so the client knows what to do.
+          toast(cfg.label+" connected. Store is pending configuration -- finish the webhook setup below to start receiving orders.");
         }
       }).catch(function(e){ toast("Connection failed: "+e); });
     }
@@ -2316,7 +2334,7 @@
         var myInvoices=function(){ return (state.invoices||[]).filter(function(i){return i.clientId===cid()&&i.status!=='Deleted';}); };
         var myWithdrawals=function(){ return (state.walletWithdrawals||[]).filter(function(w){return w.clientId===cid();}); };
         function invLine(iv){ return 'Invoice <b>'+esc(iv.id)+'</b> - status <b>'+esc(iv.status)+'</b><br>Payable <b>Rs '+fmt(iv.payable)+'</b> (COD Rs '+fmt(iv.cod)+' - charges Rs '+fmt(iv.charges)+') · '+((iv.parcelRefs||[]).length)+' parcel(s)'; }
-        function pLine(p){ return '<b>'+esc(p.awb)+'</b> - <b>'+esc(p.status)+'</b><br>'+esc(p.consignee||'')+(p.city?' · '+esc(p.city):'')+(p.updated?' · updated '+esc(p.updated):'')+(p.exception?'<br>⚠����� '+esc(p.exception):''); }
+        function pLine(p){ return '<b>'+esc(p.awb)+'</b> - <b>'+esc(p.status)+'</b><br>'+esc(p.consignee||'')+(p.city?' · '+esc(p.city):'')+(p.updated?' · updated '+esc(p.updated):'')+(p.exception?'<br>⚠������ '+esc(p.exception):''); }
         function makeTicket(q,awb){
           state.tickets=Array.isArray(state.tickets)?state.tickets:[];
           var t={ id:nextId('TCK',state.tickets), sourceKey:'ai-client:'+Date.now(), tier:'medium', title:q.length>42?q.slice(0,42)+'…':q, from:'Seller '+cname(), to:'Admin Control', branch:'Admin', awb:awb||'', message:q, createdAt:new Date().toISOString().slice(0,10)+' '+time(), ageHours:0, status:'Open', escalated:false, replies:[] };
@@ -3885,7 +3903,12 @@
         var delivered=parcels.find(function(p){ return p.status==="Delivered" || (p.steps&&p.steps.indexOf("Delivered")>-1); });
         if(delivered){
           localStorage.setItem(DELIVERY_KEY,"1");
-          if(window.novaxAutopilotSay) window.novaxAutopilotSay("Your first delivery is complete. COD is now moving toward wallet.",[
+          // NovaX fix: "COD is now moving toward wallet" implied the money was
+          // already headed to the wallet, but COD only reaches the wallet
+          // after admin generates an invoice and pushes it -- neither has
+          // happened yet at the moment of delivery. State the real next step
+          // instead of implying wallet movement that hasn't started.
+          if(window.novaxAutopilotSay) window.novaxAutopilotSay("Your first delivery is complete. Once admin generates and pushes the invoice, this COD will land in your wallet.",[
             { label:"Go to Wallet", kind:"local", type:"go_wallet" }
           ]);
         }
