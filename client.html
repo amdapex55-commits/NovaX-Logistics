@@ -1267,7 +1267,7 @@
         toast(`${awb} saved and syncing with the server...`,"success");
         resetBookingForm();
         const confirmLine=document.getElementById("bookingConfirmLine");
-        if(confirmLine){ confirmLine.textContent=`Booking created. Print air way bill from AWB tab. Your tracking ID is ${awb}`; confirmLine.style.display="block"; }
+        if(confirmLine){ confirmLine.textContent=`AWB reserved locally, waiting for server confirmation. Print air way bill from AWB tab once confirmed. Your tracking ID is ${awb}`; confirmLine.style.display="block"; }
         setTimeout(()=>{
           const p=(state.parcels||[]).find(x=>x.awb===awb);
           if(!p) return;
@@ -1751,44 +1751,6 @@
         window.novaxAiName = cname;
         window.novaxAiEsc = esc;
       }catch(e){ console.warn('NovaX AI engine init failed', e); }
-      try{
-        var style=document.createElement('style');
-        style.textContent='.nvai-btn{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:99999;width:58px;height:58px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#14c77b);color:#fff;font-size:24px;box-shadow:0 12px 30px rgba(20,199,123,.45);display:grid;place-items:center;border:0;cursor:pointer}.nvai-dim{opacity:.7}.nvai-panel{position:fixed;right:18px;bottom:calc(86px + env(safe-area-inset-bottom));z-index:99999;width:360px;max-width:calc(100vw - 36px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #cfe6dc;border-radius:18px;box-shadow:0 26px 70px rgba(13,91,64,.28);display:none;flex-direction:column;overflow:hidden}.nvai-panel.open{display:flex}.nvai-head{background:linear-gradient(135deg,#0b2a1f,#0c7c59);color:#eafff5;padding:13px 16px;display:flex;align-items:center;gap:10px}.nvai-head b{font-size:15px;line-height:1.1}.nvai-head small{font-size:11px;opacity:.8}.nvai-x{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:0;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px}.nvai-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f3fff9}.nvai-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}.nvai-m.u{align-self:flex-end;background:#dcffe9;color:#08311f;border-bottom-right-radius:4px}.nvai-m.b{align-self:flex-start;background:#fff;border:1px solid #e1f0e8;color:#0b2a1f;border-bottom-left-radius:4px}.nvai-bar{display:flex;gap:8px;padding:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom));border-top:1px solid #e1f0e8;background:#fff}.nvai-bar input{flex:1;min-width:0;height:42px;border-radius:11px;border:1px solid #cfe6dc;padding:0 12px;font:inherit;font-size:16px}.nvai-bar button{height:42px;padding:0 16px;border-radius:11px;background:#14c77b;color:#04130d;font-weight:800;border:0;cursor:pointer}@media (max-width:520px){.nvai-panel{right:10px;left:10px;width:auto;bottom:calc(78px + env(safe-area-inset-bottom));height:72vh}.nvai-btn{right:14px;bottom:calc(14px + env(safe-area-inset-bottom))}}';
-        document.head.appendChild(style);
-        var btn=document.createElement('button'); btn.className='nvai-btn'; btn.title='NovaX AI'; btn.innerHTML='��';
-        var panel=document.createElement('div'); panel.className='nvai-panel';
-        panel.innerHTML='<div class=nvai-head><div><b>NovaX AI</b><br><small>reads your live data · never guesses</small></div><button class=nvai-x type=button>×</button></div><div class=nvai-msgs></div><div class=nvai-bar><input type=text><button type=button>Send</button></div>';
-        document.body.appendChild(btn); document.body.appendChild(panel);
-        var msgs=panel.querySelector('.nvai-msgs'); var inp=panel.querySelector('.nvai-bar input'); var sendBtn=panel.querySelector('.nvai-bar button'); var closeBtn=panel.querySelector('.nvai-x');
-        if (!msgs || !inp || !sendBtn || !closeBtn) throw new Error('NovaX AI widget: expected element not found in panel markup');
-        inp.placeholder='Ask about a parcel, invoice, wallet…';
-        function addMsg(html,cls){ var d=document.createElement('div'); d.className='nvai-m '+cls; d.innerHTML=html; msgs.appendChild(d); msgs.scrollTop=msgs.scrollHeight; saveChatHistory(html,cls); }
-        function saveChatHistory(html,cls){
-          try{
-            var key='novaxAiChat_'+cid();
-            var hist=JSON.parse(localStorage.getItem(key)||'[]');
-            hist.push({h:html,c:cls});
-            if(hist.length>40) hist=hist.slice(hist.length-40);
-            localStorage.setItem(key,JSON.stringify(hist));
-          }catch(e){}
-        }
-        function botSay(h){ addMsg(h,'b'); }
-        function send(){ var v=inp.value.trim(); if(!v) return; addMsg(esc(v),'u'); inp.value=''; setTimeout(function(){ try{ var r=engine(v); if(r.ticket){ var id=makeTicket(v,(v.match(/N\d{7}/i)||[])[0]||''); botSay((r.text?r.text+'<br><br>':'')+'I have opened ticket <b>'+esc(id)+'</b> for our team - they will follow up shortly.'); } else botSay(r.text); }catch(e){ botSay('Sorry, something went wrong reading the data. Please try again.'); } },160); }
-        var STARTERS=['Where is my last parcel?','My invoices','Wallet balance','Any delays?','My summary'];
-        function renderStarters(){
-          var wrap=document.createElement('div'); wrap.style.display='flex'; wrap.style.flexWrap='wrap'; wrap.style.gap='6px'; wrap.style.margin='2px 0 4px';
-          STARTERS.forEach(function(t){ var c=document.createElement('button'); c.type='button'; c.textContent=t; c.style.cssText='background:#eafff5;border:1px solid #cfe6dc;color:#0b2a1f;border-radius:999px;padding:7px 12px;font-size:12.5px;cursor:pointer;'; c.addEventListener('click',function(){ inp.value=t; send(); }); wrap.appendChild(c); });
-          msgs.appendChild(wrap); msgs.scrollTop=msgs.scrollHeight;
-        }
-        var greeted=false;
-        try{
-          var savedChat=JSON.parse(localStorage.getItem('novaxAiChat_'+cid())||'[]');
-          if(savedChat.length){ greeted=true; savedChat.forEach(function(m){ addMsg(m.h,m.c); }); }
-        }catch(e){}
-        btn.addEventListener('click',function(){ panel.classList.toggle('open'); if(panel.classList.contains('open')){ if(!greeted){ greeted=true; botSay('Hi '+esc(cname())+'! 👋 I am your NovaX AI. Ask me <i>where is N0010001</i>, <i>my invoice</i>, or <i>wallet balance</i>.'); renderStarters(); } inp.focus(); } });
-        closeBtn.addEventListener('click',function(){ panel.classList.remove('open'); });
-        sendBtn.addEventListener('click',send); inp.addEventListener('keydown',function(e){ if(e.key==='Enter') send(); });
-      }catch(e){ console.warn('NovaX AI init failed',e); }
     })();
 
     /* ===== NovaX AI Onboarding Tour (post-signup welcome + guided walkthrough) ===== */
@@ -2007,5 +1969,99 @@
     ping();
   })();
   </script>
+<!-- ===== NovaX Autopilot: Track. Resolve. Return. Escalate. (standalone, deterministic, DB-driven) ===== -->
+<script>
+(function(){
+  if(window.__novaxAutopilotLoaded) return; window.__novaxAutopilotLoaded=true;
+  var PORTAL="client";
+  var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
+  var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+  var FN_URL=SB_URL.replace(/\/$/,"")+"/functions/v1/novax-ai-support";
+
+  var style=document.createElement("style");
+  style.textContent='.nvauto-btn{position:fixed;left:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:99998;width:58px;height:58px;border-radius:50%;background:linear-gradient(145deg,#0b3f66,#1d8fd6);color:#fff;font-size:24px;box-shadow:0 12px 30px rgba(29,143,214,.4);display:grid;place-items:center;border:0;cursor:pointer}.nvauto-panel{position:fixed;left:18px;bottom:calc(86px + env(safe-area-inset-bottom));z-index:99998;width:360px;max-width:calc(100vw - 36px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #cfe0ee;border-radius:18px;box-shadow:0 26px 70px rgba(11,49,84,.28);display:none;flex-direction:column;overflow:hidden}.nvauto-panel.open{display:flex}.nvauto-head{background:linear-gradient(135deg,#08243d,#1274b8);color:#eaf5ff;padding:13px 16px;display:flex;align-items:center;gap:10px}.nvauto-avatar{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.15);display:grid;place-items:center;font-size:17px;flex-shrink:0}.nvauto-head b{font-size:15px;line-height:1.1;display:block}.nvauto-head small{font-size:10.5px;opacity:.82;display:block;margin-top:2px}.nvauto-x{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:0;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px;flex-shrink:0}.nvauto-chips{display:flex;gap:6px;flex-wrap:wrap;padding:10px 12px 0;background:#f2f9ff}.nvauto-chips button{border:1px solid #cfe0ee;background:#fff;color:#0b3f66;font-size:11.5px;font-weight:700;padding:6px 9px;border-radius:20px;cursor:pointer}.nvauto-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:#f2f9ff}.nvauto-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}.nvauto-m.u{align-self:flex-end;background:#d9ecff;color:#062338;border-bottom-right-radius:4px}.nvauto-m.b{align-self:flex-start;background:#fff;border:1px solid #dce9f5;color:#08243d;border-bottom-left-radius:4px}.nvauto-m.nvauto-loading{opacity:.65;font-style:italic}.nvauto-bar{display:flex;gap:8px;padding:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom));border-top:1px solid #dce9f5;background:#fff}.nvauto-bar input{flex:1;min-width:0;height:42px;border-radius:11px;border:1px solid #cfe0ee;padding:0 12px;font:inherit;font-size:16px}.nvauto-bar button{height:42px;padding:0 16px;border-radius:11px;background:#1274b8;color:#fff;font-weight:800;border:0;cursor:pointer}@media (max-width:520px){.nvauto-panel{left:10px;right:10px;width:auto;bottom:calc(78px + env(safe-area-inset-bottom));height:72vh}.nvauto-btn{left:14px;bottom:calc(14px + env(safe-area-inset-bottom))}}';
+  document.head.appendChild(style);
+
+  var btn=document.createElement("button");
+  btn.className="nvauto-btn"; btn.setAttribute("aria-label","NovaX Autopilot"); btn.innerHTML="&#128752;";
+
+  var panel=document.createElement("div");
+  panel.className="nvauto-panel";
+  panel.innerHTML=''
+    +'<div class="nvauto-head"><div class="nvauto-avatar">&#128752;</div><div><b>NovaX Autopilot</b><small>Track. Resolve. Return. Escalate.</small></div><button class="nvauto-x" aria-label="Close">&times;</button></div>'
+    +'<div class="nvauto-chips">'
+      +'<button data-q="Track my parcel">Track parcel</button>'
+      +'<button data-q="I need a return or support request">Return / support</button>'
+      +'<button data-q="COD or wallet question">COD / wallet</button>'
+      +'<button data-q="I want to talk to a human">Talk to a human</button>'
+    +'</div>'
+    +'<div class="nvauto-msgs" id="nvautoMsgs"></div>'
+    +'<div class="nvauto-bar"><input id="nvautoInput" placeholder="Ask about an AWB, return, or wallet..." /><button id="nvautoSend">Send</button></div>';
+
+  document.body.appendChild(btn);
+  document.body.appendChild(panel);
+
+  function addMsg(text,who){
+    var m=document.createElement("div");
+    m.className="nvauto-m "+(who==="u"?"u":"b");
+    m.textContent=text;
+    var box=document.getElementById("nvautoMsgs");
+    box.appendChild(m); box.scrollTop=box.scrollHeight;
+    return m;
+  }
+
+  var greeted=false;
+  function openPanel(){
+    panel.classList.add("open");
+    if(!greeted){ greeted=true; addMsg("Hi, I'm NovaX Autopilot. I only answer from your real account data \u2014 ask me to track an AWB, start a return, check your COD/wallet, or talk to a human.","b"); }
+  }
+  btn.addEventListener("click",function(){ panel.classList.toggle("open"); if(panel.classList.contains("open")) openPanel(); });
+  panel.querySelector(".nvauto-x").addEventListener("click",function(){ panel.classList.remove("open"); });
+  panel.querySelectorAll(".nvauto-chips button").forEach(function(c){ c.addEventListener("click",function(){ send(c.getAttribute("data-q")); }); });
+
+  var input=document.getElementById("nvautoInput");
+  var sendBtn=document.getElementById("nvautoSend");
+  sendBtn.addEventListener("click",function(){ send(input.value); });
+  input.addEventListener("keydown",function(e){ if(e.key==="Enter") send(input.value); });
+
+  function getAwbFromText(t){ var m=String(t||"").toUpperCase().match(/\b[A-Z]{0,4}\d{4,}[A-Z0-9]*\b/); return m?m[0]:null; }
+
+  async function getAuthToken(){
+    try{
+      if(window.__nvSb && window.__nvSb.auth){
+        var r=await window.__nvSb.auth.getSession();
+        var tok=r && r.data && r.data.session && r.data.session.access_token;
+        if(tok) return tok;
+      }
+    }catch(e){}
+    return SB_KEY;
+  }
+
+  async function send(text){
+    text=(text||"").trim();
+    if(!text) return;
+    addMsg(text,"u");
+    if(input) input.value="";
+    var loadingEl=addMsg("Checking your account data...","b");
+    loadingEl.classList.add("nvauto-loading");
+    try{
+      var token=await getAuthToken();
+      var res=await fetch(FN_URL,{
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "apikey":SB_KEY, "Authorization":"Bearer "+token },
+        body:JSON.stringify({ message:text, awb:getAwbFromText(text), portal:PORTAL })
+      });
+      var out=null; try{ out=await res.json(); }catch(e){}
+      loadingEl.remove();
+      if(!res.ok || !out){ addMsg("Sorry, I couldn't reach the support system just now. Please try again shortly.","b"); return; }
+      addMsg(out.reply||"I'm not sure how to help with that yet.","b");
+      if(out.requireLogin) addMsg("Please log in again to continue, then ask me here.","b");
+    }catch(e){
+      loadingEl.remove();
+      addMsg("Sorry, something went wrong reaching NovaX Autopilot. Please try again.","b");
+    }
+  }
+})();
+</script>
 </body>
 </html>
