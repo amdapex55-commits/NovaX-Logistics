@@ -339,6 +339,12 @@
       .metric strong{font-size:15px;}
       .metric label{font-size:10px;}
       .meter-caption{font-size:9.5px;}
+      #clientMetrics .metric:nth-child(2),#clientMetrics .metric:nth-child(3){display:none;}
+      #clientMetrics.nv-show-all .metric:nth-child(2),#clientMetrics.nv-show-all .metric:nth-child(3){display:block;}
+      #nvMetricsToggle{display:block!important;grid-column:1/-1;margin-top:4px;}
+      .nv-awb-compact-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--panel);}
+      .nv-awb-compact-top{display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:4px;gap:8px;}
+      .nv-awb-compact-mid{font-size:12px;color:var(--muted);margin-bottom:8px;}
       .metric{padding:11px;}
       .metric strong{font-size:22px;margin:6px 0 8px;}
       .wide-scroll table{min-width:0;width:100%;}
@@ -395,9 +401,9 @@
                 <strong>Client Menu</strong>
                 <div class="footer-note" style="margin-top:2px">Apex Fashion workspace</div>
               </div>
-              <button class="hamburger-btn" id="clientMenuToggle" aria-label="Open client menu" aria-expanded="true"><span></span><span></span><span></span><span class="hamburger-label">Menu</span></button>
+              <button class="hamburger-btn" id="clientMenuToggle" aria-label="Open client menu" aria-expanded="false"><span></span><span></span><span></span><span class="hamburger-label">Menu</span></button>
             </div>
-            <nav class="client-menu open" id="clientMenu" aria-label="Client portal sections">
+            <nav class="client-menu" id="clientMenu" aria-label="Client portal sections">
               <button class="client-tab active" data-client-tab="dashboard">Dashboard</button>
               <button class="client-tab" data-client-tab="newBooking">New Booking</button>
               <button class="client-tab" data-client-tab="awbLabel">AWB Label</button>
@@ -1064,12 +1070,16 @@
       const cm=clientMetrics();
       const rate=percent(cm.delivered,cm.total);
       const ops=Math.round(cm.avgProgress*100);
+      const nvMetricsEl0=document.getElementById("clientMetrics");
+      const wasExpanded=nvMetricsEl0 && nvMetricsEl0.classList.contains("nv-show-all");
       document.getElementById("clientMetrics").innerHTML=[
         metricCard("My Parcels",cm.total,ops,"in selected range","blue"),
         metricCard("Delivered",`${cm.delivered}/${cm.total}`,rate,"confirmed deliveries",rate<40?"amber":""),
         metricCard("Delivery Charges",money(cm.deliveryCharges),percent(cm.deliveryCharges,3000),"courier charges","amber"),
-        metricCard("Payable Balance",money(cm.payable),percent(cm.payable,60000),"client COD payable","good")
+        metricCard("Payable Balance",money(cm.payable),percent(cm.payable,60000),"client COD payable","good"),
+        '<button type="button" id="nvMetricsToggle" class="ghost-btn nv-metrics-toggle" style="display:none" onclick="var g=document.getElementById(&quot;clientMetrics&quot;); g.classList.toggle(&quot;nv-show-all&quot;); this.textContent=g.classList.contains(&quot;nv-show-all&quot;)?&quot;Show fewer metrics&quot;:&quot;Show all metrics&quot;;">Show all metrics</button>'
       ].join("");
+      if(wasExpanded){ document.getElementById("clientMetrics").classList.add("nv-show-all"); var nvT=document.getElementById("nvMetricsToggle"); if(nvT) nvT.textContent="Show fewer metrics"; }
     }
     function filteredParcels(){ const t=(document.getElementById("clientSearch")?.value||"").trim().toLowerCase(); return clientScopedParcels().filter(p=>`${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase().includes(t)); }
     function openClientParcelJourney(awb){ state.selectedAwb=awb; state.activeClientTab="dashboard"; saveState(); render(); const j=document.getElementById("clientJourney"); if(j) j.scrollIntoView({behavior:"smooth",block:"center"}); toast(`${awb} journey opened.`); }
@@ -1317,8 +1327,16 @@
       const awbs=(state.lastBulkAwbs||[]).filter(a=>state.parcels.some(p=>p.awb===a));
       if(!awbs.length){ panel.style.display="none"; return; }
       panel.style.display="block";
-      list.innerHTML=awbs.map(a=>{ const p=state.parcels.find(x=>x.awb===a); return `<div style="margin-bottom:14px">${awbLabelHtml(p)}<div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" onclick="printLabels(['${a}'])">Print ${a}</button></div></div>`; }).join("");
+      const nvCompact=window.innerWidth<=760;
+      list.innerHTML=awbs.map(a=>{
+        const p=state.parcels.find(x=>x.awb===a);
+        if(nvCompact){
+          return `<div class="nv-awb-compact-card"><div class="nv-awb-compact-top"><strong>${a}</strong><span class="chip">${p.city||""}</span></div><div class="nv-awb-compact-mid">${p.consignee||""}${p.cod?(" \u00b7 COD "+money(p.cod)):""}</div><button class="action-btn" style="width:100%" onclick="printLabels(['${a}'])">Print ${a}</button></div>`;
+        }
+        return `<div style="margin-bottom:14px">${awbLabelHtml(p)}<div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" onclick="printLabels(['${a}'])">Print ${a}</button></div></div>`;
+      }).join("");
     }
+    window.addEventListener("resize",function(){ try{ var nvPp=document.getElementById("bulkPreviewPanel"); if(nvPp && nvPp.style.display!=="none") renderBulkPreview(); }catch(e){} });
 
     function renderClientReportFull(){
       const tbody=document.getElementById("clientReportFullRows"); if(!tbody) return;
@@ -3140,6 +3158,7 @@
       +".nvfs-btn{flex:1;min-width:110px;border:none;border-radius:10px;padding:11px 10px;font-size:12.5px;font-weight:700;cursor:pointer}"
       +".nvfs-btn.primary{background:#0c7c59;color:#fff}"
       +".nvfs-btn.ghost{background:#eafff5;color:#0c7c59;border:1px solid #bfe8d7}"
+      +"@media(max-width:760px){.nvfs-overlay{align-items:flex-end;padding:0;}.nvfs-card{border-radius:16px 16px 0 0;max-width:100%;width:100%;max-height:82vh;overflow:auto;-webkit-overflow-scrolling:touch;padding:22px 18px 18px;}.nvfs-actions{flex-direction:column;}}"
       +"@media(max-width:480px){.nvfs-btn{min-width:100%;}}";
     var st=document.createElement("style"); st.id=FSTYLE_ID; st.textContent=css; document.head.appendChild(st);
   }
