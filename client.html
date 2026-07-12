@@ -345,19 +345,17 @@
       .nv-awb-compact-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--panel);}
       .nv-awb-compact-top{display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:4px;gap:8px;}
       .nv-awb-compact-mid{font-size:12px;color:var(--muted);margin-bottom:8px;}
-      .metric{padding:11px;}
-      .metric strong{font-size:22px;margin:6px 0 8px;}
       .wide-scroll table{min-width:0;width:100%;}
       .wide-scroll th,.wide-scroll td{padding:9px 8px;font-size:12px;}
       .modal-overlay{padding:0;align-items:flex-end;}
       .modal-card{width:100%;max-width:100%;max-height:88vh;overflow:auto;-webkit-overflow-scrolling:touch;border-radius:16px 16px 0 0;margin:0;}
-      .nvauto-btn{bottom:calc(84px + env(safe-area-inset-bottom))!important;}
       .nvauto-x{width:44px;height:44px;font-size:18px;}
       .nv-sticky-pad{padding-bottom:104px!important;}
       #nvPasteInput{min-height:96px!important;font-size:16px!important;}
       #nvPasteFillBtn{width:100%;background:var(--green-2);color:#fff;border-color:var(--green-2);font-weight:800;}
       .nvauto-bar input,.nvauto-bar button{min-height:44px;}
-      .nvauto-chips button,.nvauto-action-btn{min-height:34px;padding:7px 11px;font-size:12px;}
+      .nvauto-chips button,.nvauto-action-btn{min-height:40px;padding:8px 12px;font-size:12px;}
+      .nvauto-action-btn.nv-confirm,.nvauto-action-btn.nv-cancel{min-height:42px;font-weight:800;}
       .nvcoach-bar{padding:10px 12px;}
       .nvcoach-ctl button{min-height:32px;padding:4px 2px;}
     }
@@ -1110,26 +1108,26 @@
         var exc=String((p&&p.exception)||"");
         var text=(status+" "+exc).toLowerCase();
         if(/disputed|denies/.test(text)){
-          return { problem:"Consignee disputes the delivery attempt.", cause:"Mismatch between the rider's attempt log and what the consignee says happened.", action:"Review the rider's proof below, message the consignee to clarify, then Reattempt or Return." };
+          return { key:"disputed", problem:"Consignee disputes the delivery attempt.", cause:"Mismatch between the rider's attempt log and what the consignee says happened.", action:"Review the rider's proof below, message the consignee to clarify, then Reattempt or Return." };
         }
         if(/refus/.test(text)){
-          return { problem:"Consignee refused the parcel.", cause:"Consignee may have changed their mind, disagreed on price, or expected a different item.", action:"Message the consignee to confirm intent, then Reattempt if they still want it or Return it to origin." };
+          return { key:"refused", problem:"Consignee refused the parcel.", cause:"Consignee may have changed their mind, disagreed on price, or expected a different item.", action:"Message the consignee to confirm intent, then Reattempt if they still want it or Return it to origin." };
         }
         if(/not available/.test(text)){
-          return { problem:"Consignee was not available for delivery.", cause:"Consignee may be unreachable, at work, or the address/time did not match.", action:"Message the consignee to confirm a better time, then Reattempt." };
+          return { key:"not_available", problem:"Consignee was not available for delivery.", cause:"Consignee may be unreachable, at work, or the address/time did not match.", action:"Message the consignee to confirm a better time, then Reattempt." };
         }
         if(typeof isRiderCashHolding==="function" && isRiderCashHolding(p)){
-          return { problem:"Rider is holding COD cash for this parcel.", cause:"Cash has not yet been marked as collected or deposited.", action:"Create a ticket to confirm cash status with operations before closing this parcel." };
+          return { key:"cash", problem:"Rider is holding COD cash for this parcel.", cause:"Cash has not yet been marked as collected or deposited.", action:"Create a ticket to confirm cash status with operations before closing this parcel." };
         }
         if(/return/.test(text)){
-          return { problem:"Parcel is moving through the return flow.", cause:"Consignee declined delivery or it was marked for return.", action:"Confirm the return reaches origin, then create a ticket if it stalls." };
+          return { key:"return", problem:"Parcel is moving through the return flow.", cause:"Consignee declined delivery or it was marked for return.", action:"Confirm the return reaches origin, then create a ticket if it stalls." };
         }
         if(typeof isDelayed==="function" && isDelayed(p) && status!=="Delivered"){
-          return { problem:"This parcel has been stuck for over 24 hours.", cause:"Possible transit delay, warehouse backlog, or rider availability issue.", action:"Create a ticket if it doesn't move soon, or message the consignee for an update." };
+          return { key:"delayed", problem:"This parcel has been stuck for over 24 hours.", cause:"Possible transit delay, warehouse backlog, or rider availability issue.", action:"Create a ticket if it doesn't move soon, or message the consignee for an update." };
         }
-        return { problem: exc?exc:"This parcel is flagged for review.", cause:"Marked as needing attention based on its current status.", action:"Check the parcel journey and contact the consignee if needed." };
+        return { key:"generic", problem: exc?exc:"This parcel is flagged for review.", cause:"Marked as needing attention based on its current status.", action:"Check the parcel journey and contact the consignee if needed." };
       }catch(e){
-        return { problem:"This parcel needs review.", cause:"Unable to read exception details.", action:"Open a ticket if the issue continues." };
+        return { key:"generic", problem:"This parcel needs review.", cause:"Unable to read exception details.", action:"Open a ticket if the issue continues." };
       }
     }
     function hasResolvableException(p){
@@ -1149,7 +1147,12 @@
     function renderExceptionCard(p){
       try{
         var cls=classifyParcelException(p);
-        return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>AI Exception Resolution</h3><p>Deterministic read of this parcel's issue and the fastest next step.</p></div><span class="chip warn">review needed</span></div><div class="money-grid">${moneyBox("Problem",cls.problem,"")}${moneyBox("Likely cause",cls.cause,"")}${moneyBox("Recommended action",cls.action,"")}</div><div class="inline-actions" style="margin-top:10px;flex-wrap:wrap"><button class="ghost-btn" type="button" onclick="copyExceptionMessage('${p.awb}')">Copy Message</button><button class="action-btn" type="button" onclick="requestRedelivery('${p.awb}')">Reattempt</button><button class="ghost-btn" type="button" onclick="requestReturnToOrigin('${p.awb}')">Return</button><button class="action-btn ticket-cta" type="button" onclick="openTicketModal('${p.awb}')">Create Ticket</button><button class="ghost-btn" type="button" onclick="messageCustomer('${p.awb}')">Message Customer</button></div></div>`;
+        var hideDeliveryActions=(cls.key==="cash"||cls.key==="delayed"||cls.key==="return");
+        var btns="";
+        btns+=`<button class="ghost-btn" type="button" onclick="copyExceptionMessage('${p.awb}')">Copy Message</button>`;
+        if(!hideDeliveryActions) btns+=`<button class="action-btn" type="button" onclick="requestRedelivery('${p.awb}')">Reattempt</button><button class="ghost-btn" type="button" onclick="requestReturnToOrigin('${p.awb}')">Return</button>`;
+        btns+=`<button class="action-btn ticket-cta" type="button" onclick="openTicketModal('${p.awb}')">Create Ticket</button><button class="ghost-btn" type="button" onclick="messageCustomer('${p.awb}')">Message Customer</button>`;
+        return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>AI Exception Resolution</h3><p>Deterministic read of this parcel's issue and the fastest next step.</p></div><span class="chip warn">review needed</span></div><div class="money-grid">${moneyBox("Problem",cls.problem,"")}${moneyBox("Likely cause",cls.cause,"")}${moneyBox("Recommended action",cls.action,"")}</div><div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
       }catch(e){ return ""; }
     }
     function copyExceptionMessage(awb){
@@ -1883,6 +1886,11 @@
     }
     function applyClientDateRange(){ state.clientDateFrom=document.getElementById("clientDateFrom").value||state.clientDateFrom; state.clientDateTo=document.getElementById("clientDateTo").value||state.clientDateTo; saveState(); render(); toast(`History filtered ${state.clientDateFrom} to ${state.clientDateTo}.`); }
     function requestPayout(){ const cm=clientMetrics(); const id=nextId("PAY",state.paymentLogs); state.paymentLogs.unshift({ id, clientId:state.client.id||"CL-0001", type:"Payout requested", amount:cm.payable, status:"Pending admin approval", ref:`PAYOUT-${id}` }); saveState(); render(); showClientTab("payments"); toast("Payout request sent to admin."); }
+    // NovaX note: requestPayout() is a manual admin-review payout only (no amount/IBAN
+    // validation). The real bank withdrawal flow is confirmWalletWithdraw() + the
+    // request_wallet_withdrawal RPC below, which requires amount + IBAN + speed. NovaX
+    // Autopilot must never call requestPayout() on the client's behalf and must never
+    // claim a withdrawal was sent \u2014 it should only open Wallet for the client to submit it.
 
     /* ===== Store Integrations + New Booked bulk print ===== */
     function activeClientId(){ return (state.client&&state.client.id)||"CL-0001"; }
@@ -2707,29 +2715,59 @@
   var FN_URL=SB_URL.replace(/\/$/,"")+"/functions/v1/novax-ai-support";
 
   var style=document.createElement("style");
-  style.textContent='.nvauto-btn{position:fixed;left:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:99998;width:58px;height:58px;border-radius:50%;background:linear-gradient(145deg,#0c7c59,#14c77b);color:#fff;font-size:24px;box-shadow:0 12px 30px rgba(12,124,89,.38);display:grid;place-items:center;border:0;cursor:pointer}.nvauto-panel{position:fixed;right:18px;top:88px;bottom:18px;left:auto;z-index:99998;width:360px;max-width:calc(100vw - 36px);height:auto;max-height:calc(100vh - 106px);background:#fff;border:1px solid #d7ede1;border-radius:16px;box-shadow:0 26px 70px rgba(12,60,45,.22);display:none;flex-direction:column;overflow:hidden}.nvauto-panel.open{display:flex}.nvauto-head{background:linear-gradient(135deg,#0c7c59,#14c77b);color:#fff;padding:13px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0}.nvauto-avatar{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.18);display:grid;place-items:center;font-size:17px;flex-shrink:0}.nvauto-head b{font-size:15px;line-height:1.1;display:block}.nvauto-head small{font-size:10.5px;opacity:.85;display:block;margin-top:2px}.nvauto-x{margin-left:auto;background:rgba(255,255,255,.18);color:#fff;border:0;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px;flex-shrink:0}.nvauto-chips{display:flex;gap:6px;flex-wrap:wrap;padding:10px 12px 0;background:#eafff5;flex-shrink:0}.nvauto-chips button{border:1px solid #bfe8d7;background:#fff;color:#0c7c59;font-size:11.5px;font-weight:700;padding:6px 9px;border-radius:20px;cursor:pointer}.nvauto-chips button .cl-short{display:none}.nvauto-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:#eafff5;min-height:0}.nvauto-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45;white-space:pre-line}.nvauto-m.u{align-self:flex-end;background:#0c7c59;color:#fff;border-bottom-right-radius:4px}.nvauto-m.b{align-self:flex-start;background:#fff;border:1px solid #d7ede1;color:#0f2e22;border-bottom-left-radius:4px}.nvauto-m.nvauto-loading{opacity:.65;font-style:italic}.nvauto-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.nvauto-action-btn{border:1px solid #8fd9b8;background:#eafff5;color:#0c7c59;font-size:11.5px;font-weight:700;padding:6px 10px;border-radius:20px;cursor:pointer}.nvauto-action-btn:hover{background:#d3f5e4}.nvauto-fb{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:10.5px;color:#6b8f80}.nvauto-fb-btn{border:0;background:transparent;color:#6b8f80;font-size:10.5px;font-weight:700;cursor:pointer;padding:2px 4px}.nvauto-fb-btn.active{color:#0c7c59}.nvauto-fb-sep{opacity:.55}.nvauto-bar{display:flex;gap:8px;padding:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom));border-top:1px solid #d7ede1;background:#fff;flex-shrink:0}.nvauto-bar input{flex:1;min-width:0;height:42px;border-radius:11px;border:1px solid #bfe8d7;padding:0 12px;font:inherit;font-size:16px;color:#0f2e22}.nvauto-bar input::placeholder{font-size:12px;color:#7fa596}.nvauto-bar button{height:42px;padding:0 16px;border-radius:11px;background:#0c7c59;color:#fff;font-weight:800;border:0;cursor:pointer;flex-shrink:0}@media (max-width:760px){.nvauto-panel{left:0;right:0;bottom:0;top:auto;width:100%;max-width:100%;height:76vh;max-height:76vh;border-radius:16px 16px 0 0;border-left:0;border-right:0;border-bottom:0}.nvauto-btn{left:14px;bottom:calc(14px + env(safe-area-inset-bottom))}.nvauto-chips button .cl-full{display:none}.nvauto-chips button .cl-short{display:inline}.nvauto-chips button:first-child{display:none}}';
+  style.textContent='.nvauto-btn{position:fixed;right:22px;left:auto;bottom:calc(22px + env(safe-area-inset-bottom));z-index:99998;display:flex;align-items:center;gap:10px;background:#fff;color:#10201b;border:1px solid #b6c9c0;border-radius:14px;box-shadow:0 10px 26px rgba(21,45,36,.16);padding:8px 16px 8px 8px;cursor:pointer;min-height:52px;box-sizing:border-box;transition:transform .18s ease,box-shadow .18s ease}.nvauto-btn:hover{box-shadow:0 14px 32px rgba(21,45,36,.22);transform:translateY(-1px)}.nvauto-btn-icon{width:36px;height:36px;border-radius:10px;background:linear-gradient(145deg,#0c7c59,#14c77b);color:#fff;font-size:17px;display:grid;place-items:center;flex-shrink:0}.nvauto-btn-text{display:flex;flex-direction:column;line-height:1.15;text-align:left}.nvauto-btn-text b{font-size:13.5px;color:#10201b;font-weight:800}.nvauto-btn-text small{font-size:10.5px;color:#60726b;font-weight:600}.nvauto-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#b03a2e;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px rgba(176,58,46,.4)}.nvauto-btn.nv-pulse .nvauto-btn-icon{animation:nvPulseIcon 1.8s ease-in-out infinite}@keyframes nvPulseIcon{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}.nvauto-panel{position:fixed;right:22px;left:auto;bottom:92px;top:auto;z-index:99998;width:380px;max-width:calc(100vw - 36px);height:auto;max-height:min(600px,calc(100vh - 130px));background:#fff;border:1px solid #d7ede1;border-radius:14px;box-shadow:0 26px 70px rgba(12,60,45,.22);display:none;flex-direction:column;overflow:hidden}.nvauto-panel.open{display:flex;animation:nvPanelIn .22s ease}@keyframes nvPanelIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}.nvauto-head{background:linear-gradient(135deg,#0c7c59,#14c77b);color:#fff;padding:13px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0}.nvauto-avatar{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.18);display:grid;place-items:center;font-size:17px;flex-shrink:0}.nvauto-head b{font-size:15px;line-height:1.1;display:block}.nvauto-head small{font-size:10.5px;opacity:.9;display:flex;align-items:center;margin-top:2px}.nvauto-live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#8ff0c7;margin-right:5px;animation:nvLiveDot 1.6s ease-in-out infinite}@keyframes nvLiveDot{0%,100%{opacity:1}50%{opacity:.35}}.nvauto-x{margin-left:auto;background:rgba(255,255,255,.18);color:#fff;border:0;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px;flex-shrink:0}.nvauto-chips{display:flex;gap:6px;flex-wrap:wrap;padding:10px 12px 0;background:#eafff5;flex-shrink:0}.nvauto-chips button{border:1px solid #bfe8d7;background:#fff;color:#0c7c59;font-size:11.5px;font-weight:700;padding:6px 9px;border-radius:20px;cursor:pointer}.nvauto-chips button .cl-short{display:none}.nvauto-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:#eafff5;min-height:0}.nvauto-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45;white-space:pre-line}.nvauto-m.u{align-self:flex-end;background:#0c7c59;color:#fff;border-bottom-right-radius:4px}.nvauto-m.b{align-self:flex-start;background:#fff;border:1px solid #d7ede1;color:#0f2e22;border-bottom-left-radius:4px;box-shadow:0 2px 6px rgba(21,45,36,.06)}.nvauto-m.nvauto-loading{opacity:.65;font-style:italic}.nvauto-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}.nvauto-action-btn{border:1px solid #8fd9b8;background:#eafff5;color:#0c7c59;font-size:12px;font-weight:700;padding:8px 12px;min-height:38px;border-radius:20px;cursor:pointer;box-sizing:border-box}.nvauto-action-btn:hover{background:#d3f5e4}.nvauto-action-btn.nv-confirm{background:#0c7c59;color:#fff;border-color:#0c7c59}.nvauto-action-btn.nv-confirm:hover{background:#0a6b4d}.nvauto-action-btn.nv-cancel{background:#fff;color:#b03a2e;border-color:#f0c9c3}.nvauto-action-btn.nv-cancel:hover{background:#fff5f3}.nvauto-fb{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:10.5px;color:#6b8f80;opacity:.75}.nvauto-fb-btn{border:0;background:transparent;color:#6b8f80;font-size:10.5px;font-weight:700;cursor:pointer;padding:2px 4px}.nvauto-fb-btn.active{color:#0c7c59}.nvauto-fb-sep{opacity:.55}.nvauto-bar{display:flex;gap:8px;padding:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom));border-top:1px solid #d7ede1;background:#fff;flex-shrink:0}.nvauto-bar input{flex:1;min-width:0;height:42px;border-radius:11px;border:1px solid #bfe8d7;padding:0 12px;font:inherit;font-size:16px;color:#0f2e22}.nvauto-bar input::placeholder{font-size:12px;color:#7fa596}.nvauto-bar button{height:42px;padding:0 16px;border-radius:11px;background:#0c7c59;color:#fff;font-weight:800;border:0;cursor:pointer;flex-shrink:0}@media (prefers-reduced-motion:reduce){.nvauto-btn,.nvauto-btn-icon,.nvauto-panel.open,.nvauto-live-dot{animation:none!important;transition:none!important}}@media (max-width:760px){.nvauto-btn{right:14px;bottom:calc(14px + env(safe-area-inset-bottom));padding:0;width:54px;height:54px;border-radius:16px;justify-content:center;gap:0}.nvauto-btn.nv-above-stickybar{bottom:calc(96px + env(safe-area-inset-bottom))!important}.nvauto-btn-text{display:none}.nvauto-btn-icon{width:100%;height:100%;border-radius:16px;font-size:20px}.nvauto-panel{left:0;right:0;bottom:0;top:auto;width:100%;max-width:100%;height:76vh;max-height:76vh;border-radius:16px 16px 0 0;border-left:0;border-right:0;border-bottom:0}.nvauto-chips button .cl-full{display:none}.nvauto-chips button .cl-short{display:inline}.nvauto-action-btn{min-height:42px;padding:9px 13px}}';
   document.head.appendChild(style);
 
   var btn=document.createElement("button");
-  btn.className="nvauto-btn"; btn.setAttribute("aria-label","NovaX Autopilot"); btn.innerHTML="&#128752;";
+  btn.className="nvauto-btn"; btn.setAttribute("aria-label","Open NovaX Autopilot assistant");
+  btn.innerHTML='<span class="nvauto-btn-icon" aria-hidden="true">&#128752;</span><span class="nvauto-btn-text"><b>Autopilot</b><small>Ask anything</small></span>';
 
   var panel=document.createElement("div");
   panel.className="nvauto-panel";
   panel.innerHTML=''
-    +'<div class="nvauto-head"><div class="nvauto-avatar">&#128752;</div><div><b>NovaX Autopilot</b><small>Your NovaX operating assistant</small></div><button class="nvauto-x" aria-label="Close">&times;</button></div>'
+    +'<div class="nvauto-head"><div class="nvauto-avatar">&#128752;</div><div><b>NovaX Autopilot</b><small><span class="nvauto-live-dot" aria-hidden="true"></span>Live account-aware assistant</small></div><button class="nvauto-x" aria-label="Close">&times;</button></div>'
     +'<div class="nvauto-chips">'
-      +'<button data-q="my account summary"><span class="cl-full">Account Summary</span><span class="cl-short">Summary</span></button>'
       +'<button data-q="mera parcel kahan hai?"><span class="cl-full">Track Parcel</span><span class="cl-short">Track</span></button>'
-      +'<button data-local="go_booking"><span class="cl-full">Book New Order</span><span class="cl-short">Book</span></button>'
+      +'<button data-local="go_booking"><span class="cl-full">Book Order</span><span class="cl-short">Book</span></button>'
       +'<button data-q="COD kab milega?"><span class="cl-full">COD / Wallet</span><span class="cl-short">COD</span></button>'
-      +'<button data-local="nv_review_issues"><span class="cl-full">Review Issues</span><span class="cl-short">Issue</span></button>'
-      +'<button data-q="support se baat karni hai"><span class="cl-full">Talk to Human</span><span class="cl-short">Human</span></button>'
+      +'<button data-local="nv_review_issues"><span class="cl-full">Issue Help</span><span class="cl-short">Issue</span></button>'
+      +'<button data-q="support se baat karni hai"><span class="cl-full">Human</span><span class="cl-short">Human</span></button>'
     +'</div>'
     +'<div class="nvauto-msgs" id="nvautoMsgs"></div>'
     +'<div class="nvauto-bar"><input id="nvautoInput" placeholder="Ask about parcels, COD, wallet..." /><button id="nvautoSend">Send</button></div>';
 
   document.body.appendChild(btn);
   document.body.appendChild(panel);
+
+  function refreshLauncherBadge(){
+    try{
+      var ctx=(typeof getClientContext==="function")?getClientContext():null;
+      var hasIssue=!!(ctx && ctx.issueCount>0);
+      var isOpen=panel.classList.contains("open");
+      btn.classList.toggle("nv-pulse", hasIssue && !isOpen);
+      var badgeEl=btn.querySelector(".nvauto-badge");
+      if(hasIssue && !isOpen){
+        if(!badgeEl){ badgeEl=document.createElement("span"); badgeEl.className="nvauto-badge"; btn.appendChild(badgeEl); }
+        badgeEl.textContent=ctx.issueCount>9?"9+":String(ctx.issueCount);
+      } else if(badgeEl){ badgeEl.remove(); }
+    }catch(e){}
+  }
+  setInterval(refreshLauncherBadge,5000);
+  setTimeout(refreshLauncherBadge,1500);
+
+  (function attachStickyBarWatch(){
+    var tries=0;
+    var iv=setInterval(function(){
+      tries++;
+      var stickyBar=document.getElementById("nvMobileBookBar");
+      if(stickyBar){
+        clearInterval(iv);
+        function syncElevate(){ btn.classList.toggle("nv-above-stickybar", stickyBar.classList.contains("show")); }
+        new MutationObserver(syncElevate).observe(stickyBar,{attributes:true,attributeFilter:["class"]});
+        syncElevate();
+      } else if(tries>40){ clearInterval(iv); }
+    },250);
+  })();
 
   function sendFeedback(value){
     try{
@@ -2755,7 +2793,7 @@
       actions.forEach(function(a){
         if(!a || !a.label) return;
         var b=document.createElement("button");
-        b.type="button"; b.className="nvauto-action-btn"; b.textContent=a.label;
+        b.type="button"; b.className="nvauto-action-btn"+(a.type==="confirm_action"?" nv-confirm":a.type==="cancel_confirm"?" nv-cancel":""); b.textContent=a.label;
         b.addEventListener("click",function(){ handleAction(a); });
         row.appendChild(b);
       });
@@ -2840,6 +2878,116 @@
         },200);
         return;
       }
+      if(a.type==="confirm_action"){
+        var pending=pendingAutopilotConfirm;
+        clearPendingAutopilotConfirm();
+        if(!pending){ addMsg("That confirmation has expired \u2014 please ask again.","b"); return; }
+        executeConfirmedAction(pending);
+        return;
+      }
+      if(a.type==="cancel_confirm"){
+        clearPendingAutopilotConfirm();
+        addMsg("Cancelled. Let me know if you need anything else.","b");
+        return;
+      }
+      if(a.type==="copy_customer_message"){
+        if(!a.awb){ addMsg("I don't have an AWB to copy a message for yet \u2014 open a parcel first.","b",[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }]); return; }
+        if(typeof copyExceptionMessage==="function") copyExceptionMessage(a.awb);
+        return;
+      }
+      if(a.type==="open_ticket_for_awb"){
+        try{ if(typeof state!=="undefined" && a.awb) state.selectedAwb=a.awb; }catch(e){}
+        if(typeof showClientTab==="function") showClientTab("dashboard");
+        setTimeout(function(){ if(typeof openTicketModal==="function") openTicketModal(a.awb); },200);
+        return;
+      }
+      if(a.type==="request_return_awb"){
+        if(!a.awb){ addMsg("Which AWB should I prepare a return for?","b"); return; }
+        var rc=buildReturnConfirm(a.awb);
+        setPendingAutopilotConfirm(rc.confirmAction);
+        addMsg(rc.reply,"b",rc.actions);
+        return;
+      }
+      if(a.type==="request_reattempt_awb"){
+        if(!a.awb){ addMsg("Which AWB needs a reattempt?","b"); return; }
+        var rac=buildReattemptConfirm(a.awb);
+        setPendingAutopilotConfirm(rac.confirmAction);
+        addMsg(rac.reply,"b",rac.actions);
+        return;
+      }
+      if(a.type==="open_awb"){
+        if(typeof openClientParcelJourney==="function") openClientParcelJourney(a.awb);
+        return;
+      }
+      if(a.type==="filter_delayed"){
+        if(typeof showClientTab==="function") showClientTab("dashboard");
+        setTimeout(function(){
+          try{
+            var el=document.getElementById("clientSearch");
+            if(el){ el.value=""; el.dispatchEvent(new Event("input")); }
+            var board=document.getElementById("clientStatusBoard");
+            if(board && board.style.display==="none" && typeof toggleStatusBoard==="function") toggleStatusBoard();
+            var dd=(typeof dailyCommandData==="function")?dailyCommandData():null;
+            var list=(dd&&dd.delayed)||[];
+            if(board) board.scrollIntoView({behavior:"smooth",block:"start"});
+            if(list.length){
+              addMsg("Delayed parcels: "+list.slice(0,8).map(function(p){ return p.awb; }).join(", ")+(list.length>8?(" and "+(list.length-8)+" more."):"."),"b",[{ label:"Open First", kind:"local", type:"open_awb", awb:list[0].awb }]);
+            } else {
+              addMsg("No delayed parcels right now \u2014 everything looks on track.","b");
+            }
+          }catch(e){}
+        },150);
+        return;
+      }
+      if(a.type==="filter_status"){
+        if(typeof showClientTab==="function") showClientTab("dashboard");
+        setTimeout(function(){
+          var el=document.getElementById("clientSearch");
+          if(el && a.query){ el.value=a.query; el.dispatchEvent(new Event("input")); }
+        },150);
+        return;
+      }
+      if(a.type==="print_pending_awbs"){
+        try{
+          var pool=(typeof myParcels==="function")?myParcels():[];
+          var unprintedList=pool.filter(function(p){ return typeof isUnprintedLabel==="function"?isUnprintedLabel(p):false; }).map(function(p){ return p.awb; });
+          if(!unprintedList.length){ addMsg("All AWB labels are already printed.","b"); return; }
+          if(unprintedList.length>3){
+            setPendingAutopilotConfirm({ type:"bulk_print_awbs", awbs:unprintedList, resultMsg:"Opened print preview for "+unprintedList.length+" labels." });
+            addMsg("That's "+unprintedList.length+" labels \u2014 I'll open the print preview for all of them. Confirm?","b",[
+              { label:"Confirm Print", kind:"local", type:"confirm_action" },
+              { label:"Cancel", kind:"local", type:"cancel_confirm" }
+            ]);
+            return;
+          }
+          if(typeof printLabels==="function") printLabels(unprintedList);
+          if(typeof showClientTab==="function") showClientTab("awbLabel");
+          addMsg("Opened print preview for "+unprintedList.length+" label(s).","b");
+        }catch(e){ console.warn(e); addMsg("Couldn't open the print preview \u2014 try the AWB Label tab directly.","b",[{ label:"Go to AWB Label", kind:"local", type:"go_awb_label" }]); }
+        return;
+      }
+      if(a.type==="open_wallet_withdraw"){
+        if(typeof showClientTab==="function") showClientTab("wallet");
+        setTimeout(function(){
+          try{
+            var el=document.getElementById("withdrawAmount");
+            if(el && a.amount){ el.value=a.amount; el.dispatchEvent(new Event("input")); }
+            if(el) el.scrollIntoView({behavior:"smooth",block:"center"});
+          }catch(e){}
+        },200);
+        return;
+      }
+      if(a.type==="open_bulk_booking"){ if(typeof showClientTab==="function") showClientTab("bulkBooking"); return; }
+      if(a.type==="open_reports"||a.type==="go_reports"){ if(typeof showClientTab==="function") showClientTab("reports"); return; }
+      if(a.type==="open_payments"){ if(typeof showClientTab==="function") showClientTab("payments"); return; }
+      if(a.type==="go_integrations"){ if(typeof showClientTab==="function") showClientTab("integrations"); return; }
+      if(a.type==="create_ticket"){
+        try{ if(typeof state!=="undefined" && a.awb) state.selectedAwb=a.awb; }catch(e){}
+        if(typeof showClientTab==="function") showClientTab("dashboard");
+        setTimeout(function(){ if(typeof openTicketModal==="function") openTicketModal(a.awb); },200);
+        return;
+      }
+      if(a.type==="talk_human"){ send("support se baat karni hai"); return; }
     }catch(e){ console.warn("NovaX Autopilot action failed",e); }
   }
 
@@ -2953,6 +3101,328 @@
 
   function getAwbFromText(t){ var m=String(t||"").toUpperCase().match(/\b[A-Z]{0,4}\d{4,}[A-Z0-9]*\b/); return m?m[0]:null; }
 
+  /* ===== NovaX Autopilot: Never-Blank Local Fallback Brain (Part C/D/E/F) ===== */
+  var NV_KW={
+    greeting:["hi","hello","hey","salam","assalam","aoa","asalam","slam","start"],
+    abuse:["useless","stupid","idiot","scam","fraud","worst service","you people","bekar","ghatiya","nalayak","threat","report you","sue you","harami","bewakoof","nonsense","pathetic"],
+    tracking:["where is","track","tracking","parcel kahan","kahan hai","order status","delivery status","scan update","location","hub kahan","rider location","kidhar hai","kaha hai","status kya","meri order","mera order","package status","kaha pohcha","kidr hai"],
+    booking:["book parcel","create awb","new order","pickup request","schedule pickup","how to ship","bulk booking","paste whatsapp","booking kaise","order kaise book","naya order","parcel bhejna","book karna","shipment banana","order create"],
+    codWallet:["cod ","cod?","cod.","payment","wallet","payout","withdraw","invoice","delivery fee","deduction","bank transfer","iban","paisay","paise","rupay","cod kab","payment kab","balance"],
+    deliveryIssues:["delayed","stuck","no update","lost","damaged","wrong status","misroute","hub issue","rider issue","late ho gaya","abhi tak nahi mila","kharab ho gaya","ruk gaya","pending since"],
+    refusalReturn:["refused","reattempt","return parcel","not available","wrong address","not picking","wapis","mangwana","return karna","refuse kar diya","mana kar diya","return chahiye"],
+    riderPickup:["rider kab","pickup pending","rider not came","rider call","pickup address","rider assigned","rider nahi aya","abhi tak nahi aya","banda nahi aya","rider ne call"],
+    printing:["print label","awb label","barcode","qr code","label not printing","printer issue","reprint","label print","print kaise","print nahi ho raha","print awb"],
+    integrations:["shopify","woocommerce","api","webhook","website orders","sync orders","import orders","store connect","integration"],
+    reports:["csv","full report","delivery report","payment report","status report","export","date range","report chahiye"],
+    human:["human","agent","support se","complaint","ticket","escalation","manager","urgent","insan se","banda se","talk to someone"],
+    account:["login issue","password","reset","sub account","team user","permissions","login nahi","account access"],
+    rates:["rate","city rate","zone","cod fee","fuel surcharge","tax on","discount","charges kya","rate kya"],
+    serviceability:["city available","area service","karachi","lahore","islamabad","rawalpindi","out of service area","service hai kya","covered city"],
+    proof:["proof","pod","delivery proof","photo of delivery","signature","call proof"]
+  };
+  var NV_NEXT_STEP={
+    "New booked":"Rider pickup",
+    "Collected by rider":"Arrival at warehouse",
+    "Arrived at warehouse":"Dispatch to transit",
+    "Parcel now in transit":"Arrival at destination hub",
+    "Parcel received at destination":"Out for delivery",
+    "Parcel out for delivery":"Delivery attempt today",
+    "Delivered":"Completed",
+    "Refused":"Awaiting your return or reattempt decision",
+    "Consignee not available":"Reattempt or reschedule",
+    "Reattempt":"Next delivery attempt",
+    "Reassigned":"New rider assignment",
+    "Out of service area":"Likely return to origin",
+    "Ready for return":"Return pickup",
+    "Return in transit":"Arrival at origin",
+    "Return received at origin":"Return closed",
+    "Return out for delivery":"Return delivery to you",
+    "Parcel returned to consignee":"Completed"
+  };
+
+  function localAutopilotFallback(rawMessage){
+    var msg=String(rawMessage||"").trim();
+    var lower=msg.toLowerCase();
+    var ctx=null; try{ ctx=(typeof getClientContext==="function")?getClientContext():null; }catch(e){}
+    var clientName=(ctx&&ctx.clientName)||(typeof state!=="undefined"&&state.client&&state.client.name)||"";
+
+    function has(list){ return list.some(function(k){ return lower.indexOf(k)!==-1; }); }
+    function fmtMoney(v){ try{ return (typeof money==="function")?money(v):("Rs "+Math.round(v||0)); }catch(e){ return String(v); } }
+
+    if(has(NV_KW.abuse)){
+      return { reply:"I'm sorry this has been frustrating \u2014 that's not okay and I want to get it fixed. I can prepare this and open a ticket so a human follows up right away.", actions:[
+        { label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:ctx&&ctx.firstIssueAwb },
+        { label:"Talk to Human", kind:"send", message:"support se baat karni hai" }
+      ] };
+    }
+
+    var isGreeting=!msg || lower==="help" || lower==="start" || /(^|\s)(hi|hello|hey|salam|assalam|aoa|asalam|slam)(\s|$|[!.,])/i.test(lower);
+    if(isGreeting){
+      return { reply:"Hi"+(clientName?" "+clientName:"")+", I'm NovaX Autopilot.\nI can track parcels, handle COD/wallet, start returns, and open tickets.\nAsk me like WhatsApp \u2014 e.g. \"mera parcel kahan hai?\"", actions:[
+        { label:"Track Parcel", kind:"send", message:"track my parcel" },
+        { label:"Book Order", kind:"local", type:"go_booking" },
+        { label:"Talk to Human", kind:"send", message:"support se baat karni hai" }
+      ] };
+    }
+
+    var awb=getAwbFromText(msg);
+    if(!awb && has(NV_KW.tracking)){ try{ awb=(typeof state!=="undefined"&&state.selectedAwb)||null; }catch(e){} }
+    if(awb){
+      var pool=(typeof myParcels==="function")?myParcels():((typeof state!=="undefined"&&state.parcels)||[]);
+      var p=pool.find(function(x){ return String(x.awb||"").toUpperCase()===String(awb).toUpperCase(); });
+      if(p){
+        var next=NV_NEXT_STEP[p.status]||"In progress";
+        return { reply:"AWB "+p.awb+": "+p.status+" ("+(p.city||"")+").\nNext step: "+next+".", actions:[
+          { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:p.awb },
+          { label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:p.awb },
+          { label:"Copy Customer Message", kind:"local", type:"copy_customer_message", awb:p.awb }
+        ] };
+      }
+      return { reply:"I couldn't find "+awb+" under this account. Please confirm the tracking ID, or I can prepare this and open a ticket.", actions:[
+        { label:"Create Ticket", kind:"local", type:"rescue_open_ticket" },
+        { label:"Talk to Human", kind:"send", message:"support se baat karni hai" }
+      ] };
+    }
+
+    if(has(["how many parcel","kitne parcel","kitny parcel","total parcel","parcel count"])){
+      if(ctx) return { reply:"You have "+ctx.totalAllTime+" parcel(s) total \u2014 "+ctx.totalInRange+" in your current range, "+ctx.deliveredCount+" delivered.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
+    }
+    if(has(["any issue","koi issue","masla hai","issues today","problem today"])){
+      if(ctx && ctx.issueCount>0) return { reply:"You have "+ctx.issueCount+" parcel(s) needing attention. First one: "+ctx.firstIssueAwb+".", actions:[
+        { label:"Review Issues", kind:"local", type:"nv_review_issues" },
+        { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:ctx.firstIssueAwb }
+      ] };
+      return { reply:"No open issues right now \u2014 everything looks on track.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
+    }
+
+    if(has(NV_KW.printing)){
+      var unp=ctx?ctx.unprintedCount:0;
+      return unp>0
+        ? { reply:"You have "+unp+" AWB label(s) waiting to print.", actions:[{ label:"Print Labels", kind:"local", type:"go_awb_label" }] }
+        : { reply:"All your AWB labels are already printed \u2014 nothing waiting here.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+    }
+    if(has(NV_KW.codWallet)){
+      var payable=ctx?ctx.payableBalance:0;
+      return { reply:"Your current payable balance is "+fmtMoney(payable)+". Delivered COD moves to your wallet for withdrawal.", actions:[{ label:"Open Wallet", kind:"local", type:"go_wallet" }] };
+    }
+    if(has(NV_KW.booking)){
+      return { reply:"To book: open New Booking, or paste the WhatsApp order text and I'll fill the form for you.", actions:[
+        { label:"Start Booking", kind:"local", type:"go_booking" },
+        { label:"Paste Order", kind:"local", type:"paste_whatsapp_order" }
+      ] };
+    }
+    if(has(NV_KW.refusalReturn)){
+      return { reply:"For a refused or returned parcel I can start a reattempt/return, or open a ticket for a closer look.", actions:[
+        { label:"Review Issues", kind:"local", type:"nv_review_issues" },
+        { label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }
+      ] };
+    }
+    if(has(NV_KW.riderPickup)){
+      return { reply:"I don't have live rider GPS here, but I can prepare this and open a ticket so ops can chase the rider directly.", actions:[
+        { label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }
+      ] };
+    }
+    if(has(NV_KW.deliveryIssues)){
+      return { reply:"Sorry about that. Share the AWB and I'll check its exact status, or I can open a ticket for a closer look.", actions:[
+        { label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }
+      ] };
+    }
+    if(has(NV_KW.integrations)){
+      return { reply:"Shopify, WooCommerce and custom API orders can sync into NovaX automatically \u2014 set this up from the API tab.", actions:[{ label:"Open Integrations", kind:"local", type:"go_integrations" }] };
+    }
+    if(has(NV_KW.reports)){
+      return { reply:"Full reports with CSV export are under Full Report \u2014 filter by date range or status there.", actions:[{ label:"Open Reports", kind:"local", type:"go_reports" }] };
+    }
+    if(has(NV_KW.account)){
+      return { reply:"For login/account access, I can prepare this and open a ticket \u2014 I can't reset passwords from here.", actions:[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }] };
+    }
+    if(has(NV_KW.rates)){
+      return { reply:"Charges depend on city/zone and COD amount \u2014 New Booking shows the exact rate as you fill the form.", actions:[{ label:"Start Booking", kind:"local", type:"go_booking" }] };
+    }
+    if(has(NV_KW.serviceability)){
+      return { reply:"Most major Pakistani cities are covered. Enter the city in New Booking and I'll reflect the rate if it's serviceable.", actions:[{ label:"Start Booking", kind:"local", type:"go_booking" }] };
+    }
+    if(has(NV_KW.proof)){
+      return { reply:"Delivery proof is attached once a parcel is delivered \u2014 check the AWB journey, or I can open a ticket if it's missing.", actions:[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }] };
+    }
+    if(has(NV_KW.human)){
+      return { reply:"I can prepare this and open a ticket so a human teammate follows up shortly.", actions:[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }] };
+    }
+    if(has(NV_KW.tracking)){
+      return { reply:"Share the AWB / tracking ID and I'll pull its exact status, city and next step.", actions:[
+        { label:"Paste Order", kind:"local", type:"paste_whatsapp_order" },
+        { label:"Open AWB Tab", kind:"local", type:"go_awb_label" }
+      ] };
+    }
+
+    return { reply:"I'm not fully sure what you mean yet \u2014 could you add a little more detail (like an AWB number)?", actions:[
+      { label:"Track Parcel", kind:"send", message:"track my parcel" },
+      { label:"Book Order", kind:"local", type:"go_booking" },
+      { label:"Talk to Human", kind:"send", message:"support se baat karni hai" }
+    ] };
+  }
+  window.localAutopilotFallback=localAutopilotFallback;
+
+  /* ===== NovaX Autopilot: Action Engine (safe actions + confirmed risky actions) ===== */
+  var pendingAutopilotConfirm=null;
+  var pendingAutopilotConfirmTimer=null;
+  function clearPendingAutopilotConfirm(){
+    pendingAutopilotConfirm=null;
+    if(pendingAutopilotConfirmTimer){ clearTimeout(pendingAutopilotConfirmTimer); pendingAutopilotConfirmTimer=null; }
+  }
+  function setPendingAutopilotConfirm(action){
+    pendingAutopilotConfirm=action;
+    if(pendingAutopilotConfirmTimer) clearTimeout(pendingAutopilotConfirmTimer);
+    pendingAutopilotConfirmTimer=setTimeout(function(){ pendingAutopilotConfirm=null; },60000);
+  }
+
+  function buildReturnConfirm(awb){
+    return { reply:"I can prepare a return request for "+awb+". Confirm?", actions:[
+      { label:"Confirm Return", kind:"local", type:"confirm_action" },
+      { label:"Cancel", kind:"local", type:"cancel_confirm" }
+    ], needsConfirm:true, confirmAction:{ type:"request_return_awb", awb:awb, resultMsg:"Return request prepared for "+awb+". Sent to operations." } };
+  }
+  function buildReattemptConfirm(awb){
+    return { reply:"I can prepare a reattempt request for "+awb+". Confirm?", actions:[
+      { label:"Confirm Reattempt", kind:"local", type:"confirm_action" },
+      { label:"Cancel", kind:"local", type:"cancel_confirm" }
+    ], needsConfirm:true, confirmAction:{ type:"request_reattempt_awb", awb:awb, resultMsg:"Reattempt request prepared for "+awb+". Sent to operations." } };
+  }
+
+  function executeConfirmedAction(action){
+    if(!action) return;
+    try{
+      if(action.type==="request_return_awb"){
+        if(typeof requestReturnToOrigin==="function"){ requestReturnToOrigin(action.awb); addMsg(action.resultMsg||("Return request prepared for "+action.awb+"."),"b",[{ label:"Open Journey", kind:"local", type:"open_awb", awb:action.awb }]); }
+        else addMsg("I couldn't update this locally \u2014 please use the Return button on the parcel journey, or I can open a ticket.","b",[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:action.awb }]);
+        return;
+      }
+      if(action.type==="request_reattempt_awb"){
+        if(typeof requestRedelivery==="function"){ requestRedelivery(action.awb); addMsg(action.resultMsg||("Reattempt request prepared for "+action.awb+"."),"b",[{ label:"Open Journey", kind:"local", type:"open_awb", awb:action.awb }]); }
+        else addMsg("I couldn't update this locally \u2014 please use the Reattempt button on the parcel journey, or I can open a ticket.","b",[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:action.awb }]);
+        return;
+      }
+      if(action.type==="message_customer_awb"){
+        if(typeof messageCustomer==="function"){ messageCustomer(action.awb); addMsg(action.resultMsg||("Opened a WhatsApp draft for "+action.awb+"."),"b"); }
+        else addMsg("I couldn't open WhatsApp locally \u2014 use Message Customer on the parcel journey.","b");
+        return;
+      }
+      if(action.type==="bulk_print_awbs"){
+        if(typeof printLabels==="function") printLabels(action.awbs||[]);
+        if(typeof showClientTab==="function") showClientTab("awbLabel");
+        addMsg(action.resultMsg||"Opened print preview for the pending labels.","b");
+        return;
+      }
+    }catch(e){
+      console.warn("NovaX Autopilot confirmed action failed",e);
+      addMsg("I couldn't complete that action locally \u2014 please try from the relevant tab, or I can open a ticket.","b",[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:action&&action.awb }]);
+    }
+  }
+
+  function autopilotActionEngine(rawMessage){
+    var msg=String(rawMessage||"").trim();
+    if(!msg) return null;
+    var lower=msg.toLowerCase();
+    function has(list){ return list.some(function(k){ return lower.indexOf(k)!==-1; }); }
+    var ctx=null; try{ ctx=(typeof getClientContext==="function")?getClientContext():null; }catch(e){}
+    var awb=getAwbFromText(msg);
+    var selectedAwb=null; try{ selectedAwb=(typeof state!=="undefined"&&state.selectedAwb)||null; }catch(e){}
+    var targetAwb=awb||(ctx&&ctx.firstIssueAwb)||null;
+    var targetAwbRisky=awb||selectedAwb||null;
+    var isQuestion=/\?|kaise|kyun|why|\bhow\b/i.test(lower);
+
+    if(!isQuestion && (has(["return karna","return karwa","return chahiye","return this","return parcel","request return"]) || (lower.indexOf("return")!==-1 && awb))){
+      if(!targetAwbRisky) return { reply:"Which AWB would you like to return? Please share the tracking ID.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+      return buildReturnConfirm(targetAwbRisky);
+    }
+
+    if(!isQuestion && has(["reattempt","dobara deliver","dubara deliver","dobara bhejo","dubara bhejo"])){
+      if(!targetAwbRisky) return { reply:"Which AWB needs a reattempt? Please share the tracking ID.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+      return buildReattemptConfirm(targetAwbRisky);
+    }
+
+    if(has(["withdraw","payout nikal","paisay nikal","paise nikal"])){
+      var payable=ctx?ctx.payableBalance:0;
+      if(!(payable>0)) return { reply:"There's no payable balance ready to withdraw right now.", actions:[{ label:"Open Wallet", kind:"local", type:"go_wallet" }] };
+      var amtMatch=msg.match(/\b\d{2,7}\b/);
+      var reqAmt=amtMatch?Number(amtMatch[0]):null;
+      var amtForPrefill=(reqAmt && reqAmt>0 && reqAmt<=payable)?reqAmt:null;
+      return { reply:"I can open your Wallet to withdraw"+(amtForPrefill?(" Rs "+amtForPrefill):"")+" \u2014 please confirm the amount and your bank (IBAN) details there before submitting.", actions:[
+        { label:"Open Wallet", kind:"local", type:"open_wallet_withdraw", amount:amtForPrefill }
+      ] };
+    }
+
+    if(has(["mark delivered","mark returned","mark refused","mark as delivered","mark as returned","mark as refused"])){
+      return { reply:"I can't change delivery status directly \u2014 only rider/admin scans update that. I can open a ticket so ops can review it.", actions:[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:targetAwb }] };
+    }
+
+    if(has(["send customer update","message customer","update the customer","customer ko batao","customer ko message"])){
+      if(!targetAwbRisky) return { reply:"Which AWB's customer should I message? Please share the tracking ID.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+      return { reply:"I can open a WhatsApp draft to update the customer for "+targetAwbRisky+". Confirm?", actions:[
+        { label:"Confirm Send", kind:"local", type:"confirm_action" },
+        { label:"Cancel", kind:"local", type:"cancel_confirm" }
+      ], needsConfirm:true, confirmAction:{ type:"message_customer_awb", awb:targetAwbRisky, resultMsg:"Opened a WhatsApp draft for "+targetAwbRisky+"." } };
+    }
+
+    if(has(["open ticket","ticket banao","ticket for","create ticket","raise ticket"])){
+      return { reply:targetAwb?("I can open a ticket draft for "+targetAwb+". Add details and submit when ready."):"I can open a ticket draft. Add the AWB and details, then submit when ready.", actions:[{ label:"Open Ticket", kind:"local", type:"open_ticket_for_awb", awb:targetAwb }] };
+    }
+
+    if(awb && has(["track","open","status of","find","kahan","kaha"])){
+      var pool=(typeof myParcels==="function")?myParcels():((typeof state!=="undefined"&&state.parcels)||[]);
+      var p=pool.find(function(x){ return String(x.awb||"").toUpperCase()===String(awb).toUpperCase(); });
+      if(!p) return { reply:"I couldn't find "+awb+" under this account. Please confirm the tracking ID.", actions:[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }] };
+      return { reply:"Opening "+awb+" journey \u2014 currently "+p.status+".", actions:[{ label:"Open Journey", kind:"local", type:"open_awb", awb:awb }] };
+    }
+
+    if(has(["delayed parcel","problem parcel","issues today","show delayed","koi issue","masla hai","any issue"])){
+      var issueCount=ctx?ctx.issueCount:0;
+      if(issueCount>0) return { reply:"I found "+issueCount+" parcel(s) needing attention. Opening the first one.", actions:[{ label:"Review Issues", kind:"local", type:"nv_review_issues" }] };
+      return { reply:"No delayed or problem parcels right now \u2014 everything looks on track.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
+    }
+
+    if(has(["print label","print awb","print pending","reprint"])){
+      var unprinted=ctx?ctx.unprintedCount:0;
+      if(unprinted<=0) return { reply:"All your AWB labels are already printed \u2014 nothing waiting here.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+      return { reply:"You have "+unprinted+" unprinted AWB label(s).", actions:[
+        { label:"Print Pending AWBs", kind:"local", type:"print_pending_awbs" },
+        { label:"Go to AWB Label", kind:"local", type:"go_awb_label" }
+      ] };
+    }
+
+    if(has(["book order","create booking","book parcel","new order","booking kaise","naya order"])){
+      return { reply:"Opening New Booking for you.", actions:[{ label:"Start Booking", kind:"local", type:"go_booking" }] };
+    }
+
+    if(has(["paste order","paste whatsapp","whatsapp order"])){
+      return { reply:"Opening Paste WhatsApp Order \u2014 paste the message and I'll fill the form.", actions:[{ label:"Paste Order", kind:"local", type:"paste_whatsapp_order" }] };
+    }
+
+    if(has(["bulk booking","bulk book"])){
+      return { reply:"Opening Bulk Booking.", actions:[{ label:"Open Bulk Booking", kind:"local", type:"open_bulk_booking" }] };
+    }
+
+    if(has(["wallet kholo","open wallet","show wallet"])){
+      return { reply:"Opening Wallet.", actions:[{ label:"Open Wallet", kind:"local", type:"go_wallet" }] };
+    }
+
+    if(has(["report dikhao","open report","show report","full report"])){
+      return { reply:"Opening Full Report.", actions:[{ label:"Open Reports", kind:"local", type:"open_reports" }] };
+    }
+
+    if(has(["open payments","show payments","payments dikhao"])){
+      return { reply:"Opening Payments.", actions:[{ label:"Open Payments", kind:"local", type:"open_payments" }] };
+    }
+
+    if(has(["copy customer message","copy message"])){
+      if(!targetAwb) return { reply:"Which AWB's customer message should I copy? Please share the tracking ID.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+      return { reply:"Copying the customer message for "+targetAwb+".", actions:[{ label:"Copy Message", kind:"local", type:"copy_customer_message", awb:targetAwb }] };
+    }
+
+    return null;
+  }
+  window.autopilotActionEngine=autopilotActionEngine;
+
   async function getAuthToken(){
     try{
       if(window.__nvSb && window.__nvSb.auth){
@@ -2969,6 +3439,37 @@
     if(!text) return;
     addMsg(text,"u");
     if(input) input.value="";
+
+    var lowerT=text.toLowerCase();
+    if(pendingAutopilotConfirm){
+      if(/^(yes|confirm|haan|theek hai|ok|okay)\b/.test(lowerT)){
+        var pendingYes=pendingAutopilotConfirm; clearPendingAutopilotConfirm(); executeConfirmedAction(pendingYes); return;
+      }
+      if(/^(no|cancel|nahi)\b/.test(lowerT)){
+        clearPendingAutopilotConfirm(); addMsg("Cancelled. Let me know if you need anything else.","b"); return;
+      }
+      clearPendingAutopilotConfirm();
+    }
+
+    var engineResult=null;
+    try{ engineResult=autopilotActionEngine(text); }catch(e){ console.warn("NovaX Autopilot action engine failed",e); }
+    if(engineResult && engineResult.reply){
+      if(engineResult.needsConfirm && engineResult.confirmAction) setPendingAutopilotConfirm(engineResult.confirmAction);
+      addMsg(engineResult.reply,"b",engineResult.actions);
+      return;
+    }
+
+    var quickAwb=getAwbFromText(text);
+    var quickLower=lowerT;
+    var isQuickGreeting=text.length<40 && /(^|\s)(hi|hello|hey|salam|assalam|aoa|asalam|slam|help|start)(\s|$|[!.,])/i.test(quickLower);
+    var isQuickCount=quickLower.indexOf("how many parcel")!==-1||quickLower.indexOf("kitne parcel")!==-1||quickLower.indexOf("kitny parcel")!==-1;
+    var isQuickIssue=quickLower.indexOf("any issue")!==-1||quickLower.indexOf("koi issue")!==-1||quickLower.indexOf("issues today")!==-1;
+    if(quickAwb || isQuickGreeting || isQuickCount || isQuickIssue){
+      var quick=localAutopilotFallback(text);
+      addMsg(quick.reply,"b",quick.actions);
+      return;
+    }
+
     var loadingEl=addMsg("Checking your account data...","b");
     loadingEl.classList.add("nvauto-loading");
     try{
@@ -2980,12 +3481,18 @@
       });
       var out=null; try{ out=await res.json(); }catch(e){}
       loadingEl.remove();
-      if(!res.ok || !out){ addMsg("Sorry, I couldn't reach the support system just now. Please try again shortly.","b"); return; }
-      addMsg(out.reply||"I'm not sure how to help with that yet.","b",out.actions);
+      if(!res.ok || !out || !out.reply){
+        var fb1=localAutopilotFallback(text);
+        addMsg(fb1.reply,"b",fb1.actions);
+        return;
+      }
+      addMsg(out.reply,"b",out.actions);
       if(out.requireLogin) addMsg("Please log in again to continue, then ask me here.","b");
     }catch(e){
+      console.warn("NovaX Autopilot backend request failed",e);
       loadingEl.remove();
-      addMsg("Sorry, something went wrong reaching NovaX Autopilot. Please try again.","b");
+      var fb2=localAutopilotFallback(text);
+      addMsg(fb2.reply,"b",fb2.actions);
     }
   }
   if(PORTAL==="client" && !localStorage.getItem(INTRO_KEY)){
@@ -3073,7 +3580,7 @@
     }
     if(tab==="awbLabel"){
       if(unprintedCount>0) return { h:"Print labels before pickup.", a:unprintedCount+" AWB label(s) are waiting.", key:"awb_"+unprintedCount, go:"awbLabel" };
-      return { h:"Print before pickup.", a:"Print all New Booked AWBs and attach them to parcels.", key:"awb_default", go:"awbLabel" };
+      return { h:"Labels are clear.", a:"All AWBs are printed. Nothing waiting on this tab.", key:"awb_clear", go:"awbLabel" };
     }
     if(tab==="bulkBooking") return { h:"Upload many orders in one sheet.", a:"Download CSV format, fill it, then upload.", key:"bulk_default", go:"bulkBooking" };
     if(tab==="integrations") return { h:"Connect your store when ready.", a:"WooCommerce and custom API can send orders automatically.", key:"int_default", go:"integrations" };
