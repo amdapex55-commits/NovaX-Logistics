@@ -4203,7 +4203,7 @@
             <div class="client-menu-head">
               <div>
                 <strong>Client Menu</strong>
-                <div class="footer-note" style="margin-top:2px">Apex Fashion workspace</div>
+                <div class="footer-note" style="margin-top:2px" id="clientPortalPreviewWorkspaceName">No client selected</div>
               </div>
               <button class="hamburger-btn" id="clientMenuToggle" aria-label="Open client menu" aria-expanded="true">
                 <span></span><span></span><span></span>
@@ -5182,61 +5182,66 @@
 
             <section class="admin-module" id="admin-finance-wallets">
               <div class="panel">
-                <div class="section-head"><div><h3>Wallet Overview</h3><p>Every rupee in every client wallet: total liability, pending payouts, paid history, and fee revenue -- sourced live from the wallet ledger.</p></div></div>
+                <div class="section-head"><div><h3>Finance Control Room</h3><p>Every client wallet's reconciliation health at a glance, before anything gets paid out.</p></div></div>
+                <div class="grid metrics" id="financeControlRoomCards"></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Wallet Mismatches</h3><p>Any client here has a wallet ledger that doesn't match their wallet balance. Payouts and adjustments are blocked until resolved.</p></div></div>
+                <div class="ops-list" id="walletMismatchBanner"></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Wallet Overview</h3><p>Total liability, pending/paid payouts, and fee revenue across all client wallets.</p></div></div>
                 <div class="grid metrics" id="walletBalanceCards"></div>
               </div>
-
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Suspicious Wallet Alerts</h3><p>Repeated instant withdrawals, full-balance payouts, changed IBANs, and multiple withdrawals in one day.</p></div></div>
+                <div class="section-head"><div><h3>Suspicious Wallet Alerts</h3><p>Repeated instant withdrawals, full-balance payouts, changed IBANs, and same-day multiple withdrawals.</p></div></div>
                 <div class="ops-list" id="walletAlertsList"></div>
               </div>
-
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Request Withdrawal (Admin-Initiated)</h3><p>Start a payout request on behalf of a client, using the same atomic balance check the client portal uses.</p></div></div>
+                <div class="section-head"><div><h3>Request Withdrawal (admin-initiated)</h3><p>Only NovaX admins can start a withdrawal on behalf of a client.</p></div></div>
                 <div class="grid two">
                   <div class="field"><label>Client</label><select id="walletClientSelect"></select></div>
-                  <div class="field"><label>Amount</label><input id="walletAmount" type="number" min="1" placeholder="e.g. 5000"></div>
-                  <div class="field"><label>IBAN</label><input id="walletIban" placeholder="Client bank IBAN"></div>
-                  <div class="field"><label>Payout Speed</label><select id="walletSpeed"><option value="24h">24 hours (0.1% fee)</option><option value="12h">12 hours (0.3% fee)</option><option value="instant">Instant (0.7% fee)</option></select></div>
+                  <div class="field"><label>Amount</label><input id="walletAmount" type="number" min="1"></div>
+                  <div class="field"><label>IBAN</label><input id="walletIban" placeholder="PKxx xxxx xxxx xxxx xxxx xxxx"></div>
+                  <div class="field"><label>Speed</label><select id="walletSpeed"><option value="24h">24 hours (0.1% fee)</option><option value="12h">12 hours (0.3% fee)</option><option value="instant">Instant 2-3 hours (0.7% fee)</option></select></div>
                 </div>
-                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="requestWalletWithdrawal()">Submit Withdrawal Request</button></div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="requestWalletWithdrawal()">Request Withdrawal</button></div>
               </div>
-
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Pending Payout Queue</h3><p>Admin sees withdrawal signals requested by clients: who to pay, IBAN, net amount, fee, speed, and payout status.</p></div></div>
+                <div class="section-head"><div><h3>Pending Payout Queue</h3><p>Each card shows client, net amount, speed, IBAN, wallet reconciliation status, and any risk reasons. The pay button is disabled while locked.</p></div></div>
                 <div class="ops-list" id="walletPayoutQueue"></div>
               </div>
-
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Paid Payout History</h3><p>Settled withdrawals with their bank transaction reference, paid-by staff name, and proof.</p></div></div>
+                <div class="section-head"><div><h3>Paid Payout History</h3><p>Settled withdrawals with bank transaction reference and staff who marked them paid.</p></div></div>
                 <div class="ops-list" id="walletPaidHistory"></div>
               </div>
-
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Wallet Adjustment</h3><p>Manual credit or reversal for the selected client above. Always requires a note and always lands in the wallet ledger -- never a raw balance edit.</p></div></div>
+                <div class="section-head"><div><h3>Wallet Adjustment</h3><p>Manual credit or reversal for the client selected above. Always ledgered, never a raw balance edit. Blocked while that client's wallet is mismatched.</p></div></div>
                 <div class="grid two">
-                  <div class="field"><label>Amount (negative to reverse)</label><input id="walletAdjustAmount" type="number" placeholder="e.g. -500 or 500"></div>
+                  <div class="field"><label>Amount (negative to reverse)</label><input id="walletAdjustAmount" type="number"></div>
                   <div class="field"><label>Note (required)</label><input id="walletAdjustNote" placeholder="Reason for this adjustment"></div>
                 </div>
-                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="submitWalletAdjustment()">Apply Wallet Adjustment</button></div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="submitWalletAdjustment()">Submit Adjustment</button></div>
               </div>
-
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Invoices Pushed To Wallet</h3><p>Invoices that have credited a wallet, and invoices still pending push.</p></div></div>
+                <div class="section-head"><div><h3>Ledger Drilldown</h3><p>For the client selected above: invoice credits, withdrawal reservations, payout fees, payout paid proof, admin adjustments, and expected vs actual balance.</p></div></div>
+                <div class="ops-list" id="walletLedgerDrilldown"></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Invoices Pushed To Wallet</h3><p>Generated invoices only become payable once pushed into a client's wallet.</p></div></div>
                 <div class="ops-list" id="walletInvoiceList"></div>
               </div>
             </section>
 
-            <div id="markPaidModal" style="display:none;position:fixed;inset:0;z-index:9999;align-items:center;justify-content:center;background:rgba(15,18,26,0.6)">
-              <div class="panel" style="max-width:420px;width:92%;background:#12151c;border:1px solid #2a2f3a;border-radius:12px;padding:20px">
-                <div class="section-head"><div><h3>Mark Payout Paid</h3><p>Settlement proof is required. This is saved to the withdrawal record and shown to the client as "Paid with reference".</p></div></div>
-                <p id="markPaidSummary" style="margin:10px 0;font-size:13px;color:#c7ccd6"></p>
+            <div id="markPaidModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center">
+              <div class="panel" style="max-width:420px;width:92%;background:#fff">
+                <div class="section-head"><div><h3>Confirm Payout Paid</h3><p id="markPaidSummary"></p></div></div>
                 <input type="hidden" id="markPaidWithdrawalId">
-                <div class="field"><label>Bank Transaction ID (required)</label><input id="markPaidTxnId" placeholder="e.g. TXN-12345"></div>
-                <div class="field" style="margin-top:8px"><label>Paid By Staff Name (required)</label><input id="markPaidByName" placeholder="e.g. Aisha Khan"></div>
-                <div class="field" style="margin-top:8px"><label>Proof Note or Screenshot URL (optional)</label><input id="markPaidProof" placeholder="Optional note or screenshot link"></div>
-                <div class="inline-actions" style="margin-top:14px;justify-content:flex-end;gap:8px">
-                  <button class="action-btn" style="background:#2a2f3a" onclick="closeMarkPaidModal()">Cancel</button>
+                <div class="field"><label>Bank transaction ID (required)</label><input id="markPaidTxnId" placeholder="e.g. TXN-2024-88213"></div>
+                <div class="field" style="margin-top:10px"><label>Paid by (staff name, required)</label><input id="markPaidByName" placeholder="Your name"></div>
+                <div class="field" style="margin-top:10px"><label>Proof note or URL (optional)</label><input id="markPaidProof" placeholder="Screenshot link or note"></div>
+                <div class="inline-actions" style="margin-top:14px">
+                  <button class="action-btn secondary" onclick="closeMarkPaidModal()">Cancel</button>
                   <button class="action-btn" onclick="confirmMarkWalletWithdrawalPaid()">Confirm Paid</button>
                 </div>
               </div>
@@ -5446,26 +5451,32 @@
       clientDateFrom: "2026-06-01",
       clientDateTo: "2026-06-24",
       lastGeneratedAwb: "N0010001",
+      // NovaX fix (Medium #7): this baseState is dev/offline fallback data
+      // only -- loadAll() always overwrites it with real Supabase rows on a
+      // live session. Renamed away from real-looking brand names ("Apex
+      // Fashion", "Noor Studio", "Hira Boutique") to clearly-marked sample
+      // ids/names so a Supabase outage or stale cache can never surface what
+      // looks like a real client identity in the live admin console.
       client: {
-        id: "CL-0001",
-        name: "Apex Fashion",
+        id: "SAMPLE-OFFLINE",
+        name: "Sample Client (offline demo data - not a real account)",
         walletTopup: 85000,
         shippingDue: 18400,
         premiumTier: "Gold",
         subAccounts: 6
       },
       clients: [
-        { id: "CL-0001", name: "Apex Fashion", owner: "Sara Finance", tier: "Gold", city: "Karachi", walletTopup: 85000, shippingDue: 18400, risk: 18, status: "Active", rate: 240, rateCard: { overnight: 240, additionalKg: 80, detainBase: 520, detainAdditionalKg: 120, overlandBase: 900, overlandAdditionalKg: 45 }, problemsResolved: 18, health: 91 },
-        { id: "CL-0002", name: "Noor Studio", owner: "Ali Ops", tier: "Silver", city: "Islamabad", walletTopup: 52000, shippingDue: 9200, risk: 24, status: "Active", rate: 220, rateCard: { overnight: 220, additionalKg: 75, detainBase: 500, detainAdditionalKg: 110, overlandBase: 860, overlandAdditionalKg: 42 }, problemsResolved: 9, health: 86 },
-        { id: "CL-0003", name: "Hira Boutique", owner: "Mina Support", tier: "Starter", city: "Rawalpindi", walletTopup: 28000, shippingDue: 5100, risk: 36, status: "Watch", rate: 260, rateCard: { overnight: 260, additionalKg: 90, detainBase: 560, detainAdditionalKg: 130, overlandBase: 940, overlandAdditionalKg: 48 }, problemsResolved: 5, health: 73 }
+        { id: "SAMPLE-OFFLINE", name: "Sample Client (offline demo data)", owner: "Sara Finance", tier: "Gold", city: "Karachi", walletTopup: 85000, shippingDue: 18400, risk: 18, status: "Active", rate: 240, rateCard: { overnight: 240, additionalKg: 80, detainBase: 520, detainAdditionalKg: 120, overlandBase: 900, overlandAdditionalKg: 45 }, problemsResolved: 18, health: 91 },
+        { id: "SAMPLE-OFFLINE-2", name: "Sample Client B (offline demo data)", owner: "Ali Ops", tier: "Silver", city: "Islamabad", walletTopup: 52000, shippingDue: 9200, risk: 24, status: "Active", rate: 220, rateCard: { overnight: 220, additionalKg: 75, detainBase: 500, detainAdditionalKg: 110, overlandBase: 860, overlandAdditionalKg: 42 }, problemsResolved: 9, health: 86 },
+        { id: "SAMPLE-OFFLINE-3", name: "Sample Client C (offline demo data)", owner: "Mina Support", tier: "Starter", city: "Rawalpindi", walletTopup: 28000, shippingDue: 5100, risk: 36, status: "Watch", rate: 260, rateCard: { overnight: 260, additionalKg: 90, detainBase: 560, detainAdditionalKg: 130, overlandBase: 940, overlandAdditionalKg: 48 }, problemsResolved: 5, health: 73 }
       ],
       pendingClients: [
         { id: "CL-0004", name: "Urban Cart", owner: "Pending", tier: "Starter", city: "Lahore", rate: 250, rateCard: { overnight: 250, additionalKg: 85, detainBase: 540, detainAdditionalKg: 125, overlandBase: 900, overlandAdditionalKg: 45 }, status: "Pending approval", health: 0, risk: 20, problemsResolved: 0, walletTopup: 0, shippingDue: 0 }
       ],
       users: [
-        { id: "USR-001", name: "Sara Finance", role: "Finance", branch: "Karachi Hub", clientId: "CL-0001", status: "Active" },
-        { id: "USR-002", name: "Ali Ops", role: "Branch Manager", branch: "Islamabad Hub", clientId: "CL-0002", status: "Active" },
-        { id: "USR-003", name: "Mina Support", role: "Client Support", branch: "Lahore Hub", clientId: "CL-0003", status: "Active" }
+        { id: "USR-001", name: "Sara Finance", role: "Finance", branch: "Karachi Hub", clientId: "SAMPLE-OFFLINE", status: "Active" },
+        { id: "USR-002", name: "Ali Ops", role: "Branch Manager", branch: "Islamabad Hub", clientId: "SAMPLE-OFFLINE-2", status: "Active" },
+        { id: "USR-003", name: "Mina Support", role: "Client Support", branch: "Lahore Hub", clientId: "SAMPLE-OFFLINE-3", status: "Active" }
       ],
       staffTickets: [],
       staffActivity: [],
@@ -5483,7 +5494,7 @@
       parcels: [
         {
           awb: "N0010001",
-          clientId: "CL-0001",
+          clientId: "SAMPLE-OFFLINE",
           date: "2026-06-24",
           consignee: "Sana Khan",
           city: "Lahore",
@@ -5505,7 +5516,7 @@
         },
         {
           awb: "N0010002",
-          clientId: "CL-0001",
+          clientId: "SAMPLE-OFFLINE",
           date: "2026-06-23",
           consignee: "M. Ahmed",
           city: "Karachi",
@@ -5527,9 +5538,9 @@
         },
         {
           awb: "N0020001",
-          clientId: "CL-0002",
+          clientId: "SAMPLE-OFFLINE-2",
           date: "2026-06-22",
-          consignee: "Noor Studio",
+          consignee: "Sample Client B",
           city: "Islamabad",
           cod: 4500,
           fee: 220,
@@ -5549,9 +5560,9 @@
         },
         {
           awb: "N0030001",
-          clientId: "CL-0003",
+          clientId: "SAMPLE-OFFLINE-3",
           date: "2026-06-20",
-          consignee: "Hira Boutique",
+          consignee: "Sample Client C",
           city: "Rawalpindi",
           cod: 15800,
           fee: 360,
@@ -5571,7 +5582,7 @@
         },
         {
           awb: "N0010003",
-          clientId: "CL-0001",
+          clientId: "SAMPLE-OFFLINE",
           date: "2026-06-19",
           consignee: "Zeeshan Ali",
           city: "Lahore",
@@ -5606,15 +5617,15 @@
         { id: "EXP-004", name: "Sack and label supplies", amount: 17500, type: "Labels and sacks", owner: "Admin Store", status: "Approved" }
       ],
       paymentLogs: [
-        { id: "PAY-001", clientId: "CL-0001", type: "COD collected", amount: 12400, status: "Rider holding", ref: "N0010002" },
-        { id: "PAY-002", clientId: "CL-0001", type: "Shipping fee deducted", amount: 310, status: "Ledger posted", ref: "N0010002" },
-        { id: "PAY-003", clientId: "CL-0002", type: "Wallet top-up", amount: 52000, status: "Bank verified", ref: "TOPUP-CL2" }
+        { id: "PAY-001", clientId: "SAMPLE-OFFLINE", type: "COD collected", amount: 12400, status: "Rider holding", ref: "N0010002" },
+        { id: "PAY-002", clientId: "SAMPLE-OFFLINE", type: "Shipping fee deducted", amount: 310, status: "Ledger posted", ref: "N0010002" },
+        { id: "PAY-003", clientId: "SAMPLE-OFFLINE-2", type: "Wallet top-up", amount: 52000, status: "Bank verified", ref: "TOPUP-CL2" }
       ],
       invoices: [
-        { id: "INV-0001", clientId: "CL-0001", parcelRefs: ["N0010002"], cod: 12400, charges: 310, payable: 12090, status: "Pending", createdAt: "2026-06-24 10:30", paidAt: "", summary: "1 delivered parcel, rider cash pending collection" }
+        { id: "INV-0001", clientId: "SAMPLE-OFFLINE", parcelRefs: ["N0010002"], cod: 12400, charges: 310, payable: 12090, status: "Pending", createdAt: "2026-06-24 10:30", paidAt: "", summary: "1 delivered parcel, rider cash pending collection" }
       ],
       walletWithdrawals: [
-        { id: "WDR-0001", clientId: "CL-0001", amount: 5000, fee: 5, net: 4995, iban: "PK00 NOVAX DEMO IBAN", speed: "24h", status: "Pending admin payout", createdAt: "2026-06-24 11:20" }
+        { id: "WDR-0001", clientId: "SAMPLE-OFFLINE", amount: 5000, fee: 5, net: 4995, iban: "PK00 NOVAX DEMO IBAN", speed: "24h", status: "Pending admin payout", createdAt: "2026-06-24 11:20" }
       ],
       transit: [
         { id: "SACK-KHI-LHE-44", from: "Karachi Hub", to: "Lahore Hub", expected: 1000, scanned: 998, demanifested: 991, health: 88, status: "Active", type: "parcel sack" },
@@ -5757,12 +5768,16 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
 
+    // NovaX fix (Medium #5, mirrored from client.html): removed the
+    // `|| state.parcels[0]` fallback. If the selected AWB doesn't match a
+    // real parcel, show emptyParcel()'s "No parcel selected" state directly
+    // instead of guessing the first parcel in the list.
     function selectedParcel() {
-      return state.parcels.find(parcel => parcel.awb === state.selectedAwb) || state.parcels[0] || emptyParcel();
+      return state.parcels.find(parcel => parcel.awb === state.selectedAwb) || emptyParcel();
     }
 
     function emptyParcel() {
-      return { awb: "", clientId: state.client.id || "CL-0000", date: new Date().toISOString().slice(0, 10), consignee: "No parcel selected", city: "", cod: 0, fee: 0, status: "New booked", statusAgeHours: 0, stage: 0, totalStages: STATUS_TAGS.length, rider: "", branch: "", risk: 0, updated: "", exception: "", cashReceived: false, phone: "", address: "", service: "COD Standard", weight: "", steps: [] };
+      return { awb: "", clientId: (state.client && state.client.id) || null, date: new Date().toISOString().slice(0, 10), consignee: "No parcel selected", city: "", cod: 0, fee: 0, status: "New booked", statusAgeHours: 0, stage: 0, totalStages: STATUS_TAGS.length, rider: "", branch: "", risk: 0, updated: "", exception: "", cashReceived: false, phone: "", address: "", service: "COD Standard", weight: "", steps: [] };
     }
 
     function inClientDateRange(parcel) {
@@ -5772,8 +5787,12 @@
       return parcelDate >= from && parcelDate <= to;
     }
 
+    // NovaX fix (High #2, mirrored from client.html): never fall back to the
+    // demo/default "CL-0001" id. With no selected client, the correct answer
+    // is an empty list, not another client's parcels.
     function clientScopedParcels() {
-      const clientId = state.client.id || "CL-0001";
+      const clientId = state.client && state.client.id;
+      if (!clientId) return [];
       return state.parcels.filter(p => p.clientId === clientId && inClientDateRange(p));
     }
 
@@ -5791,8 +5810,17 @@
       return { parcels, delivered, total: parcels.length, codCollected, deliveryCharges, payable, avgProgress, risk };
     }
 
+    // NovaX fix (Medium #4, mirrored from client.html): clientById() must
+    // never fall back to state.clients[0]. That silently attached the first
+    // client's name/rate card to AWB labels, invoices, reports, or wallet
+    // views whenever the real client id didn't match. Return a clearly
+    // labeled "unknown client" placeholder instead of guessing.
     function clientById(id) {
-      return state.clients.find(client => client.id === id) || state.clients[0] || { id: "CL-0000", name: "New Merchant Workspace", city: "", rate: 250, walletBalance: 0, status: "Draft" };
+      if (!id) return { id: null, name: "Unknown client", city: "", rate: 0, walletBalance: 0, status: "" };
+      const found = state.clients.find(client => client.id === id);
+      if (found) return found;
+      if (state.client && state.client.id === id) return state.client;
+      return { id: null, name: "Unknown client", city: "", rate: 0, walletBalance: 0, status: "" };
     }
 
     function clientCode(id) {
@@ -6023,16 +6051,21 @@
         log.createdAt = log.createdAt || `2026-06-24 09:${String(index + 10).padStart(2, "0")}`;
         log.type = log.type === "parcel sack" ? "parcel manifest" : log.type;
       });
-      state.activeProcessingAwb = state.activeProcessingAwb || state.parcels[0]?.awb || "";
+      // NovaX fix (Best Fix Rule): never default the active processing AWB
+      // to the first parcel in the list -- leave unset until admin picks one.
+      state.activeProcessingAwb = state.activeProcessingAwb || "";
       state.processingBatchAwbs = Array.isArray(state.processingBatchAwbs) ? state.processingBatchAwbs : [];
       state.manifestDraftAwbs = Array.isArray(state.manifestDraftAwbs) ? state.manifestDraftAwbs : [];
       state.demanifestScanAwbs = Array.isArray(state.demanifestScanAwbs) ? state.demanifestScanAwbs : [];
       state.activeDemanifestId = state.activeDemanifestId || state.transit.find(t => t.status !== "Complete")?.id || "";
       state.pendingProcessingStatus = state.pendingProcessingStatus || "";
       state.walletWithdrawals = Array.isArray(state.walletWithdrawals) ? state.walletWithdrawals : [];
-      state.activeInvoiceClient = state.activeInvoiceClient || state.clients[0]?.id || "";
+      // NovaX fix (Medium #8): never default the active invoice/wallet client
+      // to the first client in the list -- leave unset until admin explicitly
+      // selects one, so bookings/logs never attach to a guessed client.
+      state.activeInvoiceClient = state.activeInvoiceClient || "";
       state.invoiceDraftRefs = Array.isArray(state.invoiceDraftRefs) ? state.invoiceDraftRefs : [];
-      state.activeWalletClient = state.activeWalletClient || state.clients[0]?.id || "";
+      state.activeWalletClient = state.activeWalletClient || "";
       state.clients.forEach(client => {
         client.walletBalance = Number(client.walletBalance || 0);
         client.withdrawnTotal = Number(client.withdrawnTotal || 0);
@@ -6270,8 +6303,12 @@
       return state.parcels.filter(p => p.clientId === clientId && isDeliveredLedgerParcel(p) && !invoicedRefs.has(p.awb));
     }
 
+    // NovaX fix (Medium #8): never default an invoice-drafting action to the
+    // first client in the list. With no client explicitly selected in the
+    // Invoices tab, there is nothing to draft against.
     function selectedInvoiceParcels() {
-      const clientId = state.activeInvoiceClient || state.clients[0]?.id || "";
+      const clientId = state.activeInvoiceClient || "";
+      if (!clientId) return [];
       const candidates = clientInvoiceParcels(clientId);
       const selected = new Set(state.invoiceDraftRefs || []);
       return candidates.filter(parcel => selected.has(parcel.awb));
@@ -6343,6 +6380,69 @@
         });
       });
       return alerts;
+    }
+
+    function computeWalletReconciliation(clientId) {
+      // NovaX new (Finance Control Room v2, item 2): expected balance is
+      // derived purely from wallet_ledger rows that affect balance -- the
+      // same ledger the client sees. actual balance is the live
+      // clients.wallet_balance column. Anything other than a rounding-level
+      // gap (< Rs 1) means the ledger and the balance have drifted apart.
+      const client = clientById(clientId);
+      const expectedRaw = (state.walletLedger || []).filter(row => row.clientId === clientId && row.affectsBalance).reduce((sum, row) => sum + Number(row.amount || 0), 0);
+      const expected = Math.max(0, Math.round(expectedRaw * 100) / 100);
+      const actual = Number((client && client.walletBalance) || 0);
+      const difference = Math.round((actual - expected) * 100) / 100;
+      return { clientId, expected, actual, difference, mismatch: Math.abs(difference) >= 1 };
+    }
+
+    function hasUnresolvedFinanceTicket(clientId) {
+      // NovaX new (Finance Control Room v2, item 4): a ticket counts as
+      // "finance" if it was routed to the Finance team or its text mentions
+      // wallet/payout/withdrawal/invoice/payment -- there's no strict
+      // department field on every ticket, so this keyword match avoids
+      // silently missing real finance tickets.
+      const financeWords = /finance|wallet|payout|withdraw|invoice|payment/i;
+      return (state.tickets || []).some(ticket => ticket.clientId === clientId && ticket.status !== "Resolved" &&
+        (financeWords.test(ticket.suggestedTeam || "") || financeWords.test(ticket.title || "") || financeWords.test(ticket.message || "") || financeWords.test(ticket.handoffReason || "")));
+    }
+
+    function computePayoutRiskLock(withdrawal) {
+      // NovaX new (Finance Control Room v2, item 4): every reason a pending
+      // payout should NOT be paid yet, all computed from data already in
+      // state -- no new tables needed. Returns every reason that applies,
+      // not just the first, so admins see the full picture.
+      const reasons = [];
+      const client = clientById(withdrawal.clientId);
+      const recon = computeWalletReconciliation(withdrawal.clientId);
+      if (recon.mismatch) reasons.push(`Wallet ledger mismatch (${money(recon.difference)})`);
+      if (withdrawal.status === "Paid" && !withdrawal.paidTxnId) reasons.push("Payout proof missing");
+      if (Number(withdrawal.balanceBefore) > 0 && Number(withdrawal.amount) === Number(withdrawal.balanceBefore) && Number((client && client.risk) || 0) >= 50) {
+        reasons.push("Full-balance payout with high issue rate");
+      }
+      const siblingRows = (state.walletWithdrawals || []).filter(item => item.clientId === withdrawal.clientId).slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+      const myIndex = siblingRows.findIndex(item => item.id === withdrawal.id);
+      const previous = myIndex > 0 ? siblingRows[myIndex - 1] : null;
+      if (previous && previous.iban && withdrawal.iban && previous.iban !== withdrawal.iban) reasons.push("IBAN changed recently");
+      const withdrawalTime = new Date(String(withdrawal.createdAt).replace(" ", "T")).getTime();
+      const instantNearbyCount = siblingRows.filter(item => item.speed === "instant" && Math.abs(new Date(String(item.createdAt).replace(" ", "T")).getTime() - withdrawalTime) <= 24 * 3600 * 1000).length;
+      if (withdrawal.speed === "instant" && instantNearbyCount >= 2) reasons.push("2+ instant withdrawals in 24 hours");
+      if (hasUnresolvedFinanceTicket(withdrawal.clientId)) reasons.push("Unresolved finance ticket");
+      return { locked: reasons.length > 0, reasons };
+    }
+
+    function computeClientFinanceStatus(clientId) {
+      // NovaX new (Finance Control Room v2, item 1): Clean = nothing wrong.
+      // Needs review = a soft risk signal on a pending payout but the
+      // ledger math is correct. Mismatch = the ledger math itself is wrong
+      // but nothing is currently waiting to be paid. Locked = the ledger
+      // math is wrong AND it is actively blocking a real pending payout.
+      const recon = computeWalletReconciliation(clientId);
+      const pendingForClient = (state.walletWithdrawals || []).filter(item => item.clientId === clientId && item.status === "Pending admin payout");
+      if (recon.mismatch && pendingForClient.length) return "Locked";
+      if (recon.mismatch) return "Mismatch";
+      const risky = pendingForClient.some(item => computePayoutRiskLock(item).locked);
+      return risky ? "Needs review" : "Clean";
     }
 
     function nextId(prefix, items) {
@@ -6612,7 +6712,8 @@
     }
 
     function renderJourney() {
-      const p = state.parcels.find(parcel => parcel.awb === state.selectedAwb) || state.parcels[0] || emptyParcel();
+      // NovaX fix (Medium #5): never fall back to the first parcel in the list.
+      const p = state.parcels.find(parcel => parcel.awb === state.selectedAwb) || emptyParcel();
       document.getElementById("selectedParcelText").textContent = `${p.awb} for ${p.consignee}. Current status: ${p.status}.`;
       const allSteps = STATUS_TAGS;
       document.getElementById("clientJourney").innerHTML = allSteps.map((step, index) => {
@@ -6857,7 +6958,8 @@
       `).join("");
 
       document.getElementById("clientPaymentHistory").innerHTML = state.paymentLogs
-        .filter(log => log.clientId === (state.client.id || "CL-0001"))
+        // NovaX fix (High #2): never fall back to the demo/default "CL-0001" id.
+        .filter(log => log.clientId === (state.client && state.client.id))
         .map(log => `
           <div class="log-item">
             <strong>${log.id}</strong>
@@ -6867,7 +6969,8 @@
         `).join("") || `<div class="ops-card"><strong>No payment history</strong><p>Payment history will appear after COD or payout activity.</p></div>`;
 
       document.getElementById("clientInvoiceList").innerHTML = state.invoices
-        .filter(invoice => invoice.clientId === (state.client.id || "CL-0001"))
+        // NovaX fix (High #2): never fall back to the demo/default "CL-0001" id.
+        .filter(invoice => invoice.clientId === (state.client && state.client.id))
         .map(invoice => `
           <div class="invoice-card">
             <div class="ops-card-head">
@@ -6920,7 +7023,8 @@
     }
 
     function renderAi() {
-      const p = state.parcels.find(parcel => parcel.awb === state.selectedAwb) || state.parcels[0] || emptyParcel();
+      // NovaX fix (Medium #5): never fall back to the first parcel in the list.
+      const p = state.parcels.find(parcel => parcel.awb === state.selectedAwb) || emptyParcel();
       if (!p.awb) {
         document.getElementById("clientAi").innerHTML = `<div class="bubble ai">AI: No parcel data exists yet. Book or import the first real parcel and I will answer from live portal data only.</div>`;
         return;
@@ -7483,7 +7587,8 @@
       const invoiceClientSelect = document.getElementById("invoiceClientSelect");
       if (invoiceClientSelect) {
         invoiceClientSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${shortClientCode(client)} | ${client.name}</option>`).join("");
-        if (!state.activeInvoiceClient || !state.clients.some(client => client.id === state.activeInvoiceClient)) state.activeInvoiceClient = state.clients[0]?.id || "";
+        // NovaX fix (Medium #8): never default back to the first client.
+        if (!state.activeInvoiceClient || !state.clients.some(client => client.id === state.activeInvoiceClient)) state.activeInvoiceClient = "";
         invoiceClientSelect.value = state.activeInvoiceClient;
       }
       const invoiceCandidates = clientInvoiceParcels(state.activeInvoiceClient);
@@ -7714,7 +7819,8 @@
         `;
       }).join("");
 
-      const p = state.parcels.find(parcel => parcel.awb === state.selectedAwb) || state.parcels[0] || emptyParcel();
+      // NovaX fix (Medium #5): never fall back to the first parcel in the list.
+      const p = state.parcels.find(parcel => parcel.awb === state.selectedAwb) || emptyParcel();
       document.getElementById("awbPreview").innerHTML = `
         <code>${p.awb}</code>
         <strong>${p.city} | COD ${money(p.cod)}</strong>
@@ -7966,7 +8072,9 @@
     }
 
     function renderFinanceWallets() {
-      const activeClientId = state.activeWalletClient || state.clients[0]?.id || "";
+      // NovaX fix (Medium #8): never default the active wallet client to the
+      // first client in the list.
+      const activeClientId = state.activeWalletClient || "";
       const activeClient = clientById(activeClientId);
       const walletSelect = document.getElementById("walletClientSelect");
       if (walletSelect) {
@@ -7985,6 +8093,16 @@
       // card above.
       const fastFeeRevenue = state.walletWithdrawals.filter(item => item.speed === "instant" || item.speed === "12h").reduce((sum, item) => sum + Number(item.fee || 0), 0);
       const walletAlerts = computeWalletAlerts(state.walletWithdrawals, state.clients);
+      // NovaX new (Finance Control Room v2): reconciliation + risk lock are
+      // computed once per render and reused by the control room cards,
+      // payout queue, mismatch banner, and ledger drilldown below so every
+      // panel agrees with the same numbers.
+      const reconciliations = state.clients.map(client => computeWalletReconciliation(client.id));
+      const mismatchedReconciliations = reconciliations.filter(row => row.mismatch);
+      const cleanWalletsCount = state.clients.length - mismatchedReconciliations.length;
+      const withdrawalsWithLock = pendingWithdrawals.map(item => ({ item, lock: computePayoutRiskLock(item) }));
+      const lockedPayoutsCount = withdrawalsWithLock.filter(row => row.lock.locked).length;
+      const missingProofCount = state.walletWithdrawals.filter(item => item.status === "Paid" && !item.paidTxnId).length;
       ["financeGroupWalletBadge", "walletsSubtabBadge"].forEach(badgeId => {
         const badge = document.getElementById(badgeId);
         if (!badge) return;
@@ -8003,6 +8121,33 @@
           moneyBox("Withdraw fee revenue", money(feeRevenue), "all speeds"),
           moneyBox("Fast payout fee revenue", money(fastFeeRevenue), "12h + instant only")
         ].join("");
+      }
+
+      const controlRoomCards = document.getElementById("financeControlRoomCards");
+      if (controlRoomCards) {
+        controlRoomCards.innerHTML = [
+          moneyBox("Clean wallets", String(cleanWalletsCount), `of ${state.clients.length} clients`),
+          moneyBox("Mismatched wallets", String(mismatchedReconciliations.length), mismatchedReconciliations.length ? "needs reconciliation" : "none right now"),
+          moneyBox("Pending payouts", String(pendingWithdrawals.length), `${money(pendingWithdrawals.reduce((sum, item) => sum + Number(item.net || 0), 0))} due`),
+          moneyBox("Locked payouts", String(lockedPayoutsCount), lockedPayoutsCount ? "cannot be paid yet" : "none locked"),
+          moneyBox("Fast payout fee revenue", money(fastFeeRevenue), "12h + instant only"),
+          moneyBox("Payouts missing proof", String(missingProofCount), missingProofCount ? "audit these" : "all settled payouts have proof")
+        ].join("");
+      }
+
+      const mismatchBanner = document.getElementById("walletMismatchBanner");
+      if (mismatchBanner) {
+        mismatchBanner.innerHTML = mismatchedReconciliations.length
+          ? mismatchedReconciliations.map(row => {
+              const client = clientById(row.clientId);
+              return `<div class="ops-card alert-row">
+                <div class="ops-card-head"><strong>${(client && client.name) || row.clientId}</strong><span class="chip bad">Wallet mismatch</span></div>
+                <p>Ledger expects ${money(row.expected)} but the wallet balance is ${money(row.actual)} -- a difference of ${money(row.difference)}.</p>
+                <div class="footer-note">Mark Payout Paid and Wallet Adjustment are blocked for this client until this is resolved.</div>
+                <button class="action-btn" style="margin-top:10px" onclick="reviewClientLedger('${row.clientId}')">Run reconciliation / review ledger</button>
+              </div>`;
+            }).join("")
+          : `<div class="ops-card"><strong>No wallet mismatches</strong><p>Every client's wallet ledger matches their wallet balance.</p></div>`;
       }
 
       const alertsList = document.getElementById("walletAlertsList");
@@ -8027,13 +8172,17 @@
 
       const payoutQueue = document.getElementById("walletPayoutQueue");
       if (payoutQueue) {
-        payoutQueue.innerHTML = pendingWithdrawals.map(item => {
+        payoutQueue.innerHTML = withdrawalsWithLock.map(({ item, lock }) => {
           const client = clientById(item.clientId);
-          return `<div class="ops-card alert-row">
-            <div class="ops-card-head"><strong>${item.id} | ${client.name}</strong><span class="chip warn">${item.status}</span></div>
+          const recon = reconciliations.find(row => row.clientId === item.clientId) || computeWalletReconciliation(item.clientId);
+          const statusLabel = recon.mismatch ? "Locked" : (lock.locked ? "Needs review" : "Clean");
+          const statusChipClass = recon.mismatch ? "bad" : (lock.locked ? "warn" : "good");
+          return `<div class="ops-card ${lock.locked ? "alert-row" : ""}">
+            <div class="ops-card-head"><strong>${item.id} | ${client.name}</strong><span class="chip ${statusChipClass}">${statusLabel}</span></div>
             <p>Pay ${money(item.net)} to IBAN ${item.iban}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed)}).</p>
-            <div class="footer-note">Created ${item.createdAt}. Admin must verify bank transfer.</div>
-            <button class="action-btn" style="margin-top:10px" onclick="markWalletWithdrawalPaid('${item.id}')">Mark Payout Paid</button>
+            <div class="footer-note">Created ${item.createdAt}. Wallet reconciliation: ${recon.mismatch ? `mismatch of ${money(recon.difference)}` : "clean"}.</div>
+            ${lock.reasons.length ? `<div class="footer-note" style="color:#b42318">Risk reasons: ${lock.reasons.join("; ")}</div>` : ""}
+            <button class="action-btn" style="margin-top:10px" ${lock.locked ? "disabled title=\"Resolve the risk reasons above before paying out\"" : ""} onclick="markWalletWithdrawalPaid('${item.id}')">Mark Payout Paid</button>
           </div>`;
         }).join("") || `<div class="ops-card"><strong>No pending payouts</strong><p>Withdrawal requests will appear here with IBAN and net payable until they're marked paid.</p></div>`;
       }
@@ -8048,6 +8197,30 @@
             <div class="footer-note">${item.paidTxnId ? `Paid with reference ${item.paidTxnId}` : "Paid"}${item.paidBy ? ` by ${item.paidBy}` : ""}${item.paidAt ? ` on ${item.paidAt}` : ""}.${item.paidProof ? ` Proof: ${item.paidProof}` : ""}</div>
           </div>`;
         }).join("") || `<div class="ops-card"><strong>No paid payouts yet</strong><p>Settled withdrawals will show their bank transaction reference and paid-by staff name here.</p></div>`;
+      }
+
+      const ledgerDrilldown = document.getElementById("walletLedgerDrilldown");
+      if (ledgerDrilldown) {
+        const activeRecon = reconciliations.find(row => row.clientId === activeClientId) || computeWalletReconciliation(activeClientId);
+        const rows = (state.walletLedger || []).filter(row => row.clientId === activeClientId).slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+        const groups = {
+          invoice_credit: { label: "Invoice credits", rows: [] },
+          withdrawal_requested: { label: "Withdrawal reservations", rows: [] },
+          payout_fee: { label: "Payout fees", rows: [] },
+          payout_paid: { label: "Payout paid (with proof)", rows: [] },
+          admin_adjustment: { label: "Admin adjustments", rows: [] }
+        };
+        rows.forEach(row => { if (groups[row.entryType]) groups[row.entryType].rows.push(row); });
+        const groupHtml = Object.keys(groups).map(key => {
+          const group = groups[key];
+          if (!group.rows.length) return `<div class="ops-card"><strong>${group.label}</strong><p>No entries yet.</p></div>`;
+          const items = group.rows.map(row => `<div class="footer-note">${row.createdAt} | ${row.note || row.referenceCode || row.entryType} | ${money(row.amount)}${row.referenceCode ? ` | ref ${row.referenceCode}` : ""}</div>`).join("");
+          return `<div class="ops-card"><strong>${group.label} (${group.rows.length})</strong>${items}</div>`;
+        }).join("");
+        ledgerDrilldown.innerHTML = `<div class="ops-card ${activeRecon.mismatch ? "alert-row" : ""}">
+            <div class="ops-card-head"><strong>${activeClient.name}</strong><span class="chip ${activeRecon.mismatch ? "bad" : "good"}">${computeClientFinanceStatus(activeClientId)}</span></div>
+            <p>Expected balance ${money(activeRecon.expected)} vs actual wallet balance ${money(activeRecon.actual)}${activeRecon.mismatch ? ` -- difference ${money(activeRecon.difference)}` : " -- matches"}.</p>
+          </div>` + groupHtml;
       }
 
       const summaryCards = document.getElementById("financeSummaryCards");
@@ -8543,9 +8716,14 @@
       if(!conn||!conn.connected){ toast("Save the connection for this client first."); return; }
       adminSyncStoreFor(platform,clientId);
     }
+    // NovaX fix (Medium #8): bookParcel() must never default to the demo
+    // "CL-0001" id. If no client is explicitly selected (overrides.clientId)
+    // or actively open (state.client), stop and show an error instead of
+    // attaching the booking to a guessed client.
     function bookParcel(overrides = {}) {
+      const clientId = overrides.clientId || (state.client && state.client.id);
+      if (!clientId) { toast("Select a client before booking a parcel.", "error"); return null; }
       const codAmount = (overrides.cod !== undefined && overrides.cod !== null) ? overrides.cod : 3500 + Math.round(Math.random() * 11000);
-      const clientId = overrides.clientId || state.client.id || "CL-0001";
       const client = clientById(clientId);
       const awb = nextAwbForClient(clientId);
       const bookedCity = overrides.city || ["Lahore", "Karachi", "Islamabad", "Rawalpindi"][Math.floor(Math.random() * 4)];
@@ -8929,18 +9107,28 @@
     function markWalletWithdrawalPaid(id) {
       const withdrawal = state.walletWithdrawals.find(item => item.id === id);
       if (!withdrawal || withdrawal.status === "Paid") return;
-      // NovaX new (Wallet Ledger v1, item 4): payout settlement proof is now
-      // required before a payout can be marked paid. Instead of calling the
-      // RPC directly, this opens a small proof-capture modal; the actual RPC
-      // call happens in confirmMarkWalletWithdrawalPaid() below once the
-      // admin has entered a bank transaction ID and their name.
-      const client = clientById(withdrawal.clientId);
+      // NovaX new (Finance Control Room v2, item 3/4): a locked payout
+      // (wallet mismatch or any other risk-lock reason) cannot be marked
+      // paid from the UI at all -- the modal never even opens.
+      const lock = computePayoutRiskLock(withdrawal);
+      if (lock.locked) {
+        toast(`${id} is locked: ${lock.reasons.join("; ")}`, "error");
+        return;
+      }
+      // NovaX fix (Wallet Ledger v1, item 4): marking a payout paid now
+      // requires settlement proof -- a bank transaction ID and the staff
+      // member's name are mandatory, with an optional proof note/URL. This
+      // opens a small modal instead of calling the RPC immediately; the RPC
+      // itself also rejects the call server-side if proof is missing, so
+      // this modal is a UX convenience, not the only enforcement point.
+      const modal = document.getElementById("markPaidModal");
+      if (!modal) return;
       document.getElementById("markPaidWithdrawalId").value = id;
-      document.getElementById("markPaidSummary").textContent = `${id} | ${client.name} | Pay ${money(withdrawal.net)} to IBAN ${withdrawal.iban} (${walletSpeedLabel(withdrawal.speed)}).`;
+      document.getElementById("markPaidSummary").textContent = `${id}: pay ${money(withdrawal.net)} to IBAN ${withdrawal.iban}.`;
       document.getElementById("markPaidTxnId").value = "";
       document.getElementById("markPaidByName").value = "";
       document.getElementById("markPaidProof").value = "";
-      document.getElementById("markPaidModal").style.display = "flex";
+      modal.style.display = "flex";
     }
 
     function closeMarkPaidModal() {
@@ -8948,15 +9136,26 @@
       if (modal) modal.style.display = "none";
     }
 
+    function reviewClientLedger(clientId) {
+      // NovaX new (Finance Control Room v2, item 3): jumps the admin to the
+      // ledger drilldown for the affected client so "Run reconciliation /
+      // review ledger" actually does something instead of just being a
+      // label.
+      state.activeWalletClient = clientId;
+      renderFinanceWallets();
+      const drilldown = document.getElementById("walletLedgerDrilldown");
+      if (drilldown && drilldown.scrollIntoView) drilldown.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
     function confirmMarkWalletWithdrawalPaid() {
       const id = document.getElementById("markPaidWithdrawalId").value;
       const withdrawal = state.walletWithdrawals.find(item => item.id === id);
-      if (!withdrawal || withdrawal.status === "Paid") { closeMarkPaidModal(); return; }
       const txnId = document.getElementById("markPaidTxnId").value.trim();
       const paidBy = document.getElementById("markPaidByName").value.trim();
       const proof = document.getElementById("markPaidProof").value.trim();
+      if (!withdrawal || withdrawal.status === "Paid") { closeMarkPaidModal(); return; }
       if (!txnId || !paidBy) {
-        toast("Bank transaction ID and paid-by staff name are mandatory.");
+        toast("Bank transaction ID and paid-by staff name are both required.", "error");
         return;
       }
       // NovaX fix: this used to just set withdrawal.status = "Paid" locally
@@ -8965,52 +9164,52 @@
       // client's own portal) would still show it as pending, and the wallet
       // ledger could silently drift out of sync. Marking a payout paid must
       // now go through the atomic admin_mark_withdrawal_paid RPC, which is
-      // the only thing allowed to flip a withdrawal to "Paid" -- and it now
-      // requires settlement proof (txn id + staff name + optional proof note
-      // or screenshot URL) as part of Wallet Ledger v1. It does not touch
-      // wallet_balance again -- that amount was already reserved when the
-      // client requested the withdrawal.
+      // the only thing allowed to flip a withdrawal to "Paid". It does not
+      // touch wallet_balance again -- that amount was already reserved when
+      // the client requested the withdrawal. Proof is required by the RPC
+      // itself, not just this modal.
       if (!(window.__nvSb && withdrawal._uuid)) {
         toast("Cloud connection not ready yet, please try again in a moment.", "error");
         return;
       }
       window.__nvSb.rpc("admin_mark_withdrawal_paid", { p_withdrawal_id: withdrawal._uuid, p_txn_id: txnId, p_paid_by: paidBy, p_proof: proof || null }).then(r => {
         if (r && r.error) { toast(`Could not mark ${id} paid: ${r.error.message}`, "error"); return; }
-        if (typeof loadAll === "function") loadAll();
         closeMarkPaidModal();
+        if (typeof loadAll === "function") loadAll();
         toast(`${id} marked paid with reference ${txnId}.`);
       }).catch(e => toast(`Could not mark ${id} paid: ${(e && e.message) || e}`, "error"));
     }
 
     function submitWalletAdjustment() {
-      // NovaX new (Wallet Ledger v1, item 3/5): manual admin credits/reversals
-      // now go through admin_wallet_adjustment instead of a raw wallet_balance
-      // UPDATE, so every adjustment is proof-noted and lands in the ledger.
+      // NovaX new (Wallet Ledger v1, item 2/5): manual admin credit/reversal
+      // now always goes through admin_wallet_adjustment, which writes a
+      // wallet_ledger row -- never a raw wallet_balance UPDATE. This is the
+      // proper replacement for any future ad-hoc SQL reconciliation.
       const clientId = document.getElementById("walletClientSelect").value;
       const client = clientById(clientId);
-      const amount = Number(document.getElementById("walletAdjustAmount").value);
-      const note = document.getElementById("walletAdjustNote").value.trim();
-      if (!client) {
-        toast("Select a client first.");
+      // NovaX new (Finance Control Room v2, item 3): wallet adjustments are
+      // blocked for any client whose ledger does not reconcile with their
+      // wallet balance -- fix the mismatch first, then adjust.
+      const adjustRecon = computeWalletReconciliation(clientId);
+      if (adjustRecon.mismatch) {
+        toast(`${(client && client.name) || clientId}'s wallet ledger does not match their balance (difference ${money(adjustRecon.difference)}). Review the ledger before adjusting.`, "error");
         return;
       }
-      if (!amount) {
-        toast("Adjustment amount must be non-zero. Use a negative number to reverse a credit.");
-        return;
-      }
-      if (!note) {
-        toast("A note explaining the adjustment is mandatory.");
-        return;
-      }
-      if (!(window.__nvSb && client._uuid)) {
+      const amountEl = document.getElementById("walletAdjustAmount");
+      const noteEl = document.getElementById("walletAdjustNote");
+      const amount = Number(amountEl && amountEl.value);
+      const note = (noteEl && noteEl.value || "").trim();
+      if (!amount) { toast("Enter a non-zero adjustment amount (negative to reverse).", "error"); return; }
+      if (!note) { toast("A note explaining the adjustment is required.", "error"); return; }
+      if (!(window.__nvSb && client && client._uuid)) {
         toast("Cloud connection not ready yet, please try again in a moment.", "error");
         return;
       }
       window.__nvSb.rpc("admin_wallet_adjustment", { p_client_id: client._uuid, p_amount: amount, p_note: note }).then(r => {
-        if (r && r.error) { toast(`Adjustment failed: ${r.error.message}`, "error"); return; }
+        if (r && r.error) { toast(`Adjustment rejected: ${r.error.message}`, "error"); return; }
+        if (amountEl) amountEl.value = "";
+        if (noteEl) noteEl.value = "";
         if (typeof loadAll === "function") loadAll();
-        document.getElementById("walletAdjustAmount").value = "";
-        document.getElementById("walletAdjustNote").value = "";
         toast(`${client.name} wallet adjusted by ${money(amount)}.`);
       }).catch(e => toast(`Adjustment failed: ${(e && e.message) || e}`, "error"));
     }
@@ -9039,9 +9238,13 @@
         loggedBy,
         status: "Pending"
       });
+      // NovaX fix (Medium #8): operating expenses are branch/company-level,
+      // not client-level, so they must never be tagged with a guessed client
+      // id. Only attach a clientId when a client is genuinely active;
+      // otherwise leave it unset rather than defaulting to "CL-0001".
       state.paymentLogs.unshift({
         id: nextId("PAY", state.paymentLogs),
-        clientId: state.client.id || "CL-0001",
+        clientId: (state.client && state.client.id) || null,
         type: "Operating expense logged",
         amount,
         status: "Pending approval",
@@ -9092,7 +9295,9 @@
           role,
           accessSide,
           branch,
-          clientId: (state.clients[0] && state.clients[0].id) || "CL-0000",
+          // NovaX fix (Medium #8): never default a new staff user's clientId
+          // to the first client in the list.
+          clientId: null,
           permissions,
           status: "Active",
           staffTab: wantsStaff,
@@ -9160,7 +9365,10 @@
           role: "Rider",
           accessSide: "Rider App",
           branch: rider.branch,
-          clientId: state.clients[0]?.id || "CL-0001",
+          // NovaX fix (Medium #8): riders are branch staff, not tied to a
+          // single client -- never default their login row to the first
+          // client in the list or the demo "CL-0001" id.
+          clientId: null,
           riderId: rider.id,
           permissions: ["rider-route", "scan", "delivery-proof", "cash-submit"],
           status: "Active"
@@ -9793,7 +10001,9 @@
 
     function runAdminAction() {
       const action = document.getElementById("adminAction").value;
-      const target = state.parcels.find(p => p.awb === state.selectedAwb) || state.parcels[0];
+      // NovaX fix (Medium #5): never fall back to the first parcel in the list.
+      const target = state.parcels.find(p => p.awb === state.selectedAwb);
+      if (!target) { toast("Select a parcel before running an admin action.", "error"); return; }
       if (action === "advance") {
         const nextSteps = ["Collected by rider", "Arrived at warehouse", "Parcel now in transit", "Parcel received at destination", "Parcel out for delivery", "Delivered"];
         const currentIndex = Math.max(-1, nextSteps.indexOf(target.status));
@@ -9890,7 +10100,9 @@
     }
 
     function riderScan() {
-      const target = state.parcels.find(p => p.rider === "R-22") || state.parcels[0];
+      // NovaX fix (Medium #5): never fall back to the first parcel in the list.
+      const target = state.parcels.find(p => p.rider === "R-22");
+      if (!target) { toast("No parcel assigned to this rider yet.", "error"); return; }
       state.selectedAwb = target.awb;
       if (target.stage < target.totalStages) {
         const nextStatus = target.status === "Parcel out for delivery" ? "Delivered" : "Collected by rider";
@@ -10414,7 +10626,11 @@
           state.staffTickets=D(15).map(rStaffTicket);
           state.staffActivity=D(16).map(rStaffActivity);
           state.walletLedger=D(17).map(rLedger);
-          if(state.clients.length){ var c0=state.clients[0]; state.client={ id:c0.id, name:c0.name, walletTopup:c0.walletTopup, shippingDue:c0.shippingDue, walletBalance:c0.walletBalance, subAccounts:0 }; }
+          // NovaX fix (Best Fix Rule): the embedded Client Portal preview must
+          // never silently default to the first client in the list -- leave
+          // it unset ("No client selected") until admin explicitly picks one
+          // from the Client Menu.
+          if(!state.client||!state.clients.some(function(c){return c.id===state.client.id;})){ state.client=null; }
           rebuildShadow();
           loaded=true;
           try{ if(typeof normalizeStateAwbs==="function") normalizeStateAwbs(state); }catch(e){}
@@ -10503,7 +10719,10 @@
           return t&&t.id?t.id:'a ticket';
         }
         function engine(raw){
-          var q=String(raw||'').trim(); if(!q) return {text:'Ask me: <b>where is N0010001</b>, <b>open tickets</b>, <b>rider cash</b>, <b>total COD</b>, <b>invoice INV-0001</b>, or a client wallet (e.g. CL-0001).'};
+          // NovaX fix (Low #9): example hints no longer reference specific
+          // demo AWB/invoice/client ids, so the live console doesn't read
+          // like a demo build.
+          var q=String(raw||'').trim(); if(!q) return {text:'Ask me: <b>where is [an AWB]</b>, <b>open tickets</b>, <b>rider cash</b>, <b>total COD</b>, <b>an invoice number</b>, or a client wallet (e.g. their client id).'};
           var low=q.toLowerCase();
           if(/^(hi|hey|hello|salam|assalam|aoa|yo)\b/.test(low)) return {text:'Hi! I read the live NovaX control-room data. Try: <i>where is N0010001</i>, <i>open tickets</i>, <i>rider cash</i>, <i>total payable</i>.'};
           if(/^(thanks|thank you|ok|okay|great|cool)\b/.test(low)) return {text:'👍'};
@@ -10515,16 +10734,16 @@
           if(tkId){ var tk=(state.tickets||[]).find(function(t){return String(t.id||'').toUpperCase()===tkId.toUpperCase();}); if(tk) return {text:'Ticket <b>'+esc(tk.id)+'</b> - <b>'+esc(tk.status)+'</b><br>'+esc(tk.title)+'<br>To: '+esc(tk.to)+(tk.awb?' · AWB '+esc(tk.awb):'')+(tk.resolutionReply?'<br>Reply: '+esc(tk.resolutionReply):'')}; return {ticket:true,text:'Ticket <b>'+esc(tkId.toUpperCase())+'</b> not found.'}; }
           if(/ticket|complaint|escalation|open issue|pending issue/.test(low)){ var open=(state.tickets||[]).filter(function(t){return t.status!=='Resolved';}); if(!open.length) return {text:'No open tickets - all clear. ✅'}; return {text:'<b>'+open.length+'</b> open ticket(s):<br>'+open.slice(0,6).map(function(t){return '• <b>'+esc(t.id)+'</b> '+esc(t.title)+' to '+esc(t.to);}).join('<br>')}; }
           if(/rider|cash held|cash limit|cash in hand/.test(low)){ var rs=(state.riders||[]); if(!rs.length) return {text:'No riders on file.'}; var over=rs.filter(function(r){return Number(r.cashHeld||0)>Number(r.cashLimit||0);}); var top=rs.slice().sort(function(a,b){return Number(b.cashHeld||0)-Number(a.cashHeld||0);}).slice(0,5); return {text:'Rider cash (top holders):<br>'+top.map(function(r){return '• '+esc(r.name)+': Rs '+fmt(r.cashHeld)+' / limit Rs '+fmt(r.cashLimit)+(Number(r.cashHeld||0)>Number(r.cashLimit||0)?' ⚠️ over':'');}).join('<br>')+(over.length?'<br><b>'+over.length+'</b> rider(s) over limit.':'')}; }
-          if(/wallet|balance/.test(low)){ var clid=(q.match(/CL-\d+/i)||[])[0]; if(clid){ var bal=walletBalance(clid.toUpperCase()); return {text:'Wallet balance for <b>'+esc(clid.toUpperCase())+'</b>: <b>Rs '+fmt(bal)+'</b>.'}; } return {text:'Tell me which client (e.g. <b>CL-0001</b>) and I will show their wallet balance.'}; }
+          if(/wallet|balance/.test(low)){ var clid=(q.match(/CL-\d+/i)||[])[0]; if(clid){ var bal=walletBalance(clid.toUpperCase()); return {text:'Wallet balance for <b>'+esc(clid.toUpperCase())+'</b>: <b>Rs '+fmt(bal)+'</b>.'}; } return {text:'Tell me which client (e.g. their client id) and I will show their wallet balance.'}; }
           if(/cod|finance|revenue|payable|collected|total/.test(low)){ var ps=state.parcels||[]; var delivered=ps.filter(function(p){return /delivered/i.test(p.status);}); var cod=delivered.reduce(function(s,p){return s+Number(p.cod||0);},0); var invs=state.invoices||[]; var payable=invs.filter(function(i){return i.status!=='Paid'&&i.status!=='Deleted';}).reduce(function(s,i){return s+Number(i.payable||0);},0); var pend=(state.walletWithdrawals||[]).filter(function(w){return /pending|process/i.test(w.status||'');}).reduce(function(s,w){return s+Number(w.net||w.amount||0);},0); return {text:'Finance snapshot:<br>• Delivered COD: <b>Rs '+fmt(cod)+'</b><br>• Unpaid invoices payable: <b>Rs '+fmt(payable)+'</b><br>• Withdrawals in progress: <b>Rs '+fmt(pend)+'</b>'}; }
           if(/exception|refus|delay|stuck|fail|breach|sla/.test(low)){ var ex=(state.parcels||[]).filter(function(p){return p.exception||/refus|return|not available|reattempt/i.test(p.status||'')||Number(p.statusAgeHours||0)>=24;}); if(!ex.length) return {text:'No exceptions or SLA breaches right now. ✅'}; return {text:'<b>'+ex.length+'</b> parcel(s) need attention:<br>'+ex.slice(0,5).map(pLine).join('<br><br>')}; }
           if(/how many|count|summary|overview|today|deliver/.test(low)){ var ps2=state.parcels||[]; var del=ps2.filter(function(p){return /delivered/i.test(p.status);}).length; var exn=ps2.filter(function(p){return p.exception;}).length; return {text:'Network: <b>'+ps2.length+'</b> parcels - <b>'+del+'</b> delivered, <b>'+exn+'</b> with issues. Clients: <b>'+((state.clients||[]).length)+'</b>, riders: <b>'+((state.riders||[]).length)+'</b>.'}; }
           if(/list|show|recent|all parcels|all orders/.test(low)&&/parcel|order|shipment/.test(low)){ var ap=(state.parcels||[]); if(!ap.length) return {text:'No parcels in the system yet.'}; return {text:'Recent parcels:<br>'+ap.slice(0,8).map(pLine).join('<br><br>')+(ap.length>8?'<br><span class=nvai-dim>+'+(ap.length-8)+' more.</span>':'')}; }
           if(/client|seller|merchant/.test(low)){ var cs=(state.clients||[]); if(!cs.length) return {text:'No clients on file.'}; var clid2=(q.match(/CL-\d+/i)||[])[0]; if(clid2){ var cc=cs.find(function(c){return String(c.id||'').toUpperCase()===clid2.toUpperCase();}); if(cc) return {text:'<b>'+esc(cc.name)+'</b> ('+esc(cc.id)+')<br>'+esc(cc.city||'')+(cc.email?' · '+esc(cc.email):'')+'<br>Wallet: <b>Rs '+fmt(walletBalance(cc.id))+'</b> · status '+esc(cc.status||'Active')}; return {text:'No client <b>'+esc(clid2.toUpperCase())+'</b> found.'}; } return {text:'<b>'+cs.length+'</b> client(s):<br>'+cs.slice(0,8).map(function(c){return '• '+esc(c.name)+' ('+esc(c.id)+') - '+esc(c.city||'')+' · wallet Rs '+fmt(walletBalance(c.id));}).join('<br>')+(cs.length>8?'<br><span class=nvai-dim>+'+(cs.length-8)+' more.</span>':'')}; }
-          if(/rate|price|pricing|tariff|charge per/.test(low)) return {text:'Delivery rates are set per client in their profile (default Rs 240/shipment). Ask me a client like <b>CL-0001</b> for their exact rate and wallet.'};
-          if(/help|what can you|capabilit|how.*(use|work)|guide|menu|options|commands|what do you do/.test(low)) return {text:'I read the live control room. Ask me: parcel status (AWB), <i>open tickets</i>, <i>rider cash</i>, <i>finance totals</i>, a client wallet (<b>CL-0001</b>), <i>exceptions and SLA</i>, <i>list clients</i>, or a network summary.'};
+          if(/rate|price|pricing|tariff|charge per/.test(low)) return {text:'Delivery rates are set per client in their profile (default Rs 240/shipment). Ask me for a client by their id for their exact rate and wallet.'};
+          if(/help|what can you|capabilit|how.*(use|work)|guide|menu|options|commands|what do you do/.test(low)) return {text:'I read the live control room. Ask me: parcel status (AWB), <i>open tickets</i>, <i>rider cash</i>, <i>finance totals</i>, a client wallet (by client id), <i>exceptions and SLA</i>, <i>list clients</i>, or a network summary.'};
           if(/track|where|status|location/.test(low)) return {text:'Give me the AWB (e.g. <b>N0010001</b>) for exact live status.'};
-          return {text:'I can answer anything in the control room - try <i>where is N0010001</i>, <i>open tickets</i>, <i>rider cash</i>, <i>total COD</i>, <i>CL-0001 wallet</i>, <i>exceptions</i>, or <i>list clients</i>. To log a ticket, say <i>raise a ticket</i>.'};
+          return {text:'I can answer anything in the control room - try <i>where is [an AWB]</i>, <i>open tickets</i>, <i>rider cash</i>, <i>total COD</i>, <i>a client wallet</i>, <i>exceptions</i>, or <i>list clients</i>. To log a ticket, say <i>raise a ticket</i>.'};
         }
         var style=document.createElement('style');
         style.textContent='.nvai-btn{position:fixed;right:18px;bottom:18px;z-index:99999;width:58px;height:58px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#14c77b);color:#fff;font-size:24px;box-shadow:0 12px 30px rgba(20,199,123,.45);display:grid;place-items:center;border:0;cursor:pointer}.nvai-dim{opacity:.7}.nvai-panel{position:fixed;right:18px;bottom:86px;z-index:99999;width:360px;max-width:calc(100vw - 36px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #cfe6dc;border-radius:18px;box-shadow:0 26px 70px rgba(13,91,64,.28);display:none;flex-direction:column;overflow:hidden}.nvai-panel.open{display:flex}.nvai-head{background:linear-gradient(135deg,#0b2a1f,#0c7c59);color:#eafff5;padding:13px 16px;display:flex;align-items:center;gap:10px}.nvai-head b{font-size:15px;line-height:1.1}.nvai-head small{font-size:11px;opacity:.8}.nvai-x{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:0;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px}.nvai-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f3fff9}.nvai-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}.nvai-m.u{align-self:flex-end;background:#dcffe9;color:#08311f;border-bottom-right-radius:4px}.nvai-m.b{align-self:flex-start;background:#fff;border:1px solid #e1f0e8;color:#0b2a1f;border-bottom-left-radius:4px}.nvai-bar{display:flex;gap:8px;padding:10px;border-top:1px solid #e1f0e8;background:#fff}.nvai-bar input{flex:1;min-width:0;height:42px;border-radius:11px;border:1px solid #cfe6dc;padding:0 12px;font:inherit;font-size:14px}.nvai-bar button{height:42px;padding:0 16px;border-radius:11px;background:#14c77b;color:#04130d;font-weight:800;border:0;cursor:pointer}@media (max-width:520px){.nvai-panel{right:10px;left:10px;width:auto;bottom:78px;height:72vh}.nvai-btn{right:14px;bottom:14px}}';
