@@ -654,8 +654,17 @@
                 <div class="section-head"><div><h3>Wallet Summary</h3><p>Available balance, pending payout, and what you've been paid.</p></div></div>
                 <div class="money-grid" id="walletSummaryCards"></div>
               </div>
+              <!-- NovaX fix (wallet IBAN UX): bank details are now their own
+                   section, always visible, so a client can add/edit their
+                   IBAN anytime -- even at Rs 0 balance -- instead of only
+                   ever seeing an IBAN input after they already have money
+                   to withdraw. -->
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Withdraw Funds</h3><p>Choose a payout speed, confirm the net after fee, then add your IBAN.</p></div></div>
+                <div class="section-head"><div><h3>Bank Account / IBAN</h3><p>Add your payout bank details anytime, even before you have any wallet balance.</p></div></div>
+                <div id="bankDetailsSection"></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Withdraw Funds</h3><p>Choose an amount and payout speed. We'll use the bank details saved above.</p></div></div>
                 <div class="field" style="max-width:280px"><label>Amount to withdraw</label><input id="withdrawAmount" type="number" min="1"></div>
                 <div class="tier-grid">
                   <div class="tier-card" data-speed="24h"><strong>0.1%</strong><span>24 hour payout</span></div>
@@ -777,16 +786,26 @@
       selectedAwb:"N0010001", activeStatusQueue:"Parcel now in transit", activeRateClient:"", activeSackMode:"create",
       clientDateFrom:"2026-06-01", clientDateTo:"2026-06-24", lastGeneratedAwb:"N0010001",
       walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"",
-      client:{ id:"CL-0001", name:"Apex Fashion", walletTopup:85000, shippingDue:18400, premiumTier:"Gold", subAccounts:6, walletBalance:12090 },
+      // NovaX fix (wallet IBAN UX): bank details now live independently of
+      // any withdrawal request, so a client can save them at Rs 0 balance.
+      clientBankDetails:null, bankDetailsEditing:false,
+      // NovaX fix (identity leak hardening): identityVerified starts false and
+      // is only ever flipped to true once the real Supabase profile/client
+      // lookup resolves (success, not-linked, or record-missing). Every
+      // render path that shows a client name must check identityVerified
+      // first, so this sample data can never visibly surface even if the
+      // reset-on-load code below fails to run or a stale cache is restored.
+      identityVerified:false, accountNotLinked:false, clientRecordMissing:false,
+      client:{ id:"SAMPLE-OFFLINE", name:"Sample Client (offline demo data - not a real account)", walletTopup:85000, shippingDue:18400, premiumTier:"Gold", subAccounts:6, walletBalance:12090 },
       clients:[
-        { id:"CL-0001", name:"Apex Fashion", owner:"Sara Finance", tier:"Gold", city:"Karachi", walletTopup:85000, shippingDue:18400, risk:18, status:"Active", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, problemsResolved:18, health:91, walletBalance:12090 },
-        { id:"CL-0002", name:"Noor Studio", owner:"Ali Ops", tier:"Silver", city:"Islamabad", walletTopup:52000, shippingDue:9200, risk:24, status:"Active", rate:220, rateCard:{overnight:220,additionalKg:75,detainBase:500,detainAdditionalKg:110,overlandBase:860,overlandAdditionalKg:42}, problemsResolved:9, health:86, walletBalance:0 },
-        { id:"CL-0003", name:"Hira Boutique", owner:"Mina Support", tier:"Starter", city:"Rawalpindi", walletTopup:28000, shippingDue:5100, risk:36, status:"Watch", rate:260, rateCard:{overnight:260,additionalKg:90,detainBase:560,detainAdditionalKg:130,overlandBase:940,overlandAdditionalKg:48}, problemsResolved:5, health:73, walletBalance:0 }
+        { id:"SAMPLE-OFFLINE", name:"Sample Client (offline demo data - not a real account)", owner:"Sara Finance", tier:"Gold", city:"Karachi", walletTopup:85000, shippingDue:18400, risk:18, status:"Active", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, problemsResolved:18, health:91, walletBalance:12090 },
+        { id:"SAMPLE-OFFLINE-2", name:"Sample Client B (offline demo data - not a real account)", owner:"Ali Ops", tier:"Silver", city:"Islamabad", walletTopup:52000, shippingDue:9200, risk:24, status:"Active", rate:220, rateCard:{overnight:220,additionalKg:75,detainBase:500,detainAdditionalKg:110,overlandBase:860,overlandAdditionalKg:42}, problemsResolved:9, health:86, walletBalance:0 },
+        { id:"SAMPLE-OFFLINE-3", name:"Sample Client C (offline demo data - not a real account)", owner:"Mina Support", tier:"Starter", city:"Rawalpindi", walletTopup:28000, shippingDue:5100, risk:36, status:"Watch", rate:260, rateCard:{overnight:260,additionalKg:90,detainBase:560,detainAdditionalKg:130,overlandBase:940,overlandAdditionalKg:48}, problemsResolved:5, health:73, walletBalance:0 }
       ],
       pendingClients:[],
       users:[
-        { id:"USR-001", name:"Sara Finance", role:"Finance", branch:"Karachi Hub", clientId:"CL-0001", status:"Active" },
-        { id:"USR-002", name:"Ali Ops", role:"Branch Manager", branch:"Islamabad Hub", clientId:"CL-0002", status:"Active" }
+        { id:"USR-001", name:"Sara Finance", role:"Finance", branch:"Karachi Hub", clientId:"SAMPLE-OFFLINE", status:"Active" },
+        { id:"USR-002", name:"Ali Ops", role:"Branch Manager", branch:"Islamabad Hub", clientId:"SAMPLE-OFFLINE-2", status:"Active" }
       ],
       branches:[
         { name:"Karachi Hub", scanHealth:94, cashHealth:88, discrepancy:1 },
@@ -799,23 +818,23 @@
         { id:"R-31", name:"Hamza", username:"hamza.r31", manager:"Islamabad Hub Manager", cashHeld:19500, cashLimit:60000, scans:29, fakeRisk:6, access:"Active", expenses:0 }
       ],
       parcels:[
-        { awb:"N0010001", clientId:"CL-0001", date:"2026-06-24", consignee:"Sana Khan", city:"Lahore", cod:7200, fee:240, status:"Parcel out for delivery", statusAgeHours:8, stage:6, totalStages:9, rider:"R-17", branch:"Lahore Hub", risk:14, updated:"09:38", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000001", address:"House 21, Main Market, Lahore", service:"COD Standard", weight:"0.8 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery"] },
-        { awb:"N0010002", clientId:"CL-0001", date:"2026-06-23", consignee:"M. Ahmed", city:"Karachi", cod:12400, fee:310, status:"Delivered", statusAgeHours:11, stage:8, totalStages:9, rider:"R-22", branch:"Karachi Hub", risk:32, updated:"10:12", exception:"Cash above rider limit", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000002", address:"Block 6, PECHS, Karachi", service:"COD Express", weight:"1.2 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","COD collected","Rider holding cash"] },
-        { awb:"N0020001", clientId:"CL-0002", date:"2026-06-22", consignee:"Noor Studio", city:"Islamabad", cod:4500, fee:220, status:"Parcel now in transit", statusAgeHours:76, stage:4, totalStages:9, rider:"R-17", branch:"Islamabad Hub", risk:18, updated:"08:57", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000003", address:"F-7 Markaz, Islamabad", service:"COD Standard", weight:"0.6 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit"] },
-        { awb:"N0030001", clientId:"CL-0003", date:"2026-06-20", consignee:"Hira Boutique", city:"Rawalpindi", cod:15800, fee:360, status:"Collected by rider", statusAgeHours:19, stage:2, totalStages:9, rider:"R-17", branch:"Karachi Hub", risk:11, updated:"10:45", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000004", address:"Saddar, Rawalpindi", service:"COD Standard", weight:"1.0 kg", steps:["New booked","Collected by rider"] },
-        { awb:"N0010003", clientId:"CL-0001", date:"2026-06-19", consignee:"Zeeshan Ali", city:"Lahore", cod:9800, fee:280, status:"Refused", statusAgeHours:31, stage:6, totalStages:9, rider:"R-22", branch:"Lahore Hub", risk:78, updated:"07:31", exception:"Consignee denies refusal attempt", cashReceived:false, returnProof:"Return proof pending from rider manager", resolutionRemark:"", phone:"+92 300 0000005", address:"DHA Phase 5, Lahore", service:"COD Standard", weight:"0.9 kg", riderInput:{ attemptTime:"07:31", gps:"31.5204, 74.3587", callProof:"1 call, 18 seconds", riderNote:"Consignee refused delivery at gate", photoProof:"Door photo captured" }, steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Refused"] }
+        { awb:"N0010001", clientId:"SAMPLE-OFFLINE", date:"2026-06-24", consignee:"Sana Khan", city:"Lahore", cod:7200, fee:240, status:"Parcel out for delivery", statusAgeHours:8, stage:6, totalStages:9, rider:"R-17", branch:"Lahore Hub", risk:14, updated:"09:38", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000001", address:"House 21, Main Market, Lahore", service:"COD Standard", weight:"0.8 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery"] },
+        { awb:"N0010002", clientId:"SAMPLE-OFFLINE", date:"2026-06-23", consignee:"M. Ahmed", city:"Karachi", cod:12400, fee:310, status:"Delivered", statusAgeHours:11, stage:8, totalStages:9, rider:"R-22", branch:"Karachi Hub", risk:32, updated:"10:12", exception:"Cash above rider limit", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000002", address:"Block 6, PECHS, Karachi", service:"COD Express", weight:"1.2 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","COD collected","Rider holding cash"] },
+        { awb:"N0020001", clientId:"SAMPLE-OFFLINE-2", date:"2026-06-22", consignee:"Sample Client B", city:"Islamabad", cod:4500, fee:220, status:"Parcel now in transit", statusAgeHours:76, stage:4, totalStages:9, rider:"R-17", branch:"Islamabad Hub", risk:18, updated:"08:57", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000003", address:"F-7 Markaz, Islamabad", service:"COD Standard", weight:"0.6 kg", steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit"] },
+        { awb:"N0030001", clientId:"SAMPLE-OFFLINE-3", date:"2026-06-20", consignee:"Sample Client C", city:"Rawalpindi", cod:15800, fee:360, status:"Collected by rider", statusAgeHours:19, stage:2, totalStages:9, rider:"R-17", branch:"Karachi Hub", risk:11, updated:"10:45", exception:"", cashReceived:false, returnProof:"", resolutionRemark:"", phone:"+92 300 0000004", address:"Saddar, Rawalpindi", service:"COD Standard", weight:"1.0 kg", steps:["New booked","Collected by rider"] },
+        { awb:"N0010003", clientId:"SAMPLE-OFFLINE", date:"2026-06-19", consignee:"Zeeshan Ali", city:"Lahore", cod:9800, fee:280, status:"Refused", statusAgeHours:31, stage:6, totalStages:9, rider:"R-22", branch:"Lahore Hub", risk:78, updated:"07:31", exception:"Consignee denies refusal attempt", cashReceived:false, returnProof:"Return proof pending from rider manager", resolutionRemark:"", phone:"+92 300 0000005", address:"DHA Phase 5, Lahore", service:"COD Standard", weight:"0.9 kg", riderInput:{ attemptTime:"07:31", gps:"31.5204, 74.3587", callProof:"1 call, 18 seconds", riderNote:"Consignee refused delivery at gate", photoProof:"Door photo captured" }, steps:["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Refused"] }
       ],
       expenses:[
         { id:"EXP-001", name:"Fuel", amount:38000, type:"Fuel", owner:"Karachi Hub", status:"Approved" },
         { id:"EXP-002", name:"Branch rent", amount:110000, type:"Branch rent", owner:"Lahore Hub", status:"Approved" }
       ],
       paymentLogs:[
-        { id:"PAY-001", clientId:"CL-0001", type:"COD collected", amount:12400, status:"Rider holding", ref:"N0010002" },
-        { id:"PAY-002", clientId:"CL-0001", type:"Shipping fee deducted", amount:310, status:"Ledger posted", ref:"N0010002" },
-        { id:"PAY-003", clientId:"CL-0001", type:"Invoice pushed to wallet", amount:12090, status:"Wallet credited", ref:"INV-0001" }
+        { id:"PAY-001", clientId:"SAMPLE-OFFLINE", type:"COD collected", amount:12400, status:"Rider holding", ref:"N0010002" },
+        { id:"PAY-002", clientId:"SAMPLE-OFFLINE", type:"Shipping fee deducted", amount:310, status:"Ledger posted", ref:"N0010002" },
+        { id:"PAY-003", clientId:"SAMPLE-OFFLINE", type:"Invoice pushed to wallet", amount:12090, status:"Wallet credited", ref:"INV-0001" }
       ],
       invoices:[
-        { id:"INV-0001", clientId:"CL-0001", parcelRefs:["N0010002"], cod:12400, charges:310, payable:12090, status:"Pushed to wallet", createdAt:"2026-06-24 10:30", paidAt:"", walletPushedAt:"2026-06-24 10:31", summary:"1 delivered parcel, payable pushed to wallet" }
+        { id:"INV-0001", clientId:"SAMPLE-OFFLINE", parcelRefs:["N0010002"], cod:12400, charges:310, payable:12090, status:"Pushed to wallet", createdAt:"2026-06-24 10:30", paidAt:"", walletPushedAt:"2026-06-24 10:31", summary:"1 delivered parcel, payable pushed to wallet" }
       ],
       transit:[
         { id:"SACK-KHI-LHE-44", from:"Karachi Hub", to:"Lahore Hub", expected:1000, scanned:998, demanifested:991, health:88, status:"Active", type:"parcel sack" }
@@ -832,7 +851,7 @@
         _cleanStartV2:true,
         selectedAwb:"", activeStatusQueue:STATUS_TAGS[0], activeRateClient:"", activeSackMode:"create",
         clientDateFrom:new Date().toISOString().slice(0,10), clientDateTo:new Date().toISOString().slice(0,10), lastGeneratedAwb:"",
-        walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"",
+        walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"", clientBankDetails:null, bankDetailsEditing:false,
         client:{ id:"CL-0000", name:"New Merchant Workspace", walletTopup:0, shippingDue:0, subAccounts:0, walletBalance:0 },
         clients:[blankClient], pendingClients:[], users:[], branches:[], riders:[], parcels:[], expenses:[], paymentLogs:[], invoices:[], transit:[], completedSacks:[], operationsIssues:[], resolvedAlerts:[],
         activeClientTab:"dashboard"
@@ -868,10 +887,20 @@
 
     function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?JSON.parse(s):structuredClone(baseState); }catch(e){ return structuredClone(baseState); } }
     function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-    function emptyParcel(){ return { awb:"", clientId:state.client.id||"CL-0000", date:new Date().toISOString().slice(0,10), consignee:"No parcel selected", city:"", cod:0, fee:0, status:"New booked", statusAgeHours:0, stage:0, totalStages:STATUS_TAGS.length, rider:"", branch:"", risk:0, updated:"", exception:"", cashReceived:false, phone:"", address:"", service:"COD Standard", weight:"", steps:[] }; }
-    function selectedParcel(){ return state.parcels.find(p=>p.awb===state.selectedAwb) || state.parcels[0] || emptyParcel(); }
+    // NovaX fix (Medium #5): emptyParcel() is the canonical "No parcel
+    // selected" placeholder. It never guesses a clientId either -- with no
+    // linked client there is nothing valid to attach a placeholder parcel to.
+    function emptyParcel(){ return { awb:"", clientId:(state.client&&state.client.id)||null, date:new Date().toISOString().slice(0,10), consignee:"No parcel selected", city:"", cod:0, fee:0, status:"New booked", statusAgeHours:0, stage:0, totalStages:STATUS_TAGS.length, rider:"", branch:"", risk:0, updated:"", exception:"", cashReceived:false, phone:"", address:"", service:"COD Standard", weight:"", steps:[] }; }
+    // NovaX fix (Medium #5): removed the `|| state.parcels[0]` fallback. If
+    // the selected AWB doesn't match a real parcel, show emptyParcel()'s
+    // "No parcel selected" state directly instead of guessing the first
+    // parcel in the list.
+    function selectedParcel(){ return state.parcels.find(p=>p.awb===state.selectedAwb) || emptyParcel(); }
     function inClientDateRange(p){ const d=p.date||"2026-06-24"; const f=state.clientDateFrom||"2026-06-01"; const t=state.clientDateTo||"2026-06-24"; return d>=f && d<=t; }
-    function clientScopedParcels(){ const id=state.client.id||"CL-0001"; return state.parcels.filter(p=>p.clientId===id && inClientDateRange(p)); }
+    // NovaX fix (High #2): clientScopedParcels() must never fall back to the
+    // demo/default "CL-0001" id. With no confirmed client identity, the
+    // correct answer is an empty list, not another client's parcels.
+    function clientScopedParcels(){ const id=state.client&&state.client.id; if(!id) return []; return state.parcels.filter(p=>p.clientId===id && inClientDateRange(p)); }
     const ZONE_CITY_MAP={ karachi:"A", lahore:"B", islamabad:"B", rawalpindi:"B" };
     function zoneForCity(city){ return ZONE_CITY_MAP[String(city||"").trim().toLowerCase()]||"B"; }
     function zoneLabel(zone){ return zone==="A"?"Zone A (Karachi)":"Zone B (Lahore / Islamabad / Rawalpindi)"; }
@@ -884,7 +913,13 @@
       const legacy=(raw && typeof raw.overnight==="number" && !isNaN(raw.overnight))?raw:fallback;
       return { A:legacy, B:Object.assign({},legacy) };
     }
-    function clientById(id){ return state.clients.find(c=>c.id===id) || state.clients[0]; }
+    // NovaX fix (Medium #4): clientById() must never fall back to
+    // state.clients[0]. That silently attached the first client's name/rate
+    // card to AWB labels, invoices, reports, and wallet views whenever the
+    // real client id didn't match. Return a clearly-labeled "unknown client"
+    // placeholder instead so a mismatch is visible, not silently wrong.
+    function unknownClientPlaceholder(){ return { id:null, name:"Unknown client", city:"", rate:0, rateCard:{}, walletBalance:0, walletTopup:0, shippingDue:0, risk:0, subAccounts:0, status:"" }; }
+    function clientById(id){ if(!id) return unknownClientPlaceholder(); const found=state.clients.find(c=>c.id===id); if(found) return found; if(state.client && state.client.id===id) return state.client; return unknownClientPlaceholder(); }
     function clientCode(id){ const digits=String(id||"1").replace(/\D/g,""); return digits.slice(-3).padStart(3,"0"); }
     function shortAwbFor(clientId,counter){ return `N${clientCode(clientId)}${String(counter).padStart(4,"0")}`; }
     function nextAwbForClient(clientId){
@@ -1232,7 +1267,10 @@
       }catch(e){}
     }
     function renderJourney(){
-      const p=state.parcels.find(x=>x.awb===state.selectedAwb)||state.parcels[0]||emptyParcel();
+      // NovaX fix (Medium #5): removed the `|| state.parcels[0]` fallback --
+      // show the "No parcel selected" placeholder directly instead of
+      // guessing the first parcel in the list.
+      const p=state.parcels.find(x=>x.awb===state.selectedAwb)||emptyParcel();
       document.getElementById("selectedParcelText").textContent=`${p.awb} for ${p.consignee}. Current status: ${p.status}.`;
       const important=[
         ["New booked","Booked"],
@@ -1272,13 +1310,24 @@
       document.querySelectorAll(".client-module").forEach(m=>m.classList.toggle("active",m.id===`client-${state.activeClientTab}`));
     }
     function cityReport(parcels){ const g={}; parcels.forEach(p=>{ g[p.city]=g[p.city]||{city:p.city,parcels:0,cod:0,revenue:0,delivered:0}; g[p.city].parcels++; g[p.city].cod+=p.cod; if(isDeliveredLedgerParcel(p)){ g[p.city].revenue+=p.fee; g[p.city].delivered++; } }); return Object.values(g); }
+    // NovaX fix (client identity leak, findings #1 and #3): a single source
+    // of truth for what name/label the portal is allowed to show for the
+    // logged-in client. This never falls through to a cached/sample client
+    // name -- until identityVerified is true it always shows "Verifying
+    // account...", and the terminal error states (not linked / record
+    // missing) always win over whatever text happens to be in state.client.
+    function clientDisplayState(){
+      if(state.accountNotLinked) return { label:"Account not linked", showWorkspaceSuffix:false };
+      if(state.clientRecordMissing) return { label:"Client record missing. Contact NovaX admin.", showWorkspaceSuffix:false };
+      if(!state.identityVerified) return { label:"Verifying account...", showWorkspaceSuffix:false };
+      return { label:(state.client&&state.client.name)||"Client", showWorkspaceSuffix:true };
+    }
     function renderClientModules(){
       renderClientTabs(); renderAwbLabel();
       // NovaX fix (client identity leak): always read the header account name
-      // from the same active client object as the sidebar/wallet/reports, and
-      // show "Account not linked" instead of any client name when this
-      // profile has no client_id.
-      const _acc=document.getElementById("topAccountName"); if(_acc) _acc.textContent=state.accountNotLinked?"Account not linked":((state.client&&state.client.name)||"Client");
+      // from clientDisplayState(), the same source used by the sidebar/wallet/
+      // reports, so it can never show a stale/demo/first-client name.
+      const _acc=document.getElementById("topAccountName"); if(_acc) _acc.textContent=clientDisplayState().label;
       const cm=clientMetrics();
       const deliveredCod=cm.parcels.filter(isDeliveredLedgerParcel).reduce((s,p)=>s+p.cod,0);
       const pendingCod=cm.parcels.filter(p=>!isDeliveredLedgerParcel(p)).reduce((s,p)=>s+p.cod,0);
@@ -1300,7 +1349,11 @@
         metricCard("Open Parcels",open,percent(open,Math.max(1,cm.total)),"not delivered yet",open?"blue":"good")
       ].join("");
       document.getElementById("clientReportRows").innerHTML=cityReport(cm.parcels).map(r=>`<tr><td><strong>${r.city}</strong></td><td>${r.parcels}</td><td>${money(r.cod)}</td><td>${money(r.revenue)}</td><td><span class="chip ${r.delivered?"good":"info"}">${r.delivered}/${r.parcels}</span></td></tr>`).join("");
-      const invoices=state.invoices.filter(i=>i.clientId===(state.client.id||"CL-0001")&&i.status!=="Deleted");
+      // NovaX fix (High #2): never fall back to the demo/default "CL-0001"
+      // id -- with no confirmed client identity, show zero invoices instead
+      // of another client's invoices.
+      const myId=state.client&&state.client.id;
+      const invoices=myId?state.invoices.filter(i=>i.clientId===myId&&i.status!=="Deleted"):[];
       document.getElementById("paymentSummary").innerHTML=[
         moneyBox("Generated invoices",invoices.length,"admin created only"),
         moneyBox("Invoice COD",money(invoices.reduce((s,i)=>s+i.cod,0)),"delivered parcels only"),
@@ -1321,7 +1374,10 @@
       document.getElementById("supportEscalations").innerHTML=state.parcels.filter(p=>p.exception&&p.clientId===state.client.id).map(p=>`<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip bad">escalated</span></div><p>${p.exception}</p>${p.proofPhoto?`<img src="${p.proofPhoto}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:200px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">`:""}</div>`).join("")||`<div class="ops-card"><strong>No escalations</strong><p>AI has complete portal data right now.</p></div>`;
     }
     function renderAi(){
-      const p=state.parcels.find(x=>x.awb===state.selectedAwb)||state.parcels[0]||emptyParcel();
+      // NovaX fix (Medium #5): removed the `|| state.parcels[0]` fallback --
+      // show the "No parcel selected" placeholder directly instead of
+      // guessing the first parcel in the list.
+      const p=state.parcels.find(x=>x.awb===state.selectedAwb)||emptyParcel();
       if (!p.awb) {
         document.getElementById("clientAi").innerHTML=`<div class="bubble ai">AI: No parcel data exists yet. Book your first parcel and I will answer only from live portal data.</div>`;
         return;
@@ -1526,10 +1582,70 @@
     function walletSpeedLabel(s){ return s==="instant"?"Instant 2-3 hours":s==="12h"?"12 hours":"24 hours"; }
     function walletBalance(id){ return Number(clientById(id).walletBalance||0); }
     function selectWalletSpeed(s){ state.walletWithdrawSpeed=s; saveState(); renderClientWallet(); }
+    // NovaX fix (wallet IBAN UX): shared IBAN validation + masking so bank
+    // details, withdraw confirmation, and history all agree on the same
+    // rule (required, must start with PK, minimum 15 characters) and never
+    // show a full IBAN once it's saved.
+    function validateIbanValue(iban){
+      const s=String(iban||"").replace(/\s+/g,"").toUpperCase();
+      if(!s) return "IBAN is required.";
+      if(!s.startsWith("PK")) return "IBAN must start with PK.";
+      if(s.length<15) return "IBAN must be at least 15 characters.";
+      return "";
+    }
+    function maskIban(iban){
+      const s=String(iban||"").replace(/\s+/g,"").toUpperCase();
+      if(!s) return "No IBAN saved";
+      if(s.length<=8) return s.slice(0,2)+"****";
+      return s.slice(0,4)+"****"+s.slice(-4);
+    }
+    function editBankDetails(){ state.bankDetailsEditing=true; saveState(); renderBankDetailsSection(); }
+    function cancelBankDetailsEdit(){ state.bankDetailsEditing=false; saveState(); renderBankDetailsSection(); }
+    function renderBankDetailsSection(){
+      const el=document.getElementById("bankDetailsSection"); if(!el) return;
+      const bd=state.clientBankDetails;
+      if(bd && !state.bankDetailsEditing){
+        el.innerHTML=`<div class="ops-card"><div class="ops-card-head"><strong>${esc(bd.holderName||"Saved bank account")}</strong><span class="chip good">Saved</span></div><p>${esc(maskIban(bd.iban))}${bd.bankName?(" &middot; "+esc(bd.bankName)):""}</p><button class="action-btn" style="margin-top:10px" onclick="editBankDetails()">Edit Bank Details</button></div>`;
+        return;
+      }
+      el.innerHTML=`<div class="field" style="max-width:380px"><label>Account holder name</label><input id="bankHolderName" value="${bd?esc(bd.holderName||""):""}"></div>
+        <div class="field" style="max-width:380px;margin-top:10px"><label>IBAN</label><input id="bankIbanInput" placeholder="PK00 BANK 0000 0000 0000 0000" value="${bd?esc(bd.iban||""):""}"></div>
+        <div class="field" style="max-width:380px;margin-top:10px"><label>Bank name (optional)</label><input id="bankNameInput" value="${bd?esc(bd.bankName||""):""}"></div>
+        <div id="bankDetailsError" class="footer-note" style="display:none;background:#fff2f0;border:1px solid #f3b7ad;color:#a3271b;margin-top:10px"></div>
+        <button class="action-btn" style="margin-top:12px" onclick="saveBankDetails()">Save Bank Details</button>
+        ${bd?`<button class="action-btn" style="margin-top:12px;margin-left:8px;background:#eef2f5;color:#333" onclick="cancelBankDetailsEdit()">Cancel</button>`:""}`;
+    }
+    function saveBankDetails(){
+      const err=document.getElementById("bankDetailsError");
+      const holderName=(document.getElementById("bankHolderName")?.value||"").trim();
+      const iban=(document.getElementById("bankIbanInput")?.value||"").trim().toUpperCase();
+      const bankName=(document.getElementById("bankNameInput")?.value||"").trim();
+      if(!holderName){ err.style.display="block"; err.textContent="Account holder name is required."; return; }
+      const ibanErr=validateIbanValue(iban);
+      if(ibanErr){ err.style.display="block"; err.textContent=ibanErr; return; }
+      err.style.display="none";
+      state.clientBankDetails={ holderName, iban, bankName, updatedAt:new Date().toISOString() };
+      state.bankDetailsEditing=false;
+      saveState(); renderClientWallet();
+      toast("Bank details saved.","success");
+      // NovaX fix (wallet IBAN UX): best-effort sync only -- bank details are
+      // optional metadata on the client row, so a missing column/table must
+      // never block the local save that already happened above.
+      try{
+        if(window.__nvSb && state.client && state.client.id){
+          window.__nvSb.from("clients").update({ bank_details: state.clientBankDetails }).eq("id", state.client.id).then(function(r){
+            if(r&&r.error) console.warn("NovaX bank details sync skipped:", r.error.message);
+          }).catch(function(e){ console.warn("NovaX bank details sync failed:", e&&e.message); });
+        }
+      }catch(e){ console.warn("NovaX bank details sync error:", e&&e.message); }
+    }
     function renderClientWallet(){
       const bt=document.getElementById("walletBalanceText"); if(!bt) return;
       const c=clientById(state.client.id); const balance=Number(c.walletBalance||0);
       bt.textContent=money(balance); bt.classList.remove("count-up"); void bt.offsetWidth; bt.classList.add("count-up");
+      // NovaX fix (wallet IBAN UX): bank details render independently of
+      // balance/speed/amount so they're always available to add or edit.
+      renderBankDetailsSection();
       const push=state.lastWalletPush;
       document.getElementById("walletPushNote").textContent=push?`Last credited ${money(push.amount)} from admin (${push.invoice}) at ${push.at}`:"No admin credit yet";
       // NovaX new (Finance Control Room v2): the client never sees
@@ -1567,32 +1683,45 @@
       document.querySelectorAll(".tier-card").forEach(t=>t.classList.toggle("active",t.dataset.speed===speed));
       const summary=document.getElementById("withdrawSummary");
       const useAmt=Math.min(Number(amtInput?.value||balance),balance);
-      // NovaX fix (wallet leakage, item E): a zero wallet balance used to just
-      // hide this whole panel with no explanation. Show a clear disabled
-      // state instead so the client understands why they can't withdraw yet.
+      // NovaX fix (wallet IBAN UX): withdrawal no longer collects its own IBAN
+      // input -- it only ever uses whatever is saved in the Bank Account /
+      // IBAN section above, and Confirm Withdrawal is disabled until that
+      // saved IBAN passes validation.
+      const bd=state.clientBankDetails;
+      const bdIbanErr=bd?validateIbanValue(bd.iban):"IBAN is required.";
       if(balance<=0){
         summary.style.display="block";
-        summary.innerHTML=`<div class="ops-card"><strong>No withdrawable balance</strong><p>You have Rs 0 available. Ask admin to push an invoice to your wallet, then come back to request a payout.</p></div><button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" disabled>Confirm Withdrawal</button>`;
+        summary.innerHTML=`<div class="ops-card"><strong>No withdrawable balance yet</strong><p>You have Rs 0 available. Ask admin to push an invoice to your wallet, then come back to request a payout. You can still add or update your bank details above anytime.</p></div><button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" disabled>Waiting for wallet balance</button>`;
       } else if(speed && useAmt>0){
         const fee=Math.round(useAmt*walletFeeRate(speed)); const net=useAmt-fee;
+        const canConfirm=!bdIbanErr;
         summary.style.display="block";
-        summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div><div class="field" style="margin-top:12px;max-width:380px"><label>IBAN</label><input id="withdrawIban" placeholder="PK00 BANK 0000 0000 0000 0000"></div><button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="confirmWalletWithdraw()">Confirm Withdrawal</button>`;
+        summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div><div class="footer-note" style="margin-top:12px">${bd?("Payout goes to <b>"+esc(maskIban(bd.iban))+"</b> for "+esc(bd.holderName||"")+". "):""}${canConfirm?"":"Add valid bank details in the section above before confirming."}</div><button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="confirmWalletWithdraw()" ${canConfirm?"":"disabled"}>Confirm Withdrawal</button>`;
       } else { summary.style.display="none"; }
       document.getElementById("withdrawHistory").innerHTML=myWds.map(w=>{
         // NovaX new (Finance Control Room v2): friendly status wording only --
         // no mention of admin review queues, locks, or risk.
         const friendlyStatus=w.status==="Paid"?"Paid":"Being verified by finance";
         const paidRef=(w.status==="Paid"&&w.paidTxnId)?` &middot; Paid with reference ${w.paidTxnId}`:"";
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${w.id}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${w.iban} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${paidRef}</div></div>`;
+        // NovaX fix (wallet IBAN UX, item #10): history now shows a masked
+        // IBAN (e.g. PK24****3344) instead of the full account number.
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${w.id}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${esc(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${paidRef}</div></div>`;
       }).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Pick a payout speed above to withdraw.</p></div>`;
     }
     function confirmWalletWithdraw(){
       const c=clientById(state.client.id); const balance=Number(c.walletBalance||0);
       const amt=Math.min(Number(document.getElementById("withdrawAmount").value||0),balance);
-      const speed=state.walletWithdrawSpeed; const iban=document.getElementById("withdrawIban")?.value.trim();
+      const speed=state.walletWithdrawSpeed;
+      // NovaX fix (wallet IBAN UX): withdrawal always uses the saved Bank
+      // Account / IBAN details -- there is no separate IBAN input on this
+      // step anymore, so IBAN setup and withdrawal requests can never be
+      // tied together again.
+      const bd=state.clientBankDetails;
+      const iban=bd?String(bd.iban||"").trim().toUpperCase():"";
       if(!amt||amt<1){ toast("Enter a valid amount."); return; }
       if(!speed){ toast("Select a payout speed."); return; }
-      if(!iban){ toast("IBAN is required."); return; }
+      const ibanErr=validateIbanValue(iban);
+      if(ibanErr){ toast(ibanErr); return; }
       const btn=document.getElementById("confirmWithdrawBtn");
       // NovaX fix: this was calling a bare "sb" variable that only exists
       // inside the separate cloud-sync IIFE further down this file -- it is
@@ -1663,8 +1792,13 @@
       hint.textContent=zoneLabel(zone)+" rate: Rs "+fmt(card.overnight)+" per shipment";
     }
     function bookParcel(o={}){
+      // NovaX fix (High #2): never fall back to the demo/default "CL-0001"
+      // id. If the account isn't linked/verified yet, stop and surface an
+      // error instead of silently booking against the demo client.
+      const clientId=o.clientId||(state.client&&state.client.id);
+      if(!clientId||state.accountNotLinked||state.clientRecordMissing){ toast("Your account isn't linked to a client yet. Contact NovaX admin before booking.","error"); return null; }
       const cod=o.cod!==undefined?Number(o.cod):3500+Math.round(Math.random()*11000);
-      const clientId=o.clientId||state.client.id||"CL-0001"; const client=clientById(clientId);
+      const client=clientById(clientId);
       const awb=nextAwbForClient(clientId);
       const bookedCity=o.city||["Lahore","Karachi","Islamabad","Rawalpindi"][Math.floor(Math.random()*4)];
       const bookedRc=normalizeRateCard(client&&client.rateCard, client&&client.rate);
@@ -1685,7 +1819,11 @@
       const consignee=document.getElementById("bookingName").value.trim();
       const cod=Number(document.getElementById("bookingCod").value || 0);
       const address=document.getElementById("bookingAddress").value.trim();
-      const clientId=state.client.id||"CL-0001";
+      // NovaX fix (High #2): never fall back to the demo/default "CL-0001"
+      // id. If the account isn't linked/verified yet, stop and surface an
+      // error instead of silently booking against the demo client.
+      const clientId=state.client&&state.client.id;
+      if(!clientId||state.accountNotLinked||state.clientRecordMissing){ toast("Your account isn't linked to a client yet. Contact NovaX admin before booking.","error"); return; }
       const preBookingCount=(state.parcels||[]).filter(p=>p.clientId===clientId).length;
       const dupeWindowMs=15000;
       const now=Date.now();
@@ -2045,7 +2183,11 @@
     // claim a withdrawal was sent \u2014 it should only open Wallet for the client to submit it.
 
     /* ===== Store Integrations + New Booked bulk print ===== */
-    function activeClientId(){ return (state.client&&state.client.id)||"CL-0001"; }
+    // NovaX fix (High #2): activeClientId() must never fall back to the
+    // demo/default "CL-0001" id -- callers (storeConn, etc.) should treat a
+    // missing id as "no store connections / no client-scoped data", not as
+    // the demo client's data.
+    function activeClientId(){ return (state.client&&state.client.id)||null; }
     function storeConn(platform){ return (state.storeConnections||[]).find(c=>c.clientId===activeClientId()&&c.platform===platform); }
     function platformLabel(p){ return p==="shopify"?"Shopify":p==="woocommerce"?"WooCommerce":"Custom Web/API"; }
 
@@ -2184,11 +2326,12 @@
       // NovaX fix (client identity leak): the Client Menu workspace label used
       // to be a hard-coded "Apex Fashion workspace" string in the HTML, so it
       // never reflected the actual logged-in client. Always derive it from
-      // the currently loaded client object, and show a clear "Account not
-      // linked" state instead of any demo/fallback client name when this
-      // Supabase profile has no client_id.
+      // clientDisplayLabel(), which never falls through to a cached/demo
+      // client name -- it shows a clear "Verifying account...", "Account not
+      // linked", or "Client record missing" state instead whenever the real
+      // identity isn't confirmed.
       const workspaceName = document.getElementById("clientWorkspaceName");
-      if (workspaceName) workspaceName.textContent = state.accountNotLinked ? "Account not linked" : `${state.client?.name || "Client"} workspace`;
+      if (workspaceName) { const cds=clientDisplayState(); workspaceName.textContent = cds.showWorkspaceSuffix ? `${cds.label} workspace` : cds.label; }
       try{ if(typeof renderDashboardEmptyState==="function") renderDashboardEmptyState(); }catch(e){}
       try{ if(typeof renderDailyCommandCenter==="function") renderDailyCommandCenter(); }catch(e){}
       tickMeters();
@@ -2331,7 +2474,35 @@
           sb.from("wallet_ledger").select("*").eq("client_id",MY).order("created_at",{ascending:false}).limit(500)
         ]).then(function(res){
           var c=res[0]&&res[0].data;
-          var name=(c&&c.name)||(state.client&&state.client.name)||"My Store";
+          // NovaX fix (High #3 - "My Store" fallback): a client_id can exist on
+          // the profile while the matching row in `clients` is missing (bad
+          // migration, deleted row, etc). Previously this silently named the
+          // account "My Store" and kept going as if everything was fine. Now
+          // it stops, flags clientRecordMissing, and shows a clear error --
+          // it never guesses a name and never loads parcel/invoice/wallet data
+          // for an account that has no confirmed client record.
+          if(!c){
+            console.warn("NovaX: profile.client_id "+MY+" has no matching row in clients.");
+            state.identityVerified=true;
+            state.clientRecordMissing=true;
+            state.accountNotLinked=false;
+            state.client={ id:MY, name:"Client record missing. Contact NovaX admin.", walletBalance:0, rate:0, rateCard:{}, premiumTier:"", walletTopup:0, shippingDue:0, subAccounts:0 };
+            state.clients=[state.client];
+            state.parcels=[]; state.invoices=[]; state.tickets=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[]; state.walletLedger=[];
+            state.clientBankDetails=null;
+            loaded=true;
+            try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); }catch(e){}
+            try{ render(); }catch(e){ console.warn("NovaX render",e); }
+            window.__novaxClientDataReady=true;
+            return;
+          }
+          state.identityVerified=true;
+          state.clientRecordMissing=false;
+          // NovaX fix (wallet IBAN UX): pull previously-saved bank details
+          // down from the client row if that column exists; best-effort
+          // only, so a missing column never breaks the rest of the load.
+          try{ state.clientBankDetails=(c&&c.bank_details)?c.bank_details:(state.clientBankDetails||null); }catch(e){ state.clientBankDetails=state.clientBankDetails||null; }
+          var name=c.name||"Client";
           var rate=Number((c&&c.rate)||250), bal=Number((c&&c.wallet_balance)||0), rc=normalizeRateCard((c&&c.rate_card), rate);
           state.client={ id:MY, name:name, walletBalance:bal, rate:rate, rateCard:rc, premiumTier:(c&&c.status)||"", walletTopup:0, shippingDue:0, subAccounts:0 };
           state.clients=[{ id:MY, name:name, owner:(c&&c.owner)||"", city:(c&&c.city)||"", status:(c&&c.status)||"Active", tier:(c&&c.status)||"", rate:rate, rateCard:rc, walletBalance:bal, risk:Number((c&&c.risk_score)||0), health:90, problemsResolved:0 }];
@@ -2368,15 +2539,20 @@
       }
       var _save=saveState; saveState=function(){ try{ _save.apply(this,arguments); }catch(e){} try{ syncNew(); }catch(e){} };
       state.parcels=[]; state.invoices=[]; state.tickets=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[];
-      state.client={ id:null, name:"Loading...", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
+      state.client={ id:null, name:"Verifying account...", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
       state.clients=[state.client];
-      // NovaX fix (client identity leak): accountNotLinked is the only signal
-      // the UI uses to show the "Account not linked" state. It must never be
-      // paired with any demo/fallback client name (e.g. "Apex Fashion") --
-      // client.id is set to the non-colliding sentinel "UNLINKED" so no
-      // client-scoped fallback (`state.client.id||"CL-0001"`) can ever match
-      // a real or demo client's data.
+      // NovaX fix (client identity leak): accountNotLinked/clientRecordMissing
+      // are the only signals the UI uses to show their respective error
+      // states. They must never be paired with any demo/fallback client name
+      // (e.g. "Apex Fashion") -- client.id is set to the non-colliding
+      // sentinel "UNLINKED" so no client-scoped fallback (`state.client.id||
+      // "CL-0001"`) can ever match a real or demo client's data. identityVerified
+      // stays false until one of the terminal branches below runs, and every
+      // name-rendering code path must treat "not yet verified" as its own
+      // state rather than falling through to a cached/demo name.
       state.accountNotLinked=false;
+      state.clientRecordMissing=false;
+      state.identityVerified=false;
       state.clientDateFrom="2000-01-01"; state.clientDateTo=new Date(Date.now()+2*86400000).toISOString().slice(0,10);
       if(sb.auth){
         sb.auth.getSession().then(function(r){
@@ -2385,6 +2561,8 @@
             if(p&&p.error){
               console.warn("NovaX profile",p.error.message);
               state.accountNotLinked=true;
+              state.clientRecordMissing=false;
+              state.identityVerified=true;
               state.client={ id:"UNLINKED", name:"Account not linked", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
               state.clients=[state.client];
               try{ render(); }catch(e){}
@@ -2394,6 +2572,8 @@
             if(!MY){
               console.warn("NovaX: this seller has no client_id linked yet (admin must link it).");
               state.accountNotLinked=true;
+              state.clientRecordMissing=false;
+              state.identityVerified=true;
               state.client={ id:"UNLINKED", name:"Account not linked", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
               state.clients=[state.client];
               try{ render(); }catch(e){}
@@ -2424,7 +2604,10 @@
         if(window.__novaxAiLoaded) return; window.__novaxAiLoaded=true;
         var esc=function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
         var fmt=function(n){ return Number(n||0).toLocaleString('en-US'); };
-        var cid=function(){ return (state.client&&state.client.id)||'CL-0001'; };
+        // NovaX fix (High #2): never fall back to the demo/default 'CL-0001'
+        // id -- with no confirmed client identity, the AI's data queries
+        // below should match nothing rather than another client's data.
+        var cid=function(){ return (state.client&&state.client.id)||null; };
         var cname=function(){ return (state.client&&state.client.name)||'Seller'; };
         var myParcels=function(){ return (state.parcels||[]).filter(function(p){return p.clientId===cid();}); };
         var myInvoices=function(){ return (state.invoices||[]).filter(function(i){return i.clientId===cid()&&i.status!=='Deleted';}); };
