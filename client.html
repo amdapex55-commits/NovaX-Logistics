@@ -397,7 +397,7 @@
             <div class="client-menu-head">
               <div>
                 <strong>Client Menu</strong>
-                <div class="footer-note" style="margin-top:2px">Apex Fashion workspace</div>
+                <div id="clientWorkspaceName" class="footer-note" style="margin-top:2px">Loading workspace...</div>
               </div>
               <button class="hamburger-btn" id="clientMenuToggle" aria-label="Open client menu" aria-expanded="false"><span></span><span></span><span></span><span class="hamburger-label">Menu</span></button>
             </div>
@@ -644,12 +644,16 @@
             <!-- WALLET -->
             <section class="client-module" id="client-wallet">
               <div class="wallet-hero">
-                <label>Available Balance</label>
+                <label>Wallet Balance</label>
                 <div class="wallet-balance count-up" id="walletBalanceText">Rs 0</div>
                 <span class="wallet-pulse"><span class="pulse"></span><span id="walletPushNote">No admin credit yet</span></span>
               </div>
-              <div class="footer-note" style="background:#eafff5;border:1px solid #bfe8d7;border-radius:10px;padding:10px 12px;margin-top:12px"><strong style="color:#0c7c59">Available</strong> is ready to withdraw right now. <strong>Pending Payout</strong> is a withdrawal you already requested that admin still needs to send. <strong>Paid</strong> means the money has actually reached your IBAN. <strong>Invoice Pending</strong> invoices haven't been pushed to your wallet yet, so they don't count toward Available.</div>
-              <div class="money-grid" id="walletSummaryCards" style="margin-top:14px"></div>
+              <div class="footer-note" style="background:#eafff5;border:1px solid #bfe8d7;border-radius:10px;padding:10px 12px;margin-top:12px"><strong style="color:#0c7c59">Wallet Balance</strong> is available to withdraw right now. Once you request a payout it moves to <strong>Pending admin payout</strong> (admin still needs to send it) until it shows <strong>Paid</strong>, which means the money has actually reached your IBAN.</div>
+              <div class="footer-note" id="walletReviewNote" style="display:none;background:#fff7e6;border:1px solid #f4dca0;border-radius:10px;padding:10px 12px;margin-top:10px"><strong style="color:#9a6b00">Finance is reviewing your wallet statement.</strong> This doesn't affect your ability to keep using NovaX -- we'll let you know as soon as it's done.</div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Wallet Summary</h3><p>Available balance, pending payout, and what you've been paid.</p></div></div>
+                <div class="money-grid" id="walletSummaryCards"></div>
+              </div>
               <div class="panel" style="margin-top:14px">
                 <div class="section-head"><div><h3>Withdraw Funds</h3><p>Choose a payout speed, confirm the net after fee, then add your IBAN.</p></div></div>
                 <div class="field" style="max-width:280px"><label>Amount to withdraw</label><input id="withdrawAmount" type="number" min="1"></div>
@@ -665,7 +669,7 @@
                 <div class="ops-list" id="withdrawHistory"></div>
               </div>
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Wallet Ledger</h3><p>Every rupee, with a source, status, fee, and plain-language explanation -- invoice credits, withdrawal requests, payout fees, payouts paid, and any admin adjustments.</p></div></div>
+                <div class="section-head"><div><h3>Wallet Ledger</h3><p>Every credit and deduction that moved your wallet balance.</p></div></div>
                 <div class="ops-list" id="walletLedgerList"></div>
               </div>
             </section>
@@ -760,10 +764,19 @@
     const STORAGE_KEY = "novaxLogisticsStateV10";
     const SB_URL = "https://rhzunbzbdzicajqtohwp.supabase.co"; // shared Supabase base URL (also used by connectStore, clientStartShopifyOauth)
     const STATUS_TAGS = ["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Refused","Consignee not available","Reattempt","Reassigned","Out of service area","Ready for return","Return in transit","Return received at origin","Return out for delivery","Parcel returned to consignee"];
+    // NovaX (client identity leak safeguard): baseState below is DEMO/OFFLINE
+    // FALLBACK DATA ONLY. It seeds local UI state before any Supabase session
+    // check runs, purely so the page has something to paint on first frame.
+    // It is unconditionally overwritten (state.client, state.clients,
+    // state.parcels, state.invoices, etc. all reset to empty/"Loading...")
+    // a few lines below, before the real Supabase profile/client_id lookup
+    // runs and before the first render() call -- so this "Apex Fashion" demo
+    // name must never actually reach the screen for a logged-in user. Do not
+    // remove the overwrite block below without also removing this data.
     const baseState = {
       selectedAwb:"N0010001", activeStatusQueue:"Parcel now in transit", activeRateClient:"", activeSackMode:"create",
       clientDateFrom:"2026-06-01", clientDateTo:"2026-06-24", lastGeneratedAwb:"N0010001",
-      walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"", walletLedger:[],
+      walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"",
       client:{ id:"CL-0001", name:"Apex Fashion", walletTopup:85000, shippingDue:18400, premiumTier:"Gold", subAccounts:6, walletBalance:12090 },
       clients:[
         { id:"CL-0001", name:"Apex Fashion", owner:"Sara Finance", tier:"Gold", city:"Karachi", walletTopup:85000, shippingDue:18400, risk:18, status:"Active", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, problemsResolved:18, health:91, walletBalance:12090 },
@@ -819,7 +832,7 @@
         _cleanStartV2:true,
         selectedAwb:"", activeStatusQueue:STATUS_TAGS[0], activeRateClient:"", activeSackMode:"create",
         clientDateFrom:new Date().toISOString().slice(0,10), clientDateTo:new Date().toISOString().slice(0,10), lastGeneratedAwb:"",
-        walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"", walletLedger:[],
+        walletWithdrawals:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"",
         client:{ id:"CL-0000", name:"New Merchant Workspace", walletTopup:0, shippingDue:0, subAccounts:0, walletBalance:0 },
         clients:[blankClient], pendingClients:[], users:[], branches:[], riders:[], parcels:[], expenses:[], paymentLogs:[], invoices:[], transit:[], completedSacks:[], operationsIssues:[], resolvedAlerts:[],
         activeClientTab:"dashboard"
@@ -1261,7 +1274,11 @@
     function cityReport(parcels){ const g={}; parcels.forEach(p=>{ g[p.city]=g[p.city]||{city:p.city,parcels:0,cod:0,revenue:0,delivered:0}; g[p.city].parcels++; g[p.city].cod+=p.cod; if(isDeliveredLedgerParcel(p)){ g[p.city].revenue+=p.fee; g[p.city].delivered++; } }); return Object.values(g); }
     function renderClientModules(){
       renderClientTabs(); renderAwbLabel();
-      const _acc=document.getElementById("topAccountName"); if(_acc&&state.client&&state.client.name) _acc.textContent=state.client.name;
+      // NovaX fix (client identity leak): always read the header account name
+      // from the same active client object as the sidebar/wallet/reports, and
+      // show "Account not linked" instead of any client name when this
+      // profile has no client_id.
+      const _acc=document.getElementById("topAccountName"); if(_acc) _acc.textContent=state.accountNotLinked?"Account not linked":((state.client&&state.client.name)||"Client");
       const cm=clientMetrics();
       const deliveredCod=cm.parcels.filter(isDeliveredLedgerParcel).reduce((s,p)=>s+p.cod,0);
       const pendingCod=cm.parcels.filter(p=>!isDeliveredLedgerParcel(p)).reduce((s,p)=>s+p.cod,0);
@@ -1515,6 +1532,35 @@
       bt.textContent=money(balance); bt.classList.remove("count-up"); void bt.offsetWidth; bt.classList.add("count-up");
       const push=state.lastWalletPush;
       document.getElementById("walletPushNote").textContent=push?`Last credited ${money(push.amount)} from admin (${push.invoice}) at ${push.at}`:"No admin credit yet";
+      // NovaX new (Finance Control Room v2): the client never sees
+      // "mismatch"/"locked" language. If their own ledger math doesn't add
+      // up to their wallet balance, we just say finance is reviewing their
+      // statement -- no numbers, no alarm.
+      const myWds=(state.walletWithdrawals||[]).filter(w=>w.clientId===c.id);
+      const myLedger=(state.walletLedger||[]).filter(l=>l.clientId===c.id);
+      const expectedRaw=myLedger.filter(l=>l.affectsBalance).reduce((s,l)=>s+Number(l.amount||0),0);
+      const expected=Math.max(0,Math.round(expectedRaw*100)/100);
+      const walletUnderReview=Math.abs(Math.round((balance-expected)*100)/100)>=1;
+      const reviewNote=document.getElementById("walletReviewNote");
+      if(reviewNote) reviewNote.style.display=walletUnderReview?"block":"none";
+      const monthKey=new Date().toISOString().slice(0,7);
+      const pendingPayout=myWds.filter(w=>w.status==="Pending admin payout").reduce((s,w)=>s+Number(w.net||0),0);
+      const paidThisMonth=myWds.filter(w=>w.status==="Paid"&&String(w.paidAt||w.createdAt).slice(0,7)===monthKey).reduce((s,w)=>s+Number(w.net||0),0);
+      const lifetimeWithdrawn=myWds.filter(w=>w.status==="Paid").reduce((s,w)=>s+Number(w.net||0),0);
+      const summaryCards=document.getElementById("walletSummaryCards");
+      if(summaryCards){
+        summaryCards.innerHTML=[
+          moneyBox("Available",money(balance),"ready to withdraw"),
+          moneyBox("Pending payout",money(pendingPayout),"being verified by finance"),
+          moneyBox("Paid this month",money(paidThisMonth),"settled to your bank"),
+          moneyBox("Lifetime withdrawn",money(lifetimeWithdrawn),"all-time total")
+        ].join("");
+      }
+      const entryLabels={ invoice_credit:"Invoice credited", withdrawal_requested:"Withdrawal requested", payout_fee:"Payout fee deducted", payout_paid:"Payout paid", admin_adjustment:"Admin adjustment" };
+      const ledgerList=document.getElementById("walletLedgerList");
+      if(ledgerList){
+        ledgerList.innerHTML=myLedger.slice(0,50).map(l=>`<div class="ops-card"><div class="ops-card-head"><strong>${entryLabels[l.entryType]||l.entryType}</strong><span class="chip ${l.amount>=0?"good":"warn"}">${money(l.amount)}</span></div><p>${l.note||l.referenceCode||""}</p><div class="footer-note">${l.createdAt}</div></div>`).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
+      }
       const amtInput=document.getElementById("withdrawAmount");
       if(amtInput && (!amtInput.value || Number(amtInput.value)>balance)) amtInput.value=balance||"";
       const speed=state.walletWithdrawSpeed||"";
@@ -1532,36 +1578,13 @@
         summary.style.display="block";
         summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div><div class="field" style="margin-top:12px;max-width:380px"><label>IBAN</label><input id="withdrawIban" placeholder="PK00 BANK 0000 0000 0000 0000"></div><button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="confirmWalletWithdraw()">Confirm Withdrawal</button>`;
       } else { summary.style.display="none"; }
-      // NovaX new (Wallet Ledger v1, item 4): once a withdrawal is paid, show
-      // the settlement proof reference the client can quote if they ever
-      // need to follow up with their bank.
-      document.getElementById("withdrawHistory").innerHTML=(state.walletWithdrawals||[]).filter(w=>w.clientId===c.id).map(w=>`<div class="ops-card"><div class="ops-card-head"><strong>${w.id}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${w.status}</span></div><p>${money(w.net)} to ${w.iban} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${w.status==="Paid"&&w.paidTxnId?(" &middot; Paid with reference "+w.paidTxnId):""}</div></div>`).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Pick a payout speed above to withdraw.</p></div>`;
-
-      // NovaX new (Wallet Ledger v1, items 1/2): premium wallet summary cards
-      // -- Available, Pending Payout, Paid This Month, Lifetime Withdrawn --
-      // plus the full ledger timeline underneath. All four numbers are
-      // derived from data already loaded (walletWithdrawals + walletLedger),
-      // never recomputed by writing to wallet_balance client-side.
-      const myWds=(state.walletWithdrawals||[]).filter(w=>w.clientId===c.id);
-      const pendingPayout=myWds.filter(w=>w.status==="Pending admin payout").reduce((s,w)=>s+Number(w.net||0),0);
-      const nowD=new Date();
-      const paidThisMonth=myWds.filter(w=>w.status==="Paid"&&w.paidAt&&String(w.paidAt).slice(0,7)===nowD.toISOString().slice(0,7)).reduce((s,w)=>s+Number(w.net||0),0);
-      const lifetimeWithdrawn=myWds.filter(w=>w.status==="Paid").reduce((s,w)=>s+Number(w.net||0),0);
-      const summaryCards=document.getElementById("walletSummaryCards");
-      if(summaryCards){
-        summaryCards.innerHTML=[
-          moneyBox("Available",money(balance),"ready to withdraw now"),
-          moneyBox("Pending Payout",money(pendingPayout),"requested, admin still to send"),
-          moneyBox("Paid This Month",money(paidThisMonth),nowD.toLocaleString("default",{month:"long"})),
-          moneyBox("Lifetime Withdrawn",money(lifetimeWithdrawn),"all-time settled payouts")
-        ].join("");
-      }
-      const entryLabels={ invoice_credit:"Invoice credited", withdrawal_requested:"Withdrawal requested", payout_fee:"Payout fee deducted", payout_paid:"Payout paid", admin_adjustment:"Admin adjustment" };
-      const ledgerList=document.getElementById("walletLedgerList");
-      if(ledgerList){
-        const rows=(state.walletLedger||[]).filter(l=>l.clientId===c.id);
-        ledgerList.innerHTML=rows.length?rows.map(l=>`<div class="ops-card"><div class="ops-card-head"><strong>${entryLabels[l.entryType]||l.entryType}</strong><span class="chip ${l.amount<0?"warn":"good"}">${l.status}</span></div><p>${l.note||""}</p><div class="footer-note">${l.createdAt}${l.referenceCode?(" &middot; Ref "+l.referenceCode):""} &middot; ${l.amount>=0?"+":""}${money(l.amount)}</div></div>`).join("") : `<div class="ops-card"><strong>No wallet activity yet</strong><p>Invoice credits, withdrawals, fees, and payouts will show here as they happen.</p></div>`;
-      }
+      document.getElementById("withdrawHistory").innerHTML=myWds.map(w=>{
+        // NovaX new (Finance Control Room v2): friendly status wording only --
+        // no mention of admin review queues, locks, or risk.
+        const friendlyStatus=w.status==="Paid"?"Paid":"Being verified by finance";
+        const paidRef=(w.status==="Paid"&&w.paidTxnId)?` &middot; Paid with reference ${w.paidTxnId}`:"";
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${w.id}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${w.iban} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${paidRef}</div></div>`;
+      }).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Pick a payout speed above to withdraw.</p></div>`;
     }
     function confirmWalletWithdraw(){
       const c=clientById(state.client.id); const balance=Number(c.walletBalance||0);
@@ -2158,6 +2181,14 @@
       renderMetrics(); renderClientStatusBoard(); renderClientParcels(); renderJourney(); renderWallets(); renderAi();
       renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview();
       renderIntegrations(); renderNewBookedList(); updateZoneRateHint();
+      // NovaX fix (client identity leak): the Client Menu workspace label used
+      // to be a hard-coded "Apex Fashion workspace" string in the HTML, so it
+      // never reflected the actual logged-in client. Always derive it from
+      // the currently loaded client object, and show a clear "Account not
+      // linked" state instead of any demo/fallback client name when this
+      // Supabase profile has no client_id.
+      const workspaceName = document.getElementById("clientWorkspaceName");
+      if (workspaceName) workspaceName.textContent = state.accountNotLinked ? "Account not linked" : `${state.client?.name || "Client"} workspace`;
       try{ if(typeof renderDashboardEmptyState==="function") renderDashboardEmptyState(); }catch(e){}
       try{ if(typeof renderDailyCommandCenter==="function") renderDailyCommandCenter(); }catch(e){}
       tickMeters();
@@ -2336,17 +2367,39 @@
         (state.storeConnections||[]).forEach(function(c){ if(c._pending) return; var row={ client_id:MY, platform:c.platform, store_url:c.storeUrl||"", connected:!!c.connected, imported_count:Number(c.importedCount||0), meta:{ hasCreds:!!c.hasCreds, connectedAt:c.connectedAt||"", lastSync:c.lastSync||"" }, updated_at:new Date().toISOString() }; var sig=JSON.stringify(row); if(c._sig===sig) return; var prevSig=c._sig; c._sig=sig; if(c._uuid){ sb.from("store_connections").update(row).eq("id",c._uuid).then(function(r){ if(r&&r.error){ console.warn("NovaX store update",r.error.message); if(c._sig===sig) c._sig=prevSig; } }); } else { c._pending=true; sb.from("store_connections").insert(row).select("id").maybeSingle().then(function(r){ c._pending=false; if(r&&r.data) c._uuid=r.data.id; else if(r&&r.error){ console.warn("NovaX store insert",r.error.message); if(c._sig===sig) c._sig=prevSig; } }); } });
       }
       var _save=saveState; saveState=function(){ try{ _save.apply(this,arguments); }catch(e){} try{ syncNew(); }catch(e){} };
-      state.parcels=[]; state.invoices=[]; state.tickets=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[]; state.walletLedger=[];
+      state.parcels=[]; state.invoices=[]; state.tickets=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[];
       state.client={ id:null, name:"Loading...", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
       state.clients=[state.client];
+      // NovaX fix (client identity leak): accountNotLinked is the only signal
+      // the UI uses to show the "Account not linked" state. It must never be
+      // paired with any demo/fallback client name (e.g. "Apex Fashion") --
+      // client.id is set to the non-colliding sentinel "UNLINKED" so no
+      // client-scoped fallback (`state.client.id||"CL-0001"`) can ever match
+      // a real or demo client's data.
+      state.accountNotLinked=false;
       state.clientDateFrom="2000-01-01"; state.clientDateTo=new Date(Date.now()+2*86400000).toISOString().slice(0,10);
       if(sb.auth){
         sb.auth.getSession().then(function(r){
           var session=r&&r.data&&r.data.session; if(!session){ window.__novaxClientDataReady=true; return; }
           sb.from("profiles").select("client_id").eq("id",session.user.id).single().then(function(p){
-            if(p&&p.error){ console.warn("NovaX profile",p.error.message); window.__novaxClientDataReady=true; return; }
+            if(p&&p.error){
+              console.warn("NovaX profile",p.error.message);
+              state.accountNotLinked=true;
+              state.client={ id:"UNLINKED", name:"Account not linked", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
+              state.clients=[state.client];
+              try{ render(); }catch(e){}
+              window.__novaxClientDataReady=true; return;
+            }
             MY=p&&p.data?p.data.client_id:null;
-            if(!MY){ console.warn("NovaX: this seller has no client_id linked yet (admin must link it)."); try{ render(); }catch(e){} window.__novaxClientDataReady=true; return; }
+            if(!MY){
+              console.warn("NovaX: this seller has no client_id linked yet (admin must link it).");
+              state.accountNotLinked=true;
+              state.client={ id:"UNLINKED", name:"Account not linked", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
+              state.clients=[state.client];
+              try{ render(); }catch(e){}
+              window.__novaxClientDataReady=true; return;
+            }
+            state.accountNotLinked=false;
             loadAll();
             if(!subscribed){
               subscribed=true;
