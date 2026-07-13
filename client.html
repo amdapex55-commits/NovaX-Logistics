@@ -247,28 +247,30 @@
     #printStage{display:none;}
     @media print{
       @page{size:A4 landscape;margin:6mm;}
-      body{background:#fff !important;}
+      html,body{margin:0 !important;background:#fff !important;}
       body *{visibility:hidden;}
       #printStage,#printStage *{visibility:visible;}
-      #printStage{display:block !important;position:absolute;left:0;top:0;width:100%;padding:0;}
-      #printStage.bulk-print{display:block !important;}
-      #printStage .print-label-wrap{break-inside:avoid;page-break-inside:avoid;margin:0;}
-      #printStage.bulk-print .print-page{display:flex;flex-direction:row;gap:4mm;align-items:stretch;width:100%;page-break-after:always;break-after:page;break-inside:avoid;page-break-inside:avoid;}
-      #printStage.bulk-print .print-page:last-child{page-break-after:auto;break-after:auto;}
-      #printStage.bulk-print .print-page .print-label-wrap{min-width:0;box-sizing:border-box;page-break-after:auto!important;display:flex;}
-      .awb-label{grid-template-columns:minmax(0,1fr) 118px!important;gap:5px!important;padding:6px!important;border:2px solid #000!important;border-radius:6px!important;box-shadow:none!important;break-inside:avoid;page-break-inside:avoid;box-sizing:border-box;width:100%;height:auto;max-height:100%;overflow:hidden;}
-      .awb-title{padding-bottom:4px!important;margin-bottom:4px!important;gap:5px!important;}
-      .awb-title h3{font-size:16px!important;}
-      .awb-title strong{font-size:14px!important;overflow-wrap:anywhere;}
-      .awb-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:4px!important;}
-      .awb-field{padding:4px!important;}
-      .awb-field span{font-size:7px!important;margin-bottom:1px!important;}
-      .awb-field strong{font-size:10px!important;line-height:1.15!important;overflow-wrap:anywhere;}
-      .awb-item-details strong,.awb-note strong{font-size:9px!important;-webkit-line-clamp:2!important;max-height:2.2em!important;}
-      .awb-codes{gap:4px!important;}
-      .qr-img{height:82px!important;width:82px!important;padding:2px!important;margin:auto;}
-      .barcode-img{height:30px!important;padding:2px!important;}
-      .chip{font-size:8.5px!important;padding:2px 5px!important;}
+      #awbLabelPreview,#awbLabelPreview *{visibility:hidden !important;}
+      #printStage{display:block !important;position:absolute;left:0;top:0;width:100%;margin:0;padding:0;}
+      .print-page{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm;width:100%;height:calc(210mm - 12mm);box-sizing:border-box;page-break-after:always;break-after:page;}
+      .print-page:last-child{page-break-after:auto;break-after:auto;}
+      .print-label-wrap{width:100%;height:100%;min-width:0;overflow:hidden;break-inside:avoid;page-break-inside:avoid;margin:0;}
+      .awb-label{display:grid;grid-template-columns:minmax(0,1fr) 82px!important;gap:4px!important;padding:5mm!important;border:2px solid #000!important;border-radius:6px!important;box-shadow:none!important;break-inside:avoid;page-break-inside:avoid;box-sizing:border-box;width:100%;height:100%;max-height:100%;overflow:hidden;}
+      .awb-title{padding-bottom:3px!important;margin-bottom:3px!important;gap:4px!important;}
+      .awb-title h3{font-size:17px!important;}
+      .awb-title strong{font-size:15px!important;overflow-wrap:anywhere;}
+      .awb-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:3px!important;}
+      .awb-field{padding:3px!important;}
+      .awb-field span{font-size:6.5px!important;margin-bottom:1px!important;}
+      .awb-field strong{font-size:9.5px!important;line-height:1.1!important;overflow-wrap:anywhere;}
+      .awb-field.awb-minor{padding:2px!important;}
+      .awb-field.awb-minor span{font-size:6px!important;}
+      .awb-field.awb-minor strong{font-size:8px!important;}
+      .awb-item-details strong,.awb-note strong{font-size:8.5px!important;-webkit-line-clamp:2!important;max-height:2em!important;}
+      .awb-codes{gap:3px!important;}
+      .qr-img{height:62px!important;width:62px!important;padding:2px!important;margin:auto;}
+      .barcode-img{height:34px!important;padding:1px!important;}
+      .chip{font-size:8px!important;padding:2px 4px!important;}
     }
     @media (max-width:1080px){.client-shell{grid-template-columns:1fr;}.client-side{position:static;}.grid.two,.grid.three{grid-template-columns:1fr;}.grid.metrics{grid-template-columns:repeat(2,minmax(0,1fr));}}
     @media (max-width:760px){
@@ -1413,26 +1415,21 @@
       const handling=p.fragile==="Yes"?"Fragile":"Standard";
       const bookedDate=labelDate(p);
       const orderId=labelText(p.orderId,"-");
-      return `<div class="awb-label"><div><div class="awb-title"><div><h3>NovaX AWB</h3><p class="footer-note" style="margin:6px 0 0;color:#41524a">Scan ID: ${p.awb}</p></div><strong>${p.awb}</strong></div><div class="awb-grid"><div class="awb-field"><span>Origin</span><strong>${origin}</strong></div><div class="awb-field"><span>Destination</span><strong>${destination}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div><div class="awb-field"><span>Consignee</span><strong>${consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${phone}</strong></div><div class="awb-field"><span>Payment Mode</span><strong>${paymentMode}</strong></div><div class="awb-field"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Service</span><strong>${service}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Order ID</span><strong>${orderId}</strong></div><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field" style="grid-column:1/-1"><span>Delivery Address</span><strong>${address}</strong></div><div class="awb-field awb-item-details" style="grid-column:1/-1"><span>Item / Product Details</span><strong>${itemDetails}</strong></div><div class="awb-field awb-note" style="grid-column:1/-1"><span>Handling Notes</span><strong>Pack this item before rider pickup. Return to shipper if undelivered.</strong></div></div></div><div class="awb-codes"><div><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"></div><div><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"></div><span class="chip info">${p.awb}</span></div></div>`;
+      return `<div class="awb-label"><div><div class="awb-title"><div><h3>NovaX AWB</h3><p class="footer-note" style="margin:6px 0 0;color:#41524a">Scan ID: ${p.awb}</p></div><strong>${p.awb}</strong></div><div class="awb-grid"><div class="awb-field"><span>Origin</span><strong>${origin}</strong></div><div class="awb-field"><span>Destination</span><strong>${destination}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div><div class="awb-field"><span>Consignee</span><strong>${consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${phone}</strong></div><div class="awb-field awb-minor"><span>Payment Mode</span><strong>${paymentMode}</strong></div><div class="awb-field"><span>COD</span><strong>${cod}</strong></div><div class="awb-field awb-minor"><span>Service</span><strong>${service}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field awb-minor"><span>Order ID</span><strong>${orderId}</strong></div><div class="awb-field awb-minor"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field" style="grid-column:1/-1"><span>Delivery Address</span><strong>${address}</strong></div><div class="awb-field awb-item-details" style="grid-column:1/-1"><span>Item / Product Details</span><strong>${itemDetails}</strong></div><div class="awb-field awb-note" style="grid-column:1/-1"><span>Handling Notes</span><strong>Pack this item before rider pickup. Return to shipper if undelivered.</strong></div></div></div><div class="awb-codes"><div><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"></div><div><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"></div><span class="chip info">${p.awb}</span></div></div>`;
     }
     function printLabels(awbs){
       const stage=document.getElementById("printStage"); if(!stage) return;
       const valid=(awbs||[]).map(a=>state.parcels.find(p=>p.awb===a)).filter(Boolean);
       if(!valid.length){ toast("No AWB available to print."); return; }
-      // NovaX fix: every print run -- whether it is 1 AWB or many -- now goes
-      // through the exact same page-chunked layout instead of a separate,
-      // unwrapped "single label" path. Each print-page holds up to 3 labels,
-      // and each label's width is sized to how many labels share that page
-      // (1 label = full width and bigger/readable, 2 = half each, 3 = a third
-      // each), which fixed a single-AWB print unpredictably spilling onto a
-      // blank second page.
+      // NovaX fix: every print run -- 1 AWB or many -- goes through this
+      // same CSS-grid page layout (max 3 labels per A4-landscape page).
+      // Widths come from CSS grid columns, not inline percentages, so
+      // labels + gaps can never overflow the page.
       stage.classList.add("bulk-print");
       let html="";
       for(let i=0;i<valid.length;i+=3){
         const page=valid.slice(i,i+3);
-        const count=page.length;
-        const widthExpr=count<=1?"100%":`calc((100% - ${(count-1)*4}mm) / ${count})`;
-        html+=`<div class="print-page">`+page.map(p=>`<div class="print-label-wrap" style="flex:0 0 ${widthExpr};width:${widthExpr};">${awbLabelHtml(p)}</div>`).join("")+`</div>`;
+        html+=`<div class="print-page">`+page.map(p=>`<div class="print-label-wrap">${awbLabelHtml(p)}</div>`).join("")+`</div>`;
       }
       stage.innerHTML=html;
       stage.style.display="block";
@@ -1446,7 +1443,7 @@
       const timeout=new Promise(resolve=>setTimeout(resolve,2500));
       Promise.race([waitAll,timeout]).then(()=>{
         window.print();
-        setTimeout(()=>{ stage.style.display="none"; },500);
+        setTimeout(()=>{ stage.style.display="none"; stage.innerHTML=""; stage.classList.remove("bulk-print"); },500);
         valid.forEach(p=>{ p.awbPrinted=true; p.awbPrintedAt=time(); });
         saveState();
         try{ if(document.getElementById("awbLabelPreview")) renderAwbLabel(); }catch(e){}
