@@ -5745,7 +5745,7 @@
         { id: "INV-0001", clientId: "SAMPLE-OFFLINE", parcelRefs: ["SAMPLE-AWB-2"], cod: 12400, charges: 310, payable: 12090, status: "Pending", createdAt: "2026-06-24 10:30", paidAt: "", summary: "1 delivered parcel, rider cash pending collection" }
       ],
       walletWithdrawals: [
-        { id: "WDR-0001", clientId: "SAMPLE-OFFLINE", amount: 5000, fee: 5, net: 4995, iban: "PK00 NOVAX DEMO IBAN", speed: "24h", status: "Pending admin payout", createdAt: "2026-06-24 11:20" }
+        { id: "WDR-0001", clientId: "SAMPLE-OFFLINE", amount: 5000, fee: 5, net: 4995, iban: "SAMPLE-IBAN", speed: "24h", status: "Pending admin payout", createdAt: "2026-06-24 11:20" }
       ],
       transit: [
         { id: "SACK-KHI-LHE-44", from: "Karachi Hub", to: "Lahore Hub", expected: 1000, scanned: 998, demanifested: 991, health: 88, status: "Active", type: "parcel sack" },
@@ -5909,7 +5909,7 @@
     }
 
     // NovaX fix (High #2, mirrored from client.html): never fall back to the
-    // demo/default "CL-0001" id. With no selected client, the correct answer
+    // demo/default placeholder client id. With no selected client, the correct answer
     // is an empty list, not another client's parcels.
     function clientScopedParcels() {
       const clientId = state.client && state.client.id;
@@ -7245,7 +7245,7 @@
       `).join("");
 
       document.getElementById("clientPaymentHistory").innerHTML = state.paymentLogs
-        // NovaX fix (High #2): never fall back to the demo/default "CL-0001" id.
+        // NovaX fix (High #2): never fall back to the demo/default placeholder client id.
         .filter(log => log.clientId === (state.client && state.client.id))
         .map(log => `
           <div class="log-item">
@@ -7256,7 +7256,7 @@
         `).join("") || `<div class="ops-card"><strong>No payment history</strong><p>Payment history will appear after COD or payout activity.</p></div>`;
 
       document.getElementById("clientInvoiceList").innerHTML = state.invoices
-        // NovaX fix (High #2): never fall back to the demo/default "CL-0001" id.
+        // NovaX fix (High #2): never fall back to the demo/default placeholder client id.
         .filter(invoice => invoice.clientId === (state.client && state.client.id))
         .map(invoice => `
           <div class="invoice-card">
@@ -9092,13 +9092,16 @@
         if(!rows.length){ el.innerHTML=`<p class="footer-note">No Shopify links generated yet.</p>`; return; }
         el.innerHTML = rows.map(function(row){
           const cl = clientById(row.client_id);
+          const isUuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(row.client_name||""));
+          const nameDisplay = cl ? cl.name : (row.client_name && !isUuidLike ? row.client_name : "Unknown client");
           const statusClass = row.connection_status==="Live" ? "good" : (row.connection_status==="Signature failed" || row.connection_status==="Disabled" ? "error" : "");
           const intakeUrl = row.intake_token ? (SB_URL.replace(/\/$/, "") + "/functions/v1/shopify-order-intake/" + row.intake_token) : "";
           return `<div class="ops-card" style="margin-bottom:8px">`
-            + `<div class="ops-card-head"><strong>${cl?cl.name:row.client_name}</strong><span class="chip ${statusClass}">${row.connection_status}</span></div>`
+            + `<div class="ops-card-head"><strong>${nameDisplay}</strong><span class="chip ${statusClass}">${row.connection_status}</span></div>`
             + `<p class="footer-note">Store: ${row.store_url||"(not set)"} &middot; Intake URL: ${row.has_secret?"active":"awaiting signing secret"}</p>`
-            + `<p class="footer-note">Last order received: ${row.last_order_at ? new Date(row.last_order_at).toLocaleString() : "never yet"} &middot; Imported: ${row.imported_count||0} &middot; Last error: ${row.last_error||"none"}</p>`
+            + `<p class="footer-note">Last order received: ${row.last_order_at ? new Date(row.last_order_at).toLocaleString() : "never yet"} &middot; Imported: ${row.imported_count||0} &middot; Last imported AWB: ${row.last_order_awb||"No imported order yet."} &middot; Last error: ${row.last_error||"none"}</p>`
             + `<div class="inline-actions" style="margin-top:8px">`
+            + (intakeUrl ? `<button class="ghost-btn" onclick="navigator.clipboard&&navigator.clipboard.writeText('${intakeUrl}');toast('Intake URL copied.')">Copy URL</button>` : "")
             + `<button class="ghost-btn" onclick="adminRegenerateShopifyIntake('${row.client_id}')">Regenerate intake URL</button>`
             + `<button class="ghost-btn" onclick="adminResetShopifySecret('${row.client_id}')">Reset signing secret</button>`
             + `<button class="ghost-btn" onclick="adminSetShopifyDisabled('${row.client_id}', ${row.disabled?"false":"true"})">${row.disabled?"Enable":"Disable"} integration</button>`
@@ -9225,7 +9228,7 @@
       adminSyncStoreFor(platform,clientId);
     }
     // NovaX fix (Medium #8): bookParcel() must never default to the demo
-    // "CL-0001" id. If no client is explicitly selected (overrides.clientId)
+    // demo/default placeholder client id. If no client is explicitly selected (overrides.clientId)
     // or actively open (state.client), stop and show an error instead of
     // attaching the booking to a guessed client.
     function bookParcel(overrides = {}) {
@@ -9935,7 +9938,7 @@
       // NovaX fix (Medium #8): operating expenses are branch/company-level,
       // not client-level, so they must never be tagged with a guessed client
       // id. Only attach a clientId when a client is genuinely active;
-      // otherwise leave it unset rather than defaulting to "CL-0001".
+      // otherwise leave it unset rather than defaulting to a placeholder client id.
       state.paymentLogs.unshift({
         id: nextId("PAY", state.paymentLogs),
         clientId: (state.client && state.client.id) || null,
@@ -10061,7 +10064,7 @@
           branch: rider.branch,
           // NovaX fix (Medium #8): riders are branch staff, not tied to a
           // single client -- never default their login row to the first
-          // client in the list or the demo "CL-0001" id.
+          // client in the list or the demo placeholder client id.
           clientId: null,
           riderId: rider.id,
           permissions: ["rider-route", "scan", "delivery-proof", "cash-submit"],
@@ -12070,7 +12073,7 @@
   var __SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
   var __SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
   var __REQUIRED_ROLE="admin";
-  var __sb=null; try{ if(window.supabase&&window.supabase.createClient){ __sb=window.supabase.createClient(__SB_URL,__SB_KEY); window.__nvGuardSb=__sb; } }catch(__e){}
+  var __sb=window.__nvSb||null; try{ if(!__sb&&window.supabase&&window.supabase.createClient){ __sb=window.supabase.createClient(__SB_URL,__SB_KEY); } }catch(__e){} window.__nvGuardSb=__sb;
   function ses(){ try{ return JSON.parse(localStorage.getItem("novaxSession")||"null"); }catch(e){ return null; } }
   function logout(e){ if(e&&e.preventDefault) e.preventDefault(); try{ localStorage.removeItem("novaxSession"); }catch(_){ } try{ if(__sb&&__sb.auth) __sb.auth.signOut(); }catch(_2){ } window.location.href="index.html"; }
   window.nvLogout=logout;
