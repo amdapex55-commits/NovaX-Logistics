@@ -440,6 +440,7 @@
                   <button class="action-btn" id="applyDateRangeBtn">Apply Range</button>
                 </div>
               </div>
+              <div id="clientActionNeededCard" style="display:none;margin-top:14px"></div>
               <div class="grid metrics" id="clientMetrics" style="margin-top:14px"></div>
               <div class="panel" id="clientLiveStatusPanel" style="margin-top:14px">
                 <div class="section-head" id="statusBoardHead" onclick="toggleStatusBoard()" style="cursor:pointer;user-select:none"><div><h3>Live Status Board <span id="statusBoardChevron" style="font-size:13px;color:var(--green)">▸</span></h3><p id="statusBoardSummary">Tap to expand your parcels grouped by status.</p></div></div>
@@ -765,6 +766,16 @@
                   <div class="section-head"><div><h3>Escalation Inbox</h3><p>AI pings branch managers and admin when portal data is incomplete.</p></div></div>
                   <div class="ops-list" id="supportEscalations"></div>
                 </div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Notification preferences</h3><p>Choose how you want to hear about your parcels. WhatsApp/SMS/Email sending is coming soon -- your choices are saved now so nothing needs to change later.</p></div></div>
+                <div class="grid three">
+                  <label class="footer-note" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="notifPrefWhatsapp"> WhatsApp updates</label>
+                  <label class="footer-note" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="notifPrefSms"> SMS updates</label>
+                  <label class="footer-note" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="notifPrefEmail"> Email updates</label>
+                </div>
+                <div class="grid three" id="notifPrefEventsGrid" style="margin-top:10px"></div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="saveClientNotificationPrefs()">Save Preferences</button></div>
               </div>
             </section>
           </div>
@@ -2783,7 +2794,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       tickMeters();
     }
     function tickMeters(){ requestAnimationFrame(()=>{ document.querySelectorAll(".meter>span").forEach(s=>{ const w=s.style.width; s.style.width="0"; requestAnimationFrame(()=>{ s.style.width=w; }); }); }); }
-    function showClientTab(id){ state.activeClientTab=id; saveState(); renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
+    function showClientTab(id){ state.activeClientTab=id; saveState(); renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
     function toast(msg,type){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.remove("success","error"); const kind=type||(/reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(msg)?"error":/success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach/i.test(msg)?"success":""); if(kind) el.classList.add(kind); el.classList.add("show"); clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
     /* Events */
@@ -3302,6 +3313,61 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     })();
 
     /* ===== Daily Command Center: dashboard strip render + wiring ===== */
+    var NOTIF_EVENT_LABELS={ booked:"Booked", picked_up:"Picked up", in_transit:"In transit", out_for_delivery:"Out for delivery", delivered:"Delivered", refused:"Refused", returned:"Returned", invoice_pushed:"Invoice pushed", wallet_paid:"Wallet payout paid" };
+
+    async function logClientError(rpcName, message, severity){
+      try{ if(window.__nvSb) await window.__nvSb.rpc("log_portal_error",{ p_source:"client", p_rpc_name:rpcName||null, p_page:(state.activeClientTab||"client"), p_message:String(message||"").slice(0,300), p_severity:severity||"warning" }); }
+      catch(e){ /* never let error-logging break the page */ }
+    }
+
+    async function loadClientNotificationPrefs(){
+      try{
+        const r=await window.__nvSb.rpc("client_get_notification_prefs",{});
+        if(r.error) throw new Error(r.error.message);
+        const p=r.data||{};
+        const wa=document.getElementById("notifPrefWhatsapp"); if(wa) wa.checked=!!p.whatsapp_enabled;
+        const sms=document.getElementById("notifPrefSms"); if(sms) sms.checked=!!p.sms_enabled;
+        const em=document.getElementById("notifPrefEmail"); if(em) em.checked=!!p.email_enabled;
+        const events=Array.isArray(p.events)?p.events:Object.keys(NOTIF_EVENT_LABELS);
+        const grid=document.getElementById("notifPrefEventsGrid");
+        if(grid) grid.innerHTML=Object.keys(NOTIF_EVENT_LABELS).map(function(ev){ return `<label class="footer-note" style="display:flex;align-items:center;gap:8px"><input type="checkbox" class="notifPrefEventBox" value="${ev}" ${events.indexOf(ev)>-1?"checked":""}> ${NOTIF_EVENT_LABELS[ev]}</label>`; }).join("");
+      }catch(e){ logClientError("client_get_notification_prefs", e.message||e, "warning"); }
+    }
+
+    async function saveClientNotificationPrefs(){
+      try{
+        const wa=document.getElementById("notifPrefWhatsapp")?.checked||false;
+        const sms=document.getElementById("notifPrefSms")?.checked||false;
+        const em=document.getElementById("notifPrefEmail")?.checked||false;
+        const events=Array.from(document.querySelectorAll(".notifPrefEventBox:checked")).map(function(el){ return el.value; });
+        const r=await window.__nvSb.rpc("client_set_notification_prefs",{ p_whatsapp:wa, p_sms:sms, p_email:em, p_events:events });
+        if(r.error) throw new Error(r.error.message);
+        toast("Notification preferences saved");
+      }catch(e){ toast("Could not save preferences: "+(e.message||e), "error"); logClientError("client_set_notification_prefs", e.message||e, "warning"); }
+    }
+
+    function renderClientActionNeeded(){
+      const host=document.getElementById("clientActionNeededCard"); if(!host) return;
+      let pool=[]; try{ pool=(typeof clientScopedParcels==="function")?clientScopedParcels():((state.parcels)||[]); }catch(e){ pool=state.parcels||[]; }
+      const needsAttention=pool.filter(function(p){ return ["Refused","Consignee not available","Ready for return"].indexOf(p.status)>-1 || (typeof isDelayed==="function" && isDelayed(p) && p.status!=="Delivered"); });
+      if(!needsAttention.length){ host.innerHTML=""; host.style.display="none"; return; }
+      host.style.display="block";
+      host.innerHTML=`<div class="panel" style="border:1px solid #f0d6a0;background:#fffaf0"><div class="section-head"><div><h3>Action needed</h3><p>${needsAttention.length} parcel(s) are waiting on a quick decision from you -- nothing urgent, just pick an option below.</p></div></div><div class="ops-list">`+needsAttention.slice(0,6).map(function(p){
+        const isRefused=p.status==="Refused"; const isReturn=p.status==="Ready for return";
+        const label=isRefused?"Refused -- needs your decision":isReturn?"Ready for return -- confirm":p.status==="Consignee not available"?"Consignee unavailable -- reattempt?":"Delayed -- update available";
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip warn">${label}</span></div><p class="footer-note">${p.consignee||""} &middot; ${p.city||""}</p><div class="inline-actions" style="margin-top:6px"><button class="action-btn ghost" onclick="clientActionNeededReattempt('${p.awb}')">Reattempt delivery</button><button class="action-btn ghost" onclick="clientActionNeededReturn('${p.awb}')">Return to me</button><button class="action-btn ghost" onclick="openClientParcelJourney('${p.awb}')">View details</button></div></div>`;
+      }).join("")+`</div></div>`;
+    }
+
+    function clientActionNeededReattempt(awb){
+      if(typeof requestRedelivery==="function"){ requestRedelivery(awb); return; }
+      toast("Could not send this request right now.","error");
+    }
+    function clientActionNeededReturn(awb){
+      if(typeof requestReturnToOrigin==="function"){ requestReturnToOrigin(awb); return; }
+      toast("Could not send this request right now.","error");
+    }
+
     function nvReviewIssues(){
       try{
         if(typeof showClientTab==="function") showClientTab("dashboard");
@@ -4041,12 +4107,46 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(has(["how many parcel","kitne parcel","kitny parcel","total parcel","parcel count"])){
       if(ctx) return { reply:"You have "+ctx.totalAllTime+" parcel(s) total \u2014 "+ctx.totalInRange+" in your current range, "+ctx.deliveredCount+" delivered.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
     }
-    if(has(["any issue","koi issue","masla hai","issues today","problem today"])){
+    if(has(["any issue","koi issue","masla hai","issues today","problem today","which parcels need my attention","parcels need my attention","need my attention","need attention"])){
       if(ctx && ctx.issueCount>0) return { reply:"You have "+ctx.issueCount+" parcel(s) needing attention. First one: "+ctx.firstIssueAwb+".", actions:[
         { label:"Review Issues", kind:"local", type:"nv_review_issues" },
         { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:ctx.firstIssueAwb }
       ] };
       return { reply:"No open issues right now \u2014 everything looks on track.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
+    }
+    if(has(["show delayed","delayed orders","delayed parcels","which parcels are delayed","delayed order"])){
+      var pool2=(typeof myParcels==="function")?myParcels():((typeof state!=="undefined"&&state.parcels)||[]);
+      var delayedList=pool2.filter(function(x){ try{ return typeof isDelayed==="function" && isDelayed(x) && x.status!=="Delivered"; }catch(e){ return false; } });
+      if(!delayedList.length) return { reply:"No delayed parcels right now \u2014 everything is moving on time.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
+      var names=delayedList.slice(0,5).map(function(x){ return x.awb; }).join(", ");
+      return { reply:"You have "+delayedList.length+" delayed parcel(s): "+names+(delayedList.length>5?" and more":"")+".", actions:[
+        { label:"Review Issues", kind:"local", type:"nv_review_issues" },
+        { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:delayedList[0].awb }
+      ] };
+    }
+    if(has(["reattempt this","reattempt it","redeliver this"])){
+      var reAwb=awb||(typeof state!=="undefined"&&state.selectedAwb)||(ctx&&ctx.firstIssueAwb);
+      if(!reAwb) return { reply:"Which AWB should I reattempt? Share the tracking ID and I'll prepare the request.", actions:[{ label:"Review Issues", kind:"local", type:"nv_review_issues" }] };
+      return buildReattemptConfirm(reAwb);
+    }
+    if(has(["return this parcel","return this","return it"])){
+      var rtAwb=awb||(typeof state!=="undefined"&&state.selectedAwb)||(ctx&&ctx.firstIssueAwb);
+      if(!rtAwb) return { reply:"Which AWB should I return? Share the tracking ID and I'll prepare the request.", actions:[{ label:"Review Issues", kind:"local", type:"nv_review_issues" }] };
+      return buildReturnConfirm(rtAwb);
+    }
+    if(has(["why was it refused","why refused","why was this refused","reason for refusal","refuse kyun"])){
+      var whyAwb=awb||(typeof state!=="undefined"&&state.selectedAwb)||(ctx&&ctx.firstIssueAwb);
+      var poolW=(typeof myParcels==="function")?myParcels():((typeof state!=="undefined"&&state.parcels)||[]);
+      var pw=whyAwb?poolW.find(function(x){ return String(x.awb||"").toUpperCase()===String(whyAwb).toUpperCase(); }):null;
+      if(pw && typeof classifyParcelException==="function"){
+        var info=classifyParcelException(pw);
+        if(info) return { reply:pw.awb+": "+info.problem+"\nLikely cause: "+info.cause+"\nSuggested action: "+info.action, actions:[
+          { label:"Reattempt", kind:"local", type:"confirm_action", awb:pw.awb },
+          { label:"Return to Me", kind:"local", type:"nv_review_issues" },
+          { label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:pw.awb }
+        ] };
+      }
+      return { reply:"I couldn't find a refusal reason for that parcel yet \u2014 share the AWB or I can open a ticket to check with operations.", actions:[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }] };
     }
 
     if(has(NV_KW.printing)){
