@@ -4094,6 +4094,18 @@
       justify-content: center;
       text-decoration: none;
     }
+    .manifest-page { font-family: inherit; color: #111; padding: 6mm; width: 100%; box-sizing: border-box; }
+    .manifest-head h2 { margin: 0 0 4mm; font-size: 20px; }
+    .manifest-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin-bottom: 5mm; }
+    .manifest-meta div { border: 1px solid #ccc; border-radius: 6px; padding: 2mm 3mm; }
+    .manifest-meta span { display: block; font-size: 10px; color: #555; text-transform: uppercase; }
+    .manifest-meta strong { display: block; font-size: 13px; margin-top: 1mm; word-break: break-word; }
+    .manifest-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 5mm; }
+    .manifest-table th, .manifest-table td { border: 1px solid #999; padding: 1.5mm 2mm; text-align: left; vertical-align: top; word-break: break-word; }
+    .manifest-table th { background: #eee; }
+    .manifest-totals { display: flex; gap: 10mm; font-size: 13px; margin-bottom: 8mm; }
+    .manifest-sign { display: flex; gap: 12mm; margin-top: 10mm; }
+    .manifest-sign-line { flex: 1; border-top: 1px solid #333; padding-top: 2mm; font-size: 11px; text-align: center; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -4354,12 +4366,12 @@
                   <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
                   <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" placeholder="03xxxxxxxxx" maxlength="11" required></div>
                   <div class="field"><label>Pickup City <span class="required-star">*</span></label><select id="bookingPickupCity" required><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
-                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
+                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint()"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
                   <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required></div>
                   <div class="field"><label>Service Type <span class="required-star">*</span></label><select id="bookingService" required><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option><option>Prepaid Delivery</option></select></div>
                   <div class="field"><label>Product Category <span class="required-star">*</span></label><select id="bookingCategory" required><option>Fashion</option><option>Cosmetics</option><option>Electronics</option><option>Documents</option><option>Home Goods</option></select></div>
                   <div class="field"><label>Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
-                  <div class="field"><label>Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required></div>
+                  <div class="field"><label>Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required oninput="updateZoneRateHint()"></div>
                   <div class="field"><label>Payment Mode <span class="required-star">*</span></label><select id="bookingPaymentMode" required><option>Cash on Delivery</option><option>QR on Delivery</option><option>Prepaid</option></select></div>
                   <div class="field" style="grid-column:1/-1"><label>Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full pickup/delivery address" required></textarea></div>
                 </div>
@@ -4387,26 +4399,32 @@
                 <div class="panel">
                   <div class="section-head">
                     <div>
-                      <h3>Bulk Booking</h3>
-                      <p>Upload CSV or Excel later. For now this simulates five clean AWBs and shows how validation should work before booking.</p>
+                      <h3>Bulk Booking (Real CSV Import)</h3>
+                      <p>Select the client, download the template, fill it, then upload. Rows are validated the same way as the client portal -- no AWB is created until rows are valid.</p>
                     </div>
-                    <button class="action-btn" id="bulkBookingBtn">Simulate Bulk Upload</button>
+                  </div>
+                  <div class="field"><label>Client</label><select id="adminBulkClientId"><option value="">Select a client...</option></select></div>
+                  <div class="inline-actions" style="margin-top:10px">
+                    <button class="ghost-btn" id="downloadAdminBulkTemplateBtn">Download CSV Template</button>
+                    <input type="file" id="adminBulkCsvInput" accept=".csv" style="display:none">
+                    <button class="action-btn" id="adminBulkCsvPickBtn">Choose CSV File</button>
+                    <button class="action-btn" id="uploadAdminBulkCsvBtn">Validate &amp; Import</button>
                   </div>
                   <div class="bulk-drop">
                     <div>
-                      <strong>Drop Excel or CSV here</strong>
-                      <p class="footer-note">Required columns: consignee, phone, city, address, COD, weight, order ID.</p>
+                      <strong id="adminBulkFileName">No file selected</strong>
+                      <p class="footer-note">Required columns: consignee, phone, city, address, cod, weight, product, order_id, payment_mode. Optional: reference, reference_no, customer_ref, fragile.</p>
                     </div>
                   </div>
                 </div>
                 <div class="panel">
                   <div class="section-head">
                     <div>
-                      <h3>AI Validation</h3>
-                      <p>Invalid city, duplicate order ID, missing phone, and impossible COD values are blocked before AWB generation.</p>
+                      <h3>Row Validation</h3>
+                      <p>Invalid city, duplicate order ID/reference, missing phone/address/product, and invalid COD or weight are blocked before AWB generation.</p>
                     </div>
                   </div>
-                  <div class="ops-list" id="bulkValidationList"></div>
+                  <div class="ops-list" id="adminBulkValidationList"></div>
                 </div>
               </div>
             </section>
@@ -4589,6 +4607,8 @@
               </div>
 
               <button type="button" class="admin-nav-main" data-admin-tab="total-summary">TOTAL SUMMARY</button>
+
+              <button type="button" class="admin-nav-main" data-admin-tab="pickup-requests">PICKUP REQUESTS</button>
 
 
               <div class="admin-nav-group" data-admin-group="tickets">
@@ -4875,6 +4895,21 @@
                   </div>
                 </div>
               </div>
+              <div class="panel" id="exceptionControlRoomPanel" style="margin-top:16px">
+                <div class="section-head">
+                  <div>
+                    <h3>Exception Control Room</h3>
+                    <p>Every broken or problem parcel in one place: delayed/stuck, refused, consignee not available, return pending, fake attempt/proof dispute, rider cash holding, missing proof, and unresolved tickets linked to an AWB.</p>
+                  </div>
+                </div>
+                <div class="filter-bar" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+                  <div class="field"><label>Branch/City</label><select id="excBranchFilter" onchange="renderExceptionControlRoom()"><option value="">All branches</option></select></div>
+                  <div class="field"><label>Issue type</label><select id="excIssueFilter" onchange="renderExceptionControlRoom()"><option value="">All issue types</option><option>Delayed / stuck</option><option>Refused</option><option>Consignee not available</option><option>Return pending</option><option>Fake attempt / proof dispute</option><option>Rider cash holding</option><option>Missing proof</option><option>Unresolved ticket linked to AWB</option></select></div>
+                  <div class="field"><label>Urgency</label><select id="excUrgencyFilter" onchange="renderExceptionControlRoom()"><option value="">All urgency</option><option value="critical">Critical</option><option value="warning">Watch</option><option value="normal">Normal</option></select></div>
+                  <div class="field"><label>Client</label><select id="excClientFilter" onchange="renderExceptionControlRoom()"><option value="">All clients</option></select></div>
+                </div>
+                <div class="ops-list" id="exceptionControlRoomList"></div>
+              </div>
             </section>
 
             <section class="admin-module" id="admin-transit">
@@ -5007,6 +5042,20 @@
                 <div class="panel">
                   <div class="section-head"><div><h3>Expense Logs</h3><p>Admin expense entries affect profit dashboards immediately.</p></div></div>
                   <div class="log-feed" id="adminExpenseLogs"></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-pickup-requests">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>Pickup Requests</h3><p>Client pickup requests for New booked AWBs. Assign a rider, mark scheduled, print the manifest, then mark picked up.</p></div>
+                </div>
+                <div class="table-wrap wide-scroll">
+                  <table class="desktop-table">
+                    <thead><tr><th>Client</th><th>AWBs</th><th>Pickup Address</th><th>Requested For</th><th>Status</th><th>Rider</th><th>Actions</th></tr></thead>
+                    <tbody id="pickupRequestQueue"></tbody>
+                  </table>
                 </div>
               </div>
             </section>
@@ -5280,6 +5329,19 @@
                 <div class="section-head"><div><h3>Invoices Pushed To Wallet</h3><p>Generated invoices only become payable once pushed into a client's wallet.</p></div></div>
                 <div class="ops-list" id="walletInvoiceList"></div>
               </div>
+              <div class="panel" style="margin-top:14px" id="reconciliationAuditPanel">
+                <div class="section-head">
+                  <div>
+                    <h3>Invoice-to-Wallet Reconciliation Audit</h3>
+                    <p>Per-client proof of no money leakage: delivered COD, delivery charges, invoices, wallet pushes, withdrawals, payout fees, paid payouts, and expected vs actual balance -- all computed from real ledger/invoice/withdrawal data, never from UI cards alone.</p>
+                  </div>
+                </div>
+                <div class="filter-bar" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+                  <div class="field"><label>Client</label><select id="reconClientFilter" onchange="renderReconciliationAudit()"><option value="">All clients</option></select></div>
+                  <div class="field"><label>&nbsp;</label><button class="action-btn" onclick="exportReconciliationCsv()">Export Reconciliation CSV</button></div>
+                </div>
+                <div class="ops-list" id="reconciliationAuditList"></div>
+              </div>
             </section>
 
             <div id="markPaidModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center">
@@ -5292,6 +5354,18 @@
                 <div class="inline-actions" style="margin-top:14px">
                   <button class="action-btn secondary" onclick="closeMarkPaidModal()">Cancel</button>
                   <button class="action-btn" onclick="confirmMarkWalletWithdrawalPaid()">Confirm Paid</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="adminInvoiceViewModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center">
+              <div class="panel" style="max-width:760px;width:94%;max-height:88vh;overflow:auto;background:#fff">
+                <div class="section-head"><div><h3>Invoice</h3><p>NovaX branded invoice preview.</p></div></div>
+                <div id="adminInvoiceViewBody"></div>
+                <div class="inline-actions" style="margin-top:14px">
+                  <button class="action-btn secondary" onclick="closeAdminInvoiceModal()">Close</button>
+                  <button class="action-btn" id="adminInvoiceViewPrintBtn">Download PDF</button>
+                  <button class="ghost-btn" id="adminInvoiceViewCsvBtn">Download CSV</button>
                 </div>
               </div>
             </div>
@@ -5334,24 +5408,20 @@
 
             <section class="admin-module" id="admin-api-shopify">
               <div class="panel">
-                <div class="section-head"><div><h3>Shopify API</h3><p>One-click connect: pick the client, enter their shop domain, and they'll approve access on Shopify's own screen. No token copying, no manual webhook setup.</p></div><span class="chip good">Live</span></div>
+                <div class="section-head"><div><h3>Shopify Link Integration</h3><p>No NovaX Shopify app, no OAuth, no Partner app Client ID. Generate a client's link, they add one webhook in their own Shopify Admin, and orders import automatically once a real signed order arrives.</p></div><span class="chip">No app required</span></div>
                 <div class="grid two">
                   <div class="field"><label>Client</label><select id="shopifyClientSelect"></select></div>
-                  <div class="field"><label>Shop Domain</label><input id="adminShopifyOauthShop" placeholder="store.myshopify.com"></div>
+                  <div class="field"><label>Store Domain (optional label only)</label><input id="adminShopifyOauthShop" placeholder="store.myshopify.com"></div>
                 </div>
-                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="adminStartShopifyOauth()">Connect to Shopify (1-click)</button></div>
+                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="adminGenerateShopifyLink()">Generate Shopify Link</button></div>
+                <div class="field" id="adminShopifyLinkBox" style="display:none;margin-top:10px">
+                  <label>Webhook URL for this client</label>
+                  <div class="inline-actions"><input id="adminShopifyIntakeUrlOut" readonly style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('adminShopifyIntakeUrlOut')">Copy URL</button></div>
+                  <p class="footer-note" style="margin-top:8px">Send this URL to the client, or have them generate their own from their Store Integrations tab. They add it as a webhook in Shopify Admin &rarr; Settings &rarr; Notifications &rarr; Webhooks (Event: Order creation, Format: JSON), then paste the "Signing secret" Shopify shows them back into NovaX.</p>
+                </div>
               </div>
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Manual Connect (fallback)</h3><p>Use this only if the client can't approve the 1-click screen -- e.g. they'd rather generate a custom app token themselves.</p></div></div>
-                <div class="grid two">
-                  <div class="field"><label>Store Domain</label><input id="adminShopifyUrl" placeholder="store.myshopify.com"></div>
-                  <div class="field"><label>Admin API Access Token</label><input id="adminShopifyToken" placeholder="shpat_..."></div>
-                  <div class="field"><label>Webhook Signing Secret</label><input id="adminShopifySecret" placeholder="from Settings &gt; Notifications &gt; Webhooks"></div>
-                </div>
-                <div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="adminConnectLiveStore('shopify')">Connect Live</button></div>
-              </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Connected Shopify Stores</h3></div></div>
+                <div class="section-head"><div><h3>Shopify Integration Health</h3><p>Real backend status per client -- never shows "Live" until a real signed webhook order has actually been received.</p></div><button class="ghost-btn" onclick="renderAdminShopifyHealth()">Refresh</button></div>
                 <div id="shopifyConnList"></div>
               </div>
             </section>
@@ -5464,7 +5534,7 @@
     const now = () => new Date();
     const time = () => now().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const STORAGE_KEY = "novaxLogisticsStateV10";
-    const SB_URL = "https://rhzunbzbdzicajqtohwp.supabase.co"; // shared Supabase base URL (also used by adminConnectLiveStore, adminStartShopifyOauth)
+    const SB_URL = "https://rhzunbzbdzicajqtohwp.supabase.co"; // shared Supabase base URL (also used by adminConnectLiveStore, adminGenerateShopifyLink)
     const STATUS_TAGS = [
       "New booked",
       "Collected by rider",
@@ -5740,6 +5810,7 @@
         operationsIssues: [],
         resolvedAlerts: [],
         walletWithdrawals: [],
+        pickupRequests: [],
         tickets: [],
         ticketNotifications: [],
         lastBulkAwbs: [],
@@ -6292,6 +6363,38 @@
       return { A: legacy, B: { ...legacy } };
     }
 
+    // NovaX (Booking Charge Accuracy): parse weight strings like "0.8 kg", "1kg", "2.5", "5 KG".
+    function parseWeightKg(w) {
+      var s = String(w === undefined || w === null ? "" : w).trim().toLowerCase().replace(/kg/g, "").trim();
+      var n = parseFloat(s);
+      if (!s || isNaN(n) || n <= 0) return 0.8;
+      return n;
+    }
+    // charge = baseRate + ceil(max(0, weightKg-1)) * additionalKgRate, capped at the 5kg normal slab.
+    function bookingChargeBreakdown(rateCard, zone, weightInput) {
+      var z = zone === "A" ? "A" : "B";
+      var card = (rateCard && rateCard[z]) || (rateCard && typeof rateCard.overnight === "number" ? rateCard : defaultRateCard(250));
+      var base = Number(card.overnight) || 250;
+      var addlRate = Number(card.additionalKg) || 85;
+      var weightKg = parseWeightKg(weightInput);
+      var cappedKg = Math.min(weightKg, 5);
+      var extraKg = Math.ceil(Math.max(0, cappedKg - 1));
+      var additional = extraKg * addlRate;
+      var total = base + additional;
+      return { zone: z, weightKg: weightKg, base: base, addlRate: addlRate, extraKg: extraKg, additional: additional, total: total, overCap: weightKg > 5 };
+    }
+    function updateZoneRateHint() {
+      const el = document.getElementById("bookingCity");
+      const hint = document.getElementById("bookingZoneHint");
+      if (!el || !hint) return;
+      const client = clientById(state.client && state.client.id);
+      const rc = normalizeRateCard(client && client.rateCard, client && client.rate);
+      const zone = zoneForCity(el.value);
+      const weightEl = document.getElementById("bookingWeight");
+      const breakdown = bookingChargeBreakdown(rc, zone, weightEl ? weightEl.value : "0.8 kg");
+      hint.textContent = zoneLabel(zone) + " · base Rs " + fmt(breakdown.base) + " + additional Rs " + fmt(breakdown.additional) + " (" + breakdown.extraKg + " extra kg) = estimated total Rs " + fmt(breakdown.total) + (breakdown.overCap ? " (over 5kg normal slab, confirm manually)" : "");
+    }
+
     function shortClientCode(client) {
       const id = (client && client.id) || "";
       if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id)) return "CL-" + id.slice(0, 6).toUpperCase();
@@ -6363,10 +6466,27 @@
       return candidates.filter(parcel => selected.has(parcel.awb));
     }
 
+    function isNonCodParcel(parcel) {
+      return /non\s*cod|prepaid/i.test(String((parcel && (parcel.paymentMode || parcel.payment_mode)) || "").trim());
+    }
+
+    // NovaX new (Negative/Delivery-Charges Invoices): totals must separate
+    // COD-settlement money (owed BY NovaX TO the client) from delivery-charge
+    // money on non-COD/prepaid parcels (owed BY the client TO NovaX). The old
+    // Math.max(0, cod - charges) floored negative balances at 0 and silently
+    // threw away debt the client actually owes NovaX.
     function invoiceTotals(parcels) {
-      const cod = parcels.reduce((sum, parcel) => sum + Number(parcel.cod || 0), 0);
-      const charges = parcels.reduce((sum, parcel) => sum + Number(parcel.fee || 0), 0);
-      return { cod, charges, payable: Math.max(0, cod - charges) };
+      const codParcels = parcels.filter(parcel => !isNonCodParcel(parcel));
+      const nonCodParcels = parcels.filter(parcel => isNonCodParcel(parcel));
+      const cod = codParcels.reduce((sum, parcel) => sum + Number(parcel.cod || 0), 0);
+      const codCharges = codParcels.reduce((sum, parcel) => sum + Number(parcel.fee || 0), 0);
+      const nonCodCharges = nonCodParcels.reduce((sum, parcel) => sum + Number(parcel.fee || 0), 0);
+      const charges = codCharges + nonCodCharges;
+      const payable = Math.max(0, cod - codCharges);
+      const dueToNovax = nonCodCharges;
+      const finalBalance = payable - dueToNovax;
+      const invoiceType = codParcels.length && nonCodParcels.length ? "Mixed" : (nonCodParcels.length ? "Delivery Charges" : "COD Settlement");
+      return { cod, charges, payable, dueToNovax, finalBalance, invoiceType, codCount: codParcels.length, nonCodCount: nonCodParcels.length };
     }
 
     function walletFeeRate(speed) {
@@ -6492,6 +6612,101 @@
       if (recon.mismatch) return "Mismatch";
       const risky = pendingForClient.some(item => computePayoutRiskLock(item).locked);
       return risky ? "Needs review" : "Clean";
+    }
+
+    // NovaX (Part 9): full Invoice-to-Wallet Reconciliation Audit. Every
+    // total here comes from real invoice/withdrawal/ledger rows -- never
+    // from UI summary cards -- so this can actually prove no money
+    // leakage. If a client has invoices or withdrawals but zero ledger
+    // rows, the ledger is incomplete and we say so instead of showing a
+    // false "clean" badge.
+    function computeFullReconciliation(clientId) {
+      const client = clientById(clientId);
+      const parcels = (state.parcels || []).filter(p => p.clientId === clientId);
+      const deliveredCod = parcels.filter(isDeliveredLedgerParcel).reduce((s, p) => s + Number(p.cod || 0), 0);
+      const invoices = (state.invoices || []).filter(i => i.clientId === clientId && i.status !== "Deleted");
+      const invoiceTotal = invoices.reduce((s, i) => s + Number(i.payable || 0), 0);
+      const deliveryCharges = invoices.reduce((s, i) => s + Number(i.charges || 0), 0);
+      const pushedToWallet = invoices.filter(i => i.status === "Pushed to wallet" || i.status === "Paid").reduce((s, i) => s + Number(i.payable || 0), 0);
+      const withdrawals = (state.walletWithdrawals || []).filter(w => w.clientId === clientId);
+      const withdrawalRequested = withdrawals.reduce((s, w) => s + Number(w.amount || 0), 0);
+      const payoutFee = withdrawals.reduce((s, w) => s + Number(w.fee || 0), 0);
+      const paidPayout = withdrawals.filter(w => w.status === "Paid").reduce((s, w) => s + Number(w.net || 0), 0);
+      const ledgerRows = (state.walletLedger || []).filter(r => r.clientId === clientId);
+      const manualAdjustments = ledgerRows.filter(r => /adjust/i.test(r.entryType || r.referenceType || ""));
+      const recon = computeWalletReconciliation(clientId);
+      const ledgerIncomplete = !ledgerRows.length && (invoices.length > 0 || withdrawals.length > 0);
+      return {
+        clientId, clientName: client ? client.name : "Unknown",
+        deliveredCod, deliveryCharges, invoiceTotal, pushedToWallet,
+        withdrawalRequested, payoutFee, paidPayout,
+        actualBalance: recon.actual, expectedBalance: recon.expected, difference: recon.difference,
+        mismatch: recon.mismatch, ledgerIncomplete,
+        invoices, ledgerRows, withdrawals, manualAdjustments
+      };
+    }
+    function reconciliationBadge(row) {
+      if (row.ledgerIncomplete) return { cls: "warn", label: "Ledger incomplete" };
+      if (row.mismatch) return { cls: "bad", label: "Mismatch" };
+      return { cls: "good", label: "Clean" };
+    }
+    function renderReconciliationAudit() {
+      const list = document.getElementById("reconciliationAuditList");
+      if (!list) return;
+      const clientSel = document.getElementById("reconClientFilter");
+      if (clientSel && clientSel.options.length <= 1) {
+        clientSel.innerHTML = "<option value=\"\">All clients</option>" + (state.clients || []).map(c => "<option value=\"" + c.id + "\">" + c.name + "</option>").join("");
+      }
+      const clientIds = (clientSel && clientSel.value) ? [clientSel.value] : (state.clients || []).map(c => c.id);
+      const rows = clientIds.map(computeFullReconciliation);
+      if (!rows.length) { list.innerHTML = "<div class=\"ops-card\"><strong>No clients yet</strong></div>"; return; }
+      list.innerHTML = rows.map(row => {
+        const badge = reconciliationBadge(row);
+        const paidRefs = row.withdrawals
+          .filter(w => w.status === "Paid")
+          .map(w => w.paidTxnId || w.id)
+          .filter(Boolean);
+        const drilldown = [
+          "<strong>Invoice credits:</strong> " + row.invoices.length + " invoice(s), " + money(row.invoiceTotal) + " total",
+          "<strong>Wallet ledger entries:</strong> " + row.ledgerRows.length + " row(s)",
+          "<strong>Withdrawals:</strong> " + row.withdrawals.length + " request(s), " + money(row.withdrawalRequested) + " requested",
+          "<strong>Paid references:</strong> " + (paidRefs.length ? paidRefs.join(", ") : "none yet"),
+          "<strong>Manual adjustments:</strong> " + row.manualAdjustments.length + " entry(s)"
+        ];
+        return `<div class="ops-card ${row.mismatch ? "alert-row" : ""}">
+          <div class="ops-card-head"><strong>${row.clientName}</strong><span class="chip ${badge.cls}">${badge.label}</span></div>
+          <div class="money-grid">
+            ${moneyBox("Delivered COD", money(row.deliveredCod), "gross COD collected")}
+            ${moneyBox("Delivery charges", money(row.deliveryCharges), "NovaX revenue")}
+            ${moneyBox("Generated invoices", money(row.invoiceTotal), row.invoices.length + " invoice(s)")}
+            ${moneyBox("Pushed to wallet", money(row.pushedToWallet), "payable credited")}
+            ${moneyBox("Withdrawals requested", money(row.withdrawalRequested), row.withdrawals.length + " request(s)")}
+            ${moneyBox("Payout fees", money(row.payoutFee), "NovaX fee revenue")}
+            ${moneyBox("Paid payouts", money(row.paidPayout), "settled to bank")}
+            ${moneyBox("Wallet balance (actual)", money(row.actualBalance), "live balance")}
+            ${moneyBox("Wallet balance (expected)", money(row.expectedBalance), "from ledger")}
+            ${moneyBox("Difference", money(row.difference), row.mismatch ? "mismatch -- investigate" : "balanced")}
+          </div>
+          <div class="footer-note" style="margin-top:8px;line-height:1.6">${drilldown.join("<br>")}</div>
+          ${row.ledgerIncomplete ? '<div class="footer-note" style="color:#b45309;margin-top:6px">Ledger incomplete: this client has invoices or withdrawals but no wallet_ledger rows. Not shown as clean.</div>' : ""}
+        </div>`;
+      }).join("");
+    }
+    function exportReconciliationCsv() {
+      const rows = (state.clients || []).map(c => computeFullReconciliation(c.id));
+      const header = ["Client","Delivered COD","Delivery Charges","Invoice Total","Pushed To Wallet","Withdrawal Requested","Payout Fee","Paid Payout","Actual Balance","Expected Balance","Difference","Status"];
+      const csvRows = rows.map(row => {
+        const badge = reconciliationBadge(row);
+        return [row.clientName, row.deliveredCod, row.deliveryCharges, row.invoiceTotal, row.pushedToWallet, row.withdrawalRequested, row.payoutFee, row.paidPayout, row.actualBalance, row.expectedBalance, row.difference, badge.label];
+      });
+      const esc = v => { const s = String(v == null ? "" : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+      const csv = "\ufeff" + [header, ...csvRows].map(r => r.map(esc).join(",")).join("\r\n") + "\r\n";
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = "NovaX-reconciliation-" + new Date().toISOString().slice(0, 10) + ".csv";
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+      toast("Reconciliation CSV exported.");
     }
 
     function nextId(prefix, items) {
@@ -6870,6 +7085,65 @@
       return awb;
     }
 
+    function trackingUrl(awb) {
+      try { return location.origin + "/tracking.html?awb=" + encodeURIComponent(awb); }
+      catch (e) { return "https://novaxlogistics.com/tracking.html?awb=" + encodeURIComponent(awb); }
+    }
+    // NovaX (Part 7): WhatsApp customer message templates, mirrored from
+    // client.html so admin can send the exact same wording from the
+    // exception control room / parcel detail view.
+    const WA_MESSAGE_KINDS = ["Booked","Out for delivery","Delivered","Refused","Consignee not available","Reattempt","Return to origin","Address/phone issue"];
+    const WA_NEXT_STEP = {
+      "Booked": "We will collect and dispatch this parcel soon.",
+      "Out for delivery": "This parcel is out for delivery today. Please keep your phone reachable.",
+      "Delivered": "This parcel has been delivered. Thank you for shopping with us.",
+      "Refused": "This parcel was refused at delivery. Please contact us if this was a mistake.",
+      "Consignee not available": "Our rider could not reach you. We will attempt delivery again soon.",
+      "Reattempt": "We will re-attempt delivery soon. Please stay available on this number.",
+      "Return to origin": "This parcel is being returned to the sender.",
+      "Address/phone issue": "We could not deliver due to an address or phone issue. Please reply with the correct details."
+    };
+    function waKindForStatus(status) {
+      const map = { "New booked": "Booked", "Parcel out for delivery": "Out for delivery", "Delivered": "Delivered", "Refused": "Refused", "Consignee not available": "Consignee not available", "Reattempt": "Reattempt", "Ready for return": "Return to origin", "Return in transit": "Return to origin", "Return received at origin": "Return to origin", "Return out for delivery": "Return to origin", "Parcel returned to consignee": "Return to origin" };
+      return map[status] || "Booked";
+    }
+    function waPhoneDigits(phone) {
+      let d = String(phone || "").replace(/\D/g, "");
+      if (d.length === 11 && d.startsWith("03")) d = "92" + d.slice(1);
+      else if (d.length === 10 && d.startsWith("3")) d = "92" + d;
+      else if (d.length === 12 && d.startsWith("92")) {}
+      else return "";
+      return /^92\d{10}$/.test(d) ? d : "";
+    }
+    function whatsappMessageText(p, kind) {
+      const step = WA_NEXT_STEP[kind] || "Please check the latest status using the tracking link below.";
+      const client = clientById(p.clientId);
+      return "Hello " + (p.consignee || "") + ", this is NovaX Logistics (" + (client ? client.name : "seller") + ").\nAWB: " + p.awb + "\nStatus: " + kind + "\n" + step + "\nTrack your parcel: " + trackingUrl(p.awb);
+    }
+    function waSelectHtml(awb, selectedKind) {
+      return "<select id=\"waKind_" + awb + "\" class=\"wa-kind-select\" onclick=\"event.stopPropagation()\" style=\"padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:inherit;font-size:12px\">" + WA_MESSAGE_KINDS.map(k => "<option value=\"" + k + "\" " + (k === selectedKind ? "selected" : "") + ">" + k + "</option>").join("") + "</select>";
+    }
+    function waActionsHtml(awb, selectedKind) {
+      return "<div class=\"wa-actions\" style=\"margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center\" onclick=\"event.stopPropagation()\">" + waSelectHtml(awb, selectedKind) + "<button class=\"ghost-btn\" onclick=\"event.stopPropagation();copyWhatsappMessage('" + awb + "', document.getElementById('waKind_" + awb + "').value)\">Copy WA Msg</button><button class=\"ghost-btn\" onclick=\"event.stopPropagation();messageCustomer('" + awb + "', document.getElementById('waKind_" + awb + "').value)\">Message Customer</button></div>";
+    }
+    function copyWhatsappMessage(awb, kind) {
+      const p = state.parcels.find(x => x.awb === awb);
+      if (!p) { toast("Parcel not found.", "error"); return; }
+      const text = whatsappMessageText(p, kind || waKindForStatus(p.status));
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => toast("WhatsApp message copied.")).catch(() => toast("Could not copy the message.", "error"));
+      } else { toast("Clipboard isn't available in this browser.", "error"); }
+    }
+    function messageCustomer(awb, kind) {
+      const p = state.parcels.find(x => x.awb === awb);
+      if (!p) { toast("Parcel not found.", "error"); return; }
+      if (!p.phone) { toast("No consignee phone saved for this parcel. Add a phone number before messaging.", "error"); return; }
+      const digits = waPhoneDigits(p.phone);
+      if (!digits) { toast("Consignee phone \"" + p.phone + "\" doesn't look like a valid Pakistani number.", "error"); return; }
+      const text = whatsappMessageText(p, kind || waKindForStatus(p.status));
+      window.open("https://wa.me/" + digits + "?text=" + encodeURIComponent(text), "_blank");
+    }
+
     function qrUrl(awb) {
       return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodeURIComponent(trackingPayload(awb))}`;
     }
@@ -6921,17 +7195,13 @@
       if (fromInput && fromInput.value !== state.clientDateFrom) fromInput.value = state.clientDateFrom || "";
       if (toInput && toInput.value !== state.clientDateTo) toInput.value = state.clientDateTo || "";
 
-      document.getElementById("bulkValidationList").innerHTML = [
-        { label: "City validation", value: "4 serviceable cities", fill: 92, kind: "good" },
-        { label: "Duplicate order ID", value: "0 duplicates found", fill: 100, kind: "good" },
-        { label: "COD sanity check", value: "2 orders need review", fill: 64, kind: "warn" },
-        { label: "Phone completeness", value: "97% valid numbers", fill: 97, kind: "good" }
-      ].map(item => `
-        <div class="ops-card">
-          <div class="ops-card-head"><strong>${item.label}</strong><span class="chip ${item.kind}">${item.value}</span></div>
-          <div class="meter ${item.kind === "warn" ? "amber" : ""}"><span style="width:${item.fill}%"></span></div>
-        </div>
-      `).join("");
+      // NovaX (leakage fix #5): this used to overwrite the bulk-booking
+      // validation panel with hardcoded fake numbers on every render,
+      // regardless of what (if anything) was uploaded. Real CSV validation
+      // now renders into its own #adminBulkValidationList via
+      // renderAdminBulkValidation(), and the client select is kept in sync.
+      populateAdminBulkClientSelect();
+      if (!state.lastAdminBulkValidation) renderAdminBulkValidation(null);
 
       document.getElementById("clientReportMetrics").innerHTML = [
         metricCard("Delivery Rate", `${deliveryRate}%`, deliveryRate, "delivered parcels", deliveryRate < 45 ? "amber" : ""),
@@ -7518,6 +7788,10 @@
       const opsBranch = document.getElementById("opsBranchFilter")?.value || "";
       const opsUrgency = document.getElementById("opsUrgencyFilter")?.value || "";
       const opsResolved = document.getElementById("opsResolvedFilter")?.value || "open";
+      try { renderPickupQueue(); } catch (e) {}
+      try { renderExceptionControlRoom(); } catch (e) {}
+      try { renderReconciliationAudit(); } catch (e) {}
+
       document.getElementById("operationsIssueList").innerHTML = state.operationsIssues.filter(issue => {
         return (!opsBranch || issue.branch === opsBranch)
           && (!opsUrgency || issue.urgency === opsUrgency)
@@ -7588,12 +7862,21 @@
         recentInvoiceEl.innerHTML = state.invoices.filter(inv => inv.status !== "Deleted").slice(0, 8).map(invoice => {
           const client = clientById(invoice.clientId);
           const pushed = invoice.status === "Pushed to wallet" || invoice.status === "Paid";
+          const due = Number(invoice.dueToNovax || 0);
+          const isDueInvoice = due > 0;
+          const invType = invoice.invoiceType || "COD Settlement";
+          let recentActions;
+          if (invoice.status === "Paid") recentActions = `<span class="chip good">Settled</span>`;
+          else if (isDueInvoice) recentActions = `<button class="action-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Paid</button>`;
+          else if (pushed) recentActions = `<button class="ghost-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Invoice Settled</button>`;
+          else recentActions = `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button>`;
           return `
             <div class="ops-card">
               <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${pushed ? "good" : "warn"}">${invoice.status}</span></div>
-              <p>${invoice.parcelRefs.join(", ")}<br>Payable ${money(invoice.payable)} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
+              <p>${invType} \u00b7 ${invoice.parcelRefs.join(", ")}<br>${isDueInvoice ? `Amount due to NovaX ${money(due)}` : `Payable ${money(invoice.payable)}`} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
               <div class="inline-actions" style="margin-top:8px">
-                ${invoice.status === "Paid" ? `<span class="chip good">Settled</span>` : pushed ? `<button class="ghost-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Invoice Settled</button>` : `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button>`}
+                ${recentActions}
+                <button class="ghost-btn" onclick="viewAdminInvoice('${invoice.id}')">View</button>
               </div>
             </div>
           `;
@@ -7655,6 +7938,20 @@
       document.getElementById("adminInvoiceList").innerHTML = visibleInvoices.map(invoice => {
         const client = clientById(invoice.clientId);
         const pushed = invoice.status === "Pushed to wallet" || invoice.status === "Paid";
+        const invType = invoice.invoiceType || "COD Settlement";
+        const due = Number(invoice.dueToNovax || 0);
+        const isDueInvoice = due > 0;
+        const typeChipClass = invType === "Delivery Charges" ? "bad" : invType === "Mixed" ? "warn" : "info";
+        let actions;
+        if (invoice.status === "Paid") {
+          actions = `<span class="chip good">Settled</span>`;
+        } else if (isDueInvoice) {
+          actions = `<button class="action-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Paid</button><button class="ghost-btn" onclick="deleteInvoice('${invoice.id}')">Delete</button>`;
+        } else if (pushed) {
+          actions = `<button class="ghost-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Invoice Settled</button>`;
+        } else {
+          actions = `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button><button class="ghost-btn" onclick="deleteInvoice('${invoice.id}')">Delete</button>`;
+        }
         return `
           <div class="log-item">
             <strong>${invoice.id}<br>${client.name}</strong>
@@ -7662,11 +7959,17 @@
               <strong>${invoice.parcelRefs.join(", ")}</strong>
               <div class="footer-note">${invoice.summary || "Delivered parcel invoice"} | Created ${invoice.createdAt || "now"}</div>
             </div>
+            <span class="chip ${typeChipClass}">${invType}</span>
             <span class="chip info">COD ${money(invoice.cod)}</span>
             <span class="chip warn">Charges ${money(invoice.charges)}</span>
-            <span class="chip ${pushed ? "good" : "warn"}">${invoice.status} | Payable ${money(invoice.payable)}</span>
+            <span class="chip ${invoice.payable > 0 ? "good" : "info"}">Payable to client ${money(invoice.payable)}</span>
+            <span class="chip ${isDueInvoice ? "bad" : "info"}">Due to NovaX ${money(due)}</span>
+            <span class="chip ${pushed ? "good" : "warn"}">${invoice.status}</span>
             <div class="inline-actions">
-              ${invoice.status === "Paid" ? `<span class="chip good">Settled</span>` : pushed ? `<button class="ghost-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Invoice Settled</button>` : `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button><button class="ghost-btn" onclick="deleteInvoice('${invoice.id}')">Delete</button>`}
+              ${actions}
+              <button class="ghost-btn" onclick="viewAdminInvoice('${invoice.id}')">View Invoice</button>
+              <button class="ghost-btn" onclick="printAdminInvoice('${invoice.id}')">Download PDF</button>
+              <button class="ghost-btn" onclick="downloadAdminInvoiceCsv('${invoice.id}')">Download CSV</button>
             </div>
           </div>
         `;
@@ -8178,10 +8481,11 @@
         walletInvoices.innerHTML = state.invoices.filter(invoice => invoice.status !== "Deleted").map(invoice => {
           const client = clientById(invoice.clientId);
           const inWallet = invoice.status === "Pushed to wallet" || invoice.status === "Paid";
+          const dueAmt = Number(invoice.dueToNovax || 0);
           return `<div class="ops-card ${inWallet ? "" : "alert-row"}">
             <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${inWallet ? "good" : "warn"}">${invoice.status}</span></div>
-            <p>${invoice.parcelRefs.join(", ")} | Payable ${money(invoice.payable)} | Charges ${money(invoice.charges)}</p>
-            <div class="footer-note">${inWallet ? `Entered wallet at ${invoice.walletPushedAt || invoice.paidAt}` : "Visible invoice only. Not in wallet until pushed."}</div>
+            <p>${invoice.parcelRefs.join(", ")} | Payable ${money(invoice.payable)} | Charges ${money(invoice.charges)}${dueAmt > 0 ? ` | Due to NovaX ${money(dueAmt)}` : ""}</p>
+            <div class="footer-note">${inWallet ? `Entered wallet at ${invoice.walletPushedAt || invoice.paidAt}` : (dueAmt > 0 ? "Delivery-charges invoice -- amount due to NovaX, never enters wallet." : "Visible invoice only. Not in wallet until pushed.")}</div>
           </div>`;
         }).join("") || `<div class="ops-card"><strong>No wallet invoices</strong><p>Push generated invoices into wallets to start payout flow.</p></div>`;
       }
@@ -8607,7 +8911,8 @@
       const fillSelect=(id)=>{ const sel=document.getElementById(id); if(!sel) return; const cur=sel.value; sel.innerHTML=(state.clients||[]).filter(c=>c.id&&c.id!=="CL-0000").map(c=>`<option value="${c.id}">${c.id} &middot; ${c.name}</option>`).join("")||`<option value="">No clients</option>`; if(cur) sel.value=cur; };
       fillSelect("shopifyClientSelect"); fillSelect("wooClientSelect"); fillSelect("webClientSelect");
       const renderList=(platform,elId)=>{ const el=document.getElementById(elId); if(!el) return; const rows=(state.storeConnections||[]).filter(c=>c.platform===platform); el.innerHTML=rows.length?rows.map(c=>{ const cl=clientById(c.clientId); return `<div class="ops-card" style="margin-bottom:8px"><div class="ops-card-head"><strong>${cl?cl.name:c.clientId}</strong><span class="chip ${c.connected?"good":""}">${c.connected?"Connected":"Pending"}</span></div><p class="footer-note">${c.storeUrl||""}${c.lastSync?` &middot; last sync ${c.lastSync}`:""}${c.importedCount?` &middot; ${c.importedCount} imported`:""}</p><p class="footer-note" style="margin-top:8px">Orders arrive automatically via webhook -- no manual pull needed.</p></div>`; }).join(""):`<p class="footer-note">No stores connected yet.</p>`; };
-      renderList("shopify","shopifyConnList"); renderList("woocommerce","wooConnList"); renderList("web","webConnList");
+      renderList("woocommerce","wooConnList"); renderList("web","webConnList");
+      renderAdminShopifyHealth();
     }
     function adminPlatformLabel(p){ return p==="shopify"?"Shopify":p==="woocommerce"?"WooCommerce":"Custom Web/API"; }
     function adminConnectStore(platform){
@@ -8618,35 +8923,85 @@
       // OAuth or credential verification. It is not wired to any live button
       // anymore; hard-disabled here so it can't silently fabricate a
       // "connected" integration if something calls it again in the future.
-      toast("This local demo connect flow is disabled. Use the real Shopify OAuth, WooCommerce, or Custom Web/API connect flow in Integrations.", "error");
+      toast("This local demo connect flow is disabled. Use the real Shopify Link, WooCommerce, or Custom Web/API connect flow in Integrations.", "error");
       return;
     }
     function adminConnectWooCommerce(clientId){ adminConnectLiveStore("woocommerce", clientId); }
 
-    // One-click Shopify OAuth connect: the client approves access on Shopify's
-    // own screen, no token copying or manual webhook setup needed. Requires a
-    // Shopify Partner app to be registered once; SHOPIFY_APP_CLIENT_ID below is
-    // the app's public Client ID (safe to embed here). The matching Client
-    // Secret lives only in the shopify-oauth-callback Edge Function's secrets.
-    const SHOPIFY_APP_CLIENT_ID = "REPLACE_WITH_YOUR_SHOPIFY_APP_CLIENT_ID";
-    function shopifyOauthRedirectUri(){ return "https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/shopify-oauth-callback"; }
-    function adminStartShopifyOauth(){
+    // NovaX Shopify Link Integration (admin side): no NovaX Shopify app, no
+    // OAuth, no Partner app Client ID. Admin just generates the same kind of
+    // link a client could generate themselves, on the client's behalf, then
+    // the client (or admin) adds one webhook in Shopify and pastes the
+    // signing secret back in. Status is always read fresh from the backend --
+    // never fabricated locally.
+    function adminGenerateShopifyLink(){
       const clientId = document.getElementById("shopifyClientSelect")?.value || "";
       const client = clientById(clientId);
       if(!clientId || !client){ toast("Select a client first."); return; }
-      const shop = (document.getElementById("adminShopifyOauthShop")?.value || "").trim();
-      if(!shop){ toast("Enter the client's shop domain first (e.g. store.myshopify.com)."); return; }
       if(!window.__nvSb){ toast("Cloud connection not ready yet, try again in a moment."); return; }
-      if(SHOPIFY_APP_CLIENT_ID.indexOf("REPLACE_WITH") === 0){ toast("Shopify app not configured yet -- register a Shopify Partner app first and paste its Client ID into admin.html."); return; }
-      toast("Redirecting to Shopify...");
-      window.__nvSb.rpc("admin_start_shopify_oauth", { p_client_id: clientId, p_shop: shop }).then(function(r){
-        if(r && r.error){ toast("Failed to start Shopify connect: "+r.error.message); return; }
+      const storeDomain = (document.getElementById("adminShopifyOauthShop")?.value || "").trim();
+      toast("Generating Shopify link...");
+      window.__nvSb.rpc("admin_generate_shopify_link", { p_client_id: clientId, p_store_domain: storeDomain || null }).then(function(r){
+        if(r && r.error){ toast("Failed to generate link: "+r.error.message); return; }
         const row = r && r.data && r.data[0];
-        if(!row){ toast("Failed to start Shopify connect."); return; }
-        const scope = "read_orders,write_fulfillments,read_fulfillments";
-        const authorizeUrl = "https://"+row.shop+"/admin/oauth/authorize?client_id="+encodeURIComponent(SHOPIFY_APP_CLIENT_ID)+"&scope="+encodeURIComponent(scope)+"&redirect_uri="+encodeURIComponent(shopifyOauthRedirectUri())+"&state="+encodeURIComponent(row.state);
-        window.location.href = authorizeUrl;
-      }).catch(function(e){ toast("Failed to start Shopify connect: "+e); });
+        if(!row){ toast("Failed to generate link."); return; }
+        const intakeUrl = SB_URL.replace(/\/$/, "") + "/functions/v1/shopify-order-intake/" + row.intake_token;
+        const urlEl=document.getElementById("adminShopifyIntakeUrlOut"); if(urlEl) urlEl.value=intakeUrl;
+        const box=document.getElementById("adminShopifyLinkBox"); if(box) box.style.display="block";
+        toast(client.name+"'s Shopify link is ready. Send them the URL, or they can generate it themselves from their Store Integrations tab.");
+        renderAdminShopifyHealth();
+      }).catch(function(e){ toast("Failed to generate link: "+e); });
+    }
+    // Real backend status per client -- a store only ever shows "Live" once a
+    // real signed webhook order has actually been received (imported_count>0).
+    // Never fabricates a "Connected" state just because a link was generated.
+    function renderAdminShopifyHealth(){
+      const el=document.getElementById("shopifyConnList"); if(!el || !window.__nvSb) return;
+      window.__nvSb.rpc("admin_list_shopify_connections", {}).then(function(r){
+        if(r && r.error){ el.innerHTML=`<p class="footer-note">Failed to load Shopify integrations: ${r.error.message}</p>`; return; }
+        const rows = (r && r.data) || [];
+        if(!rows.length){ el.innerHTML=`<p class="footer-note">No Shopify links generated yet.</p>`; return; }
+        el.innerHTML = rows.map(function(row){
+          const cl = clientById(row.client_id);
+          const statusClass = row.connection_status==="Live" ? "good" : (row.connection_status==="Signature failed" || row.connection_status==="Disabled" ? "error" : "");
+          const intakeUrl = row.intake_token ? (SB_URL.replace(/\/$/, "") + "/functions/v1/shopify-order-intake/" + row.intake_token) : "";
+          return `<div class="ops-card" style="margin-bottom:8px">`
+            + `<div class="ops-card-head"><strong>${cl?cl.name:row.client_name}</strong><span class="chip ${statusClass}">${row.connection_status}</span></div>`
+            + `<p class="footer-note">Store: ${row.store_url||"(not set)"} &middot; Intake URL: ${row.has_secret?"active":"awaiting signing secret"}</p>`
+            + `<p class="footer-note">Last order received: ${row.last_order_at ? new Date(row.last_order_at).toLocaleString() : "never yet"} &middot; Imported: ${row.imported_count||0} &middot; Last error: ${row.last_error||"none"}</p>`
+            + `<div class="inline-actions" style="margin-top:8px">`
+            + `<button class="ghost-btn" onclick="adminRegenerateShopifyIntake('${row.client_id}')">Regenerate intake URL</button>`
+            + `<button class="ghost-btn" onclick="adminResetShopifySecret('${row.client_id}')">Reset signing secret</button>`
+            + `<button class="ghost-btn" onclick="adminSetShopifyDisabled('${row.client_id}', ${row.disabled?"false":"true"})">${row.disabled?"Enable":"Disable"} integration</button>`
+            + `</div></div>`;
+        }).join("");
+      }).catch(function(e){ el.innerHTML=`<p class="footer-note">Failed to load Shopify integrations: ${e}</p>`; });
+    }
+    function adminRegenerateShopifyIntake(clientId){
+      if(!window.__nvSb) return;
+      if(!confirm("Regenerate this client's Shopify intake URL? Their old webhook URL will stop working until they update it in Shopify.")) return;
+      window.__nvSb.rpc("admin_regenerate_shopify_intake", { p_client_id: clientId }).then(function(r){
+        if(r && r.error){ toast("Failed to regenerate: "+r.error.message); return; }
+        toast("Intake URL regenerated. Send the client the new URL.");
+        renderAdminShopifyHealth();
+      }).catch(function(e){ toast("Failed to regenerate: "+e); });
+    }
+    function adminResetShopifySecret(clientId){
+      if(!window.__nvSb) return;
+      if(!confirm("Reset this client's Shopify signing secret? They will need to paste a fresh one before new orders will import again.")) return;
+      window.__nvSb.rpc("admin_reset_shopify_secret", { p_client_id: clientId }).then(function(r){
+        if(r && r.error){ toast("Failed to reset secret: "+r.error.message); return; }
+        toast("Signing secret reset.");
+        renderAdminShopifyHealth();
+      }).catch(function(e){ toast("Failed to reset secret: "+e); });
+    }
+    function adminSetShopifyDisabled(clientId, disabled){
+      if(!window.__nvSb) return;
+      window.__nvSb.rpc("admin_set_shopify_disabled", { p_client_id: clientId, p_disabled: disabled }).then(function(r){
+        if(r && r.error){ toast("Failed to update: "+r.error.message); return; }
+        toast(disabled ? "Shopify integration disabled for this client." : "Shopify integration re-enabled.");
+        renderAdminShopifyHealth();
+      }).catch(function(e){ toast("Failed to update: "+e); });
     }
 
     // Real, live store connections for WooCommerce, Shopify, and Custom Web/API.
@@ -8656,7 +9011,6 @@
     function adminConnectLiveStore(platform, presetClientId){
       const fieldMap = {
         woocommerce: { client:"wooClientSelect", url:"adminWooUrl", key:"adminWooKey", secret:"adminWooSecret", intakeFn:"woo-order-intake" },
-        shopify: { client:"shopifyClientSelect", url:"adminShopifyUrl", key:"adminShopifyToken", secret:"adminShopifySecret", intakeFn:"shopify-order-intake" },
         web: { client:"webClientSelect", url:"adminWebUrl", key:"adminWebKey", secret:null, intakeFn:"web-order-intake" }
       };
       const cfg = fieldMap[platform];
@@ -8671,12 +9025,12 @@
       if(!storeUrl){ toast(platform==="web" ? "Enter the client's status update URL first." : "Enter the store URL first."); return; }
 
       const keyVal = (document.getElementById(cfg.key)?.value || "").trim();
-      if(platform!=="web" && !keyVal){ toast(platform==="shopify" ? "Enter the Admin API Access Token first." : "Enter the Consumer Key first."); return; }
+      if(platform!=="web" && !keyVal){ toast("Enter the Consumer Key first."); return; }
 
       let secretVal = "";
       if(cfg.secret){
         secretVal = (document.getElementById(cfg.secret)?.value || "").trim();
-        if(platform!=="web" && !secretVal){ toast(platform==="shopify" ? "Enter the Webhook Signing Secret first." : "Enter the Consumer Secret first."); return; }
+        if(platform!=="web" && !secretVal){ toast("Enter the Consumer Secret first."); return; }
       }
 
       window.__nvSb.rpc("admin_set_store_credentials", {
@@ -8701,8 +9055,6 @@
           let msg;
           if(platform==="woocommerce"){
             msg = "Send this to the client for WooCommerce > Settings > Advanced > Webhooks:\n\nDelivery URL:\n" + intakeUrl + "\n\nSecret:\n" + row.webhook_secret + "\n\nTopic: Order created\nStatus: Active\nAPI version: WP REST API Integration v3";
-          } else if(platform==="shopify"){
-            msg = "In Shopify Admin > Settings > Notifications > Webhooks > Create webhook:\n\nEvent: Order creation\nFormat: JSON\nURL:\n" + intakeUrl + "\n\nMake sure the Webhook Signing Secret you entered here matches the 'Signing secret' shown at the top of that same Webhooks page. Also make sure the Admin API Access Token has write_fulfillments + read_orders scopes so status push works.";
           } else {
             msg = "Give this to the client's developer for their custom store:\n\nOrder push URL (their site POSTs new orders here):\n" + intakeUrl + "\n\nShared signing secret (HMAC-SHA256 hex of the raw JSON body, sent as header X-NovaX-Signature):\n" + row.webhook_secret + "\n\nWe will POST status updates to the Status Update URL you just saved (" + storeUrl + "), signed the same way.";
           }
@@ -8743,7 +9095,11 @@
       const client = clientById(clientId);
       const awb = nextAwbForClient(clientId);
       const bookedCity = overrides.city || ["Lahore", "Karachi", "Islamabad", "Rawalpindi"][Math.floor(Math.random() * 4)];
-      const bookedZoneCard = safeRateCard(client, zoneForCity(bookedCity));
+      const bookedZone = zoneForCity(bookedCity);
+      const bookedRc = normalizeRateCard(client && client.rateCard, client && client.rate);
+      const bookedWeight = overrides.weight || "0.8 kg";
+      const bookedCharge = bookingChargeBreakdown(bookedRc, bookedZone, bookedWeight);
+      const bookedFee = (overrides.fee !== undefined && overrides.fee !== null && overrides.fee !== "") ? Number(overrides.fee) : bookedCharge.total;
       state.parcels.unshift({
         awb,
         clientId,
@@ -8751,13 +9107,13 @@
         consignee: overrides.consignee || "New COD Order",
         city: bookedCity,
         cod: codAmount,
-        fee: overrides.fee || bookedZoneCard.overnight,
+        fee: bookedFee,
         phone: overrides.phone || "+92 300 1111111",
         pickupCity: overrides.pickupCity || "Karachi",
         service: overrides.service || "COD Standard",
         category: overrides.category || "Fashion",
         fragile: overrides.fragile || "No",
-        weight: overrides.weight || "0.8 kg",
+        weight: bookedWeight,
         paymentMode: overrides.paymentMode || "Cash on Delivery",
         referenceNo: overrides.referenceNo || overrides.reference || overrides.ref || "",
         address: overrides.address || "Address pending",
@@ -8815,17 +9171,186 @@
       showClientTab("awbLabel");
     }
 
-    function bulkBooking() {
-      const samples = [
-        ["Bulk Order 01", "Lahore", 4200],
-        ["Bulk Order 02", "Karachi", 5800],
-        ["Bulk Order 03", "Islamabad", 7600],
-        ["Bulk Order 04", "Rawalpindi", 3900],
-        ["Bulk Order 05", "Lahore", 11800]
+    // NovaX (leakage fix #5): the old bulkBooking() always created 5
+    // fake/demo AWBs regardless of what was uploaded -- "Simulate Bulk
+    // Upload" never actually read a file. This is replaced with a real
+    // CSV import pipeline mirroring the client portal's Part 6 validation
+    // (per-row problems, duplicate order/reference detection, city/phone/
+    // COD/weight validation), scoped to an admin-selected client. No AWB
+    // is created until rows are valid, or the admin explicitly chooses
+    // "Import valid rows only".
+    function adminBulkCsvEscape(v) {
+      const s = String(v == null ? "" : v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+    function downloadAdminBulkTemplate() {
+      const rows = [
+        ["consignee", "phone", "city", "address", "cod", "weight", "order_id", "product", "payment_mode"],
+        ["Ahmed Customer", "03113323923", "Lahore", "House 21 Main Market Lahore", "2500", "0.8 kg", "ORDER-1001", "Black hoodie size medium", "COD"],
+        ["Sara Customer", "03112223344", "Karachi", "Block 6 PECHS Karachi", "0", "1 kg", "ORDER-1002", "Prepaid skincare parcel", "Non COD Prepaid"]
       ];
-      samples.forEach(row => bookParcel({ consignee: row[0], city: row[1], cod: row[2] }));
-      showClientTab("dashboard");
-      toast("Bulk upload created 5 AWBs and updated reports, payments, and logs.");
+      const csv = "\ufeff" + rows.map(row => row.map(adminBulkCsvEscape).join(",")).join("\r\n") + "\r\n";
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = "NovaX-admin-bulk-booking-template.csv";
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+      toast("CSV template downloaded.");
+    }
+    function parseAdminCsv(text) {
+      const rows = []; let row = [], cell = "", q = false;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i], next = text[i + 1];
+        if (ch === '"' && q && next === '"') { cell += '"'; i++; continue; }
+        if (ch === '"') { q = !q; continue; }
+        if (ch === "," && !q) { row.push(cell.trim()); cell = ""; continue; }
+        if ((ch === "\n" || ch === "\r") && !q) { if (ch === "\r" && next === "\n") i++; row.push(cell.trim()); if (row.some(Boolean)) rows.push(row); row = []; cell = ""; continue; }
+        cell += ch;
+      }
+      row.push(cell.trim()); if (row.some(Boolean)) rows.push(row);
+      return rows;
+    }
+    function validateAdminBulkRows(rows, clientId) {
+      const headers = (rows[0] || []).map(h => h.toLowerCase().trim());
+      const required = ["consignee", "phone", "city", "address", "cod", "weight", "order_id", "product", "payment_mode"];
+      const missing = required.filter(h => !headers.includes(h));
+      if (missing.length) return { totalRows: 0, missingColumns: missing, results: [] };
+      const idx = name => headers.indexOf(name);
+      const get = (row, name) => { const j = idx(name); return j > -1 ? String(row[j] || "").trim() : ""; };
+      const validCities = ["Karachi", "Lahore", "Islamabad", "Rawalpindi"];
+      const existingOrderIds = new Set((state.parcels || []).map(p => p.orderId).filter(Boolean));
+      const existingRefs = new Set((state.parcels || []).map(p => p.referenceNo).filter(Boolean));
+      const orderIdSeen = new Map(), refSeen = new Map();
+      const dataRows = rows.slice(1).filter(row => row.some(cell => String(cell || "").trim()));
+      const results = dataRows.map((row, i) => {
+        const line = i + 2;
+        const problems = [];
+        const addProblem = (code, message, fix) => problems.push({ code, message, fix });
+        const consignee = get(row, "consignee");
+        const phoneRaw = get(row, "phone");
+        const cityRaw = get(row, "city");
+        const address = get(row, "address");
+        const codRaw = get(row, "cod");
+        const weightRaw = get(row, "weight");
+        const orderId = get(row, "order_id");
+        const product = get(row, "product");
+        const paymentModeRaw = get(row, "payment_mode");
+        const referenceNo = get(row, "reference") || get(row, "reference_no") || get(row, "customer_ref");
+        const fragileRaw = get(row, "fragile");
+        if (!consignee) addProblem("consignee", "Consignee name is missing.", "Add the receiver's full name.");
+        let phone = phoneRaw.replace(/\D/g, "");
+        if (phone.length === 10 && phone.startsWith("3")) phone = "0" + phone;
+        if (phone.length === 12 && phone.startsWith("92")) phone = "0" + phone.slice(2);
+        if (phone.length === 11 && phone.startsWith("92")) phone = "0" + phone.slice(2);
+        const phoneValid = /^03\d{9}$/.test(phone);
+        if (!phoneRaw) addProblem("phone", "Phone number is missing.", "Add the consignee phone as 03xxxxxxxxx.");
+        else if (!phoneValid) addProblem("phone", `Phone "${phoneRaw}" is not a valid Pakistani number.`, "Use format 03xxxxxxxxx (11 digits).");
+        const cityTrim = cityRaw.trim().replace(/\s+/g, " ");
+        const cityCap = cityTrim ? cityTrim[0].toUpperCase() + cityTrim.slice(1).toLowerCase() : "";
+        const cityValid = validCities.includes(cityCap);
+        if (!cityRaw) addProblem("city", "City is missing.", "Add one of: Karachi, Lahore, Islamabad, Rawalpindi.");
+        else if (!cityValid) addProblem("city", `City "${cityRaw}" is not serviceable yet.`, "Use Karachi, Lahore, Islamabad, or Rawalpindi.");
+        if (!address) addProblem("address", "Address is missing.", "Add the full pickup/delivery address.");
+        if (!product) addProblem("product", "Product/item details are missing.", "Add a short item description.");
+        const cod = codRaw === "" ? NaN : Number(codRaw);
+        if (codRaw === "" || Number.isNaN(cod) || cod < 0) addProblem("cod", `COD "${codRaw}" is invalid.`, "Use a number 0 or higher (0 for prepaid).");
+        let weightKg = 0.8;
+        if (weightRaw) {
+          const wnum = parseFloat(String(weightRaw).toLowerCase().replace(/kg/g, "").trim());
+          if (!isFinite(wnum) || wnum <= 0) addProblem("weight", `Weight "${weightRaw}" is invalid.`, "Use a number like 0.8, 1kg, or 2.5 kg.");
+          else weightKg = wnum;
+        }
+        const paymentMode = ["COD", "Non COD Prepaid"].includes(paymentModeRaw) ? paymentModeRaw : (paymentModeRaw ? paymentModeRaw : "COD");
+        if (paymentModeRaw && !(["COD", "Non COD Prepaid"].includes(paymentModeRaw))) addProblem("payment_mode", `payment_mode "${paymentModeRaw}" is not recognized.`, "Use COD or Non COD Prepaid.");
+        if (!orderId) addProblem("order_id", "Order ID is missing.", "Add a unique order_id for this row.");
+        else {
+          if (orderIdSeen.has(orderId)) addProblem("dup_order", `Duplicate order_id "${orderId}", also on row ${orderIdSeen.get(orderId)}.`, "Make sure every row has a unique order_id.");
+          else if (existingOrderIds.has(orderId)) addProblem("dup_order", `order_id "${orderId}" was already booked previously.`, "This sheet may already be uploaded. Remove or change this row.");
+          orderIdSeen.set(orderId, line);
+        }
+        if (referenceNo) {
+          if (refSeen.has(referenceNo)) addProblem("dup_ref", `Duplicate reference "${referenceNo}", also on row ${refSeen.get(referenceNo)}.`, "Reference numbers should be unique per order.");
+          else if (existingRefs.has(referenceNo)) addProblem("dup_ref", `Reference "${referenceNo}" was already used previously.`, "This looks like a re-upload. Remove or change this row.");
+          refSeen.set(referenceNo, line);
+        }
+        const fragile = /^(yes|y|true|1)$/i.test(fragileRaw) ? "Yes" : "No";
+        const record = { consignee, phone: phoneValid ? phone : phoneRaw, city: cityValid ? cityCap : cityRaw, address, cod: Number.isFinite(cod) ? cod : 0, weight: weightKg + " kg", orderId, product, paymentMode, referenceNo, fragile, clientId };
+        return { line, ok: problems.length === 0, problems, record };
+      });
+      return { totalRows: results.length, results };
+    }
+    function adminBulkProblemCount(parsed, code) { return (parsed.results || []).reduce((n, r) => n + (r.problems.some(p => p.code === code) ? 1 : 0), 0); }
+    function renderAdminBulkValidation(parsed) {
+      const el = document.getElementById("adminBulkValidationList");
+      if (!el) return;
+      if (!parsed) { el.innerHTML = `<div class="ops-card"><strong>Waiting for CSV</strong><p>Select a client, download the template, fill it, and upload it here.</p></div>`; return; }
+      if (parsed.missingColumns && parsed.missingColumns.length) {
+        el.innerHTML = `<div class="ops-card alert-row"><strong>Blocked</strong><p>Missing required column(s): ${escLabelText(parsed.missingColumns.join(", "))}.</p></div>`;
+        return;
+      }
+      const results = parsed.results || [];
+      const validRows = results.filter(r => r.ok);
+      const invalidRows = results.filter(r => !r.ok);
+      const summary = [
+        ["Total rows", results.length, ""],
+        ["Valid rows", validRows.length, "good"],
+        ["Rejected rows", invalidRows.length, invalidRows.length ? "bad" : "good"],
+        ["Duplicate order IDs", adminBulkProblemCount(parsed, "dup_order"), adminBulkProblemCount(parsed, "dup_order") ? "warn" : "good"],
+        ["Duplicate references", adminBulkProblemCount(parsed, "dup_ref"), adminBulkProblemCount(parsed, "dup_ref") ? "warn" : "good"],
+        ["Invalid phone numbers", adminBulkProblemCount(parsed, "phone"), adminBulkProblemCount(parsed, "phone") ? "warn" : "good"],
+        ["Invalid/unsupported cities", adminBulkProblemCount(parsed, "city"), adminBulkProblemCount(parsed, "city") ? "warn" : "good"],
+        ["Missing address", adminBulkProblemCount(parsed, "address"), adminBulkProblemCount(parsed, "address") ? "warn" : "good"],
+        ["Missing product details", adminBulkProblemCount(parsed, "product"), adminBulkProblemCount(parsed, "product") ? "warn" : "good"],
+        ["Invalid COD", adminBulkProblemCount(parsed, "cod"), adminBulkProblemCount(parsed, "cod") ? "warn" : "good"],
+        ["Invalid/missing weight", adminBulkProblemCount(parsed, "weight"), adminBulkProblemCount(parsed, "weight") ? "warn" : "good"]
+      ];
+      let html = `<div class="grid metrics" style="margin-bottom:12px">${summary.map(s => `<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(s[0])}</strong><span class="chip ${s[2]}">${s[1]}</span></div></div>`).join("")}</div>`;
+      if (invalidRows.length) {
+        html += invalidRows.map(r => `<div class="ops-card alert-row" style="margin-bottom:8px"><div class="ops-card-head"><strong>Row ${r.line}</strong><span class="chip bad">${r.problems.length} issue(s)</span></div>${r.problems.map(p => `<p class="footer-note">${escLabelText(p.message)} <em>Fix: ${escLabelText(p.fix)}</em></p>`).join("")}</div>`).join("");
+        html += `<div class="inline-actions" style="margin-top:10px">${validRows.length ? `<button class="action-btn" id="importAdminValidOnlyBtn" onclick="importAdminValidBulkRowsOnly()">Import ${validRows.length} valid row(s) only</button>` : `<span class="footer-note">No valid rows to import yet.</span>`}</div>`;
+      } else if (results.length) {
+        html += `<div class="ops-card"><strong>${validRows.length} clean row(s) ready</strong><p>All phones, cities, addresses, product details, COD values, weights, order IDs, and references passed validation.</p></div>`;
+      }
+      el.innerHTML = html;
+    }
+    async function uploadAdminBulkCsv() {
+      const clientId = document.getElementById("adminBulkClientId")?.value || "";
+      if (!clientId) { toast("Select a client before importing.", "error"); return; }
+      const file = document.getElementById("adminBulkCsvInput")?.files?.[0];
+      if (!file) { toast("Choose a CSV file first.", "error"); return; }
+      const parsed = validateAdminBulkRows(parseAdminCsv(await file.text()), clientId);
+      state.lastAdminBulkValidation = parsed;
+      renderAdminBulkValidation(parsed);
+      if (parsed.missingColumns && parsed.missingColumns.length) { toast("CSV blocked: missing required column(s).", "error"); return; }
+      if (!parsed.results.length) { toast("No data rows found in this CSV.", "error"); return; }
+      const invalidCount = parsed.results.filter(r => !r.ok).length;
+      if (invalidCount > 0) { toast(`${invalidCount} row(s) blocked. Fix them or use "Import valid rows only".`, "error"); return; }
+      importAdminBulkRows(parsed.results.map(r => r.record), parsed.results.length, clientId);
+    }
+    function importAdminValidBulkRowsOnly() {
+      const parsed = state.lastAdminBulkValidation;
+      const clientId = document.getElementById("adminBulkClientId")?.value || "";
+      if (!parsed || !parsed.results) { toast("Upload a CSV first."); return; }
+      const validRecords = parsed.results.filter(r => r.ok).map(r => r.record);
+      const rejected = parsed.results.length - validRecords.length;
+      if (!validRecords.length) { toast("No valid rows to import.", "error"); return; }
+      if (!window.confirm(`Import ${validRecords.length} valid row(s) and skip ${rejected} rejected row(s)? Rejected rows will not get an AWB.`)) return;
+      importAdminBulkRows(validRecords, parsed.results.length, clientId);
+    }
+    function importAdminBulkRows(records, totalRowsSeen, clientId) {
+      const awbs = records.map(r => bookParcel({ clientId, consignee: r.consignee, city: r.city, cod: r.cod, phone: r.phone, weight: r.weight, orderId: r.orderId, referenceNo: r.referenceNo, category: r.product, paymentMode: r.paymentMode, address: r.address, fragile: r.fragile })).filter(Boolean);
+      saveState(); renderAdmin();
+      const skipped = Math.max(0, (totalRowsSeen || records.length) - awbs.length);
+      const el = document.getElementById("adminBulkValidationList");
+      if (el) el.insertAdjacentHTML("afterbegin", `<div class="ops-card" style="margin-bottom:10px"><strong>Import complete: ${awbs.length} AWB(s) created${skipped ? `, ${skipped} row(s) skipped` : ""}</strong><p>Booked rows are syncing to the cloud now.</p></div>`);
+      toast(`${awbs.length} AWB(s) reserved, syncing now...`);
+    }
+    function populateAdminBulkClientSelect() {
+      const sel = document.getElementById("adminBulkClientId");
+      if (!sel) return;
+      const current = sel.value;
+      sel.innerHTML = "<option value=\"\">Select a client...</option>" + (state.clients || []).map(c => "<option value=\"" + c.id + "\">" + c.name + " (" + c.id + ")</option>").join("");
+      if (current && (state.clients || []).some(c => c.id === current)) sel.value = current;
     }
 
     function createClient() {
@@ -8984,14 +9509,18 @@
       }
       client.rateCard = { A: cardA, B: cardB };
       client.rate = cardA.overnight;
-      state.parcels.filter(p => p.clientId === id && !isDeliveredLedgerParcel(p)).forEach(p => {
-        const zoneCard = zoneForCity(p.city) === "A" ? cardA : cardB;
-        p.fee = zoneCard.overnight;
+      const invoicedRefs = new Set(state.invoices.filter(inv => inv.status !== "Deleted").flatMap(inv => inv.parcelRefs || []));
+      const repriceRc = { A: cardA, B: cardB };
+      let repricedCount = 0;
+      state.parcels.filter(p => p.clientId === id && !isDeliveredLedgerParcel(p) && !invoicedRefs.has(p.awb)).forEach(p => {
+        const breakdown = bookingChargeBreakdown(repriceRc, zoneForCity(p.city), p.weight);
+        p.fee = breakdown.total;
+        repricedCount++;
       });
       state.activeRateClient = "";
       saveState();
       render();
-      toast(`${id} rate cards saved. Zone A ${money(cardA.overnight)} | Zone B ${money(cardB.overnight)}. Open parcels re-priced by destination zone.`);
+      toast(`${id} rate cards saved. Zone A ${money(cardA.overnight)} | Zone B ${money(cardB.overnight)}. ${repricedCount} open, uninvoiced parcel(s) re-priced by destination zone and weight; delivered/invoiced parcels were left untouched.`);
     }
 
     function selectInvoiceClient(clientId) {
@@ -9037,6 +9566,14 @@
     function pushInvoiceToWallet(id) {
       const invoice = state.invoices.find(item => item.id === id);
       if (!invoice || invoice.status === "Deleted") return;
+      // NovaX new (Negative/Delivery-Charges Invoices): an invoice carrying
+      // any delivery-charges-due-to-NovaX amount (pure Delivery Charges, or
+      // the due portion of a Mixed invoice) must never be pushed to a
+      // client's wallet -- that would be paying the client money they owe.
+      if (Number(invoice.dueToNovax || 0) > 0) {
+        toast("This invoice is delivery charges due to NovaX and cannot be pushed to wallet.", "error");
+        return;
+      }
       if (invoice.status === "Pushed to wallet" || invoice.status === "Paid") {
         toast(`${id} is already in wallet.`);
         return;
@@ -9673,6 +10210,115 @@
       state.ticketNotifications.unshift({ text, at: `${new Date().toISOString().slice(0, 10)} ${time()}`, level: level || "info" });
     }
 
+    // NovaX (Part 8): Exception Control Room. computeExceptionQueue() derives
+    // every broken/problem parcel from real parcel + ticket state (no fake
+    // rows) and tags it with the issue taxonomy the ops team needs; a parcel
+    // can appear under more than one issue type if more than one applies.
+    function exceptionSuggestedAction(issueType) {
+      const map = {
+        "Delayed / stuck": "Escalate to branch and confirm rider movement.",
+        "Refused": "Contact consignee, confirm refusal reason, decide return vs redeliver.",
+        "Consignee not available": "Reschedule reattempt and message the customer.",
+        "Return pending": "Confirm return proof and close the return loop.",
+        "Fake attempt / proof dispute": "Request proof from rider and open a ticket.",
+        "Rider cash holding": "Reconcile rider cash and confirm deposit.",
+        "Missing proof": "Request delivery proof photo/signature from rider.",
+        "Unresolved ticket linked to AWB": "Resolve the linked ticket with a note."
+      };
+      return map[issueType] || "Review and resolve.";
+    }
+    function computeExceptionQueue() {
+      const rows = [];
+      (state.parcels || []).forEach(p => {
+        if (p._exceptionResolved) return;
+        const client = clientById(p.clientId);
+        const linkedTicket = (state.tickets || []).find(t => t.awb === p.awb && t.status !== "Resolved");
+        const aging = agingHours(p);
+        const cats = [];
+        if (aging > 72 && p.status !== "Delivered" && !/return/i.test(p.status)) cats.push("Delayed / stuck");
+        if (p.status === "Refused") cats.push("Refused");
+        if (p.status === "Consignee not available") cats.push("Consignee not available");
+        if (/^Ready for return$|^Return in transit$|^Return received at origin$|^Return out for delivery$/.test(p.status)) cats.push("Return pending");
+        if (/fake|dispute/i.test(p.exception || "")) cats.push("Fake attempt / proof dispute");
+        if (/cash/i.test(p.exception || "")) cats.push("Rider cash holding");
+        if (p.status === "Delivered" && !p.proofPhoto && !p.signature) cats.push("Missing proof");
+        if (linkedTicket) cats.push("Unresolved ticket linked to AWB");
+        cats.forEach(issueType => {
+          rows.push({ awb: p.awb, clientId: p.clientId, clientName: client ? client.name : "Unknown", city: p.city, branch: p.branch, status: p.status, agingHours: aging, issueType, ticket: linkedTicket, urgency: aging > 72 ? "critical" : (aging > 24 ? "warning" : "normal") });
+        });
+      });
+      return rows;
+    }
+    function renderExceptionControlRoom() {
+      const list = document.getElementById("exceptionControlRoomList");
+      if (!list) return;
+      const branchSel = document.getElementById("excBranchFilter"), issueSel = document.getElementById("excIssueFilter"), urgencySel = document.getElementById("excUrgencyFilter"), clientSel = document.getElementById("excClientFilter");
+      if (branchSel && branchSel.options.length <= 1) {
+        const branches = [...new Set((state.parcels || []).map(p => p.branch).filter(Boolean))];
+        branchSel.innerHTML = "<option value=\"\">All branches</option>" + branches.map(b => "<option>" + b + "</option>").join("");
+      }
+      if (clientSel && clientSel.options.length <= 1) {
+        clientSel.innerHTML = "<option value=\"\">All clients</option>" + (state.clients || []).map(c => "<option value=\"" + c.id + "\">" + c.name + "</option>").join("");
+      }
+      const rows = computeExceptionQueue().filter(r =>
+        (!branchSel || !branchSel.value || r.branch === branchSel.value) &&
+        (!issueSel || !issueSel.value || r.issueType === issueSel.value) &&
+        (!urgencySel || !urgencySel.value || r.urgency === urgencySel.value) &&
+        (!clientSel || !clientSel.value || r.clientId === clientSel.value)
+      );
+      if (!rows.length) { list.innerHTML = "<div class=\"ops-card\"><strong>No exceptions match these filters</strong><p>Every tracked parcel is clean right now.</p></div>"; return; }
+      list.innerHTML = rows.map(r => `
+        <div class="ops-card ${r.urgency === "critical" ? "alert-row" : ""}">
+          <div class="ops-card-head"><strong>${r.awb}</strong><span class="chip ${r.urgency === "critical" ? "bad" : r.urgency === "warning" ? "warn" : "info"}">${r.issueType}</span></div>
+          <p>${r.clientName} &middot; ${r.city || "-"} / ${r.branch || "-"} &middot; status: ${r.status} &middot; aging ${agingLabel(r.agingHours)}</p>
+          <p class="footer-note">Suggested: ${exceptionSuggestedAction(r.issueType)}${r.ticket ? (" &middot; linked ticket " + r.ticket.id + " (" + r.ticket.status + ")") : ""}</p>
+          <div class="inline-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+            <button class="ghost-btn" onclick="createTicketForAwb('${r.awb}')">Create Ticket</button>
+            <button class="ghost-btn" onclick="assignToBranchTeam('${r.awb}')">Assign Branch/Team</button>
+            <button class="ghost-btn" onclick="requestReattemptAdmin('${r.awb}')">Request Reattempt</button>
+            <button class="ghost-btn" onclick="markReturnToOriginAdmin('${r.awb}')">Mark Return to Origin</button>
+          </div>
+          ${waActionsHtml(r.awb, waKindForStatus(r.status))}
+          <div class="field" style="margin-top:8px"><label>Resolution note (required to resolve)</label><input id="excNote_${r.awb}" placeholder="What was done to resolve this?"></div>
+          <button class="action-btn" style="margin-top:6px" onclick="resolveExceptionIssue('${r.awb}')">Resolve</button>
+        </div>
+      `).join("");
+    }
+    function createTicketForAwb(awb) {
+      const p = state.parcels.find(x => x.awb === awb);
+      const t = document.getElementById("ticketTitle"); if (t) t.value = "Exception on " + awb;
+      const a = document.getElementById("ticketAwb"); if (a) a.value = awb;
+      const m = document.getElementById("ticketMessage"); if (m) m.value = p ? (p.status + " - " + (p.exception || "needs review")) : "";
+      if (t) t.scrollIntoView({ behavior: "smooth", block: "center" });
+      toast("Ticket fields pre-filled below. Review and click Create Ticket.");
+    }
+    function assignToBranchTeam(awb) {
+      const p = state.parcels.find(x => x.awb === awb); if (!p) return;
+      const branch = window.prompt("Assign to which branch/team?", p.branch || "Karachi Hub");
+      if (!branch) return;
+      p.branch = branch.trim(); saveState(); renderAdmin();
+      toast(awb + " assigned to " + p.branch + ".");
+    }
+    function requestReattemptAdmin(awb) {
+      const p = state.parcels.find(x => x.awb === awb); if (!p) return;
+      setParcelStatus(p, "Reattempt"); p.exception = "Reattempt requested by admin"; saveState(); renderAdmin();
+      toast(awb + " marked for reattempt.");
+    }
+    function markReturnToOriginAdmin(awb) {
+      const p = state.parcels.find(x => x.awb === awb); if (!p) return;
+      setParcelStatus(p, "Ready for return"); p.exception = "Marked return to origin by admin"; saveState(); renderAdmin();
+      toast(awb + " marked return to origin.");
+    }
+    function resolveExceptionIssue(awb) {
+      const noteEl = document.getElementById("excNote_" + awb);
+      const note = noteEl ? noteEl.value.trim() : "";
+      if (!note) { toast("A resolution note is required to resolve an exception.", "error"); return; }
+      const p = state.parcels.find(x => x.awb === awb); if (!p) return;
+      p._exceptionResolved = true; p._exceptionResolutionNote = note; p._exceptionResolvedAt = new Date().toISOString().slice(0, 10) + " " + time();
+      saveState(); renderAdmin();
+      toast(awb + " exception resolved and note saved.");
+    }
+
     function resolveTicket(id) {
       const ticket = state.tickets.find(item => item.id === id);
       if (!ticket) return;
@@ -9929,6 +10575,10 @@
       }
       const totals = invoiceTotals(parcels);
       const id = nextId("INV", state.invoices);
+      const summaryBits = [`${parcels.length} delivered parcel(s)`, `COD ${money(totals.cod)}`, `delivery charges ${money(totals.charges)}`];
+      if (totals.invoiceType === "Delivery Charges") summaryBits.push(`amount due to NovaX ${money(totals.dueToNovax)}`);
+      else if (totals.invoiceType === "Mixed") summaryBits.push(`payable to client ${money(totals.payable)}`, `due to NovaX ${money(totals.dueToNovax)}`);
+      else summaryBits.push(`payable ${money(totals.payable)}`);
       const invoice = {
         id,
         clientId,
@@ -9936,11 +10586,14 @@
         cod: totals.cod,
         charges: totals.charges,
         payable: totals.payable,
+        invoiceType: totals.invoiceType,
+        dueToNovax: totals.dueToNovax,
+        finalBalance: totals.finalBalance,
         status: "Generated",
         createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}`,
         paidAt: "",
         walletPushedAt: "",
-        summary: `${parcels.length} delivered parcel(s), COD ${money(totals.cod)}, delivery charges ${money(totals.charges)}, payable ${money(totals.payable)}`
+        summary: summaryBits.join(", ")
       };
       state.invoices.unshift(invoice);
       state.invoiceDraftRefs = [];
@@ -9965,7 +10618,12 @@
     function markInvoicePaid(id) {
       const invoice = state.invoices.find(item => item.id === id);
       if (!invoice || invoice.status === "Paid") return;
-      if (invoice.status !== "Pushed to wallet") {
+      // NovaX new (Negative/Delivery-Charges Invoices): a Delivery Charges (or
+      // Mixed) invoice never goes through the wallet -- the client pays
+      // NovaX directly, so Mark Paid must be reachable straight from
+      // "Generated" for those, without a wallet push first.
+      const isDueInvoice = Number(invoice.dueToNovax || 0) > 0;
+      if (!isDueInvoice && invoice.status !== "Pushed to wallet") {
         toast("Push invoice to wallet before marking it paid.");
         return;
       }
@@ -9987,7 +10645,7 @@
         window.__nvSb.rpc("admin_mark_invoice_paid", { p_invoice_id: invoice._uuid }).then(r => {
           if (r && r.error) { toast(`Could not mark ${id} paid: ${r.error.message}`, "error"); return; }
           if (typeof loadAll === "function") loadAll();
-          toast(`${id} marked settled. Wallet balance is unaffected -- payouts happen from the withdrawal queue.`);
+          toast(isDueInvoice ? `${id} marked paid. ${money(invoice.dueToNovax)} delivery charges collected from ${client.name}.` : `${id} marked settled. Wallet balance is unaffected -- payouts happen from the withdrawal queue.`);
         }).catch(e => toast(`Could not mark ${id} paid: ${(e && e.message) || e}`, "error"));
         return;
       }
@@ -10301,6 +10959,214 @@
       });
     }
 
+    function pickupManifestHtml(req) {
+      const client = clientById(req.clientId);
+      const rider = (state.riders || []).find(r => r.id === req.riderId);
+      const clientLabel = labelText(client && client.name, "NovaX Client");
+      const riderLabel = labelText(rider && rider.name, "Unassigned");
+      const pickupAddress = labelText(req.pickupAddress, "Address pending");
+      const requestedFor = labelText(req.requestedFor, req.createdAt || "-");
+      const rows = (req.awbs || []).map(awb => state.parcels.find(p => p.awb === awb)).filter(Boolean);
+      let totalCod = 0;
+      const bodyRows = rows.map(p => {
+        totalCod += Number(p.cod || 0);
+        return `<tr><td>${escLabelText(p.awb)}</td><td>${labelText(p.consignee)}</td><td>${labelText(p.city)}</td><td>${money(p.cod)}</td><td>${labelText(p.weight, "0.8 kg")}</td><td>${parcelItemDetails(p)}</td></tr>`;
+      }).join("");
+      return `<div class="manifest-page"><div class="manifest-head"><h2>NovaX Pickup Manifest</h2></div><div class="manifest-meta"><div><span>Rider</span><strong>${riderLabel}</strong></div><div><span>Client / Shipper</span><strong>${clientLabel}</strong></div><div><span>Pickup Address</span><strong>${pickupAddress}</strong></div><div><span>Pickup Date / Time</span><strong>${requestedFor}</strong></div></div><table class="manifest-table"><thead><tr><th>AWB</th><th>Consignee</th><th>City</th><th>COD</th><th>Weight</th><th>Item / Product Details</th></tr></thead><tbody>${bodyRows}</tbody></table><div class="manifest-totals"><span>Total Parcels: <strong>${rows.length}</strong></span><span>Total COD Value: <strong>${money(totalCod)}</strong></span></div><div class="manifest-sign"><div class="manifest-sign-line">Shipper Signature</div><div class="manifest-sign-line">Rider Confirmation (Name / Signature)</div></div></div>`;
+    }
+
+    function printPickupManifest(id) {
+      const req = (state.pickupRequests || []).find(r => r.id === id);
+      if (!req) { toast("Pickup request not found."); return; }
+      const stage = document.getElementById("adminPrintStage");
+      if (!stage) return;
+      stage.innerHTML = pickupManifestHtml(req);
+      stage.classList.add("show");
+      setTimeout(() => {
+        window.print();
+        setTimeout(() => { stage.classList.remove("show"); stage.innerHTML = ""; }, 500);
+        toast(`Pickup manifest for ${req.id} sent to print.`);
+      }, 200);
+    }
+
+    // NovaX new (Negative/Delivery-Charges Invoices): per-line breakdown used
+    // by the admin View/Print/CSV invoice functions below.
+    function adminInvoiceLineItems(invoice) {
+      return (invoice.parcelRefs || []).map(awb => {
+        const p = state.parcels.find(parcel => parcel.awb === awb);
+        if (!p) return null;
+        const nonCod = isNonCodParcel(p);
+        const codAmount = nonCod ? 0 : Number(p.cod || 0);
+        const deliveryCharge = Number(p.fee || 0);
+        const netLineAmount = nonCod ? -deliveryCharge : (codAmount - deliveryCharge);
+        return {
+          awb: p.awb,
+          bookingDate: labelDate(p),
+          destinationCity: labelText(p.city),
+          consignee: labelText(p.consignee),
+          paymentMode: parcelPaymentMode(p),
+          codAmount,
+          deliveryCharge,
+          netLineAmount
+        };
+      }).filter(Boolean);
+    }
+
+    function adminInvoiceHtml(invoice) {
+      const client = clientById(invoice.clientId);
+      const lines = adminInvoiceLineItems(invoice);
+      const due = Number(invoice.dueToNovax || 0);
+      const invType = invoice.invoiceType || "COD Settlement";
+      const rows = lines.map(line => `<tr><td>${escLabelText(line.awb)}</td><td>${line.bookingDate}</td><td>${line.destinationCity}</td><td>${line.consignee}</td><td>${line.paymentMode}</td><td>${money(line.codAmount)}</td><td>${money(line.deliveryCharge)}</td><td>${money(line.netLineAmount)}</td></tr>`).join("");
+      const balanceLabel = due > 0 ? "Amount Due to NovaX" : "Payable to Client";
+      const balanceValue = due > 0 ? money(due) : money(invoice.payable || 0);
+      return `<div class="manifest-page">
+        <div class="manifest-head"><h2>NovaX Logistics</h2><p>Courier &amp; COD Operating Account</p></div>
+        <div class="manifest-meta">
+          <div><span>Invoice ID</span><strong>${escLabelText(invoice.id)}</strong></div>
+          <div><span>Date</span><strong>${escLabelText(invoice.createdAt || "-")}</strong></div>
+          <div><span>Client</span><strong>${labelText(client && client.name, "NovaX Client")}</strong></div>
+          <div><span>City</span><strong>${labelText(client && client.city)}</strong></div>
+          <div><span>Email</span><strong>${labelText(client && client.email, "-")}</strong></div>
+          <div><span>Invoice Type</span><strong>${escLabelText(invType)}</strong></div>
+          <div><span>Status</span><strong>${escLabelText(invoice.status)}</strong></div>
+        </div>
+        <table class="manifest-table"><thead><tr><th>Tracking ID / AWB</th><th>Booking Date</th><th>Destination City</th><th>Consignee</th><th>Payment Mode</th><th>COD Amount</th><th>Delivery Charge</th><th>Net Line Amount</th></tr></thead><tbody>${rows}</tbody></table>
+        <div class="manifest-totals">
+          <span>Total Parcels: <strong>${lines.length}</strong></span>
+          <span>COD Subtotal: <strong>${money(invoice.cod || 0)}</strong></span>
+          <span>Delivery Charges Subtotal: <strong>${money(invoice.charges || 0)}</strong></span>
+          <span>Payable to Client: <strong>${money(invoice.payable || 0)}</strong></span>
+          <span>Amount Due to NovaX: <strong>${money(due)}</strong></span>
+          <span>${balanceLabel}: <strong>${balanceValue}</strong></span>
+        </div>
+        <div class="footer-note">Generated by NovaX Logistics. Questions about this invoice? Raise a support ticket from your client portal.</div>
+      </div>`;
+    }
+
+    function closeAdminInvoiceModal() {
+      const modal = document.getElementById("adminInvoiceViewModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    function viewAdminInvoice(id) {
+      const invoice = state.invoices.find(item => item.id === id);
+      if (!invoice) { toast("Invoice not found."); return; }
+      const modal = document.getElementById("adminInvoiceViewModal");
+      const body = document.getElementById("adminInvoiceViewBody");
+      if (!modal || !body) return;
+      body.innerHTML = adminInvoiceHtml(invoice);
+      document.getElementById("adminInvoiceViewPrintBtn").setAttribute("onclick", `printAdminInvoice('${invoice.id}')`);
+      document.getElementById("adminInvoiceViewCsvBtn").setAttribute("onclick", `downloadAdminInvoiceCsv('${invoice.id}')`);
+      modal.style.display = "flex";
+    }
+
+    function printAdminInvoice(id) {
+      const invoice = state.invoices.find(item => item.id === id);
+      if (!invoice) { toast("Invoice not found."); return; }
+      const stage = document.getElementById("adminPrintStage");
+      if (!stage) return;
+      stage.innerHTML = adminInvoiceHtml(invoice);
+      stage.classList.add("show");
+      setTimeout(() => {
+        window.print();
+        setTimeout(() => { stage.classList.remove("show"); stage.innerHTML = ""; }, 500);
+        toast(`${invoice.id} sent to print. Use your browser's Save as PDF option to download.`);
+      }, 200);
+    }
+
+    function downloadAdminInvoiceCsv(id) {
+      const invoice = state.invoices.find(item => item.id === id);
+      if (!invoice) { toast("Invoice not found."); return; }
+      const client = clientById(invoice.clientId);
+      const lines = adminInvoiceLineItems(invoice);
+      const header = ["invoice_id","invoice_type","client_name","status","awb","booking_date","destination_city","consignee","payment_mode","cod_amount","delivery_charge","net_line_amount","invoice_cod_total","invoice_delivery_charges","payable_to_client","due_to_novax","final_balance"];
+      const rows = lines.map(line => [
+        invoice.id,
+        invoice.invoiceType || "COD Settlement",
+        client.name,
+        invoice.status,
+        line.awb,
+        line.bookingDate,
+        line.destinationCity,
+        line.consignee,
+        line.paymentMode,
+        line.codAmount,
+        line.deliveryCharge,
+        line.netLineAmount,
+        invoice.cod,
+        invoice.charges,
+        invoice.payable,
+        invoice.dueToNovax || 0,
+        invoice.finalBalance || 0
+      ]);
+      const csvRows = [header, ...rows].map(row => row.map(value => `"${String(value ?? "").replaceAll('"','""')}"`).join(",")).join("\n");
+      const blob = new Blob([csvRows], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${invoice.id}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast(`${invoice.id} CSV downloaded.`);
+    }
+
+    function renderPickupQueue() {
+      const tbody = document.getElementById("pickupRequestQueue");
+      if (!tbody) return;
+      const rows = (state.pickupRequests || []).slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+      if (!rows.length) { tbody.innerHTML = `<tr><td colspan="7" class="footer-note">No pickup requests yet.</td></tr>`; return; }
+      tbody.innerHTML = rows.map(req => {
+        const client = clientById(req.clientId);
+        const clientLabel = labelText(client && client.name, "Unknown client");
+        const awbList = (req.awbs || []).map(a => escLabelText(a)).join(", ");
+        const riderOptions = `<option value="">Unassigned</option>` + (state.riders || []).map(r => `<option value="${escLabelText(r.id)}"${req.riderId === r.id ? " selected" : ""}>${escLabelText(r.name)}</option>`).join("");
+        const statusChipClass = req.status === "Picked Up" ? "good" : (req.status === "Scheduled" ? "info" : "warn");
+        let actions = "";
+        if (req.status !== "Picked Up") {
+          actions += `<button class="ghost-btn" type="button" onclick="markPickupScheduled('${req.id}')">Mark Scheduled</button> `;
+          actions += `<button class="action-btn" type="button" onclick="markPickedUp('${req.id}')">Mark Picked Up</button> `;
+        }
+        if (req.status === "Scheduled" || req.status === "Picked Up") {
+          actions += `<button class="ghost-btn" type="button" onclick="printPickupManifest('${req.id}')">Print Manifest</button>`;
+        }
+        return `<tr><td>${clientLabel}</td><td>${(req.awbs || []).length} AWB(s)<div class="footer-note">${awbList}</div></td><td>${labelText(req.pickupAddress, "-")}</td><td>${labelText(req.requestedFor, req.createdAt || "-")}</td><td><span class="chip ${statusChipClass}">${escLabelText(req.status)}</span></td><td><select onchange="assignPickupRider('${req.id}', this.value)">${riderOptions}</select></td><td>${actions}</td></tr>`;
+      }).join("");
+    }
+
+    function assignPickupRider(id, riderId) {
+      const req = (state.pickupRequests || []).find(r => r.id === id);
+      if (!req) return;
+      req.riderId = riderId || "";
+      saveState();
+      renderAdmin();
+      toast(riderId ? "Rider assigned to pickup request." : "Rider unassigned from pickup request.");
+    }
+
+    function markPickupScheduled(id) {
+      const req = (state.pickupRequests || []).find(r => r.id === id);
+      if (!req) { toast("Pickup request not found."); return; }
+      req.status = "Scheduled";
+      saveState();
+      renderAdmin();
+      toast(`Pickup request ${req.id} marked as scheduled.`);
+    }
+
+    function markPickedUp(id) {
+      const req = (state.pickupRequests || []).find(r => r.id === id);
+      if (!req) { toast("Pickup request not found."); return; }
+      if (!window.confirm(`Mark all ${(req.awbs || []).length} AWB(s) in this pickup request as picked up? This moves them from New booked to Collected by rider.`)) return;
+      let moved = 0;
+      (req.awbs || []).forEach(awb => {
+        const p = state.parcels.find(item => item.awb === awb);
+        if (p && p.status === "New booked") { setParcelStatus(p, "Collected by rider"); moved++; }
+      });
+      req.status = "Picked Up";
+      saveState();
+      renderAdmin();
+      toast(`${req.id} marked picked up. ${moved} parcel(s) moved to Collected by rider.`);
+    }
+
     function printProcessingBatchAwbs() {
       const awbs = (state.processingBatchAwbs && state.processingBatchAwbs.length) ? state.processingBatchAwbs : [state.activeProcessingAwb].filter(Boolean);
       printAdminAwbs(awbs);
@@ -10454,7 +11320,14 @@
     document.getElementById("createTicketBtn").addEventListener("click", createTicket);
     document.getElementById("bookParcelBtn").addEventListener("click", () => showClientTab("newBooking"));
     document.getElementById("quickBookingBtn").addEventListener("click", quickBooking);
-    document.getElementById("bulkBookingBtn").addEventListener("click", bulkBooking);
+    document.getElementById("downloadAdminBulkTemplateBtn").addEventListener("click", downloadAdminBulkTemplate);
+    document.getElementById("adminBulkCsvPickBtn").addEventListener("click", () => document.getElementById("adminBulkCsvInput").click());
+    document.getElementById("adminBulkCsvInput").addEventListener("change", () => {
+      const f = document.getElementById("adminBulkCsvInput").files?.[0];
+      const nameEl = document.getElementById("adminBulkFileName");
+      if (nameEl) nameEl.textContent = f ? f.name : "No file selected";
+    });
+    document.getElementById("uploadAdminBulkCsvBtn").addEventListener("click", uploadAdminBulkCsv);
     document.getElementById("printAwbBtn").addEventListener("click", printAwb);
     document.getElementById("adminCreateClientBtn").addEventListener("click", createClient);
     document.getElementById("sackModeCreateBtn").addEventListener("click", () => setSackMode("create"));
@@ -10569,11 +11442,23 @@
       var DRC={ overnight:250, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 };
       function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||250), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||250)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
-      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", paymentMode:m.paymentMode||"", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", steps:Array.isArray(m.steps)?m.steps:[], proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"" }; }
-      function rInvoice(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.code||r.id, clientId:r.client_id, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:Number(r.cod_total||0), charges:Number(r.fee_total||0), payable:Number(r.net_payable||0), status:r.status||"Pending", createdAt:dtpart(r.created_at), paidAt:m.paidAt||"", walletPushedAt:m.walletPushedAt||"", summary:m.summary||"" }; }
+      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", paymentMode:m.paymentMode||"", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", steps:Array.isArray(m.steps)?m.steps:[], proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _exceptionResolved:!!m.exceptionResolved, _exceptionResolutionNote:m.exceptionResolutionNote||"", _exceptionResolvedAt:m.exceptionResolvedAt||"" }; }
+      function rInvoice(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.code||r.id, clientId:r.client_id, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:Number(r.cod_total||0), charges:Number(r.fee_total||0), payable:Number(r.net_payable||0), status:r.status||"Pending", createdAt:dtpart(r.created_at), paidAt:m.paidAt||"", walletPushedAt:m.walletPushedAt||"", summary:m.summary||"", invoiceType:m.invoiceType||"COD Settlement", dueToNovax:Number(m.dueToNovax||0), finalBalance:Number(m.finalBalance!=null?m.finalBalance:(Number(r.net_payable||0))) }; }
       function rTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:r.client_id, parcelId:r.parcel_id||"", sourceKey:m.sourceKey||"", tier:m.tier||"medium", title:r.subject||"", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", message:r.body||"", createdAt:dtpart(r.created_at), ageHours:Number(m.ageHours||0), status:r.status||"Open", escalated:!!m.escalated, replies:Array.isArray(m.replies)?m.replies:[], source:m.source||"", intent:m.intent||"", priority:m.priority||"", suggestedTeam:m.suggestedTeam||m.department||"", handoffReason:m.handoffReason||"", resolutionReply:m.resolutionReply||"", proof:m.proof||"", resolvedBy:m.resolvedBy||"", resolvedAt:m.resolvedAt||"", solvedHours:Number(m.solvedHours||0) }; }
       function rExpense(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:m.name||r.note||r.category||"Expense", amount:Number(r.amount||0), type:r.category||"", owner:r.branch||"", status:m.status||"Pending", note:r.note||"" }; }
       function rWd(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at), paidAt:r.paid_at?dtpart(r.paid_at):"", balanceBefore:Number(r.balance_before||0), paidTxnId:r.paid_txn_id||"", paidBy:r.paid_by||"", paidProof:r.paid_proof||"" }; }
+      function rPickup(r) {
+        var awbs = r.awbs;
+        if (typeof awbs === "string") { try { awbs = JSON.parse(awbs); } catch (e) { awbs = []; } }
+        if (!Array.isArray(awbs)) awbs = [];
+        return { _uuid: r.id, id: r.id, clientId: r.client_id, awbs: awbs, pickupAddress: r.pickup_address || "", requestedFor: r.requested_for || "", note: r.note || "", status: r.status || "Requested", riderId: r.rider_id || "", createdAt: dtpart(r.created_at), updatedAt: r.updated_at ? dtpart(r.updated_at) : "" };
+      }
+      function fPickup(pr) {
+        var cid = cuid(pr.clientId);
+        if (!cid) return null;
+        var rid = pr.riderId ? ruid(pr.riderId) : null;
+        return { client_id: cid, awbs: pr.awbs || [], pickup_address: pr.pickupAddress || "", requested_for: pr.requestedFor || "", note: pr.note || "", status: pr.status || "Requested", rider_id: rid, updated_at: new Date().toISOString(), meta: {} };
+      }
       function rLedger(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, entryType:r.entry_type||"", amount:Number(r.amount||0), affectsBalance:!!r.affects_balance, status:r.status||"", referenceType:r.reference_type||"", referenceId:r.reference_id||"", referenceCode:r.reference_code||"", note:r.note||"", createdAt:dtpart(r.created_at) }; }
       function rSalesLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", parcels:r.parcels_per_month||"", status:r.status||"New", createdAt:dtpart(r.created_at) }; }
       function rSignupLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", email:r.email||"", city:r.city||"", address:r.address||"", businessType:r.business_type||"", website:r.website||"", status:r.status||"pending_workspace", errorMessage:r.error_message||"", createdAt:dtpart(r.created_at) }; }
@@ -10593,8 +11478,8 @@
       // sync path; it only ever changes inside the wallet RPCs.
       function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||250), rate_card:normalizeRateCard(c.rateCard,Number(c.rate||250)), risk_score:Number(c.risk||0), meta:{ tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"" } }; }
       function fRider(r){ return { name:r.name||"", phone:r.phone||"", branch:r.branch||r.manager||"", access:r.access||"Active", cash_limit:Number(r.cashLimit||0), meta:{ username:r.username, manager:r.manager, cashHeld:r.cashHeld, scans:r.scans, fakeRisk:r.fakeRisk, expenses:r.expenses } }; }
-      function fParcel(p){ var cid=cuid(p.clientId); if(!cid) return null; var rid=ruid(p.rider); return { awb:p.awb, client_id:cid, rider_id:rid, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:(p.date?new Date(p.date).toISOString():new Date().toISOString()), updated_at:new Date().toISOString(), meta:{ statusAgeHours:p.statusAgeHours, stage:p.stage, totalStages:p.totalStages, steps:p.steps, risk:p.risk, branch:p.branch, cashReceived:p.cashReceived, returnProof:p.returnProof, resolutionRemark:p.resolutionRemark, riderInput:p.riderInput, service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"" } }; }
-      function fInvoice(iv){ var cid=cuid(iv.clientId); if(!cid){ console.warn("NovaX invoice sync skipped -- no resolvable client_id yet for invoice", iv.id, iv.clientId); return null; } return { code:iv.id, client_id:cid, parcel_refs:iv.parcelRefs||[], cod_total:Number(iv.cod||0), fee_total:Number(iv.charges||0), net_payable:Number(iv.payable||0), status:iv.status||"Pending", meta:{ paidAt:iv.paidAt||"", walletPushedAt:iv.walletPushedAt||"", summary:iv.summary||"" } }; }
+      function fParcel(p){ var cid=cuid(p.clientId); if(!cid) return null; var rid=ruid(p.rider); return { awb:p.awb, client_id:cid, rider_id:rid, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:(p.date?new Date(p.date).toISOString():new Date().toISOString()), updated_at:new Date().toISOString(), meta:{ statusAgeHours:p.statusAgeHours, stage:p.stage, totalStages:p.totalStages, steps:p.steps, risk:p.risk, branch:p.branch, cashReceived:p.cashReceived, returnProof:p.returnProof, resolutionRemark:p.resolutionRemark, riderInput:p.riderInput, service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"", exceptionResolved:!!p._exceptionResolved, exceptionResolutionNote:p._exceptionResolutionNote||"", exceptionResolvedAt:p._exceptionResolvedAt||"" } }; }
+      function fInvoice(iv){ var cid=cuid(iv.clientId); if(!cid){ console.warn("NovaX invoice sync skipped -- no resolvable client_id yet for invoice", iv.id, iv.clientId); return null; } return { code:iv.id, client_id:cid, parcel_refs:iv.parcelRefs||[], cod_total:Number(iv.cod||0), fee_total:Number(iv.charges||0), net_payable:Number(iv.payable||0), status:iv.status||"Pending", meta:{ paidAt:iv.paidAt||"", walletPushedAt:iv.walletPushedAt||"", summary:iv.summary||"", invoiceType:iv.invoiceType||"COD Settlement", dueToNovax:Number(iv.dueToNovax||0), finalBalance:Number(iv.finalBalance!=null?iv.finalBalance:(Number(iv.payable||0))) } }; }
       function fTicket(t){ var cid=cuid(t.clientId); return { client_id:isUuid(cid)?cid:null, parcel_id:null, subject:t.title||"", body:t.message||"", status:t.status||"Open", created_by:ADMIN_UID, meta:{ code:t.id, sourceKey:t.sourceKey, tier:t.tier, from:t.from, to:t.to, branch:t.branch, awb:t.awb, ageHours:t.ageHours, escalated:t.escalated, replies:t.replies||[], source:t.source||"", intent:t.intent||"", priority:t.priority||"", suggestedTeam:t.suggestedTeam||"", handoffReason:t.handoffReason||"", resolutionReply:t.resolutionReply||"", proof:t.proof||"", resolvedBy:t.resolvedBy||"", resolvedAt:t.resolvedAt||"", solvedHours:t.solvedHours||0 } }; }
       function fExpense(e){ return { branch:e.owner||"", category:e.type||"", amount:Number(e.amount||0), note:e.note||e.name||"", created_by:ADMIN_UID, meta:{ name:e.name, status:e.status } }; }
       function fWd(w){
@@ -10634,7 +11519,7 @@
       // admin_mark_withdrawal_paid), so "withdrawals" is intentionally
       // removed from generic sync entirely. fWd() is kept only as a record
       // of the old shape; it is no longer called anywhere.
-      var SETS=[["clients",fClient,"clients"],["riders",fRider,"riders"],["parcels",fParcel,"parcels"],["invoices",fInvoice,"invoices"],["tickets",fTicket,"tickets"],["expenses",fExpense,"expenses"],["paymentLogs",fPl,"payment_logs"],["operationsIssues",fOpsIssue,"operations_issues"],["resolvedAlerts",fResolvedAlert,"resolved_alerts"],["transit",fManifest,"manifest_logs"],["completedSacks",fManifest,"manifest_logs"],["ticketNotifications",fTicketNotif,"ticket_notifications"],["users",fStaffUser,"staff_users"],["staffTickets",fStaffTicket,"staff_tickets"],["staffActivity",fStaffActivity,"staff_activity"]];
+      var SETS=[["clients",fClient,"clients"],["riders",fRider,"riders"],["parcels",fParcel,"parcels"],["invoices",fInvoice,"invoices"],["tickets",fTicket,"tickets"],["expenses",fExpense,"expenses"],["paymentLogs",fPl,"payment_logs"],["operationsIssues",fOpsIssue,"operations_issues"],["resolvedAlerts",fResolvedAlert,"resolved_alerts"],["transit",fManifest,"manifest_logs"],["completedSacks",fManifest,"manifest_logs"],["ticketNotifications",fTicketNotif,"ticket_notifications"],["users",fStaffUser,"staff_users"],["staffTickets",fStaffTicket,"staff_tickets"],["staffActivity",fStaffActivity,"staff_activity"],["pickupRequests",fPickup,"pickup_requests"]];
       function scheduleResync(){ clearTimeout(resyncT); resyncT=setTimeout(function(){ try{ syncAll(); }catch(e){} },700); }
       function loadAll(){
         /* NOTE: every query below now has an explicit .limit(). Supabase's own
@@ -10665,7 +11550,8 @@
           sb.from("staff_users").select("*").order("created_at",{ascending:false}).limit(2000),
           sb.from("staff_tickets").select("*").order("created_at",{ascending:false}).limit(2000),
           sb.from("staff_activity").select("*").order("created_at",{ascending:false}).limit(100),
-          sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}).limit(5000)
+          sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}).limit(5000),
+          sb.from("pickup_requests").select("*").order("created_at",{ascending:false}).limit(3000)
         ]).then(function(res){
           function D(i){ return (res[i]&&res[i].data)||[]; }
           state.clients=D(0).map(rClient);
@@ -10688,6 +11574,7 @@
           state.staffTickets=D(15).map(rStaffTicket);
           state.staffActivity=D(16).map(rStaffActivity);
           state.walletLedger=D(17).map(rLedger);
+          state.pickupRequests=D(18).map(rPickup);
           // NovaX fix (Best Fix Rule): the embedded Client Portal preview must
           // never silently default to the first client in the list -- leave
           // it unset ("No client selected") until admin explicitly picks one
@@ -10713,7 +11600,7 @@
       }
       function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
       var _save=saveState; saveState=function(){ try{ if(typeof syncRidersFromUsers==="function") syncRidersFromUsers(); }catch(e){} try{ _save.apply(this,arguments); }catch(e){} try{ syncAll(); }catch(e){} };
-      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.tickets=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[]; state.signupLeads=[]; state.operationsIssues=[]; state.resolvedAlerts=[]; state.transit=[]; state.completedSacks=[]; state.ticketNotifications=[]; state.users=[]; state.staffTickets=[]; state.staffActivity=[]; state.walletLedger=[];
+      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.tickets=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[]; state.signupLeads=[]; state.operationsIssues=[]; state.resolvedAlerts=[]; state.transit=[]; state.completedSacks=[]; state.ticketNotifications=[]; state.users=[]; state.staffTickets=[]; state.staffActivity=[]; state.walletLedger=[]; state.pickupRequests=[];
       window.markSalesLeadContacted=function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
@@ -10746,7 +11633,7 @@
           liveSubscribed=true;
           try{
             var liveChannel=sb.channel("novax_admin_live");
-            ["clients","riders","parcels","invoices","tickets","expenses","withdrawals","payment_logs","sales_leads","signup_leads","operations_issues","resolved_alerts","manifest_logs","ticket_notifications","staff_users","staff_tickets","staff_activity"].forEach(function(t){
+            ["clients","riders","parcels","invoices","tickets","expenses","withdrawals","payment_logs","sales_leads","signup_leads","operations_issues","resolved_alerts","manifest_logs","ticket_notifications","staff_users","staff_tickets","staff_activity","pickup_requests"].forEach(function(t){
               liveChannel.on("postgres_changes",{event:"*",schema:"public",table:t},function(){ scheduleReload(); });
             });
             liveChannel.subscribe(function(status,err){ if(err) console.warn("NovaX admin realtime",status,err.message||err); });
@@ -10810,7 +11697,7 @@
         var style=document.createElement('style');
         style.textContent='.nvai-btn{position:fixed;right:18px;bottom:18px;z-index:99999;width:58px;height:58px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#14c77b);color:#fff;font-size:24px;box-shadow:0 12px 30px rgba(20,199,123,.45);display:grid;place-items:center;border:0;cursor:pointer}.nvai-dim{opacity:.7}.nvai-panel{position:fixed;right:18px;bottom:86px;z-index:99999;width:360px;max-width:calc(100vw - 36px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #cfe6dc;border-radius:18px;box-shadow:0 26px 70px rgba(13,91,64,.28);display:none;flex-direction:column;overflow:hidden}.nvai-panel.open{display:flex}.nvai-head{background:linear-gradient(135deg,#0b2a1f,#0c7c59);color:#eafff5;padding:13px 16px;display:flex;align-items:center;gap:10px}.nvai-head b{font-size:15px;line-height:1.1}.nvai-head small{font-size:11px;opacity:.8}.nvai-x{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:0;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px}.nvai-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f3fff9}.nvai-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}.nvai-m.u{align-self:flex-end;background:#dcffe9;color:#08311f;border-bottom-right-radius:4px}.nvai-m.b{align-self:flex-start;background:#fff;border:1px solid #e1f0e8;color:#0b2a1f;border-bottom-left-radius:4px}.nvai-bar{display:flex;gap:8px;padding:10px;border-top:1px solid #e1f0e8;background:#fff}.nvai-bar input{flex:1;min-width:0;height:42px;border-radius:11px;border:1px solid #cfe6dc;padding:0 12px;font:inherit;font-size:14px}.nvai-bar button{height:42px;padding:0 16px;border-radius:11px;background:#14c77b;color:#04130d;font-weight:800;border:0;cursor:pointer}@media (max-width:520px){.nvai-panel{right:10px;left:10px;width:auto;bottom:78px;height:72vh}.nvai-btn{right:14px;bottom:14px}}';
         document.head.appendChild(style);
-        var btn=document.createElement('button'); btn.className='nvai-btn'; btn.title='NovaX Admin AI'; btn.innerHTML='🤖';
+        var btn=document.createElement('button'); btn.className='nvai-btn'; btn.title='NovaX Admin AI'; btn.innerHTML='����';
         var panel=document.createElement('div'); panel.className='nvai-panel';
         panel.innerHTML='<div class=nvai-head><div><b>NovaX Admin AI</b><br><small>live control-room data · never guesses</small></div><button class=nvai-x type=button>×</button></div><div class=nvai-msgs></div><div class=nvai-bar><input type=text><button type=button>Send</button></div>';
         document.body.appendChild(btn); document.body.appendChild(panel);
@@ -11018,23 +11905,7 @@
   }
   if(document.readyState!=="loading") apply(); else document.addEventListener("DOMContentLoaded",apply);
 
-  // Show the result of a Shopify OAuth 1-click connect once the browser
-  // bounces back here from shopify-oauth-callback, then clean the URL.
-  (function shopifyOauthReturnCheck(){
-    var qs = new URLSearchParams(window.location.search);
-    var connected = qs.get("shopifyConnected");
-    var err = qs.get("shopifyError");
-    if(connected || err){
-      var say = function(){
-        if(typeof toast==="function"){ toast(err ? ("Shopify connect failed: "+err) : "Shopify connected. Orders and status updates are now live."); }
-        else if(err){ alert("Shopify connect failed: "+err); } else { alert("Shopify connected. Orders and status updates are now live."); }
-      };
-      if(document.readyState!=="loading") say(); else document.addEventListener("DOMContentLoaded",say);
-      qs.delete("shopifyConnected"); qs.delete("shopifyError");
-      var rest = qs.toString();
-      history.replaceState(null, "", window.location.pathname + (rest?("?"+rest):""));
-    }
-  })();
+
 })();
 </script>
 </body>
