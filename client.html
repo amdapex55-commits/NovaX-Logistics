@@ -672,6 +672,10 @@
                 <div id="clientLatestInvoice"></div>
               </div>
               <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Payment Timeline</h3><p>Where your latest invoice currently stands.</p></div></div>
+                <div class="ops-list" id="paymentTimeline"></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
                 <div class="section-head"><div><h3>Payment History</h3><p>Generated invoices only. COD scans, rider cash, and internal ledger events stay on the admin side.</p></div></div>
                 <div class="log-feed" id="clientPaymentHistory"></div>
               </div>
@@ -828,7 +832,7 @@
     // It is unconditionally overwritten (state.client, state.clients,
     // state.parcels, state.invoices, etc. all reset to empty/"Loading...")
     // a few lines below, before the real Supabase profile/client_id lookup
-    // runs and before the first render() call -- so this "Apex Fashion" demo
+    // runs and before the first render() call -- so this stale cross-client demo
     // name must never actually reach the screen for a logged-in user. Do not
     // remove the overwrite block below without also removing this data.
     const baseState = {
@@ -948,7 +952,7 @@
     function selectedParcel(){ return state.parcels.find(p=>p.awb===state.selectedAwb) || emptyParcel(); }
     function inClientDateRange(p){ const d=p.date||"2026-06-24"; const f=state.clientDateFrom||"2026-06-01"; const t=state.clientDateTo||"2026-06-24"; return d>=f && d<=t; }
     // NovaX fix (High #2): clientScopedParcels() must never fall back to the
-    // demo/default "CL-0001" id. With no confirmed client identity, the
+    // demo/default placeholder client id. With no confirmed client identity, the
     // correct answer is an empty list, not another client's parcels.
     function clientScopedParcels(){ const id=state.client&&state.client.id; if(!id) return []; return state.parcels.filter(p=>p.clientId===id && inClientDateRange(p)); }
     const ZONE_CITY_MAP={ karachi:"A", lahore:"B", islamabad:"B", rawalpindi:"B" };
@@ -1462,12 +1466,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!hasResolvableException(p)){ review.innerHTML=""; return; }
       review.innerHTML=typeof renderExceptionCard==="function"?renderExceptionCard(p):"";
     }
-    function renderWallets(){
-      const box=document.getElementById("clientWallet");
-      if(!box) return;
-      const cm=clientMetrics();
-      box.innerHTML=[moneyBox("Client payable",money(cm.payable),"Generated from delivered invoices only")].join("");
-    }
+    // NovaX fix (medium audit #4): renderWallets() targeted a "clientWallet"
+    // element that no longer exists -- the Wallet tab's payable/available
+    // figures are now rendered by walletSummaryCards (Wallet tab) and
+    // paymentSummary (Payments tab), so this dead duplicate was removed
+    // rather than left as a silent no-op DOM lookup.
     function renderAwbLabel(){ const p=state.parcels.find(x=>x.awb===(state.lastGeneratedAwb||state.selectedAwb))||selectedParcel(); document.getElementById("awbLabelPreview").innerHTML=awbCompleteBadge(p)+awbLabelHtml(p); }
     function renderClientTabs(){
       document.querySelectorAll(".client-tab").forEach(b=>b.classList.toggle("active",b.dataset.clientTab===state.activeClientTab));
@@ -1513,7 +1516,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         metricCard("Open Parcels",open,percent(open,Math.max(1,cm.total)),"not delivered yet",open?"blue":"good")
       ].join("");
       document.getElementById("clientReportRows").innerHTML=cityReport(cm.parcels).map(r=>`<tr><td><strong>${r.city}</strong></td><td>${r.parcels}</td><td>${money(r.cod)}</td><td>${money(r.revenue)}</td><td><span class="chip ${r.delivered?"good":"info"}">${r.delivered}/${r.parcels}</span></td></tr>`).join("");
-      // NovaX fix (High #2): never fall back to the demo/default "CL-0001"
+      // NovaX fix (High #2): never fall back to the demo/default placeholder client id
       // id -- with no confirmed client identity, show zero invoices instead
       // of another client's invoices.
       const myId=state.client&&state.client.id;
@@ -2015,7 +2018,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       hint.textContent=zoneLabel(zone)+" · base Rs "+fmt(breakdown.base)+" + additional Rs "+fmt(breakdown.additional)+" ("+breakdown.extraKg+" extra kg) = estimated total Rs "+fmt(breakdown.total)+(breakdown.overCap?" (over 5kg normal slab, confirm manually)":"");
     }
     function bookParcel(o={}){
-      // NovaX fix (High #2): never fall back to the demo/default "CL-0001"
+      // NovaX fix (High #2): never fall back to the demo/default placeholder client id
       // id. If the account isn't linked/verified yet, stop and surface an
       // error instead of silently booking against the demo client.
       const clientId=o.clientId||(state.client&&state.client.id);
@@ -2045,7 +2048,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const consignee=document.getElementById("bookingName").value.trim();
       const cod=Number(document.getElementById("bookingCod").value || 0);
       const address=document.getElementById("bookingAddress").value.trim();
-      // NovaX fix (High #2): never fall back to the demo/default "CL-0001"
+      // NovaX fix (High #2): never fall back to the demo/default placeholder client id
       // id. If the account isn't linked/verified yet, stop and surface an
       // error instead of silently booking against the demo client.
       const clientId=state.client&&state.client.id;
@@ -2496,7 +2499,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     /* ===== Store Integrations + New Booked bulk print ===== */
     // NovaX fix (High #2): activeClientId() must never fall back to the
-    // demo/default "CL-0001" id -- callers (storeConn, etc.) should treat a
+    // demo/default placeholder client id -- callers (storeConn, etc.) should treat a
     // missing id as "no store connections / no client-scoped data", not as
     // the demo client's data.
     function activeClientId(){ return (state.client&&state.client.id)||null; }
@@ -2763,11 +2766,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       toast(`Pickup requested for ${awbs.length} AWB(s). We will confirm scheduling shortly.`);
     }
     function render(){
-      renderMetrics(); renderClientStatusBoard(); renderClientParcels(); renderJourney(); renderWallets(); renderAi();
+      renderMetrics(); renderClientStatusBoard(); renderClientParcels(); renderJourney(); renderAi();
       renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview();
       renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); updateZoneRateHint();
       // NovaX fix (client identity leak): the Client Menu workspace label used
-      // to be a hard-coded "Apex Fashion workspace" string in the HTML, so it
+      // to be a hard-coded demo workspace name string in the HTML, so it
       // never reflected the actual logged-in client. Always derive it from
       // clientDisplayLabel(), which never falls through to a cached/demo
       // client name -- it shows a clear "Verifying account...", "Account not
@@ -2801,7 +2804,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     document.getElementById("requestPickupBtn")?.addEventListener("click",requestPickup);
     document.getElementById("awbModalPrint").addEventListener("click",()=>printLabels([state.lastGeneratedAwb]));
     document.getElementById("openTicketBtn").addEventListener("click",()=>openTicketModal(state.selectedAwb));
-    document.getElementById("requestPayoutBtn")?.addEventListener("click",requestPayout);
     document.getElementById("reportCsvBtn").addEventListener("click",exportReportCsv);
     document.getElementById("reportPdfBtn").addEventListener("click",exportReportPdf);
     document.getElementById("repClearBtn").addEventListener("click",()=>{ ["repSearch","repFrom","repTo"].forEach(i=>{const e=document.getElementById(i);if(e)e.value="";}); const s=document.getElementById("repStatus"); if(s)s.value=""; renderClientReportFull(); });
@@ -2995,9 +2997,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // NovaX fix (client identity leak): accountNotLinked/clientRecordMissing
       // are the only signals the UI uses to show their respective error
       // states. They must never be paired with any demo/fallback client name
-      // (e.g. "Apex Fashion") -- client.id is set to the non-colliding
+      // (e.g. a different demo client name) -- client.id is set to the non-colliding
       // sentinel "UNLINKED" so no client-scoped fallback (`state.client.id||
-      // "CL-0001"`) can ever match a real or demo client's data. identityVerified
+      // demo/default placeholder id`) can ever match a real or demo client's data. identityVerified
       // stays false until one of the terminal branches below runs, and every
       // name-rendering code path must treat "not yet verified" as its own
       // state rather than falling through to a cached/demo name.
@@ -3055,7 +3057,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(window.__novaxAiLoaded) return; window.__novaxAiLoaded=true;
         var esc=function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
         var fmt=function(n){ return Number(n||0).toLocaleString('en-US'); };
-        // NovaX fix (High #2): never fall back to the demo/default 'CL-0001'
+        // NovaX fix (High #2): never fall back to the demo/default placeholder client id
         // id -- with no confirmed client identity, the AI's data queries
         // below should match nothing rather than another client's data.
         var cid=function(){ return (state.client&&state.client.id)||null; };
@@ -3488,7 +3490,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   var __SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
   var __SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
   var __REQUIRED_ROLE="client";
-  var __sb=null; try{ if(window.supabase&&window.supabase.createClient){ __sb=window.supabase.createClient(__SB_URL,__SB_KEY); window.__nvGuardSb=__sb; } }catch(__e){}
+  var __sb=window.__nvSb||null; try{ if(!__sb&&window.supabase&&window.supabase.createClient){ __sb=window.supabase.createClient(__SB_URL,__SB_KEY); } }catch(__e){} window.__nvGuardSb=__sb;
   function ses(){ try{ return JSON.parse(localStorage.getItem("novaxSession")||"null"); }catch(e){ return null; } }
   function logout(e){ if(e&&e.preventDefault) e.preventDefault(); try{ localStorage.removeItem("novaxSession"); }catch(_){ } try{ if(__sb&&__sb.auth) __sb.auth.signOut(); }catch(_2){ } window.location.href="index.html"; }
   window.nvLogout=logout;
