@@ -578,6 +578,14 @@
                       <button class="ghost-btn" onclick="shopifyCopySetupMessage()">Copy setup message (WhatsApp)</button>
                     </div>
                     <p class="footer-note" id="shopifyStatusDetail" style="margin-top:8px">Waiting for first Shopify order.</p>
+                    <div class="ops-card" id="shopifyImportSummary" style="display:none;margin-top:10px">
+                      <div class="money-grid">
+                        <div class="money-box"><span>Orders imported</span><strong id="shopifyImportedCount">0</strong></div>
+                        <div class="money-box"><span>Last order received</span><strong id="shopifyLastOrderAt">-</strong></div>
+                      </div>
+                      <p class="footer-note">Last imported AWB: <b id="shopifyLastAwb">-</b></p>
+                      <div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" onclick="viewShopifyImportedOrders()">View imported orders</button></div>
+                    </div>
                   </div>
 
                   <details style="margin-top:14px">
@@ -717,6 +725,7 @@
             <section class="client-module" id="client-logs">
               <div class="panel">
                 <div class="section-head"><div><h3>Order Logs</h3><p>Clean parcel activity summary. Open a ticket when anything looks wrong.</p></div><button class="action-btn ticket-cta" onclick="openTicketModal()">Create Ticket</button></div>
+                <div class="inline-actions" id="orderLogFilterBar" style="display:none;margin-bottom:10px"><span class="chip info">Filtered: Shopify orders</span><button class="ghost-btn" onclick="clearOrderLogFilter()">Clear filter</button></div>
                 <div class="log-feed" id="orderLogFeed"></div>
               </div>
             </section>
@@ -1190,13 +1199,16 @@
     function isNonCodParcel(parcel){ return /non\s*cod|prepaid/i.test(String((parcel&&(parcel.paymentMode||parcel.payment_mode))||"").trim()); }
     function invoiceMoneyBox(inv){
       const due=Number(inv.dueToNovax||0);
+      // NovaX (Branded Invoice wording): spec requires the exact phrases
+      // "Payable to you" for COD settlement and "Amount due to NovaX" for
+      // non-COD/delivery-charge-only invoices.
       if(due>0){
         if(inv.status==="Paid") return moneyBox("Paid in full",money(due),"Settled - nothing owed");
-        return moneyBox("Amount Due to NovaX",money(due),"you owe this to NovaX");
+        return moneyBox("Amount due to NovaX",money(due),"you owe this to NovaX");
       }
       if(inv.status==="Paid") return moneyBox("Paid in full",money(inv.payable),"Settled - nothing owed");
       if(inv.status==="Pushed to wallet") return moneyBox("In wallet",money(inv.payable),"Ready for you - withdraw anytime");
-      return moneyBox("Payable",money(inv.payable),"due to you");
+      return moneyBox("Payable to you",money(inv.payable),"COD settlement");
     }
     function invoiceChipClass(status){ if(status==="Paid") return "good"; if(status==="Pushed to wallet") return "info"; return "warn"; }
     function invoiceTypeChipClass(invType){ return invType==="Delivery Charges"?"bad":(invType==="Mixed"?"warn":"info"); }
@@ -1404,17 +1416,33 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // guessing the first parcel in the list.
       const p=state.parcels.find(x=>x.awb===state.selectedAwb)||emptyParcel();
       document.getElementById("selectedParcelText").textContent=`${p.awb} for ${p.consignee}. Current status: ${p.status}.`;
+      // NovaX (Client Tracking Timeline Polish): friendly client-facing
+      // sentence per status -- never a staff name, only status/branch/city/time.
+      const FRIENDLY_STEP_NOTE={
+        "New booked":"Your parcel has been booked and is waiting for pickup.",
+        "Collected by rider":"Your parcel has been picked up.",
+        "Arrived at warehouse":"Your parcel checked in at a NovaX hub.",
+        "Parcel now in transit":"Your parcel is in transit to the destination city.",
+        "Parcel received at destination":"Your parcel has arrived at the destination city.",
+        "Parcel out for delivery":"Your parcel is out for delivery.",
+        "Delivered":"Your parcel was delivered.",
+        "Refused":"Delivery attempt was refused.",
+        "Consignee not available":"The consignee was not available for delivery.",
+        "Reattempt":"A redelivery attempt is scheduled.",
+        "Ready for return":"Return is being sent back to origin.",
+        "Parcel returned to consignee":"Your return was completed at origin."
+      };
       const important=[
         ["New booked","Booked"],
         ["Collected by rider","Picked up"],
         ["Parcel now in transit","In transit"],
-        ["Parcel received at destination","Reached destination"],
+        ["Parcel received at destination","Arrived at destination"],
         ["Parcel out for delivery","Out for delivery"],
         ["Delivered","Delivered"],
         ["Refused","Refused"],
         ["Consignee not available","Consignee not available"],
         ["Reattempt","Reattempt"],
-        ["Ready for return","Ready for return"],
+        ["Ready for return","Returned"],
         ["Parcel returned to consignee","Returned"]
       ];
       const rows=important
@@ -1422,7 +1450,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         .map(([status,label],i)=>{
           const current=p.status===status;
           const problem=current && (p.exception||/Refused|not available/i.test(status));
-          const note=problem?(p.exception||"Needs client review"):(current?`${p.branch} | ${p.updated}`:`${p.branch} | verified`);
+          const place=p.branch||p.city||"";
+          const when=current?(p.updated||""):"verified";
+          const whenNote=[place,when].filter(Boolean).join(" | ");
+          const friendly=FRIENDLY_STEP_NOTE[status]||label;
+          const note=problem?(p.exception||"Needs client review"):`${friendly}${whenNote?(" — "+whenNote):""}`;
           return `<div class="seller-step ${current?"current":""} ${problem?"problem":""}"><div class="step-dot">${i+1}</div><div><strong>${label}</strong><span>${note}</span></div><span class="chip ${problem?"bad":current?"info":"good"}">${problem?"review":current?"current":"done"}</span></div>`;
         });
       document.getElementById("clientJourney").innerHTML=`<div class="seller-journey-card">${rows.join("")}${p.resolutionRemark?`<div class="seller-step"><div class="step-dot">OK</div><div><strong>Admin remarks</strong><span>${p.resolutionRemark}</span></div><span class="chip good">resolved</span></div>`:""}${p.proofPhoto?`<div class="seller-step problem"><div class="step-dot">📷</div><div><strong>Rider remark + proof</strong><span>${p.exception||p.returnProof||"Photo proof attached by rider"}</span></div><span class="chip bad">live</span></div><div style="padding:0 14px 14px"><img src="${p.proofPhoto}" alt="rider proof" loading="lazy" style="width:100%;max-height:240px;object-fit:cover;border-radius:12px;border:1px solid var(--line)"></div>`:""}</div>`;
@@ -1505,7 +1537,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const cities=[...new Set((inv.parcelRefs||[]).map(awb=>{ const p=state.parcels.find(x=>x.awb===awb); return p&&p.city; }).filter(Boolean))].join(", ");
         return `<div class="invoice-card"><div class="ops-card-head"><strong>${inv.id}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${invType}</span><span class="chip ${invoiceChipClass(inv.status)}">${inv.status}</span></div><p>${inv.summary}${cities?(" | Destination: "+cities):""}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${invoiceMoneyBox(inv)}${moneyBox("Date",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div><div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View Invoice</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">Download CSV</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Download PDF</button></div></div>`;
       }).join("")||`<div class="ops-card"><strong>No invoices yet</strong></div>`;
-      document.getElementById("orderLogFeed").innerHTML=cm.parcels.map(p=>{ const alert=alertForParcel(p); return `<div class="order-log-card clickable-row" onclick="openClientParcelJourney('${p.awb}')"><div><strong>${p.awb}</strong><div class="footer-note">${p.consignee} | ${p.city}</div></div><div><strong>${p.status}</strong><div class="footer-note">Last update ${p.updated} | ${alert.label}</div><button class="ghost-btn" onclick="event.stopPropagation();openTicketModal('${p.awb}')">Ticket</button>${waActionsHtml(p.awb, waKindForStatus(p.status))}</div></div>`; }).join("")||`<div class="ops-card"><strong>No order logs</strong></div>`;
+      // NovaX (Shopify Final Test Visibility): "View imported orders" sets
+      // state.orderLogSourceFilter="shopify" so this feed narrows to source=shopify.
+      const orderLogFilterBar=document.getElementById("orderLogFilterBar");
+      if(orderLogFilterBar) orderLogFilterBar.style.display=state.orderLogSourceFilter?"flex":"none";
+      const orderLogParcels=state.orderLogSourceFilter?cm.parcels.filter(p=>(p.source||"")===state.orderLogSourceFilter):cm.parcels;
+      document.getElementById("orderLogFeed").innerHTML=orderLogParcels.map(p=>{ const alert=alertForParcel(p); return `<div class="order-log-card clickable-row" onclick="openClientParcelJourney('${p.awb}')"><div><strong>${p.awb}</strong><div class="footer-note">${p.consignee} | ${p.city}</div></div><div><strong>${p.status}</strong><div class="footer-note">Last update ${p.updated} | ${alert.label}</div><button class="ghost-btn" onclick="event.stopPropagation();openTicketModal('${p.awb}')">Ticket</button>${waActionsHtml(p.awb, waKindForStatus(p.status))}</div></div>`; }).join("")||`<div class="ops-card"><strong>No order logs</strong></div>`;
       document.getElementById("subAccountList").innerHTML=[["Owner","Full visibility, payout approvals","active"],["Finance","Payments, invoices, reports","active"],["Warehouse","New and bulk booking only","active"],["Support","Tracking and WhatsApp replies","limited"]].map(r=>`<div class="ops-card"><div class="ops-card-head"><strong>${r[0]}</strong><span class="chip ${r[2]==="limited"?"warn":"good"}">${r[2]}</span></div><p>${r[1]}</p></div>`).join("");
       document.getElementById("supportEscalations").innerHTML=state.parcels.filter(p=>p.exception&&p.clientId===state.client.id).map(p=>`<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip bad">escalated</span></div><p>${p.exception}</p>${p.proofPhoto?`<img src="${p.proofPhoto}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:200px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">`:""}</div>`).join("")||`<div class="ops-card"><strong>No escalations</strong><p>AI has complete portal data right now.</p></div>`;
     }
@@ -2525,6 +2562,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           else if(row.has_secret) detail.textContent="Now place a test order in Shopify. NovaX will import it automatically.";
           else detail.textContent="Your NovaX webhook URL is ready. Add it in Shopify, then paste the Shopify signing secret below.";
         }
+        // NovaX (Shopify Final Test Visibility): once Live / first order is
+        // in, surface imported count, last order time, and last AWB with a
+        // shortcut into Order Logs filtered to this source.
+        const summaryBox=document.getElementById("shopifyImportSummary");
+        if(summaryBox){
+          if(row.imported_count>0){
+            summaryBox.style.display="block";
+            const cEl=document.getElementById("shopifyImportedCount"); if(cEl) cEl.textContent=row.imported_count;
+            const tEl=document.getElementById("shopifyLastOrderAt"); if(tEl) tEl.textContent=row.last_order_at?new Date(row.last_order_at).toLocaleString():"-";
+            const aEl=document.getElementById("shopifyLastAwb"); if(aEl) aEl.textContent=row.last_order_awb||"-";
+          } else {
+            summaryBox.style.display="none";
+          }
+        }
         if(row.intake_token){
           const urlEl=document.getElementById("shopifyIntakeUrlOut");
           if(urlEl && !urlEl.value) urlEl.value = SB_URL.replace(/\/$/, "") + "/functions/v1/shopify-order-intake/" + row.intake_token;
@@ -2533,6 +2584,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           document.getElementById("shopifyStep3Box").style.display="block";
         }
       }).catch(function(){});
+    }
+    function viewShopifyImportedOrders(){
+      state.orderLogSourceFilter="shopify";
+      showClientTab("logs");
+      toast("Showing Shopify-imported orders in Order Logs.");
+    }
+    function clearOrderLogFilter(){
+      state.orderLogSourceFilter="";
+      renderClientReportFull();
     }
     function shopifyCopySetupMessage(){
       const url=(document.getElementById("shopifyIntakeUrlOut")?.value||"").trim();
@@ -2650,7 +2710,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // requests and to grey out already-requested AWBs in the picker.
     function activePickupAwbs(){
       const set=new Set();
-      (state.pickupRequests||[]).forEach(function(pr){ if(pr.status!=="Picked Up"){ (pr.awbs||[]).forEach(function(a){ set.add(a); }); } });
+      // NovaX (Pickup Request Flow): Picked Up and Cancelled are terminal --
+      // an AWB frees up for a new pickup request once its last request lands
+      // in either state.
+      const terminal=["Picked Up","Cancelled"];
+      (state.pickupRequests||[]).forEach(function(pr){ if(!terminal.includes(pr.status)){ (pr.awbs||[]).forEach(function(a){ set.add(a); }); } });
       return set;
     }
     function pickupEligibleParcels(){
@@ -2667,7 +2731,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const list=document.getElementById("pickupRequestList"); if(!list) return;
       const items=(state.pickupRequests||[]).slice().sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
       if(!items.length){ list.innerHTML=`<p class="footer-note">No pickup requests yet.</p>`; return; }
-      const chipClass={ Requested:"warn", Scheduled:"info", "Picked Up":"good" };
+      // NovaX (Pickup Request Flow): full status vocabulary --
+      // Requested -> Assigned -> Rider dispatched -> Picked Up, or Cancelled.
+      // "Scheduled" is kept mapped for any older requests saved before this update.
+      const chipClass={ Requested:"warn", Assigned:"info", "Rider dispatched":"info", Scheduled:"info", "Picked Up":"good", Cancelled:"bad" };
       list.innerHTML=items.map(pr=>{
         const cls=chipClass[pr.status]||"warn";
         const awbList=(pr.awbs||[]).map(a=>escLabelText(a)).join(", ");
