@@ -4682,6 +4682,17 @@
                   <button type="button" class="admin-subtab" data-admin-tab="api-woo-commerce">Woo Commerce</button>
                 </div>
               </div>
+
+              <div class="admin-nav-group" data-admin-group="system">
+                <button type="button" class="admin-nav-main" data-admin-group-toggle="system" aria-expanded="false">
+                  <span>SYSTEM <span class="nav-badge" id="systemGroupErrorBadge" style="display:none">0</span></span><span class="chevron">v</span>
+                </button>
+                <div class="admin-subnav">
+                  <button type="button" class="admin-subtab" data-admin-tab="system-health">System Health</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="system-notifications">Notification Center</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="system-errors">Error Monitor <span class="nav-badge" id="systemErrorsSubtabBadge" style="display:none">0</span></button>
+                </div>
+              </div>
             </nav>
           </aside>
 
@@ -5459,6 +5470,56 @@
                 <div id="wooConnList"></div>
               </div>
             </section>
+
+            <section class="admin-module" id="admin-system-health">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>System Health</h3><p>Quick internal smoke test -- pings the core RPCs every portal depends on and reports the last known status of key background flows. No secrets or raw stack traces are ever shown here.</p></div>
+                  <button class="action-btn" id="runHealthCheckBtn" onclick="runAdminHealthCheck()">Run Health Check</button>
+                </div>
+                <div class="footer-note" id="healthCheckLastRun">Not run yet this session.</div>
+                <div class="grid two" id="healthCheckGrid" style="margin-top:12px"></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Latest activity snapshot</h3><p>Most recent Shopify import, AI ticket, withdrawal, and invoice push -- so you can spot a stuck flow at a glance.</p></div></div>
+                <div class="grid two" id="healthActivityGrid"></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-system-notifications">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>Notification Center</h3><p>Every WhatsApp/SMS/Email update queued for a client. Provider-ready: rows are logged and tracked here, no paid API is connected yet.</p></div>
+                </div>
+                <div class="grid four">
+                  <div class="field"><label>Status</label><select id="notifStatusFilter" onchange="renderNotificationCenter()"><option value="">All statuses</option><option value="pending">Pending</option><option value="sent">Sent</option><option value="failed">Failed</option><option value="manual">Manual</option></select></div>
+                  <div class="field"><label>Channel</label><select id="notifChannelFilter" onchange="renderNotificationCenter()"><option value="">All channels</option><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option><option value="email">Email</option></select></div>
+                  <div class="field"><label>Client</label><select id="notifClientFilter" onchange="renderNotificationCenter()"><option value="">All clients</option></select></div>
+                  <div class="field"><label>AWB</label><input id="notifAwbFilter" placeholder="Filter by AWB" oninput="renderNotificationCenter()"></div>
+                </div>
+                <div class="inline-actions" style="margin-top:6px"><button class="action-btn ghost" onclick="loadNotificationCenter()">Refresh</button></div>
+                <div class="ops-list" id="notificationCenterList" style="margin-top:12px"></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Notification templates (read-only preview)</h3><p>Wording each event will use once a provider is connected. Edit copy here -- sending stays disabled until an API key is added.</p></div></div>
+                <div class="ops-list" id="notificationTemplateList"></div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-system-errors">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>Error Monitor</h3><p>Failures logged from admin, client, and rider portals: failed RPCs, Shopify checks, wallet actions, invoice actions, booking sync, visitor pings, and AI support calls. Admin-only -- normal clients cannot read this list.</p></div>
+                  <button class="action-btn ghost" onclick="loadErrorMonitor()">Refresh</button>
+                </div>
+                <div class="grid three">
+                  <div class="field"><label>Source</label><select id="errorSourceFilter" onchange="renderErrorMonitor()"><option value="">All sources</option><option value="admin">Admin</option><option value="client">Client</option><option value="rider">Rider</option></select></div>
+                  <div class="field"><label>Severity</label><select id="errorSeverityFilter" onchange="renderErrorMonitor()"><option value="">All severities</option><option value="critical">Critical</option><option value="warning">Warning</option><option value="info">Info</option></select></div>
+                  <div class="field"><label>Show resolved</label><select id="errorResolvedFilter" onchange="renderErrorMonitor()"><option value="open">Open only</option><option value="all">All</option></select></div>
+                </div>
+                <div class="ops-list" id="errorMonitorList" style="margin-top:12px"></div>
+              </div>
+            </section>
           </div>
         </div>
       </section>
@@ -5557,6 +5618,11 @@
     ];
 
     const baseState = {
+      healthCheckResults: [],
+      healthCheckLastRunAt: "",
+      healthActivitySnapshot: {},
+      notificationCenterRows: [],
+      errorMonitorRows: [],
       selectedAwb: "SAMPLE-AWB-1",
       activeFilter: "all",
       activeStatusQueue: "Parcel now in transit",
@@ -5838,7 +5904,8 @@
       finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-summary", "finance-overall", "finance-revenue"],
       clients: ["clients-summary", "clients-leads", "clients-create-new", "clients-clients"],
       users: ["users-create", "users-edit", "users-staff"],
-      api: ["api-shopify", "api-web", "api-woo-commerce"]
+      api: ["api-shopify", "api-web", "api-woo-commerce"],
+      system: ["system-health", "system-notifications", "system-errors"]
     };
 
     const ADMIN_TAB_ALIASES = {
@@ -5865,7 +5932,10 @@
       "clients-clients": "admin-clients-rates",
       "users-create": "admin-users",
       "users-staff": "admin-staff",
-      "total-summary": "admin-reports"
+      "total-summary": "admin-reports",
+      "system-health": "admin-system-health",
+      "system-notifications": "admin-system-notifications",
+      "system-errors": "admin-system-errors"
     };
 
     function normalizeAdminTab(id) {
@@ -8698,6 +8768,9 @@
       tickMeters();
       window.scrollTo({ top: 0, behavior: "smooth" });
       if (typeof renderStaffTab === "function") { try { renderStaffTab(); } catch(e){} }
+      if (state.activeAdminTab === "system-health") { try { renderSystemHealth(); } catch(e){} }
+      if (state.activeAdminTab === "system-notifications") { try { loadNotificationCenter(); } catch(e){} }
+      if (state.activeAdminTab === "system-errors") { try { loadErrorMonitor(); } catch(e){} }
     }
 
     async function lookupProcessingParcel() {
@@ -9033,6 +9106,127 @@
       el.classList.add("show");
       clearTimeout(window.toastTimer);
       window.toastTimer = setTimeout(() => el.classList.remove("show"), 2800);
+    }
+
+    function nvHealthDot(status){ return status==="green"?"chip good":status==="yellow"?"chip warn":status==="red"?"chip bad":"chip"; }
+
+    async function runAdminHealthCheck(){
+      const btn=document.getElementById("runHealthCheckBtn"); if(btn){ btn.disabled=true; btn.textContent="Running..."; }
+      const checks=[
+        { key:"supabase", label:"Supabase connected", run: async()=>{ if(!window.__nvSb) throw new Error("Supabase client not initialized"); const r=await window.__nvSb.from("clients").select("id",{count:"exact",head:true}).limit(1); if(r.error) throw new Error(r.error.message); return "Connected"; } },
+        { key:"clientRpc", label:"Client RPCs reachable", run: async()=>{ const r=await window.__nvSb.rpc("client_shopify_status",{}); if(r.error && !/not authorized|no client|permission/i.test(r.error.message||"")) throw new Error(r.error.message); return "Reachable"; } },
+        { key:"adminRpc", label:"Admin RPCs reachable", run: async()=>{ const r=await window.__nvSb.rpc("can_process_orders",{}); if(r.error) throw new Error(r.error.message); return r.data?"Reachable (authorized)":"Reachable"; } },
+        { key:"walletRpc", label:"Wallet RPCs reachable", run: async()=>{ const r=await window.__nvSb.rpc("admin_system_health_snapshot",{}); if(r.error) throw new Error(r.error.message); return "Reachable"; } },
+        { key:"shopifyStatus", label:"Shopify status RPC reachable", run: async()=>{ const r=await window.__nvSb.rpc("admin_list_shopify_connections",{}); if(r.error) throw new Error(r.error.message); return "Reachable"; } },
+        { key:"trackingRpc", label:"Public tracking RPC reachable", run: async()=>{ const r=await window.__nvSb.rpc("track_parcel_public",{p_awb:"__NV_HEALTHCHECK__"}); if(r.error) throw new Error(r.error.message); return "Reachable"; } },
+        { key:"visitorPing", label:"visitor_ping RPC reachable", run: async()=>{ const r=await window.__nvSb.rpc("visitor_ping",{ p_session_id:"admin-healthcheck", p_portal:"admin", p_activity:"Health check", p_path:location.pathname, p_referrer:"", p_user_agent:navigator.userAgent }); if(r.error) throw new Error(r.error.message); return "Reachable"; } }
+      ];
+      const results=[];
+      for(const c of checks){
+        try{ const detail=await c.run(); results.push({ key:c.key, label:c.label, status:"green", detail, error:"" }); }
+        catch(e){ results.push({ key:c.key, label:c.label, status:"red", detail:"", error:(e&&e.message)?String(e.message).slice(0,180):"Failed" }); }
+      }
+      state.healthCheckResults=results;
+      state.healthCheckLastRunAt=new Date().toLocaleString();
+      try{
+        const snap=await window.__nvSb.rpc("admin_system_health_snapshot",{});
+        const map={};
+        (snap.data||[]).forEach(row=>{ map[row.metric]=row.value; });
+        state.healthActivitySnapshot=map;
+      }catch(e){ state.healthActivitySnapshot={}; }
+      saveState();
+      if(btn){ btn.disabled=false; btn.textContent="Run Health Check"; }
+      renderSystemHealth();
+      toast("Health check complete");
+    }
+
+    function renderSystemHealth(){
+      const grid=document.getElementById("healthCheckGrid"); if(!grid) return;
+      const lastRun=document.getElementById("healthCheckLastRun");
+      if(lastRun) lastRun.textContent=state.healthCheckLastRunAt?("Last checked: "+state.healthCheckLastRunAt):"Not run yet this session.";
+      const results=state.healthCheckResults||[];
+      grid.innerHTML=results.length?results.map(r=>`<div class="ops-card"><div class="ops-card-head"><strong>${r.label}</strong><span class="${nvHealthDot(r.status)}">${r.status==='green'?'Green':r.status==='yellow'?'Yellow':'Red'}</span></div><p class="footer-note">${r.status==='green'?(r.detail||'Working'):(r.error||'Broken')}</p></div>`).join(""):`<p class="footer-note">Click "Run Health Check" to test every core system.</p>`;
+      const critical=results.filter(r=>r.status==="red").length;
+      const badge=document.getElementById("systemGroupErrorBadge");
+      if(badge){ badge.style.display=critical?"inline-block":"none"; badge.textContent=String(critical); }
+      const act=document.getElementById("healthActivityGrid");
+      if(act){
+        const snap=state.healthActivitySnapshot||{};
+        const rows=[
+          ["Latest Shopify import", snap.latest_shopify_import_awb?("AWB "+snap.latest_shopify_import_awb+(snap.latest_shopify_import_at?(" @ "+snap.latest_shopify_import_at):"")):"No imports yet"],
+          ["Latest AI ticket status", (state.tickets&&state.tickets.length)?(state.tickets[state.tickets.length-1].tier||"Logged"):"No tickets yet"],
+          ["Latest withdrawal status", snap.latest_withdrawal_status||"No withdrawals yet"],
+          ["Latest invoice push status", snap.latest_invoice_status||"No invoices yet"]
+        ];
+        act.innerHTML=rows.map(([label,val])=>`<div class="ops-card"><div class="ops-card-head"><strong>${label}</strong></div><p class="footer-note">${val}</p></div>`).join("");
+      }
+    }
+
+    async function loadNotificationCenter(){
+      try{
+        const status=document.getElementById("notifStatusFilter")?.value||null;
+        const channel=document.getElementById("notifChannelFilter")?.value||null;
+        const clientId=document.getElementById("notifClientFilter")?.value||null;
+        const awb=document.getElementById("notifAwbFilter")?.value.trim()||null;
+        const r=await window.__nvSb.rpc("admin_list_notifications",{ p_status:status, p_channel:channel, p_client_id:clientId, p_awb:awb, p_limit:200 });
+        if(r.error) throw new Error(r.error.message);
+        state.notificationCenterRows=r.data||[];
+      }catch(e){ toast("Could not load notifications: "+(e.message||e), "error"); }
+      renderNotificationCenter();
+    }
+
+    function renderNotificationCenter(){
+      const list=document.getElementById("notificationCenterList"); if(!list) return;
+      const clientSel=document.getElementById("notifClientFilter");
+      if(clientSel && clientSel.options.length<=1){ clientSel.innerHTML=`<option value="">All clients</option>`+(state.clients||[]).map(c=>`<option value="${c.id}">${c.name}</option>`).join(""); }
+      const rows=state.notificationCenterRows||[];
+      list.innerHTML=rows.length?rows.map(n=>`<div class="ops-card"><div class="ops-card-head"><strong>${n.event_type}</strong><span class="chip ${n.status==='sent'||n.status==='manual'?'good':n.status==='failed'?'bad':'warn'}">${n.status}</span></div><p class="footer-note">${n.client_name||n.client_id||"Unknown client"} &middot; ${n.awb||"No AWB"} &middot; ${n.channel}${n.recipient?(" &middot; "+n.recipient):""}</p><p class="footer-note">${new Date(n.created_at).toLocaleString()}${n.error?(" &middot; "+n.error):""}${n.retry_count?(" &middot; retries: "+n.retry_count):""}</p><div class="inline-actions" style="margin-top:6px">${n.status==='failed'?`<button class="action-btn ghost" onclick="retryNotification('${n.id}')">Retry</button>`:""}${n.status!=='sent'&&n.status!=='manual'?`<button class="action-btn ghost" onclick="markNotificationSent('${n.id}')">Mark Sent</button>`:""}</div></div>`).join(""):`<p class="footer-note">No notifications logged yet.</p>`;
+      const tpl=document.getElementById("notificationTemplateList");
+      if(tpl && !tpl.dataset.filled){
+        const events=["booked","picked_up","in_transit","out_for_delivery","delivered","refused","returned","invoice_pushed","wallet_paid"];
+        const wording={ booked:"Your parcel {awb} has been booked with NovaX.", picked_up:"Your parcel {awb} has been picked up.", in_transit:"Your parcel {awb} is now in transit.", out_for_delivery:"Your parcel {awb} is out for delivery today.", delivered:"Your parcel {awb} has been delivered.", refused:"Your parcel {awb} was refused by the consignee. Please choose reattempt or return.", returned:"Your parcel {awb} has been returned.", invoice_pushed:"A new invoice is ready in your NovaX wallet.", wallet_paid:"Your withdrawal has been paid out." };
+        tpl.dataset.filled="1";
+        tpl.innerHTML=events.map(ev=>`<div class="ops-card"><div class="ops-card-head"><strong>${ev.replace(/_/g," ")}</strong></div><p class="footer-note">${wording[ev]}</p></div>`).join("");
+      }
+    }
+
+    async function retryNotification(id){
+      try{ const r=await window.__nvSb.rpc("admin_retry_notification",{ p_id:id }); if(r.error) throw new Error(r.error.message); toast("Notification queued for retry"); loadNotificationCenter(); }
+      catch(e){ toast("Retry failed: "+(e.message||e), "error"); }
+    }
+
+    async function markNotificationSent(id){
+      try{ const r=await window.__nvSb.rpc("admin_mark_notification_sent",{ p_id:id }); if(r.error) throw new Error(r.error.message); toast("Marked as manually sent"); loadNotificationCenter(); }
+      catch(e){ toast("Could not update: "+(e.message||e), "error"); }
+    }
+
+    async function loadErrorMonitor(){
+      try{
+        const r=await window.__nvSb.rpc("admin_list_error_logs",{ p_limit:300 });
+        if(r.error) throw new Error(r.error.message);
+        state.errorMonitorRows=r.data||[];
+      }catch(e){ toast("Could not load error monitor: "+(e.message||e), "error"); }
+      renderErrorMonitor();
+    }
+
+    function renderErrorMonitor(){
+      const list=document.getElementById("errorMonitorList"); if(!list) return;
+      const source=document.getElementById("errorSourceFilter")?.value||"";
+      const severity=document.getElementById("errorSeverityFilter")?.value||"";
+      const resolvedFilter=document.getElementById("errorResolvedFilter")?.value||"open";
+      let rows=state.errorMonitorRows||[];
+      if(source) rows=rows.filter(r=>r.source===source);
+      if(severity) rows=rows.filter(r=>r.severity===severity);
+      if(resolvedFilter==="open") rows=rows.filter(r=>!r.resolved);
+      list.innerHTML=rows.length?rows.map(r=>`<div class="ops-card"><div class="ops-card-head"><strong>${r.rpc_name||"Unknown call"}</strong><span class="chip ${r.severity==='critical'?'bad':r.severity==='warning'?'warn':''}">${r.severity}</span></div><p class="footer-note">${r.source} &middot; ${r.page||"unknown page"}${r.user_email?(" &middot; "+r.user_email):""}</p><p class="footer-note">${r.message}</p><p class="footer-note">${new Date(r.created_at).toLocaleString()}</p>${!r.resolved?`<div class="inline-actions" style="margin-top:6px"><button class="action-btn ghost" onclick="resolveErrorLog('${r.id}')">Mark Resolved</button></div>`:""}</div>`).join(""):`<p class="footer-note">No errors logged in this filter.</p>`;
+      const openCount=(state.errorMonitorRows||[]).filter(r=>!r.resolved).length;
+      const subBadge=document.getElementById("systemErrorsSubtabBadge");
+      if(subBadge){ subBadge.style.display=openCount?"inline-block":"none"; subBadge.textContent=String(openCount); }
+    }
+
+    async function resolveErrorLog(id){
+      try{ const r=await window.__nvSb.rpc("admin_resolve_error_log",{ p_id:id }); if(r.error) throw new Error(r.error.message); toast("Error marked resolved"); loadErrorMonitor(); }
+      catch(e){ toast("Could not resolve: "+(e.message||e), "error"); }
     }
 
     function renderAdminIntegrations(){
@@ -10413,13 +10607,14 @@
       list.innerHTML = rows.map(r => `
         <div class="ops-card ${r.urgency === "critical" ? "alert-row" : ""}">
           <div class="ops-card-head"><strong>${r.awb}</strong><span class="chip ${r.urgency === "critical" ? "bad" : r.urgency === "warning" ? "warn" : "info"}">${r.issueType}</span></div>
-          <p>${r.clientName} &middot; ${r.city || "-"} / ${r.branch || "-"} &middot; status: ${r.status} &middot; aging ${agingLabel(r.agingHours)}</p>
+          <p>${r.clientName} &middot; ${r.city || "-"} / ${r.branch || "-"} &middot; status: ${r.status} &middot; aging ${agingLabel(r.agingHours)} &middot; priority: <strong>${r.urgency === "critical" ? "High" : r.urgency === "warning" ? "Medium" : "Normal"}</strong></p>
           <p class="footer-note">Suggested: ${exceptionSuggestedAction(r.issueType)}${r.ticket ? (" &middot; linked ticket " + r.ticket.id + " (" + r.ticket.status + ")") : ""}</p>
           <div class="inline-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
             <button class="ghost-btn" onclick="createTicketForAwb('${r.awb}')">Create Ticket</button>
             <button class="ghost-btn" onclick="assignToBranchTeam('${r.awb}')">Assign Branch/Team</button>
             <button class="ghost-btn" onclick="requestReattemptAdmin('${r.awb}')">Request Reattempt</button>
             <button class="ghost-btn" onclick="markReturnToOriginAdmin('${r.awb}')">Mark Return to Origin</button>
+            <button class="ghost-btn" onclick="requestClientDecisionAdmin('${r.awb}')">Request Client Decision</button>
           </div>
           ${waActionsHtml(r.awb, waKindForStatus(r.status))}
           <div class="field" style="margin-top:8px"><label>Resolution note (required to resolve)</label><input id="excNote_${r.awb}" placeholder="What was done to resolve this?"></div>
@@ -10451,6 +10646,13 @@
       const p = state.parcels.find(x => x.awb === awb); if (!p) return;
       setParcelStatus(p, "Ready for return"); p.exception = "Marked return to origin by admin"; saveState(); renderAdmin();
       toast(awb + " marked return to origin.");
+    }
+    function requestClientDecisionAdmin(awb) {
+      const p = state.parcels.find(x => x.awb === awb); if (!p) return;
+      p.exception = "Awaiting your decision -- please reattempt or return."; p._clientDecisionRequestedAt = new Date().toISOString().slice(0, 10) + " " + time();
+      saveState(); renderAdmin();
+      try { if (window.__nvSb && p._uuid) window.__nvSb.rpc("queue_notification_event", { p_client_id: p.clientUuid || null, p_awb: awb, p_event_type: "client_decision_needed" }).then(function (r) { if (r && r.error) console.warn("NovaX notify queue", r.error.message); }); } catch (e) {}
+      toast(awb + " -- client decision requested. They will see this on their dashboard.");
     }
     function resolveExceptionIssue(awb) {
       const noteEl = document.getElementById("excNote_" + awb);
