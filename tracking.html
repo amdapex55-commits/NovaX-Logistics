@@ -9,6 +9,7 @@
 <meta name="robots" content="noindex, follow">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<script>(function(){ try{ if("serviceWorker" in navigator){ navigator.serviceWorker.getRegistrations().then(function(regs){ regs.forEach(function(r){ r.unregister(); }); }); } }catch(e){} })();</script>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="NovaX Logistics">
 <meta property="og:title" content="Track Your Parcel | NovaX Logistics">
@@ -188,7 +189,7 @@ input,button{font:inherit;}
   if(!awb){ renderEmpty("Enter a tracking ID to see this parcel's status."); return; }
   var sb=null;
   try{ if(window.supabase && window.supabase.createClient){ sb = window.supabase.createClient(SB_URL, SB_KEY, {auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:"sb-nv-track-page"}}); } }catch(e){}
-  if(!sb){ renderEmpty("Tracking will appear once this AWB is synced."); return; }
+  if(!sb){ renderEmpty("We couldn't load tracking right now. Please try again in a moment."); return; }
   sb.rpc("track_parcel_public_v2",{ p_awb: awb }).then(function(r){
     var row = r && r.data && r.data[0];
     if(!row || r.error){
@@ -196,12 +197,12 @@ input,button{font:inherit;}
       // been deployed to this Supabase project yet.
       return sb.rpc("track_parcel_public",{ p_awb: awb }).then(function(r2){
         var row2 = r2 && r2.data && r2.data[0];
-        if(!row2 || r2.error){ renderEmpty("Tracking will appear once this AWB is synced."); return; }
+        if(!row2 || r2.error){ renderEmpty("Tracking not found or not public yet."); return; }
         render({ awb: awb, status: row2.status, origin_city: "", destination_city: row2.city, updated_at: row2.updated_at, booked_at: "", steps: [row2.status] });
-      });
+      }).catch(function(){ renderEmpty("We couldn't load tracking right now. Please try again in a moment."); });
     }
     render(row);
-  }).catch(function(){ renderEmpty("Tracking will appear once this AWB is synced."); });
+  }).catch(function(){ renderEmpty("We couldn't load tracking right now. Please try again in a moment."); });
 })();
 </script>
 </body>
