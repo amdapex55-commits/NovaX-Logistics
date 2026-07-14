@@ -556,7 +556,7 @@ footer{color:#86a99b;}
         <h3>Where is my order?</h3>
         <p>Consignees check live NovaX status straight from the control room — no calls, no waiting.</p>
         <div class="track-row">
-          <input id="trackInput" value="N0010001" aria-label="Tracking ID" placeholder="Enter tracking ID e.g. N0010001">
+          <input id="trackInput" aria-label="Tracking ID" placeholder="Enter tracking ID e.g. SAMPLE-AWB">
           <button id="trackBtn">Track</button>
         </div>
         <div class="track-result" id="trackResult"></div>
@@ -651,7 +651,7 @@ footer{color:#86a99b;}
     <div class="art-pane dark reveal">
       <div class="chat">
         <div class="wa-head"><div class="wa-dot">🤖</div><div><b style="color:#eafff5">NovaX AI</b><div style="font-size:11px;color:#7fae9b">online · reads live portal</div></div></div>
-        <div class="msg u m1">Where is N0010001?</div>
+        <div class="msg u m1">Where is SAMPLE-AWB-1?</div>
         <div class="msg b m2">It's <b>out for delivery</b> from Lahore Hub, updated 09:38. ETA today before 6 PM. 🚚</div>
         <div class="msg u m3">Which invoice is generated?</div>
         <div class="msg b m4">Invoice <b>INV-0001</b> is generated for Rs 12,090 payable. Payment status is pending admin confirmation.</div>
@@ -763,7 +763,7 @@ footer{color:#86a99b;}
       <h2 class="title">Every parcel has a public tracking link. <span style="color:var(--green)">No login needed.</span></h2>
       <p class="lead">Consignees and sellers can check live status, route, and delivery updates for any AWB without signing in. The same link goes out on WhatsApp updates and the AWB label QR code.</p>
       <div class="feat-list">
-        <div class="feat reveal d1"><div class="ic">🔗</div><div><b>Direct tracking link</b><span>Open the dedicated tracking page for any AWB, e.g. tracking.html?awb=N0010001.</span></div></div>
+        <div class="feat reveal d1"><div class="ic">🔗</div><div><b>Direct tracking link</b><span>Open the dedicated tracking page for any AWB, e.g. tracking.html?awb=SAMPLE-AWB-1.</span></div></div>
         <div class="feat reveal d2"><div class="ic">🔒</div><div><b>Public-safe only</b><span>Shows AWB, status, route, and timeline &mdash; never wallet, invoices, or internal notes.</span></div></div>
       </div>
       <div class="hero-cta reveal d3" style="margin-top:6px">
@@ -1284,7 +1284,7 @@ footer{color:#86a99b;}
   function track(){
     var awb=(document.getElementById("trackInput").value||"").trim().toUpperCase();
     var box=document.getElementById("trackResult");
-    if(!awb){ renderNoParcel(box,"Enter a tracking ID e.g. N0010001 to look it up."); return; }
+    if(!awb){ renderNoParcel(box,"Enter a tracking ID e.g. SAMPLE-AWB-1 to look it up."); return; }
     if(!__trackSb){ renderNoParcel(box,"Tracking is temporarily unavailable. Please try again in a moment."); return; }
     box.innerHTML='<div class="tr-card"><div class="tr-head"><strong>'+awb+'</strong><span class="chip info">Looking up...</span></div></div>';
     __trackSb.rpc("track_parcel_public",{ p_awb: awb }).then(function(r){
@@ -1337,7 +1337,7 @@ footer{color:#86a99b;}
     }
     function ping(){
       if(!__vsb) return;
-      __vsb.from("visitor_sessions").upsert({ session_id:SESSION_ID, portal:__PORTAL, activity:activityLabel(), path:location.pathname+location.hash, referrer:document.referrer||"", user_agent:navigator.userAgent, last_seen:new Date().toISOString() },{ onConflict:"session_id" }).then(function(r){ if(r&&r.error) console.warn("NovaX visitor ping",r.error.message); });
+      __vsb.rpc("visitor_ping", { p_session_id:SESSION_ID, p_portal:__PORTAL, p_activity:activityLabel(), p_path:location.pathname+location.hash, p_referrer:document.referrer||"", p_user_agent:navigator.userAgent }).then(function(r){ if(r&&r.error) console.warn("NovaX visitor ping",r.error.message); });
     }
     document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") ping(); });
     window.addEventListener("hashchange",ping);
