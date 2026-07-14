@@ -5152,6 +5152,7 @@
             <section class="admin-module" id="admin-orders-processing">
               <div class="panel">
                 <div class="section-head"><div><h3>Order Processing</h3><p>Warehouse and branch status update desk. Type an AWB, press Enter, choose the next status, then confirm to update the journey.</p></div></div>
+                <div class="ops-card alert-row critical" id="processingAccessNotice" style="display:none"><strong>Order Processing locked</strong><p>You do not have order processing access.</p></div>
                 <div class="processing-desk">
                   <aside class="processing-preview" id="processingPreview">
                     <strong>No parcel selected</strong>
@@ -7497,7 +7498,10 @@
           && (!cityFilter || p.city === cityFilter)
           && (!originFilter || parcelOrigin(p) === originFilter)
           && (!branchFilter || p.branch === branchFilter)
-          && (!alertFilter || alert.level === alertFilter);
+          && (!alertFilter || alert.level === alertFilter)
+          // NovaX (Shopify Final Test Visibility): "View Shopify parcels for
+          // this client" sets this transient filter alongside the client filter.
+          && (!state.adminOrderSourceFilter || (p.source || "") === state.adminOrderSourceFilter);
       }).map(p => {
         const client = clientById(p.clientId);
         const alert = alertForParcel(p);
@@ -8700,43 +8704,59 @@
       const input = document.getElementById("processingAwbInput");
       const awbs = parseAwbList(input?.value || "");
       if (awbs.length && input) input.value = `${awbs.join(", ")}, `;
-      let found = parcelsByAwbs(awbs);
-      // Local state.parcels is a capped/cached snapshot (most recent 5000, and it can
-      // lag behind realtime updates by up to ~1s). If a scanned AWB isn't in that
-      // cache -- e.g. it's an older parcel that fell outside the cap, or it was just
-      // created and hasn't synced down yet -- fall back to a direct live lookup
-      // instead of telling the user it doesn't exist.
-      const missing = awbs.filter(awb => !found.some(p => String(p.awb || "").toUpperCase() === awb));
-      if (missing.length) {
-        try {
-          const r = await sb.from("parcels").select("*").in("awb", missing);
-          if (r && !r.error && Array.isArray(r.data) && r.data.length) {
-            r.data.forEach(row => {
-              const parcel = rParcel(row);
-              if (!parcel || !parcel.awb) return;
-              const idx = state.parcels.findIndex(p => (p._uuid && p._uuid === parcel._uuid) || p.awb === parcel.awb);
-              if (idx >= 0) state.parcels[idx] = parcel; else state.parcels.push(parcel);
-            });
-            found = parcelsByAwbs(awbs);
-          } else if (r && r.error) {
-            console.warn("NovaX processing lookup fallback", r.error.message);
-          }
-        } catch (e) { console.warn("NovaX processing lookup fallback", e); }
-      }
-      if (!found.length) {
-        state.activeProcessingAwb = "";
-        state.processingBatchAwbs = [];
-        saveState();
-        renderAdmin();
-        toast("No valid parcels found in this scan batch.");
+      if (!awbs.length) {
+        toast("Scan or paste at least one tracking ID.", "error");
         return;
       }
-      state.processingBatchAwbs = found.map(p => p.awb);
-      state.activeProcessingAwb = found[0].awb;
-      state.pendingProcessingStatus = found[0].status;
-      saveState();
-      renderAdmin();
-      toast(`${found.length} parcel(s) loaded for processing.`);
+      if (state.processingAccess === false) {
+        toast("You do not have order processing access.", "error");
+        return;
+      }
+      if (!window.__nvSb) {
+        toast("Cloud connection not ready — wait a moment and try again.", "error");
+        return;
+      }
+      const loadBtn = document.getElementById("processingLoadBatchBtn");
+      const loadOldText = loadBtn ? loadBtn.textContent : "";
+      if (loadBtn) { loadBtn.disabled = true; loadBtn.textContent = "Loading..."; }
+      try {
+        // NovaX fix: Order Processing now always looks parcels up through the
+        // admin_processing_lookup RPC (backend authority + real permission
+        // check), never a direct sb.from("parcels") select. This is the same
+        // path for every allowed staff member, not just the owner/admin.
+        const r = await window.__nvSb.rpc("admin_processing_lookup", { p_awbs: awbs });
+        if (r && r.error) {
+          toast(`Could not load parcels: ${r.error.message}`, "error");
+          return;
+        }
+        const rows = Array.isArray(r && r.data) ? r.data : [];
+        rows.forEach(row => {
+          const parcel = rParcel(row);
+          if (!parcel || !parcel.awb) return;
+          const idx = state.parcels.findIndex(p => (p._uuid && p._uuid === parcel._uuid) || p.awb === parcel.awb);
+          if (idx >= 0) state.parcels[idx] = parcel; else state.parcels.push(parcel);
+        });
+        const found = parcelsByAwbs(awbs);
+        if (!found.length) {
+          state.activeProcessingAwb = "";
+          state.processingBatchAwbs = [];
+          saveState();
+          renderAdmin();
+          toast("No valid parcels found in this scan batch.", "error");
+          return;
+        }
+        state.processingBatchAwbs = found.map(p => p.awb);
+        state.activeProcessingAwb = found[0].awb;
+        state.pendingProcessingStatus = found[0].status;
+        saveState();
+        renderAdmin();
+        toast(`${found.length} parcel(s) loaded for processing.`, "success");
+      } catch (e) {
+        console.error("NovaX processing lookup failed", e);
+        toast(`Could not load parcels: ${e && e.message ? e.message : "unknown error"}`, "error");
+      } finally {
+        if (loadBtn) { loadBtn.disabled = false; loadBtn.textContent = loadOldText || "Load Batch"; }
+      }
     }
 
     function processingBranchForStatus(parcel, status) {
@@ -8746,12 +8766,17 @@
       return `${parcelOrigin(parcel)} Hub`;
     }
 
-    function confirmBatchStatusUpdate() {
+    async function confirmBatchStatusUpdate() {
+      if (state.processingAccess === false) {
+        toast("You do not have order processing access.", "error");
+        return;
+      }
       const batch = processingParcels();
       if (!batch.length) {
         toast("Load valid tracking IDs first.", "error");
         return;
       }
+      const batchAwbs = batch.map(p => p.awb);
       const status = document.getElementById("processingStatusSelect")?.value || "";
       if (!status) {
         toast("Select a status to update.", "error");
@@ -8763,30 +8788,57 @@
         toast("Select a rider before pushing parcels out for delivery.", "error");
         return;
       }
+      // riderId in the select is the rider's short code (rider.id); the RPC
+      // needs the real Supabase uuid (rider._uuid), same mapping used
+      // everywhere else riders are sent to the backend.
+      const riderObj = riderId ? (state.riders || []).find(rd => rd.id === riderId) : null;
+      const riderUuidOrNull = riderObj ? riderObj._uuid : null;
+      if (riderId && !riderUuidOrNull) {
+        toast("Selected rider could not be matched to a cloud record. Refresh and try again.", "error");
+        return;
+      }
+      if (!window.__nvSb) {
+        toast("Cloud connection not ready — wait a moment and try again.", "error");
+        return;
+      }
       const btn = document.getElementById("processingConfirmBtn");
       const oldText = btn ? btn.textContent : "";
       if (btn) { btn.disabled = true; btn.textContent = "Updating..."; }
       try {
-        batch.forEach(parcel => {
-          const branch = processingBranchForStatus(parcel, status);
-          setParcelStatus(parcel, status, { name: currentAdminName(), username: "admin", branch });
-          if (riderPushStatuses.includes(status)) {
-            parcel.rider = riderId;
-            parcel.assignedRiderAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
-            parcel.exception = parcel.exception.replace("No rider assigned for delivery", "").trim();
-          }
-          parcel.exception = status === "Delivered" ? parcel.exception.replace("Consignee denies refusal attempt", "").trim() : parcel.exception;
+        // NovaX fix: status changes now go through the admin_processing_update_status
+        // RPC (backend authority + validated transition), never a local mutation
+        // + generic syncAll(). "Parcel updated" is only shown once the backend
+        // actually confirms the write.
+        const r = await window.__nvSb.rpc("admin_processing_update_status", {
+          p_awbs: batchAwbs,
+          p_status: status,
+          p_rider_id: riderUuidOrNull
         });
-        state.selectedAwb = batch[0].awb;
-        state.activeProcessingAwb = batch[0].awb;
+        if (r && r.error) {
+          toast(`Status update failed: ${r.error.message}`, "error");
+          return;
+        }
+        const rows = Array.isArray(r && r.data) ? r.data : [];
+        if (!rows.length) {
+          toast("Status update failed: backend returned no updated parcels.", "error");
+          return;
+        }
+        rows.forEach(row => {
+          const parcel = rParcel(row);
+          if (!parcel || !parcel.awb) return;
+          const idx = state.parcels.findIndex(p => (p._uuid && p._uuid === parcel._uuid) || p.awb === parcel.awb);
+          if (idx >= 0) state.parcels[idx] = parcel; else state.parcels.push(parcel);
+        });
+        state.selectedAwb = rows[0] ? String(rows[0].awb || "").toUpperCase() : state.selectedAwb;
+        state.activeProcessingAwb = state.selectedAwb;
         state.pendingProcessingStatus = "";
         state.pendingProcessingRider = "";
         saveState();
-        render();
-        toast(`${batch.length} parcel(s) updated to ${status}.`, "success");
+        renderAdmin();
+        toast(`${rows.length} parcel(s) updated to ${status}.`, "success");
       } catch (e) {
         console.error("Batch status update failed", e);
-        toast("Status update failed. Please try again.", "error");
+        toast(`Status update failed: ${e && e.message ? e.message : "unknown error"}`, "error");
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = oldText || "Confirm Status Update"; }
       }
@@ -8889,6 +8941,45 @@
       toast(missing.length ? `${missing.length} missing parcel alert sent to admin.` : `${log.id} completed clean.`);
     }
 
+    // NovaX fix: null-safe event binding so a missing DOM element (e.g. a
+    // control that gets hidden/removed for staff without order-processing
+    // access) never throws and crashes the rest of the admin page's init.
+    function bind(id, event, fn) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener(event, fn);
+    }
+
+    // NovaX fix: single place that hides/disables Order Processing controls
+    // whenever the backend says this staff member is not allowed to process
+    // orders, so the UI never shows a control the backend will reject.
+    function applyProcessingAccessUI() {
+      const notice = document.getElementById("processingAccessNotice");
+      const desk = document.querySelector("#admin-orders-processing .processing-desk");
+      const locked = state.processingAccess === false;
+      if (notice) notice.style.display = locked ? "" : "none";
+      if (desk) desk.style.display = locked ? "none" : "";
+      ["processingAwbInput", "processingLoadBatchBtn", "processingClearBatchBtn", "processingPrintAwbBtn", "processingStatusSelect", "processingRiderSelect", "processingConfirmBtn"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = locked;
+      });
+    }
+
+    // NovaX fix: source of truth for "can this logged-in person process
+    // orders" now comes from the backend (public.can_process_orders()), not
+    // a locally-guessed permission flag, so it can never contradict what
+    // the processing RPCs will actually allow.
+    async function refreshProcessingAccess() {
+      if (!window.__nvSb) return;
+      try {
+        const r = await window.__nvSb.rpc("can_process_orders", {});
+        state.processingAccess = !!(r && !r.error && r.data === true);
+      } catch (e) {
+        console.warn("NovaX: could not confirm order processing access", e);
+        state.processingAccess = false;
+      }
+      renderAdmin();
+    }
+
     function toast(message, type) {
       const el = document.getElementById("toast");
       el.textContent = message;
@@ -8968,14 +9059,25 @@
           return `<div class="ops-card" style="margin-bottom:8px">`
             + `<div class="ops-card-head"><strong>${cl?cl.name:row.client_name}</strong><span class="chip ${statusClass}">${row.connection_status}</span></div>`
             + `<p class="footer-note">Store: ${row.store_url||"(not set)"} &middot; Intake URL: ${row.has_secret?"active":"awaiting signing secret"}</p>`
-            + `<p class="footer-note">Last order received: ${row.last_order_at ? new Date(row.last_order_at).toLocaleString() : "never yet"} &middot; Imported: ${row.imported_count||0} &middot; Last error: ${row.last_error||"none"}</p>`
+            + `<p class="footer-note">Last order received: ${row.last_order_at ? new Date(row.last_order_at).toLocaleString() : "never yet"} &middot; Imported: ${row.imported_count||0} &middot; Last AWB: ${row.last_order_awb||"none yet"} &middot; Last error: ${row.last_error||"none"}</p>`
             + `<div class="inline-actions" style="margin-top:8px">`
             + `<button class="ghost-btn" onclick="adminRegenerateShopifyIntake('${row.client_id}')">Regenerate intake URL</button>`
             + `<button class="ghost-btn" onclick="adminResetShopifySecret('${row.client_id}')">Reset signing secret</button>`
             + `<button class="ghost-btn" onclick="adminSetShopifyDisabled('${row.client_id}', ${row.disabled?"false":"true"})">${row.disabled?"Enable":"Disable"} integration</button>`
+            + `<button class="ghost-btn" onclick="viewShopifyParcelsForClient('${row.client_id}')">View Shopify parcels</button>`
             + `</div></div>`;
         }).join("");
       }).catch(function(e){ el.innerHTML=`<p class="footer-note">Failed to load Shopify integrations: ${e}</p>`; });
+    }
+    function viewShopifyParcelsForClient(clientId){
+      showAdminTab("orders-view-all");
+      state.adminOrderSourceFilter = "shopify";
+      const clientFilterEl = document.getElementById("adminOrderClientFilter");
+      if (clientFilterEl) clientFilterEl.value = clientId;
+      const searchEl = document.getElementById("adminOrderSearch");
+      if (searchEl) searchEl.value = "";
+      renderAdmin();
+      toast("Showing Shopify parcels for this client.");
     }
     function adminRegenerateShopifyIntake(clientId){
       if(!window.__nvSb) return;
@@ -10013,7 +10115,8 @@
       if (!client) { toast("Client not found."); return; }
       client.assignedRider = riderId || "";
       if (riderId) {
-        state.parcels.filter(p => p.clientId === clientId && p.status === "New booked" && !p.rider).forEach(p => { p.rider = riderId; });
+        const stamp = new Date().toISOString();
+        state.parcels.filter(p => p.clientId === clientId && p.status === "New booked" && !p.rider).forEach(p => { p.rider = riderId; p.assignedRiderAt = stamp; });
       }
       saveState();
       render();
@@ -10799,6 +10902,7 @@
       document.getElementById("adminOrderOriginFilter").value = "";
       document.getElementById("adminOrderBranchFilter").value = "";
       document.getElementById("adminOrderAlertFilter").value = "";
+      state.adminOrderSourceFilter = "";
       renderAdmin();
       toast("Admin parcel filters cleared.");
     }
@@ -11121,16 +11225,29 @@
         const clientLabel = labelText(client && client.name, "Unknown client");
         const awbList = (req.awbs || []).map(a => escLabelText(a)).join(", ");
         const riderOptions = `<option value="">Unassigned</option>` + (state.riders || []).map(r => `<option value="${escLabelText(r.id)}"${req.riderId === r.id ? " selected" : ""}>${escLabelText(r.name)}</option>`).join("");
-        const statusChipClass = req.status === "Picked Up" ? "good" : (req.status === "Scheduled" ? "info" : "warn");
+        // NovaX (Pickup Request Flow): full status vocabulary --
+        // Requested -> Assigned -> Rider dispatched -> Picked Up, or Cancelled
+        // at any point before Picked Up. "Scheduled" is kept mapped so any
+        // pickup requests saved before this update still render correctly.
+        const PICKUP_CHIP = { Requested: "warn", Assigned: "info", "Rider dispatched": "info", Scheduled: "info", "Picked Up": "good", Cancelled: "bad" };
+        const statusChipClass = PICKUP_CHIP[req.status] || "warn";
         let actions = "";
-        if (req.status !== "Picked Up") {
-          actions += `<button class="ghost-btn" type="button" onclick="markPickupScheduled('${req.id}')">Mark Scheduled</button> `;
+        if (req.status === "Requested") {
+          actions += `<button class="ghost-btn" type="button" onclick="markPickupAssigned('${req.id}')">Mark Assigned</button> `;
+        }
+        if (req.status === "Assigned") {
+          actions += `<button class="ghost-btn" type="button" onclick="markPickupDispatched('${req.id}')">Mark Rider Dispatched</button> `;
+        }
+        if (req.status === "Rider dispatched" || req.status === "Scheduled") {
           actions += `<button class="action-btn" type="button" onclick="markPickedUp('${req.id}')">Mark Picked Up</button> `;
         }
-        if (req.status === "Scheduled" || req.status === "Picked Up") {
-          actions += `<button class="ghost-btn" type="button" onclick="printPickupManifest('${req.id}')">Print Manifest</button>`;
+        if (req.status === "Rider dispatched" || req.status === "Scheduled" || req.status === "Picked Up") {
+          actions += `<button class="ghost-btn" type="button" onclick="printPickupManifest('${req.id}')">Print Manifest</button> `;
         }
-        return `<tr><td>${clientLabel}</td><td>${(req.awbs || []).length} AWB(s)<div class="footer-note">${awbList}</div></td><td>${labelText(req.pickupAddress, "-")}</td><td>${labelText(req.requestedFor, req.createdAt || "-")}</td><td><span class="chip ${statusChipClass}">${escLabelText(req.status)}</span></td><td><select onchange="assignPickupRider('${req.id}', this.value)">${riderOptions}</select></td><td>${actions}</td></tr>`;
+        if (req.status !== "Picked Up" && req.status !== "Cancelled") {
+          actions += `<button class="ghost-btn" type="button" onclick="cancelPickupRequest('${req.id}')">Cancel</button>`;
+        }
+        return `<tr><td>${clientLabel}</td><td>${(req.awbs || []).length} AWB(s)<div class="footer-note">${awbList}</div></td><td>${labelText(req.pickupAddress, "-")}</td><td>${labelText(req.requestedFor, req.createdAt || "-")}</td><td><span class="chip ${statusChipClass}">${escLabelText(req.status)}</span></td><td><select onchange="assignPickupRider('${req.id}', this.value)" ${req.status === "Picked Up" || req.status === "Cancelled" ? "disabled" : ""}>${riderOptions}</select></td><td>${actions}</td></tr>`;
       }).join("");
     }
 
@@ -11143,13 +11260,37 @@
       toast(riderId ? "Rider assigned to pickup request." : "Rider unassigned from pickup request.");
     }
 
-    function markPickupScheduled(id) {
+    function markPickupAssigned(id) {
       const req = (state.pickupRequests || []).find(r => r.id === id);
       if (!req) { toast("Pickup request not found."); return; }
-      req.status = "Scheduled";
+      if (!req.riderId) { toast("Assign a rider before marking this request Assigned.", "error"); return; }
+      req.status = "Assigned";
       saveState();
       renderAdmin();
-      toast(`Pickup request ${req.id} marked as scheduled.`);
+      toast(`Pickup request ${req.id} marked Assigned.`);
+    }
+
+    function markPickupDispatched(id) {
+      const req = (state.pickupRequests || []).find(r => r.id === id);
+      if (!req) { toast("Pickup request not found."); return; }
+      req.status = "Rider dispatched";
+      saveState();
+      renderAdmin();
+      toast(`Pickup request ${req.id} marked Rider dispatched.`);
+    }
+
+    // Kept as an alias so any older onclick references / saved automations
+    // pointing at the previous function name keep working.
+    function markPickupScheduled(id) { markPickupDispatched(id); }
+
+    function cancelPickupRequest(id) {
+      const req = (state.pickupRequests || []).find(r => r.id === id);
+      if (!req) { toast("Pickup request not found."); return; }
+      if (!window.confirm(`Cancel pickup request ${req.id}? The AWB(s) in it will become available for a new pickup request.`)) return;
+      req.status = "Cancelled";
+      saveState();
+      renderAdmin();
+      toast(`Pickup request ${req.id} cancelled.`);
     }
 
     function markPickedUp(id) {
@@ -11159,6 +11300,9 @@
       let moved = 0;
       (req.awbs || []).forEach(awb => {
         const p = state.parcels.find(item => item.awb === awb);
+        // NovaX (Pickup Request Flow): setParcelStatus() already appends this
+        // transition into parcel.steps/processHistory, so confirming pickup
+        // here automatically records the pickup event on the parcel journey.
         if (p && p.status === "New booked") { setParcelStatus(p, "Collected by rider"); moved++; }
       });
       req.status = "Picked Up";
@@ -11288,19 +11432,19 @@
       // is what made the field feel like you "can't edit or write another
       // tracking id". Paste, Enter, and Load Batch still normalize the value.
     });
-    document.getElementById("processingLoadBatchBtn").addEventListener("click", lookupProcessingParcel);
-    document.getElementById("processingClearBatchBtn").addEventListener("click", clearProcessingBatch);
-    document.getElementById("processingPrintAwbBtn").addEventListener("click", printProcessingBatchAwbs);
-    document.getElementById("processingStatusSelect").addEventListener("change", event => {
+    bind("processingLoadBatchBtn", "click", lookupProcessingParcel);
+    bind("processingClearBatchBtn", "click", clearProcessingBatch);
+    bind("processingPrintAwbBtn", "click", printProcessingBatchAwbs);
+    bind("processingStatusSelect", "change", event => {
       state.pendingProcessingStatus = event.target.value;
       saveState();
       renderAdmin();
     });
-    document.getElementById("processingRiderSelect").addEventListener("change", event => {
+    bind("processingRiderSelect", "change", event => {
       state.pendingProcessingRider = event.target.value;
       saveState();
     });
-    document.getElementById("processingConfirmBtn").addEventListener("click", confirmBatchStatusUpdate);
+    bind("processingConfirmBtn", "click", confirmBatchStatusUpdate);
     document.getElementById("manifestLoadBtn").addEventListener("click", loadManifestScans);
     document.getElementById("manifestClearBtn").addEventListener("click", clearManifestScans);
     document.getElementById("manifestCreateBtn").addEventListener("click", createManifestFromScans);
@@ -11430,6 +11574,7 @@
       if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, local only."); return; }
       var sb; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); return; }
       window.__nvSb=sb;
+      if (typeof refreshProcessingAccess === "function") { try { refreshProcessingAccess(); } catch(e){ console.warn("NovaX: processing access check failed", e); } }
       var sbSignup=null; try{ sbSignup=window.supabase.createClient(SB_URL,SB_KEY,{ auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:"sb-nv-admin-signup-client" } }); }catch(e){ console.warn("NovaX: signup client init failed.",e); }
       window.__nvSignupClient=sbSignup;
       var ADMIN_UID=null, loaded=false, shadow={}, resyncT=null, liveSubscribed=false, reloadT=null;
@@ -11442,7 +11587,12 @@
       var DRC={ overnight:250, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 };
       function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||250), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||250)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
-      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", paymentMode:m.paymentMode||"", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", steps:Array.isArray(m.steps)?m.steps:[], proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _exceptionResolved:!!m.exceptionResolved, _exceptionResolutionNote:m.exceptionResolutionNote||"", _exceptionResolvedAt:m.exceptionResolvedAt||"" }; }
+      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", paymentMode:m.paymentMode||"", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", steps:Array.isArray(m.steps)?m.steps:[], proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _exceptionResolved:!!m.exceptionResolved, _exceptionResolutionNote:m.exceptionResolutionNote||"", _exceptionResolvedAt:m.exceptionResolvedAt||"",
+        // NovaX fix (audit-trail preservation): these must round-trip through
+        // rParcel/fParcel or every RPC save silently strips the processing
+        // audit trail back on the server, even though the local session still
+        // shows it correctly (a "works for me but not for users" bug).
+        processHistory:Array.isArray(m.processHistory)?m.processHistory:[], lastProcessedBy:m.lastProcessedBy||"", lastProcessedAt:m.lastProcessedAt||"", statusSince:m.statusSince||"", origin:m.origin||"", assignedRiderAt:m.assignedRiderAt||"", journeyStartedAt:m.journeyStartedAt||"" }; }
       function rInvoice(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.code||r.id, clientId:r.client_id, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:Number(r.cod_total||0), charges:Number(r.fee_total||0), payable:Number(r.net_payable||0), status:r.status||"Pending", createdAt:dtpart(r.created_at), paidAt:m.paidAt||"", walletPushedAt:m.walletPushedAt||"", summary:m.summary||"", invoiceType:m.invoiceType||"COD Settlement", dueToNovax:Number(m.dueToNovax||0), finalBalance:Number(m.finalBalance!=null?m.finalBalance:(Number(r.net_payable||0))) }; }
       function rTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:r.client_id, parcelId:r.parcel_id||"", sourceKey:m.sourceKey||"", tier:m.tier||"medium", title:r.subject||"", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", message:r.body||"", createdAt:dtpart(r.created_at), ageHours:Number(m.ageHours||0), status:r.status||"Open", escalated:!!m.escalated, replies:Array.isArray(m.replies)?m.replies:[], source:m.source||"", intent:m.intent||"", priority:m.priority||"", suggestedTeam:m.suggestedTeam||m.department||"", handoffReason:m.handoffReason||"", resolutionReply:m.resolutionReply||"", proof:m.proof||"", resolvedBy:m.resolvedBy||"", resolvedAt:m.resolvedAt||"", solvedHours:Number(m.solvedHours||0) }; }
       function rExpense(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:m.name||r.note||r.category||"Expense", amount:Number(r.amount||0), type:r.category||"", owner:r.branch||"", status:m.status||"Pending", note:r.note||"" }; }
@@ -11478,7 +11628,11 @@
       // sync path; it only ever changes inside the wallet RPCs.
       function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||250), rate_card:normalizeRateCard(c.rateCard,Number(c.rate||250)), risk_score:Number(c.risk||0), meta:{ tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"" } }; }
       function fRider(r){ return { name:r.name||"", phone:r.phone||"", branch:r.branch||r.manager||"", access:r.access||"Active", cash_limit:Number(r.cashLimit||0), meta:{ username:r.username, manager:r.manager, cashHeld:r.cashHeld, scans:r.scans, fakeRisk:r.fakeRisk, expenses:r.expenses } }; }
-      function fParcel(p){ var cid=cuid(p.clientId); if(!cid) return null; var rid=ruid(p.rider); return { awb:p.awb, client_id:cid, rider_id:rid, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:(p.date?new Date(p.date).toISOString():new Date().toISOString()), updated_at:new Date().toISOString(), meta:{ statusAgeHours:p.statusAgeHours, stage:p.stage, totalStages:p.totalStages, steps:p.steps, risk:p.risk, branch:p.branch, cashReceived:p.cashReceived, returnProof:p.returnProof, resolutionRemark:p.resolutionRemark, riderInput:p.riderInput, service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"", exceptionResolved:!!p._exceptionResolved, exceptionResolutionNote:p._exceptionResolutionNote||"", exceptionResolvedAt:p._exceptionResolvedAt||"" } }; }
+      function fParcel(p){ var cid=cuid(p.clientId); if(!cid) return null; var rid=ruid(p.rider); return { awb:p.awb, client_id:cid, rider_id:rid, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:(p.date?new Date(p.date).toISOString():new Date().toISOString()), updated_at:new Date().toISOString(), meta:{ statusAgeHours:p.statusAgeHours, stage:p.stage, totalStages:p.totalStages, steps:p.steps, risk:p.risk, branch:p.branch, cashReceived:p.cashReceived, returnProof:p.returnProof, resolutionRemark:p.resolutionRemark, riderInput:p.riderInput, service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"", exceptionResolved:!!p._exceptionResolved, exceptionResolutionNote:p._exceptionResolutionNote||"", exceptionResolvedAt:p._exceptionResolvedAt||"",
+        // NovaX fix (audit-trail preservation): mirror of the rParcel() fields
+        // above -- without this, saveState() after any RPC call overwrites the
+        // backend meta and erases the processing audit trail/journey start.
+        processHistory:Array.isArray(p.processHistory)?p.processHistory:[], lastProcessedBy:p.lastProcessedBy||"", lastProcessedAt:p.lastProcessedAt||"", statusSince:p.statusSince||"", origin:p.origin||"", assignedRiderAt:p.assignedRiderAt||"", journeyStartedAt:p.journeyStartedAt||"" } }; }
       function fInvoice(iv){ var cid=cuid(iv.clientId); if(!cid){ console.warn("NovaX invoice sync skipped -- no resolvable client_id yet for invoice", iv.id, iv.clientId); return null; } return { code:iv.id, client_id:cid, parcel_refs:iv.parcelRefs||[], cod_total:Number(iv.cod||0), fee_total:Number(iv.charges||0), net_payable:Number(iv.payable||0), status:iv.status||"Pending", meta:{ paidAt:iv.paidAt||"", walletPushedAt:iv.walletPushedAt||"", summary:iv.summary||"", invoiceType:iv.invoiceType||"COD Settlement", dueToNovax:Number(iv.dueToNovax||0), finalBalance:Number(iv.finalBalance!=null?iv.finalBalance:(Number(iv.payable||0))) } }; }
       function fTicket(t){ var cid=cuid(t.clientId); return { client_id:isUuid(cid)?cid:null, parcel_id:null, subject:t.title||"", body:t.message||"", status:t.status||"Open", created_by:ADMIN_UID, meta:{ code:t.id, sourceKey:t.sourceKey, tier:t.tier, from:t.from, to:t.to, branch:t.branch, awb:t.awb, ageHours:t.ageHours, escalated:t.escalated, replies:t.replies||[], source:t.source||"", intent:t.intent||"", priority:t.priority||"", suggestedTeam:t.suggestedTeam||"", handoffReason:t.handoffReason||"", resolutionReply:t.resolutionReply||"", proof:t.proof||"", resolvedBy:t.resolvedBy||"", resolvedAt:t.resolvedAt||"", solvedHours:t.solvedHours||0 } }; }
       function fExpense(e){ return { branch:e.owner||"", category:e.type||"", amount:Number(e.amount||0), note:e.note||e.name||"", created_by:ADMIN_UID, meta:{ name:e.name, status:e.status } }; }
