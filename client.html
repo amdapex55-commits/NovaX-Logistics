@@ -558,12 +558,13 @@
                   </div>
                   <div class="field" id="shopifyLinkBox" style="display:none;margin-top:10px">
                     <label>Your NovaX Webhook URL</label>
-                    <div class="inline-actions"><input id="shopifyIntakeUrlOut" readonly style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('shopifyIntakeUrlOut')">Copy URL</button></div>
+                    <textarea id="shopifyIntakeUrlOut" readonly rows="2" onclick="this.select()" style="width:100%;box-sizing:border-box;display:block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-all;overflow-wrap:anywhere;overflow-x:auto;resize:none;padding:10px 12px;border-radius:8px"></textarea>
+                    <div class="inline-actions" style="margin-top:8px;flex-wrap:wrap"><button class="ghost-btn" onclick="copyFieldValue('shopifyIntakeUrlOut')">Copy URL</button></div>
                   </div>
 
                   <div class="field" id="shopifyStep2Box" style="display:none;margin-top:14px">
                     <label>Step 2 &middot; Add the webhook in Shopify</label>
-                    <p class="footer-note">Go to Shopify Admin &rarr; Settings &rarr; Notifications &rarr; Webhooks &rarr; Create webhook.<br>Event: <b>Order creation</b> &middot; Format: <b>JSON</b> &middot; URL: paste the webhook URL above.<br>Shopify will show you a "Signing secret" on that same page -- paste it below and save.</p>
+                    <p class="footer-note">Shopify Admin &rarr; Settings &rarr; Notifications &rarr; Webhooks &rarr; Create webhook<br>Event: <b>Order creation</b><br>Format: <b>JSON</b><br>URL: use the NovaX webhook URL above<br>Then paste the Signing secret here</p>
                     <label style="margin-top:8px">Paste Shopify Webhook Signing Secret</label>
                     <div class="inline-actions"><input id="shopifySecretInput" placeholder="shpss_... or whsec_..." style="flex:1"><button class="action-btn" onclick="shopifySaveSecret()">Save Secret</button></div>
                     <p class="footer-note">Saved securely on the server only -- never stored in this browser.</p>
@@ -2521,8 +2522,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(row.disabled) detail.textContent="This integration was disabled by NovaX admin.";
           else if(row.last_signature_fail_at && !row.last_order_at) detail.textContent="Failed signature -- double-check the signing secret matches Shopify exactly.";
           else if(row.imported_count>0) detail.textContent="Last order received "+new Date(row.last_order_at).toLocaleString()+". "+row.imported_count+" order(s) imported so far.";
-          else if(row.has_secret) detail.textContent="Waiting for first Shopify order.";
-          else detail.textContent="Paste the Shopify signing secret above, then send a test order.";
+          else if(row.has_secret) detail.textContent="Now place a test order in Shopify. NovaX will import it automatically.";
+          else detail.textContent="Your NovaX webhook URL is ready. Add it in Shopify, then paste the Shopify signing secret below.";
         }
         if(row.intake_token){
           const urlEl=document.getElementById("shopifyIntakeUrlOut");
