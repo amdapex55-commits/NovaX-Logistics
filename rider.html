@@ -768,7 +768,10 @@
     }
     function ping(){
       if(!__vsb) return;
-      __vsb.rpc("visitor_ping", { p_session_id:SESSION_ID, p_portal:__PORTAL, p_activity:activityLabel(), p_path:location.pathname+location.hash, p_referrer:document.referrer||"", p_user_agent:navigator.userAgent }).then(function(r){ if(r&&r.error) console.warn("NovaX visitor ping",r.error.message); });
+      __vsb.rpc("visitor_ping", { p_session_id:SESSION_ID, p_portal:__PORTAL, p_activity:activityLabel(), p_path:location.pathname+location.hash, p_referrer:document.referrer||"", p_user_agent:navigator.userAgent }).then(function(r){ if(r&&r.error){ console.warn("NovaX visitor ping",r.error.message); try{ __vsb.rpc("log_portal_error",{ p_source:"rider", p_rpc_name:"visitor_ping", p_page:location.pathname, p_message:String(r.error.message||"").slice(0,300), p_severity:"info" }); }catch(e){} } });
+    }
+    function logRiderError(rpcName, message, severity){
+      try{ if(__vsb) __vsb.rpc("log_portal_error",{ p_source:"rider", p_rpc_name:rpcName||null, p_page:location.pathname, p_message:String(message||"").slice(0,300), p_severity:severity||"warning" }); }catch(e){}
     }
     document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") ping(); });
     document.addEventListener("click",function(){ setTimeout(ping,150); });
