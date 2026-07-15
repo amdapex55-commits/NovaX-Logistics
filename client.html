@@ -552,7 +552,17 @@
               <div class="grid two" style="margin-top:14px">
                 <div class="panel">
                   <div class="section-head"><div><h3>Shopify Link Integration</h3><p>No Shopify app to install and no approval needed. Generate a link, add one webhook in your own Shopify Admin, and orders start flowing in.</p></div><span class="chip" id="shopifyStatusChip">Setup pending</span></div>
-                  <p class="footer-note" id="shopifyStatusNote">Order import is live once your first Shopify order arrives. Shopify status sync back to your store is optional and requires a Shopify Admin API token (Advanced setup below).</p>
+                  <p class="footer-note" id="shopifyStatusNote">NovaX only shows "Live" once your first real signed order arrives from Shopify -- that's expected, not broken. Follow the 4 steps below.</p>
+
+                  <div class="ops-card" id="shopifyStepTracker" style="margin-top:12px">
+                    <div class="inline-actions" style="flex-wrap:wrap;gap:14px">
+                      <span class="footer-note" id="shopifyStepChip1">&#9675; 1. Link generated</span>
+                      <span class="footer-note" id="shopifyStepChip2">&#9675; 2. Webhook added in Shopify</span>
+                      <span class="footer-note" id="shopifyStepChip3">&#9675; 3. Signing secret saved</span>
+                      <span class="footer-note" id="shopifyStepChip4">&#9675; 4. First order received</span>
+                    </div>
+                    <p class="footer-note" id="shopifyNextActionNote" style="margin-top:8px">Next: generate your NovaX Shopify link below.</p>
+                  </div>
 
                   <div class="field" style="margin-top:12px"><label>Step 1 &middot; Generate your NovaX Shopify link</label>
                     <div class="inline-actions"><button class="action-btn" id="shopifyGenerateLinkBtn" onclick="shopifyGenerateLink()">Generate Shopify Link</button></div>
@@ -560,25 +570,42 @@
                   <div class="field" id="shopifyLinkBox" style="display:none;margin-top:10px">
                     <label>Your NovaX Webhook URL</label>
                     <textarea id="shopifyIntakeUrlOut" readonly rows="2" onclick="this.select()" style="width:100%;box-sizing:border-box;display:block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-all;overflow-wrap:anywhere;overflow-x:auto;resize:none;padding:10px 12px;border-radius:8px"></textarea>
-                    <div class="inline-actions" style="margin-top:8px;flex-wrap:wrap"><button class="ghost-btn" onclick="copyFieldValue('shopifyIntakeUrlOut')">Copy URL</button></div>
+                    <div class="inline-actions" style="margin-top:8px;flex-wrap:wrap"><button class="ghost-btn" onclick="copyFieldValue('shopifyIntakeUrlOut')">Copy URL</button><button class="ghost-btn" onclick="shopifyCopySetupInstructions()">Copy setup instructions</button></div>
                   </div>
 
                   <div class="field" id="shopifyStep2Box" style="display:none;margin-top:14px">
                     <label>Step 2 &middot; Add the webhook in Shopify</label>
-                    <p class="footer-note">Shopify Admin &rarr; Settings &rarr; Notifications &rarr; Webhooks &rarr; Create webhook<br>Event: <b>Order creation</b><br>Format: <b>JSON</b><br>URL: use the NovaX webhook URL above<br>Then paste the Signing secret here</p>
-                    <label style="margin-top:8px">Paste Shopify Webhook Signing Secret</label>
+                    <p class="footer-note">Shopify Admin &rarr; Settings &rarr; Notifications &rarr; Webhooks &rarr; Create webhook<br>Event: <b>Order creation</b><br>Format: <b>JSON</b><br>URL: use the NovaX webhook URL above (must match exactly)<br>Shopify will then show you a "Signing secret" -- paste it below.</p>
+                    <label style="margin-top:8px">Step 3 &middot; Paste Shopify Webhook Signing Secret</label>
                     <div class="inline-actions"><input id="shopifySecretInput" placeholder="shpss_... or whsec_..." style="flex:1"><button class="action-btn" onclick="shopifySaveSecret()">Save Secret</button></div>
                     <p class="footer-note">Saved securely on the server only -- never stored in this browser.</p>
                   </div>
 
+                  <div class="ops-card" id="shopifySecretSuccessBox" style="display:none;margin-top:14px;border:1px solid #b7e4c7;background:#f0fbf4">
+                    <p class="footer-note" style="color:#1a7a3f;font-weight:600">Secret saved. Now create one test order in Shopify.</p>
+                    <div class="inline-actions" style="margin-top:8px"><button class="action-btn" id="shopifyBigCheckBtn" onclick="shopifyCheckStatus()">I created a test order -- check again</button></div>
+                  </div>
+
                   <div class="field" id="shopifyStep3Box" style="display:none;margin-top:14px">
-                    <label>Step 3 &middot; Send a test order</label>
+                    <label>Step 4 &middot; Waiting for your first order</label>
                     <p class="footer-note">Place a real (or Shopify test) order in your store, then check status below.</p>
-                    <div class="inline-actions">
-                      <button class="ghost-btn" id="shopifyTestBtn" onclick="shopifyCheckStatus()">I added webhook -- check status</button>
-                      <button class="ghost-btn" onclick="shopifyCopySetupMessage()">Copy setup message (WhatsApp)</button>
+                    <div class="inline-actions" style="flex-wrap:wrap">
+                      <button class="ghost-btn" id="shopifyTestBtn" onclick="shopifyCheckStatus()">Check status again</button>
+                      <button class="ghost-btn" onclick="shopifyCopySetupInstructions()">Copy setup instructions</button>
                     </div>
                     <p class="footer-note" id="shopifyStatusDetail" style="margin-top:8px">Waiting for first Shopify order.</p>
+
+                    <details id="shopifyTroubleshootBox" style="margin-top:10px">
+                      <summary class="footer-note" style="cursor:pointer">Not arriving? Check this troubleshooting list</summary>
+                      <ul class="footer-note" style="margin-top:8px;padding-left:18px">
+                        <li>Event must be <b>Order creation</b></li>
+                        <li>Format must be <b>JSON</b></li>
+                        <li>URL must match the NovaX webhook URL exactly (no extra spaces/characters)</li>
+                        <li>Signing secret must be copied exactly from Shopify (no missing characters)</li>
+                        <li>JWT verification must be <b>OFF</b> on the Supabase Edge Function (Shopify does not send a Supabase auth token)</li>
+                      </ul>
+                    </details>
+
                     <div class="ops-card" id="shopifyImportSummary" style="display:none;margin-top:10px">
                       <div class="money-grid">
                         <div class="money-box"><span>Orders imported</span><strong id="shopifyImportedCount">0</strong></div>
@@ -769,6 +796,7 @@
               </div>
               <div class="panel" style="margin-top:14px">
                 <div class="section-head"><div><h3>Notification preferences</h3><p>Choose how you want to hear about your parcels. WhatsApp/SMS/Email sending is coming soon -- your choices are saved now so nothing needs to change later.</p></div></div>
+                <p class="footer-note">NovaX will notify you when your parcel or payout changes.</p>
                 <div class="grid three">
                   <label class="footer-note" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="notifPrefWhatsapp"> WhatsApp updates</label>
                   <label class="footer-note" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="notifPrefSms"> SMS updates</label>
@@ -1495,8 +1523,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // account...", and the terminal error states (not linked / record
     // missing) always win over whatever text happens to be in state.client.
     function clientDisplayState(){
-      if(state.accountNotLinked) return { label:"Account not linked", showWorkspaceSuffix:false };
-      if(state.clientRecordMissing) return { label:"Client record missing. Contact NovaX admin.", showWorkspaceSuffix:false };
+      if(state.accountNotLinked) return { label:"We're preparing your workspace. Refresh or sign in again.", showWorkspaceSuffix:false };
+      if(state.clientRecordMissing) return { label:"We're preparing your workspace. Refresh or sign in again.", showWorkspaceSuffix:false };
       if(!state.identityVerified) return { label:"Verifying account...", showWorkspaceSuffix:false };
       return { label:(state.client&&state.client.name)||"Client", showWorkspaceSuffix:true };
     }
@@ -2033,7 +2061,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // id. If the account isn't linked/verified yet, stop and surface an
       // error instead of silently booking against the demo client.
       const clientId=o.clientId||(state.client&&state.client.id);
-      if(!clientId||state.accountNotLinked||state.clientRecordMissing){ toast("Your account isn't linked to a client yet. Contact NovaX admin before booking.","error"); return null; }
+      if(!clientId||state.accountNotLinked||state.clientRecordMissing){ toast("We're preparing your workspace. Refresh or sign in again.","error"); return null; }
       const cod=o.cod!==undefined?Number(o.cod):3500+Math.round(Math.random()*11000);
       const client=clientById(clientId);
       const awb=nextAwbForClient(clientId);
@@ -2063,7 +2091,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // id. If the account isn't linked/verified yet, stop and surface an
       // error instead of silently booking against the demo client.
       const clientId=state.client&&state.client.id;
-      if(!clientId||state.accountNotLinked||state.clientRecordMissing){ toast("Your account isn't linked to a client yet. Contact NovaX admin before booking.","error"); return; }
+      if(!clientId||state.accountNotLinked||state.clientRecordMissing){ toast("We're preparing your workspace. Refresh or sign in again.","error"); return; }
       const preBookingCount=(state.parcels||[]).filter(p=>p.clientId===clientId).length;
       const dupeWindowMs=15000;
       const now=Date.now();
@@ -2546,9 +2574,34 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       window.__nvSb.rpc("client_set_shopify_secret", { p_secret: secret }).then(function(r){
         if(r && r.error){ toast("Failed to save secret: "+r.error.message); return; }
         const el=document.getElementById("shopifySecretInput"); if(el) el.value="";
-        toast("Signing secret saved. Send a test order from Shopify, then check status.");
+        const successBox=document.getElementById("shopifySecretSuccessBox"); if(successBox) successBox.style.display="block";
+        toast("Secret saved. Now create one test order in Shopify.");
         shopifyCheckStatus();
       }).catch(function(e){ toast("Failed to save secret: "+e); });
+    }
+    // NovaX (Shopify Setup UX): maps the precise backend connection_status
+    // into the 4-step tracker so a client can see exactly which step they're
+    // on and what to do next, instead of guessing whether anything is broken.
+    function shopifyRenderStepTracker(row){
+      const done="\u25CF ", pending="\u25CB ";
+      const c1=document.getElementById("shopifyStepChip1"), c2=document.getElementById("shopifyStepChip2"),
+            c3=document.getElementById("shopifyStepChip3"), c4=document.getElementById("shopifyStepChip4"),
+            nextNote=document.getElementById("shopifyNextActionNote");
+      const hasLink=!!(row && row.intake_token);
+      const hasSecret=!!(row && row.has_secret);
+      const isLive=!!(row && row.imported_count>0);
+      if(c1){ c1.textContent=(hasLink?done:pending)+"1. Link generated"; c1.style.color=hasLink?"#1a7a3f":""; }
+      if(c2){ c2.textContent=(hasSecret?done:pending)+"2. Webhook added in Shopify"; c2.style.color=hasSecret?"#1a7a3f":""; }
+      if(c3){ c3.textContent=(hasSecret?done:pending)+"3. Signing secret saved"; c3.style.color=hasSecret?"#1a7a3f":""; }
+      if(c4){ c4.textContent=(isLive?done:pending)+"4. First order received"; c4.style.color=isLive?"#1a7a3f":""; }
+      if(nextNote){
+        if(!row || !hasLink) nextNote.textContent="Next: generate your NovaX Shopify link below.";
+        else if(!hasSecret) nextNote.textContent="Next: add the webhook in Shopify (Order creation, JSON), then paste the signing secret below.";
+        else if(row.connection_status==="Signature failed") nextNote.textContent="Next: the signing secret doesn't match -- copy it again from Shopify exactly and re-save it below.";
+        else if(row.connection_status==="Import failed") nextNote.textContent="Next: the last order failed to import for a reason other than the signature -- open the troubleshooting list below.";
+        else if(!isLive) nextNote.textContent="Next: create one test order in Shopify, then press \u201cI created a test order -- check again\u201d.";
+        else nextNote.textContent="All steps complete. Shopify orders are importing automatically.";
+      }
     }
     function shopifySaveAdminToken(){
       const token=(document.getElementById("shopifyAdminTokenInput")?.value||"").trim();
@@ -2567,15 +2620,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const row = r && r.data && r.data[0];
         const chip=document.getElementById("shopifyStatusChip");
         const detail=document.getElementById("shopifyStatusDetail");
+        shopifyRenderStepTracker(row);
         if(!row){ if(chip) chip.textContent="Setup pending"; return; }
+        // NovaX (Shopify Setup UX): connection_status now comes straight from
+        // the backend as one of Setup pending / Webhook URL ready / Waiting
+        // for first order / Live / Signature failed / Import failed /
+        // Disabled -- never shown as "Connected" before imported_count > 0.
         if(chip) chip.textContent=row.connection_status;
         if(detail){
           if(row.disabled) detail.textContent="This integration was disabled by NovaX admin.";
-          else if(row.last_signature_fail_at && !row.last_order_at) detail.textContent="Failed signature -- double-check the signing secret matches Shopify exactly.";
-          else if(row.imported_count>0) detail.textContent="Last order received "+new Date(row.last_order_at).toLocaleString()+". "+row.imported_count+" order(s) imported so far.";
-          else if(row.has_secret) detail.textContent="Now place a test order in Shopify. NovaX will import it automatically.";
+          else if(row.connection_status==="Signature failed") detail.textContent="Signature failed -- the signing secret NovaX has doesn't match what Shopify is sending. Re-copy it from Shopify exactly and save it again.";
+          else if(row.connection_status==="Import failed") detail.textContent="The last order's signature verified fine, but the import still failed: "+(row.last_error||"unknown error")+". Open the troubleshooting list below.";
+          else if(row.imported_count>0) detail.textContent="Live. Last order received "+new Date(row.last_order_at).toLocaleString()+". "+row.imported_count+" order(s) imported so far.";
+          else if(row.has_secret) detail.textContent="Webhook ready / waiting for first order -- create one test order in Shopify and NovaX will import it automatically.";
           else detail.textContent="Your NovaX webhook URL is ready. Add it in Shopify, then paste the Shopify signing secret below.";
         }
+        const successBox=document.getElementById("shopifySecretSuccessBox");
+        if(successBox) successBox.style.display=(row.has_secret && !(row.imported_count>0))?"block":"none";
+        const troubleshootBox=document.getElementById("shopifyTroubleshootBox");
+        if(troubleshootBox) troubleshootBox.open = (row.connection_status==="Signature failed" || row.connection_status==="Import failed");
         // NovaX (Shopify Final Test Visibility): once Live / first order is
         // in, surface imported count, last order time, and last AWB with a
         // shortcut into Order Logs filtered to this source.
@@ -2608,13 +2671,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       state.orderLogSourceFilter="";
       renderClientReportFull();
     }
-    function shopifyCopySetupMessage(){
+    function shopifyCopySetupInstructions(){
       const url=(document.getElementById("shopifyIntakeUrlOut")?.value||"").trim();
       if(!url){ toast("Generate the Shopify link first."); return; }
-      const msg="NovaX Shopify setup:\n1) Shopify Admin > Settings > Notifications > Webhooks > Create webhook\n2) Event: Order creation, Format: JSON\n3) URL: "+url+"\n4) Copy the \"Signing secret\" Shopify shows you and paste it back into NovaX (Store Integrations > Shopify Link Integration).";
+      const msg="NovaX Shopify setup:\n"
+        +"1) Shopify Admin > Settings > Notifications > Webhooks > Create webhook\n"
+        +"2) Event: Order creation\n"
+        +"3) Format: JSON\n"
+        +"4) URL: "+url+" (must match exactly)\n"
+        +"5) Copy the \"Signing secret\" Shopify shows you and paste it back into NovaX (Store Integrations > Shopify Link Integration > Save Secret)\n"
+        +"6) Create one test order in Shopify, then press \"I created a test order -- check again\" in NovaX\n\n"
+        +"If it still doesn't show Live, check:\n"
+        +"- Event must be Order creation\n"
+        +"- Format must be JSON\n"
+        +"- URL must match the NovaX webhook URL exactly\n"
+        +"- Signing secret must be copied exactly from Shopify\n"
+        +"- JWT verification must be OFF on the Supabase Edge Function";
       let ok=false;
       try{ if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(msg); ok=true; } }catch(e){}
-      toast(ok?"Setup message copied -- paste it into WhatsApp.":"Copy failed -- select and copy manually.");
+      toast(ok?"Setup instructions copied -- paste them into WhatsApp/email.":"Copy failed -- select and copy manually.");
     }
 
     function connectStore(platform){
@@ -2945,7 +3020,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             state.identityVerified=true;
             state.clientRecordMissing=true;
             state.accountNotLinked=false;
-            state.client={ id:MY, name:"Client record missing. Contact NovaX admin.", walletBalance:0, rate:0, rateCard:{}, premiumTier:"", walletTopup:0, shippingDue:0, subAccounts:0 };
+            state.client={ id:MY, name:"We're preparing your workspace. Refresh or sign in again.", walletBalance:0, rate:0, rateCard:{}, premiumTier:"", walletTopup:0, shippingDue:0, subAccounts:0 };
             state.clients=[state.client];
             state.parcels=[]; state.invoices=[]; state.tickets=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[]; state.walletLedger=[]; state.pickupRequests=[];
             state.clientBankDetails=null;
@@ -3021,30 +3096,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(sb.auth){
         sb.auth.getSession().then(function(r){
           var session=r&&r.data&&r.data.session; if(!session){ window.__novaxClientDataReady=true; return; }
-          sb.from("profiles").select("client_id").eq("id",session.user.id).single().then(function(p){
-            if(p&&p.error){
-              console.warn("NovaX profile",p.error.message);
-              state.accountNotLinked=true;
-              state.clientRecordMissing=false;
-              state.identityVerified=true;
-              state.client={ id:"UNLINKED", name:"Account not linked", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
-              state.clients=[state.client];
-              try{ render(); }catch(e){}
-              window.__novaxClientDataReady=true; return;
-            }
-            MY=p&&p.data?p.data.client_id:null;
-            if(!MY){
-              console.warn("NovaX: this seller has no client_id linked yet (admin must link it).");
-              state.accountNotLinked=true;
-              state.clientRecordMissing=false;
-              state.identityVerified=true;
-              state.client={ id:"UNLINKED", name:"Account not linked", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
-              state.clients=[state.client];
-              try{ render(); }catch(e){}
-              window.__novaxClientDataReady=true; return;
-            }
-            state.accountNotLinked=false;
-            loadAll();
+          function subscribeClientChannel(){
             if(!subscribed){
               subscribed=true;
               try{
@@ -3056,6 +3108,64 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                   .subscribe(function(status,err){ if(err) console.warn("NovaX client realtime",status,err.message||err); });
               }catch(e){ console.warn("NovaX client realtime",e); }
             }
+          }
+          function showWorkspacePreparingSoft(){
+            state.accountNotLinked=true;
+            state.clientRecordMissing=false;
+            state.identityVerified=true;
+            state.client={ id:"UNLINKED", name:"We're preparing your workspace. Refresh or sign in again.", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
+            state.clients=[state.client];
+            try{ render(); }catch(e){}
+            window.__novaxClientDataReady=true;
+          }
+          // NovaX fix (instant merchant workspace): a signed-in user with no
+          // client_id yet (auth trigger delay, interrupted signup, retried
+          // request, etc.) no longer gets stuck on "Contact NovaX admin".
+          // Instead this self-heals once by calling the same idempotent
+          // create_client_workspace RPC the signup form uses, seeded with
+          // this user's own signup metadata. It never creates a duplicate
+          // workspace (the RPC returns the existing client_id if one is
+          // already linked) and only shows a soft error if that retry fails.
+          function attemptWorkspaceRecovery(){
+            var meta=(session.user&&session.user.user_metadata)||{};
+            sb.rpc("create_client_workspace",{
+              p_name: meta.full_name||meta.business_name||"",
+              p_owner: meta.full_name||"",
+              p_phone: meta.phone||"",
+              p_city: meta.city||"",
+              p_address: meta.address||"",
+              p_business_type: meta.business_type||"",
+              p_website: meta.website||""
+            }).then(function(rpcRes){
+              if(!rpcRes||rpcRes.error||!rpcRes.data){
+                console.warn("NovaX workspace recovery failed:",rpcRes&&rpcRes.error&&rpcRes.error.message);
+                showWorkspacePreparingSoft();
+                return;
+              }
+              MY=rpcRes.data;
+              state.accountNotLinked=false;
+              loadAll();
+              subscribeClientChannel();
+            }).catch(function(e){
+              console.warn("NovaX workspace recovery failed:",e);
+              showWorkspacePreparingSoft();
+            });
+          }
+          sb.from("profiles").select("client_id").eq("id",session.user.id).single().then(function(p){
+            if(p&&p.error){
+              console.warn("NovaX profile",p.error.message);
+              attemptWorkspaceRecovery();
+              return;
+            }
+            MY=p&&p.data?p.data.client_id:null;
+            if(!MY){
+              console.warn("NovaX: this seller has no client_id linked yet -- attempting automatic recovery.");
+              attemptWorkspaceRecovery();
+              return;
+            }
+            state.accountNotLinked=false;
+            loadAll();
+            subscribeClientChannel();
           });
         });
       }
@@ -3349,14 +3459,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function renderClientActionNeeded(){
       const host=document.getElementById("clientActionNeededCard"); if(!host) return;
       let pool=[]; try{ pool=(typeof clientScopedParcels==="function")?clientScopedParcels():((state.parcels)||[]); }catch(e){ pool=state.parcels||[]; }
-      const needsAttention=pool.filter(function(p){ return ["Refused","Consignee not available","Ready for return"].indexOf(p.status)>-1 || (typeof isDelayed==="function" && isDelayed(p) && p.status!=="Delivered"); });
-      if(!needsAttention.length){ host.innerHTML=""; host.style.display="none"; return; }
+      const parcelItems=pool.filter(function(p){ return ["Refused","Consignee not available","Ready for return"].indexOf(p.status)>-1 || (typeof isDelayed==="function" && isDelayed(p) && p.status!=="Delivered"); });
+      const missingInfoItems=pool.filter(function(p){ return p.status!=="Delivered" && p.status!=="Parcel returned to consignee" && (!p.address || !p.phone); });
+      let payable=0; try{ payable=(typeof clientMetrics==="function")?clientMetrics().payable:0; }catch(e){}
+      const totalItems=parcelItems.length+missingInfoItems.length+(payable>0?1:0);
+      if(!totalItems){ host.innerHTML=""; host.style.display="none"; return; }
       host.style.display="block";
-      host.innerHTML=`<div class="panel" style="border:1px solid #f0d6a0;background:#fffaf0"><div class="section-head"><div><h3>Action needed</h3><p>${needsAttention.length} parcel(s) are waiting on a quick decision from you -- nothing urgent, just pick an option below.</p></div></div><div class="ops-list">`+needsAttention.slice(0,6).map(function(p){
+      const parcelCards=parcelItems.slice(0,6).map(function(p){
         const isRefused=p.status==="Refused"; const isReturn=p.status==="Ready for return";
-        const label=isRefused?"Refused -- needs your decision":isReturn?"Ready for return -- confirm":p.status==="Consignee not available"?"Consignee unavailable -- reattempt?":"Delayed -- update available";
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip warn">${label}</span></div><p class="footer-note">${p.consignee||""} &middot; ${p.city||""}</p><div class="inline-actions" style="margin-top:6px"><button class="action-btn ghost" onclick="clientActionNeededReattempt('${p.awb}')">Reattempt delivery</button><button class="action-btn ghost" onclick="clientActionNeededReturn('${p.awb}')">Return to me</button><button class="action-btn ghost" onclick="openClientParcelJourney('${p.awb}')">View details</button></div></div>`;
-      }).join("")+`</div></div>`;
+        const label=isRefused?"We need your decision":isReturn?"Return to shipper -- confirm":p.status==="Consignee not available"?"Approve reattempt":"Delayed -- update available";
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip warn">${label}</span></div><p class="footer-note">${p.consignee||""} &middot; ${p.city||""}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="clientActionNeededReattempt('${p.awb}')">Approve reattempt</button><button class="action-btn ghost" onclick="clientActionNeededReturn('${p.awb}')">Return to shipper</button><button class="action-btn ghost" onclick="openClientParcelJourney('${p.awb}')">View journey</button><button class="action-btn ghost" onclick="clientActionNeededTicket('${p.awb}')">Talk to support</button><button class="action-btn ghost" onclick="clientActionNeededAskAi('${p.awb}')">Ask AI</button></div></div>`;
+      });
+      const missingInfoCards=missingInfoItems.slice(0,4).map(function(p){
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip warn">Missing address or phone</span></div><p class="footer-note">${p.city||""}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="clientActionNeededTicket('${p.awb}')">Talk to support</button><button class="action-btn ghost" onclick="openClientParcelJourney('${p.awb}')">View journey</button></div></div>`;
+      });
+      const walletCard=payable>0 ? [`<div class="ops-card"><div class="ops-card-head"><strong>Wallet</strong><span class="chip warn">Payable balance ready</span></div><p class="footer-note">You have a payable balance waiting -- review it in your wallet.</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="typeof showClientTab==='function'&&showClientTab('wallet')">View wallet</button></div></div>`] : [];
+      host.innerHTML=`<div class="panel" style="border:1px solid #f0d6a0;background:#fffaf0"><div class="section-head"><div><h3>Action needed</h3><p>${totalItems} item(s) are waiting on a quick decision from you -- nothing urgent, just pick an option below.</p></div></div><div class="ops-list">`+parcelCards.concat(missingInfoCards).concat(walletCard).join("")+`</div></div>`;
     }
 
     function clientActionNeededReattempt(awb){
@@ -3366,6 +3484,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function clientActionNeededReturn(awb){
       if(typeof requestReturnToOrigin==="function"){ requestReturnToOrigin(awb); return; }
       toast("Could not send this request right now.","error");
+    }
+    function clientActionNeededTicket(awb){
+      if(typeof openTicketModal==="function"){ openTicketModal(awb); return; }
+      toast("Could not open support right now.","error");
+    }
+    function clientActionNeededAskAi(awb){
+      try{
+        if(typeof window.novaxOpenAutopilot==="function") window.novaxOpenAutopilot();
+        if(typeof window.novaxAutopilotSay==="function"){
+          if(typeof state!=="undefined") state.selectedAwb=awb;
+          window.novaxAutopilotSay("Why was this refused, or what's the next step for "+awb+"?",[
+            { label:"Reattempt", kind:"local", type:"confirm_action", awb:awb },
+            { label:"Return to shipper", kind:"local", type:"nv_review_issues" },
+            { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:awb }
+          ]);
+        }
+      }catch(e){}
     }
 
     function nvReviewIssues(){
@@ -4107,7 +4242,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(has(["how many parcel","kitne parcel","kitny parcel","total parcel","parcel count"])){
       if(ctx) return { reply:"You have "+ctx.totalAllTime+" parcel(s) total \u2014 "+ctx.totalInRange+" in your current range, "+ctx.deliveredCount+" delivered.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
     }
-    if(has(["any issue","koi issue","masla hai","issues today","problem today","which parcels need my attention","parcels need my attention","need my attention","need attention"])){
+    if(has(["any issue","koi issue","masla hai","issues today","problem today","which parcels need my attention","parcels need my attention","need my attention","need attention","show action needed","action needed","action center"])){
       if(ctx && ctx.issueCount>0) return { reply:"You have "+ctx.issueCount+" parcel(s) needing attention. First one: "+ctx.firstIssueAwb+".", actions:[
         { label:"Review Issues", kind:"local", type:"nv_review_issues" },
         { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:ctx.firstIssueAwb }
