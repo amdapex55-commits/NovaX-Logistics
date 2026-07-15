@@ -1,10 +1,10 @@
 /* NovaX 3D conveyor hero background. Subtle + mobile-optimized. Renders into #nv3dbg inside .hero. Additive: does not touch any site feature. */
 (function(){
-  var cvs=document.getElementById('nv3dbg'); if(!cvs||!window.THREE) return;
+  var cvs=document.getElementById('nv3dbg'); if(!cvs||!window.THREE){ try{ document.documentElement.classList.add('no-nv3d'); }catch(_){} return; }
   var host=cvs.parentElement||document.body;
   var isTouch=(window.matchMedia&&window.matchMedia('(pointer:coarse)').matches)||window.innerWidth<820;
   var lowMo=(window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches);
-  var renderer; try{ renderer=new THREE.WebGLRenderer({canvas:cvs,antialias:!isTouch,alpha:true,powerPreference:isTouch?'low-power':'high-performance'}); }catch(e){ return; }
+  var renderer; try{ renderer=new THREE.WebGLRenderer({canvas:cvs,antialias:!isTouch,alpha:true,powerPreference:isTouch?'low-power':'high-performance'}); }catch(e){ try{ document.documentElement.classList.add('no-nv3d'); }catch(_){} return; }
   renderer.setPixelRatio(isTouch?Math.min(window.devicePixelRatio||1,0.9):Math.min(window.devicePixelRatio||1,1.8));
   if(THREE.sRGBEncoding!==undefined) renderer.outputEncoding=THREE.sRGBEncoding;
   if(THREE.ACESFilmicToneMapping!==undefined){ renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=0.92; }
