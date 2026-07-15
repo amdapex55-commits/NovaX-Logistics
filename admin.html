@@ -8997,15 +8997,23 @@
     // same row -> parcel-shape mapping, kept in scope next to the Order
     // Processing functions that need it, so this desk never depends on
     // rParcel being globally reachable.
+    // NovaX fix (Order Processing scope bug, round 2): dpart()/tpart() are
+    // ALSO defined only inside that same later, out-of-scope data-sync
+    // closure as rParcel() -- calling them from here threw "dpart is not
+    // defined" even after the rParcel scope bug was fixed. mapProcessingDate/
+    // mapProcessingTime below are local, self-contained equivalents so this
+    // mapper never reaches outside its own scope for anything.
+    function mapProcessingDate(t) { return t ? String(t).slice(0, 10) : new Date().toISOString().slice(0, 10); }
+    function mapProcessingTime(t) { return t ? String(t).replace("T", " ").slice(11, 16) : ""; }
     function mapProcessingParcelRow(r) {
       if (!r) return null;
       const m = r.meta || {};
       return {
-        _uuid: r.id, awb: r.awb, clientId: r.client_id, date: dpart(r.booked_at),
+        _uuid: r.id, awb: r.awb, clientId: r.client_id, date: mapProcessingDate(r.booked_at),
         consignee: r.consignee || "", city: r.city || "", address: r.address || "", phone: r.phone || "",
         cod: Number(r.cod_amount || 0), fee: Number(r.fee || 0), status: r.status || "New booked",
         statusAgeHours: Number(m.statusAgeHours || 0), stage: Number(m.stage || 0), totalStages: Number(m.totalStages || 9),
-        rider: r.rider_id || "", branch: m.branch || "", risk: Number(m.risk || 0), updated: tpart(r.updated_at),
+        rider: r.rider_id || "", branch: m.branch || "", risk: Number(m.risk || 0), updated: mapProcessingTime(r.updated_at),
         exception: r.exception || "", cashReceived: !!m.cashReceived, returnProof: m.returnProof || "",
         resolutionRemark: m.resolutionRemark || "", riderInput: m.riderInput || null,
         service: m.service || "COD Standard", weight: m.weight || "", pickupCity: m.pickupCity || "",
