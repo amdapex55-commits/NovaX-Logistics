@@ -943,16 +943,17 @@ footer{color:#86a99b;}
   <div class="signin-card">
     <button class="signin-close" id="signupClose" aria-label="Close signup">X</button>
     <h3>Signup As NovaX Merchant</h3>
-    <p>Fill this once. NovaX sales will review the request and contact you as soon as possible.</p>
+    <p>Fill this once. Your workspace is created immediately after signup - no review, no waiting.</p>
+    <div class="signin-field"><label>Store / business name</label><input id="merchantStoreName" placeholder="Your store or business name"></div>
     <div class="signin-field"><label>What city are you based in?</label><select id="merchantCity"><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option><option>Faisalabad</option><option>Multan</option><option>Other</option></select></div>
-    <div class="signin-field"><label>Your name</label><input id="merchantName" placeholder="Your full name"></div>
+    <div class="signin-field"><label>Owner / contact name</label><input id="merchantName" placeholder="Your full name"></div>
     <div class="signin-field"><label>Your phone number</label><input id="merchantPhone" placeholder="03001234567" maxlength="11"></div>
     <div class="signin-field"><label>Your address</label><textarea id="merchantAddress" placeholder="Pickup address"></textarea></div>
     <div class="signin-field"><label>What product do you sell?</label><input id="merchantProduct" placeholder="Fashion, cosmetics, electronics, etc."></div>
     <div class="signin-field"><label>Login email</label><input id="merchantEmail" type="email" placeholder="you@store.com"></div>
     <div class="signin-field"><label>Create password</label><input id="merchantPassword" type="password" placeholder="Choose a password"></div>
     <div class="signin-field"><label>Website link if any</label><input id="merchantWebsite" placeholder="https://yourstore.com"></div>
-    <button class="btn primary" id="merchantSubmit" style="width:100%;justify-content:center;margin-top:14px">Submit Merchant Request</button>
+    <button class="btn primary" id="merchantSubmit" style="width:100%;justify-content:center;margin-top:14px">Create My Workspace</button>
     <div class="signin-note" id="merchantSignupNote">You'll get instant access - your workspace opens right after signup.</div>
   </div>
 </div>
@@ -1122,7 +1123,7 @@ footer{color:#86a99b;}
     if(!signupModal) return;
     signupModal.classList.add("show");
     signupModal.setAttribute("aria-hidden","false");
-    setTimeout(function(){var name=document.getElementById("merchantName"); if(name) name.focus();},50);
+    setTimeout(function(){var name=document.getElementById("merchantStoreName"); if(name) name.focus();},50);
   }
   function closeSignup(){
     if(!signupModal) return;
@@ -1132,6 +1133,7 @@ footer{color:#86a99b;}
   }
   function submitMerchantSignup(){
     var city=document.getElementById("merchantCity").value;
+    var storeName=(document.getElementById("merchantStoreName").value||"").trim();
     var name=(document.getElementById("merchantName").value||"").trim();
     var phone=(document.getElementById("merchantPhone").value||"").trim();
     var address=(document.getElementById("merchantAddress").value||"").trim();
@@ -1139,8 +1141,8 @@ footer{color:#86a99b;}
     var website=(document.getElementById("merchantWebsite").value||"").trim();
     var email=(document.getElementById("merchantEmail").value||"").trim();
     var password=(document.getElementById("merchantPassword").value||"").trim();
-    if(!city||!name||!phone||!address||!product||!email||!password){
-      alert("City, name, phone, address, product, email, and password are all required.");
+    if(!city||!storeName||!name||!phone||!address||!product||!email||!password){
+      alert("Store name, owner name, city, phone, address, product, email, and password are all required.");
       return;
     }
     if(!/^03\d{9}$/.test(phone)){
@@ -1152,7 +1154,7 @@ footer{color:#86a99b;}
     if(!__nvSb||!__nvSb.auth){ alert("Signup service is unavailable. Please refresh and try again."); return; }
     var submitBtn=document.getElementById("merchantSubmit"); var oldTxt=submitBtn.textContent;
     submitBtn.disabled=true; submitBtn.textContent="Creating your workspace...";
-    __nvSb.auth.signUp({ email:email.toLowerCase(), password:password, options:{ data:{ full_name:name, role:"client", phone:phone, city:city, address:address, business_type:product, website:website||"" } } }).then(function(r){
+    __nvSb.auth.signUp({ email:email.toLowerCase(), password:password, options:{ data:{ business_name:storeName, owner_name:name, full_name:name, role:"client", phone:phone, city:city, address:address, business_type:product, website:website||"" } } }).then(function(r){
       if(r&&r.error){ submitBtn.disabled=false; submitBtn.textContent=oldTxt; alert(r.error.message||"Could not create your account. Please try again."); return; }
       var newUser=r&&r.data&&r.data.user;
       if(newUser&&Array.isArray(newUser.identities)&&newUser.identities.length===0){
@@ -1163,15 +1165,15 @@ footer{color:#86a99b;}
       /* Safety-net: capture this signup as its own durable row BEFORE calling the workspace RPC.
          This guarantees the lead is visible to admin even if create_client_workspace fails
          (e.g. no session yet because email confirmation is required) or the RPC times out. */
-      __nvSb.from("signup_leads").insert({ name:name, phone:phone, email:email.toLowerCase(), city:city, address:address, business_type:product, website:website||"", auth_user_id:(newUser&&newUser.id)||null, status:"pending_workspace" }).select("id").maybeSingle().then(function(leadRes){
+      __nvSb.from("signup_leads").insert({ name:storeName, phone:phone, email:email.toLowerCase(), city:city, address:address, business_type:product, website:website||"", auth_user_id:(newUser&&newUser.id)||null, status:"pending_workspace" }).select("id").maybeSingle().then(function(leadRes){
         if(leadRes&&leadRes.error) console.warn("NovaX signup_leads insert:",leadRes.error.message);
         var leadId=leadRes&&leadRes.data&&leadRes.data.id;
-        __nvSb.rpc("create_client_workspace",{ p_name:name, p_owner:name, p_phone:phone, p_city:city, p_address:address, p_business_type:product, p_website:website||"" }).then(function(rpcRes){
+        __nvSb.rpc("create_client_workspace",{ p_name:storeName, p_owner:name, p_phone:phone, p_city:city, p_address:address, p_business_type:product, p_website:website||"" }).then(function(rpcRes){
           submitBtn.disabled=false; submitBtn.textContent=oldTxt;
           if(rpcRes&&rpcRes.error){
             console.warn("NovaX workspace:",rpcRes.error.message);
             if(leadId){ __nvSb.from("signup_leads").update({ status:"failed", error_message:String(rpcRes.error.message||"").slice(0,300) }).eq("id",leadId).then(function(){}); }
-            alert("Your login was created. NovaX is still finishing your workspace -- please sign in and it will finish setting up automatically.");
+            alert("Your login is ready. Please sign in again and NovaX will prepare your workspace automatically.");
             closeSignup();
             return;
           }
