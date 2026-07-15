@@ -4743,6 +4743,25 @@
                   </div>
                 </div>
               </div>
+              <div class="panel" id="dailyOpsPanel" style="margin-top:14px">
+                <div class="section-head">
+                  <div>
+                    <h3>Daily Ops Dashboard</h3>
+                    <p>Today's operating numbers so far, refreshed with the rest of the admin data.</p>
+                  </div>
+                  <button class="ghost-btn" onclick="exportDailyOpsCsv()">Export daily summary CSV</button>
+                </div>
+                <div class="grid metrics" id="dailyOpsMetrics"></div>
+                <div class="section-head" style="margin-top:12px"><div><h3>Today's Priorities</h3><p>The handful of things that most need attention right now.</p></div></div>
+                <div class="ops-list" id="dailyOpsPriorities"></div>
+                <div class="inline-actions" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
+                  <button class="ghost-btn" onclick="showAdminTab('operations')">Open RTO/NDR Center</button>
+                  <button class="ghost-btn" onclick="showAdminTab('finance-wallets')">Open Payout Queue</button>
+                  <button class="ghost-btn" onclick="showAdminTab('api-shopify')">Open Shopify Connections</button>
+                  <button class="ghost-btn" onclick="showAdminTab('system-errors')">Open Error Monitor</button>
+                  <button class="ghost-btn" onclick="showAdminTab('tickets-summary')">Open Tickets</button>
+                </div>
+              </div>
               <div class="grid two" style="margin-top:14px">
                 <div class="panel">
                   <div class="section-head">
@@ -4814,10 +4833,22 @@
               <div class="panel">
                 <div class="section-head">
                   <div>
+                    <h3>Sales Machine / Lead CRM</h3>
+                    <p>Pipeline for merchant leads from first contact to shipping client.</p>
+                  </div>
+                </div>
+                <div class="grid metrics" id="salesDailyTargets"></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head">
+                  <div>
                     <h3>Merchant Leads</h3>
                     <p>Contact requests need a callback (no login yet). Self-signups already have a working login - review and activate.</p>
                   </div>
                   <span class="chip warn" id="leadCountChip">0 leads</span>
+                </div>
+                <div class="filter-bar" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+                  <div class="field"><label>Stage</label><select id="salesStageFilter" onchange="renderAdmin()"><option value="">All stages</option><option>New</option><option>Contacted</option><option>Interested</option><option>Demo Scheduled</option><option>Onboarded</option><option>Shipping</option><option>Lost</option></select></div>
                 </div>
                 <div class="ops-list" id="pendingClientList"></div>
               </div>
@@ -4915,7 +4946,7 @@
                 </div>
                 <div class="filter-bar" style="grid-template-columns:repeat(4,minmax(0,1fr))">
                   <div class="field"><label>Branch/City</label><select id="excBranchFilter" onchange="renderExceptionControlRoom()"><option value="">All branches</option></select></div>
-                  <div class="field"><label>Issue type</label><select id="excIssueFilter" onchange="renderExceptionControlRoom()"><option value="">All issue types</option><option>Delayed / stuck</option><option>Refused</option><option>Consignee not available</option><option>Return pending</option><option>Fake attempt / proof dispute</option><option>Rider cash holding</option><option>Missing proof</option><option>Unresolved ticket linked to AWB</option></select></div>
+                  <div class="field"><label>Issue type</label><select id="excIssueFilter" onchange="renderExceptionControlRoom()"><option value="">All issue types</option><option>Refused</option><option>Consignee not available</option><option>Delayed over SLA</option><option>Reattempt needed</option><option>Return pending</option><option>Return in transit</option><option>Proof missing</option><option>Client decision needed</option><option>Unresolved ticket linked to AWB</option><option>Fake attempt / proof dispute</option><option>Rider cash holding</option></select></div>
                   <div class="field"><label>Urgency</label><select id="excUrgencyFilter" onchange="renderExceptionControlRoom()"><option value="">All urgency</option><option value="critical">Critical</option><option value="warning">Watch</option><option value="normal">Normal</option></select></div>
                   <div class="field"><label>Client</label><select id="excClientFilter" onchange="renderExceptionControlRoom()"><option value="">All clients</option></select></div>
                 </div>
@@ -6197,8 +6228,8 @@
         client.owner = client.owner || "Unassigned";
         client.email = client.email || `${String(client.name || "client").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "") || "client"}@example.com`;
         client.phone = client.phone || "03113323923";
-        client.businessType = client.businessType || "E-commerce seller";
-        client.address = client.address || `${client.city || "Karachi"} pickup address`;
+        client.businessType = client.businessType || "Merchant";
+        client.address = client.address || "Pickup address missing";
         client.taxId = client.taxId || "Not added";
         client.iban = client.iban || "Not added";
         client.rateCard = client.rateCard || defaultRateCard(client.rate);
@@ -6978,6 +7009,99 @@
         metricCard("Expenses", money(m.expenses), percent(m.expenses, 450000), "operating burn", "amber"),
         metricCard("Cash Exposure", `${cashExposure}%`, Math.min(100, cashExposure), "blocked over limit", cashExposure > 100 ? "red" : "amber")
       ].join("");
+      if (typeof renderDailyOps === "function") { try { renderDailyOps(); } catch(e){} }
+    }
+
+    function computeDailyOps() {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const isToday = (iso) => typeof iso === "string" && iso.slice(0, 10) === todayStr;
+      const parcels = state.parcels || [];
+      const newBookings = parcels.filter(p => isToday(p.statusSince) && p.status === "New booked").length;
+      const pickupsPending = parcels.filter(p => p.status === "New booked").length;
+      const pickedUp = parcels.filter(p => p.status === "Collected by rider").length;
+      const outForDelivery = parcels.filter(p => p.status === "Parcel out for delivery").length;
+      const delivered = parcels.filter(p => p.status === "Delivered").length;
+      const refused = parcels.filter(p => p.status === "Refused").length;
+      const returns = parcels.filter(p => ["Ready for return", "Return in transit", "Return received at origin", "Return out for delivery", "Parcel returned to consignee"].includes(p.status)).length;
+      const delayedOverSla = parcels.filter(p => agingHours(p) >= 48 && !"Delivered,Parcel returned to consignee".includes(p.status)).length;
+      const ticketsOpen = (state.tickets || []).filter(t => t.status !== "Resolved").length;
+      const withdrawals = state.walletWithdrawals || [];
+      const payoutsPending = withdrawals.filter(w => w.status === "Pending admin payout").length;
+      const shopifyRows = state.shopifyConnectionRows || [];
+      const failedShopify = shopifyRows.filter(r => r.last_error).length;
+      const errorRows = state.errorMonitorRows || [];
+      const failedRpcs = errorRows.filter(e => !e.resolved).length;
+      const riderCashExposure = (state.riders || []).reduce((s, r) => s + Number(r.cashHeld || 0), 0);
+      const invoices = state.invoices || [];
+      const invoicesReady = invoices.filter(i => i.status === "Pending").length;
+      const invoicesPushed = invoices.filter(i => i.status === "Pushed to wallet").length;
+      const invoicesPaid = invoices.filter(i => i.status === "Paid").length;
+      return { newBookings, pickupsPending, pickedUp, outForDelivery, delivered, refused, returns, delayedOverSla, ticketsOpen, payoutsPending, failedShopify, failedRpcs, riderCashExposure, invoicesReady, invoicesPushed, invoicesPaid };
+    }
+
+    function computeDailyPriorities() {
+      const parcels = state.parcels || [];
+      const activeExceptions = parcels.filter(p => p.status !== "Delivered" && p.status !== "Parcel returned to consignee");
+      const oldestDelayed = activeExceptions.slice().sort((a, b) => agingHours(b) - agingHours(a))[0];
+      const riders = (state.riders || []).slice().sort((a, b) => Number(b.cashHeld || 0) - Number(a.cashHeld || 0));
+      const topCashRider = riders[0];
+      const oldPayout = (state.walletWithdrawals || []).filter(w => w.status === "Pending admin payout").slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))[0];
+      const shopifyError = (state.shopifyConnectionRows || []).find(r => r.last_error);
+      const ticketClients = new Set((state.tickets || []).filter(t => t.status !== "Resolved").map(t => t.clientId));
+      const branchIssueCounts = {};
+      (state.operationsIssues || []).filter(i => !i.resolved).forEach(i => { const b = i.branch || "Unassigned"; branchIssueCounts[b] = (branchIssueCounts[b] || 0) + 1; });
+      const topBranch = Object.entries(branchIssueCounts).sort((a, b) => b[1] - a[1])[0];
+      const items = [];
+      if (oldestDelayed) items.push(`Oldest delayed parcel: ${oldestDelayed.awb} (${Math.round(agingHours(oldestDelayed))}h in ${oldestDelayed.status})`);
+      if (topCashRider && Number(topCashRider.cashHeld || 0) > 0) items.push(`Highest cash exposure rider: ${topCashRider.name} holding ${money(topCashRider.cashHeld || 0)}`);
+      if (oldPayout) items.push(`Oldest pending payout: ${oldPayout.id} since ${oldPayout.createdAt}`);
+      if (shopifyError) items.push(`Shopify connection with latest error: ${clientById(shopifyError.client_id)?.name || shopifyError.client_name || shopifyError.client_id} -- ${shopifyError.last_error}`);
+      if (ticketClients.size) items.push(`${ticketClients.size} client(s) have unresolved tickets`);
+      if (topBranch) items.push(`Branch with most open issues: ${topBranch[0]} (${topBranch[1]})`);
+      return items;
+    }
+
+    function renderDailyOps() {
+      const metricsEl = document.getElementById("dailyOpsMetrics");
+      if (!metricsEl) return;
+      const d = computeDailyOps();
+      metricsEl.innerHTML = [
+        metricCard("New Bookings", d.newBookings, Math.min(100, d.newBookings * 10), "today", "blue"),
+        metricCard("Pickups Pending", d.pickupsPending, Math.min(100, d.pickupsPending * 8), "awaiting rider", d.pickupsPending ? "amber" : ""),
+        metricCard("Picked Up", d.pickedUp, Math.min(100, d.pickedUp * 8), "with rider", "blue"),
+        metricCard("Out For Delivery", d.outForDelivery, Math.min(100, d.outForDelivery * 8), "today", "blue"),
+        metricCard("Delivered", d.delivered, Math.min(100, d.delivered * 8), "completed", "good"),
+        metricCard("Refused", d.refused, Math.min(100, d.refused * 15), "needs decision", d.refused ? "red" : ""),
+        metricCard("Returns", d.returns, Math.min(100, d.returns * 12), "RTO pipeline", d.returns ? "amber" : ""),
+        metricCard("Delayed Over SLA", d.delayedOverSla, Math.min(100, d.delayedOverSla * 15), "48h+", d.delayedOverSla ? "red" : ""),
+        metricCard("Tickets Open", d.ticketsOpen, Math.min(100, d.ticketsOpen * 15), "support queue", d.ticketsOpen ? "amber" : ""),
+        metricCard("Payouts Pending", d.payoutsPending, Math.min(100, d.payoutsPending * 15), "wallet queue", d.payoutsPending ? "amber" : ""),
+        metricCard("Failed Shopify Imports", d.failedShopify, Math.min(100, d.failedShopify * 20), "integration health", d.failedShopify ? "red" : ""),
+        metricCard("Failed RPCs / Errors", d.failedRpcs, Math.min(100, d.failedRpcs * 10), "open error log", d.failedRpcs ? "red" : ""),
+        metricCard("Rider Cash Exposure", money(d.riderCashExposure), Math.min(100, percent(d.riderCashExposure, 200000)), "all riders", "amber"),
+        metricCard("Invoices Ready", d.invoicesReady, Math.min(100, d.invoicesReady * 10), "pending push", "blue"),
+        metricCard("Invoices Pushed", d.invoicesPushed, Math.min(100, d.invoicesPushed * 10), "in wallet", "blue"),
+        metricCard("Invoices Paid", d.invoicesPaid, Math.min(100, d.invoicesPaid * 10), "settled", "good")
+      ].join("");
+      const priorities = computeDailyPriorities();
+      const list = document.getElementById("dailyOpsPriorities");
+      if (list) list.innerHTML = priorities.length ? priorities.map(t => `<div class="ops-card"><p class="footer-note">${t}</p></div>`).join("") : `<p class="footer-note">No urgent priorities right now -- operations look clean.</p>`;
+    }
+
+    function exportDailyOpsCsv() {
+      const d = computeDailyOps();
+      const rows = [["Metric", "Value"]].concat(Object.entries(d).map(([k, v]) => [k, v]));
+      const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `novax-daily-ops-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast("Daily summary CSV exported.");
     }
 
     function filteredParcels() {
@@ -7698,17 +7822,30 @@
           <button class="action-btn" onclick="approveClient('${client.id}')">Verify And Activate Seller</button>
         </div>
       `);
-      const salesLeads = state.salesLeads || [];
+      const stageFilterVal = document.getElementById("salesStageFilter")?.value || "";
+      const salesLeadsAll = state.salesLeads || [];
+      const salesLeads = stageFilterVal ? salesLeadsAll.filter(l => (l.status||"New") === stageFilterVal) : salesLeadsAll;
+      const leadStageClass = (s) => s === "Onboarded" || s === "Shipping" ? "good" : s === "Lost" ? "bad" : s === "Contacted" || s === "Interested" || s === "Demo Scheduled" ? "warn" : "info";
       const salesLeadCards = salesLeads.map(lead => `
         <div class="ops-card">
           <div class="ops-card-head">
             <strong>${lead.name}</strong>
-            <span class="chip ${lead.status === "Contacted" ? "good" : "warn"}">Contact request - ${lead.status}</span>
+            <span class="chip ${leadStageClass(lead.status)}">${lead.status || "New"}</span>
           </div>
-          <p>Phone: ${lead.phone}. Ships about ${lead.parcels || "an unknown amount of"} parcels/month. No workspace or login created yet - call them back.</p>
-          <div class="footer-note">Requested: ${lead.createdAt || "recently"}.</div>
-          ${lead.status === "Contacted" ? "" : `<button class="action-btn" onclick="markSalesLeadContacted('${lead.id}')">Mark Contacted</button>`}
-          <button class="ghost-btn" style="margin-top:6px;color:#b3261e" onclick="deleteSalesLead('${lead.id}')">Delete Lead</button>
+          <p>Phone: ${lead.phone}. ${lead.businessType ? "Business: " + lead.businessType + ". " : ""}${lead.city ? "City: " + lead.city + ". " : ""}Ships about ${lead.parcels || "an unknown amount of"} parcels/month.${lead.website ? " Site: " + lead.website + "." : ""}</p>
+          <div class="footer-note">Requested: ${lead.createdAt || "recently"}.${lead.nextFollowup ? " Next follow-up: " + lead.nextFollowup + "." : ""}${lead.assignedTo ? " Assigned: " + lead.assignedTo + "." : ""}${lead.demoAt ? " Demo: " + lead.demoAt + "." : ""}</div>
+          ${lead.notes ? `<div class="footer-note">Notes: ${lead.notes}</div>` : ""}
+          <div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px">
+            ${lead.status !== "Contacted" && lead.status !== "Lost" ? `<button class="action-btn" onclick="markSalesLeadContacted('${lead.id}')">Mark Contacted</button>` : ""}
+            ${lead.status !== "Interested" && lead.status !== "Lost" ? `<button class="ghost-btn" onclick="setSalesLeadStage('${lead.id}','Interested')">Mark Interested</button>` : ""}
+            ${lead.status !== "Demo Scheduled" && lead.status !== "Lost" ? `<button class="ghost-btn" onclick="scheduleSalesLeadDemo('${lead.id}')">Schedule Demo</button>` : ""}
+            ${lead.status !== "Onboarded" && lead.status !== "Lost" ? `<button class="ghost-btn" onclick="setSalesLeadStage('${lead.id}','Onboarded')">Mark Onboarded</button>` : ""}
+            ${!lead.convertedClientId ? `<button class="action-btn" onclick="convertSalesLeadToClient('${lead.id}')">Convert To Client</button>` : `<span class="chip good">Converted</span>`}
+            <button class="ghost-btn" onclick="addSalesLeadNote('${lead.id}')">Add Note</button>
+            <button class="ghost-btn" onclick="setSalesLeadFollowup('${lead.id}')">Set Follow-up</button>
+            ${lead.status !== "Lost" ? `<button class="ghost-btn" style="color:#b3261e" onclick="setSalesLeadStage('${lead.id}','Lost')">Mark Lost</button>` : ""}
+            <button class="ghost-btn" style="color:#b3261e" onclick="deleteSalesLead('${lead.id}')">Delete Lead</button>
+          </div>
         </div>
       `);
       const stuckSignups = state.signupLeads || [];
@@ -7724,6 +7861,23 @@
         </div>
       `);
       document.getElementById("pendingClientList").innerHTML = stuckSignupCards.concat(salesLeadCards).concat(signupLeadCards).join("") || `<div class="ops-card"><strong>No pending approvals</strong><p>New self-signups and sales contact requests will wait here.</p></div>`;
+      const targetsEl = document.getElementById("salesDailyTargets");
+      if (targetsEl) {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const isToday = (v) => typeof v === "string" && v.slice(0, 10) === todayStr;
+        const contactedToday = salesLeadsAll.filter(l => isToday(l.updatedAt) && l.status === "Contacted").length;
+        const demosBookedToday = salesLeadsAll.filter(l => isToday(l.updatedAt) && l.status === "Demo Scheduled").length;
+        const signupsToday = (state.clients || []).filter(c => isToday(c.appliedAt)).length;
+        const clientsShippingToday = new Set((state.parcels || []).filter(p => isToday(p.statusSince)).map(p => p.clientId)).size;
+        const parcelPotential = salesLeadsAll.filter(l => l.status !== "Lost" && l.status !== "Onboarded" && l.status !== "Shipping").reduce((s, l) => s + (Number(l.parcels) || 0), 0);
+        targetsEl.innerHTML = [
+          metricCard("Contacted Today", contactedToday, Math.min(100, contactedToday * 20), "leads", "blue"),
+          metricCard("Demos Booked Today", demosBookedToday, Math.min(100, demosBookedToday * 25), "scheduled", "blue"),
+          metricCard("Signups Today", signupsToday, Math.min(100, signupsToday * 25), "new clients", "good"),
+          metricCard("Clients Shipping Today", clientsShippingToday, Math.min(100, clientsShippingToday * 15), "active clients", "good"),
+          metricCard("Parcel Potential", parcelPotential, Math.min(100, percent(parcelPotential, 5000)), "in pipeline/month", "amber")
+        ].join("");
+      }
       const leadChip = document.getElementById("leadCountChip");
       const totalLeadCount = state.pendingClients.length + salesLeads.length + stuckSignups.length;
       if (leadChip) leadChip.textContent = `${totalLeadCount} lead${totalLeadCount === 1 ? "" : "s"}`;
@@ -8799,6 +8953,16 @@
         // path for every allowed staff member, not just the owner/admin.
         const r = await window.__nvSb.rpc("admin_processing_lookup", { p_awbs: awbs });
         if (r && r.error) {
+          // NovaX fix (URGENT order booking/processing spec): log the exact
+          // Supabase error (not just the toast text) so a real admin/staff
+          // member who is wrongly blocked can see precisely why in devtools.
+          console.error("NovaX admin_processing_lookup failed:", r.error.message || r.error, r.error);
+          if (/order processing access|permission/i.test(r.error.message || "")) {
+            try {
+              const dbg = await window.__nvSb.rpc("admin_processing_access_debug", {});
+              console.error("NovaX admin_processing_access_debug:", dbg && dbg.data, dbg && dbg.error);
+            } catch (dbgErr) { console.error("NovaX admin_processing_access_debug call failed", dbgErr); }
+          }
           toast(`Could not load parcels: ${r.error.message}`, "error");
           return;
         }
@@ -8888,6 +9052,16 @@
           p_rider_id: riderUuidOrNull
         });
         if (r && r.error) {
+          // NovaX fix (URGENT order booking/processing spec): log the exact
+          // Supabase error (not just the toast text) so a real admin/staff
+          // member who is wrongly blocked can see precisely why in devtools.
+          console.error("NovaX admin_processing_update_status failed:", r.error.message || r.error, r.error);
+          if (/order processing access|permission/i.test(r.error.message || "")) {
+            try {
+              const dbg = await window.__nvSb.rpc("admin_processing_access_debug", {});
+              console.error("NovaX admin_processing_access_debug:", dbg && dbg.data, dbg && dbg.error);
+            } catch (dbgErr) { console.error("NovaX admin_processing_access_debug call failed", dbgErr); }
+          }
           toast(`Status update failed: ${r.error.message}`, "error");
           return;
         }
@@ -9045,7 +9219,20 @@
       if (!window.__nvSb) return;
       try {
         const r = await window.__nvSb.rpc("can_process_orders", {});
+        if (r && r.error) console.error("NovaX can_process_orders RPC failed:", r.error.message || r.error, r.error);
         state.processingAccess = !!(r && !r.error && r.data === true);
+        // NovaX fix (URGENT order booking/processing spec): whenever the
+        // backend says this signed-in user cannot process orders, pull the
+        // full admin_processing_access_debug() breakdown (uid, email,
+        // profile role/status, matched staff row, permissions) straight into
+        // the console so a real admin/staff member who is wrongly blocked
+        // can see exactly why, without needing to run SQL by hand.
+        if (!state.processingAccess) {
+          try {
+            const dbg = await window.__nvSb.rpc("admin_processing_access_debug", {});
+            console.warn("NovaX order processing access denied — debug info:", dbg && dbg.data, dbg && dbg.error);
+          } catch (dbgErr) { console.warn("NovaX admin_processing_access_debug call failed", dbgErr); }
+        }
       } catch (e) {
         console.warn("NovaX: could not confirm order processing access", e);
         state.processingAccess = false;
@@ -9278,24 +9465,68 @@
     // Real backend status per client -- a store only ever shows "Live" once a
     // real signed webhook order has actually been received (imported_count>0).
     // Never fabricates a "Connected" state just because a link was generated.
+    // NovaX (Shopify Setup UX): the exact next action a NovaX admin should
+    // take/tell the client, computed from the same fields the client sees --
+    // kept in one place so admin + client never disagree about what's wrong.
+    function shopifyAdminNextAction(row){
+      if(!row.intake_token) return "Nothing to do yet -- client hasn't generated a link.";
+      if(!row.has_secret) return "Tell client: add the webhook in Shopify (Order creation, JSON) and paste the signing secret into NovaX.";
+      if(row.connection_status==="Signature failed") return "Signing secret mismatch -- ask client to re-copy the secret from Shopify exactly, or use Reset signing secret.";
+      if(row.connection_status==="Import failed") return "Non-signature import error ("+(row.last_error||"unknown")+") -- check the order payload / Edge Function logs.";
+      if(!(row.imported_count>0)) return "Waiting for first order -- ask client to place one test order in Shopify.";
+      return "Nothing to do -- live and importing normally.";
+    }
+    function adminCopyShopifySetupInstructions(clientId){
+      const rows = state.shopifyConnectionRows || [];
+      const row = rows.find(function(r){ return r.client_id===clientId; });
+      const url = row && row.intake_token ? (SB_URL.replace(/\/$/, "") + "/functions/v1/shopify-order-intake/" + row.intake_token) : "";
+      if(!url){ toast("This client hasn't generated a Shopify link yet."); return; }
+      const msg="NovaX Shopify setup:\n"
+        +"1) Shopify Admin > Settings > Notifications > Webhooks > Create webhook\n"
+        +"2) Event: Order creation\n"
+        +"3) Format: JSON\n"
+        +"4) URL: "+url+" (must match exactly)\n"
+        +"5) Copy the \"Signing secret\" Shopify shows and paste it into NovaX (Store Integrations > Shopify Link Integration > Save Secret)\n"
+        +"6) Create one test order in Shopify, then press \"I created a test order -- check again\" in NovaX\n\n"
+        +"If it still doesn't show Live, check:\n"
+        +"- Event must be Order creation\n"
+        +"- Format must be JSON\n"
+        +"- URL must match the NovaX webhook URL exactly\n"
+        +"- Signing secret must be copied exactly from Shopify\n"
+        +"- JWT verification must be OFF on the Supabase Edge Function";
+      let ok=false;
+      try{ if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(msg); ok=true; } }catch(e){}
+      toast(ok?"Setup instructions copied -- paste them to the client.":"Copy failed -- select and copy manually.");
+    }
     function renderAdminShopifyHealth(){
       const el=document.getElementById("shopifyConnList"); if(!el || !window.__nvSb) return;
       window.__nvSb.rpc("admin_list_shopify_connections", {}).then(function(r){
         if(r && r.error){ el.innerHTML=`<p class="footer-note">Failed to load Shopify integrations: ${r.error.message}</p>`; return; }
         const rows = (r && r.data) || [];
+        state.shopifyConnectionRows = rows;
+        if(typeof renderDailyOps==="function"){ try{ renderDailyOps(); }catch(e){} }
         if(!rows.length){ el.innerHTML=`<p class="footer-note">No Shopify links generated yet.</p>`; return; }
         el.innerHTML = rows.map(function(row){
           const cl = clientById(row.client_id);
           const isUuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(row.client_name||""));
           const nameDisplay = cl ? cl.name : (row.client_name && !isUuidLike ? row.client_name : "Unknown client");
-          const statusClass = row.connection_status==="Live" ? "good" : (row.connection_status==="Signature failed" || row.connection_status==="Disabled" ? "error" : "");
+          const statusClass = row.connection_status==="Live" ? "good" : ((row.connection_status==="Signature failed" || row.connection_status==="Import failed" || row.connection_status==="Disabled") ? "error" : "");
           const intakeUrl = row.intake_token ? (SB_URL.replace(/\/$/, "") + "/functions/v1/shopify-order-intake/" + row.intake_token) : "";
           return `<div class="ops-card" style="margin-bottom:8px">`
             + `<div class="ops-card-head"><strong>${nameDisplay}</strong><span class="chip ${statusClass}">${row.connection_status}</span></div>`
-            + `<p class="footer-note">Store: ${row.store_url||"(not set)"} &middot; Intake URL: ${row.has_secret?"active":"awaiting signing secret"}</p>`
-            + `<p class="footer-note">Last order received: ${row.last_order_at ? new Date(row.last_order_at).toLocaleString() : "never yet"} &middot; Imported: ${row.imported_count||0} &middot; Last imported AWB: ${row.last_order_awb||"No imported order yet."} &middot; Last error: ${row.last_error||"none"}</p>`
-            + `<div class="inline-actions" style="margin-top:8px">`
+            + `<p class="footer-note">Store: ${row.store_url||"(not set)"}</p>`
+            + `<div class="money-grid">`
+            + `<div class="money-box"><span>Has link</span><strong>${row.intake_token?"Yes":"No"}</strong></div>`
+            + `<div class="money-box"><span>Has secret</span><strong>${row.has_secret?"Yes":"No"}</strong></div>`
+            + `<div class="money-box"><span>Imported count</span><strong>${row.imported_count||0}</strong></div>`
+            + `<div class="money-box"><span>Last AWB</span><strong>${row.last_order_awb||"none yet"}</strong></div>`
+            + `</div>`
+            + `<p class="footer-note" style="margin-top:6px">Last event: ${row.last_event||"none"} &middot; Last order received: ${row.last_order_at ? new Date(row.last_order_at).toLocaleString() : "never yet"}</p>`
+            + `<p class="footer-note">Last error: ${row.last_error||"none"} &middot; Last signature fail: ${row.last_signature_fail_at ? new Date(row.last_signature_fail_at).toLocaleString() : "never"}</p>`
+            + `<p class="footer-note" style="font-weight:600">Next action: ${shopifyAdminNextAction(row)}</p>`
+            + `<div class="inline-actions" style="margin-top:8px;flex-wrap:wrap">`
             + (intakeUrl ? `<button class="ghost-btn" onclick="navigator.clipboard&&navigator.clipboard.writeText('${intakeUrl}');toast('Intake URL copied.')">Copy URL</button>` : "")
+            + `<button class="ghost-btn" onclick="adminCopyShopifySetupInstructions('${row.client_id}')">Copy setup instructions</button>`
             + `<button class="ghost-btn" onclick="adminRegenerateShopifyIntake('${row.client_id}')">Regenerate intake URL</button>`
             + `<button class="ghost-btn" onclick="adminResetShopifySecret('${row.client_id}')">Reset signing secret</button>`
             + `<button class="ghost-btn" onclick="adminSetShopifyDisabled('${row.client_id}', ${row.disabled?"false":"true"})">${row.disabled?"Enable":"Disable"} integration</button>`
@@ -10553,16 +10784,33 @@
     // can appear under more than one issue type if more than one applies.
     function exceptionSuggestedAction(issueType) {
       const map = {
-        "Delayed / stuck": "Escalate to branch and confirm rider movement.",
+        "Delayed over SLA": "Escalate to branch and confirm rider movement.",
         "Refused": "Contact consignee, confirm refusal reason, decide return vs redeliver.",
         "Consignee not available": "Reschedule reattempt and message the customer.",
+        "Reattempt needed": "Confirm rider redelivery window with the consignee.",
         "Return pending": "Confirm return proof and close the return loop.",
+        "Return in transit": "Track return movement back to the origin branch.",
         "Fake attempt / proof dispute": "Request proof from rider and open a ticket.",
         "Rider cash holding": "Reconcile rider cash and confirm deposit.",
-        "Missing proof": "Request delivery proof photo/signature from rider.",
+        "Proof missing": "Request delivery proof photo/signature from rider.",
+        "Client decision needed": "Waiting on the client to approve reattempt or return.",
         "Unresolved ticket linked to AWB": "Resolve the linked ticket with a note."
       };
       return map[issueType] || "Review and resolve.";
+    }
+    // Mirror active exception-queue rows into state.operationsIssues so RTO/NDR
+    // work is actually stored, not only computed on the fly -- at most one
+    // unresolved ops issue per AWB+issueType, never duplicated on re-render.
+    function syncExceptionIssuesToOps(rows) {
+      state.operationsIssues = state.operationsIssues || [];
+      let added = false;
+      rows.forEach(r => {
+        const exists = state.operationsIssues.some(issue => issue.awb === r.awb && issue.exceptionType === r.issueType && !issue.resolved);
+        if (exists) return;
+        state.operationsIssues.unshift({ id: nextId("OPS", state.operationsIssues), branch: r.branch || "", urgency: r.urgency === "critical" ? "super urgent" : (r.urgency === "warning" ? "urgent" : "normal"), problem: `${r.issueType}: ${r.awb}`, awb: r.awb, exceptionType: r.issueType, openedHours: r.agingHours || 0, resolved: false, source: "exception_queue" });
+        added = true;
+      });
+      if (added) saveState();
     }
     function computeExceptionQueue() {
       const rows = [];
@@ -10572,18 +10820,22 @@
         const linkedTicket = (state.tickets || []).find(t => t.awb === p.awb && t.status !== "Resolved");
         const aging = agingHours(p);
         const cats = [];
-        if (aging > 72 && p.status !== "Delivered" && !/return/i.test(p.status)) cats.push("Delayed / stuck");
+        if (aging > 72 && p.status !== "Delivered" && !/return/i.test(p.status)) cats.push("Delayed over SLA");
         if (p.status === "Refused") cats.push("Refused");
         if (p.status === "Consignee not available") cats.push("Consignee not available");
-        if (/^Ready for return$|^Return in transit$|^Return received at origin$|^Return out for delivery$/.test(p.status)) cats.push("Return pending");
+        if (p.status === "Reattempt") cats.push("Reattempt needed");
+        if (/^Ready for return$|^Return received at origin$|^Return out for delivery$/.test(p.status)) cats.push("Return pending");
+        if (p.status === "Return in transit") cats.push("Return in transit");
         if (/fake|dispute/i.test(p.exception || "")) cats.push("Fake attempt / proof dispute");
         if (/cash/i.test(p.exception || "")) cats.push("Rider cash holding");
-        if (p.status === "Delivered" && !p.proofPhoto && !p.signature) cats.push("Missing proof");
+        if (p.status === "Delivered" && !p.proofPhoto && !p.signature) cats.push("Proof missing");
+        if (p._clientDecisionRequestedAt) cats.push("Client decision needed");
         if (linkedTicket) cats.push("Unresolved ticket linked to AWB");
         cats.forEach(issueType => {
-          rows.push({ awb: p.awb, clientId: p.clientId, clientName: client ? client.name : "Unknown", city: p.city, branch: p.branch, status: p.status, agingHours: aging, issueType, ticket: linkedTicket, urgency: aging > 72 ? "critical" : (aging > 24 ? "warning" : "normal") });
+          rows.push({ awb: p.awb, clientId: p.clientId, clientName: client ? client.name : "Unknown", consignee: p.consignee || "", phone: p.phone || "", city: p.city, branch: p.branch, status: p.status, agingHours: aging, issueType, exception: p.exception || "", lastNote: p.resolutionRemark || p.returnProof || (p.proofPhoto ? "Proof photo on file" : "") || (p.signature ? "Signature on file" : ""), ticket: linkedTicket, urgency: aging > 72 ? "critical" : (aging > 24 ? "warning" : "normal") });
         });
       });
+      syncExceptionIssuesToOps(rows);
       return rows;
     }
     function renderExceptionControlRoom() {
@@ -10607,7 +10859,8 @@
       list.innerHTML = rows.map(r => `
         <div class="ops-card ${r.urgency === "critical" ? "alert-row" : ""}">
           <div class="ops-card-head"><strong>${r.awb}</strong><span class="chip ${r.urgency === "critical" ? "bad" : r.urgency === "warning" ? "warn" : "info"}">${r.issueType}</span></div>
-          <p>${r.clientName} &middot; ${r.city || "-"} / ${r.branch || "-"} &middot; status: ${r.status} &middot; aging ${agingLabel(r.agingHours)} &middot; priority: <strong>${r.urgency === "critical" ? "High" : r.urgency === "warning" ? "Medium" : "Normal"}</strong></p>
+          <p>${r.clientName} &middot; ${r.consignee || "-"} &middot; ${r.phone || "-"} &middot; ${r.city || "-"} / ${r.branch || "-"} &middot; status: ${r.status} &middot; aging ${agingLabel(r.agingHours)} &middot; priority: <strong>${r.urgency === "critical" ? "High" : r.urgency === "warning" ? "Medium" : "Normal"}</strong></p>
+          <p class="footer-note">Reason: ${r.exception || "Not noted"}${r.lastNote ? (" &middot; Last note: " + r.lastNote) : ""}</p>
           <p class="footer-note">Suggested: ${exceptionSuggestedAction(r.issueType)}${r.ticket ? (" &middot; linked ticket " + r.ticket.id + " (" + r.ticket.status + ")") : ""}</p>
           <div class="inline-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
             <button class="ghost-btn" onclick="createTicketForAwb('${r.awb}')">Create Ticket</button>
@@ -10615,6 +10868,8 @@
             <button class="ghost-btn" onclick="requestReattemptAdmin('${r.awb}')">Request Reattempt</button>
             <button class="ghost-btn" onclick="markReturnToOriginAdmin('${r.awb}')">Mark Return to Origin</button>
             <button class="ghost-btn" onclick="requestClientDecisionAdmin('${r.awb}')">Request Client Decision</button>
+            <button class="ghost-btn" onclick="queueNotifyClientAdmin('${r.awb}')">Queue Notification</button>
+            <button class="ghost-btn" onclick="viewParcelJourneyAdmin('${r.awb}')">View Parcel Journey</button>
           </div>
           ${waActionsHtml(r.awb, waKindForStatus(r.status))}
           <div class="field" style="margin-top:8px"><label>Resolution note (required to resolve)</label><input id="excNote_${r.awb}" placeholder="What was done to resolve this?"></div>
@@ -10649,19 +10904,55 @@
     }
     function requestClientDecisionAdmin(awb) {
       const p = state.parcels.find(x => x.awb === awb); if (!p) return;
+      const client = clientById(p.clientId);
+      const clientUuid = (client && client._uuid) || p.clientUuid || null;
       p.exception = "Awaiting your decision -- please reattempt or return."; p._clientDecisionRequestedAt = new Date().toISOString().slice(0, 10) + " " + time();
+      state.tickets = state.tickets || [];
+      const sourceKey = `client_decision:${awb}`;
+      if (!state.tickets.some(t => t.sourceKey === sourceKey && t.status !== "Resolved")) {
+        state.tickets.unshift({ id: nextId("TCK", state.tickets), sourceKey, tier: "medium", title: "Client decision needed on " + awb, from: "System", to: "Client Success", branch: p.branch || "", awb, message: p.status + " -- client decision requested for reattempt or return.", createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}`, ageHours: 0, status: "Open", escalated: false, replies: [] });
+      }
       saveState(); renderAdmin();
-      try { if (window.__nvSb && p._uuid) window.__nvSb.rpc("queue_notification_event", { p_client_id: p.clientUuid || null, p_awb: awb, p_event_type: "client_decision_needed" }).then(function (r) { if (r && r.error) console.warn("NovaX notify queue", r.error.message); }); } catch (e) {}
-      toast(awb + " -- client decision requested. They will see this on their dashboard.");
+      try {
+        if (window.__nvSb && clientUuid) window.__nvSb.rpc("queue_notification_event", { p_client_id: clientUuid, p_awb: awb, p_event_type: "client_decision_needed" }).then(function (r) { if (r && r.error) { console.warn("NovaX notify queue", r.error.message); try { window.__nvSb.rpc("log_portal_error", { p_source: "admin", p_rpc_name: "queue_notification_event", p_page: "rto-ndr", p_message: r.error.message, p_severity: "warning" }); } catch (e) {} } });
+      } catch (e) {}
+      toast(awb + " -- client decision requested. Ticket opened and client notified.");
     }
     function resolveExceptionIssue(awb) {
       const noteEl = document.getElementById("excNote_" + awb);
       const note = noteEl ? noteEl.value.trim() : "";
       if (!note) { toast("A resolution note is required to resolve an exception.", "error"); return; }
       const p = state.parcels.find(x => x.awb === awb); if (!p) return;
-      p._exceptionResolved = true; p._exceptionResolutionNote = note; p._exceptionResolvedAt = new Date().toISOString().slice(0, 10) + " " + time();
+      const resolver = currentAdminName();
+      const resolvedAt = new Date().toISOString().slice(0, 10) + " " + time();
+      p._exceptionResolved = true; p._exceptionResolutionNote = note; p._exceptionResolvedAt = resolvedAt;
+      p._clientDecisionRequestedAt = "";
+      state.resolvedAlerts = state.resolvedAlerts || [];
+      (state.operationsIssues || []).forEach(issue => {
+        if (issue.awb === awb && issue.source === "exception_queue" && !issue.resolved) {
+          issue.resolved = true; issue.resolvedBy = resolver; issue.resolutionReason = note; issue.resolvedAt = resolvedAt; issue.resolvedHours = issue.openedHours || 1;
+          state.resolvedAlerts.unshift({ id: nextId("DONE", state.resolvedAlerts), awb: issue.awb, branch: issue.branch, resolvedBy: resolver, reason: note, alert: issue.problem, solvedHours: issue.resolvedHours, resolvedAt });
+        }
+      });
       saveState(); renderAdmin();
       toast(awb + " exception resolved and note saved.");
+    }
+    function queueNotifyClientAdmin(awb) {
+      const p = state.parcels.find(x => x.awb === awb); if (!p) return;
+      const client = clientById(p.clientId);
+      const clientUuid = (client && client._uuid) || p.clientUuid || null;
+      if (!window.__nvSb || !clientUuid) { toast("No linked client account to notify for " + awb + ".", "error"); return; }
+      window.__nvSb.rpc("queue_notification_event", { p_client_id: clientUuid, p_awb: awb, p_event_type: "status_update" }).then(function (r) {
+        if (r && r.error) { console.warn("NovaX notify queue", r.error.message); try { window.__nvSb.rpc("log_portal_error", { p_source: "admin", p_rpc_name: "queue_notification_event", p_page: "rto-ndr", p_message: r.error.message, p_severity: "warning" }); } catch (e) {} toast("Could not queue notification.", "error"); return; }
+        toast(awb + " -- notification queued to client.");
+      });
+    }
+    function viewParcelJourneyAdmin(awb) {
+      const search = document.getElementById("adminOrderSearch");
+      if (search) search.value = awb;
+      showAdminTab("orders-view-all");
+      renderAdmin();
+      toast(awb + " opened in Orders.");
     }
 
     function resolveTicket(id) {
@@ -11859,7 +12150,7 @@
         return { client_id: cid, awbs: pr.awbs || [], pickup_address: pr.pickupAddress || "", requested_for: pr.requestedFor || "", note: pr.note || "", status: pr.status || "Requested", rider_id: rid, updated_at: new Date().toISOString(), meta: {} };
       }
       function rLedger(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, entryType:r.entry_type||"", amount:Number(r.amount||0), affectsBalance:!!r.affects_balance, status:r.status||"", referenceType:r.reference_type||"", referenceId:r.reference_id||"", referenceCode:r.reference_code||"", note:r.note||"", createdAt:dtpart(r.created_at) }; }
-      function rSalesLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", parcels:r.parcels_per_month||"", status:r.status||"New", createdAt:dtpart(r.created_at) }; }
+      function rSalesLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", parcels:r.parcels_per_month||"", status:r.status||"New", createdAt:dtpart(r.created_at), businessType:r.business_type||"", city:r.city||"", website:r.website||"", notes:r.notes||"", nextFollowup:r.next_followup||"", assignedTo:r.assigned_to||"", convertedClientId:r.converted_client_id||"", demoAt:r.demo_at||"", updatedAt:dtpart(r.updated_at) }; }
       function rSignupLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", email:r.email||"", city:r.city||"", address:r.address||"", businessType:r.business_type||"", website:r.website||"", status:r.status||"pending_workspace", errorMessage:r.error_message||"", createdAt:dtpart(r.created_at) }; }
       function rPl(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, type:r.type||"", amount:Number(r.amount||0), status:r.status||"", ref:r.reference||"" }; }
       function cuid(id){ var c=(state.clients||[]).find(function(x){return x.id===id;}); return (c&&c._uuid)||(isUuid(id)?id:null); }
@@ -12028,6 +12319,64 @@
         state.salesLeads=(state.salesLeads||[]).filter(function(l){return l.id!==id;});
         try{ if(typeof render==="function") render(); }catch(e){}
         sb.from("sales_leads").delete().eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads delete",r.error.message); });
+      };
+      window.setSalesLeadStage=function(id,stage){
+        var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
+        if(!lead) return;
+        lead.status=stage;
+        try{ if(typeof render==="function") render(); }catch(e){}
+        sb.from("sales_leads").update({ status:stage }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads update",r.error.message); });
+      };
+      window.scheduleSalesLeadDemo=function(id){
+        var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
+        if(!lead) return;
+        var when=window.prompt("Demo date/time for "+lead.name+" (e.g. 2026-07-20 15:00):", lead.demoAt||"");
+        if(when===null) return;
+        lead.demoAt=when; lead.status="Demo Scheduled";
+        try{ if(typeof render==="function") render(); }catch(e){}
+        sb.from("sales_leads").update({ demo_at:when||null, status:"Demo Scheduled" }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads update",r.error.message); });
+      };
+      window.addSalesLeadNote=function(id){
+        var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
+        if(!lead) return;
+        var note=window.prompt("Add note for "+lead.name+":", "");
+        if(!note) return;
+        lead.notes=(lead.notes?lead.notes+" | ":"")+note;
+        try{ if(typeof render==="function") render(); }catch(e){}
+        sb.from("sales_leads").update({ notes:lead.notes }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads update",r.error.message); });
+      };
+      window.setSalesLeadFollowup=function(id){
+        var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
+        if(!lead) return;
+        var when=window.prompt("Next follow-up date for "+lead.name+" (YYYY-MM-DD):", lead.nextFollowup||"");
+        if(when===null) return;
+        lead.nextFollowup=when;
+        try{ if(typeof render==="function") render(); }catch(e){}
+        sb.from("sales_leads").update({ next_followup:when||null }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads update",r.error.message); });
+      };
+      window.convertSalesLeadToClient=function(id){
+        var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
+        if(!lead) return;
+        if(lead.convertedClientId){ toast("This lead is already converted.","error"); return; }
+        var dupe=(state.clients||[]).find(function(c){ return (c.phone&&lead.phone&&c.phone===lead.phone); });
+        if(dupe){
+          toast("A client with this phone already exists ("+dupe.name+"). Not creating a duplicate.","error");
+          lead.convertedClientId=dupe._uuid||dupe.id; lead.status="Onboarded";
+          try{ if(typeof render==="function") render(); }catch(e){}
+          sb.from("sales_leads").update({ converted_client_id: isUuid(lead.convertedClientId)?lead.convertedClientId:null, status:"Onboarded" }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads update",r.error.message); });
+          return;
+        }
+        toast("Prefilled the Add Client form with this lead's details -- finish it in Add Client to create the login.");
+        try{
+          showAdminTab("clients-clients");
+          setTimeout(function(){
+            var n=document.getElementById("newClientName"); if(n) n.value=lead.name||"";
+            var p=document.getElementById("newClientPhone"); if(p) p.value=lead.phone||"";
+            var b=document.getElementById("newClientBusiness"); if(b) b.value=lead.businessType||"";
+          }, 200);
+        }catch(e){}
+        lead.status="Onboarded";
+        sb.from("sales_leads").update({ status:"Onboarded" }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads update",r.error.message); });
       };
       window.resolveSignupLead=function(id){
         var lead=(state.signupLeads||[]).find(function(l){return l.id===id;});
