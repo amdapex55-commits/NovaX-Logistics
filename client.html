@@ -2489,18 +2489,35 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!window.confirm(`Import ${validRecords.length} valid row(s) and skip ${rejected} rejected row(s)? Rejected rows will not get an AWB.`)) return;
       importBulkRows(validRecords, parsed.results.length);
     }
-    function importBulkRows(records, totalRowsSeen){
-      const awbs=records.map(r=>bookParcel({ consignee:r.consignee, city:r.city, cod:r.cod, phone:r.phone, weight:r.weight, orderId:r.orderId, referenceNo:r.referenceNo, category:r.product, paymentMode:r.paymentMode, address:r.address, fragile:r.fragile })).filter(Boolean);
+    async function importBulkRows(records, totalRowsSeen){
+      // NovaX fix (URGENT order booking/processing spec): bulk import used
+      // to call the same local-only bookParcel() as quick booking, with the
+      // same risk of a parcel existing only in this browser if the later
+      // direct insert got blocked by RLS. Each row now goes through the same
+      // client_book_parcel RPC as a normal booking, one row at a time, so a
+      // row only ever counts as imported once Supabase has actually
+      // accepted it.
+      const awbs=[]; const failed=[];
+      for(const r of records){
+        try{
+          const mapped=window.__novaxBookParcel?await window.__novaxBookParcel({ consignee:r.consignee, city:r.city, cod:r.cod, phone:r.phone, weight:r.weight, orderId:r.orderId, referenceNo:r.referenceNo, category:r.product, paymentMode:r.paymentMode, address:r.address, fragile:r.fragile }):null;
+          if(mapped&&mapped.awb) awbs.push(mapped.awb);
+          else failed.push({ row:r, error:"Booking service is not ready yet." });
+        }catch(e){
+          const msg=(e&&e.message)?e.message:"Server rejected this row.";
+          console.error("NovaX bulk booking row failed:", msg, r, e);
+          failed.push({ row:r, error:msg });
+        }
+      }
       state.lastBulkAwbs=awbs; saveState(); renderBulkPreview();
       const skipped=Math.max(0,(totalRowsSeen||records.length)-awbs.length);
       const el=document.getElementById("bulkValidationList");
-      if(el) el.insertAdjacentHTML("afterbegin", `<div class="ops-card" style="margin-bottom:10px"><strong>Import complete: ${awbs.length} AWB(s) created${skipped?`, ${skipped} row(s) skipped`:""}</strong><p>Booked rows are syncing to the cloud now. New AWBs appear in "New Booked AWBs" for printing.</p></div>`);
-      // NovaX fix (medium risk #3): booking rows locally does not guarantee
-      // the server has accepted them yet (that happens async via
-      // syncNew()/insert). Say "reserved, syncing" instead of "created" so
-      // this doesn't overstate success before Supabase actually confirms
-      // each row.
-      toast(`${awbs.length} AWB(s) reserved, syncing now...`);
+      if(el) el.insertAdjacentHTML("afterbegin", `<div class="ops-card" style="margin-bottom:10px"><strong>Import complete: ${awbs.length} AWB(s) created${skipped?`, ${skipped} row(s) skipped`:""}</strong><p>Booked rows are saved on the server now. New AWBs appear in "New Booked AWBs" for printing.</p></div>`);
+      if(failed.length){
+        toast(`${awbs.length} AWB(s) booked. ${failed.length} row(s) failed: ${failed[0].error}`,"error");
+      } else {
+        toast(`${awbs.length} AWB(s) booked and synced to NovaX.`,"success");
+      }
     }
     function requestRedelivery(awb){
       // NovaX fix (item 2): same false-success bug as requestReturnToOrigin --
@@ -2971,6 +2988,52 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           return r&&r.data?r.data.id:null;
         });
       };
+      // NovaX fix (URGENT order booking/processing spec): booking used to
+      // write straight into local state and rely on a later direct browser
+      // insert into public.parcels (see the now-disabled loop in syncNew()
+      // below), which RLS could silently block -- leaving a parcel that only
+      // ever existed on this one device. Every booking now goes through the
+      // SECURITY DEFINER client_book_parcel RPC: the AWB/fee/row only exist
+      // once Supabase has actually accepted them, and the exact Supabase
+      // error is surfaced to the caller (console + toast) instead of a fake
+      // local "reserved" parcel.
+      window.__novaxBookParcel=function(o){
+        o=o||{};
+        if(!sb||!MY) return Promise.reject(new Error("We're preparing your workspace. Refresh or sign in again."));
+        var args={
+          p_consignee:o.consignee||"",
+          p_phone:o.phone||"",
+          p_pickup_city:o.pickupCity||"Karachi",
+          p_city:o.city||"",
+          p_address:o.address||"",
+          p_cod:Number(o.cod||0),
+          p_weight:o.weight||"0.8 kg",
+          p_service:o.service||"COD Standard",
+          p_category:o.category||"",
+          p_fragile:o.fragile||"No",
+          p_payment_mode:o.paymentMode||"COD",
+          p_order_id:o.orderId||"",
+          p_reference_no:o.referenceNo||o.reference||o.ref||""
+        };
+        return sb.rpc("client_book_parcel", args).then(function(r){
+          if(r&&r.error){
+            console.error("NovaX client_book_parcel RPC failed:", r.error.message||r.error, r.error);
+            throw new Error(r.error.message||"Server rejected this booking.");
+          }
+          var row=r&&r.data;
+          if(!row||!row.id){
+            console.error("NovaX client_book_parcel returned no row", r);
+            throw new Error("Server did not confirm this booking. Please try again.");
+          }
+          var mapped=mapParcel(row);
+          state.parcels.unshift(mapped);
+          state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:MY, type:"COD expected", amount:Number(row.cod_amount||0), status:"Awaiting delivery", ref:row.awb });
+          state.selectedAwb=row.awb; state.lastGeneratedAwb=row.awb; saveState();
+          if(mapped._uuid) shadow[mapped._uuid]=(mapped.status||"")+"|"+(mapped.exception||"")+"|"+(mapped.awbPrinted?"1":"0")+"|"+(mapped.awbPrintedAt||"");
+          try{ render(); }catch(e){ console.error("Post-booking render failed", e); }
+          return mapped;
+        });
+      };
       var MY=null, loaded=false, shadow={}, subscribed=false;
       var TAGS=(typeof STATUS_TAGS!=="undefined"&&STATUS_TAGS&&STATUS_TAGS.length)?STATUS_TAGS:["New booked"];
       function stageOf(s){ var i=TAGS.indexOf(s); return i<0?0:i; }
@@ -3056,7 +3119,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       function syncNew(){
         if(!loaded||!MY) return;
-        (state.parcels||[]).forEach(function(p){ if(p._uuid||p._pending) return; p._pending=true; sb.from("parcels").insert({ awb:p.awb, client_id:MY, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:new Date().toISOString(), updated_at:new Date().toISOString(), meta:pmeta(p) }).select("id").maybeSingle().then(function(r){ p._pending=false; if(r&&r.error){ console.warn("NovaX parcel insert",r.error.message); p._syncPending=false; p._syncFailed=true; p._syncError=r.error.message||"Server rejected this booking."; try{ toast(`${p.awb} could not be saved to the server: ${p._syncError}`,"error"); render(); }catch(e){} return; } p._syncPending=false; p._syncFailed=false; if(r&&r.data){ p._uuid=r.data.id; shadow[p._uuid]=(p.status||"")+"|"+(p.exception||""); } }); });
+        // NovaX fix (URGENT order booking/processing spec): parcels are no
+        // longer created via a direct browser insert into public.parcels --
+        // every new booking now goes through the client_book_parcel RPC (see
+        // window.__novaxBookParcel above), which already attaches a real
+        // _uuid the moment Supabase confirms it. This loop is intentionally
+        // disabled so a parcel can never again exist only in local state; it
+        // only logs a warning if it ever finds one (e.g. from an old cached
+        // session), it never tries to insert it.
+        (state.parcels||[]).forEach(function(p){ if(p._uuid||!p._syncPending) return; console.warn("NovaX: found a legacy local-only parcel with no _uuid; direct browser insert into parcels is disabled, it will not be sent to the server.", p.awb); });
         (state.parcels||[]).forEach(function(p){ if(!p._uuid) return; var sig=(p.status||"")+"|"+(p.exception||"")+"|"+(p.awbPrinted?"1":"0")+"|"+(p.awbPrintedAt||""); if(shadow[p._uuid]===sig) return; var prevSig=shadow[p._uuid]; shadow[p._uuid]=sig; sb.from("parcels").update({ status:p.status||"", exception:p.exception||"", updated_at:new Date().toISOString(), meta:pmeta(p) }).eq("id",p._uuid).then(function(r){ if(r&&r.error){ console.warn("NovaX parcel update",r.error.message); if(shadow[p._uuid]===sig) shadow[p._uuid]=prevSig; } }); });
         // NovaX fix (medium risk #5): confirmWalletWithdraw() now always calls
         // request_wallet_withdrawal itself and only ever adds a withdrawal to
@@ -3129,8 +3200,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           function attemptWorkspaceRecovery(){
             var meta=(session.user&&session.user.user_metadata)||{};
             sb.rpc("create_client_workspace",{
-              p_name: meta.full_name||meta.business_name||"",
-              p_owner: meta.full_name||"",
+              p_name: meta.business_name||meta.full_name||"",
+              p_owner: meta.owner_name||meta.full_name||"",
               p_phone: meta.phone||"",
               p_city: meta.city||"",
               p_address: meta.address||"",
