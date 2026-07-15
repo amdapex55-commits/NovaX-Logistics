@@ -2078,7 +2078,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return awb;
     }
     let __bookingInFlight=false;
-    function quickBooking(){
+    // NovaX fix: Create Booking now goes straight through the same
+    // window.__novaxBookParcel Supabase RPC path bulk import already uses.
+    // No local AWB/parcel row is created until Supabase actually confirms
+    // the booking -- the old local bookParcel()+pollBookingConfirmation()
+    // flow used to create a "reserved locally" AWB before the server had
+    // accepted anything, which could desync from what Supabase actually has.
+    async function quickBooking(){
       if(__bookingInFlight) return;
       const required=["bookingName","bookingPhone","bookingPickupCity","bookingCity","bookingCod","bookingService","bookingCategory","bookingFragile","bookingWeight","bookingPaymentMode","bookingAddress"];
       if(required.some(id=>!String(document.getElementById(id).value||"").trim())){ toast("All booking fields are mandatory before AWB creation.","error"); return; }
@@ -2096,7 +2102,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const dupeWindowMs=15000;
       const now=Date.now();
       const possibleDupe=(state.parcels||[]).find(p=>p.clientId===clientId && p.consignee===consignee && Number(p.cod)===cod && p.address===address && p.phone===phone && p.statusSince && (now-new Date(p.statusSince).getTime())<dupeWindowMs);
-      if(possibleDupe){ toast(`Looks like a duplicate ��� ${possibleDupe.awb} was just booked for ${consignee} with the same details. Check the AWB tab before booking again.`,"error"); return; }
+      if(possibleDupe){ toast(`Looks like a duplicate \u2014 ${possibleDupe.awb} was just booked for ${consignee} with the same details. Check the AWB tab before booking again.`,"error"); return; }
 
       const riskWarnEl=document.getElementById("nvRiskWarning");
       const riskInput={ phone:phone, address, cod:document.getElementById("bookingCod").value, city:document.getElementById("bookingCity").value, product:document.getElementById("bookingCategory").value.trim(), weight:document.getElementById("bookingWeight").value.trim(), recentDuplicate:false };
@@ -2114,24 +2120,36 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const btn=document.getElementById("quickBookingBtn");
       const oldBtnText=btn?btn.textContent:"";
       if(btn){ btn.disabled=true; btn.textContent="Creating booking..."; }
+      const confirmLine=document.getElementById("bookingConfirmLine");
+      if(confirmLine){ confirmLine.textContent="Sending booking to NovaX server..."; confirmLine.style.display="block"; confirmLine.style.color=""; }
       try{
-        const awb=bookParcel({ consignee, city:document.getElementById("bookingCity").value, cod, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address });
-        state.lastGeneratedAwb=awb; saveState();
+        if(!window.__novaxBookParcel){ throw new Error("Booking service is unavailable. Please refresh and try again."); }
+        const mapped=await window.__novaxBookParcel({ consignee, city:document.getElementById("bookingCity").value, cod, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address });
+        const awb=mapped&&mapped.awb;
         resetBookingForm();
         if(riskWarnEl){ riskWarnEl.style.display="none"; }
-        const confirmLine=document.getElementById("bookingConfirmLine");
-        if(confirmLine){ confirmLine.textContent="Booking reserved. Syncing to NovaX..."; confirmLine.style.display="block"; confirmLine.style.color=""; }
-        // NovaX fix (confidence messaging): "reserved locally" sounded final and
-        // didn't tell the client anything was still happening. Now it's clear
-        // this is step one (reserved) and syncing is in progress next.
-        toast(`${awb} reserved. Syncing to NovaX now...`,"success");
-        setTimeout(()=>{ if(confirmLine) confirmLine.textContent="Syncing with NovaX server..."; },500);
-        pollBookingConfirmation(awb, preBookingCount===0, 0);
+        if(confirmLine){ confirmLine.textContent=`Synced to NovaX. AWB ${awb} is ready to print.`; confirmLine.style.color=""; confirmLine.style.display="block"; }
+        // NovaX fix (confidence messaging): explicit "synced" + "ready to
+        // print" pairing matches the two things the client actually needs to
+        // know once the server has confirmed the booking.
+        toast(`${awb} synced to NovaX. AWB ready to print.`,"success");
+        if(preBookingCount===0 && localStorage.getItem("novaxFirstBookingCompleted")!=="1"){
+          try{ localStorage.setItem("novaxFirstBookingCompleted","1"); }catch(e){}
+          if(window.novaxShowFirstBookingSuccess) window.novaxShowFirstBookingSuccess(awb);
+          if(window.novaxAutopilotSay) window.novaxAutopilotSay("Great. Your first parcel is booked. I\u2019ll watch it from pickup to delivery and tell you if anything needs attention.",[
+            { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:awb },
+            { label:"Print AWB", kind:"local", type:"go_awb_label" }
+          ]);
+        } else if(window.innerWidth<=760 && window.novaxShowFirstBookingSuccess){
+          window.novaxShowFirstBookingSuccess(awb);
+        }
       }catch(e){
         console.error("Booking failed", e);
-        toast("Booking could not be completed. Please try again.","error");
+        const msg=(e&&e.message)?e.message:"Booking could not be completed. Please try again.";
+        toast(msg,"error");
+        if(confirmLine){ confirmLine.textContent=msg; confirmLine.style.color="#c0392b"; confirmLine.style.display="block"; }
       }finally{
-        setTimeout(()=>{ __bookingInFlight=false; if(btn){ btn.disabled=false; btn.textContent=oldBtnText||"Create Booking"; } },600);
+        __bookingInFlight=false; if(btn){ btn.disabled=false; btn.textContent=oldBtnText||"Create Booking"; }
       }
     }
     function pollBookingConfirmation(awb, isFirstParcel, tries){
