@@ -5440,6 +5440,10 @@
                 <div class="grid metrics" id="clientSummaryMetrics"></div>
                 <div class="ops-list" id="clientSummaryList" style="margin-top:14px"></div>
               </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Clients Missing Real Signup Details</h3><p>Clients whose phone, pickup address, or product is still missing/fake, or that have no matching signup_leads record.</p></div></div>
+                <div class="ops-list" id="clientSignupAuditList"></div>
+              </div>
             </section>
 
             <section class="admin-module" id="admin-users-edit">
@@ -6224,12 +6228,44 @@
     }
 
     function normalizeStateShape() {
+      // NovaX fix: phone/address/business type/owner/email fallbacks below
+      // are DISPLAY-ONLY (client.display*). They are never written onto the
+      // real client.phone/address/businessType/owner/email fields, so a
+      // later saveState() sync can never push "03113323923", "E-commerce
+      // seller", or "<city> pickup address" back into the real Supabase
+      // clients table -- which is exactly how those fake values kept
+      // reappearing after every admin action before this fix.
+      const FAKE_ADDRESSES=["karachi pickup address","lahore pickup address","islamabad pickup address","rawalpindi pickup address","faisalabad pickup address","multan pickup address","other pickup address"];
+      const isFakePhone=v=>!v||String(v).trim()==="03113323923";
+      const isFakeAddress=v=>!v||FAKE_ADDRESSES.includes(String(v).trim().toLowerCase());
+      const isFakeBusinessType=v=>!v||String(v).trim().toLowerCase()==="e-commerce seller";
+      const isFakeOwner=v=>!v||["unassigned","pending"].includes(String(v).trim().toLowerCase());
+      const leadsByAuthUser={}, leadsByEmail={};
+      (state.signupLeads||[]).forEach(l=>{ if(l.authUserId) leadsByAuthUser[l.authUserId]=l; if(l.email) leadsByEmail[String(l.email).toLowerCase()]=l; });
+      const profileByClientId={};
+      (state.clientProfiles||[]).forEach(p=>{ if(p.clientId) profileByClientId[p.clientId]=p; });
       [...state.clients, ...state.pendingClients].forEach(client => {
-        client.owner = client.owner || "Unassigned";
-        client.email = client.email || `${String(client.name || "client").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "") || "client"}@example.com`;
-        client.phone = client.phone || "03113323923";
-        client.businessType = client.businessType || "Merchant";
-        client.address = client.address || "Pickup address missing";
+        const profile=profileByClientId[client.id]||null;
+        const lead=(profile&&leadsByAuthUser[profile.id])||leadsByEmail[String(client.email||"").toLowerCase()]||(profile&&leadsByEmail[String(profile.email||"").toLowerCase()])||null;
+        client._signupLead=lead;
+        client._signupMatchFound=!!lead;
+        let usedLead=false;
+        client.displayPhone = !isFakePhone(client.phone) ? client.phone : (lead&&lead.phone ? (usedLead=true,lead.phone) : "Phone missing");
+        client.displayAddress = !isFakeAddress(client.address) ? client.address : (lead&&lead.address ? (usedLead=true,lead.address) : "Pickup address missing");
+        client.displayBusinessType = !isFakeBusinessType(client.businessType) ? client.businessType : (lead&&lead.businessType ? (usedLead=true,lead.businessType) : "Product missing");
+        client.displayCity = client.city || (lead&&lead.city ? (usedLead=true,lead.city) : "City missing");
+        client.displayEmail = client.email || (lead&&lead.email ? (usedLead=true,lead.email) : (profile&&profile.email ? (usedLead=true,profile.email) : "Email missing"));
+        client.displayOwner = !isFakeOwner(client.owner) ? client.owner : (lead&&lead.name ? (usedLead=true,lead.name) : "Unassigned");
+        client.displayWebsite = client.website || (lead&&lead.website) || "";
+        client.signupSource = lead ? (usedLead ? "Recovered from signup lead" : "Client row") : "Client row";
+        client.signupDate = lead ? lead.createdAt : (client.appliedAt||"");
+        client.signupStatus = lead ? lead.status : "";
+        client.auditReasons = [];
+        if(isFakePhone(client.phone)) client.auditReasons.push("Phone missing/fake");
+        if(isFakeAddress(client.address)) client.auditReasons.push("Address missing/fake");
+        if(isFakeBusinessType(client.businessType)) client.auditReasons.push("Product missing/generic");
+        if(!lead) client.auditReasons.push("No signup_leads match found");
+        client.needsSignupAudit = client.auditReasons.length>0;
         client.taxId = client.taxId || "Not added";
         client.iban = client.iban || "Not added";
         client.rateCard = client.rateCard || defaultRateCard(client.rate);
@@ -7908,8 +7944,22 @@
           <div class="log-item">
             <strong>${shortClientCode(client)}<br>${client.name}</strong>
             <div>
-              <strong>${client.businessType || "Merchant"} | ${client.city}</strong>
-              <div class="footer-note">${client.owner || client.name} | ${client.email || "email pending"} | ${client.phone || "phone pending"} | ${client.address || "address pending"}</div>
+              <strong>${client.displayBusinessType} | ${client.displayCity}</strong>
+              <div class="footer-note">${client.displayOwner} | ${client.displayEmail} | ${client.displayPhone} | ${client.displayAddress}</div>
+              <button class="ghost-btn" onclick="toggleSignupDetails('${client.id}')" style="margin-top:4px">Signup Details</button>
+              <div class="footer-note" id="signupDetails-${client.id}" style="display:none;margin-top:6px;padding:8px;background:#f7f8fa;border-radius:8px">
+                Store name: ${client.name}<br>
+                Owner/contact: ${client.displayOwner}<br>
+                Email: ${client.displayEmail}<br>
+                Phone: ${client.displayPhone}<br>
+                City: ${client.displayCity}<br>
+                Pickup address: ${client.displayAddress}<br>
+                Product/business type: ${client.displayBusinessType}<br>
+                Website: ${client.displayWebsite || "Not provided"}<br>
+                Signup date: ${client.signupDate || "Unknown"}<br>
+                Signup status: ${client.signupStatus || "N/A"}<br>
+                Source: ${client.signupSource}
+              </div>
             </div>
             <span class="chip ${client.status === "Active" ? "good" : "warn"}">${client.status}</span>
             <span class="chip info">${parcels.length} parcels | ${delivered.length} delivered</span>
@@ -7926,6 +7976,18 @@
         `;
       }).join("");
 
+      const clientsNeedingAudit = allClients.filter(client => client.needsSignupAudit);
+      const signupAuditEl = document.getElementById("clientSignupAuditList");
+      if (signupAuditEl) {
+        signupAuditEl.innerHTML = clientsNeedingAudit.length ? clientsNeedingAudit.map(client => `
+          <div class="log-item">
+            <strong>${shortClientCode(client)}<br>${client.name}</strong>
+            <div class="footer-note">${(client.auditReasons || []).join(", ")}</div>
+            <button class="ghost-btn" onclick="editClientDetails('${client.id}')">Edit Details</button>
+          </div>
+        `).join("") : `<div class="log-item"><strong>All clear</strong><div class="footer-note">Every client has real phone, address, and product details on file.</div></div>`;
+      }
+
       document.getElementById("adminClientRows").innerHTML = state.clients.filter(client => client.id !== "CL-0000").map(client => {
         const parcels = state.parcels.filter(p => p.clientId === client.id);
         const cod = parcels.reduce((s, p) => s + p.cod, 0);
@@ -7939,8 +8001,8 @@
         return `
           <tr>
             <td><strong>${shortClientCode(client)}</strong><br><span class="footer-note">${client.status}</span></td>
-            <td>${client.name}<br><span class="footer-note">${client.city} | ${client.email}</span></td>
-            <td>${client.owner}<br><span class="footer-note">${client.phone}</span></td>
+            <td>${client.name}<br><span class="footer-note">${client.displayCity} | ${client.displayEmail}</span></td>
+            <td>${client.displayOwner}<br><span class="footer-note">${client.displayPhone}</span></td>
             <td>
               <button class="action-btn" onclick="toggleRateForm('${client.id}')">${rateOpen ? "Close Rates" : "Add Rates"}</button>
               <div class="footer-note">Zone A (Karachi) ${money(rc.A.overnight)} | Zone B (Lahore/Islamabad/Rawalpindi) ${money(rc.B.overnight)}</div>
@@ -10624,16 +10686,27 @@
       }
     }
 
+    function toggleSignupDetails(clientId) {
+      const el = document.getElementById(`signupDetails-${clientId}`);
+      if (!el) return;
+      el.style.display = el.style.display === "none" ? "block" : "none";
+    }
+
     function editClientDetails(clientId) {
       const client = state.clients.find(c => c.id === clientId);
       if (!client) { toast("Client not found."); return; }
+      // NovaX fix: prefill with the recovered/display values (real data if
+      // present, otherwise whatever was recovered from this client's
+      // original signup_leads row) instead of the raw field, which may
+      // still be blank or a leftover fake placeholder.
+      const cleanFor = (display, placeholder) => (display && display !== placeholder) ? display : "";
       const newName = (window.prompt(`Business / account name for ${client.name}:`, client.name || "") || "").trim();
       if (!newName) { toast("Account name is required."); return; }
-      const newOwner = (window.prompt(`Owner / contact person name:`, client.owner || "") || "").trim();
-      const newPhone = (window.prompt(`Phone number:`, client.phone || "") || "").trim();
-      const newAddress = (window.prompt(`Address:`, client.address || "") || "").trim();
-      const newCity = (window.prompt(`City (Karachi, Lahore, Islamabad, Rawalpindi):`, client.city || "") || "").trim();
-      const newBusinessType = (window.prompt(`Business type (e.g. Fashion, Electronics):`, client.businessType || "") || "").trim();
+      const newOwner = (window.prompt(`Owner / contact person name:`, cleanFor(client.displayOwner, "Unassigned")) || "").trim();
+      const newPhone = (window.prompt(`Phone number:`, cleanFor(client.displayPhone, "Phone missing")) || "").trim();
+      const newAddress = (window.prompt(`Address:`, cleanFor(client.displayAddress, "Pickup address missing")) || "").trim();
+      const newCity = (window.prompt(`City (Karachi, Lahore, Islamabad, Rawalpindi):`, cleanFor(client.displayCity, "City missing")) || "").trim();
+      const newBusinessType = (window.prompt(`Business type (e.g. Fashion, Electronics):`, cleanFor(client.displayBusinessType, "Product missing")) || "").trim();
       const oldName = client.name;
       client.name = newName;
       if (newOwner) client.owner = newOwner;
@@ -12096,6 +12169,7 @@
     window.toggleTicketHub = toggleTicketHub;
     window.editClientLogin = editClientLogin;
     window.editClientDetails = editClientDetails;
+    window.toggleSignupDetails = toggleSignupDetails;
     window.assignRiderToClient = assignRiderToClient;
     window.deleteUser = deleteUser;
     window.deleteClient = deleteClient;
@@ -12151,7 +12225,7 @@
       }
       function rLedger(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, entryType:r.entry_type||"", amount:Number(r.amount||0), affectsBalance:!!r.affects_balance, status:r.status||"", referenceType:r.reference_type||"", referenceId:r.reference_id||"", referenceCode:r.reference_code||"", note:r.note||"", createdAt:dtpart(r.created_at) }; }
       function rSalesLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", parcels:r.parcels_per_month||"", status:r.status||"New", createdAt:dtpart(r.created_at), businessType:r.business_type||"", city:r.city||"", website:r.website||"", notes:r.notes||"", nextFollowup:r.next_followup||"", assignedTo:r.assigned_to||"", convertedClientId:r.converted_client_id||"", demoAt:r.demo_at||"", updatedAt:dtpart(r.updated_at) }; }
-      function rSignupLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", email:r.email||"", city:r.city||"", address:r.address||"", businessType:r.business_type||"", website:r.website||"", status:r.status||"pending_workspace", errorMessage:r.error_message||"", createdAt:dtpart(r.created_at) }; }
+      function rSignupLead(r){ return { _uuid:r.id, id:r.id, name:r.name||"", phone:r.phone||"", email:r.email||"", city:r.city||"", address:r.address||"", businessType:r.business_type||"", website:r.website||"", authUserId:r.auth_user_id||"", status:r.status||"pending_workspace", errorMessage:r.error_message||"", createdAt:dtpart(r.created_at) }; }
       function rPl(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, type:r.type||"", amount:Number(r.amount||0), status:r.status||"", ref:r.reference||"" }; }
       function cuid(id){ var c=(state.clients||[]).find(function(x){return x.id===id;}); return (c&&c._uuid)||(isUuid(id)?id:null); }
       function ruid(id){ var r=(state.riders||[]).find(function(x){return x.id===id;}); return (r&&r._uuid)||(isUuid(id)?id:null); }
@@ -12255,7 +12329,8 @@
           sb.from("staff_tickets").select("*").order("created_at",{ascending:false}).limit(2000),
           sb.from("staff_activity").select("*").order("created_at",{ascending:false}).limit(100),
           sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}).limit(5000),
-          sb.from("pickup_requests").select("*").order("created_at",{ascending:false}).limit(3000)
+          sb.from("pickup_requests").select("*").order("created_at",{ascending:false}).limit(3000),
+          sb.from("profiles").select("id,email,client_id").not("client_id","is",null).limit(5000)
         ]).then(function(res){
           function D(i){ return (res[i]&&res[i].data)||[]; }
           state.clients=D(0).map(rClient);
@@ -12279,6 +12354,7 @@
           state.staffActivity=D(16).map(rStaffActivity);
           state.walletLedger=D(17).map(rLedger);
           state.pickupRequests=D(18).map(rPickup);
+          state.clientProfiles=D(19).map(function(r){ return { id:r.id, email:r.email||"", clientId:r.client_id||null }; });
           // NovaX fix (Best Fix Rule): the embedded Client Portal preview must
           // never silently default to the first client in the list -- leave
           // it unset ("No client selected") until admin explicitly picks one
@@ -12601,7 +12677,7 @@
       const mine=staffTicketsFor(u.id), openT=mine.filter(t=>t.status==="open"), doneT=mine.filter(t=>t.status==="resolved");
       const isSales=u.staffRole==="Sales";
       const tRow=t=>{const pc={okay:"info",medium:"warn",emergency:"bad"}[t.priority]||"info";
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${t.id} <span class="chip ${pc}">${t.priority}</span></strong>${t.status==="open"?`<button class="action-btn" onclick="staffSetTicket('${t.id}','resolved')">Resolve</button>`:`<button class="ghost-btn" onclick="staffSetTicket('${t.id}','open')">Reopen</button>`}</div><p>${t.title} <span class="footer-note">�� by ${t.by} ${t.created}</span></p></div>`;};
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${t.id} <span class="chip ${pc}">${t.priority}</span></strong>${t.status==="open"?`<button class="action-btn" onclick="staffSetTicket('${t.id}','resolved')">Resolve</button>`:`<button class="ghost-btn" onclick="staffSetTicket('${t.id}','open')">Reopen</button>`}</div><p>${t.title} <span class="footer-note">��� by ${t.by} ${t.created}</span></p></div>`;};
       return `
       <div class="panel"><div class="section-head"><div><h3>${forManager?u.name+" — workspace":"My performance"}</h3><p>${staffRoleBlurb(u.staffRole)}</p></div>${forManager?`<button class="ghost-btn" onclick="staffClose()">Close</button>`:""}</div>
         <div class="grid metrics"><div class="metric"><span>Open tickets</span><strong>${openT.length}</strong></div><div class="metric"><span>Resolved</span><strong>${doneT.length}</strong></div><div class="metric"><span>Score</span><strong>${staffScore(u)}</strong></div><div class="metric"><span>Status</span><strong style="font-size:16px">${u.status||"Active"}</strong></div></div></div>
