@@ -9025,6 +9025,14 @@
               console.error("NovaX admin_processing_access_debug:", dbg && dbg.data, dbg && dbg.error);
             } catch (dbgErr) { console.error("NovaX admin_processing_access_debug call failed", dbgErr); }
           }
+          // NovaX fix: a failed backend lookup must never leave a stale batch
+          // (e.g. a previous "5 loaded" from localStorage) showing in the UI --
+          // clear the batch so the operator cannot act on unverified parcels.
+          state.activeProcessingAwb = "";
+          state.processingBatchAwbs = [];
+          state.pendingProcessingStatus = "";
+          saveState();
+          renderAdmin();
           toast(`Could not load parcels: ${r.error.message}`, "error");
           return;
         }
@@ -9052,6 +9060,13 @@
         toast(`${found.length} parcel(s) loaded for processing.`, "success");
       } catch (e) {
         console.error("NovaX processing lookup failed", e);
+        // NovaX fix: clear any stale batch on a thrown/network error too, same
+        // as the r.error branch above -- never leave a stale "N loaded" state.
+        state.activeProcessingAwb = "";
+        state.processingBatchAwbs = [];
+        state.pendingProcessingStatus = "";
+        saveState();
+        renderAdmin();
         toast(`Could not load parcels: ${e && e.message ? e.message : "unknown error"}`, "error");
       } finally {
         if (loadBtn) { loadBtn.disabled = false; loadBtn.textContent = loadOldText || "Load Batch"; }
