@@ -8989,6 +8989,43 @@
       if (state.activeAdminTab === "system-errors") { try { loadErrorMonitor(); } catch(e){} }
     }
 
+    // NovaX fix (Order Processing RPC scope bug): rParcel() is defined much
+    // later in the file inside a separate data-sync closure and is not in
+    // scope here, which made Load Batch fail with "rParcel is not defined"
+    // even after the admin_processing_lookup RPC itself started working.
+    // mapProcessingParcelRow() is a local, self-contained copy of the exact
+    // same row -> parcel-shape mapping, kept in scope next to the Order
+    // Processing functions that need it, so this desk never depends on
+    // rParcel being globally reachable.
+    function mapProcessingParcelRow(r) {
+      if (!r) return null;
+      const m = r.meta || {};
+      return {
+        _uuid: r.id, awb: r.awb, clientId: r.client_id, date: dpart(r.booked_at),
+        consignee: r.consignee || "", city: r.city || "", address: r.address || "", phone: r.phone || "",
+        cod: Number(r.cod_amount || 0), fee: Number(r.fee || 0), status: r.status || "New booked",
+        statusAgeHours: Number(m.statusAgeHours || 0), stage: Number(m.stage || 0), totalStages: Number(m.totalStages || 9),
+        rider: r.rider_id || "", branch: m.branch || "", risk: Number(m.risk || 0), updated: tpart(r.updated_at),
+        exception: r.exception || "", cashReceived: !!m.cashReceived, returnProof: m.returnProof || "",
+        resolutionRemark: m.resolutionRemark || "", riderInput: m.riderInput || null,
+        service: m.service || "COD Standard", weight: m.weight || "", pickupCity: m.pickupCity || "",
+        category: m.category || "", paymentMode: m.paymentMode || "", orderId: m.orderId || "",
+        referenceNo: m.referenceNo || m.reference || m.ref || m.customerRef || "",
+        steps: Array.isArray(m.steps) ? m.steps : [], proofPhoto: m.proofPhoto || "", signature: m.signature || "",
+        signedAt: m.signedAt || "", callRecord: m.callRecord || "", awbPrinted: !!m.awbPrinted,
+        awbPrintedAt: m.awbPrintedAt || "", _exceptionResolved: !!m.exceptionResolved,
+        _exceptionResolutionNote: m.exceptionResolutionNote || "", _exceptionResolvedAt: m.exceptionResolvedAt || "",
+        processHistory: Array.isArray(m.processHistory) ? m.processHistory : [],
+        lastProcessedBy: m.lastProcessedBy || "", lastProcessedAt: m.lastProcessedAt || "",
+        statusSince: m.statusSince || "", origin: m.origin || "", assignedRiderAt: m.assignedRiderAt || "",
+        journeyStartedAt: m.journeyStartedAt || "",
+        source: m.source || "", shopifyOrderId: m.shopifyOrderId || "", shopifyOrderNumber: m.shopifyOrderNumber || "",
+        shopifyOrderName: m.shopifyOrderName || "", shopifyStoreUrl: m.shopifyStoreUrl || "", trackingUrl: m.trackingUrl || "",
+        importedAt: m.importedAt || "", externalOrderId: m.externalOrderId || "", orderReference: m.orderReference || "",
+        _meta: m
+      };
+    }
+
     async function lookupProcessingParcel() {
       const input = document.getElementById("processingAwbInput");
       const awbs = parseAwbList(input?.value || "");
@@ -9038,7 +9075,7 @@
         }
         const rows = Array.isArray(r && r.data) ? r.data : [];
         rows.forEach(row => {
-          const parcel = rParcel(row);
+          const parcel = mapProcessingParcelRow(row);
           if (!parcel || !parcel.awb) return;
           const idx = state.parcels.findIndex(p => (p._uuid && p._uuid === parcel._uuid) || p.awb === parcel.awb);
           if (idx >= 0) state.parcels[idx] = parcel; else state.parcels.push(parcel);
@@ -9148,7 +9185,7 @@
           return;
         }
         rows.forEach(row => {
-          const parcel = rParcel(row);
+          const parcel = mapProcessingParcelRow(row);
           if (!parcel || !parcel.awb) return;
           const idx = state.parcels.findIndex(p => (p._uuid && p._uuid === parcel._uuid) || p.awb === parcel.awb);
           if (idx >= 0) state.parcels[idx] = parcel; else state.parcels.push(parcel);
