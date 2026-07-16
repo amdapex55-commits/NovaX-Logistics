@@ -110,7 +110,62 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 </head>
+<!-- AUTH_GATE_VERSION: 2026-07-16-role-hard-stop-v2 -->
 <body>
+  <div id="nvAuthGate" style="position:fixed;inset:0;z-index:999999;background:#f4f8f6;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#10201b;">
+    <div style="width:34px;height:34px;border-radius:50%;border:3px solid #cfe4da;border-top-color:#0c7c59;animation:nvGateSpin .8s linear infinite;"></div>
+    <div style="font-size:15px;font-weight:700;">Checking account&hellip;</div>
+  </div>
+  <style>@keyframes nvGateSpin{to{transform:rotate(360deg)}}</style>
+  <script>
+  (function(){
+    // NovaX fix (auth separation): the single, earliest, authoritative access
+    // gate for the Rider App. It runs before any other script on this page
+    // and keeps the full-page "Checking account..." screen above (#nvAuthGate)
+    // covering the app until a real Supabase session AND a profiles.role ===
+    // "rider" lookup both succeed. It never trusts localStorage novaxSession
+    // for access -- that value is UI cache only and is cleared whenever a
+    // role/page mismatch is found.
+    var AUTH_GATE_VERSION="2026-07-16-role-hard-stop-v2"; window.NOVAX_AUTH_GATE_VERSION=AUTH_GATE_VERSION;
+    var __SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
+    var __SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+    var __ADMIN_ROLES=["admin","owner","superadmin","ops","ops manager","branch manager","warehouse","warehouse staff","processing","processing staff","staff","rider supervisor"];
+    var __resolveGate; window.__novaxAuthGateReady=new Promise(function(res){ __resolveGate=res; });
+    function clearLocalSession(){ try{ localStorage.removeItem("novaxSession"); }catch(e){} }
+    function redirectAway(url){ clearLocalSession(); window.location.replace(url); }
+    var __gsb=null;
+    try{ __gsb=window.__nvSb||null; if(!__gsb&&window.supabase&&window.supabase.createClient){ __gsb=window.supabase.createClient(__SB_URL,__SB_KEY); } }catch(__e){}
+    window.__nvGuardSb=__gsb;
+    function denyWithError(){
+      try{ if(__gsb&&__gsb.auth) __gsb.auth.signOut(); }catch(e){}
+      redirectAway("index.html?authError=1");
+    }
+    if(!__gsb||!__gsb.auth){ denyWithError(); return; }
+    __gsb.auth.getSession().then(function(r){
+      var session=r&&r.data&&r.data.session;
+      if(!session){ redirectAway("index.html"); return; }
+      __gsb.from("profiles").select("role,status,client_id").eq("id",session.user.id).single().then(function(p){
+        if(p&&p.error){
+          console.warn("NovaX auth gate: profile lookup failed",p.error.message);
+          denyWithError();
+          return;
+        }
+        var role=p&&p.data?String(p.data.role||"").toLowerCase():"";
+        var status=p&&p.data?String(p.data.status||"").toLowerCase():"";
+        if(!role){ denyWithError(); return; }
+        if(status==="blocked"||status==="disabled"){ denyWithError(); return; }
+        if(role==="client"){ redirectAway("client.html"); return; }
+        if(__ADMIN_ROLES.indexOf(role)>-1){ redirectAway("admin.html"); return; }
+        if(role!=="rider"){ redirectAway("index.html"); return; }
+        // Verified: real Supabase session + profiles.role === "rider". Only
+        // now is it safe to reveal the Rider App.
+        window.__novaxVerifiedProfile={ role:role, status:status };
+        var gateEl=document.getElementById("nvAuthGate"); if(gateEl) gateEl.style.display="none";
+        __resolveGate(role);
+      }).catch(function(e){ console.warn("NovaX auth gate: profile lookup error",e); denyWithError(); });
+    }).catch(function(e){ console.warn("NovaX auth gate: session lookup error",e); denyWithError(); });
+  })();
+  </script>
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand">
@@ -700,29 +755,22 @@
   </script>
 <script>
 (function(){
-  var __SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
-  var __SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
-  var __REQUIRED_ROLE="rider";
-  var __sb=window.__nvSb||null; try{ if(!__sb&&window.supabase&&window.supabase.createClient){ __sb=window.supabase.createClient(__SB_URL,__SB_KEY); } }catch(__e){} window.__nvGuardSb=__sb;
+  var __sb=window.__nvSb||window.__nvGuardSb||null;
+  window.__nvGuardSb=__sb;
   function ses(){ try{ return JSON.parse(localStorage.getItem("novaxSession")||"null"); }catch(e){ return null; } }
   function logout(e){ if(e&&e.preventDefault) e.preventDefault(); try{ localStorage.removeItem("novaxSession"); }catch(_){ } try{ if(__sb&&__sb.auth) __sb.auth.signOut(); }catch(_2){ } window.location.href="index.html"; }
   window.nvLogout=logout;
-  function __guard(){
-    if(!__sb||!__sb.auth) return;
-    __sb.auth.getSession().then(function(r){
-      var session=r&&r.data&&r.data.session;
-      if(!session){ window.location.replace("index.html"); return; }
-      __sb.from("profiles").select("role,status").eq("id",session.user.id).single().then(function(p){
-        if(p&&p.error) return;
-        var role=p&&p.data?String(p.data.role||"").toLowerCase():"";
-        var status=p&&p.data?String(p.data.status||"").toLowerCase():"";
-        if(!role||role!==__REQUIRED_ROLE||status==="blocked"||status==="disabled"){ try{ __sb.auth.signOut(); }catch(_3){ } window.location.replace("index.html"); }
-      });
-    });
-  }
-  __guard();
+  // NovaX fix (auth separation): the actual role decision for this page now
+  // happens once, as early as possible, in the full-page auth gate injected
+  // right after <body> (window.__novaxAuthGateReady / window.__novaxVerifiedProfile).
+  // That gate already redirects client/admin/unknown roles away and keeps
+  // the app hidden behind "Checking account..." until a real Supabase
+  // session + profiles.role === "rider" are both confirmed, so this block no
+  // longer re-queries Supabase or repeats that decision -- it only reacts to
+  // the verified result, and it never trusts localStorage novaxSession (UI
+  // cache only) to decide whether to show the Rider App.
   function apply(){
-    if(!ses()) return;
+    if(!window.__novaxVerifiedProfile||window.__novaxVerifiedProfile.role!=="rider") return;
     var kill=document.querySelectorAll(".auth-btn, a[href*='#signin'], a[href*='#signup']");
     Array.prototype.forEach.call(kill,function(el){ el.style.display="none"; });
     var actions=document.querySelector(".auth-actions");
@@ -744,7 +792,9 @@
       }
     }
   }
-  if(document.readyState!=="loading") apply(); else document.addEventListener("DOMContentLoaded",apply);
+  (window.__novaxAuthGateReady||Promise.resolve()).then(function(){
+    if(document.readyState!=="loading") apply(); else document.addEventListener("DOMContentLoaded",apply);
+  });
 })();
 </script>
   <script>
