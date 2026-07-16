@@ -8886,14 +8886,19 @@
           const recon = reconciliations.find(row => row.clientId === item.clientId) || computeWalletReconciliation(item.clientId);
           const statusLabel = recon.mismatch ? "Locked" : (lock.locked ? "Needs review" : "Clean");
           const statusChipClass = recon.mismatch ? "bad" : (lock.locked ? "warn" : "good");
+          // NovaX fix (withdrawal UX v2): show account holder + bank name
+          // alongside IBAN/amount/fee/net/speed/time/status, per the Finance >
+          // Wallets spec -- falls back to "Not saved" for older requests made
+          // before bank-details snapshotting existed.
           return `<div class="ops-card ${lock.locked ? "alert-row" : ""}">
             <div class="ops-card-head"><strong>${item.id} | ${client.name}</strong><span class="chip ${statusChipClass}">${statusLabel}</span></div>
             <p>Pay ${money(item.net)} to IBAN ${item.iban}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed)}).</p>
+            <div class="footer-note">Account holder: <b>${item.holderName || "Not saved"}</b>${item.bankName ? (" &middot; " + item.bankName) : ""}</div>
             <div class="footer-note">Created ${item.createdAt}. Wallet reconciliation: ${recon.mismatch ? `mismatch of ${money(recon.difference)}` : "clean"}.</div>
             ${lock.reasons.length ? `<div class="footer-note" style="color:#b42318">Risk reasons: ${lock.reasons.join("; ")}</div>` : ""}
-            <div class="footer-note" style="margin-top:6px">Mark Withdrawal Paid closes payout after bank transfer -- it never reduces the wallet balance again (that already happened when this was requested).</div>
+            <div class="footer-note" style="margin-top:6px">Mark Paid closes payout after bank transfer -- it never reduces the wallet balance again (that already happened when this was requested).</div>
             <div class="inline-actions" style="margin-top:10px">
-              <button class="action-btn" ${lock.locked ? "disabled title=\"Resolve the risk reasons above before paying out\"" : ""} onclick="markWalletWithdrawalPaid('${item.id}')">Mark Payout Paid</button>
+              <button class="action-btn" ${lock.locked ? "disabled title=\"Resolve the risk reasons above before paying out\"" : ""} onclick="markWalletWithdrawalPaid('${item.id}')">Mark Paid</button>
               <button class="ghost-btn" type="button" onclick="rejectWalletWithdrawal('${item.id}')">Reject / Cancel</button>
             </div>
           </div>`;
@@ -12417,7 +12422,10 @@
       }
       function rTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:r.client_id, parcelId:r.parcel_id||"", sourceKey:m.sourceKey||"", tier:m.tier||"medium", title:r.subject||"", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", message:r.body||"", createdAt:dtpart(r.created_at), ageHours:Number(m.ageHours||0), status:r.status||"Open", escalated:!!m.escalated, replies:Array.isArray(m.replies)?m.replies:[], source:m.source||"", intent:m.intent||"", priority:m.priority||"", suggestedTeam:m.suggestedTeam||m.department||"", handoffReason:m.handoffReason||"", resolutionReply:m.resolutionReply||"", proof:m.proof||"", resolvedBy:m.resolvedBy||"", resolvedAt:m.resolvedAt||"", solvedHours:Number(m.solvedHours||0) }; }
       function rExpense(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:m.name||r.note||r.category||"Expense", amount:Number(r.amount||0), type:r.category||"", owner:r.branch||"", status:m.status||"Pending", note:r.note||"" }; }
-      function rWd(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at), paidAt:r.paid_at?dtpart(r.paid_at):"", balanceBefore:Number(r.balance_before||0), paidTxnId:r.paid_txn_id||"", paidBy:r.paid_by||"", paidProof:r.paid_proof||"" }; }
+      // NovaX fix (withdrawal UX v2): surface the holder_name/bank_name
+      // snapshot columns (added alongside save_client_bank_details) so the
+      // admin payout queue can show account holder + bank name per request.
+      function rWd(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at), paidAt:r.paid_at?dtpart(r.paid_at):"", balanceBefore:Number(r.balance_before||0), paidTxnId:r.paid_txn_id||"", paidBy:r.paid_by||"", paidProof:r.paid_proof||"", holderName:r.holder_name||"", bankName:r.bank_name||"" }; }
       function rPickup(r) {
         var awbs = r.awbs;
         if (typeof awbs === "string") { try { awbs = JSON.parse(awbs); } catch (e) { awbs = []; } }
