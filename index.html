@@ -14,6 +14,8 @@
 <meta name="robots" content="index, follow">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <script>(function(){ try{ if("serviceWorker" in navigator){ navigator.serviceWorker.getRegistrations().then(function(regs){ regs.forEach(function(r){ r.unregister(); }); }); } }catch(e){} })();</script>
+<!-- AUTH_GATE_VERSION: 2026-07-16-role-hard-stop-v2 -->
+<script>window.NOVAX_AUTH_GATE_VERSION="2026-07-16-role-hard-stop-v2";</script>
 <link rel="alternate icon" href="/favicon.ico">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta property="og:type" content="website">
@@ -1131,6 +1133,20 @@ footer{color:#86a99b;}
         if(p.error||!p.data){ alert("No profile is linked to this account yet. Please contact your NovaX admin."); return; }
         if(String(p.data.status||"active").toLowerCase()==="blocked"){ try{ __nvSb.auth.signOut(); }catch(e){} alert("This account is blocked."); return; }
         var role=String(p.data.role||"client").toLowerCase();
+        // NovaX fix (role hard-stop v2): routing is decided purely from this
+        // Supabase profiles.role/client_id lookup -- localStorage is never
+        // consulted here, only written afterward as UI cache. A "client"
+        // profile with no client_id only gets routed to client.html when its
+        // own signup metadata proves it came from merchant signup (that page
+        // then runs its own one-time workspace recovery); any other
+        // client-role account with a missing client_id is stopped right
+        // here with a clear workspace-linking error instead of being sent
+        // into a broken/fake client workspace.
+        if(role==="client"&&!p.data.client_id){
+          var __meta=(res.data.user&&res.data.user.user_metadata)||{};
+          var __canRecover=String(__meta.role||"").toLowerCase()==="client";
+          if(!__canRecover){ alert("Workspace not linked. Please contact NovaX support."); return; }
+        }
         var target=role==="admin"?"admin.html":(role==="rider"?"rider.html":"client.html");
         try{ localStorage.setItem("novaxSession",JSON.stringify({role:target.replace(".html",""),email:email.toLowerCase(),uid:uid,client_id:p.data.client_id||null,rider_id:p.data.rider_id||null,at:Date.now()})); }catch(e){}
         closeSignin();
