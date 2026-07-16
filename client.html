@@ -1924,17 +1924,32 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const reviewNote=document.getElementById("walletReviewNote");
       if(reviewNote) reviewNote.style.display=walletUnderReview?"block":"none";
       const monthKey=new Date().toISOString().slice(0,7);
-      const pendingPayout=myWds.filter(w=>w.status==="Pending admin payout").reduce((s,w)=>s+Number(w.net||0),0);
-      const paidThisMonth=myWds.filter(w=>w.status==="Paid"&&String(w.paidAt||w.createdAt).slice(0,7)===monthKey).reduce((s,w)=>s+Number(w.net||0),0);
-      const lifetimeWithdrawn=myWds.filter(w=>w.status==="Paid").reduce((s,w)=>s+Number(w.net||0),0);
+      const sv=state.serverWalletSummary;
+      const pendingPayout=sv?Number(sv.pending_payout||0):myWds.filter(w=>w.status==="Pending admin payout").reduce((s,w)=>s+Number(w.net||0),0);
+      const paidThisMonth=sv?Number(sv.paid_this_month||0):myWds.filter(w=>w.status==="Paid"&&String(w.paidAt||w.createdAt).slice(0,7)===monthKey).reduce((s,w)=>s+Number(w.net||0),0);
+      const lifetimeWithdrawn=sv?Number(sv.lifetime_withdrawn||0):myWds.filter(w=>w.status==="Paid").reduce((s,w)=>s+Number(w.net||0),0);
+      const serverBalance=sv?Number(sv.available_balance||0):balance;
       const summaryCards=document.getElementById("walletSummaryCards");
       if(summaryCards){
         summaryCards.innerHTML=[
-          moneyBox("Available",money(balance),"ready to withdraw"),
+          moneyBox("Available",money(serverBalance),"ready to withdraw"),
           moneyBox("Pending payout",money(pendingPayout),"being verified by finance"),
           moneyBox("Paid this month",money(paidThisMonth),"settled to your bank"),
           moneyBox("Lifetime withdrawn",money(lifetimeWithdrawn),"all-time total")
         ].join("");
+      }
+      // NovaX rebuild (wallet+invoice v1): client_wallet_summary() is the
+      // server-side source of truth for these four numbers (never browser-
+      // cached money movement). Fetch it in the background and re-render
+      // once it resolves; throttled so it only runs once every few seconds
+      // even though renderClientWallet can be called often.
+      if(window.__nvSb && (!state.__walletSummaryFetchedAt || (Date.now()-state.__walletSummaryFetchedAt)>4000)){
+        state.__walletSummaryFetchedAt=Date.now();
+        window.__nvSb.rpc("client_wallet_summary",{}).then(function(r){
+          if(r&&r.error){ console.warn("NovaX wallet summary fetch failed:",r.error.message); return; }
+          const row=Array.isArray(r.data)?r.data[0]:r.data;
+          if(row){ state.serverWalletSummary=row; renderClientWallet(); }
+        }).catch(function(e){ console.warn("NovaX wallet summary fetch error:",e&&e.message); });
       }
       const entryLabels={ invoice_credit:"Invoice credited", withdrawal_requested:"Withdrawal requested", payout_fee:"Payout fee deducted", payout_paid:"Payout paid", admin_adjustment:"Admin adjustment" };
       const ledgerList=document.getElementById("walletLedgerList");
@@ -1942,11 +1957,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         ledgerList.innerHTML=myLedger.slice(0,50).map(l=>`<div class="ops-card"><div class="ops-card-head"><strong>${entryLabels[l.entryType]||l.entryType}</strong><span class="chip ${l.amount>=0?"good":"warn"}">${money(l.amount)}</span></div><p>${l.note||l.referenceCode||""}</p><div class="footer-note">${l.createdAt}</div></div>`).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
       }
       const amtInput=document.getElementById("withdrawAmount");
-      if(amtInput && (!amtInput.value || Number(amtInput.value)>balance)) amtInput.value=balance||"";
+      if(amtInput && (!amtInput.value || Number(amtInput.value)>serverBalance)) amtInput.value=serverBalance||"";
       const speed=state.walletWithdrawSpeed||"";
       document.querySelectorAll(".tier-card").forEach(t=>t.classList.toggle("active",t.dataset.speed===speed));
       const summary=document.getElementById("withdrawSummary");
-      const useAmt=Math.min(Number(amtInput?.value||balance),balance);
+      // NovaX rebuild (wallet+invoice v1): Confirm Withdrawal must be disabled
+      // (not just silently clamped) when amount <= 0, amount > available
+      // balance, or IBAN is missing -- so we check the raw typed amount
+      // against the real server balance instead of only using a pre-clamped
+      // value.
+      const rawAmt=Number(amtInput?.value||0);
+      const amountTooHigh=rawAmt>serverBalance;
+      const amountInvalid=!(rawAmt>0)||amountTooHigh;
+      const useAmt=Math.min(rawAmt||0,serverBalance);
       // NovaX fix (wallet IBAN UX): withdrawal no longer collects its own IBAN
       // input -- it only ever uses whatever is saved in the Bank Account /
       // IBAN section above, and Confirm Withdrawal is disabled until that
@@ -1958,9 +1981,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         summary.innerHTML=`<div class="ops-card"><strong>No withdrawable balance yet</strong><p>You have Rs 0 available. Ask admin to push an invoice to your wallet, then come back to request a payout. You can still add or update your bank details above anytime.</p></div><button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" disabled>Waiting for wallet balance</button>`;
       } else if(speed && useAmt>0){
         const fee=Math.round(useAmt*walletFeeRate(speed)); const net=useAmt-fee;
-        const canConfirm=!bdIbanErr;
+        // NovaX rebuild (wallet+invoice v1): Confirm Withdrawal is disabled
+        // whenever amount <= 0, amount > available balance, or IBAN is
+        // missing/invalid -- all three checked explicitly here.
+        const canConfirm=!bdIbanErr && !amountInvalid && useAmt>0;
+        const blockReason=amountTooHigh?"Amount cannot be more than your available balance.":(!(rawAmt>0)?"Enter an amount greater than 0.":(bdIbanErr?"Add valid bank details in the section above before confirming.":""));
         summary.style.display="block";
-        summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div><div class="footer-note" style="margin-top:12px">${bd?("Payout goes to <b>"+esc(maskIban(bd.iban))+"</b> for "+esc(bd.holderName||"")+". "):""}${canConfirm?"":"Add valid bank details in the section above before confirming."}</div><button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="confirmWalletWithdraw()" ${canConfirm?"":"disabled"}>Confirm Withdrawal</button>`;
+        summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div><div class="footer-note" style="margin-top:12px">${bd?("Payout goes to <b>"+esc(maskIban(bd.iban))+"</b> for "+esc(bd.holderName||"")+". "):""}${canConfirm?"":blockReason}</div><button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="confirmWalletWithdraw()" ${canConfirm?"":"disabled"} title="${canConfirm?"":blockReason}">Confirm Withdrawal</button>`;
       } else { summary.style.display="none"; }
       document.getElementById("withdrawHistory").innerHTML=myWds.map(w=>{
         // NovaX new (Finance Control Room v2): friendly status wording only --
@@ -2019,7 +2046,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const d=r&&r.data;
         const fee=Number(d&&d.fee!=null?d.fee:Math.round(amt*walletFeeRate(speed)));
         const net=Number(d&&d.net!=null?d.net:amt-fee);
-        c.walletBalance=Math.max(0,balance-amt);
+        // NovaX fix (rebuild integration mismatch): wallet_balance must never
+        // be mutated in the browser -- request_wallet_withdrawal already
+        // reserved this amount atomically on the server the moment it
+        // succeeded above. We only record the withdrawal/payment-log entries
+        // locally for instant UI feedback; the actual balance is always
+        // re-read from the server truth immediately below (and again via
+        // client_wallet_summary on next render), so a stale/duplicate local
+        // subtraction can never happen.
         state.walletWithdrawals.unshift({ id:nextId("WDR",state.walletWithdrawals), _uuid:d&&d.id, clientId:c.id, amount:amt, fee, net, iban, speed, status:(d&&d.status)||"Pending admin payout", createdAt:`${new Date().toISOString().slice(0,10)} ${time()}` });
         state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:c.id, type:"Wallet withdrawal requested", amount:amt, status:`${money(net)} net after ${money(fee)} fee`, ref:walletSpeedLabel(speed) });
         state.walletWithdrawSpeed=""; saveState();
@@ -2029,12 +2063,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // to expect next, matching the same pattern used elsewhere (booking,
         // tickets, store connect).
         toast(`Payout requested. Admin will process it via ${walletSpeedLabel(speed)} payout.`,"success");
+        // NovaX fix (rebuild integration mismatch): force the throttled
+        // client_wallet_summary fetch to run again immediately (instead of
+        // waiting out its normal throttle window) so the wallet card shows
+        // the real server-reserved balance right away.
+        state.__walletSummaryFetchedAt=0;
         openWalletDone(); render();
-        // NovaX fix: the local balance mirror above already drops the
-        // number on screen instantly, but pull the authoritative row back
-        // from Supabase right after so the UI reconciles to the exact
-        // server-side reserved balance (handles rounding, concurrent
-        // requests, etc.) instead of trusting the local guess forever.
+        // Pull the authoritative client row + wallet summary back from
+        // Supabase right after so the UI reflects exactly what the atomic
+        // RPC reserved server-side -- never a local guess.
         if(window.__novaxReloadClientData) window.__novaxReloadClientData();
       }).catch(function(e){
         if(btn){ btn.disabled=false; btn.textContent="Confirm Withdrawal"; }
@@ -3062,7 +3099,29 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function dtpart(t){ return t?String(t).replace("T"," ").slice(0,16):""; }
       function pmeta(p){ return { service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, fragile:p.fragile, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", source:p.source, branch:p.branch, risk:p.risk, steps:p.steps, clientFeedback:p.clientFeedback, returnProof:p.returnProof, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"" }; }
       function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"" }; }
-      function mapInvoice(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.code||r.id, clientId:MY, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:Number(r.cod_total||0), charges:Number(r.fee_total||0), payable:Number(r.net_payable||0), status:r.status||"", createdAt:dtpart(r.created_at), paidAt:m.paidAt||"", walletPushedAt:m.walletPushedAt||"", summary:m.summary||"", invoiceType:m.invoiceType||"COD Settlement", dueToNovax:Number(m.dueToNovax||0), finalBalance:Number(m.finalBalance!=null?m.finalBalance:(Number(r.net_payable||0))) }; }
+      function invoiceSummaryFallback(invoiceType, cod, charges, payable, due){
+        if(invoiceType==="Delivery Charges") return `Delivery charges due to NovaX ${money(due)}`;
+        if(invoiceType==="Mixed") return `COD ${money(cod)} \u00b7 Charges ${money(charges)} \u00b7 Payable ${money(payable)}`;
+        return `COD collected ${money(cod)} \u00b7 Payable to client ${money(payable)}`;
+      }
+      // NovaX fix (rebuild integration mismatch): invoices are RPC-owned and
+      // admin_generate_invoice/admin_push_invoice_to_wallet/etc write real
+      // columns (invoice_type, due_to_novax, wallet_pushed_at, settled_at)
+      // directly. mapInvoice() must read those real columns first and only
+      // fall back to legacy meta.* fields for rows from before the rebuild
+      // migration backfilled them.
+      function mapInvoice(r){
+        var m=r.meta||{};
+        var invoiceType=r.invoice_type||m.invoiceType||"COD Settlement";
+        var dueToNovax=Number(r.due_to_novax!=null?r.due_to_novax:(m.dueToNovax||0));
+        var walletPushedAt=r.wallet_pushed_at||m.walletPushedAt||"";
+        var paidAt=r.settled_at||m.paidAt||"";
+        var cod=Number(r.cod_total||0);
+        var charges=Number(r.fee_total||0);
+        var payable=Number(r.net_payable||0);
+        var summary=m.summary||invoiceSummaryFallback(invoiceType,cod,charges,payable,dueToNovax);
+        return { _uuid:r.id, id:r.code||r.id, clientId:MY, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:cod, charges:charges, payable:payable, status:r.status||"", createdAt:dtpart(r.created_at), paidAt:paidAt, walletPushedAt:walletPushedAt, summary:summary, invoiceType:invoiceType, dueToNovax:dueToNovax, finalBalance:Number(m.finalBalance!=null?m.finalBalance:payable) };
+      }
       function mapTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:MY, title:r.subject||"", message:r.body||"", status:r.status||"Open", createdAt:dtpart(r.created_at), tier:m.tier||"medium", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", replies:Array.isArray(m.replies)?m.replies:[], escalated:!!m.escalated, sourceKey:m.sourceKey||"", resolutionReply:m.resolutionReply||"", proof:m.proof||"", resolvedBy:m.resolvedBy||"", resolvedAt:m.resolvedAt||"", solvedHours:Number(m.solvedHours||0) }; }
       function mapWd(r){ return { _uuid:r.id, id:r.id, clientId:MY, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at), paidAt:r.paid_at?dtpart(r.paid_at):"", balanceBefore:Number(r.balance_before||0), paidTxnId:r.paid_txn_id||"", paidBy:r.paid_by||"", paidProof:r.paid_proof||"" }; }
       function mapLedger(r){ return { _uuid:r.id, id:r.id, clientId:MY, entryType:r.entry_type||"", amount:Number(r.amount||0), affectsBalance:!!r.affects_balance, status:r.status||"", referenceType:r.reference_type||"", referenceId:r.reference_id||"", referenceCode:r.reference_code||"", note:r.note||"", createdAt:dtpart(r.created_at) }; }
