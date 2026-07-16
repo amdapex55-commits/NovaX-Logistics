@@ -414,6 +414,24 @@
         if(role==="rider"){ redirectAway("rider.html"); return; }
         if(__ADMIN_ROLES.indexOf(role)>-1){ redirectAway("admin.html"); return; }
         if(role!=="client"){ redirectAway("index.html"); return; }
+        // NovaX fix (admin/client mapping guard): this denylist is a second,
+        // independent line of defense against the exact bug that caused an
+        // admin login to see the Client Portal -- a profiles row whose role
+        // was wrongly stored as "client" for a known admin email. It never
+        // trusts profiles.role alone for these emails: if the signed-in
+        // email is a known admin login, the client portal is refused and
+        // workspace recovery is never attempted, no matter what role or
+        // client_id the (mismapped) database row currently has. Keep this
+        // list in sync with the Step 3 admin email(s) in
+        // novax_role_hard_stop_v2_repair.sql. Never deploy this with the
+        // placeholder value still in place.
+        var __ADMIN_EMAIL_DENYLIST=["replace-with-your-admin-email@example.com"];
+        var __sessionEmail=String((session.user&&session.user.email)||"").toLowerCase();
+        if(__ADMIN_EMAIL_DENYLIST.indexOf(__sessionEmail)>-1){
+          console.warn("NovaX auth gate: this email is a known admin login but profiles.role says 'client' -- refusing to show the Client Portal or run workspace recovery. Fix the profiles row (see novax_role_hard_stop_v2_repair.sql) then log in again.");
+          denyWithError();
+          return;
+        }
         // Verified: real Supabase session + profiles.role === "client". Only
         // now is it safe to reveal the portal and let client data load.
         // NovaX fix (role hard-stop v2): capture whether this account's own
