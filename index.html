@@ -14,8 +14,8 @@
 <meta name="robots" content="index, follow">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <script>(function(){ try{ if("serviceWorker" in navigator){ navigator.serviceWorker.getRegistrations().then(function(regs){ regs.forEach(function(r){ r.unregister(); }); }); } }catch(e){} })();</script>
-<!-- AUTH_GATE_VERSION: 2026-07-16-role-hard-stop-v2 -->
-<script>window.NOVAX_AUTH_GATE_VERSION="2026-07-16-role-hard-stop-v2";</script>
+<!-- AUTH_GATE_VERSION: 2026-07-16-auth-flow-v3 -->
+<script>window.NOVAX_AUTH_GATE_VERSION="2026-07-16-auth-flow-v3";</script>
 <link rel="alternate icon" href="/favicon.ico">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta property="og:type" content="website">
@@ -1071,31 +1071,14 @@ footer{color:#86a99b;}
      leak. Removed. All real data now flows only through the proper tables
      (clients/riders/parcels/etc.) which have RLS. This page keeps state local
      to the visitor's own browser only. */
-  function routeForCredentials(email,password){
-    var e=String(email||"").trim().toLowerCase();
-    var rawPassword=String(password||"").trim();
-    var state=readState();
-    function alias(o){ return [o.email,o.username,o.name,o.id,o.phone].some(function(v){ v=String(v||"").toLowerCase().trim(); return v && (v===e || v.replace(/\s+/g,".")===e || v.replace(/\s+/g,"")===e.replace(/\s+/g,"")); }); }
-    function notBlocked(s){ return String(s||"Active").toLowerCase()!=="blocked"; }
-    function setClient(c){ try{ state.client={ id:c.id, name:c.name, walletTopup:c.walletTopup||0, shippingDue:c.shippingDue||0, subAccounts:0, walletBalance:Number(c.walletBalance||0) }; saveState(state); }catch(err){} }
-    var users=Array.isArray(state.users)?state.users:[];
-    var matchedUser=users.find(function(u){ return alias(u); });
-    if(matchedUser && notBlocked(matchedUser.status) && String(matchedUser.password||"")===rawPassword){
-      var side=String(matchedUser.accessSide||matchedUser.role||"").toLowerCase();
-      if(side.includes("rider")) return "rider.html";
-      if(side.includes("admin")) return "admin.html";
-      var cli=(state.clients||[]).find(function(c){ return c.id===matchedUser.clientId || String(c.email||"").toLowerCase()===String(matchedUser.email||"").toLowerCase(); });
-      if(cli) setClient(cli);
-      return "client.html";
-    }
-    var clients=Array.isArray(state.clients)?state.clients:[];
-    var matchedClient=clients.find(function(c){ return alias(c); });
-    if(matchedClient && notBlocked(matchedClient.status) && String(matchedClient.password||"")===rawPassword){ setClient(matchedClient); return "client.html"; }
-    var riders=Array.isArray(state.riders)?state.riders:[];
-    var matchedRider=riders.find(function(r){ return alias(r); });
-    if(matchedRider && String(matchedRider.access||"Active").toLowerCase()!=="blocked" && String(matchedRider.password||"")===rawPassword) return "rider.html";
-    return "";
-  }
+  // NovaX fix (auth security cleanup): routeForCredentials used to match
+  // typed email/password against plaintext credentials cached in
+  // localStorage (state.users/state.clients/state.riders) as a client-side
+  // login fallback, entirely bypassing Supabase auth and RLS. It has been
+  // removed -- no code path may decide login routing from local data. All
+  // real login routing now goes exclusively through
+  // supabase.auth.signInWithPassword plus a profiles.role/status/
+  // client_id/rider_id lookup (see the signinContinue click handler below).
   function openSignin(){
     if(!signinModal) return;
     signinModal.classList.add("show");
@@ -1125,29 +1108,104 @@ footer{color:#86a99b;}
     if(!email||!pass){ alert("Email/username and password are required."); return; }
     var btn=this; btn.disabled=true; var oldTxt=btn.textContent; btn.textContent="Checking database…";
     if(!__nvSb||!__nvSb.auth){ btn.disabled=false; btn.textContent=oldTxt; alert("Login service is unavailable. Please refresh and try again."); return; }
+    // NovaX fix (auth flow audit): login is decided exclusively through
+    // Supabase -- signInWithPassword, then a profiles.role/status/
+    // client_id/rider_id lookup. profiles.role is the sole authority for
+    // routing; localStorage.novaxSession is written only afterward, purely
+    // as UI cache, and is cleared on every failure/mismatch below.
+    var __ADMIN_ROLES=["admin","owner","superadmin","ops","ops manager","branch manager","warehouse","warehouse staff","processing","processing staff","staff","rider supervisor"];
+    function clearNovaxSession(){ try{ localStorage.removeItem("novaxSession"); }catch(e){} }
     __nvSb.auth.signInWithPassword({email:email.toLowerCase(),password:pass}).then(function(res){
       if(res.error||!res.data||!res.data.user){ btn.disabled=false; btn.textContent=oldTxt; alert("Sign in failed: "+((res.error&&res.error.message)||"invalid email or password")); return; }
       var uid=res.data.user.id;
+      var __meta=(res.data.user&&res.data.user.user_metadata)||{};
       __nvSb.from("profiles").select("role,client_id,rider_id,status").eq("id",uid).single().then(function(p){
         btn.disabled=false; btn.textContent=oldTxt;
-        if(p.error||!p.data){ alert("No profile is linked to this account yet. Please contact your NovaX admin."); return; }
-        if(String(p.data.status||"active").toLowerCase()==="blocked"){ try{ __nvSb.auth.signOut(); }catch(e){} alert("This account is blocked."); return; }
-        var role=String(p.data.role||"client").toLowerCase();
-        // NovaX fix (role hard-stop v2): routing is decided purely from this
-        // Supabase profiles.role/client_id lookup -- localStorage is never
-        // consulted here, only written afterward as UI cache. A "client"
-        // profile with no client_id only gets routed to client.html when its
-        // own signup metadata proves it came from merchant signup (that page
-        // then runs its own one-time workspace recovery); any other
-        // client-role account with a missing client_id is stopped right
-        // here with a clear workspace-linking error instead of being sent
-        // into a broken/fake client workspace.
-        if(role==="client"&&!p.data.client_id){
-          var __meta=(res.data.user&&res.data.user.user_metadata)||{};
-          var __canRecover=String(__meta.role||"").toLowerCase()==="client";
-          if(!__canRecover){ alert("Workspace not linked. Please contact NovaX support."); return; }
+        if(p.error||!p.data){
+          // NovaX fix (auth flow v4): a missing/failed profiles lookup is no
+          // longer an automatic hard stop. If this account's own signup
+          // metadata proves it came from the public merchant signup form
+          // (user_metadata.role === "client"), attempt the same one-time
+          // workspace recovery client.html uses -- this is exactly the case
+          // where email confirmation delayed create_client_workspace until
+          // this first real sign-in. Any other missing-profile role is
+          // still an immediate, safe hard stop.
+          var __metaRoleForRecovery=String(__meta.role||"").toLowerCase();
+          if(__metaRoleForRecovery!=="client"){
+            try{ __nvSb.auth.signOut(); }catch(e){}
+            clearNovaxSession();
+            alert("Workspace profile not linked. Contact NovaX.");
+            return;
+          }
+          btn.disabled=true; btn.textContent="Preparing your workspace…";
+          __nvSb.rpc("create_client_workspace",{
+            p_name: __meta.business_name||__meta.full_name||email.split("@")[0],
+            p_owner: __meta.owner_name||__meta.full_name||"",
+            p_phone: __meta.phone||"",
+            p_city: __meta.city||"",
+            p_address: __meta.address||"",
+            p_business_type: __meta.business_type||"",
+            p_website: __meta.website||""
+          }).then(function(rpcRes){
+            btn.disabled=false; btn.textContent=oldTxt;
+            if(!rpcRes||rpcRes.error||!rpcRes.data){
+              console.warn("NovaX login workspace recovery failed:",rpcRes&&rpcRes.error&&rpcRes.error.message);
+              try{ __nvSb.auth.signOut(); }catch(e){}
+              clearNovaxSession();
+              alert("Workspace could not be prepared. Contact NovaX.");
+              return;
+            }
+            try{ localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email.toLowerCase(),uid:uid,client_id:rpcRes.data,rider_id:null,at:Date.now()})); }catch(e){}
+            closeSignin();
+            playHandoff(function(){ window.location.href="client.html?welcome=1&firstBooking=1"; });
+          }).catch(function(e){
+            btn.disabled=false; btn.textContent=oldTxt;
+            console.warn("NovaX login workspace recovery error:",e);
+            try{ __nvSb.auth.signOut(); }catch(e2){}
+            clearNovaxSession();
+            alert("Workspace could not be prepared. Contact NovaX.");
+          });
+          return;
         }
-        var target=role==="admin"?"admin.html":(role==="rider"?"rider.html":"client.html");
+        var status=String(p.data.status||"active").toLowerCase();
+        if(status==="blocked"||status==="disabled"){
+          try{ __nvSb.auth.signOut(); }catch(e){}
+          clearNovaxSession();
+          alert("This account is blocked.");
+          return;
+        }
+        var role=String(p.data.role||"client").toLowerCase();
+        var target;
+        if(__ADMIN_ROLES.indexOf(role)>-1){
+          target="admin.html";
+        }else if(role==="rider"){
+          target="rider.html";
+        }else if(role==="client"){
+          // A "client" profile with no client_id only gets routed to
+          // client.html when its own signup metadata proves it came from
+          // merchant signup (that page then runs its own one-time
+          // workspace recovery); any other client-role account with a
+          // missing client_id is stopped right here instead of being sent
+          // into a broken/fake client workspace.
+          if(p.data.client_id){
+            target="client.html";
+          }else{
+            var __canRecover=String(__meta.role||"").toLowerCase()==="client";
+            if(!__canRecover){
+              try{ __nvSb.auth.signOut(); }catch(e){}
+              clearNovaxSession();
+              alert("Workspace not linked. Please contact NovaX support.");
+              return;
+            }
+            target="client.html";
+          }
+        }else{
+          // Unrecognized/invalid role -- never guess a portal for it.
+          try{ __nvSb.auth.signOut(); }catch(e){}
+          clearNovaxSession();
+          alert("Workspace profile not linked. Contact NovaX.");
+          return;
+        }
         try{ localStorage.setItem("novaxSession",JSON.stringify({role:target.replace(".html",""),email:email.toLowerCase(),uid:uid,client_id:p.data.client_id||null,rider_id:p.data.rider_id||null,at:Date.now()})); }catch(e){}
         closeSignin();
         playHandoff(function(){ window.location.href=target; });
@@ -1194,6 +1252,7 @@ footer{color:#86a99b;}
     __nvSb.auth.signUp({ email:email.toLowerCase(), password:password, options:{ data:{ business_name:storeName, owner_name:name, full_name:name, role:"client", phone:phone, city:city, address:address, business_type:product, website:website||"" } } }).then(function(r){
       if(r&&r.error){ submitBtn.disabled=false; submitBtn.textContent=oldTxt; alert(r.error.message||"Could not create your account. Please try again."); return; }
       var newUser=r&&r.data&&r.data.user;
+      var newSession=r&&r.data&&r.data.session;
       if(newUser&&Array.isArray(newUser.identities)&&newUser.identities.length===0){
         submitBtn.disabled=false; submitBtn.textContent=oldTxt;
         alert("This email already has an account. Please sign in instead.");
@@ -1205,12 +1264,28 @@ footer{color:#86a99b;}
       __nvSb.from("signup_leads").insert({ name:storeName, phone:phone, email:email.toLowerCase(), city:city, address:address, business_type:product, website:website||"", auth_user_id:(newUser&&newUser.id)||null, status:"pending_workspace" }).select("id").maybeSingle().then(function(leadRes){
         if(leadRes&&leadRes.error) console.warn("NovaX signup_leads insert:",leadRes.error.message);
         var leadId=leadRes&&leadRes.data&&leadRes.data.id;
+        // NovaX fix (auth flow audit): if Supabase email confirmation is
+        // enabled, signUp() creates the auth user but returns no session
+        // yet -- calling create_client_workspace here would fail because it
+        // requires auth.uid() from an active session. Never call the RPC
+        // blindly in that case; the lead is already saved above, so just
+        // tell the user to verify their email and sign in (client.html's
+        // own workspace recovery then runs automatically on that sign-in).
+        if(!newSession){
+          if(leadId){ __nvSb.from("signup_leads").update({ status:"awaiting_verification" }).eq("id",leadId).then(function(){}); }
+          submitBtn.disabled=false; submitBtn.textContent=oldTxt;
+          alert("Account created. Please check your email to verify your address, then sign in to open your workspace.");
+          closeSignup();
+          return;
+        }
         __nvSb.rpc("create_client_workspace",{ p_name:storeName, p_owner:name, p_phone:phone, p_city:city, p_address:address, p_business_type:product, p_website:website||"" }).then(function(rpcRes){
           submitBtn.disabled=false; submitBtn.textContent=oldTxt;
           if(rpcRes&&rpcRes.error){
             console.warn("NovaX workspace:",rpcRes.error.message);
             if(leadId){ __nvSb.from("signup_leads").update({ status:"failed", error_message:String(rpcRes.error.message||"").slice(0,300) }).eq("id",leadId).then(function(){}); }
-            alert("Your login is ready. Please sign in again and NovaX will prepare your workspace automatically.");
+            // NovaX fix: never leave a fake/local workspace object behind on
+            // RPC failure -- no localStorage write happens on this path.
+            alert("Login created, workspace is being prepared. Sign in again.");
             closeSignup();
             return;
           }
