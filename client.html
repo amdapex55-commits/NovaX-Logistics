@@ -223,6 +223,13 @@
     .tier-card.active{border-color:var(--green);box-shadow:0 16px 34px rgba(20,199,123,.22);background:linear-gradient(145deg,rgba(20,199,123,.14),#fff);}
     .tier-card strong{display:block;font-size:24px;}
     .tier-card span{font-size:12px;color:var(--muted);}
+    /* NovaX fix (withdrawal UX v2): small, clean feedback animations only --
+       no big modals. A quick pulse when a payout card is picked, and a
+       quick glow when bank details are confirmed saved. */
+    .tier-card.just-picked{animation:novaxTierPick .32s ease;}
+    @keyframes novaxTierPick{0%{transform:scale(.96);}60%{transform:scale(1.03);}100%{transform:scale(1);}}
+    .bank-saved-pulse{animation:novaxSavedPulse .6s ease;}
+    @keyframes novaxSavedPulse{0%{box-shadow:0 0 0 0 rgba(20,199,123,.35);}100%{box-shadow:0 0 0 14px rgba(20,199,123,0);}}
     .wallet-hero{position:relative;overflow:hidden;border-radius:16px;padding:24px;border:1px solid rgba(20,199,123,.32);background:linear-gradient(135deg,#0c3f2c,#0a2a1f 60%,#08231a);color:#eafff5;box-shadow:0 22px 50px rgba(13,91,64,.25);}
     .wallet-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.16) 48%,transparent 66%);transform:translateX(-100%);animation:sheen 4.6s ease-in-out infinite;pointer-events:none;}
     @keyframes sheen{45%,100%{transform:translateX(120%);}}
@@ -854,8 +861,9 @@
                 <div id="bankDetailsSection"></div>
               </div>
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Withdraw Funds</h3><p>Choose an amount and payout speed. We'll use the bank details saved above.</p></div></div>
+                <div class="section-head"><div><h3>Withdraw Funds</h3><p>Choose an amount, payout speed, and destination IBAN. Your saved bank details are prefilled as a default, but you can withdraw to any IBAN you type or paste here.</p></div></div>
                 <div class="field" style="max-width:280px"><label>Amount to withdraw</label><input id="withdrawAmount" type="number" min="1"></div>
+                <div class="field" style="max-width:380px;margin-top:10px"><label>Payout IBAN</label><input id="withdrawIbanInput" placeholder="PK00 BANK 0000 0000 0000 0000"></div>
                 <div class="tier-grid">
                   <div class="tier-card" data-speed="24h"><strong>0.1%</strong><span>24 hour payout</span></div>
                   <div class="tier-card" data-speed="12h"><strong>0.3%</strong><span>12 hour payout</span></div>
@@ -1984,22 +1992,52 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     function editBankDetails(){ state.bankDetailsEditing=true; saveState(); renderBankDetailsSection(); }
     function cancelBankDetailsEdit(){ state.bankDetailsEditing=false; saveState(); renderBankDetailsSection(); }
+    // NovaX fix (withdrawal UX v2): bank details are now a real server-side
+    // record (clients.meta.bank via the save_client_bank_details /
+    // client_bank_details RPCs) instead of only living in localStorage.
+    // fetchClientBankDetails() pulls the saved row once per session so it
+    // survives a refresh or a new device; saveBankDetails() below waits for
+    // the server to confirm before showing "saved".
+    let __bankDetailsFetchedOnce=false;
+    let __bankDetailsFetchInFlight=false;
+    // NovaX fix (withdrawal UX v3): only mark bank details as "fetched" once
+    // the RPC has actually succeeded -- previously the flag was set the
+    // instant the call started, so a network blip or a not-yet-deployed RPC
+    // would permanently block retries for the rest of the session. Now a
+    // failed attempt leaves the flag false so the next renderClientWallet()
+    // call retries automatically, and an in-flight guard stops duplicate
+    // concurrent calls while one is already pending.
+    function fetchClientBankDetails(){
+      if(!window.__nvSb || __bankDetailsFetchedOnce || __bankDetailsFetchInFlight) return;
+      __bankDetailsFetchInFlight=true;
+      window.__nvSb.rpc("client_bank_details",{}).then(function(r){
+        __bankDetailsFetchInFlight=false;
+        if(r&&r.error){ console.warn("NovaX bank details fetch failed:",r.error.message); return; }
+        __bankDetailsFetchedOnce=true;
+        const row=Array.isArray(r.data)?r.data[0]:r.data;
+        if(row && row.iban){
+          state.clientBankDetails={ holderName:row.holder_name||"", iban:row.iban||"", bankName:row.bank_name||"", updatedAt:row.updated_at||"" };
+          saveState(); renderBankDetailsSection(); renderClientWallet();
+        }
+      }).catch(function(e){ __bankDetailsFetchInFlight=false; console.warn("NovaX bank details fetch error:",e&&e.message); });
+    }
     function renderBankDetailsSection(){
       const el=document.getElementById("bankDetailsSection"); if(!el) return;
       const bd=state.clientBankDetails;
       if(bd && !state.bankDetailsEditing){
-        el.innerHTML=`<div class="ops-card"><div class="ops-card-head"><strong>${esc(bd.holderName||"Saved bank account")}</strong><span class="chip good">Saved</span></div><p>${esc(maskIban(bd.iban))}${bd.bankName?(" &middot; "+esc(bd.bankName)):""}</p><button class="action-btn" style="margin-top:10px" onclick="editBankDetails()">Edit Bank Details</button></div>`;
+        el.innerHTML=`<div class="ops-card bank-saved-pulse"><div class="ops-card-head"><strong>${esc(bd.holderName||"Saved bank account")}</strong><span class="chip good">&#10003; Bank details saved</span></div><p>${esc(maskIban(bd.iban))}${bd.bankName?(" &middot; "+esc(bd.bankName)):""}</p><button class="action-btn" style="margin-top:10px" onclick="editBankDetails()">Edit Bank Details</button></div>`;
         return;
       }
       el.innerHTML=`<div class="field" style="max-width:380px"><label>Account holder name</label><input id="bankHolderName" value="${bd?esc(bd.holderName||""):""}"></div>
         <div class="field" style="max-width:380px;margin-top:10px"><label>IBAN</label><input id="bankIbanInput" placeholder="PK00 BANK 0000 0000 0000 0000" value="${bd?esc(bd.iban||""):""}"></div>
         <div class="field" style="max-width:380px;margin-top:10px"><label>Bank name (optional)</label><input id="bankNameInput" value="${bd?esc(bd.bankName||""):""}"></div>
         <div id="bankDetailsError" class="footer-note" style="display:none;background:#fff2f0;border:1px solid #f3b7ad;color:#a3271b;margin-top:10px"></div>
-        <button class="action-btn" style="margin-top:12px" onclick="saveBankDetails()">Save Bank Details</button>
+        <button class="action-btn" id="saveBankDetailsBtn" style="margin-top:12px" onclick="saveBankDetails()">Save Bank Details</button>
         ${bd?`<button class="action-btn" style="margin-top:12px;margin-left:8px;background:#eef2f5;color:#333" onclick="cancelBankDetailsEdit()">Cancel</button>`:""}`;
     }
     function saveBankDetails(){
       const err=document.getElementById("bankDetailsError");
+      const btn=document.getElementById("saveBankDetailsBtn");
       const holderName=(document.getElementById("bankHolderName")?.value||"").trim();
       const iban=(document.getElementById("bankIbanInput")?.value||"").trim().toUpperCase();
       const bankName=(document.getElementById("bankNameInput")?.value||"").trim();
@@ -2007,25 +2045,37 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const ibanErr=validateIbanValue(iban);
       if(ibanErr){ err.style.display="block"; err.textContent=ibanErr; return; }
       err.style.display="none";
-      state.clientBankDetails={ holderName, iban, bankName, updatedAt:new Date().toISOString() };
-      state.bankDetailsEditing=false;
-      saveState(); renderClientWallet();
-      toast("Bank details saved.","success");
-      // NovaX fix (wallet IBAN UX): best-effort sync only -- bank details are
-      // optional metadata on the client row, so a missing column/table must
-      // never block the local save that already happened above.
-      try{
-        if(window.__nvSb && state.client && state.client.id){
-          window.__nvSb.from("clients").update({ bank_details: state.clientBankDetails }).eq("id", state.client.id).then(function(r){
-            if(r&&r.error) console.warn("NovaX bank details sync skipped:", r.error.message);
-          }).catch(function(e){ console.warn("NovaX bank details sync failed:", e&&e.message); });
+      // NovaX fix (withdrawal UX v2): save now goes through the
+      // save_client_bank_details RPC and only shows "saved" once Supabase
+      // actually confirms it -- never a silent local-only save again.
+      const sbClient=window.__nvSb;
+      if(!sbClient){ err.style.display="block"; err.textContent="Cloud connection not ready yet, please try again in a moment."; toast("Bank details not saved: cloud connection not ready yet.","error"); return; }
+      if(btn){ btn.disabled=true; btn.textContent="Saving..."; }
+      sbClient.rpc("save_client_bank_details",{ p_holder_name:holderName, p_iban:iban, p_bank_name:bankName }).then(function(r){
+        if(btn){ btn.disabled=false; btn.textContent="Save Bank Details"; }
+        if(r&&r.error){
+          err.style.display="block"; err.textContent=r.error.message||"Could not save bank details.";
+          toast("Bank details not saved: "+(r.error.message||"server declined the request."),"error");
+          return;
         }
-      }catch(e){ console.warn("NovaX bank details sync error:", e&&e.message); }
+        const row=Array.isArray(r.data)?r.data[0]:r.data;
+        state.clientBankDetails={ holderName:(row&&row.holder_name)||holderName, iban:(row&&row.iban)||iban, bankName:(row&&row.bank_name)||bankName, updatedAt:(row&&row.updated_at)||new Date().toISOString() };
+        state.bankDetailsEditing=false;
+        saveState(); renderClientWallet();
+        toast("Bank details saved.","success");
+      }).catch(function(e){
+        if(btn){ btn.disabled=false; btn.textContent="Save Bank Details"; }
+        err.style.display="block"; err.textContent=(e&&e.message)||"Network error, please try again.";
+        toast("Bank details not saved: "+((e&&e.message)||"network error, please try again."),"error");
+      });
     }
     function renderClientWallet(){
       const bt=document.getElementById("walletBalanceText"); if(!bt) return;
       const c=clientById(state.client.id); const balance=Number(c.walletBalance||0);
       bt.textContent=money(balance); bt.classList.remove("count-up"); void bt.offsetWidth; bt.classList.add("count-up");
+      // NovaX fix (withdrawal UX v2): pull the server-saved bank details once
+      // per session so Save Bank Details survives a refresh/new device.
+      fetchClientBankDetails();
       // NovaX fix (wallet IBAN UX): bank details render independently of
       // balance/speed/amount so they're always available to add or edit.
       renderBankDetailsSection();
@@ -2077,37 +2127,46 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       const amtInput=document.getElementById("withdrawAmount");
       if(amtInput && (!amtInput.value || Number(amtInput.value)>serverBalance)) amtInput.value=serverBalance||"";
-      const speed=state.walletWithdrawSpeed||"";
+      // NovaX fix (withdrawal UX v2): default to the 24h speed the first time
+      // this tab renders so a payout card is always selected and the fee/net
+      // preview is visible immediately, without forcing a click first.
+      if(!state.walletWithdrawSpeed) state.walletWithdrawSpeed="24h";
+      const speed=state.walletWithdrawSpeed||"24h";
       document.querySelectorAll(".tier-card").forEach(t=>t.classList.toggle("active",t.dataset.speed===speed));
       const summary=document.getElementById("withdrawSummary");
-      // NovaX rebuild (wallet+invoice v1): Confirm Withdrawal must be disabled
-      // (not just silently clamped) when amount <= 0, amount > available
-      // balance, or IBAN is missing -- so we check the raw typed amount
-      // against the real server balance instead of only using a pre-clamped
-      // value.
+      // NovaX fix (withdrawal UX v2): the Withdraw Funds card must always show
+      // the fee/net preview, saved bank preview, and a "Request Withdrawal"
+      // button -- never hidden, only disabled with an exact visible reason.
       const rawAmt=Number(amtInput?.value||0);
       const amountTooHigh=rawAmt>serverBalance;
-      const amountInvalid=!(rawAmt>0)||amountTooHigh;
-      const useAmt=Math.min(rawAmt||0,serverBalance);
+      const useAmt=Math.min(rawAmt||0,serverBalance)||0;
       // NovaX fix (wallet IBAN UX): withdrawal no longer collects its own IBAN
       // input -- it only ever uses whatever is saved in the Bank Account /
-      // IBAN section above, and Confirm Withdrawal is disabled until that
+      // IBAN section above, and Request Withdrawal is disabled until that
       // saved IBAN passes validation.
       const bd=state.clientBankDetails;
-      const bdIbanErr=bd?validateIbanValue(bd.iban):"IBAN is required.";
-      if(balance<=0){
-        summary.style.display="block";
-        summary.innerHTML=`<div class="ops-card"><strong>No withdrawable balance yet</strong><p>You have Rs 0 available. Ask admin to push an invoice to your wallet, then come back to request a payout. You can still add or update your bank details above anytime.</p></div><button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" disabled>Waiting for wallet balance</button>`;
-      } else if(speed && useAmt>0){
-        const fee=Math.round(useAmt*walletFeeRate(speed)); const net=useAmt-fee;
-        // NovaX rebuild (wallet+invoice v1): Confirm Withdrawal is disabled
-        // whenever amount <= 0, amount > available balance, or IBAN is
-        // missing/invalid -- all three checked explicitly here.
-        const canConfirm=!bdIbanErr && !amountInvalid && useAmt>0;
-        const blockReason=amountTooHigh?"Amount cannot be more than your available balance.":(!(rawAmt>0)?"Enter an amount greater than 0.":(bdIbanErr?"Add valid bank details in the section above before confirming.":""));
-        summary.style.display="block";
-        summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div><div class="footer-note" style="margin-top:12px">${bd?("Payout goes to <b>"+esc(maskIban(bd.iban))+"</b> for "+esc(bd.holderName||"")+". "):""}${canConfirm?"":blockReason}</div><button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="confirmWalletWithdraw()" ${canConfirm?"":"disabled"} title="${canConfirm?"":blockReason}">Confirm Withdrawal</button>`;
-      } else { summary.style.display="none"; }
+      // NovaX fix (withdrawal UX v3): the payout IBAN is now a real editable
+      // field on this card, not locked to whatever is saved in Bank Account /
+      // IBAN above. It's prefilled from the saved IBAN once (as a
+      // convenience default) but only while the field is untouched and
+      // empty, so a client can freely overwrite it with a different IBAN for
+      // this withdrawal without anything forcing it back.
+      const ibanInput=document.getElementById("withdrawIbanInput");
+      if(ibanInput && !ibanInput.dataset.touched && !ibanInput.value && bd && bd.iban) ibanInput.value=bd.iban;
+      const typedIban=(ibanInput&&ibanInput.value||"").trim().toUpperCase();
+      const typedIbanErr=validateIbanValue(typedIban);
+      const fee=Math.round(useAmt*walletFeeRate(speed)); const net=useAmt-fee;
+      let blockReason="";
+      if(state.__withdrawInFlight) blockReason="Submitting your withdrawal request...";
+      else if(typedIbanErr) blockReason=typedIban?typedIbanErr:"Enter the IBAN this payout should go to.";
+      else if(serverBalance<=0) blockReason="You have Rs 0 available to withdraw right now.";
+      else if(!(rawAmt>0)) blockReason="Enter an amount greater than 0.";
+      else if(amountTooHigh) blockReason="Amount cannot be more than your available balance ("+money(serverBalance)+").";
+      const canConfirm=!blockReason;
+      summary.style.display="block";
+      summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div>`+
+        `<div class="footer-note" style="margin-top:12px">${(!typedIbanErr&&typedIban)?("Payout goes to <b>"+esc(maskIban(typedIban))+"</b>"+(bd&&bd.holderName?(" for "+esc(bd.holderName)):"")+". "):""}${canConfirm?"":("<b>"+esc(blockReason)+"</b>")}</div>`+
+        `<button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="requestWalletWithdrawal()" ${canConfirm?"":"disabled"} title="${canConfirm?"Request Withdrawal":esc(blockReason)}">${state.__withdrawInFlight?"Submitting...":"Request Withdrawal"}</button>`;
       document.getElementById("withdrawHistory").innerHTML=myWds.map(w=>{
         // NovaX new (Finance Control Room v2): friendly status wording only --
         // no mention of admin review queues, locks, or risk.
@@ -2118,20 +2177,35 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return `<div class="ops-card"><div class="ops-card-head"><strong>${w.id}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${esc(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${paidRef}</div></div>`;
       }).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Pick a payout speed above to withdraw.</p></div>`;
     }
-    function confirmWalletWithdraw(){
-      const c=clientById(state.client.id); const balance=Number(c.walletBalance||0);
+    let __withdrawInFlight=false;
+    // NovaX fix (withdrawal UX v2): renamed from confirmWalletWithdraw to
+    // requestWalletWithdrawal to match the button label and the required
+    // client-side entry point; confirmWalletWithdraw is kept below as a thin
+    // backward-compatible alias.
+    function requestWalletWithdrawal(){
+      // Guard against a double click / rapid repeat firing two requests
+      // before the button has even finished disabling -- this is in addition
+      // to the server-side 15-second duplicate guard inside
+      // request_wallet_withdrawal itself.
+      if(__withdrawInFlight||state.__withdrawInFlight) return;
+      const c=clientById(state.client.id);
+      const sv=state.serverWalletSummary;
+      const balance=sv?Number(sv.available_balance||0):Number(c.walletBalance||0);
       const amt=Math.min(Number(document.getElementById("withdrawAmount").value||0),balance);
-      const speed=state.walletWithdrawSpeed;
-      // NovaX fix (wallet IBAN UX): withdrawal always uses the saved Bank
-      // Account / IBAN details -- there is no separate IBAN input on this
-      // step anymore, so IBAN setup and withdrawal requests can never be
-      // tied together again.
-      const bd=state.clientBankDetails;
-      const iban=bd?String(bd.iban||"").trim().toUpperCase():"";
-      if(!amt||amt<1){ toast("Enter a valid amount."); return; }
-      if(!speed){ toast("Select a payout speed."); return; }
+      const speed=state.walletWithdrawSpeed||"24h";
+      // NovaX fix (withdrawal UX v3): the payout IBAN always comes from the
+      // editable Payout IBAN field on this card now -- prefilled from saved
+      // bank details as a convenience default only, never locked to it. A
+      // client can type or paste any valid PK IBAN here and it's sent
+      // straight to request_wallet_withdrawal, which validates/normalizes it
+      // server-side independently of whatever is saved.
+      const ibanInput=document.getElementById("withdrawIbanInput");
+      const iban=(ibanInput&&ibanInput.value||"").trim().toUpperCase();
+      if(!amt||amt<1){ toast("Enter a valid amount.","error"); return; }
+      if(amt>balance){ toast("Amount cannot be more than your available balance.","error"); return; }
+      if(!speed){ toast("Select a payout speed.","error"); return; }
       const ibanErr=validateIbanValue(iban);
-      if(ibanErr){ toast(ibanErr); return; }
+      if(ibanErr){ toast(ibanErr,"error"); return; }
       const btn=document.getElementById("confirmWithdrawBtn");
       // NovaX fix: this was calling a bare "sb" variable that only exists
       // inside the separate cloud-sync IIFE further down this file -- it is
@@ -2143,23 +2217,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // cloud-sync block), so use that instead, and bail out cleanly with the
       // button re-enabled if it isn't ready yet instead of throwing.
       const sbClient=window.__nvSb;
-      if(!sbClient){ toast("Cloud connection not ready yet, please try again in a moment."); return; }
+      if(!sbClient){ toast("Cloud connection not ready yet, please try again in a moment.","error"); return; }
+      __withdrawInFlight=true; state.__withdrawInFlight=true;
       if(btn){ btn.disabled=true; btn.textContent="Submitting..."; }
-      // This used to show the "Withdrawal Requested" success modal
-      // immediately and only tried to persist the request afterward in the
-      // background (saveState -> syncNew -> request_wallet_withdrawal RPC). If
-      // that server call failed for any reason (stale/insufficient wallet
-      // balance, RPC missing, network error, etc.) the request was silently
-      // dropped from local state with only an easy-to-miss toast as evidence --
-      // so the client saw a false "success" while nothing was ever written to
-      // the withdrawals table, and admin's Wallet tab correctly showed nothing
-      // because nothing had actually been requested. Now we call the server
-      // first and only show success (and only deduct/record locally) once the
-      // server has actually accepted and created the withdrawal row.
+      // Calls the server first and only shows success (and only
+      // records/refreshes locally) once the server has actually accepted and
+      // created the withdrawal row -- never a false local-only "success".
       sbClient.rpc("request_wallet_withdrawal",{ p_amount:amt, p_iban:iban, p_speed:speed }).then(function(r){
-        if(btn){ btn.disabled=false; btn.textContent="Confirm Withdrawal"; }
+        __withdrawInFlight=false; state.__withdrawInFlight=false;
+        if(btn){ btn.disabled=false; btn.textContent="Request Withdrawal"; }
         if(r&&r.error){
-          toast("Withdrawal request rejected: "+(r.error.message||"Server declined the request."));
+          toast("Withdrawal request rejected: "+(r.error.message||"Server declined the request."),"error");
+          renderClientWallet();
           return;
         }
         const d=r&&r.data;
@@ -2175,13 +2244,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // subtraction can never happen.
         state.walletWithdrawals.unshift({ id:nextId("WDR",state.walletWithdrawals), _uuid:d&&d.id, clientId:c.id, amount:amt, fee, net, iban, speed, status:(d&&d.status)||"Pending admin payout", createdAt:`${new Date().toISOString().slice(0,10)} ${time()}` });
         state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:c.id, type:"Wallet withdrawal requested", amount:amt, status:`${money(net)} net after ${money(fee)} fee`, ref:walletSpeedLabel(speed) });
-        state.walletWithdrawSpeed=""; saveState();
-        document.getElementById("walletDoneText").textContent=`${money(net)} will reach ${iban} via ${walletSpeedLabel(speed)} payout. NovaX fee ${money(fee)}.`;
+        // NovaX fix (withdrawal UX v2): clear the amount instead of leaving the
+        // old (now stale) value in the box -- the next render refills it from
+        // the fresh, reduced server balance once that arrives.
+        const amtInputEl=document.getElementById("withdrawAmount"); if(amtInputEl) amtInputEl.value="";
+        saveState();
+        document.getElementById("walletDoneText").textContent=`${money(net)} will reach ${maskIban(iban)} via ${walletSpeedLabel(speed)} payout. NovaX fee ${money(fee)}. Status: Pending admin payout.`;
         // NovaX fix (confidence messaging): the modal already explains the
         // payout math, but a quick toast confirms what just happened and what
         // to expect next, matching the same pattern used elsewhere (booking,
         // tickets, store connect).
-        toast(`Payout requested. Admin will process it via ${walletSpeedLabel(speed)} payout.`,"success");
+        toast(`Payout requested. Status: Pending admin payout.`,"success");
         // NovaX fix (rebuild integration mismatch): force the throttled
         // client_wallet_summary fetch to run again immediately (instead of
         // waiting out its normal throttle window) so the wallet card shows
@@ -2193,10 +2266,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // RPC reserved server-side -- never a local guess.
         if(window.__novaxReloadClientData) window.__novaxReloadClientData();
       }).catch(function(e){
-        if(btn){ btn.disabled=false; btn.textContent="Confirm Withdrawal"; }
-        toast("Withdrawal request failed: "+(e&&e.message?e.message:"network error, please try again."));
+        __withdrawInFlight=false; state.__withdrawInFlight=false;
+        if(btn){ btn.disabled=false; btn.textContent="Request Withdrawal"; }
+        toast("Withdrawal request failed: "+(e&&e.message?e.message:"network error, please try again."),"error");
+        renderClientWallet();
       });
     }
+    // Backward-compatible alias in case anything else still calls the old name.
+    function confirmWalletWithdraw(){ return requestWalletWithdrawal(); }
     function openWalletDone(){ const m=document.getElementById("walletDoneModal"); m.classList.add("show"); const t=m.querySelector(".tick"); if(t){ t.style.animation="none"; void t.offsetWidth; t.style.animation=""; } }
     function closeWalletDone(){ document.getElementById("walletDoneModal").classList.remove("show"); }
 
@@ -3085,8 +3162,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     document.getElementById("reportPdfBtn").addEventListener("click",exportReportPdf);
     document.getElementById("repClearBtn").addEventListener("click",()=>{ ["repSearch","repFrom","repTo"].forEach(i=>{const e=document.getElementById(i);if(e)e.value="";}); const s=document.getElementById("repStatus"); if(s)s.value=""; renderClientReportFull(); });
     ["repSearch","repStatus","repFrom","repTo"].forEach(id=>{ const e=document.getElementById(id); if(e) e.addEventListener(e.tagName==="SELECT"?"change":"input",renderClientReportFull); });
-    document.querySelectorAll(".tier-card").forEach(t=>t.addEventListener("click",()=>selectWalletSpeed(t.dataset.speed)));
+    document.querySelectorAll(".tier-card").forEach(t=>t.addEventListener("click",()=>{ t.classList.remove("just-picked"); void t.offsetWidth; t.classList.add("just-picked"); selectWalletSpeed(t.dataset.speed); }));
     document.getElementById("withdrawAmount").addEventListener("input",renderClientWallet);
+    // NovaX fix (withdrawal UX v3): mark the IBAN field "touched" the moment
+    // a client edits it, so the auto-prefill-from-saved-bank-details logic
+    // in renderClientWallet never overwrites what they just typed/pasted.
+    document.getElementById("withdrawIbanInput")?.addEventListener("input",function(){ this.dataset.touched="1"; renderClientWallet(); });
     function clientAiTabBubble(html,isBot){ const box=document.getElementById("clientAi"); if(!box) return; const d=document.createElement("div"); d.className="bubble"+(isBot?" ai":""); d.innerHTML=html; box.appendChild(d); box.scrollTop=box.scrollHeight; }
     function sendClientAiTabMessage(){
       const el=document.getElementById("clientAiInput"); if(!el) return;
@@ -3136,7 +3217,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     document.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{ if(b.textContent.trim()==="Invite User") toast("Invite user flow opened for this workspace."); }));
     setInterval(()=>{ const el=document.getElementById("clockB"); if(el) el.textContent=`Live ${time()}`; },1000);
 
-    Object.assign(window,{ openClientParcelJourney, selectParcel, requestRedelivery, openAwbModal, closeAwbModal, openTicketModal, closeTicketModal, submitClientTicket, downloadInvoiceCsv, printInvoice, viewInvoice, closeInvoiceModal, printLabels, confirmWalletWithdraw, selectWalletSpeed, closeWalletDone });
+    // NovaX fix (withdrawal UX v3): saveBankDetails/editBankDetails/
+    // cancelBankDetailsEdit/requestWalletWithdrawal were missing from this
+    // export list, so their onclick="...()" attributes could silently fail
+    // to resolve depending on scope timing -- explicitly exporting them
+    // alongside the other wallet/bank functions guarantees they're callable.
+    Object.assign(window,{ openClientParcelJourney, selectParcel, requestRedelivery, openAwbModal, closeAwbModal, openTicketModal, closeTicketModal, submitClientTicket, downloadInvoiceCsv, printInvoice, viewInvoice, closeInvoiceModal, printLabels, confirmWalletWithdraw, requestWalletWithdrawal, selectWalletSpeed, closeWalletDone, saveBankDetails, editBankDetails, cancelBankDetailsEdit });
     window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); render(); } });
     /* ===== NovaX data-ready safety net: guarantees isClientDataReady() eventually flips true even if a cloud sync path is missed ===== */
     window.__novaxClientDataReady = window.__novaxClientDataReady || false;
