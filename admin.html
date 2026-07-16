@@ -5114,7 +5114,7 @@
                     <div class="field"><label>Email</label><input id="userEmail" type="email" placeholder="user@novax.pk" required></div>
                     <div class="field"><label>Password</label><input id="userPassword" type="password" value="NovaX@123" required></div>
                     <div class="field"><label>Role</label><select id="userRole"><option>Admin</option><option>Ops Manager</option><option>Branch Manager</option><option>Finance</option><option>Rider Supervisor</option><option>Client Support</option><option>Rider</option></select></div>
-                    <div class="field"><label>Access Side</label><select id="userAccessSide"><option>Admin Portal</option><option>Client Web Portal</option><option>Rider App</option><option>Both Admin And Web</option></select></div>
+                    <div class="field"><label>Access Side</label><select id="userAccessSide"><option>Admin Portal</option><option>Client Web Portal</option><option>Rider App</option><option>Both Admin And Web</option></select><small class="hint" style="display:block;margin-top:4px;color:var(--muted,#7c8b86)">Admin Portal users can process orders.</small></div>
                     <div class="field"><label>Assign Branch</label><select id="userBranch"><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option></select></div>
                     <div class="field"><label>Show Staff Tab</label><select id="userStaffTab"><option value="no">No</option><option value="yes">Yes — give this user the Staff tab</option></select></div>
                     <div class="field"><label>Staff Role</label><select id="userStaffRole"><option>Support</option><option>Sales</option><option>HR</option></select></div>
@@ -5194,7 +5194,7 @@
             <section class="admin-module" id="admin-orders-processing">
               <div class="panel">
                 <div class="section-head"><div><h3>Order Processing</h3><p>Warehouse and branch status update desk. Type an AWB, press Enter, choose the next status, then confirm to update the journey.</p></div></div>
-                <div class="ops-card alert-row critical" id="processingAccessNotice" style="display:none"><strong>Order Processing locked</strong><p>You do not have order processing access.</p></div>
+                <div class="ops-card alert-row critical" id="processingAccessNotice" style="display:none"><strong>Order Processing locked</strong><p>This login is not an active Admin Portal / Control Room user.</p></div>
                 <div class="processing-desk">
                   <aside class="processing-preview" id="processingPreview">
                     <strong>No parcel selected</strong>
@@ -5406,9 +5406,9 @@
                 <div class="section-head"><div><h3>Invoice</h3><p>NovaX branded invoice preview.</p></div></div>
                 <div id="adminInvoiceViewBody"></div>
                 <div class="inline-actions" style="margin-top:14px">
-                  <button class="action-btn secondary" onclick="closeAdminInvoiceModal()">Close</button>
-                  <button class="action-btn" id="adminInvoiceViewPrintBtn">Download PDF</button>
-                  <button class="ghost-btn" id="adminInvoiceViewCsvBtn">Download CSV</button>
+                  <button class="action-btn secondary" type="button" onclick="closeAdminInvoiceModal()">Close</button>
+                  <button class="action-btn" type="button" id="adminInvoiceViewPrintBtn">Download PDF</button>
+                  <button class="ghost-btn" type="button" id="adminInvoiceViewCsvBtn">Download CSV</button>
                 </div>
               </div>
             </div>
@@ -6625,6 +6625,73 @@
       const finalBalance = payable - dueToNovax;
       const invoiceType = codParcels.length && nonCodParcels.length ? "Mixed" : (nonCodParcels.length ? "Delivery Charges" : "COD Settlement");
       return { cod, charges, payable, dueToNovax, finalBalance, invoiceType, codCount: codParcels.length, nonCodCount: nonCodParcels.length };
+    }
+
+    // NovaX fix (invoice-to-wallet journey): single source of truth for
+    // "what does this invoice's card look like right now", used by both
+    // recentInvoiceList and adminInvoiceList so the two lists can never
+    // drift out of sync with each other again. Uses explicit status/amount
+    // checks only -- never the old `status === "Pushed to wallet" ||
+    // status === "Paid"` shortcut, because "Paid" does not mean wallet
+    // pushed (it can also mean a Delivery Charges invoice paid to NovaX, or
+    // a legacy invoice that was marked Paid without ever being pushed).
+    function invoiceHasWalletCredit(invoice) {
+      return (state.walletLedger || []).some(row => row.entryType === "invoice_credit" && (row.referenceCode === invoice.id || (invoice._uuid && row.referenceId === invoice._uuid)));
+    }
+
+    function invoiceUiState(invoice) {
+      const payable = Number(invoice.payable || 0);
+      const due = Number(invoice.dueToNovax || 0);
+      const status = invoice.status || "Generated";
+      const hasCredit = invoiceHasWalletCredit(invoice);
+      const isPushedWallet = status === "Pushed to wallet";
+      const isSettled = status === "Settled";
+      const isPaidToNovax = status === "Paid to NovaX" || (status === "Paid" && due > 0 && payable <= 0);
+      const isLegacyPaidWithCredit = status === "Paid" && payable > 0 && hasCredit;
+      // Broken historical invoice: marked Paid, carries a real client-payable
+      // amount, but the wallet was never actually credited (no invoice_credit
+      // ledger row exists). Surfaced as a warning + repair action, never as
+      // a silent "Settled".
+      const isBrokenPaid = status === "Paid" && payable > 0 && !hasCredit;
+      const isClosed = isSettled || isPaidToNovax || isLegacyPaidWithCredit;
+      let primaryAction = null;
+      let chipLabel = status;
+      let chipClass = "info";
+      if (isBrokenPaid) {
+        primaryAction = "repair";
+        chipLabel = "Paid but not pushed to wallet";
+        chipClass = "bad";
+      } else if (isClosed) {
+        chipLabel = isPaidToNovax ? "Paid to NovaX" : "Settled";
+        chipClass = "good";
+      } else if (isPushedWallet && payable > 0) {
+        primaryAction = "close";
+        chipLabel = "Pushed to wallet";
+        chipClass = "good";
+      } else if (payable > 0) {
+        primaryAction = "push";
+        chipLabel = "Generated";
+        chipClass = "warn";
+      } else if (due > 0) {
+        primaryAction = "paidNovax";
+        chipLabel = "Generated";
+        chipClass = "warn";
+      }
+      // Convenience flag: has this invoice's payable amount actually landed
+      // in the client wallet (as opposed to just being marked closed)? Used
+      // by dashboard stats and delete/edit guards so they never rely on the
+      // old `status === "Pushed to wallet" || status === "Paid"` shortcut.
+      const enteredWallet = isPushedWallet || isSettled || isLegacyPaidWithCredit;
+      return { payable, due, status, hasCredit, isPushedWallet, isSettled, isPaidToNovax, isBrokenPaid, isClosed, enteredWallet, primaryAction, chipLabel, chipClass };
+    }
+
+    function invoiceActionButtons(invoice) {
+      const ui = invoiceUiState(invoice);
+      if (ui.primaryAction === "push") return `<button class="action-btn" type="button" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button>`;
+      if (ui.primaryAction === "close") return `<button class="action-btn" type="button" onclick="markInvoicePaid('${invoice.id}')">Close Settled Invoice</button>`;
+      if (ui.primaryAction === "paidNovax") return `<button class="action-btn" type="button" onclick="markInvoicePaid('${invoice.id}')">Mark Paid To NovaX</button>`;
+      if (ui.primaryAction === "repair") return `<button class="action-btn" type="button" onclick="repairInvoiceWalletCredit('${invoice.id}')">Repair: Push To Wallet</button>`;
+      return `<span class="chip good">${escLabelText(ui.chipLabel)}</span>`;
     }
 
     function walletFeeRate(speed) {
@@ -8151,22 +8218,17 @@
       if (recentInvoiceEl) {
         recentInvoiceEl.innerHTML = state.invoices.filter(inv => inv.status !== "Deleted").slice(0, 8).map(invoice => {
           const client = clientById(invoice.clientId);
-          const pushed = invoice.status === "Pushed to wallet" || invoice.status === "Paid";
+          const ui = invoiceUiState(invoice);
           const due = Number(invoice.dueToNovax || 0);
-          const isDueInvoice = due > 0;
           const invType = invoice.invoiceType || "COD Settlement";
-          let recentActions;
-          if (invoice.status === "Paid") recentActions = `<span class="chip good">Settled</span>`;
-          else if (isDueInvoice) recentActions = `<button class="action-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Paid</button>`;
-          else if (pushed) recentActions = `<button class="ghost-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Invoice Settled</button>`;
-          else recentActions = `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button>`;
           return `
             <div class="ops-card">
-              <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${pushed ? "good" : "warn"}">${invoice.status}</span></div>
-              <p>${invType} \u00b7 ${invoice.parcelRefs.join(", ")}<br>${isDueInvoice ? `Amount due to NovaX ${money(due)}` : `Payable ${money(invoice.payable)}`} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
+              <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${ui.chipClass}">${escLabelText(ui.chipLabel)}</span></div>
+              <p>${invType} \u00b7 ${invoice.parcelRefs.join(", ")}<br>${due > 0 && invoice.payable <= 0 ? `Amount due to NovaX ${money(due)}` : `Payable ${money(invoice.payable)}`} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
+              ${ui.isBrokenPaid ? `<p class="footer-note" style="color:#b45309">Paid but not pushed to wallet. Use Repair to credit the client now.</p>` : ""}
               <div class="inline-actions" style="margin-top:8px">
-                ${recentActions}
-                <button class="ghost-btn" onclick="viewAdminInvoice('${invoice.id}')">View</button>
+                ${invoiceActionButtons(invoice)}
+                <button class="ghost-btn" type="button" onclick="viewAdminInvoice('${invoice.id}')">View</button>
               </div>
             </div>
           `;
@@ -8227,39 +8289,31 @@
       const visibleInvoices = state.invoices.filter(invoice => invoice.status !== "Deleted");
       document.getElementById("adminInvoiceList").innerHTML = visibleInvoices.map(invoice => {
         const client = clientById(invoice.clientId);
-        const pushed = invoice.status === "Pushed to wallet" || invoice.status === "Paid";
+        const ui = invoiceUiState(invoice);
         const invType = invoice.invoiceType || "COD Settlement";
         const due = Number(invoice.dueToNovax || 0);
-        const isDueInvoice = due > 0;
         const typeChipClass = invType === "Delivery Charges" ? "bad" : invType === "Mixed" ? "warn" : "info";
-        let actions;
-        if (invoice.status === "Paid") {
-          actions = `<span class="chip good">Settled</span>`;
-        } else if (isDueInvoice) {
-          actions = `<button class="action-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Paid</button><button class="ghost-btn" onclick="deleteInvoice('${invoice.id}')">Delete</button>`;
-        } else if (pushed) {
-          actions = `<button class="ghost-btn" onclick="markInvoicePaid('${invoice.id}')">Mark Invoice Settled</button>`;
-        } else {
-          actions = `<button class="action-btn" onclick="pushInvoiceToWallet('${invoice.id}')">Push To Client Wallet</button><button class="ghost-btn" onclick="deleteInvoice('${invoice.id}')">Delete</button>`;
-        }
+        const canDelete = invoice.status === "Generated";
+        const actions = invoiceActionButtons(invoice) + (canDelete ? `<button class="ghost-btn" type="button" onclick="deleteInvoice('${invoice.id}')">Delete</button>` : "");
         return `
           <div class="log-item">
             <strong>${invoice.id}<br>${client.name}</strong>
             <div>
               <strong>${invoice.parcelRefs.join(", ")}</strong>
               <div class="footer-note">${invoice.summary || "Delivered parcel invoice"} | Created ${invoice.createdAt || "now"}</div>
+              ${ui.isBrokenPaid ? `<div class="footer-note" style="color:#b45309;margin-top:4px">Paid but not pushed to wallet -- use Repair to credit the client now.</div>` : ""}
             </div>
             <span class="chip ${typeChipClass}">${invType}</span>
             <span class="chip info">COD ${money(invoice.cod)}</span>
             <span class="chip warn">Charges ${money(invoice.charges)}</span>
             <span class="chip ${invoice.payable > 0 ? "good" : "info"}">Payable to client ${money(invoice.payable)}</span>
-            <span class="chip ${isDueInvoice ? "bad" : "info"}">Due to NovaX ${money(due)}</span>
-            <span class="chip ${pushed ? "good" : "warn"}">${invoice.status}</span>
+            <span class="chip ${due > 0 ? "bad" : "info"}">Due to NovaX ${money(due)}</span>
+            <span class="chip ${ui.chipClass}">${escLabelText(ui.chipLabel)}</span>
             <div class="inline-actions">
               ${actions}
-              <button class="ghost-btn" onclick="viewAdminInvoice('${invoice.id}')">View Invoice</button>
-              <button class="ghost-btn" onclick="printAdminInvoice('${invoice.id}')">Download PDF</button>
-              <button class="ghost-btn" onclick="downloadAdminInvoiceCsv('${invoice.id}')">Download CSV</button>
+              <button class="ghost-btn" type="button" onclick="viewAdminInvoice('${invoice.id}')">View Invoice</button>
+              <button class="ghost-btn" type="button" onclick="printAdminInvoice('${invoice.id}')">Download PDF</button>
+              <button class="ghost-btn" type="button" onclick="downloadAdminInvoiceCsv('${invoice.id}')">Download CSV</button>
             </div>
           </div>
         `;
@@ -8691,7 +8745,7 @@
         walletSelect.value = activeClientId;
       }
       const walletTotal = state.clients.reduce((sum, client) => sum + walletBalance(client.id), 0);
-      const pushedInvoices = state.invoices.filter(invoice => invoice.status === "Pushed to wallet" || invoice.status === "Paid");
+      const pushedInvoices = state.invoices.filter(invoice => invoiceUiState(invoice).enteredWallet);
       const pendingInvoices = state.invoices.filter(invoice => invoice.status === "Generated" || invoice.status === "Pending");
       const pendingWithdrawals = state.walletWithdrawals.filter(item => item.status === "Pending admin payout");
       const paidWithdrawals = state.walletWithdrawals.filter(item => item.status === "Paid");
@@ -8770,7 +8824,7 @@
       if (walletInvoices) {
         walletInvoices.innerHTML = state.invoices.filter(invoice => invoice.status !== "Deleted").map(invoice => {
           const client = clientById(invoice.clientId);
-          const inWallet = invoice.status === "Pushed to wallet" || invoice.status === "Paid";
+          const inWallet = invoiceUiState(invoice).enteredWallet;
           const dueAmt = Number(invoice.dueToNovax || 0);
           return `<div class="ops-card ${inWallet ? "" : "alert-row"}">
             <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${inWallet ? "good" : "warn"}">${invoice.status}</span></div>
@@ -10256,15 +10310,17 @@
     function pushInvoiceToWallet(id) {
       const invoice = state.invoices.find(item => item.id === id);
       if (!invoice || invoice.status === "Deleted") return;
-      // NovaX new (Negative/Delivery-Charges Invoices): an invoice carrying
-      // any delivery-charges-due-to-NovaX amount (pure Delivery Charges, or
-      // the due portion of a Mixed invoice) must never be pushed to a
-      // client's wallet -- that would be paying the client money they owe.
-      if (Number(invoice.dueToNovax || 0) > 0) {
-        toast("This invoice is delivery charges due to NovaX and cannot be pushed to wallet.", "error");
+      // NovaX fix (invoice-to-wallet journey): Mixed invoices are now split at
+      // generation into a COD Settlement invoice and a separate Delivery
+      // Charges invoice, so by the time an invoice reaches this function it
+      // is always either fully client-payable or fully due to NovaX -- never
+      // both. Only the payable amount decides eligibility; dueToNovax alone
+      // must never block a real client payable.
+      if (Number(invoice.payable || 0) <= 0) {
+        toast("This invoice has no client-payable amount and cannot be pushed to wallet. Use Mark Paid To NovaX instead.", "error");
         return;
       }
-      if (invoice.status === "Pushed to wallet" || invoice.status === "Paid") {
+      if (["Pushed to wallet", "Settled", "Paid", "Paid to NovaX"].includes(invoice.status)) {
         toast(`${id} is already in wallet.`);
         return;
       }
@@ -10295,7 +10351,7 @@
     function deleteInvoice(id) {
       const invoice = state.invoices.find(item => item.id === id);
       if (!invoice) return;
-      if (invoice.status === "Pushed to wallet" || invoice.status === "Paid") {
+      if (invoiceUiState(invoice).enteredWallet) {
         toast("Wallet-active invoice cannot be deleted. Reverse through payout/ledger flow later.");
         return;
       }
@@ -11336,26 +11392,18 @@
       toast(`${money(amount)} cash collected from ${rider.name}. Delivered parcels are invoice-ready.`);
     }
 
-    function createInvoice(clientId, selectedParcels = null) {
-      const parcels = selectedParcels || clientInvoiceParcels(clientId);
-      if (!parcels.length) {
-        toast("No delivered parcels are ready for invoice.");
-        return;
-      }
-      const totals = invoiceTotals(parcels);
-      const id = nextId("INV", state.invoices);
+    function buildInvoiceRecord(id, clientId, parcels, totals, invoiceType) {
       const summaryBits = [`${parcels.length} delivered parcel(s)`, `COD ${money(totals.cod)}`, `delivery charges ${money(totals.charges)}`];
-      if (totals.invoiceType === "Delivery Charges") summaryBits.push(`amount due to NovaX ${money(totals.dueToNovax)}`);
-      else if (totals.invoiceType === "Mixed") summaryBits.push(`payable to client ${money(totals.payable)}`, `due to NovaX ${money(totals.dueToNovax)}`);
+      if (invoiceType === "Delivery Charges") summaryBits.push(`amount due to NovaX ${money(totals.dueToNovax)}`);
       else summaryBits.push(`payable ${money(totals.payable)}`);
-      const invoice = {
+      return {
         id,
         clientId,
         parcelRefs: parcels.map(p => p.awb),
         cod: totals.cod,
         charges: totals.charges,
         payable: totals.payable,
-        invoiceType: totals.invoiceType,
+        invoiceType,
         dueToNovax: totals.dueToNovax,
         finalBalance: totals.finalBalance,
         status: "Generated",
@@ -11364,66 +11412,138 @@
         walletPushedAt: "",
         summary: summaryBits.join(", ")
       };
-      state.invoices.unshift(invoice);
+    }
+
+    function createInvoice(clientId, selectedParcels = null) {
+      const parcels = selectedParcels || clientInvoiceParcels(clientId);
+      if (!parcels.length) {
+        toast("No delivered parcels are ready for invoice.");
+        return;
+      }
+      const totals = invoiceTotals(parcels);
+      const createdIds = [];
+      let toastMessage;
+      if (totals.invoiceType === "Mixed") {
+        // NovaX fix (Mixed invoices): split at generation into two clean,
+        // single-purpose invoices instead of one invoice that mixes money
+        // NovaX owes the client with money the client owes NovaX. This is
+        // what makes the wallet push safe and unambiguous going forward --
+        // a wallet push can now always assume "this whole invoice is
+        // client-payable", and dueToNovax > 0 never blocks a real payable.
+        const codParcels = parcels.filter(parcel => !isNonCodParcel(parcel));
+        const nonCodParcels = parcels.filter(parcel => isNonCodParcel(parcel));
+        const codTotals = invoiceTotals(codParcels);
+        const dueTotals = invoiceTotals(nonCodParcels);
+        const baseId = nextId("INV", state.invoices);
+        const codInvoiceId = `${baseId}-A`;
+        const dueInvoiceId = `${baseId}-B`;
+        state.invoices.unshift(buildInvoiceRecord(dueInvoiceId, clientId, nonCodParcels, dueTotals, "Delivery Charges"));
+        state.invoices.unshift(buildInvoiceRecord(codInvoiceId, clientId, codParcels, codTotals, "COD Settlement"));
+        createdIds.push(codInvoiceId, dueInvoiceId);
+        state.paymentLogs.unshift({
+          id: nextId("PAY", state.paymentLogs),
+          clientId,
+          type: "Invoice created",
+          amount: dueTotals.dueToNovax,
+          status: "Generated only, not in wallet",
+          ref: dueInvoiceId
+        });
+        state.paymentLogs.unshift({
+          id: nextId("PAY", state.paymentLogs),
+          clientId,
+          type: "Invoice created",
+          amount: codTotals.payable,
+          status: "Generated only, not in wallet",
+          ref: codInvoiceId
+        });
+        toastMessage = `Mixed settlement split into ${codInvoiceId} (COD Settlement, payable ${money(codTotals.payable)}) and ${dueInvoiceId} (Delivery Charges, due to NovaX ${money(dueTotals.dueToNovax)}).`;
+      } else {
+        const id = nextId("INV", state.invoices);
+        state.invoices.unshift(buildInvoiceRecord(id, clientId, parcels, totals, totals.invoiceType));
+        createdIds.push(id);
+        state.paymentLogs.unshift({
+          id: nextId("PAY", state.paymentLogs),
+          clientId,
+          type: "Invoice created",
+          amount: totals.invoiceType === "Delivery Charges" ? totals.dueToNovax : totals.payable,
+          status: "Generated only, not in wallet",
+          ref: id
+        });
+        toastMessage = `${id} generated. Push to wallet when finance approves.`;
+      }
       state.invoiceDraftRefs = [];
-      state.paymentLogs.unshift({
-        id: nextId("PAY", state.paymentLogs),
-        clientId,
-        type: "Invoice created",
-        amount: invoice.payable,
-        status: "Generated only, not in wallet",
-        ref: id
-      });
       saveState();
       render();
       const clientRecord = state.clients.find(c => c.id === clientId);
       if (!clientRecord || !clientRecord._uuid) {
-        toast(`${id} generated, but this client's account isn't fully synced to the cloud yet -- it will appear on their portal automatically once sync completes. Refresh in a minute to confirm.`, "error");
+        toast(`${createdIds.join(", ")} generated, but this client's account isn't fully synced to the cloud yet -- it will appear on their portal automatically once sync completes. Refresh in a minute to confirm.`, "error");
       } else {
-        toast(`${id} generated. Push to wallet when finance approves.`, "success");
+        toast(toastMessage, "success");
       }
     }
 
     function markInvoicePaid(id) {
       const invoice = state.invoices.find(item => item.id === id);
-      if (!invoice || invoice.status === "Paid") return;
-      // NovaX new (Negative/Delivery-Charges Invoices): a Delivery Charges (or
-      // Mixed) invoice never goes through the wallet -- the client pays
-      // NovaX directly, so Mark Paid must be reachable straight from
-      // "Generated" for those, without a wallet push first.
-      const isDueInvoice = Number(invoice.dueToNovax || 0) > 0;
+      if (!invoice) return;
+      if (["Paid", "Settled", "Paid to NovaX"].includes(invoice.status)) return;
+      // NovaX fix (invoice-to-wallet journey): a Delivery Charges invoice (no
+      // client-payable amount) never goes through the wallet -- the client
+      // pays NovaX directly, so this is reachable straight from "Generated"
+      // and closes to "Paid to NovaX". A client-payable (COD Settlement)
+      // invoice must always be pushed to wallet first; this action only
+      // closes it out to "Settled" and is never itself a wallet credit or
+      // debit.
+      const isDueInvoice = Number(invoice.payable || 0) <= 0 && Number(invoice.dueToNovax || 0) > 0;
       if (!isDueInvoice && invoice.status !== "Pushed to wallet") {
-        toast("Push invoice to wallet before marking it paid.");
+        toast("Push invoice to wallet before closing it as settled.");
         return;
       }
-      // NovaX fix: marking an invoice "Paid" is now purely an administrative
-      // status/reconciliation action and must never touch clients.wallet_balance.
-      // Wallet credit happens once, at Push To Client Wallet. Actual client
-      // payout settlement happens from the withdrawal queue via
-      // admin_mark_withdrawal_paid, not from invoice status. This now runs as
-      // one atomic Postgres RPC (invoice status only) instead of a browser-side
-      // write that used to also (incorrectly) debit the wallet.
+      // Marking an invoice paid/settled is purely an administrative
+      // status/reconciliation action and must never touch
+      // clients.wallet_balance. Wallet credit happens once, at Push To
+      // Client Wallet. Actual client payout settlement happens from the
+      // withdrawal queue via admin_mark_withdrawal_paid, not from invoice
+      // status. This runs as one atomic Postgres RPC (invoice status only).
       const client = clientById(invoice.clientId);
       if (window.__nvSb && invoice._uuid) {
-        // NovaX fix (item 8): used to call applyMarkInvoicePaidLocally() right
-        // after loadAll() here, which mutates the (now stale) local invoice
-        // object and calls saveState() -- that could trigger a generic sync
-        // push of the pre-reload invoice/ticket/withdrawal state a moment
-        // later and stomp on what the RPC + reload just wrote. loadAll()
-        // alone is the single source of truth once the RPC succeeds.
         window.__nvSb.rpc("admin_mark_invoice_paid", { p_invoice_id: invoice._uuid }).then(r => {
-          if (r && r.error) { toast(`Could not mark ${id} paid: ${r.error.message}`, "error"); return; }
+          if (r && r.error) { toast(`Could not close ${id}: ${r.error.message}`, "error"); return; }
           if (typeof loadAll === "function") loadAll();
-          toast(isDueInvoice ? `${id} marked paid. ${money(invoice.dueToNovax)} delivery charges collected from ${client.name}.` : `${id} marked settled. Wallet balance is unaffected -- payouts happen from the withdrawal queue.`);
-        }).catch(e => toast(`Could not mark ${id} paid: ${(e && e.message) || e}`, "error"));
+          toast(isDueInvoice ? `${id} marked Paid to NovaX. ${money(invoice.dueToNovax)} delivery charges collected from ${client.name}.` : `${id} closed as Settled. Wallet balance is unaffected -- payouts happen from the withdrawal queue.`);
+        }).catch(e => toast(`Could not close ${id}: ${(e && e.message) || e}`, "error"));
         return;
       }
-      // NovaX fix: this used to fall back to applyMarkInvoicePaidLocally()
-      // whenever Supabase wasn't connected or the invoice had no cloud UUID
-      // yet, which let admin mark a real finance action "settled" even
-      // though nothing was actually written to the server. Live settlement
-      // must never succeed locally -- block and tell admin to wait for sync.
-      toast(`${id} cannot be marked settled yet -- this invoice is not synced to the cloud. Wait for sync and try again.`, "error");
+      // Live settlement must never succeed locally -- block and tell admin to
+      // wait for sync.
+      toast(`${id} cannot be closed yet -- this invoice is not synced to the cloud. Wait for sync and try again.`, "error");
+    }
+
+    function repairInvoiceWalletCredit(id) {
+      const invoice = state.invoices.find(item => item.id === id);
+      if (!invoice) return;
+      if (Number(invoice.payable || 0) <= 0) {
+        toast(`${id} has no client-payable amount to repair.`, "error");
+        return;
+      }
+      if (invoiceHasWalletCredit(invoice)) {
+        toast(`${id} already has a wallet credit on the ledger.`);
+        return;
+      }
+      const client = clientById(invoice.clientId);
+      if (!window.__nvSb || !invoice._uuid) {
+        toast(`${id} cannot be repaired yet -- this invoice is not synced to the cloud. Wait for sync and try again.`, "error");
+        return;
+      }
+      // NovaX fix (historical repair): one-invoice-at-a-time repair for a
+      // "Paid" invoice that has a real client-payable amount but was never
+      // actually pushed to wallet. Runs through admin_repair_paid_invoice_missing_wallet_credit,
+      // which refuses to run twice on the same invoice, so this can never
+      // double-credit.
+      window.__nvSb.rpc("admin_repair_paid_invoice_missing_wallet_credit", { p_invoice_id: invoice._uuid }).then(r => {
+        if (r && r.error) { toast(`Could not repair ${id}: ${r.error.message}`, "error"); return; }
+        if (typeof loadAll === "function") loadAll();
+        toast(`${id} repaired. ${money(invoice.payable)} credited to ${client.name} wallet and backfilled to the ledger.`);
+      }).catch(e => toast(`Could not repair ${id}: ${(e && e.message) || e}`, "error"));
     }
 
     function addReturnProof(awb) {
@@ -12759,7 +12879,7 @@
 (function(){
   var __SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
   var __SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
-  var __REQUIRED_ROLE="admin";
+  var __ALLOWED_ROLES=["admin","owner","superadmin","ops","ops manager","branch manager","warehouse","warehouse staff","processing","processing staff","staff","rider supervisor"];
   var __sb=window.__nvSb||null; try{ if(!__sb&&window.supabase&&window.supabase.createClient){ __sb=window.supabase.createClient(__SB_URL,__SB_KEY); } }catch(__e){} window.__nvGuardSb=__sb;
   function ses(){ try{ return JSON.parse(localStorage.getItem("novaxSession")||"null"); }catch(e){ return null; } }
   function logout(e){ if(e&&e.preventDefault) e.preventDefault(); try{ localStorage.removeItem("novaxSession"); }catch(_){ } try{ if(__sb&&__sb.auth) __sb.auth.signOut(); }catch(_2){ } window.location.href="index.html"; }
@@ -12773,7 +12893,13 @@
         if(p&&p.error) return;
         var role=p&&p.data?String(p.data.role||"").toLowerCase():"";
         var status=p&&p.data?String(p.data.status||"").toLowerCase():"";
-        if(!role||role!==__REQUIRED_ROLE||status==="blocked"||status==="disabled"){ try{ __sb.auth.signOut(); }catch(_3){ } window.location.replace("index.html"); }
+        // NovaX fix (invoice-to-wallet journey / admin guard): this used to
+        // require role === "admin" exactly, which signed out active Admin
+        // Portal / Control Room users (ops, branch manager, staff, etc.) the
+        // moment any page action triggered a reload. This page is not
+        // owner-only, so any active role that can legitimately use the
+        // Admin Portal is now allowed through.
+        if(!role||__ALLOWED_ROLES.indexOf(role)===-1||status==="blocked"||status==="disabled"){ try{ __sb.auth.signOut(); }catch(_3){ } window.location.replace("index.html"); }
       });
     });
   }
