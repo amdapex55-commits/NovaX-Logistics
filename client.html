@@ -363,7 +363,7 @@
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<!-- AUTH_GATE_VERSION: 2026-07-16-role-hard-stop-v2 -->
+<!-- AUTH_GATE_VERSION: 2026-07-16-auth-flow-v3 -->
 <body>
   <div id="nvAuthGate" style="position:fixed;inset:0;z-index:999999;background:#f4f8f6;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#10201b;">
     <div style="width:34px;height:34px;border-radius:50%;border:3px solid #cfe4da;border-top-color:#0c7c59;animation:nvGateSpin .8s linear infinite;"></div>
@@ -379,10 +379,26 @@
     // session AND a profiles.role === "client" lookup both succeed. It never
     // trusts localStorage novaxSession for access -- that value is UI cache
     // only and is cleared whenever a role/page mismatch is found.
-    var AUTH_GATE_VERSION="2026-07-16-role-hard-stop-v2"; window.NOVAX_AUTH_GATE_VERSION=AUTH_GATE_VERSION;
+    var AUTH_GATE_VERSION="2026-07-16-auth-flow-v4"; window.NOVAX_AUTH_GATE_VERSION=AUTH_GATE_VERSION;
     var __SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
     var __SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
     var __ADMIN_ROLES=["admin","owner","superadmin","ops","ops manager","branch manager","warehouse","warehouse staff","processing","processing staff","staff","rider supervisor"];
+    // NovaX fix (admin/client mapping guard): every real admin login email
+    // goes in this array, lowercase, one per entry. Checked BEFORE
+    // profiles.role is even fetched, so a mismapped database row
+    // (profiles.role wrongly stored as "client" for an admin login) can
+    // never show that admin the Client Portal. Keep this list in sync with
+    // the admin_emails list in Step 3 of novax_role_hard_stop_v2_repair.sql
+    // -- both must contain the exact same set of emails. Never deploy this
+    // with a placeholder value still in place.
+    //
+    // WARNING: this denylist is a defense-in-depth check, not the source of
+    // truth. If a real admin's login email is missing from this array AND
+    // that admin's profiles.role is wrong in the database (e.g. stored as
+    // "client"), this guard cannot catch it and that admin can still land
+    // in the Client Portal. Add every admin email here, and separately fix
+    // the underlying profiles.role via novax_role_hard_stop_v2_repair.sql.
+    var __ADMIN_EMAIL_DENYLIST=["admin@novax.pk"];
     var __resolveGate; window.__novaxAuthGateReady=new Promise(function(res){ __resolveGate=res; });
     function clearLocalSession(){ try{ localStorage.removeItem("novaxSession"); }catch(e){} }
     function redirectAway(url){ clearLocalSession(); window.location.replace(url); }
@@ -390,9 +406,9 @@
     try{ __gsb=window.__nvSb||null; if(!__gsb&&window.supabase&&window.supabase.createClient){ __gsb=window.supabase.createClient(__SB_URL,__SB_KEY); } }catch(__e){}
     window.__nvGuardSb=__gsb;
     function denyWithError(){
-      // NovaX fix: a profile lookup error (or missing role) must never let
-      // the page silently continue -- sign the session out and bounce to
-      // index.html with a clear, inspectable error flag instead.
+      // NovaX fix: a profile lookup error (or missing/invalid role) must
+      // never let the page silently continue -- sign the session out and
+      // bounce to index.html with a clear, inspectable error flag instead.
       try{ if(__gsb&&__gsb.auth) __gsb.auth.signOut(); }catch(e){}
       redirectAway("index.html?authError=1");
     }
@@ -400,9 +416,41 @@
     __gsb.auth.getSession().then(function(r){
       var session=r&&r.data&&r.data.session;
       if(!session){ redirectAway("index.html"); return; }
+      // NovaX fix (auth flow v3): read the auth email and signup metadata
+      // role FIRST, before ever fetching profiles. A known admin email or
+      // an auth-metadata role of admin/staff/rider routes to the correct
+      // portal immediately -- a second, independent line of defense that
+      // never depends on a profiles lookup succeeding or being correct.
+      var __sessionEmail=String((session.user&&session.user.email)||"").toLowerCase();
+      var __signupMeta=(session.user&&session.user.user_metadata)||{};
+      var __metaRole=String(__signupMeta.role||"").toLowerCase();
+      if(__ADMIN_EMAIL_DENYLIST.indexOf(__sessionEmail)>-1){
+        console.warn("NovaX auth gate: this email is a known admin login -- routing to admin.html without trusting profiles.role for the Client Portal. Fix the profiles row (see novax_role_hard_stop_v2_repair.sql) so this override is no longer needed.");
+        redirectAway("admin.html");
+        return;
+      }
+      if(__ADMIN_ROLES.indexOf(__metaRole)>-1){ redirectAway("admin.html"); return; }
+      if(__metaRole==="rider"){ redirectAway("rider.html"); return; }
       __gsb.from("profiles").select("role,status,client_id").eq("id",session.user.id).single().then(function(p){
         if(p&&p.error){
           console.warn("NovaX auth gate: profile lookup failed",p.error.message);
+          // NovaX fix (auth flow v4): a missing/failed profiles row is no
+          // longer an automatic hard stop. If this account's own signup
+          // metadata proves it came from the public merchant signup form
+          // (user_metadata.role === "client", already read above as
+          // __metaRole), let the existing one-time workspace recovery below
+          // run create_client_workspace instead of denying a verified new
+          // merchant who is only stuck because email confirmation delayed
+          // their profile row. Any other missing-profile role is still an
+          // immediate, safe hard stop -- and admin/rider metadata already
+          // redirected above, before this profiles fetch ever ran.
+          if(__metaRole==="client"){
+            window.__novaxAllowWorkspaceRecovery=true;
+            window.__novaxVerifiedProfile={ role:"client", status:"active", clientId:null };
+            var __gateElRecover=document.getElementById("nvAuthGate"); if(__gateElRecover) __gateElRecover.style.display="none";
+            __resolveGate(null);
+            return;
+          }
           denyWithError();
           return;
         }
@@ -411,24 +459,11 @@
         var clientId=p&&p.data?p.data.client_id:null;
         if(!role){ denyWithError(); return; }
         if(status==="blocked"||status==="disabled"){ denyWithError(); return; }
-        if(role==="rider"){ redirectAway("rider.html"); return; }
         if(__ADMIN_ROLES.indexOf(role)>-1){ redirectAway("admin.html"); return; }
-        if(role!=="client"){ redirectAway("index.html"); return; }
-        // NovaX fix (admin/client mapping guard): this denylist is a second,
-        // independent line of defense against the exact bug that caused an
-        // admin login to see the Client Portal -- a profiles row whose role
-        // was wrongly stored as "client" for a known admin email. It never
-        // trusts profiles.role alone for these emails: if the signed-in
-        // email is a known admin login, the client portal is refused and
-        // workspace recovery is never attempted, no matter what role or
-        // client_id the (mismapped) database row currently has. Keep this
-        // list in sync with the Step 3 admin email(s) in
-        // novax_role_hard_stop_v2_repair.sql. Never deploy this with the
-        // placeholder value still in place.
-        var __ADMIN_EMAIL_DENYLIST=["admin@novax.pk"];
-        var __sessionEmail=String((session.user&&session.user.email)||"").toLowerCase();
-        if(__ADMIN_EMAIL_DENYLIST.indexOf(__sessionEmail)>-1){
-          console.warn("NovaX auth gate: this email is a known admin login but profiles.role says 'client' -- refusing to show the Client Portal or run workspace recovery. Fix the profiles row (see novax_role_hard_stop_v2_repair.sql) then log in again.");
+        if(role==="rider"){ redirectAway("rider.html"); return; }
+        if(role!=="client"){
+          // Unrecognized/invalid role that isn't admin-like, rider, or
+          // client -- treat as an error rather than guessing a portal.
           denyWithError();
           return;
         }
@@ -440,8 +475,7 @@
         // recovery below is only ever allowed to run when this is true --
         // otherwise a client-role account with a missing client_id gets a
         // hard "Workspace not linked" stop instead of an invented dashboard.
-        var __signupMeta=(session.user&&session.user.user_metadata)||{};
-        window.__novaxAllowWorkspaceRecovery=(String(__signupMeta.role||"").toLowerCase()==="client");
+        window.__novaxAllowWorkspaceRecovery=(__metaRole==="client");
         window.__novaxVerifiedProfile={ role:role, status:status, clientId:clientId||null };
         var gateEl=document.getElementById("nvAuthGate"); if(gateEl) gateEl.style.display="none";
         __resolveGate(clientId||null);
