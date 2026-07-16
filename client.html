@@ -363,6 +363,7 @@
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
+<!-- AUTH_GATE_VERSION: 2026-07-16-role-hard-stop-v2 -->
 <body>
   <div id="nvAuthGate" style="position:fixed;inset:0;z-index:999999;background:#f4f8f6;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#10201b;">
     <div style="width:34px;height:34px;border-radius:50%;border:3px solid #cfe4da;border-top-color:#0c7c59;animation:nvGateSpin .8s linear infinite;"></div>
@@ -378,6 +379,7 @@
     // session AND a profiles.role === "client" lookup both succeed. It never
     // trusts localStorage novaxSession for access -- that value is UI cache
     // only and is cleared whenever a role/page mismatch is found.
+    var AUTH_GATE_VERSION="2026-07-16-role-hard-stop-v2"; window.NOVAX_AUTH_GATE_VERSION=AUTH_GATE_VERSION;
     var __SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
     var __SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
     var __ADMIN_ROLES=["admin","owner","superadmin","ops","ops manager","branch manager","warehouse","warehouse staff","processing","processing staff","staff","rider supervisor"];
@@ -414,6 +416,14 @@
         if(role!=="client"){ redirectAway("index.html"); return; }
         // Verified: real Supabase session + profiles.role === "client". Only
         // now is it safe to reveal the portal and let client data load.
+        // NovaX fix (role hard-stop v2): capture whether this account's own
+        // signup metadata proves it came from the public merchant signup
+        // form (user_metadata.role === "client"). The one-time workspace
+        // recovery below is only ever allowed to run when this is true --
+        // otherwise a client-role account with a missing client_id gets a
+        // hard "Workspace not linked" stop instead of an invented dashboard.
+        var __signupMeta=(session.user&&session.user.user_metadata)||{};
+        window.__novaxAllowWorkspaceRecovery=(String(__signupMeta.role||"").toLowerCase()==="client");
         window.__novaxVerifiedProfile={ role:role, status:status, clientId:clientId||null };
         var gateEl=document.getElementById("nvAuthGate"); if(gateEl) gateEl.style.display="none";
         __resolveGate(clientId||null);
@@ -3321,23 +3331,35 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               }catch(e){ console.warn("NovaX client realtime",e); }
             }
           }
-          function showWorkspacePreparingSoft(){
+          // NovaX fix (role hard-stop v2): a signed-in "client" profile with
+          // no client_id is no longer handed a fake dashboard (a client
+          // object with a placeholder name and a real wallet/parcel UI
+          // wrapped around it). It now gets a genuine full-page stop screen,
+          // reusing the same #nvAuthGate overlay the page-load auth gate
+          // uses, and loadAll()/render() are never called with invented data.
+          function showWorkspaceNotLinked(){
             state.accountNotLinked=true;
             state.clientRecordMissing=false;
             state.identityVerified=true;
-            state.client={ id:"UNLINKED", name:"We're preparing your workspace. Refresh or sign in again.", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
-            state.clients=[state.client];
-            try{ render(); }catch(e){}
+            var gateEl=document.getElementById("nvAuthGate");
+            if(gateEl){
+              gateEl.innerHTML='<div style="max-width:380px;text-align:center;font-size:15px;font-weight:700;line-height:1.6;">Workspace not linked.<br>Please contact NovaX support.</div><a href="index.html" style="margin-top:4px;color:#0c7c59;font-weight:600;text-decoration:underline;font-size:14px;">Return to homepage</a>';
+              gateEl.style.display="flex";
+            }
             window.__novaxClientDataReady=true;
           }
-          // NovaX fix (instant merchant workspace): a signed-in user with no
-          // client_id yet (auth trigger delay, interrupted signup, retried
-          // request, etc.) no longer gets stuck on "Contact NovaX admin".
-          // Instead this self-heals once by calling the same idempotent
-          // create_client_workspace RPC the signup form uses, seeded with
-          // this user's own signup metadata. It never creates a duplicate
-          // workspace (the RPC returns the existing client_id if one is
-          // already linked) and only shows a soft error if that retry fails.
+          // NovaX fix (instant merchant workspace, tightened by role
+          // hard-stop v2): a signed-in user with no client_id yet only ever
+          // self-heals through this recovery RPC when the account's own
+          // signup metadata proves it came from the public merchant signup
+          // form (window.__novaxAllowWorkspaceRecovery, set by the page auth
+          // gate from user_metadata.role === "client"). Any other client-role
+          // account with no client_id (created by an admin, imported, etc.)
+          // goes straight to the hard-stop screen instead -- recovery is
+          // never attempted for it, and it is never attempted for
+          // admin/staff/rider sessions because this whole flow only runs
+          // after the page auth gate has already confirmed the session's
+          // role is "client".
           function attemptWorkspaceRecovery(){
             var meta=(session.user&&session.user.user_metadata)||{};
             sb.rpc("create_client_workspace",{
@@ -3351,7 +3373,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             }).then(function(rpcRes){
               if(!rpcRes||rpcRes.error||!rpcRes.data){
                 console.warn("NovaX workspace recovery failed:",rpcRes&&rpcRes.error&&rpcRes.error.message);
-                showWorkspacePreparingSoft();
+                showWorkspaceNotLinked();
                 return;
               }
               MY=rpcRes.data;
@@ -3360,19 +3382,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               subscribeClientChannel();
             }).catch(function(e){
               console.warn("NovaX workspace recovery failed:",e);
-              showWorkspacePreparingSoft();
+              showWorkspaceNotLinked();
             });
+          }
+          function recoverOrStop(){
+            if(window.__novaxAllowWorkspaceRecovery){ attemptWorkspaceRecovery(); }
+            else { console.warn("NovaX: client_id missing and this account did not sign up through merchant signup -- showing hard stop instead of running workspace recovery."); showWorkspaceNotLinked(); }
           }
           sb.from("profiles").select("client_id").eq("id",session.user.id).single().then(function(p){
             if(p&&p.error){
               console.warn("NovaX profile",p.error.message);
-              attemptWorkspaceRecovery();
+              recoverOrStop();
               return;
             }
             MY=p&&p.data?p.data.client_id:null;
             if(!MY){
-              console.warn("NovaX: this seller has no client_id linked yet -- attempting automatic recovery.");
-              attemptWorkspaceRecovery();
+              console.warn("NovaX: this seller has no client_id linked yet.");
+              recoverOrStop();
               return;
             }
             state.accountNotLinked=false;
