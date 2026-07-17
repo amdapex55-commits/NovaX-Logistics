@@ -2025,12 +2025,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const el=document.getElementById("bankDetailsSection"); if(!el) return;
       const bd=state.clientBankDetails;
       if(bd && !state.bankDetailsEditing){
-        el.innerHTML=`<div class="ops-card bank-saved-pulse"><div class="ops-card-head"><strong>${esc(bd.holderName||"Saved bank account")}</strong><span class="chip good">&#10003; Bank details saved</span></div><p>${esc(maskIban(bd.iban))}${bd.bankName?(" &middot; "+esc(bd.bankName)):""}</p><button class="action-btn" style="margin-top:10px" onclick="editBankDetails()">Edit Bank Details</button></div>`;
+        el.innerHTML=`<div class="ops-card bank-saved-pulse"><div class="ops-card-head"><strong>${escLabelText(bd.holderName||"Saved bank account")}</strong><span class="chip good">&#10003; Bank details saved</span></div><p>${escLabelText(maskIban(bd.iban))}${bd.bankName?(" &middot; "+escLabelText(bd.bankName)):""}</p><button class="action-btn" style="margin-top:10px" onclick="editBankDetails()">Edit Bank Details</button></div>`;
         return;
       }
-      el.innerHTML=`<div class="field" style="max-width:380px"><label>Account holder name</label><input id="bankHolderName" value="${bd?esc(bd.holderName||""):""}"></div>
-        <div class="field" style="max-width:380px;margin-top:10px"><label>IBAN</label><input id="bankIbanInput" placeholder="PK00 BANK 0000 0000 0000 0000" value="${bd?esc(bd.iban||""):""}"></div>
-        <div class="field" style="max-width:380px;margin-top:10px"><label>Bank name (optional)</label><input id="bankNameInput" value="${bd?esc(bd.bankName||""):""}"></div>
+      el.innerHTML=`<div class="field" style="max-width:380px"><label>Account holder name</label><input id="bankHolderName" value="${bd?escLabelText(bd.holderName||""):""}"></div>
+        <div class="field" style="max-width:380px;margin-top:10px"><label>IBAN</label><input id="bankIbanInput" placeholder="PK00 BANK 0000 0000 0000 0000" value="${bd?escLabelText(bd.iban||""):""}"></div>
+        <div class="field" style="max-width:380px;margin-top:10px"><label>Bank name (optional)</label><input id="bankNameInput" value="${bd?escLabelText(bd.bankName||""):""}"></div>
         <div id="bankDetailsError" class="footer-note" style="display:none;background:#fff2f0;border:1px solid #f3b7ad;color:#a3271b;margin-top:10px"></div>
         <button class="action-btn" id="saveBankDetailsBtn" style="margin-top:12px" onclick="saveBankDetails()">Save Bank Details</button>
         ${bd?`<button class="action-btn" style="margin-top:12px;margin-left:8px;background:#eef2f5;color:#333" onclick="cancelBankDetailsEdit()">Cancel</button>`:""}`;
@@ -2165,8 +2165,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const canConfirm=!blockReason;
       summary.style.display="block";
       summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div>`+
-        `<div class="footer-note" style="margin-top:12px">${(!typedIbanErr&&typedIban)?("Payout goes to <b>"+esc(maskIban(typedIban))+"</b>"+(bd&&bd.holderName?(" for "+esc(bd.holderName)):"")+". "):""}${canConfirm?"":("<b>"+esc(blockReason)+"</b>")}</div>`+
-        `<button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="requestWalletWithdrawal()" ${canConfirm?"":"disabled"} title="${canConfirm?"Request Withdrawal":esc(blockReason)}">${state.__withdrawInFlight?"Submitting...":"Request Withdrawal"}</button>`;
+        `<div class="footer-note" style="margin-top:12px">${(!typedIbanErr&&typedIban)?("Payout goes to <b>"+escLabelText(maskIban(typedIban))+"</b>"+(bd&&bd.holderName?(" for "+escLabelText(bd.holderName)):"")+". "):""}${canConfirm?"":("<b>"+escLabelText(blockReason)+"</b>")}</div>`+
+        `<button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="requestWalletWithdrawal()" ${canConfirm?"":"disabled"} title="${canConfirm?"Request Withdrawal":escLabelText(blockReason)}">${state.__withdrawInFlight?"Submitting...":"Request Withdrawal"}</button>`;
       document.getElementById("withdrawHistory").innerHTML=myWds.map(w=>{
         // NovaX new (Finance Control Room v2): friendly status wording only --
         // no mention of admin review queues, locks, or risk.
@@ -2174,7 +2174,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const paidRef=(w.status==="Paid"&&w.paidTxnId)?` &middot; Paid with reference ${w.paidTxnId}`:"";
         // NovaX fix (wallet IBAN UX, item #10): history now shows a masked
         // IBAN (e.g. PK24****3344) instead of the full account number.
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${w.id}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${esc(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${paidRef}</div></div>`;
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${w.id}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${escLabelText(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${paidRef}</div></div>`;
       }).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Pick a payout speed above to withdraw.</p></div>`;
     }
     let __withdrawInFlight=false;
