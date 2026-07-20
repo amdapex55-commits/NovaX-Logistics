@@ -6807,7 +6807,11 @@
       // gap (< Rs 1) means the ledger and the balance have drifted apart.
       const client = clientById(clientId);
       const expectedRaw = (state.walletLedger || []).filter(row => row.clientId === clientId && row.affectsBalance).reduce((sum, row) => sum + Number(row.amount || 0), 0);
-      const expected = Math.max(0, Math.round(expectedRaw * 100) / 100);
+      // NovaX fix (non-COD delivery charge): negative wallet balances are now
+      // legitimate (a client owes NovaX for delivery charges), so "expected"
+      // must not be clamped to 0 -- clamping would falsely flag every
+      // indebted client as a ledger/balance mismatch.
+      const expected = Math.round(expectedRaw * 100) / 100;
       const actual = Number((client && client.walletBalance) || 0);
       const difference = Math.round((actual - expected) * 100) / 100;
       return { clientId, expected, actual, difference, mismatch: Math.abs(difference) >= 1 };
@@ -8926,7 +8930,8 @@
           withdrawal_requested: { label: "Withdrawal reservations", rows: [] },
           payout_fee: { label: "Payout fees", rows: [] },
           payout_paid: { label: "Payout paid (with proof)", rows: [] },
-          admin_adjustment: { label: "Admin adjustments", rows: [] }
+          admin_adjustment: { label: "Admin adjustments", rows: [] },
+          delivery_charge_due: { label: "Delivery charges (non-COD)", rows: [] }
         };
         rows.forEach(row => { if (groups[row.entryType]) groups[row.entryType].rows.push(row); });
         const groupHtml = Object.keys(groups).map(key => {
