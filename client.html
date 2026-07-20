@@ -1757,9 +1757,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${origin} &rarr; ${destination}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${orderId}</strong></div><div class="awb-field"><span>Reference No</span><strong>${referenceNo}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${phone}</strong></div><div class="awb-field"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${address}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div></section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
     }
     function printLabels(awbs){
-      const stage=document.getElementById("printStage"); if(!stage) return;
+      const stage=document.getElementById("printStage");
+      // NovaX fix (Autopilot AWB printing v1): printLabels now always
+      // returns a result object so callers (Autopilot's safePrintAwbs in
+      // particular) know exactly what happened instead of guessing from a
+      // toast. Manual print buttons elsewhere in the portal keep working
+      // exactly as before -- they just ignore the return value.
+      if(!stage) return { ok:false, count:0, awbs:[], error:"Print area not available." };
       const valid=(awbs||[]).map(a=>state.parcels.find(p=>p.awb===a)).filter(Boolean);
-      if(!valid.length){ toast("No AWB available to print."); return; }
+      if(!valid.length){ toast("No AWB available to print."); return { ok:false, count:0, awbs:[], error:"No AWB available to print." }; }
       // NovaX fix: every print run -- 1 AWB or many -- goes through this
       // same layout: up to 3 full-width horizontal label strips stacked
       // top-to-bottom per A4-landscape page (CSS grid rows, not columns).
@@ -1770,6 +1776,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         html+=`<div class="print-page">`+page.map(p=>`<div class="print-label-wrap">${awbLabelHtml(p)}</div>`).join("")+`</div>`;
       }
       stage.innerHTML=html;
+      // NovaX fix (Autopilot AWB printing v1): never call window.print() on
+      // an empty/blank stage -- this is what caused the occasional blank
+      // print screen when a race condition left printStage without any
+      // rendered .print-page in it.
+      if(!stage.innerHTML.trim() || !stage.querySelector(".print-page")){
+        stage.style.display="none"; stage.innerHTML=""; stage.classList.remove("bulk-print");
+        return { ok:false, count:0, awbs:[], error:"Label content did not render." };
+      }
       stage.style.display="block";
       const imgs=Array.from(stage.querySelectorAll("img"));
       const waitAll=Promise.all(imgs.map(img=>new Promise(resolve=>{
@@ -1780,14 +1794,36 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       })));
       const timeout=new Promise(resolve=>setTimeout(resolve,2500));
       Promise.race([waitAll,timeout]).then(()=>{
+        // NovaX fix (Autopilot AWB printing v1): re-check right before the
+        // print dialog opens -- if the stage was cleared/replaced by
+        // something else while we were waiting on images, bail out instead
+        // of printing a blank page.
+        if(!stage.isConnected || !stage.querySelector(".print-page")){
+          stage.style.display="none"; stage.classList.remove("bulk-print");
+          return;
+        }
         window.print();
-        setTimeout(()=>{ stage.style.display="none"; stage.innerHTML=""; stage.classList.remove("bulk-print"); },500);
+        // NovaX fix (Autopilot AWB printing v1): the old fixed 500ms
+        // cleanup could fire before the browser's print dialog actually
+        // finished reading the stage on slower devices, which is what
+        // sometimes produced a blank print. Cleanup now happens on the
+        // real window.afterprint event, with this 1500ms timer only as a
+        // fallback for browsers that never fire afterprint reliably.
+        let cleaned=false;
+        function cleanupPrintStage(){
+          if(cleaned) return; cleaned=true;
+          stage.style.display="none"; stage.innerHTML=""; stage.classList.remove("bulk-print");
+          if(window.onafterprint===cleanupPrintStage) window.onafterprint=null;
+        }
+        window.onafterprint=cleanupPrintStage;
+        setTimeout(cleanupPrintStage,1500);
         valid.forEach(p=>{ p.awbPrinted=true; p.awbPrintedAt=time(); });
         saveState();
         try{ if(document.getElementById("awbLabelPreview")) renderAwbLabel(); }catch(e){}
         try{ if(valid.length===1 && document.getElementById("awbModal").classList.contains("show")) document.getElementById("awbModalBody").innerHTML=awbCompleteBadge(valid[0])+awbLabelHtml(valid[0]); }catch(e){}
         try{ renderNewBookedList(); }catch(e){}
       });
+      return { ok:true, count:valid.length, awbs:valid.map(p=>p.awb), error:null };
     }
     function printAwb(){ printLabels([state.lastGeneratedAwb||state.selectedAwb]); }
     function openAwbModal(awb){ const p=state.parcels.find(x=>x.awb===awb)||selectedParcel(); state.lastGeneratedAwb=p.awb; saveState(); document.getElementById("awbModalBody").innerHTML=awbCompleteBadge(p)+awbLabelHtml(p); document.getElementById("awbModal").classList.add("show"); }
@@ -2088,7 +2124,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const myWds=(state.walletWithdrawals||[]).filter(w=>w.clientId===c.id);
       const myLedger=(state.walletLedger||[]).filter(l=>l.clientId===c.id);
       const expectedRaw=myLedger.filter(l=>l.affectsBalance).reduce((s,l)=>s+Number(l.amount||0),0);
-      const expected=Math.max(0,Math.round(expectedRaw*100)/100);
+      // NovaX fix (non-COD delivery charge): negative wallet balances are
+      // now a legitimate state (a client owes NovaX for delivery charges),
+      // so "expected" must not be clamped to 0 -- doing so would falsely
+      // flag every client who legitimately owes money as "under review".
+      const expected=Math.round(expectedRaw*100)/100;
       const walletUnderReview=Math.abs(Math.round((balance-expected)*100)/100)>=1;
       const reviewNote=document.getElementById("walletReviewNote");
       if(reviewNote) reviewNote.style.display=walletUnderReview?"block":"none";
@@ -2120,7 +2160,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(row){ state.serverWalletSummary=row; renderClientWallet(); }
         }).catch(function(e){ console.warn("NovaX wallet summary fetch error:",e&&e.message); });
       }
-      const entryLabels={ invoice_credit:"Invoice credited", withdrawal_requested:"Withdrawal requested", payout_fee:"Payout fee deducted", payout_paid:"Payout paid", admin_adjustment:"Admin adjustment" };
+      const entryLabels={ invoice_credit:"Invoice credited", withdrawal_requested:"Withdrawal requested", payout_fee:"Payout fee deducted", payout_paid:"Payout paid", admin_adjustment:"Admin adjustment", delivery_charge_due:"Delivery charge collected" };
       const ledgerList=document.getElementById("walletLedgerList");
       if(ledgerList){
         ledgerList.innerHTML=myLedger.slice(0,50).map(l=>`<div class="ops-card"><div class="ops-card-head"><strong>${entryLabels[l.entryType]||l.entryType}</strong><span class="chip ${l.amount>=0?"good":"warn"}">${money(l.amount)}</span></div><p>${l.note||l.referenceCode||""}</p><div class="footer-note">${l.createdAt}</div></div>`).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
@@ -2159,6 +2199,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       let blockReason="";
       if(state.__withdrawInFlight) blockReason="Submitting your withdrawal request...";
       else if(typedIbanErr) blockReason=typedIban?typedIbanErr:"Enter the IBAN this payout should go to.";
+      else if(serverBalance<0) blockReason=`You owe ${money(Math.abs(serverBalance))} in delivery charges -- clear this before withdrawing.`;
       else if(serverBalance<=0) blockReason="You have Rs 0 available to withdraw right now.";
       else if(!(rawAmt>0)) blockReason="Enter an amount greater than 0.";
       else if(amountTooHigh) blockReason="Amount cannot be more than your available balance ("+money(serverBalance)+").";
@@ -4379,23 +4420,34 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         },150);
         return;
       }
-      if(a.type==="print_pending_awbs"){
+      if(a.type==="preview_awb_label"){
+        var pvRes=resolveOwnAwbs(a.awb?[a.awb]:[]);
+        if(!pvRes.valid.length){ addMsg("I could not find "+(a.awb||"that AWB")+" in your account. Please check the tracking number.","b",[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }]); return; }
+        var pvP=pvRes.valid[0];
+        try{ state.lastGeneratedAwb=pvP.awb; saveState(); }catch(e){}
+        if(typeof openAwbModal==="function") openAwbModal(pvP.awb);
+        else if(typeof showClientTab==="function") showClientTab("awbLabel");
+        addMsg("Here's the label preview for "+pvP.awb+" \u2014 confirm it's the right parcel before printing.","b",[
+          { label:"Print This AWB", kind:"local", type:"print_awb", awb:pvP.awb },
+          { label:"Open AWB Tab", kind:"local", type:"go_awb_label" }
+        ]);
+        return;
+      }
+      if(a.type==="print_awb"){
+        var prA=safePrintAwbs(a.awb?[a.awb]:[]);
+        if(prA.ok) addMsg("Opening the print dialog for "+prA.awbs.join(", ")+" now.","b",[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }]);
+        return;
+      }
+      if(a.type==="preview_pending_awbs" || a.type==="print_pending_awbs"){
         try{
-          var pool=(typeof myParcels==="function")?myParcels():[];
-          var unprintedList=pool.filter(function(p){ return typeof isUnprintedLabel==="function"?isUnprintedLabel(p):false; }).map(function(p){ return p.awb; });
-          if(!unprintedList.length){ addMsg("All AWB labels are already printed.","b"); return; }
-          if(unprintedList.length>3){
-            setPendingAutopilotConfirm({ type:"bulk_print_awbs", awbs:unprintedList, resultMsg:"Opened print preview for "+unprintedList.length+" labels." });
-            addMsg("That's "+unprintedList.length+" labels \u2014 I'll open the print preview for all of them. Confirm?","b",[
-              { label:"Confirm Print", kind:"local", type:"confirm_action" },
-              { label:"Cancel", kind:"local", type:"cancel_confirm" }
-            ]);
-            return;
-          }
-          if(typeof printLabels==="function") printLabels(unprintedList);
-          if(typeof showClientTab==="function") showClientTab("awbLabel");
-          addMsg("Opened print preview for "+unprintedList.length+" label(s).","b");
-        }catch(e){ console.warn(e); addMsg("Couldn't open the print preview \u2014 try the AWB Label tab directly.","b",[{ label:"Go to AWB Label", kind:"local", type:"go_awb_label" }]); }
+          var plr=buildPendingLabelsReply();
+          addMsg(plr.reply,"b",plr.actions);
+        }catch(e){ console.warn(e); addMsg("Couldn't check pending labels \u2014 try the AWB Label tab directly.","b",[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }]); }
+        return;
+      }
+      if(a.type==="print_pending_awbs_confirmed"){
+        var prB=safePrintAwbs(a.awbs||[]);
+        if(prB.ok) addMsg("Printing "+prB.count+" pending label"+(prB.count===1?"":"s")+" now.","b",[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }]);
         return;
       }
       if(a.type==="open_wallet_withdraw"){
@@ -4599,6 +4651,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     var awb=getAwbFromText(msg);
     if(!awb && has(NV_KW.tracking)){ try{ awb=(typeof state!=="undefined"&&state.selectedAwb)||null; }catch(e){} }
+    // NovaX fix (Autopilot AWB printing v1): a message like "print awb
+    // N5930015" also matches the generic AWB-number pattern above, so
+    // without this check it used to fall straight into the tracking-status
+    // reply below and never reach printing at all. Print intent is now
+    // checked first so it always wins over the generic tracking guess.
+    if(has(NV_KW.printing)) return awb?buildAwbPrintReply(awb):buildPendingLabelsReply();
     if(awb){
       var pool=(typeof myParcels==="function")?myParcels():((typeof state!=="undefined"&&state.parcels)||[]);
       var p=pool.find(function(x){ return String(x.awb||"").toUpperCase()===String(awb).toUpperCase(); });
@@ -4662,10 +4720,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     if(has(NV_KW.printing)){
-      var unp=ctx?ctx.unprintedCount:0;
-      return unp>0
-        ? { reply:"You have "+unp+" AWB label(s) waiting to print.", actions:[{ label:"Print Labels", kind:"local", type:"go_awb_label" }] }
-        : { reply:"All your AWB labels are already printed \u2014 nothing waiting here.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+      // NovaX fix (Autopilot AWB printing v1): kept as a safety net -- the
+      // printIntent check near the top of this function normally handles
+      // this earlier, but if it ever doesn't, this still returns the same
+      // safe tiered pending-labels reply instead of the old generic
+      // one-line message.
+      return buildPendingLabelsReply();
     }
     if(has(NV_KW.codWallet)){
       var payable=ctx?ctx.payableBalance:0;
@@ -4740,6 +4800,95 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     pendingAutopilotConfirm=action;
     if(pendingAutopilotConfirmTimer) clearTimeout(pendingAutopilotConfirmTimer);
     pendingAutopilotConfirmTimer=setTimeout(function(){ pendingAutopilotConfirm=null; },60000);
+  }
+
+  /* ===== NovaX fix (Autopilot AWB printing v1) =====
+     Safe, deterministic AWB print helpers used by every AI-driven print
+     action below. These never touch the AWB Label tab's own manual print
+     buttons (printAwb/printLabels callers elsewhere in the file) -- they
+     only add a safe layer on top for Autopilot. */
+  function resolveOwnAwbs(awbs){
+    var list=Array.isArray(awbs)?awbs:(awbs?[awbs]:[]);
+    var upper=list.map(function(a){ return String(a||"").trim().toUpperCase(); }).filter(Boolean);
+    var pool=(typeof myParcels==="function")?myParcels():[];
+    var valid=[]; var invalid=[];
+    upper.forEach(function(a){
+      var p=pool.find(function(x){ return String(x.awb||"").toUpperCase()===a; });
+      if(p) valid.push(p); else invalid.push(a);
+    });
+    return { valid:valid, invalid:invalid, requested:upper };
+  }
+
+  // The one safe entry point for every AI-driven print: resolves against
+  // the current client's own parcels only (never selectedParcel()),
+  // always opens the AWB Label tab/preview before printing so the DOM is
+  // real before printLabels touches it, and never silently prints
+  // nothing -- it returns { ok:false, ... } and shows a clear Autopilot
+  // message instead.
+  function safePrintAwbs(awbs,options){
+    var opts=options||{};
+    var resolved=resolveOwnAwbs(awbs);
+    if(!resolved.valid.length){
+      var missingLabel=resolved.invalid.join(", ")||"that AWB";
+      if(!opts.silent){
+        addMsg(opts.notFoundMessage||("I could not find "+missingLabel+" in your account. Please check the tracking number."),"b",[
+          { label:"Open AWB Tab", kind:"local", type:"go_awb_label" }
+        ]);
+      }
+      return { ok:false, count:0, awbs:[], error:"No matching AWB found for this client." };
+    }
+    var validAwbs=resolved.valid.map(function(p){ return p.awb; });
+    try{
+      state.lastGeneratedAwb=resolved.valid[0].awb;
+      if(typeof showClientTab==="function") showClientTab("awbLabel");
+      if(typeof renderAwbLabel==="function") renderAwbLabel();
+    }catch(e){}
+    var run=function(){
+      var result=(typeof printLabels==="function")?printLabels(validAwbs):{ ok:false, count:0, awbs:[], error:"Print function unavailable." };
+      if(!result||!result.ok){
+        addMsg("I couldn't open the print preview for "+(validAwbs.length>1?"those labels":validAwbs[0])+" \u2014 try the AWB Label tab directly.","b",[
+          { label:"Open AWB Tab", kind:"local", type:"go_awb_label" }
+        ]);
+      }
+      if(typeof opts.onDone==="function"){ try{ opts.onDone(result); }catch(e){} }
+    };
+    // NovaX fix: give the AWB Label tab one real paint frame before
+    // printLabels touches printStage, so the preview underneath is never
+    // left blank/stale when the print dialog closes.
+    if(typeof requestAnimationFrame==="function") requestAnimationFrame(function(){ setTimeout(run,0); });
+    else setTimeout(run,30);
+    return { ok:true, count:validAwbs.length, awbs:validAwbs, error:null };
+  }
+  window.safePrintAwbs=safePrintAwbs;
+
+  function buildAwbPrintReply(awb){
+    var pool=(typeof myParcels==="function")?myParcels():[];
+    var p=pool.find(function(x){ return String(x.awb||"").toUpperCase()===String(awb||"").toUpperCase(); });
+    if(!p) return { reply:"I could not find "+awb+" in your account. Please check the tracking number.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+    var already=p.awbPrinted||p.labelPrinted;
+    var reply=already?("This label was already printed, but you can reprint "+p.awb+" if needed."):("I found "+p.awb+". I'll open the label preview first so you don't print the wrong parcel.");
+    return { reply:reply, actions:[
+      { label:"Preview Label", kind:"local", type:"preview_awb_label", awb:p.awb },
+      { label:"Print This AWB", kind:"local", type:"print_awb", awb:p.awb },
+      { label:"Open AWB Tab", kind:"local", type:"go_awb_label" }
+    ] };
+  }
+
+  function buildPendingLabelsReply(){
+    var pool=(typeof myParcels==="function")?myParcels():[];
+    var unprintedList=pool.filter(function(p){ return typeof isUnprintedLabel==="function"?isUnprintedLabel(p):false; }).map(function(p){ return p.awb; });
+    if(!unprintedList.length) return { reply:"All AWB labels are already printed.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
+    if(unprintedList.length===1) return { reply:"I found 1 pending label: "+unprintedList[0]+". I'll open the preview first so you can confirm before printing.", actions:[
+      { label:"Preview Label", kind:"local", type:"preview_awb_label", awb:unprintedList[0] },
+      { label:"Print This AWB", kind:"local", type:"print_awb", awb:unprintedList[0] }
+    ] };
+    var shown=unprintedList.slice(0,3);
+    var more=unprintedList.length-shown.length;
+    return { reply:"I found "+unprintedList.length+" printable AWBs: "+shown.join(", ")+(more>0?" and "+more+" more":"")+". I'll print only after you confirm \u2014 do you want to print all?", actions:[
+      { label:"Print All Pending", kind:"local", type:"print_pending_awbs_confirmed", awbs:unprintedList },
+      { label:"Open AWB Tab", kind:"local", type:"go_awb_label" },
+      { label:"Cancel", kind:"local", type:"cancel_confirm" }
+    ] };
   }
 
   function buildReturnConfirm(awb){
@@ -4874,13 +5023,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return { reply:"No delayed or problem parcels right now \u2014 everything looks on track.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
     }
 
-    if(has(["print label","print awb","print pending","reprint"])){
-      var unprinted=ctx?ctx.unprintedCount:0;
-      if(unprinted<=0) return { reply:"All your AWB labels are already printed \u2014 nothing waiting here.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
-      return { reply:"You have "+unprinted+" unprinted AWB label(s).", actions:[
-        { label:"Print Pending AWBs", kind:"local", type:"print_pending_awbs" },
-        { label:"Go to AWB Label", kind:"local", type:"go_awb_label" }
-      ] };
+    if(has(["print label","print awb","print pending","reprint","label print","print kaise","print nahi ho raha"])){
+      // NovaX fix (Autopilot AWB printing v1): a specific AWB in the message
+      // always wins -- offer preview/print for that exact parcel. Only fall
+      // back to the pending-labels summary when no AWB was mentioned, and
+      // never blindly print everything from a generic "print" message.
+      if(awb) return buildAwbPrintReply(awb);
+      return buildPendingLabelsReply();
     }
 
     if(has(["book order","create booking","book parcel","new order","booking kaise","naya order"])){
