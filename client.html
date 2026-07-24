@@ -71,6 +71,18 @@
     .view{display:none;animation:fadeUp .32s ease both;min-width:0;max-width:100%;}
     .view.active{display:block;}
     @keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+    /* NovaX fix (client portal animation pass v1): shared entrance keyframes
+       for elements that previously popped in with zero transition -- modal
+       backdrops, the mobile nav dropdown, dashboard metric values, and list
+       rows (parcel cards / payment log rows). These only ever run on
+       display:none -> visible or on freshly-inserted innerHTML nodes, the
+       same safe pattern already used by .client-module/.modal-card/.view
+       above, so no existing layout or click behavior is touched. */
+    @keyframes novaxModalFade{from{opacity:0;}to{opacity:1;}}
+    @keyframes novaxRowIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+    @media (prefers-reduced-motion:reduce){
+      .metric,.metric strong,.parcel-card,.log-item,.modal-overlay.show,.client-menu.open{animation:none !important;}
+    }
     .portal-title{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin:6px 0 16px;}
     .portal-title h2{margin:0;font-size:clamp(28px,5vw,48px);line-height:1;color:#071d17;}
     .portal-title p{margin:8px 0 0;color:#526b61;max-width:760px;line-height:1.45;}
@@ -99,10 +111,14 @@
     .section-head h2{font-size:28px;}
     .section-head h3{font-size:18px;}
     .section-head p{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:1.4;}
-    .metric{padding:14px;position:relative;overflow:hidden;}
+    .metric{padding:14px;position:relative;overflow:hidden;animation:novaxRowIn .32s ease both;}
+    .grid.metrics .metric:nth-child(1){animation-delay:0s;}
+    .grid.metrics .metric:nth-child(2){animation-delay:.05s;}
+    .grid.metrics .metric:nth-child(3){animation-delay:.1s;}
+    .grid.metrics .metric:nth-child(4){animation-delay:.15s;}
     .metric::after{content:"";position:absolute;inset:auto -24px -38px auto;width:96px;height:96px;border-radius:50%;background:rgba(12,124,89,.08);}
     .metric label{display:block;color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;}
-    .metric strong{display:block;font-size:clamp(24px,3vw,34px);margin:8px 0 10px;line-height:1;overflow-wrap:anywhere;}
+    .metric strong{display:block;font-size:clamp(24px,3vw,34px);margin:8px 0 10px;line-height:1;overflow-wrap:anywhere;animation:countPop .45s ease both;}
     .meter{width:100%;height:9px;border-radius:999px;background:#e5eee9;overflow:hidden;position:relative;}
     .meter>span{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,var(--green),var(--green-2));transition:width .8s cubic-bezier(.2,.7,.2,1);}
     .meter.amber>span{background:linear-gradient(90deg,#c77913,#f1a230);}
@@ -158,7 +174,11 @@
     .inline-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
     .bulk-drop{min-height:160px;display:grid;place-items:center;text-align:center;padding:20px;border:1px dashed var(--line-strong);border-radius:var(--radius);background:linear-gradient(135deg,rgba(12,124,89,.08),transparent 42%),#fff;}
     .log-feed{display:grid;gap:10px;}
-    .log-item{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:start;padding:11px 12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
+    .log-item{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:start;padding:11px 12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;animation:novaxRowIn .3s ease both;}
+    #clientPaymentHistory .log-item:nth-child(1){animation-delay:0s;}
+    #clientPaymentHistory .log-item:nth-child(2){animation-delay:.04s;}
+    #clientPaymentHistory .log-item:nth-child(3){animation-delay:.08s;}
+    #clientPaymentHistory .log-item:nth-child(n+4){animation-delay:.12s;}
     .date-range{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:14px;}
     .date-range .field{min-width:170px;}
     .filter-bar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:10px;align-items:end;margin-bottom:14px;}
@@ -194,7 +214,13 @@
     .toast.success{background:#1e7d32;color:#ffffff;}
     .toast.error{background:#b3261e;color:#ffffff;}
     .mobile-card-list{display:none;gap:10px;}
-    .parcel-card{padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
+    .parcel-card{padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;animation:novaxRowIn .3s ease both;}
+    #clientParcelCards .parcel-card:nth-child(1){animation-delay:0s;}
+    #clientParcelCards .parcel-card:nth-child(2){animation-delay:.04s;}
+    #clientParcelCards .parcel-card:nth-child(3){animation-delay:.08s;}
+    #clientParcelCards .parcel-card:nth-child(4){animation-delay:.12s;}
+    #clientParcelCards .parcel-card:nth-child(5){animation-delay:.16s;}
+    #clientParcelCards .parcel-card:nth-child(n+6){animation-delay:.2s;}
     .parcel-card .top{display:flex;justify-content:space-between;gap:8px;margin-bottom:10px;}
     .parcel-card dl{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;}
     .parcel-card dt{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;}
@@ -212,7 +238,7 @@
     .sb-awb{font-size:13px;font-weight:700;color:var(--ink);}
     .sb-meta{font-size:11px;color:var(--muted);line-height:1.4;}
     .modal-overlay{position:fixed;inset:0;z-index:130;display:none;place-items:start center;background:rgba(7,16,13,.62);backdrop-filter:blur(8px);padding:24px 16px;overflow:auto;}
-    .modal-overlay.show{display:grid;}
+    .modal-overlay.show{display:grid;animation:novaxModalFade .22s ease both;}
     .modal-card{width:min(720px,100%);background:#fff;border:1px solid var(--line-strong);border-radius:14px;box-shadow:var(--shadow);padding:18px;animation:fadeUp .3s ease both;margin:auto;}
     .modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;}
     .modal-head h3{margin:0;}
@@ -289,7 +315,7 @@
     @media (max-width:760px){
       .hamburger-btn{display:grid;}
       .client-menu{display:none;}
-      .client-menu.open{display:grid;}
+      .client-menu.open{display:grid;animation:fadeUp .22s ease both;}
       .topbar-inner{flex-direction:column;align-items:stretch;}
       .grid.metrics,.money-grid,.form-grid,.filter-bar,.tier-grid{grid-template-columns:1fr;}
       .awb-label{grid-template-columns:1fr;}
@@ -315,7 +341,7 @@
       main{padding:8px;}
       .portal-title h2{font-size:28px;}
       .portal-title p,.section-head p,.footer-note{font-size:12px;}
-      .client-menu.open{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+      .client-menu.open{display:grid;grid-template-columns:1fr 1fr;gap:7px;animation:fadeUp .22s ease both;}
       .client-tab{min-height:38px;padding:0 9px;font-size:12px;text-align:center;}
       .toolbar,.section-head{display:grid;gap:8px;}
       .inline-actions,.filter-bar,.form-grid,.mini-form,.money-grid,.grid.two,.grid.three{grid-template-columns:1fr!important;}
