@@ -12380,6 +12380,16 @@
       var sbSignup=null; try{ sbSignup=window.supabase.createClient(SB_URL,SB_KEY,{ auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:"sb-nv-admin-signup-client" } }); }catch(e){ console.warn("NovaX: signup client init failed.",e); }
       window.__nvSignupClient=sbSignup;
       var ADMIN_UID=null, loaded=false, shadow={}, resyncT=null, liveSubscribed=false, reloadT=null;
+      // NovaX fix (Mark Paid freeze): if a table doesn't exist yet in the
+      // live database schema (e.g. operations_issues/resolved_alerts/
+      // manifest_logs/ticket_notifications/pickup_requests before their
+      // migration has been run), every saveState() call used to retry an
+      // insert against it and fail again -- forever, on every single state
+      // change. That firehose of failed requests was heavy enough to make
+      // the whole tab feel frozen, so buttons like "Mark Paid" appeared to
+      // do nothing. Once a table 404s as missing, stop retrying it for the
+      // rest of this session (a normal page reload re-checks it again).
+      var missingTables={};
       function scheduleReload(){ clearTimeout(reloadT); reloadT=setTimeout(function(){ try{ loadAll(); }catch(e){} },800); }
       function isUuid(v){ return typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v); }
       function dtpart(t){ return t?String(t).replace("T"," ").slice(0,16):""; }
@@ -12595,14 +12605,19 @@
         }).catch(function(e){ console.warn("NovaX admin load failed",e); });
       }
       function rebuildShadow(){ shadow={}; SETS.forEach(function(s){ (state[s[0]]||[]).forEach(function(o){ if(o._uuid){ try{ var row=s[1](o); if(row) shadow[o._uuid]=sigOf(row); }catch(e){} } }); }); }
+      function isMissingTableError(err){
+        var msg=(err&&err.message)||"";
+        return /could not find the table/i.test(msg) || (err&&err.code==="PGRST205");
+      }
       function syncEntity(arr, build, table){
+        if(missingTables[table]) return;
         (arr||[]).forEach(function(o){
           if(o._pending) return;
           var row; try{ row=build(o); }catch(e){ return; }
           if(!row) return;
           var sig=sigOf(row);
-          if(o._uuid){ if(shadow[o._uuid]===sig) return; shadow[o._uuid]=sig; sb.from(table).update(row).eq("id",o._uuid).then(function(r){ if(r&&r.error) console.warn("NovaX "+table+" update",r.error.message); }); }
-          else { o._pending=true; sb.from(table).insert(row).select("id").maybeSingle().then(function(r){ o._pending=false; if(r&&r.error){ console.warn("NovaX "+table+" insert",r.error.message); return; } if(r&&r.data){ o._uuid=r.data.id; shadow[o._uuid]=sig; scheduleResync(); } }); }
+          if(o._uuid){ if(shadow[o._uuid]===sig) return; shadow[o._uuid]=sig; sb.from(table).update(row).eq("id",o._uuid).then(function(r){ if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else { console.warn("NovaX "+table+" update",r.error.message); } } }); }
+          else { o._pending=true; sb.from(table).insert(row).select("id").maybeSingle().then(function(r){ o._pending=false; if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else { console.warn("NovaX "+table+" insert",r.error.message); } return; } if(r&&r.data){ o._uuid=r.data.id; shadow[o._uuid]=sig; scheduleResync(); } }); }
         });
       }
       function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
