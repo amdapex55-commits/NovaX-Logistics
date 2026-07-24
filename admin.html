@@ -223,6 +223,26 @@
       background: #096f4f;
     }
 
+    /* NovaX fix (silent locked Mark Paid button): a locked payout used to
+       render this button with the native disabled attribute, which looks
+       IDENTICAL to a normal enabled button (no style existed for :disabled
+       anywhere in this file) but silently blocks the click from firing any
+       JS at all -- so clicking it did nothing, with zero feedback, and
+       looked like the app was still broken. This stays clickable so the
+       existing risk-lock check can actually show the specific reason (e.g.
+       a wallet ledger mismatch) via toast, while looking visibly locked. */
+    .action-btn.btn-locked {
+      background: #8a9691;
+      color: #eef3f0;
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+
+    .action-btn.btn-locked:hover {
+      transform: none;
+      background: #7c8983;
+    }
+
     .ghost-btn {
       border: 1px solid var(--line);
       background: rgba(255, 255, 255, .6);
@@ -8917,7 +8937,7 @@
             ${lock.reasons.length ? `<div class="footer-note" style="color:#b42318">Risk reasons: ${lock.reasons.join("; ")}</div>` : ""}
             <div class="footer-note" style="margin-top:6px">Mark Paid closes payout after bank transfer -- it never reduces the wallet balance again (that already happened when this was requested).</div>
             <div class="inline-actions" style="margin-top:10px">
-              <button class="action-btn" ${lock.locked ? "disabled title=\"Resolve the risk reasons above before paying out\"" : ""} onclick="markWalletWithdrawalPaid('${item.id}')">Mark Paid</button>
+              <button class="action-btn${lock.locked ? " btn-locked" : ""}" ${lock.locked ? "title=\"Locked -- click to see why this can't be paid out yet\"" : ""} onclick="markWalletWithdrawalPaid('${item.id}')">Mark Paid</button>
               <button class="ghost-btn" type="button" onclick="rejectWalletWithdrawal('${item.id}')">Reject / Cancel</button>
             </div>
           </div>`;
