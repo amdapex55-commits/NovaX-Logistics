@@ -257,8 +257,18 @@
       body{margin:0 !important;background:#fff !important;}
       body *{visibility:hidden !important;}
       #printStage,#printStage *,#adminPrintStage,#adminPrintStage *{visibility:visible !important;}
-      #printStage,#adminPrintStage{display:block !important;position:absolute !important;left:0 !important;top:0 !important;width:287mm !important;height:auto !important;padding:0 !important;margin:0 !important;}
-       .print-page{width:287mm !important;height:200mm !important;display:grid !important;grid-template-rows:repeat(3,minmax(0,1fr)) !important;grid-template-columns:1fr !important;gap:3mm !important;box-sizing:border-box !important;page-break-after:always;break-after:page;overflow:hidden !important;}
+      /* NovaX fix (mobile AWB print blank-screen v1): the old rules forced
+         a hard 287mm/200mm A4-landscape size. Desktop browsers that honor
+         @page{size:A4 landscape} rendered this fine, but most mobile
+         browsers (iOS Safari, Android Chrome print-to-PDF) ignore @page
+         size/orientation and print in portrait instead -- so the 287mm-wide
+         block was wider than the actual ~200mm portrait page and got
+         pushed off-canvas, producing a blank print preview on phones.
+         Using relative sizing here lets the stage fill whatever page size
+         and orientation the device actually uses, on both desktop and
+         mobile. */
+      #printStage,#adminPrintStage{display:block !important;position:absolute !important;left:0 !important;top:0 !important;width:100% !important;height:auto !important;padding:0 !important;margin:0 !important;}
+       .print-page{width:100% !important;height:auto !important;min-height:0 !important;display:grid !important;grid-template-rows:repeat(3,minmax(min-content,1fr)) !important;grid-template-columns:1fr !important;gap:3mm !important;box-sizing:border-box !important;page-break-after:always;break-after:page;overflow:visible !important;}
        .print-page:last-child{page-break-after:auto !important;break-after:auto !important;}
        .print-label-wrap{width:100% !important;height:100% !important;min-height:0 !important;overflow:hidden !important;break-inside:avoid !important;page-break-inside:avoid !important;}
        .awb-label{width:100% !important;height:100% !important;min-height:0 !important;display:grid !important;grid-template-columns:54mm minmax(0,1fr) 40mm !important;gap:3mm !important;padding:3mm !important;border:1.5px solid #111 !important;border-radius:3px !important;box-sizing:border-box !important;overflow:hidden !important;background:#fff !important;}
