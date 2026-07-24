@@ -1813,27 +1813,35 @@
       }
 
       #printStage, #adminPrintStage {
+        /* NovaX fix (mobile AWB print blank-screen v1, admin side): mirrors
+           the same fix already applied in client.html. A hard 287mm width
+           assumed the browser would honor @page{size:A4 landscape}, but
+           most mobile browsers (iOS Safari, Android Chrome print-to-PDF)
+           ignore that and print portrait (~200mm wide) instead -- so the
+           287mm block was wider than the real page and got pushed off
+           canvas, producing a blank print preview on phones. */
         display: block !important;
         position: absolute !important;
         left: 0 !important;
         top: 0 !important;
-        width: 287mm !important;
+        width: 100% !important;
         height: auto !important;
         padding: 0 !important;
         margin: 0 !important;
       }
 
       .print-page {
-        width: 287mm !important;
-        height: 200mm !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
         display: grid !important;
-        grid-template-rows: repeat(3, minmax(0, 1fr)) !important;
+        grid-template-rows: repeat(3, minmax(min-content, 1fr)) !important;
         grid-template-columns: 1fr !important;
         gap: 3mm !important;
         box-sizing: border-box !important;
         page-break-after: always;
         break-after: page;
-        overflow: hidden !important;
+        overflow: visible !important;
       }
 
       .print-page:last-child {
@@ -2368,7 +2376,14 @@
       position: fixed;
       right: 18px;
       bottom: calc(18px + env(safe-area-inset-bottom));
-      z-index: 30;
+      /* NovaX fix (Mark Paid "blue screen" bug): toast used to sit at
+         z-index 30, far below the Mark Paid / invoice modals (z-index
+         9999). Any success or error message (e.g. "Bank transaction ID
+         required", or a real RPC failure) fired while a modal was open was
+         rendered completely behind the modal's overlay -- invisible -- so
+         the blue overlay just sat there looking permanently stuck with no
+         visible feedback. Toasts must always render above every modal. */
+      z-index: 2000000;
       max-width: min(360px, calc(100vw - 36px));
       padding: 13px 14px;
       border-radius: var(--radius);
