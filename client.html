@@ -29,6 +29,14 @@
       } catch (e) {}
     })();
   </script>
+  <script>
+    (function () {
+      try {
+        var savedTheme = localStorage.getItem("novaxTheme");
+        if (savedTheme === "dark") { document.documentElement.setAttribute("data-theme", "dark"); }
+      } catch (e) {}
+    })();
+  </script>
   <link rel="preconnect" href="https://rhzunbzbdzicajqtohwp.supabase.co">
   <link rel="dns-prefetch" href="https://rhzunbzbdzicajqtohwp.supabase.co">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -161,15 +169,52 @@
     .field label{font-size:12px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
     .field input,.field textarea,.field select{width:100%;min-height:42px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:0 12px;color:var(--ink);}
     .field.nvfield-missing input,.field.nvfield-missing select,.field.nvfield-missing textarea{border-color:#e0a100;background:#fff8ec;}
-    .nv-command-strip{background:#f3faf6;border:1px solid #cdeee1;border-left:4px solid #0c7c59;border-radius:8px;padding:12px 14px;margin:0 0 14px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+    .nv-command-strip{background:linear-gradient(135deg,#0c7c59,#13a36f 55%,#1d6f9f);border:1px solid #cdeee1;border-left:4px solid #0c4a34;border-radius:12px;padding:16px 18px;margin:0 0 14px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 14px 34px rgba(12,74,52,.22)}
     .nv-command-strip .nv-cs-text{flex:1;min-width:220px}
-    .nv-command-strip .nv-cs-brief{font-size:13.5px;font-weight:700;color:#0c4a34;margin:0 0 3px}
-    .nv-command-strip .nv-cs-next{font-size:12.5px;color:#3a6b5a;margin:0}
+    .nv-command-strip .nv-cs-greeting{font-size:12px;font-weight:800;color:rgba(255,255,255,.85);margin:0 0 4px;text-transform:uppercase;letter-spacing:.04em}
+    .nv-command-strip .nv-cs-brief{font-size:16px;font-weight:800;color:#fff;margin:0 0 4px}
+    .nv-command-strip .nv-cs-next{font-size:12.5px;color:rgba(255,255,255,.92);margin:0}
     .nv-command-strip .nv-cs-actions{display:flex;gap:8px;flex-wrap:wrap}
     .nv-command-strip button{border:none;border-radius:7px;padding:8px 12px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
-    .nv-command-strip .nv-cs-primary{background:#0c7c59;color:#fff}
-    .nv-command-strip .nv-cs-ghost{background:#fff;color:#0c7c59;border:1px solid #bfe8d7}
+    .nv-command-strip .nv-cs-primary{background:#fff;color:#0c4a34}
+    .nv-command-strip .nv-cs-ghost{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.4)}
     @media(max-width:560px){.nv-command-strip{flex-direction:column;align-items:stretch}.nv-command-strip .nv-cs-actions{justify-content:stretch}.nv-command-strip button{flex:1}}
+
+    /* NovaX dashboard refresh: onboarding checklist (additive, hidden when complete) */
+    .nv-onboarding{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 14px;box-shadow:var(--shadow)}
+    .nv-onboarding h4{margin:0 0 8px;font-size:13px;color:var(--ink)}
+    .nv-onboarding-item{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;color:var(--muted)}
+    .nv-onboarding-item.done{color:var(--green)}
+    .nv-onboarding-dot{width:20px;height:20px;border-radius:50%;border:2px solid var(--line-strong);display:flex;align-items:center;justify-content:center;font-size:11px;flex:none;color:var(--muted)}
+    .nv-onboarding-item.done .nv-onboarding-dot{border-color:var(--green);background:var(--green);color:#fff}
+    .nv-onboarding-item button{margin-left:auto;border:1px solid var(--line-strong);background:#fff;color:var(--green);border-radius:7px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}
+
+    /* NovaX dashboard refresh: metric icon (inline style handles click cursor per-card) */
+    .metric{position:relative}
+    .metric .metric-icon{position:absolute;top:12px;right:12px;font-size:16px;opacity:.55}
+
+    /* NovaX dashboard refresh: 7-day booking activity sparkline */
+    .nv-trend-panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow)}
+    .nv-trend-panel h4{margin:0;font-size:13px;color:var(--ink)}
+    .nv-trend-bars{display:flex;align-items:flex-end;gap:6px;height:64px;margin-top:14px}
+    .nv-trend-bar{flex:1;background:var(--mint);border-radius:4px 4px 0 0;position:relative;min-height:3px;transition:height .3s ease}
+    .nv-trend-bar span{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);font-size:10px;color:var(--muted);white-space:nowrap;margin-bottom:2px}
+    .nv-trend-labels{display:flex;gap:6px;margin-top:4px}
+    .nv-trend-labels span{flex:1;text-align:center;font-size:10px;color:var(--muted)}
+
+    /* NovaX dashboard refresh: optional dark mode (gated behind data-theme attr, zero effect unless toggled) */
+    html[data-theme="dark"]{color-scheme:dark;--ink:#eaf3ee;--muted:#9db3ac;--line:#274038;--line-strong:#345449;--bg:#0b1512;--panel:#101d18;--panel-soft:#132420;--mint:#123227;}
+    html[data-theme="dark"] body{background:var(--bg);color:var(--ink)}
+    html[data-theme="dark"] .panel,html[data-theme="dark"] .ops-card,html[data-theme="dark"] .metric,html[data-theme="dark"] .nv-onboarding,html[data-theme="dark"] .nv-trend-panel,html[data-theme="dark"] .seller-step,html[data-theme="dark"] .client-menu-head,html[data-theme="dark"] .client-side{background:var(--panel);border-color:var(--line);color:var(--ink)}
+    html[data-theme="dark"] table{color:var(--ink)}
+    .nv-theme-toggle{border:1px solid rgba(16,32,27,.08);background:#fff;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:14px;line-height:1;margin-right:8px}
+
+    /* NovaX dashboard refresh: desktop-only quick-book shortcut (mobile already has its own sticky book bar) */
+    .nv-quick-book-fab{display:none}
+    @media(min-width:901px){
+      .nv-quick-book-fab{display:flex;position:fixed;right:26px;bottom:26px;z-index:500;align-items:center;gap:8px;background:var(--green);color:#fff;border:none;border-radius:999px;padding:14px 20px;font-weight:800;font-size:13.5px;cursor:pointer;box-shadow:0 16px 34px rgba(12,124,89,.35)}
+      .nv-quick-book-fab:hover{background:#096f4f;transform:translateY(-2px)}
+    }
     .field textarea{min-height:94px;padding-top:10px;resize:vertical;}
     .inline-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
     .bulk-drop{min-height:160px;display:grid;place-items:center;text-align:center;padding:20px;border:1px dashed var(--line-strong);border-radius:var(--radius);background:linear-gradient(135deg,rgba(12,124,89,.08),transparent 42%),#fff;}
@@ -556,12 +601,14 @@
           <span class="realtime"><span class="pulse"></span><span id="clockB">Live</span></span>
         </div>
         <div class="client-shell">
+          <button class="nv-quick-book-fab" id="nvDesktopQuickBook" type="button">+ Book Parcel</button>
           <aside class="client-side">
             <div class="client-menu-head">
               <div>
                 <strong>Client Menu</strong>
                 <div id="clientWorkspaceName" class="footer-note" style="margin-top:2px">Loading workspace...</div>
               </div>
+              <button class="nv-theme-toggle" id="nvThemeToggleBtn" type="button" onclick="toggleNovaxTheme()" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
               <button class="hamburger-btn" id="clientMenuToggle" aria-label="Open client menu" aria-expanded="false"><span></span><span></span><span></span><span class="hamburger-label">Menu</span></button>
             </div>
             <nav class="client-menu" id="clientMenu" aria-label="Client portal sections">
@@ -584,6 +631,7 @@
               <div class="nv-command-strip" id="nvCommandStrip">
                 <!-- reorder anchor: nv-command-strip is order:2 on mobile, see mobile overhaul CSS -->
                 <div class="nv-cs-text">
+                  <p class="nv-cs-greeting" id="nvCsGreeting"></p>
                   <p class="nv-cs-brief" id="nvCsBrief">Loading today's briefing...</p>
                   <p class="nv-cs-next" id="nvCsNext"></p>
                 </div>
@@ -594,9 +642,10 @@
                   <button class="nv-cs-primary" id="nvCsBook" type="button">Book Orders</button>
                 </div>
               </div>
+              <div class="nv-onboarding" id="nvOnboardingChecklist" style="display:none"></div>
               <div class="panel" id="clientAccountHistoryPanel">
-                <div class="section-head"><div><h3>Account History</h3><p>Dashboard data is scoped to your account and selected date range.</p></div></div>
-                <div class="date-range">
+                <div class="section-head" id="accountHistoryHead" onclick="toggleAccountHistoryFilters()" style="cursor:pointer;user-select:none"><div><h3>Account History <span id="accountHistoryChevron" style="font-size:13px;color:var(--green)">▸</span></h3><p>Dashboard data is scoped to your account and selected date range. Tap to change the range.</p></div></div>
+                <div class="date-range" id="accountHistoryBody" style="display:none">
                   <div class="field"><label>From</label><input type="date" id="clientDateFrom"></div>
                   <div class="field"><label>To</label><input type="date" id="clientDateTo"></div>
                   <button class="action-btn" id="applyDateRangeBtn">Apply Range</button>
@@ -604,6 +653,7 @@
               </div>
               <div id="clientActionNeededCard" style="display:none;margin-top:14px"></div>
               <div class="grid metrics" id="clientMetrics" style="margin-top:14px"></div>
+              <div class="nv-trend-panel" id="nvTrendPanel" style="margin-top:14px"></div>
               <div class="panel" id="clientLiveStatusPanel" style="margin-top:14px">
                 <div class="section-head" id="statusBoardHead" onclick="toggleStatusBoard()" style="cursor:pointer;user-select:none"><div><h3>Live Status Board <span id="statusBoardChevron" style="font-size:13px;color:var(--green)">▸</span></h3><p id="statusBoardSummary">Tap to expand your parcels grouped by status.</p></div></div>
                 <div class="status-board" id="clientStatusBoard" style="display:none"></div>
@@ -1392,7 +1442,35 @@
     function statusClass(p){ const a=alertForParcel(p); if(a.level==="critical"||p.risk>=65||p.exception) return "bad"; if(a.level==="warning") return "warn"; if(["Delivered","Parcel returned to consignee"].includes(p.status)) return "good"; if(p.stage<5) return "info"; if(p.stage<8) return "warn"; return "good"; }
     function isRefusalReview(p){ return /refus|attempt disputed|consignee denies|not available/i.test(`${p.status} ${p.exception||""} ${p.steps.join(" ")}`); }
     function meterClass(v){ if(v>=75) return "red"; if(v>=45) return "amber"; return "blue"; }
-    function metricCard(label,value,fill,caption,kind=""){ return `<article class="metric"><label>${label}</label><strong>${value}</strong><div class="meter ${kind}"><span style="width:${fill}%"></span></div><div class="meter-caption"><span>${caption}</span><span>${fill}%</span></div></article>`; }
+    function metricCard(label,value,fill,caption,kind="",icon="",action=""){
+      const iconHtml = icon ? `<span class="metric-icon">${icon}</span>` : "";
+      const clickAttrs = action ? ` onclick="handleMetricCardClick('${action}')" role="button" tabindex="0" style="cursor:pointer"` : "";
+      return `<article class="metric"${clickAttrs}>${iconHtml}<label>${label}</label><strong>${value}</strong><div class="meter ${kind}"><span style="width:${fill}%"></span></div><div class="meter-caption"><span>${caption}</span><span>${fill}%</span></div></article>`;
+    }
+    // NovaX dashboard refresh: metric cards are clickable shortcuts into the
+    // matching filtered view -- purely additive UI sugar, no data logic changes.
+    function handleMetricCardClick(action){
+      try{
+        if(action==="clear"){
+          if(typeof showClientTab==="function") showClientTab("dashboard");
+          const el=document.getElementById("clientSearch"); if(el){ el.value=""; if(typeof renderClientParcels==="function") renderClientParcels(); }
+          const t=document.getElementById("clientDashboardMainGrid"); if(t) t.scrollIntoView({behavior:"smooth",block:"start"});
+          return;
+        }
+        if(action.indexOf("filter:")===0){
+          const term=action.slice(7);
+          if(typeof showClientTab==="function") showClientTab("dashboard");
+          const el=document.getElementById("clientSearch"); if(el){ el.value=term; if(typeof renderClientParcels==="function") renderClientParcels(); }
+          const t=document.getElementById("clientDashboardMainGrid"); if(t) t.scrollIntoView({behavior:"smooth",block:"start"});
+          return;
+        }
+        if(action.indexOf("tab:")===0){
+          const tab=action.slice(4);
+          if(typeof showClientTab==="function") showClientTab(tab);
+          return;
+        }
+      }catch(e){}
+    }
     function moneyBox(label,value,note){ return `<div class="money-box"><span>${label}</span><strong>${value}</strong><div class="footer-note">${note}</div></div>`; }
     // NovaX fix: once an invoice is "Pushed to wallet" the money is already
     // sitting in the client's wallet balance (ready to withdraw - any delay
@@ -1490,11 +1568,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const nvMetricsEl0=document.getElementById("clientMetrics");
       const wasExpanded=nvMetricsEl0 && nvMetricsEl0.classList.contains("nv-show-all");
       document.getElementById("clientMetrics").innerHTML=[
-        metricCard("My Parcels",cm.total,ops,"in selected range","blue"),
-        metricCard("Delivered",`${cm.delivered}/${cm.total}`,rate,"confirmed deliveries",rate<40?"amber":""),
-        metricCard("Delivery Charges",money(cm.deliveryCharges),percent(cm.deliveryCharges,3000),"courier charges","amber"),
-        metricCard("Invoice Payable Pending",money(cm.payable),percent(cm.payable,60000),"delivered, not yet in wallet","good"),
-        metricCard("Wallet Balance",money(Number((state.client&&state.client.walletBalance)||0)),percent(Number((state.client&&state.client.walletBalance)||0),60000),"ready to withdraw","blue"),
+        metricCard("My Parcels",cm.total,ops,"in selected range","blue","📦","clear"),
+        metricCard("Delivered",`${cm.delivered}/${cm.total}`,rate,"confirmed deliveries",rate<40?"amber":"","✅","filter:Delivered"),
+        metricCard("Delivery Charges",money(cm.deliveryCharges),percent(cm.deliveryCharges,3000),"courier charges","amber","💳","filter:Delivered"),
+        metricCard("Invoice Payable Pending",money(cm.payable),percent(cm.payable,60000),"delivered, not yet in wallet","good","🧾","tab:payments"),
+        metricCard("Wallet Balance",money(Number((state.client&&state.client.walletBalance)||0)),percent(Number((state.client&&state.client.walletBalance)||0),60000),"ready to withdraw","blue","💰","tab:wallet"),
         '<button type="button" id="nvMetricsToggle" class="ghost-btn nv-metrics-toggle" style="display:none" onclick="var g=document.getElementById(&quot;clientMetrics&quot;); g.classList.toggle(&quot;nv-show-all&quot;); this.textContent=g.classList.contains(&quot;nv-show-all&quot;)?&quot;Show fewer metrics&quot;:&quot;Show all metrics&quot;;">Show all metrics</button>'
       ].join("");
       if(wasExpanded){ document.getElementById("clientMetrics").classList.add("nv-show-all"); var nvT=document.getElementById("nvMetricsToggle"); if(nvT) nvT.textContent="Show fewer metrics"; }
