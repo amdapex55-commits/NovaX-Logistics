@@ -5478,31 +5478,12 @@
               </div>
             </section>
 
-            <div id="markPaidModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center">
-              <div class="panel" style="max-width:420px;width:92%;background:#fff">
-                <div class="section-head"><div><h3>Confirm Payout Paid</h3><p id="markPaidSummary"></p></div></div>
-                <input type="hidden" id="markPaidWithdrawalId">
-                <div class="field"><label>Bank transaction ID (required)</label><input id="markPaidTxnId" placeholder="e.g. TXN-2024-88213"></div>
-                <div class="field" style="margin-top:10px"><label>Paid by (staff name, required)</label><input id="markPaidByName" placeholder="Your name"></div>
-                <div class="field" style="margin-top:10px"><label>Proof note or URL (optional)</label><input id="markPaidProof" placeholder="Screenshot link or note"></div>
-                <div class="inline-actions" style="margin-top:14px">
-                  <button class="action-btn secondary" onclick="closeMarkPaidModal()">Cancel</button>
-                  <button class="action-btn" onclick="confirmMarkWalletWithdrawalPaid()">Confirm Paid</button>
-                </div>
-              </div>
-            </div>
-
-            <div id="adminInvoiceViewModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center">
-              <div class="panel" style="max-width:760px;width:94%;max-height:88vh;overflow:auto;background:#fff">
-                <div class="section-head"><div><h3>Invoice</h3><p>NovaX branded invoice preview.</p></div></div>
-                <div id="adminInvoiceViewBody"></div>
-                <div class="inline-actions" style="margin-top:14px">
-                  <button class="action-btn secondary" type="button" onclick="closeAdminInvoiceModal()">Close</button>
-                  <button class="action-btn" type="button" id="adminInvoiceViewPrintBtn">Download PDF</button>
-                  <button class="ghost-btn" type="button" id="adminInvoiceViewCsvBtn">Download CSV</button>
-                </div>
-              </div>
-            </div>
+            <!-- NovaX fix: markPaidModal / adminInvoiceViewModal moved to just before the closing body tag.
+                 They used to live here, nested inside a section with class "view", which permanently
+                 keeps a transform from its fadeUp entrance animation (animation-fill-mode: both).
+                 A transformed ancestor becomes the containing block for position:fixed children,
+                 so inset:0 was resolving against this multi-thousand-pixel-tall section instead
+                 of the viewport, making the modal render off-screen or as a full-height overlay. -->
 
             <section class="admin-module" id="admin-finance-summary">
               <div class="panel">
@@ -10513,7 +10494,7 @@
       // itself also rejects the call server-side if proof is missing, so
       // this modal is a UX convenience, not the only enforcement point.
       const modal = document.getElementById("markPaidModal");
-      if (!modal) return;
+      if (!modal) { toast("Mark Paid dialog failed to load -- please refresh the page.", "error"); return; }
       document.getElementById("markPaidWithdrawalId").value = id;
       document.getElementById("markPaidSummary").textContent = `${id}: pay ${money(withdrawal.net)} to IBAN ${withdrawal.iban}.`;
       document.getElementById("markPaidTxnId").value = "";
@@ -13016,6 +12997,47 @@
     if(document.readyState!=="loading") apply(); else document.addEventListener("DOMContentLoaded",apply);
   });
 })();
+</script>
+
+<!-- NovaX fix (CSS containing-block bug): these two modals are now direct
+     children of <body> instead of being nested inside <section class="view">,
+     so their `position:fixed;inset:0` correctly anchors to the viewport again.
+     Backdrop click and Esc now also close whichever modal is open, so a stuck
+     admin isn't forced to reload the page. -->
+<div id="markPaidModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this) closeMarkPaidModal();">
+  <div class="panel" style="max-width:420px;width:92%;background:#fff">
+    <div class="section-head"><div><h3>Confirm Payout Paid</h3><p id="markPaidSummary"></p></div></div>
+    <input type="hidden" id="markPaidWithdrawalId">
+    <div class="field"><label>Bank transaction ID (required)</label><input id="markPaidTxnId" placeholder="e.g. TXN-2024-88213"></div>
+    <div class="field" style="margin-top:10px"><label>Paid by (staff name, required)</label><input id="markPaidByName" placeholder="Your name"></div>
+    <div class="field" style="margin-top:10px"><label>Proof note or URL (optional)</label><input id="markPaidProof" placeholder="Screenshot link or note"></div>
+    <div class="inline-actions" style="margin-top:14px">
+      <button class="action-btn secondary" onclick="closeMarkPaidModal()">Cancel</button>
+      <button class="action-btn" onclick="confirmMarkWalletWithdrawalPaid()">Confirm Paid</button>
+    </div>
+  </div>
+</div>
+
+<div id="adminInvoiceViewModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this) closeAdminInvoiceModal();">
+  <div class="panel" style="max-width:760px;width:94%;max-height:88vh;overflow:auto;background:#fff">
+    <div class="section-head"><div><h3>Invoice</h3><p>NovaX branded invoice preview.</p></div></div>
+    <div id="adminInvoiceViewBody"></div>
+    <div class="inline-actions" style="margin-top:14px">
+      <button class="action-btn secondary" type="button" onclick="closeAdminInvoiceModal()">Close</button>
+      <button class="action-btn" type="button" id="adminInvoiceViewPrintBtn">Download PDF</button>
+      <button class="ghost-btn" type="button" id="adminInvoiceViewCsvBtn">Download CSV</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    var mp = document.getElementById("markPaidModal");
+    var iv = document.getElementById("adminInvoiceViewModal");
+    if (mp && mp.style.display !== "none" && typeof closeMarkPaidModal === "function") closeMarkPaidModal();
+    if (iv && iv.style.display !== "none" && typeof closeAdminInvoiceModal === "function") closeAdminInvoiceModal();
+  });
 </script>
 </body>
 </html>
