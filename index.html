@@ -559,6 +559,16 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   .card:hover,.tier:hover,.btn:hover,.ptab:hover{transform:none}
   .card:hover::before{opacity:0}
 }
+/* phones: backdrop-filter over a live-animated full-page canvas is the #1 mobile GPU killer —
+   every blurred card forces a re-blur of the moving 3D scene beneath it, every frame.
+   Strip it on touch and swap the see-through panel tint for a near-opaque solid so cards
+   still read as cards, just without the compositor cost. */
+@media (hover:none){
+  :root{--panel:rgba(8,22,16,.86);--panel-2:rgba(11,27,20,.92)}
+  header.stuck,.btn-ghost,.console,.bars,.flow,.card,.tick-card,.calc,.tres,.guar,
+  details,.ov,.nav-links.open,.aiwrap,.mock,.plat{
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+}
 </style>
 </head>
 <body>
