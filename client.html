@@ -323,38 +323,24 @@
     .done-check .tick{stroke:#14c77b;stroke-width:6;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:60;stroke-dashoffset:60;animation:tickDraw .7s .12s ease forwards;}
     @keyframes tickDraw{to{stroke-dashoffset:0;}}
     #printStage{display:none;}
+    /* NovaX fix (real AWB print sizing v2): the print rules that used to
+       live in this single @media print block assumed A4-landscape office
+       paper. Real courier AWBs are printed on a fixed 4x6in (100x150mm)
+       thermal label roll -- a completely different, portrait-shaped canvas
+       -- and mobile browsers (iOS Safari, Android Chrome print-to-PDF)
+       ignore @page size/orientation entirely, so the old wide 3-column
+       landscape layout got squeezed into whatever portrait page the phone
+       defaulted to, producing an oversized, elongated printout instead of
+       a real parcel-sized label. Only the rules that apply to BOTH modes
+       (hide everything except the print stage) stay here; the mode-specific
+       @page + layout rules now live in two separate, independently
+       toggleable <style> tags below (#nvPrintThermal / #nvPrintA4) so JS
+       can enable exactly one of them right before window.print(). */
     @media print{
-      @page{size:A4 landscape;margin:5mm;}
       body{margin:0 !important;background:#fff !important;}
       body *{visibility:hidden !important;}
       #printStage,#printStage *,#adminPrintStage,#adminPrintStage *{visibility:visible !important;}
-      /* NovaX fix (mobile AWB print blank-screen v1): the old rules forced
-         a hard 287mm/200mm A4-landscape size. Desktop browsers that honor
-         @page{size:A4 landscape} rendered this fine, but most mobile
-         browsers (iOS Safari, Android Chrome print-to-PDF) ignore @page
-         size/orientation and print in portrait instead -- so the 287mm-wide
-         block was wider than the actual ~200mm portrait page and got
-         pushed off-canvas, producing a blank print preview on phones.
-         Using relative sizing here lets the stage fill whatever page size
-         and orientation the device actually uses, on both desktop and
-         mobile. */
       #printStage,#adminPrintStage{display:block !important;position:absolute !important;left:0 !important;top:0 !important;width:100% !important;height:auto !important;padding:0 !important;margin:0 !important;}
-       .print-page{width:100% !important;height:auto !important;min-height:0 !important;display:grid !important;grid-template-rows:repeat(3,minmax(min-content,1fr)) !important;grid-template-columns:1fr !important;gap:3mm !important;box-sizing:border-box !important;page-break-after:always;break-after:page;overflow:visible !important;}
-       .print-page:last-child{page-break-after:auto !important;break-after:auto !important;}
-       .print-label-wrap{width:100% !important;height:100% !important;min-height:0 !important;overflow:hidden !important;break-inside:avoid !important;page-break-inside:avoid !important;}
-       .awb-label{width:100% !important;height:100% !important;min-height:0 !important;display:grid !important;grid-template-columns:54mm minmax(0,1fr) 40mm !important;gap:3mm !important;padding:3mm !important;border:1.5px solid #111 !important;border-radius:3px !important;box-sizing:border-box !important;overflow:hidden !important;background:#fff !important;}
-       .awb-zone{border:1px solid #777 !important;border-radius:2px !important;padding:2mm !important;gap:1.4mm !important;min-width:0 !important;min-height:0 !important;overflow:hidden !important;}
-       .awb-zone-title{font-size:7.5px !important;font-weight:900 !important;text-transform:uppercase !important;letter-spacing:.04em !important;border-bottom:1px solid #111 !important;padding-bottom:1mm !important;}
-       .awb-no{font-size:19px !important;line-height:1 !important;font-weight:900 !important;letter-spacing:.02em !important;}
-       .awb-route{font-size:12.5px !important;font-weight:900 !important;}
-       .awb-mini-grid{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:1.5mm !important;}
-       .awb-field{border:1px solid #c9c9c9 !important;border-radius:2px !important;padding:1.4mm !important;min-width:0 !important;background:#fff !important;}
-       .awb-field span{display:block !important;font-size:7px !important;line-height:1 !important;font-weight:900 !important;text-transform:uppercase !important;color:#555 !important;margin-bottom:.8mm !important;}
-       .awb-field strong{display:block !important;font-size:10.5px !important;line-height:1.15 !important;font-weight:800 !important;color:#111 !important;overflow-wrap:anywhere !important;}
-       .awb-address strong,.awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
-       .qr-img{width:28mm !important;height:28mm !important;padding:1mm !important;object-fit:contain !important;}
-       .barcode-img{width:34mm !important;height:9mm !important;padding:.8mm !important;object-fit:contain !important;}
-       .awb-scan .chip{font-size:7px !important;padding:1.5px 4px !important;}
     }
     @media (max-width:1080px){.client-shell{grid-template-columns:1fr;}.client-side{position:static;}.grid.two,.grid.three{grid-template-columns:1fr;}.grid.metrics{grid-template-columns:repeat(2,minmax(0,1fr));}}
     @media (max-width:760px){
@@ -448,6 +434,73 @@
       .nvcoach-bar{padding:10px 12px;}
       .nvcoach-ctl button{min-height:32px;padding:4px 2px;}
     }
+  </style>
+  <!-- NovaX: AWB print modes. Exactly one of these two is left enabled at
+       a time (JS toggles .disabled right before window.print()) -- browsers
+       apply whichever @page rule is active in an *enabled* stylesheet, so
+       this is the reliable cross-browser way to switch page size/orientation
+       at print time instead of fighting one @page rule with CSS classes. -->
+  <style id="nvPrintThermal" media="print">
+    /* Thermal label mode -- the real default. Matches the actual 4x6in
+       roll every cheap thermal printer (Xprinter/TSC/Zebra) takes, so this
+       is naturally portrait already: no landscape-vs-mobile-portrait fight
+       like the old A4 mode had. One label = one physical page, full bleed. */
+    @page{size:100mm 150mm;margin:0;}
+    .print-page{width:100mm !important;height:150mm !important;min-height:0 !important;display:block !important;box-sizing:border-box !important;page-break-after:always;break-after:page;overflow:hidden !important;}
+    .print-page:last-child{page-break-after:auto !important;break-after:auto !important;}
+    .print-label-wrap{width:100% !important;height:100% !important;overflow:hidden !important;break-inside:avoid !important;page-break-inside:avoid !important;}
+    /* Traditional AWB anatomy, stacked top-to-bottom on a fixed canvas
+       instead of the 3-column desktop layout: scan zone (AWB #, barcode,
+       QR) first since that's what hub scanners and riders reach for,
+       then the receiver/COD zone (the biggest block -- what the rider
+       reads to deliver and collect), then booking metadata last as a
+       small footer strip. Reordered with `order` only -- DOM/markup is
+       unchanged so nothing else that reads awbLabelHtml() breaks. */
+    .awb-label{width:100mm !important;height:150mm !important;display:flex !important;flex-direction:column !important;gap:2mm !important;padding:3mm !important;border:none !important;border-radius:0 !important;box-sizing:border-box !important;overflow:hidden !important;background:#fff !important;}
+    .awb-zone{border:1px solid #777 !important;border-radius:2px !important;padding:2mm !important;gap:1.2mm !important;min-width:0 !important;min-height:0 !important;overflow:hidden !important;}
+    .awb-scan{order:-2 !important;flex-direction:row !important;justify-content:space-between !important;align-items:center !important;border:1.5px solid #111 !important;padding:2.5mm !important;}
+    .awb-scan .barcode-img{order:1;flex:1;}
+    .awb-center{order:-1 !important;flex:1 1 auto !important;}
+    .awb-left{order:0 !important;}
+    .awb-zone-title{font-size:7px !important;font-weight:900 !important;text-transform:uppercase !important;letter-spacing:.04em !important;border-bottom:1px solid #111 !important;padding-bottom:.8mm !important;}
+    .awb-no{font-size:20px !important;line-height:1 !important;font-weight:900 !important;letter-spacing:.02em !important;}
+    .awb-route{font-size:11px !important;font-weight:900 !important;}
+    .awb-mini-grid{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:1.3mm !important;}
+    .awb-field{border:1px solid #c9c9c9 !important;border-radius:2px !important;padding:1.2mm !important;min-width:0 !important;background:#fff !important;}
+    .awb-field span{display:block !important;font-size:6.5px !important;line-height:1 !important;font-weight:900 !important;text-transform:uppercase !important;color:#555 !important;margin-bottom:.6mm !important;}
+    .awb-field strong{display:block !important;font-size:9.5px !important;line-height:1.15 !important;font-weight:800 !important;color:#111 !important;overflow-wrap:anywhere !important;}
+    /* COD is the single most costly field to misread on a real courier
+       label -- oversize it the way every traditional AWB does. */
+    .awb-field.awb-cod{grid-column:1 / -1 !important;border:1.5px solid #111 !important;padding:1.8mm !important;background:#fff7e6 !important;}
+    .awb-field.awb-cod span{font-size:8px !important;}
+    .awb-field.awb-cod strong{font-size:17px !important;font-weight:900 !important;}
+    .awb-address strong,.awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
+    .qr-img{width:20mm !important;height:20mm !important;padding:.8mm !important;object-fit:contain !important;flex:0 0 auto;}
+    .barcode-img{width:auto !important;max-width:52mm !important;height:14mm !important;padding:.6mm !important;object-fit:contain !important;margin:0 2mm;}
+    .awb-scan .chip{font-size:9px !important;font-weight:900 !important;padding:1.5px 4px !important;}
+  </style>
+  <style id="nvPrintA4" media="print" disabled>
+    /* A4 sheet mode -- secondary option for sellers printing on a regular
+       office printer instead of a thermal one: 3 labels per landscape
+       sheet, cut apart by hand. Unchanged from the original layout. */
+    @page{size:A4 landscape;margin:5mm;}
+    .print-page{width:100% !important;height:auto !important;min-height:0 !important;display:grid !important;grid-template-rows:repeat(3,minmax(min-content,1fr)) !important;grid-template-columns:1fr !important;gap:3mm !important;box-sizing:border-box !important;page-break-after:always;break-after:page;overflow:visible !important;}
+    .print-page:last-child{page-break-after:auto !important;break-after:auto !important;}
+    .print-label-wrap{width:100% !important;height:100% !important;min-height:0 !important;overflow:hidden !important;break-inside:avoid !important;page-break-inside:avoid !important;}
+    .awb-label{width:100% !important;height:100% !important;min-height:0 !important;display:grid !important;grid-template-columns:54mm minmax(0,1fr) 40mm !important;gap:3mm !important;padding:3mm !important;border:1.5px solid #111 !important;border-radius:3px !important;box-sizing:border-box !important;overflow:hidden !important;background:#fff !important;}
+    .awb-zone{border:1px solid #777 !important;border-radius:2px !important;padding:2mm !important;gap:1.4mm !important;min-width:0 !important;min-height:0 !important;overflow:hidden !important;}
+    .awb-zone-title{font-size:7.5px !important;font-weight:900 !important;text-transform:uppercase !important;letter-spacing:.04em !important;border-bottom:1px solid #111 !important;padding-bottom:1mm !important;}
+    .awb-no{font-size:19px !important;line-height:1 !important;font-weight:900 !important;letter-spacing:.02em !important;}
+    .awb-route{font-size:12.5px !important;font-weight:900 !important;}
+    .awb-mini-grid{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:1.5mm !important;}
+    .awb-field{border:1px solid #c9c9c9 !important;border-radius:2px !important;padding:1.4mm !important;min-width:0 !important;background:#fff !important;}
+    .awb-field span{display:block !important;font-size:7px !important;line-height:1 !important;font-weight:900 !important;text-transform:uppercase !important;color:#555 !important;margin-bottom:.8mm !important;}
+    .awb-field strong{display:block !important;font-size:10.5px !important;line-height:1.15 !important;font-weight:800 !important;color:#111 !important;overflow-wrap:anywhere !important;}
+    .awb-field.awb-cod strong{font-size:13px !important;}
+    .awb-address strong,.awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
+    .qr-img{width:28mm !important;height:28mm !important;padding:1mm !important;object-fit:contain !important;}
+    .barcode-img{width:34mm !important;height:9mm !important;padding:.8mm !important;object-fit:contain !important;}
+    .awb-scan .chip{font-size:7px !important;padding:1.5px 4px !important;}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
@@ -1050,6 +1103,7 @@
     <div class="modal-card">
       <div class="modal-head"><h3>AWB Created</h3><button class="modal-close" onclick="closeAwbModal()">&times;</button></div>
       <div id="awbModalBody"></div>
+      <div id="awbPrintModeToggle" class="inline-actions" style="margin-top:12px"></div>
       <div class="inline-actions" style="margin-top:14px"><button class="action-btn" id="awbModalPrint">Print Air Way Bill</button><button class="ghost-btn" onclick="closeAwbModal()">Close</button></div>
     </div>
   </div>
@@ -2166,7 +2220,38 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const bookedDate=labelDate(p);
       const orderId=parcelOrderId(p);
       const referenceNo=parcelReferenceNo(p);
-      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${origin} &rarr; ${destination}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${orderId}</strong></div><div class="awb-field"><span>Reference No</span><strong>${referenceNo}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${phone}</strong></div><div class="awb-field"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${address}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div></section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
+      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${origin} &rarr; ${destination}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${orderId}</strong></div><div class="awb-field"><span>Reference No</span><strong>${referenceNo}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${phone}</strong></div><div class="awb-field awb-cod"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${address}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div></section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
+    }
+    /* NovaX: AWB print mode -- "thermal" (real 4x6in courier label, one per
+       page, portrait) or "a4" (3-up on a landscape office sheet). Thermal
+       is the default because it's what actually matches a real parcel;
+       #nvPrintThermal/#nvPrintA4 are the two toggleable <style> tags added
+       in <head>. Persisted per-browser so a seller's choice sticks. */
+    function nvPrintMode(){
+      try{ return localStorage.getItem("novaxAwbPrintMode")==="a4" ? "a4" : "thermal"; }
+      catch(e){ return "thermal"; }
+    }
+    function nvSetPrintMode(mode){
+      mode = mode==="a4" ? "a4" : "thermal";
+      try{ localStorage.setItem("novaxAwbPrintMode", mode); }catch(e){}
+      nvApplyPrintMode();
+      try{ renderAwbPrintModeToggle(); }catch(e){}
+    }
+    function nvApplyPrintMode(){
+      const mode=nvPrintMode();
+      const th=document.getElementById("nvPrintThermal"), a4=document.getElementById("nvPrintA4");
+      if(th) th.disabled = mode!=="thermal";
+      if(a4) a4.disabled = mode!=="a4";
+    }
+    function renderAwbPrintModeToggle(){
+      const host=document.getElementById("awbPrintModeToggle");
+      if(!host) return;
+      const mode=nvPrintMode();
+      host.innerHTML =
+        '<button type="button" class="'+(mode==="thermal"?"action-btn":"ghost-btn")+
+        '" style="padding:5px 10px;font-size:12px" onclick="nvSetPrintMode(\'thermal\')">Thermal Label (4×6")</button>'+
+        '<button type="button" class="'+(mode==="a4"?"action-btn":"ghost-btn")+
+        '" style="padding:5px 10px;font-size:12px" onclick="nvSetPrintMode(\'a4\')">A4 Sheet (3-up)</button>';
     }
     function printLabels(awbs){
       const stage=document.getElementById("printStage");
@@ -2178,13 +2263,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!stage) return { ok:false, count:0, awbs:[], error:"Print area not available." };
       const valid=(awbs||[]).map(a=>state.parcels.find(p=>p.awb===a)).filter(Boolean);
       if(!valid.length){ toast("No AWB available to print."); return { ok:false, count:0, awbs:[], error:"No AWB available to print." }; }
-      // NovaX fix: every print run -- 1 AWB or many -- goes through this
-      // same layout: up to 3 full-width horizontal label strips stacked
-      // top-to-bottom per A4-landscape page (CSS grid rows, not columns).
+      nvApplyPrintMode();
+      const mode=nvPrintMode();
+      // NovaX fix (real AWB print sizing v2): thermal mode prints one real
+      // 4x6in label per physical page -- batching 3 onto a page only makes
+      // sense for the A4 sheet-and-scissors workflow, not a label roll.
+      const perPage = mode==="thermal" ? 1 : 3;
       stage.classList.add("bulk-print");
+      stage.classList.toggle("mode-thermal", mode==="thermal");
+      stage.classList.toggle("mode-a4", mode==="a4");
       let html="";
-      for(let i=0;i<valid.length;i+=3){
-        const page=valid.slice(i,i+3);
+      for(let i=0;i<valid.length;i+=perPage){
+        const page=valid.slice(i,i+perPage);
         html+=`<div class="print-page">`+page.map(p=>`<div class="print-label-wrap">${awbLabelHtml(p)}</div>`).join("")+`</div>`;
       }
       stage.innerHTML=html;
@@ -2238,7 +2328,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return { ok:true, count:valid.length, awbs:valid.map(p=>p.awb), error:null };
     }
     function printAwb(){ printLabels([state.lastGeneratedAwb||state.selectedAwb]); }
-    function openAwbModal(awb){ const p=state.parcels.find(x=>x.awb===awb)||selectedParcel(); state.lastGeneratedAwb=p.awb; saveState(); document.getElementById("awbModalBody").innerHTML=awbCompleteBadge(p)+awbLabelHtml(p); document.getElementById("awbModal").classList.add("show"); }
+    function openAwbModal(awb){ const p=state.parcels.find(x=>x.awb===awb)||selectedParcel(); state.lastGeneratedAwb=p.awb; saveState(); document.getElementById("awbModalBody").innerHTML=awbCompleteBadge(p)+awbLabelHtml(p); nvApplyPrintMode(); try{ renderAwbPrintModeToggle(); }catch(e){} document.getElementById("awbModal").classList.add("show"); }
     function closeAwbModal(){ document.getElementById("awbModal").classList.remove("show"); }
 
     function renderBulkPreview(){
@@ -3614,6 +3704,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     document.getElementById("newBookedPrintBtn")?.addEventListener("click",printNewBookedSelected);
     document.getElementById("requestPickupBtn")?.addEventListener("click",requestPickup);
     document.getElementById("awbModalPrint").addEventListener("click",()=>printLabels([state.lastGeneratedAwb]));
+    nvApplyPrintMode();
     document.getElementById("openTicketBtn").addEventListener("click",()=>openTicketModal(state.selectedAwb));
     document.getElementById("reportCsvBtn").addEventListener("click",exportReportCsv);
     document.getElementById("reportPdfBtn").addEventListener("click",exportReportPdf);
