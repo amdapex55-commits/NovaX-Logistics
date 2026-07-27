@@ -162,6 +162,20 @@
     .money-box strong{display:block;font-size:19px;}
     .ops-list{display:grid;gap:10px;}
     .ops-card{padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
+    /* NovaX new (Smart Portal E): Autopilot insight + digest cards. */
+    .nv-ins{border:1px solid var(--line);border-left:4px solid var(--muted);border-radius:var(--radius);
+      background:#fff;padding:12px 14px;margin-bottom:10px;min-width:0;}
+    .nv-ins.high{border-left-color:#dc2626;background:#fffafa;}
+    .nv-ins.medium{border-left-color:#b45309;background:#fffdf7;}
+    .nv-ins.digest{border-left-color:#4f46e5;background:linear-gradient(135deg,#eef2ff,#faf5ff);}
+    .nv-ins-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start;}
+    .nv-ins-title{font-weight:800;font-size:14px;min-width:0;overflow-wrap:anywhere;word-break:break-word;line-height:1.3;}
+    .nv-ins-body{font-size:12.5px;color:var(--muted);margin-top:5px;overflow-wrap:anywhere;line-height:1.45;}
+    .nv-ins-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;}
+    .nv-ins-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:8px;margin-top:10px;}
+    .nv-ins-stat{background:#fff;border:1px solid var(--line);border-radius:10px;padding:7px 9px;min-width:0;}
+    .nv-ins-stat span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:650;}
+    .nv-ins-stat strong{display:block;font-size:14px;font-weight:850;margin-top:1px;overflow-wrap:anywhere;}
     /* NovaX new (Smart Portal B): incoming-money panel. */
     .nv-inc{border:1px solid var(--line);border-radius:var(--radius);padding:14px;background:linear-gradient(135deg,#eef2ff,#f5f3ff);margin-bottom:14px;min-width:0;}
     .nv-inc-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#4338ca;}
@@ -737,6 +751,11 @@
                   <button class="nv-cs-primary" id="nvCsBook" type="button">Book Orders</button>
                 </div>
               </div>
+              <!-- NovaX new (Smart Portal E): Autopilot proactive intelligence.
+                   Server-computed insights + the weekly digest. Rendered from a
+                   once-per-session fetch, NOT from renderDailyCommandCenter()'s
+                   3-second loop. -->
+              <div id="nvInsightCards" style="display:none"></div>
               <div class="nv-onboarding" id="nvOnboardingChecklist" style="display:none"></div>
               <div class="panel" id="clientAccountHistoryPanel">
                 <div class="section-head" id="accountHistoryHead" onclick="toggleAccountHistoryFilters()" style="cursor:pointer;user-select:none"><div><h3>Account History <span id="accountHistoryChevron" style="font-size:13px;color:var(--green)">▸</span></h3><p>Dashboard data is scoped to your account and selected date range. Tap to change the range.</p></div></div>
@@ -1609,6 +1628,109 @@
       if(NV_CONSIGNEE_T) clearTimeout(NV_CONSIGNEE_T);
       NV_CONSIGNEE_T=setTimeout(nvConsigneeBadge,450);
     });
+
+    /* =====================================================================
+       NovaX new (Smart Portal E): Autopilot proactive intelligence UI.
+
+       WHY THIS FETCHES ONCE, NOT ON THE COMMAND-CENTER LOOP:
+       renderDailyCommandCenter() re-runs every 3 seconds. Calling these two
+       RPCs from there would mean ~1,200 database round trips per hour per
+       open tab, per merchant. These fetch once per session and re-render
+       from the cached result. Refreshed only on an explicit user action.
+
+       Both paths fail silent: if an RPC errors, the container stays hidden
+       and the dashboard behaves exactly as it did before.
+       ===================================================================== */
+    var NV_INSIGHTS={ list:null, digest:null, fetched:false };
+    function nvLoadInsights(force){
+      var sb=window.__nvSb;
+      if(!sb||!sb.rpc) return;
+      if(NV_INSIGHTS.fetched&&!force) return;
+      NV_INSIGHTS.fetched=true;
+      try{
+        sb.rpc("client_smart_insights").then(function(r){
+          if(r&&!r.error){
+            var d=r.data;
+            if(typeof d==="string"){ try{ d=JSON.parse(d); }catch(e){ d=[]; } }
+            NV_INSIGHTS.list=Array.isArray(d)?d:[];
+            try{ renderInsightCards(); }catch(e){}
+          }
+        }).catch(function(){});
+      }catch(e){}
+      /* Latest unread digest. Read directly through RLS (own rows only) --
+         no RPC needed for a plain scoped select. */
+      try{
+        sb.from("client_digests").select("*").is("read_at",null)
+          .order("week_start",{ascending:false}).limit(1)
+          .then(function(r){
+            if(r&&!r.error&&r.data&&r.data.length){
+              NV_INSIGHTS.digest=r.data[0];
+              try{ renderInsightCards(); }catch(e){}
+            }
+          },function(){});
+      }catch(e){}
+    }
+    function nvDismissDigest(id){
+      var sb=window.__nvSb;
+      NV_INSIGHTS.digest=null;
+      try{ renderInsightCards(); }catch(e){}
+      if(!sb||!sb.rpc||!id) return;
+      try{ sb.rpc("mark_digest_read",{ p_digest_id:id }).then(function(){},function(){}); }catch(e){}
+    }
+    function nvInsightTicket(title){
+      /* Reuses the existing ticket modal rather than inventing a second
+         support path. Prefills nothing beyond opening it, so the merchant
+         still writes the ticket in their own words. */
+      try{
+        if(typeof openTicketModal==="function"){ openTicketModal(); }
+        else { toast("Open the Support tab to raise a ticket."); }
+      }catch(e){}
+    }
+    function renderInsightCards(){
+      var host=document.getElementById("nvInsightCards");
+      if(!host) return;
+      var html="";
+
+      var dg=NV_INSIGHTS.digest;
+      if(dg){
+        var wk="";
+        try{
+          var d0=new Date(dg.week_start);
+          if(!isNaN(d0.getTime())) wk=d0.toLocaleDateString("en-PK",{day:"numeric",month:"short"});
+        }catch(e){}
+        html+='<div class="nv-ins digest">'+
+          '<div class="nv-ins-top">'+
+            '<div class="nv-ins-title">Your week in review'+(wk?(' &middot; week of '+escLabelText(wk)):"")+'</div>'+
+            '<button class="ghost-btn" style="padding:4px 9px;font-size:11.5px" onclick="nvDismissDigest(\''+escLabelText(dg.id)+'\')">Dismiss</button>'+
+          '</div>'+
+          (dg.headline?'<div class="nv-ins-body">'+escLabelText(dg.headline)+'</div>':"")+
+          '<div class="nv-ins-stats">'+
+            '<div class="nv-ins-stat"><span>Delivered</span><strong>'+escLabelText(String(dg.delivered_count||0))+'</strong></div>'+
+            '<div class="nv-ins-stat"><span>COD collected</span><strong>'+escLabelText(money(Number(dg.cod_collected||0)))+'</strong></div>'+
+            '<div class="nv-ins-stat"><span>Fees paid</span><strong>'+escLabelText(money(Number(dg.fees_paid||0)))+'</strong></div>'+
+            (dg.best_city?'<div class="nv-ins-stat"><span>Best city</span><strong>'+escLabelText(dg.best_city)+'</strong></div>':"")+
+            (dg.worst_city?'<div class="nv-ins-stat"><span>Most issues</span><strong>'+escLabelText(dg.worst_city)+'</strong></div>':"")+
+          '</div>'+
+        '</div>';
+      }
+
+      var list=NV_INSIGHTS.list||[];
+      list.slice(0,4).forEach(function(it){
+        if(!it||!it.title) return;
+        var sev=(it.severity==="high")?"high":(it.severity==="medium"?"medium":"");
+        html+='<div class="nv-ins'+(sev?" "+sev:"")+'">'+
+          '<div class="nv-ins-top"><div class="nv-ins-title">'+escLabelText(it.title)+'</div></div>'+
+          (it.body?'<div class="nv-ins-body">'+escLabelText(it.body)+'</div>':"")+
+          (it.action==="open_ticket"
+            ? '<div class="nv-ins-acts"><button class="action-btn" style="padding:6px 11px;font-size:12px" onclick="nvInsightTicket()">Raise this with ops</button></div>'
+            : "")+
+        '</div>';
+      });
+
+      if(!html){ host.style.display="none"; host.innerHTML=""; return; }
+      host.innerHTML=html;
+      host.style.display="block";
+    }
 
     var NV_WALLET_INTEL={ incoming:null, fees:null, loaded:false };
     function nvLoadWalletIntelligence(){
@@ -3963,6 +4085,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if (workspaceName) { const cds=clientDisplayState(); workspaceName.textContent = cds.showWorkspaceSuffix ? `${cds.label} workspace` : cds.label; }
       try{ if(typeof renderDashboardEmptyState==="function") renderDashboardEmptyState(); }catch(e){}
       try{ if(typeof renderDailyCommandCenter==="function") renderDailyCommandCenter(); }catch(e){}
+      /* NovaX new (Smart Portal E): once-per-session insight fetch. Guarded
+         internally by NV_INSIGHTS.fetched, so calling it from a render path
+         that runs repeatedly is safe. */
+      try{ if(typeof nvLoadInsights==="function") nvLoadInsights(); }catch(e){}
       tickMeters();
     }
     function tickMeters(){ requestAnimationFrame(()=>{ document.querySelectorAll(".meter>span").forEach(s=>{ const w=s.style.width; s.style.width="0"; requestAnimationFrame(()=>{ s.style.width=w; }); }); }); }
