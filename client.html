@@ -162,7 +162,8 @@
     .money-box strong{display:block;font-size:19px;}
     .ops-list{display:grid;gap:10px;}
     .ops-card{padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
-    .ops-card-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:9px;}
+    .ops-card-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:9px;flex-wrap:wrap;}
+    .ops-card-head strong{min-width:0;overflow-wrap:anywhere;word-break:break-word;}
     .ops-card p{margin:7px 0 0;color:var(--muted);font-size:12px;line-height:1.4;overflow-wrap:anywhere;}
     .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
     .field{display:grid;gap:6px;}
@@ -267,9 +268,9 @@
     #clientParcelCards .parcel-card:nth-child(5){animation-delay:.16s;}
     #clientParcelCards .parcel-card:nth-child(n+6){animation-delay:.2s;}
     .parcel-card .top{display:flex;justify-content:space-between;gap:8px;margin-bottom:10px;}
-    .parcel-card dl{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;}
+    .parcel-card dl{margin:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 12px;}
     .parcel-card dt{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;}
-    .parcel-card dd{margin:3px 0 0;font-weight:750;font-size:13px;}
+    .parcel-card dd{margin:3px 0 0;font-weight:750;font-size:13px;overflow-wrap:anywhere;word-break:break-word;}
     .wide-scroll{overflow-x:auto;}
     .wide-scroll table{min-width:760px;}
     .required-star{color:var(--green-2);font-weight:900;}
@@ -367,7 +368,15 @@
       .topbar-inner{display:grid;grid-template-columns:1fr;gap:8px;padding:9px 10px;overflow:hidden;}
       .brand-text span{display:block;white-space:normal;font-size:11px;}
       .topbar .auth-actions{display:none;}
-      .nav-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;overflow:visible;padding:0;}
+      /* NovaX fix (mobile UX audit, vertical-text bug): this was hardcoded
+         to 4 equal grid columns while the nav only ever has 2 tabs (Home,
+         Seller Suite) -- grid-template-columns reserves all 4 tracks
+         regardless of item count, so each visible tab was squeezed into
+         1/4 of the screen width instead of 1/2, narrow enough that
+         word-break:break-word (line 67) degraded toward one-character-
+         per-line on small phones. auto-fit sizes columns to the actual
+         number of tabs present. */
+      .nav-tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;overflow:visible;padding:0;}
       .tab-btn{width:100%;min-height:34px;padding:0 5px;border-radius:10px;font-size:11px;font-weight:850;white-space:normal;line-height:1.05;}
       main{padding:8px;}
       .portal-title h2{font-size:28px;}
@@ -418,7 +427,8 @@
       #clientMetrics.nv-show-all .metric:nth-child(2),#clientMetrics.nv-show-all .metric:nth-child(3){display:block;}
       #nvMetricsToggle{display:block!important;grid-column:1/-1;margin-top:4px;}
       .nv-awb-compact-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--panel);}
-      .nv-awb-compact-top{display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:4px;gap:8px;}
+      .nv-awb-compact-top{display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:4px;gap:8px;flex-wrap:wrap;}
+      .nv-awb-compact-top strong{min-width:0;overflow-wrap:anywhere;word-break:break-word;}
       .nv-awb-compact-mid{font-size:12px;color:var(--muted);margin-bottom:8px;}
       .wide-scroll table{min-width:0;width:100%;}
       .wide-scroll th,.wide-scroll td{padding:9px 8px;font-size:12px;}
@@ -2720,7 +2730,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const paidRef=(w.status==="Paid"&&w.paidTxnId)?` &middot; Paid with reference ${w.paidTxnId}`:"";
         // NovaX fix (wallet IBAN UX, item #10): history now shows a masked
         // IBAN (e.g. PK24****3344) instead of the full account number.
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${w.id}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${escLabelText(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${paidRef}</div></div>`;
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(w.id)}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${escLabelText(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${paidRef}</div></div>`;
       }).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Pick a payout speed above to withdraw.</p></div>`;
     }
     let __withdrawInFlight=false;
@@ -4123,7 +4133,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return { _uuid:r.id, id:r.code||r.id, clientId:MY, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:cod, charges:charges, payable:payable, status:r.status||"", createdAt:dtpart(r.created_at), paidAt:paidAt, walletPushedAt:walletPushedAt, summary:summary, invoiceType:invoiceType, dueToNovax:dueToNovax, finalBalance:Number(m.finalBalance!=null?m.finalBalance:payable) };
       }
       function mapTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:MY, title:r.subject||"", message:r.body||"", status:r.status||"Open", createdAt:dtpart(r.created_at), tier:m.tier||"medium", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", replies:Array.isArray(m.replies)?m.replies:[], escalated:!!m.escalated, sourceKey:m.sourceKey||"", resolutionReply:m.resolutionReply||"", proof:m.proof||"", resolvedBy:m.resolvedBy||"", resolvedAt:m.resolvedAt||"", solvedHours:Number(m.solvedHours||0) }; }
-      function mapWd(r){ return { _uuid:r.id, id:r.id, clientId:MY, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at), paidAt:r.paid_at?dtpart(r.paid_at):"", balanceBefore:Number(r.balance_before||0), paidTxnId:r.paid_txn_id||"", paidBy:r.paid_by||"", paidProof:r.paid_proof||"" }; }
+      function mapWd(r){
+        // NovaX fix (mobile UX audit, raw-UUID leak): withdrawals has no
+        // human-readable code column like invoices/tickets, so this used to
+        // show the raw database UUID as the card title. Derive a stable
+        // short code from the UUID itself (not a position-based counter,
+        // so it never changes when sort order changes on reload).
+        var shortCode="WDR-"+String(r.id||"").replace(/-/g,"").slice(0,6).toUpperCase();
+        return { _uuid:r.id, id:shortCode, clientId:MY, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at), paidAt:r.paid_at?dtpart(r.paid_at):"", balanceBefore:Number(r.balance_before||0), paidTxnId:r.paid_txn_id||"", paidBy:r.paid_by||"", paidProof:r.paid_proof||"" };
+      }
       function mapLedger(r){ return { _uuid:r.id, id:r.id, clientId:MY, entryType:r.entry_type||"", amount:Number(r.amount||0), affectsBalance:!!r.affects_balance, status:r.status||"", referenceType:r.reference_type||"", referenceId:r.reference_id||"", referenceCode:r.reference_code||"", note:r.note||"", createdAt:dtpart(r.created_at) }; }
       function mapPl(r){ return { _uuid:r.id, id:r.id, clientId:MY, type:r.type||"", amount:Number(r.amount||0), status:r.status||"", ref:r.reference||"", createdAt:dtpart(r.created_at) }; }
       function mapSc(r){ var m=r.meta||{}; return { _uuid:r.id, clientId:MY, platform:r.platform, storeUrl:r.store_url||"", connected:!!r.connected, importedCount:Number(r.imported_count||0), hasCreds:!!m.hasCreds, connectedAt:m.connectedAt||"", lastSync:m.lastSync||"" }; }
