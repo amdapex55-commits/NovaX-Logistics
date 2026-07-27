@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Track your parcel &middot; NovaX</title>
 <meta name="robots" content="noindex,nofollow">
+<!-- AUDIT FIX: the tracking token lives in this page's URL. Without this,
+     clicking the footer CTA sent the full URL (token included) to the
+     destination's access logs and any analytics on it. rel="noopener"
+     alone does NOT suppress the referrer. -->
+<meta name="referrer" content="no-referrer">
 <meta name="description" content="Track your NovaX parcel in real time.">
 <style>
   /* NovaX public tracking (token link).
@@ -209,7 +214,7 @@
     show('<div class="card"><div class="msg"><strong>'+esc(title)+'</strong>'+esc(sub)+'</div></div>'+ctaHtml());
   }
   function ctaHtml(){
-    return '<a class="cta" href="'+SITE+'" target="_blank" rel="noopener">Ship your own parcels with NovaX</a>'+
+    return '<a class="cta" href="'+SITE+'" target="_blank" rel="noopener noreferrer">Ship your own parcels with NovaX</a>'+
            '<div class="cta-sub">Same-day COD payouts for online sellers across Pakistan.</div>';
   }
 
@@ -221,16 +226,25 @@
     }catch(e){ steps=[]; }
 
     var html="";
-    if(steps.length){
-      /* Real recorded history when we have it, newest last. */
-      steps.forEach(function(s,i){
-        var st=(s&&(s.status||s.name))||"";
-        var ts=(s&&(s.at||s.time||s.ts))||"";
-        var isLast=i===steps.length-1;
+    /* AUDIT FIX (high): meta.steps in this codebase is an array of PLAIN
+       STRINGS, not objects -- every writer confirms it (admin.html
+       `parcel.steps.push(status)`, rider.html `p.steps.push(status)`, the
+       order-intake edge functions `steps:["New booked"]`). Reading
+       s.status/s.name off a string primitive yielded undefined, so every
+       parcel with recorded steps rendered a list of BLANK rows -- and
+       because the fallback below only runs when steps.length===0, it never
+       kicked in. That is the entire main content of this page. */
+    var norm=steps.map(function(s){
+      return (typeof s==="string")?s:((s&&(s.status||s.name))||"");
+    }).filter(function(st){ return st&&SAY[st]; });
+
+    if(norm.length){
+      norm.forEach(function(st,i){
+        var isLast=i===norm.length-1;
         html+='<li class="'+(isLast?"now":"done")+'">'+
-              '<div class="s">'+esc((SAY[st]&&SAY[st][0])||st)+'</div>'+
+              '<div class="s">'+esc(SAY[st][0])+'</div>'+
               (STEP_NOTE[st]?'<div class="m">'+esc(STEP_NOTE[st])+'</div>':"")+
-              (when(ts)?'<div class="d">'+esc(when(ts))+'</div>':"")+
+              (isLast&&when(row.updated_at)?'<div class="d">'+esc(when(row.updated_at))+'</div>':"")+
               '</li>';
       });
     }else{
