@@ -162,6 +162,21 @@
     .money-box strong{display:block;font-size:19px;}
     .ops-list{display:grid;gap:10px;}
     .ops-card{padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
+    /* NovaX new (Smart Portal B): incoming-money panel. */
+    .nv-inc{border:1px solid var(--line);border-radius:var(--radius);padding:14px;background:linear-gradient(135deg,#eef2ff,#f5f3ff);margin-bottom:14px;min-width:0;}
+    .nv-inc-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#4338ca;}
+    .nv-inc-amt{font-size:27px;font-weight:900;margin:2px 0 2px;overflow-wrap:anywhere;line-height:1.15;}
+    .nv-inc-sub{font-size:12px;color:var(--muted);overflow-wrap:anywhere;}
+    .nv-inc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+    .nv-inc-chip{background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:11.5px;font-weight:650;min-width:0;overflow-wrap:anywhere;}
+    .nv-inc-chip b{font-weight:850;}
+    .nv-flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:14px;}
+    .nv-flow-col{min-width:0;text-align:center;}
+    .nv-flow-bars{display:flex;align-items:flex-end;justify-content:center;gap:3px;height:46px;}
+    .nv-flow-bars i{display:block;width:9px;border-radius:3px 3px 0 0;min-height:2px;}
+    .nv-flow-bars i.in{background:#4f46e5;}
+    .nv-flow-bars i.out{background:#c7d2fe;}
+    .nv-flow-col span{display:block;font-size:10px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere;}
     .ops-card-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:9px;flex-wrap:wrap;}
     .ops-card-head strong{min-width:0;overflow-wrap:anywhere;word-break:break-word;}
     .ops-card p{margin:7px 0 0;color:var(--muted);font-size:12px;line-height:1.4;overflow-wrap:anywhere;}
@@ -782,7 +797,7 @@
                 <div id="nvRiskWarning" class="footer-note" style="display:none;margin-bottom:10px;font-weight:700;color:#a15c00;background:#fff6e6;border:1px solid #f0d6a0;border-radius:8px;padding:8px 10px"></div>
                 <div class="form-grid">
                   <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
-                  <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" placeholder="03113323923" maxlength="11" required></div>
+                  <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" placeholder="03113323923" maxlength="11" required><div id="consigneeHistoryBadge" style="display:none;margin-top:6px"></div></div>
                   <div class="field"><label>Pickup City <span class="required-star">*</span></label><select id="bookingPickupCity" required><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
                   <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint()"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
                   <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required></div>
@@ -1006,6 +1021,11 @@
             </section>
             <!-- WALLET -->
             <section class="client-module" id="client-wallet">
+              <!-- NovaX new (Smart Portal B): forward-looking money. Every
+                   figure here is server-computed by client_wallet_incoming();
+                   the browser never does financial arithmetic. Hidden until
+                   the RPC returns real data. -->
+              <div id="walletIncomingPanel" style="display:none"></div>
               <div class="wallet-hero">
                 <label>Wallet Balance</label>
                 <div class="wallet-balance count-up" id="walletBalanceText">Rs 0</div>
@@ -1017,6 +1037,8 @@
                 <div class="section-head"><div><h3>Wallet Summary</h3><p>Available balance, pending payout, and what you've been paid.</p></div></div>
                 <div class="money-grid" id="walletSummaryCards"></div>
               </div>
+              <!-- NovaX new (Smart Portal D): fee intelligence, server-computed. -->
+              <div id="walletFeeInsights" style="display:none"></div>
               <!-- NovaX fix (wallet IBAN UX): bank details are now their own
                    section, always visible, so a client can add/edit their
                    IBAN anytime -- even at Rs 0 balance -- instead of only
@@ -1114,6 +1136,7 @@
       <div class="modal-head"><h3>AWB Created</h3><button class="modal-close" onclick="closeAwbModal()">&times;</button></div>
       <div id="awbModalBody"></div>
       <div id="awbPrintModeToggle" class="inline-actions" style="margin-top:12px"></div>
+      <div id="awbShareActions" class="inline-actions" style="margin-top:10px;flex-wrap:wrap;gap:6px"></div>
       <div class="inline-actions" style="margin-top:14px"><button class="action-btn" id="awbModalPrint">Print Air Way Bill</button><button class="ghost-btn" onclick="closeAwbModal()">Close</button></div>
     </div>
   </div>
@@ -1529,6 +1552,191 @@
     function canShowDailyCommandCenter(ctx){
       try{ ctx=ctx||getClientContext(); return !!ctx.ready; }catch(e){ return false; }
     }
+    /* =====================================================================
+       NovaX new (Smart Portal B + D): wallet intelligence.
+
+       DESIGN RULE THAT MUST NOT BE BROKEN: every rupee figure below is
+       computed by a SECURITY DEFINER RPC on the server. This code only
+       formats what the server returned. It never adds, subtracts or
+       projects money in the browser, because a client-side number that
+       disagrees with the real balance destroys exactly the trust these
+       panels exist to build.
+
+       HONESTY NOTE ON CLEARANCE DATES: COD does not reach a wallet on a
+       fixed timer -- it lands when an invoice is generated. There is no
+       reliable data basis for "lands tomorrow", so no date is promised
+       anywhere here. Amounts and counts only.
+       ===================================================================== */
+    /* NovaX new (Smart Portal E2): customer memory at booking time.
+       Turns this merchant's OWN delivery history into a risk signal before
+       the parcel is booked, which is the cheapest possible way to prevent a
+       failed first attempt. Scoped server-side to the caller's own parcels
+       only -- one merchant can never see another's customer history. */
+    var NV_CONSIGNEE_T=null, NV_CONSIGNEE_LAST="";
+    function nvConsigneeBadge(){
+      var input=document.getElementById("bookingPhone");
+      var host=document.getElementById("consigneeHistoryBadge");
+      if(!input||!host) return;
+      var raw=String(input.value||"").replace(/[^0-9]/g,"");
+      if(raw.length<10){ host.style.display="none"; host.innerHTML=""; NV_CONSIGNEE_LAST=""; return; }
+      if(raw===NV_CONSIGNEE_LAST) return;
+      NV_CONSIGNEE_LAST=raw;
+      var sb=window.__nvSb;
+      if(!sb||!sb.rpc) return;
+      try{
+        sb.rpc("consignee_history",{ p_phone: raw }).then(function(r){
+          if(!r||r.error||!r.data||!r.data.length){ host.style.display="none"; host.innerHTML=""; return; }
+          var d=Array.isArray(r.data)?r.data[0]:r.data;
+          var total=Number(d.total_parcels||0);
+          var del=Number(d.delivered_count||0);
+          var ref=Number(d.refused_count||0);
+          if(total<=0){ host.style.display="none"; host.innerHTML=""; return; }
+          var html;
+          if(ref>0){
+            html='<span class="chip warn" style="font-size:11.5px">&#9888; '+ref+' refusal'+(ref===1?"":"s")+
+                 ' before &middot; '+del+'/'+total+' delivered &mdash; consider confirming by call</span>';
+          }else{
+            html='<span class="chip good" style="font-size:11.5px">&#10003; '+del+'/'+total+
+                 ' delivered to this customer</span>';
+          }
+          host.innerHTML=html;
+          host.style.display="block";
+        }).catch(function(){});
+      }catch(e){}
+    }
+    document.addEventListener("input",function(e){
+      if(!e||!e.target||e.target.id!=="bookingPhone") return;
+      if(NV_CONSIGNEE_T) clearTimeout(NV_CONSIGNEE_T);
+      NV_CONSIGNEE_T=setTimeout(nvConsigneeBadge,450);
+    });
+
+    var NV_WALLET_INTEL={ incoming:null, fees:null, loaded:false };
+    function nvLoadWalletIntelligence(){
+      var sb=window.__nvSb;
+      if(!sb||!sb.rpc) return;
+      try{
+        sb.rpc("client_wallet_incoming").then(function(r){
+          if(r&&!r.error&&r.data){
+            NV_WALLET_INTEL.incoming=Array.isArray(r.data)?r.data[0]:r.data;
+            try{ renderWalletIncoming(); }catch(e){}
+          }
+        }).catch(function(){});
+      }catch(e){}
+      try{
+        sb.rpc("client_fee_insights").then(function(r){
+          if(r&&!r.error&&r.data){
+            NV_WALLET_INTEL.fees=Array.isArray(r.data)?r.data[0]:r.data;
+            try{ renderFeeInsights(); }catch(e){}
+          }
+        }).catch(function(){});
+      }catch(e){}
+    }
+    function renderWalletIncoming(){
+      var host=document.getElementById("walletIncomingPanel");
+      if(!host) return;
+      var d=NV_WALLET_INTEL.incoming;
+      if(!d){ host.style.display="none"; return; }
+
+      var transit=Number(d.in_transit_amount||0);
+      var transitN=Number(d.in_transit_count||0);
+      var clearing=Number(d.delivered_uncleared||0);
+      var clearingN=Number(d.delivered_uncleared_count||0);
+      var avail=Number(d.available_balance||0);
+      var onWay=transit+clearing;
+
+      /* Brand-new merchant with nothing moving: show the honest empty
+         state rather than a row of zeros. */
+      if(onWay<=0&&avail<=0){
+        host.style.display="block";
+        host.innerHTML='<div class="nv-inc"><div class="nv-inc-lbl">Incoming money</div>'+
+          '<div class="nv-inc-amt">'+escLabelText(money(0))+'</div>'+
+          '<div class="nv-inc-sub">Your incoming COD will appear here after your first booking.</div></div>';
+        return;
+      }
+
+      var inFlow=[], outFlow=[];
+      try{ inFlow=Array.isArray(d.inflow_4w)?d.inflow_4w:JSON.parse(d.inflow_4w||"[]"); }catch(e){ inFlow=[]; }
+      try{ outFlow=Array.isArray(d.outflow_4w)?d.outflow_4w:JSON.parse(d.outflow_4w||"[]"); }catch(e){ outFlow=[]; }
+
+      var chips='<span class="nv-inc-chip">In transit <b>'+escLabelText(money(transit))+'</b>'+(transitN?(' &middot; '+transitN+' parcel'+(transitN===1?"":"s")):"")+'</span>'+
+                '<span class="nv-inc-chip">Delivered, clearing <b>'+escLabelText(money(clearing))+'</b>'+(clearingN?(' &middot; '+clearingN+' parcel'+(clearingN===1?"":"s")):"")+'</span>'+
+                '<span class="nv-inc-chip">Available now <b>'+escLabelText(money(avail))+'</b></span>';
+
+      host.style.display="block";
+      host.innerHTML='<div class="nv-inc">'+
+        '<div class="nv-inc-lbl">On its way to you</div>'+
+        '<div class="nv-inc-amt">'+escLabelText(money(onWay))+'</div>'+
+        '<div class="nv-inc-sub">COD collected or in transit that has not reached your wallet yet.</div>'+
+        '<div class="nv-inc-chips">'+chips+'</div>'+
+        nvFlowChartHtml(inFlow,outFlow)+
+      '</div>';
+    }
+    /* Pure-CSS 4-week in/out bars. No chart library, no external request. */
+    function nvFlowChartHtml(inFlow,outFlow){
+      var weeks=[], i, now=new Date();
+      for(i=3;i>=0;i--){
+        var dte=new Date(now.getTime()-i*7*86400000);
+        var day=(dte.getUTCDay()+6)%7;
+        var ws=new Date(dte.getTime()-day*86400000).toISOString().slice(0,10);
+        weeks.push(ws);
+      }
+      function amtFor(arr,ws){
+        var hit=(arr||[]).find(function(x){ return String(x&&x.week_start||"").slice(0,10)===ws; });
+        return hit?Number(hit.amount||0):0;
+      }
+      var rows=weeks.map(function(ws){ return { ws:ws, inA:amtFor(inFlow,ws), outA:amtFor(outFlow,ws) }; });
+      var max=Math.max.apply(null,rows.map(function(r){ return Math.max(r.inA,r.outA); }).concat([1]));
+      if(max<=0) return "";
+      var any=rows.some(function(r){ return r.inA>0||r.outA>0; });
+      if(!any) return "";
+      var cols=rows.map(function(r){
+        var hIn=Math.max(2,Math.round((r.inA/max)*44));
+        var hOut=Math.max(2,Math.round((r.outA/max)*44));
+        var lbl=r.ws.slice(5).replace("-","/");
+        return '<div class="nv-flow-col">'+
+                 '<div class="nv-flow-bars">'+
+                   '<i class="in" style="height:'+hIn+'px" title="In"></i>'+
+                   '<i class="out" style="height:'+hOut+'px" title="Out"></i>'+
+                 '</div><span>'+escLabelText(lbl)+'</span></div>';
+      }).join("");
+      return '<div class="nv-flow">'+cols+'</div>'+
+             '<div class="nv-inc-sub" style="margin-top:6px">Last 4 weeks &middot; '+
+             '<span style="color:#4f46e5;font-weight:800">&#9632;</span> into wallet &nbsp; '+
+             '<span style="color:#c7d2fe;font-weight:800">&#9632;</span> withdrawn</div>';
+    }
+    function renderFeeInsights(){
+      var host=document.getElementById("walletFeeInsights");
+      if(!host) return;
+      var d=NV_WALLET_INTEL.fees;
+      if(!d){ host.style.display="none"; return; }
+      var payout=Number(d.payout_fees_month||0);
+      var delivery=Number(d.delivery_fees_month||0);
+      var total=Number(d.total_fees_month||0);
+      var withdrawn=Number(d.withdrawn_month||0);
+      var std=Number(d.cost_if_all_standard||0);
+      var best=d.best_speed||null;
+
+      if(total<=0&&withdrawn<=0){ host.style.display="none"; return; }
+
+      /* Honest nudge, both directions -- if they are already on the
+         cheapest option we say so instead of inventing a saving. */
+      var nudge="";
+      if(best==="standard"&&payout>std){
+        nudge='<p class="footer-note" style="margin-top:8px">Using <strong>Standard (24h)</strong> payouts for the same amount this month would have cost '+
+              escLabelText(money(std))+' instead of '+escLabelText(money(payout))+' &mdash; a saving of <strong>'+escLabelText(money(payout-std))+'</strong>.</p>';
+      }else if(best==="already_optimal"){
+        nudge='<p class="footer-note" style="margin-top:8px">You are already on the lowest-fee payout option for this month. Nothing to change.</p>';
+      }
+
+      host.style.display="block";
+      host.innerHTML='<div class="panel" style="margin-top:14px">'+
+        '<div class="section-head"><div><h3>Fees this month</h3><p>Exactly what NovaX charged you, and whether a cheaper option existed.</p></div></div>'+
+        '<div class="money-grid">'+
+          moneyBox("Total fees",money(total),"this calendar month")+
+          moneyBox("Payout fees",money(payout),"on "+money(withdrawn)+" withdrawn")+
+          moneyBox("Delivery charges",money(delivery),"posted this month")+
+        '</div>'+nudge+'</div>';
+    }
     function nextId(prefix, items){ const max=(items||[]).reduce((v,it)=>{ const n=Number(String(it.id||"").replace(prefix+"-","")); return Number.isFinite(n)?Math.max(v,n):v; },0); return `${prefix}-${String(max+1).padStart(4,"0")}`; }
     function agingHours(p){ if(p&&p.statusSince){ const ms=Date.now()-new Date(p.statusSince).getTime(); if(Number.isFinite(ms)) return Math.max(0,ms/3600000); } return Number((p&&p.statusAgeHours)||0); }
     function agingLabel(h=0){ if(h<1) return "just now"; if(h<24) return `${Math.max(0,Math.round(h))}h`; const d=Math.floor(h/24); const r=Math.round(h%24); return r?`${d}d ${r}h`:`${d}d`; }
@@ -1643,6 +1851,54 @@
       else return "";
       return /^92\d{10}$/.test(d)?d:"";
     }
+    /* NovaX new (Smart Portal A): tokenised customer tracking link.
+       trackingUrl(awb) above is kept exactly as-is because the QR codes on
+       AWB labels already printed and stuck to parcels in the field encode
+       that AWB-based URL -- changing it would brick every label already in
+       circulation. This is the richer, unguessable-token link a merchant
+       shares directly with one customer; it is the only path that exposes
+       the COD amount and consignee first name. */
+    function customerTrackUrl(p){
+      var tok=(p&&p.trackingToken)||"";
+      if(!tok) return "";
+      try{ return location.origin+"/track.html?t="+encodeURIComponent(tok); }
+      catch(e){ return "https://novaxlogistics.com/track.html?t="+encodeURIComponent(tok); }
+    }
+    function customerTrackMessage(p){
+      var url=customerTrackUrl(p);
+      if(!url) return "";
+      var name=(p&&p.consignee)?String(p.consignee).split(" ")[0]:"";
+      return "Assalam o Alaikum"+(name?(" "+name):"")+", aapka parcel NovaX se bhaija gaya hai.\n"+
+             "AWB: "+(p.awb||"")+
+             ((p&&Number(p.cod)>0)?("\nCOD: Rs "+Number(p.cod).toLocaleString("en-PK")+" (cash tayyar rakhein)"):"")+
+             "\n\nLive tracking: "+url;
+    }
+    function shareTrackingLink(awb){
+      var p=(state.parcels||[]).find(function(x){ return x.awb===awb; });
+      if(!p){ toast("Parcel not found."); return; }
+      var url=customerTrackUrl(p);
+      if(!url){
+        toast("This parcel has no tracking link yet. Refresh the page once the parcel has synced.");
+        return;
+      }
+      try{
+        if(navigator.clipboard&&navigator.clipboard.writeText){
+          navigator.clipboard.writeText(url).then(function(){ toast("Tracking link copied. Send it to your customer."); },
+                                                  function(){ toast("Tracking link: "+url); });
+        }else{ toast("Tracking link: "+url); }
+      }catch(e){ toast("Tracking link: "+url); }
+    }
+    function whatsappTrackingLink(awb){
+      var p=(state.parcels||[]).find(function(x){ return x.awb===awb; });
+      if(!p){ toast("Parcel not found."); return; }
+      var msg=customerTrackMessage(p);
+      if(!msg){ toast("This parcel has no tracking link yet."); return; }
+      var phone=String((p.phone||"")).replace(/[^0-9]/g,"");
+      if(phone.length===11&&phone.charAt(0)==="0") phone="92"+phone.slice(1);
+      var base=phone.length>=11?("https://wa.me/"+phone+"?text="):"https://wa.me/?text=";
+      try{ window.open(base+encodeURIComponent(msg),"_blank","noopener"); }
+      catch(e){ toast("Could not open WhatsApp."); }
+    }
     function whatsappMessageText(p, kind){
       const step=WA_NEXT_STEP[kind]||"Please check the latest status using the tracking link below.";
       return `Hello ${p.consignee||""}, this is NovaX Logistics.
@@ -1655,7 +1911,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return `<select id="waKind_${awb}" class="wa-kind-select" onclick="event.stopPropagation()" style="padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:inherit;font-size:12px">${WA_MESSAGE_KINDS.map(k=>`<option value="${k}" ${k===selectedKind?"selected":""}>${k}</option>`).join("")}</select>`;
     }
     function waActionsHtml(awb, selectedKind){
-      return `<div class="wa-actions" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center" onclick="event.stopPropagation()">${waSelectHtml(awb,selectedKind)}<button class="ghost-btn" onclick="event.stopPropagation();copyWhatsappMessage('${awb}', document.getElementById('waKind_${awb}').value)">Copy WhatsApp Message</button><button class="ghost-btn" onclick="event.stopPropagation();messageCustomer('${awb}', document.getElementById('waKind_${awb}').value)">Message Customer</button></div>`;
+      return `<div class="wa-actions" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center" onclick="event.stopPropagation()">${waSelectHtml(awb,selectedKind)}<button class="ghost-btn" onclick="event.stopPropagation();copyWhatsappMessage('${awb}', document.getElementById('waKind_${awb}').value)">Copy WhatsApp Message</button><button class="ghost-btn" onclick="event.stopPropagation();messageCustomer('${awb}', document.getElementById('waKind_${awb}').value)">Message Customer</button><button class="ghost-btn" onclick="event.stopPropagation();shareTrackingLink('${awb}')">Copy tracking link</button></div>`;
     }
     function copyWhatsappMessage(awb, kind){
       const p=state.parcels.find(x=>x.awb===awb);
@@ -2338,7 +2594,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return { ok:true, count:valid.length, awbs:valid.map(p=>p.awb), error:null };
     }
     function printAwb(){ printLabels([state.lastGeneratedAwb||state.selectedAwb]); }
-    function openAwbModal(awb){ const p=state.parcels.find(x=>x.awb===awb)||selectedParcel(); state.lastGeneratedAwb=p.awb; saveState(); document.getElementById("awbModalBody").innerHTML=awbCompleteBadge(p)+awbLabelHtml(p); nvApplyPrintMode(); try{ renderAwbPrintModeToggle(); }catch(e){} document.getElementById("awbModal").classList.add("show"); }
+    function openAwbModal(awb){ const p=state.parcels.find(x=>x.awb===awb)||selectedParcel(); state.lastGeneratedAwb=p.awb; saveState(); document.getElementById("awbModalBody").innerHTML=awbCompleteBadge(p)+awbLabelHtml(p); nvApplyPrintMode(); try{ renderAwbPrintModeToggle(); }catch(e){} try{ renderAwbShareActions(p); }catch(e){} document.getElementById("awbModal").classList.add("show"); }
+    /* NovaX new (Smart Portal A): share the customer tracking link straight
+       from the AWB modal, right where the merchant already is after booking. */
+    function renderAwbShareActions(p){
+      var host=document.getElementById("awbShareActions");
+      if(!host) return;
+      if(!p||!p.trackingToken){ host.innerHTML=""; return; }
+      var a=escLabelText(p.awb||"");
+      host.innerHTML='<button type="button" class="ghost-btn" style="padding:6px 11px;font-size:12px" onclick="shareTrackingLink(\''+a+'\')">Copy tracking link</button>'+
+                     '<button type="button" class="ghost-btn" style="padding:6px 11px;font-size:12px" onclick="whatsappTrackingLink(\''+a+'\')">Send to customer on WhatsApp</button>';
+    }
     function closeAwbModal(){ document.getElementById("awbModal").classList.remove("show"); }
 
     function renderBulkPreview(){
@@ -2627,6 +2893,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // NovaX fix (withdrawal UX v2): pull the server-saved bank details once
       // per session so Save Bank Details survives a refresh/new device.
       fetchClientBankDetails();
+      /* NovaX new (Smart Portal B+D): kick off the two server-computed
+         wallet intelligence reads. Both are fire-and-forget and fail
+         silently -- neither may ever block or break the wallet page. */
+      nvLoadWalletIntelligence();
       // NovaX fix (wallet IBAN UX): bank details render independently of
       // balance/speed/amount so they're always available to add or edit.
       renderBankDetailsSection();
@@ -2653,6 +2923,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const paidThisMonth=sv?Number(sv.paid_this_month||0):myWds.filter(w=>w.status==="Paid"&&String(w.paidAt||w.createdAt).slice(0,7)===monthKey).reduce((s,w)=>s+Number(w.net||0),0);
       const lifetimeWithdrawn=sv?Number(sv.lifetime_withdrawn||0):myWds.filter(w=>w.status==="Paid").reduce((s,w)=>s+Number(w.net||0),0);
       const serverBalance=sv?Number(sv.available_balance||0):balance;
+      try{ renderWalletIncoming(); }catch(e){}
+      try{ renderFeeInsights(); }catch(e){}
       const summaryCards=document.getElementById("walletSummaryCards");
       if(summaryCards){
         summaryCards.innerHTML=[
@@ -4108,7 +4380,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
       function dtpart(t){ return t?String(t).replace("T"," ").slice(0,16):""; }
       function pmeta(p){ return { service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, fragile:p.fragile, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", source:p.source, branch:p.branch, risk:p.risk, steps:p.steps, clientFeedback:p.clientFeedback, returnProof:p.returnProof, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"" }; }
-      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"" }; }
+      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", trackingToken:r.tracking_token||"" }; }
       function invoiceSummaryFallback(invoiceType, cod, charges, payable, due){
         if(invoiceType==="Delivery Charges") return `Delivery charges due to NovaX ${money(due)}`;
         if(invoiceType==="Mixed") return `COD ${money(cod)} \u00b7 Charges ${money(charges)} \u00b7 Payable ${money(payable)}`;
