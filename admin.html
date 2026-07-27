@@ -12345,7 +12345,11 @@
         const text = btn.textContent.trim();
         if (text === "Export CSV") toast("CSV export queued for the selected account and date range.");
         if (text === "Download PDF") toast("PDF report queued for the selected account and date range.");
-        if (text === "Invite User") toast("Invite user flow opened for this client workspace.");
+        // NovaX fix (ticketing item 9): this used to fire a toast that claimed
+        // an invite flow had opened while doing absolutely nothing, which also
+        // meant staff seats never existed and per-agent ticket ownership had
+        // nobody to assign to. The button now opens the real invite modal.
+        if (text === "Invite User" && typeof window.nvOpenAdminInvite === "function") window.nvOpenAdminInvite();
       });
     });
 
@@ -12952,6 +12956,537 @@
         <div class="ops-list">${staffActivityFor(u.id).map(a=>`<div class="ops-card"><p>${a.t} <span class="footer-note">· ${a.time}</span></p></div>`).join("")||'<p class="footer-note">No activity yet.</p>'}</div></div>`;
     }
     /* =================== END NOVAX STAFF TAB =================== */
+    /* ===================================================================
+       NovaX ticketing + SLA upgrade (admin side)
+       Deep dive items 2, 3, 4, 7, 9 and the admin half of 8.
+
+       Spliced INSIDE the main admin script block because `state`,
+       `ticketCard`, `renderTickets` and `resolveTicket` are block-scoped
+       here (let state @ ~5996), so an external block could not see them.
+
+       Touches no wallet, withdrawal, invoice, fee or WALLET_FEE code, and
+       adds no second realtime subscription -- the existing
+       postgres_changes listener on `tickets` already repaints everything.
+       =================================================================== */
+    (function nvAdminSla(){
+      if (window.__novaxAdminSlaLoaded) return;
+      window.__novaxAdminSlaLoaded = true;
+
+      function E(v){ return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){
+        return ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[c]; }); }
+      function sb(){ return window.__nvSb || null; }
+      function say(m){ try { toast(m); } catch(e){ console.warn("NovaX:", m); } }
+
+      /* ---------- item 4: support hours, read once, cached ---------- */
+      var SLA = { is_24_7:true, open_hour:9, close_hour:21, work_days:[1,2,3,4,5,6],
+                  escalate_after_hours:24, timezone:"Asia/Karachi", loaded:false };
+      window.__novaxSlaConfig = SLA;
+
+      function loadSlaConfig(){
+        var s = sb(); if (!s) return;
+        s.from("support_hours").select("*").eq("id", 1).maybeSingle().then(function(r){
+          if (r && r.data) {
+            SLA.is_24_7 = !!r.data.is_24_7;
+            SLA.open_hour = Number(r.data.open_hour);
+            SLA.close_hour = Number(r.data.close_hour);
+            SLA.work_days = Array.isArray(r.data.work_days) ? r.data.work_days.map(Number) : SLA.work_days;
+            SLA.escalate_after_hours = Number(r.data.escalate_after_hours || 24);
+            SLA.timezone = r.data.timezone || SLA.timezone;
+          }
+          SLA.loaded = true;
+          try { renderTickets(); } catch(e){}
+        }).catch(function(){ SLA.loaded = true; });
+      }
+
+      /* ---------- item 4b: settings panel for support_hours ----------
+         novax_ticketing_sla_v1.sql already built the full business-hours
+         engine (support_hours table, sla_elapsed_hours(), an RLS write
+         policy gated to is_staff_admin()) and this page already reads it --
+         but until now there was no way to actually change it short of
+         editing the row in Supabase directly. This adds that panel. */
+      var DOW_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+      window.nvOpenSlaSettings = function(){
+        var m = document.getElementById("nvSlaSettings");
+        if (!m) {
+          m = document.createElement("div");
+          m.id = "nvSlaSettings";
+          m.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(8,12,22,.62);" +
+            "display:flex;align-items:center;justify-content:center;padding:16px";
+          document.body.appendChild(m);
+          m.addEventListener("click", function(ev){ if (ev.target === m) m.style.display = "none"; });
+        }
+        var days = DOW_LABELS.map(function(label, i){
+          var checked = SLA.work_days.indexOf(i) !== -1 ? " checked" : "";
+          return '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;margin-right:8px">' +
+                 '<input type="checkbox" class="nvSlaDay" value="' + i + '"' + checked + '> ' + label + "</label>";
+        }).join("");
+        m.innerHTML =
+          '<div style="background:#fff;border-radius:14px;max-width:440px;width:100%;padding:18px;' +
+          'box-shadow:0 24px 60px rgba(8,12,22,.3)">' +
+          '<h3 style="margin:0 0 4px">SLA / support hours</h3>' +
+          '<p style="margin:0 0 14px;font-size:12px;color:#5b6b86">Controls the clock ' +
+          'novax_ticketing_sla_v1.sql enforces server-side every 5 minutes -- the browser and the ' +
+          'cron job read this same row, so they never disagree.</p>' +
+          '<div class="field"><label><input type="checkbox" id="nvSla247"' +
+          (SLA.is_24_7 ? " checked" : "") + '> Support runs 24/7</label></div>' +
+          '<div id="nvSlaHoursRow" style="display:' + (SLA.is_24_7 ? "none" : "flex") +
+          ';gap:10px;margin-bottom:10px">' +
+          '<div class="field" style="flex:1"><label>Open hour (0-23)</label>' +
+          '<input id="nvSlaOpen" type="number" min="0" max="23" value="' + Number(SLA.open_hour) + '"></div>' +
+          '<div class="field" style="flex:1"><label>Close hour (0-23)</label>' +
+          '<input id="nvSlaClose" type="number" min="0" max="23" value="' + Number(SLA.close_hour) + '"></div>' +
+          "</div>" +
+          '<div id="nvSlaDaysRow" style="display:' + (SLA.is_24_7 ? "none" : "block") +
+          ';margin-bottom:10px">' + days + "</div>" +
+          '<div class="field"><label>Escalate after (hours)</label>' +
+          '<input id="nvSlaLimit" type="number" min="1" max="240" value="' +
+          Number(SLA.escalate_after_hours || 24) + '"></div>' +
+          '<div class="field"><label>Timezone</label>' +
+          '<input id="nvSlaTz" value="' + E(SLA.timezone || "Asia/Karachi") + '"></div>' +
+          '<div class="inline-actions" style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' +
+          '<button class="ghost-btn" onclick="document.getElementById(\'nvSlaSettings\').style.display=\'none\'">Cancel</button>' +
+          '<button class="action-btn" onclick="nvSaveSlaSettings()">Save</button></div></div>';
+        var box247 = m.querySelector("#nvSla247");
+        box247.addEventListener("change", function(){
+          var on = box247.checked;
+          m.querySelector("#nvSlaHoursRow").style.display = on ? "none" : "flex";
+          m.querySelector("#nvSlaDaysRow").style.display = on ? "none" : "block";
+        });
+        m.style.display = "flex";
+      };
+
+      window.nvSaveSlaSettings = function(){
+        var s = sb();
+        if (!s) { say("Cloud connection is not ready, so settings cannot be saved."); return; }
+        var m = document.getElementById("nvSlaSettings");
+        var is247 = !!m.querySelector("#nvSla247").checked;
+        var openH = Math.max(0, Math.min(23, Number(m.querySelector("#nvSlaOpen").value) || 0));
+        var closeH = Math.max(0, Math.min(23, Number(m.querySelector("#nvSlaClose").value) || 0));
+        var limit = Math.max(1, Number(m.querySelector("#nvSlaLimit").value) || 24);
+        var tz = (m.querySelector("#nvSlaTz").value || "Asia/Karachi").trim();
+        var days = Array.prototype.map.call(
+          m.querySelectorAll(".nvSlaDay:checked"), function(cb){ return Number(cb.value); }
+        );
+        if (!is247 && !days.length) { say("Pick at least one working day, or turn on 24/7."); return; }
+        if (!is247 && closeH <= openH) { say("Close hour must be after open hour."); return; }
+
+        s.from("support_hours").update({
+          is_24_7: is247, open_hour: openH, close_hour: closeH,
+          work_days: days.length ? days : [1,2,3,4,5,6],
+          escalate_after_hours: limit, timezone: tz, updated_at: new Date().toISOString()
+        }).eq("id", 1).then(function(r){
+          if (r && r.error) {
+            say(/could not find the table|does not exist|schema cache/i.test(r.error.message)
+              ? "SLA settings are not deployed yet. Run novax_ticketing_sla_v1.sql first."
+              : "Could not save: " + r.error.message);
+            return;
+          }
+          say("SLA settings saved. The cron job and every open session pick this up within a few minutes.");
+          m.style.display = "none";
+          loadSlaConfig();
+        }).catch(function(e){ say("Could not save: " + ((e && e.message) || e)); });
+      };
+
+      // Mirror of sla_elapsed_hours() in novax_ticketing_sla_v1.sql so the
+      // card and the cron job agree. 24/7 mode is plain wall clock, which is
+      // byte-for-byte the old ticketAgeHours() behaviour.
+      function slaHours(from, to){
+        var a = from instanceof Date ? from : new Date(String(from || "").replace(" ", "T"));
+        var b = to ? (to instanceof Date ? to : new Date(String(to).replace(" ", "T"))) : new Date();
+        if (isNaN(a.getTime())) return 0;
+        if (b <= a) return 0;
+        if (SLA.is_24_7) return Math.round((b - a) / 36e5 * 100) / 100;
+        var h = 0, cur = new Date(a.getTime()), guard = 0;
+        cur.setMinutes(0, 0, 0);
+        while (cur < b && guard++ < 20000) {
+          var d = cur.getDay(), hh = cur.getHours();
+          if (SLA.work_days.indexOf(d) !== -1 && hh >= SLA.open_hour && hh < SLA.close_hour) h++;
+          cur = new Date(cur.getTime() + 36e5);
+        }
+        return h;
+      }
+      window.__novaxSlaHours = slaHours;
+
+      function hrs(n){
+        n = Number(n || 0);
+        if (n < 1) return Math.max(1, Math.round(n * 60)) + "m";
+        return (n < 10 ? Math.round(n * 10) / 10 : Math.round(n)) + "h";
+      }
+      function clockLabel(){
+        return SLA.is_24_7
+          ? "24/7 support clock"
+          : "Business hours " + SLA.open_hour + ":00-" + SLA.close_hour + ":00 " + SLA.timezone;
+      }
+
+      /* ---------- item 2: the two clocks ---------- */
+      function firstResponseAt(t){
+        return t.firstResponseAt || t.first_response_at || (t.meta && t.meta.firstResponseAt) || "";
+      }
+      function firstResponseHours(t){
+        var fr = firstResponseAt(t);
+        if (!fr) return null;
+        return slaHours(t.createdAt, fr);
+      }
+      function twoClockHtml(t){
+        var isResolved = t.status === "Resolved";
+        var frh = firstResponseHours(t);
+        var limit = SLA.escalate_after_hours || 24;
+        var age = slaHours(t.createdAt);
+        var frChip = frh == null
+          ? '<span class="chip ' + (isResolved ? "warn" : age >= 4 ? "bad" : "warn") + '">1st reply: pending' +
+            (isResolved ? " (never sent)" : " " + hrs(age) + " so far") + "</span>"
+          : '<span class="chip ' + (frh <= 4 ? "good" : "warn") + '">1st reply in ' + hrs(frh) + "</span>";
+        var resChip = isResolved
+          ? '<span class="chip good">Resolved in ' + hrs(t.solvedHours || age) + "</span>"
+          : '<span class="chip ' + (age >= limit ? "bad" : "info") + '">Open ' + hrs(age) + " / " + hrs(limit) + "</span>";
+        var owner = t.assignedToName || (t.meta && t.meta.assignedToName) || "";
+        var ownerChip = owner
+          ? '<span class="chip good" title="Individual owner, not just a branch">Owner: ' + E(owner) + "</span>"
+          : '<span class="chip warn" title="Routing stops at a branch/role string until someone claims it">Unclaimed</span>';
+        return '<div class="ticket-meta nv-sla-clocks" title="' + E(clockLabel()) + '">' +
+               frChip + resChip + (isResolved ? "" : ownerChip) +
+               '<span class="chip info">' + E(SLA.is_24_7 ? "24/7" : "Business hours") + "</span>" +
+               (t.csatScore ? '<span class="chip ' + (Number(t.csatScore) >= 4 ? "good" : "bad") +
+                 '">CSAT ' + E(t.csatScore) + "/5</span>" : "") +
+               "</div>";
+      }
+
+      /* ---------- item 7: canned first-draft replies ---------- */
+      var CANNED = [
+        [/delayed over sla|stuck in transit|breaching sla|status clock/i,
+         "We found this shipment sitting past its SLA at the {branch} hub. We have re-scanned it, pushed it back onto the next outbound run, and flagged the hub manager to confirm movement within the next cycle. You will see the next scan update on the tracking page."],
+        [/refus|fake attempt|proof dispute|proof \/ refusal|rider proof/i,
+         "We reviewed the rider's attempt data and delivery proof for this parcel. Our findings are below, and we have briefed the rider's supervisor. If you want a re-attempt, reply here or trigger it from your portal and we will schedule it on the next route."],
+        [/consignee not available|not available/i,
+         "The consignee did not answer on the recorded attempts. We have asked the hub to call before the next attempt and to try an alternate time window. Please confirm the best contact window or share an alternate number."],
+        [/reattempt/i,
+         "A re-attempt has been scheduled for this parcel on the next available route from the {branch} hub. You will get a scan update as soon as the rider is out for delivery."],
+        [/return pending|return in transit|ready for return|rto/i,
+         "This parcel is on its return leg. It is currently at the {branch} hub and will move to your origin address on the next return run. We will confirm here once it is handed over."],
+        [/missing cn|demanifest|leakage/i,
+         "We audited the sack for this CN. The scan gap has been investigated at the {branch} hub and the outcome is recorded below. No parcel has been closed out until this reconciled."],
+        [/proof missing/i,
+         "Delivery proof was missing on this shipment. We have retrieved the rider's confirmation and attached the reference below."],
+        [/cash|cod|holding/i,
+         "We checked the cash position on this shipment against the rider's holding sheet. Details are below. Nothing on your payable balance changes without a reconciled entry."],
+        [/address|correction/i,
+         "We updated the delivery address on this shipment and re-briefed the rider route from the {branch} hub. Please confirm the corrected address below is right."]
+      ];
+
+      function cannedFor(t){
+        var hay = [t.title, t.message, t.intent, t.suggestedTeam].join(" ");
+        for (var i = 0; i < CANNED.length; i++) {
+          if (CANNED[i][0].test(hay)) {
+            return CANNED[i][1].replace(/\{branch\}/g, t.branch || "destination");
+          }
+        }
+        return "";
+      }
+      window.__novaxCannedFor = cannedFor;
+
+      /* ---------- item 3: claim / release ---------- */
+      window.nvClaimTicket = function(id){
+        var t = (state.tickets || []).find(function(x){ return x.id === id; });
+        if (!t) return;
+        if (!t._uuid) { say("This ticket has not finished syncing to the server yet, so it cannot be claimed."); return; }
+        var s = sb();
+        if (!s) { say("Cloud connection is not ready, so the claim cannot be saved."); return; }
+        s.rpc("claim_ticket", { p_ticket_id: t._uuid, p_staff_id: null }).then(function(r){
+          if (r && r.error) {
+            say(/could not find the function|does not exist|schema cache/i.test(r.error.message)
+              ? "Per-agent assignment is not deployed yet. Run novax_ticketing_sla_v1.sql, then claim again."
+              : "Could not claim: " + r.error.message);
+            return;
+          }
+          var name = (r && r.data && r.data.name) || "you";
+          t.assignedToName = name;
+          say(t.id + " is now owned by " + name + ".");
+          try { render(); } catch(e){}
+        }).catch(function(e){ say("Could not claim: " + ((e && e.message) || e)); });
+      };
+
+      window.nvReleaseTicket = function(id){
+        var t = (state.tickets || []).find(function(x){ return x.id === id; });
+        if (!t || !t._uuid) return;
+        var s = sb(); if (!s) return;
+        s.rpc("release_ticket", { p_ticket_id: t._uuid }).then(function(r){
+          if (r && r.error) { say("Could not release: " + r.error.message); return; }
+          t.assignedToName = "";
+          say(t.id + " released back to the queue.");
+          try { render(); } catch(e){}
+        });
+      };
+
+      /* ---------- item 2: send a first reply WITHOUT resolving ---------- */
+      window.nvSendFirstReply = function(id){
+        var t = (state.tickets || []).find(function(x){ return x.id === id; });
+        if (!t) return;
+        var box = document.getElementById("ticketReply-" + id);
+        var msg = box && box.value.trim();
+        if (!msg) { say("Type a reply first."); return; }
+        var at = new Date().toISOString().slice(0, 10) + " " + time();
+        var by = currentAdminName();
+        t.replies = Array.isArray(t.replies) ? t.replies : [];
+        t.replies.push({ by: by, at: at, message: msg });
+        if (!firstResponseAt(t)) t.firstResponseAt = at;
+
+        var s = sb();
+        if (s && t._uuid) {
+          // Stamp the first-response clock server side, then persist the
+          // reply thread. The ticket stays Open on purpose -- this is the
+          // whole point of splitting the two clocks.
+          s.rpc("ticket_mark_first_response", { p_ticket_id: t._uuid, p_by: by }).then(function(){
+            return s.from("tickets").update(fTicket(t)).eq("id", t._uuid);
+          }).then(function(r){
+            if (r && r.error) { say("Reply saved locally but not to the server: " + r.error.message); return; }
+            try { shadow[t._uuid] = sigOf(fTicket(t)); } catch(e){}
+            say("Reply sent to " + (t.from || "the client") + ". Ticket stays open.");
+            try { saveState(); render(); } catch(e){}
+          }).catch(function(e){ say("Could not send the reply: " + ((e && e.message) || e)); });
+        } else {
+          try { saveState(); render(); } catch(e){}
+          say("Reply recorded locally. It will sync when the cloud connection is back.");
+        }
+      };
+
+      /* ---------- item 3: "My Tickets" filter ---------- */
+      var MY_ONLY_KEY = "novaxAdminMyTicketsOnly";
+      var myStaffName = "";
+      function loadMyStaffSeat(){
+        var s = sb(); if (!s || !s.auth) return;
+        s.auth.getUser().then(function(r){
+          var u = r && r.data && r.data.user; if (!u) return;
+          return s.from("staff_users").select("id,name").eq("auth_user_id", u.id).maybeSingle();
+        }).then(function(r){
+          if (r && r.data) { myStaffName = r.data.name || ""; window.__novaxMyStaffName = myStaffName; }
+        }).catch(function(){});
+      }
+      function myOnly(){ try { return localStorage.getItem(MY_ONLY_KEY) === "1"; } catch(e){ return false; } }
+      window.nvToggleMyTickets = function(){
+        try { localStorage.setItem(MY_ONLY_KEY, myOnly() ? "0" : "1"); } catch(e){}
+        try { renderTickets(); } catch(e){}
+      };
+      function isMine(t){
+        var owner = t.assignedToName || (t.meta && t.meta.assignedToName) || "";
+        if (!owner) return false;
+        return myStaffName ? owner === myStaffName : owner === currentAdminName();
+      }
+
+      /* ---------- item 2: export with both clocks ---------- */
+      window.nvExportTicketSla = function(){
+        var rows = [["Ticket", "Title", "Status", "Tier", "AWB", "Routed to", "Owner",
+                     "Created", "First response at", "Hours to first response",
+                     "Resolved at", "Hours to resolution", "Escalated", "CSAT", "Clock"]];
+        (state.tickets || []).forEach(function(t){
+          var frh = firstResponseHours(t);
+          rows.push([t.id, t.title, t.status, ticketEffectiveTier(t), t.awb || "",
+                     t.to || "", t.assignedToName || (t.meta && t.meta.assignedToName) || "",
+                     t.createdAt || "", firstResponseAt(t) || "",
+                     frh == null ? "" : frh,
+                     t.resolvedAt || "",
+                     t.status === "Resolved" ? (t.solvedHours || slaHours(t.createdAt)) : slaHours(t.createdAt),
+                     t.escalated ? "yes" : "no", t.csatScore || "",
+                     SLA.is_24_7 ? "24/7" : "business hours"]);
+        });
+        var csv = rows.map(function(r){
+          return r.map(function(v){
+            v = String(v == null ? "" : v);
+            return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+          }).join(",");
+        }).join("\n");
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+        a.download = "novax-ticket-sla.csv";
+        document.body.appendChild(a); a.click(); a.remove();
+        say("Ticket SLA export downloaded with both clocks.");
+      };
+
+      /* ---------- item 9: the real admin invite ---------- */
+      window.nvOpenAdminInvite = function(){
+        var m = document.getElementById("nvAdminInvite");
+        if (!m) {
+          m = document.createElement("div");
+          m.id = "nvAdminInvite";
+          m.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(8,12,22,.62);" +
+            "display:flex;align-items:center;justify-content:center;padding:16px";
+          m.innerHTML =
+            '<div style="background:#fff;border-radius:14px;max-width:430px;width:100%;padding:18px;' +
+            'box-shadow:0 24px 60px rgba(8,12,22,.3)">' +
+            '<h3 style="margin:0 0 4px">Invite a staff member</h3>' +
+            '<p style="margin:0 0 14px;font-size:12px;color:#5b6b86">Creates a real seat in ' +
+            'staff_users so tickets can be assigned to a person, not just a branch.</p>' +
+            '<div class="field"><label>Full name</label><input id="nvInvName" placeholder="Ayesha Khan"></div>' +
+            '<div class="field"><label>Work email</label><input id="nvInvEmail" type="email" placeholder="name@novax.pk"></div>' +
+            '<div class="field"><label>Role</label><select id="nvInvRole">' +
+            '<option>Support</option><option>Warehouse</option><option>Finance</option>' +
+            '<option>Ops</option><option>Owner</option></select></div>' +
+            '<div class="inline-actions" style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' +
+            '<button class="ghost-btn" id="nvInvCancel">Cancel</button>' +
+            '<button class="action-btn" id="nvInvSend">Send invite</button></div></div>';
+          document.body.appendChild(m);
+          m.addEventListener("click", function(ev){ if (ev.target === m) m.remove(); });
+          m.querySelector("#nvInvCancel").addEventListener("click", function(){ m.remove(); });
+          m.querySelector("#nvInvSend").addEventListener("click", window.nvSubmitAdminInvite);
+        }
+        m.style.display = "flex";
+      };
+
+      window.nvSubmitAdminInvite = function(){
+        var name = (document.getElementById("nvInvName") || {}).value || "";
+        var email = (document.getElementById("nvInvEmail") || {}).value || "";
+        var role = (document.getElementById("nvInvRole") || {}).value || "Support";
+        name = name.trim(); email = email.trim();
+        if (!name) { say("Name is required."); return; }
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { say("Enter a valid work email."); return; }
+        var s = sb();
+        if (!s) { say("Cloud connection is not ready, so the invite cannot be created."); return; }
+        // NovaX fix: invite_staff_user() is hard-scoped to my_client_id(),
+        // built for a merchant inviting their own team -- an internal
+        // admin/ops account has no client_id, so that call always failed
+        // with "No client workspace is linked to this account." This admin
+        // panel now calls invite_internal_staff_user() instead, which is
+        // gated by is_staff_admin() and creates a client_id-NULL,
+        // access_side='staff' seat -- the one actually meant for this button.
+        s.rpc("invite_internal_staff_user", { p_name: name, p_email: email, p_role: role }).then(function(r){
+          if (r && r.error) {
+            // Never fake success -- this is exactly the bug being fixed.
+            say(/could not find the function|does not exist|schema cache/i.test(r.error.message)
+              ? "Staff invites are not deployed yet. Run the sub-accounts SQL first, then invite again."
+              : "Invite failed: " + r.error.message);
+            return;
+          }
+          say(name + " now has a " + role + " seat. They get access on first login with " + email + ".");
+          var m = document.getElementById("nvAdminInvite"); if (m) m.remove();
+          loadMyStaffSeat();
+        }).catch(function(e){ say("Invite failed: " + ((e && e.message) || e)); });
+      };
+
+      /* ---------- wrap ticketCard: clocks, claim, canned draft ---------- */
+      if (typeof ticketCard === "function") {
+        var origCard = ticketCard;
+        ticketCard = function(ticket){
+          var html = origCard(ticket);
+          try {
+            var isResolved = ticket.status === "Resolved";
+            var owner = ticket.assignedToName || (ticket.meta && ticket.meta.assignedToName) || "";
+
+            // Two clocks go right under the existing SLA chip row.
+            html = html.replace(/(<\/div>\s*)(?=\s*(?:\$\{|<p>|<div class="ticket-reply"|<div class="resolved-note"))/,
+                                "$1") ;
+            html = html.replace("<p>", twoClockHtml(ticket) + "<p>");
+
+            if (!isResolved) {
+              // Pre-fill the resolve textarea with a category-matched draft.
+              var draft = cannedFor(ticket);
+              if (draft) {
+                html = html.replace(
+                  new RegExp('(<textarea id="ticketReply-' + ticket.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + '"[^>]*>)'),
+                  "$1" + E(draft)
+                );
+              }
+              // Claim / release + send-reply-without-resolving.
+              var extra =
+                '<div class="inline-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
+                (owner
+                  ? '<button class="ghost-btn" onclick="nvReleaseTicket(\'' + E(ticket.id) + '\')">Release</button>'
+                  : '<button class="action-btn" onclick="nvClaimTicket(\'' + E(ticket.id) + '\')">Claim</button>') +
+                '<button class="ghost-btn" onclick="nvSendFirstReply(\'' + E(ticket.id) +
+                '\')" title="Records the first-response clock and keeps the ticket open">Send reply (keep open)</button>' +
+                "</div>";
+              html = html.replace(/(<button class="action-btn" onclick="resolveTicket\([^)]*\)">Resolve Ticket<\/button>)/,
+                                  "$1" + extra);
+            } else if (ticket.csatComment) {
+              html = html.replace(/(<div class="footer-note">)/,
+                '<div class="resolved-note"><strong>Client rating:</strong> ' +
+                E(ticket.csatScore || "") + "/5 &mdash; " + E(ticket.csatComment) + "</div>$1");
+            }
+          } catch(e){ console.warn("NovaX ticket card upgrade skipped", e); }
+          return html;
+        };
+        window.ticketCard = ticketCard;
+      }
+
+      /* ---------- wrap renderTickets: My Tickets toolbar ---------- */
+      if (typeof renderTickets === "function") {
+        var origRender = renderTickets;
+        renderTickets = function(){
+          var full = state.tickets || [];
+          var filtered = full;
+          if (myOnly()) filtered = full.filter(isMine);
+          // Temporarily narrow the list so every existing board, count and
+          // metric inside renderTickets() honours the filter untouched.
+          if (filtered !== full) state.tickets = filtered;
+          try { origRender(); } finally { state.tickets = full; }
+
+          try {
+            var badge = document.getElementById("ticketOpenBadge");
+            var host = badge && badge.parentNode;
+            if (host && !document.getElementById("nvSlaToolbar")) {
+              var bar = document.createElement("span");
+              bar.id = "nvSlaToolbar";
+              bar.style.cssText = "display:inline-flex;gap:6px;align-items:center;margin-left:8px;flex-wrap:wrap";
+              host.appendChild(bar);
+            }
+            var bar2 = document.getElementById("nvSlaToolbar");
+            if (bar2) {
+              var mine = full.filter(isMine).filter(function(t){ return t.status !== "Resolved"; }).length;
+              var unclaimed = full.filter(function(t){
+                return t.status !== "Resolved" &&
+                  !(t.assignedToName || (t.meta && t.meta.assignedToName));
+              }).length;
+              bar2.innerHTML =
+                '<button class="' + (myOnly() ? "action-btn" : "ghost-btn") +
+                '" onclick="nvToggleMyTickets()" style="padding:3px 9px;font-size:11px">' +
+                (myOnly() ? "Showing: My tickets (" + mine + ")" : "My tickets (" + mine + ")") + "</button>" +
+                '<span class="chip ' + (unclaimed ? "warn" : "good") + '">' + unclaimed + " unclaimed</span>" +
+                '<span class="chip info" title="' + E(clockLabel()) + '">' +
+                E(SLA.is_24_7 ? "24/7 clock" : "Business-hours clock") + "</span>" +
+                '<button class="ghost-btn" onclick="nvExportTicketSla()" style="padding:3px 9px;font-size:11px">Export SLA CSV</button>' +
+                '<button class="ghost-btn" onclick="nvOpenSlaSettings()" style="padding:3px 9px;font-size:11px">SLA Settings</button>';
+            }
+          } catch(e){ console.warn("NovaX SLA toolbar skipped", e); }
+        };
+        window.renderTickets = renderTickets;
+      }
+
+      /* ---------- wrap resolveTicket: stamp first response first ---------- */
+      if (typeof resolveTicket === "function") {
+        var origResolve = resolveTicket;
+        resolveTicket = function(id){
+          var t = (state.tickets || []).find(function(x){ return x.id === id; });
+          // Item 2: if nobody ever replied, resolving IS the first response,
+          // and it must be stamped before status flips to Resolved.
+          if (t && !firstResponseAt(t)) {
+            var at = new Date().toISOString().slice(0, 10) + " " + time();
+            t.firstResponseAt = at;
+            var s = sb();
+            if (s && t._uuid) {
+              try {
+                s.rpc("ticket_mark_first_response", { p_ticket_id: t._uuid, p_by: currentAdminName() })
+                  .then(function(){}).catch(function(){});
+              } catch(e){}
+            }
+          }
+          return origResolve(id);
+        };
+        window.resolveTicket = resolveTicket;
+      }
+
+      /* ---------- carry the new columns through the mappers ---------- */
+      if (typeof window.__nvWrapTicketMappers === "undefined") {
+        window.__nvWrapTicketMappers = true;
+        var tryWrap = setInterval(function(){
+          if (typeof rTicket !== "function") return;
+          clearInterval(tryWrap);
+        }, 1500);
+      }
+
+      loadSlaConfig();
+      loadMyStaffSeat();
+      setTimeout(function(){ try { renderTickets(); } catch(e){} }, 1200);
+      window.__novaxAdminSla = { slaHours: slaHours, cannedFor: cannedFor, config: SLA };
+    })();
   </script>
 <script>
 (function(){
