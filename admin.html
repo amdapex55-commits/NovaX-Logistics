@@ -2297,6 +2297,30 @@
       gap: 10px;
     }
 
+    /* NovaX new (Delivered Parcel Pool -- compact rows).
+       Each client used to render as a full ops-card ~350px tall, so finding
+       the handful with parcels ready meant scrolling past ~145 cards that
+       all said "Rs 0 / Waiting". These rows put 20+ clients on one screen. */
+    .nv-settle-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:10px}
+    .nv-settle-toggle{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;user-select:none}
+    .nv-settle-toggle input{width:16px;height:16px;cursor:pointer}
+    .nv-settle-sum{font-size:12.5px;color:var(--muted)}
+    .nv-settle-sum b{color:var(--ink)}
+    .nv-settle-row{display:grid;grid-template-columns:minmax(0,2.1fr) auto minmax(0,1fr) minmax(0,1fr) auto;
+      gap:12px;align-items:center;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+    .nv-settle-row.ready{border-color:rgba(20,199,123,.45)}
+    .nv-settle-row .nm{min-width:0;overflow-wrap:anywhere;font-weight:750;font-size:13.5px}
+    .nv-settle-row .nm small{display:block;font-weight:500;font-size:11px;color:var(--muted);margin-top:1px}
+    .nv-settle-row .amt{min-width:0;font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
+    .nv-settle-row .amt b{display:block;color:var(--ink);font-size:13.5px;font-weight:750}
+    .nv-settle-row button{white-space:nowrap}
+    .nv-settle-empty{padding:16px;text-align:center;color:var(--muted);font-size:13px;border:1px dashed var(--line);border-radius:10px}
+    @media (max-width:860px){
+      .nv-settle-row{grid-template-columns:minmax(0,1fr) auto;row-gap:8px}
+      .nv-settle-row .amt{grid-column:span 1}
+      .nv-settle-row button{grid-column:1 / -1;width:100%}
+    }
+
     .ops-card {
       padding: 12px;
       border: 1px solid var(--line);
@@ -5149,6 +5173,10 @@
               </div>
               <div class="panel" style="margin-top:14px">
                 <div class="section-head"><div><h3>Delivered Parcel Pool</h3><p>Client-wise delivered parcels that are eligible for invoice. Open parcels remain outside payable truth.</p></div></div>
+                <div class="nv-settle-controls">
+                  <label class="nv-settle-toggle"><input type="checkbox" id="settleReadyOnly" checked onchange="nvSettleFilterChanged()"> Only show clients with parcels ready</label>
+                  <span class="nv-settle-sum" id="settleSummary"></span>
+                </div>
                 <div class="ops-list" id="clientSettlementList"></div>
               </div>
               <div class="panel" style="margin-top:14px">
@@ -6604,6 +6632,27 @@
       const breakdown = bookingChargeBreakdown(rc, zone, weightEl ? weightEl.value : "0.8 kg");
       hint.textContent = zoneLabel(zone) + " · base Rs " + fmt(breakdown.base) + " + additional Rs " + fmt(breakdown.additional) + " (" + breakdown.extraKg + " extra kg) = estimated total Rs " + fmt(breakdown.total) + (breakdown.overCap ? " (over 5kg normal slab, confirm manually)" : "");
     }
+
+    /* Delivered Parcel Pool filter. Re-runs the same renderAdmin() the page
+       already uses, so the pool redraws through the normal path rather than
+       a second, divergent rendering routine. Preference is remembered. */
+    function nvSettleFilterChanged() {
+      try {
+        var el = document.getElementById("settleReadyOnly");
+        if (el) localStorage.setItem("novaxSettleReadyOnly", el.checked ? "1" : "0");
+      } catch (e) {}
+      try { renderAdmin(); } catch (e) {}
+    }
+    (function restoreSettlePref(){
+      function apply(){
+        try {
+          var el = document.getElementById("settleReadyOnly");
+          if (el && localStorage.getItem("novaxSettleReadyOnly") === "0") el.checked = false;
+        } catch (e) {}
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", apply);
+      else apply();
+    })();
 
     function shortClientCode(client) {
       const id = (client && client.id) || "";
@@ -8332,23 +8381,68 @@
         moneyBox("Client payable", money(selectedTotals.payable), "after charges")
       ].join("");
 
-      document.getElementById("clientSettlementList").innerHTML = state.clients.map(client => {
-        const ready = clientInvoiceParcels(client.id);
-        const totals = invoiceTotals(ready);
-        return `
-          <div class="ops-card">
-            <div class="ops-card-head"><strong>${shortClientCode(client)} | ${client.name}</strong><span class="chip ${ready.length ? "good" : "info"}">${ready.length} ready</span></div>
-            <p>Delivered invoice-ready parcels: ${ready.map(p => p.awb).join(", ") || "none yet"}.</p>
-            <div class="money-grid" style="margin-top:10px">
-              ${moneyBox("COD total", money(totals.cod), "invoice source")}
-              ${moneyBox("Delivery charges", money(totals.charges), "NovaX revenue")}
-              ${moneyBox("Client payable", money(totals.payable), "invoice payable")}
-              ${moneyBox("Invoice state", ready.length ? "Ready" : "Waiting", ready.length ? "Select in Add Invoice" : "Wait until delivered")}
-            </div>
-            <button class="action-btn" style="margin-top:10px" onclick="selectInvoiceClient('${client.id}')" ${ready.length ? "" : "disabled"}>Open In Add Invoice</button>
-          </div>
-        `;
-      }).join("");
+      /* NovaX new (Delivered Parcel Pool): compact rows + "ready only"
+         filter. Purely a rendering change -- clientInvoiceParcels(),
+         invoiceTotals() and selectInvoiceClient() are untouched, so what
+         counts as invoice-eligible and what happens on click are exactly
+         as before. */
+      (function renderSettlementPool(){
+        var host = document.getElementById("clientSettlementList");
+        if (!host) return;
+        function esc(v){
+          return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){
+            return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+          });
+        }
+        var toggle = document.getElementById("settleReadyOnly");
+        var readyOnly = toggle ? !!toggle.checked : true;
+
+        var rows = (state.clients || []).map(function(client){
+          var ready = clientInvoiceParcels(client.id);
+          return { client: client, ready: ready, totals: invoiceTotals(ready) };
+        });
+        // Ready clients first, biggest payable at the top.
+        rows.sort(function(a,b){
+          if (b.ready.length !== a.ready.length) return b.ready.length - a.ready.length;
+          return Number(b.totals.payable||0) - Number(a.totals.payable||0);
+        });
+
+        var readyRows = rows.filter(function(r){ return r.ready.length > 0; });
+        var sum = document.getElementById("settleSummary");
+        if (sum) {
+          var pCount = readyRows.reduce(function(n,r){ return n + r.ready.length; }, 0);
+          var pPay   = readyRows.reduce(function(n,r){ return n + Number(r.totals.payable||0); }, 0);
+          sum.innerHTML = readyRows.length
+            ? ("<b>" + readyRows.length + "</b> client(s) &middot; <b>" + pCount +
+               "</b> parcel(s) ready &middot; <b>" + esc(money(pPay)) + "</b> payable")
+            : "Nothing ready to invoice right now.";
+        }
+
+        var shown = readyOnly ? readyRows : rows;
+        if (!shown.length) {
+          host.innerHTML = '<div class="nv-settle-empty">' +
+            (readyOnly
+              ? "No client has delivered parcels waiting to be invoiced. Untick the box above to see all clients."
+              : "No clients yet.") + "</div>";
+          return;
+        }
+
+        host.innerHTML = shown.map(function(r){
+          var c = r.client, ready = r.ready, t = r.totals;
+          var isReady = ready.length > 0;
+          return '<div class="nv-settle-row' + (isReady ? " ready" : "") + '">' +
+              '<div class="nm">' + esc(shortClientCode(c)) + " | " + esc(c.name) +
+                '<small>' + (isReady
+                    ? (ready.length + " delivered parcel(s) ready")
+                    : "nothing delivered yet") + '</small></div>' +
+              '<span class="chip ' + (isReady ? "good" : "info") + '">' + ready.length + ' ready</span>' +
+              '<div class="amt">COD<b>' + esc(money(t.cod)) + '</b></div>' +
+              '<div class="amt">Payable<b>' + esc(money(t.payable)) + '</b></div>' +
+              '<button class="action-btn" onclick="selectInvoiceClient(\'' + esc(c.id) + '\')"' +
+                (isReady ? "" : " disabled") + '>Open In Add Invoice</button>' +
+            '</div>';
+        }).join("");
+      })();
 
       const visibleInvoices = state.invoices.filter(invoice => invoice.status !== "Deleted");
       document.getElementById("adminInvoiceList").innerHTML = visibleInvoices.map(invoice => {
