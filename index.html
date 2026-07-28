@@ -47,9 +47,17 @@
   font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
 }
 *{margin:0;padding:0;box-sizing:border-box}
+/* FIX (sticky killer): overflow-x:hidden on html/body creates a scroll
+   container, which silently disables position:sticky for every descendant
+   -- the journey stage scrolled straight past instead of pinning.
+   overflow-x:clip clips identically but does NOT create a scroll
+   container, so sticky works. The hidden line stays first as a fallback
+   for old browsers that don't know clip (they ignore the second line). */
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;overflow-x:hidden}
+html{overflow-x:clip}
 body{background:var(--bg);color:var(--ink);overflow-x:hidden;line-height:1.5;
   -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:rgba(20,199,123,.16);min-width:0}
+body{overflow-x:clip} /* same sticky fix as html above */
 img,svg,canvas{display:block;max-width:100%}
 button,input,select,textarea{font:inherit;color:inherit}
 button{border:0;background:none;cursor:pointer;touch-action:manipulation}
@@ -91,7 +99,123 @@ html.nv3d-ready #gridfx{display:none}
 main,header,footer{position:relative;z-index:2}
 
 /* ═══════════════ REVEAL ═══════════════ */
-.rv{opacity:0;transform:translateY(32px);transition:opacity .8s cubic-bezier(.2,.8,.2,1),transform .8s cubic-bezier(.2,.8,.2,1)}
+/* Smoothed: longer travel, softer spring-out curve. Opacity+transform only
+   (both compositor-driven) so reveals never cause layout or paint work. */
+.rv{opacity:0;transform:translateY(44px);transition:opacity .95s cubic-bezier(.16,.84,.28,1),transform .95s cubic-bezier(.16,.84,.28,1);will-change:opacity,transform}
+.rv.in{will-change:auto}
+
+/* ═══════════════ WORKSPACE LAUNCH TRANSITION ═══════════════
+   Shown after a successful signup / sign-in, while the redirect to
+   client.html is in flight. Turns a blank 1.5s wait into a moment that
+   says "your workspace is being built". */
+#launch{position:fixed;inset:0;z-index:4000;display:none;align-items:center;justify-content:center;overflow:hidden;
+  background:radial-gradient(120% 90% at 50% 8%,#0a2318,#04100b 72%);opacity:0;transition:opacity .45s ease}
+#launch.on{display:flex;opacity:1}
+#lxGrid{position:absolute;inset:0;opacity:.3;pointer-events:none;
+  background-image:linear-gradient(rgba(20,199,123,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(20,199,123,.07) 1px,transparent 1px);
+  background-size:42px 42px;animation:lxDrift 22s linear infinite}
+@keyframes lxDrift{to{background-position:42px 42px,42px 42px}}
+.lx{position:relative;z-index:2;width:min(430px,90vw);text-align:center;padding:0 16px}
+.lx h3{font-size:clamp(20px,4vw,25px);font-weight:900;letter-spacing:-.02em}
+.lx .lx-sub{color:var(--ink-2);font-size:13.5px;margin-top:5px;min-height:1.4em}
+/* The workspace prints itself as a 4x6 thermal AWB label -- the one
+   opening animation only a courier can honestly do, and it mirrors the
+   real label the merchant is about to print on their first booking. */
+.lx-slot{width:220px;height:8px;margin:0 auto;border-radius:4px;background:#0a2318;
+  border:1px solid rgba(126,224,175,.25);position:relative}
+.lx-slot i{position:absolute;left:8px;right:8px;top:2px;height:2px;background:var(--green-2);
+  opacity:0;box-shadow:0 0 12px var(--green);transition:opacity .2s}
+.lx-slot.hot i{opacity:1}
+.lx-mach{font-family:var(--mono);font-size:10px;letter-spacing:.22em;color:var(--ink-3);margin-top:7px}
+.lx-stagearea{position:relative;width:212px;height:300px;margin:14px auto 0;perspective:900px}
+#lxLabel{position:absolute;inset:0;background:#f7f5ee;border-radius:3px;color:#11150f;padding:14px 13px;
+  transform:translateY(-330px);transform-origin:top center;box-shadow:0 18px 40px rgba(0,0,0,.5);text-align:left}
+.lxl-top{display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #11150f;padding-bottom:7px}
+.lxl-top b{font-weight:900;font-size:13px;letter-spacing:-.01em}
+.lxl-top span{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em}
+.lxl-k{font-family:var(--mono);font-size:8.5px;color:#5c6157;letter-spacing:.1em;margin-top:11px}
+.lxl-v{font-weight:800;font-size:15px;min-height:1.3em;letter-spacing:-.01em;overflow-wrap:anywhere}
+.lxl-row{display:flex;gap:14px;margin-top:9px}
+.lxl-row .lxl-k{margin-top:0;font-size:8px}
+.lxl-row div>div:last-child{font-size:11.5px;font-weight:800;min-height:1.2em}
+#lxBars{margin-top:13px;height:52px;display:flex;align-items:flex-end;gap:1.5px;overflow:hidden}
+#lxBars i{display:block;background:#11150f;flex:0 0 auto}
+#lxNum{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-align:center;margin-top:5px;min-height:1.3em}
+#lxStamp{position:absolute;right:12px;bottom:14px;border:2.5px solid #1d9e75;color:#0f6e56;font-family:var(--mono);
+  font-size:11px;font-weight:900;letter-spacing:.1em;padding:5px 9px;border-radius:3px;
+  transform:rotate(-14deg) scale(2.4);opacity:0;transition:transform .32s cubic-bezier(.3,1.5,.4,1),opacity .2s}
+#lxStamp.on{opacity:1;transform:rotate(-14deg) scale(1)}
+.lx-cap{font-family:var(--mono);font-size:11.5px;color:var(--green-2);letter-spacing:.05em;margin-top:16px;
+  min-height:1.4em;transition:opacity .25s}
+/* final wipe straight into the workspace */
+#lxWipe{position:absolute;left:50%;top:50%;width:20px;height:20px;border-radius:50%;background:var(--green);
+  transform:translate(-50%,-50%) scale(0);opacity:.96;z-index:3}
+#lxWipe.go{transition:transform .75s cubic-bezier(.7,0,.3,1);transform:translate(-50%,-50%) scale(80)}
+@media (prefers-reduced-motion:reduce){
+  #lxGrid{animation:none}
+  #lxLabel,#lxStamp,#lxWipe{transition:none!important}
+}
+
+/* ═══════════════ ROUTE RAIL (scroll progress as a delivery route) ═══════════════ */
+#rail{position:fixed;left:0;top:0;bottom:0;width:52px;z-index:60;pointer-events:none;display:flex;justify-content:center}
+#rail .rl-track{position:relative;width:2px;background:rgba(126,224,175,.1);margin:96px 0 34px}
+#rail .rl-fill{position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(180deg,var(--green-2),var(--green));
+  box-shadow:0 0 12px rgba(20,199,123,.7);transform-origin:top;transform:scaleY(0);will-change:transform}
+#railDot{position:absolute;left:50%;top:0;width:34px;height:34px;border-radius:50%;background:var(--bg-2,#051a10);
+  border:2px solid var(--green);display:flex;align-items:center;justify-content:center;font-size:15px;
+  box-shadow:0 0 20px rgba(20,199,123,.5);transform:translate(-50%,-50%);will-change:transform}
+.rl-stop{position:absolute;left:50%;transform:translateX(-50%);width:8px;height:8px;border-radius:50%;
+  background:rgba(126,224,175,.22);border:1px solid var(--line-2);transition:background .4s,box-shadow .4s}
+.rl-stop.hit{background:var(--green-2);box-shadow:0 0 10px rgba(78,230,165,.85)}
+@media(max-width:1150px){#rail{display:none}}
+
+/* ═══════════════ JOURNEY THEATRE (scroll-driven parcel story) ═══════════════ */
+#jySpace{height:520svh;position:relative}
+.jy-stage{position:sticky;top:0;height:100svh;overflow:hidden;display:flex;align-items:center}
+.jy-road{position:absolute;left:0;right:0;top:60%;height:2px;
+  background:repeating-linear-gradient(90deg,rgba(126,224,175,.3) 0 26px,transparent 26px 52px)}
+/* The parcel moves ONLY via translate3d driven from a rAF loop — never
+   left/top, which is what made the first concept janky (layout thrash). */
+#jyBox{position:absolute;top:60%;left:0;transform:translate3d(0,-58%,0);z-index:5;will-change:transform;
+  filter:drop-shadow(0 20px 28px rgba(0,0,0,.5))}
+.jy-cube{width:84px;height:84px;position:relative;transform-style:preserve-3d;
+  transform:rotateX(-18deg) rotateY(32deg);animation:jyFloat 3.6s ease-in-out infinite}
+@keyframes jyFloat{0%,100%{transform:rotateX(-18deg) rotateY(32deg) translateY(0)}50%{transform:rotateX(-18deg) rotateY(32deg) translateY(-9px)}}
+.jy-cube i{position:absolute;inset:0;background:linear-gradient(150deg,#0e5c3b,#0a3d28);border:1.5px solid rgba(126,224,175,.5)}
+.jy-cube i:nth-child(1){transform:translateZ(42px);display:grid;place-items:center;font-style:normal;font-size:27px}
+.jy-cube i:nth-child(2){transform:rotateY(90deg) translateZ(42px);background:linear-gradient(150deg,#0a4a30,#072e1e)}
+.jy-cube i:nth-child(3){transform:rotateX(90deg) translateZ(42px);background:linear-gradient(150deg,#12724a,#0c5335)}
+.jy-cube .tape{position:absolute;left:0;right:0;top:34px;height:13px;background:rgba(255,209,102,.85);transform:translateZ(43px)}
+.jy-card{position:absolute;max-width:min(430px,86vw);background:rgba(7,27,19,.92);border:1px solid var(--line);border-radius:20px;
+  padding:24px 24px 20px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);opacity:0;
+  transform:translate3d(0,36px,0) scale(.97);transition:opacity .55s cubic-bezier(.16,.84,.28,1),transform .55s cubic-bezier(.16,.84,.28,1);
+  z-index:6;pointer-events:none}
+.jy-card.on{opacity:1;transform:translate3d(0,0,0) scale(1);pointer-events:auto}
+.jy-card .jn{font-family:var(--mono);font-size:10.5px;color:var(--green);letter-spacing:.2em;margin-bottom:8px}
+.jy-card h3{font-size:clamp(19px,2.5vw,25px);font-weight:900;letter-spacing:-.02em;line-height:1.15}
+.jy-card p{color:var(--ink-2);font-size:13.5px;margin-top:8px;line-height:1.6}
+.jy-card .jchip{display:inline-block;margin-top:11px;font-family:var(--mono);font-size:11px;color:var(--green-2);
+  border:1px solid var(--line-2);border-radius:999px;padding:5px 12px;background:rgba(20,199,123,.07)}
+#jc1{left:7%;top:12%}#jc2{right:6%;top:10%}#jc3{left:7%;top:64%}#jc4{right:6%;top:62%}
+#jc5{left:50%;top:14%;transform:translate3d(-50%,36px,0) scale(.97)}
+#jc5.on{transform:translate3d(-50%,0,0) scale(1)}
+.jy-city{position:absolute;bottom:15%;font-family:var(--mono);font-size:11px;letter-spacing:.25em;color:var(--ink-3);
+  text-transform:uppercase;opacity:0;transition:opacity .5s}
+.jy-city.on{opacity:1}
+#jyCityA{left:7%}#jyCityB{right:7%}
+.jy-cash{position:absolute;font-size:21px;opacity:0;z-index:4;will-change:transform,opacity}
+@keyframes jyCashUp{0%{opacity:0;transform:translate3d(0,0,0) scale(.6)}15%{opacity:1}100%{opacity:0;transform:translate3d(0,-120px,0) scale(1.12) rotate(22deg)}}
+@media(max-width:760px){
+  #jySpace{height:560svh}
+  .jy-card{left:5%!important;right:5%!important;max-width:none;top:7%!important;transform:translate3d(0,36px,0) scale(.98)}
+  .jy-card.on,#jc5.on{transform:translate3d(0,0,0) scale(1)}
+  #jyBox{top:64%}.jy-road{top:64%}
+  .jy-cube{width:66px;height:66px}
+  .jy-cube i:nth-child(1){transform:translateZ(33px);font-size:22px}
+  .jy-cube i:nth-child(2){transform:rotateY(90deg) translateZ(33px)}
+  .jy-cube i:nth-child(3){transform:rotateX(90deg) translateZ(33px)}
+  .jy-cube .tape{top:27px;height:10px;transform:translateZ(34px)}
+}
 .rv.in{opacity:1;transform:none}
 .rv-s{transform:scale(.92)}
 .rv-d1{transition-delay:.08s}.rv-d2{transition-delay:.16s}.rv-d3{transition-delay:.24s}
@@ -99,6 +223,17 @@ main,header,footer{position:relative;z-index:2}
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   .rv{opacity:1!important;transform:none!important;transition:none}
+  /* FIX: .wd (the per-word headline animation) starts at opacity:0 and is
+     only made visible BY the animation. It was missing from this block, so
+     with reduced motion on, the entire H1 rendered invisible -- the second
+     line vanished and left a large empty gap above the sub-heading. */
+  .wd{opacity:1!important;transform:none!important;filter:none!important;animation:none!important}
+  .swap i{animation:none!important}
+  /* Journey theatre: reduced motion reads it as plain stacked cards. */
+  #jySpace{height:auto!important}
+  .jy-stage{position:static!important;height:auto!important;padding:60px 0}
+  #jyBox,.jy-road,.jy-city{display:none!important}
+  .jy-card{position:static!important;opacity:1!important;transform:none!important;max-width:560px;margin:14px auto;pointer-events:auto}
   .aur,#gridfx,.mq-track,.tick-track,.orb,.orb-item,.pulse,.beam,.logo-mk,.guar-ic,.btn-primary::after,.bar-fl.us::after{animation:none!important}
 }
 
@@ -162,10 +297,29 @@ h3{font-size:clamp(16.5px,2vw,22px);font-weight:800;letter-spacing:-.015em}
 .sec-head{max-width:730px;margin-bottom:44px}
 .sec-head h2{margin-bottom:14px}
 .sec-n{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--green);letter-spacing:.2em;margin-bottom:13px;display:block}
+/* FIX (invisible second headline line): the gradient line uses
+   background-clip:text + text-fill-color:transparent on the PARENT .line.
+   Each word is its own inline-block child with no background of its own,
+   so the clipped gradient never reached them -- the text inherited
+   transparent fill and rendered as nothing. "runs itself." was there the
+   whole time, just invisible, which is why the H1 looked cut off.
+   Each word now carries the gradient itself. */
+h1 .line.grad .wd{background:linear-gradient(120deg,var(--green-2) 0%,var(--green) 44%,var(--green-3) 100%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+/* Descenders on a clamped 82px font were also clipping inside .line. */
+h1 .line{padding-bottom:.06em}
 .wd{display:inline-block;opacity:0;transform:translateY(38px) rotateX(46deg);filter:blur(9px);animation:wdIn .78s cubic-bezier(.18,.86,.24,1) forwards}
 @keyframes wdIn{to{opacity:1;transform:none;filter:blur(0)}}
-.swap{display:inline-block;position:relative;height:1.1em;overflow:hidden;vertical-align:bottom;min-width:5ch}
-.swap i{display:block;font-style:normal;animation:swapUp .5s cubic-bezier(.2,.9,.2,1)}
+/* FIX: the rotating word sat lower and out of line with "AI handles the".
+   vertical-align:bottom on an inline-block whose height (1.1em) differs
+   from the line's own line-height drops it below the baseline, and
+   min-width:5ch was far too narrow for the actual words -- "notifications"
+   is 13 characters, "settlement" 10 -- so the box also resized on every
+   swap, jiggling the line. Matched line-height, top alignment, and a
+   min-width that fits the longest word. */
+.swap{display:inline-block;position:relative;height:1.25em;line-height:1.25em;overflow:hidden;
+  vertical-align:top;min-width:13ch;text-align:left}
+.swap i{display:block;font-style:normal;line-height:1.25em;animation:swapUp .5s cubic-bezier(.2,.9,.2,1)}
 @keyframes swapUp{from{transform:translateY(105%);opacity:0;filter:blur(5px)}to{transform:none;opacity:1;filter:blur(0)}}
 
 /* ═══════════════ HERO ═══════════════ */
@@ -190,7 +344,14 @@ h1 .line{display:block}
   transition:background .4s,border-color .4s,transform .4s;min-width:0}
 .pipe-col.hot{background:rgba(20,199,123,.14);border-color:var(--green);transform:translateY(-3px)}
 .pipe-n{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green-2);font-variant-numeric:tabular-nums}
-.pipe-l{font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:800;margin-top:4px;line-height:1.3}
+/* Fourth CTA grade: present and clickable, but visually quietest so it
+   never competes with signup. */
+.btn-quiet{background:transparent;border:1px solid var(--line);color:var(--ink-2)}
+.btn-quiet:hover{border-color:var(--green);color:var(--ink)}
+/* FIX: rate-card honesty note under the calculator. */
+.calc-fine{margin:10px 0 0;font-size:11.5px;line-height:1.45;color:var(--ink-3);text-align:center;overflow-wrap:anywhere}
+/* FIX: was 8px -- below legible size on a phone, read as a rendering fault. */
+.pipe-l{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:800;margin-top:4px;line-height:1.3}
 .feed{height:150px;overflow:hidden;position:relative;-webkit-mask-image:linear-gradient(to bottom,#000 78%,transparent);mask-image:linear-gradient(to bottom,#000 78%,transparent)}
 .feed-row{display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:9px;background:rgba(255,255,255,.028);border:1px solid var(--line);
   margin-bottom:6px;font-size:11px;animation:feedIn .5s cubic-bezier(.2,.9,.3,1.2)}
@@ -357,7 +518,7 @@ h1 .line{display:block}
   transition:transform .34s,border-color .34s,box-shadow .34s;position:relative;min-width:0}
 .tier:hover{transform:translateY(-6px)}
 .tier.hot{border-color:var(--green);background:linear-gradient(165deg,rgba(20,199,123,.16),rgba(20,199,123,.04));box-shadow:0 20px 56px rgba(20,199,123,.15)}
-.tier-crown{position:absolute;top:-10px;left:50%;transform:translateX(-50%);font-size:8px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;
+.tier-crown{position:absolute;top:-10px;left:50%;transform:translateX(-50%);font-size:9.5px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;
   background:var(--green);color:#02130c;border-radius:999px;padding:4px 9px;white-space:nowrap}
 .tier-n{font-size:15px;font-weight:900}
 .tier-f{font-size:27px;font-weight:900;color:var(--green-2);margin:7px 0 3px;letter-spacing:-.03em}
@@ -520,8 +681,12 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   .nav-links.open a::after{display:none}
   .nav-links.open .m-cta{margin-top:8px;border-top:1px solid var(--line);padding-top:10px}
   .calc-row{grid-template-columns:1fr}
-  .hero-cta{gap:9px}
-  .hero-cta .btn{width:100%}
+  /* FIX: this was width:100% on every button, so four CTAs became four
+     stacked full-width blocks that buried everything below the fold.
+     Two per row keeps all four reachable in roughly half the height. */
+  .hero-cta{gap:9px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hero-cta .btn{width:100%;padding-left:10px;padding-right:10px;font-size:13.5px;text-align:center}
+  .hero-cta .btn:first-child{grid-column:1 / -1}
   h1{font-size:clamp(31px,8.4vw,48px)}
   .pipe{grid-template-columns:repeat(3,1fr);gap:6px}
   .tiers{grid-template-columns:1fr}
@@ -544,7 +709,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   .feed{height:132px}
   .ap-body{min-height:290px}
   .pm-body{min-height:230px}
-  .cs-foot{font-size:8.5px;gap:4px}
+  .cs-foot{font-size:10px;gap:4px}
   .mq-item{font-size:11px;padding:7px 13px}
 }
 @media (max-width:380px){
@@ -584,7 +749,9 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
     <a href="#hero" class="logo"><div class="logo-mk">N</div><div><b>NovaX</b><small>LOGISTICS</small></div></a>
     <nav class="nav-links" id="navLinks">
       <a href="#speed">Speed</a><a href="#automation">Automation</a><a href="#platform">Platform</a>
-      <a href="#autopilot">Autopilot AI</a><a href="#payouts">Payouts</a><a href="#track">Track Your Order</a><a href="#faq">FAQ</a>
+      <!-- FIX: the footer nav carried a "Rates" link that the header did not,
+           so the two navs disagreed about what sections exist. -->
+      <a href="#autopilot">Autopilot AI</a><a href="#payouts">Payouts</a><a href="#rates">Rates</a><a href="#track">Track Your Order</a><a href="#faq">FAQ</a>
       <a href="#contact-sales" class="m-cta" data-mdl="sales">Talk To Sales Today</a>
       <a href="#signup" class="m-cta" data-mdl="signup">Signup As NovaX Merchant</a>
       <a href="#signin" class="m-cta" data-mdl="signin">Sign In</a>
@@ -597,6 +764,19 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
     <button class="burger" id="burger" aria-label="Open menu" aria-expanded="false"><span></span></button>
   </div>
 </header>
+
+<!-- route rail: scroll progress rendered as the parcel's delivery route -->
+<div id="rail" aria-hidden="true">
+  <div class="rl-track">
+    <div class="rl-fill" id="rlFill"></div>
+    <div class="rl-stop" style="top:0%"></div>
+    <div class="rl-stop" style="top:25%"></div>
+    <div class="rl-stop" style="top:50%"></div>
+    <div class="rl-stop" style="top:75%"></div>
+    <div class="rl-stop" style="top:100%"></div>
+    <div id="railDot">📦</div>
+  </div>
+</div>
 
 <main>
 
@@ -611,11 +791,22 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
       <h1><span class="line" id="h1a"></span><span class="line grad" id="h1b"></span></h1>
       <div class="hero-rot">AI handles the <span class="swap" id="swap"><i>dispatch</i></span></div>
       <p class="lead" style="margin-top:14px">Not a courier with an app bolted on — a logistics operating system. Orders import themselves, AWBs generate themselves, riders assign themselves, customers get notified automatically, and exceptions get caught before you notice them.</p>
+      <!-- FIX: this was four buttons, all forced to width:100% below 900px --
+           a wall of four stacked full-width CTAs that pushed the console and
+           everything else off the first screen, with no single clear action.
+           Sign In and Talk To Sales both already exist in the header nav, so
+           the hero now carries one primary action and one secondary. -->
+      <!-- All four CTAs are real buttons again, each on its own colour grade
+           so they read as a hierarchy instead of a wall: green = primary
+           signup, pink = sales, outlined = track, subtle = sign in.
+           Below 900px they lay out 2-per-row rather than four stacked
+           full-width blocks. Every one carries data-mdl (handled by the
+           delegated listener) or a real href. -->
       <div class="hero-cta">
         <button class="btn btn-primary btn-lg" data-mdl="signup">Signup As NovaX Merchant</button>
         <button class="btn btn-vivid btn-lg" data-mdl="sales">Talk To Sales Today</button>
         <a class="btn btn-ghost btn-lg" href="#track">Track Your Order</a>
-        <a class="btn btn-ghost btn-lg" href="#signin" data-mdl="signin">Sign In</a>
+        <button class="btn btn-quiet btn-lg" data-mdl="signin">Sign In</button>
       </div>
       <div class="hero-micro">
         <span><i>✓</i>Workspace opens instantly</span><span><i>✓</i>No contract</span><span><i>✓</i>First 50 parcels free</span>
@@ -625,27 +816,83 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
     <div class="console rv rv-d2">
       <div class="cs-bar">
         <span class="cs-dot" style="background:#e0604b"></span><span class="cs-dot" style="background:#e8b64c"></span><span class="cs-dot" style="background:#14c77b"></span>
-        <span class="cs-title">NOVAX_OPS // LIVE</span>
-        <span class="cs-live"><span class="live-dot"></span>STREAMING</span>
+        <!-- FIX (honesty): this panel was labelled "LIVE" and "STREAMING",
+             but every figure in it is generated in the browser -- the
+             pipeline counts come from a hardcoded array, and the activity
+             feed invents AWBs, invoice numbers and Shopify order IDs at
+             random. Presenting simulated numbers as a live feed is a
+             credibility risk generally, and a serious one for a company
+             that holds merchants' COD cash. Relabelled as what it is: a
+             product demo. Wire it to real aggregates and the honest "LIVE"
+             label can come back. -->
+        <span class="cs-title">NOVAX_OPS // DEMO</span>
+        <span class="cs-live">SAMPLE VIEW</span>
       </div>
       <div class="cs-body">
+        <!-- FIX: these were hardcoded 0 and only filled in by JS on scroll,
+             so the page rendered "0 Booked / 0 Picked / 0 Delivered" and
+             stayed that way whenever the observer did not fire. Real values
+             now ship in the markup and JS animates up to them. -->
         <div class="pipe" id="pipe">
-          <div class="pipe-col"><div class="pipe-n">0</div><div class="pipe-l">Booked</div></div>
-          <div class="pipe-col"><div class="pipe-n">0</div><div class="pipe-l">Picked</div></div>
-          <div class="pipe-col"><div class="pipe-n">0</div><div class="pipe-l">Transit</div></div>
-          <div class="pipe-col"><div class="pipe-n">0</div><div class="pipe-l">Out Del</div></div>
-          <div class="pipe-col"><div class="pipe-n">0</div><div class="pipe-l">Delivered</div></div>
+          <div class="pipe-col"><div class="pipe-n">142</div><div class="pipe-l">Booked</div></div>
+          <div class="pipe-col"><div class="pipe-n">86</div><div class="pipe-l">Picked</div></div>
+          <div class="pipe-col"><div class="pipe-n">214</div><div class="pipe-l">Transit</div></div>
+          <div class="pipe-col"><div class="pipe-n">63</div><div class="pipe-l">Out Del</div></div>
+          <div class="pipe-col"><div class="pipe-n">1,489</div><div class="pipe-l">Delivered</div></div>
         </div>
         <div class="feed" id="feed"></div>
       </div>
       <div class="cs-foot">
-        <span>AI ACTIONS/HR <b id="aiOps">0</b></span><span>MANUAL TOUCHES <b>0</b></span><span>UPTIME <b>99.9%</b></span>
+        <span>AI ACTIONS/HR <b id="aiOps">3,400</b></span><span>MANUAL TOUCHES <b>0</b></span><span>ILLUSTRATIVE</span>
       </div>
     </div>
   </div>
 </section>
 
 <div class="mq"><div class="mq-track" id="mq1"></div></div>
+
+<!-- ═════ THE JOURNEY — scroll-driven parcel story ═════ -->
+<div id="journey" aria-label="One parcel's journey from booking to payout">
+  <div id="jySpace">
+    <div class="jy-stage">
+      <div class="jy-road" aria-hidden="true"></div>
+      <span class="jy-city" id="jyCityA">Karachi — pickup</span>
+      <span class="jy-city" id="jyCityB">Lahore — delivery</span>
+      <div id="jyBox" aria-hidden="true"><div class="jy-cube"><i>📦</i><i></i><i></i><span class="tape"></span></div></div>
+
+      <div class="jy-card" id="jc1">
+        <div class="jn">01 / BOOKED — 0.4s</div>
+        <h3>Order lands. AWB writes itself.</h3>
+        <p>Shopify, WooCommerce or a pasted WhatsApp order — it becomes a booked parcel with a print-ready 4×6 label before you've finished your chai.</p>
+        <span class="jchip">zero re-entry</span>
+      </div>
+      <div class="jy-card" id="jc2">
+        <div class="jn">02 / PICKED UP — ~2h</div>
+        <h3>A rider is already on the way.</h3>
+        <p>Zone-aware dispatch picks the rider by area, load and cash-in-hand limit. Your customer gets the WhatsApp update automatically.</p>
+        <span class="jchip">rider assigned by AI</span>
+      </div>
+      <div class="jy-card" id="jc3">
+        <div class="jn">03 / IN TRANSIT — overnight</div>
+        <h3>Watched every single hour.</h3>
+        <p>An exception engine sits on every parcel with a timer. Stuck, delayed, address gap — it escalates before your customer even notices.</p>
+        <span class="jchip">never a blind hour</span>
+      </div>
+      <div class="jy-card" id="jc4">
+        <div class="jn">04 / DELIVERED — proof attached</div>
+        <h3>Cash collected. Photo taken.</h3>
+        <p>Delivery photo, signature and COD amount reconciled to the parcel record, permanently. Nothing is ever he-said-she-said.</p>
+        <span class="jchip">auditable forever</span>
+      </div>
+      <div class="jy-card" id="jc5">
+        <div class="jn">05 / SETTLED — same day</div>
+        <h3>The COD is in your wallet. <span class="grad">That's the whole point.</span></h3>
+        <p>Reconciled per parcel and credited the day it lands — then you pick the payout speed. Not in 15 days. Not in 30. Today.</p>
+        <span class="jchip">₨ same-day settlement</span>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ═════ SPEED ═════ -->
 <section class="band" id="speed">
@@ -658,22 +905,22 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
     <div class="rings">
       <div class="ring-c rv">
         <div class="ring-w"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring-bg" cx="60" cy="60" r="52"/><circle class="ring-fg" cx="60" cy="60" r="52" data-pct="98"/></svg>
-          <div class="ring-mid"><div><div class="ring-v" data-count="98" data-suffix="%">0</div><div class="ring-u">on time</div></div></div></div>
+          <div class="ring-mid"><div><div class="ring-v" data-count="98" data-suffix="%">98%</div><div class="ring-u">on time</div></div></div></div>
         <div class="ring-l">Delivered within SLA</div>
       </div>
       <div class="ring-c rv rv-d1">
         <div class="ring-w"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring-bg" cx="60" cy="60" r="52"/><circle class="ring-fg" cx="60" cy="60" r="52" data-pct="92" style="stroke:var(--blue)"/></svg>
-          <div class="ring-mid"><div><div class="ring-v" data-count="2" data-suffix="h">0</div><div class="ring-u">pickup</div></div></div></div>
+          <div class="ring-mid"><div><div class="ring-v" data-count="2" data-suffix="h">2h</div><div class="ring-u">pickup</div></div></div></div>
         <div class="ring-l">Booking → parcel collected</div>
       </div>
       <div class="ring-c rv rv-d2">
         <div class="ring-w"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring-bg" cx="60" cy="60" r="52"/><circle class="ring-fg" cx="60" cy="60" r="52" data-pct="99" style="stroke:var(--green-3)"/></svg>
-          <div class="ring-mid"><div><div class="ring-v" data-count="0" data-prefix="99.4" data-suffix="%">0</div><div class="ring-u">scan acc</div></div></div></div>
+          <div class="ring-mid"><div><div class="ring-v" data-count="0" data-prefix="99.4" data-suffix="%">99.4%</div><div class="ring-u">scan acc</div></div></div></div>
         <div class="ring-l">Scan accuracy at every hub</div>
       </div>
       <div class="ring-c rv rv-d3">
         <div class="ring-w"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring-bg" cx="60" cy="60" r="52"/><circle class="ring-fg" cx="60" cy="60" r="52" data-pct="100" style="stroke:var(--violet)"/></svg>
-          <div class="ring-mid"><div><div class="ring-v" data-count="24" data-suffix="/7">0</div><div class="ring-u">AI watch</div></div></div></div>
+          <div class="ring-mid"><div><div class="ring-v" data-count="24" data-suffix="/7">24/7</div><div class="ring-u">AI watch</div></div></div></div>
         <div class="ring-l">Never a blind hour</div>
       </div>
     </div>
@@ -831,6 +1078,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
       </div>
       <div class="calc-out"><div class="calc-price" id="cPrice">Rs 240</div><div class="calc-note" id="cNote">Karachi → Lahore · 2 kg · delivered next day</div></div>
       <button class="btn btn-primary" style="width:100%;margin-top:16px" data-mdl="signup">Book at this rate →</button>
+      <p class="calc-fine">Standard rate card. Your agreed rate applies at booking and is always shown before you confirm.</p>
     </div>
   </div>
 </section>
@@ -856,6 +1104,9 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   <div class="wrap">
     <div class="guar rv">
       <div class="guar-ic">🛡️</div>
+      <!-- FIX: this was the only section without a number, breaking the
+           01-09 rhythm every other section follows. FAQ renumbered to 10. -->
+      <span class="sec-n" style="display:block;margin-bottom:10px">09 / GUARANTEE</span>
       <h2>If we lose your parcel, we pay the COD.</h2>
       <p class="lead" style="margin:0 auto;color:#f2e0bb">Every seller in Pakistan has lost a parcel and eaten the cost. Not here. That's not marketing — that's the deal.</p>
       <div class="guar-list">
@@ -873,7 +1124,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 <section class="band" id="faq">
   <div class="wrap">
     <div class="sec-head rv" style="text-align:center;margin-left:auto;margin-right:auto">
-      <span class="sec-n">09 / FAQ</span>
+      <span class="sec-n">10 / FAQ</span>
       <h2>Questions sellers ask <span class="grad">before booking.</span></h2>
     </div>
     <div class="faq">
@@ -966,6 +1217,35 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   </form>
 </div></div>
 
+<!-- Workspace launch transition (signup / sign-in → client.html) -->
+<div id="launch" role="status" aria-live="polite" aria-label="Opening your workspace">
+  <div id="lxGrid" aria-hidden="true"></div>
+  <div class="lx">
+    <h3 id="lxTitle">Building your workspace</h3>
+    <p class="lx-sub" id="lxSub">Setting things up…</p>
+    <div aria-hidden="true">
+      <div class="lx-slot" id="lxSlot"><i></i></div>
+      <div class="lx-mach">NOVAX THERMAL &middot; 4&times;6</div>
+      <div class="lx-stagearea">
+        <div id="lxLabel">
+          <div class="lxl-top"><b>NovaX</b><span>MERCHANT WORKSPACE</span></div>
+          <div class="lxl-k">ACCOUNT</div>
+          <div class="lxl-v" id="lxWho">&nbsp;</div>
+          <div class="lxl-row">
+            <div><div class="lxl-k">CITY</div><div id="lxCity">&nbsp;</div></div>
+            <div><div class="lxl-k">PLAN</div><div id="lxPlan">&nbsp;</div></div>
+          </div>
+          <div id="lxBars"></div>
+          <div id="lxNum">&nbsp;</div>
+          <div id="lxStamp">READY</div>
+        </div>
+      </div>
+    </div>
+    <div class="lx-cap" id="lxCap">Printing your workspace…</div>
+  </div>
+  <div id="lxWipe" aria-hidden="true"></div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="document.documentElement.classList.add('no-nv3d')"></script>
 <script src="nv3d-hero.js" onerror="document.documentElement.classList.add('no-nv3d')"></script>
@@ -1049,6 +1329,17 @@ function $(id){ return document.getElementById(id); }
   }
   paint($("h1a"),"The courier that",0.15);
   paint($("h1b"),"runs itself.",0.48);
+  /* Failsafe: .wd words start invisible and are revealed by a CSS
+     animation. If that animation never runs -- reduced motion, an
+     animation-blocking extension, a rendering hiccup -- the headline would
+     silently stay blank, which is what left "The courier that" sitting
+     alone above an empty gap. Force them visible shortly after paint
+     regardless; by then the intended animation has long finished. */
+  setTimeout(function(){
+    document.querySelectorAll(".wd").forEach(function(w){
+      w.style.opacity="1"; w.style.transform="none"; w.style.filter="none";
+    });
+  },1800);
 })();
 
 /* ═════ ROTATING WORD ═════ */
@@ -1169,8 +1460,12 @@ if(!TOUCH){
     setTimeout(function(){ cols[i].classList.remove("hot"); },900);
   }
   onView(feed,function(){
-    pipeEls.forEach(function(el,i){ animate(el,vals[i],1300,comma); });
-    animate(aiOps,3400,1600,comma);
+    /* Same reasoning as the [data-count] block: the markup already carries
+       these figures, so reduced-motion just leaves them in place. */
+    if(!RM){
+      pipeEls.forEach(function(el,i){ animate(el,vals[i],1300,comma); });
+      animate(aiOps,3400,1600,comma);
+    }
     for(var i=0;i<4;i++) setTimeout(push,i*220);
     if(!RM) timer=setInterval(push,2600);
   },0.2);
@@ -1186,6 +1481,11 @@ document.querySelectorAll(".ring-fg").forEach(function(c){
   onView(c,function(){ c.style.strokeDashoffset=String(326-(326*(parseFloat(c.dataset.pct)||0)/100)); },0.4);
 });
 document.querySelectorAll("[data-count]").forEach(function(el){
+  /* FIX: the real value now ships in the markup, so if this observer never
+     fires (JS blocked, element never reaching the 0.45 threshold, slow
+     device) the visitor sees the number rather than a bare "0". Reduced
+     motion skips the count-up entirely and simply keeps that value. */
+  if(RM) return;
   onView(el,function(){
     var pre=el.dataset.prefix, suf=el.dataset.suffix||"";
     if(pre) animate(el,parseFloat(pre),1300,function(v){return v.toFixed(1)+suf;});
@@ -1344,7 +1644,21 @@ document.querySelectorAll(".bar-fl").forEach(function(b){
   function calc(){
     fill(w);
     var kg=+w.value, intra=(f.value===t.value);
-    var price=(intra?100:180)+Math.max(0,Math.ceil(kg-1))*60;
+    /* FIX (pricing mismatch): this used to be (intra?100:180) + 60/extra kg,
+       which does not match the portal's rate card -- the default merchant
+       rateCard in client.html is overnight:240 with additionalKg:80. The two
+       agreed at exactly 2kg inter-city (Rs 240), which is the default this
+       page loads with, so the error was invisible until you moved the
+       slider: at 3kg the page quoted Rs 300 while the portal charged Rs 320,
+       and at 1kg it quoted Rs 180 against Rs 240. Quoting a rate the portal
+       will not honour, directly under "Know your exact rate before you
+       book", is the worst possible place to be wrong.
+       Now uses the portal's own default rate card numbers. Intra-city has no
+       separate field in that rate card, so it is shown at the same base
+       rather than inventing a cheaper number -- if you set a real intra-city
+       rate, change INTRA_BASE here and in the portal together. */
+    var BASE=240, ADDL_KG=80, INTRA_BASE=240;
+    var price=(intra?INTRA_BASE:BASE)+Math.max(0,Math.ceil(kg-1))*ADDL_KG;
     var kgTxt=(kg%1===0?kg:kg.toFixed(1));
     wv.textContent=kgTxt+" kg";
     pr.textContent="Rs "+comma(price);
@@ -1435,6 +1749,111 @@ function val(id){ var el=$(id); return el?String(el.value||"").trim():""; }
 var PHONE_RE=/^03\d{9}$/;
 var EMAIL_RE=/^\S+@\S+\.\S+$/;
 function clearNovaxSession(){ try{ localStorage.removeItem("novaxSession"); }catch(e){} }
+/* ═════ WORKSPACE LAUNCH TRANSITION ═════
+   Replaces the blank setTimeout wait between a successful signup/sign-in
+   and landing in client.html. Steps tick in sequence, then we navigate.
+   Navigation is guarded so it fires exactly once even if called twice. */
+/* The workspace prints out of a thermal printer as a real 4x6 AWB label:
+   it feeds out of the slot, the merchant's own details type onto it, the
+   barcode draws bar by bar, a READY stamp lands, then the label peels
+   away and a green wipe carries straight into client.html.
+   `info` personalises the label: {who, city, plan}. */
+function launchWorkspace(target,title,sub,info){
+  var ov=$("launch");
+  if(!ov){ window.location.href=target; return; }
+  var RMx=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  info=info||{};
+  var who=String(info.who||"Your workspace").slice(0,26),
+      city=String(info.city||"Pakistan").slice(0,18),
+      plan=String(info.plan||"Free · 50 parcels").slice(0,20);
+
+  var slot=$("lxSlot"), label=$("lxLabel"), whoEl=$("lxWho"), cityEl=$("lxCity"),
+      planEl=$("lxPlan"), bars=$("lxBars"), num=$("lxNum"), stamp=$("lxStamp"),
+      cap=$("lxCap"), wipe=$("lxWipe");
+  var timers=[], gone=false;
+  function go(){ if(gone) return; gone=true; window.location.href=target; }
+  function at(fn,ms){ timers.push(setTimeout(fn,ms)); }
+  function type(el,txt,speed){
+    if(!el) return;
+    var i=0; el.textContent="";
+    (function tick(){ el.textContent=txt.slice(0,++i); if(i<txt.length) at(tick,speed); })();
+  }
+  /* Deterministic-looking account code from the email/name, so it feels
+     issued rather than random. Display only -- the real ids come from the
+     workspace RPC. */
+  function code(){
+    var s=(info.seed||who), n=0;
+    for(var i=0;i<s.length;i++) n=(n*31+s.charCodeAt(i))>>>0;
+    return "NVX-MER-"+String(n%100000).padStart(5,"0");
+  }
+
+  $("lxTitle").textContent=title||"Building your workspace";
+  $("lxSub").textContent=sub||"Setting things up…";
+  ov.classList.add("on");
+  try{ document.body.style.overflow="hidden"; }catch(e){}
+
+  if(RMx){
+    /* Reduced motion: show the finished label, then go. */
+    if(label) label.style.transform="translateY(0)";
+    if(whoEl) whoEl.textContent=who;
+    if(cityEl) cityEl.textContent=city;
+    if(planEl) planEl.textContent=plan;
+    if(num) num.textContent=code();
+    if(stamp) stamp.classList.add("on");
+    if(cap) cap.textContent="Workspace ready";
+    setTimeout(go,800);
+    return;
+  }
+
+  /* 1. feed the label out of the printer */
+  at(function(){
+    if(slot) slot.classList.add("hot");
+    if(label){
+      label.style.transition="transform 1.15s cubic-bezier(.25,.9,.3,1)";
+      label.style.transform="translateY(0)";
+    }
+  },160);
+  /* 2. merchant's own details print onto it */
+  at(function(){ type(whoEl,who,42); },620);
+  at(function(){ if(cityEl) cityEl.textContent=city; if(planEl) planEl.textContent=plan; },1050);
+  /* 3. barcode draws bar by bar */
+  at(function(){
+    if(cap) cap.textContent="Generating your account code…";
+    if(!bars) return;
+    bars.innerHTML="";
+    var n=44, i=0, W=[1.5,2,3.5];
+    (function add(){
+      var b=document.createElement("i");
+      b.style.width=W[Math.floor(Math.random()*W.length)]+"px";
+      b.style.height=(38+Math.random()*14)+"px";
+      bars.appendChild(b);
+      if(++i<n) at(add,13);
+    })();
+  },1250);
+  at(function(){ type(num,code(),34); },1830);
+  /* 4. READY stamp lands */
+  at(function(){
+    if(slot) slot.classList.remove("hot");
+    if(stamp) stamp.classList.add("on");
+    if(cap) cap.textContent="Workspace ready";
+  },2280);
+  /* 5. label peels away, wipe carries into the portal */
+  at(function(){
+    if(label){
+      label.style.transition="transform .6s cubic-bezier(.5,0,.75,0)";
+      label.style.transform="translateY(60px) rotateX(52deg)";
+    }
+    if(cap) cap.style.opacity="0";
+  },2760);
+  at(function(){ if(wipe) wipe.classList.add("go"); },3020);
+
+  /* Navigate under the wipe so client.html paints behind solid colour
+     instead of flashing. Hard fallback for throttled timers on a
+     backgrounded tab -- a merchant must never be stranded here. */
+  at(go,3560);
+  at(go,8000);
+}
+
 function renderDone(modalId,cls,title,body,withBar){
   var el=$(modalId); if(!el) return;
   el.innerHTML='<div class="done"><div class="done-tick '+cls+'">✓</div><h3>'+esc(title)+'</h3><p>'+esc(body)+'</p>'+
@@ -1509,7 +1928,9 @@ $("fSignup").addEventListener("submit",function(e){
         try{ localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email,
           uid:(newUser&&newUser.id)||null,client_id:(rpcRes&&rpcRes.data)||null,rider_id:null,at:Date.now()})); }catch(e){}
         renderDone("mdlSignup","g","Workspace Ready","NovaX Autopilot is preparing your first booking desk.",true);
-        setTimeout(function(){ window.location.href="client.html?welcome=1&firstBooking=1"; },1500);
+        launchWorkspace("client.html?welcome=1&firstBooking=1",
+          "Building your workspace","Welcome to NovaX, "+(name.split(" ")[0]||"there")+".",
+          { who:storeName, city:city, plan:"Free · 50 parcels", seed:email });
       }).catch(function(err){
         btn.disabled=false; btn.textContent=oldTxt;
         showMsg("mSignup",(err&&err.message)||"Workspace could not be prepared. Please sign in again.",false);
@@ -1581,7 +2002,10 @@ $("fSignin").addEventListener("submit",function(e){
           }
           try{ localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email,uid:uid,client_id:rpcRes.data,rider_id:null,at:Date.now()})); }catch(e){}
           renderDone("mdlSignin","g","Workspace Ready","Opening your seller portal…",true);
-          setTimeout(function(){ window.location.href="client.html?welcome=1&firstBooking=1"; },1400);
+          launchWorkspace("client.html?welcome=1&firstBooking=1",
+            "Building your workspace","Finishing your first-time setup…",
+            { who:(meta.business_name||meta.full_name||email.split("@")[0]),
+              city:(meta.city||"Pakistan"), plan:"Free · 50 parcels", seed:email });
         }).catch(function(){
           try{ __nvSb.auth.signOut(); }catch(e){}
           clearNovaxSession(); btn.disabled=false; btn.textContent=oldTxt;
@@ -1617,7 +2041,13 @@ $("fSignin").addEventListener("submit",function(e){
       try{ localStorage.setItem("novaxSession",JSON.stringify({role:target.replace(".html",""),email:email,uid:uid,
         client_id:p.data.client_id||null,rider_id:p.data.rider_id||null,at:Date.now()})); }catch(e){}
       renderDone("mdlSignin","g","Signed In","Opening your NovaX workspace…",true);
-      setTimeout(function(){ window.location.href=target; },1200);
+      launchWorkspace(target,
+        target==="admin.html"?"Opening ops console":target==="rider.html"?"Opening rider app":"Opening your workspace",
+        "Signed in as "+email,
+        { who:(meta.business_name||meta.full_name||email.split("@")[0]),
+          city:(meta.city||"Pakistan"),
+          plan:(target==="admin.html"?"Ops console":target==="rider.html"?"Rider app":"Merchant"),
+          seed:email });
     }).catch(function(){
       btn.disabled=false; btn.textContent=oldTxt;
       showMsg("mSignin","Could not verify your workspace. Please try again.",false);
@@ -1628,6 +2058,91 @@ $("fSignin").addEventListener("submit",function(e){
   });
 });
 
+})();
+</script>
+<script>
+/* ═════ JOURNEY THEATRE + ROUTE RAIL ═════
+   Why this is smooth where the first concept wasn't:
+   1. One passive scroll listener that only records scrollY; ALL visual
+      work happens inside a single requestAnimationFrame loop, so updates
+      are frame-synced instead of firing mid-scroll.
+   2. The parcel and the rail fill move exclusively via transform
+      (translate3d / scaleY) — compositor-only properties. The concept
+      file animated `left`/`height` in %, which forces layout every frame.
+   3. The loop early-outs when nothing changed and pauses entirely while
+      the theatre is off-screen. */
+(function(){
+"use strict";
+var RM=matchMedia("(prefers-reduced-motion: reduce)").matches;
+if(RM) return; /* CSS already renders the static stacked layout */
+
+var space=document.getElementById("jySpace"),
+    box=document.getElementById("jyBox"),
+    stage=space?space.querySelector(".jy-stage"):null,
+    cards=["jc1","jc2","jc3","jc4","jc5"].map(function(id){return document.getElementById(id);}),
+    cityA=document.getElementById("jyCityA"), cityB=document.getElementById("jyCityB"),
+    rlFill=document.getElementById("rlFill"), railDot=document.getElementById("railDot"),
+    stops=[].slice.call(document.querySelectorAll(".rl-stop")),
+    DOTS=["📦","🛵","🚚","🏠","💰"];
+
+var lastY=-1, ticking=false, curStage=-1, cashDone=false, railH=0, dotIcon="";
+
+function measure(){
+  var tr=document.querySelector("#rail .rl-track");
+  railH=tr?tr.getBoundingClientRect().height:0;
+}
+measure(); addEventListener("resize",measure);
+
+function frame(){
+  ticking=false;
+  var y=scrollY;
+  if(y===lastY) return;
+  lastY=y;
+
+  /* ---- rail ---- */
+  var max=document.documentElement.scrollHeight-innerHeight;
+  var k=max>0?Math.min(1,Math.max(0,y/max)):0;
+  if(rlFill) rlFill.style.transform="scaleY("+k+")";
+  if(railDot&&railH) railDot.style.transform="translate(-50%,-50%) translate3d(0,"+(k*railH)+"px,0)";
+  var seg=Math.min(4,Math.floor(k*4.999));
+  if(railDot&&dotIcon!==DOTS[seg]){ dotIcon=DOTS[seg]; railDot.textContent=dotIcon; }
+  for(var i=0;i<stops.length;i++) stops[i].classList.toggle("hit",k*4>=i-0.02);
+
+  /* ---- journey theatre ---- */
+  if(!space||!box) return;
+  var r=space.getBoundingClientRect();
+  if(r.bottom<0||r.top>innerHeight) return;      /* off-screen: skip */
+  var total=r.height-innerHeight;
+  var p=Math.min(1,Math.max(0,-r.top/Math.max(1,total)));
+  /* parcel travels 6vw -> 86vw, GPU transform only */
+  var x=(6+p*80)*innerWidth/100;
+  box.style.transform="translate3d("+x+"px,-58%,0)";
+  var st=Math.min(4,Math.floor(p*5));
+  if(st!==curStage){
+    curStage=st;
+    for(var c=0;c<cards.length;c++) if(cards[c]) cards[c].classList.toggle("on",c===st);
+    if(st===4&&!cashDone){ cashDone=true; burst(); }
+    if(st<4) cashDone=false;
+  }
+  if(cityA) cityA.classList.toggle("on",p<0.45);
+  if(cityB) cityB.classList.toggle("on",p>=0.45);
+}
+function burst(){
+  if(!stage) return;
+  for(var i=0;i<10;i++){
+    var s=document.createElement("span");
+    s.className="jy-cash"; s.textContent=["₨","💵","🪙"][i%3];
+    s.style.left=(76+Math.random()*15)+"%";
+    s.style.top=(48+Math.random()*16)+"%";
+    s.style.animation="jyCashUp "+(0.9+Math.random()*0.8)+"s ease-out "+(i*0.07)+"s forwards";
+    stage.appendChild(s);
+    (function(el){ setTimeout(function(){ el.remove(); },2600); })(s);
+  }
+}
+addEventListener("scroll",function(){
+  if(!ticking){ ticking=true; requestAnimationFrame(frame); }
+},{passive:true});
+frame();
 })();
 </script>
 </body>
