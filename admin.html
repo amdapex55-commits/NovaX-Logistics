@@ -4996,7 +4996,14 @@
                 </div>
                 <div class="filter-bar">
                   <div class="field"><label>Search</label><input id="adminOrderSearch" placeholder="AWB, consignee, shipper, city, address"></div>
-                  <div class="field"><label>Client</label><select id="adminOrderClientFilter"></select></div>
+                  <!-- FIX: with 122+ clients this was an unscrollable dropdown.
+                       The <select> stays (other code reads and sets its value,
+                       e.g. viewShopifyParcelsForClient), and this box filters
+                       it down as you type. -->
+                  <div class="field"><label>Client</label>
+                    <input id="adminOrderClientSearch" placeholder="Type to find a client" oninput="nvFilterClientSelect()" autocomplete="off">
+                    <select id="adminOrderClientFilter" style="margin-top:6px"></select>
+                  </div>
                   <div class="field"><label>Status</label><select id="adminOrderStatusFilter"></select></div>
                   <div class="field"><label>City</label><select id="adminOrderCityFilter"></select></div>
                   <div class="field"><label>Origin</label><select id="adminOrderOriginFilter"></select></div>
@@ -6697,6 +6704,31 @@
     /* Delivered Parcel Pool filter. Re-runs the same renderAdmin() the page
        already uses, so the pool redraws through the normal path rather than
        a second, divergent rendering routine. Preference is remembered. */
+    /* Client filter type-ahead. Hides non-matching <option>s rather than
+       rebuilding the list, so the select keeps its value and every existing
+       code path that reads or sets adminOrderClientFilter.value still works.
+       If exactly one client matches, it is selected automatically. */
+    function nvFilterClientSelect() {
+      var box = document.getElementById("adminOrderClientSearch");
+      var sel = document.getElementById("adminOrderClientFilter");
+      if (!box || !sel) return;
+      var q = String(box.value || "").trim().toLowerCase();
+      var matches = [];
+      Array.prototype.forEach.call(sel.options, function (o) {
+        var isAll = !o.value;
+        var hit = !q || isAll || String(o.textContent || "").toLowerCase().indexOf(q) !== -1;
+        o.hidden = !hit;
+        if (hit && !isAll) matches.push(o);
+      });
+      if (q && matches.length === 1) {
+        sel.value = matches[0].value;
+        try { sel.dispatchEvent(new Event("change", { bubbles: true })); } catch (e) { renderAdmin(); }
+      } else if (!q) {
+        // cleared the box -> stop filtering, but leave the selection alone
+        Array.prototype.forEach.call(sel.options, function (o) { o.hidden = false; });
+      }
+    }
+
     function nvSettleFilterChanged() {
       try {
         var el = document.getElementById("settleReadyOnly");
@@ -12553,7 +12585,28 @@
         const client = clientById(req.clientId);
         const clientLabel = labelText(client && client.name, "Unknown client");
         const awbList = (req.awbs || []).map(a => escLabelText(a)).join(", ");
-        const riderOptions = `<option value="">Unassigned</option>` + (state.riders || []).map(r => `<option value="${escLabelText(r.id)}"${req.riderId === r.id ? " selected" : ""}>${escLabelText(r.name)}</option>`).join("");
+        /* FIX: this listed every rider row as-is, so the picker showed the
+           same person several times ("rider1", "rider1", "usman rider",
+           "usman rider") whenever duplicate rider records exist. Deduped by
+           id first, then by name, and sorted -- so one rider appears exactly
+           once. The currently-assigned rider is always kept in the list even
+           if their record was since removed, so an existing assignment can
+           never silently vanish from the dropdown. */
+        const riderOptions = (function(){
+          const seenId = new Set(), seenName = new Set(), out = [];
+          (state.riders || []).forEach(function(r){
+            if (!r || !r.id) return;
+            const key = String(r.name || "").trim().toLowerCase();
+            if (seenId.has(r.id)) return;
+            if (key && seenName.has(key) && r.id !== req.riderId) return;
+            seenId.add(r.id); if (key) seenName.add(key);
+            out.push(r);
+          });
+          out.sort(function(a,b){ return String(a.name||"").localeCompare(String(b.name||"")); });
+          return `<option value="">Unassigned</option>` + out.map(r =>
+            `<option value="${escLabelText(r.id)}"${req.riderId === r.id ? " selected" : ""}>${escLabelText(r.name)}</option>`
+          ).join("");
+        })();
         // NovaX (Pickup Request Flow): full status vocabulary --
         // Requested -> Assigned -> Rider dispatched -> Picked Up, or Cancelled
         // at any point before Picked Up. "Scheduled" is kept mapped so any
