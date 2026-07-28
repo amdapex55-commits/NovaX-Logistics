@@ -829,7 +829,7 @@
                   <div class="field"><label>Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
                   <div class="field"><label>Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required oninput="updateZoneRateHint()"></div>
                   <div class="field"><label>Payment Mode <span class="required-star">*</span></label><select id="bookingPaymentMode" required><option>COD</option><option>Non COD Prepaid</option></select></div>
-                  <div class="field" style="grid-column:1/-1"><label>Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full pickup/delivery address" required></textarea></div>
+                  <div class="field" style="grid-column:1/-1"><label>Delivery Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full delivery address where the parcel is going" required></textarea></div>
                 </div>
                 <div class="footer-note" id="bookingConfirmLine" style="display:none;margin-top:12px;font-weight:700;color:var(--green)"></div>
               </div>
@@ -936,6 +936,36 @@
                       </ul>
                     </details>
 
+                    <!-- NovaX new (Shopify bulk): a webhook only ever fires for
+                         orders created AFTER it is registered. A merchant
+                         arriving with 300 unfulfilled orders already in Shopify
+                         needs those PULLED. This optional step unlocks that. -->
+                    <div class="ops-card" id="shopifyBulkBox" style="margin-top:12px;border:1px solid var(--line)">
+                      <div class="ops-card-head"><strong>Import orders you already have</strong><span class="chip" id="shopifyBulkChip">optional</span></div>
+                      <p class="footer-note">New orders arrive automatically once the webhook above is live. To also pull the unfulfilled orders <b>already sitting in your Shopify</b>, add a read-only Admin API token once.</p>
+                      <details style="margin-top:8px">
+                        <summary class="footer-note" style="cursor:pointer">How to get the token (2 minutes, one time)</summary>
+                        <ol class="footer-note" style="margin-top:8px;padding-left:18px;line-height:1.7">
+                          <li>Shopify Admin &rarr; <b>Settings</b> &rarr; <b>Apps and sales channels</b> &rarr; <b>Develop apps</b></li>
+                          <li><b>Create an app</b> &rarr; name it "NovaX" &rarr; Create</li>
+                          <li><b>Configuration</b> &rarr; Admin API scopes &rarr; tick <b>read_orders</b> (and <b>write_fulfillments</b> if you want NovaX to mark orders fulfilled) &rarr; Save</li>
+                          <li><b>API credentials</b> &rarr; <b>Install app</b> &rarr; copy the <b>Admin API access token</b> (starts with <code>shpat_</code>)</li>
+                        </ol>
+                      </details>
+                      <div class="field" style="margin-top:10px"><label>Your Shopify store domain</label>
+                        <div class="inline-actions"><input id="shopifyDomainInput" placeholder="your-store.myshopify.com" style="flex:1"><button class="ghost-btn" onclick="shopifySaveDomain()">Save</button></div>
+                      </div>
+                      <div class="field" style="margin-top:8px"><label>Admin API access token</label>
+                        <div class="inline-actions"><input id="shopifyAdminTokenInput" type="password" placeholder="shpat_..." style="flex:1"><button class="ghost-btn" onclick="shopifySaveAdminToken()">Save token</button></div>
+                        <p class="footer-note">Stored server-side only. Never saved in this browser and never shown again.</p>
+                      </div>
+                      <div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">
+                        <button class="action-btn" id="shopifyBulkBtn" onclick="shopifyBulkImport()">Import existing orders now</button>
+                        <button class="ghost-btn" onclick="shopifyLoadBulkState()">Refresh</button>
+                      </div>
+                      <p class="footer-note" id="shopifyBulkStatus" style="margin-top:8px"></p>
+                    </div>
+
                     <div class="ops-card" id="shopifyImportSummary" style="display:none;margin-top:10px">
                       <div class="money-grid">
                         <div class="money-box"><span>Orders imported</span><strong id="shopifyImportedCount">0</strong></div>
@@ -946,12 +976,12 @@
                     </div>
                   </div>
 
-                  <details style="margin-top:14px">
-                    <summary class="footer-note" style="cursor:pointer">Advanced: two-way Shopify status sync (optional)</summary>
-                    <p class="footer-note" style="margin-top:8px">Order import already works without this. Add a Shopify Admin API access token only if you also want NovaX to push delivery status back into Shopify (fulfillment updates).</p>
-                    <div class="field" style="margin-top:8px"><label>Shopify Admin API Access Token</label><input id="shopifyAdminTokenInput" placeholder="shpat_..."></div>
-                    <div class="inline-actions"><button class="ghost-btn" onclick="shopifySaveAdminToken()">Save Token</button></div>
-                  </details>
+                  <!-- The Admin API token now lives in the "Import orders you
+                       already have" card above, because the same token powers
+                       both bulk import and status push-back. Keeping a second
+                       input with the same id here produced a duplicate DOM id
+                       and a shadowed handler. -->
+                  <p class="footer-note" style="margin-top:14px">Two-way status sync (NovaX pushing delivery updates back into Shopify) uses the same Admin API token as bulk import &mdash; add it once above and both work.</p>
                 </div>
                 <div class="panel">
                   <div class="section-head"><div><h3>WooCommerce</h3><p>Connect with your site URL and REST consumer key/secret.</p></div><span class="chip" id="wooStatusChip">Not connected</span></div>
@@ -3634,7 +3664,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const cityValid=validCities.includes(cityCap);
         if(!cityRaw) addProblem("city","City is missing.","Add one of: Karachi, Lahore, Islamabad, Rawalpindi.");
         else if(!cityValid) addProblem("city",`City "${cityRaw}" is not serviceable yet.`,"Use Karachi, Lahore, Islamabad, or Rawalpindi.");
-        if(!address) addProblem("address","Address is missing.","Add the full pickup/delivery address.");
+        if(!address) addProblem("address","Delivery address is missing.","Add the full delivery address where the parcel is going.");
         if(!product) addProblem("product","Product/item details are missing.","Add a short item description.");
         // COD to number.
         const cod=codRaw===""?NaN:Number(codRaw);
@@ -3827,6 +3857,113 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         shopifyCheckStatus();
       }).catch(function(e){ toast("Failed to generate link: "+e); });
     }
+    /* =====================================================================
+       NovaX new (Shopify bulk import).
+       A webhook only fires for orders created AFTER it is registered, so a
+       merchant's existing unfulfilled orders must be PULLED via the Shopify
+       Admin API. That happens in the shopify-bulk-import Edge Function --
+       the Admin API token never touches this browser.
+       ===================================================================== */
+    function shopifySaveDomain(){
+      var d=(document.getElementById("shopifyDomainInput")||{}).value||"";
+      d=String(d).trim();
+      if(!d){ toast("Enter your Shopify store domain first."); return; }
+      if(!window.__nvSb){ toast("Cloud connection not ready yet."); return; }
+      window.__nvSb.rpc("client_set_shopify_domain",{ p_domain:d }).then(function(r){
+        if(r&&r.error){ toast("Could not save domain: "+r.error.message); return; }
+        var el=document.getElementById("shopifyDomainInput");
+        if(el&&r&&r.data) el.value=r.data;
+        toast("Store domain saved.");
+        shopifyLoadBulkState();
+      }).catch(function(e){ toast("Could not save domain: "+((e&&e.message)||e)); });
+    }
+    function shopifySaveAdminToken(){
+      var t=(document.getElementById("shopifyAdminTokenInput")||{}).value||"";
+      t=String(t).trim();
+      if(!t){ toast("Paste your Shopify Admin API access token first."); return; }
+      if(!window.__nvSb){ toast("Cloud connection not ready yet."); return; }
+      window.__nvSb.rpc("client_set_shopify_admin_token",{ p_token:t }).then(function(r){
+        if(r&&r.error){ toast("Could not save token: "+r.error.message); return; }
+        var el=document.getElementById("shopifyAdminTokenInput"); if(el) el.value="";
+        toast("Admin API token saved. You can now import existing orders.");
+        shopifyLoadBulkState();
+      }).catch(function(e){ toast("Could not save token: "+((e&&e.message)||e)); });
+    }
+    function shopifyLoadBulkState(){
+      if(!window.__nvSb) return;
+      window.__nvSb.rpc("client_shopify_bulk_state",{}).then(function(r){
+        if(r&&r.error) return;
+        var d=(r&&r.data&&r.data[0])||null;
+        var chip=document.getElementById("shopifyBulkChip");
+        var out=document.getElementById("shopifyBulkStatus");
+        var dom=document.getElementById("shopifyDomainInput");
+        if(!d){ if(chip){ chip.textContent="optional"; chip.className="chip"; } return; }
+        if(dom && !dom.value && d.store_url) dom.value=d.store_url;
+        if(chip){
+          chip.textContent = d.has_admin_token ? "ready" : "token needed";
+          chip.className = d.has_admin_token ? "chip good" : "chip";
+        }
+        if(out){
+          var bits=[];
+          if(d.bulk_total_imported) bits.push("<b>"+escLabelText(String(d.bulk_total_imported))+"</b> order(s) imported in total");
+          if(d.bulk_last_run_at){
+            var when=""; try{ when=new Date(d.bulk_last_run_at).toLocaleString(); }catch(e){}
+            bits.push("last run "+escLabelText(when)+" &middot; "+escLabelText(String(d.bulk_last_count||0))+" new, "+escLabelText(String(d.bulk_last_skipped||0))+" already there");
+          }
+          if(d.bulk_last_error) bits.push('<span style="color:#b45309">'+escLabelText(d.bulk_last_error)+"</span>");
+          out.innerHTML=bits.join("<br>");
+        }
+      }).catch(function(){});
+    }
+    function shopifyBulkImport(){
+      var btn=document.getElementById("shopifyBulkBtn");
+      var out=document.getElementById("shopifyBulkStatus");
+      if(!window.__nvSb){ toast("Cloud connection not ready yet."); return; }
+      var CFGX=window.NOVAX_CONFIG||{};
+      var base=String(CFGX.SB_URL||"").replace(/\/$/,"");
+      if(!base){ toast("Cloud connection not configured."); return; }
+      var old=btn?btn.textContent:"";
+      if(btn){ btn.disabled=true; btn.textContent="Importing…"; }
+      if(out) out.textContent="Contacting Shopify…";
+      window.__nvSb.auth.getSession().then(function(s){
+        var tok=s&&s.data&&s.data.session&&s.data.session.access_token;
+        if(!tok){ throw new Error("Your session expired. Please sign in again."); }
+        return fetch(base+"/functions/v1/shopify-bulk-import",{
+          method:"POST",
+          headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+tok },
+          body:"{}"
+        });
+      }).then(function(res){
+        return res.text().then(function(t){
+          var j=null; try{ j=JSON.parse(t); }catch(e){}
+          return { ok:res.ok, status:res.status, body:j, raw:t };
+        });
+      }).then(function(r){
+        if(btn){ btn.disabled=false; btn.textContent=old; }
+        if(r.status===401 && /missing authorization header/i.test(r.raw||"")){
+          if(out) out.innerHTML='<span style="color:#b91c1c">The bulk import function was deployed without --no-verify-jwt. Ask NovaX support to redeploy it.</span>';
+          return;
+        }
+        if(!r.ok || (r.body&&r.body.error)){
+          var m=(r.body&&r.body.error)||("Import failed ("+r.status+")");
+          if(out) out.innerHTML='<span style="color:#b91c1c">'+escLabelText(m)+"</span>";
+          toast(m);
+          return;
+        }
+        var b=r.body||{};
+        var msg="Imported "+(b.imported||0)+" order(s)"+(b.skipped?(", "+b.skipped+" already in NovaX"):"")+".";
+        if(out) out.innerHTML=escLabelText(msg)+(b.failed?('<br><span style="color:#b45309">'+escLabelText(String(b.failed))+" order(s) could not be imported.</span>"):"");
+        toast(msg);
+        shopifyLoadBulkState();
+        try{ if(typeof loadAll==="function") loadAll(); }catch(e){}
+      }).catch(function(e){
+        if(btn){ btn.disabled=false; btn.textContent=old; }
+        var m=(e&&e.message)||String(e);
+        if(out) out.innerHTML='<span style="color:#b91c1c">'+escLabelText(m)+"</span>";
+        toast(m);
+      });
+    }
+
     function shopifySaveSecret(){
       const secret=(document.getElementById("shopifySecretInput")?.value||"").trim();
       if(!secret){ toast("Paste the Shopify signing secret first."); return; }
@@ -3837,6 +3974,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const successBox=document.getElementById("shopifySecretSuccessBox"); if(successBox) successBox.style.display="block";
         toast("Secret saved. Now create one test order in Shopify.");
         shopifyCheckStatus();
+        try{ shopifyLoadBulkState(); }catch(e){}
       }).catch(function(e){ toast("Failed to save secret: "+e); });
     }
     // NovaX (Shopify Setup UX): maps the precise backend connection_status
@@ -3863,18 +4001,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         else nextNote.textContent="All steps complete. Shopify orders are importing automatically.";
       }
     }
-    function shopifySaveAdminToken(){
-      const token=(document.getElementById("shopifyAdminTokenInput")?.value||"").trim();
-      if(!token){ toast("Enter a Shopify Admin API access token first."); return; }
-      if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment."); return; }
-      window.__nvSb.rpc("client_set_shopify_admin_token", { p_token: token }).then(function(r){
-        if(r && r.error){ toast("Failed to save token: "+r.error.message); return; }
-        const el=document.getElementById("shopifyAdminTokenInput"); if(el) el.value="";
-        toast("Admin API token saved. Status sync back to Shopify is optional and separate from order import.");
-      }).catch(function(e){ toast("Failed to save token: "+e); });
-    }
+    /* The earlier duplicate definition of shopifySaveAdminToken() that used
+       to live here was removed: function declarations hoist, so it silently
+       overrode the bulk-import-aware version defined above and the bulk
+       panel never refreshed after saving a token. One definition only. */
     function shopifyCheckStatus(){
       if(!window.__nvSb) return;
+      try{ shopifyLoadBulkState(); }catch(e){}
       window.__nvSb.rpc("client_shopify_status", {}).then(function(r){
         if(r && r.error) return;
         const row = r && r.data && r.data[0];
@@ -4144,6 +4277,45 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     document.getElementById("applyDateRangeBtn").addEventListener("click",applyClientDateRange);
     document.getElementById("bookParcelBtn").addEventListener("click",()=>showClientTab("newBooking"));
     document.getElementById("quickBookingBtn").addEventListener("click",quickBooking);
+    /* BUG FIX: the desktop "+ Book Parcel" floating button (#nvDesktopQuickBook,
+       visible at >=901px, bottom-right) had NO event listener at all. It is the
+       largest, greenest, most prominent control on the page, so merchants who
+       had just filled in the whole booking form clicked it to submit -- and
+       nothing happened, with no error, because nothing was ever bound to it.
+       The mobile sticky bar proxies to #quickBookingBtn; desktop never did.
+
+       Behaviour now matches what the label implies in each context:
+         * already on New Booking with details entered -> submit the booking
+           (delegates to the real button so all validation, duplicate checks,
+           in-flight guard and error surfacing run exactly once)
+         * anywhere else, or an empty form -> jump to the New Booking form */
+    (function(){
+      var fab=document.getElementById("nvDesktopQuickBook");
+      if(!fab) return;
+      fab.addEventListener("click",function(){
+        var real=document.getElementById("quickBookingBtn");
+        var pane=document.getElementById("client-newBooking");
+        var onBookingTab=!!(pane && pane.offsetParent!==null);
+        /* Checked directly against the DOM rather than via
+           bookingFormPercent(), which is declared much further down in a
+           different scope -- depending on it here would silently fall back
+           to "empty" and the button would navigate instead of submitting. */
+        var filled=false;
+        try{
+          filled=["bookingName","bookingPhone","bookingCod","bookingAddress","bookingCategory"]
+            .some(function(id){
+              var el=document.getElementById(id);
+              return !!(el && String(el.value||"").trim());
+            });
+        }catch(e){ filled=false; }
+        if(onBookingTab && real && !real.disabled && filled){ real.click(); return; }
+        try{ showClientTab("newBooking"); }catch(e){}
+        try{
+          var first=document.getElementById("bookingName");
+          if(first) setTimeout(function(){ try{ first.focus(); }catch(e){} },220);
+        }catch(e){}
+      });
+    })();
     (function(){ var b=document.getElementById("nvPasteFillBtn"); if(b) b.addEventListener("click",applyPastedOrder); })();
     document.getElementById("downloadBulkTemplateBtn").addEventListener("click",downloadBulkTemplate);
     document.getElementById("bulkUploadBtn").addEventListener("click",uploadBulkCsv);
