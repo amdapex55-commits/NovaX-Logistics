@@ -551,12 +551,16 @@
       page-break-after:always;break-after:page;overflow:visible !important;
     }
     .print-page:last-child{page-break-after:auto !important;break-after:auto !important;}
-    /* dashed cut guide between labels on the same sheet */
+    /* Every wrap is exactly 92mm. An earlier version added a dashed cut
+       guide with 2mm padding to labels 2 and 3, which pushed the sheet to
+       288mm against 285mm of usable height -- the third label would have
+       spilled onto a fourth page. The label's own 2px border IS the cut
+       line, exactly as the established couriers print it. */
     .print-label-wrap{
       width:100% !important;height:92mm !important;min-height:0 !important;
+      box-sizing:border-box !important;
       overflow:hidden !important;break-inside:avoid !important;page-break-inside:avoid !important;
     }
-    .print-label-wrap + .print-label-wrap{border-top:1px dashed #999 !important;padding-top:2mm !important;height:94mm !important;}
 
     .awb-label{
       width:100% !important;height:92mm !important;min-height:0 !important;
@@ -2820,10 +2824,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!host) return;
       const mode=nvPrintMode();
       host.innerHTML =
-        '<button type="button" class="'+(mode==="thermal"?"action-btn":"ghost-btn")+
-        '" style="padding:5px 10px;font-size:12px" onclick="nvSetPrintMode(\'thermal\')">Thermal Label (4×6")</button>'+
         '<button type="button" class="'+(mode==="a4"?"action-btn":"ghost-btn")+
-        '" style="padding:5px 10px;font-size:12px" onclick="nvSetPrintMode(\'a4\')">A4 Sheet (3-up)</button>';
+        '" style="padding:5px 10px;font-size:12px" onclick="nvSetPrintMode(\'a4\')">A4 Sheet &middot; 3 per page</button>'+
+        '<button type="button" class="'+(mode==="thermal"?"action-btn":"ghost-btn")+
+        '" style="padding:5px 10px;font-size:12px" onclick="nvSetPrintMode(\'thermal\')">Thermal Roll &middot; 4&times;6"</button>'+
+        '<span class="footer-note" style="width:100%;margin-top:4px">'+
+        (mode==="a4"
+          ? "For a normal office / laser printer. Three labels per A4 sheet, cut along the dashed lines."
+          : "For a thermal label printer only. On an office printer this wastes a whole sheet per label.")+
+        '</span>';
     }
     function printLabels(awbs){
       const stage=document.getElementById("printStage");
