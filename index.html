@@ -1686,7 +1686,12 @@ document.querySelectorAll(".bar-fl").forEach(function(b){
        separate field in that rate card, so it is shown at the same base
        rather than inventing a cheaper number -- if you set a real intra-city
        rate, change INTRA_BASE here and in the portal together. */
-    var BASE=240, ADDL_KG=80, INTRA_BASE=240;
+    /* Standard rate card -- must stay identical to novax_rate_card_reset_v1.sql
+       and therefore to what the portal actually charges at booking:
+         Zone A (intra-city, Karachi->Karachi) Rs 100 + Rs 60 per extra kg
+         Zone B (inter-city)                   Rs 180 + Rs 60 per extra kg
+       If you change rates in the database, change these three numbers too. */
+    var BASE=180, ADDL_KG=60, INTRA_BASE=100;
     var price=(intra?INTRA_BASE:BASE)+Math.max(0,Math.ceil(kg-1))*ADDL_KG;
     var kgTxt=(kg%1===0?kg:kg.toFixed(1));
     wv.textContent=kgTxt+" kg";
