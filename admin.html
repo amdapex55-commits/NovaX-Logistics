@@ -2306,7 +2306,7 @@
     .nv-settle-toggle input{width:16px;height:16px;cursor:pointer}
     .nv-settle-sum{font-size:12.5px;color:var(--muted)}
     .nv-settle-sum b{color:var(--ink)}
-    .nv-settle-row{display:grid;grid-template-columns:minmax(0,2.1fr) auto minmax(0,1fr) minmax(0,1fr) auto;
+    .nv-settle-row{display:grid;grid-template-columns:minmax(0,2fr) auto repeat(3,minmax(0,1fr)) auto;
       gap:12px;align-items:center;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
     .nv-settle-row.ready{border-color:rgba(20,199,123,.45)}
     .nv-settle-row .nm{min-width:0;overflow-wrap:anywhere;font-weight:750;font-size:13.5px}
@@ -4758,6 +4758,8 @@
                   <button type="button" class="admin-subtab" data-admin-tab="finance-expense">Expense</button>
                   <button type="button" class="admin-subtab" data-admin-tab="finance-invoices">Invoices</button>
                   <button type="button" class="admin-subtab" data-admin-tab="finance-wallets">Wallets <span class="nav-badge" id="walletsSubtabBadge" style="display:none">0</span></button>
+                  <button type="button" class="admin-subtab" data-admin-tab="finance-dues">Negative Accounts <span class="nav-badge" id="duesSubtabBadge" style="display:none">0</span></button>
+                  <button type="button" class="admin-subtab" data-admin-tab="finance-balances">Wallet Balances</button>
                   <button type="button" class="admin-subtab" data-admin-tab="finance-summary">Summary</button>
                   <button type="button" class="admin-subtab" data-admin-tab="finance-overall">Overall</button>
                   <button type="button" class="admin-subtab" data-admin-tab="finance-revenue">Revenue</button>
@@ -5506,6 +5508,36 @@
               </div>
             </section>
 
+            <!-- NovaX new: Negative Accounts. Merchants who owe NovaX delivery
+                 charges on prepaid parcels (no COD to deduct them from). The
+                 debt itself comes from the 'Delivery Charges' invoices the
+                 generator already creates; this screen surfaces and clears it. -->
+            <section class="admin-module" id="admin-finance-dues">
+              <div class="panel">
+                <div class="section-head"><div><h3>Negative Accounts</h3><p>Merchants who owe NovaX delivery charges on prepaid parcels. Balances build up from every Delivery Charges invoice and stay here until payment is recorded.</p></div><button class="ghost-btn" onclick="loadClientDues()">Refresh</button></div>
+                <div class="grid metrics" id="duesSummaryCards"></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Outstanding Balances</h3><p>Largest first. "Oldest" shows how long the earliest unpaid charge has been sitting.</p></div></div>
+                <div class="ops-list" id="duesList"></div>
+              </div>
+            </section>
+
+            <!-- NovaX new: Wallet Balances -- every client's live wallet at a glance. -->
+            <section class="admin-module" id="admin-finance-balances">
+              <div class="panel">
+                <div class="section-head"><div><h3>Wallet Balances</h3><p>Live wallet balance for every client, with pending payouts and anything they owe NovaX.</p></div><button class="ghost-btn" onclick="loadWalletBalances()">Refresh</button></div>
+                <div class="grid metrics" id="balancesSummaryCards"></div>
+                <div class="nv-settle-controls" style="margin-top:12px">
+                  <label class="nv-settle-toggle"><input type="checkbox" id="balancesNonZeroOnly" checked onchange="renderWalletBalances()"> Only show clients with a balance or dues</label>
+                  <input id="balancesSearch" placeholder="Search client name" oninput="renderWalletBalances()" style="max-width:240px">
+                </div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="ops-list" id="balancesList"></div>
+              </div>
+            </section>
+
             <!-- NovaX fix: markPaidModal / adminInvoiceViewModal moved to just before the closing body tag.
                  They used to live here, nested inside a section with class "view", which permanently
                  keeps a transform from its fadeUp entrance animation (animation-fill-mode: both).
@@ -6036,7 +6068,7 @@
       manifest: ["manifest-summary", "manifest-transit", "manifest-reached", "manifest-dispute"],
       tickets: ["tickets-emergency", "tickets-medium", "tickets-okay", "tickets-summary", "tickets-resolved"],
       riders: ["riders-route", "riders-report", "riders-summary"],
-      finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-summary", "finance-overall", "finance-revenue"],
+      finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-dues", "finance-balances", "finance-summary", "finance-overall", "finance-revenue"],
       clients: ["clients-summary", "clients-leads", "clients-create-new", "clients-clients"],
       users: ["users-create", "users-edit", "users-staff"],
       api: ["api-shopify", "api-web", "api-woo-commerce"],
@@ -6653,6 +6685,188 @@
       if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", apply);
       else apply();
     })();
+
+    /* =====================================================================
+       NovaX new -- Negative Accounts + Wallet Balances.
+
+       Both screens are READ-ONLY over data that already exists. What a
+       merchant owes comes from the 'Delivery Charges' invoices the invoice
+       generator already produces (due_to_novax); the only thing recorded
+       here is payment received. Nothing in this block touches
+       clients.wallet_balance, the wallet ledger, payouts or the invoice
+       generator.
+       ===================================================================== */
+    var NV_DUES = { rows: null, loading: false };
+    var NV_BAL  = { rows: null, loading: false };
+
+    function nvEscAdmin(v){
+      return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){
+        return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+      });
+    }
+    function nvMoney(v){
+      try { return money(Number(v || 0)); } catch(e){ return "Rs " + Math.round(Number(v||0)); }
+    }
+    function nvWhen(t){
+      if (!t) return "-";
+      try { var d = new Date(t); return isNaN(d.getTime()) ? "-" : d.toLocaleDateString(); }
+      catch(e){ return "-"; }
+    }
+
+    function loadClientDues(){
+      var sb = window.__nvSb || window.sbClient || null;
+      var host = document.getElementById("duesList");
+      if (!sb || !sb.rpc) { if (host) host.innerHTML = '<div class="nv-settle-empty">Cloud connection not ready.</div>'; return; }
+      if (NV_DUES.loading) return;
+      NV_DUES.loading = true;
+      if (host && !NV_DUES.rows) host.innerHTML = '<div class="nv-settle-empty">Loading…</div>';
+      sb.rpc("admin_list_client_dues").then(function(r){
+        NV_DUES.loading = false;
+        if (r && r.error) {
+          if (host) host.innerHTML = '<div class="nv-settle-empty">Could not load: ' + nvEscAdmin(r.error.message) + '</div>';
+          return;
+        }
+        NV_DUES.rows = Array.isArray(r && r.data) ? r.data : [];
+        renderClientDues();
+      }).catch(function(e){
+        NV_DUES.loading = false;
+        if (host) host.innerHTML = '<div class="nv-settle-empty">Could not load: ' + nvEscAdmin((e && e.message) || e) + '</div>';
+      });
+    }
+
+    function renderClientDues(){
+      var host = document.getElementById("duesList");
+      var cards = document.getElementById("duesSummaryCards");
+      var rows = NV_DUES.rows || [];
+      if (cards) {
+        var total = rows.reduce(function(n,r){ return n + Number(r.outstanding || 0); }, 0);
+        var oldest = rows.reduce(function(n,r){ return Math.max(n, Number(r.oldest_due_age_days || 0)); }, 0);
+        cards.innerHTML = [
+          moneyBox("Total outstanding", nvMoney(total), "owed to NovaX"),
+          moneyBox("Accounts", String(rows.length), "with a balance"),
+          moneyBox("Oldest unpaid", oldest ? (oldest + " days") : "-", "since first charge")
+        ].join("");
+      }
+      var badge = document.getElementById("duesSubtabBadge");
+      if (badge) { badge.textContent = String(rows.length); badge.style.display = rows.length ? "" : "none"; }
+
+      if (!host) return;
+      if (!rows.length) {
+        host.innerHTML = '<div class="nv-settle-empty">No client currently owes NovaX anything.</div>';
+        return;
+      }
+      host.innerHTML = rows.map(function(r){
+        var age = Number(r.oldest_due_age_days || 0);
+        var ageCls = age >= 30 ? "bad" : (age >= 14 ? "warn" : "info");
+        var cid = nvEscAdmin(r.client_id);
+        return '<div class="nv-settle-row ready">' +
+            '<div class="nm">' + nvEscAdmin(r.client_name || "Unnamed client") +
+              '<small>' + nvEscAdmin(String(r.due_invoice_count || 0)) + ' invoice(s) &middot; oldest ' + nvWhen(r.oldest_due_at) + '</small></div>' +
+            '<span class="chip ' + ageCls + '">' + (age ? (age + "d") : "new") + '</span>' +
+            '<div class="amt">Outstanding<b>' + nvEscAdmin(nvMoney(r.outstanding)) + '</b></div>' +
+            '<div class="amt">Wallet<b>' + nvEscAdmin(nvMoney(r.wallet_balance)) + '</b></div>' +
+            '<button class="action-btn" onclick="nvOpenDuePayment(\'' + cid + '\')">Record payment</button>' +
+          '</div>';
+      }).join("");
+    }
+
+    function nvOpenDuePayment(clientId){
+      var rows = NV_DUES.rows || [];
+      var row = rows.filter(function(r){ return String(r.client_id) === String(clientId); })[0];
+      if (!row) { toast("Client not found. Refresh and try again."); return; }
+      var outstanding = Number(row.outstanding || 0);
+      var raw = prompt(
+        (row.client_name || "This client") + " owes " + nvMoney(outstanding) + ".\n\n" +
+        "Enter the amount received (or the full amount to clear the account):",
+        String(outstanding)
+      );
+      if (raw === null) return;
+      var amt = Number(String(raw).replace(/[^0-9.\-]/g, ""));
+      if (!isFinite(amt) || amt === 0) { toast("Enter a valid amount."); return; }
+      if (amt > outstanding) { toast("That is more than the outstanding balance of " + nvMoney(outstanding) + "."); return; }
+      var ref = prompt("Reference (bank transaction id, receipt no, or leave blank):", "") || "";
+
+      var sb = window.__nvSb || window.sbClient || null;
+      if (!sb || !sb.rpc) { toast("Cloud connection not ready."); return; }
+      sb.rpc("admin_record_due_payment", {
+        p_client_id: clientId, p_amount: amt, p_method: "Manual",
+        p_reference: ref, p_note: ""
+      }).then(function(r){
+        if (r && r.error) { toast("Could not record payment: " + r.error.message); return; }
+        var left = Number((r && r.data) || 0);
+        toast(left > 0
+          ? ("Payment recorded. " + nvMoney(left) + " still outstanding.")
+          : "Payment recorded. Account is now clear.");
+        loadClientDues();
+      }).catch(function(e){ toast("Could not record payment: " + ((e && e.message) || e)); });
+    }
+
+    function loadWalletBalances(){
+      var sb = window.__nvSb || window.sbClient || null;
+      var host = document.getElementById("balancesList");
+      if (!sb || !sb.rpc) { if (host) host.innerHTML = '<div class="nv-settle-empty">Cloud connection not ready.</div>'; return; }
+      if (NV_BAL.loading) return;
+      NV_BAL.loading = true;
+      if (host && !NV_BAL.rows) host.innerHTML = '<div class="nv-settle-empty">Loading…</div>';
+      sb.rpc("admin_list_wallet_balances").then(function(r){
+        NV_BAL.loading = false;
+        if (r && r.error) {
+          if (host) host.innerHTML = '<div class="nv-settle-empty">Could not load: ' + nvEscAdmin(r.error.message) + '</div>';
+          return;
+        }
+        NV_BAL.rows = Array.isArray(r && r.data) ? r.data : [];
+        renderWalletBalances();
+      }).catch(function(e){
+        NV_BAL.loading = false;
+        if (host) host.innerHTML = '<div class="nv-settle-empty">Could not load: ' + nvEscAdmin((e && e.message) || e) + '</div>';
+      });
+    }
+
+    function renderWalletBalances(){
+      var host = document.getElementById("balancesList");
+      var cards = document.getElementById("balancesSummaryCards");
+      var all = NV_BAL.rows || [];
+      if (cards) {
+        var held = all.reduce(function(n,r){ return n + Number(r.wallet_balance || 0); }, 0);
+        var pend = all.reduce(function(n,r){ return n + Number(r.pending_payout || 0); }, 0);
+        var owed = all.reduce(function(n,r){ return n + Number(r.dues_outstanding || 0); }, 0);
+        cards.innerHTML = [
+          moneyBox("Total in client wallets", nvMoney(held), "NovaX is holding this"),
+          moneyBox("Pending payouts", nvMoney(pend), "awaiting transfer"),
+          moneyBox("Owed to NovaX", nvMoney(owed), "delivery charges due")
+        ].join("");
+      }
+      if (!host) return;
+
+      var onlyActive = true, q = "";
+      var t = document.getElementById("balancesNonZeroOnly"); if (t) onlyActive = !!t.checked;
+      var s = document.getElementById("balancesSearch"); if (s) q = String(s.value || "").trim().toLowerCase();
+
+      var rows = all.filter(function(r){
+        if (q && String(r.client_name || "").toLowerCase().indexOf(q) === -1) return false;
+        if (onlyActive && Number(r.wallet_balance || 0) === 0 && Number(r.dues_outstanding || 0) === 0) return false;
+        return true;
+      });
+
+      if (!rows.length) {
+        host.innerHTML = '<div class="nv-settle-empty">' +
+          (q ? "No client matches that search." : "No client has a wallet balance or dues right now.") + '</div>';
+        return;
+      }
+      host.innerHTML = rows.map(function(r){
+        var bal = Number(r.wallet_balance || 0);
+        var due = Number(r.dues_outstanding || 0);
+        var cls = due > 0 ? "warn" : (bal > 0 ? "good" : "info");
+        return '<div class="nv-settle-row' + (bal > 0 ? " ready" : "") + '">' +
+            '<div class="nm">' + nvEscAdmin(r.client_name || "Unnamed client") +
+              '<small>last activity ' + nvWhen(r.last_activity_at) + '</small></div>' +
+            '<span class="chip ' + cls + '">' + (due > 0 ? "owes" : (bal > 0 ? "in credit" : "flat")) + '</span>' +
+            '<div class="amt">Wallet<b>' + nvEscAdmin(nvMoney(bal)) + '</b></div>' +
+            '<div class="amt">Pending<b>' + nvEscAdmin(nvMoney(r.pending_payout)) + '</b></div>' +
+            '<div class="amt">Owes NovaX<b>' + nvEscAdmin(nvMoney(due)) + '</b></div>' +
+          '</div>';
+      }).join("");
+    }
 
     function shortClientCode(client) {
       const id = (client && client.id) || "";
@@ -8437,6 +8651,13 @@
                     : "nothing delivered yet") + '</small></div>' +
               '<span class="chip ' + (isReady ? "good" : "info") + '">' + ready.length + ' ready</span>' +
               '<div class="amt">COD<b>' + esc(money(t.cod)) + '</b></div>' +
+              /* REGRESSION FIX: the old tall card showed a "Delivery charges"
+                 box; my first compact row dropped it, which is exactly why
+                 every prepaid client read "Rs 0 / Rs 0" and looked empty.
+                 dueToNovax is what the merchant owes on prepaid parcels. */
+              '<div class="amt">' + (Number(t.dueToNovax||0) > 0 ? "Owes NovaX" : "Charges") +
+                '<b' + (Number(t.dueToNovax||0) > 0 ? ' style="color:#e8b64c"' : '') + '>' +
+                esc(money(Number(t.dueToNovax||0) > 0 ? t.dueToNovax : t.charges)) + '</b></div>' +
               '<div class="amt">Payable<b>' + esc(money(t.payable)) + '</b></div>' +
               '<button class="action-btn" onclick="selectInvoiceClient(\'' + esc(c.id) + '\')"' +
                 (isReady ? "" : " disabled") + '>Open In Add Invoice</button>' +
@@ -9207,6 +9428,8 @@
       tickMeters();
       window.scrollTo({ top: 0, behavior: "smooth" });
       if (typeof renderStaffTab === "function") { try { renderStaffTab(); } catch(e){} }
+      if (state.activeAdminTab === "finance-dues") { try { loadClientDues(); } catch(e){} }
+      if (state.activeAdminTab === "finance-balances") { try { loadWalletBalances(); } catch(e){} }
       if (state.activeAdminTab === "system-health") { try { renderSystemHealth(); } catch(e){} }
       if (state.activeAdminTab === "system-notifications") { try { loadNotificationCenter(); } catch(e){} }
       if (state.activeAdminTab === "system-errors") { try { loadErrorMonitor(); } catch(e){} }
