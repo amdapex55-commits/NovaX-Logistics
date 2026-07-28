@@ -4702,6 +4702,7 @@
                 </button>
                 <div class="admin-subnav">
                   <button type="button" class="admin-subtab" data-admin-tab="orders-view-all">View All</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="orders-book">Create Booking</button>
                   <button type="button" class="admin-subtab" data-admin-tab="orders-report">Order Report</button>
                   <button type="button" class="admin-subtab" data-admin-tab="orders-processing">Order Processing</button>
                   <button type="button" class="admin-subtab" data-admin-tab="orders-manifest">Manifest</button>
@@ -5006,7 +5007,7 @@
                 <div class="table-wrap">
                   <div class="wide-scroll">
                     <table class="orders-compact-table">
-                      <thead><tr><th>AWB</th><th>Consignee Name</th><th>Address</th><th>City</th><th>Status</th><th>Shipper Name</th><th>Origin</th><th>COD</th><th>Weight</th><th>Timer</th><th>Last Process</th></tr></thead>
+                      <thead><tr><th>AWB</th><th>Consignee Name</th><th>Address</th><th>City</th><th>Status</th><th>Shipper Name</th><th>Origin</th><th>COD</th><th>Weight</th><th>Timer</th><th>Last Process</th><th>Actions</th></tr></thead>
                       <tbody id="adminOrderRows"></tbody>
                     </table>
                   </div>
@@ -5505,6 +5506,34 @@
                   <div class="field"><label>&nbsp;</label><button class="action-btn" onclick="exportReconciliationCsv()">Export Reconciliation CSV</button></div>
                 </div>
                 <div class="ops-list" id="reconciliationAuditList"></div>
+              </div>
+            </section>
+
+            <!-- NovaX new: admin books a parcel on a client's behalf, for when
+                 a merchant phones in or hits a problem they can't solve. -->
+            <section class="admin-module" id="admin-orders-book">
+              <div class="panel">
+                <div class="section-head"><div><h3>Create Booking For A Client</h3><p>Search the client, then book exactly as they would. The parcel lands on their account with their own rate card applied.</p></div></div>
+                <div class="field"><label>Client</label>
+                  <div class="inline-actions"><input id="abkClientSearch" placeholder="Type a client name" oninput="nvAdminClientSearch()" style="flex:1"></div>
+                  <div id="abkClientResults" class="ops-list" style="margin-top:8px"></div>
+                  <p class="footer-note" id="abkSelected" style="margin-top:6px">No client selected yet.</p>
+                </div>
+                <div class="grid two" style="margin-top:6px">
+                  <div class="field"><label>Consignee Name *</label><input id="abkName" placeholder="Receiver full name"></div>
+                  <div class="field"><label>Phone *</label><input id="abkPhone" placeholder="03001234567" maxlength="11"></div>
+                  <div class="field"><label>Pickup City *</label><select id="abkPickupCity"><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
+                  <div class="field"><label>Destination City *</label><select id="abkCity"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
+                  <div class="field"><label>COD Amount *</label><input id="abkCod" type="number" min="0" placeholder="e.g. 2500"></div>
+                  <div class="field"><label>Service Type</label><select id="abkService"><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option><option>Prepaid Delivery</option></select></div>
+                  <div class="field"><label>Product Details *</label><input id="abkCategory" placeholder="Exact product details"></div>
+                  <div class="field"><label>Payment Mode</label><select id="abkPaymentMode"><option>COD</option><option>Non COD Prepaid</option></select></div>
+                  <div class="field"><label>Package Weight</label><input id="abkWeight" value="0.8 kg"></div>
+                  <div class="field"><label>Fragile</label><select id="abkFragile"><option>No</option><option>Yes</option></select></div>
+                  <div class="field" style="grid-column:1/-1"><label>Delivery Address *</label><textarea id="abkAddress" placeholder="Full delivery address"></textarea></div>
+                </div>
+                <div class="inline-actions" style="margin-top:12px"><button class="action-btn" id="abkSubmit" onclick="nvAdminBookForClient()">Create Booking</button></div>
+                <p class="footer-note" id="abkResult" style="margin-top:10px"></p>
               </div>
             </section>
 
@@ -6064,7 +6093,7 @@
     state.activeStatusQueue = state.activeStatusQueue || STATUS_TAGS[0];
 
     const ADMIN_NAV_GROUPS = {
-      orders: ["orders-view-all", "orders-report", "orders-processing", "orders-manifest", "orders-demanifest"],
+      orders: ["orders-view-all", "orders-book", "orders-report", "orders-processing", "orders-manifest", "orders-demanifest"],
       manifest: ["manifest-summary", "manifest-transit", "manifest-reached", "manifest-dispute"],
       tickets: ["tickets-emergency", "tickets-medium", "tickets-okay", "tickets-summary", "tickets-resolved"],
       riders: ["riders-route", "riders-report", "riders-summary"],
@@ -6696,6 +6725,166 @@
        clients.wallet_balance, the wallet ledger, payouts or the invoice
        generator.
        ===================================================================== */
+    /* =====================================================================
+       NovaX new -- parcel admin tools: delete a wrongly-booked parcel, edit
+       details mid-journey, and book on a client's behalf.
+
+       All three go through SECURITY DEFINER RPCs that re-check permission
+       server-side and write an audit row. The guards that matter live in
+       the database, not here: an invoiced parcel can never be edited or
+       deleted, only 'New booked' can be deleted, and a delivered parcel is
+       frozen. This UI just surfaces those rules early.
+       ===================================================================== */
+    var NV_ABK = { clientId: null, clientName: "" };
+
+    function nvAdminDeleteParcel(awb){
+      if (!awb) return;
+      var p = (state.parcels || []).filter(function(x){ return x.awb === awb; })[0];
+      var who = p ? (" for " + (p.consignee || "")) : "";
+      if (!confirm("Delete parcel " + awb + who + "?\n\nOnly possible while it is still New booked. This cannot be undone, but a record is kept in the audit log.")) return;
+      var sb = window.__nvSb;
+      if (!sb || !sb.rpc) { toast("Cloud connection not ready."); return; }
+      sb.rpc("delete_new_booked_parcel", { p_awb: awb }).then(function(r){
+        if (r && r.error) { toast("Could not delete: " + r.error.message); return; }
+        state.parcels = (state.parcels || []).filter(function(x){ return x.awb !== awb; });
+        saveState();
+        toast(awb + " deleted.");
+        try { renderAdmin(); } catch(e){}
+      }).catch(function(e){ toast("Could not delete: " + ((e && e.message) || e)); });
+    }
+
+    function nvOpenParcelEdit(awb){
+      var p = (state.parcels || []).filter(function(x){ return x.awb === awb; })[0];
+      if (!p) { toast("Parcel not found."); return; }
+      var host = document.getElementById("nvParcelEditModal");
+      if (!host) return;
+      document.getElementById("npeAwb").textContent = awb;
+      document.getElementById("npeAwbHidden").value = awb;
+      document.getElementById("npeConsignee").value = p.consignee || "";
+      document.getElementById("npePhone").value = p.phone || "";
+      document.getElementById("npeAddress").value = p.address || "";
+      document.getElementById("npeCity").value = p.city || "";
+      document.getElementById("npeCod").value = Number(p.cod || 0);
+      document.getElementById("npeFee").value = Number(p.fee || 0);
+      document.getElementById("npeWeight").value = p.weight || "";
+      document.getElementById("npeNote").value = "";
+      var warn = document.getElementById("npeWarn");
+      if (warn) {
+        var frozen = (p.status === "Delivered" || p.status === "Parcel returned to consignee");
+        warn.textContent = frozen
+          ? ("This parcel is " + p.status + " and can no longer be edited.")
+          : ("Current status: " + p.status + ". Changes are logged against your account.");
+        warn.style.color = frozen ? "#e0604b" : "";
+      }
+      host.classList.add("show");
+      host.style.display = "flex";
+    }
+    function nvCloseParcelEdit(){
+      var host = document.getElementById("nvParcelEditModal");
+      if (host) { host.classList.remove("show"); host.style.display = "none"; }
+    }
+    function nvSaveParcelEdit(){
+      var sb = window.__nvSb;
+      if (!sb || !sb.rpc) { toast("Cloud connection not ready."); return; }
+      var awb = document.getElementById("npeAwbHidden").value;
+      var btn = document.getElementById("npeSave");
+      var old = btn ? btn.textContent : "";
+      if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+      sb.rpc("admin_update_parcel_details", {
+        p_awb: awb,
+        p_consignee: document.getElementById("npeConsignee").value,
+        p_phone: document.getElementById("npePhone").value,
+        p_address: document.getElementById("npeAddress").value,
+        p_city: document.getElementById("npeCity").value,
+        p_cod: Number(document.getElementById("npeCod").value || 0),
+        p_fee: Number(document.getElementById("npeFee").value || 0),
+        p_weight: document.getElementById("npeWeight").value,
+        p_category: null,
+        p_payment_mode: null,
+        p_note: document.getElementById("npeNote").value
+      }).then(function(r){
+        if (btn) { btn.disabled = false; btn.textContent = old; }
+        if (r && r.error) { toast("Could not save: " + r.error.message); return; }
+        toast(awb + " updated.");
+        nvCloseParcelEdit();
+        try { if (typeof loadAll === "function") loadAll(); else renderAdmin(); } catch(e){}
+      }).catch(function(e){
+        if (btn) { btn.disabled = false; btn.textContent = old; }
+        toast("Could not save: " + ((e && e.message) || e));
+      });
+    }
+
+    var NV_ABK_T = null;
+    function nvAdminClientSearch(){
+      if (NV_ABK_T) clearTimeout(NV_ABK_T);
+      NV_ABK_T = setTimeout(function(){
+        var sb = window.__nvSb;
+        var box = document.getElementById("abkClientResults");
+        if (!sb || !sb.rpc || !box) return;
+        var q = String((document.getElementById("abkClientSearch") || {}).value || "").trim();
+        if (q.length < 2) { box.innerHTML = ""; return; }
+        sb.rpc("admin_search_clients", { p_query: q }).then(function(r){
+          if (r && r.error) { box.innerHTML = '<div class="nv-settle-empty">' + nvEscAdmin(r.error.message) + '</div>'; return; }
+          var rows = Array.isArray(r && r.data) ? r.data : [];
+          if (!rows.length) { box.innerHTML = '<div class="nv-settle-empty">No client matches that name.</div>'; return; }
+          box.innerHTML = rows.slice(0, 12).map(function(c){
+            return '<div class="nv-settle-row" style="cursor:pointer" onclick="nvAdminPickClient(\'' +
+              nvEscAdmin(c.client_id) + '\',\'' + nvEscAdmin(String(c.client_name||"").replace(/'/g,"")) + '\')">' +
+              '<div class="nm">' + nvEscAdmin(c.client_name) + '<small>' + nvEscAdmin(c.city || "") + '</small></div>' +
+              '<span class="chip info">select</span></div>';
+          }).join("");
+        }).catch(function(){});
+      }, 300);
+    }
+    function nvAdminPickClient(id, name){
+      NV_ABK.clientId = id; NV_ABK.clientName = name || "";
+      var sel = document.getElementById("abkSelected");
+      if (sel) sel.innerHTML = "Booking on behalf of <b>" + nvEscAdmin(name) + "</b>";
+      var box = document.getElementById("abkClientResults");
+      if (box) box.innerHTML = "";
+    }
+    function nvAdminBookForClient(){
+      var sb = window.__nvSb;
+      if (!sb || !sb.rpc) { toast("Cloud connection not ready."); return; }
+      if (!NV_ABK.clientId) { toast("Search and select a client first."); return; }
+      function v(id){ var e = document.getElementById(id); return e ? String(e.value || "").trim() : ""; }
+      var required = { abkName: "Consignee name", abkPhone: "Phone", abkCod: "COD amount", abkCategory: "Product details", abkAddress: "Delivery address" };
+      for (var id in required) { if (!v(id)) { toast(required[id] + " is required."); return; } }
+      var phone = v("abkPhone").replace(/\D/g, "");
+      if (!/^03\d{9}$/.test(phone)) { toast("Phone must be 11 digits starting 03."); return; }
+
+      var btn = document.getElementById("abkSubmit");
+      var old = btn ? btn.textContent : "";
+      if (btn) { btn.disabled = true; btn.textContent = "Creating…"; }
+      sb.rpc("admin_book_parcel_for_client", {
+        p_client_id: NV_ABK.clientId,
+        p_consignee: v("abkName"), p_phone: phone,
+        p_pickup_city: v("abkPickupCity"), p_city: v("abkCity"),
+        p_address: v("abkAddress"), p_cod: Number(v("abkCod") || 0),
+        p_weight: v("abkWeight") || "0.8 kg", p_service: v("abkService"),
+        p_category: v("abkCategory"), p_fragile: v("abkFragile"),
+        p_payment_mode: v("abkPaymentMode"), p_order_id: "", p_reference_no: ""
+      }).then(function(r){
+        if (btn) { btn.disabled = false; btn.textContent = old; }
+        var out = document.getElementById("abkResult");
+        if (r && r.error) {
+          if (out) out.innerHTML = '<span style="color:#e0604b">' + nvEscAdmin(r.error.message) + '</span>';
+          toast("Booking failed: " + r.error.message); return;
+        }
+        var row = r && r.data;
+        var awb = row && (row.awb || (row[0] && row[0].awb));
+        if (out) out.innerHTML = 'Booked <b>' + nvEscAdmin(awb || "") + '</b> on ' + nvEscAdmin(NV_ABK.clientName) + "'s account.";
+        toast("Booked " + (awb || "") + " for " + NV_ABK.clientName);
+        ["abkName","abkPhone","abkCod","abkCategory","abkAddress"].forEach(function(id){
+          var e = document.getElementById(id); if (e) e.value = "";
+        });
+        try { if (typeof loadAll === "function") loadAll(); } catch(e){}
+      }).catch(function(e){
+        if (btn) { btn.disabled = false; btn.textContent = old; }
+        toast("Booking failed: " + ((e && e.message) || e));
+      });
+    }
+
     var NV_DUES = { rows: null, loading: false };
     var NV_BAL  = { rows: null, loading: false };
 
@@ -8150,9 +8339,15 @@
               <span class="footer-note">${process.branch} | ${transitStarted ? "transit timer active" : "pre-transit"}</span>
               ${/refused|return/i.test(p.status) ? `<div class="footer-note">${p.returnProof || "Return proof required before manager acceptance."}</div><div class="field"><label>Return proof</label><input id="proof-${p.awb}" value="${p.returnProof || "Photo proof + rider scan + branch receiving signature"}"></div><button class="ghost-btn" onclick="event.stopPropagation(); addReturnProof('${p.awb}')">Add Proof</button>` : ""}
             </td>
+            <td>
+              <div class="inline-actions" style="flex-wrap:wrap;gap:5px">
+                <button class="ghost-btn" style="padding:5px 9px;font-size:11.5px" onclick="event.stopPropagation(); nvOpenParcelEdit('${p.awb}')">Edit</button>
+                ${p.status === "New booked" ? `<button class="ghost-btn" style="padding:5px 9px;font-size:11.5px;color:#e0604b;border-color:#e0604b" onclick="event.stopPropagation(); nvAdminDeleteParcel('${p.awb}')">Delete</button>` : ""}
+              </div>
+            </td>
           </tr>
         `;
-      }).join("") || `<tr><td colspan="11">No parcels match these filters.</td></tr>`;
+      }).join("") || `<tr><td colspan="12">No parcels match these filters.</td></tr>`;
 
       const reportRows = state.parcels.filter(p => {
         const client = clientById(p.clientId);
@@ -13856,6 +14051,27 @@
      so their `position:fixed;inset:0` correctly anchors to the viewport again.
      Backdrop click and Esc now also close whichever modal is open, so a stuck
      admin isn't forced to reload the page. -->
+<!-- NovaX new: mid-journey parcel correction. Server-side this refuses on any
+     parcel that is already invoiced or has reached an end state. -->
+<div id="nvParcelEditModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:9999;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this) nvCloseParcelEdit();">
+  <div style="background:var(--panel,#0f1d18);border:1px solid var(--line,#274038);border-radius:14px;max-width:620px;width:100%;max-height:88vh;overflow:auto;padding:20px">
+    <div class="section-head"><div><h3>Edit parcel <span id="npeAwb"></span></h3><p id="npeWarn" class="footer-note"></p></div><button class="ghost-btn" onclick="nvCloseParcelEdit()">Close</button></div>
+    <input type="hidden" id="npeAwbHidden">
+    <div class="grid two" style="margin-top:8px">
+      <div class="field"><label>Consignee name</label><input id="npeConsignee"></div>
+      <div class="field"><label>Phone</label><input id="npePhone" maxlength="11"></div>
+      <div class="field"><label>Destination city</label><input id="npeCity"></div>
+      <div class="field"><label>Package weight</label><input id="npeWeight" placeholder="0.8 kg"></div>
+      <div class="field"><label>COD amount</label><input id="npeCod" type="number" min="0"></div>
+      <div class="field"><label>Delivery fee</label><input id="npeFee" type="number" min="0"></div>
+      <div class="field" style="grid-column:1/-1"><label>Delivery address</label><textarea id="npeAddress"></textarea></div>
+      <div class="field" style="grid-column:1/-1"><label>Reason for this change (recorded in the audit log)</label><input id="npeNote" placeholder="e.g. client called to correct the COD"></div>
+    </div>
+    <p class="footer-note" style="margin-top:8px">Changing the destination city or weight does not automatically reprice the parcel &mdash; adjust the delivery fee yourself if it genuinely needs to change, so it stays a deliberate decision.</p>
+    <div class="inline-actions" style="margin-top:12px"><button class="action-btn" id="npeSave" onclick="nvSaveParcelEdit()">Save Changes</button><button class="ghost-btn" onclick="nvCloseParcelEdit()">Cancel</button></div>
+  </div>
+</div>
+
 <div id="markPaidModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this) closeMarkPaidModal();">
   <div class="panel" style="max-width:420px;width:92%;background:#fff">
     <div class="section-head"><div><h3>Confirm Payout Paid</h3><p id="markPaidSummary"></p></div></div>
