@@ -483,7 +483,7 @@
        apply whichever @page rule is active in an *enabled* stylesheet, so
        this is the reliable cross-browser way to switch page size/orientation
        at print time instead of fighting one @page rule with CSS classes. -->
-  <style id="nvPrintThermal" media="print">
+  <style id="nvPrintThermal" media="print" disabled>
     /* Thermal label mode -- the real default. Matches the actual 4x6in
        roll every cheap thermal printer (Xprinter/TSC/Zebra) takes, so this
        is naturally portrait already: no landscape-vs-mobile-portrait fight
@@ -522,28 +522,76 @@
     .barcode-img{width:auto !important;max-width:52mm !important;height:14mm !important;padding:.6mm !important;object-fit:contain !important;margin:0 2mm;}
     .awb-scan .chip{font-size:9px !important;font-weight:900 !important;padding:1.5px 4px !important;}
   </style>
-  <style id="nvPrintA4" media="print" disabled>
-    /* A4 sheet mode -- secondary option for sellers printing on a regular
-       office printer instead of a thermal one: 3 labels per landscape
-       sheet, cut apart by hand. Unchanged from the original layout. */
-    @page{size:A4 landscape;margin:5mm;}
-    .print-page{width:100% !important;height:auto !important;min-height:0 !important;display:grid !important;grid-template-rows:repeat(3,minmax(min-content,1fr)) !important;grid-template-columns:1fr !important;gap:3mm !important;box-sizing:border-box !important;page-break-after:always;break-after:page;overflow:visible !important;}
+  <style id="nvPrintA4" media="print">
+    /* A4 SHEET MODE -- for sellers printing on an ordinary office/laser
+       printer (the common case in Pakistan) rather than a thermal one.
+       THREE labels per A4 PORTRAIT sheet, each a full-width horizontal
+       band, cut apart by hand along the dashed guides.
+
+       WHAT WAS WRONG BEFORE
+       - @page was A4 LANDSCAPE, so a portrait-fed office printer scaled
+         everything down and stranded the label in the middle of the sheet.
+       - The rows were `1fr`, so printing ONE label stretched it to fill the
+         whole page while printing three gave small ones -- the same parcel
+         produced a different-sized label depending on how many you picked.
+         Rows are now a fixed 92mm, so one label and three labels are always
+         identical in size and position.
+       - Everything was too sparse and too light to read at arm's length on
+         a warehouse shelf. Density and border weight are now closer to what
+         the established couriers print. */
+    @page{size:A4 portrait;margin:6mm;}
+
+    .print-page{
+      width:100% !important;height:auto !important;min-height:0 !important;
+      display:grid !important;
+      grid-template-columns:1fr !important;
+      grid-template-rows:repeat(3,92mm) !important;   /* fixed, never 1fr */
+      align-content:start !important;
+      gap:4mm !important;box-sizing:border-box !important;
+      page-break-after:always;break-after:page;overflow:visible !important;
+    }
     .print-page:last-child{page-break-after:auto !important;break-after:auto !important;}
-    .print-label-wrap{width:100% !important;height:100% !important;min-height:0 !important;overflow:hidden !important;break-inside:avoid !important;page-break-inside:avoid !important;}
-    .awb-label{width:100% !important;height:100% !important;min-height:0 !important;display:grid !important;grid-template-columns:54mm minmax(0,1fr) 40mm !important;gap:3mm !important;padding:3mm !important;border:1.5px solid #111 !important;border-radius:3px !important;box-sizing:border-box !important;overflow:hidden !important;background:#fff !important;}
-    .awb-zone{border:1px solid #777 !important;border-radius:2px !important;padding:2mm !important;gap:1.4mm !important;min-width:0 !important;min-height:0 !important;overflow:hidden !important;}
-    .awb-zone-title{font-size:7.5px !important;font-weight:900 !important;text-transform:uppercase !important;letter-spacing:.04em !important;border-bottom:1px solid #111 !important;padding-bottom:1mm !important;}
-    .awb-no{font-size:19px !important;line-height:1 !important;font-weight:900 !important;letter-spacing:.02em !important;}
-    .awb-route{font-size:12.5px !important;font-weight:900 !important;}
-    .awb-mini-grid{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:1.5mm !important;}
-    .awb-field{border:1px solid #c9c9c9 !important;border-radius:2px !important;padding:1.4mm !important;min-width:0 !important;background:#fff !important;}
-    .awb-field span{display:block !important;font-size:7px !important;line-height:1 !important;font-weight:900 !important;text-transform:uppercase !important;color:#555 !important;margin-bottom:.8mm !important;}
-    .awb-field strong{display:block !important;font-size:10.5px !important;line-height:1.15 !important;font-weight:800 !important;color:#111 !important;overflow-wrap:anywhere !important;}
-    .awb-field.awb-cod strong{font-size:13px !important;}
+    /* dashed cut guide between labels on the same sheet */
+    .print-label-wrap{
+      width:100% !important;height:92mm !important;min-height:0 !important;
+      overflow:hidden !important;break-inside:avoid !important;page-break-inside:avoid !important;
+    }
+    .print-label-wrap + .print-label-wrap{border-top:1px dashed #999 !important;padding-top:2mm !important;height:94mm !important;}
+
+    .awb-label{
+      width:100% !important;height:92mm !important;min-height:0 !important;
+      display:grid !important;
+      grid-template-columns:52mm minmax(0,1fr) 44mm !important;
+      gap:2.5mm !important;padding:2.5mm !important;
+      border:2px solid #000 !important;border-radius:2px !important;
+      box-sizing:border-box !important;overflow:hidden !important;background:#fff !important;
+    }
+    .awb-zone{
+      border:1px solid #444 !important;border-radius:2px !important;
+      padding:2mm !important;gap:1.3mm !important;
+      min-width:0 !important;min-height:0 !important;overflow:hidden !important;
+      display:flex !important;flex-direction:column !important;
+    }
+    .awb-zone-title{
+      font-size:7px !important;font-weight:900 !important;text-transform:uppercase !important;
+      letter-spacing:.08em !important;border-bottom:1.5px solid #000 !important;
+      padding-bottom:1mm !important;margin-bottom:1mm !important;color:#000 !important;
+    }
+    .awb-no{font-size:20px !important;line-height:1 !important;font-weight:900 !important;letter-spacing:.01em !important;color:#000 !important;}
+    .awb-route{font-size:11px !important;font-weight:900 !important;margin-top:.6mm !important;color:#000 !important;}
+    .awb-mini-grid{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:1.3mm !important;}
+    .awb-field{border:1px solid #b0b0b0 !important;border-radius:2px !important;padding:1.3mm !important;min-width:0 !important;background:#fff !important;}
+    .awb-field span{display:block !important;font-size:6.5px !important;line-height:1 !important;font-weight:900 !important;text-transform:uppercase !important;letter-spacing:.05em !important;color:#444 !important;margin-bottom:.7mm !important;}
+    .awb-field strong{display:block !important;font-size:10px !important;line-height:1.15 !important;font-weight:800 !important;color:#000 !important;overflow-wrap:anywhere !important;}
+    /* COD is the number nobody may misread -- boxed, full width, largest. */
+    .awb-field.awb-cod{grid-column:1 / -1 !important;border:2px solid #000 !important;padding:1.6mm !important;background:#fff !important;}
+    .awb-field.awb-cod span{font-size:7px !important;color:#000 !important;}
+    .awb-field.awb-cod strong{font-size:17px !important;font-weight:900 !important;line-height:1 !important;}
     .awb-address strong,.awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
-    .qr-img{width:28mm !important;height:28mm !important;padding:1mm !important;object-fit:contain !important;}
-    .barcode-img{width:34mm !important;height:9mm !important;padding:.8mm !important;object-fit:contain !important;}
-    .awb-scan .chip{font-size:7px !important;padding:1.5px 4px !important;}
+    .awb-scan{align-items:center !important;justify-content:center !important;gap:1.5mm !important;}
+    .qr-img{width:30mm !important;height:30mm !important;padding:0 !important;object-fit:contain !important;}
+    .barcode-img{width:100% !important;max-width:39mm !important;height:11mm !important;padding:0 !important;object-fit:contain !important;}
+    .awb-scan .chip{font-size:9px !important;font-weight:900 !important;letter-spacing:.04em !important;padding:1px 4px !important;border:1px solid #000 !important;background:#fff !important;color:#000 !important;border-radius:2px !important;}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
@@ -1919,6 +1967,60 @@
           moneyBox("Delivery charges",money(delivery),"posted this month")+
         '</div>'+nudge+'</div>';
     }
+    /* =====================================================================
+       AUDIT FIX -- two controls in the markup called functions that were
+       never written. Both threw ReferenceError on click, so the feature
+       behind each was completely unreachable.
+       ===================================================================== */
+
+    /* The 🌙 button (#nvThemeToggleBtn) called toggleNovaxTheme(). The dark
+       theme CSS exists (html[data-theme="dark"], ~line 240) and the boot
+       script at the top of <head> already restores a saved preference from
+       localStorage -- only the toggle itself was missing, so dark mode
+       could never be switched on in the first place. */
+    function toggleNovaxTheme(){
+      try{
+        var root=document.documentElement;
+        var dark=root.getAttribute("data-theme")==="dark";
+        if(dark) root.removeAttribute("data-theme");
+        else root.setAttribute("data-theme","dark");
+        try{ localStorage.setItem("novaxTheme", dark?"light":"dark"); }catch(e){}
+        var btn=document.getElementById("nvThemeToggleBtn");
+        if(btn){
+          btn.textContent = dark ? "\u{1F319}" : "☀️";
+          btn.setAttribute("aria-label", dark ? "Switch to dark mode" : "Switch to light mode");
+          btn.setAttribute("title", dark ? "Switch to dark mode" : "Switch to light mode");
+        }
+      }catch(e){}
+    }
+    /* Keep the icon in sync with a preference restored before this script ran. */
+    (function(){
+      try{
+        if(document.documentElement.getAttribute("data-theme")==="dark"){
+          var b=document.getElementById("nvThemeToggleBtn");
+          if(b){ b.textContent="☀️"; b.setAttribute("aria-label","Switch to light mode"); }
+        }
+      }catch(e){}
+    })();
+
+    /* The Account History header (#accountHistoryHead) is styled as a
+       clickable row and literally says "Tap to change the range", but
+       toggleAccountHistoryFilters() did not exist -- so #accountHistoryBody
+       stayed display:none forever and the date-range filter was
+       permanently unreachable. */
+    function toggleAccountHistoryFilters(){
+      try{
+        var body=document.getElementById("accountHistoryBody");
+        var chev=document.getElementById("accountHistoryChevron");
+        var head=document.getElementById("accountHistoryHead");
+        if(!body) return;
+        var open=body.style.display!=="none";
+        body.style.display=open?"none":"";
+        if(chev) chev.textContent=open?"▸":"▾";
+        if(head) head.setAttribute("aria-expanded", open?"false":"true");
+      }catch(e){}
+    }
+
     function nextId(prefix, items){ const max=(items||[]).reduce((v,it)=>{ const n=Number(String(it.id||"").replace(prefix+"-","")); return Number.isFinite(n)?Math.max(v,n):v; },0); return `${prefix}-${String(max+1).padStart(4,"0")}`; }
     function agingHours(p){ if(p&&p.statusSince){ const ms=Date.now()-new Date(p.statusSince).getTime(); if(Number.isFinite(ms)) return Math.max(0,ms/3600000); } return Number((p&&p.statusAgeHours)||0); }
     function agingLabel(h=0){ if(h<1) return "just now"; if(h<24) return `${Math.max(0,Math.round(h))}h`; const d=Math.floor(h/24); const r=Math.round(h%24); return r?`${d}d ${r}h`:`${d}d`; }
@@ -2420,7 +2522,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var btns="";
         btns+=`<button class="ghost-btn" type="button" onclick="copyExceptionMessage('${p.awb}')">Copy Message</button>`;
         if(!hideDeliveryActions) btns+=`<button class="action-btn" type="button" onclick="requestRedelivery('${p.awb}')">Reattempt</button><button class="ghost-btn" type="button" onclick="requestReturnToOrigin('${p.awb}')">Return</button>`;
-        btns+=`<button class="action-btn ticket-cta" type="button" onclick="openTicketModal('${p.awb}')">Create Ticket</button><button class="ghost-btn" type="button" onclick="messageCustomer('${p.awb}')">Message Customer</button>`;
+        btns+=`<button class="action-btn ticket-cta" type="button" onclick="openTicketModal('${p.awb}')">Create Ticket</button><button class="ghost-btn" type="button" onclick="messageCustomerException('${p.awb}')">Message Customer</button>`;
         return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>AI Exception Resolution</h3><p>Deterministic read of this parcel's issue and the fastest next step.</p></div><span class="chip warn">review needed</span></div><div class="money-grid">${moneyBox("Problem",cls.problem,"")}${moneyBox("Likely cause",cls.cause,"")}${moneyBox("Recommended action",cls.action,"")}</div><div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
       }catch(e){ return ""; }
     }
@@ -2456,7 +2558,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }).catch(function(e){ toast(`Could not send the return request: ${(e&&e.message)||e}`); throw e; });
       }catch(e){ return Promise.reject(e); }
     }
-    function messageCustomer(awb){
+    /* AUDIT FIX (shadowed function): this used to be a SECOND
+       `function messageCustomer(awb)`. Function declarations hoist, so this
+       one silently replaced the richer messageCustomer(awb, kind) defined
+       earlier -- and it ignores the `kind` argument entirely. The result:
+       the "Message Customer" button next to the message-type dropdown sent
+       the generic exception text no matter which message the merchant
+       picked, and the phone-number validation in the real version never
+       ran. Renamed to what it actually is; the exception cards call this
+       one explicitly, everything else keeps the kind-aware version. */
+    function messageCustomerException(awb){
       try{
         var p=state.parcels.find(function(x){ return x.awb===awb; }); if(!p){ toast("Parcel not found."); return; }
         var msg=exceptionMessageText(p);
@@ -2683,9 +2794,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        is the default because it's what actually matches a real parcel;
        #nvPrintThermal/#nvPrintA4 are the two toggleable <style> tags added
        in <head>. Persisted per-browser so a seller's choice sticks. */
+    /* Default is now the A4 sheet (3-up). Most Pakistani sellers print on an
+       ordinary office/laser printer, not a thermal one -- and in thermal
+       mode an A4 printer wastes an entire sheet on a single 4x6 label
+       stranded in the middle of the page. Sellers who do own a thermal
+       printer switch once and the choice is remembered. */
     function nvPrintMode(){
-      try{ return localStorage.getItem("novaxAwbPrintMode")==="a4" ? "a4" : "thermal"; }
-      catch(e){ return "thermal"; }
+      try{ return localStorage.getItem("novaxAwbPrintMode")==="thermal" ? "thermal" : "a4"; }
+      catch(e){ return "a4"; }
     }
     function nvSetPrintMode(mode){
       mode = mode==="a4" ? "a4" : "thermal";
@@ -4182,7 +4298,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const list=document.getElementById("newBookedList"); if(!list) return;
       const items=newBookedParcels();
       if(!items.length){ list.innerHTML=`<div class="ops-card"><strong>No new booked parcels yet</strong><p class="footer-note">Printable AWB labels appear here the moment a parcel is booked.</p><div class="inline-actions" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="action-btn" data-nv-cock="tab" data-tab="newBooking">Book a parcel</button><button class="ghost-btn" data-nv-cock="tab" data-tab="bulkBooking">Upload bulk CSV</button><button class="ghost-btn" data-nv-cock="tab" data-tab="integrations">Sync your store</button></div></div>`; return; }
-      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}" checked><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${p.source?` &middot; <span class="chip info">${escLabelText(p.source)}</span>`:""}</span><button class="ghost-btn" onclick="printLabels(['${p.awb}'])">Print</button></label>`).join("");
+      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}" checked><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${p.source?` &middot; <span class="chip info">${escLabelText(p.source)}</span>`:""}</span><button class="ghost-btn" onclick="printLabels(['${p.awb}'])">Print</button><button class="ghost-btn" title="Delete this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:#b91c1c;border-color:#f0b4ac">Delete</button></label>`).join("");
+    }
+    /* NovaX new: delete a parcel booked with wrong details (wrong COD,
+       wrong number, wrong address). Server-side this is only permitted
+       while the parcel is still "New booked" and un-invoiced -- once a
+       rider has collected it a physical parcel exists and it has to be
+       tracked to an end state instead. The RPC also re-checks ownership,
+       so this button can never delete someone else's parcel. */
+    function deleteNewBooking(awb){
+      if(!awb) return;
+      var p=(state.parcels||[]).find(function(x){ return x.awb===awb; });
+      var label=p?(awb+" for "+(p.consignee||"")+(Number(p.cod)?(" · COD "+money(p.cod)):"")):awb;
+      if(!confirm("Delete booking "+label+"?\n\nThis removes the parcel completely. Only possible before a rider collects it.")) return;
+      if(!window.__nvSb||!window.__nvSb.rpc){ toast("Cloud connection not ready.","error"); return; }
+      window.__nvSb.rpc("delete_new_booked_parcel",{ p_awb:awb }).then(function(r){
+        if(r&&r.error){ toast("Could not delete: "+r.error.message,"error"); return; }
+        state.parcels=(state.parcels||[]).filter(function(x){ return x.awb!==awb; });
+        if(state.selectedAwb===awb) state.selectedAwb="";
+        if(state.lastGeneratedAwb===awb) state.lastGeneratedAwb="";
+        saveState();
+        toast(awb+" deleted.","success");
+        try{ render(); }catch(e){}
+        try{ loadAll(); }catch(e){}
+      }).catch(function(e){ toast("Could not delete: "+((e&&e.message)||e),"error"); });
     }
     function selectAllNewBooked(){ const boxes=document.querySelectorAll(".newbooked-check"); const allOn=Array.from(boxes).every(b=>b.checked); boxes.forEach(b=>{ b.checked=!allOn; }); }
     function printNewBookedSelected(){ const awbs=Array.from(document.querySelectorAll(".newbooked-check")).filter(b=>b.checked).map(b=>b.value); if(!awbs.length){ toast("Select at least one new booked AWB."); return; } printLabels(awbs); }
