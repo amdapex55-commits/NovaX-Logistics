@@ -111,11 +111,13 @@ main,header,footer{position:relative;z-index:2}
 #launch{position:fixed;inset:0;z-index:4000;display:none;align-items:center;justify-content:center;overflow:hidden;
   background:radial-gradient(120% 90% at 50% 8%,#0a2318,#04100b 72%);opacity:0;transition:opacity .45s ease}
 #launch.on{display:flex;opacity:1}
+/* Static grid. It used to animate background-position, which repaints the
+   entire full-screen layer every frame -- the single most expensive thing
+   you can do on a phone GPU, and the main reason this felt rough. */
 #lxGrid{position:absolute;inset:0;opacity:.3;pointer-events:none;
   background-image:linear-gradient(rgba(20,199,123,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(20,199,123,.07) 1px,transparent 1px);
-  background-size:42px 42px;animation:lxDrift 22s linear infinite}
-@keyframes lxDrift{to{background-position:42px 42px,42px 42px}}
-.lx{position:relative;z-index:2;width:min(430px,90vw);text-align:center;padding:0 16px}
+  background-size:42px 42px}
+.lx{position:relative;z-index:2;width:min(430px,92vw);text-align:center;padding:0 14px}
 .lx h3{font-size:clamp(20px,4vw,25px);font-weight:900;letter-spacing:-.02em}
 .lx .lx-sub{color:var(--ink-2);font-size:13.5px;margin-top:5px;min-height:1.4em}
 /* The workspace prints itself as a 4x6 thermal AWB label -- the one
@@ -127,18 +129,31 @@ main,header,footer{position:relative;z-index:2}
   opacity:0;box-shadow:0 0 12px var(--green);transition:opacity .2s}
 .lx-slot.hot i{opacity:1}
 .lx-mach{font-family:var(--mono);font-size:10px;letter-spacing:.22em;color:var(--ink-3);margin-top:7px}
-.lx-stagearea{position:relative;width:212px;height:300px;margin:14px auto 0;perspective:900px}
-#lxLabel{position:absolute;inset:0;background:#f7f5ee;border-radius:3px;color:#11150f;padding:14px 13px;
-  transform:translateY(-330px);transform-origin:top center;box-shadow:0 18px 40px rgba(0,0,0,.5);text-align:left}
+/* Size from the viewport, not fixed px, so the whole sequence always fits
+   above the fold on a short phone screen instead of overflowing. */
+.lx-stagearea{position:relative;width:min(212px,64vw);aspect-ratio:212/300;max-height:44svh;
+  margin:14px auto 0;perspective:900px}
+#lxLabel{position:absolute;inset:0;background:#f7f5ee;border-radius:3px;color:#11150f;
+  padding:clamp(10px,3.2vw,14px) clamp(9px,3vw,13px);
+  transform:translate3d(0,-340px,0);transform-origin:top center;
+  box-shadow:0 14px 30px rgba(0,0,0,.45);text-align:left;
+  will-change:transform;backface-visibility:hidden}
 .lxl-top{display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #11150f;padding-bottom:7px}
 .lxl-top b{font-weight:900;font-size:13px;letter-spacing:-.01em}
 .lxl-top span{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em}
-.lxl-k{font-family:var(--mono);font-size:8.5px;color:#5c6157;letter-spacing:.1em;margin-top:11px}
-.lxl-v{font-weight:800;font-size:15px;min-height:1.3em;letter-spacing:-.01em;overflow-wrap:anywhere}
-.lxl-row{display:flex;gap:14px;margin-top:9px}
-.lxl-row .lxl-k{margin-top:0;font-size:8px}
-.lxl-row div>div:last-child{font-size:11.5px;font-weight:800;min-height:1.2em}
-#lxBars{margin-top:13px;height:52px;display:flex;align-items:flex-end;gap:1.5px;overflow:hidden}
+.lxl-k{font-family:var(--mono);font-size:clamp(7.5px,2.4vw,8.5px);color:#5c6157;letter-spacing:.1em;margin-top:clamp(7px,2.4vw,11px)}
+.lxl-v{font-weight:800;font-size:clamp(13px,3.9vw,15px);min-height:1.3em;letter-spacing:-.01em;overflow-wrap:anywhere;line-height:1.2}
+.lxl-row{display:flex;gap:clamp(9px,3vw,14px);margin-top:clamp(6px,2vw,9px)}
+.lxl-row .lxl-k{margin-top:0;font-size:clamp(7px,2.2vw,8px)}
+.lxl-row div{min-width:0}
+.lxl-row div>div:last-child{font-size:clamp(10px,3.1vw,11.5px);font-weight:800;min-height:1.2em;overflow-wrap:anywhere}
+/* The bars are written to the DOM once, then revealed with a clip-path
+   transition. Previously each of the 44 bars was appended on its own
+   13ms timer -- 44 separate reflows inside the label, which is what made
+   the print stutter on a phone. */
+#lxBars{margin-top:clamp(8px,2.6vw,13px);height:clamp(38px,12vw,52px);display:flex;align-items:flex-end;gap:1.5px;
+  overflow:hidden;clip-path:inset(0 100% 0 0);transition:clip-path .58s linear;will-change:clip-path}
+#lxBars.drawn{clip-path:inset(0 0 0 0)}
 #lxBars i{display:block;background:#11150f;flex:0 0 auto}
 #lxNum{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-align:center;margin-top:5px;min-height:1.3em}
 #lxStamp{position:absolute;right:12px;bottom:14px;border:2.5px solid #1d9e75;color:#0f6e56;font-family:var(--mono);
@@ -148,12 +163,26 @@ main,header,footer{position:relative;z-index:2}
 .lx-cap{font-family:var(--mono);font-size:11.5px;color:var(--green-2);letter-spacing:.05em;margin-top:16px;
   min-height:1.4em;transition:opacity .25s}
 /* final wipe straight into the workspace */
-#lxWipe{position:absolute;left:50%;top:50%;width:20px;height:20px;border-radius:50%;background:var(--green);
-  transform:translate(-50%,-50%) scale(0);opacity:.96;z-index:3}
-#lxWipe.go{transition:transform .75s cubic-bezier(.7,0,.3,1);transform:translate(-50%,-50%) scale(80)}
+/* Sized so scale(1) already covers the screen -- scaling a 20px dot to
+   80x meant enormous overdraw on a phone. */
+#lxWipe{position:absolute;left:50%;top:50%;width:240vmax;height:240vmax;border-radius:50%;background:var(--green);
+  transform:translate3d(-50%,-50%,0) scale(0);opacity:.96;z-index:3;will-change:transform}
+#lxWipe.go{transition:transform .7s cubic-bezier(.7,0,.3,1);transform:translate3d(-50%,-50%,0) scale(1)}
+
+/* Phones: drop the perspective/3D peel and the blur shadow. Both force
+   repaints on a moving element; the label simply slides out instead. */
+@media (hover:none){
+  .lx-stagearea{perspective:none}
+  #lxLabel{box-shadow:0 8px 18px rgba(0,0,0,.4)}
+  #lxTitle{font-size:19px}
+}
+@media (max-height:680px){
+  .lx-stagearea{max-height:38svh;margin-top:10px}
+  .lx-cap{margin-top:10px}
+  .lx .lx-sub{font-size:12.5px}
+}
 @media (prefers-reduced-motion:reduce){
-  #lxGrid{animation:none}
-  #lxLabel,#lxStamp,#lxWipe{transition:none!important}
+  #lxLabel,#lxStamp,#lxWipe,#lxBars{transition:none!important}
 }
 
 /* ═══════════════ ROUTE RAIL (scroll progress as a delivery route) ═══════════════ */
@@ -1762,6 +1791,7 @@ function launchWorkspace(target,title,sub,info){
   var ov=$("launch");
   if(!ov){ window.location.href=target; return; }
   var RMx=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var TOUCH_LX=matchMedia("(hover:none)").matches;
   info=info||{};
   var who=String(info.who||"Your workspace").slice(0,26),
       city=String(info.city||"Pakistan").slice(0,18),
@@ -1794,7 +1824,12 @@ function launchWorkspace(target,title,sub,info){
 
   if(RMx){
     /* Reduced motion: show the finished label, then go. */
-    if(label) label.style.transform="translateY(0)";
+    if(label) label.style.transform="translate3d(0,0,0)";
+    if(bars){
+      var bh="", BW=[1.5,2,3.5];
+      for(var bi=0;bi<44;bi++) bh+='<i style="width:'+BW[bi%3]+'px;height:'+(38+((bi*7)%14))+'%"></i>';
+      bars.innerHTML=bh; bars.classList.add("drawn");
+    }
     if(whoEl) whoEl.textContent=who;
     if(cityEl) cityEl.textContent=city;
     if(planEl) planEl.textContent=plan;
@@ -1810,25 +1845,26 @@ function launchWorkspace(target,title,sub,info){
     if(slot) slot.classList.add("hot");
     if(label){
       label.style.transition="transform 1.15s cubic-bezier(.25,.9,.3,1)";
-      label.style.transform="translateY(0)";
+      label.style.transform="translate3d(0,0,0)";
     }
   },160);
   /* 2. merchant's own details print onto it */
   at(function(){ type(whoEl,who,42); },620);
   at(function(){ if(cityEl) cityEl.textContent=city; if(planEl) planEl.textContent=plan; },1050);
-  /* 3. barcode draws bar by bar */
+  /* 3. barcode: built in ONE DOM write, then revealed with a clip-path
+        transition. The old version appended 44 bars on 44 separate
+        timers, which meant 44 reflows inside the label -- the reason the
+        print stuttered on a phone. */
   at(function(){
     if(cap) cap.textContent="Generating your account code…";
     if(!bars) return;
-    bars.innerHTML="";
-    var n=44, i=0, W=[1.5,2,3.5];
-    (function add(){
-      var b=document.createElement("i");
-      b.style.width=W[Math.floor(Math.random()*W.length)]+"px";
-      b.style.height=(38+Math.random()*14)+"px";
-      bars.appendChild(b);
-      if(++i<n) at(add,13);
-    })();
+    var W=[1.5,2,3.5], html="";
+    for(var i=0;i<44;i++){
+      html+='<i style="width:'+W[i%3]+'px;height:'+(38+((i*7)%14))+'%"></i>';
+    }
+    bars.innerHTML=html;
+    /* next frame, so the browser paints the clipped state first */
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ bars.classList.add("drawn"); }); });
   },1250);
   at(function(){ type(num,code(),34); },1830);
   /* 4. READY stamp lands */
@@ -1841,7 +1877,11 @@ function launchWorkspace(target,title,sub,info){
   at(function(){
     if(label){
       label.style.transition="transform .6s cubic-bezier(.5,0,.75,0)";
-      label.style.transform="translateY(60px) rotateX(52deg)";
+      /* Touch devices skip the rotateX peel -- a 3D transform on an
+         element carrying a shadow forces repaints mid-animation. */
+      label.style.transform=TOUCH_LX
+        ? "translate3d(0,110%,0)"
+        : "translate3d(0,60px,0) rotateX(52deg)";
     }
     if(cap) cap.style.opacity="0";
   },2760);
