@@ -7144,9 +7144,25 @@
       });
     }
 
+    /* NovaX new (return charges): a refused/returned parcel still cost a
+       rider trip out and a leg back, so it is now invoice-eligible too. Its
+       delivery charge is netted off the COD payable by
+       admin_generate_invoice_v2. Deliberately EXCLUDES 'Consignee not
+       available' and 'Reattempt' -- those journeys can still end in a paid
+       delivery, and billing for an unfinished journey causes disputes. */
+    const NV_RETURN_CHARGEABLE = [
+      "Refused", "Ready for return", "Return in transit",
+      "Return received at origin", "Parcel returned to consignee",
+      "Out of service area"
+    ];
+    function isReturnChargeableParcel(parcel) {
+      return NV_RETURN_CHARGEABLE.includes(parcel && parcel.status);
+    }
     function clientInvoiceParcels(clientId) {
       const invoicedRefs = new Set(state.invoices.filter(invoice => invoice.status !== "Deleted").flatMap(invoice => invoice.parcelRefs || []));
-      return state.parcels.filter(p => p.clientId === clientId && isDeliveredLedgerParcel(p) && !invoicedRefs.has(p.awb));
+      return state.parcels.filter(p => p.clientId === clientId
+        && (isDeliveredLedgerParcel(p) || isReturnChargeableParcel(p))
+        && !invoicedRefs.has(p.awb));
     }
 
     // NovaX fix (Medium #8): never default an invoice-drafting action to the
@@ -7169,18 +7185,33 @@
     // money on non-COD/prepaid parcels (owed BY the client TO NovaX). The old
     // Math.max(0, cod - charges) floored negative balances at 0 and silently
     // threw away debt the client actually owes NovaX.
+    /* Mirrors admin_generate_invoice_v2's maths exactly. Returns and prepaid
+       parcels both sit in the "owed to NovaX" bucket and are netted off the
+       COD payable; whatever the COD cannot absorb stays as dueToNovax. If
+       this drifts from the SQL, the screen will promise a number the server
+       does not produce -- keep the two in step. */
     function invoiceTotals(parcels) {
-      const codParcels = parcels.filter(parcel => !isNonCodParcel(parcel));
-      const nonCodParcels = parcels.filter(parcel => isNonCodParcel(parcel));
+      const returnParcels = parcels.filter(p => isReturnChargeableParcel(p));
+      const rest = parcels.filter(p => !isReturnChargeableParcel(p));
+      const codParcels = rest.filter(parcel => !isNonCodParcel(parcel));
+      const nonCodParcels = rest.filter(parcel => isNonCodParcel(parcel));
+
       const cod = codParcels.reduce((sum, parcel) => sum + Number(parcel.cod || 0), 0);
       const codCharges = codParcels.reduce((sum, parcel) => sum + Number(parcel.fee || 0), 0);
-      const nonCodCharges = nonCodParcels.reduce((sum, parcel) => sum + Number(parcel.fee || 0), 0);
-      const charges = codCharges + nonCodCharges;
-      const payable = Math.max(0, cod - codCharges);
-      const dueToNovax = nonCodCharges;
+      const returnCharges = returnParcels.reduce((sum, parcel) => sum + Number(parcel.fee || 0), 0);
+      const prepaidCharges = nonCodParcels.reduce((sum, parcel) => sum + Number(parcel.fee || 0), 0);
+      const owedCharges = returnCharges + prepaidCharges;
+      const charges = codCharges + owedCharges;
+
+      const payable = Math.max(0, cod - codCharges - owedCharges);
+      const dueToNovax = Math.max(0, owedCharges - Math.max(0, cod - codCharges));
       const finalBalance = payable - dueToNovax;
-      const invoiceType = codParcels.length && nonCodParcels.length ? "Mixed" : (nonCodParcels.length ? "Delivery Charges" : "COD Settlement");
-      return { cod, charges, payable, dueToNovax, finalBalance, invoiceType, codCount: codParcels.length, nonCodCount: nonCodParcels.length };
+      const invoiceType = codParcels.length
+        ? ((returnParcels.length || nonCodParcels.length) ? "Mixed" : "COD Settlement")
+        : "Delivery Charges";
+      return { cod, charges, payable, dueToNovax, finalBalance, invoiceType,
+               codCount: codParcels.length, nonCodCount: nonCodParcels.length,
+               returnCount: returnParcels.length, returnCharges, prepaidCharges };
     }
 
     // NovaX fix (invoice-to-wallet journey): single source of truth for
@@ -8801,19 +8832,24 @@
       state.invoiceDraftRefs = (state.invoiceDraftRefs || []).filter(awb => candidateRefs.has(awb));
       const selectedSet = new Set(state.invoiceDraftRefs);
       document.getElementById("invoiceParcelRows").innerHTML = invoiceCandidates.map(parcel => {
-        const payable = Math.max(0, Number(parcel.cod || 0) - Number(parcel.fee || 0));
+        /* A returned/refused parcel collected no COD but still owes its
+           delivery charge, so its line contributes a NEGATIVE amount to the
+           settlement. Shown explicitly so nobody has to work it out. */
+        const isRet = isReturnChargeableParcel(parcel);
+        const line = isRet ? -Number(parcel.fee || 0)
+                           : Math.max(0, Number(parcel.cod || 0) - Number(parcel.fee || 0));
         return `
           <tr>
             <td><input type="checkbox" data-invoice-parcel="${parcel.awb}" onchange="toggleInvoiceParcel('${parcel.awb}', this.checked)" ${selectedSet.has(parcel.awb) ? "checked" : ""}></td>
             <td><strong>${parcel.awb}</strong><br><span class="footer-note">${parcel.branch}</span></td>
             <td>${parcel.consignee}<br><span class="footer-note">${parcel.city}</span></td>
-            <td><span class="chip good">${parcel.status}</span></td>
-            <td>${money(parcel.cod)}</td>
+            <td><span class="chip ${isRet ? "bad" : "good"}">${parcel.status}</span>${isRet ? `<br><span class="footer-note">return — charge only</span>` : ""}</td>
+            <td>${isRet ? `<span class="footer-note">no COD</span>` : money(parcel.cod)}</td>
             <td>${money(parcel.fee)}</td>
-            <td><strong>${money(payable)}</strong></td>
+            <td><strong${isRet ? ` style="color:#e0604b"` : ""}>${isRet ? "-" : ""}${money(Math.abs(line))}</strong></td>
           </tr>
         `;
-      }).join("") || `<tr><td colspan="7">No delivered parcels available for this client. Open parcels are not invoice eligible.</td></tr>`;
+      }).join("") || `<tr><td colspan="7">Nothing to invoice for this client yet. Delivered and returned parcels appear here; parcels still in transit do not.</td></tr>`;
       const selectedTotals = invoiceTotals(selectedInvoiceParcels());
       document.getElementById("invoiceTotals").innerHTML = [
         moneyBox("Selected parcels", selectedInvoiceParcels().length, "delivered only"),
@@ -12064,7 +12100,21 @@
         return;
       }
       const awbs = parcels.map(p => p.awb);
-      window.__nvSb.rpc("admin_generate_invoice", { p_client_id: client._uuid, p_awbs: awbs }).then(r => {
+      /* NovaX new (return charges): admin_generate_invoice_v2 also invoices
+         refused/returned parcels and NETS their delivery charge off the COD
+         payable in one invoice. Anything the COD cannot absorb becomes
+         due_to_novax and shows up in Finance -> Negative Accounts.
+         The original admin_generate_invoice() is untouched; if v2 is not
+         deployed yet we silently fall back to it, so this screen keeps
+         working either way. */
+      const nvGen = (fn, args) => window.__nvSb.rpc(fn, args);
+      nvGen("admin_generate_invoice_v2", { p_client_id: client._uuid, p_awbs: awbs, p_net_returns: true })
+        .then(r => {
+          const missing = r && r.error && /does not exist|not find|schema cache/i.test(r.error.message || "");
+          if (missing) return nvGen("admin_generate_invoice", { p_client_id: client._uuid, p_awbs: awbs });
+          return r;
+        })
+        .then(r => {
         if (r && r.error) { toast(`Could not generate invoice: ${r.error.message}`, "error"); return; }
         const rows = Array.isArray(r.data) ? r.data : (r.data ? [r.data] : []);
         state.invoiceDraftRefs = [];
@@ -12078,7 +12128,12 @@
           const due = rows.find(row => row.invoice_type === "Delivery Charges");
           toast(`Mixed settlement split into ${cod ? cod.invoice_code : ""} (COD Settlement, payable ${money((cod && cod.net_payable) || 0)}) and ${due ? due.invoice_code : ""} (Delivery Charges, due to NovaX ${money((due && due.due_to_novax) || 0)}).`, "success");
         } else {
-          toast(`${rows[0].invoice_code} generated. Push to wallet when finance approves.`, "success");
+          const row = rows[0];
+          const rc = Number(row.return_count || 0);
+          let msg = `${row.invoice_code} generated. Payable ${money(row.net_payable || 0)}`;
+          if (rc) msg += ` — ${rc} return(s) charged and deducted`;
+          if (Number(row.due_to_novax || 0) > 0) msg += `. ${money(row.due_to_novax)} still owed to NovaX`;
+          toast(msg + ".", "success");
         }
       }).catch(e => toast(`Could not generate invoice: ${(e && e.message) || e}`, "error"));
     }
