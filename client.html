@@ -375,7 +375,33 @@
       body *{visibility:hidden !important;}
       #printStage,#printStage *,#adminPrintStage,#adminPrintStage *{visibility:visible !important;}
       #printStage,#adminPrintStage{display:block !important;position:absolute !important;left:0 !important;top:0 !important;width:100% !important;height:auto !important;padding:0 !important;margin:0 !important;}
+      /* NovaX new (wallet receipts & statements): documents print on plain
+         A4 and must NOT inherit the AWB label sizing. They use their own
+         stage, and nvPrintDoc() temporarily disables both label style tags
+         (#nvPrintThermal / #nvPrintA4) so their @page rules cannot apply. */
+      #docPrintStage,#docPrintStage *{visibility:visible !important;}
+      #docPrintStage{display:block !important;position:absolute !important;left:0 !important;top:0 !important;width:100% !important;height:auto !important;padding:0 !important;margin:0 !important;}
     }
+    /* On-screen document styling, reused by the print stage. */
+    .nv-doc{font-family:inherit;color:#111;background:#fff;padding:18mm 16mm;box-sizing:border-box;max-width:210mm;margin:0 auto;}
+    .nv-doc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:18px;}
+    .nv-doc-brand{font-size:20px;font-weight:900;letter-spacing:-.01em;}
+    .nv-doc-brand small{display:block;font-size:10px;font-weight:700;letter-spacing:.18em;color:#555;margin-top:2px;}
+    .nv-doc-meta{text-align:right;font-size:11px;color:#444;line-height:1.6;}
+    .nv-doc h2{font-size:15px;margin:0 0 4px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;}
+    .nv-doc-sub{font-size:11.5px;color:#555;margin-bottom:16px;}
+    .nv-doc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0 18px;}
+    .nv-doc-box{border:1px solid #bbb;border-radius:4px;padding:9px 11px;min-width:0;}
+    .nv-doc-box span{display:block;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:3px;}
+    .nv-doc-box strong{display:block;font-size:13px;font-weight:800;overflow-wrap:anywhere;}
+    .nv-doc-box.big strong{font-size:20px;}
+    .nv-doc table{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px;}
+    .nv-doc th{text-align:left;background:#f2f2f2;border:1px solid #bbb;padding:6px 8px;font-size:9px;text-transform:uppercase;letter-spacing:.06em;}
+    .nv-doc td{border:1px solid #ccc;padding:6px 8px;overflow-wrap:anywhere;}
+    .nv-doc td.num,.nv-doc th.num{text-align:right;white-space:nowrap;}
+    .nv-doc-total{margin-top:14px;border-top:2px solid #111;padding-top:10px;display:flex;justify-content:space-between;font-size:14px;font-weight:900;}
+    .nv-doc-foot{margin-top:22px;border-top:1px solid #ccc;padding-top:10px;font-size:9.5px;color:#666;line-height:1.6;}
+    @media (max-width:760px){ .nv-doc{padding:14px;} .nv-doc-grid{grid-template-columns:1fr;} }
     @media (max-width:1080px){.client-shell{grid-template-columns:1fr;}.client-side{position:static;}.grid.two,.grid.three{grid-template-columns:1fr;}.grid.metrics{grid-template-columns:repeat(2,minmax(0,1fr));}}
     @media (max-width:760px){
       .hamburger-btn{display:grid;}
@@ -1169,7 +1195,7 @@
                 <div class="ops-list" id="withdrawHistory"></div>
               </div>
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Wallet Ledger</h3><p>Every credit and deduction that moved your wallet balance.</p></div></div>
+                <div class="section-head"><div><h3>Wallet Ledger</h3><p>Every credit and deduction that moved your wallet balance.</p></div><button class="ghost-btn" onclick="nvWalletStatement()">Download statement</button></div>
                 <div class="ops-list" id="walletLedgerList"></div>
               </div>
             </section>
@@ -1234,6 +1260,21 @@
 
   <div class="toast" id="toast"></div>
   <div id="printStage"></div>
+  <!-- NovaX new: separate stage for A4 documents (receipts, statements) so
+       AWB label @page sizing can never apply to them. -->
+  <div id="docPrintStage" style="display:none"></div>
+  <!-- Receipt / statement preview -->
+  <div class="modal-overlay" id="nvDocModal">
+    <div class="modal-card" style="max-width:820px">
+      <div class="modal-head"><h3 id="nvDocTitle">Receipt</h3><button class="modal-close" onclick="nvCloseDoc()">&times;</button></div>
+      <div id="nvDocBody" style="max-height:62vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px"></div>
+      <div class="inline-actions" style="margin-top:14px;flex-wrap:wrap;gap:8px">
+        <button class="action-btn" id="nvDocPrintBtn">Print / Save as PDF</button>
+        <button class="ghost-btn" id="nvDocCsvBtn">Download CSV</button>
+        <button class="ghost-btn" onclick="nvCloseDoc()">Close</button>
+      </div>
+    </div>
+  </div>
 
   <!-- AWB modal -->
   <div class="modal-overlay" id="awbModal">
@@ -2971,6 +3012,149 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return { awb:p.awb, bookingDate:labelDate(p), destinationCity:labelText(p.city), consignee:labelText(p.consignee), paymentMode:parcelPaymentMode(p), codAmount, deliveryCharge, netLineAmount };
       });
     }
+    /* =====================================================================
+       NovaX new -- WALLET RECEIPTS & STATEMENTS
+
+       A merchant can now download proof of every payout and a full wallet
+       statement, to show an accountant or a supplier.
+
+       Everything here is built from data ALREADY loaded into state by
+       loadAll() (withdrawals + wallet ledger + server wallet summary). No
+       new RPC, no new query, nothing written back — these are read-only
+       documents, so they cannot affect a balance.
+
+       PRINTING: documents use their own #docPrintStage and nvPrintDoc()
+       temporarily disables the two AWB label style tags, because those
+       carry @page{size:100mm 150mm} / A4-3-up rules that would otherwise
+       shrink a receipt onto a thermal label. The previous print mode is
+       always restored afterwards.
+       ===================================================================== */
+    var NV_DOC={ csv:null, name:"" };
+
+    function nvPrintDoc(html){
+      var stage=document.getElementById("docPrintStage");
+      if(!stage){ toast("Print area not ready."); return; }
+      var th=document.getElementById("nvPrintThermal"), a4=document.getElementById("nvPrintA4");
+      var prevTh=th?th.disabled:null, prevA4=a4?a4.disabled:null;
+      if(th) th.disabled=true;
+      if(a4) a4.disabled=true;
+      stage.innerHTML=html;
+      stage.style.display="block";
+      function restore(){
+        stage.style.display="none"; stage.innerHTML="";
+        if(th&&prevTh!==null) th.disabled=prevTh;
+        if(a4&&prevA4!==null) a4.disabled=prevA4;
+        window.removeEventListener("afterprint",restore);
+      }
+      window.addEventListener("afterprint",restore);
+      setTimeout(function(){ try{ window.print(); }catch(e){ restore(); } },60);
+      /* Safety net: some browsers never fire afterprint. */
+      setTimeout(restore,8000);
+    }
+
+    function nvDocHead(title,sub,metaLines){
+      var c=(state.client&&state.client.name)||"Merchant";
+      return '<div class="nv-doc"><div class="nv-doc-head">'+
+        '<div class="nv-doc-brand">NovaX Logistics<small>KARACHI · PAKISTAN</small></div>'+
+        '<div class="nv-doc-meta">'+(metaLines||[]).map(function(l){ return escLabelText(l); }).join("<br>")+'</div>'+
+        '</div><h2>'+escLabelText(title)+'</h2>'+
+        '<div class="nv-doc-sub">'+escLabelText(sub||"")+' &middot; Account: <strong>'+escLabelText(c)+'</strong></div>';
+    }
+    function nvDocFoot(note){
+      return '<div class="nv-doc-foot">'+escLabelText(note||"")+
+        '<br>This document was generated from the NovaX wallet ledger and reflects the account state at the time of download.'+
+        '<br>novaxlogistics.com</div></div>';
+    }
+    function nvCsvCell(v){ return '"'+String(v==null?"":v).replace(/"/g,'""')+'"'; }
+    function nvDownloadCsv(rows,name){
+      try{
+        var csv=rows.map(function(r){ return r.map(nvCsvCell).join(","); }).join("\n");
+        var a=document.createElement("a");
+        a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+        a.download=name; a.click();
+        setTimeout(function(){ URL.revokeObjectURL(a.href); },2000);
+        toast(name+" downloaded.","success");
+      }catch(e){ toast("Could not download: "+((e&&e.message)||e),"error"); }
+    }
+    function nvOpenDoc(title,html,csvRows,csvName){
+      var m=document.getElementById("nvDocModal");
+      if(!m) return;
+      document.getElementById("nvDocTitle").textContent=title;
+      document.getElementById("nvDocBody").innerHTML=html;
+      NV_DOC.csv=csvRows||null; NV_DOC.name=csvName||"novax.csv";
+      var pb=document.getElementById("nvDocPrintBtn");
+      if(pb) pb.onclick=function(){ nvPrintDoc(html); };
+      var cb=document.getElementById("nvDocCsvBtn");
+      if(cb){
+        cb.style.display=csvRows?"":"none";
+        cb.onclick=function(){ if(NV_DOC.csv) nvDownloadCsv(NV_DOC.csv,NV_DOC.name); };
+      }
+      m.classList.add("show");
+    }
+    function nvCloseDoc(){ var m=document.getElementById("nvDocModal"); if(m) m.classList.remove("show"); }
+
+    /* ---- payout receipt for one withdrawal ---- */
+    function nvWithdrawalReceipt(wdId){
+      var w=(state.walletWithdrawals||[]).find(function(x){ return String(x.id)===String(wdId) || String(x._uuid)===String(wdId); });
+      if(!w){ toast("Withdrawal not found. Refresh and try again.","error"); return; }
+      var paid=w.status==="Paid";
+      var meta=["Receipt no: "+(w.id||""),"Issued: "+new Date().toLocaleDateString(),"Status: "+(paid?"Paid":"Being verified by finance")];
+      var html=nvDocHead("Payout Receipt","Wallet withdrawal",meta)+
+        '<div class="nv-doc-grid">'+
+          '<div class="nv-doc-box big"><span>Amount received</span><strong>'+escLabelText(money(w.net))+'</strong></div>'+
+          '<div class="nv-doc-box"><span>Paid to</span><strong>'+escLabelText(maskIban(w.iban))+'</strong></div>'+
+          '<div class="nv-doc-box"><span>Requested on</span><strong>'+escLabelText(w.createdAt||"-")+'</strong></div>'+
+          '<div class="nv-doc-box"><span>Paid on</span><strong>'+escLabelText(w.paidAt||(paid?"-":"pending"))+'</strong></div>'+
+        '</div>'+
+        '<table><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>'+
+          '<tr><td>Withdrawal requested</td><td class="num">'+escLabelText(money(w.amount))+'</td></tr>'+
+          '<tr><td>NovaX payout fee ('+escLabelText(walletSpeedLabel(w.speed))+')</td><td class="num">-'+escLabelText(money(w.fee))+'</td></tr>'+
+        '</tbody></table>'+
+        '<div class="nv-doc-total"><span>Net transferred</span><span>'+escLabelText(money(w.net))+'</span></div>'+
+        (w.paidTxnId?'<p style="font-size:11px;margin-top:10px">Bank reference: <strong>'+escLabelText(w.paidTxnId)+'</strong></p>':'')+
+        nvDocFoot(paid?"Payment completed.":"This payout is still being verified by NovaX finance. The bank reference appears here once paid.");
+      var csv=[["receipt_no","status","requested_on","paid_on","iban_masked","speed","amount","fee","net","bank_reference"],
+               [w.id,w.status,w.createdAt,w.paidAt||"",maskIban(w.iban),walletSpeedLabel(w.speed),w.amount,w.fee,w.net,w.paidTxnId||""]];
+      nvOpenDoc("Payout receipt "+(w.id||""),html,csv,"NovaX-receipt-"+String(w.id||"payout").replace(/[^A-Za-z0-9_-]/g,"")+".csv");
+    }
+
+    /* ---- full wallet statement ---- */
+    function nvWalletStatement(){
+      var led=(state.walletLedger||[]).filter(function(l){ return l.clientId===(state.client&&state.client.id); });
+      if(!led.length){ toast("No wallet activity to put on a statement yet."); return; }
+      var labels={ invoice_credit:"COD settlement credited", withdrawal_requested:"Withdrawal requested",
+                   payout_fee:"Payout fee", payout_paid:"Payout paid", payout_rejected:"Payout rejected/refunded",
+                   admin_adjustment:"Adjustment by NovaX", delivery_charge_due:"Delivery charge" };
+      var rows=led.slice(0,300);
+      var credits=rows.reduce(function(n,l){ return n+(Number(l.amount)>0?Number(l.amount):0); },0);
+      var debits =rows.reduce(function(n,l){ return n+(Number(l.amount)<0?Math.abs(Number(l.amount)):0); },0);
+      var bal=Number((state.serverWalletSummary&&state.serverWalletSummary.available_balance)!=null
+                ? state.serverWalletSummary.available_balance
+                : ((state.client&&state.client.walletBalance)||0));
+      var meta=["Statement date: "+new Date().toLocaleDateString(),"Entries shown: "+rows.length];
+      var html=nvDocHead("Wallet Statement","All wallet activity",meta)+
+        '<div class="nv-doc-grid">'+
+          '<div class="nv-doc-box big"><span>Closing balance</span><strong>'+escLabelText(money(bal))+'</strong></div>'+
+          '<div class="nv-doc-box"><span>Total credited</span><strong>'+escLabelText(money(credits))+'</strong></div>'+
+          '<div class="nv-doc-box"><span>Total debited</span><strong>'+escLabelText(money(debits))+'</strong></div>'+
+          '<div class="nv-doc-box"><span>Entries</span><strong>'+rows.length+'</strong></div>'+
+        '</div>'+
+        '<table><thead><tr><th>Date</th><th>Description</th><th>Reference</th><th class="num">Amount</th></tr></thead><tbody>'+
+        rows.map(function(l){
+          return '<tr><td>'+escLabelText(l.createdAt||"")+'</td>'+
+                 '<td>'+escLabelText(labels[l.entryType]||l.entryType||"")+'</td>'+
+                 '<td>'+escLabelText(l.referenceCode||l.note||"")+'</td>'+
+                 '<td class="num">'+escLabelText(money(l.amount))+'</td></tr>';
+        }).join("")+
+        '</tbody></table>'+
+        '<div class="nv-doc-total"><span>Closing balance</span><span>'+escLabelText(money(bal))+'</span></div>'+
+        nvDocFoot("Every line above corresponds to a real parcel settlement, payout or adjustment on your account.");
+      var csv=[["date","type","description","reference","amount"]].concat(rows.map(function(l){
+        return [l.createdAt||"",l.entryType||"",labels[l.entryType]||l.entryType||"",l.referenceCode||l.note||"",l.amount];
+      }));
+      nvOpenDoc("Wallet statement",html,csv,"NovaX-wallet-statement.csv");
+    }
+
     function downloadInvoiceCsv(id){
       const inv=state.invoices.find(i=>i.id===id); if(!inv) return;
       const c=clientById(inv.clientId);
@@ -3167,6 +3351,35 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         <button class="action-btn" id="saveBankDetailsBtn" style="margin-top:12px" onclick="saveBankDetails()">Save Bank Details</button>
         ${bd?`<button class="action-btn" style="margin-top:12px;margin-left:8px;background:#eef2f5;color:#333" onclick="cancelBankDetailsEdit()">Cancel</button>`:""}`;
     }
+    /* NovaX new (deferred bank details): offer to remember the IBAN the
+       merchant just paid out to, so the next withdrawal is one tap. Uses
+       the existing save_client_bank_details RPC -- no new endpoint. Silent
+       if it is already the saved account, or if they decline. */
+    function nvOfferSaveIban(iban){
+      var clean=String(iban||"").trim().toUpperCase();
+      if(!clean) return;
+      if(typeof validateIbanValue==="function" && validateIbanValue(clean)) return;
+      var bd=state.clientBankDetails;
+      if(bd&&bd.iban&&String(bd.iban).trim().toUpperCase()===clean) return;   // already saved
+      var sb=window.__nvSb;
+      if(!sb||!sb.rpc) return;
+      setTimeout(function(){
+        var holder=(bd&&bd.holderName)||(state.client&&state.client.name)||"";
+        if(!window.confirm("Save "+maskIban(clean)+" as your payout account so you don't have to type it next time?")) return;
+        var name=holder||window.prompt("Account holder name (as printed on the bank account):","")||"";
+        name=String(name).trim();
+        if(!name){ toast("Not saved — an account holder name is required."); return; }
+        sb.rpc("save_client_bank_details",{ p_holder_name:name, p_iban:clean, p_bank_name:(bd&&bd.bankName)||"" })
+          .then(function(r){
+            if(r&&r.error){ toast("Could not save the account: "+r.error.message,"error"); return; }
+            state.clientBankDetails={ holderName:name, iban:clean, bankName:(bd&&bd.bankName)||"" };
+            saveState();
+            try{ renderBankDetailsSection(); }catch(e){}
+            toast("Payout account saved for next time.","success");
+          }).catch(function(e){ toast("Could not save the account: "+((e&&e.message)||e),"error"); });
+      },1200);
+    }
+
     function saveBankDetails(){
       const err=document.getElementById("bankDetailsError");
       const btn=document.getElementById("saveBankDetailsBtn");
@@ -3317,7 +3530,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const paidRef=(w.status==="Paid"&&w.paidTxnId)?` &middot; Paid with reference ${w.paidTxnId}`:"";
         // NovaX fix (wallet IBAN UX, item #10): history now shows a masked
         // IBAN (e.g. PK24****3344) instead of the full account number.
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(w.id)}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${escLabelText(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${paidRef}</div></div>`;
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(w.id)}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${escLabelText(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${paidRef}</div><div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" style="padding:5px 11px;font-size:12px" onclick="nvWithdrawalReceipt('${escLabelText(w.id)}')">Receipt</button></div></div>`;
       }).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Pick a payout speed above to withdraw.</p></div>`;
     }
     let __withdrawInFlight=false;
@@ -3396,6 +3609,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         /* A withdrawal just changed the real balance -- this is one of the
            few genuine reasons to re-read the wallet intelligence RPCs. */
         try{ nvLoadWalletIntelligence(true); }catch(e){}
+        /* NovaX new (deferred bank details): signup never asks for an IBAN,
+           and nothing blocks on it -- the merchant types it here, at the
+           moment they actually want money. The only friction left was
+           having to retype it every time, so offer to remember it once the
+           payout has actually gone through. Never auto-saves: a one-off
+           payout to someone else's account must stay a one-off. */
+        try{ nvOfferSaveIban(iban); }catch(e){}
         // NovaX fix (confidence messaging): the modal already explains the
         // payout math, but a quick toast confirms what just happened and what
         // to expect next, matching the same pattern used elsewhere (booking,
@@ -3854,10 +4074,48 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ];
       let html=`<div class="grid metrics" style="margin-bottom:12px">${summary.map(s=>`<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(s[0])}</strong><span class="chip ${s[2]}">${s[1]}</span></div></div>`).join("")}</div>`;
       if(invalidRows.length){
-        html+=invalidRows.map(r=>`<div class="ops-card alert-row" style="margin-bottom:8px"><div class="ops-card-head"><strong>Row ${r.line}</strong><span class="chip bad">${r.problems.length} issue(s)</span></div>${r.problems.map(p=>`<p class="footer-note">${escLabelText(p.message)} <em>Fix: ${escLabelText(p.fix)}</em></p>`).join("")}</div>`).join("");
-        html+=`<div class="inline-actions" style="margin-top:10px">${validRows.length?`<button class="action-btn" id="importValidOnlyBtn" onclick="importValidBulkRowsOnly()">Import ${validRows.length} valid row(s) only</button>`:`<span class="footer-note">No valid rows to import yet.</span>`}</div>`;
+        /* NovaX new (bulk CSV fix-in-place): rejected rows used to be a
+           read-only list, so a 50-row sheet with 3 bad cells meant going
+           back to Excel, re-exporting and re-uploading. Each bad row is now
+           editable right here. "Re-check" writes the edits back into the
+           ORIGINAL parsed CSV rows and re-runs the same validateBulkRows()
+           used everywhere else -- there is deliberately no second copy of
+           the validation rules, so the grid can never disagree with what
+           actually gets imported. */
+        html+=`<div class="ops-card" style="margin-bottom:10px;background:#fff7e6;border-color:#f0d6a0"><strong>${invalidRows.length} row(s) need a fix</strong><p class="footer-note">Correct the highlighted fields below and press Re-check. Nothing is uploaded until you import.</p></div>`;
+        html+=invalidRows.map(r=>{
+          const bad=new Set(r.problems.map(p=>p.code));
+          const f=(key,label,val,ph)=>{
+            const isBad=bad.has(key)||(key==="order_id"&&bad.has("dup_order"))||(key==="reference"&&bad.has("dup_ref"));
+            return `<div class="field" style="margin:0"><label style="font-size:10.5px">${escLabelText(label)}</label>`+
+              `<input data-bulkfix="${r.line}" data-col="${escLabelText(key)}" value="${escLabelText(val==null?"":val)}" placeholder="${escLabelText(ph||"")}"`+
+              ` style="${isBad?"border-color:#e0604b;background:#fff5f4":""}"></div>`;
+          };
+          const rec=r.record||{};
+          return `<div class="ops-card alert-row" style="margin-bottom:10px">
+            <div class="ops-card-head"><strong>Row ${r.line}</strong><span class="chip bad">${r.problems.length} issue(s)</span></div>
+            ${r.problems.map(p=>`<p class="footer-note" style="color:#a1230e">${escLabelText(p.message)} <em>Fix: ${escLabelText(p.fix)}</em></p>`).join("")}
+            <div class="form-grid" style="margin-top:10px;gap:8px">
+              ${f("consignee","Consignee",rec.consignee,"Full name")}
+              ${f("phone","Phone",rec.phone,"03001234567")}
+              ${f("city","City",rec.city,"Karachi / Lahore / Islamabad / Rawalpindi")}
+              ${f("cod","COD",rec.cod,"0 for prepaid")}
+              ${f("product","Product",rec.product,"Item details")}
+              ${f("weight","Weight",rec.weight,"0.8 kg")}
+              ${f("order_id","Order ID",rec.orderId,"Unique per row")}
+              ${f("payment_mode","Payment mode",rec.paymentMode,"COD")}
+              ${f("address","Delivery address",rec.address,"Full address")}
+              ${f("reference","Reference (optional)",rec.referenceNo,"")}
+            </div>
+            <div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="nvRecheckBulkRow(${r.line})">Re-check row ${r.line}</button></div>
+          </div>`;
+        }).join("");
+        html+=`<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap;gap:8px"><button class="action-btn" onclick="nvRecheckAllBulk()">Re-check all rows</button>${validRows.length?`<button class="ghost-btn" id="importValidOnlyBtn" onclick="importValidBulkRowsOnly()">Import ${validRows.length} valid row(s) only</button>`:`<span class="footer-note">No valid rows to import yet.</span>`}</div>`;
       } else if(results.length){
-        html+=`<div class="ops-card"><strong>${validRows.length} clean row(s) ready</strong><p>All phones, cities, addresses, product details, COD values, weights, order IDs, and references passed validation.</p></div>`;
+        /* Import button matters here now: after fixing rows in place the
+           user needs a way to book them, since the auto-import only runs on
+           the original upload. */
+        html+=`<div class="ops-card"><strong>${validRows.length} clean row(s) ready</strong><p>All phones, cities, addresses, product details, COD values, weights, order IDs, and references passed validation.</p><div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="nvImportFixedBulk()">Import ${validRows.length} row(s)</button></div></div>`;
       }
       el.innerHTML=html;
     }
@@ -3866,10 +4124,59 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // ok/problems, and importBulkRows() is the single place that actually
     // calls bookParcel(), used both by the all-valid path here and by
     // "Import valid rows only".
+    /* NovaX new (bulk CSV fix-in-place): the raw parsed CSV is kept so edits
+       can be written back into it and re-validated by the SAME
+       validateBulkRows() the upload path uses. Held in a module variable
+       rather than state, because state is persisted to localStorage and a
+       whole CSV does not belong there. */
+    var NV_BULK_RAW=null;
+
+    function nvApplyBulkEdits(){
+      if(!NV_BULK_RAW||!NV_BULK_RAW.length) return false;
+      const headers=(NV_BULK_RAW[0]||[]).map(h=>String(h||"").toLowerCase().trim());
+      /* One input may map to several accepted header spellings. */
+      const alias={ reference:["reference","reference_no","customer_ref"] };
+      let touched=false;
+      document.querySelectorAll('[data-bulkfix]').forEach(function(inp){
+        const line=Number(inp.getAttribute("data-bulkfix"));
+        const col=inp.getAttribute("data-col");
+        const rowIdx=line-1;                 // line 2 = NV_BULK_RAW[1]
+        if(!(rowIdx>0)||!NV_BULK_RAW[rowIdx]) return;
+        const names=alias[col]||[col];
+        let j=-1;
+        for(const n of names){ const k=headers.indexOf(n); if(k>-1){ j=k; break; } }
+        if(j<0) return;                       // column not present in this CSV
+        const val=String(inp.value||"").trim();
+        if(String(NV_BULK_RAW[rowIdx][j]||"")!==val){ NV_BULK_RAW[rowIdx][j]=val; touched=true; }
+      });
+      return touched;
+    }
+    function nvRevalidateBulk(msgIfClean){
+      if(!NV_BULK_RAW){ toast("Upload a CSV first."); return; }
+      nvApplyBulkEdits();
+      const parsed=validateBulkRows(NV_BULK_RAW);
+      state.lastBulkValidation=parsed;
+      renderBulkValidation(parsed);
+      const bad=(parsed.results||[]).filter(r=>!r.ok).length;
+      const good=(parsed.results||[]).length-bad;
+      if(!bad) toast(msgIfClean||`All ${good} row(s) valid now. Ready to import.`,"success");
+      else toast(`${good} valid, ${bad} still need a fix.`, bad?"error":"success");
+    }
+    function nvRecheckBulkRow(){ nvRevalidateBulk(); }
+    function nvRecheckAllBulk(){ nvRevalidateBulk(); }
+    /* Once every row is clean, let the normal import path run. */
+    function nvImportFixedBulk(){
+      const parsed=state.lastBulkValidation;
+      if(!parsed||!parsed.results||!parsed.results.length){ toast("Upload a CSV first."); return; }
+      if(parsed.results.some(r=>!r.ok)){ toast("Some rows are still invalid.","error"); return; }
+      importBulkRows(parsed.results.map(r=>r.record), parsed.results.length);
+    }
+
     async function uploadBulkCsv(){
       const file=document.getElementById("bulkCsvInput")?.files?.[0];
       if(!file){ toast("Select a CSV file first."); return; }
-      const parsed=validateBulkRows(parseCsv(await file.text()));
+      NV_BULK_RAW=parseCsv(await file.text());
+      const parsed=validateBulkRows(NV_BULK_RAW);
       state.lastBulkValidation=parsed;
       renderBulkValidation(parsed);
       if(parsed.missingColumns&&parsed.missingColumns.length){ toast("CSV blocked: missing required column(s).","error"); return; }
