@@ -52,10 +52,19 @@
       font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     }
     *{box-sizing:border-box;}
-    body{margin:0;min-height:100vh;color:var(--ink);overflow-x:hidden;background:linear-gradient(135deg,rgba(12,124,89,.08),transparent 28%),linear-gradient(315deg,rgba(29,111,159,.08),transparent 32%),var(--bg);}
+    /* overflow-x:clip, NOT hidden. `hidden` silently turns this element into a
+       scroll container, and a scroll container disables position:sticky on
+       every descendant — which is why the sticky header and the sticky summary
+       rail stopped sticking on mobile. `clip` contains the overflow without
+       creating a scroll container, so sticky keeps working.
+       `hidden` is kept first as a fallback for Safari < 16, which ignores
+       `clip`; those browsers get today's behaviour, nothing worse. */
+    body{margin:0;min-height:100vh;color:var(--ink);overflow-x:hidden;overflow-x:clip;background:linear-gradient(135deg,rgba(12,124,89,.08),transparent 28%),linear-gradient(315deg,rgba(29,111,159,.08),transparent 32%),var(--bg);}
     button,input,select,textarea{font:inherit;}
     button{border:0;cursor:pointer;}
-    .app-shell{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr;overflow-x:hidden;}
+    /* Same reason as body above: this wrapper contains the sticky header, so
+       `hidden` here would defeat it even with body fixed. */
+    .app-shell{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr;overflow-x:hidden;overflow-x:clip;}
     .topbar{position:sticky;top:0;z-index:20;border-bottom:1px solid rgba(16,32,27,.08);background:rgba(244,248,245,.88);backdrop-filter:blur(18px);width:100%;max-width:100vw;}
     .topbar-inner{width:100%;max-width:1440px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;gap:14px;justify-content:space-between;}
     .brand{display:flex;align-items:center;gap:10px;min-width:0;max-width:100%;}
@@ -7155,6 +7164,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   var SB_URL=window.NOVAX_CONFIG.SB_URL;
   var SB_KEY=window.NOVAX_CONFIG.SB_KEY;
   var FN_URL=SB_URL.replace(/\/$/,"")+"/functions/v1/novax-ai-support";
+  /* Open-ended LLM layer. Only called when the deterministic engine above has
+     no answer. If it is not deployed it replies {unavailable:true} and the
+     widget behaves exactly as it did before this existed. */
+  var BRAIN_URL=SB_URL.replace(/\/$/,"")+"/functions/v1/novax-autopilot-brain";
 
   var style=document.createElement("style");
   style.textContent='.nvauto-btn{position:fixed;right:22px;left:auto;bottom:calc(22px + env(safe-area-inset-bottom));z-index:99998;display:flex;align-items:center;gap:10px;background:#fff;color:#10201b;border:1px solid #b6c9c0;border-radius:14px;box-shadow:0 10px 26px rgba(21,45,36,.16);padding:8px 16px 8px 8px;cursor:pointer;min-height:52px;box-sizing:border-box;transition:transform .18s ease,box-shadow .18s ease}.nvauto-btn:hover{box-shadow:0 14px 32px rgba(21,45,36,.22);transform:translateY(-1px)}.nvauto-btn-icon{width:36px;height:36px;border-radius:10px;background:linear-gradient(145deg,#0c7c59,#14c77b);color:#fff;font-size:17px;display:grid;place-items:center;flex-shrink:0}.nvauto-btn-text{display:flex;flex-direction:column;line-height:1.15;text-align:left}.nvauto-btn-text b{font-size:13.5px;color:#10201b;font-weight:800}.nvauto-btn-text small{font-size:10.5px;color:#60726b;font-weight:600}.nvauto-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#b03a2e;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px rgba(176,58,46,.4)}.nvauto-btn.nv-pulse .nvauto-btn-icon{animation:nvPulseIcon 1.8s ease-in-out infinite}@keyframes nvPulseIcon{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}.nvauto-panel{position:fixed;right:22px;left:auto;bottom:92px;top:auto;z-index:99998;width:380px;max-width:calc(100vw - 36px);height:auto;max-height:min(600px,calc(100vh - 130px));background:#fff;border:1px solid #d7ede1;border-radius:14px;box-shadow:0 26px 70px rgba(12,60,45,.22);display:none;flex-direction:column;overflow:hidden}.nvauto-panel.open{display:flex;animation:nvPanelIn .22s ease}@keyframes nvPanelIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}.nvauto-head{background:linear-gradient(135deg,#0c7c59,#14c77b);color:#fff;padding:13px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0}.nvauto-avatar{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.18);display:grid;place-items:center;font-size:17px;flex-shrink:0}.nvauto-head b{font-size:15px;line-height:1.1;display:block}.nvauto-head small{font-size:10.5px;opacity:.9;display:flex;align-items:center;margin-top:2px}.nvauto-live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#8ff0c7;margin-right:5px;animation:nvLiveDot 1.6s ease-in-out infinite}@keyframes nvLiveDot{0%,100%{opacity:1}50%{opacity:.35}}.nvauto-x{margin-left:auto;background:rgba(255,255,255,.18);color:#fff;border:0;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px;flex-shrink:0}.nvauto-chips{display:flex;gap:6px;flex-wrap:wrap;padding:10px 12px 0;background:#eafff5;flex-shrink:0}.nvauto-chips button{border:1px solid #bfe8d7;background:#fff;color:#0c7c59;font-size:11.5px;font-weight:700;padding:6px 9px;border-radius:20px;cursor:pointer}.nvauto-chips button .cl-short{display:none}.nvauto-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:#eafff5;min-height:0}.nvauto-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45;white-space:pre-line}.nvauto-m.u{align-self:flex-end;background:#0c7c59;color:#fff;border-bottom-right-radius:4px}.nvauto-m.b{align-self:flex-start;background:#fff;border:1px solid #d7ede1;color:#0f2e22;border-bottom-left-radius:4px;box-shadow:0 2px 6px rgba(21,45,36,.06)}.nvauto-m.nvauto-loading{opacity:.65;font-style:italic}.nvauto-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}.nvauto-action-btn{border:1px solid #8fd9b8;background:#eafff5;color:#0c7c59;font-size:12px;font-weight:700;padding:8px 12px;min-height:38px;border-radius:20px;cursor:pointer;box-sizing:border-box}.nvauto-action-btn:hover{background:#d3f5e4}.nvauto-action-btn.nv-confirm{background:#0c7c59;color:#fff;border-color:#0c7c59}.nvauto-action-btn.nv-confirm:hover{background:#0a6b4d}.nvauto-action-btn.nv-cancel{background:#fff;color:#b03a2e;border-color:#f0c9c3}.nvauto-action-btn.nv-cancel:hover{background:#fff5f3}.nvauto-fb{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:10.5px;color:#6b8f80;opacity:.75}.nvauto-fb-btn{border:0;background:transparent;color:#6b8f80;font-size:10.5px;font-weight:700;cursor:pointer;padding:2px 4px}.nvauto-fb-btn.active{color:#0c7c59}.nvauto-fb-sep{opacity:.55}.nvauto-bar{display:flex;gap:8px;padding:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom));border-top:1px solid #d7ede1;background:#fff;flex-shrink:0}.nvauto-bar input{flex:1;min-width:0;height:42px;border-radius:11px;border:1px solid #bfe8d7;padding:0 12px;font:inherit;font-size:16px;color:#0f2e22}.nvauto-bar input::placeholder{font-size:12px;color:#7fa596}.nvauto-bar button{height:42px;padding:0 16px;border-radius:11px;background:#0c7c59;color:#fff;font-weight:800;border:0;cursor:pointer;flex-shrink:0}@media (prefers-reduced-motion:reduce){.nvauto-btn,.nvauto-btn-icon,.nvauto-panel.open,.nvauto-live-dot{animation:none!important;transition:none!important}}@media (max-width:760px){.nvauto-btn{right:14px;bottom:calc(14px + env(safe-area-inset-bottom));padding:0;width:54px;height:54px;border-radius:16px;justify-content:center;gap:0}.nvauto-btn.nv-above-stickybar{bottom:calc(96px + env(safe-area-inset-bottom))!important}.nvauto-btn-text{display:none}.nvauto-btn-icon{width:100%;height:100%;border-radius:16px;font-size:20px}.nvauto-panel{left:0;right:0;bottom:0;top:auto;width:100%;max-width:100%;height:76vh;max-height:76vh;border-radius:16px 16px 0 0;border-left:0;border-right:0;border-bottom:0}.nvauto-chips button .cl-full{display:none}.nvauto-chips button .cl-short{display:inline}.nvauto-action-btn{min-height:42px;padding:9px 13px}}';
@@ -8045,6 +8058,36 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     return SB_KEY;
   }
 
+  /* ===== Open-ended brain layer =====================================
+     Called ONLY when the deterministic engine has no answer. It returns
+     {reply:null,unavailable:true} whenever it is not deployed, has no API
+     key, is rate limited, or errors — in every one of those cases this
+     resolves to null and the caller carries on to the existing fallback.
+     It can therefore only ever add an answer, never remove one. */
+  var NV_BRAIN_HIST=[];
+  async function tryBrain(text,token){
+    try{
+      var ctrl=new AbortController();
+      var kill=setTimeout(function(){ ctrl.abort(); },25000);
+      var res=await fetch(BRAIN_URL,{
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "apikey":SB_KEY, "Authorization":"Bearer "+token },
+        body:JSON.stringify({ message:text, history:NV_BRAIN_HIST.slice(-6) }),
+        signal:ctrl.signal
+      });
+      clearTimeout(kill);
+      if(!res.ok) return null;
+      var out=null; try{ out=await res.json(); }catch(e){ return null; }
+      if(!out || out.unavailable || !out.reply) return null;
+      NV_BRAIN_HIST.push({ role:"user", content:text });
+      NV_BRAIN_HIST.push({ role:"assistant", content:out.reply });
+      if(NV_BRAIN_HIST.length>12) NV_BRAIN_HIST=NV_BRAIN_HIST.slice(-12);
+      return out;
+    }catch(e){
+      return null;
+    }
+  }
+
   async function send(text){
     text=(text||"").trim();
     if(!text) return;
@@ -8091,12 +8134,31 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         body:JSON.stringify({ message:text, awb:getAwbFromText(text), portal:PORTAL })
       });
       var out=null; try{ out=await res.json(); }catch(e){}
-      loadingEl.remove();
-      if(!res.ok || !out || !out.reply){
+
+      /* The deterministic engine wins whenever it actually understood the
+         question — it is free, instant and cannot invent a number. The brain
+         is only consulted when that engine had nothing ("unknown"), or when
+         the request itself failed. */
+      var engineAnswered = res.ok && out && out.reply && out.intent!=="unknown";
+      if(!engineAnswered){
+        var brain=await tryBrain(text,token);
+        loadingEl.remove();
+        if(brain && brain.reply){
+          addMsg(brain.reply,"b",brain.actions);
+          return;
+        }
+        /* Brain unavailable: fall back to precisely what shipped before. */
+        if(out && out.reply){
+          addMsg(out.reply,"b",out.actions);
+          if(out.requireLogin) addMsg("Please log in again to continue, then ask me here.","b");
+          return;
+        }
         var fb1=localAutopilotFallback(text);
         addMsg(fb1.reply,"b",fb1.actions);
         return;
       }
+
+      loadingEl.remove();
       addMsg(out.reply,"b",out.actions);
       if(out.requireLogin) addMsg("Please log in again to continue, then ask me here.","b");
     }catch(e){
