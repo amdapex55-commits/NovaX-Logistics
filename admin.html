@@ -6839,7 +6839,7 @@
         if (r && r.error) { toast("Could not save: " + r.error.message); return; }
         toast(awb + " updated.");
         nvCloseParcelEdit();
-        try { if (typeof loadAll === "function") loadAll(); else renderAdmin(); } catch(e){}
+        try { if (typeof nvRefresh === "function") nvRefresh(["parcels"]); else if (typeof loadAll === "function") loadAll(); else renderAdmin(); } catch(e){}
       }).catch(function(e){
         if (btn) { btn.disabled = false; btn.textContent = old; }
         toast("Could not save: " + ((e && e.message) || e));
@@ -6910,7 +6910,11 @@
         ["abkName","abkPhone","abkCod","abkCategory","abkAddress"].forEach(function(id){
           var e = document.getElementById(id); if (e) e.value = "";
         });
-        try { if (typeof loadAll === "function") loadAll(); } catch(e){}
+        // Booking on a client's behalf only creates a parcel row.
+        try {
+          if (typeof nvRefresh === "function") nvRefresh(["parcels"]);
+          else if (typeof loadAll === "function") loadAll();
+        } catch(e){}
       }).catch(function(e){
         if (btn) { btn.disabled = false; btn.textContent = old; }
         toast("Booking failed: " + ((e && e.message) || e));
@@ -10991,7 +10995,11 @@
           // Supabase instead of recomputing the wallet credit locally, so the
           // wallet balance shown always matches exactly what the atomic RPC
           // wrote server-side (no drift, no double counting).
-          if (typeof loadAll === "function") loadAll();
+          // Targeted: pushing to wallet changes the invoice status, the client
+          // wallet_balance, the ledger entry and the payment log -- nothing
+          // else. Parcels are untouched, so they are not refetched.
+          if (typeof nvRefresh === "function") nvRefresh(["invoices","clients","wallet_ledger","payment_logs"]);
+          else if (typeof loadAll === "function") loadAll();
           toast(`${id} pushed to ${client.name} wallet.`);
         }).catch(e => toast(`Could not push ${id} to wallet: ${(e && e.message) || e}`, "error"));
         return;
@@ -11016,7 +11024,7 @@
       }
       window.__nvSb.rpc("admin_cancel_invoice", { p_invoice_id: invoice._uuid }).then(r => {
         if (r && r.error) { toast(`Could not cancel ${id}: ${r.error.message}`, "error"); return; }
-        if (typeof loadAll === "function") loadAll();
+        if (typeof nvRefresh === "function") nvRefresh(["invoices","parcels","clients"]); else if (typeof loadAll === "function") loadAll();
         toast(`${id} cancelled. Parcels returned to the delivered invoice pool.`);
       }).catch(e => toast(`Could not cancel ${id}: ${(e && e.message) || e}`, "error"));
     }
@@ -11051,7 +11059,7 @@
       }
       window.__nvSb.rpc("admin_request_wallet_withdrawal", { p_client_id: client._uuid, p_amount: amount, p_iban: iban, p_speed: speed }).then(r => {
         if (r && r.error) { toast(`Withdrawal request rejected: ${r.error.message}`, "error"); return; }
-        if (typeof loadAll === "function") loadAll();
+        if (typeof nvRefresh === "function") nvRefresh(["withdrawals","clients","wallet_ledger"]); else if (typeof loadAll === "function") loadAll();
         toast(`${client.name} withdrawal sent to admin payout queue.`);
       }).catch(e => toast(`Withdrawal request failed: ${(e && e.message) || e}`, "error"));
     }
@@ -11099,7 +11107,7 @@
         window.__nvSb.rpc("admin_reconcile_wallet_balances", {}).then(r => {
           if (r && r.error) { toast(`Reconciliation failed: ${r.error.message}`, "error"); return; }
           const corrected = Array.isArray(r.data) ? r.data.length : 0;
-          if (typeof loadAll === "function") loadAll();
+          if (typeof nvRefresh === "function") nvRefresh(["clients","wallet_ledger","withdrawals"]); else if (typeof loadAll === "function") loadAll();
           toast(corrected ? `Reconciliation corrected ${corrected} wallet balance(s).` : "Reconciliation ran -- no mismatches found.", "success");
           renderFinanceWallets();
           const drilldown = document.getElementById("walletLedgerDrilldown");
@@ -11130,7 +11138,7 @@
       }
       window.__nvSb.rpc("admin_reject_wallet_withdrawal", { p_withdrawal_id: withdrawal._uuid, p_reason: reason.trim() }).then(r => {
         if (r && r.error) { toast(`Could not reject ${id}: ${r.error.message}`, "error"); return; }
-        if (typeof loadAll === "function") loadAll();
+        if (typeof nvRefresh === "function") nvRefresh(["withdrawals","clients","wallet_ledger"]); else if (typeof loadAll === "function") loadAll();
         toast(`${id} rejected/cancelled. Reserved amount returned to the client's wallet.`, "success");
       }).catch(e => toast(`Could not reject ${id}: ${(e && e.message) || e}`, "error"));
     }
@@ -11163,7 +11171,7 @@
       window.__nvSb.rpc("admin_mark_withdrawal_paid", { p_withdrawal_id: withdrawal._uuid, p_txn_id: txnId, p_paid_by: paidBy, p_proof: proof || null }).then(r => {
         if (r && r.error) { toast(`Could not mark ${id} paid: ${r.error.message}`, "error"); return; }
         closeMarkPaidModal();
-        if (typeof loadAll === "function") loadAll();
+        if (typeof nvRefresh === "function") nvRefresh(["withdrawals","clients","wallet_ledger","payment_logs"]); else if (typeof loadAll === "function") loadAll();
         toast(`${id} marked paid with reference ${txnId}.`);
       }).catch(e => toast(`Could not mark ${id} paid: ${(e && e.message) || e}`, "error"));
     }
@@ -11197,7 +11205,7 @@
         if (r && r.error) { toast(`Adjustment rejected: ${r.error.message}`, "error"); return; }
         if (amountEl) amountEl.value = "";
         if (noteEl) noteEl.value = "";
-        if (typeof loadAll === "function") loadAll();
+        if (typeof nvRefresh === "function") nvRefresh(["clients","wallet_ledger","payment_logs"]); else if (typeof loadAll === "function") loadAll();
         toast(`${client.name} wallet adjusted by ${money(amount)}.`);
       }).catch(e => toast(`Adjustment failed: ${(e && e.message) || e}`, "error"));
     }
@@ -12118,7 +12126,13 @@
         if (r && r.error) { toast(`Could not generate invoice: ${r.error.message}`, "error"); return; }
         const rows = Array.isArray(r.data) ? r.data : (r.data ? [r.data] : []);
         state.invoiceDraftRefs = [];
-        if (typeof loadAll === "function") loadAll();
+        // Targeted: generating an invoice creates the invoice row and stamps
+        // invoice_id/invoiced_at onto the selected parcels (which is what
+        // removes them from the invoiceable pool). Parcels ARE included here
+        // for that reason -- omitting them would leave already-invoiced
+        // parcels showing as still billable.
+        if (typeof nvRefresh === "function") nvRefresh(["invoices","parcels","clients"]);
+        else if (typeof loadAll === "function") loadAll();
         if (!rows.length) {
           toast("Invoice generated.", "success");
           return;
@@ -12165,7 +12179,7 @@
       if (window.__nvSb && invoice._uuid) {
         window.__nvSb.rpc("admin_mark_invoice_paid", { p_invoice_id: invoice._uuid }).then(r => {
           if (r && r.error) { toast(`Could not close ${id}: ${r.error.message}`, "error"); return; }
-          if (typeof loadAll === "function") loadAll();
+          if (typeof nvRefresh === "function") nvRefresh(["invoices","clients","wallet_ledger","payment_logs"]); else if (typeof loadAll === "function") loadAll();
           toast(isDueInvoice ? `${id} marked Paid to NovaX. ${money(invoice.dueToNovax)} delivery charges collected from ${client.name}.` : `${id} closed as Settled. Wallet balance is unaffected -- payouts happen from the withdrawal queue.`);
         }).catch(e => toast(`Could not close ${id}: ${(e && e.message) || e}`, "error"));
         return;
@@ -13240,10 +13254,138 @@
           rebuildShadow();
           loaded=true;
           try{ if(typeof normalizeStateAwbs==="function") normalizeStateAwbs(state); }catch(e){}
-          try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); }catch(e){}
+          nvSaveStateSoon();   // was a synchronous full-state stringify here
           try{ render(); }catch(e){ console.warn("NovaX admin render",e); }
         }).catch(function(e){ console.warn("NovaX admin load failed",e); });
       }
+      /* =====================================================================
+         nvRefresh -- targeted refresh after an action.
+
+         WHY THIS EXISTS
+           Every admin action used to call loadAll(), which refetches 20 tables
+           with a combined ceiling of ~59,000 rows, re-maps all of them,
+           rebuilds the sync shadow, stringifies the whole state into
+           localStorage, and redraws all 11 sub-renderers. Generating one
+           invoice therefore reloaded the entire business. The UI appeared
+           frozen for seconds, so the operator refreshed the page -- which is
+           the exact symptom this fixes.
+
+         WHAT IT DOES
+           Refetches ONLY the tables the action actually changed, then renders
+           once. Every figure still comes from Postgres -- nothing is computed
+           browser-side -- so wallet balances and invoice totals stay exactly
+           as authoritative as they were with loadAll().
+
+         IT REUSES loadAll's OWN MAPPERS (rClient, rInvoice, ...) rather than
+         re-parsing rows itself, so the two paths can never disagree about what
+         a row means.
+
+         Falls back to loadAll() if anything is unexpected, so the worst case
+         is today's behaviour, never a stale screen.
+      ===================================================================== */
+      var NV_REFRESH_SPEC = {
+        clients: {
+          q: function(){ return sb.from("clients").select("*").order("created_at",{ascending:false}).limit(5000); },
+          set: function(d){ state.clients = d.map(rClient); }
+        },
+        invoices: {
+          q: function(){ return sb.from("invoices").select("*").order("created_at",{ascending:false}).limit(5000); },
+          set: function(d){ state.invoices = d.map(rInvoice); }
+        },
+        wallet_ledger: {
+          q: function(){ return sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}).limit(5000); },
+          set: function(d){ state.walletLedger = d.map(rLedger); }
+        },
+        payment_logs: {
+          q: function(){ return sb.from("payment_logs").select("*").order("created_at",{ascending:false}).limit(3000); },
+          set: function(d){ state.paymentLogs = d.map(rPl); }
+        },
+        withdrawals: {
+          q: function(){ return sb.from("withdrawals").select("*").order("created_at",{ascending:false}).limit(3000); },
+          set: function(d){ state.walletWithdrawals = d.map(rWd); }
+        },
+        parcels: {
+          q: function(){ return sb.from("parcels").select("*").order("booked_at",{ascending:false}).limit(5000); },
+          set: function(d){ state.parcels = d.map(rParcel); }
+        }
+      };
+
+      window.nvRefresh = function(tables){
+        if(!loaded || !sb) { if(typeof loadAll==="function") loadAll(); return; }
+        var list = (tables||[]).filter(function(t){ return NV_REFRESH_SPEC[t]; });
+        // Unknown table requested -> do the safe thing rather than skip data.
+        if(!list.length || list.length !== (tables||[]).length){
+          if(typeof loadAll==="function") loadAll();
+          return;
+        }
+
+        // Preserve what the operator is looking at. render() rebuilds the DOM,
+        // which otherwise throws away scroll position and the selected client.
+        var keepScroll = window.pageYOffset || document.documentElement.scrollTop || 0;
+        var keepClientId = (state.client && state.client.id) || null;
+
+        Promise.all(list.map(function(t){ return NV_REFRESH_SPEC[t].q(); })).then(function(res){
+          // If ANY query failed, change nothing and fall back -- a partially
+          // applied refresh on a money screen is worse than a slow one.
+          for(var i=0;i<res.length;i++){
+            if(!res[i] || res[i].error){
+              console.warn("NovaX nvRefresh fell back to loadAll:", res[i] && res[i].error && res[i].error.message);
+              if(typeof loadAll==="function") loadAll();
+              return;
+            }
+          }
+          list.forEach(function(t,i){
+            try{ NV_REFRESH_SPEC[t].set((res[i] && res[i].data) || []); }
+            catch(e){ console.warn("NovaX nvRefresh map failed for "+t, e); }
+          });
+
+          // Re-point the selected client at its refreshed object, so the open
+          // client panel shows the new wallet balance instead of going blank.
+          if(keepClientId){
+            var found = (state.clients||[]).find(function(c){ return c.id===keepClientId; });
+            state.client = found || null;
+          }
+
+          rebuildShadow();
+          try{ if(typeof normalizeStateAwbs==="function") normalizeStateAwbs(state); }catch(e){}
+          nvSaveStateSoon();               // debounced; no longer blocks the click
+          try{ render(); }catch(e){ console.warn("NovaX admin render",e); }
+          // Restore scroll after the DOM settles.
+          requestAnimationFrame(function(){ window.scrollTo(0, keepScroll); });
+        }).catch(function(e){
+          console.warn("NovaX nvRefresh failed, falling back to loadAll", e);
+          if(typeof loadAll==="function") loadAll();
+        });
+      };
+
+      /* Debounced state persistence.
+         JSON.stringify(state) over tens of thousands of rows is a synchronous
+         main-thread freeze, and past roughly 5MB the browser rejects the write
+         anyway -- so the old code paid the full CPU cost on every single action
+         and then silently threw the result away inside a catch. This coalesces
+         writes and reports quota failure once instead of hiding it forever. */
+      var _nvSaveTimer = null;
+      var _nvQuotaWarned = false;
+      function nvSaveStateSoon(){
+        if(_nvSaveTimer) clearTimeout(_nvSaveTimer);
+        _nvSaveTimer = setTimeout(function(){
+          _nvSaveTimer = null;
+          try{
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          }catch(e){
+            // Cache is an optimisation only: Supabase remains the source of
+            // truth, so a failed write costs nothing but is worth knowing about.
+            if(!_nvQuotaWarned){
+              _nvQuotaWarned = true;
+              console.warn("NovaX: local cache write failed (" + ((e&&e.name)||"error") +
+                           "). The portal still works -- data is loaded from Supabase. " +
+                           "This usually means the dataset has outgrown the browser's ~5MB localStorage quota.");
+            }
+          }
+        }, 1500);
+      }
+      window.nvSaveStateSoon = nvSaveStateSoon;
+
       function rebuildShadow(){ shadow={}; SETS.forEach(function(s){ (state[s[0]]||[]).forEach(function(o){ if(o._uuid){ try{ var row=s[1](o); if(row) shadow[o._uuid]=sigOf(row); }catch(e){} } }); }); }
       function isMissingTableError(err){
         var msg=(err&&err.message)||"";
