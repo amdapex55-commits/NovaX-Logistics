@@ -1337,6 +1337,10 @@
       min-width: 170px;
     }
 
+    /* PAID tape — set the moment admin_generate_invoice_v2 stamps invoice_id.
+       Covers returned/refused parcels too, since a return only receives an
+       invoice_id once its delivery charge has been netted off. Display only. */
+    .nv-paid-tape{display:inline-flex;align-items:center;background:#c0392b;color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.8px;padding:2px 7px;border-radius:3px;text-transform:uppercase;box-shadow:0 1px 3px rgba(192,57,43,.35);white-space:nowrap;vertical-align:middle;}
     .clickable-row, .parcel-card {
       cursor: pointer;
     }
@@ -4174,7 +4178,17 @@
     <div style="width:34px;height:34px;border-radius:50%;border:3px solid #cfe4da;border-top-color:#0c7c59;animation:nvGateSpin .8s linear infinite;"></div>
     <div style="font-size:15px;font-weight:700;">Checking account&hellip;</div>
   </div>
-  <style>@keyframes nvGateSpin{to{transform:rotate(360deg)}}</style>
+  <style>@keyframes nvGateSpin{to{transform:rotate(360deg)}}
+  /* ===== Mobile tap-target floor (audit fix) =====
+     Controls sat at 34-38px; 44px is the accessibility floor. MIN height only,
+     under 760px only, so nothing shrinks and desktop is untouched.
+     16px on inputs prevents iOS zooming in on focus (.scan-textarea was 15px,
+     which made the scanner jump the viewport every time it was tapped). */
+  @media (max-width:760px){
+    .tab-btn,.action-btn,.ghost-btn,.hamburger-btn,
+    .segmented button,.tab-strip button{min-height:44px;}
+    input,select,textarea,.scan-textarea{font-size:16px;}
+  }
   <script>
   (function(){
     // NovaX fix (auth separation): the single, earliest, authoritative access
@@ -7665,6 +7679,14 @@
       `;
     }
 
+    /* A parcel counts as paid the moment admin_generate_invoice_v2 stamps
+       invoice_id on it — that is the invoice-generation event, not the wallet
+       push and not the withdrawal. Returned/refused parcels are covered by the
+       same test, because a return is only given an invoice_id once its
+       delivery charge has been deducted on that invoice. Display only. */
+    function nvIsPaidParcel(p){ return !!(p && p.invoiceId); }
+    function nvPaidPill(p){ return nvIsPaidParcel(p) ? '<span class="nv-paid-tape" title="Invoiced &mdash; payment settled">PAID</span>' : ""; }
+
     function renderMetrics() {
       const m = metrics();
       const deliveryRate = percent(m.delivered, m.total);
@@ -7819,7 +7841,7 @@
         const progress = percent(p.stage, p.totalStages);
         return `
           <tr class="clickable-row ${p.awb === state.selectedAwb ? "selected" : ""}" onclick="openClientParcelJourney('${p.awb}')">
-            <td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${p.updated}</span></td>
+            <td><strong>${p.awb}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${p.city} | ${p.updated}</span></td>
             <td>${p.consignee}<br><span class="footer-note">${p.branch}</span></td>
             <td>${money(p.cod)}</td>
             <td>
@@ -8315,7 +8337,7 @@
         const alert = alertForParcel(p);
         return `
           <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${p.awb}')">
-            <td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${p.updated}</span></td>
+            <td><strong>${p.awb}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${p.city} | ${p.updated}</span></td>
             <td>${shortClientCode(client)}<br><strong>${client.name}</strong></td>
             <td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span></td>
             <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">status clock</span></td>
@@ -13053,7 +13075,7 @@
       var DRC={ overnight:250, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 };
       function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||250), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||250)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
-      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", paymentMode:m.paymentMode||"", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", steps:Array.isArray(m.steps)?m.steps:[], proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _exceptionResolved:!!m.exceptionResolved, _exceptionResolutionNote:m.exceptionResolutionNote||"", _exceptionResolvedAt:m.exceptionResolvedAt||"",
+      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", paymentMode:m.paymentMode||"", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", steps:Array.isArray(m.steps)?m.steps:[], proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _exceptionResolved:!!m.exceptionResolved, _exceptionResolutionNote:m.exceptionResolutionNote||"", _exceptionResolvedAt:m.exceptionResolvedAt||"",
         processHistory:Array.isArray(m.processHistory)?m.processHistory:[], lastProcessedBy:m.lastProcessedBy||"", lastProcessedAt:m.lastProcessedAt||"", statusSince:m.statusSince||"", origin:m.origin||"", assignedRiderAt:m.assignedRiderAt||"", journeyStartedAt:m.journeyStartedAt||"",
         // NovaX fix (integration/audit field preservation): surface named
         // Shopify/external-order identity + import fields so admin screens
