@@ -663,7 +663,80 @@
     <div style="width:34px;height:34px;border-radius:50%;border:3px solid #cfe4da;border-top-color:#0c7c59;animation:nvGateSpin .8s linear infinite;"></div>
     <div style="font-size:15px;font-weight:700;">Checking account&hellip;</div>
   </div>
-  <style>@keyframes nvGateSpin{to{transform:rotate(360deg)}}</style>
+  <style>@keyframes nvGateSpin{to{transform:rotate(360deg)}}
+  /* ===== Mobile tap-target floor (audit fix) =====
+     Several controls sat at 32-38px. Apple's guidance is 44px and Android's
+     is 48dp; below that, mis-taps rise sharply on real phones. Applied only
+     under 760px and only as a MIN height, so nothing shrinks and no desktop
+     layout shifts. Font-size 16px on inputs stops iOS zooming the page in
+     when a field is focused — that zoom is what makes forms feel broken. */
+  @media (max-width:760px){
+    .tab-btn,.action-btn,.ghost-btn,.hamburger-btn,.nvcoach-ctl button,
+    .segmented button,.tab-strip button{min-height:44px;}
+    input,select,textarea{font-size:16px;}
+  }
+
+  /* ═══════════ FIX 1 — vertical text on money figures ═══════════
+     `overflow-wrap:anywhere` was applied to 21 selectors including
+     `th,td,.money-box strong` and `.metric strong`. On a narrow column that
+     breaks a figure CHARACTER BY CHARACTER, so "Rs 12,340" renders as a
+     vertical stack. Amounts, AWBs and short labels must never break mid-token;
+     only long free text should. Tables already sit in .wide-scroll containers,
+     so keeping numbers intact scrolls rather than shatters. */
+  .money-box strong,.metric strong,.nv-ins-stat strong,.nv-inc-amt,
+  .nv-doc-box strong,.ops-card-head strong,.awb-field strong,
+  .nv-awb-compact-top strong,.order-log-card strong,.nv-inc-chip{
+    overflow-wrap:normal;word-break:keep-all;white-space:nowrap;
+    font-variant-numeric:tabular-nums;letter-spacing:-.01em;
+  }
+  /* Cells wrap at spaces, never inside a word or number. */
+  th,td{overflow-wrap:break-word;word-break:normal;}
+  td .nv-paid-tape{white-space:nowrap;}
+  /* If a figure is genuinely too wide, shrink it rather than break it. */
+  @media (max-width:560px){
+    .money-box strong,.metric strong{font-size:17px;}
+    .nv-inc-amt{font-size:16px;}
+  }
+
+  /* ═══════════ FIX 2 — dark mode actually applied ═══════════
+     The dark palette was defined correctly but only four selectors used it,
+     while ~50 rules hard-code background:#fff. Result: white panels on a dark
+     page. These overrides point those components at the existing variables.
+     Print surfaces (.awb-label, .nv-doc, #printStage) are deliberately NOT
+     included — labels and invoices print on white paper regardless of theme. */
+  [data-theme="dark"] .panel,[data-theme="dark"] .metric,[data-theme="dark"] .table-wrap,
+  [data-theme="dark"] .money-box,[data-theme="dark"] .ops-card,[data-theme="dark"] .invoice-card,
+  [data-theme="dark"] .parcel-card,[data-theme="dark"] .modal-card,[data-theme="dark"] .log-item,
+  [data-theme="dark"] .journey-item,[data-theme="dark"] .sb-parcel,[data-theme="dark"] .tier-card,
+  [data-theme="dark"] .seller-step,[data-theme="dark"] .order-log-card,[data-theme="dark"] .nv-ins,
+  [data-theme="dark"] .nv-onb,[data-theme="dark"] .nv-trend-panel,[data-theme="dark"] .ticket-cta,
+  [data-theme="dark"] .client-menu,[data-theme="dark"] .search,[data-theme="dark"] .ghost-btn,
+  [data-theme="dark"] .nv-theme-toggle,[data-theme="dark"] .meter,[data-theme="dark"] .nvcoach-bar{
+    background:var(--panel);border-color:var(--line);color:var(--ink);
+  }
+  [data-theme="dark"] .nv-ins-stat,[data-theme="dark"] .nv-inc-chip,
+  [data-theme="dark"] .nv-onboarding-item button{background:var(--panel-soft);border-color:var(--line);color:var(--ink);}
+  [data-theme="dark"] input,[data-theme="dark"] select,[data-theme="dark"] textarea,
+  [data-theme="dark"] .field input,[data-theme="dark"] .field select,[data-theme="dark"] .field textarea,
+  [data-theme="dark"] .review-panel textarea{
+    background:var(--panel-soft);border-color:var(--line);color:var(--ink);
+  }
+  [data-theme="dark"] ::placeholder{color:var(--muted);opacity:1;}
+  [data-theme="dark"] .tab-btn:hover,[data-theme="dark"] .ghost-btn:hover{background:var(--panel-soft);}
+  [data-theme="dark"] .footer-note,[data-theme="dark"] .hint{color:var(--muted);}
+  /* Autopilot widget — it is pure white by default and glares in dark mode. */
+  [data-theme="dark"] .nvauto-panel{background:var(--panel);border-color:var(--line);}
+  [data-theme="dark"] .nvauto-msgs,[data-theme="dark"] .nvauto-chips{background:var(--panel-soft);}
+  [data-theme="dark"] .nvauto-m.b{background:var(--panel);border-color:var(--line);color:var(--ink);}
+  [data-theme="dark"] .nvauto-bar{background:var(--panel);border-color:var(--line);}
+  [data-theme="dark"] .nvauto-bar input{background:var(--panel-soft);border-color:var(--line);color:var(--ink);}
+  [data-theme="dark"] .nvauto-btn{background:var(--panel);border-color:var(--line);}
+  [data-theme="dark"] .nvauto-btn-text b{color:var(--ink);}
+  [data-theme="dark"] .nvauto-chips button,[data-theme="dark"] .nvauto-action-btn{
+    background:var(--panel-soft);border-color:var(--line);color:var(--green-2);
+  }
+  [data-theme="dark"] .nvauto-nudge{background:var(--panel);border-color:var(--line);color:var(--ink);}
+  </style>
   <script>
   (function(){
     // NovaX fix (auth separation): this is the single, earliest, authoritative
