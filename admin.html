@@ -4207,6 +4207,22 @@
     .metric strong{font-size:17px;}
     .nv-settle-row .amt{font-size:15px;}
   }
+
+  /* ═══ Pickup queue: red open-count badge + active state on the 3 buttons ═══ */
+  .nv-pickup-badge{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:22px;height:22px;padding:0 7px;margin-left:8px;
+    border-radius:11px;background:#c0392b;color:#fff;
+    font-size:12px;font-weight:800;line-height:1;vertical-align:middle;
+    font-variant-numeric:tabular-nums;
+    box-shadow:0 1px 4px rgba(192,57,43,.4);
+  }
+  .nv-pickup-badge[hidden]{display:none;}
+  /* the currently-active state of the three pickup buttons */
+  .ghost-btn.nv-pk-on{
+    background:#0c7c59;border-color:#0c7c59;color:#fff;font-weight:700;
+  }
+  .ghost-btn.nv-pk-on:hover{background:#0a6b4d;border-color:#0a6b4d;}
   </style>
   <script>
   (function(){
@@ -5253,7 +5269,7 @@
             <section class="admin-module" id="admin-pickup-requests">
               <div class="panel">
                 <div class="section-head">
-                  <div><h3>Pickup Requests</h3><p>Client pickup requests for New booked AWBs. Assign a rider, mark scheduled, print the manifest, then mark picked up.</p></div>
+                  <div><h3>Pickup Requests <span class="nv-pickup-badge" id="pickupPendingBadge" hidden>0</span></h3><p>Open client pickup requests. Set Unassigned or Assigned while the rider is en route, then mark Picked to clear it from this queue. Marking Picked does not change any parcel status.</p></div>
                 </div>
                 <div class="table-wrap wide-scroll">
                   <table class="desktop-table">
@@ -12699,8 +12715,24 @@
     function renderPickupQueue() {
       const tbody = document.getElementById("pickupRequestQueue");
       if (!tbody) return;
-      const rows = (state.pickupRequests || []).slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-      if (!rows.length) { tbody.innerHTML = `<tr><td colspan="7" class="footer-note">No pickup requests yet.</td></tr>`; return; }
+      /* NovaX: the queue now shows OPEN requests only. Marking one Picked (or
+         Cancelled) clears it from here so the next request has room, without
+         deleting the record — the row still exists in state and in Supabase. */
+      const rows = (state.pickupRequests || [])
+        .filter(r => r && r.status !== "Picked Up" && r.status !== "Cancelled")
+        .slice()
+        .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+
+      /* Red count on the tab heading — how many pickups are still open. */
+      try {
+        const badge = document.getElementById("pickupPendingBadge");
+        if (badge) {
+          badge.textContent = String(rows.length);
+          badge.hidden = rows.length === 0;
+        }
+      } catch (e) {}
+
+      if (!rows.length) { tbody.innerHTML = `<tr><td colspan="7" class="footer-note">No open pickup requests.</td></tr>`; return; }
       tbody.innerHTML = rows.map(req => {
         const client = clientById(req.clientId);
         const clientLabel = labelText(client && client.name, "Unknown client");
@@ -12733,22 +12765,15 @@
         // pickup requests saved before this update still render correctly.
         const PICKUP_CHIP = { Requested: "warn", Assigned: "info", "Rider dispatched": "info", Scheduled: "info", "Picked Up": "good", Cancelled: "bad" };
         const statusChipClass = PICKUP_CHIP[req.status] || "warn";
-        let actions = "";
-        if (req.status === "Requested") {
-          actions += `<button class="ghost-btn" type="button" onclick="markPickupAssigned('${req.id}')">Mark Assigned</button> `;
-        }
-        if (req.status === "Assigned") {
-          actions += `<button class="ghost-btn" type="button" onclick="markPickupDispatched('${req.id}')">Mark Rider Dispatched</button> `;
-        }
-        if (req.status === "Rider dispatched" || req.status === "Scheduled") {
-          actions += `<button class="action-btn" type="button" onclick="markPickedUp('${req.id}')">Mark Picked Up</button> `;
-        }
-        if (req.status === "Rider dispatched" || req.status === "Scheduled" || req.status === "Picked Up") {
-          actions += `<button class="ghost-btn" type="button" onclick="printPickupManifest('${req.id}')">Print Manifest</button> `;
-        }
-        if (req.status !== "Picked Up" && req.status !== "Cancelled") {
-          actions += `<button class="ghost-btn" type="button" onclick="cancelPickupRequest('${req.id}')">Cancel</button>`;
-        }
+        /* NovaX: three states only — Unassigned, Assigned, Picked.
+           The current state is shown as active; the other two are clickable.
+           "Picked" only clears the request from this queue; it deliberately
+           does NOT touch any parcel status. */
+        const isAssigned = (req.status === "Assigned" || req.status === "Rider dispatched" || req.status === "Scheduled");
+        let actions =
+          `<button class="ghost-btn${isAssigned ? "" : " nv-pk-on"}" type="button" onclick="markPickupUnassigned('${req.id}')">Unassigned</button> ` +
+          `<button class="ghost-btn${isAssigned ? " nv-pk-on" : ""}" type="button" onclick="markPickupAssigned('${req.id}')">Assigned</button> ` +
+          `<button class="action-btn" type="button" onclick="markPickedUp('${req.id}')">Picked</button>`;
         return `<tr><td>${clientLabel}</td><td>${(req.awbs || []).length} AWB(s)<div class="footer-note">${awbList}</div></td><td>${labelText(req.pickupAddress, "-")}</td><td>${labelText(req.requestedFor, req.createdAt || "-")}</td><td><span class="chip ${statusChipClass}">${escLabelText(req.status)}</span></td><td><select onchange="assignPickupRider('${req.id}', this.value)" ${req.status === "Picked Up" || req.status === "Cancelled" ? "disabled" : ""}>${riderOptions}</select></td><td>${actions}</td></tr>`;
       }).join("");
     }
@@ -12795,22 +12820,28 @@
       toast(`Pickup request ${req.id} cancelled.`);
     }
 
+    /* NovaX: set a request back to Unassigned without touching parcels. */
+    function markPickupUnassigned(id) {
+      const req = (state.pickupRequests || []).find(r => r.id === id);
+      if (!req) { toast("Pickup request not found."); return; }
+      req.status = "Requested";
+      saveState();
+      renderAdmin();
+      toast(`${req.id} set to Unassigned.`);
+    }
+
+    /* NovaX (changed deliberately): marking Picked now ONLY clears the request
+       from the pickup queue so the next one has room. It no longer moves any
+       parcel from "New booked" to "Collected by rider" — parcel status is
+       driven by rider scans, not by this button. The request row is kept
+       (status "Picked Up") rather than deleted, so the history survives. */
     function markPickedUp(id) {
       const req = (state.pickupRequests || []).find(r => r.id === id);
       if (!req) { toast("Pickup request not found."); return; }
-      if (!window.confirm(`Mark all ${(req.awbs || []).length} AWB(s) in this pickup request as picked up? This moves them from New booked to Collected by rider.`)) return;
-      let moved = 0;
-      (req.awbs || []).forEach(awb => {
-        const p = state.parcels.find(item => item.awb === awb);
-        // NovaX (Pickup Request Flow): setParcelStatus() already appends this
-        // transition into parcel.steps/processHistory, so confirming pickup
-        // here automatically records the pickup event on the parcel journey.
-        if (p && p.status === "New booked") { setParcelStatus(p, "Collected by rider"); moved++; }
-      });
       req.status = "Picked Up";
       saveState();
       renderAdmin();
-      toast(`${req.id} marked picked up. ${moved} parcel(s) moved to Collected by rider.`);
+      toast(`${req.id} cleared from the pickup queue. No parcel status was changed.`);
     }
 
     function printProcessingBatchAwbs() {
