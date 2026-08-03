@@ -6302,8 +6302,13 @@
 
     function ensureTicketFromIssue(sourceKey, payload) {
       state.tickets = Array.isArray(state.tickets) ? state.tickets : [];
-      const existing = state.tickets.find(ticket => ticket.sourceKey === sourceKey && ticket.status !== "Resolved");
+      /* NovaX fix (409 storm): matched on unresolved tickets only, but the DB's
+         unique index on sourceKey ignores status — so a resolved ticket here
+         meant a fresh local row that could never be inserted, retried forever.
+         Reuse the row whatever its status; reopen it if it had been resolved. */
+      const existing = state.tickets.find(ticket => ticket.sourceKey === sourceKey);
       if (existing) {
+        if (existing.status === "Resolved") existing.status = "Open";
         existing.ageHours = Math.max(ticketAgeHours(existing), Number(payload.ageHours || 0));
         existing.escalated = existing.escalated || existing.ageHours >= 24 || payload.escalated;
         if (existing.escalated) existing.to = "Admin Control";
@@ -11817,7 +11822,12 @@
       p.exception = "Awaiting your decision -- please reattempt or return."; p._clientDecisionRequestedAt = new Date().toISOString().slice(0, 10) + " " + time();
       state.tickets = state.tickets || [];
       const sourceKey = `client_decision:${awb}`;
-      if (!state.tickets.some(t => t.sourceKey === sourceKey && t.status !== "Resolved")) {
+      /* NovaX fix (409 storm): this used to exclude Resolved tickets, but the
+         database's unique index on sourceKey is status-agnostic. So once a
+         ticket for this AWB had been resolved, the check passed, a new local
+         ticket was created, and every insert was rejected 409 forever. Match
+         the constraint exactly — one ticket per sourceKey, whatever its status. */
+      if (!state.tickets.some(t => t.sourceKey === sourceKey)) {
         state.tickets.unshift({ id: nextId("TCK", state.tickets), sourceKey, tier: "medium", title: "Client decision needed on " + awb, from: "System", to: "Client Success", branch: p.branch || "", awb, message: p.status + " -- client decision requested for reattempt or return.", createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}`, ageHours: 0, status: "Open", escalated: false, replies: [] });
       }
       saveState(); renderAdmin();
@@ -13414,15 +13424,42 @@
         var msg=(err&&err.message)||"";
         return /could not find the table/i.test(msg) || (err&&err.code==="PGRST205");
       }
+      // Postgres 23505 = unique_violation. PostgREST surfaces it as HTTP 409.
+      function isDuplicateKeyError(err){
+        var msg=(err&&err.message)||"";
+        return (err&&err.code==="23505") || /duplicate key value violates unique constraint/i.test(msg);
+      }
+      /* A duplicate-key insert means the row already exists server-side and this
+         local copy simply lost its link to it. Rather than retrying forever,
+         adopt the existing row's id so future edits become UPDATEs. If the row
+         can't be located, block this object from syncing again this session. */
+      function adoptExistingRow(o, row, table, sig){
+        var key = row && row.meta && row.meta.sourceKey;
+        if(!key){ o._syncBlocked = true; return; }
+        sb.from(table).select("id").eq("meta->>sourceKey", key).limit(1).maybeSingle()
+          .then(function(res){
+            if(res && res.data && res.data.id){
+              o._uuid = res.data.id; shadow[o._uuid] = sig;
+              console.info("NovaX "+table+": re-linked local row to existing "+res.data.id);
+            } else {
+              o._syncBlocked = true;
+            }
+          })
+          .catch(function(){ o._syncBlocked = true; });
+      }
       function syncEntity(arr, build, table){
         if(missingTables[table]) return;
         (arr||[]).forEach(function(o){
-          if(o._pending) return;
+          // _syncBlocked: the server has permanently rejected this row (e.g. a
+          // unique-key conflict). Without this the insert is retried on every
+          // sync tick forever — that is what produced ~1,300 console errors
+          // and a POST storm against the tickets table.
+          if(o._pending || o._syncBlocked) return;
           var row; try{ row=build(o); }catch(e){ return; }
           if(!row) return;
           var sig=sigOf(row);
           if(o._uuid){ if(shadow[o._uuid]===sig) return; shadow[o._uuid]=sig; sb.from(table).update(row).eq("id",o._uuid).then(function(r){ if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else { console.warn("NovaX "+table+" update",r.error.message); } } }); }
-          else { o._pending=true; sb.from(table).insert(row).select("id").maybeSingle().then(function(r){ o._pending=false; if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else { console.warn("NovaX "+table+" insert",r.error.message); } return; } if(r&&r.data){ o._uuid=r.data.id; shadow[o._uuid]=sig; scheduleResync(); } }); }
+          else { o._pending=true; sb.from(table).insert(row).select("id").maybeSingle().then(function(r){ o._pending=false; if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else if(isDuplicateKeyError(r.error)){ adoptExistingRow(o,row,table,sig); } else { console.warn("NovaX "+table+" insert",r.error.message); } return; } if(r&&r.data){ o._uuid=r.data.id; shadow[o._uuid]=sig; scheduleResync(); } }); }
         });
       }
       function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
