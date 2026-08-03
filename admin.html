@@ -4189,6 +4189,24 @@
     .segmented button,.tab-strip button{min-height:44px;}
     input,select,textarea,.scan-textarea{font-size:16px;}
   }
+
+  /* ═══════════ Vertical-text fix (same root cause as the client portal) ═══
+     `overflow-wrap:anywhere` on `th,td`, `.metric strong` and the settlement
+     rows breaks a currency figure character by character once the column gets
+     narrow — "Rs 12,340" becomes a vertical stack. Money, AWBs and short
+     labels must never break mid-token; tables live in scroll containers so an
+     intact figure scrolls instead of shattering. */
+  .metric strong,.nv-settle-row .amt,.nv-settle-row .nm,
+  .awb-field strong,.ticket-route strong,#landing .live-widget strong{
+    overflow-wrap:normal;word-break:keep-all;white-space:nowrap;
+    font-variant-numeric:tabular-nums;letter-spacing:-.01em;
+  }
+  th,td{overflow-wrap:break-word;word-break:normal;}
+  td .nv-paid-tape{white-space:nowrap;}
+  @media (max-width:760px){
+    .metric strong{font-size:17px;}
+    .nv-settle-row .amt{font-size:15px;}
+  }
   </style>
   <script>
   (function(){
