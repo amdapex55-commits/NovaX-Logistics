@@ -742,12 +742,18 @@
      control that morphs into an X when open. No JS needed — the existing click
      handler already sets aria-expanded, so the open state is driven straight
      off that attribute. Markup unchanged. */
+  /* The three bars are absolutely positioned inside a reserved 34px gutter.
+     The earlier version stacked them with negative margins, which let the
+     rotated bars escape the button's box. Absolute positioning inside a
+     position:relative parent guarantees they stay inside it at every angle. */
   .hamburger-btn{
-    width:auto;min-width:0;height:40px;padding:0 13px;
+    position:relative;
+    width:auto;min-width:0;height:40px;
+    padding:0 14px 0 34px;                 /* left gutter holds the icon */
     background:var(--panel);border:1px solid var(--line-strong);
     border-radius:10px;color:var(--ink);
-    display:inline-flex;align-items:center;gap:9px;
-    grid-auto-flow:unset;place-items:unset;
+    display:inline-flex;align-items:center;justify-content:flex-start;
+    gap:0;grid-auto-flow:unset;place-items:unset;overflow:hidden;
     box-shadow:0 1px 2px rgba(21,45,36,.05);
     transition:border-color .18s ease,background .18s ease,box-shadow .18s ease,transform .12s ease;
   }
@@ -755,22 +761,21 @@
   .hamburger-btn:active{transform:scale(.97);}
   .hamburger-btn:focus-visible{outline:2px solid var(--green);outline-offset:2px;}
 
-  /* the three bars, sized as one 16px stack so the X lands centred */
   .hamburger-btn span:not(.hamburger-label){
-    width:16px;height:1.8px;border-radius:2px;background:var(--ink);
-    display:block;transition:transform .24s cubic-bezier(.5,0,.2,1),opacity .16s ease,width .24s ease;
-    transform-origin:center;
+    position:absolute;left:12px;top:50%;
+    width:15px;height:1.8px;margin:0;border-radius:2px;background:var(--ink);
+    display:block;transform-origin:50% 50%;
+    transition:transform .24s cubic-bezier(.5,0,.2,1),opacity .16s ease,width .24s ease;
   }
-  /* pull the bars into a single stack without touching the markup */
-  .hamburger-btn span:nth-of-type(1){margin-bottom:-6.6px;transform:translateY(-4.8px);}
-  .hamburger-btn span:nth-of-type(2){margin-bottom:-6.6px;width:11px;}
-  .hamburger-btn span:nth-of-type(3){transform:translateY(4.8px);}
+  .hamburger-btn span:nth-of-type(1){transform:translateY(-5.5px);}
+  .hamburger-btn span:nth-of-type(2){transform:translateY(-0.9px);width:10px;}
+  .hamburger-btn span:nth-of-type(3){transform:translateY(3.7px);}
 
-  /* open state: top and bottom cross, middle fades */
+  /* open: the outer two cross on the same centre, the middle fades out */
   .hamburger-btn[aria-expanded="true"]{border-color:var(--green);background:var(--mint);}
-  .hamburger-btn[aria-expanded="true"] span:nth-of-type(1){transform:translateY(0) rotate(45deg);}
+  .hamburger-btn[aria-expanded="true"] span:nth-of-type(1){transform:translateY(-0.9px) rotate(45deg);}
   .hamburger-btn[aria-expanded="true"] span:nth-of-type(2){opacity:0;width:0;}
-  .hamburger-btn[aria-expanded="true"] span:nth-of-type(3){transform:translateY(0) rotate(-45deg);}
+  .hamburger-btn[aria-expanded="true"] span:nth-of-type(3){transform:translateY(-0.9px) rotate(-45deg);}
 
   .hamburger-label{font-size:13px;font-weight:650;letter-spacing:-.01em;color:var(--ink);}
   .hamburger-btn[aria-expanded="true"] .hamburger-label{color:var(--green);}
@@ -781,6 +786,97 @@
 
   @media (prefers-reduced-motion:reduce){
     .hamburger-btn,.hamburger-btn span:not(.hamburger-label){transition:none!important;}
+  }
+
+  /* ═════════════════════ POLISH PASS ═════════════════════
+     Six additive improvements. Every rule here either adds a property that
+     did not exist or overrides one safely; none change layout geometry. */
+
+  /* ── 1. Focus states ──────────────────────────────────────────────────
+     There was exactly one :focus-visible rule in the whole portal, so
+     keyboard users got browser defaults or nothing at all. :focus-visible
+     (not :focus) means mouse users never see a ring. */
+  a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,
+  textarea:focus-visible,[tabindex]:focus-visible,summary:focus-visible{
+    outline:2px solid var(--green);outline-offset:2px;border-radius:6px;
+  }
+  .client-tab:focus-visible,.tab-btn:focus-visible{outline-offset:-2px;}
+
+  /* ── 2. Touch feedback ────────────────────────────────────────────────
+     Controls had a 44px tap floor but gave no visual response to a tap, so
+     on a slow connection the app felt unresponsive. A 60ms press is enough
+     to register as "it heard me" before the network replies. */
+  .action-btn,.ghost-btn,.tab-btn,.client-tab,.hamburger-btn,
+  .nvauto-action-btn,.nvauto-chips button,.chip-btn,.nv-onboarding-item button{
+    -webkit-tap-highlight-color:transparent;
+    transition:transform .06s ease,background var(--speed),color var(--speed),border-color var(--speed);
+  }
+  .action-btn:active,.ghost-btn:active,.tab-btn:active,.client-tab:active,
+  .nvauto-action-btn:active,.nvauto-chips button:active{transform:scale(.972);}
+
+  /* ── 3. Consistent numerals ───────────────────────────────────────────
+     Proportional digits make columns of money wobble line to line.
+     tabular-nums fixes every digit to the same width so figures align. */
+  .money-box strong,.metric strong,.nv-inc-amt,.nv-ins-stat strong,
+  .wallet-amt,.invoice-card strong,.nv-doc-box strong,
+  td,th,.mono,.awb-field strong,.nv-awb-compact-top strong{
+    font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;
+  }
+
+  /* ── 4. Skeleton loader ───────────────────────────────────────────────
+     A shimmer block sized like the row it replaces, so content does not
+     shove the layout when it arrives. Add .nv-skel to any placeholder. */
+  .nv-skel{position:relative;overflow:hidden;background:var(--panel-soft);
+    border-radius:var(--radius);min-height:52px;border:1px solid var(--line);}
+  .nv-skel::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);
+    animation:nvShimmer 1.35s infinite;}
+  @keyframes nvShimmer{100%{transform:translateX(100%)}}
+  [data-theme="dark"] .nv-skel::after{background:linear-gradient(90deg,transparent,rgba(255,255,255,.07),transparent);}
+
+  /* ── 5. Empty states ──────────────────────────────────────────────────
+     These containers are filled by JS. While genuinely empty they showed
+     nothing at all — which is most of a new merchant's first ten minutes.
+     :empty stops matching the moment JS writes anything, so this can never
+     cover real content. */
+  #clientParcelCards:empty::after,#newBookedList:empty::after,
+  #clientInvoiceList:empty::after,#clientPaymentHistory:empty::after,
+  #paymentTimeline:empty::after,#orderLogFeed:empty::after,
+  #walletLedgerList:empty::after,#withdrawHistory:empty::after,
+  #pickupEligibleList:empty::after,#pickupRequestList:empty::after,
+  #subAccountList:empty::after,#nvTkList:empty::after,
+  #bulkPreviewList:empty::after,#clientStatusBoard:empty::after{
+    content:"Nothing here yet.";
+    display:block;padding:26px 16px;text-align:center;
+    color:var(--muted);font-size:13.5px;font-weight:600;
+    border:1px dashed var(--line-strong);border-radius:var(--radius);
+    background:var(--panel-soft);
+  }
+  #clientParcelCards:empty::after{content:"No parcels yet — book your first one from New Booking.";}
+  #newBookedList:empty::after{content:"No parcels waiting for pickup.";}
+  #clientInvoiceList:empty::after{content:"No invoices yet. They appear once your delivered parcels are settled.";}
+  #clientPaymentHistory:empty::after{content:"No payments yet.";}
+  #paymentTimeline:empty::after{content:"No invoice in progress right now.";}
+  #orderLogFeed:empty::after{content:"No activity recorded yet.";}
+  #walletLedgerList:empty::after{content:"No wallet activity yet.";}
+  #withdrawHistory:empty::after{content:"No withdrawals requested yet.";}
+  #pickupEligibleList:empty::after{content:"No parcels ready for pickup.";}
+  #pickupRequestList:empty::after{content:"No pickup requests yet.";}
+  #subAccountList:empty::after{content:"No team members added yet.";}
+  #nvTkList:empty::after{content:"No support tickets — nothing needs our attention.";}
+  #clientStatusBoard:empty::after{content:"No parcels to group yet.";}
+
+  /* ── 6. Value-change motion ───────────────────────────────────────────
+     A figure that visibly settles reads as live; the same figure appearing
+     instantly reads as a page refresh. Driven by JS below. */
+  .nv-bump{animation:nvBump .42s cubic-bezier(.34,1.56,.64,1);}
+  @keyframes nvBump{0%{transform:scale(1)}38%{transform:scale(1.085)}100%{transform:scale(1)}}
+  .nv-bump-up{color:var(--green)!important;transition:color .9s ease;}
+  .nv-bump-down{color:var(--amber)!important;transition:color .9s ease;}
+  @media (prefers-reduced-motion:reduce){
+    .nv-skel::after{animation:none}
+    .nv-bump{animation:none}
+    .action-btn:active,.ghost-btn:active,.tab-btn:active,.client-tab:active{transform:none;}
   }
   </style>
   <script>
@@ -4873,6 +4969,60 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     document.querySelectorAll(".client-tab").forEach(b=>b.addEventListener("click",()=>showClientTab(b.dataset.clientTab)));
     document.querySelectorAll("[data-client-tab]:not(.client-tab)").forEach(b=>b.addEventListener("click",()=>showClientTab(b.dataset.clientTab)));
     document.getElementById("clientMenuToggle").addEventListener("click",()=>{ const m=document.getElementById("clientMenu"); const o=m.classList.toggle("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded",String(o)); });
+
+    /* ═══ Value-change motion ═══════════════════════════════════════════
+       When a figure changes, pulse it and tint it green (up) or amber
+       (down) for a moment. Purely cosmetic and strictly observational:
+       it reads textContent and adds a CSS class. It NEVER writes a value,
+       so a displayed number can never be altered or delayed by this.
+       Whole thing is wrapped in try/catch — if it fails the portal is
+       exactly as it was before. */
+    (function nvValueMotion(){
+      try{
+        if(window.__nvValueMotion) return; window.__nvValueMotion=true;
+        if(!("MutationObserver" in window)) return;
+        if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+        var SEL=".money-box strong,.metric strong,.nv-inc-amt,.nv-ins-stat strong";
+        var num=function(t){
+          var m=String(t==null?"":t).replace(/[^0-9.\-]/g,"");
+          var n=parseFloat(m); return isFinite(n)?n:null;
+        };
+        var last=new WeakMap();
+
+        function watch(el){
+          if(!el||last.has(el)) return;
+          last.set(el,num(el.textContent));
+        }
+        function check(el){
+          if(!el) return;
+          var now=num(el.textContent);
+          if(now===null){ return; }
+          if(!last.has(el)){ last.set(el,now); return; }
+          var was=last.get(el);
+          last.set(el,now);
+          if(was===null||was===now) return;
+          var dir=now>was?"nv-bump-up":"nv-bump-down";
+          el.classList.remove("nv-bump","nv-bump-up","nv-bump-down");
+          void el.offsetWidth;                    // restart the animation
+          el.classList.add("nv-bump",dir);
+          setTimeout(function(){ el.classList.remove("nv-bump-up","nv-bump-down"); },1000);
+          setTimeout(function(){ el.classList.remove("nv-bump"); },600);
+        }
+
+        document.querySelectorAll(SEL).forEach(watch);
+
+        var pending=false;
+        var mo=new MutationObserver(function(){
+          if(pending) return; pending=true;
+          requestAnimationFrame(function(){
+            pending=false;
+            try{ document.querySelectorAll(SEL).forEach(check); }catch(e){}
+          });
+        });
+        mo.observe(document.body,{childList:true,subtree:true,characterData:true});
+      }catch(e){ /* cosmetic only — never surface */ }
+    })();
     document.getElementById("clientSearch").addEventListener("input",renderClientParcels);
     document.getElementById("applyDateRangeBtn").addEventListener("click",applyClientDateRange);
     document.getElementById("bookParcelBtn").addEventListener("click",()=>showClientTab("newBooking"));
