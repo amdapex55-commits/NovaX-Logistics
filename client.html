@@ -3914,9 +3914,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var phoneDigits=String(o.phone||"").replace(/\D/g,"");
       if(!/^03\d{9}$/.test(phoneDigits)){ serious.push("Phone number looks incomplete. Use 03XXXXXXXXX."); }
 
-      var addr=String(o.address||"").trim();
-      if(addr.length<8){ serious.push("Address looks too short. Add house/block/area details."); }
-      else if(!/house|block|phase|street|sector|road|colony|town|society|#|no\.|near/i.test(addr)){ minor.push("Address may be missing a house/block/area reference. Delivery could be delayed."); }
+      /* NovaX: address FORMAT checking removed entirely.
+         It second-guessed the merchant about their own customer's address and
+         blocked real bookings — Pakistani addresses legitimately come in forms
+         no keyword list can cover. The address is still REQUIRED (the
+         mandatory-fields check in quickBooking() rejects an empty one), it is
+         simply no longer judged on length, wording or content. */
 
       var cod=Number(o.cod);
       if(o.cod===""||o.cod===null||o.cod===undefined||isNaN(cod)){ serious.push("COD amount is missing. Enter the amount to collect (or 0 for prepaid)."); }
@@ -8139,7 +8142,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          question — it is free, instant and cannot invent a number. The brain
          is only consulted when that engine had nothing ("unknown"), or when
          the request itself failed. */
-      var engineAnswered = res.ok && out && out.reply && out.intent!=="unknown";
+      /* The keyword engine claims an intent for anything containing "parcel",
+         so "which Lahore parcels haven't moved in two days?" comes back as
+         intent:"track" with "Share the AWB and I'll look it up" — an intent
+         label, but not an answer. Treat that dodge as NOT answered so the
+         brain gets a turn. Matched two ways (the needAwb flag and the reply
+         text) so it works regardless of which build of novax-ai-support is
+         deployed. */
+      var engineDodged = !!out && (out.needAwb === true ||
+        /share the awb|tracking number and i'?ll look/i.test(String(out.reply||"")));
+      var engineAnswered = res.ok && out && out.reply && out.intent!=="unknown" && !engineDodged;
       if(!engineAnswered){
         var brain=await tryBrain(text,token);
         loadingEl.remove();
