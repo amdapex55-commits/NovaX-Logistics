@@ -4223,6 +4223,24 @@
     background:#0c7c59;border-color:#0c7c59;color:#fff;font-weight:700;
   }
   .ghost-btn.nv-pk-on:hover{background:#0a6b4d;border-color:#0a6b4d;}
+
+  /* ═══ Tab count badges ═══
+     A red pill on the nav button itself, so pending work is visible without
+     opening the tab. Parent (section) buttons roll up their children's counts. */
+  .admin-nav-main,.admin-subtab{position:relative;}
+  .nv-tab-badge{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:19px;height:19px;padding:0 6px;margin-left:7px;
+    border-radius:10px;background:#c0392b;color:#fff;
+    font-size:11px;font-weight:800;line-height:1;vertical-align:middle;
+    font-variant-numeric:tabular-nums;letter-spacing:0;
+    box-shadow:0 1px 3px rgba(192,57,43,.45);
+    animation:nvBadgeIn .22s ease both;
+  }
+  @keyframes nvBadgeIn{from{transform:scale(.5);opacity:0}to{transform:scale(1);opacity:1}}
+  .nv-tab-badge.nv-amber{background:#b8730c;box-shadow:0 1px 3px rgba(184,115,12,.45);}
+  .admin-nav-main .nv-tab-badge{min-width:20px;height:20px;font-size:11.5px;}
+  @media (prefers-reduced-motion:reduce){.nv-tab-badge{animation:none}}
   </style>
   <script>
   (function(){
@@ -8266,6 +8284,84 @@
       `;
     }
 
+    /* ═══════════ Tab count badges ═══════════
+       Puts a red pill on the nav button itself so pending work is visible
+       without opening the tab. Counts come from the same state the tabs
+       already render, so a badge can never disagree with its own screen.
+
+       Purely additive: it writes a <span> into existing buttons and touches
+       nothing else. Wrapped in try/catch — if a count throws, the badges are
+       skipped and the admin renders exactly as before. */
+    function nvTabCounts(){
+      var P = state.parcels || [], T = state.tickets || [], W = state.walletWithdrawals || [],
+          I = state.invoices || [], PR = state.pickupRequests || [],
+          SL = state.salesLeads || [], SU = state.signupLeads || [], OI = state.operationsIssues || [];
+      var openT = T.filter(function(t){ return t && String(t.status||"") !== "Resolved"; });
+      return {
+        // ── operations
+        "pickup-requests":   PR.filter(function(r){ return r && r.status !== "Picked Up" && r.status !== "Cancelled"; }).length,
+        "orders-processing": P.filter(function(p){ return p && p.status === "New booked"; }).length,
+        // ── tickets
+        "tickets-emergency": openT.filter(function(t){ return t.tier === "emergency"; }).length,
+        "tickets-medium":    openT.filter(function(t){ return t.tier === "medium"; }).length,
+        "tickets-okay":      openT.filter(function(t){ return t.tier !== "emergency" && t.tier !== "medium"; }).length,
+        // ── finance
+        "finance-wallets":   W.filter(function(w){ return w && w.status === "Pending admin payout"; }).length,
+        "finance-invoices":  I.filter(function(v){ return v && v.status === "Generated"; }).length,
+        // ── clients
+        "clients-leads":     SL.filter(function(l){ return l && String(l.status||"") === "New"; }).length
+                             + SU.filter(function(l){ return l && String(l.status||"") !== "workspace_created"; }).length,
+        // ── system
+        "system-errors":     OI.filter(function(o){ return o && String(o.status||"") !== "Resolved"; }).length
+      };
+    }
+
+    /* Parent nav buttons roll up the counts of the sub-tabs beneath them. */
+    var NV_TAB_GROUPS = {
+      "orders":  ["orders-processing"],
+      "tickets": ["tickets-emergency","tickets-medium","tickets-okay"],
+      "finance": ["finance-wallets","finance-invoices"],
+      "clients": ["clients-leads"],
+      "system":  ["system-errors"]
+    };
+
+    function nvRenderTabBadges(){
+      try{
+        var counts = nvTabCounts();
+
+        function paint(btn, n, amber){
+          if (!btn) return;
+          var old = btn.querySelector(".nv-tab-badge");
+          if (!n) { if (old) old.remove(); return; }
+          var txt = n > 99 ? "99+" : String(n);
+          if (old) {
+            if (old.textContent !== txt) old.textContent = txt;
+            old.className = "nv-tab-badge" + (amber ? " nv-amber" : "");
+            return;
+          }
+          var b = document.createElement("span");
+          b.className = "nv-tab-badge" + (amber ? " nv-amber" : "");
+          b.textContent = txt;
+          b.setAttribute("aria-label", txt + " pending");
+          btn.appendChild(b);
+        }
+
+        // 1. buttons that map directly to a counted tab (incl. PICKUP REQUESTS)
+        document.querySelectorAll("[data-admin-tab]").forEach(function(btn){
+          var key = btn.getAttribute("data-admin-tab");
+          if (!(key in counts)) { var o = btn.querySelector(".nv-tab-badge"); if (o) o.remove(); return; }
+          paint(btn, counts[key], key === "finance-invoices" || key === "clients-leads");
+        });
+
+        // 2. collapsible section headers roll up their children
+        //    (the toggle carries data-admin-group-toggle, not data-admin-tab)
+        Object.keys(NV_TAB_GROUPS).forEach(function(grp){
+          var total = NV_TAB_GROUPS[grp].reduce(function(s,k){ return s + (counts[k]||0); }, 0);
+          paint(document.querySelector('[data-admin-group-toggle="'+grp+'"]'), total, grp === "clients");
+        });
+      }catch(e){ console.warn("NovaX tab badges skipped:", e && e.message); }
+    }
+
     function renderAdmin() {
       syncRiderAccess();
       state.activeAdminTab = normalizeAdminTab(state.activeAdminTab);
@@ -9690,6 +9786,8 @@
       renderRider();
       tickMeters();
       if (typeof renderStaffTab === "function") { try { renderStaffTab(); } catch(e){} }
+      // Tab badges last, so they reflect whatever the renders above just produced.
+      if (typeof nvRenderTabBadges === "function") { try { nvRenderTabBadges(); } catch(e){} }
     }
 
     function tickMeters() {
@@ -11028,9 +11126,18 @@
       createInvoice(state.activeInvoiceClient, parcels);
     }
 
+    /* Invoices currently mid-push. The server correctly refuses a second push
+       (it can only run once, from Generated) but that guard was the ONLY thing
+       stopping a double-click: local state still said "Generated" until the
+       refresh landed, so click two sailed through and came back as a scary red
+       error for something that had actually succeeded. This blocks the second
+       click at source. */
+    var NV_PUSH_INFLIGHT = Object.create(null);
+
     function pushInvoiceToWallet(id) {
       const invoice = state.invoices.find(item => item.id === id);
       if (!invoice || invoice.status === "Deleted") return;
+      if (NV_PUSH_INFLIGHT[id]) { toast(`${id} is already being pushed — one moment.`); return; }
       // NovaX fix (invoice-to-wallet journey): Mixed invoices are now split at
       // generation into a COD Settlement invoice and a separate Delivery
       // Charges invoice, so by the time an invoice reaches this function it
@@ -11051,8 +11158,23 @@
       // dropped connection can no longer leave the invoice half-applied
       // (wallet credited but invoice still "unpaid", or vice versa).
       if (window.__nvSb && invoice._uuid) {
+        NV_PUSH_INFLIGHT[id] = true;
         window.__nvSb.rpc("admin_push_invoice_to_wallet", { p_invoice_id: invoice._uuid }).then(r => {
-          if (r && r.error) { toast(`Could not push ${id} to wallet: ${r.error.message}`, "error"); return; }
+          delete NV_PUSH_INFLIGHT[id];
+          if (r && r.error) {
+            var m = String(r.error.message || "");
+            /* "not in a pushable state" means it already went through — that is
+               the guard succeeding, not a failure. Report it as information and
+               resync so the button disappears, instead of a red error for
+               something that actually worked. */
+            if (/not in a pushable state|already/i.test(m)) {
+              toast(`${id} is already in the client's wallet.`);
+              if (typeof nvRefresh === "function") nvRefresh(["invoices","clients","wallet_ledger","payment_logs"]);
+              return;
+            }
+            toast(`Could not push ${id} to wallet: ${m}`, "error");
+            return;
+          }
           // NovaX fix: reload clients/invoices/payment logs straight from
           // Supabase instead of recomputing the wallet credit locally, so the
           // wallet balance shown always matches exactly what the atomic RPC
@@ -11063,7 +11185,12 @@
           if (typeof nvRefresh === "function") nvRefresh(["invoices","clients","wallet_ledger","payment_logs"]);
           else if (typeof loadAll === "function") loadAll();
           toast(`${id} pushed to ${client.name} wallet.`);
-        }).catch(e => toast(`Could not push ${id} to wallet: ${(e && e.message) || e}`, "error"));
+        }).catch(e => {
+          // Must clear here too — otherwise one network blip would lock this
+          // invoice out of ever being pushed again for the rest of the session.
+          delete NV_PUSH_INFLIGHT[id];
+          toast(`Could not push ${id} to wallet: ${(e && e.message) || e}`, "error");
+        });
         return;
       }
       // NovaX fix: this used to fall back to applyPushInvoiceToWalletLocally(),
@@ -12183,10 +12310,24 @@
          deployed yet we silently fall back to it, so this screen keeps
          working either way. */
       const nvGen = (fn, args) => window.__nvSb.rpc(fn, args);
+      /* NovaX fix (invoice generation died instead of falling back):
+         the v2 -> v1 fallback only handled the case where v2 RETURNED an
+         error object. If the v2 call THREW instead — which is what happens on
+         a network-level failure, and "TypeError: Failed to fetch" is exactly
+         that — the .then below was skipped and execution fell to .catch, so
+         admin_generate_invoice was never tried and invoicing simply stopped.
+         Converting a throw into an error object first means one code path
+         handles both, and the fallback actually runs. */
       nvGen("admin_generate_invoice_v2", { p_client_id: client._uuid, p_awbs: awbs, p_net_returns: true })
+        .catch(e => ({ error: { message: String((e && e.message) || e || "network error"), _threw: true } }))
         .then(r => {
-          const missing = r && r.error && /does not exist|not find|schema cache/i.test(r.error.message || "");
-          if (missing) return nvGen("admin_generate_invoice", { p_client_id: client._uuid, p_awbs: awbs });
+          const msg = (r && r.error && r.error.message) || "";
+          const missing = !!msg && /does not exist|not find|schema cache|failed to fetch|networkerror|load failed|fetch/i.test(msg);
+          if (missing) {
+            console.warn("NovaX: admin_generate_invoice_v2 unavailable (" + msg + ") — falling back to admin_generate_invoice.");
+            return nvGen("admin_generate_invoice", { p_client_id: client._uuid, p_awbs: awbs })
+              .catch(e2 => ({ error: { message: String((e2 && e2.message) || e2 || "network error") } }));
+          }
           return r;
         })
         .then(r => {
@@ -13392,6 +13533,62 @@
         }
       };
 
+      /* ── Targeted rebuild + targeted render ──────────────────────────────
+         The refetch was already scoped to the tables that changed, but the
+         work AFTER it was not: rebuildShadow() walked all 15 collections and
+         render() ran all 10 renderers (renderAdmin alone is 839 lines). On a
+         large account that is most of the delay between clicking and seeing
+         the result. Both are now scoped to what actually changed. */
+      function rebuildShadowFor(tables){
+        // NOTE: does not clear `shadow` — only refreshes the affected entries,
+        // otherwise every other collection would look "changed" and resync.
+        SETS.forEach(function(s){
+          if(tables.indexOf(s[2])===-1) return;
+          (state[s[0]]||[]).forEach(function(o){
+            if(!o._uuid) return;
+            try{ var row=s[1](o); if(row) shadow[o._uuid]=sigOf(row); }catch(e){}
+          });
+        });
+      }
+
+      /* Each renderer is called through a thunk so the identifier resolves on
+         the normal scope chain — exactly the way render() already resolves
+         from here. No window[] lookup, no eval. If one is unreachable the
+         try/catch below falls back to a full render rather than half-drawing. */
+      var NV_RENDERERS={
+        metrics:       function(){ renderMetrics(); },
+        admin:         function(){ renderAdmin(); },
+        financeWallet: function(){ renderFinanceWallets(); },
+        wallets:       function(){ renderWallets(); },
+        clientParcels: function(){ renderClientParcels(); }
+      };
+      var NV_RENDER_MAP={
+        clients:       ["metrics","admin","financeWallet"],
+        invoices:      ["metrics","admin","financeWallet"],
+        wallet_ledger: ["financeWallet","wallets"],
+        payment_logs:  ["financeWallet"],
+        withdrawals:   ["financeWallet","wallets","admin"],
+        parcels:       ["metrics","admin","clientParcels"]
+      };
+
+      function nvRenderFor(tables){
+        var want={}, any=false;
+        tables.forEach(function(t){
+          (NV_RENDER_MAP[t]||[]).forEach(function(k){ want[k]=true; any=true; });
+        });
+        // Unmapped table -> we do not know what it affects, so redraw everything.
+        if(!any){ try{ render(); }catch(e){ console.warn("NovaX admin render",e); } return; }
+        var failed=false;
+        Object.keys(want).forEach(function(k){
+          try{ NV_RENDERERS[k](); }
+          catch(e){ failed=true; console.warn("NovaX targeted render ("+k+") failed:",e && e.message); }
+        });
+        // Any renderer missing/throwing means the screen could be half-stale,
+        // which on a money view is worse than being slow. Redraw in full.
+        if(failed){ try{ render(); }catch(e){} return; }
+        try{ if(typeof nvRenderTabBadges==="function") nvRenderTabBadges(); }catch(e){}
+      }
+
       window.nvRefresh = function(tables){
         if(!loaded || !sb) { if(typeof loadAll==="function") loadAll(); return; }
         var list = (tables||[]).filter(function(t){ return NV_REFRESH_SPEC[t]; });
@@ -13428,10 +13625,13 @@
             state.client = found || null;
           }
 
-          rebuildShadow();
+          // Only re-sign the collections we actually refetched, and only run
+          // the renderers those tables affect. Previously both walked
+          // everything, which was most of the wait after each click.
+          rebuildShadowFor(list);
           try{ if(typeof normalizeStateAwbs==="function") normalizeStateAwbs(state); }catch(e){}
           nvSaveStateSoon();               // debounced; no longer blocks the click
-          try{ render(); }catch(e){ console.warn("NovaX admin render",e); }
+          nvRenderFor(list);
           // Restore scroll after the DOM settles.
           requestAnimationFrame(function(){ window.scrollTo(0, keepScroll); });
         }).catch(function(e){
