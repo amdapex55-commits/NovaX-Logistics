@@ -13268,6 +13268,48 @@
       // rest of this session (a normal page reload re-checks it again).
       var missingTables={};
       function scheduleReload(){ clearTimeout(reloadT); reloadT=setTimeout(function(){ try{ loadAll(); }catch(e){} },800); }
+
+      /* ═══════════ Realtime change handler ═══════════
+         THE CAUSE OF THE OUTAGE. Every change on any of 15 watched tables
+         used to call scheduleReload() -> loadAll(), which is 20 queries and
+         up to 59,120 rows. With 122 merchants writing continuously (plus the
+         ticket retry storm) that ran near-permanently in every open admin
+         tab — a feedback loop that held the database at ~75% CPU for a week
+         until it fell over.
+
+         Now: change events are coalesced over a 2s window and refreshed
+         through nvRefresh(), which pulls ONLY the affected tables. A full
+         loadAll() is still possible for tables nvRefresh doesn't know, but
+         is rate-limited to once every 60 seconds no matter how many events
+         arrive. */
+      var NV_LIVE_KNOWN = { clients:1, invoices:1, wallet_ledger:1, payment_logs:1, withdrawals:1, parcels:1 };
+      var nvLivePending = Object.create(null), nvLiveTimer = null, nvLastFullReload = 0;
+
+      function nvLiveChange(table){
+        if (table) nvLivePending[table] = true;
+        if (nvLiveTimer) return;                       // already scheduled
+        nvLiveTimer = setTimeout(function(){
+          nvLiveTimer = null;
+          var tables = Object.keys(nvLivePending);
+          nvLivePending = Object.create(null);
+          if (!tables.length) return;
+
+          var known = tables.filter(function(t){ return NV_LIVE_KNOWN[t]; });
+          var unknown = tables.filter(function(t){ return !NV_LIVE_KNOWN[t]; });
+
+          if (known.length) {
+            try { if (typeof nvRefresh === "function") nvRefresh(known); } catch(e){}
+          }
+          if (unknown.length) {
+            // Only these need the heavy path, and at most once a minute.
+            var now = Date.now();
+            if (now - nvLastFullReload > 60000) {
+              nvLastFullReload = now;
+              scheduleReload();
+            }
+          }
+        }, 2000);
+      }
       function isUuid(v){ return typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v); }
       function dtpart(t){ return t?String(t).replace("T"," ").slice(0,16):""; }
       function dpart(t){ return t?String(t).slice(0,10):new Date().toISOString().slice(0,10); }
@@ -13805,7 +13847,7 @@
           try{
             var liveChannel=sb.channel("novax_admin_live");
             ["clients","riders","parcels","invoices","tickets","expenses","withdrawals","payment_logs","sales_leads","signup_leads","operations_issues","resolved_alerts","manifest_logs","ticket_notifications","staff_users","staff_tickets","staff_activity","pickup_requests"].forEach(function(t){
-              liveChannel.on("postgres_changes",{event:"*",schema:"public",table:t},function(){ scheduleReload(); });
+              liveChannel.on("postgres_changes",{event:"*",schema:"public",table:t},function(){ nvLiveChange(t); });
             });
             liveChannel.subscribe(function(status,err){ if(err) console.warn("NovaX admin realtime",status,err.message||err); });
           }catch(e){ console.warn("NovaX admin realtime",e); }
