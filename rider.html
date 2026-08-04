@@ -250,6 +250,14 @@
       .inline-actions button{flex:1;min-height:46px}
       .ops-card-head{flex-wrap:wrap;gap:4px}
     }
+  /* ===== Mobile tap-target floor (audit fix) =====
+     The rider app is used one-handed, outdoors, often in a hurry — tap targets
+     matter more here than anywhere else in the system. MIN height only, so
+     nothing shrinks. 16px inputs stop iOS zooming on focus. */
+  @media (max-width:760px){
+    .tab-btn,.action-btn,.ghost-btn{min-height:46px;}
+    input,select,textarea{font-size:16px;}
+  }
   </style>
 
   <div class="sig-overlay" id="sigModal">
@@ -831,10 +839,21 @@
     function logRiderError(rpcName, message, severity){
       try{ if(__vsb) __vsb.rpc("log_portal_error",{ p_source:"rider", p_rpc_name:rpcName||null, p_page:location.pathname, p_message:String(message||"").slice(0,300), p_severity:severity||"warning" }); }catch(e){}
     }
-    document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") ping(); });
-    document.addEventListener("click",function(){ setTimeout(ping,150); });
-    setInterval(function(){ if(document.visibilityState==="visible") ping(); },20000);
-    ping();
+    /* NovaX (database load): throttled — see the same change in client.html.
+       Riders tap constantly while scanning, so an unthrottled click ping was
+       one row write per tap. */
+    var __lastPing = 0;
+    function pingThrottled(minGapMs){
+      var now = Date.now();
+      if (now - __lastPing < (minGapMs || 45000)) return;
+      __lastPing = now; ping();
+    }
+    document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") pingThrottled(15000); });
+    document.addEventListener("click",function(){ setTimeout(function(){ pingThrottled(45000); },150); });
+    // 60s instead of 20s, and routed through the throttle so a click and a
+    // tick landing together cannot produce two writes.
+    setInterval(function(){ if(document.visibilityState==="visible") pingThrottled(55000); },60000);
+    __lastPing = Date.now(); ping();
   })();
   </script>
 </body>
