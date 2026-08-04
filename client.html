@@ -7436,10 +7436,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!__vsb) return;
       __vsb.rpc("visitor_ping", { p_session_id:SESSION_ID, p_portal:__PORTAL, p_activity:activityLabel(), p_path:location.pathname+location.hash, p_referrer:document.referrer||"", p_user_agent:navigator.userAgent }).then(function(r){ if(r&&r.error) console.warn("NovaX visitor ping",r.error.message); });
     }
-    document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") ping(); });
-    document.addEventListener("click",function(){ setTimeout(ping,150); });
-    setInterval(function(){ if(document.visibilityState==="visible") ping(); },20000);
-    ping();
+    /* NovaX (database load): presence pings were a 20s timer PLUS a ping on
+       every single click. Across 122 merchants that is ~224,000 row writes a
+       day purely to record "someone is online" — a meaningful share of the
+       load that took the database down. Now: 60s timer, and clicks are
+       throttled to at most one ping every 45s. Same presence signal, roughly
+       a third of the writes. */
+    var __lastPing = 0;
+    function pingThrottled(minGapMs){
+      var now = Date.now();
+      if (now - __lastPing < (minGapMs || 45000)) return;
+      __lastPing = now;
+      ping();
+    }
+    document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") pingThrottled(15000); });
+    document.addEventListener("click",function(){ setTimeout(function(){ pingThrottled(45000); },150); });
+    setInterval(function(){ if(document.visibilityState==="visible") pingThrottled(55000); },60000);
+    __lastPing = Date.now(); ping();
   })();
   </script>
 <!-- ===== NovaX Autopilot: Track. Resolve. Return. Escalate. (standalone, deterministic, DB-driven) ===== -->
