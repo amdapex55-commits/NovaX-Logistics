@@ -4141,7 +4141,11 @@
     function redirectAway(url){ clearLocalSession(); window.location.replace(url); }
     var __gsb=null;
     try{ __gsb=window.__nvSb||null; if(!__gsb&&window.supabase&&window.supabase.createClient){ __gsb=window.supabase.createClient(__SB_URL,__SB_KEY); } }catch(__e){}
+    // NovaX fix: publish the gate's client so the data layer below reuses this
+    // exact instance instead of constructing a second GoTrueClient on the same
+    // storage key.
     window.__nvGuardSb=__gsb;
+    if(__gsb && !window.__nvSb) window.__nvSb=__gsb;
     function denyWithError(){
       try{ if(__gsb&&__gsb.auth) __gsb.auth.signOut(); }catch(e){}
       redirectAway("index.html?authError=1");
@@ -6033,9 +6037,41 @@ operations: "ops-exceptions",
       }
     }
 
-    function saveState() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    /* NovaX fix (portal lag): saveState() used to run a synchronous
+       JSON.stringify(state) + localStorage.setItem on EVERY call, and it is
+       called 82 times -- after each status change, invoice action, wallet push,
+       assignment, etc. With thousands of parcels/invoices/ledger rows loaded,
+       that is megabytes of JSON serialised on the main thread per click, which
+       is what made generating an invoice and pushing to wallet feel frozen.
+
+       The write is now coalesced: many calls in the same burst produce ONE
+       write ~400ms later. Correctness is unaffected because this cache is only
+       an optimisation -- Supabase is the source of truth -- and the pending
+       write is flushed synchronously on pagehide/tab-hide so nothing is lost
+       on refresh, navigation or close. nvSaveStateNow() forces an immediate
+       write if a caller ever needs one. */
+    var _nvSaveT = null, _nvSaveWarned = false;
+    function nvWriteStateNow() {
+      if (_nvSaveT) { clearTimeout(_nvSaveT); _nvSaveT = null; }
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) {
+        if (!_nvSaveWarned) {
+          _nvSaveWarned = true;
+          console.warn("NovaX: local cache write failed (" + ((e && e.name) || "error") +
+            "). The portal still works -- data is loaded from Supabase.");
+        }
+      }
     }
+    function saveState() {
+      if (_nvSaveT) clearTimeout(_nvSaveT);
+      _nvSaveT = setTimeout(nvWriteStateNow, 400);
+    }
+    window.nvSaveStateNow = nvWriteStateNow;
+    window.addEventListener("pagehide", function () { if (_nvSaveT) nvWriteStateNow(); });
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden" && _nvSaveT) nvWriteStateNow();
+    });
 
     // NovaX fix (Medium #5, mirrored from client.html): removed the
     // `|| state.parcels[0]` fallback. If the selected AWB doesn't match a
@@ -7667,14 +7703,19 @@ operations: "ops-exceptions",
     function renderWallets() {
       const m = metrics();
       const cm = clientMetrics();
-      const clientAvailable = Math.max(0, state.client.walletTopup - state.client.shippingDue);
+      // NovaX fix (portal not updating after actions): state.client is null
+      // by design until an admin picks a client from the Client Menu. This used
+      // to dereference it unguarded, so render() threw here and renderAdmin(),
+      // renderRider(), tickMeters() and the tab badges below it never ran.
+      const sc = state.client || { walletTopup: 0, shippingDue: 0, subAccounts: 0, premiumTier: "" };
+      const clientAvailable = Math.max(0, (sc.walletTopup || 0) - (sc.shippingDue || 0));
       const paidRefs = paidParcelRefs();
       const branchCashInHand = state.parcels.filter(p => isCashCollectedParcel(p) && !paidRefs.has(p.awb)).reduce((sum, p) => sum + p.cod, 0);
       const riderReceivableTotal = state.riders.reduce((sum, rider) => sum + riderReceivable(rider.id), 0);
       document.getElementById("clientWallet").innerHTML = [
         moneyBox("COD payable", money(cm.payable), "Your account only"),
-        moneyBox("Shipping wallet", money(clientAvailable), `${state.client.premiumTier} tier balance`),
-        moneyBox("Sub accounts", state.client.subAccounts, "role based permissions"),
+        moneyBox("Shipping wallet", money(clientAvailable), state.client ? `${sc.premiumTier || "No"} tier balance` : "No client selected"),
+        moneyBox("Sub accounts", sc.subAccounts || 0, "role based permissions"),
         moneyBox("Fast settlement", "T+1 ready", "premium fintech path")
       ].join("");
 
@@ -9329,18 +9370,27 @@ operations: "ops-exceptions",
       if (changed) saveState();
     }
 
+    // NovaX fix (partial-render outage): these used to be bare calls, so the
+    // FIRST one that threw aborted render() and every renderer after it was
+    // skipped with no visible error -- the screen simply stopped updating until
+    // a hard refresh. Each step is now isolated: a failure is logged loudly and
+    // the remaining renderers still run.
+    function nvStep(name, fn) {
+      try { fn(); }
+      catch (e) { console.error("NovaX render step failed: " + name, e); }
+    }
     function render() {
-      normalizeStateShape();
-      syncRidersFromUsers();
-      renderMetrics();
-      renderClientParcels();
-      renderJourney();
-      renderWallets();
-      renderAi();
-      renderClientModules();
-      renderAdmin();
-      renderRider();
-      tickMeters();
+      nvStep("normalizeStateShape", normalizeStateShape);
+      nvStep("syncRidersFromUsers", syncRidersFromUsers);
+      nvStep("renderMetrics", renderMetrics);
+      nvStep("renderClientParcels", renderClientParcels);
+      nvStep("renderJourney", renderJourney);
+      nvStep("renderWallets", renderWallets);
+      nvStep("renderAi", renderAi);
+      nvStep("renderClientModules", renderClientModules);
+      nvStep("renderAdmin", renderAdmin);
+      nvStep("renderRider", renderRider);
+      nvStep("tickMeters", tickMeters);
       if (typeof renderStaffTab === "function") { try { renderStaffTab(); } catch(e){} }
       // Tab badges last, so they reflect whatever the renders above just produced.
       if (typeof nvRenderTabBadges === "function") { try { nvRenderTabBadges(); } catch(e){} }
@@ -12660,7 +12710,13 @@ operations: "ops-exceptions",
       var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
       var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
       if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, local only."); return; }
-      var sb; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); return; }
+      // NovaX fix ("Multiple GoTrueClient instances detected"): the auth gate
+      // above already built a client on the default storage key. Creating a
+      // second one here meant two GoTrueClients auto-refreshing the SAME session
+      // token concurrently, which races and causes intermittent 401s, retries
+      // and the lag that follows. Reuse the existing instance when there is one.
+      var sb; try{ sb=window.__nvSb||window.__nvGuardSb||window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); return; }
+      if(!sb){ console.warn("NovaX: cloud init failed, local only."); return; }
       window.__nvSb=sb;
       if (typeof refreshProcessingAccess === "function") { try { refreshProcessingAccess(); } catch(e){ console.warn("NovaX: processing access check failed", e); } }
       var sbSignup=null; try{ sbSignup=window.supabase.createClient(SB_URL,SB_KEY,{ auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:"sb-nv-admin-signup-client" } }); }catch(e){ console.warn("NovaX: signup client init failed.",e); }
