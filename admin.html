@@ -1624,135 +1624,24 @@
       border: 1px solid rgba(31,209,142,.18);
     }
 
-    .ticket-hub {
-      margin-bottom: 14px;
-      border-color: rgba(31, 209, 142, .18);
-      background:
-        radial-gradient(circle at 8% 20%, rgba(31,209,142,.14), transparent 30%),
-        linear-gradient(145deg, rgba(18,56,41,.72), rgba(8,16,13,.94));
-      padding: 0;
-      overflow: hidden;
-    }
 
-    .ticket-hub-tab {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      width: 100%;
-      justify-content: flex-start;
-      padding: 14px 18px;
-      background: transparent;
-      color: var(--ink);
-      font-weight: 800;
-      font-size: 15px;
-      letter-spacing: .01em;
-    }
 
-    .ticket-hub-tab-label { flex: 0 0 auto; }
 
-    .ticket-hub-count {
-      flex: 0 0 auto;
-      min-width: 24px;
-      text-align: center;
-      padding: 2px 10px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.12);
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 800;
-    }
 
-    .ticket-hub-count.has-alerts {
-      background: #e5484d;
-      color: #fff;
-      box-shadow: 0 0 0 3px rgba(229,72,77,.18);
-    }
 
-    .ticket-hub-caret {
-      margin-left: auto;
-      transition: transform .2s ease;
-      opacity: .7;
-    }
 
-    .ticket-hub:not(.collapsed) .ticket-hub-caret { transform: rotate(180deg); }
 
-    .ticket-hub-body { padding: 0 18px 18px; }
 
-    .ticket-hub.collapsed .ticket-hub-body { display: none; }
 
-    .ticket-hub .mini-form {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
 
-    .ticket-hub textarea,
-    .ticket-reply textarea {
-      min-height: 74px;
-      resize: none;
-      overflow-wrap: anywhere;
-    }
 
-    .ticket-board {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-    }
 
-    .ticket-card {
-      position: relative;
-      overflow: hidden;
-    }
 
-    .ticket-card.escalated::before {
-      content: "24H ESCALATED";
-      position: absolute;
-      top: 12px;
-      right: -34px;
-      width: 150px;
-      transform: rotate(35deg);
-      background: linear-gradient(135deg, #c6281e, #ff6b5c);
-      color: #fff;
-      text-align: center;
-      font-size: 10px;
-      font-weight: 950;
-      letter-spacing: .06em;
-      padding: 4px 0;
-      box-shadow: 0 10px 22px rgba(255,107,92,.2);
-    }
 
-    .ticket-meta {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin: 8px 0;
-    }
 
-    .ticket-route {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-      gap: 8px;
-      align-items: center;
-      color: var(--muted);
-      font-weight: 800;
-      margin-top: 8px;
-    }
 
-    .ticket-route strong {
-      color: var(--ink);
-      overflow-wrap: anywhere;
-    }
 
-    .ticket-reply {
-      display: grid;
-      grid-template-columns: minmax(0, 1.4fr) minmax(180px, .6fr) auto;
-      gap: 8px;
-      align-items: end;
-      margin-top: 10px;
-    }
 
-    .ticket-notice {
-      border: 1px solid rgba(29,111,159,.22);
-      background: linear-gradient(135deg, rgba(29,111,159,.14), rgba(7,16,13,.62));
-    }
 
     .filter-bar {
       display: grid;
@@ -2951,18 +2840,8 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      .ticket-hub .mini-form,
-      .ticket-board {
-        grid-template-columns: 1fr;
-      }
 
-      .ticket-reply {
-        grid-template-columns: 1fr;
-      }
 
-      .ticket-hub .field {
-        grid-column: auto !important;
-      }
 
       .grid.three {
         grid-template-columns: 1fr;
@@ -3985,8 +3864,6 @@
     .processing-desk,
     .processing-preview,
     .processing-console,
-    .ticket-hub,
-    .ticket-board,
     .wallet-hero,
     .ops-card,
     .money-box {
@@ -4075,7 +3952,6 @@
       .processing-desk,
       .manifest-grid,
       .demanifest-grid,
-      .ticket-hub .mini-form,
       .finance-grid,
       .client-grid,
       .users-grid,
@@ -4171,6 +4047,10 @@
     .manifest-sign-line { flex: 1; border-top: 1px solid #333; padding-top: 2mm; font-size: 11px; text-align: center; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Local QR + Code128 generator. Loads before the app script so qrUrl()/
+       barcodeUrl() find it. If this file 404s, both functions fall back to the
+       hosted services, so a label is never blank. -->
+  <script src="nv-codegen.js"></script>
 </head>
 <!-- AUTH_GATE_VERSION: 2026-07-16-role-hard-stop-v2 -->
 <body>
@@ -4197,7 +4077,7 @@
      labels must never break mid-token; tables live in scroll containers so an
      intact figure scrolls instead of shattering. */
   .metric strong,.nv-settle-row .amt,.nv-settle-row .nm,
-  .awb-field strong,.ticket-route strong,#landing .live-widget strong{
+  .awb-field strong,#landing .live-widget strong{
     overflow-wrap:normal;word-break:keep-all;white-space:nowrap;
     font-variant-numeric:tabular-nums;letter-spacing:-.01em;
   }
@@ -4794,18 +4674,6 @@
               <button type="button" class="admin-nav-main" data-admin-tab="pickup-requests">PICKUP REQUESTS</button>
 
 
-              <div class="admin-nav-group" data-admin-group="tickets">
-                <button type="button" class="admin-nav-main" data-admin-group-toggle="tickets" aria-expanded="false">
-                  <span>TICKETS</span><span class="chevron">v</span>
-                </button>
-                <div class="admin-subnav">
-                  <button type="button" class="admin-subtab" data-admin-tab="tickets-emergency">Emergency</button>
-                  <button type="button" class="admin-subtab" data-admin-tab="tickets-medium">Medium</button>
-                  <button type="button" class="admin-subtab" data-admin-tab="tickets-okay">Okay</button>
-                  <button type="button" class="admin-subtab" data-admin-tab="tickets-summary">Summary</button>
-                  <button type="button" class="admin-subtab" data-admin-tab="tickets-resolved">Resolved</button>
-                </div>
-              </div>
 
               <div class="admin-nav-group" data-admin-group="riders">
                 <button type="button" class="admin-nav-main" data-admin-group-toggle="riders" aria-expanded="false">
@@ -4882,33 +4750,6 @@
           </aside>
 
           <div class="admin-content">
-            <div class="panel ticket-hub collapsed" id="ticketHubPanel">
-              <button type="button" class="ticket-hub-tab" id="ticketHubToggle" onclick="toggleTicketHub()">
-                <span class="ticket-hub-tab-label">🎫 Ticket Hub</span>
-                <span class="ticket-hub-count" id="ticketHubCount">0</span>
-                <span class="ticket-hub-caret">▾</span>
-              </button>
-              <div class="ticket-hub-body">
-              <div class="section-head">
-                <div>
-                  <h3>Ticket Hub</h3>
-                  <p>Create a logged issue from any admin screen. Tickets route to the selected branch/team, carry a 24-hour clock, and escalate to admin if unresolved.</p>
-                </div>
-                <span class="chip warn" id="ticketOpenBadge">0 open</span>
-              </div>
-              <div class="mini-form">
-                <div class="field"><label>Issue title</label><input id="ticketTitle" placeholder="Missing CN, fake refusal, cash issue"></div>
-                <div class="field"><label>CN Number / AWB (optional)</label><input id="ticketAwb" name="ticketCnNumber" autocomplete="off" autocapitalize="characters" placeholder="SAMPLE-AWB-1"></div>
-                <div class="field"><label>From</label><select id="ticketFrom"><option>Customer Support</option><option>Warehouse</option><option>Lahore Branch</option><option>Karachi Branch</option><option>Admin Control</option><option>Finance</option></select></div>
-                <div class="field"><label>Send to</label><select id="ticketTo"><option>Lahore Branch Manager</option><option>Karachi Branch Manager</option><option>Islamabad Branch Manager</option><option>Rawalpindi Branch Manager</option><option>Warehouse Manager</option><option>Rider Manager</option><option>Finance Manager</option><option>Admin Control</option></select></div>
-                <div class="field"><label>Tier</label><select id="ticketTier"><option value="emergency">Emergency</option><option value="medium">Medium</option><option value="okay">Okay</option></select></div>
-                <div class="field"><label>Branch</label><select id="ticketBranch"><option>Lahore Hub</option><option>Karachi Hub</option><option>Islamabad Hub</option><option>Rawalpindi Hub</option><option>Finance</option><option>Admin</option></select></div>
-                <div class="field" style="grid-column: span 2"><label>Message</label><textarea id="ticketMessage" placeholder="Write the exact problem, proof needed, and who must act."></textarea></div>
-                <button class="action-btn" id="createTicketBtn">Create Ticket</button>
-              </div>
-              <div class="ops-list" id="ticketNotificationList" style="margin-top:12px"></div>
-              </div>
-            </div>
             <section class="admin-module active" id="admin-dashboard">
               <div class="grid metrics" id="adminMetrics"></div>
               <div class="panel" style="margin-top:14px">
@@ -4944,7 +4785,7 @@
                   <button class="ghost-btn" onclick="showAdminTab('finance-wallets')">Open Payout Queue</button>
                   <button class="ghost-btn" onclick="showAdminTab('api-shopify')">Open Shopify Connections</button>
                   <button class="ghost-btn" onclick="showAdminTab('system-errors')">Open Error Monitor</button>
-                  <button class="ghost-btn" onclick="showAdminTab('tickets-summary')">Open Tickets</button>
+                  
                 </div>
               </div>
               <div class="grid two" style="margin-top:14px">
@@ -5133,12 +4974,12 @@
                 <div class="section-head">
                   <div>
                     <h3>Exception Control Room</h3>
-                    <p>Every broken or problem parcel in one place: delayed/stuck, refused, consignee not available, return pending, fake attempt/proof dispute, rider cash holding, missing proof, and unresolved tickets linked to an AWB.</p>
+                    <p>Every broken or problem parcel in one place: delayed/stuck, refused, consignee not available, return pending, fake attempt/proof dispute, rider cash holding, and missing proof.</p>
                   </div>
                 </div>
                 <div class="filter-bar" style="grid-template-columns:repeat(4,minmax(0,1fr))">
                   <div class="field"><label>Branch/City</label><select id="excBranchFilter" onchange="renderExceptionControlRoom()"><option value="">All branches</option></select></div>
-                  <div class="field"><label>Issue type</label><select id="excIssueFilter" onchange="renderExceptionControlRoom()"><option value="">All issue types</option><option>Refused</option><option>Consignee not available</option><option>Delayed over SLA</option><option>Reattempt needed</option><option>Return pending</option><option>Return in transit</option><option>Proof missing</option><option>Client decision needed</option><option>Unresolved ticket linked to AWB</option><option>Fake attempt / proof dispute</option><option>Rider cash holding</option></select></div>
+                  <div class="field"><label>Issue type</label><select id="excIssueFilter" onchange="renderExceptionControlRoom()"><option value="">All issue types</option><option>Refused</option><option>Consignee not available</option><option>Delayed over SLA</option><option>Reattempt needed</option><option>Return pending</option><option>Return in transit</option><option>Proof missing</option><option>Client decision needed</option><option>Fake attempt / proof dispute</option><option>Rider cash holding</option></select></div>
                   <div class="field"><label>Urgency</label><select id="excUrgencyFilter" onchange="renderExceptionControlRoom()"><option value="">All urgency</option><option value="critical">Critical</option><option value="warning">Watch</option><option value="normal">Normal</option></select></div>
                   <div class="field"><label>Client</label><select id="excClientFilter" onchange="renderExceptionControlRoom()"><option value="">All clients</option></select></div>
                 </div>
@@ -5323,7 +5164,7 @@
                       <label class="check-line"><input type="checkbox" data-user-permission value="orders-processing"> Order processing</label>
                       <label class="check-line"><input type="checkbox" data-user-permission value="manifest"> Manifest</label>
                       <label class="check-line"><input type="checkbox" data-user-permission value="demanifest"> Demanifest</label>
-                      <label class="check-line"><input type="checkbox" data-user-permission value="tickets"> Tickets</label>
+                      
                       <label class="check-line"><input type="checkbox" data-user-permission value="finance-expense"> Expenses</label>
                       <label class="check-line"><input type="checkbox" data-user-permission value="finance-invoices"> Invoices</label>
                       <label class="check-line"><input type="checkbox" data-user-permission value="clients"> Clients</label>
@@ -5346,7 +5187,7 @@
 
             <section class="admin-module" id="admin-reports">
               <div class="panel">
-                <div class="section-head"><div><h3>Total Summary</h3><p>Smart command summary across orders, manifests, tickets, riders, finance, clients, and operations.</p></div></div>
+                <div class="section-head"><div><h3>Total Summary</h3><p>Smart command summary across orders, manifests, riders, finance, clients, and operations.</p></div></div>
                 <div class="grid metrics" id="adminReportMetrics"></div>
                 <div class="grid two" style="margin-top:14px">
                   <div class="panel soft-panel"><div class="section-head"><div><h3>What Needs Attention</h3><p>Late, missing, disputed, cash-risk, and process weaknesses.</p></div></div><div class="ops-list" id="totalSummaryIssues"></div></div>
@@ -5466,42 +5307,10 @@
               </div>
             </section>
 
-            <section class="admin-module" id="admin-tickets-emergency">
-              <div class="panel">
-                <div class="section-head"><div><h3>Emergency Tickets</h3><p>24-hour breaches, missing CNs, fake return/refusal, rider cash exposure, and escalated branch tickets.</p></div><span class="siren-chip">Support + AI now</span></div>
-                <div class="grid metrics" id="ticketEmergencyMetrics"></div>
-                <div class="ticket-board" id="ticketEmergencyList" style="margin-top:14px"></div>
-              </div>
-            </section>
 
-            <section class="admin-module" id="admin-tickets-medium">
-              <div class="panel">
-                <div class="section-head"><div><h3>Medium Tickets</h3><p>Directed branch or warehouse issues that need action before the 24-hour escalation clock hits admin.</p></div></div>
-                <div class="ticket-board" id="ticketMediumList"></div>
-              </div>
-            </section>
 
-            <section class="admin-module" id="admin-tickets-okay">
-              <div class="panel">
-                <div class="section-head"><div><h3>Okay Tickets</h3><p>Low-risk follow-ups, remarks, proof checks, and non-urgent operational communication.</p></div></div>
-                <div class="ticket-board" id="ticketOkayList"></div>
-              </div>
-            </section>
 
-            <section class="admin-module" id="admin-tickets-summary">
-              <div class="panel">
-                <div class="section-head"><div><h3>Ticket Summary</h3><p>Interconnected communication hub: open tickets, escalation health, owner routing, repeated issues, and missed 24-hour timers.</p></div></div>
-                <div class="grid metrics" id="ticketSummaryMetrics"></div>
-                <div class="ops-list" id="ticketSummaryList" style="margin-top:14px"></div>
-              </div>
-            </section>
 
-            <section class="admin-module" id="admin-tickets-resolved">
-              <div class="panel">
-                <div class="section-head"><div><h3>Resolved Tickets</h3><p>Every closed ticket stores the reply, proof reference, resolver, solve timer, and notification back to the person who opened it.</p></div></div>
-                <div class="ops-list" id="ticketResolvedList"></div>
-              </div>
-            </section>
 
             <section class="admin-module" id="admin-riders-report">
               <div class="panel">
@@ -5751,7 +5560,7 @@
                 <div class="grid two" id="healthCheckGrid" style="margin-top:12px"></div>
               </div>
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Latest activity snapshot</h3><p>Most recent Shopify import, AI ticket, withdrawal, and invoice push -- so you can spot a stuck flow at a glance.</p></div></div>
+                <div class="section-head"><div><h3>Latest activity snapshot</h3><p>Most recent Shopify import, withdrawal, and invoice push -- so you can spot a stuck flow at a glance.</p></div></div>
                 <div class="grid two" id="healthActivityGrid"></div>
               </div>
             </section>
@@ -5934,7 +5743,6 @@
         { id: "USR-002", name: "Ali Ops", role: "Branch Manager", branch: "Islamabad Hub", clientId: "SAMPLE-OFFLINE-2", status: "Active" },
         { id: "USR-003", name: "Mina Support", role: "Client Support", branch: "Lahore Hub", clientId: "SAMPLE-OFFLINE-3", status: "Active" }
       ],
-      staffTickets: [],
       staffActivity: [],
       staffSeeded: false,
       branches: [
@@ -6099,13 +5907,6 @@
       ],
       resolvedAlerts: [
         { id: "DONE-001", awb: "SAMPLE-AWB-1", branch: "Islamabad Hub", resolvedBy: "Ali Ops", reason: "Address corrected and branch confirmed rider route.", solvedHours: 1.4, resolvedAt: "2026-06-24 09:52" }
-      ],
-      tickets: [
-        { id: "TCK-0001", sourceKey: "parcel:SAMPLE-AWB-4:critical", tier: "emergency", title: "Transit over 3 days", from: "Customer Support", to: "Lahore Branch Manager", branch: "Lahore Hub", awb: "SAMPLE-AWB-4", message: "Parcel is over transit SLA and needs branch proof before client asks again.", createdAt: "2026-06-25 07:45", ageHours: 25, status: "Open", escalated: true, replies: [] },
-        { id: "TCK-0002", sourceKey: "parcel:SAMPLE-AWB-3:refusal", tier: "medium", title: "Refused delivery needs review", from: "Customer Support", to: "Lahore Branch Manager", branch: "Lahore Hub", awb: "SAMPLE-AWB-3", message: "Consignee denies refusal attempt. Branch must verify rider input and proof.", createdAt: "2026-06-26 01:10", ageHours: 7, status: "Open", escalated: false, replies: [] }
-      ],
-      ticketNotifications: [
-        { text: "TCK-0001 escalated to Admin Control after 24h SLA breach.", at: "2026-06-26 08:00", level: "bad" }
       ]
     };
 
@@ -6148,8 +5949,6 @@
         resolvedAlerts: [],
         walletWithdrawals: [],
         pickupRequests: [],
-        tickets: [],
-        ticketNotifications: [],
         lastBulkAwbs: [],
         walletWithdrawSpeed: "",
         activeClientTab: "dashboard"
@@ -6169,7 +5968,6 @@
     const ADMIN_NAV_GROUPS = {
       orders: ["orders-view-all", "orders-book", "orders-report", "orders-processing", "orders-manifest", "orders-demanifest"],
       manifest: ["manifest-summary", "manifest-transit", "manifest-reached", "manifest-dispute"],
-      tickets: ["tickets-emergency", "tickets-medium", "tickets-okay", "tickets-summary", "tickets-resolved"],
       riders: ["riders-route", "riders-report", "riders-summary"],
       finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-dues", "finance-balances", "finance-summary", "finance-overall", "finance-revenue"],
       clients: ["clients-summary", "clients-leads", "clients-create-new", "clients-clients"],
@@ -6181,7 +5979,7 @@
     const ADMIN_TAB_ALIASES = {
       orders: "orders-view-all",
       clients: "clients-clients",
-      operations: "tickets-emergency",
+operations: "ops-exceptions",
       transit: "manifest-transit",
       riders: "riders-route",
       payments: "finance-invoices",
@@ -6216,12 +6014,22 @@
       return Object.entries(ADMIN_NAV_GROUPS).find(([, tabs]) => tabs.includes(id))?.[0] || "";
     }
 
+    // NovaX fix (blank-portal on older browsers): structuredClone needs
+    // Chrome 98+ / Safari 15.4+. It used to be called in BOTH the try and the
+    // catch, so on an older browser the catch threw the same ReferenceError,
+    // nothing caught it, and the whole admin portal rendered blank with no
+    // error shown. baseState is plain JSON data, so a JSON round-trip is a
+    // safe fallback. Same fix already applied in client.html and rider.html.
+    function nvClone(o){
+      try{ if (typeof structuredClone === "function") return structuredClone(o); }catch(e){}
+      try{ return JSON.parse(JSON.stringify(o)); }catch(e){ return {}; }
+    }
     function loadState() {
       try {
         const saved = localStorage.getItem(STORAGE_KEY);
-        return saved ? JSON.parse(saved) : structuredClone(baseState);
+        return saved ? JSON.parse(saved) : nvClone(baseState);
       } catch (error) {
-        return structuredClone(baseState);
+        return nvClone(baseState);
       }
     }
 
@@ -6332,140 +6140,10 @@
       return "Admin Control";
     }
 
-    function ticketAgeHours(ticket) {
-      const created = new Date(String(ticket.createdAt || "").replace(" ", "T"));
-      const savedAge = Number.isFinite(Number(ticket.ageHours)) ? Number(ticket.ageHours) : 0;
-      if (!Number.isNaN(created.getTime())) return Math.max(savedAge, Math.round((Date.now() - created.getTime()) / 36e5));
-      return Math.max(0, savedAge);
-    }
 
-    function ticketEffectiveTier(ticket) {
-      if (ticket.status === "Resolved") return "resolved";
-      if (ticket.escalated || ticketAgeHours(ticket) >= 24) return "emergency";
-      return ticket.tier || "medium";
-    }
 
-    function ticketSlaText(ticket) {
-      const age = ticketAgeHours(ticket);
-      if (ticket.status === "Resolved") return `Solved in ${agingLabel(ticket.solvedHours || age)}`;
-      if (age >= 24) return `Admin escalation ${agingLabel(age - 24)} overdue`;
-      return `${24 - Math.round(age)}h left before admin escalation`;
-    }
 
-    function ensureTicketFromIssue(sourceKey, payload) {
-      state.tickets = Array.isArray(state.tickets) ? state.tickets : [];
-      /* NovaX fix (409 storm): matched on unresolved tickets only, but the DB's
-         unique index on sourceKey ignores status — so a resolved ticket here
-         meant a fresh local row that could never be inserted, retried forever.
-         Reuse the row whatever its status; reopen it if it had been resolved. */
-      const existing = state.tickets.find(ticket => ticket.sourceKey === sourceKey);
-      if (existing) {
-        if (existing.status === "Resolved") existing.status = "Open";
-        existing.ageHours = Math.max(ticketAgeHours(existing), Number(payload.ageHours || 0));
-        existing.escalated = existing.escalated || existing.ageHours >= 24 || payload.escalated;
-        if (existing.escalated) existing.to = "Admin Control";
-        return existing;
-      }
-      const ticket = {
-        id: nextId("TCK", state.tickets),
-        sourceKey,
-        tier: payload.tier || "medium",
-        title: payload.title || "Operational issue",
-        from: payload.from || "System Monitor",
-        to: payload.to || "Admin Control",
-        branch: payload.branch || "Admin",
-        awb: payload.awb || "",
-        message: payload.message || "",
-        createdAt: payload.createdAt || `${new Date().toISOString().slice(0, 10)} ${time()}`,
-        ageHours: Number(payload.ageHours || 0),
-        status: "Open",
-        escalated: Boolean(payload.escalated || Number(payload.ageHours || 0) >= 24),
-        replies: []
-      };
-      if (ticket.escalated) ticket.to = "Admin Control";
-      state.tickets.unshift(ticket);
-      return ticket;
-    }
 
-    function syncTicketAutomation() {
-      state.tickets = Array.isArray(state.tickets) ? state.tickets : [];
-      state.ticketNotifications = Array.isArray(state.ticketNotifications) ? state.ticketNotifications : [];
-
-      state.parcels.forEach(parcel => {
-        const alert = alertForParcel(parcel);
-        if (alert.level === "critical") {
-          ensureTicketFromIssue(`parcel:${parcel.awb}:critical`, {
-            tier: "emergency",
-            title: alert.label,
-            from: "AI Status Clock",
-            to: `${parcel.branch || parcel.city + " Hub"} Manager`,
-            branch: parcel.branch || `${parcel.city} Hub`,
-            awb: parcel.awb,
-            message: `${parcel.awb} is breaching SLA. ${alert.due}. Current status: ${parcel.status}.`,
-            ageHours: Number(parcel.statusAgeHours || 0),
-            escalated: Number(parcel.statusAgeHours || 0) >= 24
-          });
-        }
-        if (/refus|fake|denies|return proof|proof pending/i.test(`${parcel.status} ${parcel.exception || ""} ${parcel.returnProof || ""}`)) {
-          ensureTicketFromIssue(`parcel:${parcel.awb}:proof`, {
-            tier: parcel.statusAgeHours >= 24 ? "emergency" : "medium",
-            title: "Rider proof / refusal review",
-            from: "Customer Support",
-            to: `${parcel.branch || parcel.city + " Hub"} Manager`,
-            branch: parcel.branch || `${parcel.city} Hub`,
-            awb: parcel.awb,
-            message: `${parcel.consignee} issue needs proof review. ${parcel.exception || parcel.returnProof || "Check rider attempt data."}`,
-            ageHours: Number(parcel.statusAgeHours || 0)
-          });
-        }
-      });
-
-      state.operationsIssues.filter(issue => !issue.resolved).forEach(issue => {
-        ensureTicketFromIssue(`ops:${issue.id}`, {
-          tier: issue.urgency === "super urgent" ? "emergency" : issue.urgency === "medium" ? "medium" : "okay",
-          title: issue.problem,
-          from: "Operations Control",
-          to: issue.urgency === "super urgent" ? "Admin Control" : `${issue.branch} Manager`,
-          branch: issue.branch,
-          awb: issue.awb || "",
-          message: `${issue.problem}${issue.awb ? ` for ${issue.awb}` : ""}.`,
-          ageHours: Number(issue.openedHours || 0),
-          escalated: issue.urgency === "super urgent" || Number(issue.openedHours || 0) >= 24
-        });
-      });
-
-      manifestLogs().forEach(log => {
-        manifestMissingAwbs(log).forEach(awb => {
-          ensureTicketFromIssue(`manifest:${log.id}:${awb}`, {
-            tier: "emergency",
-            title: "Missing CN in demanifest",
-            from: "Demanifest Scan",
-            to: "Admin Control",
-            branch: log.to || "Destination Hub",
-            awb,
-            message: `${awb} is missing from ${log.id}. Route ${log.from} to ${log.to}. Admin must verify leakage before closing sack.`,
-            ageHours: Number(log.openHours || 25),
-            escalated: true
-          });
-        });
-      });
-
-      state.tickets.forEach(ticket => {
-        const age = ticketAgeHours(ticket);
-        ticket.ageHours = age;
-        if (ticket.status !== "Resolved" && age >= 24 && !ticket.escalated) {
-          ticket.escalated = true;
-          ticket.tier = "emergency";
-          ticket.previousTo = ticket.to;
-          ticket.to = "Admin Control";
-          state.ticketNotifications.unshift({
-            text: `${ticket.id} escalated to Admin Control after 24h. Original owner: ${ticket.previousTo || "unknown"}.`,
-            at: `${new Date().toISOString().slice(0, 10)} ${time()}`,
-            level: "bad"
-          });
-        }
-      });
-    }
 
     function normalizeStateShape() {
       // NovaX fix: phone/address/business type/owner/email fallbacks below
@@ -6569,7 +6247,6 @@
         client.withdrawnTotal = Number(client.withdrawnTotal || 0);
         client.withdrawFeeTotal = Number(client.withdrawFeeTotal || 0);
       });
-      syncTicketAutomation();
     }
 
     function parcelOrigin(parcel) {
@@ -7424,16 +7101,6 @@
       return { clientId, expected, actual, difference, mismatch: Math.abs(difference) >= 1 };
     }
 
-    function hasUnresolvedFinanceTicket(clientId) {
-      // NovaX new (Finance Control Room v2, item 4): a ticket counts as
-      // "finance" if it was routed to the Finance team or its text mentions
-      // wallet/payout/withdrawal/invoice/payment -- there's no strict
-      // department field on every ticket, so this keyword match avoids
-      // silently missing real finance tickets.
-      const financeWords = /finance|wallet|payout|withdraw|invoice|payment/i;
-      return (state.tickets || []).some(ticket => ticket.clientId === clientId && ticket.status !== "Resolved" &&
-        (financeWords.test(ticket.suggestedTeam || "") || financeWords.test(ticket.title || "") || financeWords.test(ticket.message || "") || financeWords.test(ticket.handoffReason || "")));
-    }
 
     function computePayoutRiskLock(withdrawal) {
       // NovaX new (Finance Control Room v2, item 4): every reason a pending
@@ -7455,7 +7122,6 @@
       const withdrawalTime = new Date(String(withdrawal.createdAt).replace(" ", "T")).getTime();
       const instantNearbyCount = siblingRows.filter(item => item.speed === "instant" && Math.abs(new Date(String(item.createdAt).replace(" ", "T")).getTime() - withdrawalTime) <= 24 * 3600 * 1000).length;
       if (withdrawal.speed === "instant" && instantNearbyCount >= 2) reasons.push("2+ instant withdrawals in 24 hours");
-      if (hasUnresolvedFinanceTicket(withdrawal.clientId)) reasons.push("Unresolved finance ticket");
       return { locked: reasons.length > 0, reasons };
     }
 
@@ -7789,7 +7455,6 @@
       const refused = parcels.filter(p => p.status === "Refused").length;
       const returns = parcels.filter(p => ["Ready for return", "Return in transit", "Return received at origin", "Return out for delivery", "Parcel returned to consignee"].includes(p.status)).length;
       const delayedOverSla = parcels.filter(p => agingHours(p) >= 48 && !"Delivered,Parcel returned to consignee".includes(p.status)).length;
-      const ticketsOpen = (state.tickets || []).filter(t => t.status !== "Resolved").length;
       const withdrawals = state.walletWithdrawals || [];
       const payoutsPending = withdrawals.filter(w => w.status === "Pending admin payout").length;
       const shopifyRows = state.shopifyConnectionRows || [];
@@ -7801,7 +7466,7 @@
       const invoicesReady = invoices.filter(i => i.status === "Pending").length;
       const invoicesPushed = invoices.filter(i => i.status === "Pushed to wallet").length;
       const invoicesPaid = invoices.filter(i => i.status === "Paid").length;
-      return { newBookings, pickupsPending, pickedUp, outForDelivery, delivered, refused, returns, delayedOverSla, ticketsOpen, payoutsPending, failedShopify, failedRpcs, riderCashExposure, invoicesReady, invoicesPushed, invoicesPaid };
+      return { newBookings, pickupsPending, pickedUp, outForDelivery, delivered, refused, returns, delayedOverSla, payoutsPending, failedShopify, failedRpcs, riderCashExposure, invoicesReady, invoicesPushed, invoicesPaid };
     }
 
     function computeDailyPriorities() {
@@ -7812,7 +7477,6 @@
       const topCashRider = riders[0];
       const oldPayout = (state.walletWithdrawals || []).filter(w => w.status === "Pending admin payout").slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))[0];
       const shopifyError = (state.shopifyConnectionRows || []).find(r => r.last_error);
-      const ticketClients = new Set((state.tickets || []).filter(t => t.status !== "Resolved").map(t => t.clientId));
       const branchIssueCounts = {};
       (state.operationsIssues || []).filter(i => !i.resolved).forEach(i => { const b = i.branch || "Unassigned"; branchIssueCounts[b] = (branchIssueCounts[b] || 0) + 1; });
       const topBranch = Object.entries(branchIssueCounts).sort((a, b) => b[1] - a[1])[0];
@@ -7821,7 +7485,6 @@
       if (topCashRider && Number(topCashRider.cashHeld || 0) > 0) items.push(`Highest cash exposure rider: ${topCashRider.name} holding ${money(topCashRider.cashHeld || 0)}`);
       if (oldPayout) items.push(`Oldest pending payout: ${oldPayout.id} since ${oldPayout.createdAt}`);
       if (shopifyError) items.push(`Shopify connection with latest error: ${clientById(shopifyError.client_id)?.name || shopifyError.client_name || shopifyError.client_id} -- ${shopifyError.last_error}`);
-      if (ticketClients.size) items.push(`${ticketClients.size} client(s) have unresolved tickets`);
       if (topBranch) items.push(`Branch with most open issues: ${topBranch[0]} (${topBranch[1]})`);
       return items;
     }
@@ -7839,7 +7502,6 @@
         metricCard("Refused", d.refused, Math.min(100, d.refused * 15), "needs decision", d.refused ? "red" : ""),
         metricCard("Returns", d.returns, Math.min(100, d.returns * 12), "RTO pipeline", d.returns ? "amber" : ""),
         metricCard("Delayed Over SLA", d.delayedOverSla, Math.min(100, d.delayedOverSla * 15), "48h+", d.delayedOverSla ? "red" : ""),
-        metricCard("Tickets Open", d.ticketsOpen, Math.min(100, d.ticketsOpen * 15), "support queue", d.ticketsOpen ? "amber" : ""),
         metricCard("Payouts Pending", d.payoutsPending, Math.min(100, d.payoutsPending * 15), "wallet queue", d.payoutsPending ? "amber" : ""),
         metricCard("Failed Shopify Imports", d.failedShopify, Math.min(100, d.failedShopify * 20), "integration health", d.failedShopify ? "red" : ""),
         metricCard("Failed RPCs / Errors", d.failedRpcs, Math.min(100, d.failedRpcs * 10), "open error log", d.failedRpcs ? "red" : ""),
@@ -8104,11 +7766,31 @@
       window.open("https://wa.me/" + digits + "?text=" + encodeURIComponent(text), "_blank");
     }
 
+    /* ===== NovaX fix (offline QR + Code128 in ADMIN) =====
+       Admin labels still called api.qrserver.com and barcode.tec-it.com — two
+       problems the client portal had already solved:
+         1. PRIVACY — every admin print sent that parcel's AWB and its full
+            tracking URL to two third parties.
+         2. AVAILABILITY — if either service is slow or down, admin cannot
+            print or scan, and warehouse work stops.
+       Both codes are now generated locally as inline SVG data URLs, using the
+       same generator client.html uses, so the two portals produce identical
+       labels with no network request. The hosted services remain only as a
+       last-resort fallback so a label is never blank.
+       ===================================================================== */
     function qrUrl(awb) {
+      try {
+        var u = window.__novaxQrSvg && window.__novaxQrSvg(trackingPayload(awb));
+        if (u) return u;
+      } catch (e) { console.warn("NovaX local QR failed, falling back", e); }
       return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodeURIComponent(trackingPayload(awb))}`;
     }
 
     function barcodeUrl(awb) {
+      try {
+        var u = window.__novaxCode128Svg && window.__novaxCode128Svg(String(awb || ""), 320, 96);
+        if (u) return u;
+      } catch (e) { console.warn("NovaX local barcode failed, falling back", e); }
       return `https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(awb)}&code=Code128&translate-esc=on&dpi=96`;
     }
 
@@ -8293,18 +7975,13 @@
        nothing else. Wrapped in try/catch — if a count throws, the badges are
        skipped and the admin renders exactly as before. */
     function nvTabCounts(){
-      var P = state.parcels || [], T = state.tickets || [], W = state.walletWithdrawals || [],
+      var P = state.parcels || [], W = state.walletWithdrawals || [],
           I = state.invoices || [], PR = state.pickupRequests || [],
           SL = state.salesLeads || [], SU = state.signupLeads || [], OI = state.operationsIssues || [];
-      var openT = T.filter(function(t){ return t && String(t.status||"") !== "Resolved"; });
       return {
         // ── operations
         "pickup-requests":   PR.filter(function(r){ return r && r.status !== "Picked Up" && r.status !== "Cancelled"; }).length,
         "orders-processing": P.filter(function(p){ return p && p.status === "New booked"; }).length,
-        // ── tickets
-        "tickets-emergency": openT.filter(function(t){ return t.tier === "emergency"; }).length,
-        "tickets-medium":    openT.filter(function(t){ return t.tier === "medium"; }).length,
-        "tickets-okay":      openT.filter(function(t){ return t.tier !== "emergency" && t.tier !== "medium"; }).length,
         // ── finance
         "finance-wallets":   W.filter(function(w){ return w && w.status === "Pending admin payout"; }).length,
         "finance-invoices":  I.filter(function(v){ return v && v.status === "Generated"; }).length,
@@ -8319,7 +7996,6 @@
     /* Parent nav buttons roll up the counts of the sub-tabs beneath them. */
     var NV_TAB_GROUPS = {
       "orders":  ["orders-processing"],
-      "tickets": ["tickets-emergency","tickets-medium","tickets-okay"],
       "finance": ["finance-wallets","finance-invoices"],
       "clients": ["clients-leads"],
       "system":  ["system-errors"]
@@ -8657,7 +8333,6 @@
       `).join("") || `<div class="ops-card"><strong>No processing log yet</strong><p>Scan a parcel and update status to create the first audit entry.</p></div>`;
 
       renderManifestScreens();
-      renderTickets();
 
       state.pendingClients = state.clients.filter(client => client.leadSource === "self_signup" && !client.leadVerified);
       const signupLeadCards = state.pendingClients.map(client => `
@@ -9169,12 +8844,9 @@
       const allSummaryManifests = [...manifestLogs().filter(log => log.status !== "Complete"), ...state.completedSacks.filter(log => log.type === "parcel manifest" || log.id?.startsWith("MAN-") || log.id?.startsWith("SACK-"))];
       const missingManifestCns = allSummaryManifests.filter(manifestInDispute).flatMap(log => manifestRemainingAwbs(log).map(awb => `${awb} (${log.id})`));
       const openOps = state.operationsIssues.filter(issue => !issue.resolved);
-      const openTickets = (state.tickets || []).filter(ticket => ticket.status !== "Resolved");
-      const emergencyTickets = openTickets.filter(ticket => ticketEffectiveTier(ticket) === "emergency");
       const latestIssue = openOps[0] || lateParcels[0] || null;
       const activeManifestCount = allSummaryManifests.filter(log => log.status !== "Complete").length;
       document.getElementById("adminReportMetrics").innerHTML = [
-        metricCard("Open Tickets", openTickets.length, Math.min(100, openTickets.length * 12), `${emergencyTickets.length} emergency`, emergencyTickets.length ? "red" : openTickets.length ? "amber" : "good"),
         metricCard("Active Manifests", activeManifestCount, Math.min(100, activeManifestCount * 20), "in transit logs", "blue"),
         metricCard("Missing CNs", missingManifestCns.length, Math.min(100, missingManifestCns.length * 22), "demanifest disputes", missingManifestCns.length ? "red" : "good"),
         metricCard("Cash + Profit", money(profit), Math.min(100, Math.abs(percent(profit, 450000))), "operating view", profit >= 0 ? "good" : "red")
@@ -9182,7 +8854,6 @@
 
       document.getElementById("totalSummaryIssues").innerHTML = [
         latestIssue ? `Latest issue: ${latestIssue.problem || `${latestIssue.awb} ${latestIssue.status}`}` : "No urgent issue found right now.",
-        emergencyTickets.length ? `${emergencyTickets.length} emergency ticket(s) need admin or branch action now.` : "No emergency ticket is pending.",
         lateParcels.length ? `${lateParcels.length} parcel(s) are late versus SLA.` : "No parcel is breaching current SLA.",
         missingManifestCns.length ? `${missingManifestCns.length} CN issue(s) in manifests: ${missingManifestCns.slice(0, 6).join(", ")}` : "No missing manifest CNs.",
         m.cashHeld > m.cashLimit ? "Rider cash is above allowed limit. Block new route assignment." : "Rider cash exposure is inside configured limit."
@@ -9414,7 +9085,6 @@
           if (!log.branchManagerPinged) {
             log.branchManagerPinged = true;
             disputePinged = true;
-            state.ticketNotifications.unshift({ text: `${log.id}: ${manifestRemainingCount(log)} CN(s) still missing ${Math.round(manifestDisputeMinutes(log))} min after demanifest scan. ${log.to} branch manager pinged.`, at: `${new Date().toISOString().slice(0, 10)} ${time()}`, level: "bad" });
             state.operationsIssues.unshift({ id: nextId("OPS", state.operationsIssues), branch: log.to, urgency: "super urgent", problem: `${manifestRemainingCount(log)} CN(s) pending after demanifest of ${log.id}: ${manifestRemainingAwbs(log).join(", ")}`, awb: manifestRemainingAwbs(log)[0] || "", openedHours: 0, resolved: false });
           }
         });
@@ -9423,121 +9093,7 @@
       }
     }
 
-    function ticketCard(ticket) {
-      const tier = ticketEffectiveTier(ticket);
-      const isResolved = ticket.status === "Resolved";
-      const chip = isResolved ? "good" : tier === "emergency" ? "bad" : tier === "medium" ? "warn" : "info";
-      const sourceParcel = state.parcels.find(p => p.awb === ticket.awb);
-      return `
-        <div class="ops-card ticket-card ${ticket.escalated && !isResolved ? "alert-row critical escalated" : tier === "medium" && !isResolved ? "alert-row" : ""}">
-          <div class="ops-card-head">
-            <strong>${ticket.id} | ${ticket.title}</strong>
-            <span class="chip ${chip}">${isResolved ? "resolved" : tier}</span>
-          </div>
-          <div class="ticket-route"><strong>${ticket.from}</strong><span>-></span><strong>${ticket.to}</strong></div>
-          <div class="ticket-meta">
-            <span class="chip info">${ticket.branch}</span>
-            ${ticket.awb ? `<span class="chip ${sourceParcel ? statusClass(sourceParcel) : "warn"}">${ticket.awb}</span>` : ""}
-            <span class="chip ${ticketAgeHours(ticket) >= 24 && !isResolved ? "bad" : "good"}">${ticketSlaText(ticket)}</span>
-          </div>
-          ${ticket.source === "novax-autopilot" ? `
-          <div class="ticket-meta" title="${ticket.handoffReason ? "Handoff reason: " + ticket.handoffReason : ""}">
-            <span class="chip info">Source: NovaX Autopilot</span>
-            ${ticket.intent ? `<span class="chip info">Intent: ${ticket.intent.charAt(0).toUpperCase() + ticket.intent.slice(1)}</span>` : ""}
-            ${ticket.priority ? `<span class="chip ${ticket.priority === "High" ? "bad" : "warn"}">Priority: ${ticket.priority}</span>` : ""}
-            ${ticket.suggestedTeam ? `<span class="chip good">Suggested team: ${ticket.suggestedTeam}</span>` : ""}
-          </div>` : ""}
-          <p>${ticket.message || "No message added."}</p>
-          ${ticket.previousTo && !isResolved ? `<div class="resolved-note"><strong>Escalated:</strong> originally assigned to ${ticket.previousTo}, now visible to Admin Control.</div>` : ""}
-          ${isResolved ? `
-            <div class="resolved-note"><strong>Reply:</strong> ${ticket.resolutionReply || "Resolved."}</div>
-            <div class="footer-note">Resolved by ${ticket.resolvedBy || "admin"} at ${ticket.resolvedAt || "now"}. Proof: ${ticket.proof || "not attached"}. Notification sent to ${ticket.from}.</div>
-          ` : `
-            <div class="ticket-reply">
-              <div class="field"><label>Resolve reply</label><textarea id="ticketReply-${ticket.id}" placeholder="Explain what was fixed, who confirmed it, and the next action."></textarea></div>
-              <div class="field"><label>Image / proof</label><input id="ticketProof-${ticket.id}" placeholder="photo.jpg or proof link"></div>
-              <button class="action-btn" onclick="resolveTicket('${ticket.id}')">Resolve Ticket</button>
-            </div>
-          `}
-        </div>
-      `;
-    }
 
-    function renderTickets() {
-      const tickets = state.tickets || [];
-      const open = tickets.filter(ticket => ticket.status !== "Resolved");
-      const resolved = tickets.filter(ticket => ticket.status === "Resolved");
-      const emergency = open.filter(ticket => ticketEffectiveTier(ticket) === "emergency");
-      const medium = open.filter(ticket => ticketEffectiveTier(ticket) === "medium");
-      const okay = open.filter(ticket => ticketEffectiveTier(ticket) === "okay");
-      const overdue = open.filter(ticket => ticketAgeHours(ticket) >= 24);
-      const avgSolve = resolved.length ? Math.round(resolved.reduce((sum, ticket) => sum + Number(ticket.solvedHours || 0), 0) / resolved.length) : 0;
-
-      const openBadge = document.getElementById("ticketOpenBadge");
-      if (openBadge) {
-        openBadge.textContent = `${open.length} open`;
-        openBadge.className = `chip ${emergency.length ? "bad" : open.length ? "warn" : "good"}`;
-      }
-      const hubCount = document.getElementById("ticketHubCount");
-      if (hubCount) {
-        hubCount.textContent = open.length;
-        hubCount.classList.toggle("has-alerts", open.length > 0);
-      }
-
-      const notifications = document.getElementById("ticketNotificationList");
-      if (notifications) {
-        notifications.innerHTML = (state.ticketNotifications || []).slice(0, 4).map(note => `
-          <div class="ops-card ticket-notice">
-            <div class="ops-card-head"><strong>${note.text}</strong><span class="chip ${note.level || "info"}">${note.at}</span></div>
-          </div>
-        `).join("") || `<div class="ops-card"><strong>No ticket notifications yet</strong><p>Resolved replies and 24-hour escalations will appear here.</p></div>`;
-      }
-
-      const emergencyMetrics = document.getElementById("ticketEmergencyMetrics");
-      if (emergencyMetrics) {
-        emergencyMetrics.innerHTML = [
-          metricCard("Emergency", emergency.length, Math.min(100, emergency.length * 18), "admin visible now", emergency.length ? "red" : "good"),
-          metricCard("Over 24h", overdue.length, Math.min(100, overdue.length * 20), "auto escalated", overdue.length ? "red" : "good"),
-          metricCard("Missing CN", emergency.filter(t => /missing cn|demanifest/i.test(`${t.title} ${t.message}`)).length, 70, "manifest leakage", "red"),
-          metricCard("Resolved", resolved.length, Math.min(100, resolved.length * 16), "closed with reply", "good")
-        ].join("");
-      }
-
-      const summaryMetrics = document.getElementById("ticketSummaryMetrics");
-      if (summaryMetrics) {
-        summaryMetrics.innerHTML = [
-          metricCard("Open Tickets", open.length, Math.min(100, open.length * 10), "all active tiers", open.length ? "amber" : "good"),
-          metricCard("Emergency", emergency.length, Math.min(100, emergency.length * 18), "needs action now", emergency.length ? "red" : "good"),
-          metricCard("Resolved", resolved.length, Math.min(100, resolved.length * 12), "stored archive", "good"),
-          metricCard("Avg Solve", avgSolve ? agingLabel(avgSolve) : "0h", Math.min(100, percent(avgSolve, 24)), "resolved ticket timer", avgSolve > 24 ? "red" : "good")
-        ].join("");
-      }
-
-      const setList = (id, rows, empty) => {
-        const el = document.getElementById(id);
-        if (el) el.innerHTML = rows.map(ticketCard).join("") || `<div class="ops-card"><strong>${empty}</strong><p>This queue is clean right now.</p></div>`;
-      };
-      setList("ticketEmergencyList", emergency, "No emergency tickets");
-      setList("ticketMediumList", medium, "No medium tickets");
-      setList("ticketOkayList", okay, "No okay tickets");
-
-      const summary = document.getElementById("ticketSummaryList");
-      if (summary) {
-        const byOwner = open.reduce((map, ticket) => {
-          map[ticket.to] = (map[ticket.to] || 0) + 1;
-          return map;
-        }, {});
-        summary.innerHTML = `
-          ${Object.entries(byOwner).map(([owner, count]) => `<div class="ops-card ${count > 2 ? "alert-row" : ""}"><div class="ops-card-head"><strong>${owner}</strong><span class="chip ${count > 2 ? "warn" : "info"}">${count} open</span></div><p>Routed queue visible only to the intended branch/team plus Admin Control after escalation.</p></div>`).join("") || `<div class="ops-card"><strong>No open ticket owners</strong><p>All routed tickets are closed.</p></div>`}
-          ${open.slice(0, 6).map(ticketCard).join("")}
-        `;
-      }
-
-      const resolvedList = document.getElementById("ticketResolvedList");
-      if (resolvedList) {
-        resolvedList.innerHTML = resolved.map(ticketCard).join("") || `<div class="ops-card"><strong>No resolved tickets yet</strong><p>Resolved ticket replies, proof references, and solve timers will archive here.</p></div>`;
-      }
-    }
 
     function renderFinanceWallets() {
       // NovaX fix (Medium #8): never default the active wallet client to the
@@ -9843,10 +9399,6 @@
       }
     }
 
-    function toggleTicketHub() {
-      const panel = document.getElementById("ticketHubPanel");
-      if (panel) panel.classList.toggle("collapsed");
-    }
 
     function showAdminTab(id) {
       state.activeAdminTab = normalizeAdminTab(id);
@@ -10336,7 +9888,6 @@
         const snap=state.healthActivitySnapshot||{};
         const rows=[
           ["Latest Shopify import", snap.latest_shopify_import_awb?("AWB "+snap.latest_shopify_import_awb+(snap.latest_shopify_import_at?(" @ "+snap.latest_shopify_import_at):"")):"No imports yet"],
-          ["Latest AI ticket status", (state.tickets&&state.tickets.length)?(state.tickets[state.tickets.length-1].tier||"Logged"):"No tickets yet"],
           ["Latest withdrawal status", snap.latest_withdrawal_status||"No withdrawals yet"],
           ["Latest invoice push status", snap.latest_invoice_status||"No invoices yet"]
         ];
@@ -11003,7 +10554,7 @@
           branch: `${newClient.city || "Karachi"} Hub`,
           clientId: id,
           status: "Active",
-          permissions: ["dashboard", "booking", "bulk booking", "reports", "payments", "tickets"]
+          permissions: ["dashboard", "booking", "bulk booking", "reports", "payments"]
         });
         saveState();
         const linkProfile = attemptsLeft => {
@@ -11618,7 +11169,6 @@
           sb.from("invoices").delete().eq("client_id", cid),
           sb.from("withdrawals").delete().eq("client_id", cid),
           sb.from("payment_logs").delete().eq("client_id", cid),
-          sb.from("tickets").delete().eq("client_id", cid),
           sb.from("profiles").update({ status: "blocked", client_id: null }).eq("client_id", cid)
         ]).catch(() => {}).then(() => {
           sb.from("clients").delete().eq("id", cid).then(r => {
@@ -11668,7 +11218,7 @@
           accessSide: "Client Web Portal",
           branch: `${client.city || "Karachi"} Hub`,
           clientId,
-          permissions: ["dashboard", "booking", "bulk booking", "reports", "payments", "tickets"],
+          permissions: ["dashboard", "booking", "bulk booking", "reports", "payments"],
           status: "Active"
         };
         state.users.unshift(user);
@@ -11814,46 +11364,10 @@
       toast(`${id} moved to resolved with solve time.`);
     }
 
-    function createTicket() {
-      const title = document.getElementById("ticketTitle")?.value.trim();
-      const awb = document.getElementById("ticketAwb")?.value.trim().toUpperCase();
-      const message = document.getElementById("ticketMessage")?.value.trim();
-      if (!title || !message) {
-        toast("Ticket title and message are required.");
-        return;
-      }
-      const ticket = {
-        id: nextId("TCK", state.tickets || []),
-        sourceKey: `manual:${Date.now()}`,
-        tier: document.getElementById("ticketTier").value,
-        title,
-        from: document.getElementById("ticketFrom").value,
-        to: document.getElementById("ticketTo").value,
-        branch: document.getElementById("ticketBranch").value,
-        awb,
-        message,
-        createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}`,
-        ageHours: 0,
-        status: "Open",
-        escalated: false,
-        replies: []
-      };
-      state.tickets.unshift(ticket);
-      pushTicketNotif(`${ticket.id} created by ${ticket.from} and routed to ${ticket.to}.`, ticket.tier === "emergency" ? "bad" : "info");
-      ["ticketTitle", "ticketAwb", "ticketMessage"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
-      saveState();
-      render();
-      toast(`${ticket.id} created and sent to ${ticket.to}.`);
-    }
 
-    function pushTicketNotif(text, level) {
-      state.ticketNotifications = state.ticketNotifications || [];
-      if (state.ticketNotifications.some(n => n.text === text)) return;
-      state.ticketNotifications.unshift({ text, at: `${new Date().toISOString().slice(0, 10)} ${time()}`, level: level || "info" });
-    }
 
     // NovaX (Part 8): Exception Control Room. computeExceptionQueue() derives
-    // every broken/problem parcel from real parcel + ticket state (no fake
+    // every broken/problem parcel from real parcel state (no fake
     // rows) and tags it with the issue taxonomy the ops team needs; a parcel
     // can appear under more than one issue type if more than one applies.
     function exceptionSuggestedAction(issueType) {
@@ -11864,11 +11378,10 @@
         "Reattempt needed": "Confirm rider redelivery window with the consignee.",
         "Return pending": "Confirm return proof and close the return loop.",
         "Return in transit": "Track return movement back to the origin branch.",
-        "Fake attempt / proof dispute": "Request proof from rider and open a ticket.",
+        "Fake attempt / proof dispute": "Request proof from rider and review the evidence.",
         "Rider cash holding": "Reconcile rider cash and confirm deposit.",
         "Proof missing": "Request delivery proof photo/signature from rider.",
         "Client decision needed": "Waiting on the client to approve reattempt or return.",
-        "Unresolved ticket linked to AWB": "Resolve the linked ticket with a note."
       };
       return map[issueType] || "Review and resolve.";
     }
@@ -11891,7 +11404,6 @@
       (state.parcels || []).forEach(p => {
         if (p._exceptionResolved) return;
         const client = clientById(p.clientId);
-        const linkedTicket = (state.tickets || []).find(t => t.awb === p.awb && t.status !== "Resolved");
         const aging = agingHours(p);
         const cats = [];
         if (aging > 72 && p.status !== "Delivered" && !/return/i.test(p.status)) cats.push("Delayed over SLA");
@@ -11904,9 +11416,8 @@
         if (/cash/i.test(p.exception || "")) cats.push("Rider cash holding");
         if (p.status === "Delivered" && !p.proofPhoto && !p.signature) cats.push("Proof missing");
         if (p._clientDecisionRequestedAt) cats.push("Client decision needed");
-        if (linkedTicket) cats.push("Unresolved ticket linked to AWB");
         cats.forEach(issueType => {
-          rows.push({ awb: p.awb, clientId: p.clientId, clientName: client ? client.name : "Unknown", consignee: p.consignee || "", phone: p.phone || "", city: p.city, branch: p.branch, status: p.status, agingHours: aging, issueType, exception: p.exception || "", lastNote: p.resolutionRemark || p.returnProof || (p.proofPhoto ? "Proof photo on file" : "") || (p.signature ? "Signature on file" : ""), ticket: linkedTicket, urgency: aging > 72 ? "critical" : (aging > 24 ? "warning" : "normal") });
+          rows.push({ awb: p.awb, clientId: p.clientId, clientName: client ? client.name : "Unknown", consignee: p.consignee || "", phone: p.phone || "", city: p.city, branch: p.branch, status: p.status, agingHours: aging, issueType, exception: p.exception || "", lastNote: p.resolutionRemark || p.returnProof || (p.proofPhoto ? "Proof photo on file" : "") || (p.signature ? "Signature on file" : ""), urgency: aging > 72 ? "critical" : (aging > 24 ? "warning" : "normal") });
         });
       });
       syncExceptionIssuesToOps(rows);
@@ -11935,9 +11446,9 @@
           <div class="ops-card-head"><strong>${r.awb}</strong><span class="chip ${r.urgency === "critical" ? "bad" : r.urgency === "warning" ? "warn" : "info"}">${r.issueType}</span></div>
           <p>${r.clientName} &middot; ${r.consignee || "-"} &middot; ${r.phone || "-"} &middot; ${r.city || "-"} / ${r.branch || "-"} &middot; status: ${r.status} &middot; aging ${agingLabel(r.agingHours)} &middot; priority: <strong>${r.urgency === "critical" ? "High" : r.urgency === "warning" ? "Medium" : "Normal"}</strong></p>
           <p class="footer-note">Reason: ${r.exception || "Not noted"}${r.lastNote ? (" &middot; Last note: " + r.lastNote) : ""}</p>
-          <p class="footer-note">Suggested: ${exceptionSuggestedAction(r.issueType)}${r.ticket ? (" &middot; linked ticket " + r.ticket.id + " (" + r.ticket.status + ")") : ""}</p>
+          <p class="footer-note">Suggested: ${exceptionSuggestedAction(r.issueType)}</p>
           <div class="inline-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
-            <button class="ghost-btn" onclick="createTicketForAwb('${r.awb}')">Create Ticket</button>
+
             <button class="ghost-btn" onclick="assignToBranchTeam('${r.awb}')">Assign Branch/Team</button>
             <button class="ghost-btn" onclick="requestReattemptAdmin('${r.awb}')">Request Reattempt</button>
             <button class="ghost-btn" onclick="markReturnToOriginAdmin('${r.awb}')">Mark Return to Origin</button>
@@ -11950,14 +11461,6 @@
           <button class="action-btn" style="margin-top:6px" onclick="resolveExceptionIssue('${r.awb}')">Resolve</button>
         </div>
       `).join("");
-    }
-    function createTicketForAwb(awb) {
-      const p = state.parcels.find(x => x.awb === awb);
-      const t = document.getElementById("ticketTitle"); if (t) t.value = "Exception on " + awb;
-      const a = document.getElementById("ticketAwb"); if (a) a.value = awb;
-      const m = document.getElementById("ticketMessage"); if (m) m.value = p ? (p.status + " - " + (p.exception || "needs review")) : "";
-      if (t) t.scrollIntoView({ behavior: "smooth", block: "center" });
-      toast("Ticket fields pre-filled below. Review and click Create Ticket.");
     }
     function assignToBranchTeam(awb) {
       const p = state.parcels.find(x => x.awb === awb); if (!p) return;
@@ -11981,21 +11484,11 @@
       const client = clientById(p.clientId);
       const clientUuid = (client && client._uuid) || p.clientUuid || null;
       p.exception = "Awaiting your decision -- please reattempt or return."; p._clientDecisionRequestedAt = new Date().toISOString().slice(0, 10) + " " + time();
-      state.tickets = state.tickets || [];
-      const sourceKey = `client_decision:${awb}`;
-      /* NovaX fix (409 storm): this used to exclude Resolved tickets, but the
-         database's unique index on sourceKey is status-agnostic. So once a
-         ticket for this AWB had been resolved, the check passed, a new local
-         ticket was created, and every insert was rejected 409 forever. Match
-         the constraint exactly — one ticket per sourceKey, whatever its status. */
-      if (!state.tickets.some(t => t.sourceKey === sourceKey)) {
-        state.tickets.unshift({ id: nextId("TCK", state.tickets), sourceKey, tier: "medium", title: "Client decision needed on " + awb, from: "System", to: "Client Success", branch: p.branch || "", awb, message: p.status + " -- client decision requested for reattempt or return.", createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}`, ageHours: 0, status: "Open", escalated: false, replies: [] });
-      }
       saveState(); renderAdmin();
       try {
         if (window.__nvSb && clientUuid) window.__nvSb.rpc("queue_notification_event", { p_client_id: clientUuid, p_awb: awb, p_event_type: "client_decision_needed" }).then(function (r) { if (r && r.error) { console.warn("NovaX notify queue", r.error.message); try { window.__nvSb.rpc("log_portal_error", { p_source: "admin", p_rpc_name: "queue_notification_event", p_page: "rto-ndr", p_message: r.error.message, p_severity: "warning" }); } catch (e) {} } });
       } catch (e) {}
-      toast(awb + " -- client decision requested. Ticket opened and client notified.");
+      toast(awb + " -- client decision requested and client notified.");
     }
     function resolveExceptionIssue(awb) {
       const noteEl = document.getElementById("excNote_" + awb);
@@ -12034,94 +11527,6 @@
       toast(awb + " opened in Orders.");
     }
 
-    function resolveTicket(id) {
-      const ticket = state.tickets.find(item => item.id === id);
-      if (!ticket) return;
-      const reply = document.getElementById(`ticketReply-${id}`)?.value.trim();
-      const proof = document.getElementById(`ticketProof-${id}`)?.value.trim();
-      if (!reply) {
-        toast("Resolve reply is required.");
-        return;
-      }
-      const prevStatus = ticket.status;
-      const prevReplies = Array.isArray(ticket.replies) ? ticket.replies.slice() : [];
-      const resolvedAt = `${new Date().toISOString().slice(0, 10)} ${time()}`;
-      ticket.status = "Resolved";
-      ticket.resolutionReply = reply;
-      ticket.proof = proof || "No image/proof reference added";
-      ticket.resolvedBy = currentAdminName();
-      ticket.resolvedAt = resolvedAt;
-      ticket.solvedHours = ticketAgeHours(ticket);
-      ticket.replies = Array.isArray(ticket.replies) ? ticket.replies : [];
-      ticket.replies.push({ by: ticket.resolvedBy, at: resolvedAt, message: reply, proof: ticket.proof });
-
-      const finalizeResolution = () => {
-        state.operationsIssues.forEach(issue => {
-          if (!issue.resolved && (ticket.sourceKey === `ops:${issue.id}` || issue.awb === ticket.awb)) {
-            issue.resolved = true;
-            issue.resolvedHours = ticket.solvedHours || issue.openedHours || 1;
-            issue.resolvedBy = ticket.resolvedBy;
-            issue.resolutionReason = reply;
-            issue.resolvedAt = resolvedAt;
-          }
-        });
-
-        const parcel = state.parcels.find(p => p.awb === ticket.awb);
-        if (parcel) {
-          parcel.resolutionRemark = reply;
-          parcel.resolvedBy = ticket.resolvedBy;
-          parcel.resolvedAt = resolvedAt;
-          parcel.risk = Math.max(5, Number(parcel.risk || 0) - 10);
-        }
-
-        state.resolvedAlerts.unshift({
-          id: nextId("DONE", state.resolvedAlerts),
-          awb: ticket.awb || ticket.id,
-          branch: ticket.branch,
-          resolvedBy: ticket.resolvedBy,
-          reason: reply,
-          alert: ticket.title,
-          solvedHours: ticket.solvedHours,
-          resolvedAt
-        });
-        pushTicketNotif(`${ticket.id} resolved by ${ticket.resolvedBy}. ${ticket.from} has been notified.`, "good");
-        saveState();
-        render();
-        toast(`${ticket.id} resolved and notification sent to ${ticket.from}.`);
-      };
-
-      // NovaX fix: resolution details used to only ever be saved locally --
-      // rTicket()/fTicket() now round-trip resolutionReply/proof/resolvedBy/
-      // resolvedAt/solvedHours through Supabase meta, and this now waits for
-      // that write to actually succeed before showing a "resolved" toast, so a
-      // dropped connection can never leave a ticket looking resolved in the UI
-      // when the server still has it open.
-      if (window.__nvSb && ticket._uuid) {
-        window.__nvSb.from("tickets").update(fTicket(ticket)).eq("id", ticket._uuid).then(r => {
-          if (r && r.error) {
-            ticket.status = prevStatus;
-            ticket.resolutionReply = "";
-            ticket.proof = "";
-            ticket.resolvedBy = "";
-            ticket.resolvedAt = "";
-            ticket.solvedHours = 0;
-            ticket.replies = prevReplies;
-            toast(`Could not save the resolution to the server: ${r.error.message}`);
-            render();
-            return;
-          }
-          try { shadow[ticket._uuid] = sigOf(fTicket(ticket)); } catch (e) {}
-          finalizeResolution();
-        }).catch(e => {
-          ticket.status = prevStatus;
-          ticket.replies = prevReplies;
-          toast(`Could not save the resolution to the server: ${(e && e.message) || e}`);
-          render();
-        });
-        return;
-      }
-      finalizeResolution();
-    }
 
     function createSack() {
       const [from, to] = document.getElementById("sackRoute").value.split("|");
@@ -12788,7 +12193,7 @@
           <span>Amount Due to NovaX: <strong>${money(due)}</strong></span>
           <span>${balanceLabel}: <strong>${balanceValue}</strong></span>
         </div>
-        <div class="footer-note">Generated by NovaX Logistics. Questions about this invoice? Raise a support ticket from your client portal.</div>
+        <div class="footer-note">Generated by NovaX Logistics.</div>
       </div>`;
     }
 
@@ -13141,7 +12546,6 @@
     document.getElementById("opsBranchFilter").addEventListener("change", renderAdmin);
     document.getElementById("opsUrgencyFilter").addEventListener("change", renderAdmin);
     document.getElementById("opsResolvedFilter").addEventListener("change", renderAdmin);
-    document.getElementById("createTicketBtn").addEventListener("click", createTicket);
     document.getElementById("bookParcelBtn").addEventListener("click", () => showClientTab("newBooking"));
     document.getElementById("quickBookingBtn").addEventListener("click", quickBooking);
     document.getElementById("downloadAdminBulkTemplateBtn").addEventListener("click", downloadAdminBulkTemplate);
@@ -13244,7 +12648,6 @@
     // In split HTML files, cross-portal navigation uses separate files from the header and CTA links.
     window.showAdminTab = showAdminTab;
     window.openTrackedParcel = openTrackedParcel;
-    window.toggleTicketHub = toggleTicketHub;
     window.editClientLogin = editClientLogin;
     window.editClientDetails = editClientDetails;
     window.toggleSignupDetails = toggleSignupDetails;
@@ -13360,7 +12763,6 @@
         var summary=m.summary||invoiceSummaryFallback(invoiceType,cod,charges,payable,dueToNovax);
         return { _uuid:r.id, id:r.code||r.id, clientId:r.client_id, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:cod, charges:charges, payable:payable, status:r.status||"Pending", createdAt:dtpart(r.created_at), paidAt:paidAt, walletPushedAt:walletPushedAt, summary:summary, invoiceType:invoiceType, dueToNovax:dueToNovax, finalBalance:Number(m.finalBalance!=null?m.finalBalance:payable) };
       }
-      function rTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:r.client_id, parcelId:r.parcel_id||"", sourceKey:m.sourceKey||"", tier:m.tier||"medium", title:r.subject||"", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", message:r.body||"", createdAt:dtpart(r.created_at), ageHours:Number(m.ageHours||0), status:r.status||"Open", escalated:!!m.escalated, replies:Array.isArray(m.replies)?m.replies:[], source:m.source||"", intent:m.intent||"", priority:m.priority||"", suggestedTeam:m.suggestedTeam||m.department||"", handoffReason:m.handoffReason||"", resolutionReply:m.resolutionReply||"", proof:m.proof||"", resolvedBy:m.resolvedBy||"", resolvedAt:m.resolvedAt||"", solvedHours:Number(m.solvedHours||0) }; }
       function rExpense(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:m.name||r.note||r.category||"Expense", amount:Number(r.amount||0), type:r.category||"", owner:r.branch||"", status:m.status||"Pending", note:r.note||"" }; }
       // NovaX fix (withdrawal UX v2): surface the holder_name/bank_name
       // snapshot columns (added alongside save_client_bank_details) so the
@@ -13420,7 +12822,6 @@
       // invoice object can never overwrite real columns (due_to_novax,
       // invoice_type, wallet_pushed_at, settled_at, status) with old/blank
       // data through the generic saveState -> syncAll() loop.
-      function fTicket(t){ var cid=cuid(t.clientId); return { client_id:isUuid(cid)?cid:null, parcel_id:null, subject:t.title||"", body:t.message||"", status:t.status||"Open", created_by:ADMIN_UID, meta:{ code:t.id, sourceKey:t.sourceKey, tier:t.tier, from:t.from, to:t.to, branch:t.branch, awb:t.awb, ageHours:t.ageHours, escalated:t.escalated, replies:t.replies||[], source:t.source||"", intent:t.intent||"", priority:t.priority||"", suggestedTeam:t.suggestedTeam||"", handoffReason:t.handoffReason||"", resolutionReply:t.resolutionReply||"", proof:t.proof||"", resolvedBy:t.resolvedBy||"", resolvedAt:t.resolvedAt||"", solvedHours:t.solvedHours||0 } }; }
       function fExpense(e){ return { branch:e.owner||"", category:e.type||"", amount:Number(e.amount||0), note:e.note||e.name||"", created_by:ADMIN_UID, meta:{ name:e.name, status:e.status } }; }
       function fWd(w){
         var cid=cuid(w.clientId); if(!cid) return null;
@@ -13439,14 +12840,10 @@
       function fResolvedAlert(o){ return { awb:o.awb||"", branch:o.branch||"", resolved_by:o.resolvedBy||"", reason:o.reason||"", alert:o.alert||"", solved_hours:o.solvedHours||null, resolved_at:o.resolvedAt||null, meta:{ localId:o.id } }; }
       function rManifest(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.code||m.localId||r.id, from:r.from_branch||"", to:r.to_branch||"", expected:Number(r.expected||0), scanned:Number(r.scanned||0), demanifested:Number(r.demanifested||0), health:Number(r.health||0), status:r.status||"Active", type:r.type||"parcel manifest", parcels:Array.isArray(m.parcels)?m.parcels:[], demanifestedAwbs:Array.isArray(m.demanifestedAwbs)?m.demanifestedAwbs:[], missingAwbs:Array.isArray(m.missingAwbs)?m.missingAwbs:[], createdAt:m.createdAt||"", completedAt:r.completed_at||"" }; }
       function fManifest(o){ return { code:o.id||"", from_branch:o.from||"", to_branch:o.to||"", expected:o.expected||0, scanned:o.scanned||0, demanifested:o.demanifested||0, health:o.health||0, status:o.status||"Active", type:o.type||"parcel manifest", completed_at:o.completedAt||null, meta:{ parcels:o.parcels||[], demanifestedAwbs:o.demanifestedAwbs||[], missingAwbs:o.missingAwbs||[], createdAt:o.createdAt } }; }
-      function rTicketNotif(r){ return { _uuid:r.id, text:r.text||"", at:r.at||"", level:r.level||"info" }; }
-      function fTicketNotif(o){ return { text:o.text||"", at:o.at||"", level:o.level||"info" }; }
       function suid(id){ var u=(state.users||[]).find(function(x){return x.id===id;}); return (u&&u._uuid)||(isUuid(id)?id:null); }
       function suidToLocal(uid){ var u=(state.users||[]).find(function(x){return x._uuid===uid;}); return u?u.id:(uid||""); }
       function rStaffUser(r){ var m=r.meta||{}; var cl=(state.clients||[]).find(function(x){return x._uuid===r.client_id;}); var rd=(state.riders||[]).find(function(x){return x._uuid===r.rider_id;}); return { _uuid:r.id, id:r.code||r.id, name:r.name||"", email:r.email||"", role:r.role||"", accessSide:r.access_side||"", branch:r.branch||"", clientId:cl?cl.id:(r.client_id||""), riderId:rd?rd.id:(r.rider_id||""), permissions:Array.isArray(r.permissions)?r.permissions:[], status:r.status||"Active", staffTab:!!r.staff_tab, staffRole:r.staff_role||"", staffTargets:Array.isArray(m.staffTargets)?m.staffTargets:[] }; }
       function fStaffUser(o){ return { code:o.id||"", name:o.name||"", email:o.email||"", role:o.role||"", access_side:o.accessSide||"", branch:o.branch||"", client_id:cuid(o.clientId), rider_id:ruid(o.riderId), permissions:o.permissions||[], status:o.status||"Active", staff_tab:!!o.staffTab, staff_role:o.staffRole||"", meta:{ staffTargets:o.staffTargets||[] } }; }
-      function rStaffTicket(r){ return { _uuid:r.id, id:r.code||r.id, title:r.title||"", owner:suidToLocal(r.owner_id), priority:r.priority||"medium", status:r.status||"open", created:r.created_at||"", by:r.created_by||"" }; }
-      function fStaffTicket(t){ return { code:t.id||"", owner_id:suid(t.owner), title:t.title||"", priority:t.priority||"medium", status:t.status||"open", created_by:t.by||"" }; }
       function rStaffActivity(r){ return { _uuid:r.id, who:suidToLocal(r.owner_id), t:r.note||"", time:r.created_at||"" }; }
       function fStaffActivity(a){ return { owner_id:suid(a.who), note:a.t||"" }; }
       // NovaX fix (Wallet Ledger v1, item 5): "withdrawals" used to be in
@@ -13459,7 +12856,7 @@
       // admin_mark_withdrawal_paid), so "withdrawals" is intentionally
       // removed from generic sync entirely. fWd() is kept only as a record
       // of the old shape; it is no longer called anywhere.
-      var SETS=[["clients",fClient,"clients"],["riders",fRider,"riders"],["parcels",fParcel,"parcels"],["tickets",fTicket,"tickets"],["expenses",fExpense,"expenses"],["paymentLogs",fPl,"payment_logs"],["operationsIssues",fOpsIssue,"operations_issues"],["resolvedAlerts",fResolvedAlert,"resolved_alerts"],["transit",fManifest,"manifest_logs"],["completedSacks",fManifest,"manifest_logs"],["ticketNotifications",fTicketNotif,"ticket_notifications"],["users",fStaffUser,"staff_users"],["staffTickets",fStaffTicket,"staff_tickets"],["staffActivity",fStaffActivity,"staff_activity"],["pickupRequests",fPickup,"pickup_requests"]];
+      var SETS=[["clients",fClient,"clients"],["riders",fRider,"riders"],["parcels",fParcel,"parcels"],["expenses",fExpense,"expenses"],["paymentLogs",fPl,"payment_logs"],["operationsIssues",fOpsIssue,"operations_issues"],["resolvedAlerts",fResolvedAlert,"resolved_alerts"],["transit",fManifest,"manifest_logs"],["completedSacks",fManifest,"manifest_logs"],["users",fStaffUser,"staff_users"],["staffActivity",fStaffActivity,"staff_activity"],["pickupRequests",fPickup,"pickup_requests"]];
       function scheduleResync(){ clearTimeout(resyncT); resyncT=setTimeout(function(){ try{ syncAll(); }catch(e){} },700); }
       function loadAll(){
         /* NOTE: every query below now has an explicit .limit(). Supabase's own
@@ -13477,7 +12874,6 @@
           sb.from("riders").select("*").order("created_at",{ascending:false}).limit(5000),
           sb.from("parcels").select("*").order("booked_at",{ascending:false}).limit(5000),
           sb.from("invoices").select("*").order("created_at",{ascending:false}).limit(5000),
-          sb.from("tickets").select("*").order("created_at",{ascending:false}).limit(3000),
           sb.from("expenses").select("*").order("created_at",{ascending:false}).limit(3000),
           sb.from("withdrawals").select("*").order("created_at",{ascending:false}).limit(3000),
           sb.from("payment_logs").select("*").order("created_at",{ascending:false}).limit(3000),
@@ -13486,9 +12882,7 @@
           sb.from("operations_issues").select("*").order("created_at",{ascending:false}).limit(2000),
           sb.from("resolved_alerts").select("*").order("created_at",{ascending:false}).limit(2000),
           sb.from("manifest_logs").select("*").order("created_at",{ascending:false}).limit(2000),
-          sb.from("ticket_notifications").select("*").order("created_at",{ascending:false}).limit(20),
           sb.from("staff_users").select("*").order("created_at",{ascending:false}).limit(2000),
-          sb.from("staff_tickets").select("*").order("created_at",{ascending:false}).limit(2000),
           sb.from("staff_activity").select("*").order("created_at",{ascending:false}).limit(100),
           sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}).limit(5000),
           sb.from("pickup_requests").select("*").order("created_at",{ascending:false}).limit(3000),
@@ -13499,24 +12893,21 @@
           state.riders=D(1).map(rRider);
           state.parcels=D(2).map(rParcel);
           state.invoices=D(3).map(rInvoice);
-          state.tickets=D(4).map(rTicket);
-          state.expenses=D(5).map(rExpense);
-          state.walletWithdrawals=D(6).map(rWd);
-          state.paymentLogs=D(7).map(rPl);
-          state.salesLeads=D(8).map(rSalesLead);
-          state.signupLeads=D(9).map(rSignupLead);
-          state.operationsIssues=D(10).map(rOpsIssue);
-          state.resolvedAlerts=D(11).map(rResolvedAlert);
-          var manifestRows=D(12).map(rManifest);
+          state.expenses=D(4).map(rExpense);
+          state.walletWithdrawals=D(5).map(rWd);
+          state.paymentLogs=D(6).map(rPl);
+          state.salesLeads=D(7).map(rSalesLead);
+          state.signupLeads=D(8).map(rSignupLead);
+          state.operationsIssues=D(9).map(rOpsIssue);
+          state.resolvedAlerts=D(10).map(rResolvedAlert);
+          var manifestRows=D(11).map(rManifest);
           state.transit=manifestRows.filter(function(m){ return m.status!=="Complete"; });
           state.completedSacks=manifestRows.filter(function(m){ return m.status==="Complete"; });
-          state.ticketNotifications=D(13).map(rTicketNotif);
-          state.users=D(14).map(rStaffUser);
-          state.staffTickets=D(15).map(rStaffTicket);
-          state.staffActivity=D(16).map(rStaffActivity);
-          state.walletLedger=D(17).map(rLedger);
-          state.pickupRequests=D(18).map(rPickup);
-          state.clientProfiles=D(19).map(function(r){ return { id:r.id, email:r.email||"", clientId:r.client_id||null }; });
+          state.users=D(12).map(rStaffUser);
+          state.staffActivity=D(13).map(rStaffActivity);
+          state.walletLedger=D(14).map(rLedger);
+          state.pickupRequests=D(15).map(rPickup);
+          state.clientProfiles=D(16).map(function(r){ return { id:r.id, email:r.email||"", clientId:r.client_id||null }; });
           // NovaX fix (Best Fix Rule): the embedded Client Portal preview must
           // never silently default to the first client in the list -- leave
           // it unset ("No client selected") until admin explicitly picks one
@@ -13761,7 +13152,7 @@
       }
       function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
       var _save=saveState; saveState=function(){ try{ if(typeof syncRidersFromUsers==="function") syncRidersFromUsers(); }catch(e){} try{ _save.apply(this,arguments); }catch(e){} try{ syncAll(); }catch(e){} };
-      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.tickets=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[]; state.signupLeads=[]; state.operationsIssues=[]; state.resolvedAlerts=[]; state.transit=[]; state.completedSacks=[]; state.ticketNotifications=[]; state.users=[]; state.staffTickets=[]; state.staffActivity=[]; state.walletLedger=[]; state.pickupRequests=[];
+      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[]; state.signupLeads=[]; state.operationsIssues=[]; state.resolvedAlerts=[]; state.transit=[]; state.completedSacks=[]; state.users=[]; state.staffActivity=[]; state.walletLedger=[]; state.pickupRequests=[];
       window.markSalesLeadContacted=function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
@@ -13852,7 +13243,7 @@
           liveSubscribed=true;
           try{
             var liveChannel=sb.channel("novax_admin_live");
-            ["clients","riders","parcels","invoices","tickets","expenses","withdrawals","payment_logs","sales_leads","signup_leads","operations_issues","resolved_alerts","manifest_logs","ticket_notifications","staff_users","staff_tickets","staff_activity","pickup_requests"].forEach(function(t){
+            ["clients","riders","parcels","invoices","expenses","withdrawals","payment_logs","sales_leads","signup_leads","operations_issues","resolved_alerts","manifest_logs","staff_users","staff_activity","pickup_requests"].forEach(function(t){
               liveChannel.on("postgres_changes",{event:"*",schema:"public",table:t},function(){ nvLiveChange(t); });
             });
             liveChannel.subscribe(function(status,err){ if(err) console.warn("NovaX admin realtime",status,err.message||err); });
@@ -13878,29 +13269,18 @@
         var fmt=function(n){ return Number(n||0).toLocaleString('en-US'); };
         function invLine(iv){ return 'Invoice <b>'+esc(iv.id)+'</b> - status <b>'+esc(iv.status)+'</b><br>Payable <b>Rs '+fmt(iv.payable)+'</b> (COD Rs '+fmt(iv.cod)+' - charges Rs '+fmt(iv.charges)+') · '+((iv.parcelRefs||[]).length)+' parcel(s)'; }
         function pLine(p){ return '<b>'+esc(p.awb)+'</b> - <b>'+esc(p.status)+'</b><br>'+esc(p.consignee||'')+(p.city?' · '+esc(p.city):'')+(p.branch?' · '+esc(p.branch):'')+((p.rider||p.riderId)?' · rider '+esc(p.rider||p.riderId):'')+(p.updated?' · updated '+esc(p.updated):'')+(p.exception?'<br>⚠️ '+esc(p.exception):''); }
-        function makeTicket(q,awb){
-          var key='ai:'+q.toLowerCase().replace(/\s+/g,' ').slice(0,60);
-          var t=ensureTicketFromIssue(key,{ tier:'medium', title:q.length>42?q.slice(0,42)+'…':q, from:'Admin AI Assistant', to:'Admin Control', branch:'Admin', awb:awb||'', message:q });
-          state.ticketNotifications=Array.isArray(state.ticketNotifications)?state.ticketNotifications:[];
-          state.ticketNotifications.unshift({ text:(t&&t.id?t.id:'TCK')+' opened by Admin AI Assistant to Admin Control.', at:(t&&t.createdAt)||'', level:'info' });
-          try{ saveState(); }catch(e){} try{ render(); }catch(e){}
-          return t&&t.id?t.id:'a ticket';
-        }
         function engine(raw){
           // NovaX fix (Low #9): example hints no longer reference specific
           // demo AWB/invoice/client ids, so the live console doesn't read
           // like a demo build.
-          var q=String(raw||'').trim(); if(!q) return {text:'Ask me: <b>where is [an AWB]</b>, <b>open tickets</b>, <b>rider cash</b>, <b>total COD</b>, <b>an invoice number</b>, or a client wallet (e.g. their client id).'};
+          var q=String(raw||'').trim(); if(!q) return {text:'Ask me: <b>where is [an AWB]</b>, <b>rider cash</b>, <b>total COD</b>, <b>an invoice number</b>, or a client wallet (e.g. their client id).'};
           var low=q.toLowerCase();
-          if(/^(hi|hey|hello|salam|assalam|aoa|yo)\b/.test(low)) return {text:'Hi! I read the live NovaX control-room data. Try: <i>where is SAMPLE-AWB-1</i>, <i>open tickets</i>, <i>rider cash</i>, <i>total payable</i>.'};
+          if(/^(hi|hey|hello|salam|assalam|aoa|yo)\b/.test(low)) return {text:'Hi! I read the live NovaX control-room data. Try: <i>where is SAMPLE-AWB-1</i>, <i>rider cash</i>, <i>total payable</i>.'};
           if(/^(thanks|thank you|ok|okay|great|cool)\b/.test(low)) return {text:'👍'};
           var awb=(q.match(/N\d{7}/i)||[])[0];
-          if(awb){ var p=(state.parcels||[]).find(function(x){return String(x.awb||'').toUpperCase()===awb.toUpperCase();}); if(p) return {text:pLine(p)+(p.steps&&p.steps.length?'<br><span class=nvai-dim>Journey: '+esc(p.steps.join(' to '))+'</span>':'')}; return {ticket:true,text:'No parcel <b>'+esc(awb.toUpperCase())+'</b> exists in the system.'}; }
+          if(awb){ var p=(state.parcels||[]).find(function(x){return String(x.awb||'').toUpperCase()===awb.toUpperCase();}); if(p) return {text:pLine(p)+(p.steps&&p.steps.length?'<br><span class=nvai-dim>Journey: '+esc(p.steps.join(' to '))+'</span>':'')}; return {text:'No parcel <b>'+esc(awb.toUpperCase())+'</b> exists in the system.'}; }
           var invId=(q.match(/INV-\d+/i)||[])[0];
-          if(invId){ var iv=(state.invoices||[]).find(function(i){return String(i.id||'').toUpperCase()===invId.toUpperCase();}); if(iv) return {text:invLine(iv)}; return {ticket:true,text:'Invoice <b>'+esc(invId.toUpperCase())+'</b> not found.'}; }
-          var tkId=(q.match(/TCK-\d+/i)||[])[0];
-          if(tkId){ var tk=(state.tickets||[]).find(function(t){return String(t.id||'').toUpperCase()===tkId.toUpperCase();}); if(tk) return {text:'Ticket <b>'+esc(tk.id)+'</b> - <b>'+esc(tk.status)+'</b><br>'+esc(tk.title)+'<br>To: '+esc(tk.to)+(tk.awb?' · AWB '+esc(tk.awb):'')+(tk.resolutionReply?'<br>Reply: '+esc(tk.resolutionReply):'')}; return {ticket:true,text:'Ticket <b>'+esc(tkId.toUpperCase())+'</b> not found.'}; }
-          if(/ticket|complaint|escalation|open issue|pending issue/.test(low)){ var open=(state.tickets||[]).filter(function(t){return t.status!=='Resolved';}); if(!open.length) return {text:'No open tickets - all clear. ✅'}; return {text:'<b>'+open.length+'</b> open ticket(s):<br>'+open.slice(0,6).map(function(t){return '• <b>'+esc(t.id)+'</b> '+esc(t.title)+' to '+esc(t.to);}).join('<br>')}; }
+          if(invId){ var iv=(state.invoices||[]).find(function(i){return String(i.id||'').toUpperCase()===invId.toUpperCase();}); if(iv) return {text:invLine(iv)}; return {text:'Invoice <b>'+esc(invId.toUpperCase())+'</b> not found.'}; }
           if(/rider|cash held|cash limit|cash in hand/.test(low)){ var rs=(state.riders||[]); if(!rs.length) return {text:'No riders on file.'}; var over=rs.filter(function(r){return Number(r.cashHeld||0)>Number(r.cashLimit||0);}); var top=rs.slice().sort(function(a,b){return Number(b.cashHeld||0)-Number(a.cashHeld||0);}).slice(0,5); return {text:'Rider cash (top holders):<br>'+top.map(function(r){return '• '+esc(r.name)+': Rs '+fmt(r.cashHeld)+' / limit Rs '+fmt(r.cashLimit)+(Number(r.cashHeld||0)>Number(r.cashLimit||0)?' ⚠️ over':'');}).join('<br>')+(over.length?'<br><b>'+over.length+'</b> rider(s) over limit.':'')}; }
           if(/wallet|balance/.test(low)){ var clid=(q.match(/CL-\d+/i)||[])[0]; if(clid){ var bal=walletBalance(clid.toUpperCase()); return {text:'Wallet balance for <b>'+esc(clid.toUpperCase())+'</b>: <b>Rs '+fmt(bal)+'</b>.'}; } return {text:'Tell me which client (e.g. their client id) and I will show their wallet balance.'}; }
           if(/cod|finance|revenue|payable|collected|total/.test(low)){ var ps=state.parcels||[]; var delivered=ps.filter(function(p){return /delivered/i.test(p.status);}); var cod=delivered.reduce(function(s,p){return s+Number(p.cod||0);},0); var invs=state.invoices||[]; var payable=invs.filter(function(i){return i.status!=='Paid'&&i.status!=='Deleted';}).reduce(function(s,i){return s+Number(i.payable||0);},0); var pend=(state.walletWithdrawals||[]).filter(function(w){return /pending|process/i.test(w.status||'');}).reduce(function(s,w){return s+Number(w.net||w.amount||0);},0); return {text:'Finance snapshot:<br>• Delivered COD: <b>Rs '+fmt(cod)+'</b><br>• Unpaid invoices payable: <b>Rs '+fmt(payable)+'</b><br>• Withdrawals in progress: <b>Rs '+fmt(pend)+'</b>'}; }
@@ -13909,9 +13289,9 @@
           if(/list|show|recent|all parcels|all orders/.test(low)&&/parcel|order|shipment/.test(low)){ var ap=(state.parcels||[]); if(!ap.length) return {text:'No parcels in the system yet.'}; return {text:'Recent parcels:<br>'+ap.slice(0,8).map(pLine).join('<br><br>')+(ap.length>8?'<br><span class=nvai-dim>+'+(ap.length-8)+' more.</span>':'')}; }
           if(/client|seller|merchant/.test(low)){ var cs=(state.clients||[]); if(!cs.length) return {text:'No clients on file.'}; var clid2=(q.match(/CL-\d+/i)||[])[0]; if(clid2){ var cc=cs.find(function(c){return String(c.id||'').toUpperCase()===clid2.toUpperCase();}); if(cc) return {text:'<b>'+esc(cc.name)+'</b> ('+esc(cc.id)+')<br>'+esc(cc.city||'')+(cc.email?' · '+esc(cc.email):'')+'<br>Wallet: <b>Rs '+fmt(walletBalance(cc.id))+'</b> · status '+esc(cc.status||'Active')}; return {text:'No client <b>'+esc(clid2.toUpperCase())+'</b> found.'}; } return {text:'<b>'+cs.length+'</b> client(s):<br>'+cs.slice(0,8).map(function(c){return '• '+esc(c.name)+' ('+esc(c.id)+') - '+esc(c.city||'')+' · wallet Rs '+fmt(walletBalance(c.id));}).join('<br>')+(cs.length>8?'<br><span class=nvai-dim>+'+(cs.length-8)+' more.</span>':'')}; }
           if(/rate|price|pricing|tariff|charge per/.test(low)) return {text:'Delivery rates are set per client in their profile (default Rs 240/shipment). Ask me for a client by their id for their exact rate and wallet.'};
-          if(/help|what can you|capabilit|how.*(use|work)|guide|menu|options|commands|what do you do/.test(low)) return {text:'I read the live control room. Ask me: parcel status (AWB), <i>open tickets</i>, <i>rider cash</i>, <i>finance totals</i>, a client wallet (by client id), <i>exceptions and SLA</i>, <i>list clients</i>, or a network summary.'};
+          if(/help|what can you|capabilit|how.*(use|work)|guide|menu|options|commands|what do you do/.test(low)) return {text:'I read the live control room. Ask me: parcel status (AWB), <i>rider cash</i>, <i>finance totals</i>, a client wallet (by client id), <i>exceptions and SLA</i>, <i>list clients</i>, or a network summary.'};
           if(/track|where|status|location/.test(low)) return {text:'Give me the AWB (e.g. <b>SAMPLE-AWB-1</b>) for exact live status.'};
-          return {text:'I can answer anything in the control room - try <i>where is [an AWB]</i>, <i>open tickets</i>, <i>rider cash</i>, <i>total COD</i>, <i>a client wallet</i>, <i>exceptions</i>, or <i>list clients</i>. To log a ticket, say <i>raise a ticket</i>.'};
+          return {text:'I can answer anything in the control room - try <i>where is [an AWB]</i>, <i>rider cash</i>, <i>total COD</i>, <i>a client wallet</i>, <i>exceptions</i>, or <i>list clients</i>.'};
         }
         var style=document.createElement('style');
         style.textContent='.nvai-btn{position:fixed;right:18px;bottom:18px;z-index:99999;width:58px;height:58px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#14c77b);color:#fff;font-size:24px;box-shadow:0 12px 30px rgba(20,199,123,.45);display:grid;place-items:center;border:0;cursor:pointer}.nvai-dim{opacity:.7}.nvai-panel{position:fixed;right:18px;bottom:86px;z-index:99999;width:360px;max-width:calc(100vw - 36px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #cfe6dc;border-radius:18px;box-shadow:0 26px 70px rgba(13,91,64,.28);display:none;flex-direction:column;overflow:hidden}.nvai-panel.open{display:flex}.nvai-head{background:linear-gradient(135deg,#0b2a1f,#0c7c59);color:#eafff5;padding:13px 16px;display:flex;align-items:center;gap:10px}.nvai-head b{font-size:15px;line-height:1.1}.nvai-head small{font-size:11px;opacity:.8}.nvai-x{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:0;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px}.nvai-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f3fff9}.nvai-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}.nvai-m.u{align-self:flex-end;background:#dcffe9;color:#08311f;border-bottom-right-radius:4px}.nvai-m.b{align-self:flex-start;background:#fff;border:1px solid #e1f0e8;color:#0b2a1f;border-bottom-left-radius:4px}.nvai-bar{display:flex;gap:8px;padding:10px;border-top:1px solid #e1f0e8;background:#fff}.nvai-bar input{flex:1;min-width:0;height:42px;border-radius:11px;border:1px solid #cfe6dc;padding:0 12px;font:inherit;font-size:14px}.nvai-bar button{height:42px;padding:0 16px;border-radius:11px;background:#14c77b;color:#04130d;font-weight:800;border:0;cursor:pointer}@media (max-width:520px){.nvai-panel{right:10px;left:10px;width:auto;bottom:78px;height:72vh}.nvai-btn{right:14px;bottom:14px}}';
@@ -13921,12 +13301,12 @@
         panel.innerHTML='<div class=nvai-head><div><b>NovaX Admin AI</b><br><small>live control-room data · never guesses</small></div><button class=nvai-x type=button>×</button></div><div class=nvai-msgs></div><div class=nvai-bar><input type=text><button type=button>Send</button></div>';
         document.body.appendChild(btn); document.body.appendChild(panel);
         var msgs=panel.querySelector('.nvai-msgs'); var inp=panel.querySelector('.nvai-bar input'); var sendBtn=panel.querySelector('.nvai-bar button'); var closeBtn=panel.querySelector('.nvai-x');
-        inp.placeholder='Ask about parcels, tickets, finance…';
+        inp.placeholder='Ask about parcels, finance, riders…';
         function addMsg(html,cls){ var d=document.createElement('div'); d.className='nvai-m '+cls; d.innerHTML=html; msgs.appendChild(d); msgs.scrollTop=msgs.scrollHeight; }
         function botSay(h){ addMsg(h,'b'); }
-        function send(){ var v=inp.value.trim(); if(!v) return; addMsg(esc(v),'u'); inp.value=''; setTimeout(function(){ try{ var r=engine(v); if(r.ticket){ var id=makeTicket(v,(v.match(/N\d{7}/i)||[])[0]||''); botSay((r.text?r.text+'<br><br>':'')+'I have opened ticket <b>'+esc(id)+'</b> in the tickets queue for follow-up.'); } else botSay(r.text); }catch(e){ botSay('Sorry, something went wrong reading the data. Please try again.'); } },160); }
+        function send(){ var v=inp.value.trim(); if(!v) return; addMsg(esc(v),'u'); inp.value=''; setTimeout(function(){ try{ var r=engine(v); botSay(r.text); }catch(e){ botSay('Sorry, something went wrong reading the data. Please try again.'); } },160); }
         var greeted=false;
-        btn.addEventListener('click',function(){ panel.classList.toggle('open'); if(panel.classList.contains('open')){ if(!greeted){ greeted=true; botSay('Hi! 👋 I am the NovaX Admin AI. Ask me <i>where is SAMPLE-AWB-1</i>, <i>open tickets</i>, <i>rider cash</i>, or <i>finance totals</i>.'); } inp.focus(); } });
+        btn.addEventListener('click',function(){ panel.classList.toggle('open'); if(panel.classList.contains('open')){ if(!greeted){ greeted=true; botSay('Hi! 👋 I am the NovaX Admin AI. Ask me <i>where is SAMPLE-AWB-1</i>, <i>rider cash</i>, or <i>finance totals</i>.'); } inp.focus(); } });
         closeBtn.addEventListener('click',function(){ panel.classList.remove('open'); });
         sendBtn.addEventListener('click',send); inp.addEventListener('keydown',function(e){ if(e.key==='Enter') send(); });
       }catch(e){ console.warn('NovaX AI init failed',e); }
@@ -13934,9 +13314,9 @@
 
     /* ===================== NOVAX STAFF TAB ===================== */
     /* SUPABASE RLS NOTE: state currently rides along inside novax_state (single row),
-       so staff tickets/targets/activity sync automatically — no new tables required
+       so staff targets/activity sync automatically — no new tables required
        to make this WORK today. But the publishable key is public, so if this is split
-       into real tables later (staff_tickets, staff_targets, staff_activity), add RLS:
+       into real tables later (staff_targets, staff_activity), add RLS:
          SELECT: (auth.uid() = owner_uid) OR (role in ('admin','ops'))
          INSERT: auth.uid() = owner_uid
        Until then, the JS access gate below hides other staff's data in the UI only —
@@ -13959,7 +13339,7 @@
 
     function defaultStaffTargets(role){
       const map = {
-        Support:[{id:"T"+Date.now()+"a",label:"Tickets closed / day",now:0,goal:40,pct:false}],
+        Support:[{id:"T"+Date.now()+"a",label:"Cases closed / day",now:0,goal:40,pct:false}],
         Sales:[{id:"T"+Date.now()+"a",label:"Calls / day",now:0,goal:30,pct:false},
                {id:"T"+Date.now()+"b",label:"Leads converted / week",now:0,goal:10,pct:false}],
         HR:[{id:"T"+Date.now()+"a",label:"Weekly 1-on-1s done",now:0,goal:5,pct:false}]
@@ -13967,31 +13347,15 @@
       return map[role] || [];
     }
     function staffList(){ return (state.users||[]).filter(u=>u.staffTab===true); }
-    function staffTicketsFor(id){ return (state.staffTickets||[]).filter(t=>t.owner===id); }
     function staffActivityFor(id){ return (state.staffActivity||[]).filter(a=>a.who===id).slice(0,8); }
     function staffTimeNow(){ return new Date().toTimeString().slice(0,5); }
     function staffLog(who,text){ (state.staffActivity=state.staffActivity||[]).unshift({who,t:text,time:staffTimeNow()}); }
     function staffInitials(n){ return String(n||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase(); }
     function staffScore(u){ const t=u.staffTargets||[]; if(!t.length) return 50;
       return Math.round(t.reduce((a,x)=>a+(x.pct?x.now:Math.min(100,(x.now/x.goal)*100)),0)/t.length); }
-    function staffRoleBlurb(r){ return {Support:"Customer tickets, response time, and CSAT.",Sales:"Lead calls, conversions, and pipeline.",HR:"Onboarding, attendance, and staff wellbeing."}[r]||"Team member."; }
+    function staffRoleBlurb(r){ return {Support:"Customer response time and CSAT.",Sales:"Lead calls, conversions, and pipeline.",HR:"Onboarding, attendance, and staff wellbeing."}[r]||"Team member."; }
 
     /* ---- ACTIONS (all persist via saveState) ---- */
-    function staffAddTicket(ownerId){
-      const inp=document.getElementById("stk_in_"+ownerId), pri=document.getElementById("stk_pri_"+ownerId);
-      const title=(inp.value||"").trim(); if(!title){ toast("Type the ticket first."); return; }
-      const owner=(state.users||[]).find(u=>u.id===ownerId);
-      const n=(state.staffTickets||[]).length+1;
-      (state.staffTickets=state.staffTickets||[]).unshift({id:"STK-"+String(n).padStart(4,"0"),title,owner:ownerId,priority:pri.value,status:"open",created:staffTimeNow(),by:owner?owner.name:""});
-      staffLog(ownerId,"Created ticket: "+title); saveState(); renderStaffTab(); toast("Ticket added.");
-    }
-    function staffSetTicket(id,status){
-      const t=(state.staffTickets||[]).find(x=>x.id===id); if(!t) return; t.status=status;
-      staffLog(t.owner,(status==="resolved"?"Resolved ":"Reopened ")+id);
-      if(status==="resolved"){ const u=(state.users||[]).find(x=>x.id===t.owner);
-        const tg=u&&(u.staffTargets||[]).find(g=>/ticket/i.test(g.label)&&!g.pct); if(tg) tg.now++; }
-      saveState(); renderStaffTab(); toast(id+" "+status+".");
-    }
     function staffLogCall(ownerId){
       const el=document.getElementById("stk_call_"+ownerId); const txt=(el.value||"").trim()||"Called a lead";
       staffLog(ownerId,"📞 "+txt); const u=(state.users||[]).find(x=>x.id===ownerId);
@@ -14020,15 +13384,13 @@
     }
     function staffManagerView(){
       const list=staffList();
-      const openTix=(state.staffTickets||[]).filter(t=>t.status==="open").length;
       const avg=list.length?Math.round(list.reduce((a,u)=>a+staffScore(u),0)/list.length):0;
       let html=`
       <div class="panel">
-        <div class="section-head"><div><h3>Staff Control</h3><p>Everyone in one place. Add staff, assign targets, and resolve tickets for any member. Click a person to manage their workspace.</p></div>
+        <div class="section-head"><div><h3>Staff Control</h3><p>Everyone in one place. Add staff, assign targets, and track performance. Click a person to manage their workspace.</p></div>
           <button class="action-btn" onclick="showAdminTab('users-create')">+ Add Staff</button></div>
         <div class="grid metrics">
           <div class="metric"><span>Team</span><strong>${list.length}</strong></div>
-          <div class="metric"><span>Open tickets</span><strong>${openTix}</strong></div>
           <div class="metric"><span>Actions</span><strong>${(state.staffActivity||[]).length}</strong></div>
           <div class="metric"><span>Avg score</span><strong>${avg}</strong></div>
         </div>
@@ -14036,10 +13398,10 @@
       <div class="panel">
         <div class="section-head"><div><h3>Team</h3><p>Status, workload, and performance. Click to manage.</p></div></div>
         <div class="ops-list">
-        ${list.length? list.map(u=>{const openN=staffTicketsFor(u.id).filter(t=>t.status==="open").length;
+        ${list.length? list.map(u=>{
           return `<div class="ops-card" style="cursor:pointer" onclick="staffOpen('${u.id}')">
             <div class="ops-card-head"><strong>${u.name}</strong><span class="chip info">${u.staffRole||"Staff"}</span></div>
-            <p>${openN} open ticket(s) · score ${staffScore(u)}</p></div>`;}).join("")
+            <p>score ${staffScore(u)}</p></div>`;}).join("")
           : `<p class="footer-note">No staff yet. Create a user with "Show Staff Tab = Yes".</p>`}
         </div>
       </div>`;
@@ -14055,18 +13417,12 @@
       return `<div class="panel"><div class="section-head"><div><h3>My Workspace</h3><p>${u.name} · ${u.staffRole||"Staff"}. You only see your own work here.</p></div><span class="realtime"><span class="pulse"></span> Live</span></div></div>${staffWorkspacePanels(u,false)}`;
     }
     function staffWorkspacePanels(u,forManager){
-      const mine=staffTicketsFor(u.id), openT=mine.filter(t=>t.status==="open"), doneT=mine.filter(t=>t.status==="resolved");
       const isSales=u.staffRole==="Sales";
-      const tRow=t=>{const pc={okay:"info",medium:"warn",emergency:"bad"}[t.priority]||"info";
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${t.id} <span class="chip ${pc}">${t.priority}</span></strong>${t.status==="open"?`<button class="action-btn" onclick="staffSetTicket('${t.id}','resolved')">Resolve</button>`:`<button class="ghost-btn" onclick="staffSetTicket('${t.id}','open')">Reopen</button>`}</div><p>${t.title} <span class="footer-note">��� by ${t.by} ${t.created}</span></p></div>`;};
       return `
       <div class="panel"><div class="section-head"><div><h3>${forManager?u.name+" — workspace":"My performance"}</h3><p>${staffRoleBlurb(u.staffRole)}</p></div>${forManager?`<button class="ghost-btn" onclick="staffClose()">Close</button>`:""}</div>
-        <div class="grid metrics"><div class="metric"><span>Open tickets</span><strong>${openT.length}</strong></div><div class="metric"><span>Resolved</span><strong>${doneT.length}</strong></div><div class="metric"><span>Score</span><strong>${staffScore(u)}</strong></div><div class="metric"><span>Status</span><strong style="font-size:16px">${u.status||"Active"}</strong></div></div></div>
-      <div class="panel"><div class="section-head"><div><h3>Tickets${isSales?" & calls":""}</h3><p>Create a ticket, resolve when done.${isSales?" Log calls for the leaderboard.":""}</p></div></div>
-        ${isSales?`<div class="filter-bar"><input id="stk_call_${u.id}" placeholder="Who did you call?"><button class="action-btn" onclick="staffLogCall('${u.id}')">Log Call</button></div>`:""}
-        <div class="filter-bar"><input id="stk_in_${u.id}" placeholder="New ticket — describe the issue"><select id="stk_pri_${u.id}"><option value="okay">Okay</option><option value="medium" selected>Medium</option><option value="emergency">Emergency</option></select><button class="action-btn" onclick="staffAddTicket('${u.id}')">Add Ticket</button></div>
-        ${openT.length?openT.map(tRow).join(""):'<p class="footer-note">No open tickets.</p>'}
-        ${doneT.length?`<p class="footer-note" style="margin-top:10px">Resolved (${doneT.length})</p>`+doneT.slice(0,4).map(tRow).join(""):""}</div>
+        <div class="grid metrics"><div class="metric"><span>Score</span><strong>${staffScore(u)}</strong></div><div class="metric"><span>Status</span><strong style="font-size:16px">${u.status||"Active"}</strong></div></div></div>
+      ${isSales?`<div class="panel"><div class="section-head"><div><h3>Calls</h3><p>Log calls for the leaderboard.</p></div></div>
+        <div class="filter-bar"><input id="stk_call_${u.id}" placeholder="Who did you call?"><button class="action-btn" onclick="staffLogCall('${u.id}')">Log Call</button></div></div>`:""}
       <div class="panel"><div class="section-head"><div><h3>Targets</h3><p>Tap +/- to update progress.</p></div>${forManager?`<button class="ghost-btn" onclick="staffAssignTarget('${u.id}')">+ Assign Target</button>`:""}</div>
         ${(u.staffTargets||[]).map(t=>{const pct=t.pct?t.now:Math.min(100,Math.round((t.now/t.goal)*100));
           return `<div class="ops-card"><div class="ops-card-head"><strong>${t.label}</strong><span>${t.pct?t.now+"%":t.now+" / "+t.goal} ${!t.pct?`<button class="ghost-btn" onclick="staffBump('${u.id}','${t.id}',-1)">−</button><button class="ghost-btn" onclick="staffBump('${u.id}','${t.id}',1)">+</button>`:""}${forManager?`<button class="ghost-btn" onclick="staffRemoveTarget('${u.id}','${t.id}')">✕</button>`:""}</span></div><div class="meter" style="margin-top:8px"><span style="width:${pct}%"></span></div></div>`;}).join("")||'<p class="footer-note">No targets yet.</p>'}</div>
@@ -14075,537 +13431,6 @@
         <div class="ops-list">${staffActivityFor(u.id).map(a=>`<div class="ops-card"><p>${a.t} <span class="footer-note">· ${a.time}</span></p></div>`).join("")||'<p class="footer-note">No activity yet.</p>'}</div></div>`;
     }
     /* =================== END NOVAX STAFF TAB =================== */
-    /* ===================================================================
-       NovaX ticketing + SLA upgrade (admin side)
-       Deep dive items 2, 3, 4, 7, 9 and the admin half of 8.
-
-       Spliced INSIDE the main admin script block because `state`,
-       `ticketCard`, `renderTickets` and `resolveTicket` are block-scoped
-       here (let state @ ~5996), so an external block could not see them.
-
-       Touches no wallet, withdrawal, invoice, fee or WALLET_FEE code, and
-       adds no second realtime subscription -- the existing
-       postgres_changes listener on `tickets` already repaints everything.
-       =================================================================== */
-    (function nvAdminSla(){
-      if (window.__novaxAdminSlaLoaded) return;
-      window.__novaxAdminSlaLoaded = true;
-
-      function E(v){ return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){
-        return ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[c]; }); }
-      function sb(){ return window.__nvSb || null; }
-      function say(m){ try { toast(m); } catch(e){ console.warn("NovaX:", m); } }
-
-      /* ---------- item 4: support hours, read once, cached ---------- */
-      var SLA = { is_24_7:true, open_hour:9, close_hour:21, work_days:[1,2,3,4,5,6],
-                  escalate_after_hours:24, timezone:"Asia/Karachi", loaded:false };
-      window.__novaxSlaConfig = SLA;
-
-      function loadSlaConfig(){
-        var s = sb(); if (!s) return;
-        s.from("support_hours").select("*").eq("id", 1).maybeSingle().then(function(r){
-          if (r && r.data) {
-            SLA.is_24_7 = !!r.data.is_24_7;
-            SLA.open_hour = Number(r.data.open_hour);
-            SLA.close_hour = Number(r.data.close_hour);
-            SLA.work_days = Array.isArray(r.data.work_days) ? r.data.work_days.map(Number) : SLA.work_days;
-            SLA.escalate_after_hours = Number(r.data.escalate_after_hours || 24);
-            SLA.timezone = r.data.timezone || SLA.timezone;
-          }
-          SLA.loaded = true;
-          try { renderTickets(); } catch(e){}
-        }).catch(function(){ SLA.loaded = true; });
-      }
-
-      /* ---------- item 4b: settings panel for support_hours ----------
-         novax_ticketing_sla_v1.sql already built the full business-hours
-         engine (support_hours table, sla_elapsed_hours(), an RLS write
-         policy gated to is_staff_admin()) and this page already reads it --
-         but until now there was no way to actually change it short of
-         editing the row in Supabase directly. This adds that panel. */
-      var DOW_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-
-      window.nvOpenSlaSettings = function(){
-        var m = document.getElementById("nvSlaSettings");
-        if (!m) {
-          m = document.createElement("div");
-          m.id = "nvSlaSettings";
-          m.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(8,12,22,.62);" +
-            "display:flex;align-items:center;justify-content:center;padding:16px";
-          document.body.appendChild(m);
-          m.addEventListener("click", function(ev){ if (ev.target === m) m.style.display = "none"; });
-        }
-        var days = DOW_LABELS.map(function(label, i){
-          var checked = SLA.work_days.indexOf(i) !== -1 ? " checked" : "";
-          return '<label style="display:inline-flex;align-items:center;gap:3px;font-size:11px;margin-right:8px">' +
-                 '<input type="checkbox" class="nvSlaDay" value="' + i + '"' + checked + '> ' + label + "</label>";
-        }).join("");
-        m.innerHTML =
-          '<div style="background:#fff;border-radius:14px;max-width:440px;width:100%;padding:18px;' +
-          'box-shadow:0 24px 60px rgba(8,12,22,.3)">' +
-          '<h3 style="margin:0 0 4px">SLA / support hours</h3>' +
-          '<p style="margin:0 0 14px;font-size:12px;color:#5b6b86">Controls the clock ' +
-          'novax_ticketing_sla_v1.sql enforces server-side every 5 minutes -- the browser and the ' +
-          'cron job read this same row, so they never disagree.</p>' +
-          '<div class="field"><label><input type="checkbox" id="nvSla247"' +
-          (SLA.is_24_7 ? " checked" : "") + '> Support runs 24/7</label></div>' +
-          '<div id="nvSlaHoursRow" style="display:' + (SLA.is_24_7 ? "none" : "flex") +
-          ';gap:10px;margin-bottom:10px">' +
-          '<div class="field" style="flex:1"><label>Open hour (0-23)</label>' +
-          '<input id="nvSlaOpen" type="number" min="0" max="23" value="' + Number(SLA.open_hour) + '"></div>' +
-          '<div class="field" style="flex:1"><label>Close hour (0-23)</label>' +
-          '<input id="nvSlaClose" type="number" min="0" max="23" value="' + Number(SLA.close_hour) + '"></div>' +
-          "</div>" +
-          '<div id="nvSlaDaysRow" style="display:' + (SLA.is_24_7 ? "none" : "block") +
-          ';margin-bottom:10px">' + days + "</div>" +
-          '<div class="field"><label>Escalate after (hours)</label>' +
-          '<input id="nvSlaLimit" type="number" min="1" max="240" value="' +
-          Number(SLA.escalate_after_hours || 24) + '"></div>' +
-          '<div class="field"><label>Timezone</label>' +
-          '<input id="nvSlaTz" value="' + E(SLA.timezone || "Asia/Karachi") + '"></div>' +
-          '<div class="inline-actions" style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' +
-          '<button class="ghost-btn" onclick="document.getElementById(\'nvSlaSettings\').style.display=\'none\'">Cancel</button>' +
-          '<button class="action-btn" onclick="nvSaveSlaSettings()">Save</button></div></div>';
-        var box247 = m.querySelector("#nvSla247");
-        box247.addEventListener("change", function(){
-          var on = box247.checked;
-          m.querySelector("#nvSlaHoursRow").style.display = on ? "none" : "flex";
-          m.querySelector("#nvSlaDaysRow").style.display = on ? "none" : "block";
-        });
-        m.style.display = "flex";
-      };
-
-      window.nvSaveSlaSettings = function(){
-        var s = sb();
-        if (!s) { say("Cloud connection is not ready, so settings cannot be saved."); return; }
-        var m = document.getElementById("nvSlaSettings");
-        var is247 = !!m.querySelector("#nvSla247").checked;
-        var openH = Math.max(0, Math.min(23, Number(m.querySelector("#nvSlaOpen").value) || 0));
-        var closeH = Math.max(0, Math.min(23, Number(m.querySelector("#nvSlaClose").value) || 0));
-        var limit = Math.max(1, Number(m.querySelector("#nvSlaLimit").value) || 24);
-        var tz = (m.querySelector("#nvSlaTz").value || "Asia/Karachi").trim();
-        var days = Array.prototype.map.call(
-          m.querySelectorAll(".nvSlaDay:checked"), function(cb){ return Number(cb.value); }
-        );
-        if (!is247 && !days.length) { say("Pick at least one working day, or turn on 24/7."); return; }
-        if (!is247 && closeH <= openH) { say("Close hour must be after open hour."); return; }
-
-        s.from("support_hours").update({
-          is_24_7: is247, open_hour: openH, close_hour: closeH,
-          work_days: days.length ? days : [1,2,3,4,5,6],
-          escalate_after_hours: limit, timezone: tz, updated_at: new Date().toISOString()
-        }).eq("id", 1).then(function(r){
-          if (r && r.error) {
-            say(/could not find the table|does not exist|schema cache/i.test(r.error.message)
-              ? "SLA settings are not deployed yet. Run novax_ticketing_sla_v1.sql first."
-              : "Could not save: " + r.error.message);
-            return;
-          }
-          say("SLA settings saved. The cron job and every open session pick this up within a few minutes.");
-          m.style.display = "none";
-          loadSlaConfig();
-        }).catch(function(e){ say("Could not save: " + ((e && e.message) || e)); });
-      };
-
-      // Mirror of sla_elapsed_hours() in novax_ticketing_sla_v1.sql so the
-      // card and the cron job agree. 24/7 mode is plain wall clock, which is
-      // byte-for-byte the old ticketAgeHours() behaviour.
-      function slaHours(from, to){
-        var a = from instanceof Date ? from : new Date(String(from || "").replace(" ", "T"));
-        var b = to ? (to instanceof Date ? to : new Date(String(to).replace(" ", "T"))) : new Date();
-        if (isNaN(a.getTime())) return 0;
-        if (b <= a) return 0;
-        if (SLA.is_24_7) return Math.round((b - a) / 36e5 * 100) / 100;
-        var h = 0, cur = new Date(a.getTime()), guard = 0;
-        cur.setMinutes(0, 0, 0);
-        while (cur < b && guard++ < 20000) {
-          var d = cur.getDay(), hh = cur.getHours();
-          if (SLA.work_days.indexOf(d) !== -1 && hh >= SLA.open_hour && hh < SLA.close_hour) h++;
-          cur = new Date(cur.getTime() + 36e5);
-        }
-        return h;
-      }
-      window.__novaxSlaHours = slaHours;
-
-      function hrs(n){
-        n = Number(n || 0);
-        if (n < 1) return Math.max(1, Math.round(n * 60)) + "m";
-        return (n < 10 ? Math.round(n * 10) / 10 : Math.round(n)) + "h";
-      }
-      function clockLabel(){
-        return SLA.is_24_7
-          ? "24/7 support clock"
-          : "Business hours " + SLA.open_hour + ":00-" + SLA.close_hour + ":00 " + SLA.timezone;
-      }
-
-      /* ---------- item 2: the two clocks ---------- */
-      function firstResponseAt(t){
-        return t.firstResponseAt || t.first_response_at || (t.meta && t.meta.firstResponseAt) || "";
-      }
-      function firstResponseHours(t){
-        var fr = firstResponseAt(t);
-        if (!fr) return null;
-        return slaHours(t.createdAt, fr);
-      }
-      function twoClockHtml(t){
-        var isResolved = t.status === "Resolved";
-        var frh = firstResponseHours(t);
-        var limit = SLA.escalate_after_hours || 24;
-        var age = slaHours(t.createdAt);
-        var frChip = frh == null
-          ? '<span class="chip ' + (isResolved ? "warn" : age >= 4 ? "bad" : "warn") + '">1st reply: pending' +
-            (isResolved ? " (never sent)" : " " + hrs(age) + " so far") + "</span>"
-          : '<span class="chip ' + (frh <= 4 ? "good" : "warn") + '">1st reply in ' + hrs(frh) + "</span>";
-        var resChip = isResolved
-          ? '<span class="chip good">Resolved in ' + hrs(t.solvedHours || age) + "</span>"
-          : '<span class="chip ' + (age >= limit ? "bad" : "info") + '">Open ' + hrs(age) + " / " + hrs(limit) + "</span>";
-        var owner = t.assignedToName || (t.meta && t.meta.assignedToName) || "";
-        var ownerChip = owner
-          ? '<span class="chip good" title="Individual owner, not just a branch">Owner: ' + E(owner) + "</span>"
-          : '<span class="chip warn" title="Routing stops at a branch/role string until someone claims it">Unclaimed</span>';
-        return '<div class="ticket-meta nv-sla-clocks" title="' + E(clockLabel()) + '">' +
-               frChip + resChip + (isResolved ? "" : ownerChip) +
-               '<span class="chip info">' + E(SLA.is_24_7 ? "24/7" : "Business hours") + "</span>" +
-               (t.csatScore ? '<span class="chip ' + (Number(t.csatScore) >= 4 ? "good" : "bad") +
-                 '">CSAT ' + E(t.csatScore) + "/5</span>" : "") +
-               "</div>";
-      }
-
-      /* ---------- item 7: canned first-draft replies ---------- */
-      var CANNED = [
-        [/delayed over sla|stuck in transit|breaching sla|status clock/i,
-         "We found this shipment sitting past its SLA at the {branch} hub. We have re-scanned it, pushed it back onto the next outbound run, and flagged the hub manager to confirm movement within the next cycle. You will see the next scan update on the tracking page."],
-        [/refus|fake attempt|proof dispute|proof \/ refusal|rider proof/i,
-         "We reviewed the rider's attempt data and delivery proof for this parcel. Our findings are below, and we have briefed the rider's supervisor. If you want a re-attempt, reply here or trigger it from your portal and we will schedule it on the next route."],
-        [/consignee not available|not available/i,
-         "The consignee did not answer on the recorded attempts. We have asked the hub to call before the next attempt and to try an alternate time window. Please confirm the best contact window or share an alternate number."],
-        [/reattempt/i,
-         "A re-attempt has been scheduled for this parcel on the next available route from the {branch} hub. You will get a scan update as soon as the rider is out for delivery."],
-        [/return pending|return in transit|ready for return|rto/i,
-         "This parcel is on its return leg. It is currently at the {branch} hub and will move to your origin address on the next return run. We will confirm here once it is handed over."],
-        [/missing cn|demanifest|leakage/i,
-         "We audited the sack for this CN. The scan gap has been investigated at the {branch} hub and the outcome is recorded below. No parcel has been closed out until this reconciled."],
-        [/proof missing/i,
-         "Delivery proof was missing on this shipment. We have retrieved the rider's confirmation and attached the reference below."],
-        [/cash|cod|holding/i,
-         "We checked the cash position on this shipment against the rider's holding sheet. Details are below. Nothing on your payable balance changes without a reconciled entry."],
-        [/address|correction/i,
-         "We updated the delivery address on this shipment and re-briefed the rider route from the {branch} hub. Please confirm the corrected address below is right."]
-      ];
-
-      function cannedFor(t){
-        var hay = [t.title, t.message, t.intent, t.suggestedTeam].join(" ");
-        for (var i = 0; i < CANNED.length; i++) {
-          if (CANNED[i][0].test(hay)) {
-            return CANNED[i][1].replace(/\{branch\}/g, t.branch || "destination");
-          }
-        }
-        return "";
-      }
-      window.__novaxCannedFor = cannedFor;
-
-      /* ---------- item 3: claim / release ---------- */
-      window.nvClaimTicket = function(id){
-        var t = (state.tickets || []).find(function(x){ return x.id === id; });
-        if (!t) return;
-        if (!t._uuid) { say("This ticket has not finished syncing to the server yet, so it cannot be claimed."); return; }
-        var s = sb();
-        if (!s) { say("Cloud connection is not ready, so the claim cannot be saved."); return; }
-        s.rpc("claim_ticket", { p_ticket_id: t._uuid, p_staff_id: null }).then(function(r){
-          if (r && r.error) {
-            say(/could not find the function|does not exist|schema cache/i.test(r.error.message)
-              ? "Per-agent assignment is not deployed yet. Run novax_ticketing_sla_v1.sql, then claim again."
-              : "Could not claim: " + r.error.message);
-            return;
-          }
-          var name = (r && r.data && r.data.name) || "you";
-          t.assignedToName = name;
-          say(t.id + " is now owned by " + name + ".");
-          try { render(); } catch(e){}
-        }).catch(function(e){ say("Could not claim: " + ((e && e.message) || e)); });
-      };
-
-      window.nvReleaseTicket = function(id){
-        var t = (state.tickets || []).find(function(x){ return x.id === id; });
-        if (!t || !t._uuid) return;
-        var s = sb(); if (!s) return;
-        s.rpc("release_ticket", { p_ticket_id: t._uuid }).then(function(r){
-          if (r && r.error) { say("Could not release: " + r.error.message); return; }
-          t.assignedToName = "";
-          say(t.id + " released back to the queue.");
-          try { render(); } catch(e){}
-        });
-      };
-
-      /* ---------- item 2: send a first reply WITHOUT resolving ---------- */
-      window.nvSendFirstReply = function(id){
-        var t = (state.tickets || []).find(function(x){ return x.id === id; });
-        if (!t) return;
-        var box = document.getElementById("ticketReply-" + id);
-        var msg = box && box.value.trim();
-        if (!msg) { say("Type a reply first."); return; }
-        var at = new Date().toISOString().slice(0, 10) + " " + time();
-        var by = currentAdminName();
-        t.replies = Array.isArray(t.replies) ? t.replies : [];
-        t.replies.push({ by: by, at: at, message: msg });
-        if (!firstResponseAt(t)) t.firstResponseAt = at;
-
-        var s = sb();
-        if (s && t._uuid) {
-          // Stamp the first-response clock server side, then persist the
-          // reply thread. The ticket stays Open on purpose -- this is the
-          // whole point of splitting the two clocks.
-          s.rpc("ticket_mark_first_response", { p_ticket_id: t._uuid, p_by: by }).then(function(){
-            return s.from("tickets").update(fTicket(t)).eq("id", t._uuid);
-          }).then(function(r){
-            if (r && r.error) { say("Reply saved locally but not to the server: " + r.error.message); return; }
-            try { shadow[t._uuid] = sigOf(fTicket(t)); } catch(e){}
-            say("Reply sent to " + (t.from || "the client") + ". Ticket stays open.");
-            try { saveState(); render(); } catch(e){}
-          }).catch(function(e){ say("Could not send the reply: " + ((e && e.message) || e)); });
-        } else {
-          try { saveState(); render(); } catch(e){}
-          say("Reply recorded locally. It will sync when the cloud connection is back.");
-        }
-      };
-
-      /* ---------- item 3: "My Tickets" filter ---------- */
-      var MY_ONLY_KEY = "novaxAdminMyTicketsOnly";
-      var myStaffName = "";
-      function loadMyStaffSeat(){
-        var s = sb(); if (!s || !s.auth) return;
-        s.auth.getUser().then(function(r){
-          var u = r && r.data && r.data.user; if (!u) return;
-          return s.from("staff_users").select("id,name").eq("auth_user_id", u.id).maybeSingle();
-        }).then(function(r){
-          if (r && r.data) { myStaffName = r.data.name || ""; window.__novaxMyStaffName = myStaffName; }
-        }).catch(function(){});
-      }
-      function myOnly(){ try { return localStorage.getItem(MY_ONLY_KEY) === "1"; } catch(e){ return false; } }
-      window.nvToggleMyTickets = function(){
-        try { localStorage.setItem(MY_ONLY_KEY, myOnly() ? "0" : "1"); } catch(e){}
-        try { renderTickets(); } catch(e){}
-      };
-      function isMine(t){
-        var owner = t.assignedToName || (t.meta && t.meta.assignedToName) || "";
-        if (!owner) return false;
-        return myStaffName ? owner === myStaffName : owner === currentAdminName();
-      }
-
-      /* ---------- item 2: export with both clocks ---------- */
-      window.nvExportTicketSla = function(){
-        var rows = [["Ticket", "Title", "Status", "Tier", "AWB", "Routed to", "Owner",
-                     "Created", "First response at", "Hours to first response",
-                     "Resolved at", "Hours to resolution", "Escalated", "CSAT", "Clock"]];
-        (state.tickets || []).forEach(function(t){
-          var frh = firstResponseHours(t);
-          rows.push([t.id, t.title, t.status, ticketEffectiveTier(t), t.awb || "",
-                     t.to || "", t.assignedToName || (t.meta && t.meta.assignedToName) || "",
-                     t.createdAt || "", firstResponseAt(t) || "",
-                     frh == null ? "" : frh,
-                     t.resolvedAt || "",
-                     t.status === "Resolved" ? (t.solvedHours || slaHours(t.createdAt)) : slaHours(t.createdAt),
-                     t.escalated ? "yes" : "no", t.csatScore || "",
-                     SLA.is_24_7 ? "24/7" : "business hours"]);
-        });
-        var csv = rows.map(function(r){
-          return r.map(function(v){
-            v = String(v == null ? "" : v);
-            return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
-          }).join(",");
-        }).join("\n");
-        var a = document.createElement("a");
-        a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-        a.download = "novax-ticket-sla.csv";
-        document.body.appendChild(a); a.click(); a.remove();
-        say("Ticket SLA export downloaded with both clocks.");
-      };
-
-      /* ---------- item 9: the real admin invite ---------- */
-      window.nvOpenAdminInvite = function(){
-        var m = document.getElementById("nvAdminInvite");
-        if (!m) {
-          m = document.createElement("div");
-          m.id = "nvAdminInvite";
-          m.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(8,12,22,.62);" +
-            "display:flex;align-items:center;justify-content:center;padding:16px";
-          m.innerHTML =
-            '<div style="background:#fff;border-radius:14px;max-width:430px;width:100%;padding:18px;' +
-            'box-shadow:0 24px 60px rgba(8,12,22,.3)">' +
-            '<h3 style="margin:0 0 4px">Invite a staff member</h3>' +
-            '<p style="margin:0 0 14px;font-size:12px;color:#5b6b86">Creates a real seat in ' +
-            'staff_users so tickets can be assigned to a person, not just a branch.</p>' +
-            '<div class="field"><label>Full name</label><input id="nvInvName" placeholder="Ayesha Khan"></div>' +
-            '<div class="field"><label>Work email</label><input id="nvInvEmail" type="email" placeholder="name@novax.pk"></div>' +
-            '<div class="field"><label>Role</label><select id="nvInvRole">' +
-            '<option>Support</option><option>Warehouse</option><option>Finance</option>' +
-            '<option>Ops</option><option>Owner</option></select></div>' +
-            '<div class="inline-actions" style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">' +
-            '<button class="ghost-btn" id="nvInvCancel">Cancel</button>' +
-            '<button class="action-btn" id="nvInvSend">Send invite</button></div></div>';
-          document.body.appendChild(m);
-          m.addEventListener("click", function(ev){ if (ev.target === m) m.remove(); });
-          m.querySelector("#nvInvCancel").addEventListener("click", function(){ m.remove(); });
-          m.querySelector("#nvInvSend").addEventListener("click", window.nvSubmitAdminInvite);
-        }
-        m.style.display = "flex";
-      };
-
-      window.nvSubmitAdminInvite = function(){
-        var name = (document.getElementById("nvInvName") || {}).value || "";
-        var email = (document.getElementById("nvInvEmail") || {}).value || "";
-        var role = (document.getElementById("nvInvRole") || {}).value || "Support";
-        name = name.trim(); email = email.trim();
-        if (!name) { say("Name is required."); return; }
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { say("Enter a valid work email."); return; }
-        var s = sb();
-        if (!s) { say("Cloud connection is not ready, so the invite cannot be created."); return; }
-        // NovaX fix: invite_staff_user() is hard-scoped to my_client_id(),
-        // built for a merchant inviting their own team -- an internal
-        // admin/ops account has no client_id, so that call always failed
-        // with "No client workspace is linked to this account." This admin
-        // panel now calls invite_internal_staff_user() instead, which is
-        // gated by is_staff_admin() and creates a client_id-NULL,
-        // access_side='staff' seat -- the one actually meant for this button.
-        s.rpc("invite_internal_staff_user", { p_name: name, p_email: email, p_role: role }).then(function(r){
-          if (r && r.error) {
-            // Never fake success -- this is exactly the bug being fixed.
-            say(/could not find the function|does not exist|schema cache/i.test(r.error.message)
-              ? "Staff invites are not deployed yet. Run the sub-accounts SQL first, then invite again."
-              : "Invite failed: " + r.error.message);
-            return;
-          }
-          say(name + " now has a " + role + " seat. They get access on first login with " + email + ".");
-          var m = document.getElementById("nvAdminInvite"); if (m) m.remove();
-          loadMyStaffSeat();
-        }).catch(function(e){ say("Invite failed: " + ((e && e.message) || e)); });
-      };
-
-      /* ---------- wrap ticketCard: clocks, claim, canned draft ---------- */
-      if (typeof ticketCard === "function") {
-        var origCard = ticketCard;
-        ticketCard = function(ticket){
-          var html = origCard(ticket);
-          try {
-            var isResolved = ticket.status === "Resolved";
-            var owner = ticket.assignedToName || (ticket.meta && ticket.meta.assignedToName) || "";
-
-            // Two clocks go right under the existing SLA chip row.
-            html = html.replace(/(<\/div>\s*)(?=\s*(?:\$\{|<p>|<div class="ticket-reply"|<div class="resolved-note"))/,
-                                "$1") ;
-            html = html.replace("<p>", twoClockHtml(ticket) + "<p>");
-
-            if (!isResolved) {
-              // Pre-fill the resolve textarea with a category-matched draft.
-              var draft = cannedFor(ticket);
-              if (draft) {
-                html = html.replace(
-                  new RegExp('(<textarea id="ticketReply-' + ticket.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + '"[^>]*>)'),
-                  "$1" + E(draft)
-                );
-              }
-              // Claim / release + send-reply-without-resolving.
-              var extra =
-                '<div class="inline-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
-                (owner
-                  ? '<button class="ghost-btn" onclick="nvReleaseTicket(\'' + E(ticket.id) + '\')">Release</button>'
-                  : '<button class="action-btn" onclick="nvClaimTicket(\'' + E(ticket.id) + '\')">Claim</button>') +
-                '<button class="ghost-btn" onclick="nvSendFirstReply(\'' + E(ticket.id) +
-                '\')" title="Records the first-response clock and keeps the ticket open">Send reply (keep open)</button>' +
-                "</div>";
-              html = html.replace(/(<button class="action-btn" onclick="resolveTicket\([^)]*\)">Resolve Ticket<\/button>)/,
-                                  "$1" + extra);
-            } else if (ticket.csatComment) {
-              html = html.replace(/(<div class="footer-note">)/,
-                '<div class="resolved-note"><strong>Client rating:</strong> ' +
-                E(ticket.csatScore || "") + "/5 &mdash; " + E(ticket.csatComment) + "</div>$1");
-            }
-          } catch(e){ console.warn("NovaX ticket card upgrade skipped", e); }
-          return html;
-        };
-        window.ticketCard = ticketCard;
-      }
-
-      /* ---------- wrap renderTickets: My Tickets toolbar ---------- */
-      if (typeof renderTickets === "function") {
-        var origRender = renderTickets;
-        renderTickets = function(){
-          var full = state.tickets || [];
-          var filtered = full;
-          if (myOnly()) filtered = full.filter(isMine);
-          // Temporarily narrow the list so every existing board, count and
-          // metric inside renderTickets() honours the filter untouched.
-          if (filtered !== full) state.tickets = filtered;
-          try { origRender(); } finally { state.tickets = full; }
-
-          try {
-            var badge = document.getElementById("ticketOpenBadge");
-            var host = badge && badge.parentNode;
-            if (host && !document.getElementById("nvSlaToolbar")) {
-              var bar = document.createElement("span");
-              bar.id = "nvSlaToolbar";
-              bar.style.cssText = "display:inline-flex;gap:6px;align-items:center;margin-left:8px;flex-wrap:wrap";
-              host.appendChild(bar);
-            }
-            var bar2 = document.getElementById("nvSlaToolbar");
-            if (bar2) {
-              var mine = full.filter(isMine).filter(function(t){ return t.status !== "Resolved"; }).length;
-              var unclaimed = full.filter(function(t){
-                return t.status !== "Resolved" &&
-                  !(t.assignedToName || (t.meta && t.meta.assignedToName));
-              }).length;
-              bar2.innerHTML =
-                '<button class="' + (myOnly() ? "action-btn" : "ghost-btn") +
-                '" onclick="nvToggleMyTickets()" style="padding:3px 9px;font-size:11px">' +
-                (myOnly() ? "Showing: My tickets (" + mine + ")" : "My tickets (" + mine + ")") + "</button>" +
-                '<span class="chip ' + (unclaimed ? "warn" : "good") + '">' + unclaimed + " unclaimed</span>" +
-                '<span class="chip info" title="' + E(clockLabel()) + '">' +
-                E(SLA.is_24_7 ? "24/7 clock" : "Business-hours clock") + "</span>" +
-                '<button class="ghost-btn" onclick="nvExportTicketSla()" style="padding:3px 9px;font-size:11px">Export SLA CSV</button>' +
-                '<button class="ghost-btn" onclick="nvOpenSlaSettings()" style="padding:3px 9px;font-size:11px">SLA Settings</button>';
-            }
-          } catch(e){ console.warn("NovaX SLA toolbar skipped", e); }
-        };
-        window.renderTickets = renderTickets;
-      }
-
-      /* ---------- wrap resolveTicket: stamp first response first ---------- */
-      if (typeof resolveTicket === "function") {
-        var origResolve = resolveTicket;
-        resolveTicket = function(id){
-          var t = (state.tickets || []).find(function(x){ return x.id === id; });
-          // Item 2: if nobody ever replied, resolving IS the first response,
-          // and it must be stamped before status flips to Resolved.
-          if (t && !firstResponseAt(t)) {
-            var at = new Date().toISOString().slice(0, 10) + " " + time();
-            t.firstResponseAt = at;
-            var s = sb();
-            if (s && t._uuid) {
-              try {
-                s.rpc("ticket_mark_first_response", { p_ticket_id: t._uuid, p_by: currentAdminName() })
-                  .then(function(){}).catch(function(){});
-              } catch(e){}
-            }
-          }
-          return origResolve(id);
-        };
-        window.resolveTicket = resolveTicket;
-      }
-
-      /* ---------- carry the new columns through the mappers ---------- */
-      if (typeof window.__nvWrapTicketMappers === "undefined") {
-        window.__nvWrapTicketMappers = true;
-        var tryWrap = setInterval(function(){
-          if (typeof rTicket !== "function") return;
-          clearInterval(tryWrap);
-        }, 1500);
-      }
-
-      loadSlaConfig();
-      loadMyStaffSeat();
-      setTimeout(function(){ try { renderTickets(); } catch(e){} }, 1200);
-      window.__novaxAdminSla = { slaHours: slaHours, cannedFor: cannedFor, config: SLA };
-    })();
   </script>
 <script>
 (function(){
