@@ -12318,14 +12318,20 @@
          admin_generate_invoice was never tried and invoicing simply stopped.
          Converting a throw into an error object first means one code path
          handles both, and the fallback actually runs. */
-      nvGen("admin_generate_invoice_v2", { p_client_id: client._uuid, p_awbs: awbs, p_net_returns: true })
+      /* Promise.resolve() wrapper is REQUIRED, not decoration.
+         supabase-js .rpc() returns a PostgrestFilterBuilder: it is a thenable
+         (has .then) but has NO .catch until .then() has been called on it.
+         Chaining .catch() straight onto it throws
+         "nvGen(...).catch is not a function" and kills invoice generation.
+         Promise.resolve(builder) gives a real Promise with both. */
+      Promise.resolve(nvGen("admin_generate_invoice_v2", { p_client_id: client._uuid, p_awbs: awbs, p_net_returns: true }))
         .catch(e => ({ error: { message: String((e && e.message) || e || "network error"), _threw: true } }))
         .then(r => {
           const msg = (r && r.error && r.error.message) || "";
           const missing = !!msg && /does not exist|not find|schema cache|failed to fetch|networkerror|load failed|fetch/i.test(msg);
           if (missing) {
             console.warn("NovaX: admin_generate_invoice_v2 unavailable (" + msg + ") — falling back to admin_generate_invoice.");
-            return nvGen("admin_generate_invoice", { p_client_id: client._uuid, p_awbs: awbs })
+            return Promise.resolve(nvGen("admin_generate_invoice", { p_client_id: client._uuid, p_awbs: awbs }))
               .catch(e2 => ({ error: { message: String((e2 && e2.message) || e2 || "network error") } }));
           }
           return r;
