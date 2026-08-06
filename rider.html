@@ -318,7 +318,7 @@
       ],
       parcels:[],
       paymentLogs:[], operationsIssues:[], invoices:[],
-      branches:[], expenses:[], transit:[], completedSacks:[], resolvedAlerts:[], pendingClients:[], users:[], tickets:[], ticketNotifications:[], walletWithdrawals:[]
+      branches:[], expenses:[], transit:[], completedSacks:[], resolvedAlerts:[], pendingClients:[], users:[], walletWithdrawals:[]
     };
     function cleanStartState(){
       return {
@@ -328,7 +328,7 @@
         clients:[{ id:"CL-0000", name:"New Merchant Workspace", city:"" }],
         riders:[], parcels:[],
         paymentLogs:[], operationsIssues:[], invoices:[],
-        branches:[], expenses:[], transit:[], completedSacks:[], resolvedAlerts:[], pendingClients:[], users:[], tickets:[], ticketNotifications:[], walletWithdrawals:[]
+        branches:[], expenses:[], transit:[], completedSacks:[], resolvedAlerts:[], pendingClients:[], users:[], walletWithdrawals:[]
       };
     }
     let state = loadState();
@@ -339,7 +339,18 @@
     state.activeRider = state.activeRider || (state.riders[0] && state.riders[0].id) || "";
     state.riders = Array.isArray(state.riders) ? state.riders : baseState.riders;
 
-    function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?JSON.parse(s):structuredClone(baseState); }catch(e){ return structuredClone(baseState); } }
+    /* NovaX fix (blank app on older phones): loadState() called structuredClone()
+   inside try AND again inside catch. structuredClone needs Chrome 98+ /
+   Safari 15.4+, so on an older Android WebView the first call threw, the catch
+   threw the same ReferenceError again, and nothing caught it — the rider app
+   loaded completely blank. Riders run the oldest devices in the system, so
+   this mattered most here. nvClone falls back to a JSON round-trip, which is
+   sufficient because baseState is plain JSON-safe data. */
+function nvClone(o){
+  try{ if(typeof structuredClone==="function") return structuredClone(o); }catch(e){}
+  try{ return JSON.parse(JSON.stringify(o)); }catch(e){ return {}; }
+}
+function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?JSON.parse(s):nvClone(baseState); }catch(e){ return nvClone(baseState); } }
     function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
     function clientById(id){ return (state.clients||[]).find(c=>c.id===id) || {id:id,name:id}; }
     function riderById(id){ return (state.riders||[]).find(r=>r.id===id) || state.riders[0]; }
