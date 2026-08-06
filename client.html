@@ -1680,7 +1680,17 @@
     (state.parcels || []).forEach(p => { if (!p.statusSince) p.statusSince = new Date(Date.now() - Number(p.statusAgeHours || 0) * 3600000).toISOString(); });
     state._walletSeeded = true;
 
-    function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?JSON.parse(s):structuredClone(baseState); }catch(e){ return structuredClone(baseState); } }
+    /* NovaX fix (blank portal on older phones): loadState() called
+   structuredClone() inside try AND again inside catch. structuredClone needs
+   Chrome 98+ / Safari 15.4+, so on an older browser the first call threw, the
+   catch threw the same ReferenceError, and nothing caught it — the portal
+   loaded blank with no error the merchant could act on. nvClone falls back to
+   a JSON round-trip; baseState is plain JSON-safe data so nothing is lost. */
+function nvClone(o){
+  try{ if(typeof structuredClone==="function") return structuredClone(o); }catch(e){}
+  try{ return JSON.parse(JSON.stringify(o)); }catch(e){ return {}; }
+}
+function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?JSON.parse(s):nvClone(baseState); }catch(e){ return nvClone(baseState); } }
     // NovaX fix (PII leak through localStorage): the portal used to serialise
     // the whole state object, including the unmasked IBAN + bank holder name
     // and every consignee's phone/address. Those fields are now kept in the
