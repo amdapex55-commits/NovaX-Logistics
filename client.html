@@ -917,7 +917,11 @@
     function redirectAway(url){ clearLocalSession(); window.location.replace(url); }
     var __gsb=null;
     try{ __gsb=window.__nvSb||null; if(!__gsb&&window.supabase&&window.supabase.createClient){ __gsb=window.supabase.createClient(__SB_URL,__SB_KEY); } }catch(__e){}
+    // NovaX fix: publish the gate's client so the data layer below reuses this
+    // exact instance instead of constructing a second GoTrueClient on the same
+    // storage key (which races on token refresh).
     window.__nvGuardSb=__gsb;
+    if(__gsb && !window.__nvSb) window.__nvSb=__gsb;
     function denyWithError(){
       // NovaX fix: a profile lookup error (or missing/invalid role) must
       // never let the page silently continue -- sign the session out and
@@ -1700,7 +1704,40 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       }catch(e){ return { _persistError:true }; }
     }
     function persistStateJson(){ return JSON.stringify(persistableState()); }
-    function saveState(){ localStorage.setItem(STORAGE_KEY, persistStateJson()); }
+    /* NovaX fix (portal lag): saveState() used to run a synchronous
+       JSON.stringify(state) + localStorage.setItem on EVERY call, and it is
+       called 22 times -- after each status change, invoice action, wallet push,
+       assignment, etc. With thousands of parcels/invoices/ledger rows loaded,
+       that is megabytes of JSON serialised on the main thread per click, which
+       is what made generating an invoice and pushing to wallet feel frozen.
+
+       The write is now coalesced: many calls in the same burst produce ONE
+       write ~400ms later. Correctness is unaffected because this cache is only
+       an optimisation -- Supabase is the source of truth -- and the pending
+       write is flushed synchronously on pagehide/tab-hide so nothing is lost
+       on refresh, navigation or close. nvSaveStateNow() forces an immediate
+       write if a caller ever needs one. */
+    var _nvSaveT = null, _nvSaveWarned = false;
+    function nvWriteStateNow(){
+      if(_nvSaveT){ clearTimeout(_nvSaveT); _nvSaveT = null; }
+      try{ localStorage.setItem(STORAGE_KEY, persistStateJson()); }
+      catch(e){
+        if(!_nvSaveWarned){
+          _nvSaveWarned = true;
+          console.warn("NovaX: local cache write failed (" + ((e&&e.name)||"error") +
+            "). The portal still works -- data is loaded from Supabase.");
+        }
+      }
+    }
+    function saveState(){
+      if(_nvSaveT) clearTimeout(_nvSaveT);
+      _nvSaveT = setTimeout(nvWriteStateNow, 400);
+    }
+    window.nvSaveStateNow = nvWriteStateNow;
+    window.addEventListener("pagehide", function(){ if(_nvSaveT) nvWriteStateNow(); });
+    document.addEventListener("visibilitychange", function(){
+      if(document.visibilityState === "hidden" && _nvSaveT) nvWriteStateNow();
+    });
     // NovaX fix (Medium #5): emptyParcel() is the canonical "No parcel
     // selected" placeholder. It never guesses a clientId either -- with no
     // linked client there is nothing valid to attach a placeholder parcel to.
@@ -5343,7 +5380,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var SB_URL=window.NOVAX_CONFIG.SB_URL;
       var SB_KEY=window.NOVAX_CONFIG.SB_KEY;
       if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, local only."); window.__novaxClientDataReady=true; return; }
-      var sb; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); window.__novaxClientDataReady=true; return; }
+      // NovaX fix ("Multiple GoTrueClient instances detected"): reuse the
+      // client the auth gate already created instead of making a second one on
+      // the same storage key.
+      var sb; try{ sb=window.__nvSb||window.__nvGuardSb||window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); window.__novaxClientDataReady=true; return; }
+      if(!sb){ console.warn("NovaX: cloud init failed, local only."); window.__novaxClientDataReady=true; return; }
       window.__nvSb=sb;
       // NovaX fix: expose a real reload so wallet-changing UI (withdrawal
       // requests) can pull the authoritative server state back down after
