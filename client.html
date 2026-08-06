@@ -356,8 +356,6 @@
     .wallet-hero label{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#9fe9c8;font-weight:800;}
     .wallet-balance{font-size:clamp(32px,7vw,54px);font-weight:900;margin:8px 0 6px;line-height:1;}
     .wallet-pulse{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:#bff3da;}
-    .ticket-cta{background:#ff3158!important;color:#fff!important;box-shadow:0 16px 34px rgba(255,49,88,.28)!important;animation:ticketPulse 1.8s ease-in-out infinite;}
-    @keyframes ticketPulse{50%{transform:translateY(-1px);box-shadow:0 20px 42px rgba(255,49,88,.38);}}
     .seller-journey-card{display:grid;gap:10px;}
     .seller-step{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff;}
     .seller-step.current{border-color:var(--green);background:#effdf6;}
@@ -709,7 +707,7 @@
   [data-theme="dark"] .parcel-card,[data-theme="dark"] .modal-card,[data-theme="dark"] .log-item,
   [data-theme="dark"] .journey-item,[data-theme="dark"] .sb-parcel,[data-theme="dark"] .tier-card,
   [data-theme="dark"] .seller-step,[data-theme="dark"] .order-log-card,[data-theme="dark"] .nv-ins,
-  [data-theme="dark"] .nv-onb,[data-theme="dark"] .nv-trend-panel,[data-theme="dark"] .ticket-cta,
+  [data-theme="dark"] .nv-onb,[data-theme="dark"] .nv-trend-panel,
   [data-theme="dark"] .client-menu,[data-theme="dark"] .search,[data-theme="dark"] .ghost-btn,
   [data-theme="dark"] .nv-theme-toggle,[data-theme="dark"] .meter,[data-theme="dark"] .nvcoach-bar{
     background:var(--panel);border-color:var(--line);color:var(--ink);
@@ -851,7 +849,7 @@
   #paymentTimeline:empty::after,#orderLogFeed:empty::after,
   #walletLedgerList:empty::after,#withdrawHistory:empty::after,
   #pickupEligibleList:empty::after,#pickupRequestList:empty::after,
-  #subAccountList:empty::after,#nvTkList:empty::after,
+  #subAccountList:empty::after,
   #bulkPreviewList:empty::after,#clientStatusBoard:empty::after{
     content:"Nothing here yet.";
     display:block;padding:26px 16px;text-align:center;
@@ -870,7 +868,6 @@
   #pickupEligibleList:empty::after{content:"No parcels ready for pickup.";}
   #pickupRequestList:empty::after{content:"No pickup requests yet.";}
   #subAccountList:empty::after{content:"No team members added yet.";}
-  #nvTkList:empty::after{content:"No support tickets — nothing needs our attention.";}
   #clientStatusBoard:empty::after{content:"No parcels to group yet.";}
 
   /* ── 6. Value-change motion ───────────────────────────────────────────
@@ -1024,7 +1021,7 @@
         <div class="portal-title">
           <div>
             <h2>Client Portal</h2>
-            <p>For e-commerce sellers: book parcels, track real status, see invoices, download reports, and raise tickets from one controlled dashboard.</p>
+            <p>For e-commerce sellers: book parcels, track real status, see invoices, and download reports from one controlled dashboard.</p>
           </div>
           <span class="realtime"><span class="pulse"></span><span id="clockB">Live</span></span>
         </div>
@@ -1112,7 +1109,7 @@
                   <div class="panel">
                     <div class="section-head">
                       <div><h3>Selected Parcel Status</h3><p id="selectedParcelText">Only the important seller-facing movement is shown here.</p></div>
-                      <button class="action-btn ticket-cta" id="openTicketBtn">Create Ticket</button>
+                      
                     </div>
                     <div class="journey" id="clientJourney"></div>
                     <div id="refusalReview"></div>
@@ -1336,7 +1333,7 @@
             <!-- FULL REPORT -->
             <section class="client-module" id="client-reports">
               <div class="panel">
-                <div class="section-head"><div><h3>Full Report</h3><p>Operational and financial reporting from the same parcels shown in dashboard.</p></div><div class="inline-actions"><button class="action-btn ticket-cta" onclick="openTicketModal()">Create Ticket</button><button class="ghost-btn" id="reportCsvBtn">Export CSV</button><button class="ghost-btn" id="reportPdfBtn">Download PDF</button></div></div>
+                <div class="section-head"><div><h3>Full Report</h3><p>Operational and financial reporting from the same parcels shown in dashboard.</p></div><div class="inline-actions"><button class="ghost-btn" id="reportCsvBtn">Export CSV</button><button class="ghost-btn" id="reportPdfBtn">Download PDF</button></div></div>
                 <div class="grid metrics" id="clientReportMetrics"></div>
               </div>
               <div class="panel" style="margin-top:14px">
@@ -1368,12 +1365,12 @@
             <!-- PAYMENTS -->
             <section class="client-module" id="client-payments">
               <div class="panel">
-                <div class="section-head"><div><h3>Payments</h3><p>Only admin-generated invoices are shown here so payment numbers stay clean.</p></div><button class="action-btn ticket-cta" onclick="openTicketModal()">Create Ticket</button></div>
+                <div class="section-head"><div><h3>Payments</h3><p>Only admin-generated invoices are shown here so payment numbers stay clean.</p></div></div>
                 <div class="footer-note" style="background:#eafff5;border:1px solid #bfe8d7;border-radius:10px;padding:10px 12px;margin-bottom:12px"><strong style="color:#0c7c59">How this works:</strong> An invoice is generated first (money owed, not yet available) &rarr; admin pushes it to your wallet (now withdrawable) &rarr; you request a payout from the Wallet tab (admin must pay it) &rarr; paid means fully settled.</div>
                 <div class="money-grid" id="paymentSummary"></div>
               </div>
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Latest Invoice</h3><p>Most recent invoice generated by admin. Download as CSV or PDF, or raise a ticket about it.</p></div></div>
+                <div class="section-head"><div><h3>Latest Invoice</h3><p>Most recent invoice generated by admin. Download it as CSV or PDF.</p></div></div>
                 <div id="clientLatestInvoice"></div>
               </div>
               <div class="panel" style="margin-top:14px">
@@ -1441,7 +1438,7 @@
             <!-- ORDER LOGS -->
             <section class="client-module" id="client-logs">
               <div class="panel">
-                <div class="section-head"><div><h3>Order Logs</h3><p>Clean parcel activity summary. Open a ticket when anything looks wrong.</p></div><button class="action-btn ticket-cta" onclick="openTicketModal()">Create Ticket</button></div>
+                <div class="section-head"><div><h3>Order Logs</h3><p>Clean parcel activity summary for every parcel you have booked.</p></div></div>
                 <div class="inline-actions" id="orderLogFilterBar" style="display:none;margin-bottom:10px"><span class="chip info">Filtered: Shopify orders</span><button class="ghost-btn" onclick="clearOrderLogFilter()">Clear filter</button></div>
                 <div class="log-feed" id="orderLogFeed"></div>
               </div>
@@ -1467,7 +1464,7 @@
               <div class="grid two">
                 <div class="panel">
                   <div class="section-head"><div><h3>Full AI in Web</h3><p>AI reads portal truth, then answers or escalates missing data.</p></div><button class="ghost-btn" id="askAiBtn2">Ask AI</button></div>
-                  <div class="footer-note" style="background:#eafff5;border:1px solid #bfe8d7;border-radius:10px;padding:10px 12px;margin-bottom:10px"><strong style="color:#0c7c59">AI can help instantly</strong> with parcel status, invoice/wallet questions, and printing AWBs. For refunds, disputes, or anything needing a person, it opens a real ticket for human support automatically.</div>
+                  <div class="footer-note" style="background:#eafff5;border:1px solid #bfe8d7;border-radius:10px;padding:10px 12px;margin-bottom:10px"><strong style="color:#0c7c59">AI can help instantly</strong> with parcel status, invoice/wallet questions, and printing AWBs. For refunds, disputes, or anything needing a person, contact NovaX support directly.</div>
                   <div class="ai-chat" id="clientAi"></div>
                   <div class="inline-actions" style="margin-top:10px">
                     <input id="clientAiInput" placeholder="Ask about a parcel, invoice, wallet balance..." style="flex:1">
@@ -1526,21 +1523,6 @@
     </div>
   </div>
 
-  <!-- Ticket modal -->
-  <div class="modal-overlay" id="ticketModal">
-    <div class="modal-card">
-      <div class="modal-head"><h3>Create Ticket</h3><button class="modal-close" onclick="closeTicketModal()">&times;</button></div>
-      <div class="form-grid">
-        <div class="field"><label>From</label><input id="ticketFromField" readonly></div>
-        <div class="field"><label>Send To</label><select id="ticketToField"><option>Sales</option><option>Finance</option><option>Warehouse</option><option>Karachi Operations</option><option>Lahore Operations</option><option>Others</option></select></div>
-        <div class="field"><label>Linked AWB</label><input id="ticketAwbField" readonly></div>
-        <div class="field"><label>Priority</label><select id="ticketTierField"><option value="okay">Okay</option><option value="medium" selected>Medium</option><option value="emergency">Emergency</option></select></div>
-        <div class="field" style="grid-column:1/-1"><label>Message</label><textarea id="ticketMsgField" placeholder="Describe the issue, what proof you need, and who must act."></textarea></div>
-      </div>
-      <div class="inline-actions" style="margin-top:14px"><button class="action-btn" onclick="submitClientTicket()">Send Ticket</button><button class="ghost-btn" onclick="closeTicketModal()">Cancel</button></div>
-    </div>
-  </div>
-
   <!-- Invoice view modal -->
   <div class="modal-overlay" id="invoiceViewModal">
     <div class="modal-card" style="max-width:820px">
@@ -1579,7 +1561,7 @@
     const baseState = {
       selectedAwb:"SAMPLE-AWB-1", activeStatusQueue:"Parcel now in transit", activeRateClient:"", activeSackMode:"create",
       clientDateFrom:"2026-06-01", clientDateTo:"2026-06-24", lastGeneratedAwb:"SAMPLE-AWB-1",
-      walletWithdrawals:[], pickupRequests:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"",
+      walletWithdrawals:[], pickupRequests:[], lastBulkAwbs:[], walletWithdrawSpeed:"",
       // NovaX fix (wallet IBAN UX): bank details now live independently of
       // any withdrawal request, so a client can save them at Rs 0 balance.
       clientBankDetails:null, bankDetailsEditing:false,
@@ -1645,7 +1627,7 @@
         _cleanStartV2:true,
         selectedAwb:"", activeStatusQueue:STATUS_TAGS[0], activeRateClient:"", activeSackMode:"create",
         clientDateFrom:new Date().toISOString().slice(0,10), clientDateTo:new Date().toISOString().slice(0,10), lastGeneratedAwb:"",
-        walletWithdrawals:[], pickupRequests:[], tickets:[], ticketNotifications:[], lastBulkAwbs:[], walletWithdrawSpeed:"", clientBankDetails:null, bankDetailsEditing:false,
+        walletWithdrawals:[], pickupRequests:[], lastBulkAwbs:[], walletWithdrawSpeed:"", clientBankDetails:null, bankDetailsEditing:false,
         client:{ id:"CL-0000", name:"New Merchant Workspace", walletTopup:0, shippingDue:0, subAccounts:0, walletBalance:0 },
         clients:[blankClient], pendingClients:[], users:[], branches:[], riders:[], parcels:[], expenses:[], paymentLogs:[], invoices:[], transit:[], completedSacks:[], operationsIssues:[], resolvedAlerts:[],
         activeClientTab:"dashboard"
@@ -1671,8 +1653,6 @@
     state.activeStatusQueue = state.activeStatusQueue || STATUS_TAGS[0];
     state.walletWithdrawals = Array.isArray(state.walletWithdrawals) ? state.walletWithdrawals : [];
     state.pickupRequests = Array.isArray(state.pickupRequests) ? state.pickupRequests : [];
-    state.tickets = Array.isArray(state.tickets) ? state.tickets : [];
-    state.ticketNotifications = Array.isArray(state.ticketNotifications) ? state.ticketNotifications : [];
     state.lastBulkAwbs = Array.isArray(state.lastBulkAwbs) ? state.lastBulkAwbs : [];
     state.storeConnections = Array.isArray(state.storeConnections) ? state.storeConnections : [];
     state.walletWithdrawSpeed = state.walletWithdrawSpeed || "";
@@ -2058,15 +2038,6 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       if(!sb||!sb.rpc||!id) return;
       try{ sb.rpc("mark_digest_read",{ p_digest_id:id }).then(function(){},function(){}); }catch(e){}
     }
-    function nvInsightTicket(title){
-      /* Reuses the existing ticket modal rather than inventing a second
-         support path. Prefills nothing beyond opening it, so the merchant
-         still writes the ticket in their own words. */
-      try{
-        if(typeof openTicketModal==="function"){ openTicketModal(); }
-        else { toast("Open the Support tab to raise a ticket."); }
-      }catch(e){}
-    }
     function renderInsightCards(){
       var host=document.getElementById("nvInsightCards");
       if(!host) return;
@@ -2102,9 +2073,6 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         html+='<div class="nv-ins'+(sev?" "+sev:"")+'">'+
           '<div class="nv-ins-top"><div class="nv-ins-title">'+escLabelText(it.title)+'</div></div>'+
           (it.body?'<div class="nv-ins-body">'+escLabelText(it.body)+'</div>':"")+
-          (it.action==="open_ticket"
-            ? '<div class="nv-ins-acts"><button class="action-btn" style="padding:6px 11px;font-size:12px" onclick="nvInsightTicket()">Raise this with ops</button></div>'
-            : "")+
         '</div>';
       });
 
@@ -2790,17 +2758,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           return { key:"not_available", problem:"Consignee was not available for delivery.", cause:"Consignee may be unreachable, at work, or the address/time did not match.", action:"Message the consignee to confirm a better time, then Reattempt." };
         }
         if(typeof isRiderCashHolding==="function" && isRiderCashHolding(p)){
-          return { key:"cash", problem:"Rider is holding COD cash for this parcel.", cause:"Cash has not yet been marked as collected or deposited.", action:"Create a ticket to confirm cash status with operations before closing this parcel." };
+          return { key:"cash", problem:"Rider is holding COD cash for this parcel.", cause:"Cash has not yet been marked as collected or deposited.", action:"Confirm cash status with operations before closing this parcel." };
         }
         if(/return/.test(text)){
-          return { key:"return", problem:"Parcel is moving through the return flow.", cause:"Consignee declined delivery or it was marked for return.", action:"Confirm the return reaches origin, then create a ticket if it stalls." };
+          return { key:"return", problem:"Parcel is moving through the return flow.", cause:"Consignee declined delivery or it was marked for return.", action:"Confirm the return reaches origin and follow up if it stalls." };
         }
         if(typeof isDelayed==="function" && isDelayed(p) && status!=="Delivered"){
-          return { key:"delayed", problem:"This parcel has been stuck for over 24 hours.", cause:"Possible transit delay, warehouse backlog, or rider availability issue.", action:"Create a ticket if it doesn't move soon, or message the consignee for an update." };
+          return { key:"delayed", problem:"This parcel has been stuck for over 24 hours.", cause:"Possible transit delay, warehouse backlog, or rider availability issue.", action:"Follow up with operations if it doesn't move soon, or message the consignee for an update." };
         }
         return { key:"generic", problem: exc?exc:"This parcel is flagged for review.", cause:"Marked as needing attention based on its current status.", action:"Check the parcel journey and contact the consignee if needed." };
       }catch(e){
-        return { key:"generic", problem:"This parcel needs review.", cause:"Unable to read exception details.", action:"Open a ticket if the issue continues." };
+        return { key:"generic", problem:"This parcel needs review.", cause:"Unable to read exception details.", action:"Follow up with operations if the issue continues." };
       }
     }
     function hasResolvableException(p){
@@ -2824,7 +2792,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var btns="";
         btns+=`<button class="ghost-btn" type="button" onclick="copyExceptionMessage('${p.awb}')">Copy Message</button>`;
         if(!hideDeliveryActions) btns+=`<button class="action-btn" type="button" onclick="requestRedelivery('${p.awb}')">Reattempt</button><button class="ghost-btn" type="button" onclick="requestReturnToOrigin('${p.awb}')">Return</button>`;
-        btns+=`<button class="action-btn ticket-cta" type="button" onclick="openTicketModal('${p.awb}')">Create Ticket</button><button class="ghost-btn" type="button" onclick="messageCustomerException('${p.awb}')">Message Customer</button>`;
+        btns+=`<button class="ghost-btn" type="button" onclick="messageCustomerException('${p.awb}')">Message Customer</button>`;
         return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>AI Exception Resolution</h3><p>Deterministic read of this parcel's issue and the fastest next step.</p></div><span class="chip warn">review needed</span></div><div class="money-grid">${moneyBox("Problem",cls.problem,"")}${moneyBox("Likely cause",cls.cause,"")}${moneyBox("Recommended action",cls.action,"")}</div><div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
       }catch(e){ return ""; }
     }
@@ -3009,7 +2977,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const orderLogFilterBar=document.getElementById("orderLogFilterBar");
       if(orderLogFilterBar) orderLogFilterBar.style.display=state.orderLogSourceFilter?"flex":"none";
       const orderLogParcels=state.orderLogSourceFilter?cm.parcels.filter(p=>(p.source||"")===state.orderLogSourceFilter):cm.parcels;
-      document.getElementById("orderLogFeed").innerHTML=orderLogParcels.map(p=>{ const alert=alertForParcel(p); return `<div class="order-log-card clickable-row" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><div><strong>${escLabelText(p.awb)}</strong><div class="footer-note">${escLabelText(p.consignee)} | ${escLabelText(p.city)}</div></div><div><strong>${escLabelText(p.status)}</strong><div class="footer-note">Last update ${escLabelText(p.updated)} | ${escLabelText(alert.label)}</div><button class="ghost-btn" onclick="event.stopPropagation();openTicketModal('${p.awb}')">Ticket</button>${waActionsHtml(p.awb, waKindForStatus(p.status))}</div></div>`; }).join("")||`<div class="ops-card"><strong>No order logs</strong></div>`;
+      document.getElementById("orderLogFeed").innerHTML=orderLogParcels.map(p=>{ const alert=alertForParcel(p); return `<div class="order-log-card clickable-row" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><div><strong>${escLabelText(p.awb)}</strong><div class="footer-note">${escLabelText(p.consignee)} | ${escLabelText(p.city)}</div></div><div><strong>${escLabelText(p.status)}</strong><div class="footer-note">Last update ${escLabelText(p.updated)} | ${escLabelText(alert.label)}</div>${waActionsHtml(p.awb, waKindForStatus(p.status))}</div></div>`; }).join("")||`<div class="ops-card"><strong>No order logs</strong></div>`;
       // NovaX fix: the four hardcoded role cards that used to live here were
       // not real users. Sub accounts now come from public.staff_users.
       try{ renderSubAccounts(); }catch(e){}
@@ -3032,7 +3000,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         "Why was a delivery attempt failed?",
         "How do I upload a bulk booking?"
       ];
-      host.innerHTML=`<div class="bubble ai">AI: Hi ${escLabelText((state.client&&state.client.name)||"there")} — ask me anything about your parcels, bookings, pickups or tickets. I answer only from your live portal data.</div>`
+      host.innerHTML=`<div class="bubble ai">AI: Hi ${escLabelText((state.client&&state.client.name)||"there")} — ask me anything about your parcels, bookings or pickups. I answer only from your live portal data.</div>`
         +`<div class="inline-actions" style="flex-wrap:wrap;gap:6px;margin-top:8px">`
         +chips.map(c=>`<button class="ghost-btn" data-nv-ai-chip="${escLabelText(c)}">${escLabelText(c)}</button>`).join("")
         +`</div>`;
@@ -3045,7 +3013,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
     }
 
-    /* ===== Added: AWB label, print, modals, bulk preview, report, invoice download, tickets, wallet ===== */
+    /* ===== Added: AWB label, print, modals, bulk preview, report, invoice download, wallet ===== */
     function awbCompleteBadge(p){ return p.awbPrinted ? `<div class="chip good" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700">✅ AWB printed — booking complete${p.awbPrintedAt?" · "+p.awbPrintedAt:""}</div>` : `<div class="chip warn" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700">⏳ AWB not printed yet</div>`; }
     // NovaX fix (CSV injection + quote breaking): every exported CSV cell goes
     // through this helper. Embedded quotes are doubled, the value is always
@@ -3260,7 +3228,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const inv=state.invoices.filter(i=>i.clientId===state.client.id && i.status!=="Deleted")[0];
       if(!inv){ el.innerHTML=`<div class="ops-card"><strong>No invoice yet</strong><p>Invoices created by admin will appear here.</p></div>`; return; }
       const invType=inv.invoiceType||"COD Settlement";
-      el.innerHTML=`<div class="invoice-card"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="chip ${invoiceChipClass(inv.status)}">${escLabelText(inv.status)}</span></div><p>${escLabelText(inv.summary)}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${invoiceMoneyBox(inv)}${moneyBox("Created",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div><div class="inline-actions" style="margin-top:12px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View Invoice</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">Download CSV</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Download PDF</button><button class="action-btn" onclick="openTicketModal('${inv.parcelRefs[0]||""}')">Raise Ticket</button></div></div>`;
+      el.innerHTML=`<div class="invoice-card"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="chip ${invoiceChipClass(inv.status)}">${escLabelText(inv.status)}</span></div><p>${escLabelText(inv.summary)}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${invoiceMoneyBox(inv)}${moneyBox("Created",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div><div class="inline-actions" style="margin-top:12px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View Invoice</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">Download CSV</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Download PDF</button></div></div>`;
     }
     // NovaX new (Negative/Delivery-Charges Invoices): per-line breakdown
     // shared by CSV export, View Invoice modal, and the print/PDF template.
@@ -3478,7 +3446,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           <tr><td style="padding:8px;border-bottom:1px solid #e5edea">Amount Due to NovaX</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">${money(due)}</td></tr>
           <tr><td style="padding:12px 8px;font-weight:800;font-size:16px;background:#eef7f2">${balanceLabel}</td><td style="padding:12px 8px;font-weight:800;font-size:16px;background:#eef7f2;text-align:right">${balanceValue}</td></tr>
         </table>
-        <div style="margin-top:22px;font-size:11px;color:#5b6b64;border-top:1px solid #e5edea;padding-top:12px">Generated by NovaX Logistics. This is a system-generated invoice, no tax/GST applied unless shown above. For questions, raise a ticket from the Payments tab or ask the in-app AI assistant. Parcels: ${escLabelText(inv.parcelRefs.join(", "))}.</div>
+        <div style="margin-top:22px;font-size:11px;color:#5b6b64;border-top:1px solid #e5edea;padding-top:12px">Generated by NovaX Logistics. This is a system-generated invoice, no tax/GST applied unless shown above. For questions, ask the in-app AI assistant. Parcels: ${escLabelText(inv.parcelRefs.join(", "))}.</div>
       </div>`;
     }
     function printInvoice(id){
@@ -3509,40 +3477,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const stage=document.getElementById("printStage");
       stage.innerHTML=`<div style="font-family:sans-serif;color:#000;padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(p.status)}</td><td>${money(p.cod)}</td></tr>`).join("")}</table></div>`;
       stage.style.display="block"; window.print(); setTimeout(()=>{ stage.style.display="none"; },500);
-    }
-
-    /* Tickets — pushed into shared state.tickets so admin windows pick them up */
-    function openTicketModal(awb){ document.getElementById("ticketAwbField").value=awb||state.selectedAwb||""; document.getElementById("ticketFromField").value=`Seller (${state.client.name})`; document.getElementById("ticketMsgField").value=""; document.getElementById("ticketModal").classList.add("show"); }
-    function closeTicketModal(){ document.getElementById("ticketModal").classList.remove("show"); }
-    function submitClientTicket(){
-      const dept=document.getElementById("ticketToField").value;
-      const msg=document.getElementById("ticketMsgField").value.trim();
-      const awb=document.getElementById("ticketAwbField").value.trim();
-      const tier=document.getElementById("ticketTierField").value;
-      if(!msg){ toast("Ticket message is required."); return; }
-      const map={ "Sales":{to:"Sales",branch:"Admin"}, "Finance":{to:"Finance Manager",branch:"Finance"}, "Warehouse":{to:"Warehouse Manager",branch:"Warehouse"}, "Karachi Operations":{to:"Karachi Branch Manager",branch:"Karachi Hub"}, "Lahore Operations":{to:"Lahore Branch Manager",branch:"Lahore Hub"}, "Others":{to:"Admin Control",branch:"Admin"} };
-      const m=map[dept]||map["Others"];
-      const t={ id:nextId("TCK",state.tickets), sourceKey:`client:${Date.now()}`, tier, title:msg.length>42?msg.slice(0,42)+"…":msg, from:`Seller ${state.client.name}`, to:m.to, branch:m.branch, awb, message:msg, createdAt:`${new Date().toISOString().slice(0,10)} ${time()}`, ageHours:0, status:"Open", escalated:false, replies:[] };
-      // NovaX fix (high risk #1): this used to add the ticket to local state,
-      // close the modal, and toast success immediately -- before Supabase
-      // ever confirmed the insert. If the background sync failed, the client
-      // believed a ticket was created that admin might never actually see.
-      // Now we require real server confirmation before showing success or
-      // closing the modal.
-      if(!window.__novaxCreateTicket){ toast("Cloud connection not ready yet, please try again in a moment.","error"); return; }
-      const btn=document.querySelector('#ticketModal .action-btn');
-      if(btn){ btn.disabled=true; btn.textContent="Sending..."; }
-      window.__novaxCreateTicket(t).then(function(uuid){
-        if(btn){ btn.disabled=false; btn.textContent="Send Ticket"; }
-        t._uuid=uuid;
-        state.tickets.unshift(t);
-        state.ticketNotifications.unshift({ text:`${t.id} created by ${t.from} → ${t.to}.`, at:t.createdAt, level:tier==="emergency"?"bad":"info" });
-        saveState(); render(); closeTicketModal();
-        toast(`${t.id} sent to ${m.to}.`);
-      }).catch(function(e){
-        if(btn){ btn.disabled=false; btn.textContent="Send Ticket"; }
-        toast(`Could not send ticket: ${(e&&e.message)||e}`,"error");
-      });
     }
 
     /* Wallet */
@@ -3882,7 +3816,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // NovaX fix (confidence messaging): the modal already explains the
         // payout math, but a quick toast confirms what just happened and what
         // to expect next, matching the same pattern used elsewhere (booking,
-        // tickets, store connect).
+        // store connect).
         toast(`Payout requested. Status: Pending admin payout.`,"success");
         // NovaX fix (rebuild integration mismatch): force the throttled
         // client_wallet_summary fetch to run again immediately (instead of
@@ -5101,7 +5035,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     document.getElementById("requestPickupBtn")?.addEventListener("click",requestPickup);
     document.getElementById("awbModalPrint").addEventListener("click",()=>printLabels([state.lastGeneratedAwb]));
     nvApplyPrintMode();
-    document.getElementById("openTicketBtn").addEventListener("click",()=>openTicketModal(state.selectedAwb));
     document.getElementById("reportCsvBtn").addEventListener("click",exportReportCsv);
     document.getElementById("reportPdfBtn").addEventListener("click",exportReportPdf);
     document.getElementById("repClearBtn").addEventListener("click",()=>{ ["repSearch","repFrom","repTo"].forEach(i=>{const e=document.getElementById(i);if(e)e.value="";}); const s=document.getElementById("repStatus"); if(s)s.value=""; renderClientReportFull(); });
@@ -5146,20 +5079,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
         try{
           const r=window.novaxAiEngine(v);
-          if(r.ticket){
-            // NovaX fix (high risk #2): wait for makeTicket()'s promise to
-            // resolve before telling the client a ticket was opened, and show
-            // a clear failure message (instead of a false success) if the
-            // server rejects it.
-            clientAiTabBubble((r.text?r.text+"<br><br>":"")+"Sending this to our support team...",true);
-            window.novaxAiMakeTicket(v,(v.match(/N\d{7}/i)||[])[0]||"").then(function(id){
-              clientAiTabBubble("Ticket <b>"+id+"</b> opened for our team - they will follow up shortly.",true);
-            }).catch(function(e){
-              clientAiTabBubble("I could not open a ticket right now ("+((e&&e.message)||"connection issue")+"). Please try again in a moment.",true);
-            });
-          } else {
-            clientAiTabBubble(r.text,true);
-          }
+          clientAiTabBubble(r.text,true);
         }catch(e){ clientAiTabBubble("Sorry, something went wrong reading the data. Please try again.",true); }
       };
       setTimeout(tryAnswer,150);
@@ -5202,7 +5122,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvRolePermissionSummary(role){
       if(role==="Finance") return "Invoices, payments and reports. No booking, no withdrawals.";
       if(role==="Warehouse") return "New booking, bulk booking, AWB labels and pickups only.";
-      if(role==="Support") return "Tracking, order logs, tickets and WhatsApp replies only.";
+      if(role==="Support") return "Tracking, order logs and WhatsApp replies only.";
       return "Full access, including the Wallet and withdrawals.";
     }
     var __nvRoleApplying=false;
@@ -5406,7 +5326,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // export list, so their onclick="...()" attributes could silently fail
     // to resolve depending on scope timing -- explicitly exporting them
     // alongside the other wallet/bank functions guarantees they're callable.
-    Object.assign(window,{ openClientParcelJourney, selectParcel, requestRedelivery, openAwbModal, closeAwbModal, openTicketModal, closeTicketModal, submitClientTicket, downloadInvoiceCsv, printInvoice, viewInvoice, closeInvoiceModal, printLabels, confirmWalletWithdraw, requestWalletWithdrawal, selectWalletSpeed, closeWalletDone, saveBankDetails, editBankDetails, cancelBankDetailsEdit });
+    Object.assign(window,{ openClientParcelJourney, selectParcel, requestRedelivery, openAwbModal, closeAwbModal, downloadInvoiceCsv, printInvoice, viewInvoice, closeInvoiceModal, printLabels, confirmWalletWithdraw, requestWalletWithdrawal, selectWalletSpeed, closeWalletDone, saveBankDetails, editBankDetails, cancelBankDetailsEdit });
     window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); render(); } });
     /* ===== NovaX data-ready safety net: guarantees isClientDataReady() eventually flips true even if a cloud sync path is missed ===== */
     window.__novaxClientDataReady = window.__novaxClientDataReady || false;
@@ -5429,16 +5349,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // requests) can pull the authoritative server state back down after
       // an RPC succeeds, instead of only trusting a local mirror forever.
       window.__novaxReloadClientData=function(){ try{ return loadAll(); }catch(e){} };
-      // NovaX fix (high risk #1/#2): a real, awaitable ticket-creation path so
-      // submitClientTicket()/makeTicket() no longer have to add a ticket to
-      // local state and claim success before Supabase actually accepts it.
-      window.__novaxCreateTicket=function(t){
-        if(!MY||!sb) return Promise.reject(new Error("Not connected to the server yet."));
-        return sb.from("tickets").insert({ client_id:MY, subject:t.title||"", body:t.message||"", status:t.status||"Open", meta:{ code:t.id, tier:t.tier, from:t.from, to:t.to, branch:t.branch, awb:t.awb, replies:t.replies||[], sourceKey:t.sourceKey } }).select("id").single().then(function(r){
-          if(r&&r.error) throw new Error(r.error.message||"Server rejected the ticket.");
-          return r&&r.data?r.data.id:null;
-        });
-      };
       // NovaX fix (URGENT order booking/processing spec): booking used to
       // write straight into local state and rely on a later direct browser
       // insert into public.parcels (see the now-disabled loop in syncNew()
@@ -5530,10 +5440,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var summary=m.summary||invoiceSummaryFallback(invoiceType,cod,charges,payable,dueToNovax);
         return { _uuid:r.id, id:r.code||r.id, clientId:MY, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:cod, charges:charges, payable:payable, status:r.status||"", createdAt:dtpart(r.created_at), paidAt:paidAt, walletPushedAt:walletPushedAt, summary:summary, invoiceType:invoiceType, dueToNovax:dueToNovax, finalBalance:Number(m.finalBalance!=null?m.finalBalance:payable) };
       }
-      function mapTicket(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.code||r.id, clientId:MY, title:r.subject||"", message:r.body||"", status:r.status||"Open", createdAt:dtpart(r.created_at), tier:m.tier||"medium", from:m.from||"", to:m.to||"", branch:m.branch||"", awb:m.awb||"", replies:Array.isArray(m.replies)?m.replies:[], escalated:!!m.escalated, sourceKey:m.sourceKey||"", resolutionReply:m.resolutionReply||"", proof:m.proof||"", resolvedBy:m.resolvedBy||"", resolvedAt:m.resolvedAt||"", solvedHours:Number(m.solvedHours||0) }; }
       function mapWd(r){
         // NovaX fix (mobile UX audit, raw-UUID leak): withdrawals has no
-        // human-readable code column like invoices/tickets, so this used to
+        // human-readable code column like invoices, so this used to
         // show the raw database UUID as the card title. Derive a stable
         // short code from the UUID itself (not a position-based counter,
         // so it never changes when sort order changes on reload).
@@ -5548,7 +5457,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // NovaX fix (high risk #3, defense in depth): these used to rely
         // entirely on RLS to scope rows to this seller. If any RLS policy
         // were ever loose or misconfigured, this client would map another
-        // client's parcels, invoices, tickets, withdrawals, payment logs, or
+        // client's parcels, invoices, withdrawals, payment logs, or
         // store connections straight into its own account view. Explicit
         // client_id filters are added here so the frontend never trusts RLS
         // alone.
@@ -5556,7 +5465,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           sb.from("clients").select("*").eq("id",MY).maybeSingle(),
           sb.from("parcels").select("*").eq("client_id",MY).order("booked_at",{ascending:false}),
           sb.from("invoices").select("*").eq("client_id",MY).order("created_at",{ascending:false}),
-          sb.from("tickets").select("*").eq("client_id",MY).order("created_at",{ascending:false}),
           sb.from("withdrawals").select("*").eq("client_id",MY).order("created_at",{ascending:false}),
           sb.from("payment_logs").select("*").eq("client_id",MY).order("created_at",{ascending:false}),
           sb.from("store_connections").select("*").eq("client_id",MY),
@@ -5578,7 +5486,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             state.accountNotLinked=false;
             state.client={ id:MY, name:"We're preparing your workspace. Refresh or sign in again.", walletBalance:0, rate:0, rateCard:{}, premiumTier:"", walletTopup:0, shippingDue:0, subAccounts:0 };
             state.clients=[state.client];
-            state.parcels=[]; state.invoices=[]; state.tickets=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[]; state.walletLedger=[]; state.pickupRequests=[];
+            state.parcels=[]; state.invoices=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[]; state.walletLedger=[]; state.pickupRequests=[];
             state.clientBankDetails=null;
             loaded=true;
             try{ localStorage.setItem(STORAGE_KEY,persistStateJson()); }catch(e){}
@@ -5599,11 +5507,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           state.clients=[{ id:MY, name:name, owner:(c&&c.owner)||"", city:(c&&c.city)||"", status:(c&&c.status)||"Active", tier:(c&&c.status)||"", rate:rate, rateCard:rc, walletBalance:bal, risk:Number((c&&c.risk_score)||0), health:90, problemsResolved:0 }];
           state.parcels=((res[1]&&res[1].data)||[]).map(mapParcel);
           state.invoices=((res[2]&&res[2].data)||[]).map(mapInvoice);
-          state.tickets=((res[3]&&res[3].data)||[]).map(mapTicket);
-          state.walletWithdrawals=((res[4]&&res[4].data)||[]).map(mapWd);
-          state.paymentLogs=((res[5]&&res[5].data)||[]).map(mapPl);
-          state.storeConnections=((res[6]&&res[6].data)||[]).map(mapSc);
-          state.walletLedger=((res[7]&&res[7].data)||[]).map(mapLedger);
+          state.walletWithdrawals=((res[3]&&res[3].data)||[]).map(mapWd);
+          state.paymentLogs=((res[4]&&res[4].data)||[]).map(mapPl);
+          state.storeConnections=((res[5]&&res[5].data)||[]).map(mapSc);
+          state.walletLedger=((res[6]&&res[6].data)||[]).map(mapLedger);
           shadow={}; state.parcels.forEach(function(p){ if(p._uuid) shadow[p._uuid]=(p.status||"")+"|"+(p.exception||"")+"|"+(p.awbPrinted?"1":"0")+"|"+(p.awbPrintedAt||""); });
           loaded=true;
           try{ localStorage.setItem(STORAGE_KEY,persistStateJson()); }catch(e){}
@@ -5633,7 +5540,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // replaying it.
         (state.walletWithdrawals||[]).forEach(function(w){ if(w._uuid||w._pending) return; console.warn("NovaX: dropping stale local withdrawal with no server id (not replayed):",w.id); });
         state.walletWithdrawals=(state.walletWithdrawals||[]).filter(function(w){ return !!w._uuid; });
-        (state.tickets||[]).forEach(function(t){ if(t._uuid||t._pending) return; t._pending=true; sb.from("tickets").insert({ client_id:MY, subject:t.title||"", body:t.message||"", status:t.status||"Open", meta:{ code:t.id, tier:t.tier, from:t.from, to:t.to, branch:t.branch, awb:t.awb, replies:t.replies||[], sourceKey:t.sourceKey } }).select("id").maybeSingle().then(function(r){ t._pending=false; if(r&&r.data) t._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX ticket insert",r.error.message); }); });
         (state.paymentLogs||[]).forEach(function(pl){ if(pl._uuid||pl._pending) return; pl._pending=true; sb.from("payment_logs").insert({ client_id:MY, type:pl.type||"", amount:Number(pl.amount||0), status:pl.status||"", reference:pl.ref||"" }).select("id").maybeSingle().then(function(r){ pl._pending=false; if(r&&r.data) pl._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX paylog insert",r.error.message); }); });
         (state.storeConnections||[]).forEach(function(c){ if(c._pending) return; var row={ client_id:MY, platform:c.platform, store_url:c.storeUrl||"", connected:!!c.connected, imported_count:Number(c.importedCount||0), meta:{ hasCreds:!!c.hasCreds, connectedAt:c.connectedAt||"", lastSync:c.lastSync||"" }, updated_at:new Date().toISOString() }; var sig=JSON.stringify(row); if(c._sig===sig) return; var prevSig=c._sig; c._sig=sig; if(c._uuid){ sb.from("store_connections").update(row).eq("id",c._uuid).then(function(r){ if(r&&r.error){ console.warn("NovaX store update",r.error.message); if(c._sig===sig) c._sig=prevSig; } }); } else { c._pending=true; sb.from("store_connections").insert(row).select("id").maybeSingle().then(function(r){ c._pending=false; if(r&&r.data) c._uuid=r.data.id; else if(r&&r.error){ console.warn("NovaX store insert",r.error.message); if(c._sig===sig) c._sig=prevSig; } }); } });
         // NovaX fix (Part 4, pickup request flow): a pickup request created
@@ -5643,7 +5549,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         (state.pickupRequests||[]).forEach(function(pr){ if(pr._uuid||pr._pending) return; pr._pending=true; sb.from("pickup_requests").insert({ client_id:MY, awbs:pr.awbs||[], pickup_address:pr.pickupAddress||"", requested_for:pr.requestedFor||"", note:pr.note||"", status:pr.status||"Requested", meta:{} }).select("id").maybeSingle().then(function(r){ pr._pending=false; if(r&&r.data){ pr._uuid=r.data.id; } else if(r&&r.error){ console.warn("NovaX pickup insert",r.error.message); pr._syncFailed=true; try{ toast("Pickup request could not be saved: "+r.error.message,"error"); render(); }catch(e){} } }); });
       }
       var _save=saveState; saveState=function(){ try{ _save.apply(this,arguments); }catch(e){} try{ syncNew(); }catch(e){} };
-      state.parcels=[]; state.invoices=[]; state.tickets=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[]; state.pickupRequests=[];
+      state.parcels=[]; state.invoices=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[]; state.pickupRequests=[];
       state.client={ id:null, name:"Verifying account...", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
       state.clients=[state.client];
       // NovaX fix (client identity leak): accountNotLinked/clientRecordMissing
@@ -5676,7 +5582,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                 sb.channel("novax_client_"+MY)
                   .on("postgres_changes",{event:"*",schema:"public",table:"parcels",filter:"client_id=eq."+MY},function(){ loadAll(); })
                   .on("postgres_changes",{event:"*",schema:"public",table:"invoices",filter:"client_id=eq."+MY},function(){ loadAll(); })
-                  .on("postgres_changes",{event:"*",schema:"public",table:"tickets",filter:"client_id=eq."+MY},function(){ loadAll(); })
                   .on("postgres_changes",{event:"*",schema:"public",table:"withdrawals",filter:"client_id=eq."+MY},function(){ loadAll(); })
                   .subscribe(function(status,err){ if(err) console.warn("NovaX client realtime",status,err.message||err); });
               }catch(e){ console.warn("NovaX client realtime",e); }
@@ -5783,36 +5688,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var myWithdrawals=function(){ return (state.walletWithdrawals||[]).filter(function(w){return w.clientId===cid();}); };
         function invLine(iv){ return 'Invoice <b>'+esc(iv.id)+'</b> - status <b>'+esc(iv.status)+'</b><br>Payable <b>Rs '+fmt(iv.payable)+'</b> (COD Rs '+fmt(iv.cod)+' - charges Rs '+fmt(iv.charges)+') · '+((iv.parcelRefs||[]).length)+' parcel(s)'; }
         function pLine(p){ return '<b>'+esc(p.awb)+'</b> - <b>'+esc(p.status)+'</b><br>'+esc(p.consignee||'')+(p.city?' · '+esc(p.city):'')+(p.updated?' · updated '+esc(p.updated):'')+(p.exception?'<br>⚠������� '+esc(p.exception):''); }
-        function makeTicket(q,awb){
-          state.tickets=Array.isArray(state.tickets)?state.tickets:[];
-          var t={ id:nextId('TCK',state.tickets), sourceKey:'ai-client:'+Date.now(), tier:'medium', title:q.length>42?q.slice(0,42)+'…':q, from:'Seller '+cname(), to:'Admin Control', branch:'Admin', awb:awb||'', message:q, createdAt:new Date().toISOString().slice(0,10)+' '+time(), ageHours:0, status:'Open', escalated:false, replies:[] };
-          // NovaX fix (high risk #2): this used to add the ticket to local
-          // state and return its id immediately, before Supabase confirmed
-          // the insert -- Autopilot/AI tab would then tell the client
-          // "ticket opened" even if the backend never accepted it. Now this
-          // returns a promise that only resolves (with the real ticket id)
-          // once the server actually confirms the ticket.
-          if(!window.__novaxCreateTicket) return Promise.reject(new Error('Cloud connection not ready yet.'));
-          return window.__novaxCreateTicket(t).then(function(uuid){
-            t._uuid=uuid;
-            state.tickets.unshift(t);
-            state.ticketNotifications=Array.isArray(state.ticketNotifications)?state.ticketNotifications:[];
-            state.ticketNotifications.unshift({ text:t.id+' created by '+t.from+' to '+t.to+'.', at:t.createdAt, level:'info' });
-            try{ saveState(); }catch(e){} try{ render(); }catch(e){}
-            return t.id;
-          });
-        }
         function engine(raw){
           var q=String(raw||'').trim(); if(!q) return {text:'Ask me about a parcel (e.g. <b>SAMPLE-AWB-1</b>), your invoice, wallet balance, or any delivery issue.'};
           var low=q.toLowerCase();
           if(/^(hi|hey|hello|salam|assalam|aoa|yo)\b/.test(low)||/how are you/.test(low)) return {text:'Hi '+esc(cname())+'! I read your live NovaX data. Try: <i>where is SAMPLE-AWB-1</i>, <i>my invoice</i>, <i>wallet balance</i>, or report an issue.'};
           if(/^(thanks|thank you|shukria|great|ok|okay|cool)\b/.test(low)) return {text:'Anytime. 🚚'};
           var awb=(q.match(/N\d{7}/i)||[])[0];
-          if(awb){ var p=myParcels().find(function(x){return String(x.awb||'').toUpperCase()===awb.toUpperCase();}); if(p) return {text:pLine(p)+(p.steps&&p.steps.length?'<br><span class=nvai-dim>Journey: '+esc(p.steps.join(' to '))+'</span>':'')}; return {ticket:true,text:'I could not find <b>'+esc(awb.toUpperCase())+'</b> under your account.'}; }
+          if(awb){ var p=myParcels().find(function(x){return String(x.awb||'').toUpperCase()===awb.toUpperCase();}); if(p) return {text:pLine(p)+(p.steps&&p.steps.length?'<br><span class=nvai-dim>Journey: '+esc(p.steps.join(' to '))+'</span>':'')}; return {text:'I could not find <b>'+esc(awb.toUpperCase())+'</b> under your account.'}; }
           var invId=(q.match(/INV-\d+/i)||[])[0];
-          if(invId){ var iv=myInvoices().find(function(i){return String(i.id||'').toUpperCase()===invId.toUpperCase();}); if(iv) return {text:invLine(iv)}; return {ticket:true,text:'I could not find invoice <b>'+esc(invId.toUpperCase())+'</b> on your account.'}; }
-          var tkId=(q.match(/TCK-\d+/i)||[])[0];
-          if(tkId){ var tk=(state.tickets||[]).find(function(t){return String(t.id||'').toUpperCase()===tkId.toUpperCase();}); if(tk) return {text:'Ticket <b>'+esc(tk.id)+'</b> - <b>'+esc(tk.status)+'</b><br>'+esc(tk.title)+(tk.resolutionReply?'<br>Reply: '+esc(tk.resolutionReply):'')}; }
+          if(invId){ var iv=myInvoices().find(function(i){return String(i.id||'').toUpperCase()===invId.toUpperCase();}); if(iv) return {text:invLine(iv)}; return {text:'I could not find invoice <b>'+esc(invId.toUpperCase())+'</b> on your account.'}; }
           if(/wallet|balance|payout|withdraw|cash ?out|money|payment/.test(low)){ var bal=walletBalance(cid()); var w=myWithdrawals(); var pend=w.filter(function(x){return /pending|process/i.test(x.status||'');}); if(/last|recent|history|withdraw/.test(low)&&w.length){ var lw=w[0]; return {text:'Your wallet balance is <b>Rs '+fmt(bal)+'</b>.<br>Last withdrawal <b>'+esc(lw.id||'')+'</b>: Rs '+fmt(lw.net||lw.amount)+' - <b>'+esc(lw.status||'')+'</b>.'+(pend.length?'<br>'+pend.length+' still in progress.':'')}; } return {text:'Your wallet balance is <b>Rs '+fmt(bal)+'</b>.'+(pend.length?' '+pend.length+' withdrawal(s) in progress.':' No withdrawals in progress.')}; }
           if(/invoice|payable|bill|statement/.test(low)){ var ivs=myInvoices(); if(!ivs.length) return {text:'You have no invoices yet. Invoices are generated once parcels are delivered.'}; return {text:invLine(ivs[0])+(ivs.length>1?'<br><span class=nvai-dim>'+(ivs.length-1)+' older invoice(s) on file.</span>':'')}; }
           if(/exception|refus|delay|stuck|problem|fail|issue|return/.test(low)){ var ex=myParcels().filter(function(p){return p.exception||/refus|return|not available|reattempt/i.test(p.status||'');}); if(!ex.length) return {text:'Good news - no parcels with exceptions right now. ✅'}; return {text:'You have <b>'+ex.length+'</b> parcel(s) needing attention:<br>'+ex.slice(0,5).map(pLine).join('<br><br>')}; }
@@ -5820,10 +5704,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(/list|show|recent|latest|all my|my parcels|my orders/.test(low)){ var ps3=myParcels(); if(!ps3.length) return {text:'You have no parcels yet.'}; return {text:'Your recent parcels:<br>'+ps3.slice(0,8).map(pLine).join('<br><br>')+(ps3.length>8?'<br><span class=nvai-dim>+'+(ps3.length-8)+' more.</span>':'')}; }
           if(/rate|price|pricing|cost|tariff|fee|per parcel|per shipment|how much/.test(low)){ var c=clientById(cid()); var rc=normalizeRateCard(c&&c.rateCard, c&&c.rate); return {text:'Your delivery rate depends on destination: <b>Zone A (Karachi) Rs '+fmt(rc.A.overnight)+'</b> and <b>Zone B (Lahore / Islamabad / Rawalpindi) Rs '+fmt(rc.B.overnight)+'</b> per shipment (COD standard). Charges are deducted from COD before your wallet payout.'}; }
           if(/book|create|new parcel|new order|how.*(book|ship|send)|pickup|schedule/.test(low)) return {text:'To book a parcel, tap <b>Book New Parcel</b> on your dashboard, then add the consignee, city, COD and weight. Once a rider collects it I can track it live - just give me the AWB.'};
-          if(/raise|open.*(ticket|complaint)|file.*(ticket|complaint|issue)|complain|escalate|human|agent|customer (care|support)|contact|speak to|talk to/.test(low)) return {ticket:true,text:'Sure - I will log this with our support team right away.'};
-          if(/help|what can you|capabilit|how.*(use|work)|guide|menu|options|commands|what do you do/.test(low)) return {text:'I can track parcels (give an AWB like <b>SAMPLE-AWB-1</b>), show invoices and payable, wallet balance and withdrawals, exceptions and delays, your rate, and a full summary. Ask in plain words - or type <i>raise a ticket</i> to reach a human.'};
+          if(/help|what can you|capabilit|how.*(use|work)|guide|menu|options|commands|what do you do/.test(low)) return {text:'I can track parcels (give an AWB like <b>SAMPLE-AWB-1</b>), show invoices and payable, wallet balance and withdrawals, exceptions and delays, your rate, and a full summary. Ask in plain words.'};
           if(/track|where|status|location/.test(low)) return {text:'Share the tracking ID (e.g. <b>SAMPLE-AWB-1</b>) and I will give you the exact live status.'};
-          return {text:'I want to get this right. Ask me anything about <b>your</b> account - try <i>where is SAMPLE-AWB-1</i>, <i>my invoices</i>, <i>wallet balance</i>, <i>any delays?</i>, <i>my summary</i>, or <i>my rate</i>. To reach a person, type <i>raise a ticket</i>.'};
+          return {text:'I want to get this right. Ask me anything about <b>your</b> account - try <i>where is SAMPLE-AWB-1</i>, <i>my invoices</i>, <i>wallet balance</i>, <i>any delays?</i>, <i>my summary</i>, or <i>my rate</i>.'};
         }
         // Expose the engine to the "Full AI in Web" tab immediately, before any
         // floating-widget DOM setup below. That widget is a secondary UI --
@@ -5832,7 +5715,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // wrapped both, so a floating-widget error silently prevented
         // window.novaxAiEngine from ever being set, breaking the AI tab too).
         window.novaxAiEngine = engine;
-        window.novaxAiMakeTicket = makeTicket;
         window.novaxAiName = cname;
         window.novaxAiEsc = esc;
       }catch(e){ console.warn('NovaX AI engine init failed', e); }
@@ -6064,11 +5946,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const isRefused=p.status==="Refused"; const isReturn=p.status==="Ready for return";
         const label=isRefused?"We need your decision":isReturn?"Return to shipper -- confirm":p.status==="Consignee not available"?"Approve reattempt":"Delayed -- update available";
         const eAwb=escLabelText(p.awb);
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">${escLabelText(label)}</span></div><p class="footer-note">${escLabelText(p.consignee||"")} &middot; ${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="clientActionNeededReattempt('${eAwb}')">Approve reattempt</button><button class="action-btn ghost" onclick="clientActionNeededReturn('${eAwb}')">Return to shipper</button><button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button><button class="action-btn ghost" onclick="clientActionNeededTicket('${eAwb}')">Talk to support</button><button class="action-btn ghost" onclick="clientActionNeededAskAi('${eAwb}')">Ask AI</button></div></div>`;
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">${escLabelText(label)}</span></div><p class="footer-note">${escLabelText(p.consignee||"")} &middot; ${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="clientActionNeededReattempt('${eAwb}')">Approve reattempt</button><button class="action-btn ghost" onclick="clientActionNeededReturn('${eAwb}')">Return to shipper</button><button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button><button class="action-btn ghost" onclick="clientActionNeededAskAi('${eAwb}')">Ask AI</button></div></div>`;
       });
       const missingInfoCards=missingInfoItems.slice(0,4).map(function(p){
         const eAwb=escLabelText(p.awb);
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">Missing address or phone</span></div><p class="footer-note">${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="clientActionNeededTicket('${eAwb}')">Talk to support</button><button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button></div></div>`;
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">Missing address or phone</span></div><p class="footer-note">${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button></div></div>`;
       });
       const walletCard=payable>0 ? [`<div class="ops-card"><div class="ops-card-head"><strong>Wallet</strong><span class="chip warn">Payable balance ready</span></div><p class="footer-note">You have a payable balance waiting -- review it in your wallet.</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="typeof showClientTab==='function'&&showClientTab('wallet')">View wallet</button></div></div>`] : [];
       host.innerHTML=`<div class="panel" style="border:1px solid #f0d6a0;background:#fffaf0"><div class="section-head"><div><h3>Action needed</h3><p>${totalItems} item(s) are waiting on a quick decision from you -- nothing urgent, just pick an option below.</p></div></div><div class="ops-list">`+parcelCards.concat(missingInfoCards).concat(walletCard).join("")+`</div></div>`;
@@ -6081,10 +5963,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function clientActionNeededReturn(awb){
       if(typeof requestReturnToOrigin==="function"){ requestReturnToOrigin(awb); return; }
       toast("Could not send this request right now.","error");
-    }
-    function clientActionNeededTicket(awb){
-      if(typeof openTicketModal==="function"){ openTicketModal(awb); return; }
-      toast("Could not open support right now.","error");
     }
     function clientActionNeededAskAi(awb){
       try{
@@ -6173,12 +6051,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           { tab:"awbLabel", title:"AWB Label", text:"Every booking instantly generates a printable AWB with QR and barcode. Hand it to your rider or print it." },
           { tab:"bulkBooking", title:"Bulk Booking", text:"Shipping many orders at once? Download the CSV format, fill it in, and upload it here to create AWBs in bulk." },
           { tab:"integrations", title:"Store Integrations", text:"Connect Shopify, WooCommerce, or your own website here so new orders import automatically." },
-          { tab:"reports", title:"Full Report", text:"See every parcel with filters, export CSV or PDF, and raise a ticket straight from any row." },
-          { tab:"payments", title:"Payments", text:"Delivered parcels turn into payable invoices here. Download them or raise a ticket if something looks off." },
+          { tab:"reports", title:"Full Report", text:"See every parcel with filters and export it as CSV or PDF." },
+          { tab:"payments", title:"Payments", text:"Delivered parcels turn into payable invoices here. Download them any time." },
           { tab:"wallet", title:"Wallet", text:"Track your balance and request a payout in a few taps whenever you are ready." },
           { tab:"logs", title:"Order Logs", text:"A clean audit trail of every status change for every parcel you have booked." },
           { tab:"subAccounts", title:"Sub Accounts", text:"Invite your team, finance, warehouse, or support, with their own scoped logins." },
-          { tab:"support", title:"Talk To Your AI", text:"Tap the Autopilot button in the corner anytime. I read your live data and answer instantly, or open a ticket for you." }
+          { tab:"support", title:"Talk To Your AI", text:"Tap the Autopilot button in the corner anytime. I read your live data and answer instantly." }
         ];
         var idx=-1;
 
@@ -6401,8 +6279,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var needsList=b.needs.concat(b.stuck.filter(function(p){ return b.needs.indexOf(p)<0; })).slice(0,4);
         var needsHtml=needsList.length?needsList.map(function(p){
           return nvItem(p,'<button class="nv-c-btn" data-nv-cock="journey" data-awb="'+nvEsc(p.awb)+'">Journey</button>'
-            +'<button class="nv-c-btn" data-nv-cock="reattempt" data-awb="'+nvEsc(p.awb)+'">Re-attempt</button>'
-            +'<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+nvEsc(p.awb)+'">Ticket</button>');
+            +'<button class="nv-c-btn" data-nv-cock="reattempt" data-awb="'+nvEsc(p.awb)+'">Re-attempt</button>');
         }).join(""):'<p class="nv-c-empty">Nothing needs you right now. Exceptions and parcels stuck over 48 hours appear here.</p>';
         var movingCounts={};
         b.moving.forEach(function(p){ movingCounts[p.status]=(movingCounts[p.status]||0)+1; });
@@ -6435,7 +6312,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var kind=t.getAttribute("data-nv-cock"), awb=t.getAttribute("data-awb");
         if(kind==="journey") nvSafeCall(function(){ openClientParcelJourney(awb); });
         else if(kind==="reattempt") nvSafeCall(function(){ requestRedelivery(awb); });
-        else if(kind==="ticket") nvSafeCall(function(){ openTicketModal(awb); });
         else if(kind==="tab") nvTab(t.getAttribute("data-tab"));
         else if(kind==="printnew"){
           var list=nvTodayBuckets().next.map(function(p){ return p.awb; });
@@ -6555,7 +6431,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           bar=document.createElement("div"); bar.id="nvBulkBar"; bar.className="nv-bulkbar";
           bar.innerHTML='<b id="nvBulkCount">0 selected</b>'
             +'<button class="solid" data-nv-bulk="print">Print labels</button>'
-            +'<button data-nv-bulk="ticket">Open tickets</button>'
             +'<button data-nv-bulk="reattempt">Request re-attempt</button>'
             +'<button data-nv-bulk="message">Message customers</button>'
             +'<button data-nv-bulk="export">Export selected</button>'
@@ -6613,7 +6488,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
         if(!list.length){ nvSafeCall(function(){ toast("Select at least one parcel first."); }); return; }
         if(act==="print") nvSafeCall(function(){ printLabels(list); });
-        else if(act==="ticket") list.slice(0,5).forEach(function(a){ nvSafeCall(function(){ openTicketModal(a); }); });
         else if(act==="reattempt"){
           if(!window.confirm("Request a re-attempt for "+list.length+" parcel(s)?")) return;
           list.forEach(function(a){ nvSafeCall(function(){ requestRedelivery(a); }); });
@@ -6738,7 +6612,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
 
       /* ---------- Task 19: notification centre ----------
-         Parcel and ticket events only. Wallet, payout, fee and invoice events
+         Parcel events only. Wallet, payout, fee and invoice events
          are deliberately excluded. */
       var NOTIF_READ_KEY="novaxClientNotifReadV1";
       var notifOpen=false;
@@ -6755,13 +6629,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(st==="Delivered") out.push({ id:p.awb+"|delivered", awb:p.awb, title:p.awb+" delivered", sub:[p.consignee,p.city].filter(Boolean).join(" \u00b7 ") });
           else if(NEEDS_ME.indexOf(st)>=0) out.push({ id:p.awb+"|"+st, awb:p.awb, title:p.awb+" \u2013 "+st, sub:(p.exception||[p.consignee,p.city].filter(Boolean).join(" \u00b7 ")) });
           else if(st==="Collected by rider") out.push({ id:p.awb+"|pickup", awb:p.awb, title:p.awb+" picked up", sub:"Rider collected this parcel" });
-        });
-        nvSafeCall(function(){
-          var tickets=(state&&(state.tickets||state.supportTickets))||[];
-          tickets.forEach(function(t){
-            var replied=t&&(t.reply||t.lastReply||(t.replies&&t.replies.length)||/replied|answered/i.test(String(t.status||"")));
-            if(replied) out.push({ id:"ticket|"+(t.id||t.awb||t.subject||""), awb:t.awb||"", title:"Support replied"+(t.awb?" on "+t.awb:""), sub:String(t.subject||t.lastReply||t.reply||"Open the Support tab to read it") });
-          });
         });
         return out.slice(0,60);
       }
@@ -6837,531 +6704,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       else setTimeout(nvP3Tick,300);
       setInterval(nvP3Tick,2500);
       window.__novaxPhase3={ cockpit:nvRenderCockpit, notif:nvNotifRender, search:nvOmniSearch, selected:nvSelList };
-    })();
-    /* ===================================================================
-       NovaX ticketing upgrade (client side)
-       Deep dive items 5, 6, 8 and 10.
-
-       Spliced INSIDE the main client script block because `state`,
-       `showClientTab`, `renderClientModules` and NOVAX_ROLE_TABS are
-       block-scoped (let state @ ~1177).
-
-       Reuses the existing postgres_changes subscription on `tickets`
-       (client.html ~4172) -- no second channel is created. Touches no
-       wallet, withdrawal, invoice, fee or WALLET_FEE code.
-       =================================================================== */
-    (function nvClientTickets(){
-      if (window.__novaxClientTicketsLoaded) return;
-      window.__novaxClientTicketsLoaded = true;
-
-      function E(v){
-        if (typeof escLabelText === "function") return escLabelText(String(v == null ? "" : v));
-        return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){
-          return ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[c]; });
-      }
-      function sb(){ return window.__nvSbClient || window.__nvSb || null; }
-      function say(m, k){ try { toast(m, k); } catch(e){ console.warn("NovaX:", m); } }
-      function tickets(){ return Array.isArray(state.tickets) ? state.tickets : []; }
-      function isOpen(t){ return String(t.status || "") !== "Resolved"; }
-
-      /* ---------- SLA math, mirrors the server helper ---------- */
-      var LIMIT = 24;
-      var IS_24_7 = true;
-      function ageHours(t){
-        var a = new Date(String(t.createdAt || "").replace(" ", "T"));
-        if (isNaN(a.getTime())) return Number(t.ageHours || 0);
-        return Math.max(Number(t.ageHours || 0), Math.round((Date.now() - a.getTime()) / 36e5));
-      }
-      function tierOf(t){
-        if (!isOpen(t)) return "resolved";
-        if (t.escalated || ageHours(t) >= LIMIT) return "emergency";
-        return t.tier || "medium";
-      }
-      function slaText(t){
-        var age = ageHours(t);
-        if (!isOpen(t)) return "Solved in " + hrs(t.solvedHours || age);
-        if (age >= LIMIT) return "Escalated to Admin Control " + hrs(age - LIMIT) + " ago";
-        return (LIMIT - Math.round(age)) + "h left before it auto-escalates";
-      }
-      function hrs(n){
-        n = Number(n || 0);
-        if (n < 1) return Math.max(1, Math.round(n * 60)) + "m";
-        return (n < 10 ? Math.round(n * 10) / 10 : Math.round(n)) + "h";
-      }
-
-      // Load support hours once so the client's promise matches the enforced
-      // clock instead of quietly assuming 24/7.
-      (function loadHours(){
-        var s = sb(); if (!s) return;
-        try {
-          s.from("support_hours").select("is_24_7,escalate_after_hours,open_hour,close_hour")
-           .eq("id", 1).maybeSingle().then(function(r){
-            if (r && r.data) {
-              IS_24_7 = !!r.data.is_24_7;
-              LIMIT = Number(r.data.escalate_after_hours || 24);
-              window.__nvSupportHours = r.data;
-            }
-          }).catch(function(){});
-        } catch(e){}
-      })();
-
-      /* ---------- extra columns the existing mapTicket() does not carry ---------- */
-      var EXTRA = {};   // uuid -> { csat_score, first_response_at, assigned_to }
-      var extraAt = 0;
-      function refreshExtra(cb){
-        var s = sb();
-        if (!s || Date.now() - extraAt < 20000) { if (cb) cb(); return; }
-        extraAt = Date.now();
-        try {
-          s.from("tickets").select("id,csat_score,csat_comment,first_response_at,assigned_to")
-           .limit(500).then(function(r){
-            if (r && r.data) r.data.forEach(function(row){ EXTRA[row.id] = row; });
-            if (cb) cb();
-          }).catch(function(){ if (cb) cb(); });
-        } catch(e){ if (cb) cb(); }
-      }
-      function extraOf(t){ return (t._uuid && EXTRA[t._uuid]) || {}; }
-
-      /* ---------- item 5: mount a real tab + pane ---------- */
-      function mount(){
-        // Role gate: everyone who can open Order Logs can see their tickets.
-        try {
-          if (typeof NOVAX_ROLE_TABS === "object" && NOVAX_ROLE_TABS) {
-            Object.keys(NOVAX_ROLE_TABS).forEach(function(role){
-              var list = NOVAX_ROLE_TABS[role];
-              if (Array.isArray(list) && list.indexOf("tickets") === -1 &&
-                  (list.indexOf("logs") !== -1 || list.indexOf("support") !== -1 || role === "Owner")) {
-                list.push("tickets");
-              }
-            });
-          }
-        } catch(e){}
-
-        var nav = document.querySelector('.client-tab[data-client-tab="logs"]');
-        if (nav && !document.querySelector('.client-tab[data-client-tab="tickets"]')) {
-          var b = document.createElement("button");
-          b.className = "client-tab";
-          b.setAttribute("data-client-tab", "tickets");
-          b.textContent = "My Tickets";
-          b.addEventListener("click", function(){ showClientTab("tickets"); });
-          nav.parentNode.insertBefore(b, nav.nextSibling);
-        }
-
-        var anyModule = document.querySelector(".client-module");
-        if (anyModule && !document.getElementById("client-tickets")) {
-          var pane = document.createElement("section");
-          pane.className = "client-module";
-          pane.id = "client-tickets";
-          pane.innerHTML =
-            '<div class="panel"><div class="panel-head">' +
-            '<div><h2 style="margin:0">My Tickets</h2>' +
-            '<p class="footer-note" style="margin:2px 0 0" id="nvTkClock"></p></div>' +
-            '<span class="chip info" id="nvTkBadge">0 open</span></div>' +
-            '<div class="inline-actions" id="nvTkFilters" style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">' +
-            '<button class="action-btn" data-nv-tkf="open">Open</button>' +
-            '<button class="ghost-btn" data-nv-tkf="resolved">Resolved</button>' +
-            '<button class="ghost-btn" data-nv-tkf="all">All</button></div>' +
-            '<div id="nvTkList"></div></div>';
-          anyModule.parentNode.appendChild(pane);
-
-          pane.addEventListener("click", function(ev){
-            var f = ev.target.closest("[data-nv-tkf]");
-            if (f) { FILTER = f.getAttribute("data-nv-tkf"); renderTicketsTab(); return; }
-            var r = ev.target.closest("[data-nv-csat]");
-            if (r) {
-              submitCsat(r.getAttribute("data-nv-tk"), Number(r.getAttribute("data-nv-csat")));
-              return;
-            }
-            var w = ev.target.closest("[data-nv-tkwa]");
-            if (w) { openWhatsApp(w.getAttribute("data-nv-tkwa")); return; }
-          });
-        }
-      }
-
-      var FILTER = "open";
-
-      function replyThread(t){
-        var reps = Array.isArray(t.replies) ? t.replies : [];
-        if (!reps.length && !t.resolutionReply) {
-          return '<p class="footer-note" style="margin:6px 0 0">No reply from support yet. ' +
-                 'You will see the full thread here as soon as an agent responds.</p>';
-        }
-        var rows = reps.map(function(r){
-          return '<div style="border-left:3px solid #d9e2f2;padding:6px 0 6px 10px;margin:8px 0">' +
-                 '<div style="font-size:11px;color:#5b6b86"><strong>' + E(r.by || "Support") +
-                 "</strong> &middot; " + E(r.at || "") + "</div>" +
-                 '<div style="font-size:13px">' + E(r.message || "") + "</div>" +
-                 (r.proof ? '<div class="footer-note">Proof: ' + E(r.proof) + "</div>" : "") +
-                 "</div>";
-        }).join("");
-        if (!reps.length && t.resolutionReply) {
-          rows = '<div style="border-left:3px solid #d9e2f2;padding:6px 0 6px 10px;margin:8px 0">' +
-                 '<div style="font-size:11px;color:#5b6b86"><strong>' + E(t.resolvedBy || "Support") +
-                 "</strong> &middot; " + E(t.resolvedAt || "") + "</div>" +
-                 '<div style="font-size:13px">' + E(t.resolutionReply) + "</div></div>";
-        }
-        return rows;
-      }
-
-      /* ---------- item 8: CSAT ---------- */
-      function csatBlock(t){
-        var ex = extraOf(t);
-        var score = ex.csat_score || t.csatScore;
-        if (score) {
-          return '<div class="footer-note" style="margin-top:8px">You rated this ' +
-                 E(score) + "/5. Thank you \u2014 it goes straight to the agent's scorecard.</div>";
-        }
-        return '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #d9e2f2">' +
-               '<div style="font-size:12px;color:#5b6b86;margin-bottom:6px">Was this resolved well?</div>' +
-               '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
-               '<button class="action-btn" data-nv-csat="5" data-nv-tk="' + E(t.id) +
-               '" style="padding:4px 10px">\uD83D\uDC4D Good</button>' +
-               '<button class="ghost-btn" data-nv-csat="1" data-nv-tk="' + E(t.id) +
-               '" style="padding:4px 10px">\uD83D\uDC4E Not good</button>' +
-               "</div></div>";
-      }
-
-      function submitCsat(localId, score){
-        var t = tickets().find(function(x){ return String(x.id) === String(localId); });
-        if (!t) return;
-        if (!t._uuid) { say("This ticket is still syncing, so the rating cannot be saved yet.", "error"); return; }
-        var s = sb();
-        if (!s) { say("Cloud connection is not ready, so the rating cannot be saved.", "error"); return; }
-        s.rpc("submit_ticket_csat", { p_ticket_id: t._uuid, p_score: score, p_comment: null }).then(function(r){
-          if (r && r.error) {
-            say(/could not find the function|does not exist|schema cache/i.test(r.error.message)
-              ? "Ratings are not deployed yet. Run novax_ticketing_sla_v1.sql first."
-              : "Could not save your rating: " + r.error.message, "error");
-            return;
-          }
-          EXTRA[t._uuid] = EXTRA[t._uuid] || {};
-          EXTRA[t._uuid].csat_score = score;
-          t.csatScore = score;
-          say(score >= 4 ? "Thanks for the feedback." : "Thanks \u2014 we will look at how this was handled.");
-          renderTicketsTab();
-        }).catch(function(e){ say("Could not save your rating: " + ((e && e.message) || e), "error"); });
-      }
-
-      /* ---------- item 6: WhatsApp deep link, same pattern as the portal ---------- */
-      function openWhatsApp(localId){
-        var t = tickets().find(function(x){ return String(x.id) === String(localId); });
-        if (!t) return;
-        var msg = "NovaX ticket " + (t.id || "") + (t.awb ? " (AWB " + t.awb + ")" : "") +
-                  " \u2014 " + (t.title || "") + "\nStatus: " + (t.status || "") +
-                  (t.resolutionReply ? "\nResolution: " + t.resolutionReply : "");
-        try { window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank", "noopener"); }
-        catch(e){ say("Could not open WhatsApp.", "error"); }
-      }
-
-      function ticketCardHtml(t){
-        var tier = tierOf(t);
-        var resolved = !isOpen(t);
-        var chip = resolved ? "good" : tier === "emergency" ? "bad" : tier === "medium" ? "warn" : "info";
-        var ex = extraOf(t);
-        var fr = ex.first_response_at;
-        return '<div class="ops-card" style="margin-bottom:10px">' +
-          '<div class="ops-card-head"><strong>' + E(t.id) + " \u2014 " + E(t.title || "Support ticket") +
-          '</strong><span class="chip ' + chip + '">' + E(resolved ? "resolved" : tier) + "</span></div>" +
-          '<div class="inline-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0">' +
-          (t.awb ? '<span class="chip info">' + E(t.awb) + "</span>" : "") +
-          '<span class="chip ' + (isOpen(t) && ageHours(t) >= LIMIT ? "bad" : "good") + '">' + E(slaText(t)) + "</span>" +
-          '<span class="chip info">Opened ' + E(t.createdAt || "") + "</span>" +
-          (fr ? '<span class="chip good">First reply ' + E(String(fr).replace("T", " ").slice(0, 16)) + "</span>"
-              : isOpen(t) ? '<span class="chip warn">Awaiting first reply</span>' : "") +
-          "</div>" +
-          '<p style="font-size:13px;margin:6px 0">' + E(t.message || "No message added.") + "</p>" +
-          replyThread(t) +
-          (resolved
-            ? '<div class="inline-actions" style="margin-top:8px">' +
-              '<button class="ghost-btn" data-nv-tkwa="' + E(t.id) +
-              '" style="padding:4px 10px">Share on WhatsApp</button></div>' + csatBlock(t)
-            : "") +
-          "</div>";
-      }
-
-      function renderTicketsTab(){
-        var host = document.getElementById("nvTkList");
-        if (!host) return;
-        var all = tickets();
-        var open = all.filter(isOpen);
-        var list = FILTER === "open" ? open : FILTER === "resolved" ? all.filter(function(t){ return !isOpen(t); }) : all;
-
-        var badge = document.getElementById("nvTkBadge");
-        if (badge) {
-          var over = open.filter(function(t){ return ageHours(t) >= LIMIT; }).length;
-          badge.textContent = open.length + " open" + (over ? ", " + over + " overdue" : "");
-          badge.className = "chip " + (over ? "bad" : open.length ? "warn" : "good");
-        }
-        var clock = document.getElementById("nvTkClock");
-        if (clock) {
-          clock.textContent = IS_24_7
-            ? "Support runs 24/7. Tickets auto-escalate to Admin Control after " + LIMIT + "h."
-            : "Support hours " + ((window.__nvSupportHours || {}).open_hour || 9) + ":00-" +
-              ((window.__nvSupportHours || {}).close_hour || 21) + ":00. The " + LIMIT +
-              "h escalation clock only counts support hours.";
-        }
-        Array.prototype.forEach.call(document.querySelectorAll("[data-nv-tkf]"), function(b){
-          b.className = b.getAttribute("data-nv-tkf") === FILTER ? "action-btn" : "ghost-btn";
-        });
-
-        if (!list.length) {
-          host.innerHTML = '<div class="ops-card"><strong>' +
-            (FILTER === "resolved" ? "No resolved tickets yet" : "No open tickets") +
-            '</strong><p class="footer-note">Raise one from Full Report, Payments, Order Logs, or straight from a parcel that looks stuck.</p>' +
-            '<div class="inline-actions" style="margin-top:8px"><button class="action-btn" onclick="showClientTab(\'logs\')">Open Order Logs</button></div></div>';
-          return;
-        }
-        host.innerHTML = list.sort(function(a, b){
-          return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
-        }).map(ticketCardHtml).join("");
-      }
-      window.nvRenderTicketsTab = renderTicketsTab;
-
-      /* ---------- item 6: resolution banner on next visit ---------- */
-      var SEEN_KEY = "novaxSeenResolvedTicketsV1";
-      function seen(){
-        try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "[]"); } catch(e){ return []; }
-      }
-      function markSeen(ids){
-        try { localStorage.setItem(SEEN_KEY, JSON.stringify(ids.slice(0, 200))); } catch(e){}
-      }
-      function resolutionBanner(){
-        var done = tickets().filter(function(t){ return !isOpen(t); });
-        if (!done.length) return;
-        var known = seen();
-        var fresh = done.filter(function(t){ return known.indexOf(String(t.id)) === -1; });
-        if (!fresh.length) return;
-
-        var host = document.querySelector(".client-module.active") ||
-                   document.getElementById("client-dashboard");
-        if (!host) return;
-        var old = document.getElementById("nvTkResolvedBanner");
-        if (old) old.remove();
-
-        var one = fresh[0];
-        var div = document.createElement("div");
-        div.id = "nvTkResolvedBanner";
-        div.className = "ops-card";
-        div.style.cssText = "border:1px solid #b6e2c6;background:#f2fbf5;margin-bottom:12px";
-        div.innerHTML =
-          '<div class="ops-card-head"><strong>' +
-          (fresh.length === 1
-            ? "Ticket " + E(one.id) + " was resolved"
-            : fresh.length + " of your tickets were resolved") +
-          '</strong><span class="chip good">New</span></div>' +
-          '<p style="font-size:13px;margin:6px 0">' +
-          E(one.resolutionReply || one.title || "Support has closed this ticket.") + "</p>" +
-          '<div class="inline-actions" style="display:flex;gap:6px;flex-wrap:wrap">' +
-          '<button class="action-btn" id="nvTkBannerOpen">See the full reply</button>' +
-          '<button class="ghost-btn" id="nvTkBannerWa">Share on WhatsApp</button>' +
-          '<button class="ghost-btn" id="nvTkBannerX">Dismiss</button></div>';
-        host.insertBefore(div, host.firstChild);
-
-        div.querySelector("#nvTkBannerOpen").addEventListener("click", function(){
-          markSeen(done.map(function(t){ return String(t.id); }));
-          div.remove();
-          showClientTab("tickets");
-          FILTER = "resolved";
-          renderTicketsTab();
-        });
-        div.querySelector("#nvTkBannerWa").addEventListener("click", function(){ openWhatsApp(one.id); });
-        div.querySelector("#nvTkBannerX").addEventListener("click", function(){
-          markSeen(done.map(function(t){ return String(t.id); }));
-          div.remove();
-        });
-      }
-
-      /* ---------- item 10: live SLA chip in the Today cockpit ---------- */
-      function cockpitChip(){
-        var cock = document.getElementById("nvCockpit");
-        if (!cock) return;
-        var open = tickets().filter(isOpen);
-        var over = open.filter(function(t){ return ageHours(t) >= LIMIT; });
-        var host = cock.querySelector(".nv-c-col") || cock;
-        var old = document.getElementById("nvTkCockItem");
-        if (!open.length) { if (old) old.remove(); return; }
-
-        var html =
-          '<div class="nv-c-item" id="nvTkCockItem">' +
-          "<strong>" + open.length + " open ticket" + (open.length === 1 ? "" : "s") +
-          (over.length ? ", " + over.length + " overdue" : "") + "</strong>" +
-          "<span>" + (over.length
-            ? "Past the " + LIMIT + "h mark and escalated to Admin Control"
-            : "Support is on it \u2014 " + E(slaText(open[0]))) + "</span>" +
-          '<div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-tkcock="1">View my tickets</button></div>' +
-          "</div>";
-
-        if (old) { old.outerHTML = html; } else { host.insertAdjacentHTML("afterbegin", html); }
-        var btn = cock.querySelector("[data-nv-tkcock]");
-        if (btn && !btn._nvWired) {
-          btn._nvWired = true;
-          btn.addEventListener("click", function(){ showClientTab("tickets"); });
-        }
-      }
-
-      /* ---------- item 10: Autopilot ticket lookup + prefilled creation ---------- */
-      // handleAction() inside the Autopilot IIFE is private, so this cannot
-      // extend that switch. Instead it mirrors the same confirm/cancel button
-      // pair the panel already uses, and creates the ticket through the
-      // existing window.__novaxCreateTicket path -- no new ticket writer.
-      function autopilotHook(){
-        if (window.__nvTkAutopilotWired) return;
-        var panel = document.querySelector(".nvauto-panel");
-        if (!panel) return;
-        window.__nvTkAutopilotWired = true;
-
-        var input = panel.querySelector("input, textarea");
-        if (!input) return;
-
-        input.addEventListener("keydown", function(ev){
-          if (ev.key !== "Enter") return;
-          var q = String(input.value || "");
-          if (!q.trim()) return;
-
-          // "my parcel hasn't moved in 2 days" and friends.
-          var stuck = /(hasn'?t|has not|not)\s+(moved|updated|changed)|stuck|no\s+update|koi\s+update|nahi\s+chala/i.test(q);
-          var wantsStatus = /my\s+tickets?|ticket\s+status|complaint\s+status|shikayat/i.test(q);
-          if (!stuck && !wantsStatus) return;
-
-          setTimeout(function(){
-            if (wantsStatus) {
-              var open = tickets().filter(isOpen);
-              var msg = open.length
-                ? "You have " + open.length + " open ticket" + (open.length === 1 ? "" : "s") + ". " +
-                  open.slice(0, 3).map(function(t){
-                    return t.id + " (" + t.status + ", " + slaText(t) + ")";
-                  }).join("; ") + "."
-                : "You have no open tickets right now.";
-              try { window.novaxAutopilotSay(msg); } catch(e){}
-              offer("View my tickets", function(){ showClientTab("tickets"); });
-              return;
-            }
-
-            var awb = (q.match(/\b([A-Z]{2,}-?\d{3,}|\d{8,})\b/i) || [])[1] || "";
-            var p = null;
-            try {
-              var mine = typeof clientScopedParcels === "function" ? clientScopedParcels() : (state.parcels || []);
-              p = awb
-                ? mine.find(function(x){ return String(x.awb).toUpperCase() === awb.toUpperCase(); })
-                : mine.filter(function(x){ return typeof isDelayed === "function" ? isDelayed(x) : false; })[0];
-            } catch(e){}
-            if (!p) return;
-
-            try {
-              window.novaxAutopilotSay(
-                p.awb + " is showing \"" + p.status + "\" and has not moved in " +
-                hrs(typeof agingHours === "function" ? agingHours(p) : 48) +
-                ". I can raise a ticket for you with the details already filled in.");
-            } catch(e){}
-
-            offer("Raise a ticket for " + p.awb, function(){
-              createPrefilled(p);
-            }, true);
-          }, 400);
-        });
-      }
-
-      // Confirm/cancel pair styled like the existing Autopilot actions.
-      function offer(label, fn, needsConfirm){
-        var acts = document.querySelector(".nvauto-actions");
-        if (!acts) return;
-        var wrap = document.createElement("div");
-        wrap.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:6px";
-        var go = document.createElement("button");
-        go.type = "button";
-        go.className = "nvauto-action-btn" + (needsConfirm ? " nv-confirm" : "");
-        go.textContent = needsConfirm ? "Confirm: " + label : label;
-        go.addEventListener("click", function(){ wrap.remove(); fn(); });
-        wrap.appendChild(go);
-        if (needsConfirm) {
-          var no = document.createElement("button");
-          no.type = "button";
-          no.className = "nvauto-action-btn nv-cancel";
-          no.textContent = "Cancel";
-          no.addEventListener("click", function(){ wrap.remove(); });
-          wrap.appendChild(no);
-        }
-        acts.appendChild(wrap);
-      }
-
-      function createPrefilled(p){
-        if (!window.__novaxCreateTicket) {
-          say("Cloud connection is not ready yet, please try again in a moment.", "error");
-          return;
-        }
-        var name = typeof cname === "function" ? cname() : (state.client && state.client.name) || "Seller";
-        var t = {
-          id: nextId("TCK", tickets()),
-          sourceKey: "autopilot-stuck:" + p.awb + ":" + Date.now(),
-          tier: "medium",
-          title: "Parcel not moving: " + p.awb,
-          from: "Seller " + name,
-          to: "Admin Control",
-          branch: p.branch || "Admin",
-          awb: p.awb,
-          message: "Raised from NovaX Autopilot. " + p.awb + " for " + (p.consignee || "consignee") +
-                   " in " + (p.city || "") + " is showing \"" + p.status + "\" with no movement for " +
-                   hrs(typeof agingHours === "function" ? agingHours(p) : 48) + ". Please check and update.",
-          createdAt: new Date().toISOString().slice(0, 10) + " " + time(),
-          ageHours: 0, status: "Open", escalated: false, replies: []
-        };
-        window.__novaxCreateTicket(t).then(function(uuid){
-          t._uuid = uuid;
-          state.tickets = tickets();
-          state.tickets.unshift(t);
-          try { saveState(); } catch(e){}
-          say("Ticket " + t.id + " raised. You can follow it in My Tickets.");
-          try { window.novaxAutopilotSay("Ticket " + t.id + " is open. I will show the reply here and in My Tickets."); } catch(e){}
-          renderTicketsTab();
-          cockpitChip();
-        }).catch(function(e){
-          say("Could not raise the ticket: " + ((e && e.message) || e), "error");
-        });
-      }
-
-      /* ---------- wire into the existing render cycle ---------- */
-      if (typeof showClientTab === "function") {
-        var origShow = showClientTab;
-        showClientTab = function(id){
-          var r = origShow(id);
-          if (state.activeClientTab === "tickets") {
-            mount();
-            try {
-              document.querySelectorAll(".client-module").forEach(function(m){
-                m.classList.toggle("active", m.id === "client-tickets");
-              });
-              document.querySelectorAll(".client-tab").forEach(function(b){
-                b.classList.toggle("active", b.dataset.clientTab === "tickets");
-              });
-            } catch(e){}
-            refreshExtra(renderTicketsTab);
-            renderTicketsTab();
-          }
-          return r;
-        };
-        window.showClientTab = showClientTab;
-      }
-
-      function tick(){
-        try { mount(); } catch(e){}
-        try { if (state.activeClientTab === "tickets") renderTicketsTab(); } catch(e){}
-        try { cockpitChip(); } catch(e){}
-        try { autopilotHook(); } catch(e){}
-      }
-
-      setTimeout(function(){
-        tick();
-        refreshExtra(function(){
-          try { resolutionBanner(); } catch(e){}
-          tick();
-        });
-      }, 900);
-      setInterval(tick, 2500);
-
-      window.__novaxClientTickets = {
-        render: renderTicketsTab, banner: resolutionBanner, chip: cockpitChip,
-        ageHours: ageHours, tierOf: tierOf
-      };
     })();
   </script>
 <script>
@@ -7620,7 +6962,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(a.type==="go_dashboard"){ if(typeof showClientTab==="function") showClientTab("dashboard"); panel.classList.add("open"); return; }
       if(a.type==="go_awb_label"){ if(typeof showClientTab==="function") showClientTab("awbLabel"); panel.classList.add("open"); return; }
       if(a.type==="nv_review_issues"){ panel.classList.add("open"); if(typeof nvReviewIssues==="function") nvReviewIssues(); else if(typeof showClientTab==="function") showClientTab("dashboard"); return; }
-      if(a.type==="attach_proof"){ if(typeof showClientTab==="function") showClientTab("support"); addMsg("I've opened the AI Support / ticket tab \u2014 find your ticket there and reply with your proof (photo, screenshot, or details).","b"); return; }
+      if(a.type==="attach_proof"){ addMsg("Please reply here with your proof (photo, screenshot, or details) and our team will review it.","b"); return; }
       if(a.type==="show_journey"){
         var awb=a.awb; var p=(typeof state!=="undefined"&&state.parcels||[]).find(function(x){ return String(x.awb||"").toUpperCase()===String(awb||"").toUpperCase(); });
         if(!p){ addMsg("I don't have the journey steps for "+(awb||"that AWB")+" locally yet \u2014 open the AWB tab to see full details.","b"); return; }
@@ -7629,16 +6971,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return;
       }
       if(a.type==="show_journey_awb"){ if(typeof openClientParcelJourney==="function") openClientParcelJourney(a.awb); return; }
-      if(a.type==="rescue_open_ticket"){
-        try{
-          if(typeof state!=="undefined") state.selectedAwb=a.awb;
-          if(typeof showClientTab==="function") showClientTab("dashboard");
-          setTimeout(function(){
-            if(typeof openTicketModal==="function") openTicketModal(a.awb);
-          },200);
-        }catch(e){}
-        return;
-      }
       if(a.type==="go_booking"){ if(typeof showClientTab==="function") showClientTab("newBooking"); panel.classList.add("open"); return; }
       if(a.type==="focus_manual_booking"){ if(window.novaxFocusFirstBookingField) window.novaxFocusFirstBookingField(); return; }
       if(a.type==="paste_whatsapp_order"){
@@ -7684,12 +7016,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(a.type==="copy_customer_message"){
         if(!a.awb){ addMsg("I don't have an AWB to copy a message for yet \u2014 open a parcel first.","b",[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }]); return; }
         if(typeof copyExceptionMessage==="function") copyExceptionMessage(a.awb);
-        return;
-      }
-      if(a.type==="open_ticket_for_awb"){
-        try{ if(typeof state!=="undefined" && a.awb) state.selectedAwb=a.awb; }catch(e){}
-        if(typeof showClientTab==="function") showClientTab("dashboard");
-        setTimeout(function(){ if(typeof openTicketModal==="function") openTicketModal(a.awb); },200);
         return;
       }
       if(a.type==="request_return_awb"){
@@ -7783,12 +7109,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(a.type==="open_reports"||a.type==="go_reports"){ if(typeof showClientTab==="function") showClientTab("reports"); return; }
       if(a.type==="open_payments"){ if(typeof showClientTab==="function") showClientTab("payments"); return; }
       if(a.type==="go_integrations"){ if(typeof showClientTab==="function") showClientTab("integrations"); return; }
-      if(a.type==="create_ticket"){
-        try{ if(typeof state!=="undefined" && a.awb) state.selectedAwb=a.awb; }catch(e){}
-        if(typeof showClientTab==="function") showClientTab("dashboard");
-        setTimeout(function(){ if(typeof openTicketModal==="function") openTicketModal(a.awb); },200);
-        return;
-      }
       if(a.type==="talk_human"){ send("support se baat karni hai"); return; }
     }catch(e){ console.warn("NovaX Autopilot action failed",e); }
   }
@@ -7801,7 +7121,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   }
 
   function showIntro(force){
-    addMsg("Assalam o Alaikum, I'm NovaX Autopilot \u2014 your NovaX assistant.\n\nMain aapka NovaX assistant hoon. Aap bas normal message likhein, main tracking, COD, return aur support ka kaam handle kar dunga.\n\nI can help you:\n1. Track any parcel by AWB\n2. Check COD / wallet questions\n3. Start return or reattempt requests\n4. Open a support ticket\n5. Explain what needs your attention today\n\nJust type like WhatsApp:\n\"mera parcel kahan hai?\"\n\"COD kab milega?\"\n\"return karwana hai\"\n\"rider ne call nahi ki\"","b",[
+    addMsg("Assalam o Alaikum, I'm NovaX Autopilot \u2014 your NovaX assistant.\n\nMain aapka NovaX assistant hoon. Aap bas normal message likhein, main tracking, COD, return aur support ka kaam handle kar dunga.\n\nI can help you:\n1. Track any parcel by AWB\n2. Check COD / wallet questions\n3. Start return or reattempt requests\n4. Explain what needs your attention today\n\nJust type like WhatsApp:\n\"mera parcel kahan hai?\"\n\"COD kab milega?\"\n\"return karwana hai\"\n\"rider ne call nahi ki\"","b",[
       { label:"Take Quick Tour", kind:"local", type:"start_tour" },
       { label:"Start Booking", kind:"local", type:"go_booking" }
     ]);
@@ -8024,7 +7344,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     wallet:["Want me to explain when your COD lands?","COD kab milega?"],
     awbLabel:["Shall I check which parcels still need labels?","which parcels still need AWB labels printed?"],
     payments:["Want me to break down your latest invoice?","explain my latest invoice"],
-    support:["I can look up the issue before you raise a ticket.","which of my parcels have problems right now?"],
+    support:["I can look up any parcel issue for you.","which of my parcels have problems right now?"],
     integrations:["Want a hand connecting your store?","how do I connect my Shopify store?"]
   };
   function nvHideNudge(){ nudge.classList.remove("show"); }
@@ -8076,7 +7396,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     printing:["print label","awb label","barcode","qr code","label not printing","printer issue","reprint","label print","print kaise","print nahi ho raha","print awb"],
     integrations:["shopify","woocommerce","api","webhook","website orders","sync orders","import orders","store connect","integration"],
     reports:["csv","full report","delivery report","payment report","status report","export","date range","report chahiye"],
-    human:["human","agent","support se","complaint","ticket","escalation","manager","urgent","insan se","banda se","talk to someone"],
+    human:["human","agent","support se","complaint","escalation","manager","urgent","insan se","banda se","talk to someone"],
     account:["login issue","password","reset","sub account","team user","permissions","login nahi","account access"],
     rates:["rate","city rate","zone","cod fee","fuel surcharge","tax on","discount","charges kya","rate kya"],
     serviceability:["city available","area service","karachi","lahore","islamabad","rawalpindi","out of service area","service hai kya","covered city"],
@@ -8112,15 +7432,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function fmtMoney(v){ try{ return (typeof money==="function")?money(v):("Rs "+Math.round(v||0)); }catch(e){ return String(v); } }
 
     if(has(NV_KW.abuse)){
-      return { reply:"I'm sorry this has been frustrating \u2014 that's not okay and I want to get it fixed. I can prepare this and open a ticket so a human follows up right away.", actions:[
-        { label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:ctx&&ctx.firstIssueAwb },
+      return { reply:"I'm sorry this has been frustrating \u2014 that's not okay and I want to get it fixed. A human teammate will need to look at this one directly.", actions:[
         { label:"Talk to Human", kind:"send", message:"support se baat karni hai" }
       ] };
     }
 
     var isGreeting=!msg || lower==="help" || lower==="start" || /(^|\s)(hi|hello|hey|salam|assalam|aoa|asalam|slam)(\s|$|[!.,])/i.test(lower);
     if(isGreeting){
-      return { reply:"Hi"+(clientName?" "+clientName:"")+", I'm NovaX Autopilot.\nI can track parcels, handle COD/wallet, start returns, and open tickets.\nAsk me like WhatsApp \u2014 e.g. \"mera parcel kahan hai?\"", actions:[
+      return { reply:"Hi"+(clientName?" "+clientName:"")+", I'm NovaX Autopilot.\nI can track parcels, handle COD/wallet questions, and start returns.\nAsk me like WhatsApp \u2014 e.g. \"mera parcel kahan hai?\"", actions:[
         { label:"Track Parcel", kind:"send", message:"track my parcel" },
         { label:"Book Order", kind:"local", type:"go_booking" },
         { label:"Talk to Human", kind:"send", message:"support se baat karni hai" }
@@ -8142,12 +7461,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var next=NV_NEXT_STEP[p.status]||"In progress";
         return { reply:"AWB "+p.awb+": "+p.status+" ("+(p.city||"")+").\nNext step: "+next+".", actions:[
           { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:p.awb },
-          { label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:p.awb },
           { label:"Copy Customer Message", kind:"local", type:"copy_customer_message", awb:p.awb }
         ] };
       }
-      return { reply:"I couldn't find "+awb+" under this account. Please confirm the tracking ID, or I can prepare this and open a ticket.", actions:[
-        { label:"Create Ticket", kind:"local", type:"rescue_open_ticket" },
+      return { reply:"I couldn't find "+awb+" under this account. Please confirm the tracking ID.", actions:[
         { label:"Talk to Human", kind:"send", message:"support se baat karni hai" }
       ] };
     }
@@ -8191,10 +7508,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(info) return { reply:pw.awb+": "+info.problem+"\nLikely cause: "+info.cause+"\nSuggested action: "+info.action, actions:[
           { label:"Reattempt", kind:"local", type:"confirm_action", awb:pw.awb },
           { label:"Return to Me", kind:"local", type:"nv_review_issues" },
-          { label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:pw.awb }
-        ] };
+          ] };
       }
-      return { reply:"I couldn't find a refusal reason for that parcel yet \u2014 share the AWB or I can open a ticket to check with operations.", actions:[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }] };
+      return { reply:"I couldn't find a refusal reason for that parcel yet \u2014 share the AWB and I'll check again." };
     }
 
     if(has(NV_KW.printing)){
@@ -8216,20 +7532,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ] };
     }
     if(has(NV_KW.refusalReturn)){
-      return { reply:"For a refused or returned parcel I can start a reattempt/return, or open a ticket for a closer look.", actions:[
+      return { reply:"For a refused or returned parcel I can start a reattempt or a return.", actions:[
         { label:"Review Issues", kind:"local", type:"nv_review_issues" },
-        { label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }
-      ] };
+        ] };
     }
     if(has(NV_KW.riderPickup)){
-      return { reply:"I don't have live rider GPS here, but I can prepare this and open a ticket so ops can chase the rider directly.", actions:[
-        { label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }
-      ] };
+      return { reply:"I don't have live rider GPS here \u2014 the parcel journey shows the latest confirmed scan." };
     }
     if(has(NV_KW.deliveryIssues)){
-      return { reply:"Sorry about that. Share the AWB and I'll check its exact status, or I can open a ticket for a closer look.", actions:[
-        { label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }
-      ] };
+      return { reply:"Sorry about that. Share the AWB and I'll check its exact status." };
     }
     if(has(NV_KW.integrations)){
       return { reply:"Shopify, WooCommerce and custom API orders can sync into NovaX automatically \u2014 set this up from the API tab.", actions:[{ label:"Open Integrations", kind:"local", type:"go_integrations" }] };
@@ -8238,7 +7549,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return { reply:"Full reports with CSV export are under Full Report \u2014 filter by date range or status there.", actions:[{ label:"Open Reports", kind:"local", type:"go_reports" }] };
     }
     if(has(NV_KW.account)){
-      return { reply:"For login/account access, I can prepare this and open a ticket \u2014 I can't reset passwords from here.", actions:[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }] };
+      return { reply:"For login or account access, please contact NovaX support directly \u2014 I can't reset passwords from here." };
     }
     if(has(NV_KW.rates)){
       return { reply:"Charges depend on city/zone and COD amount \u2014 New Booking shows the exact rate as you fill the form.", actions:[{ label:"Start Booking", kind:"local", type:"go_booking" }] };
@@ -8247,10 +7558,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return { reply:"Most major Pakistani cities are covered. Enter the city in New Booking and I'll reflect the rate if it's serviceable.", actions:[{ label:"Start Booking", kind:"local", type:"go_booking" }] };
     }
     if(has(NV_KW.proof)){
-      return { reply:"Delivery proof is attached once a parcel is delivered \u2014 check the AWB journey, or I can open a ticket if it's missing.", actions:[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }] };
+      return { reply:"Delivery proof is attached once a parcel is delivered \u2014 check the AWB journey to see it." };
     }
     if(has(NV_KW.human)){
-      return { reply:"I can prepare this and open a ticket so a human teammate follows up shortly.", actions:[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }] };
+      return { reply:"A human teammate will need to look at this one \u2014 please contact NovaX support directly." };
     }
     if(has(NV_KW.tracking)){
       return { reply:"Share the AWB / tracking ID and I'll pull its exact status, city and next step.", actions:[
@@ -8396,12 +7707,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           var retP=requestReturnToOrigin(action.awb);
           if(retP && typeof retP.then==="function"){
             retP.then(function(){ addMsg(action.resultMsg||("Return request sent for "+action.awb+"."),"b",[{ label:"Open Journey", kind:"local", type:"open_awb", awb:action.awb }]); })
-              .catch(function(){ addMsg("I couldn't send the return request for "+action.awb+" to operations \u2014 please try again, or I can open a ticket.","b",[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:action.awb }]); });
+              .catch(function(){ addMsg("I couldn't send the return request for "+action.awb+" to operations \u2014 please try again in a moment.","b"); });
           } else {
             addMsg(action.resultMsg||("Return request sent for "+action.awb+"."),"b",[{ label:"Open Journey", kind:"local", type:"open_awb", awb:action.awb }]);
           }
         }
-        else addMsg("I couldn't update this locally \u2014 please use the Return button on the parcel journey, or I can open a ticket.","b",[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:action.awb }]);
+        else addMsg("I couldn't update this locally \u2014 please use the Return button on the parcel journey.","b");
         return;
       }
       if(action.type==="request_reattempt_awb"){
@@ -8411,12 +7722,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           var reaP=requestRedelivery(action.awb);
           if(reaP && typeof reaP.then==="function"){
             reaP.then(function(){ addMsg(action.resultMsg||("Reattempt request sent for "+action.awb+"."),"b",[{ label:"Open Journey", kind:"local", type:"open_awb", awb:action.awb }]); })
-              .catch(function(){ addMsg("I couldn't send the reattempt request for "+action.awb+" to operations \u2014 please try again, or I can open a ticket.","b",[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:action.awb }]); });
+              .catch(function(){ addMsg("I couldn't send the reattempt request for "+action.awb+" to operations \u2014 please try again in a moment.","b"); });
           } else {
             addMsg(action.resultMsg||("Reattempt request sent for "+action.awb+"."),"b",[{ label:"Open Journey", kind:"local", type:"open_awb", awb:action.awb }]);
           }
         }
-        else addMsg("I couldn't update this locally \u2014 please use the Reattempt button on the parcel journey, or I can open a ticket.","b",[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:action.awb }]);
+        else addMsg("I couldn't update this locally \u2014 please use the Reattempt button on the parcel journey.","b");
         return;
       }
       if(action.type==="message_customer_awb"){
@@ -8432,7 +7743,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
     }catch(e){
       console.warn("NovaX Autopilot confirmed action failed",e);
-      addMsg("I couldn't complete that action locally \u2014 please try from the relevant tab, or I can open a ticket.","b",[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:action&&action.awb }]);
+      addMsg("I couldn't complete that action locally \u2014 please try again from the relevant tab.","b");
     }
   }
 
@@ -8473,7 +7784,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     if(has(["mark delivered","mark returned","mark refused","mark as delivered","mark as returned","mark as refused"])){
-      return { reply:"I can't change delivery status directly \u2014 only rider/admin scans update that. I can open a ticket so ops can review it.", actions:[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket", awb:targetAwb }] };
+      return { reply:"I can't change delivery status directly \u2014 only rider or admin scans update that." };
     }
 
     if(has(["send customer update","message customer","update the customer","customer ko batao","customer ko message"])){
@@ -8484,14 +7795,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ], needsConfirm:true, confirmAction:{ type:"message_customer_awb", awb:targetAwbRisky, resultMsg:"Opened a WhatsApp draft for "+targetAwbRisky+"." } };
     }
 
-    if(has(["open ticket","ticket banao","ticket for","create ticket","raise ticket"])){
-      return { reply:targetAwb?("I can open a ticket draft for "+targetAwb+". Add details and submit when ready."):"I can open a ticket draft. Add the AWB and details, then submit when ready.", actions:[{ label:"Open Ticket", kind:"local", type:"open_ticket_for_awb", awb:targetAwb }] };
-    }
 
     if(awb && has(["track","open","status of","find","kahan","kaha"])){
       var pool=(typeof myParcels==="function")?myParcels():((typeof state!=="undefined"&&state.parcels)||[]);
       var p=pool.find(function(x){ return String(x.awb||"").toUpperCase()===String(awb).toUpperCase(); });
-      if(!p) return { reply:"I couldn't find "+awb+" under this account. Please confirm the tracking ID.", actions:[{ label:"Create Ticket", kind:"local", type:"rescue_open_ticket" }] };
+      if(!p) return { reply:"I couldn't find "+awb+" under this account. Please confirm the tracking ID." };
       return { reply:"Opening "+awb+" journey \u2014 currently "+p.status+".", actions:[{ label:"Open Journey", kind:"local", type:"open_awb", awb:awb }] };
     }
 
@@ -8763,12 +8071,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(tab==="bulkBooking") return { h:"Upload many orders in one sheet.", a:"Download CSV format, fill it, then upload.", key:"bulk_default", go:"bulkBooking" };
     if(tab==="integrations") return { h:"Connect your store when ready.", a:"WooCommerce and custom API can send orders automatically.", key:"int_default", go:"integrations" };
     if(tab==="reports") return { h:"Find any parcel fast.", a:"Search by AWB, city, consignee or status.", key:"rep_default", go:"reports" };
-    if(tab==="payments") return { h:"Delivered parcels become payable.", a:"Check latest invoice or create a finance ticket.", key:"pay_default", go:"payments" };
+    if(tab==="payments") return { h:"Delivered parcels become payable.", a:"Check your latest invoice.", key:"pay_default", go:"payments" };
     if(tab==="wallet"){
       if(wallet>0) return { h:"Cashout available.", a:"You can withdraw Rs "+Math.round(wallet)+".", key:"wal_"+Math.round(wallet), go:"wallet" };
       return { h:"Your payout area.", a:"Choose amount, payout speed and confirm IBAN.", key:"wal_default", go:"wallet" };
     }
-    if(tab==="logs") return { h:"Every parcel has an audit trail.", a:"Open a ticket from any order that looks wrong.", key:"logs_default", go:"logs" };
+    if(tab==="logs") return { h:"Every parcel has an audit trail.", a:"Review any order that looks wrong.", key:"logs_default", go:"logs" };
     if(tab==="subAccounts") return { h:"Give your team separate access.", a:"Invite finance, warehouse or support users.", key:"sub_default", go:"subAccounts" };
     if(tab==="support") return { h:"Ask in normal words.", a:"Try: \"mera parcel kahan hai?\" or \"COD kab milega?\"", key:"sup_default", go:"support" };
     return null;
@@ -8931,9 +8239,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var troubled=parcels.find(function(p){ return p.status==="Refused" || (typeof isDelayed==="function"&&isDelayed(p)); });
         if(troubled){
           localStorage.setItem(ISSUE_KEY,"1");
-          if(window.novaxAutopilotSay) window.novaxAutopilotSay("I found an issue before it becomes a complaint. Want me to open a ticket?",[
-            { label:"Open Ticket", kind:"local", type:"rescue_open_ticket", awb:troubled.awb }
-          ]);
+          if(window.novaxAutopilotSay) window.novaxAutopilotSay("I found an issue before it becomes a complaint \u2014 "+troubled.awb+" needs a look.");
         }
       }
     }catch(e){}
