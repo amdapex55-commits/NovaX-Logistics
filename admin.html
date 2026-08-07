@@ -78,6 +78,77 @@
       color: #eafff5;
     }
 
+    /* ---- Support tickets v2 (admin) ---- */
+    .nv-atk-card{ margin-bottom:10px; }
+    .nv-atk-card .ops-card-head strong{ overflow-wrap:anywhere; }
+    .nv-atk-thread{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); }
+    .nv-atk-msg{ padding:8px 10px; border-radius:10px; background:rgba(255,255,255,.05);
+      margin-bottom:8px; font-size:13px; overflow-wrap:anywhere; }
+    .nv-atk-msg.mine{ background:rgba(31,209,142,.14); }
+    .nv-atk-meta{ font-size:11px; color:var(--muted); margin-bottom:3px; font-weight:700; }
+    .nv-atk-reply{ flex:1 1 240px; min-width:0; padding:9px 11px; border:1px solid var(--line);
+      border-radius:9px; background:#0b1f18; color:#eafff5; font-size:14px; }
+    /* Breach alert: a slow pulse so it reads on a busy queue without being
+       painful to sit next to for a whole shift. Honours reduced-motion. */
+    .nv-atk-breach{ border-color:var(--red)!important; animation:nvAtkPulse 2.4s ease-in-out infinite; }
+    @keyframes nvAtkPulse{
+      0%,100%{ box-shadow:0 0 0 0 rgba(229,72,77,0); }
+      50%{ box-shadow:0 0 0 4px rgba(229,72,77,.22); }
+    }
+    @media (prefers-reduced-motion: reduce){
+      .nv-atk-breach{ animation:none; border-color:var(--red)!important; }
+    }
+    @media (max-width:720px){
+      .nv-atk-reply{ flex:1 1 100%; font-size:16px; }
+    }
+
+    /* ============ NovaX searchable select (nvss) ============
+       Enhancement layer over an existing <select>. The native element stays in
+       the DOM and keeps its value, its options and its change events -- every
+       populate site and listener is untouched. If the JS ever fails, the plain
+       <select> is still there and still works. */
+    .nvss { position: relative; width: 100%; }
+    .nvss-native { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+    .nvss-btn {
+      display: flex; align-items: center; gap: 8px; width: 100%;
+      padding: 10px 12px; min-height: 44px;
+      border: 1px solid var(--line); border-radius: 10px;
+      background: #0d251c; color: #eafff5;
+      font-size: 14px; font-weight: 600; text-align: left; cursor: pointer;
+    }
+    .nvss-btn:hover { border-color: var(--line-strong); }
+    .nvss-btn:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+    .nvss-btn .nvss-label { flex: 1 1 auto; min-width: 0; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; }
+    .nvss-btn .nvss-caret { flex: 0 0 auto; opacity: .65; font-size: 11px; }
+    .nvss.open .nvss-caret { transform: rotate(180deg); }
+    .nvss-panel {
+      position: absolute; z-index: 60; left: 0; right: 0; top: calc(100% + 4px);
+      background: #0b1f18; border: 1px solid var(--line-strong);
+      border-radius: 12px; box-shadow: var(--shadow); padding: 8px; display: none;
+    }
+    .nvss.open .nvss-panel { display: block; }
+    .nvss-search {
+      width: 100%; padding: 9px 11px; margin-bottom: 6px;
+      border: 1px solid var(--line); border-radius: 8px;
+      background: #071612; color: #eafff5; font-size: 14px;
+    }
+    .nvss-search:focus { outline: none; border-color: var(--green); }
+    .nvss-list { max-height: 260px; overflow-y: auto; overscroll-behavior: contain; }
+    .nvss-opt {
+      padding: 9px 11px; border-radius: 8px; cursor: pointer; font-size: 13.5px;
+      color: #d8f5e8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .nvss-opt:hover, .nvss-opt.active { background: rgba(31,209,142,.16); color: #eafff5; }
+    .nvss-opt[aria-selected="true"] { font-weight: 800; color: var(--green); }
+    .nvss-empty { padding: 12px; text-align: center; color: var(--muted); font-size: 13px; }
+    .nvss-count { padding: 2px 4px 6px; color: var(--muted); font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .05em; }
+    @media (max-width: 720px) {
+      .nvss-list { max-height: 45vh; }
+      .nvss-search { font-size: 16px; }  /* stops iOS zooming on focus */
+    }
+
     .orders-compact-table th, .orders-compact-table td {
       font-size: 12px;
       white-space: nowrap;
@@ -4920,6 +4991,15 @@
                 </div>
               </div>
 
+              <div class="admin-nav-group" data-admin-group="support">
+                <button type="button" class="admin-nav-main" data-admin-group-toggle="support" aria-expanded="false">
+                  <span>SUPPORT</span><span class="chevron">v</span>
+                </button>
+                <div class="admin-subnav">
+                  <button type="button" class="admin-subtab" data-admin-tab="support-tickets">Tickets</button>
+                </div>
+              </div>
+
               <div class="admin-nav-group" data-admin-group="finance">
                 <button type="button" class="admin-nav-main" data-admin-group-toggle="finance" aria-expanded="false">
                   <span>FINANCE <span class="nav-badge" id="financeGroupWalletBadge" style="display:none">0</span></span><span class="chevron">v</span>
@@ -5164,6 +5244,22 @@
               </div>
             </section>
 
+            <section class="admin-module" id="admin-support-tickets">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>Support Tickets</h3><p>Opened by merchants or by your team. Nothing is created automatically.</p></div>
+                  <span class="chip warn" id="nvAtkBadge">0 open</span>
+                </div>
+                <div class="inline-actions" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">
+                  <button class="action-btn nv-atkf" data-nv-atkf="open">Open</button>
+                  <button class="ghost-btn nv-atkf" data-nv-atkf="breached">Overdue</button>
+                  <button class="ghost-btn nv-atkf" data-nv-atkf="resolved">Resolved</button>
+                  <button class="ghost-btn nv-atkf" data-nv-atkf="all">All</button>
+                  <input id="nvAtkSearch" class="search" placeholder="Search subject, code, AWB or client" style="flex:1 1 220px;min-width:0">
+                </div>
+                <div class="ops-list" id="nvAtkList"></div>
+              </div>
+            </section>
             <section class="admin-module" id="admin-operations">
               <div class="grid two">
                 <div class="panel">
@@ -5910,6 +6006,18 @@
     const time = () => now().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const STORAGE_KEY = "novaxLogisticsStateV10";
     const SB_URL = "https://rhzunbzbdzicajqtohwp.supabase.co"; // shared Supabase base URL (also used by adminConnectLiveStore, adminGenerateShopifyLink)
+    /* NovaX status rename: "Parcel returned to consignee" -> "Return to shipper".
+       A return goes back to the SHIPPER (the merchant), never to the consignee
+       -- the old label was simply wrong. The string is a STORED value in
+       parcels.status, so rows written before the migration still carry the old
+       text. nvStatus() normalises on read, which means the portal is correct
+       whether or not sql/novax_return_to_shipper_v1.sql has been run yet, and
+       old rows arriving from an un-upgraded rider app keep working too. */
+    var NV_STATUS_ALIASES = { "Parcel returned to consignee": "Return to shipper" };
+    function nvStatus(s){
+      s = String(s == null ? "" : s);
+      return NV_STATUS_ALIASES[s] || s;
+    }
     const STATUS_TAGS = [
       "New booked",
       "Collected by rider",
@@ -5927,7 +6035,7 @@
       "Return in transit",
       "Return received at origin",
       "Return out for delivery",
-      "Parcel returned to consignee"
+      "Return to shipper"
     ];
 
     const baseState = {
@@ -6203,6 +6311,7 @@
       orders: ["orders-view-all", "orders-book", "orders-report", "orders-processing", "orders-manifest", "orders-demanifest"],
       manifest: ["manifest-summary", "manifest-transit", "manifest-reached", "manifest-dispute"],
       riders: ["riders-route", "riders-report", "riders-summary"],
+      support: ["support-tickets"],
       finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-dues", "finance-balances", "finance-summary", "finance-overall", "finance-revenue"],
       clients: ["clients-summary", "clients-leads", "clients-create-new", "clients-clients"],
       users: ["users-create", "users-edit", "users-staff"],
@@ -6213,7 +6322,11 @@
     const ADMIN_TAB_ALIASES = {
       orders: "orders-view-all",
       clients: "clients-clients",
-operations: "ops-exceptions",
+      // NovaX fix: this alias used to point at "tickets-emergency". When the
+      // tickets tabs were removed it was repointed at "ops-exceptions", which
+      // does not exist either -- so the "Open RTO/NDR Center" button navigated
+      // nowhere. It now resolves to itself: showAdminTab("operations") shows
+      // the #admin-operations module, which IS the RTO/NDR exception centre.
       transit: "manifest-transit",
       riders: "riders-route",
       payments: "finance-invoices",
@@ -6237,7 +6350,8 @@ operations: "ops-exceptions",
       "total-summary": "admin-reports",
       "system-health": "admin-system-health",
       "system-notifications": "admin-system-notifications",
-      "system-errors": "admin-system-errors"
+      "system-errors": "admin-system-errors",
+      "support-tickets": "admin-support-tickets"
     };
 
     function normalizeAdminTab(id) {
@@ -6817,7 +6931,7 @@ operations: "ops-exceptions",
       document.getElementById("npeNote").value = "";
       var warn = document.getElementById("npeWarn");
       if (warn) {
-        var frozen = (p.status === "Delivered" || p.status === "Parcel returned to consignee");
+        var frozen = (p.status === "Delivered" || p.status === "Return to shipper");
         warn.textContent = frozen
           ? ("This parcel is " + p.status + " and can no longer be edited.")
           : ("Current status: " + p.status + ". Changes are logged against your account.");
@@ -7171,7 +7285,7 @@ operations: "ops-exceptions",
        delivery, and billing for an unfinished journey causes disputes. */
     const NV_RETURN_CHARGEABLE = [
       "Refused", "Ready for return", "Return in transit",
-      "Return received at origin", "Parcel returned to consignee",
+      "Return received at origin", "Return to shipper",
       "Out of service area"
     ];
     function isReturnChargeableParcel(parcel) {
@@ -7317,6 +7431,20 @@ operations: "ops-exceptions",
       //     client sharing the same calendar date.
       const alerts = [];
       const list = Array.isArray(withdrawals) ? withdrawals : [];
+      // NovaX fix: an alert used to say nothing about whether the withdrawal
+      // was still pending. Three alerts for one client next to ONE pending
+      // payout looked like rows had gone missing -- in fact the other two were
+      // already paid. Every alert now carries the status and date it refers to.
+      const wdChip = function(w){
+        var st = String((w && w.status) || "");
+        return st === "Pending admin payout" ? "warn"
+             : st === "Paid" ? "good"
+             : /reject|cancel/i.test(st) ? "bad" : "info";
+      };
+      const wdLabel = function(w){
+        var st = String((w && w.status) || "Unknown");
+        return st === "Pending admin payout" ? "still pending" : st.toLowerCase();
+      };
       const byClient = {};
       list.forEach(w => { (byClient[w.clientId] = byClient[w.clientId] || []).push(w); });
       Object.keys(byClient).forEach(clientId => {
@@ -7330,12 +7458,14 @@ operations: "ops-exceptions",
         }
         rows.forEach(w => {
           if (w.balanceBefore > 0 && Number(w.amount) === Number(w.balanceBefore)) {
-            alerts.push({ clientName, label: "Full-balance payout", detail: `${w.id} withdrew the entire wallet balance of ${money(w.balanceBefore)}.` });
+            alerts.push({ clientName, label: "Full-balance payout", status: w.status, chip: wdChip(w), statusText: wdLabel(w), when: w.createdAt,
+              detail: `${w.code || w.id} withdrew the entire wallet balance of ${money(w.balanceBefore)}.` });
           }
         });
         for (let i = 1; i < rows.length; i++) {
           if (rows[i].iban && rows[i - 1].iban && rows[i].iban !== rows[i - 1].iban) {
-            alerts.push({ clientName, label: "Changed IBAN", detail: `IBAN changed from ${rows[i - 1].iban} to ${rows[i].iban} between ${rows[i - 1].id} and ${rows[i].id}.` });
+            alerts.push({ clientName, label: "Changed IBAN", status: rows[i].status, chip: wdChip(rows[i]), statusText: wdLabel(rows[i]), when: rows[i].createdAt,
+              detail: `IBAN changed from ${rows[i - 1].iban} to ${rows[i].iban} between ${rows[i - 1].code || rows[i - 1].id} and ${rows[i].code || rows[i].id}.` });
           }
         }
         const byDay = {};
@@ -7531,7 +7661,7 @@ operations: "ops-exceptions",
         if (hours >= 48) return { level: "warning", label: "Transit aging", due: "Escalate before 3 days" };
         return { level: "ok", label: "In transit", due: "Transit clock running" };
       }
-      if (["Delivered", "Parcel returned to consignee"].includes(parcel.status)) {
+      if (["Delivered", "Return to shipper", "Cancelled by client"].includes(parcel.status)) {
         return { level: "ok", label: "Closed", due: "No open alert" };
       }
       if (hours >= 24) return { level: "critical", label: "24h status breach", due: "AI + support must act now" };
@@ -7642,7 +7772,8 @@ operations: "ops-exceptions",
       const alert = alertForParcel(parcel);
       if (alert.level === "critical" || parcel.risk >= 65 || parcel.exception) return "bad";
       if (alert.level === "warning") return "warn";
-      if (["Delivered", "Parcel returned to consignee"].includes(parcel.status)) return "good";
+      if (parcel.status === "Cancelled by client") return "";
+      if (["Delivered", "Return to shipper"].includes(parcel.status)) return "good";
       if (parcel.stage < 5) return "info";
       if (parcel.stage < 8) return "warn";
       return "good";
@@ -7719,8 +7850,8 @@ operations: "ops-exceptions",
       const outForDelivery = parcels.filter(p => p.status === "Parcel out for delivery").length;
       const delivered = parcels.filter(p => p.status === "Delivered").length;
       const refused = parcels.filter(p => p.status === "Refused").length;
-      const returns = parcels.filter(p => ["Ready for return", "Return in transit", "Return received at origin", "Return out for delivery", "Parcel returned to consignee"].includes(p.status)).length;
-      const delayedOverSla = parcels.filter(p => agingHours(p) >= 48 && !"Delivered,Parcel returned to consignee".includes(p.status)).length;
+      const returns = parcels.filter(p => ["Ready for return", "Return in transit", "Return received at origin", "Return out for delivery", "Return to shipper"].includes(p.status)).length;
+      const delayedOverSla = parcels.filter(p => agingHours(p) >= 48 && !"Delivered,Return to shipper,Cancelled by client".includes(p.status)).length;
       const withdrawals = state.walletWithdrawals || [];
       const payoutsPending = withdrawals.filter(w => w.status === "Pending admin payout").length;
       const shopifyRows = state.shopifyConnectionRows || [];
@@ -7737,7 +7868,7 @@ operations: "ops-exceptions",
 
     function computeDailyPriorities() {
       const parcels = state.parcels || [];
-      const activeExceptions = parcels.filter(p => p.status !== "Delivered" && p.status !== "Parcel returned to consignee");
+      const activeExceptions = parcels.filter(p => p.status !== "Delivered" && p.status !== "Return to shipper" && p.status !== "Cancelled by client");
       const oldestDelayed = activeExceptions.slice().sort((a, b) => agingHours(b) - agingHours(a))[0];
       const riders = (state.riders || []).slice().sort((a, b) => Number(b.cashHeld || 0) - Number(a.cashHeld || 0));
       const topCashRider = riders[0];
@@ -7997,7 +8128,7 @@ operations: "ops-exceptions",
       "Address/phone issue": "We could not deliver due to an address or phone issue. Please reply with the correct details."
     };
     function waKindForStatus(status) {
-      const map = { "New booked": "Booked", "Parcel out for delivery": "Out for delivery", "Delivered": "Delivered", "Refused": "Refused", "Consignee not available": "Consignee not available", "Reattempt": "Reattempt", "Ready for return": "Return to origin", "Return in transit": "Return to origin", "Return received at origin": "Return to origin", "Return out for delivery": "Return to origin", "Parcel returned to consignee": "Return to origin" };
+      const map = { "New booked": "Booked", "Parcel out for delivery": "Out for delivery", "Delivered": "Delivered", "Refused": "Refused", "Consignee not available": "Consignee not available", "Reattempt": "Reattempt", "Ready for return": "Return to origin", "Return in transit": "Return to origin", "Return received at origin": "Return to origin", "Return out for delivery": "Return to origin", "Return to shipper": "Return to origin" };
       return map[status] || "Booked";
     }
     function waPhoneDigits(phone) {
@@ -8273,7 +8404,9 @@ operations: "ops-exceptions",
         "clients-leads":     SL.filter(function(l){ return l && String(l.status||"") === "New"; }).length
                              + SU.filter(function(l){ return l && String(l.status||"") !== "workspace_created"; }).length,
         // ── system
-        "system-errors":     OI.filter(function(o){ return o && String(o.status||"") !== "Resolved"; }).length
+        "system-errors":     OI.filter(function(o){ return o && String(o.status||"") !== "Resolved"; }).length,
+        // ── support (read from the v2 ticket cache, not from state)
+        "support-tickets":   (window.NV_ATK && window.NV_ATK.openCount) || 0
       };
     }
 
@@ -8282,7 +8415,8 @@ operations: "ops-exceptions",
       "orders":  ["orders-processing"],
       "finance": ["finance-wallets","finance-invoices"],
       "clients": ["clients-leads"],
-      "system":  ["system-errors"]
+      "system":  ["system-errors"],
+      "support": ["support-tickets"]
     };
 
     function nvRenderTabBadges(){
@@ -9169,7 +9303,7 @@ operations: "ops-exceptions",
 
     function riderReportStats(riderId) {
       const delivered = state.parcels.filter(p => p.rider === riderId && p.status === "Delivered");
-      const returned = state.parcels.filter(p => p.rider === riderId && ["Parcel returned to consignee", "Refused", "Consignee not available"].includes(p.status));
+      const returned = state.parcels.filter(p => p.rider === riderId && ["Return to shipper", "Refused", "Consignee not available"].includes(p.status));
       const cashHandled = delivered.reduce((s, p) => s + Number(p.cod || 0), 0);
       const fuel = state.expenses.filter(e => e.riderId === riderId && /fuel/i.test(e.type || e.name || "")).reduce((s, e) => s + Number(e.amount || 0), 0);
       const allExp = state.expenses.filter(e => e.riderId === riderId).reduce((s, e) => s + Number(e.amount || 0), 0);
@@ -9460,8 +9594,15 @@ operations: "ops-exceptions",
 
       const alertsList = document.getElementById("walletAlertsList");
       if (alertsList) {
-        alertsList.innerHTML = walletAlerts.length
-          ? walletAlerts.map(alert => `<div class="ops-card alert-row"><div class="ops-card-head"><strong>${alert.clientName}</strong><span class="chip warn">${alert.label}</span></div><p>${alert.detail}</p></div>`).join("")
+        // Sort so anything still awaiting a payout decision is at the top --
+        // an already-paid alert is history, a pending one needs a person.
+        const rank = a => (a.status === "Pending admin payout" ? 0 : a.status === "Paid" ? 2 : 1);
+        const sortedAlerts = walletAlerts.slice().sort((a, b) =>
+          rank(a) - rank(b) || String(b.when || "").localeCompare(String(a.when || "")));
+        const pendingAlertCount = sortedAlerts.filter(a => a.status === "Pending admin payout").length;
+        alertsList.innerHTML = sortedAlerts.length
+          ? `<div class="footer-note" style="margin-bottom:10px">${sortedAlerts.length} signal(s) across all withdrawals ever made&nbsp;&mdash;&nbsp;<b>${pendingAlertCount}</b> relate to a payout that is still pending. The rest are already settled and are shown for history.</div>`
+            + sortedAlerts.map(alert => `<div class="ops-card ${alert.status === "Pending admin payout" ? "alert-row" : ""}"><div class="ops-card-head"><strong>${alert.clientName}</strong><span class="chip warn">${alert.label}</span></div><p>${alert.detail}</p><div class="inline-actions" style="flex-wrap:wrap;gap:6px;margin-top:6px">${alert.statusText ? `<span class="chip ${alert.chip || "info"}">${alert.statusText}</span>` : ""}${alert.when ? `<span class="chip info">${alert.when}</span>` : ""}</div></div>`).join("")
           : `<div class="ops-card"><strong>No suspicious wallet signals</strong><p>Repeated instant withdrawals, full-balance payouts, changed IBANs, and same-day multiple withdrawals will show here.</p></div>`;
       }
 
@@ -9491,7 +9632,7 @@ operations: "ops-exceptions",
           // Wallets spec -- falls back to "Not saved" for older requests made
           // before bank-details snapshotting existed.
           return `<div class="ops-card ${lock.locked ? "alert-row" : ""}">
-            <div class="ops-card-head"><strong>${item.id} | ${client.name}</strong><span class="chip ${statusChipClass}">${statusLabel}</span></div>
+            <div class="ops-card-head"><strong>${item.code || item.id} | ${client.name}</strong><span class="chip ${statusChipClass}">${statusLabel}</span></div>
             <p>Pay ${money(item.net)} to IBAN ${item.iban}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed)}).</p>
             <div class="footer-note">Account holder: <b>${item.holderName || "Not saved"}</b>${item.bankName ? (" &middot; " + item.bankName) : ""}</div>
             <div class="footer-note">Created ${item.createdAt}. Wallet reconciliation: ${recon.mismatch ? `mismatch of ${money(recon.difference)}` : "clean"}.</div>
@@ -9510,7 +9651,7 @@ operations: "ops-exceptions",
         paidHistory.innerHTML = paidWithdrawals.map(item => {
           const client = clientById(item.clientId);
           return `<div class="ops-card">
-            <div class="ops-card-head"><strong>${item.id} | ${client.name}</strong><span class="chip good">Paid</span></div>
+            <div class="ops-card-head"><strong>${item.code || item.id} | ${client.name}</strong><span class="chip good">Paid</span></div>
             <p>Paid ${money(item.net)} to IBAN ${item.iban} (${walletSpeedLabel(item.speed)}, fee ${money(item.fee)}).</p>
             <div class="footer-note">${item.paidTxnId ? `Paid with reference ${item.paidTxnId}` : "Paid"}${item.paidBy ? ` by ${item.paidBy}` : ""}${item.paidAt ? ` on ${item.paidAt}` : ""}.${item.paidProof ? ` Proof: ${item.paidProof}` : ""}</div>
           </div>`;
@@ -9729,7 +9870,7 @@ operations: "ops-exceptions",
       return {
         _uuid: r.id, awb: r.awb, clientId: r.client_id, date: mapProcessingDate(r.booked_at),
         consignee: r.consignee || "", city: r.city || "", address: r.address || "", phone: r.phone || "",
-        cod: Number(r.cod_amount || 0), fee: Number(r.fee || 0), status: r.status || "New booked",
+        cod: Number(r.cod_amount || 0), fee: Number(r.fee || 0), status: nvStatus(r.status) || "New booked",
         statusAgeHours: Number(m.statusAgeHours || 0), stage: Number(m.stage || 0), totalStages: Number(m.totalStages || 9),
         rider: r.rider_id || "", branch: m.branch || "", risk: Number(m.risk || 0), updated: mapProcessingTime(r.updated_at),
         exception: r.exception || "", cashReceived: !!m.cashReceived, returnProof: m.returnProof || "",
@@ -13066,7 +13207,12 @@ operations: "ops-exceptions",
       // NovaX fix (withdrawal UX v2): surface the holder_name/bank_name
       // snapshot columns (added alongside save_client_bank_details) so the
       // admin payout queue can show account holder + bank name per request.
-      function rWd(r){ return { _uuid:r.id, id:r.id, clientId:r.client_id, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at), paidAt:r.paid_at?dtpart(r.paid_at):"", balanceBefore:Number(r.balance_before||0), paidTxnId:r.paid_txn_id||"", paidBy:r.paid_by||"", paidProof:r.paid_proof||"", holderName:r.holder_name||"", bankName:r.bank_name||"" }; }
+      // NovaX fix (raw UUID leak): `id` stays the real UUID because ~20 call
+      // sites look withdrawals up by it. `code` is display-only -- derived from
+      // the UUID (not a counter) so it never changes when sort order changes,
+      // and it matches the WDR-XXXXXX code the client portal already shows, so
+      // a merchant and an admin quote the same reference on a phone call.
+      function rWd(r){ return { _uuid:r.id, id:r.id, code:"WDR-"+String(r.id||"").replace(/-/g,"").slice(0,6).toUpperCase(), clientId:r.client_id, amount:Number(r.amount||0), fee:Number(r.fee||0), net:Number(r.net||0), iban:r.iban||"", speed:r.speed||"", status:r.status||"", createdAt:dtpart(r.created_at), paidAt:r.paid_at?dtpart(r.paid_at):"", balanceBefore:Number(r.balance_before||0), paidTxnId:r.paid_txn_id||"", paidBy:r.paid_by||"", paidProof:r.paid_proof||"", holderName:r.holder_name||"", bankName:r.bank_name||"" }; }
       function rPickup(r) {
         var awbs = r.awbs;
         if (typeof awbs === "string") { try { awbs = JSON.parse(awbs); } catch (e) { awbs = []; } }
@@ -13550,6 +13696,408 @@ operations: "ops-exceptions",
         }
       }); }
     })();
+    /* ===================================================================
+       Support tickets v2 (admin side) -- MANUAL ONLY
+
+       Replaces the v1 Ticket Hub. Differences that matter:
+         * Nothing auto-creates tickets. v1's auto-writer produced ~1,800
+           junk tickets and a permanent 409 insert storm.
+         * The SLA is derived from created_at / first_response_at at render
+           time, so there is no timer to drift and nothing to storm.
+         * Replies are rows in novax_ticket_replies; a reply never rewrites
+           the ticket, so a failed reply cannot corrupt a ticket's state.
+         * first_response_at is stamped by a database trigger, not here, so
+           every viewer sees the same clock.
+
+       Isolated from render(): a ticket failure cannot take the admin down.
+       =================================================================== */
+    var NV_ATK = { list: [], replies: {}, filter: "open", openId: null,
+                   q: "", loading: false, openCount: 0 };
+    window.NV_ATK = NV_ATK;
+
+    function nvAtkEsc(v){
+      return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){
+        return ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" })[c];
+      });
+    }
+    function nvAtkHrs(n){
+      n = Number(n || 0);
+      if (n < 1) return Math.max(1, Math.round(n * 60)) + "m";
+      return (n < 24 ? Math.round(n) + "h" : Math.round(n / 24) + "d");
+    }
+    function nvAtkSla(t){
+      var created = new Date(String(t.created_at || "").replace(" ", "T"));
+      if (isNaN(created.getTime())) return { state: "unknown", text: "" };
+      var limitMs = (Number(t.sla_hours || 24)) * 3600e3;
+      if (t.first_response_at){
+        var fr = new Date(String(t.first_response_at).replace(" ", "T"));
+        return { state: (fr - created) <= limitMs ? "met" : "missed",
+                 text: "First reply in " + nvAtkHrs((fr - created) / 3600e3) };
+      }
+      if (t.status === "resolved") return { state: "met", text: "Resolved" };
+      var age = Date.now() - created.getTime();
+      if (age > limitMs) return { state: "breached",
+        text: "UNANSWERED " + nvAtkHrs(age / 3600e3) + " — past the " + (t.sla_hours || 24) + "h target" };
+      return { state: "running", text: nvAtkHrs((limitMs - age) / 3600e3) + " left to first reply" };
+    }
+    function nvAtkClientName(t){
+      try {
+        var c = (state.clients || []).find(function(x){ return x._uuid === t.client_id; });
+        return (c && c.name) || t.opened_by_name || "";
+      } catch(e){ return t.opened_by_name || ""; }
+    }
+
+    function nvAtkLoad(){
+      var sb = window.__nvSb;
+      if (!sb || NV_ATK.loading) return Promise.resolve();
+      NV_ATK.loading = true;
+      return Promise.resolve(
+        sb.from("novax_tickets").select("*").order("created_at", { ascending: false }).limit(500)
+      ).catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+       .then(function(r){
+        NV_ATK.loading = false;
+        if (r && r.error){
+          if (/does not exist|schema cache|relation/i.test(String(r.error.message || ""))){
+            var host = document.getElementById("nvAtkList");
+            if (host) host.innerHTML = '<div class="ops-card"><strong>Ticketing is not enabled yet</strong>' +
+              '<p class="footer-note">Run sql/novax_tickets_v2.sql, then reload.</p></div>';
+            return;
+          }
+          console.warn("NovaX admin tickets load", r.error.message);
+          return;
+        }
+        NV_ATK.list = (r && r.data) || [];
+        NV_ATK.openCount = NV_ATK.list.filter(function(t){ return t.status !== "resolved"; }).length;
+        nvAtkRender();
+        try { if (typeof nvRenderTabBadges === "function") nvRenderTabBadges(); } catch(e){}
+      });
+    }
+
+    function nvAtkLoadReplies(id){
+      var sb = window.__nvSb;
+      if (!sb || !id) return Promise.resolve();
+      return Promise.resolve(
+        sb.from("novax_ticket_replies").select("*").eq("ticket_id", id).order("created_at", { ascending: true })
+      ).catch(function(){ return { data: [] }; })
+       .then(function(r){ NV_ATK.replies[id] = (r && r.data) || []; nvAtkRender(); });
+    }
+
+    function nvAtkReply(id){
+      var sb = window.__nvSb;
+      var el = document.getElementById("nvAtkReply-" + id);
+      var body = el ? el.value : "";
+      if (!body.trim()){ toast("Write a reply first."); return; }
+      if (!sb){ toast("Cloud connection not ready yet.", "error"); return; }
+      Promise.resolve(sb.from("novax_ticket_replies").insert({
+        ticket_id: id, body: body.trim(), by_name: currentAdminName(), by_side: "admin"
+      })).catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+        .then(function(r){
+          if (r && r.error){ toast("Could not send the reply: " + r.error.message, "error"); return; }
+          if (el) el.value = "";
+          // first_response_at is stamped by the DB trigger, so just refetch.
+          toast("Reply sent.");
+          nvAtkLoadReplies(id);
+          nvAtkLoad();
+        });
+    }
+
+    function nvAtkSetStatus(id, status){
+      var sb = window.__nvSb;
+      if (!sb){ toast("Cloud connection not ready yet.", "error"); return; }
+      var patch = { status: status };
+      if (status === "resolved") patch.resolved_by = currentAdminName();
+      Promise.resolve(sb.from("novax_tickets").update(patch).eq("id", id))
+        .catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+        .then(function(r){
+          if (r && r.error){ toast("Could not update the ticket: " + r.error.message, "error"); return; }
+          toast(status === "resolved" ? "Ticket resolved." :
+                status === "pending_client" ? "Marked as waiting on the client." : "Ticket reopened.");
+          nvAtkLoad();
+        });
+    }
+
+    function nvAtkCard(t){
+      var sla = nvAtkSla(t);
+      var open = NV_ATK.openId === t.id;
+      var stChip = t.status === "resolved" ? "good" : t.status === "pending_client" ? "warn" : "info";
+      var prChip = t.priority === "high" ? "bad" : t.priority === "low" ? "info" : "warn";
+      var slaChip = sla.state === "breached" ? "bad" : sla.state === "missed" ? "warn" : "good";
+      var reps = NV_ATK.replies[t.id] || [];
+      var thread = "";
+      if (open){
+        thread = '<div class="nv-atk-thread">' +
+          (reps.length ? reps.map(function(r){
+            return '<div class="nv-atk-msg ' + (r.by_side === "admin" ? "mine" : "") + '">' +
+              '<div class="nv-atk-meta">' + nvAtkEsc(r.by_name || (r.by_side === "admin" ? "NovaX" : "Client")) +
+              ' · ' + nvAtkEsc(String(r.created_at || "").replace("T", " ").slice(0, 16)) + '</div>' +
+              '<div>' + nvAtkEsc(r.body) + '</div></div>';
+          }).join("") : '<p class="footer-note">No replies yet.</p>') +
+          '<div class="inline-actions" style="margin-top:10px;gap:6px;flex-wrap:wrap">' +
+            '<input class="nv-atk-reply" id="nvAtkReply-' + nvAtkEsc(t.id) + '" placeholder="Reply to the merchant...">' +
+            '<button class="action-btn" data-nv-atkreply="' + nvAtkEsc(t.id) + '">Send reply</button>' +
+            (t.status !== "resolved"
+              ? '<button class="ghost-btn" data-nv-atkstatus="pending_client" data-nv-atkid="' + nvAtkEsc(t.id) + '">Waiting on client</button>' +
+                '<button class="action-btn" data-nv-atkstatus="resolved" data-nv-atkid="' + nvAtkEsc(t.id) + '">Resolve</button>'
+              : '<button class="ghost-btn" data-nv-atkstatus="open" data-nv-atkid="' + nvAtkEsc(t.id) + '">Reopen</button>') +
+          '</div></div>';
+      }
+      return '<div class="ops-card nv-atk-card' + (sla.state === "breached" ? " nv-atk-breach" : "") + '">' +
+        '<div class="ops-card-head" data-nv-atkopen="' + nvAtkEsc(t.id) + '" style="cursor:pointer">' +
+          '<strong>' + nvAtkEsc(t.code || "Ticket") + ' · ' + nvAtkEsc(t.subject) + '</strong>' +
+          '<span class="chip ' + stChip + '">' + nvAtkEsc(t.status.replace("_", " ")) + '</span></div>' +
+        '<div class="inline-actions" style="flex-wrap:wrap;gap:6px;margin:6px 0">' +
+          '<span class="chip ' + prChip + '">' + nvAtkEsc(t.priority) + '</span>' +
+          '<span class="chip info">' + nvAtkEsc(nvAtkClientName(t) || "Unknown client") + '</span>' +
+          (t.awb ? '<span class="chip info">' + nvAtkEsc(t.awb) + '</span>' : "") +
+          (sla.text ? '<span class="chip ' + slaChip + '">' + nvAtkEsc(sla.text) + '</span>' : "") +
+          '<span class="chip info">Opened ' + nvAtkEsc(String(t.created_at || "").replace("T", " ").slice(0, 16)) + '</span>' +
+        '</div>' +
+        (t.body ? '<p style="font-size:13px;margin:6px 0">' + nvAtkEsc(t.body) + '</p>' : "") +
+        thread + '</div>';
+    }
+
+    function nvAtkRender(){
+      var host = document.getElementById("nvAtkList");
+      if (!host) return;
+      var all = NV_ATK.list || [];
+      var openOnes = all.filter(function(t){ return t.status !== "resolved"; });
+      var breached = openOnes.filter(function(t){ return nvAtkSla(t).state === "breached"; });
+      NV_ATK.openCount = openOnes.length;
+
+      var badge = document.getElementById("nvAtkBadge");
+      if (badge){
+        badge.textContent = openOnes.length + " open" + (breached.length ? " · " + breached.length + " overdue" : "");
+        badge.className = "chip " + (breached.length ? "bad" : openOnes.length ? "warn" : "good");
+      }
+      Array.prototype.forEach.call(document.querySelectorAll("[data-nv-atkf]"), function(b){
+        b.className = (b.getAttribute("data-nv-atkf") === NV_ATK.filter ? "action-btn" : "ghost-btn") + " nv-atkf";
+      });
+
+      var rows = NV_ATK.filter === "open" ? openOnes
+               : NV_ATK.filter === "breached" ? breached
+               : NV_ATK.filter === "resolved" ? all.filter(function(t){ return t.status === "resolved"; })
+               : all;
+      var q = String(NV_ATK.q || "").trim().toLowerCase();
+      if (q){
+        rows = rows.filter(function(t){
+          return [t.code, t.subject, t.awb, t.body, nvAtkClientName(t)]
+            .join(" ").toLowerCase().indexOf(q) !== -1;
+        });
+      }
+      host.innerHTML = rows.length
+        ? rows.map(nvAtkCard).join("")
+        : '<div class="ops-card"><strong>Nothing here</strong><p class="footer-note">No tickets match this filter.</p></div>';
+    }
+
+    function nvAtkWire(){
+      var pane = document.getElementById("admin-support-tickets");
+      if (!pane || pane._nvWired) return;
+      pane._nvWired = true;
+      var box = document.getElementById("nvAtkSearch");
+      if (box) box.addEventListener("input", function(){ NV_ATK.q = box.value; nvAtkRender(); });
+      pane.addEventListener("click", function(ev){
+        var f = ev.target.closest("[data-nv-atkf]");
+        if (f){ NV_ATK.filter = f.getAttribute("data-nv-atkf"); nvAtkRender(); return; }
+        var st = ev.target.closest("[data-nv-atkstatus]");
+        if (st){ nvAtkSetStatus(st.getAttribute("data-nv-atkid"), st.getAttribute("data-nv-atkstatus")); return; }
+        var rp = ev.target.closest("[data-nv-atkreply]");
+        if (rp){ nvAtkReply(rp.getAttribute("data-nv-atkreply")); return; }
+        var o = ev.target.closest("[data-nv-atkopen]");
+        if (o){
+          var id = o.getAttribute("data-nv-atkopen");
+          NV_ATK.openId = (NV_ATK.openId === id) ? null : id;
+          if (NV_ATK.openId && !NV_ATK.replies[id]) nvAtkLoadReplies(id); else nvAtkRender();
+          return;
+        }
+      });
+    }
+
+    (function nvAtkBoot(){
+      setTimeout(function(){ try{ nvAtkWire(); nvAtkLoad(); }catch(e){} }, 1000);
+      setInterval(function(){ try{ nvAtkWire(); }catch(e){} }, 3000);
+      // Only poll while an admin is actually on the tickets tab.
+      setInterval(function(){
+        var pane = document.getElementById("admin-support-tickets");
+        if (pane && pane.classList.contains("active") && document.visibilityState !== "hidden"){
+          try{ nvAtkLoad(); }catch(e){}
+        }
+      }, 45000);
+    })();
+
+    /* ===================================================================
+       NovaX searchable select (nvss)
+
+       Turns the client dropdowns into type-to-filter pickers. Deliberately an
+       ENHANCEMENT, not a replacement: the original <select> stays in the DOM,
+       keeps its options, keeps its .value, and still emits "change". Nothing
+       that populates or reads those selects had to change, so this cannot
+       break invoicing, wallets, bulk booking or reports.
+
+       Re-syncs automatically when a render repopulates the underlying select.
+       =================================================================== */
+    (function nvSearchableSelects(){
+      if (window.__nvssLoaded) return;
+      window.__nvssLoaded = true;
+
+      // Only the long, hard-to-navigate lists. Short fixed lists (status,
+      // city, tier) are fine as native selects and are left alone.
+      var TARGETS = ["invoiceClientSelect","walletClientSelect","adminBulkClientId",
+                     "excClientFilter","reconClientFilter","shopifyClientSelect",
+                     "webClientSelect","orderReportClientFilter","adminOrderClientFilter",
+                     "userClientSelect","rateClientSelect","adminClientSelect"];
+      var MIN_FOR_SEARCH = 8;   // below this a native select is genuinely faster
+
+      function esc(v){
+        return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){
+          return ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" })[c];
+        });
+      }
+      function labelOf(sel){
+        var o = sel.options[sel.selectedIndex];
+        return o ? o.textContent : "";
+      }
+
+      function build(sel){
+        if (!sel || sel._nvss) return;
+        sel._nvss = true;
+
+        var wrap = document.createElement("div");
+        wrap.className = "nvss";
+        sel.parentNode.insertBefore(wrap, sel);
+        wrap.appendChild(sel);
+        sel.classList.add("nvss-native");
+        sel.setAttribute("tabindex","-1");
+        sel.setAttribute("aria-hidden","true");
+
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "nvss-btn";
+        btn.setAttribute("aria-haspopup","listbox");
+        btn.setAttribute("aria-expanded","false");
+        btn.innerHTML = '<span class="nvss-label"></span><span class="nvss-caret">&#9662;</span>';
+
+        var panel = document.createElement("div");
+        panel.className = "nvss-panel";
+        panel.innerHTML = '<input class="nvss-search" type="text" placeholder="Type to search..." ' +
+                          'autocomplete="off" spellcheck="false">' +
+                          '<div class="nvss-count"></div><div class="nvss-list" role="listbox"></div>';
+        wrap.appendChild(btn);
+        wrap.appendChild(panel);
+
+        var search = panel.querySelector(".nvss-search");
+        var list   = panel.querySelector(".nvss-list");
+        var count  = panel.querySelector(".nvss-count");
+        var active = -1, shown = [];
+
+        function syncLabel(){
+          btn.querySelector(".nvss-label").textContent = labelOf(sel) || "Select...";
+        }
+
+        function paint(){
+          var q = search.value.trim().toLowerCase();
+          shown = [];
+          for (var i = 0; i < sel.options.length; i++){
+            var o = sel.options[i];
+            if (!q || o.textContent.toLowerCase().indexOf(q) !== -1) shown.push(i);
+          }
+          if (!shown.length){
+            list.innerHTML = '<div class="nvss-empty">No match for &ldquo;' + esc(search.value) + '&rdquo;</div>';
+            count.textContent = "";
+            active = -1;
+            return;
+          }
+          count.textContent = shown.length + (shown.length === 1 ? " result" : " results");
+          var html = "";
+          for (var k = 0; k < shown.length; k++){
+            var idx = shown[k];
+            html += '<div class="nvss-opt" role="option" data-i="' + idx + '"' +
+                    (idx === sel.selectedIndex ? ' aria-selected="true"' : '') + '>' +
+                    esc(sel.options[idx].textContent) + '</div>';
+          }
+          list.innerHTML = html;
+          highlight();
+        }
+
+        function highlight(){
+          var kids = list.querySelectorAll(".nvss-opt");
+          for (var i = 0; i < kids.length; i++) kids[i].classList.toggle("active", i === active);
+          if (active >= 0 && kids[active]) {
+            var el = kids[active];
+            if (el.offsetTop < list.scrollTop) list.scrollTop = el.offsetTop;
+            else if (el.offsetTop + el.offsetHeight > list.scrollTop + list.clientHeight)
+              list.scrollTop = el.offsetTop + el.offsetHeight - list.clientHeight;
+          }
+        }
+
+        function open(){
+          wrap.classList.add("open");
+          btn.setAttribute("aria-expanded","true");
+          search.value = "";
+          active = -1;
+          paint();
+          try { search.focus(); } catch(e){}
+        }
+        function close(){
+          wrap.classList.remove("open");
+          btn.setAttribute("aria-expanded","false");
+        }
+        function pick(idx){
+          if (idx == null || idx < 0 || idx >= sel.options.length) return;
+          if (sel.selectedIndex !== idx){
+            sel.selectedIndex = idx;
+            // Same event the native control fires, so every existing
+            // addEventListener("change", ...) on these selects still runs.
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+          syncLabel();
+          close();
+          try { btn.focus(); } catch(e){}
+        }
+
+        btn.addEventListener("click", function(){
+          if (wrap.classList.contains("open")) close(); else open();
+        });
+        search.addEventListener("input", function(){ active = shown.length ? 0 : -1; paint(); });
+        search.addEventListener("keydown", function(ev){
+          if (ev.key === "ArrowDown"){ ev.preventDefault(); if (shown.length){ active = Math.min(active + 1, shown.length - 1); highlight(); } }
+          else if (ev.key === "ArrowUp"){ ev.preventDefault(); if (shown.length){ active = Math.max(active - 1, 0); highlight(); } }
+          else if (ev.key === "Enter"){ ev.preventDefault(); if (active >= 0) pick(shown[active]); else if (shown.length === 1) pick(shown[0]); }
+          else if (ev.key === "Escape"){ ev.preventDefault(); close(); try{ btn.focus(); }catch(e){} }
+        });
+        list.addEventListener("click", function(ev){
+          var t = ev.target.closest(".nvss-opt");
+          if (t) pick(Number(t.getAttribute("data-i")));
+        });
+        document.addEventListener("click", function(ev){
+          if (!wrap.contains(ev.target)) close();
+        });
+
+        // A render() can replace the select's options wholesale. Re-read the
+        // label when that happens so the button never shows a stale client.
+        try {
+          new MutationObserver(function(){ syncLabel(); if (wrap.classList.contains("open")) paint(); })
+            .observe(sel, { childList: true, subtree: true });
+        } catch(e){}
+        sel.addEventListener("change", syncLabel);
+        syncLabel();
+      }
+
+      function scan(){
+        for (var i = 0; i < TARGETS.length; i++){
+          var sel = document.getElementById(TARGETS[i]);
+          if (!sel || sel._nvss) continue;
+          if (sel.options.length < MIN_FOR_SEARCH) continue;  // retried on the next scan
+          try { build(sel); } catch(e){ console.warn("NovaX nvss failed for " + TARGETS[i], e); }
+        }
+      }
+      window.nvssScan = scan;
+      scan();
+      // Selects are populated by render(), which can run after this script, and
+      // a client list can cross the threshold later. Cheap re-scan handles both.
+      setTimeout(scan, 1200);
+      setInterval(scan, 4000);
+    })();
+
     render();
     renderLandingTrack();
     window.scrollTo({ top: 0, left: 0 });
