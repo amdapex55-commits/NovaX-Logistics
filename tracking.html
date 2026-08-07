@@ -169,7 +169,8 @@
     "Return in transit":       ["Return on the way","Wapsi transit mein hai."],
     "Return received at origin":["Return received","Wapsi origin par mosool ho gayi."],
     "Return out for delivery": ["Return out for delivery","Wapsi delivery ke liye nikli hai."],
-    "Parcel returned to consignee":["Returned","Parcel wapas kar diya gaya hai."]
+    "Return to shipper":["Returned","Parcel wapas kar diya gaya hai."],
+    "Cancelled by client":["Cancelled by the sender","Bhejnay walay ne cancel kar diya hai."]
   };
   var STEP_NOTE={
     "New booked":"Booked and waiting for pickup.",
@@ -199,9 +200,16 @@
       return d.toLocaleString("en-PK",{day:"numeric",month:"short",hour:"numeric",minute:"2-digit"});
     }catch(e){ return ""; }
   }
+  /* NovaX status rename: "Parcel returned to consignee" is a STORED value in
+     parcels.status, so rows written before the migration (or by an
+     un-upgraded rider app) still carry the old text. Normalising here means
+     the public tracking page shows the right label either way. */
+  var NV_STATUS_ALIASES={"Parcel returned to consignee":"Return to shipper"};
+  function nvStatus(s){ s=String(s==null?"":s); return NV_STATUS_ALIASES[s]||s; }
   function tone(st){
     if(st==="Delivered") return "good";
-    if(st==="Refused"||st==="Out of service area"||st==="Parcel returned to consignee") return "bad";
+    if(st==="Cancelled by client") return "";
+    if(st==="Refused"||st==="Out of service area"||st==="Return to shipper") return "bad";
     if(st==="Consignee not available"||st==="Reattempt"||st==="Ready for return"||st==="Return in transit") return "warn";
     return "";
   }
@@ -235,7 +243,7 @@
        because the fallback below only runs when steps.length===0, it never
        kicked in. That is the entire main content of this page. */
     var norm=steps.map(function(s){
-      return (typeof s==="string")?s:((s&&(s.status||s.name))||"");
+      return nvStatus((typeof s==="string")?s:((s&&(s.status||s.name))||""));
     }).filter(function(st){ return st&&SAY[st]; });
 
     if(norm.length){
@@ -252,9 +260,9 @@
          forward flow, marking only what the current status actually implies.
          Nothing is invented -- if the parcel is in a return/exception state
          that is not on the forward flow, we show just that one state. */
-      var idx=FLOW.indexOf(row.status);
+      var idx=FLOW.indexOf(nvStatus(row.status));
       if(idx<0){
-        html+='<li class="now"><div class="s">'+esc((SAY[row.status]&&SAY[row.status][0])||row.status||"Status unavailable")+'</div>'+
+        html+='<li class="now"><div class="s">'+esc((SAY[nvStatus(row.status)]&&SAY[nvStatus(row.status)][0])||nvStatus(row.status)||"Status unavailable")+'</div>'+
               (when(row.updated_at)?'<div class="d">'+esc(when(row.updated_at))+'</div>':"")+'</li>';
       }else{
         FLOW.slice(0,idx+1).forEach(function(st,i){
@@ -271,11 +279,11 @@
   }
 
   function render(row){
-    var st=row.status||"";
+    var st=nvStatus(row.status)||"";
     var say=SAY[st]||[st||"Tracking",""];
     var t=tone(st);
     var cod=Number(row.cod_amount||0);
-    var showCod=cod>0 && st!=="Delivered" && st!=="Parcel returned to consignee";
+    var showCod=cod>0 && st!=="Delivered" && st!=="Return to shipper";
 
     var head='<div class="card">'+
       '<h1 class="status-head">'+esc(say[0])+'</h1>'+
@@ -304,9 +312,50 @@
     try{ document.title=say[0]+" · "+(row.awb||"")+" · NovaX"; }catch(e){}
   }
 
+  /* AWB fallback path. Uses track_parcel_public() — the public, limited RPC
+     the homepage tracker already exposes — so no extra data becomes reachable
+     by guessing an AWB. Shows current status; the full step-by-step journey
+     still requires the tokenised link the seller sends. */
+  function bootByAwb(sb, awb){
+    sb.rpc("track_parcel_public",{ p_awb: awb }).then(function(r){
+      if(r&&r.error){ fail("Tracking is temporarily unavailable","Please try again in a moment."); return; }
+      var row=(r&&r.data&&r.data[0])||null;
+      if(!row){ fail("Parcel not found","We couldn't find a parcel with that tracking ID. Please check it and try again."); return; }
+      var st=nvStatus(row.status)||"New booked";
+      show(
+        '<div class="card">'+
+          '<div class="awbline">'+
+            '<span class="pill'+(function(){var t=tone(st);return t?" "+t:"";})()+'">'+esc(awb)+'</span>'+
+            '<span class="pill'+(function(){var t=tone(st);return t?" "+t:"";})()+'">'+esc(st)+'</span>'+
+          '</div>'+
+          '<div class="msg" style="margin-top:10px">'+
+            esc(row.city||"In transit")+
+            (row.updated_at?(' &middot; updated '+esc(String(row.updated_at).slice(0,16).replace("T"," "))):"")+
+          '</div>'+
+          '<div class="msg" style="margin-top:10px;opacity:.8">For the full step-by-step journey, open the tracking link your seller sent you.</div>'+
+        '</div>'+ctaHtml()
+      );
+      try{ document.title=st+" · "+awb+" · NovaX"; }catch(e){}
+    }).catch(function(){
+      fail("Cannot reach NovaX right now","Please check your internet connection and try again.");
+    });
+  }
+
   function boot(){
     var token=param("t");
-    if(!token){
+    /* NovaX fix (dead "View full journey" link): the homepage and the client
+       portal both link here as tracking.html?awb=..., but this page only ever
+       read ?t=<token>, so every one of those links landed on "No tracking
+       link" — a dead end for the customer.
+
+       The token is NOT abandoned: ?t= still uses public_track_parcel(), which
+       returns the full journey. An ?awb= link falls back to
+       track_parcel_public(), the same limited, public RPC the homepage
+       tracker already calls, so this exposes nothing that was not already
+       public. Status summary instead of full timeline, rather than a dead end. */
+    var awb=(param("awb")||param("track")||"").trim().toUpperCase();
+
+    if(!token && !awb){
       fail("No tracking link","Please use the tracking link your seller sent you.");
       return;
     }
@@ -320,6 +369,9 @@
       fail("Cannot reach NovaX right now","Please refresh and try again.");
       return;
     }
+
+    if(!token && awb){ bootByAwb(sb,awb); return; }
+
     sb.rpc("public_track_parcel",{ p_token: token }).then(function(r){
       if(r&&r.error){
         fail("Tracking is temporarily unavailable","Please try again in a moment.");
