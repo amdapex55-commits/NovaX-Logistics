@@ -298,7 +298,19 @@
     const PKR = new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 });
     const time = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const STORAGE_KEY = "novaxLogisticsStateV10";
-    const STATUS_TAGS = ["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Refused","Consignee not available","Reattempt","Reassigned","Out of service area","Ready for return","Return in transit","Return received at origin","Return out for delivery","Parcel returned to consignee"];
+    /* NovaX status rename: "Parcel returned to consignee" -> "Return to shipper".
+       A return goes back to the SHIPPER (the merchant), never to the consignee
+       -- the old label was simply wrong. The string is a STORED value in
+       parcels.status, so rows written before the migration still carry the old
+       text. nvStatus() normalises on read, which means the portal is correct
+       whether or not sql/novax_return_to_shipper_v1.sql has been run yet, and
+       old rows arriving from an un-upgraded rider app keep working too. */
+    var NV_STATUS_ALIASES = { "Parcel returned to consignee": "Return to shipper" };
+    function nvStatus(s){
+      s = String(s == null ? "" : s);
+      return NV_STATUS_ALIASES[s] || s;
+    }
+    const STATUS_TAGS = ["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Refused","Consignee not available","Reattempt","Reassigned","Out of service area","Ready for return","Return in transit","Return received at origin","Return out for delivery","Return to shipper"];
     // NovaX fix (risky demo-data hardening): baseState below is OFFLINE
     // FALLBACK SEED DATA ONLY -- it is normally immediately replaced by
     // cleanStartState() a few lines below on first load, and again cleared
@@ -553,7 +565,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       const p = state.parcels.find(x=>x.awb===awb); if(!p) return;
       const rider = riderById(state.activeRider);
       const wasReturn = p.status === "Return out for delivery";
-      setParcelStatus(p, wasReturn ? "Parcel returned to consignee" : "Delivered");
+      setParcelStatus(p, wasReturn ? "Return to shipper" : "Delivered");
       if(!wasReturn && !p.steps.includes("COD collected")) p.steps.push("COD collected");
       p.deliveredBy = rider.id;
       p.cashReceived = false;        // stays in rider account until admin clears
@@ -692,13 +704,13 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       var sb; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ console.warn("NovaX: cloud init failed, local only.",e); return; }
       window.__nvSb=sb;
       var RIDER_UUID=null, loaded=false, subscribed=false, shadow={};
-      var TERMINAL=["Delivered","Refused","Consignee not available","Parcel returned to consignee"];
+      var TERMINAL=["Delivered","Refused","Consignee not available","Return to shipper","Cancelled by client"];
       function dpart(t){ return t?String(t).slice(0,10):new Date().toISOString().slice(0,10); }
       function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
       function sigOf(row){ return JSON.stringify(row,function(k,v){ return k==="updated_at"?undefined:v; }); }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
       function rClient(r){ return { _uuid:r.id, id:r.id, name:r.name||"", city:r.city||"", address:r.address||"" }; }
-      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||16), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", deliveredBy:m.deliveredBy||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", riderInput:m.riderInput||null, steps:Array.isArray(m.steps)?m.steps:[], _meta:m }; }
+      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||16), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", deliveredBy:m.deliveredBy||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", riderInput:m.riderInput||null, steps:Array.isArray(m.steps)?m.steps:[], _meta:m }; }
       function fParcel(p){
         // NovaX fix (metadata-loss guard): start from whatever raw backend
         // meta rParcel last attached to this parcel (p._meta) so fields the
@@ -714,7 +726,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         p._scanned=p._scanned||{};
         if(TERMINAL.indexOf(p.status)>-1 && !p._scanned[p.status]){
           p._scanned[p.status]=true;
-          var srow={ parcel_id:p._uuid, rider_id:RIDER_UUID, type:(p.status==="Delivered"||p.status==="Parcel returned to consignee")?"delivery":"exception", status:p.status, note:p.exception||"", photo_url:"", meta:{ awb:p.awb, signedAt:p.signedAt||"", hasPhoto:!!p.proofPhoto, hasSignature:!!p.signature, riderInput:p.riderInput||null } };
+          var srow={ parcel_id:p._uuid, rider_id:RIDER_UUID, type:(p.status==="Delivered"||p.status==="Return to shipper")?"delivery":"exception", status:p.status, note:p.exception||"", photo_url:"", meta:{ awb:p.awb, signedAt:p.signedAt||"", hasPhoto:!!p.proofPhoto, hasSignature:!!p.signature, riderInput:p.riderInput||null } };
           sb.from("scans").insert(srow).then(function(r){ if(r&&r.error) console.warn("NovaX scan insert",r.error.message); });
           if(p.status==="Delivered" && Number(p.cod)>0 && !p._codPosted){
             p._codPosted=true;
