@@ -4547,10 +4547,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        Cancel a booking (merchant self-service)
 
        Only offered while the parcel is still nothing more than a booking.
-       The REAL guard is server-side in client_cancel_booking(): status must
-       be "New booked", the parcel must not be on an invoice or a manifest,
-       and it must belong to the calling merchant. This function only decides
-       whether to SHOW the button -- it is not the security boundary.
+       The REAL guard is server-side in delete_new_booked_parcel(): it re-checks
+       ownership and refuses once the parcel has left "New booked" or has been
+       invoiced. This function only decides whether to SHOW the button -- it is
+       not the security boundary.
 
        It is a soft cancel: the row and the AWB survive, so history stays
        intact and the number can never be reissued to a different parcel.
@@ -4571,31 +4571,27 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         toast("This parcel can no longer be cancelled - it has already moved.","error");
         return Promise.resolve();
       }
-      if(!window.confirm("Cancel booking "+awb+"?\n\nThe tracking number stays on record and cannot be reused. This cannot be undone.")) return Promise.resolve();
-      if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment.","error"); return Promise.resolve(); }
+      var label=awb+(p.consignee?(" for "+p.consignee):"")+(Number(p.cod)?(" \u00b7 COD "+money(p.cod)):"");
+      if(!window.confirm("Cancel booking "+label+"?\n\nThe booking is removed completely. Only possible before a rider collects it. This cannot be undone.")) return Promise.resolve();
+      if(!window.__nvSb || !window.__nvSb.rpc){ toast("Cloud connection not ready yet, please try again in a moment.","error"); return Promise.resolve(); }
 
-      var reason=(window.prompt("Reason for cancelling (optional):","")||"").slice(0,200);
       toast("Cancelling "+awb+"...");
-      // supabase.rpc() returns a thenable WITHOUT .catch(), so it must be
-      // wrapped before chaining -- same trap that broke invoice generation.
+      // Uses delete_new_booked_parcel, which is ALREADY DEPLOYED -- admin calls
+      // the same RPC today. deleteNewBooking() below has wrapped it since it was
+      // written, but no button ever called it. Reusing it means this feature
+      // works the moment the HTML is uploaded: no new SQL, and no status
+      // transition to authorise, because deleting a row never fires
+      // enforce_parcel_status_transition() at all.
+      // supabase.rpc() is a thenable WITHOUT .catch(), so wrap before chaining.
       return Promise.resolve(
-        window.__nvSb.rpc("client_cancel_booking", { p_awb: awb, p_reason: reason })
+        window.__nvSb.rpc("delete_new_booked_parcel", { p_awb: awb })
       ).catch(function(e){
         return { error:{ message:String((e&&e.message)||e||"network error") } };
       }).then(function(r){
-        if(r && r.error){
-          var m=String(r.error.message||"");
-          if(/could not find the function|does not exist|schema cache/i.test(m)){
-            toast("Cancelling is not enabled on the server yet. Please run novax_client_cancel_booking_v1.sql.","error");
-          } else {
-            toast("Could not cancel: "+m,"error");
-          }
-          return;
-        }
-        // Only touch local state AFTER the server confirms.
-        p.status="Cancelled by client";
-        p.steps=Array.isArray(p.steps)?p.steps.concat(["Cancelled by client"]):["Cancelled by client"];
-        p.updated=new Date().toISOString().slice(0,16).replace("T"," ");
+        if(r && r.error){ toast("Could not cancel: "+String(r.error.message||""),"error"); return; }
+        state.parcels=(state.parcels||[]).filter(function(x){ return x.awb!==awb; });
+        if(state.selectedAwb===awb) state.selectedAwb="";
+        if(state.lastGeneratedAwb===awb) state.lastGeneratedAwb="";
         try{ saveState(); }catch(e){}
         try{ render(); }catch(e){}
         try{ if(typeof loadAll==="function") loadAll(); }catch(e){}
@@ -4914,10 +4910,43 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         shopifyLoadBulkState();
       }).catch(function(e){ toast("Could not save token: "+((e&&e.message)||e)); });
     }
+    /* Missing-RPC latch. Supabase returns PGRST202 / "Could not find the
+       function ... in the schema cache" when a function has not been deployed.
+       Retrying that on a timer is pure noise: it will not start existing on its
+       own. One attempt, then the feature is marked unavailable for this page
+       load. Nothing else is affected -- this only gates the Shopify panel. */
+    var NV_RPC_DEAD = Object.create(null);
+    function nvRpcMissing(err){
+      if(!err) return false;
+      var m = String(err.message || err.hint || "");
+      return err.code === "PGRST202" ||
+             /could not find the function|does not exist|schema cache/i.test(m);
+    }
+    function nvShopifyDisable(reason){
+      var chip = document.getElementById("shopifyBulkChip");
+      var out  = document.getElementById("shopifyBulkStatus");
+      var sc   = document.getElementById("shopifyStatusChip");
+      if(chip){ chip.textContent = "not enabled"; chip.className = "chip"; }
+      if(sc){ sc.textContent = "not enabled"; sc.className = "chip"; }
+      if(out && !out.dataset.nvDisabled){
+        out.dataset.nvDisabled = "1";
+        out.innerHTML = '<span class="footer-note">Shopify import is not switched on for this account yet. '
+                      + 'Ask NovaX to enable it &mdash; nothing is wrong on your side.</span>';
+      }
+      if(reason) console.warn("NovaX: Shopify RPCs are not deployed (" + reason + "). Polling stopped.");
+    }
+
     function shopifyLoadBulkState(){
       if(!window.__nvSb) return;
+      if(NV_RPC_DEAD.client_shopify_bulk_state) return;
       window.__nvSb.rpc("client_shopify_bulk_state",{}).then(function(r){
-        if(r&&r.error) return;
+        if(r&&r.error){
+          if(nvRpcMissing(r.error)){
+            NV_RPC_DEAD.client_shopify_bulk_state = true;
+            nvShopifyDisable(r.error.message);
+          }
+          return;
+        }
         var d=(r&&r.data&&r.data[0])||null;
         var chip=document.getElementById("shopifyBulkChip");
         var out=document.getElementById("shopifyBulkStatus");
@@ -5033,8 +5062,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function shopifyCheckStatus(){
       if(!window.__nvSb) return;
       try{ shopifyLoadBulkState(); }catch(e){}
+      if(NV_RPC_DEAD.client_shopify_status) return;
       window.__nvSb.rpc("client_shopify_status", {}).then(function(r){
-        if(r && r.error) return;
+        if(r && r.error){
+          if(nvRpcMissing(r.error)){
+            NV_RPC_DEAD.client_shopify_status = true;
+            nvShopifyDisable(r.error.message);
+          }
+          return;
+        }
         const row = r && r.data && r.data[0];
         const chip=document.getElementById("shopifyStatusChip");
         const detail=document.getElementById("shopifyStatusDetail");
@@ -8535,14 +8571,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(localStorage.getItem(HIDE_KEY)==="1"){ bar.classList.remove("show"); return; }
     var tip=getTip();
     if(!tip || isAcked(tip.key)){ bar.classList.remove("show"); return; }
-    document.getElementById("nvcoachH").textContent=tip.h;
-    document.getElementById("nvcoachA").textContent=tip.a;
+    var _h=bar.querySelector("#nvcoachH"), _a=bar.querySelector("#nvcoachA");
+    if(_h) _h.textContent=tip.h;
+    if(_a) _a.textContent=tip.a;
     bar.classList.add("show");
     bar.dataset.tipKey=tip.key;
   }
 
-  document.getElementById("nvcoachGo").addEventListener("click",function(e){ e.stopPropagation(); var k=bar.dataset.tipKey; if(k) ackTip(k); bar.classList.remove("show"); });
-  document.getElementById("nvcoachHide").addEventListener("click",function(e){ e.stopPropagation(); try{ localStorage.setItem(HIDE_KEY,"1"); }catch(e){} bar.classList.remove("show"); });
+  bar.querySelector("#nvcoachGo").addEventListener("click",function(e){ e.stopPropagation(); var k=bar.dataset.tipKey; if(k) ackTip(k); bar.classList.remove("show"); });
+  bar.querySelector("#nvcoachHide").addEventListener("click",function(e){ e.stopPropagation(); try{ localStorage.setItem(HIDE_KEY,"1"); }catch(e){} bar.classList.remove("show"); });
   bar.addEventListener("click",function(e){ if(e.target.closest("button")) return; goToTip(getTip()); });
 
   setInterval(function(){
