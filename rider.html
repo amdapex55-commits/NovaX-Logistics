@@ -879,5 +879,137 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     __lastPing = Date.now(); ping();
   })();
   </script>
+<script>
+/* ===================================================================
+   NovaX global error capture
+
+   WHY THIS EXISTS
+   log_portal_error(), the portal_error_logs table and the admin Error
+   Monitor were all built already -- but nothing global ever called them.
+   logClientError() had 3 call sites, logRiderError() 1, admin 0. They only
+   caught errors somebody remembered to wrap, so the three crashes found in
+   production on 7 Aug (renderWallets walletTopup, renderClientModules
+   walletTopup, the coach-bar addEventListener) produced ZERO rows. All three
+   were uncaught TypeErrors.
+
+   This hooks the two events that catch everything the browser throws:
+     window "error"              -- uncaught exceptions
+     window "unhandledrejection" -- promise rejections nobody caught
+
+   THREE DELIBERATE LIMITS, so this can never become the problem it reports:
+     1. DEDUPE by message+line. A crash inside render() fires on every tick;
+        without this it would write thousands of rows and recreate the
+        database-load incident.
+     2. HARD CAP of 40 rows per page load. Nothing pathological gets through.
+     3. BUFFERED until Supabase is ready. Installed before the data layer
+        exists, so boot-time crashes -- historically the worst ones, e.g. the
+        structuredClone blank-portal bug -- are captured too, then flushed
+        once a client appears. Gives up after ~40s rather than growing.
+
+   Fully self-contained. Touches no existing function. If any part of it
+   throws, the catch blocks swallow it: error logging must never be the thing
+   that breaks the page.
+   =================================================================== */
+(function nvGlobalErrorCapture(){
+  if (window.__nvGecLoaded) return;
+  window.__nvGecLoaded = true;
+
+  var SOURCE   = "rider";
+  var SEVERITY = "error";      // portal_error_logs severity value
+  var MAX      = 40;           // per page load
+  var seen = Object.create(null), sent = 0, queue = [], tries = 0, timer = null;
+
+  function sb(){
+    try { return window.__nvSb || window.__nvGuardSb || null; } catch(e){ return null; }
+  }
+
+  function page(){
+    try {
+      var t = (typeof state !== "undefined" && state && state.activeClientTab) ||
+              (typeof state !== "undefined" && state && state.activeAdminTab)  || "";
+      return (location.pathname + (t ? ":" + t : "")).slice(0, 120);
+    } catch(e){ return location.pathname.slice(0, 120); }
+  }
+
+  /* p_message is stored at 300 chars in this schema, so order matters:
+     message first, then file:line, then whatever stack still fits. */
+  function compose(msg, src, line, col, err){
+    var out = String(msg == null ? "unknown error" : msg);
+    if (src) out += " @" + String(src).split("/").pop() + ":" + line + ":" + col;
+    try {
+      if (err && err.stack) {
+        var st = String(err.stack).split("\n").slice(1, 4).join(" | ").replace(/\s+/g, " ");
+        out += " || " + st;
+      }
+    } catch(e){}
+    return out.slice(0, 300);
+  }
+
+  function flush(){
+    var s = sb();
+    if (!s || !s.rpc) return;
+    while (queue.length) {
+      var row = queue.shift();
+      try {
+        // Fire and forget. rpc() is a thenable without .catch(), so the
+        // rejection handler goes in .then()'s second argument -- chaining
+        // .catch() directly is the trap that once broke invoicing.
+        s.rpc("log_portal_error", row).then(function(){}, function(){});
+      } catch(e){}
+    }
+  }
+
+  function pump(){
+    if (timer) return;
+    timer = setInterval(function(){
+      tries++;
+      if (sb()) { flush(); clearInterval(timer); timer = null; return; }
+      if (tries > 20) { clearInterval(timer); timer = null; queue.length = 0; }  // ~40s, then stop
+    }, 2000);
+  }
+
+  function report(kind, msg, src, line, col, err){
+    try {
+      var key = kind + "|" + String(msg).slice(0, 120) + "|" + line;
+      if (seen[key] || sent >= MAX) return;
+      seen[key] = 1; sent++;
+      var row = {
+        p_source: SOURCE,
+        p_rpc_name: null,
+        p_page: page(),
+        p_message: compose(msg, src, line, col, err),
+        p_severity: SEVERITY
+      };
+      if (sb()) { queue.push(row); flush(); }
+      else { queue.push(row); pump(); }
+    } catch(e){}
+  }
+
+  window.addEventListener("error", function(e){
+    try {
+      // Resource load failures (img/script 404) surface here too, with no
+      // message. They are noise for this purpose -- the Network tab owns them.
+      if (e && e.target && e.target !== window && e.target.tagName) return;
+      report("error", e && e.message, e && e.filename, e && e.lineno, e && e.colno, e && e.error);
+    } catch(x){}
+  }, true);
+
+  window.addEventListener("unhandledrejection", function(e){
+    try {
+      var r = e && e.reason;
+      report("promise", (r && (r.message || r)) || "unhandled promise rejection", "", 0, 0, r);
+    } catch(x){}
+  });
+
+  // Manual escape hatch, e.g. from a catch block: window.nvLogError("msg")
+  window.nvLogError = function(m, rpcName){
+    try {
+      var row = { p_source: SOURCE, p_rpc_name: rpcName || null, p_page: page(),
+                  p_message: String(m == null ? "" : m).slice(0, 300), p_severity: "warning" };
+      if (sb()) { queue.push(row); flush(); } else { queue.push(row); pump(); }
+    } catch(e){}
+  };
+})();
+</script>
 </body>
 </html>
