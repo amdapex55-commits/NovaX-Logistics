@@ -869,6 +869,34 @@
   #pickupRequestList:empty::after{content:"No pickup requests yet.";}
   #subAccountList:empty::after{content:"No team members added yet.";}
   #clientStatusBoard:empty::after{content:"No parcels to group yet.";}
+  #nvTkList:empty::after{content:"No tickets yet \2014 raise one above if you need a human.";}
+  /* ---- Support tickets v2 ---- */
+  .nv-tk-card{margin-bottom:10px;}
+  .nv-tk-card .ops-card-head strong{overflow-wrap:anywhere;}
+  .nv-tk-thread{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);}
+  .nv-tk-msg{padding:8px 10px;border-radius:10px;background:var(--panel-soft,#f4f7f5);margin-bottom:8px;font-size:13px;overflow-wrap:anywhere;}
+  .nv-tk-msg.mine{background:#eafff5;}
+  .nv-tk-meta{font-size:11px;color:var(--muted);margin-bottom:3px;font-weight:700;}
+  .nv-tk-reply{flex:1 1 auto;min-width:0;padding:9px 11px;border:1px solid var(--line);border-radius:9px;font-size:14px;}
+  /* SLA breach: a slow pulse, not a strobe. It has to be noticeable on a
+     busy screen without being painful to sit next to all day, and it stops
+     entirely for anyone who has asked for reduced motion. */
+  .nv-tk-breach{border-color:var(--red,#e5484d)!important;animation:nvTkPulse 2.4s ease-in-out infinite;}
+  @keyframes nvTkPulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(229,72,77,0);}
+    50%{box-shadow:0 0 0 4px rgba(229,72,77,.18);}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .nv-tk-breach{animation:none;border-color:var(--red,#e5484d)!important;}
+  }
+  [data-theme="dark"] .nv-tk-msg{background:rgba(255,255,255,.05);}
+  [data-theme="dark"] .nv-tk-msg.mine{background:rgba(31,209,142,.14);}
+  [data-theme="dark"] .nv-tk-reply{background:#0b1f18;color:#eafff5;}
+  /* Cancel-booking control: deliberately quiet. It is destructive, so it must
+     never compete with the primary action on the card. */
+  .nv-cancel-booking{ font-size:12px; padding:7px 12px; min-height:36px;
+    border-color:var(--red,#e5484d); color:var(--red,#e5484d); font-weight:700; }
+  .nv-cancel-booking:hover{ background:rgba(229,72,77,.10); }
 
   /* ── 6. Value-change motion ───────────────────────────────────────────
      A figure that visibly settles reads as live; the same figure appearing
@@ -1051,6 +1079,7 @@
               <button class="client-tab" data-client-tab="wallet">Wallet</button>
               <button class="client-tab" data-client-tab="logs">Order Logs</button>
               <button class="client-tab" data-client-tab="subAccounts">Sub Accounts</button>
+              <button class="client-tab" data-client-tab="tickets">Support Tickets</button>
               <button class="client-tab" data-client-tab="support">AI Support</button>
             </nav>
           </aside>
@@ -1464,6 +1493,27 @@
               </div>
             </section>
             <!-- AI SUPPORT -->
+            <section class="client-module" id="client-tickets">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>Support Tickets</h3><p>Raise an issue with a human. Tickets are opened by you, never automatically.</p></div>
+                  <span class="chip info" id="nvTkOpenCount">0 open</span>
+                </div>
+                <div class="form-grid">
+                  <div class="field" style="grid-column:1/-1"><label>What is the issue?</label><input id="nvTkSubject" maxlength="120" placeholder="One line, e.g. COD not received for N5990018"></div>
+                  <div class="field"><label>Tracking number (optional)</label><input id="nvTkAwb" placeholder="N5990018" autocapitalize="characters"></div>
+                  <div class="field"><label>Priority</label><select id="nvTkPriority"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></div>
+                  <div class="field" style="grid-column:1/-1"><label>Details</label><textarea id="nvTkBody" rows="3" placeholder="What happened, what you need, and any reference numbers."></textarea></div>
+                </div>
+                <div class="inline-actions" style="margin-top:12px"><button class="action-btn" id="nvTkSubmit">Open Ticket</button></div>
+              </div>
+              <div class="panel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Your Tickets</h3><p>Newest first. Open one to read replies and respond.</p></div>
+                  <div class="inline-actions"><button class="ghost-btn nv-tkf action-btn" data-nv-tkf="open">Open</button><button class="ghost-btn nv-tkf" data-nv-tkf="resolved">Resolved</button><button class="ghost-btn nv-tkf" data-nv-tkf="all">All</button></div>
+                </div>
+                <div id="nvTkList"></div>
+              </div>
+            </section>
             <section class="client-module" id="client-support">
               <div class="grid two">
                 <div class="panel">
@@ -1552,7 +1602,19 @@
     const time = () => now().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const STORAGE_KEY = "novaxLogisticsStateV10";
     const SB_URL = window.NOVAX_CONFIG.SB_URL; // shared Supabase base URL (also used by connectStore, shopifyGenerateLink)
-    const STATUS_TAGS = ["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Refused","Consignee not available","Reattempt","Reassigned","Out of service area","Ready for return","Return in transit","Return received at origin","Return out for delivery","Parcel returned to consignee"];
+    /* NovaX status rename: "Parcel returned to consignee" -> "Return to shipper".
+       A return goes back to the SHIPPER (the merchant), never to the consignee
+       -- the old label was simply wrong. The string is a STORED value in
+       parcels.status, so rows written before the migration still carry the old
+       text. nvStatus() normalises on read, which means the portal is correct
+       whether or not sql/novax_return_to_shipper_v1.sql has been run yet, and
+       old rows arriving from an un-upgraded rider app keep working too. */
+    var NV_STATUS_ALIASES = { "Parcel returned to consignee": "Return to shipper" };
+    function nvStatus(s){
+      s = String(s == null ? "" : s);
+      return NV_STATUS_ALIASES[s] || s;
+    }
+    const STATUS_TAGS = ["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered","Refused","Consignee not available","Reattempt","Reassigned","Out of service area","Ready for return","Return in transit","Return received at origin","Return out for delivery","Return to shipper"];
     // NovaX (client identity leak safeguard): baseState below is DEMO/OFFLINE
     // FALLBACK DATA ONLY. It seeds local UI state before any Supabase session
     // check runs, purely so the page has something to paint on first frame.
@@ -1851,7 +1913,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     function dailyCommandData(){
       var myId=(state.client&&state.client.id)||null;
       var all=(state.parcels||[]).filter(function(p){ return p.clientId===myId; });
-      var closedStatuses=["Delivered","Parcel returned to consignee","Refused"];
+      var closedStatuses=["Delivered","Return to shipper","Refused","Cancelled by client"];
       var active=all.filter(function(p){ return closedStatuses.indexOf(p.status)===-1; });
       var delayed=all.filter(function(p){ return typeof isDelayed==="function"?isDelayed(p):(p.status!=="Delivered"&&agingHours(p)>24); });
       var refused=all.filter(function(p){ return p.status==="Refused"; });
@@ -2326,7 +2388,8 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     function alertForParcel(p){
       const h=agingHours(p);
       if(p.status==="Parcel now in transit"){ if(h>=72) return {level:"critical",label:"Red alert: transit over 3 days",due:"AI + support must act now"}; if(h>=48) return {level:"warning",label:"Transit aging",due:"Escalate before 3 days"}; return {level:"ok",label:"In transit",due:"Transit clock running"}; }
-      if(["Delivered","Parcel returned to consignee"].includes(p.status)) return {level:"ok",label:"Closed",due:"No open alert"};
+      if(p.status==="Cancelled by client") return {level:"ok",label:"Cancelled",due:"You cancelled this booking"};
+      if(["Delivered","Return to shipper"].includes(p.status)) return {level:"ok",label:"Closed",due:"No open alert"};
       if(h>=24) return {level:"critical",label:"24h status breach",due:"AI + support must act now"};
       return {level:"ok",label:"Within SLA",due:`${24-Math.round(h)}h left`};
     }
@@ -2343,7 +2406,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     window.nvFormatNumber=nvFormatNumber;
     function money(v){ return PKR.format(v).replace("PKR","Rs"); }
     function fmt(v){ return nvFormatNumber(v); }
-    function statusClass(p){ const a=alertForParcel(p); if(a.level==="critical"||p.risk>=65||p.exception) return "bad"; if(a.level==="warning") return "warn"; if(["Delivered","Parcel returned to consignee"].includes(p.status)) return "good"; if(p.stage<5) return "info"; if(p.stage<8) return "warn"; return "good"; }
+    function statusClass(p){ const a=alertForParcel(p); if(a.level==="critical"||p.risk>=65||p.exception) return "bad"; if(a.level==="warning") return "warn"; if(["Delivered","Return to shipper"].includes(p.status)) return "good"; if(p.stage<5) return "info"; if(p.stage<8) return "warn"; return "good"; }
     function isRefusalReview(p){ return /refus|attempt disputed|consignee denies|not available/i.test(`${p.status} ${p.exception||""} ${p.steps.join(" ")}`); }
     function meterClass(v){ if(v>=75) return "red"; if(v>=45) return "amber"; return "blue"; }
     function metricCard(label,value,fill,caption,kind="",icon="",action=""){
@@ -2419,7 +2482,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       "Address/phone issue":"We could not deliver due to an address or phone issue. Please reply with the correct details."
     };
     function waKindForStatus(status){
-      const map={"New booked":"Booked","Parcel out for delivery":"Out for delivery","Delivered":"Delivered","Refused":"Refused","Consignee not available":"Consignee not available","Reattempt":"Reattempt","Ready for return":"Return to origin","Return in transit":"Return to origin","Return received at origin":"Return to origin","Return out for delivery":"Return to origin","Parcel returned to consignee":"Return to origin"};
+      const map={"New booked":"Booked","Parcel out for delivery":"Out for delivery","Delivered":"Delivered","Refused":"Refused","Consignee not available":"Consignee not available","Reattempt":"Reattempt","Ready for return":"Return to origin","Return in transit":"Return to origin","Return received at origin":"Return to origin","Return out for delivery":"Return to origin","Return to shipper":"Return to origin"};
       return map[status]||"Booked";
     }
     // Normalizes any saved phone format to Pakistani country-code digits
@@ -2764,7 +2827,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function renderClientParcels(){
       const parcels=filteredParcels();
       document.getElementById("clientParcelRows").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<tr class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${p.stage}/${p.totalStages}</span><span>${pr}%</span></div></td></tr>`; }).join("")||`<tr><td colspan="5">No parcels in range.</td></tr>`;
-      document.getElementById("clientParcelCards").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<article class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div></article>`; }).join("");
+      document.getElementById("clientParcelCards").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<article class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${isCancellableBooking(p)?`<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn nv-cancel-booking" type="button" onclick="cancelClientBooking('${escLabelText(p.awb)}',event)">Cancel booking</button></div>`:""}</article>`; }).join("");
     }
     function toggleStatusBoard(){ state.statusBoardOpen=!state.statusBoardOpen; renderClientStatusBoard(); }
     function renderClientStatusBoard(){
@@ -2903,7 +2966,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         "Consignee not available":"The consignee was not available for delivery.",
         "Reattempt":"A redelivery attempt is scheduled.",
         "Ready for return":"Return is being sent back to origin.",
-        "Parcel returned to consignee":"Your return was completed at origin."
+        "Return to shipper":"Your return was completed at origin."
       };
       const important=[
         ["New booked","Booked"],
@@ -2916,7 +2979,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         ["Consignee not available","Consignee not available"],
         ["Reattempt","Reattempt"],
         ["Ready for return","Returned"],
-        ["Parcel returned to consignee","Returned"]
+        ["Return to shipper","Returned"]
       ];
       const rows=important
         .filter(([status])=>p.steps.includes(status)||p.status===status||(["Refused","Consignee not available","Reattempt"].includes(status)&&isRefusalReview(p)))
@@ -4480,6 +4543,299 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         toast(`${awb} sent to operations for redelivery.`);
       }).catch(function(e){ toast(`Could not send the reattempt request: ${(e&&e.message)||e}`); throw e; });
     }
+    /* ===================================================================
+       Cancel a booking (merchant self-service)
+
+       Only offered while the parcel is still nothing more than a booking.
+       The REAL guard is server-side in client_cancel_booking(): status must
+       be "New booked", the parcel must not be on an invoice or a manifest,
+       and it must belong to the calling merchant. This function only decides
+       whether to SHOW the button -- it is not the security boundary.
+
+       It is a soft cancel: the row and the AWB survive, so history stays
+       intact and the number can never be reissued to a different parcel.
+       =================================================================== */
+    function isCancellableBooking(p){
+      if(!p) return false;
+      if(String(p.status||"") !== "New booked") return false;
+      if(p.invoiceId) return false;                       // already billed
+      if(p.rider || p.riderId) return false;              // a rider is already assigned
+      return true;
+    }
+
+    function cancelClientBooking(awb, ev){
+      try{ if(ev && ev.stopPropagation) ev.stopPropagation(); }catch(e){}
+      var p=(state.parcels||[]).find(function(x){ return x.awb===awb; });
+      if(!p){ toast("That booking is no longer on your account.","error"); return Promise.resolve(); }
+      if(!isCancellableBooking(p)){
+        toast("This parcel can no longer be cancelled - it has already moved.","error");
+        return Promise.resolve();
+      }
+      if(!window.confirm("Cancel booking "+awb+"?\n\nThe tracking number stays on record and cannot be reused. This cannot be undone.")) return Promise.resolve();
+      if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment.","error"); return Promise.resolve(); }
+
+      var reason=(window.prompt("Reason for cancelling (optional):","")||"").slice(0,200);
+      toast("Cancelling "+awb+"...");
+      // supabase.rpc() returns a thenable WITHOUT .catch(), so it must be
+      // wrapped before chaining -- same trap that broke invoice generation.
+      return Promise.resolve(
+        window.__nvSb.rpc("client_cancel_booking", { p_awb: awb, p_reason: reason })
+      ).catch(function(e){
+        return { error:{ message:String((e&&e.message)||e||"network error") } };
+      }).then(function(r){
+        if(r && r.error){
+          var m=String(r.error.message||"");
+          if(/could not find the function|does not exist|schema cache/i.test(m)){
+            toast("Cancelling is not enabled on the server yet. Please run novax_client_cancel_booking_v1.sql.","error");
+          } else {
+            toast("Could not cancel: "+m,"error");
+          }
+          return;
+        }
+        // Only touch local state AFTER the server confirms.
+        p.status="Cancelled by client";
+        p.steps=Array.isArray(p.steps)?p.steps.concat(["Cancelled by client"]):["Cancelled by client"];
+        p.updated=new Date().toISOString().slice(0,16).replace("T"," ");
+        try{ saveState(); }catch(e){}
+        try{ render(); }catch(e){}
+        try{ if(typeof loadAll==="function") loadAll(); }catch(e){}
+        toast(awb+" cancelled.","success");
+      });
+    }
+
+    /* ===================================================================
+       Support tickets v2 (client side) -- MANUAL ONLY
+
+       Nothing here creates a ticket except the merchant pressing "Open
+       Ticket". There is no auto-ticketing, no sourceKey dedupe and no
+       background writer -- those were exactly what produced ~1,800 junk
+       tickets and the 409 insert storm in v1.
+
+       Reads come straight from novax_tickets/novax_ticket_replies (RLS
+       scopes them to this merchant); writes go through the SECURITY DEFINER
+       RPCs so the rules live in the database, not the browser.
+       =================================================================== */
+    var NV_TK = { list: [], replies: {}, filter: "open", openId: null, loading: false };
+
+    function nvTkEsc(v){
+      return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){
+        return ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" })[c];
+      });
+    }
+    function nvTkHrs(n){
+      n = Number(n || 0);
+      if (n < 1) return Math.max(1, Math.round(n * 60)) + "m";
+      return (n < 24 ? Math.round(n) + "h" : Math.round(n / 24) + "d");
+    }
+    /* SLA is DERIVED, never stored as a countdown. created_at and
+       first_response_at come from the server, so every viewer computes the
+       same answer and nothing has to tick to keep it true. */
+    function nvTkSla(t){
+      var created = new Date(String(t.created_at || "").replace(" ", "T"));
+      if (isNaN(created.getTime())) return { state: "unknown", text: "" };
+      var limitMs = (Number(t.sla_hours || 24)) * 3600e3;
+      if (t.first_response_at){
+        var fr = new Date(String(t.first_response_at).replace(" ", "T"));
+        var took = (fr - created) / 3600e3;
+        return { state: (fr - created) <= limitMs ? "met" : "missed",
+                 text: "First reply in " + nvTkHrs(took) };
+      }
+      if (t.status === "resolved") return { state: "met", text: "Resolved" };
+      var age = Date.now() - created.getTime();
+      if (age > limitMs) return { state: "breached",
+        text: "No reply for " + nvTkHrs(age / 3600e3) + " — past the " + (t.sla_hours || 24) + "h target" };
+      return { state: "running",
+        text: nvTkHrs((limitMs - age) / 3600e3) + " left for first reply" };
+    }
+
+    function nvTkLoad(){
+      var sb = window.__nvSb;
+      if (!sb || NV_TK.loading) return Promise.resolve();
+      NV_TK.loading = true;
+      return Promise.resolve(
+        sb.from("novax_tickets").select("*").order("created_at", { ascending: false }).limit(200)
+      ).catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+       .then(function(r){
+        NV_TK.loading = false;
+        if (r && r.error){
+          if (/does not exist|schema cache|relation/i.test(String(r.error.message || ""))){
+            var host = document.getElementById("nvTkList");
+            if (host) host.innerHTML = '<div class="ops-card"><strong>Ticketing is not enabled yet</strong>' +
+              '<p class="footer-note">Ask NovaX to run novax_tickets_v2.sql.</p></div>';
+            return;
+          }
+          console.warn("NovaX tickets load", r.error.message);
+          return;
+        }
+        NV_TK.list = (r && r.data) || [];
+        nvTkRender();
+      });
+    }
+
+    function nvTkLoadReplies(id){
+      var sb = window.__nvSb;
+      if (!sb || !id) return Promise.resolve();
+      return Promise.resolve(
+        sb.from("novax_ticket_replies").select("*").eq("ticket_id", id).order("created_at", { ascending: true })
+      ).catch(function(){ return { data: [] }; })
+       .then(function(r){ NV_TK.replies[id] = (r && r.data) || []; nvTkRender(); });
+    }
+
+    function nvTkCard(t){
+      var sla = nvTkSla(t);
+      var open = NV_TK.openId === t.id;
+      var stChip = t.status === "resolved" ? "good" : t.status === "pending_client" ? "warn" : "info";
+      var stText = t.status === "resolved" ? "resolved" : t.status === "pending_client" ? "needs your reply" : "open";
+      var prChip = t.priority === "high" ? "bad" : t.priority === "low" ? "info" : "warn";
+      var slaChip = sla.state === "breached" ? "bad" : sla.state === "missed" ? "warn" : "good";
+      var reps = NV_TK.replies[t.id] || [];
+
+      var thread = "";
+      if (open){
+        thread = '<div class="nv-tk-thread">' +
+          (reps.length ? reps.map(function(r){
+            return '<div class="nv-tk-msg ' + (r.by_side === "client" ? "mine" : "") + '">' +
+              '<div class="nv-tk-meta">' + nvTkEsc(r.by_name || (r.by_side === "client" ? "You" : "NovaX Support")) +
+              ' · ' + nvTkEsc(String(r.created_at || "").replace("T", " ").slice(0, 16)) + '</div>' +
+              '<div>' + nvTkEsc(r.body) + '</div></div>';
+          }).join("") : '<p class="footer-note">No replies yet.</p>') +
+          (t.status !== "resolved"
+            ? '<div class="inline-actions" style="margin-top:10px;gap:6px">' +
+              '<input class="nv-tk-reply" id="nvTkReply-' + nvTkEsc(t.id) + '" placeholder="Write a reply...">' +
+              '<button class="action-btn" data-nv-tkreply="' + nvTkEsc(t.id) + '">Send</button></div>'
+            : '') +
+          '</div>';
+      }
+
+      return '<div class="ops-card nv-tk-card' + (sla.state === "breached" ? " nv-tk-breach" : "") + '">' +
+        '<div class="ops-card-head" data-nv-tkopen="' + nvTkEsc(t.id) + '" style="cursor:pointer">' +
+          '<strong>' + nvTkEsc(t.code || "Ticket") + ' · ' + nvTkEsc(t.subject) + '</strong>' +
+          '<span class="chip ' + stChip + '">' + stText + '</span>' +
+        '</div>' +
+        '<div class="inline-actions" style="flex-wrap:wrap;gap:6px;margin:6px 0">' +
+          '<span class="chip ' + prChip + '">' + nvTkEsc(t.priority) + '</span>' +
+          (t.awb ? '<span class="chip info">' + nvTkEsc(t.awb) + '</span>' : "") +
+          (sla.text ? '<span class="chip ' + slaChip + '">' + nvTkEsc(sla.text) + '</span>' : "") +
+          '<span class="chip info">Opened ' + nvTkEsc(String(t.created_at || "").replace("T", " ").slice(0, 16)) + '</span>' +
+        '</div>' +
+        (t.body ? '<p style="font-size:13px;margin:6px 0">' + nvTkEsc(t.body) + '</p>' : "") +
+        thread +
+      '</div>';
+    }
+
+    function nvTkRender(){
+      var host = document.getElementById("nvTkList");
+      if (!host) return;
+      var all = NV_TK.list || [];
+      var openOnes = all.filter(function(t){ return t.status !== "resolved"; });
+      var badge = document.getElementById("nvTkOpenCount");
+      if (badge){
+        var breached = openOnes.filter(function(t){ return nvTkSla(t).state === "breached"; }).length;
+        badge.textContent = openOnes.length + " open" + (breached ? " · " + breached + " overdue" : "");
+        badge.className = "chip " + (breached ? "bad" : openOnes.length ? "warn" : "good");
+      }
+      Array.prototype.forEach.call(document.querySelectorAll("[data-nv-tkf]"), function(b){
+        b.className = "ghost-btn nv-tkf" + (b.getAttribute("data-nv-tkf") === NV_TK.filter ? " action-btn" : "");
+      });
+      var rows = NV_TK.filter === "open" ? openOnes
+               : NV_TK.filter === "resolved" ? all.filter(function(t){ return t.status === "resolved"; })
+               : all;
+      host.innerHTML = rows.map(nvTkCard).join("");
+    }
+
+    function nvTkSubmit(){
+      var sb = window.__nvSb;
+      var subj = (document.getElementById("nvTkSubject") || {}).value || "";
+      var body = (document.getElementById("nvTkBody") || {}).value || "";
+      var awb  = (document.getElementById("nvTkAwb") || {}).value || "";
+      var pri  = (document.getElementById("nvTkPriority") || {}).value || "normal";
+      if (!subj.trim()){ toast("Please describe the issue in one line.", "error"); return; }
+      if (!sb){ toast("Cloud connection not ready yet, please try again in a moment.", "error"); return; }
+      var btn = document.getElementById("nvTkSubmit");
+      if (btn){ btn.disabled = true; btn.textContent = "Opening..."; }
+      Promise.resolve(
+        sb.rpc("novax_ticket_open", { p_subject: subj.trim(), p_body: body.trim(),
+                                      p_awb: awb.trim().toUpperCase(), p_priority: pri })
+      ).catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+       .then(function(r){
+        if (btn){ btn.disabled = false; btn.textContent = "Open Ticket"; }
+        if (r && r.error){
+          var m = String(r.error.message || "");
+          toast(/does not exist|schema cache/i.test(m)
+            ? "Ticketing is not enabled on the server yet (run novax_tickets_v2.sql)."
+            : "Could not open the ticket: " + m, "error");
+          return;
+        }
+        ["nvTkSubject","nvTkBody","nvTkAwb"].forEach(function(id){
+          var el = document.getElementById(id); if (el) el.value = "";
+        });
+        NV_TK.filter = "open";
+        toast("Ticket opened. We will reply here.", "success");
+        nvTkLoad();
+      });
+    }
+
+    function nvTkSendReply(id){
+      var sb = window.__nvSb;
+      var el = document.getElementById("nvTkReply-" + id);
+      var body = el ? el.value : "";
+      if (!body.trim()) return;
+      if (!sb){ toast("Cloud connection not ready yet.", "error"); return; }
+      Promise.resolve(sb.rpc("novax_ticket_client_reply", { p_ticket_id: id, p_body: body.trim() }))
+        .catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+        .then(function(r){
+          if (r && r.error){ toast("Could not send the reply: " + r.error.message, "error"); return; }
+          if (el) el.value = "";
+          nvTkLoadReplies(id);
+          nvTkLoad();
+        });
+    }
+
+    function nvTkWire(){
+      var sub = document.getElementById("nvTkSubmit");
+      if (sub && !sub._nvWired){ sub._nvWired = true; sub.addEventListener("click", nvTkSubmit); }
+      var pane = document.getElementById("client-tickets");
+      if (pane && !pane._nvWired){
+        pane._nvWired = true;
+        pane.addEventListener("click", function(ev){
+          var f = ev.target.closest("[data-nv-tkf]");
+          if (f){ NV_TK.filter = f.getAttribute("data-nv-tkf"); nvTkRender(); return; }
+          var o = ev.target.closest("[data-nv-tkopen]");
+          if (o){
+            var id = o.getAttribute("data-nv-tkopen");
+            NV_TK.openId = (NV_TK.openId === id) ? null : id;
+            if (NV_TK.openId && !NV_TK.replies[id]) nvTkLoadReplies(id); else nvTkRender();
+            return;
+          }
+          var rp = ev.target.closest("[data-nv-tkreply]");
+          if (rp){ nvTkSendReply(rp.getAttribute("data-nv-tkreply")); return; }
+        });
+      }
+    }
+
+    /* Wire + load. Deliberately NOT part of render(): tickets are their own
+       island, so a ticket failure can never take the dashboard down with it,
+       and the dashboard re-rendering does not re-fetch tickets. */
+    (function nvTkBoot(){
+      function tick(){
+        try{ nvTkWire(); }catch(e){}
+        var pane=document.getElementById("client-tickets");
+        if(pane && pane.classList.contains("active")){
+          try{ nvTkRender(); }catch(e){}
+        }
+      }
+      setTimeout(function(){ tick(); try{ nvTkLoad(); }catch(e){} }, 900);
+      setInterval(tick, 3000);
+      // Refresh from the server only while the merchant is actually looking
+      // at the tickets tab, and only once a minute -- v1 polled constantly.
+      setInterval(function(){
+        var pane=document.getElementById("client-tickets");
+        if(pane && pane.classList.contains("active") && document.visibilityState!=="hidden"){
+          try{ nvTkLoad(); }catch(e){}
+        }
+      }, 60000);
+    })();
+
     function applyClientDateRange(){ state.clientDateFrom=document.getElementById("clientDateFrom").value||state.clientDateFrom; state.clientDateTo=document.getElementById("clientDateTo").value||state.clientDateTo; saveState(); render(); toast(`History filtered ${state.clientDateFrom} to ${state.clientDateTo}.`); }
     // NovaX fix: this used to create a fake "Payout requested" payment-log
     // entry entirely in the browser, with no Supabase call at all -- it
@@ -5147,10 +5503,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          rpc revoke_staff_user(p_staff_id uuid)
        If a table/RPC is missing, the UI says exactly what is missing. */
     var NOVAX_ROLE_TABS = {
-      Owner:     ["dashboard","newBooking","awbLabel","bulkBooking","integrations","reports","payments","wallet","logs","subAccounts","support"],
-      Finance:   ["dashboard","reports","payments","logs"],
+      Owner:     ["dashboard","newBooking","awbLabel","bulkBooking","integrations","reports","payments","wallet","logs","subAccounts","tickets","support"],
+      Finance:   ["dashboard","reports","payments","logs","tickets"],
       Warehouse: ["dashboard","newBooking","bulkBooking","awbLabel"],
-      Support:   ["dashboard","logs","support"]
+      Support:   ["dashboard","logs","tickets","support"]
     };
     function nvClientRole(){ var r=window.__novaxClientRole; return NOVAX_ROLE_TABS[r]?r:"Owner"; }
     function nvRoleTabs(){ return NOVAX_ROLE_TABS[nvClientRole()]; }
@@ -5363,7 +5719,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // export list, so their onclick="...()" attributes could silently fail
     // to resolve depending on scope timing -- explicitly exporting them
     // alongside the other wallet/bank functions guarantees they're callable.
-    Object.assign(window,{ openClientParcelJourney, selectParcel, requestRedelivery, openAwbModal, closeAwbModal, downloadInvoiceCsv, printInvoice, viewInvoice, closeInvoiceModal, printLabels, confirmWalletWithdraw, requestWalletWithdrawal, selectWalletSpeed, closeWalletDone, saveBankDetails, editBankDetails, cancelBankDetailsEdit });
+    Object.assign(window,{ cancelClientBooking, isCancellableBooking, openClientParcelJourney, selectParcel, requestRedelivery, openAwbModal, closeAwbModal, downloadInvoiceCsv, printInvoice, viewInvoice, closeInvoiceModal, printLabels, confirmWalletWithdraw, requestWalletWithdrawal, selectWalletSpeed, closeWalletDone, saveBankDetails, editBankDetails, cancelBankDetailsEdit });
     window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); render(); } });
     /* ===== NovaX data-ready safety net: guarantees isClientDataReady() eventually flips true even if a cloud sync path is missed ===== */
     window.__novaxClientDataReady = window.__novaxClientDataReady || false;
@@ -5457,7 +5813,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
       function dtpart(t){ return t?String(t).replace("T"," ").slice(0,16):""; }
       function pmeta(p){ return { service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, fragile:p.fragile, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", source:p.source, branch:p.branch, risk:p.risk, steps:p.steps, clientFeedback:p.clientFeedback, returnProof:p.returnProof, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"" }; }
-      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", trackingToken:r.tracking_token||"" }; }
+      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", trackingToken:r.tracking_token||"" }; }
       function invoiceSummaryFallback(invoiceType, cod, charges, payable, due){
         if(invoiceType==="Delivery Charges") return `Delivery charges due to NovaX ${money(due)}`;
         if(invoiceType==="Mixed") return `COD ${money(cod)} \u00b7 Charges ${money(charges)} \u00b7 Payable ${money(payable)}`;
@@ -5978,7 +6334,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const host=document.getElementById("clientActionNeededCard"); if(!host) return;
       let pool=[]; try{ pool=(typeof clientScopedParcels==="function")?clientScopedParcels():((state.parcels)||[]); }catch(e){ pool=state.parcels||[]; }
       const parcelItems=pool.filter(function(p){ return ["Refused","Consignee not available","Ready for return"].indexOf(p.status)>-1 || (typeof isDelayed==="function" && isDelayed(p) && p.status!=="Delivered"); });
-      const missingInfoItems=pool.filter(function(p){ return p.status!=="Delivered" && p.status!=="Parcel returned to consignee" && (!p.address || !p.phone); });
+      const missingInfoItems=pool.filter(function(p){ return p.status!=="Delivered" && p.status!=="Return to shipper" && p.status!=="Cancelled by client" && (!p.address || !p.phone); });
       let payable=0; try{ payable=(typeof clientMetrics==="function")?clientMetrics().payable:0; }catch(e){}
       const totalItems=parcelItems.length+missingInfoItems.length+(payable>0?1:0);
       if(!totalItems){ host.innerHTML=""; host.style.display="none"; return; }
@@ -7012,6 +7368,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return;
       }
       if(a.type==="show_journey_awb"){ if(typeof openClientParcelJourney==="function") openClientParcelJourney(a.awb); return; }
+      if(a.type==="open_tickets"){
+        if(typeof showClientTab==="function") showClientTab("tickets");
+        try{ if(typeof nvTkLoad==="function") nvTkLoad(); }catch(e){}
+        return;
+      }
+      if(a.type==="cancel_booking_awb"){
+        if(!a.awb){ addMsg("Which tracking number should I cancel?","b"); return; }
+        if(typeof cancelClientBooking==="function") cancelClientBooking(a.awb);
+        return;
+      }
       if(a.type==="go_booking"){ if(typeof showClientTab==="function") showClientTab("newBooking"); panel.classList.add("open"); return; }
       if(a.type==="focus_manual_booking"){ if(window.novaxFocusFirstBookingField) window.novaxFocusFirstBookingField(); return; }
       if(a.type==="paste_whatsapp_order"){
@@ -7386,6 +7752,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     awbLabel:["Shall I check which parcels still need labels?","which parcels still need AWB labels printed?"],
     payments:["Want me to break down your latest invoice?","explain my latest invoice"],
     support:["I can look up any parcel issue for you.","which of my parcels have problems right now?"],
+    tickets:["Open a ticket and a person replies in the same thread.","how do I open a support ticket?"],
     integrations:["Want a hand connecting your store?","how do I connect my Shopify store?"]
   };
   function nvHideNudge(){ nudge.classList.remove("show"); }
@@ -7460,7 +7827,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     "Return in transit":"Arrival at origin",
     "Return received at origin":"Return closed",
     "Return out for delivery":"Return delivery to you",
-    "Parcel returned to consignee":"Completed"
+    "Return to shipper":"Completed"
   };
 
   function localAutopilotFallback(rawMessage){
@@ -7824,6 +8191,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ] };
     }
 
+    /* Cancel a booking. The AI only ever OFFERS it -- the button routes to
+       cancelClientBooking(), which asks for confirmation and then calls the
+       server RPC. The real guard is in the database, not here. */
+    if(has(["cancel booking","cancel order","cancel parcel","cancel my order","booking cancel","order cancel","cancel kar","cancel karna","cancel karwana"])){
+      if(!targetAwb) return { reply:"Share the tracking number and I'll check whether it can still be cancelled. Only parcels still showing \"New booked\" can be cancelled from the portal." };
+      var cp=null;
+      try{ cp=(nvMyParcels()||[]).find(function(x){ return String(x.awb).toUpperCase()===String(targetAwb).toUpperCase(); }); }catch(e){}
+      if(!cp) return { reply:"I couldn't find "+targetAwb+" under this account. Please confirm the tracking ID." };
+      if(typeof isCancellableBooking==="function" && !isCancellableBooking(cp)){
+        return { reply:targetAwb+" is already \""+cp.status+"\", so it can't be cancelled from here any more. Open a support ticket and our team will look at it.",
+                 actions:[{ label:"Open a ticket", kind:"local", type:"open_tickets" }] };
+      }
+      return { reply:"I can cancel "+targetAwb+". The tracking number stays on record and can't be reused, and this can't be undone.",
+               actions:[{ label:"Cancel "+targetAwb, kind:"local", type:"cancel_booking_awb", awb:targetAwb }] };
+    }
+    /* Human handoff now means a real, manual ticket. */
+    if(has(["open ticket","raise ticket","create ticket","ticket banao","support ticket","complaint","shikayat","talk to human","human agent","speak to someone","baat karni hai"])){
+      return { reply:"I can take you to Support Tickets — open one there and a person will reply in the same thread. You'll see the reply in the portal.",
+               actions:[{ label:"Open Support Tickets", kind:"local", type:"open_tickets" }] };
+    }
     if(has(["mark delivered","mark returned","mark refused","mark as delivered","mark as returned","mark as refused"])){
       return { reply:"I can't change delivery status directly \u2014 only rider or admin scans update that." };
     }
