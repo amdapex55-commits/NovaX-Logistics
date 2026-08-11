@@ -1522,6 +1522,16 @@
       overflow: hidden;
     }
 
+    /* NovaX (admin AWB parity): on-screen styling for the two label fields
+       the admin label was missing -- the boxed full-width COD block and the
+       rider-facing Allow-to-Open flag. Copied from client.html so the
+       preview in admin matches what the merchant sees and what prints. */
+    .awb-field.awb-cod { grid-column: 1 / -1; border-width: 2px; border-color: #111; }
+    .awb-field.awb-cod strong { font-size: 19px; font-weight: 900; }
+    .awb-field.awb-openflag strong { font-weight: 800; letter-spacing: .2px; }
+    .awb-field.awb-openflag.is-yes strong { text-decoration: underline; text-underline-offset: 2px; }
+    .awb-field.awb-openflag.is-no strong { opacity: .92; }
+
     .qr-img {
       width: 112px;
       height: 112px;
@@ -1778,11 +1788,6 @@
     }
 
     @media print {
-      @page {
-        size: A4 landscape;
-        margin: 5mm;
-      }
-
       body {
         margin: 0 !important;
         background: #fff !important;
@@ -1813,139 +1818,20 @@
         padding: 0 !important;
         margin: 0 !important;
       }
+      /* NovaX fix (admin AWB parity with client portal):
+         the AWB label LAYOUT rules that used to live here have moved into
+         the two independently toggleable print stylesheets below
+         (#nvPrintThermal / #nvPrintA4) -- byte-for-byte the same rules the
+         client portal uses. They were removed from this block because a
+         hardcoded @page{size:A4 landscape} here can never be overridden by
+         a class, so admin was permanently stuck on the old landscape 3-up
+         sheet while the client portal had already moved to A4 portrait
+         (3 x 92mm bands) and a real 4x6in thermal mode.
 
-      .print-page {
-        width: 100% !important;
-        height: auto !important;
-        min-height: 0 !important;
-        display: grid !important;
-        grid-template-rows: repeat(3, minmax(min-content, 1fr)) !important;
-        grid-template-columns: 1fr !important;
-        gap: 3mm !important;
-        box-sizing: border-box !important;
-        page-break-after: always;
-        break-after: page;
-        overflow: visible !important;
-      }
+         Only the rules that apply to EVERY print job (hide the page, show
+         the print stage) stay here, so manifests, invoices and the rider
+         run sheet keep working unchanged. */
 
-      .print-page:last-child {
-        page-break-after: auto !important;
-        break-after: auto !important;
-      }
-
-      .print-label-wrap {
-        width: 100% !important;
-        height: 100% !important;
-        min-height: 0 !important;
-        overflow: hidden !important;
-        break-inside: avoid !important;
-        page-break-inside: avoid !important;
-      }
-
-      .awb-label {
-        width: 100% !important;
-        height: 100% !important;
-        min-height: 0 !important;
-        display: grid !important;
-        grid-template-columns: 54mm minmax(0, 1fr) 40mm !important;
-        gap: 3mm !important;
-        padding: 3mm !important;
-        border: 1.5px solid #111 !important;
-        border-radius: 3px !important;
-        box-sizing: border-box !important;
-        overflow: hidden !important;
-        background: #fff !important;
-      }
-
-      .awb-zone {
-        border: 1px solid #777 !important;
-        border-radius: 2px !important;
-        padding: 2mm !important;
-        gap: 1.4mm !important;
-        min-width: 0 !important;
-        min-height: 0 !important;
-        overflow: hidden !important;
-      }
-
-      .awb-zone-title {
-        font-size: 7.5px !important;
-        font-weight: 900 !important;
-        text-transform: uppercase !important;
-        letter-spacing: .04em !important;
-        border-bottom: 1px solid #111 !important;
-        padding-bottom: 1mm !important;
-      }
-
-      .awb-no {
-        font-size: 19px !important;
-        line-height: 1 !important;
-        font-weight: 900 !important;
-        letter-spacing: .02em !important;
-      }
-
-      .awb-route {
-        font-size: 12.5px !important;
-        font-weight: 900 !important;
-      }
-
-      .awb-mini-grid {
-        display: grid !important;
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        gap: 1.5mm !important;
-      }
-
-      .awb-field {
-        border: 1px solid #c9c9c9 !important;
-        border-radius: 2px !important;
-        padding: 1.4mm !important;
-        min-width: 0 !important;
-        background: #fff !important;
-      }
-
-      .awb-field span {
-        display: block !important;
-        font-size: 7px !important;
-        line-height: 1 !important;
-        font-weight: 900 !important;
-        text-transform: uppercase !important;
-        color: #555 !important;
-        margin-bottom: .8mm !important;
-      }
-
-      .awb-field strong {
-        display: block !important;
-        font-size: 10.5px !important;
-        line-height: 1.15 !important;
-        font-weight: 800 !important;
-        color: #111 !important;
-        overflow-wrap: anywhere !important;
-      }
-
-      .awb-address strong, .awb-item strong {
-        display: -webkit-box !important;
-        -webkit-line-clamp: 2 !important;
-        -webkit-box-orient: vertical !important;
-        overflow: hidden !important;
-      }
-
-      .qr-img {
-        width: 28mm !important;
-        height: 28mm !important;
-        padding: 1mm !important;
-        object-fit: contain !important;
-      }
-
-      .barcode-img {
-        width: 34mm !important;
-        height: 9mm !important;
-        padding: .8mm !important;
-        object-fit: contain !important;
-      }
-
-      .awb-scan .chip {
-        font-size: 7px !important;
-        padding: 1.5px 4px !important;
-      }
     }
     .data-note {
       border-top: 1px solid var(--line);
@@ -4116,6 +4002,156 @@
     .manifest-totals { display: flex; gap: 10mm; font-size: 13px; margin-bottom: 8mm; }
     .manifest-sign { display: flex; gap: 12mm; margin-top: 10mm; }
     .manifest-sign-line { flex: 1; border-top: 1px solid #333; padding-top: 2mm; font-size: 11px; text-align: center; }
+
+    /* ===== NovaX Rider Run Sheet (A4 reconciliation sheet) =====
+       Printed the moment admin pushes a batch to "Parcel out for delivery".
+       The branch manager keeps the paper copy, ticks each stop off through
+       the day, and reconciles cash against the COD column at close. It is a
+       plain A4 document -- deliberately NOT an AWB label -- so it uses its
+       own classes and never inherits the label print sizing. */
+    /* Sized for A4 LANDSCAPE (nvPrintDoc) -- a run sheet lives or dies on the
+       address column, and portrait leaves it about 44mm, which wraps a real
+       Karachi address to four lines. Landscape gives it ~150mm. */
+    .nv-runsheet { font-family: inherit; color: #111; background: #fff; padding: 7mm 8mm; box-sizing: border-box; width: 100%; }
+    .nv-rs-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10mm; border-bottom: 2.5px solid #0c7c59; padding-bottom: 4mm; margin-bottom: 5mm; }
+    .nv-rs-brand { display: flex; align-items: center; gap: 3mm; }
+    .nv-rs-mark { width: 13mm; height: 13mm; border-radius: 2.5mm; background: #0c7c59; color: #fff; font-weight: 900; font-size: 17px; display: flex; align-items: center; justify-content: center; letter-spacing: -.02em; flex: 0 0 auto; }
+    .nv-rs-brand-t b { display: block; font-size: 19px; font-weight: 900; letter-spacing: -.02em; line-height: 1.1; }
+    .nv-rs-brand-t span { display: block; font-size: 9px; font-weight: 700; letter-spacing: .2em; color: #0c7c59; text-transform: uppercase; margin-top: .8mm; }
+    .nv-rs-title { text-align: right; }
+    .nv-rs-title h2 { margin: 0; font-size: 15px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+    .nv-rs-title p { margin: 1mm 0 0; font-size: 10px; color: #555; line-height: 1.5; }
+    .nv-rs-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2.5mm; margin-bottom: 5mm; }
+    .nv-rs-meta div { border: 1px solid #bbb; border-radius: 1.5mm; padding: 2mm 2.5mm; min-width: 0; }
+    .nv-rs-meta span { display: block; font-size: 7.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: #555; }
+    .nv-rs-meta strong { display: block; font-size: 12px; font-weight: 800; margin-top: .8mm; word-break: break-word; }
+    .nv-rs-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    .nv-rs-table th { background: #0c7c59; color: #fff; border: 1px solid #0c7c59; padding: 2mm 1.8mm; text-align: left; font-size: 8px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+    .nv-rs-table td { border: 1px solid #aaa; padding: 2mm 1.8mm; vertical-align: top; word-break: break-word; }
+    .nv-rs-table tr:nth-child(even) td { background: #f6faf8; }
+    .nv-rs-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .nv-rs-table .awbcell { font-weight: 800; white-space: nowrap; }
+    .nv-rs-table .codcell { font-weight: 900; white-space: nowrap; font-size: 11.5px; }
+    /* Tick box the manager marks at the door, and the cash box they fill in
+       at close -- this is the whole point of the sheet. */
+    .nv-rs-tick { width: 7mm; height: 7mm; border: 1.2px solid #333; border-radius: 1mm; display: block; margin: 0 auto; }
+    .nv-rs-cashbox { width: 100%; height: 7mm; border: 1.2px solid #333; border-radius: 1mm; display: block; }
+    .nv-rs-totals { margin-top: 5mm; border-top: 2.5px solid #0c7c59; padding-top: 3mm; display: flex; justify-content: space-between; gap: 8mm; flex-wrap: wrap; font-size: 12px; }
+    .nv-rs-totals b { font-size: 15px; font-weight: 900; }
+    .nv-rs-recon { margin-top: 6mm; border: 1.5px solid #333; border-radius: 2mm; padding: 3mm; }
+    .nv-rs-recon h3 { margin: 0 0 2.5mm; font-size: 10px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+    .nv-rs-recon-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3mm; }
+    .nv-rs-recon-grid div span { display: block; font-size: 8px; font-weight: 800; text-transform: uppercase; color: #555; margin-bottom: 1.5mm; }
+    .nv-rs-recon-grid div i { display: block; border-bottom: 1px solid #333; height: 7mm; }
+    .nv-rs-sign { display: flex; gap: 10mm; margin-top: 8mm; }
+    .nv-rs-sign div { flex: 1; border-top: 1px solid #333; padding-top: 2mm; font-size: 9.5px; text-align: center; color: #333; }
+    .nv-rs-foot { margin-top: 5mm; border-top: 1px solid #ccc; padding-top: 2.5mm; font-size: 8px; color: #666; line-height: 1.6; }
+    .nv-rs-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
+  </style>
+  <!-- NovaX (admin AWB parity): AWB print modes, identical to client.html.
+       Exactly one of these two is left enabled at a time -- JS toggles
+       .disabled right before window.print(). Browsers apply whichever @page
+       rule sits in an *enabled* stylesheet, so this is the only reliable
+       cross-browser way to switch page size/orientation at print time.
+       nvAdminPrintDoc() disables BOTH before printing a manifest, invoice or
+       run sheet, so those plain-A4 documents never inherit label sizing. -->
+  <style id="nvPrintThermal" media="print" disabled>
+    /* Thermal label mode -- the real 4x6in (100x150mm) roll every cheap
+       thermal printer (Xprinter/TSC/Zebra) takes. One label = one page. */
+    @page{size:100mm 150mm;margin:0;}
+    .print-page{width:100mm !important;height:150mm !important;min-height:0 !important;display:block !important;box-sizing:border-box !important;page-break-after:always;break-after:page;overflow:hidden !important;}
+    .print-page:last-child{page-break-after:auto !important;break-after:auto !important;}
+    .print-label-wrap{width:100% !important;height:100% !important;overflow:hidden !important;break-inside:avoid !important;page-break-inside:avoid !important;}
+    .awb-label{width:100mm !important;height:150mm !important;display:flex !important;flex-direction:column !important;gap:2mm !important;padding:3mm !important;border:none !important;border-radius:0 !important;box-sizing:border-box !important;overflow:hidden !important;background:#fff !important;}
+    .awb-zone{border:1px solid #777 !important;border-radius:2px !important;padding:2mm !important;gap:1.2mm !important;min-width:0 !important;min-height:0 !important;overflow:hidden !important;}
+    .awb-scan{order:-2 !important;flex-direction:row !important;justify-content:space-between !important;align-items:center !important;border:1.5px solid #111 !important;padding:2.5mm !important;}
+    .awb-scan .barcode-img{order:1;flex:1;}
+    .awb-center{order:-1 !important;flex:1 1 auto !important;}
+    .awb-left{order:0 !important;}
+    .awb-zone-title{font-size:7px !important;font-weight:900 !important;text-transform:uppercase !important;letter-spacing:.04em !important;border-bottom:1px solid #111 !important;padding-bottom:.8mm !important;}
+    .awb-no{font-size:20px !important;line-height:1 !important;font-weight:900 !important;letter-spacing:.02em !important;}
+    .awb-route{font-size:11px !important;font-weight:900 !important;}
+    .awb-mini-grid{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:1.3mm !important;}
+    .awb-field{border:1px solid #c9c9c9 !important;border-radius:2px !important;padding:1.2mm !important;min-width:0 !important;background:#fff !important;}
+    .awb-field span{display:block !important;font-size:6.5px !important;line-height:1 !important;font-weight:900 !important;text-transform:uppercase !important;color:#555 !important;margin-bottom:.6mm !important;}
+    .awb-field strong{display:block !important;font-size:9.5px !important;line-height:1.15 !important;font-weight:800 !important;color:#111 !important;overflow-wrap:anywhere !important;}
+    .awb-field.awb-cod{grid-column:1 / -1 !important;border:1.5px solid #111 !important;padding:1.8mm !important;background:#fff7e6 !important;}
+    .awb-field.awb-cod span{font-size:8px !important;}
+    .awb-field.awb-cod strong{font-size:17px !important;font-weight:900 !important;}
+    .awb-address strong,.awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
+    .qr-img{width:20mm !important;height:20mm !important;padding:.8mm !important;object-fit:contain !important;flex:0 0 auto;}
+    .barcode-img{width:auto !important;max-width:52mm !important;height:14mm !important;padding:.6mm !important;object-fit:contain !important;margin:0 2mm;}
+    .awb-scan .chip{font-size:9px !important;font-weight:900 !important;padding:1.5px 4px !important;}
+  </style>
+  <style id="nvPrintA4" media="print">
+    /* A4 SHEET MODE -- ordinary office/laser printer (the common case in
+       Pakistan). THREE labels per A4 PORTRAIT sheet, each a full-width
+       horizontal band at a FIXED 92mm, so one label and three labels are
+       always identical in size and position. */
+    @page{size:A4 portrait;margin:6mm;}
+    .print-page{
+      width:100% !important;height:auto !important;min-height:0 !important;
+      display:grid !important;
+      grid-template-columns:1fr !important;
+      grid-template-rows:repeat(3,92mm) !important;
+      align-content:start !important;
+      gap:4mm !important;box-sizing:border-box !important;
+      page-break-after:always;break-after:page;overflow:visible !important;
+    }
+    .print-page:last-child{page-break-after:auto !important;break-after:auto !important;}
+    .print-label-wrap{
+      width:100% !important;height:92mm !important;min-height:0 !important;
+      box-sizing:border-box !important;
+      overflow:hidden !important;break-inside:avoid !important;page-break-inside:avoid !important;
+    }
+    .awb-label{
+      width:100% !important;height:92mm !important;min-height:0 !important;
+      display:grid !important;
+      grid-template-columns:52mm minmax(0,1fr) 44mm !important;
+      gap:2.5mm !important;padding:2.5mm !important;
+      border:2px solid #000 !important;border-radius:2px !important;
+      box-sizing:border-box !important;overflow:hidden !important;background:#fff !important;
+    }
+    .awb-zone{
+      border:1px solid #444 !important;border-radius:2px !important;
+      padding:2mm !important;gap:1.3mm !important;
+      min-width:0 !important;min-height:0 !important;overflow:hidden !important;
+      display:flex !important;flex-direction:column !important;
+    }
+    .awb-zone-title{
+      font-size:7px !important;font-weight:900 !important;text-transform:uppercase !important;
+      letter-spacing:.08em !important;border-bottom:1.5px solid #000 !important;
+      padding-bottom:1mm !important;margin-bottom:1mm !important;color:#000 !important;
+    }
+    .awb-no{font-size:20px !important;line-height:1 !important;font-weight:900 !important;letter-spacing:.01em !important;color:#000 !important;}
+    .awb-route{font-size:11px !important;font-weight:900 !important;margin-top:.6mm !important;color:#000 !important;}
+    .awb-mini-grid{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:1.3mm !important;}
+    .awb-field{border:1px solid #b0b0b0 !important;border-radius:2px !important;padding:1.3mm !important;min-width:0 !important;background:#fff !important;}
+    .awb-field span{display:block !important;font-size:6.5px !important;line-height:1 !important;font-weight:900 !important;text-transform:uppercase !important;letter-spacing:.05em !important;color:#444 !important;margin-bottom:.7mm !important;}
+    .awb-field strong{display:block !important;font-size:10px !important;line-height:1.15 !important;font-weight:800 !important;color:#000 !important;overflow-wrap:anywhere !important;}
+    .awb-field.awb-cod{grid-column:1 / -1 !important;border:2px solid #000 !important;padding:1.6mm !important;background:#fff !important;}
+    .awb-field.awb-cod span{font-size:7px !important;color:#000 !important;}
+    .awb-field.awb-cod strong{font-size:17px !important;font-weight:900 !important;line-height:1 !important;}
+    .awb-address strong,.awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
+    .awb-scan{align-items:center !important;justify-content:center !important;gap:1.5mm !important;}
+    .qr-img{width:30mm !important;height:30mm !important;padding:0 !important;object-fit:contain !important;}
+    .barcode-img{width:100% !important;max-width:39mm !important;height:11mm !important;padding:0 !important;object-fit:contain !important;}
+    .awb-scan .chip{font-size:9px !important;font-weight:900 !important;letter-spacing:.04em !important;padding:1px 4px !important;border:1px solid #000 !important;background:#fff !important;color:#000 !important;border-radius:2px !important;}
+  </style>
+  <!-- Plain-A4 DOCUMENT mode: pickup manifest, invoice, rider run sheet.
+       Enabled only by nvAdminPrintDoc(), which disables both label
+       stylesheets above for the duration of the print.
+
+       This exists because the whole admin portal used to print under one
+       global @page{size:A4 landscape} in the main @media print block. Moving
+       the label rules out (so admin could finally get the client portal's A4
+       portrait / 4x6 thermal modes) took that landscape rule with them --
+       which would have silently flipped every invoice and manifest to
+       portrait and squeezed their 6-8 column tables. Documents keep the
+       landscape sheet they have always printed on, and the run sheet gets
+       the width its address column needs. -->
+  <style id="nvPrintDoc" media="print" disabled>
+    @page{size:A4 landscape;margin:8mm;}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- Local QR + Code128 generator, INLINED on purpose.
@@ -4757,6 +4793,10 @@
                     <button class="ghost-btn" data-client-tab="dashboard" id="backToJourneyBtn">View Journey</button>
                   </div>
                 </div>
+                <!-- NovaX (admin AWB parity): same A4 / thermal switch the
+                     merchant portal has. Shares the localStorage key, so the
+                     choice follows the operator across both portals. -->
+                <div id="adminAwbPrintModeToggle" class="inline-actions" style="margin-bottom:12px;flex-wrap:wrap;gap:6px"></div>
                 <div id="awbLabelPreview"></div>
               </div>
             </section>
@@ -5574,6 +5614,10 @@
                       <button class="ghost-btn" id="processingLoadBatchBtn">Load Batch</button>
                       <button class="ghost-btn" id="processingClearBatchBtn">Clear Batch</button>
                       <button class="action-btn" id="processingPrintAwbBtn">Print AWB(s)</button>
+                      <!-- The run sheet opens by itself on a push to out-for-delivery;
+                           this is for reprinting the loaded batch (lost sheet, second
+                           copy for the manager) without touching parcel status. -->
+                      <button class="ghost-btn" id="processingRunSheetBtn">Run Sheet (A4)</button>
                     </div>
                     <div class="processing-current" id="processingCurrentStatus">Waiting for tracking ID...</div>
                     <div class="mini-form">
@@ -8209,6 +8253,9 @@
     function renderAwbLabel() {
       const p = state.parcels.find(parcel => parcel.awb === (state.lastGeneratedAwb || state.selectedAwb)) || selectedParcel();
       document.getElementById("awbLabelPreview").innerHTML = adminAwbLabelHtml(p);
+      // NovaX (admin AWB parity): keep the A4/thermal switch in sync with the
+      // stored mode whenever the label is redrawn.
+      try { nvApplyPrintMode(); renderAwbPrintModeToggle(); } catch (e) {}
     }
 
     function renderClientTabs() {
@@ -9876,7 +9923,12 @@
         exception: r.exception || "", cashReceived: !!m.cashReceived, returnProof: m.returnProof || "",
         resolutionRemark: m.resolutionRemark || "", riderInput: m.riderInput || null,
         service: m.service || "COD Standard", weight: m.weight || "", pickupCity: m.pickupCity || "",
-        category: m.category || "", paymentMode: m.paymentMode || "", orderId: m.orderId || "",
+        category: m.category || "", fragile: m.fragile || "",
+        // NovaX fix (admin AWB parity): keep this mapper in step with rParcel()
+        // so a parcel loaded through Order Processing prints the same label as
+        // one loaded through the main data layer.
+        allowOpen: (m.allowOpen === "Yes" ? "Yes" : "No"),
+        paymentMode: m.paymentMode || "", orderId: m.orderId || "",
         referenceNo: m.referenceNo || m.reference || m.ref || m.customerRef || "",
         steps: Array.isArray(m.steps) ? m.steps : [], proofPhoto: m.proofPhoto || "", signature: m.signature || "",
         signedAt: m.signedAt || "", callRecord: m.callRecord || "", awbPrinted: !!m.awbPrinted,
@@ -10064,6 +10116,28 @@
         saveState();
         renderAdmin();
         toast(`${rows.length} parcel(s) updated to ${status}.`, "success");
+
+        /* NovaX new (rider run sheet): out-for-delivery is assigned by hand
+           at the moment, so the instant a batch leaves the hub the branch
+           manager needs a printed record of exactly what went with which
+           rider -- consignee, address, phone and COD per stop, with a total
+           to count cash against at close of day. Opening it here, right after
+           the backend has CONFIRMED the status change, means the paper and
+           the database can never disagree about what is on the run.
+
+           Only for the two rider-push statuses; every other status update is
+           untouched. Wrapped in try/catch so a run-sheet problem can never
+           roll back or mask a status update that already succeeded. */
+        if (riderPushStatuses.includes(status)) {
+          try {
+            const pushedAwbs = rows.map(row => String(row.awb || "").toUpperCase()).filter(Boolean);
+            const riderName = (riderObj && riderObj.name) || riderId || "Unassigned";
+            openRiderRunSheet(pushedAwbs, riderName, status);
+          } catch (e) {
+            console.warn("NovaX run sheet could not be opened", e);
+            toast("Parcels updated, but the run sheet could not be opened.", "error");
+          }
+        }
       } catch (e) {
         console.error("Batch status update failed", e);
         toast(`Status update failed: ${e && e.message ? e.message : "unknown error"}`, "error");
@@ -10186,7 +10260,7 @@
       const locked = state.processingAccess === false;
       if (notice) notice.style.display = locked ? "" : "none";
       if (desk) desk.style.display = locked ? "none" : "";
-      ["processingAwbInput", "processingLoadBatchBtn", "processingClearBatchBtn", "processingPrintAwbBtn", "processingStatusSelect", "processingRiderSelect", "processingConfirmBtn"].forEach(id => {
+      ["processingAwbInput", "processingLoadBatchBtn", "processingClearBatchBtn", "processingPrintAwbBtn", "processingRunSheetBtn", "processingStatusSelect", "processingRiderSelect", "processingConfirmBtn"].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.disabled = locked;
       });
@@ -12447,23 +12521,22 @@
       toast(`${rows.length} order report row(s) downloaded.`);
     }
 
+    /* NovaX fix (admin AWB printed blank): this used to call window.print()
+       while relying on #awbLabelPreview being on screen. But the @media print
+       block sets `body * { visibility: hidden }` and re-shows ONLY #printStage
+       and #adminPrintStage -- #awbLabelPreview is in neither, so "Print Now"
+       on the admin AWB tab produced a blank sheet every time. It now goes
+       through printAdminAwbs(), the same staged path every other admin label
+       print already used, which also gives it the A4 / thermal mode toggle
+       and the awbPrinted stamping for free. */
     function printAwb() {
       state.activeClientTab = "awbLabel";
       saveState();
       renderClientModules();
-      const imgs = Array.from(document.querySelectorAll("#awbLabelPreview img"));
-      const waitAll = Promise.all(imgs.map(img => new Promise(resolve => {
-        if (img.complete) { resolve(); return; }
-        const done = () => { img.removeEventListener("load", done); img.removeEventListener("error", done); resolve(); };
-        img.addEventListener("load", done);
-        img.addEventListener("error", done);
-      })));
-      const timeout = new Promise(resolve => setTimeout(resolve, 2500));
-      Promise.race([waitAll, timeout]).then(() => {
-        window.print();
-        const p = state.parcels.find(parcel => parcel.awb === (state.lastGeneratedAwb || state.selectedAwb)) || selectedParcel();
-        if (p) { p.awbPrinted = true; p.awbPrintedAt = time(); saveState(); try { renderAwbLabel(); } catch (e) {} }
-      });
+      const awb = state.lastGeneratedAwb || state.selectedAwb;
+      const p = state.parcels.find(parcel => parcel.awb === awb) || selectedParcel();
+      if (!p || !p.awb) { toast("No AWB available to print.", "error"); return; }
+      printAdminAwbs([p.awb]);
     }
 
     function escLabelText(v) {
@@ -12507,26 +12580,125 @@
       const handling = p.fragile === "Yes" ? "Fragile" : "Standard";
       const bookedDate = labelDate(p);
       const orderId = parcelOrderId(p);
+      /* NovaX fix (admin AWB parity): the admin label was missing the
+         Allow-to-Open flag entirely, so a parcel booked with the toggle ON
+         printed from admin as if nobody had decided -- and the rider had no
+         instruction at the door. It is a rider-facing instruction, so it
+         must appear on EVERY label, not only when it is Yes: an explicit
+         "NOT ALLOWED" is what stops a customer arguing on the doorstep.
+         Defaults to No for parcels booked before the field existed. */
+      const allowOpen = (p && p.allowOpen === "Yes") ? "Yes" : "No";
       const referenceNo = parcelReferenceNo(p);
-      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${origin} &rarr; ${destination}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${orderId}</strong></div><div class="awb-field"><span>Reference No</span><strong>${referenceNo}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${phone}</strong></div><div class="awb-field"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${address}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div></section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
+      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${origin} &rarr; ${destination}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${orderId}</strong></div><div class="awb-field"><span>Reference No</span><strong>${referenceNo}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${phone}</strong></div><div class="awb-field awb-cod"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen === "Yes" ? "is-yes" : "is-no"}"><span>Allow to Open</span><strong>${allowOpen === "Yes" ? "YES &mdash; customer may open" : "NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${address}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div></section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
+    }
+
+    /* ===== NovaX (admin AWB parity with client portal) =====
+       The admin portal was still on the original single-mode print path:
+       @page{A4 landscape} hardcoded in the main @media print block, 3 labels
+       per page as flexible `1fr` rows. That meant (a) admin could not print
+       a real 4x6in thermal label at all, and (b) the SAME parcel printed at
+       a different size from admin than from the merchant's own portal,
+       because 1fr rows stretch one label to fill a whole page while three
+       labels share it.
+
+       These four functions are the client portal's, unchanged in behaviour:
+       exactly one of #nvPrintThermal / #nvPrintA4 is enabled immediately
+       before window.print(), and the mode is remembered per browser under
+       the SAME localStorage key the client portal uses, so an operator who
+       has already chosen a mode there gets it here too. */
+    function nvPrintMode() {
+      try { return localStorage.getItem("novaxAwbPrintMode") === "thermal" ? "thermal" : "a4"; }
+      catch (e) { return "a4"; }
+    }
+    function nvSetPrintMode(mode) {
+      mode = mode === "a4" ? "a4" : "thermal";
+      try { localStorage.setItem("novaxAwbPrintMode", mode); } catch (e) {}
+      nvApplyPrintMode();
+      try { renderAwbPrintModeToggle(); } catch (e) {}
+    }
+    function nvApplyPrintMode() {
+      const mode = nvPrintMode();
+      const th = document.getElementById("nvPrintThermal"),
+            a4 = document.getElementById("nvPrintA4"),
+            doc = document.getElementById("nvPrintDoc");
+      if (th) th.disabled = mode !== "thermal";
+      if (a4) a4.disabled = mode !== "a4";
+      // Belt and braces: if a document print was interrupted (dialog cancelled
+      // on a browser that never fires afterprint) the landscape document @page
+      // could still be live and would fight the label @page on the next label
+      // print. Every label print goes through here first, so clear it.
+      if (doc) doc.disabled = true;
+    }
+    function renderAwbPrintModeToggle() {
+      const host = document.getElementById("adminAwbPrintModeToggle");
+      if (!host) return;
+      const mode = nvPrintMode();
+      host.innerHTML =
+        '<button type="button" class="' + (mode === "a4" ? "action-btn" : "ghost-btn") +
+        '" style="padding:5px 10px;font-size:12px" onclick="nvSetPrintMode(\'a4\')">A4 Sheet &middot; 3 per page</button>' +
+        '<button type="button" class="' + (mode === "thermal" ? "action-btn" : "ghost-btn") +
+        '" style="padding:5px 10px;font-size:12px" onclick="nvSetPrintMode(\'thermal\')">Thermal Roll &middot; 4&times;6"</button>' +
+        '<span class="footer-note" style="width:100%;margin-top:4px">' +
+        (mode === "a4"
+          ? "For a normal office / laser printer. Three labels per A4 sheet, cut along the label borders."
+          : "For a thermal label printer only. On an office printer this wastes a whole sheet per label.") +
+        '</span>';
+    }
+
+    /* Plain-A4 documents (pickup manifest, invoice, rider run sheet) must NOT
+       inherit AWB label sizing -- a 100x150mm @page would crop a run sheet to
+       a quarter of itself. Both label stylesheets are disabled for the print,
+       then restored. Mirrors client.html's nvPrintDoc(). */
+    function nvAdminPrintDoc(afterPrint) {
+      const th = document.getElementById("nvPrintThermal"),
+            a4 = document.getElementById("nvPrintA4"),
+            doc = document.getElementById("nvPrintDoc");
+      const thWas = th ? th.disabled : null,
+            a4Was = a4 ? a4.disabled : null,
+            docWas = doc ? doc.disabled : null;
+      // Labels off, document page on -- for the duration of this print only.
+      if (th) th.disabled = true;
+      if (a4) a4.disabled = true;
+      if (doc) doc.disabled = false;
+      let restored = false;
+      const restore = () => {
+        if (restored) return; restored = true;
+        if (th && thWas !== null) th.disabled = thWas;
+        if (a4 && a4Was !== null) a4.disabled = a4Was;
+        if (doc && docWas !== null) doc.disabled = docWas;
+        if (window.onafterprint === restore) window.onafterprint = null;
+        try { if (typeof afterPrint === "function") afterPrint(); } catch (e) {}
+      };
+      window.print();
+      window.onafterprint = restore;
+      setTimeout(restore, 1500);
     }
 
     function printAdminAwbs(awbs) {
       const stage = document.getElementById("adminPrintStage");
-      if (!stage) return;
+      if (!stage) return { ok: false, count: 0, awbs: [], error: "Print area not available." };
       const valid = (awbs || []).map(a => state.parcels.find(p => p.awb === a)).filter(Boolean);
-      if (!valid.length) { toast("No AWB available to print."); return; }
-      // NovaX fix: same layout as the client portal -- up to 3 full-width
-      // horizontal label strips stacked top-to-bottom per A4-landscape page
-      // (CSS grid rows, not columns), so labels always print wide/landscape
-      // and never overflow.
+      if (!valid.length) { toast("No AWB available to print.", "error"); return { ok: false, count: 0, awbs: [], error: "No AWB available to print." }; }
+      nvApplyPrintMode();
+      const mode = nvPrintMode();
+      // Thermal prints one real 4x6in label per physical page; batching 3 onto
+      // a page only makes sense for the A4 sheet-and-scissors workflow.
+      const perPage = mode === "thermal" ? 1 : 3;
       stage.classList.add("bulk-print");
+      stage.classList.toggle("mode-thermal", mode === "thermal");
+      stage.classList.toggle("mode-a4", mode === "a4");
       let html = "";
-      for (let i = 0; i < valid.length; i += 3) {
-        const page = valid.slice(i, i + 3);
+      for (let i = 0; i < valid.length; i += perPage) {
+        const page = valid.slice(i, i + perPage);
         html += `<div class="print-page">` + page.map(p => `<div class="print-label-wrap">${adminAwbLabelHtml(p)}</div>`).join("") + `</div>`;
       }
       stage.innerHTML = html;
+      // Never open the print dialog on an empty stage -- that is what produced
+      // the occasional blank print screen in the client portal.
+      if (!stage.innerHTML.trim() || !stage.querySelector(".print-page")) {
+        stage.classList.remove("show"); stage.classList.remove("bulk-print"); stage.innerHTML = "";
+        return { ok: false, count: 0, awbs: [], error: "Label content did not render." };
+      }
       stage.classList.add("show");
       const imgs = Array.from(stage.querySelectorAll("img"));
       const waitAll2 = Promise.all(imgs.map(img => new Promise(resolve => {
@@ -12537,13 +12709,28 @@
       })));
       const timeout2 = new Promise(resolve => setTimeout(resolve, 2500));
       Promise.race([waitAll2, timeout2]).then(() => {
+        if (!stage.isConnected || !stage.querySelector(".print-page")) {
+          stage.classList.remove("show"); stage.classList.remove("bulk-print");
+          return;
+        }
         window.print();
-        setTimeout(() => { stage.classList.remove("show"); stage.classList.remove("bulk-print"); stage.innerHTML = ""; }, 500);
+        // Cleanup on the real afterprint event, with a timer only as a
+        // fallback for browsers that never fire it. The old fixed 500ms could
+        // clear the stage before the dialog had finished reading it.
+        let cleaned = false;
+        function cleanupAdminPrintStage() {
+          if (cleaned) return; cleaned = true;
+          stage.classList.remove("show"); stage.classList.remove("bulk-print"); stage.innerHTML = "";
+          if (window.onafterprint === cleanupAdminPrintStage) window.onafterprint = null;
+        }
+        window.onafterprint = cleanupAdminPrintStage;
+        setTimeout(cleanupAdminPrintStage, 1500);
         valid.forEach(p => { p.awbPrinted = true; p.awbPrintedAt = time(); });
         saveState();
         try { if (document.getElementById("awbLabelPreview")) renderAwbLabel(); } catch (e) {}
-        toast(`${valid.length} AWB label(s) sent to print.`);
+        toast(`${valid.length} AWB label(s) sent to print.`, "success");
       });
+      return { ok: true, count: valid.length, awbs: valid.map(p => p.awb), error: null };
     }
 
     function pickupManifestHtml(req) {
@@ -12562,6 +12749,180 @@
       return `<div class="manifest-page"><div class="manifest-head"><h2>NovaX Pickup Manifest</h2></div><div class="manifest-meta"><div><span>Rider</span><strong>${riderLabel}</strong></div><div><span>Client / Shipper</span><strong>${clientLabel}</strong></div><div><span>Pickup Address</span><strong>${pickupAddress}</strong></div><div><span>Pickup Date / Time</span><strong>${requestedFor}</strong></div></div><table class="manifest-table"><thead><tr><th>AWB</th><th>Consignee</th><th>City</th><th>COD</th><th>Weight</th><th>Item / Product Details</th></tr></thead><tbody>${bodyRows}</tbody></table><div class="manifest-totals"><span>Total Parcels: <strong>${rows.length}</strong></span><span>Total COD Value: <strong>${money(totalCod)}</strong></span></div><div class="manifest-sign"><div class="manifest-sign-line">Shipper Signature</div><div class="manifest-sign-line">Rider Confirmation (Name / Signature)</div></div></div>`;
     }
 
+    /* =====================================================================
+       NovaX Rider Run Sheet  (A4, branded, end-of-day reconciliation)
+
+       WHY IT EXISTS
+       Out-for-delivery is being assigned by hand right now, with 2-3 riders.
+       The moment admin pushes a batch to "Parcel out for delivery" the branch
+       manager needs a paper record of exactly what left the hub with whom:
+       every stop's consignee, address, phone and COD, plus a total to count
+       cash against at close of day. Without it there is no independent record
+       of what a rider was carrying -- the only copy of that list is the
+       screen it was created on.
+
+       WHAT IS ON IT
+         * NovaX branding + hub, rider, date and sheet time (identifies it)
+         * one row per parcel: AWB, consignee, phone, address, COD
+         * a tick box per row (marked at the door) and a cash-received box
+           per row (filled in at close)
+         * total parcels + total COD to collect, in large type
+         * a reconciliation footer: cash counted, returns, shortfall, and
+           two signature lines (rider + branch manager)
+
+       Deliberately a plain A4 document -- printed through nvAdminPrintDoc()
+       with both AWB label stylesheets disabled, so it can never inherit a
+       100x150mm thermal page and come out cropped. Rows are break-inside:
+       avoid, so a long batch paginates without splitting a stop in half. */
+    function riderRunSheetHtml(parcels, riderName, statusLabel) {
+      const list = (parcels || []).filter(Boolean);
+      const now = new Date();
+      const dateStr = now.toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" });
+      const timeStr = now.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit" });
+      // The hub a run sheet belongs to is the branch of the parcels on it.
+      // They are pushed as one batch from one desk, so the first non-empty
+      // branch is the right label; fall back to the destination city.
+      const hub = labelText(
+        (list.find(p => p && p.branch) || {}).branch ||
+        ((list[0] && list[0].city) ? list[0].city + " Hub" : ""),
+        "NovaX Hub"
+      );
+      let totalCod = 0, codStops = 0;
+      const bodyRows = list.map((p, i) => {
+        const cod = Number(p.cod || 0);
+        totalCod += cod;
+        if (cod > 0) codStops++;
+        const client = clientById(p.clientId);
+        return `<tr>
+          <td class="num">${i + 1}</td>
+          <td class="awbcell">${escLabelText(p.awb)}</td>
+          <td>${labelText(p.consignee)}<div style="font-size:8px;color:#666;margin-top:.6mm">${labelText(client && client.name, "-")}</div></td>
+          <td>${labelText(p.phone, "phone pending")}</td>
+          <td>${labelText(p.address, "Address pending")}<div style="font-size:8px;color:#666;margin-top:.6mm">${labelText(p.city)}</div></td>
+          <td class="codcell num">${cod > 0 ? money(cod) : "&mdash;"}</td>
+          <td><i class="nv-rs-tick"></i></td>
+          <td><i class="nv-rs-cashbox"></i></td>
+        </tr>`;
+      }).join("");
+
+      return `<div class="nv-runsheet">
+        <div class="nv-rs-head">
+          <div class="nv-rs-brand">
+            <div class="nv-rs-mark">NX</div>
+            <div class="nv-rs-brand-t"><b>NovaX Logistics</b><span>Cash on Delivery Courier</span></div>
+          </div>
+          <div class="nv-rs-title">
+            <h2>Rider Run Sheet</h2>
+            <p>${escLabelText(statusLabel || "Out for delivery")}<br>Printed ${escLabelText(dateStr)} &middot; ${escLabelText(timeStr)}</p>
+          </div>
+        </div>
+        <div class="nv-rs-meta">
+          <div><span>Rider</span><strong>${labelText(riderName, "Unassigned")}</strong></div>
+          <div><span>Hub / Branch</span><strong>${hub}</strong></div>
+          <div><span>Date</span><strong>${escLabelText(dateStr)}</strong></div>
+          <div><span>Stops on this sheet</span><strong>${list.length}</strong></div>
+        </div>
+        <table class="nv-rs-table">
+          <thead><tr>
+            <th style="width:7mm">#</th>
+            <th style="width:24mm">AWB</th>
+            <th style="width:33mm">Consignee</th>
+            <th style="width:26mm">Phone</th>
+            <th>Delivery address</th>
+            <th style="width:24mm" class="num">COD</th>
+            <th style="width:12mm">Done</th>
+            <th style="width:22mm">Cash recd.</th>
+          </tr></thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+        <div class="nv-rs-totals">
+          <span>Total stops: <b>${list.length}</b></span>
+          <span>COD stops: <b>${codStops}</b></span>
+          <span>Total COD to collect: <b>${money(totalCod)}</b></span>
+        </div>
+        <div class="nv-rs-recon">
+          <h3>End of day reconciliation &mdash; completed by the branch manager</h3>
+          <div class="nv-rs-recon-grid">
+            <div><span>Cash counted</span><i></i></div>
+            <div><span>Parcels returned</span><i></i></div>
+            <div><span>Shortfall / excess</span><i></i></div>
+            <div><span>Reason (if any)</span><i></i></div>
+          </div>
+          <div class="nv-rs-sign">
+            <div>Rider name &amp; signature</div>
+            <div>Branch manager signature</div>
+          </div>
+        </div>
+        <div class="nv-rs-foot">
+          NovaX Logistics &middot; internal operations document. Expected COD total above is the sum of the COD amounts recorded against these ${list.length} parcel(s) at the time this sheet was printed. Count cash against it before the rider leaves the hub.
+        </div>
+      </div>`;
+    }
+
+    /* Fills the run-sheet modal. Kept separate from the print path so the
+       manager can read it on screen first and re-print it later without
+       re-running the status update. */
+    let nvRunSheetAwbs = [], nvRunSheetRider = "", nvRunSheetLabel = "";
+    function nvRunSheetParcels() {
+      return (nvRunSheetAwbs || []).map(a => state.parcels.find(p => p.awb === a)).filter(Boolean);
+    }
+    function openRiderRunSheet(awbs, riderName, statusLabel) {
+      nvRunSheetAwbs = (awbs || []).slice();
+      nvRunSheetRider = riderName || "";
+      nvRunSheetLabel = statusLabel || "Out for delivery";
+      const list = nvRunSheetParcels();
+      if (!list.length) { toast("No parcels available for a run sheet.", "error"); return; }
+      const body = document.getElementById("riderRunSheetBody");
+      const modal = document.getElementById("riderRunSheetModal");
+      if (!body || !modal) return;
+      body.innerHTML = riderRunSheetHtml(list, nvRunSheetRider, nvRunSheetLabel);
+      modal.style.display = "flex";
+    }
+    function closeRiderRunSheet() {
+      const modal = document.getElementById("riderRunSheetModal");
+      if (modal) modal.style.display = "none";
+    }
+    function printRiderRunSheet() {
+      const list = nvRunSheetParcels();
+      if (!list.length) { toast("No parcels available for a run sheet.", "error"); return; }
+      const stage = document.getElementById("adminPrintStage");
+      if (!stage) return;
+      stage.innerHTML = riderRunSheetHtml(list, nvRunSheetRider, nvRunSheetLabel);
+      stage.classList.add("show");
+      setTimeout(() => {
+        nvAdminPrintDoc(() => { stage.classList.remove("show"); stage.innerHTML = ""; });
+        toast(`Run sheet for ${list.length} stop(s) sent to print.`, "success");
+      }, 200);
+    }
+    /* CSV of the same sheet, for a manager who reconciles in a spreadsheet
+       rather than on paper. Same rows, same order, same totals. */
+    function downloadRiderRunSheetCsv() {
+      const list = nvRunSheetParcels();
+      if (!list.length) { toast("No parcels available for a run sheet.", "error"); return; }
+      const head = ["stop", "awb", "consignee", "client", "phone", "address", "city", "cod_amount", "cash_received", "delivered"];
+      let total = 0;
+      // adminBulkCsvEscape() is the escaper this file already uses everywhere
+      // else -- admin.html has no csvCell()/csvEscape(); that pair lives in
+      // client.html only.
+      const esc = adminBulkCsvEscape;
+      const rows = list.map((p, i) => {
+        total += Number(p.cod || 0);
+        const client = clientById(p.clientId);
+        return [i + 1, p.awb, p.consignee || "", (client && client.name) || "", p.phone || "",
+                p.address || "", p.city || "", Number(p.cod || 0), "", ""].map(esc).join(",");
+      });
+      rows.push(["", "TOTAL", "", "", "", "", "", total, "", ""].map(esc).join(","));
+      const csv = head.join(",") + "\n" + rows.join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `novax-run-sheet-${(nvRunSheetRider || "rider").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast(`Run sheet CSV downloaded (${list.length} stop(s)).`, "success");
+    }
+
     function printPickupManifest(id) {
       const req = (state.pickupRequests || []).find(r => r.id === id);
       if (!req) { toast("Pickup request not found."); return; }
@@ -12570,8 +12931,9 @@
       stage.innerHTML = pickupManifestHtml(req);
       stage.classList.add("show");
       setTimeout(() => {
-        window.print();
-        setTimeout(() => { stage.classList.remove("show"); stage.innerHTML = ""; }, 500);
+        // A manifest is a plain A4 document, not a label -- print it with both
+        // label stylesheets disabled so it can never inherit a 100x150mm page.
+        nvAdminPrintDoc(() => { stage.classList.remove("show"); stage.innerHTML = ""; });
         toast(`Pickup manifest for ${req.id} sent to print.`);
       }, 200);
     }
@@ -12656,8 +13018,8 @@
       stage.innerHTML = adminInvoiceHtml(invoice);
       stage.classList.add("show");
       setTimeout(() => {
-        window.print();
-        setTimeout(() => { stage.classList.remove("show"); stage.innerHTML = ""; }, 500);
+        // Same reasoning as the pickup manifest: a plain A4 document.
+        nvAdminPrintDoc(() => { stage.classList.remove("show"); stage.innerHTML = ""; });
         toast(`${invoice.id} sent to print. Use your browser's Save as PDF option to download.`);
       }, 200);
     }
@@ -12835,6 +13197,31 @@
       printAdminAwbs(awbs);
     }
 
+    /* Reprint a run sheet for whatever batch is currently loaded on the
+       Order Processing desk. Reads the rider off the parcels themselves (they
+       already carry rider_id once pushed) rather than off the rider dropdown,
+       so a reprint always shows who the parcels are ACTUALLY with -- not
+       whoever happens to be selected in the form right now. */
+    function openProcessingRunSheet() {
+      const awbs = (state.processingBatchAwbs && state.processingBatchAwbs.length)
+        ? state.processingBatchAwbs
+        : [state.activeProcessingAwb].filter(Boolean);
+      const list = awbs.map(a => state.parcels.find(p => p.awb === a)).filter(Boolean);
+      if (!list.length) { toast("Load a batch first, then print its run sheet.", "error"); return; }
+      const riderIds = Array.from(new Set(list.map(p => p.rider).filter(Boolean)));
+      let riderName;
+      if (riderIds.length === 1) {
+        const rd = (state.riders || []).find(r => r.id === riderIds[0] || r._uuid === riderIds[0]);
+        riderName = (rd && rd.name) || riderIds[0];
+      } else if (riderIds.length > 1) {
+        riderName = `${riderIds.length} riders (mixed batch)`;
+      } else {
+        riderName = "Unassigned";
+      }
+      const statuses = Array.from(new Set(list.map(p => p.status).filter(Boolean)));
+      openRiderRunSheet(list.map(p => p.awb), riderName, statuses.length === 1 ? statuses[0] : "Mixed statuses");
+    }
+
     function renderLandingTrack() {
       const input = document.getElementById("landingTrackInput");
       const result = document.getElementById("landingTrackResult");
@@ -12954,6 +13341,7 @@
     bind("processingLoadBatchBtn", "click", lookupProcessingParcel);
     bind("processingClearBatchBtn", "click", clearProcessingBatch);
     bind("processingPrintAwbBtn", "click", printProcessingBatchAwbs);
+    bind("processingRunSheetBtn", "click", openProcessingRunSheet);
     bind("processingStatusSelect", "change", event => {
       state.pendingProcessingStatus = event.target.value;
       saveState();
@@ -13167,7 +13555,19 @@
       var DRC={ overnight:250, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 };
       function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||250), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||250)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
-      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:r.status||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", paymentMode:m.paymentMode||"", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", steps:Array.isArray(m.steps)?m.steps:[], proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _exceptionResolved:!!m.exceptionResolved, _exceptionResolutionNote:m.exceptionResolutionNote||"", _exceptionResolvedAt:m.exceptionResolvedAt||"",
+      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0),
+        /* NovaX fix (status rename): this was a raw `r.status` read, so any
+           row still carrying the pre-migration "Parcel returned to consignee"
+           showed that old wrong text throughout the admin portal while the
+           client portal and rider app -- both of which already normalise on
+           read -- showed "Return to shipper". Three surfaces, two different
+           labels for the same parcel. nvStatus() is the same alias map the
+           other two portals use. */
+        status:nvStatus(r.status)||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"",
+        /* NovaX fix (admin AWB parity): allowOpen was never mapped here, so
+           adminAwbLabelHtml() could not print it even once the field existed
+           on the parcel. */
+        allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", steps:Array.isArray(m.steps)?m.steps:[], proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _exceptionResolved:!!m.exceptionResolved, _exceptionResolutionNote:m.exceptionResolutionNote||"", _exceptionResolvedAt:m.exceptionResolvedAt||"",
         processHistory:Array.isArray(m.processHistory)?m.processHistory:[], lastProcessedBy:m.lastProcessedBy||"", lastProcessedAt:m.lastProcessedAt||"", statusSince:m.statusSince||"", origin:m.origin||"", assignedRiderAt:m.assignedRiderAt||"", journeyStartedAt:m.journeyStartedAt||"",
         // NovaX fix (integration/audit field preservation): surface named
         // Shopify/external-order identity + import fields so admin screens
@@ -14377,13 +14777,36 @@
   </div>
 </div>
 
+<!-- NovaX Rider Run Sheet. Opens automatically the moment a batch is pushed
+     to "Parcel out for delivery" / "Return out for delivery", so the branch
+     manager gets the paper record at the point the parcels actually leave the
+     hub rather than having to remember to generate it afterwards. -->
+<div id="riderRunSheetModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this) closeRiderRunSheet();">
+  <div class="panel" style="max-width:940px;width:96%;max-height:90vh;overflow:auto;background:#fff">
+    <div class="section-head">
+      <div>
+        <h3>Rider Run Sheet</h3>
+        <p>Parcels are now out for delivery. Print this A4 sheet and give it to the branch manager to reconcile cash at the end of the day.</p>
+      </div>
+    </div>
+    <div id="riderRunSheetBody"></div>
+    <div class="inline-actions" style="margin-top:14px;flex-wrap:wrap;gap:8px">
+      <button class="action-btn" type="button" onclick="printRiderRunSheet()">Print Run Sheet (A4)</button>
+      <button class="ghost-btn" type="button" onclick="downloadRiderRunSheetCsv()">Download CSV</button>
+      <button class="action-btn secondary" type="button" onclick="closeRiderRunSheet()">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
     var mp = document.getElementById("markPaidModal");
     var iv = document.getElementById("adminInvoiceViewModal");
+    var rs = document.getElementById("riderRunSheetModal");
     if (mp && mp.style.display !== "none" && typeof closeMarkPaidModal === "function") closeMarkPaidModal();
     if (iv && iv.style.display !== "none" && typeof closeAdminInvoiceModal === "function") closeAdminInvoiceModal();
+    if (rs && rs.style.display !== "none" && typeof closeRiderRunSheet === "function") closeRiderRunSheet();
   });
 </script>
 <script>
