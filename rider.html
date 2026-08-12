@@ -377,9 +377,17 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     function renderRider(){
       const sel = document.getElementById("riderSelect");
       if (sel && !sel.dataset.filled){
-        sel.innerHTML = state.riders.map(r=>`<option value="${r.id}">${r.id} | ${r.name}</option>`).join("");
+        /* NovaX fix (rider identity): state.riders now contains only the
+           signed-in rider, so this is a read-only identity display rather
+           than a picker. Disabled so it can never become one again, and the
+           name is escaped -- it is database text being written into HTML. */
+        const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+        sel.innerHTML = state.riders.length
+          ? state.riders.map(r=>`<option value="${esc(r.id)}">${esc(r.name||r.id)}</option>`).join("")
+          : `<option value="">No rider account linked</option>`;
         sel.dataset.filled = "1";
         sel.value = state.activeRider;
+        sel.disabled = true;
       }
       const rider = riderById(state.activeRider);
       if (!rider) {
@@ -748,11 +756,37 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
               sb.from("clients").select("*")
             ]).then(function(res){
               function D(i){ return (res[i]&&res[i].data)||[]; }
-              state.riders=D(0).map(rRider);
+              var allRiders=D(0).map(rRider);
               state.parcels=D(1).map(rParcel);
               state.clients=D(2).map(rClient);
-              RIDER_UUID=linkedId||(state.riders[0]&&state.riders[0]._uuid)||null;
-              state.activeRider=RIDER_UUID||"";
+              /* NovaX fix (rider identity):
+                 this used to read
+                     RIDER_UUID = linkedId || state.riders[0]._uuid || null
+                 so a rider whose profiles.rider_id was not linked SILENTLY
+                 became whoever happened to be first in the company's rider
+                 list. They then saw that person's route, and any COD they
+                 marked collected posted to that person's ledger -- a cash
+                 attribution bug, not just a display one.
+
+                 There is no safe guess for "who is this rider". Without a
+                 linked profiles.rider_id the app now has no rider at all and
+                 renderRider() falls through to its existing "no rider account
+                 yet" screen.
+
+                 state.riders is also narrowed to the signed-in rider only.
+                 The full list was loaded and rendered into a picker, which let
+                 any rider switch to a colleague and attempt to action their
+                 stops. RLS should refuse the write, but the UI should never
+                 offer it in the first place. */
+              RIDER_UUID=linkedId||null;
+              state.riders=RIDER_UUID?allRiders.filter(function(r){ return r._uuid===RIDER_UUID; }):[];
+              if(RIDER_UUID && !state.riders.length){
+                console.warn("NovaX: profiles.rider_id "+RIDER_UUID+" has no matching row in riders.");
+              }
+              if(!RIDER_UUID){
+                console.warn("NovaX: this login has no rider_id linked. Showing the no-rider screen rather than guessing an identity.");
+              }
+              state.activeRider=(state.riders[0]&&state.riders[0].id)||"";
               rebuildShadow();
               loaded=true;
               try{ var sel=document.getElementById("riderSelect"); if(sel) sel.dataset.filled=""; }catch(e){}

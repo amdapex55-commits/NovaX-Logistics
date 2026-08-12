@@ -6378,10 +6378,55 @@
       };
     }
 
+    /* =====================================================================
+       NovaX fix (PII at rest in the admin portal)
+
+       client.html has stripped personal data out of its localStorage cache
+       for a while (NOVAX_PARCEL_PII_KEYS). admin.html never did -- it wrote
+       JSON.stringify(state) verbatim. That state holds EVERY client's data,
+       not one merchant's: every consignee's phone and delivery address,
+       client contact details, and the IBAN + account-holder name on every
+       withdrawal. On a shared hub machine that is the entire customer book
+       and the payout details sitting unencrypted on disk, readable by any
+       XSS on this origin or anyone who opens devtools.
+
+       None of it is lost: loadAll() re-hydrates all of these from Supabase
+       on every page load. The cache is an optimisation, never the source of
+       truth, so removing fields from it changes nothing functionally.
+
+       If a new PII-bearing field is added to state later, add it here. */
+    const NV_ADMIN_STRIP = {
+      parcels:           ["phone", "address"],
+      clients:           ["phone", "address", "email"],
+      users:             ["email"],
+      walletWithdrawals: ["iban", "holderName"],
+      pickupRequests:    ["pickupAddress"]
+    };
+    function adminPersistableState() {
+      try {
+        const copy = {};
+        Object.keys(state).forEach(k => { copy[k] = state[k]; });
+        Object.keys(NV_ADMIN_STRIP).forEach(coll => {
+          if (!Array.isArray(copy[coll])) return;
+          const drop = NV_ADMIN_STRIP[coll];
+          copy[coll] = copy[coll].map(row => {
+            if (!row || typeof row !== "object") return row;
+            const clean = {};
+            Object.keys(row).forEach(f => { if (drop.indexOf(f) === -1) clean[f] = row[f]; });
+            return clean;
+          });
+        });
+        return copy;
+      } catch (e) { return { _persistError: true }; }
+    }
+    function adminPersistStateJson() { return JSON.stringify(adminPersistableState()); }
+
     let state = loadState();
     if (!state._cleanStartV2) {
       state = cleanStartState();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      // cleanStartState() has no rows in it, but route it through the same
+      // stripper so there is exactly one way this cache is written.
+      localStorage.setItem(STORAGE_KEY, adminPersistStateJson());
     }
     normalizeStateAwbs(state);
     state.activeClientTab = state.activeClientTab || "dashboard";
@@ -6475,11 +6520,12 @@
        write is flushed synchronously on pagehide/tab-hide so nothing is lost
        on refresh, navigation or close. nvSaveStateNow() forces an immediate
        write if a caller ever needs one. */
+
     var _nvSaveT = null, _nvSaveWarned = false;
     function nvWriteStateNow() {
       if (_nvSaveT) { clearTimeout(_nvSaveT); _nvSaveT = null; }
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        localStorage.setItem(STORAGE_KEY, adminPersistStateJson());
       } catch (e) {
         if (!_nvSaveWarned) {
           _nvSaveWarned = true;
@@ -14370,7 +14416,7 @@
         _nvSaveTimer = setTimeout(function(){
           _nvSaveTimer = null;
           try{
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            localStorage.setItem(STORAGE_KEY, adminPersistStateJson());
           }catch(e){
             // Cache is an optimisation only: Supabase remains the source of
             // truth, so a failed write costs nothing but is worth knowing about.
