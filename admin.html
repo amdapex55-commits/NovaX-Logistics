@@ -5122,6 +5122,17 @@
                 </div>
                 <div id="codBoardWarn"></div>
                 <div class="grid metrics" id="codBoardCities" style="margin-bottom:12px"></div>
+                <!-- Tracking IDs behind the numbers. Every figure above should
+                     be traceable to the exact parcels that produced it,
+                     otherwise a hub manager cannot dispute or confirm it. -->
+                <div class="mini-form" style="grid-template-columns:minmax(0,260px) auto;align-items:end;margin-bottom:10px">
+                  <div class="field">
+                    <label>Show tracking IDs for</label>
+                    <select id="codBoardCityFilter"></select>
+                  </div>
+                  <button class="ghost-btn" id="codBoardCopyAwbsBtn" type="button" style="min-height:44px">Copy Tracking IDs</button>
+                </div>
+                <div id="codBoardAwbs" style="margin-bottom:14px"></div>
                 <div class="table-wrap">
                   <div class="wide-scroll">
                     <table>
@@ -7320,18 +7331,48 @@
          meta.processHistory (admin-processed deliveries carry a timestamped
          entry) and finally to updated_at, and the board says which source it
          is using so nobody trusts an approximate number silently. */
-    function nvDeliveredAtFromMeta(m, r) {
+    /* Timestamp normaliser. Two different shapes reach this board:
+         - real timestamptz from Postgres: '2026-08-12T10:50:00.123+00:00'
+         - naive strings from meta.processHistory: '2026-08-12 10:50:00',
+           written by to_char(now(),...) with NO timezone
+       new Date() parses the naive one as BROWSER-LOCAL while the first is
+       UTC, which on a UTC+5 machine skews the comparison by five hours and
+       silently mis-buckets parcels around the reset boundary. Naive strings
+       are treated as UTC, which is what Postgres produced them in. */
+    function nvTs(v) {
+      if (!v) return NaN;
+      let s = String(v).trim();
+      if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?(\.\d+)?$/.test(s)) {
+        s = s.replace(" ", "T") + "Z";           // naive -> explicit UTC
+      }
+      const t = new Date(s).getTime();
+      return Number.isFinite(t) ? t : NaN;
+    }
+
+    /* NovaX fix (COD board never cleared on reset):
+       this used to fall back to parcels.updated_at when no delivered_at or
+       processHistory entry existed. That is unusable here -- fParcel() writes
+       `updated_at: new Date().toISOString()` and "parcels" is in the generic
+       SETS sync, so ANY admin action rewrites updated_at to now. Every
+       delivered parcel therefore looked delivered-just-now forever and the
+       morning reset could never clear the board.
+
+       Order of trust now:
+         1. parcels.delivered_at  -- stamped once by trigger, immutable
+         2. the last 'Delivered' entry in meta.processHistory -- appended
+            once, approximate but not rewritten
+         3. nothing. The parcel is EXCLUDED from the cash total and reported
+            separately, because a wrong number here is money someone goes and
+            collects. */
+    function nvDeliveredAtFromMeta(m) {
       try {
         const hist = Array.isArray(m && m.processHistory) ? m.processHistory : [];
         for (let i = hist.length - 1; i >= 0; i--) {
           const h = hist[i];
-          if (h && String(h.status || "") === "Delivered" && h.at) {
-            // processHistory stores 'YYYY-MM-DD HH24:MI:SS' in DB local time.
-            return String(h.at).replace(" ", "T");
-          }
+          if (h && String(h.status || "") === "Delivered" && h.at) return String(h.at);
         }
       } catch (e) {}
-      return (r && r.updated_at) || null;
+      return null;
     }
 
     function isDeliveredLedgerParcel(parcel) {
@@ -13372,13 +13413,18 @@
         nvCodResetBy = (row && row.reset_by) || "";
         nvCodResetShared = true;
         renderCodBoard();
+        /* Pull parcels back down straight after a reset. If the delivered_at
+           migration was applied while this tab was already open, the cached
+           rows have no delivered_at and the board would keep showing them as
+           approximate until someone happened to reload. */
+        try { if (typeof window.nvRefresh === "function") window.nvRefresh(["parcels"]); } catch (e) {}
         toast("COD board reset for a new day. Everyone sees the same figures.", "success");
       }).catch(() => { applyLocal(false); toast("Board reset on this device only.", "error"); });
     }
 
     // Parcels delivered since the reset marker, bucketed by destination city.
     function nvCodBoardData() {
-      const since = nvCodResetAt ? new Date(nvCodResetAt).getTime() : 0;
+      const since = nvCodResetAt ? nvTs(nvCodResetAt) : 0;
       const buckets = new Map();
       const key = c => {
         const t = String(c || "").trim().toLowerCase();
@@ -13386,25 +13432,36 @@
         return hit || (String(c || "").trim() || "Unknown city");
       };
       let approx = 0;
+      const undated = [];   // delivered but with no trustworthy delivery time
       (state.parcels || []).forEach(p => {
         if (!isDeliveredLedgerParcel(p)) return;
-        const ts = p.deliveredAt ? new Date(p.deliveredAt).getTime() : NaN;
-        if (!Number.isFinite(ts) || ts < since) return;
+        const ts = nvTs(p.deliveredAt);
+        if (!Number.isFinite(ts)) {
+          // Counted nowhere. Listed separately so it is visible rather than
+          // quietly inflating or deflating a cash figure.
+          undated.push(p);
+          return;
+        }
+        if (ts < since) return;
         if (!p.deliveredAtExact) approx++;
         const k = key(p.city);
-        const b = buckets.get(k) || { city: k, parcels: 0, cod: 0, prepaid: 0 };
+        const b = buckets.get(k) || { city: k, parcels: 0, cod: 0, prepaid: 0, items: [] };
         b.parcels++;
         if (isNonCodParcel(p)) b.prepaid++; else b.cod += Number(p.cod || 0);
+        b.items.push({ awb: p.awb, consignee: p.consignee || "", cod: Number(p.cod || 0),
+                       prepaid: isNonCodParcel(p), at: ts, exact: !!p.deliveredAtExact,
+                       client: (clientById(p.clientId) || {}).name || "" });
         buckets.set(k, b);
       });
       // Fixed order first (the four cities NovaX serves), then any others.
       const ordered = [];
-      NV_COD_CITIES.forEach(c => ordered.push(buckets.get(c) || { city: c, parcels: 0, cod: 0, prepaid: 0 }));
+      NV_COD_CITIES.forEach(c => ordered.push(buckets.get(c) || { city: c, parcels: 0, cod: 0, prepaid: 0, items: [] }));
       Array.from(buckets.values())
         .filter(b => !NV_COD_CITIES.includes(b.city))
         .sort((a, b) => b.cod - a.cod)
         .forEach(b => ordered.push(b));
-      return { rows: ordered, approx };
+      ordered.forEach(b => b.items.sort((x, y) => y.at - x.at));
+      return { rows: ordered, approx, undated };
     }
 
     function renderCodBoard() {
@@ -13448,11 +13505,88 @@
       if (warn) {
         const msgs = [];
         if (!nvCodResetShared) msgs.push("This reset marker is stored on <b>this browser only</b> — other ops staff will see a different period. Run <code>sql/novax_cod_daily_board_v1.sql</code> to make it shared.");
-        if (!state.parcels.some(p => p.deliveredAtExact)) msgs.push("Delivery times are <b>approximate</b> (derived from processing history, not a stamped <code>delivered_at</code>). The same migration adds the exact column.");
+        if (!state.parcels.some(p => p.deliveredAtExact)) msgs.push("Delivery times are <b>approximate</b> (taken from processing history, not a stamped <code>delivered_at</code>). Run <code>sql/novax_cod_daily_board_v1.sql</code>, then reload this page.");
+        const { undated } = nvCodBoardData();
+        if (undated.length) msgs.push(`<b>${undated.length} delivered parcel(s) are not counted</b> because nothing records when they were delivered — most likely marked by a rider before the <code>delivered_at</code> migration. They appear under "Not counted" in the dropdown below.`);
         warn.innerHTML = msgs.length
           ? `<div class="data-note" style="background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;display:block;line-height:1.55">${msgs.join("<br>")}</div>`
           : "";
       }
+
+      renderCodBoardAwbs();
+    }
+
+    /* The tracking IDs behind each figure. A hub manager handing over cash
+       needs the list, not just the total -- and it doubles as the audit trail
+       when a number looks wrong. */
+    let nvCodAwbFilter = "__all__";
+    function renderCodBoardAwbs() {
+      const sel = document.getElementById("codBoardCityFilter");
+      const host = document.getElementById("codBoardAwbs");
+      if (!sel || !host) return;
+      const { rows, undated } = nvCodBoardData();
+
+      const opts = [`<option value="__all__">All destinations (${rows.reduce((s, r) => s + r.parcels, 0)})</option>`]
+        .concat(rows.filter(r => r.parcels > 0).map(r => `<option value="${escLabelText(r.city)}">${escLabelText(r.city)} (${r.parcels})</option>`));
+      if (undated.length) opts.push(`<option value="__undated__">Not counted — no delivery time (${undated.length})</option>`);
+      sel.innerHTML = opts.join("");
+      // Keep the operator's choice across the frequent re-renders.
+      if (Array.from(sel.options).some(o => o.value === nvCodAwbFilter)) sel.value = nvCodAwbFilter;
+      else { nvCodAwbFilter = "__all__"; sel.value = "__all__"; }
+
+      let items, note;
+      if (nvCodAwbFilter === "__undated__") {
+        items = undated.map(p => ({ awb: p.awb, consignee: p.consignee || "", cod: Number(p.cod || 0),
+                                    prepaid: isNonCodParcel(p), at: NaN, exact: false,
+                                    client: (clientById(p.clientId) || {}).name || "", city: p.city || "" }));
+        note = "These are excluded from every total above.";
+      } else {
+        const picked = nvCodAwbFilter === "__all__" ? rows : rows.filter(r => r.city === nvCodAwbFilter);
+        items = picked.flatMap(r => r.items.map(i => Object.assign({ city: r.city }, i)));
+        items.sort((a, b) => b.at - a.at);
+        note = "";
+      }
+
+      if (!items.length) { host.innerHTML = `<div class="footer-note">No parcels in this selection.</div>`; return; }
+      const total = items.reduce((s, i) => s + (i.prepaid ? 0 : i.cod), 0);
+      host.innerHTML = `
+        <div class="table-wrap"><div class="wide-scroll">
+          <table>
+            <thead><tr><th>Tracking ID</th><th>Destination</th><th>Consignee</th><th>Shipper</th><th>COD</th><th>Marked delivered</th></tr></thead>
+            <tbody>${items.map(i => `<tr>
+              <td><strong>${escLabelText(i.awb)}</strong></td>
+              <td>${escLabelText(i.city)}</td>
+              <td>${escLabelText(i.consignee)}</td>
+              <td>${escLabelText(i.client)}</td>
+              <td>${i.prepaid ? '<span class="chip info">prepaid</span>' : `<strong>${money(i.cod)}</strong>`}</td>
+              <td>${Number.isFinite(i.at)
+                    ? escLabelText(new Date(i.at).toLocaleString("en-PK", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) +
+                      (i.exact ? "" : ' <span class="chip warn" style="font-size:10px">approx</span>')
+                    : '<span class="chip bad">unknown</span>'}</td>
+            </tr>`).join("")}</tbody>
+          </table>
+        </div></div>
+        <div class="footer-note" style="margin-top:6px">${items.length} parcel(s) &middot; ${money(total)} cash. ${escLabelText(note)}</div>`;
+    }
+
+    function nvCodCopyAwbs() {
+      const host = document.getElementById("codBoardAwbs");
+      if (!host) return;
+      const awbs = Array.from(host.querySelectorAll("tbody tr td:first-child strong")).map(el => el.textContent.trim()).filter(Boolean);
+      if (!awbs.length) { toast("No tracking IDs in this selection.", "error"); return; }
+      const text = awbs.join("\n");
+      const done = () => toast(`${awbs.length} tracking ID(s) copied.`, "success");
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, () => { nvCodCopyFallback(text, done); });
+      } else nvCodCopyFallback(text, done);
+    }
+    function nvCodCopyFallback(text, done) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select(); document.execCommand("copy");
+        document.body.removeChild(ta); done();
+      } catch (e) { toast("Could not copy to clipboard.", "error"); }
     }
 
     function nvCodBoardCsv() {
@@ -13623,6 +13757,8 @@
     bind("processingRunSheetBtn", "click", openProcessingRunSheet);
     bind("codBoardResetBtn", "click", nvCodReset);
     bind("codBoardCsvBtn", "click", nvCodBoardCsv);
+    bind("codBoardCopyAwbsBtn", "click", nvCodCopyAwbs);
+    bind("codBoardCityFilter", "change", e => { nvCodAwbFilter = e.target.value; renderCodBoardAwbs(); });
     bind("processingStatusSelect", "change", event => {
       state.pendingProcessingStatus = event.target.value;
       saveState();
@@ -13855,9 +13991,10 @@
            is run it falls back to the last "Delivered" entry in
            meta.processHistory, then to updated_at, so the board still works --
            just less precisely. */
-        updatedAt:r.updated_at||null, deliveredAt:(r.delivered_at||nvDeliveredAtFromMeta(m,r)||null),
+        updatedAt:r.updated_at||null, deliveredAt:(r.delivered_at||nvDeliveredAtFromMeta(m)||null),
         // True only when the value came from the real stamped column, so the
-        // board can tell the operator whether the figure is exact.
+        // board can tell the operator whether the figure is exact. NOTE:
+        // updated_at is deliberately NOT a fallback -- see nvDeliveredAtFromMeta.
         deliveredAtExact:!!r.delivered_at,
         exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"",
         /* NovaX fix (admin AWB parity): allowOpen was never mapped here, so
