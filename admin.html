@@ -5106,6 +5106,32 @@
           <div class="admin-content">
             <section class="admin-module active" id="admin-dashboard">
               <div class="grid metrics" id="adminMetrics"></div>
+
+              <!-- NovaX new: daily COD collection board. Reset each morning;
+                   fills up as destination hubs mark parcels delivered. -->
+              <div class="panel" id="codBoardPanel" style="margin-top:14px">
+                <div class="section-head">
+                  <div>
+                    <h3>COD to Collect Today</h3>
+                    <p id="codBoardSub">Cash owed from each destination hub, counting only parcels marked Delivered since the last reset.</p>
+                  </div>
+                  <div class="inline-actions">
+                    <button class="ghost-btn" id="codBoardCsvBtn" type="button">Download CSV</button>
+                    <button class="action-btn" id="codBoardResetBtn" type="button">Reset for New Day</button>
+                  </div>
+                </div>
+                <div id="codBoardWarn"></div>
+                <div class="grid metrics" id="codBoardCities" style="margin-bottom:12px"></div>
+                <div class="table-wrap">
+                  <div class="wide-scroll">
+                    <table>
+                      <thead><tr><th>Destination</th><th>Parcels delivered</th><th>COD to collect</th><th>Prepaid (no cash)</th><th>Share</th></tr></thead>
+                      <tbody id="codBoardRows"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
               <div class="panel" style="margin-top:14px">
                 <div class="section-head">
                   <div>
@@ -7277,6 +7303,37 @@
       return rc[zone === "A" ? "A" : "B"];
     }
 
+    /* =====================================================================
+       NovaX new -- DAILY COD COLLECTION BOARD
+
+       Ops presses Reset each morning. Through the day, as destination hubs
+       mark parcels Delivered, this board accumulates the COD those parcels
+       carried, grouped by destination city. At close of day it is the amount
+       of cash that has to come in from each hub.
+
+       WHY delivered_at AND NOT updated_at
+         updated_at moves on ANY write -- invoicing a batch of last week's
+         delivered parcels would drop every one of them back into today's
+         figure and overstate the cash due. delivered_at is stamped once, by
+         a trigger, the moment status first becomes Delivered, and never
+         moves again. Until that migration is applied this falls back to
+         meta.processHistory (admin-processed deliveries carry a timestamped
+         entry) and finally to updated_at, and the board says which source it
+         is using so nobody trusts an approximate number silently. */
+    function nvDeliveredAtFromMeta(m, r) {
+      try {
+        const hist = Array.isArray(m && m.processHistory) ? m.processHistory : [];
+        for (let i = hist.length - 1; i >= 0; i--) {
+          const h = hist[i];
+          if (h && String(h.status || "") === "Delivered" && h.at) {
+            // processHistory stores 'YYYY-MM-DD HH24:MI:SS' in DB local time.
+            return String(h.at).replace(" ", "T");
+          }
+        }
+      } catch (e) {}
+      return (r && r.updated_at) || null;
+    }
+
     function isDeliveredLedgerParcel(parcel) {
       return parcel.status === "Delivered" || parcel.steps.includes("COD collected");
     }
@@ -8530,6 +8587,7 @@
       });
 
       const m = metrics();
+      try { renderCodBoard(); } catch (e) { console.warn("NovaX COD board render", e); }
       renderAdminIntegrations();
       const statusFilterEl = document.getElementById("adminOrderStatusFilter");
       const clientFilterEl = document.getElementById("adminOrderClientFilter");
@@ -12940,14 +12998,39 @@
 
     // NovaX new (Negative/Delivery-Charges Invoices): per-line breakdown used
     // by the admin View/Print/CSV invoice functions below.
+    /* NovaX new (invoice outcome column) -- mirror of client.html's
+       nvInvoiceOutcome(). Kept identical on purpose: a merchant on the phone
+       to support must be looking at the same words and the same numbers the
+       agent sees. See the long note in client.html for the reasoning. */
+    function nvInvoiceOutcome(p) {
+      const st = nvStatus(p && p.status) || "";
+      if (isDeliveredLedgerParcel(p)) return { key: "delivered", label: "Delivered", collected: true,  tone: "good" };
+      if (st === "Return to shipper")   return { key: "returned",  label: "Returned",  collected: false, tone: "bad"  };
+      if (st === "Refused")             return { key: "refused",   label: "Refused",   collected: false, tone: "bad"  };
+      if (st === "Cancelled by client") return { key: "cancelled", label: "Cancelled", collected: false, tone: "bad"  };
+      if (/^Return /.test(st))          return { key: "returning", label: "In return", collected: false, tone: "warn" };
+      return { key: "open", label: st || "In progress", collected: false, tone: "warn" };
+    }
     function adminInvoiceLineItems(invoice) {
       return (invoice.parcelRefs || []).map(awb => {
         const p = state.parcels.find(parcel => parcel.awb === awb);
-        if (!p) return null;
+        /* NovaX fix (admin/client invoice parity): this used to `return null`
+           and .filter(Boolean) the row away, so an invoiced AWB missing from
+           the loaded parcel set vanished from the admin copy while the client
+           portal still showed it as a row. Same invoice, different number of
+           lines, different line totals -- and the reconciliation check below
+           would then fire on one portal and not the other. A parcel we cannot
+           resolve is shown, not hidden. */
+        if (!p) return { awb, bookingDate: "-", destinationCity: "-", consignee: "-", paymentMode: "-",
+                         codAmount: 0, deliveryCharge: 0, netLineAmount: 0,
+                         outcome: "Not found", outcomeKey: "unknown", outcomeTone: "warn",
+                         collected: false, prepaid: false };
         const nonCod = isNonCodParcel(p);
-        const codAmount = nonCod ? 0 : Number(p.cod || 0);
+        const oc = nvInvoiceOutcome(p);
+        // COD counts only when the parcel actually delivered AND is not prepaid.
+        const codAmount = (nonCod || !oc.collected) ? 0 : Number(p.cod || 0);
         const deliveryCharge = Number(p.fee || 0);
-        const netLineAmount = nonCod ? -deliveryCharge : (codAmount - deliveryCharge);
+        const netLineAmount = codAmount - deliveryCharge;
         return {
           awb: p.awb,
           bookingDate: labelDate(p),
@@ -12956,9 +13039,14 @@
           paymentMode: parcelPaymentMode(p),
           codAmount,
           deliveryCharge,
-          netLineAmount
+          netLineAmount,
+          outcome: oc.label,
+          outcomeKey: oc.key,
+          outcomeTone: oc.tone,
+          collected: oc.collected,
+          prepaid: nonCod
         };
-      }).filter(Boolean);
+      });
     }
 
     function adminInvoiceHtml(invoice) {
@@ -12966,7 +13054,35 @@
       const lines = adminInvoiceLineItems(invoice);
       const due = Number(invoice.dueToNovax || 0);
       const invType = invoice.invoiceType || "COD Settlement";
-      const rows = lines.map(line => `<tr><td>${escLabelText(line.awb)}</td><td>${line.bookingDate}</td><td>${line.destinationCity}</td><td>${line.consignee}</td><td>${line.paymentMode}</td><td>${money(line.codAmount)}</td><td>${money(line.deliveryCharge)}</td><td>${money(line.netLineAmount)}</td></tr>`).join("");
+      // Inline pill styling: this HTML also goes to the print stage, where the
+      // portal stylesheet does not apply.
+      const TONE = { good: "background:#e6f6ee;color:#0c7c59;border:1px solid #b7e3ce",
+                     bad:  "background:#fdecea;color:#b3261e;border:1px solid #f3c4bf",
+                     warn: "background:#fff6e5;color:#8a5a00;border:1px solid #f0d9a8" };
+      const rows = lines.map(line => {
+        const pill = `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap;${TONE[line.outcomeTone] || TONE.warn}">${escLabelText(line.outcome)}</span>`;
+        // Same three cases as the client portal -- see the note there.
+        const codCell = line.prepaid
+          ? `${money(0)}<div style="font-size:9px;color:#8a8a8a;font-weight:600">prepaid &mdash; no cash due</div>`
+          : (line.collected
+              ? money(line.codAmount)
+              : `${money(0)}<div style="font-size:9px;color:#8a8a8a;font-weight:600">not collected</div>`);
+        return `<tr><td>${escLabelText(line.awb)}</td><td>${line.bookingDate}</td><td>${line.destinationCity}</td><td>${line.consignee}</td><td>${pill}</td><td>${line.paymentMode}</td><td>${codCell}</td><td>${money(line.deliveryCharge)}</td><td>${money(line.netLineAmount)}</td></tr>`;
+      }).join("");
+      const nDelivered = lines.filter(l => l.outcomeKey === "delivered").length;
+      const nReturned = lines.filter(l => ["returned", "refused", "cancelled"].includes(l.outcomeKey)).length;
+      const nOther = lines.length - nDelivered - nReturned;
+      const outcomeStrip = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;font-size:11px">
+        <span style="padding:4px 10px;border-radius:6px;${TONE.good}"><b>${nDelivered}</b> delivered &middot; COD collected</span>
+        <span style="padding:4px 10px;border-radius:6px;${TONE.bad}"><b>${nReturned}</b> returned / refused &middot; charge only</span>
+        ${nOther ? `<span style="padding:4px 10px;border-radius:6px;${TONE.warn}"><b>${nOther}</b> still in progress</span>` : ""}
+      </div>`;
+      // Same reconciliation guard as the client portal -- if the lines and the
+      // server totals disagree, an agent sees it before the merchant calls.
+      const lineCod = lines.reduce((s, l) => s + Number(l.codAmount || 0), 0);
+      const lineFee = lines.reduce((s, l) => s + Number(l.deliveryCharge || 0), 0);
+      const drift = (Math.abs(lineCod - Number(invoice.cod || 0)) > 1) || (Math.abs(lineFee - Number(invoice.charges || 0)) > 1);
+      const driftNote = drift ? `<div style="background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:11px;line-height:1.5"><b>Reconciliation:</b> rows sum to ${escLabelText(money(lineCod))} COD / ${escLabelText(money(lineFee))} charges, against invoice totals of ${escLabelText(money(invoice.cod || 0))} / ${escLabelText(money(invoice.charges || 0))}. The invoice totals are what settle. A gap normally means a parcel's status moved after the invoice was generated.</div>` : "";
       const balanceLabel = due > 0 ? "Amount Due to NovaX" : "Payable to Client";
       const balanceValue = due > 0 ? money(due) : money(invoice.payable || 0);
       return `<div class="manifest-page">
@@ -12980,7 +13096,9 @@
           <div><span>Invoice Type</span><strong>${escLabelText(invType)}</strong></div>
           <div><span>Status</span><strong>${escLabelText(invoice.status)}</strong></div>
         </div>
-        <table class="manifest-table"><thead><tr><th>Tracking ID / AWB</th><th>Booking Date</th><th>Destination City</th><th>Consignee</th><th>Payment Mode</th><th>COD Amount</th><th>Delivery Charge</th><th>Net Line Amount</th></tr></thead><tbody>${rows}</tbody></table>
+        ${outcomeStrip}
+        ${driftNote}
+        <table class="manifest-table"><thead><tr><th>Tracking ID / AWB</th><th>Booking Date</th><th>Destination City</th><th>Consignee</th><th>Outcome</th><th>Payment Mode</th><th>COD Amount</th><th>Delivery Charge</th><th>Net Line Amount</th></tr></thead><tbody>${rows}</tbody></table>
         <div class="manifest-totals">
           <span>Total Parcels: <strong>${lines.length}</strong></span>
           <span>COD Subtotal: <strong>${money(invoice.cod || 0)}</strong></span>
@@ -13029,7 +13147,7 @@
       if (!invoice) { toast("Invoice not found."); return; }
       const client = clientById(invoice.clientId);
       const lines = adminInvoiceLineItems(invoice);
-      const header = ["invoice_id","invoice_type","client_name","status","awb","booking_date","destination_city","consignee","payment_mode","cod_amount","delivery_charge","net_line_amount","invoice_cod_total","invoice_delivery_charges","payable_to_client","due_to_novax","final_balance"];
+      const header = ["invoice_id","invoice_type","client_name","status","awb","booking_date","destination_city","consignee","parcel_outcome","cod_collected","payment_mode","cod_amount","delivery_charge","net_line_amount","invoice_cod_total","invoice_delivery_charges","payable_to_client","due_to_novax","final_balance"];
       const rows = lines.map(line => [
         invoice.id,
         invoice.invoiceType || "COD Settlement",
@@ -13039,6 +13157,8 @@
         line.bookingDate,
         line.destinationCity,
         line.consignee,
+        line.outcome,
+        line.collected ? "yes" : "no",
         line.paymentMode,
         line.codAmount,
         line.deliveryCharge,
@@ -13192,6 +13312,165 @@
       toast(`${req.id} cleared from the pickup queue. No parcel status was changed.`);
     }
 
+    /* =====================================================================
+       NovaX new -- DAILY COD COLLECTION BOARD (render + reset)
+
+       THE RESET MARKER IS SHARED, NOT PER-BROWSER. Two ops staff must never
+       see two different "cash to collect" figures -- that is how a hub gets
+       asked for the wrong amount. It is read/written through
+       novax_cod_reset_get / novax_cod_reset_set (see
+       sql/novax_cod_daily_board_v1.sql). If those RPCs are not deployed yet
+       the board falls back to a localStorage marker AND says so on screen,
+       so nobody mistakes a device-local number for the company figure. */
+    const NV_COD_CITIES = ["Lahore", "Karachi", "Islamabad", "Rawalpindi"];
+    const NV_COD_RESET_LS = "novaxCodDayResetAt";
+    let nvCodResetAt = null;        // ISO string
+    let nvCodResetShared = false;   // true when it came from the database
+    let nvCodResetBy = "";
+
+    function nvCodLoadReset() {
+      const sb = window.__nvSb;
+      const localFallback = () => {
+        try { nvCodResetAt = localStorage.getItem(NV_COD_RESET_LS) || null; } catch (e) { nvCodResetAt = null; }
+        nvCodResetShared = false;
+        renderCodBoard();
+      };
+      if (!sb) { localFallback(); return; }
+      Promise.resolve(sb.rpc("novax_cod_reset_get", {})).then(r => {
+        if (r && r.error) { localFallback(); return; }
+        const row = Array.isArray(r && r.data) ? r.data[0] : (r && r.data);
+        if (row && row.reset_at) {
+          nvCodResetAt = row.reset_at;
+          nvCodResetBy = row.reset_by || "";
+          nvCodResetShared = true;
+          renderCodBoard();
+        } else { localFallback(); }
+      }).catch(localFallback);
+    }
+
+    function nvCodReset() {
+      // Destructive-ish and shared: everyone's board zeroes. Confirm first.
+      const since = nvCodResetAt ? new Date(nvCodResetAt).toLocaleString("en-PK") : "never";
+      if (!confirm(`Reset the COD collection board for a new day?\n\nCurrent period started: ${since}\n\nEveryone in the ops team sees the same board, so this clears it for all of them. Delivered parcels are not changed -- only the counting window moves.`)) return;
+      const sb = window.__nvSb;
+      const nowIso = new Date().toISOString();
+      const applyLocal = (shared) => {
+        nvCodResetAt = nowIso; nvCodResetShared = !!shared;
+        if (!shared) { try { localStorage.setItem(NV_COD_RESET_LS, nowIso); } catch (e) {} }
+        renderCodBoard();
+      };
+      if (!sb) { applyLocal(false); toast("Board reset on this device only — cloud not connected.", "error"); return; }
+      Promise.resolve(sb.rpc("novax_cod_reset_set", {})).then(r => {
+        if (r && r.error) {
+          console.warn("NovaX novax_cod_reset_set:", r.error.message);
+          applyLocal(false);
+          toast("Reset saved on this device only — run sql/novax_cod_daily_board_v1.sql to share it with the team.", "error");
+          return;
+        }
+        const row = Array.isArray(r && r.data) ? r.data[0] : (r && r.data);
+        nvCodResetAt = (row && row.reset_at) || nowIso;
+        nvCodResetBy = (row && row.reset_by) || "";
+        nvCodResetShared = true;
+        renderCodBoard();
+        toast("COD board reset for a new day. Everyone sees the same figures.", "success");
+      }).catch(() => { applyLocal(false); toast("Board reset on this device only.", "error"); });
+    }
+
+    // Parcels delivered since the reset marker, bucketed by destination city.
+    function nvCodBoardData() {
+      const since = nvCodResetAt ? new Date(nvCodResetAt).getTime() : 0;
+      const buckets = new Map();
+      const key = c => {
+        const t = String(c || "").trim().toLowerCase();
+        const hit = NV_COD_CITIES.find(x => x.toLowerCase() === t);
+        return hit || (String(c || "").trim() || "Unknown city");
+      };
+      let approx = 0;
+      (state.parcels || []).forEach(p => {
+        if (!isDeliveredLedgerParcel(p)) return;
+        const ts = p.deliveredAt ? new Date(p.deliveredAt).getTime() : NaN;
+        if (!Number.isFinite(ts) || ts < since) return;
+        if (!p.deliveredAtExact) approx++;
+        const k = key(p.city);
+        const b = buckets.get(k) || { city: k, parcels: 0, cod: 0, prepaid: 0 };
+        b.parcels++;
+        if (isNonCodParcel(p)) b.prepaid++; else b.cod += Number(p.cod || 0);
+        buckets.set(k, b);
+      });
+      // Fixed order first (the four cities NovaX serves), then any others.
+      const ordered = [];
+      NV_COD_CITIES.forEach(c => ordered.push(buckets.get(c) || { city: c, parcels: 0, cod: 0, prepaid: 0 }));
+      Array.from(buckets.values())
+        .filter(b => !NV_COD_CITIES.includes(b.city))
+        .sort((a, b) => b.cod - a.cod)
+        .forEach(b => ordered.push(b));
+      return { rows: ordered, approx };
+    }
+
+    function renderCodBoard() {
+      const host = document.getElementById("codBoardCities");
+      if (!host) return;
+      const { rows } = nvCodBoardData();
+      const total = rows.reduce((s, r) => s + r.cod, 0);
+      const totalParcels = rows.reduce((s, r) => s + r.parcels, 0);
+
+      host.innerHTML = rows.filter(r => NV_COD_CITIES.includes(r.city)).map(r => `
+        <div class="metric">
+          <label>${escLabelText(r.city)}</label>
+          <strong>${money(r.cod)}</strong>
+          <div class="meter-caption">${r.parcels} delivered${r.prepaid ? ` · ${r.prepaid} prepaid` : ""}</div>
+        </div>`).join("") + `
+        <div class="metric" style="border:2px solid #0c7c59">
+          <label>Total to collect</label>
+          <strong>${money(total)}</strong>
+          <div class="meter-caption">${totalParcels} parcel(s) since reset</div>
+        </div>`;
+
+      const body = document.getElementById("codBoardRows");
+      if (body) {
+        body.innerHTML = rows.map(r => `<tr>
+          <td><strong>${escLabelText(r.city)}</strong></td>
+          <td>${r.parcels}</td>
+          <td><strong>${money(r.cod)}</strong></td>
+          <td>${r.prepaid || "—"}</td>
+          <td>${total > 0 ? Math.round((r.cod / total) * 100) + "%" : "—"}</td>
+        </tr>`).join("") || `<tr><td colspan="5">Nothing delivered since the last reset.</td></tr>`;
+      }
+
+      const sub = document.getElementById("codBoardSub");
+      if (sub) {
+        const since = nvCodResetAt ? new Date(nvCodResetAt).toLocaleString("en-PK", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "the beginning";
+        sub.textContent = `Counting parcels marked Delivered since ${since}${nvCodResetBy ? " (reset by " + nvCodResetBy + ")" : ""}. Cash owed from each destination hub.`;
+      }
+
+      // Be explicit about how trustworthy the number is.
+      const warn = document.getElementById("codBoardWarn");
+      if (warn) {
+        const msgs = [];
+        if (!nvCodResetShared) msgs.push("This reset marker is stored on <b>this browser only</b> — other ops staff will see a different period. Run <code>sql/novax_cod_daily_board_v1.sql</code> to make it shared.");
+        if (!state.parcels.some(p => p.deliveredAtExact)) msgs.push("Delivery times are <b>approximate</b> (derived from processing history, not a stamped <code>delivered_at</code>). The same migration adds the exact column.");
+        warn.innerHTML = msgs.length
+          ? `<div class="data-note" style="background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;display:block;line-height:1.55">${msgs.join("<br>")}</div>`
+          : "";
+      }
+    }
+
+    function nvCodBoardCsv() {
+      const { rows } = nvCodBoardData();
+      const since = nvCodResetAt ? new Date(nvCodResetAt).toISOString() : "";
+      const head = ["destination_city", "parcels_delivered", "cod_to_collect", "prepaid_parcels", "counting_since"];
+      const body = rows.map(r => [r.city, r.parcels, r.cod, r.prepaid, since].map(adminBulkCsvEscape).join(","));
+      const total = rows.reduce((s, r) => s + r.cod, 0);
+      body.push(["TOTAL", rows.reduce((s, r) => s + r.parcels, 0), total, "", since].map(adminBulkCsvEscape).join(","));
+      const blob = new Blob([head.join(",") + "\n" + body.join("\n")], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `novax-cod-to-collect-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast("COD collection sheet downloaded.", "success");
+    }
+
     function printProcessingBatchAwbs() {
       const awbs = (state.processingBatchAwbs && state.processingBatchAwbs.length) ? state.processingBatchAwbs : [state.activeProcessingAwb].filter(Boolean);
       printAdminAwbs(awbs);
@@ -13342,6 +13621,8 @@
     bind("processingClearBatchBtn", "click", clearProcessingBatch);
     bind("processingPrintAwbBtn", "click", printProcessingBatchAwbs);
     bind("processingRunSheetBtn", "click", openProcessingRunSheet);
+    bind("codBoardResetBtn", "click", nvCodReset);
+    bind("codBoardCsvBtn", "click", nvCodBoardCsv);
     bind("processingStatusSelect", "change", event => {
       state.pendingProcessingStatus = event.target.value;
       saveState();
@@ -13491,6 +13772,8 @@
       if(!sb){ console.warn("NovaX: cloud init failed, local only."); return; }
       window.__nvSb=sb;
       if (typeof refreshProcessingAccess === "function") { try { refreshProcessingAccess(); } catch(e){ console.warn("NovaX: processing access check failed", e); } }
+      // Pull the shared COD-board reset marker as soon as a client exists.
+      if (typeof nvCodLoadReset === "function") { try { nvCodLoadReset(); } catch(e){ console.warn("NovaX: COD reset load failed", e); } }
       var sbSignup=null; try{ sbSignup=window.supabase.createClient(SB_URL,SB_KEY,{ auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:"sb-nv-admin-signup-client" } }); }catch(e){ console.warn("NovaX: signup client init failed.",e); }
       window.__nvSignupClient=sbSignup;
       var ADMIN_UID=null, loaded=false, shadow={}, resyncT=null, liveSubscribed=false, reloadT=null;
@@ -13563,7 +13846,20 @@
            read -- showed "Return to shipper". Three surfaces, two different
            labels for the same parcel. nvStatus() is the same alias map the
            other two portals use. */
-        status:nvStatus(r.status)||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"",
+        status:nvStatus(r.status)||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at),
+        /* NovaX new (daily COD collection board): `updated` is tpart() -- HH:MM
+           only -- so the DATE was being thrown away and nothing downstream
+           could ask "was this delivered today?". Keep the raw timestamps.
+           deliveredAt prefers the real parcels.delivered_at column (set by the
+           trigger in sql/novax_cod_daily_board_v1.sql); until that migration
+           is run it falls back to the last "Delivered" entry in
+           meta.processHistory, then to updated_at, so the board still works --
+           just less precisely. */
+        updatedAt:r.updated_at||null, deliveredAt:(r.delivered_at||nvDeliveredAtFromMeta(m,r)||null),
+        // True only when the value came from the real stamped column, so the
+        // board can tell the operator whether the figure is exact.
+        deliveredAtExact:!!r.delivered_at,
+        exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", riderInput:m.riderInput||null, service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"",
         /* NovaX fix (admin AWB parity): allowOpen was never mapped here, so
            adminAwbLabelHtml() could not print it even once the field existed
            on the parcel. */

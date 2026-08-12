@@ -3332,15 +3332,51 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     // NovaX new (Negative/Delivery-Charges Invoices): per-line breakdown
     // shared by CSV export, View Invoice modal, and the print/PDF template.
+    /* =====================================================================
+       NovaX new (invoice outcome column)
+
+       WHY: merchants could not tell which parcels on an invoice were actually
+       DELIVERED and which came back. A "Mixed" invoice legitimately contains
+       both -- delivered parcels the merchant is owed COD for, and returned
+       parcels they still owe the delivery charge on -- and nothing on the
+       line told them apart.
+
+       Worse, the COD column showed the parcel's FULL cod_amount regardless of
+       outcome. On a returned parcel no cash was ever collected, so the line
+       claimed money that does not exist and the lines stopped summing to the
+       server-calculated header totals. That mismatch is most of the
+       confusion.
+
+       nvInvoiceOutcome() is the single place that decides "was cash actually
+       collected on this parcel", reusing isDeliveredLedgerParcel() -- the
+       predicate the rest of the portal already uses -- so this can never
+       drift from the wallet/ledger view.
+
+       The header totals are NOT touched. They come from the server
+       (cod_total / fee_total / net_payable) and stay authoritative; if the
+       lines still disagree, the invoice now says so out loud rather than
+       quietly showing a different number. */
+    function nvInvoiceOutcome(p){
+      const st = nvStatus(p && p.status) || "";
+      if (isDeliveredLedgerParcel(p)) return { key:"delivered", label:"Delivered",  collected:true,  tone:"good" };
+      if (st === "Return to shipper")  return { key:"returned",  label:"Returned",   collected:false, tone:"bad"  };
+      if (st === "Refused")            return { key:"refused",   label:"Refused",    collected:false, tone:"bad"  };
+      if (st === "Cancelled by client")return { key:"cancelled", label:"Cancelled",  collected:false, tone:"bad"  };
+      if (/^Return /.test(st))         return { key:"returning", label:"In return",  collected:false, tone:"warn" };
+      return { key:"open", label:st || "In progress", collected:false, tone:"warn" };
+    }
     function clientInvoiceLineItems(inv){
       return (inv.parcelRefs||[]).map(awb=>{
         const p=state.parcels.find(x=>x.awb===awb);
-        if(!p) return { awb, bookingDate:"-", destinationCity:"-", consignee:"-", paymentMode:"-", codAmount:0, deliveryCharge:0, netLineAmount:0 };
+        if(!p) return { awb, bookingDate:"-", destinationCity:"-", consignee:"-", paymentMode:"-", codAmount:0, deliveryCharge:0, netLineAmount:0, outcome:"Not on this account", outcomeKey:"unknown", outcomeTone:"warn", collected:false, prepaid:false };
         const nonCod=isNonCodParcel(p);
-        const codAmount=nonCod?0:Number(p.cod||0);
+        const oc=nvInvoiceOutcome(p);
+        // COD counts only when the parcel actually delivered AND is not prepaid.
+        const codAmount=(nonCod||!oc.collected)?0:Number(p.cod||0);
         const deliveryCharge=Number(p.fee||0);
-        const netLineAmount=nonCod?-deliveryCharge:(codAmount-deliveryCharge);
-        return { awb:p.awb, bookingDate:labelDate(p), destinationCity:labelText(p.city), consignee:labelText(p.consignee), paymentMode:parcelPaymentMode(p), codAmount, deliveryCharge, netLineAmount };
+        const netLineAmount=codAmount-deliveryCharge;
+        return { awb:p.awb, bookingDate:labelDate(p), destinationCity:labelText(p.city), consignee:labelText(p.consignee), paymentMode:parcelPaymentMode(p), codAmount, deliveryCharge, netLineAmount,
+                 outcome:oc.label, outcomeKey:oc.key, outcomeTone:oc.tone, collected:oc.collected, prepaid:nonCod };
       });
     }
     /* =====================================================================
@@ -3490,8 +3526,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const inv=state.invoices.find(i=>i.id===id); if(!inv) return;
       const c=clientById(inv.clientId);
       const lines=clientInvoiceLineItems(inv);
-      const header=["invoice_id","invoice_type","client_name","status","awb","booking_date","destination_city","consignee","payment_mode","cod_amount","delivery_charge","net_line_amount","invoice_cod_total","invoice_delivery_charges","payable_to_client","due_to_novax","final_balance"];
-      const rows=lines.map(line=>[inv.id,inv.invoiceType||"COD Settlement",c.name,inv.status,line.awb,line.bookingDate,line.destinationCity,line.consignee,line.paymentMode,line.codAmount,line.deliveryCharge,line.netLineAmount,inv.cod,inv.charges,inv.payable,inv.dueToNovax||0,inv.finalBalance||0]);
+      // parcel_outcome / cod_collected added so a merchant reconciling in
+      // Excel can filter delivered vs returned without opening the portal.
+      const header=["invoice_id","invoice_type","client_name","status","awb","booking_date","destination_city","consignee","parcel_outcome","cod_collected","payment_mode","cod_amount","delivery_charge","net_line_amount","invoice_cod_total","invoice_delivery_charges","payable_to_client","due_to_novax","final_balance"];
+      const rows=lines.map(line=>[inv.id,inv.invoiceType||"COD Settlement",c.name,inv.status,line.awb,line.bookingDate,line.destinationCity,line.consignee,line.outcome,line.collected?"yes":"no",line.paymentMode,line.codAmount,line.deliveryCharge,line.netLineAmount,inv.cod,inv.charges,inv.payable,inv.dueToNovax||0,inv.finalBalance||0]);
       const csv=[header,...rows].map(r=>r.map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(",")).join("\n");
       const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download=`${inv.id}.csv`; a.click(); toast(`${inv.id} CSV downloaded.`);
     }
@@ -3520,7 +3558,43 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // NovaX security fix: display-only escaping of every text cell on the
       // invoice. Amounts still come from money() on the same numbers, so the
       // invoice math, totals and settlement logic are byte-identical.
-      const rows=lines.map(line=>`<tr><td>${escLabelText(line.awb)}</td><td>${escLabelText(line.bookingDate)}</td><td>${escLabelText(line.destinationCity)}</td><td>${escLabelText(line.consignee)}</td><td>${escLabelText(line.paymentMode)}</td><td style="text-align:right">${money(line.codAmount)}</td><td style="text-align:right">${money(line.deliveryCharge)}</td><td style="text-align:right">${money(line.netLineAmount)}</td></tr>`).join("");
+      // Outcome pill colours are inline because this HTML is also used for
+      // print and for the PDF path, where the portal stylesheet is not applied.
+      const TONE={ good:"background:#e6f6ee;color:#0c7c59;border:1px solid #b7e3ce",
+                   bad:"background:#fdecea;color:#b3261e;border:1px solid #f3c4bf",
+                   warn:"background:#fff6e5;color:#8a5a00;border:1px solid #f0d9a8" };
+      const rows=lines.map(line=>{
+        const pill=`<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;${TONE[line.outcomeTone]||TONE.warn}">${escLabelText(line.outcome)}</span>`;
+        /* Three distinct cases, because "Rs 0" with no reason is exactly the
+           ambiguity this column exists to remove:
+             prepaid delivered -> cash was never due, the customer paid online
+             not delivered     -> cash was due but never collected
+             delivered COD     -> the real amount */
+        const codCell=line.prepaid
+          ? `${money(0)}<div style="font-size:10px;color:#8a8a8a;font-weight:600">prepaid &mdash; no cash due</div>`
+          : (line.collected
+              ? money(line.codAmount)
+              : `${money(0)}<div style="font-size:10px;color:#8a8a8a;font-weight:600">not collected</div>`);
+        return `<tr><td>${escLabelText(line.awb)}</td><td>${escLabelText(line.bookingDate)}</td><td>${escLabelText(line.destinationCity)}</td><td>${escLabelText(line.consignee)}</td><td>${pill}</td><td>${escLabelText(line.paymentMode)}</td><td style="text-align:right">${codCell}</td><td style="text-align:right">${money(line.deliveryCharge)}</td><td style="text-align:right">${money(line.netLineAmount)}</td></tr>`;
+      }).join("");
+      const nDelivered=lines.filter(l=>l.outcomeKey==="delivered").length;
+      const nReturned=lines.filter(l=>l.outcomeKey==="returned"||l.outcomeKey==="refused"||l.outcomeKey==="cancelled").length;
+      const nOther=lines.length-nDelivered-nReturned;
+      const outcomeStrip=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">
+        <span style="padding:5px 11px;border-radius:8px;${TONE.good}"><b>${nDelivered}</b> delivered &middot; COD collected</span>
+        <span style="padding:5px 11px;border-radius:8px;${TONE.bad}"><b>${nReturned}</b> returned / refused &middot; charge only</span>
+        ${nOther?`<span style="padding:5px 11px;border-radius:8px;${TONE.warn}"><b>${nOther}</b> still in progress</span>`:""}
+      </div>`;
+      /* Reconciliation guard. The header figures are the server's
+         (cod_total / fee_total / net_payable) and are what actually settles.
+         If the per-line view disagrees, say so plainly instead of showing two
+         different numbers on one page and letting the merchant find it. */
+      const lineCod=lines.reduce((s,l)=>s+Number(l.codAmount||0),0);
+      const lineFee=lines.reduce((s,l)=>s+Number(l.deliveryCharge||0),0);
+      const drift=(Math.abs(lineCod-Number(inv.cod||0))>1)||(Math.abs(lineFee-Number(inv.charges||0))>1);
+      const driftNote=drift?`<div style="background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;line-height:1.5">
+        <b>Note:</b> the per-parcel rows below add up to ${escLabelText(money(lineCod))} COD and ${escLabelText(money(lineFee))} in charges, which differs from the invoice totals shown in the summary. The <b>summary totals are the ones that settle</b> &mdash; they are calculated by NovaX at the moment the invoice is generated. A difference here usually means a parcel's status changed after invoicing. Please contact support if the gap looks wrong.
+      </div>`:"";
       const balanceLabel=due>0?"Amount Due to NovaX":"Grand Total Payable";
       const balanceValue=due>0?money(due):money(inv.payable||0);
       return `<div style="font-family:Arial,Helvetica,sans-serif;color:#0b1f16;padding:26px;max-width:820px;margin:0 auto">
@@ -3535,7 +3609,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Status</div><div style="font-weight:700">${escLabelText(inv.status)}</div><div style="font-size:11px;color:#5b6b64">${escLabelText(invoiceSettlementNote(inv))}</div></div>
         </div>
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#5b6b64;margin-bottom:6px">Tracking &amp; delivery charge breakdown</div>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px"><thead><tr style="background:#eef7f2"><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Tracking ID / AWB</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Booking Date</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Destination City</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Consignee</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Payment Mode</th><th style="text-align:right;padding:7px;border:1px solid #d6e6de">COD Amount</th><th style="text-align:right;padding:7px;border:1px solid #d6e6de">Delivery Charge</th><th style="text-align:right;padding:7px;border:1px solid #d6e6de">Net Line Amount</th></tr></thead><tbody>${rows}</tbody></table>
+        ${outcomeStrip}
+        ${driftNote}
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px"><thead><tr style="background:#eef7f2"><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Tracking ID / AWB</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Booking Date</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Destination City</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Consignee</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Outcome</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Payment Mode</th><th style="text-align:right;padding:7px;border:1px solid #d6e6de">COD Amount</th><th style="text-align:right;padding:7px;border:1px solid #d6e6de">Delivery Charge</th><th style="text-align:right;padding:7px;border:1px solid #d6e6de">Net Line Amount</th></tr></thead><tbody>${rows}</tbody></table>
         ${paidEvent?`<div style="background:#f6faf8;border:1px solid #d6e6de;border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:13px">Settled on <b>${escLabelText(paidEvent)}</b></div>`:""}
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#5b6b64;margin-bottom:6px">Summary</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px">
