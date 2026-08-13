@@ -109,24 +109,21 @@
     .client-shell{display:grid;grid-template-columns:248px minmax(0,1fr);gap:14px;align-items:start;}
     .client-side{position:sticky;top:82px;display:grid;gap:10px;}
     .client-menu-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid rgba(16,32,27,.08);border-radius:var(--radius);background:#fff;box-shadow:0 12px 32px rgba(21,45,36,.08);}
-    /* ===== NovaX omni search (delivery area) ===== */
-    .nv-omni{position:relative;}
-    .nv-omni-input{width:100%;min-height:46px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:0 34px 0 12px;color:var(--ink);font:inherit;}
-    .nv-omni-input:focus{outline:none;border-color:var(--green-2);box-shadow:0 0 0 3px rgba(19,163,111,.14);}
-    .nv-omni-input.is-set{border-color:var(--green-2);background:#f4fdf8;font-weight:700;}
-    .nv-omni-clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:8px;border:0;background:transparent;color:var(--muted);font-size:19px;line-height:1;cursor:pointer;display:none;}
-    .nv-omni-clear.show{display:block;}
-    .nv-omni-clear:hover{background:var(--panel-soft);color:var(--ink);}
-    .nv-omni-list{position:absolute;z-index:40;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--line-strong);border-radius:12px;box-shadow:0 18px 44px rgba(21,45,36,.18);max-height:290px;overflow:auto;display:none;padding:5px;}
-    .nv-omni-list.open{display:block;}
-    .nv-omni-item{padding:9px 11px;border-radius:8px;cursor:pointer;display:flex;align-items:baseline;gap:8px;min-height:40px;}
-    .nv-omni-item:hover,.nv-omni-item.active{background:var(--mint);}
-    .nv-omni-item b{font-weight:750;font-size:13.5px;color:var(--ink);}
-    .nv-omni-item small{color:var(--muted);font-size:11.5px;overflow-wrap:anywhere;}
-    .nv-omni-item mark{background:rgba(19,163,111,.22);color:inherit;border-radius:3px;padding:0 1px;}
-    .nv-omni-empty{padding:11px;color:var(--muted);font-size:12.5px;}
-    html[data-theme="dark"] .nv-omni-input,html[data-theme="dark"] .nv-omni-list{background:var(--panel);color:var(--ink);}
-    @media (max-width:760px){ .nv-omni-input{font-size:16px;} .nv-omni-list{max-height:250px;} }
+    /* ===== NovaX area picker (search + select) ===== */
+    .nv-area-filter{width:100%;min-height:42px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:0 12px;color:var(--ink);font:inherit;}
+    .nv-area-filter:focus{outline:none;border-color:var(--green-2);box-shadow:0 0 0 3px rgba(19,163,111,.14);}
+    #bookingDestArea{margin-top:6px;}
+    /* Pickup city is fixed, so it reads as a value not an editable control. */
+    .nv-locked{background:var(--panel-soft)!important;color:var(--muted)!important;font-weight:700;cursor:default;}
+    .nv-locked:focus{outline:none;box-shadow:none;}
+    /* ===== Booking form alignment =====
+       Fields carry hint text of different lengths, so with the default
+       stretch behaviour a tall left cell dragged its right-hand neighbour's
+       control out of line. Aligning to the start keeps every control on its
+       own baseline and the two columns tidy. */
+    .form-grid{align-items:start;}
+    .form-grid .field{align-content:start;}
+    .form-grid .field > label{min-height:16px;}
     .hamburger-btn{width:42px;height:38px;border-radius:var(--radius);background:var(--ink);display:none;place-items:center;gap:4px;padding:9px;}
     .hamburger-btn span{display:block;width:18px;height:2px;border-radius:999px;background:white;}
     .client-menu{display:grid;gap:8px;padding:10px;border:1px solid rgba(16,32,27,.08);border-radius:var(--radius);background:#fff;box-shadow:0 12px 32px rgba(21,45,36,.08);}
@@ -1196,24 +1193,27 @@
                   <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
                   <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" placeholder="03113323923" maxlength="11" required><div id="consigneeHistoryBadge" style="display:none;margin-top:6px"></div></div>
                   <div id="nvPickupBanner" style="grid-column:1/-1"></div>
-                  <div class="field"><label>Pickup City <span class="required-star">*</span></label><select id="bookingPickupCity" required><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
+                  <div class="field"><label>Pickup City</label>
+                    <!-- NovaX: pickup is Karachi-only today, so this is a fixed
+                         display rather than a choice. It stays an <input> with the
+                         same id so every reader (quickBooking, bulk import, the
+                         quote call) keeps working with no change. readonly, not
+                         disabled -- disabled inputs are omitted from form data. -->
+                    <input id="bookingPickupCity" class="nv-locked" value="Karachi" readonly tabindex="-1" aria-readonly="true">
+                    <div class="footer-note">All pickups run from our Karachi hub.</div></div>
                   <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote()"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
                   <!-- NovaX (distance pricing): shown only for Karachi, and only
                        once the areas exist server-side. Hidden entirely otherwise,
                        so a merchant on flat pricing sees no change at all. -->
                   <div class="field" id="bookingDestAreaField" style="display:none"><label>Delivery Area <span class="required-star">*</span></label>
-                    <!-- Typeahead, not a <select>: 62 areas is an unusable scroll on a
-                         phone, and merchants type "DHA 5" or "Defence Phase 5" rather
-                         than hunting for "DHA Phase 5". The hidden input keeps the id
-                         bookingDestArea holding the area UUID, so every existing
-                         reader (nvDoQuote, quickBooking) is unchanged. -->
-                    <div class="nv-omni" id="nvAreaOmni">
-                      <input type="text" id="nvAreaSearch" class="nv-omni-input" placeholder="Type an area, e.g. DHA 5, Gulshan, Korangi" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="nvAreaList">
-                      <button type="button" class="nv-omni-clear" id="nvAreaClear" aria-label="Clear area" title="Clear">&times;</button>
-                      <div class="nv-omni-list" id="nvAreaList" role="listbox"></div>
-                    </div>
-                    <input type="hidden" id="bookingDestArea" value="">
-                    <div class="footer-note" id="nvAreaHint">Start typing the consignee's area &mdash; we price the exact distance from your pickup point.</div></div>
+                    <!-- Search box FILTERS the select below; the select is the real
+                         control and is always visible, so the merchant can always
+                         just open it and pick. An earlier version used a custom
+                         absolutely-positioned dropdown and the input collided with
+                         a same-named JS function (element ids become globals). -->
+                    <input type="text" id="nvAreaFilter" class="nv-area-filter" placeholder="Search area, e.g. DHA 5, Gulshan, Korangi" autocomplete="off">
+                    <select id="bookingDestArea" size="1"><option value="">Select the area...</option></select>
+                    <div class="footer-note" id="nvAreaHint">Type to narrow the list, or just open it and choose.</div></div>
                   <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required></div>
                   <div class="field"><label>Service Type <span class="required-star">*</span></label><select id="bookingService" required><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option><option>Prepaid Delivery</option></select></div>
                   <div class="field"><label>Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" required></div>
@@ -4132,140 +4132,73 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     /* ==================================================================
-       Omni search over the area list.
+       Area picker: a search box that FILTERS a real <select>.
 
-       Matches the area NAME and every ALIAS, so "dha 5", "defence phase 5"
-       and "phase v" all find DHA Phase 5 -- the aliases already exist in
-       novax_areas for exactly this. Prefix matches rank above contained
-       matches so typing "kor" puts Korangi first.
+       The select is the control. It is always in the DOM and always
+       openable, so a merchant can ignore the search entirely and just pick
+       from the list -- which is what a native control on a phone does best.
+       The search only narrows it, matching the area NAME and every ALIAS
+       stored in novax_areas, so "dha 5", "defence phase 5" and "phase v"
+       all find DHA Phase 5.
 
-       Keyboard: arrows move, Enter picks, Escape closes. The chosen UUID
-       lands in the hidden #bookingDestArea input, which is what every
-       other function already reads.
+       Deliberately NOT a custom absolutely-positioned dropdown. The
+       previous attempt was one, and its input carried id="nvAreaSearch"
+       while a function of the same name existed -- element ids become
+       properties of window, so the two collided.
        ================================================================== */
-    var NV_OMNI = { open:false, idx:-1, results:[] };
-
+    function nvAreaMatches(area, q){
+      if(!q) return true;
+      var cands=[String(area.name||"")].concat(area.aliases||[]).map(function(x){ return String(x).toLowerCase(); });
+      var words=q.split(/\s+/).filter(Boolean);
+      return cands.some(function(c){
+        if(c.indexOf(q)>-1) return true;
+        return words.length>1 && words.every(function(w){ return c.indexOf(w)>-1; });
+      });
+    }
     function nvGeoRenderAreas(){
-      // Nothing to pre-render for a typeahead; just reset any stale choice
-      // if the area list changed underneath it.
-      var hid=document.getElementById("bookingDestArea");
-      if(hid && hid.value && !NV_GEO.areas.some(function(a){ return a.id===hid.value; })) nvAreaClear();
+      var sel=document.getElementById("bookingDestArea");
+      if(!sel) return;
+      var filterEl=document.getElementById("nvAreaFilter");
+      var q=String((filterEl&&filterEl.value)||"").trim().toLowerCase();
+      var keep=sel.value;                       // preserve the current choice
+      var list=NV_GEO.areas.filter(function(a){ return nvAreaMatches(a,q); });
+      // Never strand the selected area outside the filtered list.
+      if(keep && !list.some(function(a){ return a.id===keep; })){
+        var cur=NV_GEO.areas.filter(function(a){ return a.id===keep; });
+        list=cur.concat(list);
+      }
+      sel.innerHTML='<option value="">'+(list.length?"Select the area...":"No area matches that search")+'</option>'+
+        list.map(function(a){
+          var alias=(a.aliases||[]).filter(function(x){ return String(x).toLowerCase()!==String(a.name).toLowerCase(); }).slice(0,2).join(", ");
+          return '<option value="'+escLabelText(a.id)+'">'+escLabelText(a.name)+(alias?" \u00b7 "+escLabelText(alias):"")+'</option>';
+        }).join("");
+      if(keep) sel.value=keep;
+      var hint=document.getElementById("nvAreaHint");
+      if(hint) hint.textContent = q
+        ? (list.length+" area"+(list.length===1?"":"s")+" match \u201c"+q+"\u201d")
+        : "Type to narrow the list, or just open it and choose.";
       nvGeoToggleAreaField();
     }
-
-    function nvAreaScore(area, q){
-      var name=String(area.name||"").toLowerCase();
-      var cands=[name].concat((area.aliases||[]).map(function(x){ return String(x).toLowerCase(); }));
-      var best=-1;
-      cands.forEach(function(c){
-        if(c===q) best=Math.max(best,100);
-        else if(c.indexOf(q)===0) best=Math.max(best,80);
-        else if(c.indexOf(q)>-1) best=Math.max(best,50);
-        else {
-          // every query word present somewhere -> weak match ("dha 5 phase")
-          var words=q.split(/\s+/).filter(Boolean);
-          if(words.length>1 && words.every(function(w){ return c.indexOf(w)>-1; })) best=Math.max(best,40);
-        }
-      });
-      return best;
-    }
-    function nvAreaSearch(q){
-      q=String(q||"").trim().toLowerCase();
-      if(!q) return NV_GEO.areas.slice(0,12);
-      return NV_GEO.areas
-        .map(function(a){ return { a:a, s:nvAreaScore(a,q) }; })
-        .filter(function(r){ return r.s>0; })
-        .sort(function(x,y){ return y.s-x.s || x.a.name.localeCompare(y.a.name); })
-        .slice(0,12).map(function(r){ return r.a; });
-    }
-    function nvAreaHighlight(text, q){
-      var t=String(text||"");
-      q=String(q||"").trim();
-      if(!q) return escLabelText(t);
-      var i=t.toLowerCase().indexOf(q.toLowerCase());
-      if(i<0) return escLabelText(t);
-      return escLabelText(t.slice(0,i))+"<mark>"+escLabelText(t.slice(i,i+q.length))+"</mark>"+escLabelText(t.slice(i+q.length));
-    }
-    function nvAreaRenderList(q){
-      var list=document.getElementById("nvAreaList");
-      if(!list) return;
-      NV_OMNI.results=nvAreaSearch(q);
-      if(!NV_OMNI.results.length){
-        list.innerHTML='<div class="nv-omni-empty">No area matches &ldquo;'+escLabelText(q)+'&rdquo;. Try a nearby landmark, or pick the closest area.</div>';
-      } else {
-        list.innerHTML=NV_OMNI.results.map(function(a,i){
-          var alias=(a.aliases||[]).filter(function(x){ return String(x).toLowerCase()!==String(a.name).toLowerCase(); }).slice(0,3).join(", ");
-          return '<div class="nv-omni-item'+(i===NV_OMNI.idx?" active":"")+'" role="option" data-idx="'+i+'">'+
-                 '<b>'+nvAreaHighlight(a.name,q)+'</b>'+(alias?'<small>'+escLabelText(alias)+'</small>':'')+'</div>';
-        }).join("");
-      }
-      list.classList.add("open"); NV_OMNI.open=true;
-      var inp=document.getElementById("nvAreaSearch"); if(inp) inp.setAttribute("aria-expanded","true");
-    }
-    function nvAreaCloseList(){
-      var list=document.getElementById("nvAreaList");
-      if(list) list.classList.remove("open");
-      NV_OMNI.open=false; NV_OMNI.idx=-1;
-      var inp=document.getElementById("nvAreaSearch"); if(inp) inp.setAttribute("aria-expanded","false");
-    }
-    function nvAreaPick(i){
-      var a=NV_OMNI.results[i]; if(!a) return;
-      var hid=document.getElementById("bookingDestArea");
-      var inp=document.getElementById("nvAreaSearch");
-      var clr=document.getElementById("nvAreaClear");
-      if(hid) hid.value=a.id;
-      if(inp){ inp.value=a.name; inp.classList.add("is-set"); }
-      if(clr) clr.classList.add("show");
-      nvAreaCloseList();
-      nvRefreshQuote();
-    }
-    function nvAreaClear(){
-      var hid=document.getElementById("bookingDestArea");
-      var inp=document.getElementById("nvAreaSearch");
-      var clr=document.getElementById("nvAreaClear");
-      if(hid) hid.value="";
-      if(inp){ inp.value=""; inp.classList.remove("is-set"); inp.focus(); }
-      if(clr) clr.classList.remove("show");
-      nvAreaCloseList();
-      nvRefreshQuote();
-    }
     function nvAreaWire(){
-      var inp=document.getElementById("nvAreaSearch");
-      var clr=document.getElementById("nvAreaClear");
-      var list=document.getElementById("nvAreaList");
-      if(!inp || inp.dataset.wired) return;
-      inp.dataset.wired="1";
-      inp.addEventListener("input", function(){
-        var hid=document.getElementById("bookingDestArea");
-        // Typing invalidates a previous choice -- otherwise a merchant could
-        // edit the text and still book against the old area.
-        if(hid && hid.value){ hid.value=""; inp.classList.remove("is-set"); nvRefreshQuote(); }
-        if(clr) clr.classList.toggle("show", !!inp.value);
-        NV_OMNI.idx=-1;
-        nvAreaRenderList(inp.value);
-      });
-      inp.addEventListener("focus", function(){ nvAreaRenderList(inp.value); });
-      inp.addEventListener("keydown", function(e){
-        if(!NV_OMNI.open && (e.key==="ArrowDown"||e.key==="Enter")){ nvAreaRenderList(inp.value); return; }
-        if(e.key==="ArrowDown"){ e.preventDefault(); NV_OMNI.idx=Math.min(NV_OMNI.idx+1, NV_OMNI.results.length-1); nvAreaRenderList(inp.value); nvAreaScrollActive(); }
-        else if(e.key==="ArrowUp"){ e.preventDefault(); NV_OMNI.idx=Math.max(NV_OMNI.idx-1, 0); nvAreaRenderList(inp.value); nvAreaScrollActive(); }
-        else if(e.key==="Enter"){ if(NV_OMNI.open && NV_OMNI.results.length){ e.preventDefault(); nvAreaPick(NV_OMNI.idx<0?0:NV_OMNI.idx); } }
-        else if(e.key==="Escape"){ nvAreaCloseList(); }
-      });
-      if(list) list.addEventListener("mousedown", function(e){
-        // mousedown, not click: blur would close the list first.
-        var it=e.target.closest(".nv-omni-item"); if(!it) return;
-        e.preventDefault(); nvAreaPick(Number(it.dataset.idx));
-      });
-      if(clr) clr.addEventListener("click", nvAreaClear);
-      document.addEventListener("click", function(e){
-        var wrap=document.getElementById("nvAreaOmni");
-        if(wrap && !wrap.contains(e.target)) nvAreaCloseList();
-      });
-    }
-    function nvAreaScrollActive(){
-      var list=document.getElementById("nvAreaList"); if(!list) return;
-      var el=list.querySelector(".nv-omni-item.active"); if(el && el.scrollIntoView) el.scrollIntoView({block:"nearest"});
+      var filterEl=document.getElementById("nvAreaFilter");
+      var sel=document.getElementById("bookingDestArea");
+      if(sel && !sel.dataset.wired){
+        sel.dataset.wired="1";
+        sel.addEventListener("change", nvRefreshQuote);
+      }
+      if(filterEl && !filterEl.dataset.wired){
+        filterEl.dataset.wired="1";
+        filterEl.addEventListener("input", function(){ nvGeoRenderAreas(); });
+        // Enter picks the only remaining match -- the fast path for someone
+        // who typed enough to be unambiguous.
+        filterEl.addEventListener("keydown", function(e){
+          if(e.key!=="Enter") return;
+          e.preventDefault();
+          var s2=document.getElementById("bookingDestArea");
+          if(s2 && s2.options.length===2){ s2.selectedIndex=1; nvRefreshQuote(); }
+          else if(s2){ s2.focus(); }
+        });
+      }
     }
 
     /* The picker only makes sense for Karachi with distance pricing on AND a
