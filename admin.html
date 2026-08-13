@@ -5160,6 +5160,32 @@
                   </div>
                 </div>
               </div>
+              <!-- NovaX distance pricing controls. Ships disabled; nothing is
+                   priced by distance until an admin turns it on here. -->
+              <div class="panel" id="nvPricingPanel" style="margin-top:14px">
+                <div class="section-head">
+                  <div>
+                    <h3>Distance Pricing (Karachi)</h3>
+                    <p id="nvPricingSub">Charge per kilometre from the shipper's pickup point to the consignee's area, instead of a flat city rate. Applies to NEW bookings only — parcels already booked keep the fee they were quoted.</p>
+                  </div>
+                  <div class="inline-actions">
+                    <button class="ghost-btn" id="nvPricingShadowBtn" type="button">Impact Report</button>
+                    <button class="action-btn" id="nvPricingSaveBtn" type="button">Save</button>
+                  </div>
+                </div>
+                <div id="nvPricingWarn"></div>
+                <div class="mini-form" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+                  <div class="field"><label>Status</label><select id="nvPricingEnabled"><option value="false">Disabled (flat rates)</option><option value="true">Enabled</option></select></div>
+                  <div class="field"><label>Base fee (Rs)</label><input id="nvPricingBase" type="number" min="0" step="1"></div>
+                  <div class="field"><label>Included km</label><input id="nvPricingIncluded" type="number" min="0" step="0.5"></div>
+                  <div class="field"><label>Per extra km (Rs)</label><input id="nvPricingPerKm" type="number" min="0" step="1"></div>
+                  <div class="field"><label>Maximum fee (Rs)</label><input id="nvPricingMax" type="number" min="0" step="1"></div>
+                  <div class="field"><label>Road factor</label><input id="nvPricingRoad" type="number" min="1" max="2" step="0.01"></div>
+                </div>
+                <div id="nvPricingPreview" style="margin-top:12px"></div>
+                <div id="nvPricingShadow" style="margin-top:12px"></div>
+              </div>
+
               <div class="panel" id="dailyOpsPanel" style="margin-top:14px">
                 <div class="section-head">
                   <div>
@@ -13651,6 +13677,95 @@
       toast("COD collection sheet downloaded.", "success");
     }
 
+    /* ==================================================================
+       NovaX distance pricing -- admin controls.
+       Reads/writes novax_pricing_config. Everything degrades silently if
+       the migration has not been applied.
+       ================================================================== */
+    var NV_PRICING = null;
+    function nvPricingLoad() {
+      var sb = window.__nvSb; if (!sb) return;
+      Promise.resolve(sb.rpc("novax_pricing_config_get", {})).then(function (r) {
+        if (r && r.error) { nvPricingUnavailable(r.error.message); return; }
+        var cfg = Array.isArray(r.data) ? r.data[0] : r.data;
+        if (!cfg) { nvPricingUnavailable("no config row"); return; }
+        NV_PRICING = cfg;
+        var set = function (id, v) { var el = document.getElementById(id); if (el) el.value = v; };
+        set("nvPricingEnabled", cfg.distance_enabled ? "true" : "false");
+        set("nvPricingBase", cfg.base_fee);
+        set("nvPricingIncluded", cfg.included_km);
+        set("nvPricingPerKm", cfg.per_km);
+        set("nvPricingMax", cfg.max_fee);
+        set("nvPricingRoad", cfg.road_factor);
+        nvPricingPreview();
+        var w = document.getElementById("nvPricingWarn");
+        if (w) w.innerHTML = cfg.distance_enabled
+          ? '<div class="data-note" style="background:#eafff5;border:1px solid #cfeee0;color:#0c7c59;border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;display:block">Distance pricing is <b>LIVE</b> for new Karachi bookings where both the pickup point and delivery area are mapped. Everything else still uses flat rates.</div>'
+          : '<div class="data-note" style="background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;display:block">Currently <b>disabled</b> — every booking uses flat rates. Distances are still recorded on new Karachi bookings, so the Impact Report can tell you what this curve would have earned before you switch it on.</div>';
+      }).catch(function (e) { nvPricingUnavailable(e && e.message); });
+    }
+    function nvPricingUnavailable(msg) {
+      var w = document.getElementById("nvPricingWarn");
+      if (w) w.innerHTML = '<div class="data-note" style="background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;display:block">Distance pricing is not installed yet. Run <code>sql/novax_distance_pricing_v1.sql</code> and <code>sql/novax_distance_pricing_v2_booking.sql</code>.' + (msg ? ' <span style="opacity:.7">(' + nvEscAdmin(msg) + ')</span>' : '') + '</div>';
+      var p = document.getElementById("nvPricingPreview"); if (p) p.innerHTML = "";
+    }
+    // Live curve preview, so an admin sees the effect before saving.
+    function nvPricingPreview() {
+      var host = document.getElementById("nvPricingPreview"); if (!host) return;
+      var num = function (id, d) { var el = document.getElementById(id); var v = el ? Number(el.value) : NaN; return isFinite(v) ? v : d; };
+      var base = num("nvPricingBase", 120), incl = num("nvPricingIncluded", 6),
+          per = num("nvPricingPerKm", 20), cap = num("nvPricingMax", 320);
+      var fee = function (km) { var f = base + Math.max(0, Math.ceil(km - incl)) * per; return cap > 0 ? Math.min(f, cap) : f; };
+      var flat = 250;
+      host.innerHTML = '<div class="footer-note" style="margin-bottom:6px">What a merchant would pay, against a Rs ' + flat + ' flat rate:</div>' +
+        '<div class="table-wrap"><div class="wide-scroll"><table><thead><tr>' +
+        [2, 5, 8, 10, 15, 20, 30].map(function (k) { return '<th>' + k + ' km</th>'; }).join("") + '</tr></thead><tbody><tr>' +
+        [2, 5, 8, 10, 15, 20, 30].map(function (k) {
+          var f = fee(k), cheap = f < flat;
+          return '<td><strong>' + money(f) + '</strong><div style="font-size:10px;color:' + (cheap ? "#0c7c59" : "#b3261e") + ';font-weight:700">' + (cheap ? "-" : "+") + money(Math.abs(flat - f)) + '</div></td>';
+        }).join("") + '</tr></tbody></table></div></div>';
+    }
+    function nvPricingSave() {
+      var sb = window.__nvSb; if (!sb) { toast("Not connected.", "error"); return; }
+      var num = function (id) { var el = document.getElementById(id); var v = el ? Number(el.value) : NaN; return isFinite(v) ? v : null; };
+      var enabled = (document.getElementById("nvPricingEnabled") || {}).value === "true";
+      if (enabled && !confirm("Enable distance pricing?\n\nNEW Karachi bookings with a mapped pickup point and delivery area will be charged per kilometre instead of the flat rate.\n\nParcels already booked are NOT affected — they keep the fee they were quoted.")) return;
+      var btn = document.getElementById("nvPricingSaveBtn");
+      if (btn) { btn.disabled = true; btn.textContent = "Saving..."; }
+      sb.rpc("novax_pricing_config_set", {
+        p_enabled: enabled, p_base: num("nvPricingBase"), p_included_km: num("nvPricingIncluded"),
+        p_per_km: num("nvPricingPerKm"), p_max_fee: num("nvPricingMax"), p_road_factor: num("nvPricingRoad"),
+        p_rate_version: null
+      }).then(function (r) {
+        if (btn) { btn.disabled = false; btn.textContent = "Save"; }
+        if (r && r.error) { toast("Could not save: " + r.error.message, "error"); return; }
+        toast(enabled ? "Distance pricing is now live for new Karachi bookings." : "Distance pricing disabled — all bookings use flat rates.", "success");
+        nvPricingLoad();
+      }).catch(function () { if (btn) { btn.disabled = false; btn.textContent = "Save"; } toast("Could not save pricing.", "error"); });
+    }
+    function nvPricingShadow() {
+      var sb = window.__nvSb, host = document.getElementById("nvPricingShadow");
+      if (!sb || !host) return;
+      host.innerHTML = '<div class="footer-note">Loading impact report...</div>';
+      sb.rpc("novax_pricing_shadow_report", { p_days: 30 }).then(function (r) {
+        if (r && r.error) { host.innerHTML = '<div class="footer-note">Could not load: ' + nvEscAdmin(r.error.message) + '</div>'; return; }
+        var d = Array.isArray(r.data) ? r.data[0] : r.data;
+        if (!d || !Number(d.parcels)) {
+          host.innerHTML = '<div class="footer-note">No parcels with distance data yet. Once merchants set a pickup point, every new Karachi booking records what distance pricing would have charged — even while it is disabled.</div>';
+          return;
+        }
+        var pct = Number(d.delta_pct || 0);
+        host.innerHTML = '<div class="grid metrics">' +
+          '<div class="metric"><label>Parcels measured</label><strong>' + fmt(d.parcels) + '</strong><div class="meter-caption">last 30 days</div></div>' +
+          '<div class="metric"><label>Charged (flat)</label><strong>' + money(d.charged_total) + '</strong></div>' +
+          '<div class="metric"><label>Would be (distance)</label><strong>' + money(d.distance_total) + '</strong></div>' +
+          '<div class="metric" style="border:2px solid ' + (pct < 0 ? "#b3261e" : "#0c7c59") + '"><label>Revenue impact</label><strong>' + (pct > 0 ? "+" : "") + pct + '%</strong><div class="meter-caption">' + money(d.delta_total) + ' &middot; avg ' + d.avg_km + ' km</div></div>' +
+          '<div class="metric"><label>Cheaper for merchant</label><strong>' + fmt(d.cheaper_count) + '</strong></div>' +
+          '<div class="metric"><label>Dearer for merchant</label><strong>' + fmt(d.dearer_count) + '</strong></div>' +
+          '</div>';
+      }).catch(function () { host.innerHTML = '<div class="footer-note">Could not load the impact report.</div>'; });
+    }
+
     function printProcessingBatchAwbs() {
       const awbs = (state.processingBatchAwbs && state.processingBatchAwbs.length) ? state.processingBatchAwbs : [state.activeProcessingAwb].filter(Boolean);
       printAdminAwbs(awbs);
@@ -13804,6 +13919,9 @@
     bind("codBoardResetBtn", "click", nvCodReset);
     bind("codBoardCsvBtn", "click", nvCodBoardCsv);
     bind("codBoardCopyAwbsBtn", "click", nvCodCopyAwbs);
+    bind("nvPricingSaveBtn", "click", nvPricingSave);
+    bind("nvPricingShadowBtn", "click", nvPricingShadow);
+    ["nvPricingBase","nvPricingIncluded","nvPricingPerKm","nvPricingMax"].forEach(function(id){ bind(id,"input",nvPricingPreview); });
     bind("codBoardCityFilter", "change", e => { nvCodAwbFilter = e.target.value; renderCodBoardAwbs(); });
     bind("processingStatusSelect", "change", event => {
       state.pendingProcessingStatus = event.target.value;
@@ -13956,6 +14074,7 @@
       if (typeof refreshProcessingAccess === "function") { try { refreshProcessingAccess(); } catch(e){ console.warn("NovaX: processing access check failed", e); } }
       // Pull the shared COD-board reset marker as soon as a client exists.
       if (typeof nvCodLoadReset === "function") { try { nvCodLoadReset(); } catch(e){ console.warn("NovaX: COD reset load failed", e); } }
+      if (typeof nvPricingLoad === "function") { try { nvPricingLoad(); } catch(e){ console.warn("NovaX: pricing config load failed", e); } }
       var sbSignup=null; try{ sbSignup=window.supabase.createClient(SB_URL,SB_KEY,{ auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:"sb-nv-admin-signup-client" } }); }catch(e){ console.warn("NovaX: signup client init failed.",e); }
       window.__nvSignupClient=sbSignup;
       var ADMIN_UID=null, loaded=false, shadow={}, resyncT=null, liveSubscribed=false, reloadT=null;

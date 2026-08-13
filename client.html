@@ -1166,13 +1166,18 @@
                 <div class="form-grid">
                   <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
                   <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" placeholder="03113323923" maxlength="11" required><div id="consigneeHistoryBadge" style="display:none;margin-top:6px"></div></div>
+                  <div id="nvPickupBanner" style="grid-column:1/-1"></div>
                   <div class="field"><label>Pickup City <span class="required-star">*</span></label><select id="bookingPickupCity" required><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
-                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint()"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
+                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote()"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
+                  <!-- NovaX (distance pricing): shown only for Karachi, and only
+                       once the areas exist server-side. Hidden entirely otherwise,
+                       so a merchant on flat pricing sees no change at all. -->
+                  <div class="field" id="bookingDestAreaField" style="display:none"><label>Delivery Area <span class="required-star">*</span></label><select id="bookingDestArea" onchange="nvRefreshQuote()"><option value="">Select the area...</option></select><div class="footer-note">Pick the consignee's area so we can price the exact distance.</div></div>
                   <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required></div>
                   <div class="field"><label>Service Type <span class="required-star">*</span></label><select id="bookingService" required><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option><option>Prepaid Delivery</option></select></div>
                   <div class="field"><label>Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" required></div>
                   <div class="field"><label>Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
-                  <div class="field"><label>Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required oninput="updateZoneRateHint()"></div>
+                  <div class="field"><label>Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required oninput="updateZoneRateHint();nvRefreshQuote()"></div>
                   <div class="field"><label>Payment Mode <span class="required-star">*</span></label><select id="bookingPaymentMode" required><option>COD</option><option>Non COD Prepaid</option></select></div>
                   <div class="field"><label>Your Order ID</label><input id="bookingOrderId" placeholder="e.g. #1042 (from your website)" maxlength="40" autocomplete="off"><div class="footer-note" style="margin-top:4px">Optional. Printed on the AWB so you can match the parcel to your own order.</div></div>
                   <div class="field"><label>Allow to Open</label><select id="bookingAllowOpen"><option value="No" selected>No &mdash; do not allow</option><option value="Yes">Yes &mdash; customer may open before paying</option></select><div class="footer-note" style="margin-top:4px">Off by default. If Yes, it is printed on the AWB for the rider.</div></div>
@@ -1583,6 +1588,21 @@
       <div class="modal-head"><h3>Invoice</h3><button class="modal-close" onclick="closeInvoiceModal()">&times;</button></div>
       <div id="invoiceViewBody"></div>
       <div class="inline-actions" style="margin-top:14px"><button class="action-btn" id="invoiceViewPrintBtn">Download PDF</button><button class="ghost-btn" id="invoiceViewCsvBtn">Download CSV</button><button class="ghost-btn" onclick="closeInvoiceModal()">Close</button></div>
+    </div>
+  </div>
+
+  <!-- NovaX distance pricing: one-time pickup point setup -->
+  <div class="modal-overlay" id="nvPickupModal">
+    <div class="modal-card" style="max-width:520px">
+      <div class="modal-head"><h3>Your pickup point</h3><button class="modal-close" onclick="nvClosePickupSetup()">&times;</button></div>
+      <p class="footer-note" style="margin-bottom:12px">We measure the distance from here to each customer, so you only pay for the kilometres actually covered. You can change it any time.</p>
+      <div class="field" style="margin-bottom:10px"><label>Label</label><input id="nvPickupLabel" placeholder="Main pickup"></div>
+      <div class="field" style="margin-bottom:10px"><label>Pickup area <span class="required-star">*</span></label><select id="nvPickupArea"></select></div>
+      <div class="field" style="margin-bottom:10px"><label>Street address (optional)</label><input id="nvPickupAddress" placeholder="Shop 4, Main Boulevard"></div>
+      <div class="inline-actions" style="margin-top:14px">
+        <button class="action-btn" id="nvPickupSaveBtn" onclick="nvSavePickupSetup()">Save pickup point</button>
+        <button class="ghost-btn" onclick="nvClosePickupSetup()">Cancel</button>
+      </div>
     </div>
   </div>
 
@@ -3140,6 +3160,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function parcelPaymentMode(p){ return labelText(p&&(p.paymentMode||p.payment_mode),"COD"); }
     function parcelOrderId(p){ return labelText(p&&(p.orderId||p.order_id||p.orderNo),"-"); }
     function parcelReferenceNo(p){ return labelText(p&&(p.referenceNo||p.reference||p.ref||p.customerRef),"-"); }
+    /* NovaX distance pricing: only rendered for parcels actually priced by
+       distance. Every older parcel has pricingMode null and prints exactly
+       as before -- no layout shift, no blank field. */
+    function nvAwbDistanceField(p){
+      if(!p || p.pricingMode!=="distance" || p.distanceKm==null) return "";
+      return '<div class="awb-field"><span>Distance</span><strong>'+escLabelText(p.distanceKm)+' km</strong></div>';
+    }
     function awbLabelHtml(p){
       const client=clientById(p.clientId);
       const origin=labelText(p.pickupCity||p.origin,"Karachi");
@@ -3163,7 +3190,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          before this field existed. */
       const allowOpen=(p&&p.allowOpen==="Yes")?"Yes":"No";
       const referenceNo=parcelReferenceNo(p);
-      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${origin} &rarr; ${destination}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${orderId}</strong></div><div class="awb-field"><span>Reference No</span><strong>${referenceNo}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${phone}</strong></div><div class="awb-field awb-cod"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen==="Yes"?"is-yes":"is-no"}"><span>Allow to Open</span><strong>${allowOpen==="Yes"?"YES &mdash; customer may open":"NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${address}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div></section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
+      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${origin} &rarr; ${destination}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${orderId}</strong></div><div class="awb-field"><span>Reference No</span><strong>${referenceNo}</strong></div>${nvAwbDistanceField(p)}</div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${phone}</strong></div><div class="awb-field awb-cod"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen==="Yes"?"is-yes":"is-no"}"><span>Allow to Open</span><strong>${allowOpen==="Yes"?"YES &mdash; customer may open":"NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${address}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div></section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
     }
     /* NovaX: AWB print mode -- "thermal" (real 4x6in courier label, one per
        page, portrait) or "a4" (3-up on a landscape office sheet). Thermal
@@ -3376,7 +3403,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const deliveryCharge=Number(p.fee||0);
         const netLineAmount=codAmount-deliveryCharge;
         return { awb:p.awb, bookingDate:labelDate(p), destinationCity:labelText(p.city), consignee:labelText(p.consignee), paymentMode:parcelPaymentMode(p), codAmount, deliveryCharge, netLineAmount,
-                 outcome:oc.label, outcomeKey:oc.key, outcomeTone:oc.tone, collected:oc.collected, prepaid:nonCod };
+                 outcome:oc.label, outcomeKey:oc.key, outcomeTone:oc.tone, collected:oc.collected, prepaid:nonCod,
+                 distanceKm:(p.pricingMode==="distance" ? p.distanceKm : null) };
       });
     }
     /* =====================================================================
@@ -3575,7 +3603,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           : (line.collected
               ? money(line.codAmount)
               : `${money(0)}<div style="font-size:10px;color:#8a8a8a;font-weight:600">not collected</div>`);
-        return `<tr><td>${escLabelText(line.awb)}</td><td>${escLabelText(line.bookingDate)}</td><td>${escLabelText(line.destinationCity)}</td><td>${escLabelText(line.consignee)}</td><td>${pill}</td><td>${escLabelText(line.paymentMode)}</td><td style="text-align:right">${codCell}</td><td style="text-align:right">${money(line.deliveryCharge)}</td><td style="text-align:right">${money(line.netLineAmount)}</td></tr>`;
+        return `<tr><td>${escLabelText(line.awb)}</td><td>${escLabelText(line.bookingDate)}</td><td>${escLabelText(line.destinationCity)}</td><td>${escLabelText(line.consignee)}</td><td>${pill}</td><td>${escLabelText(line.paymentMode)}</td><td style="text-align:right">${codCell}</td><td style="text-align:right">${money(line.deliveryCharge)}${line.distanceKm!=null?`<div style="font-size:10px;color:#8a8a8a;font-weight:600">${escLabelText(line.distanceKm)} km</div>`:""}</td><td style="text-align:right">${money(line.netLineAmount)}</td></tr>`;
       }).join("");
       const nDelivered=lines.filter(l=>l.outcomeKey==="delivered").length;
       const nReturned=lines.filter(l=>l.outcomeKey==="returned"||l.outcomeKey==="refused"||l.outcomeKey==="cancelled").length;
@@ -4028,6 +4056,157 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const breakdown=bookingChargeBreakdown(rc, zone, weightEl?weightEl.value:"0.8 kg");
       hint.textContent=zoneLabel(zone)+" · base Rs "+fmt(breakdown.base)+" + additional Rs "+fmt(breakdown.additional)+" ("+breakdown.extraKg+" extra kg) = estimated total Rs "+fmt(breakdown.total)+(breakdown.overCap?" (over 5kg normal slab, confirm manually)":"");
     }
+    /* ==================================================================
+       NovaX distance pricing -- merchant side.
+
+       Everything here is inert until the server says distance pricing is
+       enabled (novax_pricing_config.distance_enabled). Until then the area
+       picker stays hidden and updateZoneRateHint() shows the same flat
+       estimate it always has, so a merchant sees no change whatsoever.
+
+       Old parcels are never touched -- pricing only applies at booking.
+       ================================================================== */
+    var NV_GEO = { ready:false, enabled:false, areas:[], pickup:null, cfg:null, lastQuote:null };
+
+    function nvGeoBoot(){
+      var sb = window.__nvSb;
+      if(!sb) return;
+      Promise.resolve(sb.rpc("novax_pricing_config_get", {})).then(function(r){
+        if(r && r.error){ return; }                       // migration not applied yet
+        var cfg = Array.isArray(r.data) ? r.data[0] : r.data;
+        if(!cfg) return;
+        NV_GEO.cfg = cfg;
+        NV_GEO.enabled = !!cfg.distance_enabled;
+        return Promise.all([
+          sb.rpc("novax_areas_list", { p_city:"Karachi" }),
+          sb.rpc("client_pickup_locations_list", {})
+        ]).then(function(res){
+          NV_GEO.areas  = (res[0] && res[0].data) || [];
+          var picks     = (res[1] && res[1].data) || [];
+          NV_GEO.pickup = picks.filter(function(p){ return p.is_default; })[0] || picks[0] || null;
+          NV_GEO.ready  = true;
+          try{ nvGeoRenderAreas(); nvGeoRenderPickup(); updateZoneRateHint(); }catch(e){}
+        });
+      }).catch(function(){ /* stays disabled; flat pricing unaffected */ });
+    }
+
+    function nvGeoRenderAreas(){
+      var sel = document.getElementById("bookingDestArea");
+      if(!sel) return;
+      sel.innerHTML = '<option value="">Select the area...</option>' +
+        NV_GEO.areas.map(function(a){
+          return '<option value="'+escLabelText(a.id)+'">'+escLabelText(a.name)+'</option>';
+        }).join("");
+      nvGeoToggleAreaField();
+    }
+
+    /* The picker only makes sense for Karachi with distance pricing on AND a
+       pickup point mapped -- without an origin there is no distance to
+       measure, so showing the field would just be a dead end. */
+    function nvGeoActive(){
+      var cityEl = document.getElementById("bookingCity");
+      var isKhi  = cityEl && String(cityEl.value||"").toLowerCase()==="karachi";
+      return !!(NV_GEO.ready && NV_GEO.enabled && isKhi && NV_GEO.pickup && NV_GEO.pickup.area_id);
+    }
+    function nvGeoToggleAreaField(){
+      var f = document.getElementById("bookingDestAreaField");
+      if(f) f.style.display = nvGeoActive() ? "" : "none";
+    }
+
+    function nvGeoRenderPickup(){
+      var host = document.getElementById("nvPickupBanner");
+      if(!host) return;
+      if(!NV_GEO.ready || !NV_GEO.enabled){ host.innerHTML=""; return; }
+      if(NV_GEO.pickup && NV_GEO.pickup.area_id){
+        host.innerHTML = '<div class="footer-note" style="background:#eafff5;border:1px solid #cfeee0;border-radius:8px;padding:8px 11px;margin-bottom:10px">'+
+          'Pricing distance from your pickup point: <b>'+escLabelText(NV_GEO.pickup.area_name||NV_GEO.pickup.label)+'</b>'+
+          ' &middot; <a href="#" onclick="nvOpenPickupSetup();return false;" style="color:#0c7c59;font-weight:700">change</a></div>';
+      } else {
+        host.innerHTML = '<div class="footer-note" style="background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:8px;padding:9px 12px;margin-bottom:10px">'+
+          '<b>Set your pickup area</b> to unlock per-kilometre pricing &mdash; you will only pay for the distance actually covered. '+
+          '<a href="#" onclick="nvOpenPickupSetup();return false;" style="color:#8a5a00;font-weight:800;text-decoration:underline">Set it now</a></div>';
+      }
+    }
+
+    function nvOpenPickupSetup(){
+      var m = document.getElementById("nvPickupModal");
+      if(!m) return;
+      var sel = document.getElementById("nvPickupArea");
+      if(sel){
+        sel.innerHTML = '<option value="">Select your pickup area...</option>' +
+          NV_GEO.areas.map(function(a){
+            var on = NV_GEO.pickup && NV_GEO.pickup.area_id===a.id ? " selected" : "";
+            return '<option value="'+escLabelText(a.id)+'"'+on+'>'+escLabelText(a.name)+'</option>';
+          }).join("");
+      }
+      var lbl = document.getElementById("nvPickupLabel");
+      var adr = document.getElementById("nvPickupAddress");
+      if(lbl) lbl.value = (NV_GEO.pickup && NV_GEO.pickup.label) || "Main pickup";
+      if(adr) adr.value = (NV_GEO.pickup && NV_GEO.pickup.address) || "";
+      m.classList.add("show");
+    }
+    function nvClosePickupSetup(){
+      var m=document.getElementById("nvPickupModal"); if(m) m.classList.remove("show");
+    }
+    function nvSavePickupSetup(){
+      var sb=window.__nvSb; if(!sb){ toast("Not connected.","error"); return; }
+      var areaId=(document.getElementById("nvPickupArea")||{}).value||"";
+      if(!areaId){ toast("Choose your pickup area first.","error"); return; }
+      var btn=document.getElementById("nvPickupSaveBtn");
+      if(btn){ btn.disabled=true; btn.textContent="Saving..."; }
+      sb.rpc("client_pickup_location_save",{
+        p_id: (NV_GEO.pickup && NV_GEO.pickup.id) || null,
+        p_label: ((document.getElementById("nvPickupLabel")||{}).value||"Main pickup"),
+        p_address: ((document.getElementById("nvPickupAddress")||{}).value||""),
+        p_city: "Karachi", p_area_id: areaId, p_lat: null, p_lng: null, p_default: true
+      }).then(function(r){
+        if(btn){ btn.disabled=false; btn.textContent="Save pickup point"; }
+        if(r && r.error){ toast("Could not save: "+r.error.message,"error"); return; }
+        nvClosePickupSetup();
+        toast("Pickup point saved. Distance pricing is now active on your bookings.","success");
+        nvGeoBoot();
+      }).catch(function(){ if(btn){ btn.disabled=false; btn.textContent="Save pickup point"; } toast("Could not save pickup point.","error"); });
+    }
+
+    /* Live quote. Debounced -- this fires on every keystroke in the weight
+       field. Failure is silent and simply leaves the flat estimate showing. */
+    var _nvQuoteT=null;
+    function nvRefreshQuote(){
+      nvGeoToggleAreaField();
+      if(_nvQuoteT) clearTimeout(_nvQuoteT);
+      _nvQuoteT=setTimeout(nvDoQuote, 250);
+    }
+    function nvDoQuote(){
+      var sb=window.__nvSb;
+      var hint=document.getElementById("bookingZoneHint");
+      if(!sb || !hint) return;
+      if(!nvGeoActive()){ try{ updateZoneRateHint(); }catch(e){} return; }
+      var destId=(document.getElementById("bookingDestArea")||{}).value||"";
+      if(!destId){ try{ updateZoneRateHint(); }catch(e){} return; }
+      var weight=((document.getElementById("bookingWeight")||{}).value||"0.8 kg");
+      sb.rpc("novax_quote_booking",{
+        p_dest_city:"Karachi", p_weight:weight,
+        p_origin_area_id: NV_GEO.pickup.area_id, p_dest_area_id: destId
+      }).then(function(r){
+        if(r && r.error){ try{ updateZoneRateHint(); }catch(e){} return; }
+        var q=r.data; if(!q){ return; }
+        NV_GEO.lastQuote=q;
+        if(String(q.mode)!=="distance"){ try{ updateZoneRateHint(); }catch(e){} return; }
+        var flat=Number(q.flat_fee||0), fee=Number(q.fee||0), save=flat-fee;
+        hint.innerHTML =
+          '<span style="display:inline-block;background:#eafff5;border:1px solid #cfeee0;border-radius:8px;padding:7px 11px;margin-top:4px;color:#0c7c59;font-weight:700">'+
+            escLabelText(q.distance_km)+' km &middot; Rs '+fmt(fee)+
+          '</span>'+
+          '<div style="margin-top:5px;font-size:11.5px;color:#6b7d74">'+
+            'Rs '+fmt(q.base)+' base (first '+escLabelText(q.included_km)+' km) + '+
+            escLabelText(q.billable_km)+' km &times; Rs '+fmt(q.per_km)+
+            (Number(q.weight_charge)>0 ? ' + Rs '+fmt(q.weight_charge)+' weight' : '')+
+            (q.capped ? ' &middot; capped' : '')+
+            (save>0 ? ' &middot; <b style="color:#0c7c59">Rs '+fmt(save)+' less than flat rate</b>' : '')+
+          '</div>';
+      }).catch(function(){ try{ updateZoneRateHint(); }catch(e){} });
+    }
+
     function bookParcel(o={}){
       // NovaX fix (High #2): never fall back to the demo/default placeholder client id
       // id. If the account isn't linked/verified yet, stop and surface an
@@ -4096,7 +4275,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(confirmLine){ confirmLine.textContent="Sending booking to NovaX server..."; confirmLine.style.display="block"; confirmLine.style.color=""; }
       try{
         if(!window.__novaxBookParcel){ throw new Error("Booking service is unavailable. Please refresh and try again."); }
-        const mapped=await window.__novaxBookParcel({ consignee, city:document.getElementById("bookingCity").value, cod, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address, orderId:(document.getElementById("bookingOrderId")||{}).value||"", allowOpen:((document.getElementById("bookingAllowOpen")||{}).value==="Yes"?"Yes":"No") });
+        const mapped=await window.__novaxBookParcel({ consignee, city:document.getElementById("bookingCity").value, cod, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address, orderId:(document.getElementById("bookingOrderId")||{}).value||"", allowOpen:((document.getElementById("bookingAllowOpen")||{}).value==="Yes"?"Yes":"No"),
+          destAreaId:((document.getElementById("bookingDestArea")||{}).value||null) });
         const awb=mapped&&mapped.awb;
         resetBookingForm();
         if(riskWarnEl){ riskWarnEl.style.display="none"; }
@@ -5890,6 +6070,28 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            WITHOUT it rather than failing the booking. So the toggle simply has
            no effect until the migration lands — a booking is never blocked. */
         var argsWithOpen = Object.assign({}, args, { p_allow_open: (o.allowOpen==="Yes" ? "Yes" : "No") });
+
+        /* NovaX distance pricing: when the merchant picked a delivery area we
+           call client_book_parcel_geo(), which calls the ORIGINAL
+           client_book_parcel() unchanged and then applies the distance fee.
+           No area, or the RPC not deployed -> we fall through to exactly the
+           call that has always been made. Flat pricing is never routed
+           through the new code, and no existing parcel is affected. */
+        if (o.destAreaId) {
+          var geoArgs = Object.assign({}, argsWithOpen, {
+            p_origin_area_id: null,            // server resolves the default pickup
+            p_dest_area_id:  o.destAreaId
+          });
+          return Promise.resolve(sb.rpc("client_book_parcel_geo", geoArgs)).then(function(rg){
+            var mg = (rg && rg.error && rg.error.message) || "";
+            if (mg && /client_book_parcel_geo|does not exist|not find|schema cache|no function matches/i.test(mg)) {
+              console.warn("NovaX: client_book_parcel_geo not deployed - booking on flat pricing.");
+              return sb.rpc("client_book_parcel", argsWithOpen);
+            }
+            return rg;
+          }).then(function(r){ return r; });
+        }
+
         return Promise.resolve(sb.rpc("client_book_parcel", argsWithOpen)).then(function(r0){
           var m0 = (r0 && r0.error && r0.error.message) || "";
           if (m0 && /p_allow_open|does not exist|not find|schema cache|without function|no function matches/i.test(m0)) {
@@ -5925,7 +6127,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
       function dtpart(t){ return t?String(t).replace("T"," ").slice(0,16):""; }
       function pmeta(p){ return { service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, fragile:p.fragile, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", source:p.source, branch:p.branch, risk:p.risk, steps:p.steps, clientFeedback:p.clientFeedback, returnProof:p.returnProof, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"" }; }
-      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", trackingToken:r.tracking_token||"" }; }
+      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", trackingToken:r.tracking_token||"",
+        // NovaX distance pricing. Null on every parcel booked before it existed,
+        // which is exactly how the label and invoice detect "flat, show nothing".
+        pricingMode:r.pricing_mode||"", distanceKm:(r.distance_km!=null?Number(r.distance_km):null),
+        rateVersion:r.rate_version||"", quotedFee:(r.quoted_fee!=null?Number(r.quoted_fee):null),
+        quote:(m.quote||null) }; }
       function invoiceSummaryFallback(invoiceType, cod, charges, payable, due){
         if(invoiceType==="Delivery Charges") return `Delivery charges due to NovaX ${money(due)}`;
         if(invoiceType==="Mixed") return `COD ${money(cod)} \u00b7 Charges ${money(charges)} \u00b7 Payable ${money(payable)}`;
@@ -6180,6 +6387,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     (window.__novaxAuthGateReady||Promise.resolve()).then(function(){
       render();
       window.scrollTo({ top:0, left:0 });
+      // Distance pricing config + areas. Entirely optional: if the RPCs are
+      // not deployed this resolves to nothing and the portal is unchanged.
+      try{ nvGeoBoot(); }catch(e){ console.warn("NovaX geo boot", e); }
     });
     /* ===== NovaX AI Assistant (rule-based, live data, client scope) ===== */
     (function(){
