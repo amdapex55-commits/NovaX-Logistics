@@ -5154,7 +5154,7 @@
                 <div class="table-wrap">
                   <div class="wide-scroll">
                     <table>
-                      <thead><tr><th>AWB</th><th>Client</th><th>Status</th><th>Aging</th><th>Alert</th><th>Action</th></tr></thead>
+                      <thead><tr><th>AWB</th><th>Client</th><th>COD / Charges</th><th>Status</th><th>Aging</th><th>Alert</th><th>Action</th></tr></thead>
                       <tbody id="statusQueueRows"></tbody>
                     </table>
                   </div>
@@ -5664,7 +5664,7 @@
                 <div class="table-wrap" style="margin-top:14px">
                   <div class="wide-scroll">
                     <table>
-                      <thead><tr><th>AWB</th><th>Client</th><th>Consignee</th><th>Journey Aging</th><th>Current Clock</th><th>Progress</th><th>Report</th><th>Last Processed</th></tr></thead>
+                      <thead><tr><th>AWB</th><th>Client</th><th>Consignee</th><th>COD / Charges</th><th>Journey Aging</th><th>Current Clock</th><th>Progress</th><th>Report</th><th>Last Processed</th></tr></thead>
                       <tbody id="orderReportRows"></tbody>
                     </table>
                   </div>
@@ -7989,6 +7989,45 @@
       return Math.max(0, Math.min(100, Math.round((value / max) * 100)));
     }
 
+    /* ==================================================================
+       Charges cell -- COD and delivery fee, rendered identically in the
+       Status Control Queue, the Order Report and the Order Processing desk.
+       One function so the three surfaces can never drift apart and start
+       formatting the same money three different ways.
+
+       COD is what the rider collects; the fee is what the merchant pays
+       NovaX. They are different pockets, so they are visually separated
+       rather than summed. Distance-priced parcels also show the km that
+       produced the fee, because that is the number a merchant will query.
+       ================================================================== */
+    function nvIsPrepaidParcel(p) {
+      return /non\s*cod|prepaid/i.test(String((p && (p.paymentMode || p.payment_mode)) || ""));
+    }
+    function nvChargesCell(p) {
+      if (!p) return "";
+      const prepaid = nvIsPrepaidParcel(p);
+      const cod = Number(p.cod || 0);
+      const fee = Number(p.fee || 0);
+      const km = (p.distanceKm != null && Number.isFinite(Number(p.distanceKm))) ? Number(p.distanceKm) : null;
+      const byDistance = /^distance/.test(String(p.pricingMode || ""));
+      const codLine = prepaid
+        ? '<span class="chip info">Prepaid</span>'
+        : `<strong style="font-size:15px">${money(cod)}</strong>`;
+      const kmTag = (byDistance && km !== null)
+        ? `<span class="chip good" style="font-size:10px;padding:1px 6px">${km} km</span>`
+        : "";
+      return `${codLine}
+        <div class="footer-note" style="margin-top:3px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+          <span>Charges ${money(fee)}</span>${kmTag}
+        </div>`;
+    }
+    function nvChargesTotals(list) {
+      const rows = (list || []).filter(Boolean);
+      const cod = rows.reduce((s, p) => s + (nvIsPrepaidParcel(p) ? 0 : Number(p.cod || 0)), 0);
+      const fee = rows.reduce((s, p) => s + Number(p.fee || 0), 0);
+      return { cod, fee, count: rows.length };
+    }
+
     function money(value) {
       return PKR.format(value).replace("PKR", "Rs");
     }
@@ -8798,6 +8837,7 @@
           <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${p.awb}')">
             <td><strong>${p.awb}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${p.city} | ${p.updated}</span></td>
             <td>${shortClientCode(client)}<br><strong>${client.name}</strong></td>
+            <td>${nvChargesCell(p)}</td>
             <td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span></td>
             <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">status clock</span></td>
             <td>
@@ -8924,6 +8964,7 @@
             <td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${parcelOrigin(p)}</span></td>
             <td>${shortClientCode(client)}<br><strong>${client.name}</strong></td>
             <td>${p.consignee}<br><span class="footer-note">${p.address}</span></td>
+            <td>${nvChargesCell(p)}</td>
             <td><strong>${deliveryJourneyLabel(p)}</strong><br><span class="footer-note">Booked ${p.date || "system date"}</span></td>
             <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status}</span></td>
             <td>
@@ -8937,7 +8978,7 @@
             <td>${process.scanned ? `<strong>${process.by}</strong><br><span class="footer-note">${process.at}</span><br>` : `<strong class="footer-note">Not yet scanned</strong><br>`}<span class="footer-note">${process.branch}</span></td>
           </tr>
         `;
-      }).join("") || `<tr><td colspan="8">No report rows match these filters.</td></tr>`;
+      }).join("") || `<tr><td colspan="9">No report rows match these filters.</td></tr>`;
 
       const processBatch = processingParcels();
       const processParcel = processBatch[0] || processingParcel();
@@ -8957,12 +8998,24 @@
             <div class="money-grid">
               ${moneyBox("Shipper", client.name, client.id)}
               ${moneyBox("Parcels", processBatch.length, `${processBatch.map(p => p.status).slice(0, 2).join(", ")}`)}
-              ${moneyBox("COD", money(processBatch.reduce((s, p) => s + p.cod, 0)), "batch total")}
+              ${moneyBox("COD to collect", money(nvChargesTotals(processBatch).cod), "batch total, excludes prepaid")}
+              ${moneyBox("Delivery charges", money(nvChargesTotals(processBatch).fee), "batch total billed to shipper")}
               ${moneyBox("Clock", agingLabel(agingHours(processParcel)), alert.label)}
             </div>
             <div class="resolved-note"><strong>Last processed:</strong> ${process.scanned ? `${process.by} at ${process.at}` : "Not yet scanned"}. Branch: ${process.branch}.</div>
           `;
-          currentStatus.innerHTML = processBatch.map(p => `<div><strong>${p.awb}</strong> | ${p.status} | ${p.branch} | ${p.updated}</div>`).join("");
+          // Per-AWB line now carries the money too -- an operator pushing a
+          // batch out for delivery needs to see what each rider is carrying,
+          // not just a batch total.
+          currentStatus.innerHTML = processBatch.map(p => {
+            const prepaid = nvIsPrepaidParcel(p);
+            const km = (/^distance/.test(String(p.pricingMode || "")) && p.distanceKm != null) ? ` &middot; ${p.distanceKm} km` : "";
+            return `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:3px 0">
+              <span><strong>${p.awb}</strong> | ${p.status} | ${p.branch} | ${p.updated}</span>
+              <span style="white-space:nowrap">${prepaid ? '<span class="chip info">Prepaid</span>' : `<strong>${money(p.cod)}</strong>`}
+                <span class="footer-note">+ ${money(p.fee)} charges${km}</span></span>
+            </div>`;
+          }).join("");
         } else {
           preview.innerHTML = `<strong>No parcel selected</strong><p>Enter a tracking ID in the processing box to see current status, branch, clock, and last processed details.</p>`;
           currentStatus.textContent = "Waiting for tracking ID...";
@@ -10110,6 +10163,7 @@
         // so a parcel loaded through Order Processing prints the same label as
         // one loaded through the main data layer.
         allowOpen: (m.allowOpen === "Yes" ? "Yes" : "No"),
+        pricingMode: r.pricing_mode || "", distanceKm: (r.distance_km != null ? Number(r.distance_km) : null),
         paymentMode: m.paymentMode || "", orderId: m.orderId || "",
         referenceNo: m.referenceNo || m.reference || m.ref || m.customerRef || "",
         steps: Array.isArray(m.steps) ? m.steps : [], proofPhoto: m.proofPhoto || "", signature: m.signature || "",
@@ -14247,6 +14301,10 @@
            is run it falls back to the last "Delivered" entry in
            meta.processHistory, then to updated_at, so the board still works --
            just less precisely. */
+        // Distance pricing. Null on every parcel booked before it existed, which
+        // is how the charges cell knows to show nothing rather than a blank km.
+        pricingMode:r.pricing_mode||"", distanceKm:(r.distance_km!=null?Number(r.distance_km):null),
+        quotedFee:(r.quoted_fee!=null?Number(r.quoted_fee):null), rateVersion:r.rate_version||"",
         updatedAt:r.updated_at||null, deliveredAt:(r.delivered_at||nvDeliveredAtFromMeta(m)||null),
         // True only when the value came from the real stamped column, so the
         // board can tell the operator whether the figure is exact. NOTE:
