@@ -7482,7 +7482,13 @@
       // status was still missing here. Both statuses must be excluded from
       // payable/unpaid calculations, or admin finance keeps counting
       // already-walleted parcels as still unpaid payable.
-      return new Set(state.invoices.filter(invoice => invoice.status === "Paid" || invoice.status === "Pushed to wallet").flatMap(invoice => invoice.parcelRefs || []));
+      // NovaX fix (dashboard/invoices/wallet desync): the invoice lifecycle
+      // later grew "Settled" (withdrawal paid to bank) and "Paid to NovaX"
+      // (delivery-charge-only invoice settled) -- both closed states per
+      // invoiceUiState() above -- but this list was never extended to match,
+      // so a fully settled invoice's parcels still read as "unpaid payable"
+      // on admin dashboards even after the client had already been paid.
+      return new Set(state.invoices.filter(invoice => ["Paid", "Pushed to wallet", "Settled", "Paid to NovaX"].includes(invoice.status)).flatMap(invoice => invoice.parcelRefs || []));
     }
 
     function isUnpaidDeliveredParcel(parcel) {
@@ -7515,6 +7521,18 @@
     ];
     function isReturnChargeableParcel(parcel) {
       return NV_RETURN_CHARGEABLE.includes(parcel && parcel.status);
+    }
+    // NovaX new (invoice transparency): invoiceTotals() already nets a
+    // return/refused parcel's fee out of the payable amount, but the
+    // Invoices list only ever showed the combined "Charges" figure, so an
+    // admin looking at one card had no way to see that part of it was a
+    // return charge rather than a normal delivery fee -- it read as if
+    // returns were not being deducted at all, even though they were.
+    function invoiceReturnCharges(invoice) {
+      return (invoice.parcelRefs || []).reduce((sum, awb) => {
+        const p = state.parcels.find(parcel => parcel.awb === awb);
+        return sum + ((p && isReturnChargeableParcel(p)) ? Number(p.fee || 0) : 0);
+      }, 0);
     }
     function clientInvoiceParcels(clientId) {
       const invoicedRefs = new Set(state.invoices.filter(invoice => invoice.status !== "Deleted").flatMap(invoice => invoice.parcelRefs || []));
@@ -7728,22 +7746,34 @@
       // payout should NOT be paid yet, all computed from data already in
       // state -- no new tables needed. Returns every reason that applies,
       // not just the first, so admins see the full picture.
-      const reasons = [];
+      // NovaX fix (locked Mark Paid, no way through): every reason used to
+      // lock the button the same permanent way, with only a toast repeating
+      // the reason on click -- an admin who had actually gone and checked
+      // (e.g. confirmed the IBAN change was a real support request) had no
+      // way to then pay the client. hardReasons are data-integrity problems
+      // (the ledger math itself is wrong) that must be fixed at the source
+      // and can never be paid around from this dialog. softReasons are
+      // behavioural risk signals worth a human look but not proof of a
+      // problem -- those now open Mark Paid with a mandatory "I've reviewed
+      // this" step instead of a dead end.
+      const hardReasons = [];
+      const softReasons = [];
       const client = clientById(withdrawal.clientId);
       const recon = computeWalletReconciliation(withdrawal.clientId);
-      if (recon.mismatch) reasons.push(`Wallet ledger mismatch (${money(recon.difference)})`);
-      if (withdrawal.status === "Paid" && !withdrawal.paidTxnId) reasons.push("Payout proof missing");
+      if (recon.mismatch) hardReasons.push(`Wallet ledger mismatch (${money(recon.difference)})`);
+      if (withdrawal.status === "Paid" && !withdrawal.paidTxnId) hardReasons.push("Payout proof missing");
       if (Number(withdrawal.balanceBefore) > 0 && Number(withdrawal.amount) === Number(withdrawal.balanceBefore) && Number((client && client.risk) || 0) >= 50) {
-        reasons.push("Full-balance payout with high issue rate");
+        softReasons.push("Full-balance payout with high issue rate");
       }
       const siblingRows = (state.walletWithdrawals || []).filter(item => item.clientId === withdrawal.clientId).slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
       const myIndex = siblingRows.findIndex(item => item.id === withdrawal.id);
       const previous = myIndex > 0 ? siblingRows[myIndex - 1] : null;
-      if (previous && previous.iban && withdrawal.iban && previous.iban !== withdrawal.iban) reasons.push("IBAN changed recently");
+      if (previous && previous.iban && withdrawal.iban && previous.iban !== withdrawal.iban) softReasons.push("IBAN changed recently");
       const withdrawalTime = new Date(String(withdrawal.createdAt).replace(" ", "T")).getTime();
       const instantNearbyCount = siblingRows.filter(item => item.speed === "instant" && Math.abs(new Date(String(item.createdAt).replace(" ", "T")).getTime() - withdrawalTime) <= 24 * 3600 * 1000).length;
-      if (withdrawal.speed === "instant" && instantNearbyCount >= 2) reasons.push("2+ instant withdrawals in 24 hours");
-      return { locked: reasons.length > 0, reasons };
+      if (withdrawal.speed === "instant" && instantNearbyCount >= 2) softReasons.push("2+ instant withdrawals in 24 hours");
+      const reasons = hardReasons.concat(softReasons);
+      return { locked: reasons.length > 0, reasons, hardReasons, softReasons };
     }
 
     function computeClientFinanceStatus(clientId) {
@@ -9466,26 +9496,41 @@
       })();
 
       const visibleInvoices = state.invoices.filter(invoice => invoice.status !== "Deleted");
-      document.getElementById("adminInvoiceList").innerHTML = visibleInvoices.map(invoice => {
+      // NovaX new (Invoices tab, client-grouped): this list used to render
+      // every invoice as its own flat card, so a client with a dozen
+      // invoices produced a dozen near-identical rows to scroll past. Now
+      // grouped into one collapsible <details> per client -- native,
+      // JS-free open/close -- with an at-a-glance total and an "open"
+      // count so ops can see which clients still need attention without
+      // expanding anyone. Clients with at least one non-closed invoice
+      // start expanded; fully-settled clients start collapsed.
+      const invoicesByClient = {};
+      visibleInvoices.forEach(invoice => {
+        const cid = invoice.clientId || "unknown";
+        (invoicesByClient[cid] = invoicesByClient[cid] || []).push(invoice);
+      });
+      const invoiceCardHtml = invoice => {
         const client = clientById(invoice.clientId);
         const ui = invoiceUiState(invoice);
         const invType = invoice.invoiceType || "COD Settlement";
         const due = Number(invoice.dueToNovax || 0);
         const typeChipClass = invType === "Delivery Charges" ? "bad" : invType === "Mixed" ? "warn" : "info";
         const canCancel = invoice.status === "Generated";
+        const returnCharges = invoiceReturnCharges(invoice);
         const actions = invoiceActionButtons(invoice) + (canCancel ? `<button class="ghost-btn" type="button" onclick="deleteInvoice('${invoice.id}')" title="Cancels this invoice and returns its parcels to the delivered invoice pool. Only available before Push To Client Wallet / Mark Paid To NovaX.">Cancel Invoice</button>` : "");
         return `
           <div class="log-item">
-            <strong>${invoice.id}<br>${client.name}</strong>
+            <strong>${escLabelText(invoice.id)}<br>${escLabelText(client.name)}</strong>
             <div>
               <strong>${invoice.parcelRefs.join(", ")}</strong>
-              <div class="footer-note">${invoice.summary || "Delivered parcel invoice"} | Created ${invoice.createdAt || "now"}</div>
+              <div class="footer-note">${escLabelText(invoice.summary || "Delivered parcel invoice")} | Created ${escLabelText(invoice.createdAt || "now")}</div>
               ${ui.primaryAction === "push" ? `<div class="footer-note" style="color:#0c7c59;margin-top:4px">Push To Client Wallet credits this client's wallet balance.</div>` : ""}
               ${ui.primaryAction === "paidNovax" ? `<div class="footer-note" style="color:#0c7c59;margin-top:4px">Mark Paid To NovaX records money received by NovaX -- it never touches the client wallet.</div>` : ""}
             </div>
             <span class="chip ${typeChipClass}">${invType}</span>
             <span class="chip info">COD ${money(invoice.cod)}</span>
             <span class="chip warn">Charges ${money(invoice.charges)}</span>
+            ${returnCharges > 0 ? `<span class="chip warn" title="Return/refused parcel fees already netted into Charges and Payable above">incl. return charges ${money(returnCharges)}</span>` : ""}
             <span class="chip ${invoice.payable > 0 ? "good" : "info"}">Payable to client ${money(invoice.payable)}</span>
             <span class="chip ${due > 0 ? "bad" : "info"}">Due to NovaX ${money(due)}</span>
             <span class="chip ${ui.chipClass}">${escLabelText(ui.chipLabel)}</span>
@@ -9497,7 +9542,26 @@
             </div>
           </div>
         `;
-      }).join("") || `<div class="ops-card"><strong>No invoices</strong><p>Create invoices after rider cash is collected for delivered parcels.</p></div>`;
+      };
+      const clientGroups = Object.keys(invoicesByClient).map(cid => {
+        const client = clientById(cid);
+        const invs = invoicesByClient[cid].slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+        const openCount = invs.filter(invoice => !invoiceUiState(invoice).isClosed).length;
+        const totalPayable = invs.reduce((sum, invoice) => sum + Number(invoice.payable || 0), 0);
+        const totalDue = invs.reduce((sum, invoice) => sum + Number(invoice.dueToNovax || 0), 0);
+        return { client, invs, openCount, totalPayable, totalDue };
+      }).sort((a, b) => (b.openCount - a.openCount) || String(a.client.name || "").localeCompare(String(b.client.name || "")));
+      document.getElementById("adminInvoiceList").innerHTML = clientGroups.map(group => `
+        <details class="log-item" style="display:block;padding:12px 14px" ${group.openCount ? "open" : ""}>
+          <summary style="cursor:pointer;display:flex;flex-wrap:wrap;gap:8px;align-items:center;list-style:none">
+            <strong>${escLabelText(group.client.name)}</strong>
+            <span class="footer-note">${group.invs.length} invoice${group.invs.length === 1 ? "" : "s"}${group.openCount ? ` &middot; ${group.openCount} open` : " &middot; all settled"}</span>
+            <span class="chip ${group.totalPayable > 0 ? "good" : "info"}" style="margin-left:auto">Payable ${money(group.totalPayable)}</span>
+            ${group.totalDue > 0 ? `<span class="chip bad">Due to NovaX ${money(group.totalDue)}</span>` : ""}
+          </summary>
+          <div style="margin-top:10px;display:grid;gap:10px">${group.invs.map(invoiceCardHtml).join("")}</div>
+        </details>
+      `).join("") || `<div class="ops-card"><strong>No invoices</strong><p>Create invoices after rider cash is collected for delivered parcels.</p></div>`;
 
       document.getElementById("adminExpenseLogs").innerHTML = state.expenses.map(expense => `
         <div class="log-item">
@@ -9907,8 +9971,16 @@
         payoutQueue.innerHTML = withdrawalsWithLock.map(({ item, lock }) => {
           const client = clientById(item.clientId);
           const recon = reconciliations.find(row => row.clientId === item.clientId) || computeWalletReconciliation(item.clientId);
-          const statusLabel = recon.mismatch ? "Locked" : (lock.locked ? "Needs review" : "Clean");
-          const statusChipClass = recon.mismatch ? "bad" : (lock.locked ? "warn" : "good");
+          // NovaX fix (locked Mark Paid, no way through): "Locked"/"Needs
+          // review" now map onto hard vs soft reasons specifically, not just
+          // "lock.locked" -- a soft-only flag is reviewable and payable, so
+          // it should never read the same as an unresolvable ledger mismatch.
+          const hardBlocked = lock.hardReasons.length > 0;
+          const statusLabel = hardBlocked ? "Blocked" : (lock.locked ? "Needs review" : "Clean");
+          const statusChipClass = hardBlocked ? "bad" : (lock.locked ? "warn" : "good");
+          const btnTitle = hardBlocked
+            ? "Blocked -- wallet ledger mismatch. Run 'Review ledger' for this client first."
+            : (lock.locked ? "Needs review -- click to see the flags and confirm payout" : "");
           // NovaX fix (withdrawal UX v2): show account holder + bank name
           // alongside IBAN/amount/fee/net/speed/time/status, per the Finance >
           // Wallets spec -- falls back to "Not saved" for older requests made
@@ -9918,10 +9990,10 @@
             <p>Pay ${money(item.net)} to IBAN ${item.iban}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed)}).</p>
             <div class="footer-note">Account holder: <b>${item.holderName || "Not saved"}</b>${item.bankName ? (" &middot; " + item.bankName) : ""}</div>
             <div class="footer-note">Created ${item.createdAt}. Wallet reconciliation: ${recon.mismatch ? `mismatch of ${money(recon.difference)}` : "clean"}.</div>
-            ${lock.reasons.length ? `<div class="footer-note" style="color:#b42318">Risk reasons: ${lock.reasons.join("; ")}</div>` : ""}
+            ${lock.reasons.length ? `<div class="footer-note" style="color:#b42318">Risk reasons: ${lock.reasons.join("; ")}${!hardBlocked ? " -- click Mark Paid to review and confirm" : ""}</div>` : ""}
             <div class="footer-note" style="margin-top:6px">Mark Paid closes payout after bank transfer -- it never reduces the wallet balance again (that already happened when this was requested).</div>
             <div class="inline-actions" style="margin-top:10px">
-              <button class="action-btn${lock.locked ? " btn-locked" : ""}" ${lock.locked ? "title=\"Locked -- click to see why this can't be paid out yet\"" : ""} onclick="markWalletWithdrawalPaid('${item.id}')">Mark Paid</button>
+              <button class="action-btn${hardBlocked ? " btn-locked" : ""}" ${btnTitle ? `title="${btnTitle}"` : ""} onclick="markWalletWithdrawalPaid('${item.id}')">Mark Paid${!hardBlocked && lock.locked ? " (Review)" : ""}</button>
               <button class="ghost-btn" type="button" onclick="rejectWalletWithdrawal('${item.id}')">Reject / Cancel</button>
             </div>
           </div>`;
@@ -11551,12 +11623,16 @@
     function markWalletWithdrawalPaid(id) {
       const withdrawal = state.walletWithdrawals.find(item => item.id === id);
       if (!withdrawal || withdrawal.status === "Paid") return;
-      // NovaX new (Finance Control Room v2, item 3/4): a locked payout
-      // (wallet mismatch or any other risk-lock reason) cannot be marked
-      // paid from the UI at all -- the modal never even opens.
+      // NovaX fix (locked Mark Paid, no way through): a hard reason (the
+      // wallet ledger itself doesn't add up) still stops here -- that must
+      // be reconciled at the source, never paid around. A soft reason
+      // (behavioural signal, ledger math is fine) no longer dead-ends on a
+      // toast: the modal opens with the flags listed and a mandatory
+      // "reviewed" checkbox, so an admin who has actually looked can still
+      // pay a legitimate withdrawal instead of it being stuck forever.
       const lock = computePayoutRiskLock(withdrawal);
-      if (lock.locked) {
-        toast(`${id} is locked: ${lock.reasons.join("; ")}`, "error");
+      if (lock.hardReasons.length) {
+        toast(`${id} is blocked: ${lock.hardReasons.join("; ")}. Run "Review ledger" for this client to reconcile before paying.`, "error");
         return;
       }
       // NovaX fix (Wallet Ledger v1, item 4): marking a payout paid now
@@ -11572,6 +11648,18 @@
       document.getElementById("markPaidTxnId").value = "";
       document.getElementById("markPaidByName").value = "";
       document.getElementById("markPaidProof").value = "";
+      const riskBox = document.getElementById("markPaidRiskBox");
+      const riskReasons = document.getElementById("markPaidRiskReasons");
+      const riskAck = document.getElementById("markPaidRiskAck");
+      if (riskBox && riskReasons && riskAck) {
+        if (lock.softReasons.length) {
+          riskReasons.innerHTML = lock.softReasons.map(reason => `<li>${escLabelText(reason)}</li>`).join("");
+          riskAck.checked = false;
+          riskBox.style.display = "block";
+        } else {
+          riskBox.style.display = "none";
+        }
+      }
       modal.style.display = "flex";
     }
 
@@ -11637,6 +11725,23 @@
       if (!txnId || !paidBy) {
         toast("Bank transaction ID and paid-by staff name are both required.", "error");
         return;
+      }
+      // NovaX fix (locked Mark Paid, no way through): re-check here too, not
+      // just when the modal opened -- state can move between open and
+      // confirm (e.g. another tab reconciles the ledger into a hard block).
+      // A soft-locked payout additionally requires the reviewer to tick the
+      // "I've reviewed this" box before the RPC is called at all.
+      const lock = computePayoutRiskLock(withdrawal);
+      if (lock.hardReasons.length) {
+        toast(`${id} is blocked: ${lock.hardReasons.join("; ")}. Run "Review ledger" for this client to reconcile before paying.`, "error");
+        return;
+      }
+      if (lock.softReasons.length) {
+        const riskAck = document.getElementById("markPaidRiskAck");
+        if (!riskAck || !riskAck.checked) {
+          toast("Please confirm you've reviewed the flags above before marking this paid.", "error");
+          return;
+        }
       }
       // NovaX fix: this used to just set withdrawal.status = "Paid" locally
       // with no server call at all, so a payout could look "Paid" in the
@@ -15505,6 +15610,18 @@
     <div class="field"><label>Bank transaction ID (required)</label><input id="markPaidTxnId" placeholder="e.g. TXN-2024-88213"></div>
     <div class="field" style="margin-top:10px"><label>Paid by (staff name, required)</label><input id="markPaidByName" placeholder="Your name"></div>
     <div class="field" style="margin-top:10px"><label>Proof note or URL (optional)</label><input id="markPaidProof" placeholder="Screenshot link or note"></div>
+    <!-- NovaX fix (locked Mark Paid, no way through): shown only for a
+         soft-locked payout (behavioural risk signal, wallet ledger itself is
+         fine). A hard-locked payout (real ledger mismatch) never reaches
+         this modal at all -- see markWalletWithdrawalPaid(). -->
+    <div id="markPaidRiskBox" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;font-size:12.5px;line-height:1.5">
+      <strong>Review before paying:</strong>
+      <ul id="markPaidRiskReasons" style="margin:6px 0 8px 18px;padding:0"></ul>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-weight:700;cursor:pointer">
+        <input type="checkbox" id="markPaidRiskAck" style="margin-top:3px">
+        <span>I've reviewed these flags and confirm this payout is legitimate.</span>
+      </label>
+    </div>
     <div class="inline-actions" style="margin-top:14px">
       <button class="action-btn secondary" onclick="closeMarkPaidModal()">Cancel</button>
       <button class="action-btn" onclick="confirmMarkWalletWithdrawalPaid()">Confirm Paid</button>

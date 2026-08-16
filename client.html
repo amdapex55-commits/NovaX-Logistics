@@ -121,9 +121,19 @@
        stretch behaviour a tall left cell dragged its right-hand neighbour's
        control out of line. Aligning to the start keeps every control on its
        own baseline and the two columns tidy. */
+    /* NovaX fix (booking form ragged columns): .form-grid is a 2-column grid
+       whose fields carry labels of very different lengths ("Phone" vs
+       "Package Weight", which wraps to 2 lines in a narrow column) and
+       optional footer-notes of different heights. With each cell sizing
+       itself independently, the left and right control in the same visual
+       row started at different y positions -- the ragged look. Reserving two
+       label lines and bottom-aligning label text puts every control on one
+       shared baseline; pushing the note to the bottom of the cell keeps a
+       long note from shifting the control above it. */
     .form-grid{align-items:start;}
     .form-grid .field{align-content:start;}
-    .form-grid .field > label{min-height:16px;}
+    .form-grid .field > label{min-height:30px;display:flex;align-items:flex-end;line-height:1.25;}
+    .form-grid .field > .footer-note{margin-top:2px;}
     .hamburger-btn{width:42px;height:38px;border-radius:var(--radius);background:var(--ink);display:none;place-items:center;gap:4px;padding:9px;}
     .hamburger-btn span{display:block;width:18px;height:2px;border-radius:999px;background:white;}
     .client-menu{display:grid;gap:8px;padding:10px;border:1px solid rgba(16,32,27,.08);border-radius:var(--radius);background:#fff;box-shadow:0 12px 32px rgba(21,45,36,.08);}
@@ -1938,12 +1948,21 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       if(Object.keys(map).length) replaceAwbRefs(appState,map);
     }
     function isDeliveredLedgerParcel(p){ return p.status==="Delivered" || p.steps.includes("COD collected"); }
-    // NovaX fix: this only excluded parcels already in a "Paid" invoice, but
-    // "Pushed to wallet" invoices ALSO already moved their payable amount
-    // into the client's real wallet balance. Leaving those parcels counted
-    // here double-counted money that was already sitting in the wallet as
-    // an "outstanding payable" too.
-    function paidParcelRefs(){ return new Set(state.invoices.filter(i=>i.status==="Paid"||i.status==="Pushed to wallet").flatMap(i=>i.parcelRefs||[])); }
+    // NovaX fix (dashboard/invoices/wallet desync): one canonical definition
+    // of "this invoice is fully closed out -- nothing more is owed to or by
+    // the client on it". Four different admin actions land an invoice here
+    // (bank payout marked Paid, Pushed to wallet, delivery-charges Paid to
+    // NovaX, or Settled), and every tile/chip/payable estimate across both
+    // portals must agree on the same list or they drift, which is exactly
+    // what happened: paidParcelRefs() below was frozen at "Paid"/"Pushed to
+    // wallet" from an earlier fix, so a parcel whose invoice had gone all
+    // the way to Settled still read as "unpaid" here -- Dashboard's Total
+    // COD Payable tile kept counting it even though Payments showed the
+    // invoice Settled and Wallet showed the payout already made. Every call
+    // site that used to hardcode its own status list now reads this.
+    const NV_INVOICE_CLOSED_STATUSES=["Paid","Pushed to wallet","Settled","Paid to NovaX"];
+    function isInvoiceClosed(status){ return NV_INVOICE_CLOSED_STATUSES.indexOf(status)>-1; }
+    function paidParcelRefs(){ return new Set(state.invoices.filter(i=>isInvoiceClosed(i.status)).flatMap(i=>i.parcelRefs||[])); }
     function isUnpaidDeliveredParcel(p){ return isDeliveredLedgerParcel(p) && !paidParcelRefs().has(p.awb); }
     function clientMetrics(){
       const parcels=clientScopedParcels();
@@ -2226,7 +2245,41 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         '</div>';
       }
 
-      var list=NV_INSIGHTS.list||[];
+      /* NovaX fix (false "not moved in 3 days" alarm): client_smart_insights
+         measures staleness purely as time-since-last-status-change, so a
+         parcel sitting at "New booked" because the merchant has not handed it
+         to a rider yet gets reported as stuck -- NovaX blaming the merchant
+         for NovaX not having collected, and worse, burying the real stuck
+         parcels in noise. A parcel we have never picked up is not stuck in
+         our network; the correct prompt there is "request a pickup", which
+         the dashboard already surfaces separately.
+
+         The RPC lives server-side (not in this repo), so this filters its
+         output against live local parcel state: any AWB named in an insight
+         that is still "New booked" is dropped from that insight, and an
+         insight left with no qualifying parcels is suppressed entirely.
+         Purely subtractive -- it can hide a false alarm, never invent one. */
+      var list=(NV_INSIGHTS.list||[]).map(function(it){
+        try{
+          if(!it||!it.body) return it;
+          var awbs=String(it.body).match(/\b[A-Z0-9][A-Z0-9-]{4,23}\b/g);
+          if(!awbs||!awbs.length) return it;
+          var mine=(state.parcels||[]);
+          var known=awbs.filter(function(a){ return mine.some(function(p){ return p&&p.awb===a; }); });
+          if(!known.length) return it;
+          var stillStuck=known.filter(function(a){
+            var p=mine.find(function(x){ return x&&x.awb===a; });
+            return p && String(p.status||"")!=="New booked";
+          });
+          if(!stillStuck.length) return null;
+          if(stillStuck.length===known.length) return it;
+          var body=String(it.body);
+          known.forEach(function(a){ if(stillStuck.indexOf(a)<0) body=body.replace(new RegExp("[,;]?\\s*"+a.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"g"),""); });
+          body=body.replace(/:\s*,/,":").replace(/\s{2,}/g," ").trim();
+          var title=String(it.title||"").replace(/^\d+/,String(stillStuck.length));
+          return Object.assign({},it,{ title:title, body:body });
+        }catch(e){ return it; }
+      }).filter(Boolean);
       list.slice(0,4).forEach(function(it){
         if(!it||!it.title) return;
         var sev=(it.severity==="high")?"high":(it.severity==="medium"?"medium":"");
@@ -2517,15 +2570,26 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       // NovaX (Branded Invoice wording): spec requires the exact phrases
       // "Payable to you" for COD settlement and "Amount due to NovaX" for
       // non-COD/delivery-charge-only invoices.
+      // NovaX fix (dashboard/invoices/wallet desync): a due-to-NovaX invoice
+      // is settled via status "Paid to NovaX", never literally "Paid" -- so
+      // checking only "Paid" meant a delivery-charges invoice the client had
+      // already paid still showed "Amount due to NovaX" forever. Likewise a
+      // COD-settlement invoice that reaches "Settled" (bank payout marked
+      // paid) fell through every check here to "Payable to you", looking
+      // outstanding even after the client had actually been paid.
       if(due>0){
-        if(inv.status==="Paid") return moneyBox("Paid in full",money(due),"Settled - nothing owed");
+        if(isInvoiceClosed(inv.status)) return moneyBox("Paid in full",money(due),"Settled - nothing owed");
         return moneyBox("Amount due to NovaX",money(due),"you owe this to NovaX");
       }
-      if(inv.status==="Paid") return moneyBox("Paid in full",money(inv.payable),"Settled - nothing owed");
       if(inv.status==="Pushed to wallet") return moneyBox("In wallet",money(inv.payable),"Ready for you - withdraw anytime");
+      if(isInvoiceClosed(inv.status)) return moneyBox("Paid in full",money(inv.payable),"Settled - nothing owed");
       return moneyBox("Payable to you",money(inv.payable),"COD settlement");
     }
-    function invoiceChipClass(status){ if(status==="Paid") return "good"; if(status==="Pushed to wallet") return "info"; return "warn"; }
+    // NovaX fix (dashboard/invoices/wallet desync): "Settled" and "Paid to
+    // NovaX" fell through to the default "warn" (pending/amber) chip, so a
+    // fully settled invoice still displayed with the same look as one still
+    // awaiting payment in Payment History / the invoice list.
+    function invoiceChipClass(status){ if(status==="Cancelled") return "bad"; if(isInvoiceClosed(status)) return "good"; return "warn"; }
     function invoiceTypeChipClass(invType){ return invType==="Delivery Charges"?"bad":(invType==="Mixed"?"warn":"info"); }
     function trackingUrl(awb){ try{ return location.origin+"/tracking.html?awb="+encodeURIComponent(awb); }catch(e){ return "https://novaxlogistics.com/tracking.html?awb="+encodeURIComponent(awb); } }
     // NovaX (Part 7): WhatsApp customer message templates. Shared list of
@@ -3118,14 +3182,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         moneyBox("Generated invoices",invoices.length,"admin created only"),
         moneyBox("Invoice COD",money(invoices.reduce((s,i)=>s+i.cod,0)),"delivered parcels only"),
         moneyBox("Delivery charges",money(invoices.reduce((s,i)=>s+i.charges,0)),"deducted from COD"),
-        moneyBox("Payable (pending)",money(invoices.filter(i=>i.status!=="Paid"&&i.status!=="Pushed to wallet").reduce((s,i)=>s+i.payable,0)),"not yet pushed to wallet"),
+        // NovaX fix (dashboard/invoices/wallet desync): these three tiles must
+        // partition every invoice into exactly one bucket. Checking only
+        // "Paid"/"Pushed to wallet" left "Settled" and "Paid to NovaX"
+        // invoices out of all three -- still counted as pending here while
+        // Payment History and the Wallet tab both already showed them closed.
+        moneyBox("Payable (pending)",money(invoices.filter(i=>!isInvoiceClosed(i.status)&&i.status!=="Cancelled").reduce((s,i)=>s+i.payable,0)),"not yet pushed to wallet"),
         moneyBox("In wallet",money(invoices.filter(i=>i.status==="Pushed to wallet").reduce((s,i)=>s+i.payable,0)),"ready to withdraw"),
-        moneyBox("Paid in full",money(invoices.filter(i=>i.status==="Paid").reduce((s,i)=>s+i.payable,0)),"settled - nothing owed")
+        moneyBox("Paid in full",money(invoices.filter(i=>isInvoiceClosed(i.status)).reduce((s,i)=>s+i.payable,0)),"settled - nothing owed")
       ].join("");
       (document.getElementById("paymentTimeline")||{}).innerHTML=[
         ["Delivered parcel selected","Admin can invoice delivered parcels only",true],
         ["Invoice generated","Invoice appears in seller payments",invoices.length>0],
-        ["Payment status","Paid or pending is controlled by admin ledger",invoices.some(i=>i.status==="Paid")]
+        ["Payment status","Paid or pending is controlled by admin ledger",invoices.some(i=>isInvoiceClosed(i.status))]
       ].map((r,i)=>`<div class="journey-item ${r[2]?"":"pending"}"><div class="step-dot">${r[2]?"OK":i+1}</div><div><strong>${r[0]}</strong><span>${r[1]}</span></div><span class="chip ${r[2]?"good":"info"}">${r[2]?"verified":"waiting"}</span></div>`).join("");
       document.getElementById("clientPaymentHistory").innerHTML=invoices.map(inv=>`<div class="log-item"><strong>${escLabelText(inv.id)}</strong><div><strong>${escLabelText(inv.status)}</strong><div class="footer-note" style="margin-top:2px">${escLabelText(inv.createdAt)} | ${inv.parcelRefs.length} parcel(s)</div></div><span class="chip ${invoiceChipClass(inv.status)}">${money(inv.payable)}</span></div>`).join("")||`<div class="ops-card"><strong>No generated invoices</strong><p>Delivered parcels will show here once admin creates an invoice.</p></div>`;
       document.getElementById("clientInvoiceList").innerHTML=invoices.map(inv=>{
@@ -3609,9 +3678,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // charge deduction, an explicit tax/surcharge breakdown (GST, COD tax
     // 1%, fuel surcharge -- all shown even when they are Rs 0), and a clear
     // grand total.
+    // NovaX fix (dashboard/invoices/wallet desync): checked only "Paid", so a
+    // Settled or Paid-to-NovaX invoice printed/downloaded by the client still
+    // said "Pending - not yet pushed to wallet" on the invoice document itself.
     function invoiceSettlementNote(inv){
-      if(inv.status==="Paid") return "Paid in full - settled, nothing owed";
       if(inv.status==="Pushed to wallet") return "Credited to wallet - ready for you to withdraw";
+      if(isInvoiceClosed(inv.status)) return "Paid in full - settled, nothing owed";
       return "Pending - not yet pushed to wallet";
     }
     // NovaX new (Negative/Delivery-Charges Invoices): the branded template is
@@ -3623,7 +3695,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const due=Number(inv.dueToNovax||0);
       const invType=inv.invoiceType||"COD Settlement";
       const deliveredAt=(state.parcels.find(p=>p.awb===(inv.parcelRefs||[])[0])||{}).updated||inv.createdAt;
-      const paidEvent=inv.status==="Paid"?inv.paidAt:(inv.status==="Pushed to wallet"?inv.walletPushedAt:"");
+      // NovaX fix (dashboard/invoices/wallet desync): paidAt is populated from
+      // settled_at for every closed status, not just literal "Paid" -- a
+      // Settled or Paid-to-NovaX invoice was showing no paid date at all.
+      const paidEvent=inv.status==="Pushed to wallet"?inv.walletPushedAt:(isInvoiceClosed(inv.status)?inv.paidAt:"");
       // NovaX security fix: display-only escaping of every text cell on the
       // invoice. Amounts still come from money() on the same numbers, so the
       // invoice math, totals and settlement logic are byte-identical.
