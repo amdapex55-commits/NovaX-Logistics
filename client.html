@@ -153,7 +153,7 @@
     .section-head h2{font-size:28px;}
     .section-head h3{font-size:18px;}
     .section-head p{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:1.4;}
-    .metric{padding:14px;position:relative;overflow:hidden;animation:novaxRowIn .32s ease both;}
+    .metric{padding:14px;position:relative;overflow:hidden;}
     .grid.metrics .metric:nth-child(1){animation-delay:0s;}
     .grid.metrics .metric:nth-child(2){animation-delay:.05s;}
     .grid.metrics .metric:nth-child(3){animation-delay:.1s;}
@@ -287,7 +287,7 @@
     .inline-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
     .bulk-drop{min-height:160px;display:grid;place-items:center;text-align:center;padding:20px;border:1px dashed var(--line-strong);border-radius:var(--radius);background:linear-gradient(135deg,rgba(12,124,89,.08),transparent 42%),#fff;}
     .log-feed{display:grid;gap:10px;}
-    .log-item{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:start;padding:11px 12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;animation:novaxRowIn .3s ease both;}
+    .log-item{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:start;padding:11px 12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
     #clientPaymentHistory .log-item:nth-child(1){animation-delay:0s;}
     #clientPaymentHistory .log-item:nth-child(2){animation-delay:.04s;}
     #clientPaymentHistory .log-item:nth-child(3){animation-delay:.08s;}
@@ -332,14 +332,90 @@
        to returned/refused ones, because a return only gets an invoice_id once
        its delivery charge has been netted off. Display only. */
     .nv-paid-tape{display:inline-flex;align-items:center;gap:4px;background:#c0392b;color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.8px;padding:2px 7px;border-radius:3px;text-transform:uppercase;box-shadow:0 1px 3px rgba(192,57,43,.35);white-space:nowrap;vertical-align:middle;}
-    .parcel-card{position:relative;overflow:hidden;padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;animation:novaxRowIn .3s ease both;}
+    .parcel-card{position:relative;overflow:hidden;padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;}
     .parcel-card .nv-paid-ribbon{position:absolute;top:11px;right:-30px;transform:rotate(38deg);background:#c0392b;color:#fff;font-size:9px;font-weight:800;letter-spacing:1.2px;padding:3px 34px;box-shadow:0 2px 6px rgba(192,57,43,.4);pointer-events:none;z-index:2;}
-    #clientParcelCards .parcel-card:nth-child(1){animation-delay:0s;}
-    #clientParcelCards .parcel-card:nth-child(2){animation-delay:.04s;}
-    #clientParcelCards .parcel-card:nth-child(3){animation-delay:.08s;}
-    #clientParcelCards .parcel-card:nth-child(4){animation-delay:.12s;}
-    #clientParcelCards .parcel-card:nth-child(5){animation-delay:.16s;}
-    #clientParcelCards .parcel-card:nth-child(n+6){animation-delay:.2s;}
+    /* ═══ Change-driven motion (NovaX motion pass) ═══════════════════════
+       novaxRowIn used to be baked into .metric / .log-item / .parcel-card
+       themselves, with nth-child stagger delays here. Because the portal
+       full-re-renders (render() after every loadAll, including every
+       realtime tick), that meant EVERY row re-animated every refresh: the
+       one parcel that actually changed looked identical to the forty that
+       did not, so the motion carried no information and a realtime update
+       made the whole list flutter. Entry motion is now applied by JS as
+       .nv-enter (first paint of a list only) and .nv-changed (that row's
+       data actually moved) -- see nvMarkChanged(). */
+    .nv-enter{animation:novaxRowIn .3s ease both;}
+    .nv-enter:nth-child(1){animation-delay:0s;}
+    .nv-enter:nth-child(2){animation-delay:.04s;}
+    .nv-enter:nth-child(3){animation-delay:.08s;}
+    .nv-enter:nth-child(4){animation-delay:.12s;}
+    .nv-enter:nth-child(5){animation-delay:.16s;}
+    .nv-enter:nth-child(n+6){animation-delay:.2s;}
+    /* A row whose status/COD/exception actually moved. Sweeps a tint across
+       the row and lifts it for a beat -- long enough to catch the eye when
+       it happens while the merchant is looking elsewhere on the page. */
+    .nv-changed{animation:nvRowChanged 1.6s ease both;}
+    @keyframes nvRowChanged{
+      0%{background-color:#eafff5;box-shadow:0 0 0 2px rgba(12,124,89,.35);}
+      55%{background-color:#eafff5;box-shadow:0 0 0 2px rgba(12,124,89,.22);}
+      100%{background-color:#fff;box-shadow:0 0 0 0 rgba(12,124,89,0);}
+    }
+    tr.nv-changed>td{animation:nvCellChanged 1.6s ease both;}
+    @keyframes nvCellChanged{
+      0%,55%{background-color:#eafff5;}
+      100%{background-color:transparent;}
+    }
+    /* ═══ AWB print reveal (nvAwbReveal) ═══════════════════════════════ */
+    #nvAwbReveal{position:fixed;inset:0;z-index:9998;display:grid;place-items:center;
+      background:radial-gradient(120% 90% at 50% 10%,rgba(10,35,24,.94),rgba(4,16,11,.97));
+      opacity:0;transition:opacity .28s ease;cursor:pointer;padding:16px;}
+    #nvAwbReveal.on{opacity:1;}
+    #nvAwbReveal.out{opacity:0;}
+    #nvAwbReveal .nvar-stage{width:min(300px,86vw);text-align:center;}
+    #nvAwbReveal .nvar-slot{width:180px;height:7px;margin:0 auto 10px;border-radius:4px;background:#0a2318;
+      border:1px solid rgba(126,224,175,.28);position:relative;}
+    #nvAwbReveal .nvar-slot i{position:absolute;left:7px;right:7px;top:2px;height:2px;background:#4ee6a5;
+      opacity:0;box-shadow:0 0 12px #14c77b;transition:opacity .2s;}
+    #nvAwbReveal .nvar-slot.hot i{opacity:1;}
+    #nvAwbReveal .nvar-label{position:relative;background:#f7f5ee;color:#11150f;border-radius:4px;
+      padding:14px 13px;text-align:left;box-shadow:0 18px 40px rgba(0,0,0,.5);
+      transform:translate3d(0,-340px,0);transition:transform 1.05s cubic-bezier(.25,.9,.3,1);will-change:transform;}
+    #nvAwbReveal .nvar-label.out-of-slot{transform:translate3d(0,0,0);}
+    #nvAwbReveal .nvar-top{display:flex;justify-content:space-between;align-items:center;
+      border-bottom:1.5px solid #11150f;padding-bottom:6px;}
+    #nvAwbReveal .nvar-top b{font-weight:900;font-size:14px;letter-spacing:-.01em;}
+    #nvAwbReveal .nvar-top span{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.14em;
+      border:1.5px solid #b53a2c;color:#b53a2c;border-radius:3px;padding:2px 6px;font-weight:800;}
+    #nvAwbReveal .nvar-k{font-family:ui-monospace,monospace;font-size:8px;color:#5c6157;letter-spacing:.12em;margin-top:9px;}
+    #nvAwbReveal .nvar-awb{font-family:ui-monospace,monospace;font-weight:800;font-size:15px;min-height:1.3em;
+      letter-spacing:.02em;overflow-wrap:anywhere;}
+    #nvAwbReveal .nvar-row{display:flex;gap:14px;margin-top:7px;}
+    #nvAwbReveal .nvar-row>div{min-width:0;flex:1;}
+    #nvAwbReveal .nvar-v{font-size:11.5px;font-weight:800;min-height:1.2em;overflow-wrap:anywhere;line-height:1.25;}
+    #nvAwbReveal .nvar-cod{font-size:19px;font-weight:900;min-height:1.2em;letter-spacing:-.01em;}
+    #nvAwbReveal .nvar-bar{display:block;width:100%;height:42px;margin-top:10px;object-fit:fill;
+      clip-path:inset(0 100% 0 0);transition:clip-path .6s linear;}
+    #nvAwbReveal .nvar-bar.drawn{clip-path:inset(0 0 0 0);}
+    /* Sits beside the COD figure, clear of the barcode -- the stamp landing on
+       top of the bars read as a printing fault rather than a flourish. */
+    #nvAwbReveal .nvar-stamp{position:absolute;right:12px;bottom:82px;border:2.5px solid #1d9e75;color:#0f6e56;
+      font-family:ui-monospace,monospace;font-size:11px;font-weight:900;letter-spacing:.1em;padding:4px 8px;
+      border-radius:3px;transform:rotate(-14deg) scale(2.4);opacity:0;
+      transition:transform .3s cubic-bezier(.3,1.5,.4,1),opacity .18s;}
+    #nvAwbReveal .nvar-stamp.on{opacity:1;transform:rotate(-14deg) scale(1);}
+    #nvAwbReveal .nvar-cap{font-family:ui-monospace,monospace;font-size:11px;color:#7ef7c9;
+      letter-spacing:.05em;margin-top:14px;min-height:1.4em;}
+    @media (prefers-reduced-motion: reduce){ #nvAwbReveal{display:none!important;} }
+
+    /* Loading skeletons -- reuses the existing nvShimmer sweep. */
+    .nv-skel-row{border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:12px;display:grid;gap:8px;}
+    .nv-skel-line{height:11px;border-radius:6px;background:#eef3f0;position:relative;overflow:hidden;}
+    .nv-skel-line::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent);animation:nvShimmer 1.35s infinite;}
+    @media (prefers-reduced-motion: reduce){
+      .nv-enter,.nv-changed,tr.nv-changed>td{animation:none!important;}
+      .nv-skel-line::after{animation:none!important;}
+    }
     .parcel-card .top{display:flex;justify-content:space-between;gap:8px;margin-bottom:10px;}
     .parcel-card dl{margin:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 12px;}
     .parcel-card dt{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;}
@@ -2949,10 +3025,46 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvPaidPill(p){ return nvIsPaidParcel(p) ? '<span class="nv-paid-tape" title="Invoiced &mdash; payment settled">PAID</span>' : ""; }
     function nvPaidRibbon(p){ return nvIsPaidParcel(p) ? '<span class="nv-paid-ribbon">PAID</span>' : ""; }
 
+    /* ═══ Change-driven motion ══════════════════════════════════════════
+       Remembers a signature per AWB and, on the next render, animates ONLY
+       the rows whose signature actually moved. First paint of a list gets a
+       one-time staggered entry instead, and seeding happens without
+       animating so a tab switch or a search keystroke never looks like a
+       status change. Purely presentational: it reads rendered rows and adds
+       a class, never touches parcel data. */
+    const NV_ROW_SIG = Object.create(null);   // listKey -> { awb: signature }
+    function nvRowSignature(p){
+      return [p.status, p.cod, p.fee, p.exception||"", p.stage, p.updated||""].join("|");
+    }
+    function nvMarkChanged(containerId, parcels, listKey){
+      try{
+        if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        const host=document.getElementById(containerId);
+        if(!host) return;
+        const seen=NV_ROW_SIG[listKey];
+        const next=Object.create(null);
+        parcels.forEach(p=>{ if(p&&p.awb) next[p.awb]=nvRowSignature(p); });
+        NV_ROW_SIG[listKey]=next;
+        if(!seen){
+          // First paint of this list: stagger everything in once, silently.
+          Array.prototype.forEach.call(host.children,el=>el.classList.add("nv-enter"));
+          return;
+        }
+        Array.prototype.forEach.call(host.children,el=>{
+          const awb=el.getAttribute&&el.getAttribute("data-awb");
+          if(!awb) return;
+          if(!(awb in seen)) el.classList.add("nv-enter");            // newly booked
+          else if(seen[awb]!==next[awb]) el.classList.add("nv-changed"); // moved
+        });
+      }catch(e){ /* cosmetic only */ }
+    }
+
     function renderClientParcels(){
       const parcels=filteredParcels();
-      document.getElementById("clientParcelRows").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<tr class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${p.stage}/${p.totalStages}</span><span>${pr}%</span></div></td></tr>`; }).join("")||`<tr><td colspan="5">No parcels in range.</td></tr>`;
-      document.getElementById("clientParcelCards").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<article class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${isCancellableBooking(p)?`<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn nv-cancel-booking" type="button" onclick="cancelClientBooking('${escLabelText(p.awb)}',event)">Cancel booking</button></div>`:""}</article>`; }).join("");
+      document.getElementById("clientParcelRows").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${p.stage}/${p.totalStages}</span><span>${pr}%</span></div></td></tr>`; }).join("")||`<tr><td colspan="5">No parcels in range.</td></tr>`;
+      document.getElementById("clientParcelCards").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${isCancellableBooking(p)?`<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn nv-cancel-booking" type="button" onclick="cancelClientBooking('${escLabelText(p.awb)}',event)">Cancel booking</button></div>`:""}</article>`; }).join("");
+      nvMarkChanged("clientParcelRows",parcels,"rows");
+      nvMarkChanged("clientParcelCards",parcels,"cards");
     }
     function toggleStatusBoard(){ state.statusBoardOpen=!state.statusBoardOpen; renderClientStatusBoard(); }
     function renderClientStatusBoard(){
@@ -3934,7 +4046,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function renderClientWallet(){
       const bt=document.getElementById("walletBalanceText"); if(!bt) return;
       const c=clientById(state.client.id); const balance=Number(c.walletBalance||0);
-      bt.textContent=money(balance); bt.classList.remove("count-up"); void bt.offsetWidth; bt.classList.add("count-up");
+      /* NovaX motion: money arriving is the moment the merchant is here for.
+         The balance used to snap and replay a generic pop on every render.
+         Now it counts from the previously shown figure to the new one only
+         when it has actually moved, and the ledger row responsible is
+         highlighted so the merchant can see WHERE it came from. The final
+         frame always writes the exact value via money(). */
+      const __prevBal = (typeof window.__nvShownBalance==="number") ? window.__nvShownBalance : null;
+      const __balMoved = __prevBal!==null && __prevBal!==balance;
+      window.__nvShownBalance = balance;
+      if(__balMoved && !matchMedia("(prefers-reduced-motion: reduce)").matches){
+        (function(){
+          const t0=performance.now(), dur=700, from=__prevBal, to=balance;
+          (function step(ts){
+            if(!bt.isConnected) return;
+            const k=Math.min(1,((ts||performance.now())-t0)/dur), e=1-Math.pow(1-k,3);
+            bt.textContent = k<1 ? money(Math.round(from+(to-from)*e)) : money(to);
+            if(k<1) requestAnimationFrame(step);
+          })(t0);
+        })();
+        bt.classList.remove("count-up"); void bt.offsetWidth; bt.classList.add("count-up");
+      } else {
+        bt.textContent=money(balance);
+        if(__prevBal===null){ bt.classList.remove("count-up"); void bt.offsetWidth; bt.classList.add("count-up"); }
+      }
       // NovaX fix (withdrawal UX v2): pull the server-saved bank details once
       // per session so Save Bank Details survives a refresh/new device.
       fetchClientBankDetails();
@@ -3996,6 +4131,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const ledgerList=document.getElementById("walletLedgerList");
       if(ledgerList){
         ledgerList.innerHTML=myLedger.slice(0,50).map(l=>`<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${l.amount>=0?"good":"warn"}">${money(l.amount)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(l.createdAt)}</div></div>`).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
+        /* NovaX motion: when the balance actually moved this render, flag the
+           newest ledger row so the merchant can see what caused it, rather
+           than just noticing a different total. Same .nv-changed sweep the
+           parcel list uses, so the vocabulary is consistent. */
+        if(__balMoved && !matchMedia("(prefers-reduced-motion: reduce)").matches){
+          const firstRow=ledgerList.firstElementChild;
+          if(firstRow) firstRow.classList.add("nv-changed");
+        }
       }
       const amtInput=document.getElementById("withdrawAmount");
       if(amtInput && (!amtInput.value || Number(amtInput.value)>serverBalance)) amtInput.value=serverBalance||"";
@@ -4352,6 +4495,103 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(_nvQuoteT) clearTimeout(_nvQuoteT);
       _nvQuoteT=setTimeout(nvDoQuote, 250);
     }
+    /* NovaX motion: count a money figure up to its new value. Always lands
+       on the exact target in the final frame, and bails out entirely under
+       prefers-reduced-motion or if the element vanishes mid-tween (a
+       re-render can replace the hint while this is running). */
+    /* ═══ AWB print reveal ══════════════════════════════════════════════
+       index.html already had the best animation in this codebase: at signup
+       it prints a thermal AWB label out of a slot, types the details on,
+       draws the barcode and lands a READY stamp -- for a label that is
+       entirely fake. The real emotional peak of this product is the moment a
+       merchant's parcel actually becomes real and gets its AWB, and that
+       moment had no motion at all beyond a toast.
+
+       Same idea, real data: the merchant's real AWB, real consignee, real
+       destination, and a real Code128 barcode from nv-codegen.js (the same
+       generator the printed label uses, so what animates is what prints).
+
+       Deliberately non-blocking: it is an overlay that dismisses on click or
+       after ~3.4s, the booking has ALREADY succeeded before this runs, and
+       every part is wrapped so a failure here can never affect the booking.
+       Skipped entirely under prefers-reduced-motion. */
+    function nvAwbReveal(awb, consignee, city, cod){
+      try{
+        if(!awb) return;
+        if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        if(document.getElementById("nvAwbReveal")) return;
+        var bar=""; try{ bar=barcodeUrl(awb)||""; }catch(e){}
+        var ov=document.createElement("div");
+        ov.id="nvAwbReveal";
+        ov.innerHTML=
+          '<div class="nvar-stage">'+
+            '<div class="nvar-slot"><i></i></div>'+
+            '<div class="nvar-label">'+
+              '<div class="nvar-top"><b>NovaX</b><span>COD</span></div>'+
+              '<div class="nvar-k">TRACKING / AWB</div>'+
+              '<div class="nvar-awb"></div>'+
+              '<div class="nvar-row">'+
+                '<div><div class="nvar-k">TO</div><div class="nvar-v nvar-to"></div></div>'+
+                '<div><div class="nvar-k">CITY</div><div class="nvar-v nvar-city"></div></div>'+
+              '</div>'+
+              '<div class="nvar-k" style="margin-top:9px">COD TO COLLECT</div>'+
+              '<div class="nvar-cod"></div>'+
+              (bar?'<img class="nvar-bar" alt="" src="'+bar+'">':'')+
+              '<div class="nvar-stamp">BOOKED</div>'+
+            '</div>'+
+            '<div class="nvar-cap">Printing your AWB…</div>'+
+          '</div>';
+        document.body.appendChild(ov);
+        var lab=ov.querySelector(".nvar-label");
+        var cap=ov.querySelector(".nvar-cap");
+        var slot=ov.querySelector(".nvar-slot");
+        var timers=[];
+        function at(fn,ms){ timers.push(setTimeout(fn,ms)); }
+        function type(el,txt,speed){
+          if(!el) return; var i=0; el.textContent="";
+          (function tick(){ el.textContent=String(txt).slice(0,++i); if(i<String(txt).length) at(tick,speed); })();
+        }
+        function close(){
+          timers.forEach(clearTimeout);
+          ov.classList.add("out");
+          setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); },320);
+        }
+        ov.addEventListener("click",close);
+        requestAnimationFrame(function(){ ov.classList.add("on"); });
+        at(function(){ if(slot) slot.classList.add("hot"); if(lab) lab.classList.add("out-of-slot"); },120);
+        at(function(){ type(ov.querySelector(".nvar-awb"),awb,34); },560);
+        at(function(){
+          var t=ov.querySelector(".nvar-to"); if(t) t.textContent=String(consignee||"").slice(0,22);
+          var c=ov.querySelector(".nvar-city"); if(c) c.textContent=String(city||"").slice(0,18);
+        },1020);
+        at(function(){
+          var m=ov.querySelector(".nvar-cod");
+          if(m) m.textContent=(Number(cod)>0?money(Number(cod)):"Prepaid");
+        },1240);
+        at(function(){ var b=ov.querySelector(".nvar-bar"); if(b) b.classList.add("drawn"); if(cap) cap.textContent="Ready to print"; },1450);
+        at(function(){ if(slot) slot.classList.remove("hot"); var st=ov.querySelector(".nvar-stamp"); if(st) st.classList.add("on"); },1900);
+        at(close,3400);
+      }catch(e){ /* never let a flourish break a completed booking */ }
+    }
+
+    function nvTweenFee(el, from, to){
+      if(!el) return;
+      var target=Number(to)||0;
+      if(matchMedia("(prefers-reduced-motion: reduce)").matches){ el.textContent=fmt(target); return; }
+      var start=Number(from)||0;
+      if(start===target){ el.textContent=fmt(target); return; }
+      var t0=null, dur=420;
+      function step(ts){
+        if(!el.isConnected) return;
+        if(t0===null) t0=ts;
+        var k=Math.min(1,(ts-t0)/dur);
+        var e=1-Math.pow(1-k,3);
+        el.textContent = k<1 ? fmt(Math.round(start+(target-start)*e)) : fmt(target);
+        if(k<1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+
     function nvDoQuote(){
       var sb=window.__nvSb;
       var hint=document.getElementById("bookingZoneHint");
@@ -4369,9 +4609,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         NV_GEO.lastQuote=q;
         if(String(q.mode)!=="distance"){ try{ updateZoneRateHint(); }catch(e){} return; }
         var flat=Number(q.flat_fee||0), fee=Number(q.fee||0), save=flat-fee;
+        /* NovaX motion: the quote used to snap straight to its final number,
+           which reads as a guess. Counting it up over ~420ms makes the
+           distance calculation feel like it is actually happening. The final
+           frame always writes the exact fee, so the displayed number can
+           never end up rounded or stale. */
+        var __prevFee = Number(NV_GEO.__shownFee||0);
+        NV_GEO.__shownFee = fee;
         hint.innerHTML =
           '<span style="display:inline-block;background:#eafff5;border:1px solid #cfeee0;border-radius:8px;padding:7px 11px;margin-top:4px;color:#0c7c59;font-weight:700">'+
-            escLabelText(q.distance_km)+' km &middot; Rs '+fmt(fee)+
+            escLabelText(q.distance_km)+' km &middot; Rs <span data-nv-fee>'+fmt(fee)+'</span>'+
           '</span>'+
           '<div style="margin-top:5px;font-size:11.5px;color:#6b7d74">'+
             'Rs '+fmt(q.base)+' base (first '+escLabelText(q.included_km)+' km) + '+
@@ -4380,6 +4627,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             (q.capped ? ' &middot; capped' : '')+
             (save>0 ? ' &middot; <b style="color:#0c7c59">Rs '+fmt(save)+' less than flat rate</b>' : '')+
           '</div>';
+        try{ nvTweenFee(hint.querySelector("[data-nv-fee]"), __prevFee, fee); }catch(e){}
       }).catch(function(){ try{ updateZoneRateHint(); }catch(e){} });
     }
 
@@ -4461,6 +4709,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // print" pairing matches the two things the client actually needs to
         // know once the server has confirmed the booking.
         toast(`${awb} synced to NovaX. AWB ready to print.`,"success");
+        /* NovaX motion: the parcel just became real -- print its label. Runs
+           after the booking has already succeeded and cannot affect it. */
+        try{ nvAwbReveal(awb, consignee, document.getElementById("bookingCity").value, cod); }catch(e){}
         if(preBookingCount===0 && localStorage.getItem("novaxFirstBookingCompleted")!=="1"){
           try{ localStorage.setItem("novaxFirstBookingCompleted","1"); }catch(e){}
           if(window.novaxShowFirstBookingSuccess) window.novaxShowFirstBookingSuccess(awb);
@@ -6345,7 +6596,27 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function mapPl(r){ return { _uuid:r.id, id:r.id, clientId:MY, type:r.type||"", amount:Number(r.amount||0), status:r.status||"", ref:r.reference||"", createdAt:dtpart(r.created_at) }; }
       function mapSc(r){ var m=r.meta||{}; return { _uuid:r.id, clientId:MY, platform:r.platform, storeUrl:r.store_url||"", connected:!!r.connected, importedCount:Number(r.imported_count||0), hasCreds:!!m.hasCreds, connectedAt:m.connectedAt||"", lastSync:m.lastSync||"" }; }
       function mapPickup(r){ var awbs=r.awbs; if(typeof awbs==="string"){ try{ awbs=JSON.parse(awbs); }catch(e){ awbs=[]; } } if(!Array.isArray(awbs)) awbs=[]; return { _uuid:r.id, id:r.id, clientId:MY, awbs:awbs, pickupAddress:r.pickup_address||"", requestedFor:r.requested_for||"", note:r.note||"", status:r.status||"Requested", riderId:r.rider_id||"", createdAt:dtpart(r.created_at) }; }
+      /* NovaX motion: skeleton rows while the very first load is in flight.
+         Only ever fills a container that is currently EMPTY, and only on the
+         first load -- so it can never blank out data the merchant is already
+         reading, and a realtime refetch never flashes skeletons over a
+         populated list. Cleared implicitly: render() overwrites innerHTML. */
+      var __nvFirstLoadDone=false;
+      function nvShowSkeletons(){
+        if(__nvFirstLoadDone) return;
+        try{
+          var row='<div class="nv-skel-row"><div class="nv-skel-line" style="width:45%"></div>'+
+                  '<div class="nv-skel-line" style="width:80%"></div>'+
+                  '<div class="nv-skel-line" style="width:60%"></div></div>';
+          ["clientParcelCards","clientInvoiceList","walletLedgerList","clientPaymentHistory"].forEach(function(id){
+            var el=document.getElementById(id);
+            if(el && !el.children.length) el.innerHTML=row+row+row;
+          });
+        }catch(e){}
+      }
+
       function loadAll(){
+        nvShowSkeletons();
         // NovaX fix (high risk #3, defense in depth): these used to rely
         // entirely on RLS to scope rows to this seller. If any RLS policy
         // were ever loose or misconfigured, this client would map another
@@ -6382,6 +6653,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             state.clientBankDetails=null;
             loaded=true;
             try{ localStorage.setItem(STORAGE_KEY,persistStateJson()); }catch(e){}
+            __nvFirstLoadDone=true;
             try{ render(); }catch(e){ console.warn("NovaX render",e); }
             window.__novaxClientDataReady=true;
             try{ window.__novaxMarkDataFresh(); }catch(e){}
