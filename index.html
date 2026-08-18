@@ -1104,9 +1104,19 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
         <p class="lead" style="font-size:13.5px;margin-top:20px">Every credit, fee and payout is written to an append-only ledger. Balances reconcile automatically — a mismatch blocks the payout instead of hiding it.</p>
       </div>
       <div class="tick-card rv rv-d2">
-        <div class="tc-top"><span class="tc-l">Settled to sellers today</span><span class="cs-live"><span class="live-dot"></span>LIVE</span></div>
+        <!-- FIX (honesty): this card claimed "LIVE" and "Streaming from the
+             NovaX payout ledger", but every row in it is generated in the
+             browser -- invented seller names, random amounts, random "paid N
+             min ago" timestamps, and a headline total multiplied by 3.4.
+             Presenting fabricated settlement figures as a live ledger feed is
+             a credibility risk anywhere, and a serious one for a company that
+             actually holds merchants' COD cash. This is the same relabelling
+             already applied to the ops console above. Real seller names must
+             never appear here either way -- that would be a privacy leak.
+             Wire it to a public aggregate RPC and the honest "LIVE" can return. -->
+        <div class="tc-top"><span class="tc-l">Typical settlement day</span><span class="cs-live">EXAMPLE</span></div>
         <div class="tc-tot"><small>Rs </small><span id="pcTotal">0</span></div>
-        <div class="tc-cap">Streaming from the NovaX payout ledger</div>
+        <div class="tc-cap">Illustrative payout run &middot; not live data</div>
         <div class="tick-win"><div class="tick-track" id="tickTrack"></div></div>
       </div>
     </div>
@@ -1673,9 +1683,13 @@ document.querySelectorAll(".bar-fl").forEach(function(b){
 
 /* ═════ PAYOUT TICKER ═════ */
 (function(){
-  var NAMES=[["Ahmed T.","Karachi"],["Sana R.","Lahore"],["Bilal K.","Islamabad"],["Hina M.","Karachi"],
-    ["Usman A.","Rawalpindi"],["Ayesha S.","Lahore"],["Faisal H.","Karachi"],["Zara N.","Islamabad"],
-    ["Kamran I.","Lahore"],["Noor F.","Karachi"]];
+  /* Named sellers removed: these read as real NovaX customers being paid,
+     which is both untrue and the shape of a privacy leak if it were true.
+     Anonymous city-level rows carry the same "payouts move constantly"
+     message without inventing people. */
+  var NAMES=[["Seller","Karachi"],["Seller","Lahore"],["Seller","Islamabad"],["Seller","Karachi"],
+    ["Seller","Rawalpindi"],["Seller","Lahore"],["Seller","Karachi"],["Seller","Islamabad"],
+    ["Seller","Lahore"],["Seller","Karachi"]];
   var SPD=["Instant","12h","24h"], track=$("tickTrack"), total=0, rows=[];
   if(!track) return;
   for(var i=0;i<10;i++){
@@ -1685,7 +1699,10 @@ document.querySelectorAll(".bar-fl").forEach(function(b){
       '</span></div><div class="tr-when">'+esc(n[1])+' · paid '+mins+' min ago</div></div><div class="tr-amt">Rs '+comma(amt)+'</div></div>');
   }
   track.innerHTML=rows.join("")+rows.join("");
-  onView($("pcTotal"),function(){ animate($("pcTotal"),total*3.4,2100,comma); },0.3);
+  /* The headline used to animate to total*3.4 -- an arbitrary multiplier on
+     top of already-invented rows. It now sums exactly the rows shown, so the
+     figure at least matches the example beneath it. */
+  onView($("pcTotal"),function(){ animate($("pcTotal"),total,2100,comma); },0.3);
 })();
 
 /* ═════ RATE CALCULATOR ═════ */

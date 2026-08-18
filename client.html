@@ -3104,6 +3104,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         state.activeClientTab="dashboard"; render();
       }
     }
+    /* Empty-state CTAs route through the same delegated pattern as the rest. */
+    document.addEventListener("click",function(e){
+      const b=e.target&&e.target.closest?e.target.closest("[data-nv-empty-action]"):null;
+      if(!b) return;
+      const act=b.getAttribute("data-nv-empty-action");
+      if(act && typeof showClientTab==="function") showClientTab(act);
+    });
     /* NovaX (detail drawer): one delegated listener for the drawer's action
        buttons -- nothing merchant-derived is ever concatenated into an inline
        onclick, matching the pattern already used for metric-card actions. */
@@ -3380,12 +3387,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const fromI=document.getElementById("clientDateFrom"), toI=document.getElementById("clientDateTo");
       if(fromI && fromI.value!==state.clientDateFrom) fromI.value=state.clientDateFrom||"";
       if(toI && toI.value!==state.clientDateTo) toI.value=state.clientDateTo||"";
-      document.getElementById("bulkValidationList").innerHTML=[
-        {label:"City validation",value:"4 serviceable cities",fill:92,kind:"good"},
-        {label:"Duplicate order ID",value:"0 duplicates",fill:100,kind:"good"},
-        {label:"COD sanity check",value:"2 need review",fill:64,kind:"warn"},
-        {label:"Phone completeness",value:"97% valid",fill:97,kind:"good"}
-      ].map(it=>`<div class="ops-card"><div class="ops-card-head"><strong>${it.label}</strong><span class="chip ${it.kind}">${it.value}</span></div><div class="meter ${it.kind==="warn"?"amber":""}"><span style="width:${it.fill}%"></span></div></div>`).join("");
+      /* NovaX fix (fabricated validation figures): this panel rendered a
+         hardcoded array -- "2 need review", "97% valid", "0 duplicates" --
+         on every load, regardless of whether the merchant had uploaded
+         anything at all. Those were invented numbers presented as a real
+         validation result for the merchant's own data, which is exactly the
+         credibility problem the landing-page ops console was relabelled for.
+         The real validator (validateBulkRows) already produces per-row
+         problems on upload and renders them elsewhere, so before an upload
+         this panel now says what it actually knows: nothing yet. */
+      const bvl=document.getElementById("bulkValidationList");
+      if(bvl){
+        const U=window.NovaXUI;
+        bvl.innerHTML=(U&&U.emptyState)
+          ? U.emptyState({icon:"\u21E7",title:"NO FILE CHECKED YET",
+              body:"Upload a CSV and every row is checked for city, phone, COD, weight and duplicate order IDs before anything is booked.",
+              actionLabel:"Go to Bulk Booking",action:"bulkBooking"})
+          : `<div class="ops-card"><strong>No file checked yet</strong><p>Upload a CSV to see per-row validation.</p></div>`;
+      }
       document.getElementById("clientReportMetrics").innerHTML=[
         metricCard("Delivery Rate",`${rate}%`,rate,"delivered parcels",rate<45?"amber":""),
         metricCard("Delivered COD",money(deliveredCod),percent(deliveredCod,deliveredCod+pendingCod),"cash collected","good"),

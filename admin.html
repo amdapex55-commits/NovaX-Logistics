@@ -2646,7 +2646,25 @@
       font-weight: 900;
     }
 
-    /* Dark control-room theme */
+    /* Dark control-room theme.
+
+       NovaX fix (admin was permanently half-dark): this block was an
+       UNSCOPED second :root, so it overrode the light palette above on every
+       load, unconditionally. The admin console therefore always ran with a
+       dark variable palette -- while ~95 hardcoded #fff / white / rgba(255..)
+       declarations elsewhere in this same sheet stayed light. That mismatch
+       is why panels, inputs, menus and buttons rendered as white blocks with
+       pale text on a dark page, on both desktop and mobile.
+
+       Kept UNSCOPED deliberately. The admin console is a dark control room by
+       design: ~26 component rules later in this same sheet also hardcode dark
+       backgrounds unconditionally (.admin-menu, .topbar, .panel, th, inputs,
+       tab strips...). Scoping only the variables therefore produced dark
+       components with dark text in "light" mode. Making admin genuinely
+       themeable means converting those 26 rules too; until then one honest
+       dark theme beats a half-working switch. The real defect -- light
+       surfaces that were never converted and rendered as white blocks -- is
+       fixed in the block at the end of this stylesheet. */
     :root {
       --ink: #edf8f2;
       --muted: #9db2a9;
@@ -4047,7 +4065,62 @@
     .nv-rs-sign div { flex: 1; border-top: 1px solid #333; padding-top: 2mm; font-size: 9.5px; text-align: center; color: #333; }
     .nv-rs-foot { margin-top: 5mm; border-top: 1px solid #ccc; padding-top: 2.5mm; font-size: 8px; color: #666; line-height: 1.6; }
     .nv-rs-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
-  </style>
+  
+/* ═══ Dark control-room: surfaces the original conversion missed ═════════
+   The sheet converted most components to dark but left these hardcoded
+   light -- so on the dark admin page they rendered as white blocks, several
+   of them with dark-on-dark or light-on-white text. This is the breakage
+   reported across desktop and mobile: cards, money boxes, log rows, journey
+   items and the scan inputs. Painted from the palette variables so they
+   follow the same theme as everything around them. */
+.metric,
+.table-wrap,
+.ops-card,
+.money-box,
+.log-item,
+.journey-item,
+.parcel-card,
+.client-menu,
+.nv-atk-msg,
+.handoff-progress{
+  background:var(--panel);
+  color:var(--ink);
+  border-color:var(--line);
+}
+.money-box span,.ops-card p,.log-item .footer-note,.journey-item span{ color:var(--muted); }
+.money-box strong,.log-item strong,.ops-card strong,.journey-item strong{ color:var(--ink); }
+.scan-grid input,.scan-grid select{
+  background:rgba(7,16,13,.74);color:var(--ink);border-color:var(--line);
+}
+.scan-grid input::placeholder{ color:var(--muted); }
+/* Native option popups ignore the parent background on most platforms. */
+select option{ background:var(--panel);color:var(--ink); }
+/* Rows and hover states on a dark table */
+tbody tr:hover{ background:rgba(31,209,142,.07); }
+td{ color:var(--ink); }
+
+/* Page chrome. These four lost to LATER light rules in the sheet (and, for
+   the ghost button, to a higher-specificity `.auth-actions .ghost-btn`), so
+   the header strip rendered as a white band with dark-on-dark brand text and
+   a white Log out button floating over the dark console. */
+html,body{ background:var(--bg); color:var(--ink); }
+.topbar{ background:rgba(7,16,13,.88)!important; border-bottom-color:var(--line)!important; }
+.brand-text strong{ color:var(--ink)!important; }
+.brand-text span{ color:var(--muted)!important; }
+.auth-actions .ghost-btn,
+#landing .ghost-btn,
+.ghost-btn{ background:rgba(7,16,13,.74)!important; color:var(--ink)!important; border-color:var(--line)!important; }
+.auth-actions .ghost-btn:hover,.ghost-btn:hover{ background:var(--mint)!important; }
+.tab-btn{ color:var(--ink); }
+
+/* PRINTED SURFACES STAY LIGHT ON PURPOSE. An AWB label, an invoice and the
+   rider run sheet go onto white paper -- theming them dark would waste toner
+   and produce unscannable barcodes. They keep their own colours. */
+.awb-label,.awb-zone,.awb-field,.qr-img,.barcode-img,.manifest-page{
+  background:#fff;color:#11150f;
+}
+.awb-field span{ color:#5c6157; }
+</style>
   <!-- NovaX (admin AWB parity): AWB print modes, identical to client.html.
        Exactly one of these two is left enabled at a time -- JS toggles
        .disabled right before window.print(). Browsers apply whichever @page
@@ -4529,7 +4602,6 @@
           <a class="tab-btn active" href="admin.html">Control Room</a>
           <a class="tab-btn " href="index.html#signin">Sign In</a>
         </nav>
-        <div class="nv-theme" role="group" aria-label="Theme"><button type="button" data-nv-theme-btn="system">Auto</button><button type="button" data-nv-theme-btn="light">Light</button><button type="button" data-nv-theme-btn="dark">Dark</button></div>
         <div class="auth-actions">
           <a class="ghost-btn auth-btn" href="index.html#signin">Sign In</a>
           <a class="action-btn auth-btn" href="index.html#signup">Sign Up</a>
