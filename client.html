@@ -10617,6 +10617,126 @@ html[data-theme="dark"] .barcode-img,
 html[data-theme="dark"] .nv-doc{ background:#fff;color:#11150f; }
 html[data-theme="dark"] .awb-field span{ color:#5c6157; }
 
+
+/* ═══ Dark mode round 2: the screens, not the sample markup ════════════════
+   The first dark pass was verified against representative markup, which
+   missed everything below. These are the real breakages seen on the live
+   dashboard, booking, bulk, report and wallet screens.
+
+   Several need !important for one of two concrete reasons:
+     * .nv-cockpit and friends are injected into <head> BY JAVASCRIPT at
+       runtime (nvCockpitCss), so that sheet lands after this one and would
+       otherwise win on order.
+     * a number of banners carry their light background as an INLINE style
+       attribute, which beats any normal rule regardless of order. An
+       !important author rule is the only thing that outranks it. */
+
+/* 1. Header band stayed light across every screen. */
+html[data-theme="dark"] .topbar{
+  background:rgba(11,21,18,.92)!important;
+  border-bottom-color:var(--line)!important;
+}
+
+/* 2. THE ACTIVE MENU ITEM WAS UNREADABLE ON EVERY TAB.
+   .client-tab.active is `background:var(--ink); color:white`. --ink INVERTS
+   in dark mode (it becomes the light text colour), so the pill turned pale
+   with white text on top -- "Dashboard", "New Booking", "Wallet" etc. all
+   rendered as a blank light bar. */
+html[data-theme="dark"] .client-tab{ background:var(--panel-soft); color:var(--ink); }
+html[data-theme="dark"] .client-tab.active{ background:var(--green)!important; color:#04130d!important; }
+html[data-theme="dark"] .client-tab:hover{ background:rgba(19,163,111,.16); }
+
+/* 3. "Client Portal" page heading was #071d17 -- near-black on near-black. */
+html[data-theme="dark"] .portal-title h2{ color:var(--ink); }
+html[data-theme="dark"] .portal-title p{ color:var(--muted); }
+
+/* 4. The table WRAPPER stayed white behind every table (the header band was
+   fixed but the container around it was not), which is why report and parcel
+   tables rendered as a white slab. */
+html[data-theme="dark"] .table-wrap,
+html[data-theme="dark"] .wide-scroll,
+html[data-theme="dark"] table{ background:var(--panel)!important; }
+html[data-theme="dark"] tbody tr{ border-color:var(--line); }
+
+/* Table header band: light tint with light text on every table. */
+html[data-theme="dark"] th{ background:var(--panel-soft)!important; color:var(--muted)!important; }
+html[data-theme="dark"] td{ color:var(--ink); }
+
+/* 5. Bulk upload dropzone was a white gradient with white prompt text. */
+html[data-theme="dark"] .bulk-drop{
+  background:linear-gradient(135deg,rgba(19,163,111,.10),transparent 42%),var(--panel)!important;
+  border-color:var(--line-strong)!important;color:var(--ink);
+}
+html[data-theme="dark"] .bulk-drop input[type=file]{ color:var(--ink); }
+
+/* 6. The "Today" cockpit -- injected at runtime, hence !important. */
+html[data-theme="dark"] .nv-cockpit,
+html[data-theme="dark"] .nv-c-col,
+html[data-theme="dark"] .nv-c-card{
+  background:var(--panel)!important;border-color:var(--line)!important;color:var(--ink)!important;
+}
+html[data-theme="dark"] .nv-cockpit-head b{ color:var(--ink)!important; }
+html[data-theme="dark"] .nv-cockpit-head .nv-c-sub,
+html[data-theme="dark"] .nv-c-empty,
+html[data-theme="dark"] .nv-c-col h5{ color:var(--muted)!important; }
+
+/* 7. Incoming-money panel was an indigo-on-white gradient. */
+html[data-theme="dark"] .nv-inc{
+  background:linear-gradient(135deg,rgba(67,56,202,.18),rgba(19,163,111,.10))!important;
+  border-color:var(--line)!important;
+}
+html[data-theme="dark"] .nv-inc-lbl{ color:#a5b4fc!important; }
+html[data-theme="dark"] .nv-inc-amt{ color:var(--ink)!important; }
+html[data-theme="dark"] .nv-inc-chip{ background:var(--panel-soft)!important;color:var(--ink)!important; }
+
+/* 8. Sweep for banners whose light background is an inline style attribute:
+   the wallet explainer, risk warnings, pickup notices, review notes and the
+   several "background:#fff" action strips. Matching on the attribute is the
+   only way to reach them without editing every call site. */
+html[data-theme="dark"] [style*="background:#fff"],
+html[data-theme="dark"] [style*="background:#eafff5"],
+html[data-theme="dark"] [style*="background:#fff7e6"],
+html[data-theme="dark"] [style*="background:#fff6e6"],
+html[data-theme="dark"] [style*="background:#fffaf0"],
+html[data-theme="dark"] [style*="background:#fff2f0"],
+html[data-theme="dark"] [style*="background:#f4f8f5"]{
+  background:var(--panel-soft)!important;
+  color:var(--ink)!important;
+  border-color:var(--line)!important;
+}
+/* keep the semantic tint of warning/danger banners rather than flattening
+   everything to one grey -- an alert must still read as an alert */
+html[data-theme="dark"] [style*="background:#fff7e6"],
+html[data-theme="dark"] [style*="background:#fff6e6"],
+html[data-theme="dark"] [style*="background:#fffaf0"]{
+  background:rgba(199,121,19,.16)!important;color:#f0c987!important;border-color:rgba(199,121,19,.34)!important;
+}
+html[data-theme="dark"] [style*="background:#fff2f0"]{
+  background:rgba(176,58,46,.16)!important;color:#f3aca2!important;border-color:rgba(176,58,46,.34)!important;
+}
+html[data-theme="dark"] [style*="background:#eafff5"]{
+  background:rgba(19,163,111,.14)!important;color:#8ff0c7!important;border-color:rgba(19,163,111,.3)!important;
+}
+/* the account chip in the header read green-on-green */
+html[data-theme="dark"] .account-chip,
+html[data-theme="dark"] .topbar .chip{ background:var(--panel-soft)!important;color:var(--ink)!important; }
+
+/* 9. PRINTED SURFACES STAY LIGHT -- re-asserted AFTER the sweep above,
+   because that sweep would otherwise repaint the AWB label and invoice.
+   These go on white paper; a dark barcode block will not scan. */
+html[data-theme="dark"] .awb-label,
+html[data-theme="dark"] .awb-label *,
+html[data-theme="dark"] .awb-zone,
+html[data-theme="dark"] .awb-field,
+html[data-theme="dark"] .qr-img,
+html[data-theme="dark"] .barcode-img,
+html[data-theme="dark"] .nv-doc,
+html[data-theme="dark"] .nv-doc *{
+  background-color:#fff!important;color:#11150f!important;border-color:#d8d8d8!important;
+}
+html[data-theme="dark"] .qr-img,
+html[data-theme="dark"] .barcode-img{ background:#fff!important; }
+
 /* ═══ COD hero (client dashboard) ══════════════════════════════════════════ */
 .nv-cod-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1.35fr) minmax(0,1fr);
   gap:16px;align-items:start;background:var(--nvu-bg,#fff);border:1px solid var(--nvu-line,#e7efeb);
