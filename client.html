@@ -32,8 +32,15 @@
   <script>
     (function () {
       try {
+        /* NovaX fix (theme conflict): this used to stamp data-theme ONLY for
+           dark, leaving an explicit "light" choice with no attribute at all.
+           The shared UI primitives treat a missing attribute as "follow the
+           system", so a merchant who had deliberately chosen Light on a
+           dark-mode laptop got dark components anyway. Light is now stamped
+           explicitly; only the untouched "system" default leaves it off. */
         var savedTheme = localStorage.getItem("novaxTheme");
         if (savedTheme === "dark") { document.documentElement.setAttribute("data-theme", "dark"); }
+        else if (savedTheme === "light") { document.documentElement.setAttribute("data-theme", "light"); }
       } catch (e) {}
     })();
   </script>
@@ -2534,30 +2541,36 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
        script at the top of <head> already restores a saved preference from
        localStorage -- only the toggle itself was missing, so dark mode
        could never be switched on in the first place. */
+    /* NovaX (theme): delegates to the shared NovaXTheme controller so the 🌙
+       button, the boot script and the UI primitives all agree on one stored
+       value. Cycles System -> Light -> Dark rather than a two-way flip, so
+       "follow my phone" is reachable, which is what most merchants actually
+       want. Falls back to the old two-way behaviour if the controller is
+       somehow absent. */
+    function nvSyncThemeButton(){
+      try{
+        var mode=(window.NovaXTheme&&window.NovaXTheme.get)?window.NovaXTheme.get():"system";
+        var btn=document.getElementById("nvThemeToggleBtn");
+        if(!btn) return;
+        var face={system:"\u{1F319}",light:"\u2600\uFE0F",dark:"\u{1F319}"};
+        var label={system:"Theme: follows your device",light:"Theme: light",dark:"Theme: dark"};
+        btn.textContent=mode==="light"?"\u2600\uFE0F":(mode==="dark"?"\u{1F311}":"\u{1F319}");
+        btn.setAttribute("aria-label",label[mode]+" — tap to change");
+        btn.setAttribute("title",label[mode]+" — tap to change");
+      }catch(e){}
+    }
     function toggleNovaxTheme(){
       try{
+        if(window.NovaXTheme&&window.NovaXTheme.cycle){ window.NovaXTheme.cycle(); nvSyncThemeButton(); return; }
         var root=document.documentElement;
         var dark=root.getAttribute("data-theme")==="dark";
-        if(dark) root.removeAttribute("data-theme");
-        else root.setAttribute("data-theme","dark");
+        root.setAttribute("data-theme", dark?"light":"dark");
         try{ localStorage.setItem("novaxTheme", dark?"light":"dark"); }catch(e){}
-        var btn=document.getElementById("nvThemeToggleBtn");
-        if(btn){
-          btn.textContent = dark ? "\u{1F319}" : "☀️";
-          btn.setAttribute("aria-label", dark ? "Switch to dark mode" : "Switch to light mode");
-          btn.setAttribute("title", dark ? "Switch to dark mode" : "Switch to light mode");
-        }
+        nvSyncThemeButton();
       }catch(e){}
     }
     /* Keep the icon in sync with a preference restored before this script ran. */
-    (function(){
-      try{
-        if(document.documentElement.getAttribute("data-theme")==="dark"){
-          var b=document.getElementById("nvThemeToggleBtn");
-          if(b){ b.textContent="☀️"; b.setAttribute("aria-label","Switch to light mode"); }
-        }
-      }catch(e){}
-    })();
+    (function(){ try{ nvSyncThemeButton(); }catch(e){} })();
 
     /* The Account History header (#accountHistoryHead) is styled as a
        clickable row and literally says "Tap to change the range", but
@@ -3019,7 +3032,91 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(wasExpanded){ document.getElementById("clientMetrics").classList.add("nv-show-all"); var nvT=document.getElementById("nvMetricsToggle"); if(nvT) nvT.textContent="Show fewer metrics"; }
     }
     function filteredParcels(){ const t=(document.getElementById("clientSearch")?.value||"").trim().toLowerCase(); return clientScopedParcels().filter(p=>`${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase().includes(t)); }
-    function openClientParcelJourney(awb){ state.selectedAwb=awb; state.activeClientTab="dashboard"; saveState(); render(); const j=document.getElementById("clientJourney"); if(j) j.scrollIntoView({behavior:"smooth",block:"center"}); toast(`${awb} journey opened.`); }
+    /* NovaX (detail drawer): clicking a parcel used to force a tab change back
+       to Dashboard, a full render() and a scroll -- losing the merchant's place
+       in whatever list they were reading. It now opens a right-hand drawer over
+       the current view. state.selectedAwb is still set and the dashboard
+       journey panel still works, so nothing that depended on the old behaviour
+       breaks; the drawer is simply the fast path. Falls back to the original
+       navigation if the UI module is unavailable. */
+    function nvParcelDrawerHtml(p){
+      const U=window.NovaXUI;
+      const FLOW=["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered"];
+      const recorded=Array.isArray(p.steps)?p.steps:[];
+      const cur=p.status;
+      // Build the journey from the forward flow, marking what has happened.
+      // A parcel in a return/exception state is off the flow, so its own state
+      // is appended rather than pretending it sits on the delivery path.
+      const idx=FLOW.indexOf(cur);
+      let rows=[];
+      if(idx>=0){
+        rows=FLOW.slice(0,Math.max(idx+1,1)).map((s,i)=>({status:s,label:U.statusMeta(s).short,
+          state:i===idx?"now":"done"}));
+        FLOW.slice(idx+1).forEach(s=>rows.push({status:s,label:U.statusMeta(s).short,state:"todo"}));
+      } else {
+        rows=recorded.filter(s=>FLOW.indexOf(s)>-1).map(s=>({status:s,label:U.statusMeta(s).short,state:"done"}));
+        rows.push({status:cur,label:U.statusMeta(cur).short,state:"now",note:p.exception||""});
+      }
+      const tel=String(p.phone||"").replace(/[^0-9+]/g,"");
+      const paid=nvIsPaidParcel(p);
+      return ''+
+      '<div class="nvdr-sec">'+
+        '<div class="nvdr-money">'+(Number(p.cod)>0?escLabelText(money(p.cod)):"Prepaid")+
+          '<small>'+(Number(p.cod)>0?"COD to collect":"no cash due")+'</small></div>'+
+        '<div style="margin-top:8px">'+U.statusPill(p.status)+(paid?' <span class="nv-paid-tape">PAID</span>':'')+'</div>'+
+        (p.exception?'<div class="nv-tl-n" style="margin-top:8px">'+escLabelText(p.exception)+'</div>':'')+
+      '</div>'+
+      '<div class="nvdr-sec"><h4>Shipment</h4><dl class="nvdr-kv">'+
+        '<dt>Consignee</dt><dd>'+escLabelText(p.consignee||"—")+'</dd>'+
+        '<dt>City</dt><dd>'+escLabelText(p.city||"—")+'</dd>'+
+        '<dt>Address</dt><dd>'+escLabelText(p.address||"—")+'</dd>'+
+        '<dt>Phone</dt><dd>'+escLabelText(p.phone||"—")+'</dd>'+
+        '<dt>Delivery charge</dt><dd>'+escLabelText(money(p.fee||0))+'</dd>'+
+        (p.orderId?'<dt>Your order</dt><dd>'+escLabelText(p.orderId)+'</dd>':'')+
+        '<dt>Booked</dt><dd>'+escLabelText(p.date||"—")+'</dd>'+
+      '</dl></div>'+
+      '<div class="nvdr-sec"><h4>Journey</h4>'+U.timeline(rows)+'</div>'+
+      '<div class="nvdr-actions">'+
+        (tel?'<a href="tel:'+escLabelText(tel)+'">Call consignee</a>':'')+
+        '<button type="button" class="nvdr-primary" data-nv-drawer-act="print" data-awb="'+escLabelText(p.awb)+'">Print AWB</button>'+
+        '<button type="button" data-nv-drawer-act="track" data-awb="'+escLabelText(p.awb)+'">Tracking link</button>'+
+      '</div>';
+    }
+    function openClientParcelJourney(awb){
+      state.selectedAwb=awb; saveState();
+      const p=(state.parcels||[]).find(x=>x&&x.awb===awb);
+      const U=window.NovaXUI;
+      if(!p||!U||!U.openDrawer){
+        state.activeClientTab="dashboard"; render();
+        const j=document.getElementById("clientJourney"); if(j) j.scrollIntoView({behavior:"smooth",block:"center"});
+        return;
+      }
+      try{
+        U.openDrawer('<span>'+escLabelText(p.awb)+'</span><small>'+escLabelText(p.consignee||"")+
+          (p.city?" · "+escLabelText(p.city):"")+'</small>', nvParcelDrawerHtml(p));
+      }catch(e){
+        state.activeClientTab="dashboard"; render();
+      }
+    }
+    /* NovaX (detail drawer): one delegated listener for the drawer's action
+       buttons -- nothing merchant-derived is ever concatenated into an inline
+       onclick, matching the pattern already used for metric-card actions. */
+    document.addEventListener("click",function(e){
+      const b=e.target&&e.target.closest?e.target.closest("[data-nv-drawer-act]"):null;
+      if(!b) return;
+      const act=b.getAttribute("data-nv-drawer-act");
+      const awb=b.getAttribute("data-awb")||"";
+      if(act==="print"){
+        try{ window.NovaXUI.closeDrawer(); }catch(_){}
+        state.selectedAwb=awb; saveState();
+        if(typeof showClientTab==="function") showClientTab("awbLabel");
+      } else if(act==="track"){
+        const url=(typeof trackingUrl==="function")?trackingUrl(awb):("https://novaxlogistics.com/tracking.html?awb="+encodeURIComponent(awb));
+        if(navigator.clipboard&&navigator.clipboard.writeText){
+          navigator.clipboard.writeText(url).then(function(){ toast("Tracking link copied."); },function(){ toast(url); });
+        } else toast(url);
+      }
+    });
     function selectParcel(awb){ state.selectedAwb=awb; saveState(); render(); }
     function pickupNotice(p){ if(p && p.status==='New booked' && (p.rider||p.riderId)){ var r=p.rider||p.riderId; var from=p.pickupCity||(state.client&&state.client.name)||'pickup point'; return `<div class="footer-note" style="color:#0c7c59;font-weight:800;margin-top:4px">Rider ${escLabelText(r)} assigned - will collect parcel from ${escLabelText(from)}</div>`; } return ''; }
     /* A parcel is "paid" the moment admin_generate_invoice_v2 stamps
@@ -10178,6 +10275,465 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     });
   }catch(e){}
 })();
+</script>
+
+<style>
+/* ═══ NovaX shared UI primitives ═══════════════════════════════════════════
+   Status language, micro-charts, detail drawer, timeline, empty states and
+   skeletons. Scoped to nv-/nvst-/nvdr- prefixes so nothing here can collide
+   with the existing sheet. Tones map to the same four the portals already
+   use (good / warn / bad / info) so the vocabulary stays consistent.
+
+   THEMING: every colour below comes from a token, and the tokens are
+   redefined for dark in two places -- an explicit [data-theme="dark"] (the
+   toggle) and prefers-color-scheme (the untouched system default). Light is
+   defined on bare :root so a value always exists; no colour is ever declared
+   only inside a media query. Dark is the obsidian palette (#050706 /
+   #0B0F0D / #101512) rather than pure black, with the NovaX green kept as
+   the accent so status tones stay recognisable across both themes. */
+:root{
+  --nvu-bg:#ffffff; --nvu-bg-2:#fafdfb; --nvu-line:#e7efeb; --nvu-line-2:#d8e6e0;
+  --nvu-ink:#10201b; --nvu-ink-2:#60726b; --nvu-ink-3:#8ba299;
+  --nvu-accent:#0c7c59; --nvu-accent-ink:#ffffff;
+  --nvu-good-bg:#e6f6ee; --nvu-good-fg:#0c7c59; --nvu-good-ln:#b7e3ce;
+  --nvu-warn-bg:#fff6e5; --nvu-warn-fg:#8a5a00; --nvu-warn-ln:#f0d9a8;
+  --nvu-bad-bg:#fdecea;  --nvu-bad-fg:#b3261e;  --nvu-bad-ln:#f3c4bf;
+  --nvu-info-bg:#eaf3fb; --nvu-info-fg:#155a82; --nvu-info-ln:#c9e0f2;
+  --nvu-neutral-bg:#eef3f0; --nvu-neutral-fg:#41564e;
+  --nvu-track:rgba(0,0,0,.06); --nvu-sheen:rgba(255,255,255,.9);
+  --nvu-shadow:rgba(6,20,14,.28); --nvu-scrim:rgba(8,20,16,.42);
+}
+:root[data-theme="dark"]{
+  --nvu-bg:#0B0F0D; --nvu-bg-2:#101512; --nvu-line:#1c2723; --nvu-line-2:#26332e;
+  --nvu-ink:#eafff5; --nvu-ink-2:#9dbdae; --nvu-ink-3:#6f8a7e;
+  --nvu-accent:#14c77b; --nvu-accent-ink:#04130d;
+  --nvu-good-bg:rgba(20,199,123,.14); --nvu-good-fg:#5fe0a8; --nvu-good-ln:rgba(20,199,123,.32);
+  --nvu-warn-bg:rgba(232,182,76,.14); --nvu-warn-fg:#e8b64c; --nvu-warn-ln:rgba(232,182,76,.3);
+  --nvu-bad-bg:rgba(224,96,75,.15);   --nvu-bad-fg:#f0a396;  --nvu-bad-ln:rgba(224,96,75,.32);
+  --nvu-info-bg:rgba(75,184,232,.14); --nvu-info-fg:#7fc9f0; --nvu-info-ln:rgba(75,184,232,.3);
+  --nvu-neutral-bg:#16201c; --nvu-neutral-fg:#9dbdae;
+  --nvu-track:rgba(255,255,255,.09); --nvu-sheen:rgba(255,255,255,.07);
+  --nvu-shadow:rgba(0,0,0,.6); --nvu-scrim:rgba(2,8,5,.66);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --nvu-bg:#0B0F0D; --nvu-bg-2:#101512; --nvu-line:#1c2723; --nvu-line-2:#26332e;
+    --nvu-ink:#eafff5; --nvu-ink-2:#9dbdae; --nvu-ink-3:#6f8a7e;
+    --nvu-accent:#14c77b; --nvu-accent-ink:#04130d;
+    --nvu-good-bg:rgba(20,199,123,.14); --nvu-good-fg:#5fe0a8; --nvu-good-ln:rgba(20,199,123,.32);
+    --nvu-warn-bg:rgba(232,182,76,.14); --nvu-warn-fg:#e8b64c; --nvu-warn-ln:rgba(232,182,76,.3);
+    --nvu-bad-bg:rgba(224,96,75,.15);   --nvu-bad-fg:#f0a396;  --nvu-bad-ln:rgba(224,96,75,.32);
+    --nvu-info-bg:rgba(75,184,232,.14); --nvu-info-fg:#7fc9f0; --nvu-info-ln:rgba(75,184,232,.3);
+    --nvu-neutral-bg:#16201c; --nvu-neutral-fg:#9dbdae;
+    --nvu-track:rgba(255,255,255,.09); --nvu-sheen:rgba(255,255,255,.07);
+    --nvu-shadow:rgba(0,0,0,.6); --nvu-scrim:rgba(2,8,5,.66);
+  }
+}
+
+/* -- status pills + dots -- */
+.nvst{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;
+  font-size:11.5px;font-weight:750;line-height:1.35;white-space:nowrap;max-width:100%;
+  background:var(--nvu-neutral-bg);color:var(--nvu-neutral-fg);border:1px solid var(--nvu-line);}
+.nvst i{font-style:normal;font-size:11px;line-height:1;opacity:.95;}
+/* Scoped to the pill itself: an unscoped .nvst-good{background} also painted
+   every OTHER element carrying the tone class -- timeline rows tint their
+   glyph by tone, so each row was rendering a full-width coloured band. */
+.nvst.nvst-good{background:var(--nvu-good-bg);color:var(--nvu-good-fg);border-color:var(--nvu-good-ln);}
+.nvst.nvst-warn{background:var(--nvu-warn-bg);color:var(--nvu-warn-fg);border-color:var(--nvu-warn-ln);}
+.nvst.nvst-bad{background:var(--nvu-bad-bg);color:var(--nvu-bad-fg);border-color:var(--nvu-bad-ln);}
+.nvst.nvst-info{background:var(--nvu-info-bg);color:var(--nvu-info-fg);border-color:var(--nvu-info-ln);}
+.nvst-dot{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;
+  font-size:10px;font-weight:800;flex:0 0 auto;background:var(--nvu-neutral-bg);color:var(--nvu-neutral-fg);}
+.nvst-dot.nvst-good{background:var(--nvu-good-bg);color:var(--nvu-good-fg);}
+.nvst-dot.nvst-warn{background:var(--nvu-warn-bg);color:var(--nvu-warn-fg);}
+.nvst-dot.nvst-bad{background:var(--nvu-bad-bg);color:var(--nvu-bad-fg);}
+.nvst-dot.nvst-info{background:var(--nvu-info-bg);color:var(--nvu-info-fg);}
+
+/* -- micro charts -- */
+.nv-spark{display:block;width:100%;height:28px;color:var(--nvu-accent);overflow:visible;}
+.nv-ring{display:block;}
+.nv-dist{display:grid;gap:7px;margin-top:10px;}
+.nv-dist-row{display:grid;grid-template-columns:minmax(72px,26%) 1fr auto;gap:10px;align-items:center;font-size:12px;}
+.nv-dist-l{color:var(--nvu-ink-2);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nv-dist-t{height:8px;border-radius:999px;background:var(--nvu-track);overflow:hidden;}
+.nv-dist-t i{display:block;height:100%;border-radius:999px;transition:width .6s cubic-bezier(.2,.8,.2,1);}
+.nv-dist-v{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--nvu-ink);}
+
+/* -- detail drawer -- */
+#nvdrawer{position:fixed;inset:0;z-index:99990;pointer-events:none;}
+#nvdrawer .nvdr-back{position:absolute;inset:0;background:var(--nvu-scrim);opacity:0;
+  transition:opacity .22s ease;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);}
+#nvdrawer .nvdr-panel{position:absolute;top:0;right:0;bottom:0;width:min(460px,100%);
+  background:var(--nvu-bg);box-shadow:-18px 0 60px var(--nvu-shadow);display:flex;flex-direction:column;
+  transform:translateX(102%);transition:transform .26s cubic-bezier(.22,.85,.3,1);will-change:transform;}
+#nvdrawer.on{pointer-events:auto;}
+#nvdrawer.on .nvdr-back{opacity:1;}
+#nvdrawer.on .nvdr-panel{transform:translateX(0);}
+#nvdrawer .nvdr-head{display:flex;align-items:flex-start;gap:12px;padding:16px 18px;
+  border-bottom:1px solid var(--nvu-line);flex:0 0 auto;}
+#nvdrawer .nvdr-title{flex:1;min-width:0;font-size:15px;font-weight:800;color:var(--nvu-ink);line-height:1.3;}
+#nvdrawer .nvdr-title small{display:block;font-size:11.5px;font-weight:600;color:var(--nvu-ink-2);margin-top:3px;}
+#nvdrawer .nvdr-x{width:32px;height:32px;border-radius:9px;border:1px solid var(--nvu-line-2);
+  background:var(--nvu-bg);color:var(--nvu-ink-2);cursor:pointer;flex:0 0 auto;font-size:13px;line-height:1;}
+#nvdrawer .nvdr-x:hover{background:var(--nvu-bg-2);color:var(--nvu-ink);}
+#nvdrawer .nvdr-body{padding:16px 18px 28px;overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;}
+.nvdr-sec{margin-top:18px;}
+.nvdr-sec:first-child{margin-top:0;}
+.nvdr-sec>h4{margin:0 0 9px;font-size:10.5px;font-weight:800;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--nvu-ink-3);}
+.nvdr-kv{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);gap:6px 14px;font-size:13px;}
+.nvdr-kv dt{color:var(--nvu-ink-2);}
+.nvdr-kv dd{margin:0;font-weight:700;color:var(--nvu-ink);overflow-wrap:anywhere;}
+.nvdr-money{display:flex;align-items:baseline;gap:8px;font-size:24px;font-weight:900;
+  letter-spacing:-.02em;color:var(--nvu-ink);}
+.nvdr-money small{font-size:11.5px;font-weight:700;color:var(--nvu-ink-2);letter-spacing:0;}
+.nvdr-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;}
+.nvdr-actions button,.nvdr-actions a{flex:1 1 auto;min-height:40px;border-radius:10px;
+  border:1px solid var(--nvu-line-2);background:var(--nvu-bg);color:var(--nvu-ink);font-weight:750;font-size:12.5px;
+  cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:0 12px;text-decoration:none;}
+.nvdr-actions button:hover,.nvdr-actions a:hover{background:var(--nvu-bg-2);border-color:var(--nvu-accent);}
+.nvdr-actions .nvdr-primary{background:var(--nvu-accent);border-color:var(--nvu-accent);color:var(--nvu-accent-ink);}
+.nvdr-actions .nvdr-primary:hover{filter:brightness(.94);}
+@media (max-width:560px){
+  #nvdrawer .nvdr-panel{width:100%;top:auto;height:88vh;border-radius:18px 18px 0 0;
+    transform:translateY(102%);}
+  #nvdrawer.on .nvdr-panel{transform:translateY(0);}
+}
+
+/* -- timeline -- */
+.nv-tl{list-style:none;margin:0;padding:0;}
+.nv-tl-i{position:relative;display:flex;gap:11px;padding:0 0 16px 0;}
+.nv-tl-i:last-child{padding-bottom:0;}
+.nv-tl-i::after{content:"";position:absolute;left:10px;top:22px;bottom:0;width:2px;background:var(--nvu-line);}
+.nv-tl-i:last-child::after{display:none;}
+.nv-tl-g{width:21px;height:21px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;
+  font-size:10px;font-weight:800;background:var(--nvu-neutral-bg);color:var(--nvu-ink-3);z-index:1;}
+.nv-tl-x{min-width:0;flex:1;font-size:13px;padding-top:1px;}
+.nv-tl-x b{display:block;font-weight:750;color:var(--nvu-ink);}
+.nv-tl-todo .nv-tl-x b{color:var(--nvu-ink-3);font-weight:600;}
+.nv-tl-t{display:block;font-size:11px;color:var(--nvu-ink-2);margin-top:1px;}
+.nv-tl-n{display:block;font-size:11.5px;color:var(--nvu-warn-fg);margin-top:3px;}
+/* timeline glyph takes the tone, the row never does */
+.nv-tl-i.nvst-good .nv-tl-g{background:var(--nvu-good-bg);color:var(--nvu-good-fg);}
+.nv-tl-i.nvst-warn .nv-tl-g{background:var(--nvu-warn-bg);color:var(--nvu-warn-fg);}
+.nv-tl-i.nvst-bad  .nv-tl-g{background:var(--nvu-bad-bg);color:var(--nvu-bad-fg);}
+.nv-tl-i.nvst-info .nv-tl-g{background:var(--nvu-info-bg);color:var(--nvu-info-fg);}
+.nv-tl-i.nv-tl-todo .nv-tl-g{background:var(--nvu-neutral-bg)!important;color:var(--nvu-ink-3)!important;}
+.nv-tl-i.nv-tl-now  .nv-tl-g{background:var(--nvu-accent)!important;color:var(--nvu-accent-ink)!important;
+  box-shadow:0 0 0 3px var(--nvu-good-bg);}
+
+/* -- empty states -- */
+.nv-empty{text-align:center;padding:30px 18px;}
+.nv-empty-ic{font-size:26px;margin-bottom:10px;opacity:.85;}
+.nv-empty-t{font-size:14.5px;font-weight:800;color:var(--nvu-ink);letter-spacing:.01em;}
+.nv-empty-b{font-size:12.5px;color:var(--nvu-ink-2);margin-top:6px;line-height:1.55;max-width:340px;
+  margin-left:auto;margin-right:auto;}
+.nv-empty-f{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:12px;
+  font-size:11.5px;color:var(--nvu-good-fg);font-weight:700;}
+.nv-empty-cta{margin-top:14px;min-height:38px;padding:0 16px;border-radius:10px;border:0;
+  background:var(--nvu-accent);color:var(--nvu-accent-ink);font-weight:800;font-size:12.5px;cursor:pointer;}
+.nv-empty-cta:hover{filter:brightness(.94);}
+
+/* -- skeletons -- */
+.nv-sk{border:1px solid var(--nvu-line);border-radius:12px;background:var(--nvu-bg);padding:12px;display:grid;gap:8px;margin-bottom:10px;}
+.nv-sk-l{height:11px;border-radius:6px;background:var(--nvu-neutral-bg);position:relative;overflow:hidden;}
+.nv-sk-l::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,var(--nvu-sheen),transparent);
+  animation:nvSkSweep 1.3s infinite;}
+@keyframes nvSkSweep{100%{transform:translateX(100%)}}
+
+
+/* theme switch */
+.nv-theme{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:var(--nvu-neutral-bg);
+  border:1px solid var(--nvu-line);vertical-align:middle;}
+.nv-theme button{border:0;background:transparent;color:var(--nvu-ink-2);font-size:11px;font-weight:800;
+  padding:4px 9px;border-radius:999px;cursor:pointer;line-height:1.2;}
+.nv-theme button[aria-pressed="true"]{background:var(--nvu-bg);color:var(--nvu-ink);
+  box-shadow:0 1px 3px rgba(0,0,0,.14);}
+
+@media (prefers-reduced-motion: reduce){
+  #nvdrawer .nvdr-panel,#nvdrawer .nvdr-back,.nv-dist-t i{transition:none!important;}
+  .nv-sk-l::after{animation:none!important;}
+}
+</style>
+<script>
+/* ============================================================================
+   NovaX — shared UI primitives (status language, micro-charts, drawer,
+   empty states).
+
+   INLINED into client.html and admin.html on purpose. See the note above
+   nv-codegen: an external file 404'd in production once and silently took its
+   feature with it, so nothing new here ships as a separate request.
+
+   DESIGN RULES — this is a live operations portal:
+     1. ADDITIVE. Nothing here modifies or replaces an existing renderer. It
+        exposes helpers the page opts into, plus one drawer element appended
+        to <body>. If the whole module throws, the portal is unchanged.
+     2. NO DATA OF ITS OWN. Every value is passed in by the caller from live
+        state, so nothing here can display a stale or invented figure.
+     3. ESCAPED. Everything rendered is merchant/consignee text.
+     4. REDUCED MOTION respected on every animation.
+   ========================================================================== */
+(function () {
+  if (window.NovaXUI) return;
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function reduced() {
+    try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; }
+  }
+
+  /* ---- 1. STATUS VISUAL LANGUAGE -----------------------------------------
+     One shape + one tone per state, identical in every surface. Logistics is
+     entirely about state, so the same parcel must never look different in
+     admin, the client portal, the rider app or the tracking page. Glyphs are
+     plain text so they survive print, PDF and a plain-text WhatsApp/SMS copy
+     of the same status -- an icon font would not.                          */
+  var STATUS = {
+    "New booked":                     { g: "◌", tone: "info",  short: "Booked" },
+    "Collected by rider":             { g: "◉", tone: "info",  short: "Picked up" },
+    "Arrived at warehouse":           { g: "◆", tone: "info",  short: "At hub" },
+    "Parcel now in transit":          { g: "→", tone: "info",  short: "In transit" },
+    "Parcel received at destination": { g: "◆", tone: "info",  short: "At dest. hub" },
+    "Parcel out for delivery":        { g: "⟶", tone: "warn",  short: "Out for delivery" },
+    "Delivered":                      { g: "✓", tone: "good",  short: "Delivered" },
+    "Refused":                        { g: "!", tone: "bad",   short: "Refused" },
+    "Consignee not available":        { g: "!", tone: "warn",  short: "Not available" },
+    "Reattempt":                      { g: "↻", tone: "warn",  short: "Reattempt" },
+    "Reassigned":                     { g: "↻", tone: "info",  short: "Reassigned" },
+    "Out of service area":            { g: "✕", tone: "bad",   short: "Out of area" },
+    "Ready for return":               { g: "↩", tone: "warn",  short: "Returning" },
+    "Return in transit":              { g: "↩", tone: "warn",  short: "Return transit" },
+    "Return received at origin":      { g: "↩", tone: "warn",  short: "Return at origin" },
+    "Return out for delivery":        { g: "↩", tone: "warn",  short: "Return out" },
+    "Return to shipper":              { g: "↩", tone: "bad",   short: "Returned" },
+    "Cancelled by client":            { g: "✕", tone: "",      short: "Cancelled" }
+  };
+  function statusMeta(s) {
+    return STATUS[String(s == null ? "" : s)] || { g: "◌", tone: "info", short: String(s || "") };
+  }
+  /* Renders the glyph + label pill. `labelMode`: "full" keeps the stored
+     status text (what ops search for), "short" uses the compact label (for
+     dense tables). Never invents a status it does not know -- unknown values
+     fall through with their own text intact. */
+  function statusPill(s, labelMode) {
+    var m = statusMeta(s);
+    var txt = labelMode === "short" ? m.short : String(s || "");
+    return '<span class="nvst nvst-' + (m.tone || "none") + '"><i>' + m.g + "</i>" + esc(txt) + "</span>";
+  }
+  function statusDot(s) {
+    var m = statusMeta(s);
+    return '<span class="nvst-dot nvst-' + (m.tone || "none") + '" title="' + esc(s) + '">' + m.g + "</span>";
+  }
+
+  /* ---- 2. MICRO-CHARTS ---------------------------------------------------
+     Deliberately tiny and axis-free. These sit inside a stat tile to give it
+     shape over time; anything that needs to be read precisely belongs in a
+     real table, not here. Pure inline SVG: no library, no network, prints
+     fine, and scales with the tile.                                       */
+  function sparkline(values, opts) {
+    opts = opts || {};
+    var v = (values || []).map(Number).filter(function (n) { return isFinite(n); });
+    if (v.length < 2) return "";
+    var w = opts.w || 120, h = opts.h || 28, pad = 2;
+    var min = Math.min.apply(null, v), max = Math.max.apply(null, v);
+    var span = (max - min) || 1;
+    var stepX = (w - pad * 2) / (v.length - 1);
+    var pts = v.map(function (n, i) {
+      return [pad + i * stepX, h - pad - ((n - min) / span) * (h - pad * 2)];
+    });
+    var d = pts.map(function (p, i) { return (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1); }).join(" ");
+    var area = d + " L " + pts[pts.length - 1][0].toFixed(1) + " " + (h - pad) + " L " + pad + " " + (h - pad) + " Z";
+    var stroke = opts.color || "currentColor";
+    var id = "nvsp" + Math.random().toString(36).slice(2, 8);
+    return '<svg class="nv-spark" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h +
+      '" fill="none" aria-hidden="true" preserveAspectRatio="none">' +
+      '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="' + stroke + '" stop-opacity=".22"/>' +
+        '<stop offset="100%" stop-color="' + stroke + '" stop-opacity="0"/></linearGradient></defs>' +
+      '<path d="' + area + '" fill="url(#' + id + ')"/>' +
+      '<path d="' + d + '" stroke="' + stroke + '" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + pts[pts.length - 1][0].toFixed(1) + '" cy="' + pts[pts.length - 1][1].toFixed(1) +
+        '" r="2.1" fill="' + stroke + '"/></svg>';
+  }
+  /* Horizontal distribution bar -- one row per segment, proportional. Used
+     for cash-flow style breakdowns where the RATIO is the message. */
+  function distBar(rows) {
+    var list = (rows || []).filter(function (r) { return r && isFinite(Number(r.value)); });
+    if (!list.length) return "";
+    var max = Math.max.apply(null, list.map(function (r) { return Math.abs(Number(r.value)); })) || 1;
+    return '<div class="nv-dist">' + list.map(function (r) {
+      var pct = Math.max(1, Math.round((Math.abs(Number(r.value)) / max) * 100));
+      return '<div class="nv-dist-row">' +
+        '<span class="nv-dist-l">' + esc(r.label) + "</span>" +
+        '<span class="nv-dist-t"><i style="width:' + pct + "%;background:" + (r.color || "#0c7c59") + '"></i></span>' +
+        '<span class="nv-dist-v">' + esc(r.display != null ? r.display : r.value) + "</span>" +
+      "</div>";
+    }).join("") + "</div>";
+  }
+  function ring(pct, opts) {
+    opts = opts || {};
+    var p = Math.max(0, Math.min(100, Number(pct) || 0));
+    var size = opts.size || 44, sw = opts.stroke || 5, r = (size - sw) / 2, c = 2 * Math.PI * r;
+    return '<svg class="nv-ring" width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + " " + size + '" aria-hidden="true">' +
+      '<circle cx="' + size / 2 + '" cy="' + size / 2 + '" r="' + r + '" fill="none" stroke="rgba(0,0,0,.08)" stroke-width="' + sw + '"/>' +
+      '<circle cx="' + size / 2 + '" cy="' + size / 2 + '" r="' + r + '" fill="none" stroke="' + (opts.color || "#0c7c59") +
+        '" stroke-width="' + sw + '" stroke-linecap="round" stroke-dasharray="' + c.toFixed(1) +
+        '" stroke-dashoffset="' + (c * (1 - p / 100)).toFixed(1) + '" transform="rotate(-90 ' + size / 2 + " " + size / 2 + ')"/>' +
+      "</svg>";
+  }
+
+  /* ---- 3. DETAIL DRAWER --------------------------------------------------
+     Opening a record must not cost a page change. Slides from the right,
+     closes on Esc / backdrop / button, restores focus, and never assumes
+     what is inside it -- the caller passes finished HTML.                  */
+  var drawer = null, drawerBody = null, drawerTitle = null, drawerLast = null;
+  function buildDrawer() {
+    if (drawer) return;
+    drawer = document.createElement("div");
+    drawer.id = "nvdrawer";
+    drawer.innerHTML =
+      '<div class="nvdr-back"></div>' +
+      '<aside class="nvdr-panel" role="dialog" aria-modal="true" aria-label="Details">' +
+        '<header class="nvdr-head"><div class="nvdr-title"></div>' +
+          '<button type="button" class="nvdr-x" aria-label="Close">&#10005;</button></header>' +
+        '<div class="nvdr-body"></div>' +
+      "</aside>";
+    document.body.appendChild(drawer);
+    drawerBody = drawer.querySelector(".nvdr-body");
+    drawerTitle = drawer.querySelector(".nvdr-title");
+    drawer.querySelector(".nvdr-back").addEventListener("click", closeDrawer);
+    drawer.querySelector(".nvdr-x").addEventListener("click", closeDrawer);
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && drawer && drawer.classList.contains("on")) closeDrawer();
+    });
+  }
+  function openDrawer(title, html) {
+    try {
+      buildDrawer();
+      drawerLast = document.activeElement;
+      drawerTitle.innerHTML = title || "";
+      drawerBody.innerHTML = html || "";
+      drawer.classList.add("on");
+      document.body.style.overflow = "hidden";
+      setTimeout(function () { try { drawer.querySelector(".nvdr-x").focus(); } catch (e) {} }, 60);
+    } catch (e) {}
+  }
+  function closeDrawer() {
+    if (!drawer) return;
+    drawer.classList.remove("on");
+    document.body.style.overflow = "";
+    try { if (drawerLast && drawerLast.focus) drawerLast.focus(); } catch (e) {}
+  }
+
+  /* ---- 4. TIMELINE -------------------------------------------------------
+     Renders the parcel journey from recorded steps, marking the current one
+     and greying what has not happened. Takes the flow it should show so a
+     return journey can pass its own sequence.                              */
+  function timeline(steps, current, times) {
+    var done = {}, list = steps || [];
+    (current ? [current] : []).forEach(function () {});
+    return '<ol class="nv-tl">' + list.map(function (s, i) {
+      var m = statusMeta(s.status || s);
+      var label = s.label || (s.status || s);
+      var state = s.state || "todo";
+      return '<li class="nv-tl-i nv-tl-' + state + ' nvst-' + (m.tone || "none") + '">' +
+        '<span class="nv-tl-g">' + (state === "todo" ? "○" : m.g) + "</span>" +
+        '<span class="nv-tl-x"><b>' + esc(label) + "</b>" +
+          (s.time ? '<span class="nv-tl-t">' + esc(s.time) + "</span>" : "") +
+          (s.note ? '<span class="nv-tl-n">' + esc(s.note) + "</span>" : "") +
+        "</span></li>";
+    }).join("") + "</ol>";
+  }
+
+  /* ---- 5. EMPTY STATES ---------------------------------------------------
+     An empty screen is the best teaching moment the product gets. "No data"
+     wastes it. Every empty state states the good news (if it IS good news),
+     then the single next action.                                          */
+  function emptyState(o) {
+    o = o || {};
+    return '<div class="nv-empty">' +
+      (o.icon ? '<div class="nv-empty-ic">' + esc(o.icon) + "</div>" : "") +
+      '<div class="nv-empty-t">' + esc(o.title || "Nothing here yet") + "</div>" +
+      (o.body ? '<div class="nv-empty-b">' + esc(o.body) + "</div>" : "") +
+      (o.facts && o.facts.length
+        ? '<div class="nv-empty-f">' + o.facts.map(function (f) { return "<span>✓ " + esc(f) + "</span>"; }).join("") + "</div>"
+        : "") +
+      (o.actionLabel
+        ? '<button type="button" class="nv-empty-cta" data-nv-empty-action="' + esc(o.action || "") + '">' + esc(o.actionLabel) + "</button>"
+        : "") +
+    "</div>";
+  }
+
+  /* ---- 6. SKELETONS ------------------------------------------------------ */
+  function skeleton(rows, lines) {
+    var r = rows || 3, l = lines || 3, out = "";
+    for (var i = 0; i < r; i++) {
+      out += '<div class="nv-sk">';
+      for (var j = 0; j < l; j++) out += '<div class="nv-sk-l" style="width:' + (40 + ((i + j) * 13) % 55) + '%"></div>';
+      out += "</div>";
+    }
+    return out;
+  }
+
+  window.NovaXUI = {
+    esc: esc, reduced: reduced,
+    STATUS: STATUS, statusMeta: statusMeta, statusPill: statusPill, statusDot: statusDot,
+    sparkline: sparkline, distBar: distBar, ring: ring,
+    openDrawer: openDrawer, closeDrawer: closeDrawer,
+    timeline: timeline, emptyState: emptyState, skeleton: skeleton
+  };
+})();
+
+/* ═══ NovaX theme controller ═══════════════════════════════════════════════
+   Three states: "light", "dark", or "system" (the default -- stamps NO
+   attribute, so prefers-color-scheme decides). Stored per browser under
+   novaxTheme. The <html> attribute is set as early as this script runs so a
+   dark user does not get a white flash before the sheet applies.
+
+   Scope note: this drives the NovaX UI primitives (--nvu-* tokens), which are
+   fully themed. The surrounding legacy stylesheet still carries hardcoded
+   light colours in many places, so dark is honest but not yet total -- the
+   remaining surfaces are being converted to tokens incrementally. Nothing
+   here changes behaviour or data; worst case it changes colours. */
+(function(){
+  try{
+    var KEY="novaxTheme";
+    function stored(){ try{ return localStorage.getItem(KEY)||"system"; }catch(e){ return "system"; } }
+    function apply(mode){
+      var el=document.documentElement;
+      if(mode==="dark") el.setAttribute("data-theme","dark");
+      else if(mode==="light") el.setAttribute("data-theme","light");
+      else el.removeAttribute("data-theme");
+      try{ localStorage.setItem(KEY,mode); }catch(e){}
+      try{
+        var m=document.querySelector('meta[name="theme-color"]');
+        if(m) m.setAttribute("content", el.getAttribute("data-theme")==="dark" ? "#0B0F0D" : "#0c7c59");
+      }catch(e){}
+      document.querySelectorAll("[data-nv-theme-btn]").forEach(function(b){
+        b.setAttribute("aria-pressed", String(b.getAttribute("data-nv-theme-btn")===mode));
+      });
+    }
+    apply(stored());
+    window.NovaXTheme={ get:stored, set:apply, cycle:function(){
+      var order=["system","light","dark"], i=order.indexOf(stored());
+      apply(order[(i+1)%order.length]);
+      return stored();
+    }};
+    document.addEventListener("click",function(e){
+      var b=e.target&&e.target.closest?e.target.closest("[data-nv-theme-btn]"):null;
+      if(!b) return;
+      e.preventDefault();
+      apply(b.getAttribute("data-nv-theme-btn"));
+    });
+  }catch(e){ /* theming must never break the portal */ }
+})();
+
+
 </script>
 </body>
 </html>
