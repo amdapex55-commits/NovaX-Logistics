@@ -10527,6 +10527,96 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
 
 
+
+/* ═══ Dark mode: surfaces the original dark pass missed ═══════════════════
+   client.html had dark rules for ~12 surfaces but ~26 others kept their
+   hardcoded #fff / white, so switching to dark left white cards, white
+   inputs and dark-on-dark text scattered through the portal on both desktop
+   and mobile. These repaint the stragglers from the same palette variables
+   the existing dark block defines, so there is one source of truth.
+
+   Placed at the end of the sheet so it beats the light rules on order, and
+   scoped with html[data-theme="dark"] to match the existing convention. */
+html[data-theme="dark"] .client-menu,
+html[data-theme="dark"] .money-box,
+html[data-theme="dark"] .log-item,
+html[data-theme="dark"] .journey-item,
+html[data-theme="dark"] .parcel-card,
+html[data-theme="dark"] .invoice-card,
+html[data-theme="dark"] .sb-parcel,
+html[data-theme="dark"] .modal-card,
+html[data-theme="dark"] .tier-card,
+html[data-theme="dark"] .order-log-card,
+html[data-theme="dark"] .nv-onboarding,
+html[data-theme="dark"] .nv-ins-stat,
+html[data-theme="dark"] .nv-cod-hero,
+html[data-theme="dark"] .nv-cod-b{
+  background:var(--panel);color:var(--ink);border-color:var(--line);
+}
+html[data-theme="dark"] .money-box span,
+html[data-theme="dark"] .log-item .footer-note,
+html[data-theme="dark"] .journey-item span,
+html[data-theme="dark"] .nv-onboarding-item span,
+html[data-theme="dark"] .footer-note{ color:var(--muted); }
+html[data-theme="dark"] .money-box strong,
+html[data-theme="dark"] .log-item strong,
+html[data-theme="dark"] .parcel-card strong,
+html[data-theme="dark"] .invoice-card strong{ color:var(--ink); }
+
+/* Inputs: a white field with dark text is the most jarring break in dark
+   mode, and the area picker/search boxes were the worst of them. */
+html[data-theme="dark"] .field input,
+html[data-theme="dark"] .field textarea,
+html[data-theme="dark"] .field select,
+html[data-theme="dark"] .search,
+html[data-theme="dark"] .nv-area-filter,
+html[data-theme="dark"] .review-panel textarea,
+html[data-theme="dark"] #nvPasteInput{
+  background:var(--panel-soft);color:var(--ink);border-color:var(--line);
+}
+html[data-theme="dark"] .field input::placeholder,
+html[data-theme="dark"] .field textarea::placeholder,
+html[data-theme="dark"] .search::placeholder,
+html[data-theme="dark"] .nv-area-filter::placeholder,
+html[data-theme="dark"] #nvPasteInput::placeholder{ color:var(--muted); }
+/* Native option popups ignore the parent background on most platforms. */
+html[data-theme="dark"] select option{ background:var(--panel);color:var(--ink); }
+
+/* Buttons and chrome */
+html[data-theme="dark"] .ghost-btn,
+html[data-theme="dark"] .nv-theme-toggle,
+html[data-theme="dark"] .nv-command-strip .nv-cs-ghost{
+  background:var(--panel-soft);color:var(--ink);border-color:var(--line);
+}
+html[data-theme="dark"] .ghost-btn:hover,
+html[data-theme="dark"] .nv-command-strip .nv-cs-ghost:hover{ background:var(--mint); }
+html[data-theme="dark"] .hamburger-btn span{ background:var(--ink); }
+html[data-theme="dark"] .nv-inc-chip{ background:var(--panel-soft);color:var(--ink); }
+html[data-theme="dark"] th{ background:var(--panel-soft);color:var(--muted); }
+html[data-theme="dark"] tbody tr:hover{ background:rgba(19,163,111,.08); }
+
+/* Page chrome. The topbar kept a light tint with dark brand text, and the
+   inactive client tabs stayed light -- so the header read as a white band
+   across the top of an otherwise dark portal. */
+html[data-theme="dark"] .topbar{ background:rgba(11,21,18,.92); border-bottom-color:var(--line); }
+html[data-theme="dark"] .brand-text strong{ color:var(--ink); }
+html[data-theme="dark"] .brand-text span{ color:var(--muted); }
+html[data-theme="dark"] .client-tab{ background:var(--panel-soft); color:var(--ink); }
+html[data-theme="dark"] .client-tab.active{ background:var(--green); color:#04130d; }
+html[data-theme="dark"] .client-menu-head{ background:var(--panel); color:var(--ink); }
+html[data-theme="dark"] .nv-command-strip{ border-color:var(--line); }
+
+/* PRINTED SURFACES STAY LIGHT ON PURPOSE. The AWB label, invoice document,
+   QR and barcode are printed onto white paper -- theming them dark would
+   waste toner and produce a barcode a scanner cannot read. */
+html[data-theme="dark"] .awb-label,
+html[data-theme="dark"] .awb-zone,
+html[data-theme="dark"] .awb-field,
+html[data-theme="dark"] .qr-img,
+html[data-theme="dark"] .barcode-img,
+html[data-theme="dark"] .nv-doc{ background:#fff;color:#11150f; }
+html[data-theme="dark"] .awb-field span{ color:#5c6157; }
+
 /* ═══ COD hero (client dashboard) ══════════════════════════════════════════ */
 .nv-cod-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1.35fr) minmax(0,1fr);
   gap:16px;align-items:start;background:var(--nvu-bg,#fff);border:1px solid var(--nvu-line,#e7efeb);
@@ -10853,11 +10943,21 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
   try{
     var KEY="novaxTheme";
     function stored(){ try{ return localStorage.getItem(KEY)||"system"; }catch(e){ return "system"; } }
+    /* NovaX fix (system mode rendered a split portal): "system" used to leave
+       data-theme unset. The shared UI primitives resolve dark from
+       prefers-color-scheme, but the portal's own ~39 dark rules only match
+       html[data-theme="dark"] -- so on a dark-mode device, System produced
+       dark components sitting inside a light portal. System now RESOLVES to
+       an explicit attribute (while still being stored as "system", so it
+       keeps following the device), which makes every existing rule agree. */
+    function effective(mode){
+      if(mode==="dark"||mode==="light") return mode;
+      try{ return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
+      catch(e){ return "light"; }
+    }
     function apply(mode){
       var el=document.documentElement;
-      if(mode==="dark") el.setAttribute("data-theme","dark");
-      else if(mode==="light") el.setAttribute("data-theme","light");
-      else el.removeAttribute("data-theme");
+      el.setAttribute("data-theme", effective(mode));
       try{ localStorage.setItem(KEY,mode); }catch(e){}
       try{
         var m=document.querySelector('meta[name="theme-color"]');
@@ -10868,6 +10968,12 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
       });
     }
     apply(stored());
+    try{
+      var mq=matchMedia("(prefers-color-scheme: dark)");
+      var onOs=function(){ if(stored()==="system") apply("system"); };
+      if(mq.addEventListener) mq.addEventListener("change",onOs);
+      else if(mq.addListener) mq.addListener(onOs);
+    }catch(e){}
     window.NovaXTheme={ get:stored, set:apply, cycle:function(){
       var order=["system","light","dark"], i=order.indexOf(stored());
       apply(order[(i+1)%order.length]);

@@ -16625,11 +16625,23 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
   try{
     var KEY="novaxTheme";
     function stored(){ try{ return localStorage.getItem(KEY)||"system"; }catch(e){ return "system"; } }
+    /* NovaX fix (system mode rendered a split portal): "system" used to leave
+       data-theme unset. The shared UI primitives resolve dark from
+       prefers-color-scheme, but the portal's own ~39 dark rules only match
+       html[data-theme="dark"] -- so on a dark-mode device, System produced
+       dark components sitting inside a light portal. System now RESOLVES to
+       an explicit attribute (while still being stored as "system", so it
+       keeps following the device), which makes every existing rule agree. */
+    /* ADMIN IS ALWAYS DARK. The console's palette :root and ~26 component
+       rules are unconditionally dark by design, so the UI primitives must be
+       pinned to dark too -- otherwise a light-mode device would stamp
+       data-theme="light", flip the --nvu-* tokens light, and drop light
+       status pills, drawers and skeletons into a dark console. Revisit this
+       when those 26 rules are converted and admin becomes truly themeable. */
+    function effective(){ return "dark"; }
     function apply(mode){
       var el=document.documentElement;
-      if(mode==="dark") el.setAttribute("data-theme","dark");
-      else if(mode==="light") el.setAttribute("data-theme","light");
-      else el.removeAttribute("data-theme");
+      el.setAttribute("data-theme", effective(mode));
       try{ localStorage.setItem(KEY,mode); }catch(e){}
       try{
         var m=document.querySelector('meta[name="theme-color"]');
@@ -16640,6 +16652,12 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
       });
     }
     apply(stored());
+    try{
+      var mq=matchMedia("(prefers-color-scheme: dark)");
+      var onOs=function(){ if(stored()==="system") apply("system"); };
+      if(mq.addEventListener) mq.addEventListener("change",onOs);
+      else if(mq.addListener) mq.addListener(onOs);
+    }catch(e){}
     window.NovaXTheme={ get:stored, set:apply, cycle:function(){
       var order=["system","light","dark"], i=order.indexOf(stored());
       apply(order[(i+1)%order.length]);
