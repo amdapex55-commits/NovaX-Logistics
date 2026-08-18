@@ -1716,12 +1716,24 @@ document.querySelectorAll(".bar-fl").forEach(function(b){
          Zone A (intra-city, Karachi->Karachi) Rs 100 + Rs 60 per extra kg
          Zone B (inter-city)                   Rs 180 + Rs 60 per extra kg
        If you change rates in the database, change these three numbers too. */
-    var BASE=180, ADDL_KG=60, INTRA_BASE=100;
-    var price=(intra?INTRA_BASE:BASE)+Math.max(0,Math.ceil(kg-1))*ADDL_KG;
+    /* NovaX fix (calculator drifted from live pricing): Karachi intra-city is
+       no longer flat -- distance pricing went live on 13 Aug (base Rs 120 for
+       the first 6 km, Rs 20/km after, capped at Rs 320). This calculator still
+       quoted the old Rs 100 flat + Rs 60/kg, so every Karachi->Karachi figure
+       shown here under "Know your exact rate before you book" was BELOW what
+       the portal actually charges -- the worst possible place to be wrong.
+       Intra-city now shows the real floor-to-ceiling range instead of a single
+       fabricated number, because the true fee depends on the delivery area
+       and cannot be known until one is chosen. Inter-city is unchanged and
+       still flat. Keep these in step with novax_pricing_config. */
+    var BASE=180, ADDL_KG=60;
+    var KHI_MIN=120, KHI_MAX=320;
+    var price=intra?KHI_MIN:(BASE+Math.max(0,Math.ceil(kg-1))*ADDL_KG);
     var kgTxt=(kg%1===0?kg:kg.toFixed(1));
     wv.textContent=kgTxt+" kg";
-    pr.textContent="Rs "+comma(price);
-    nt.textContent=CITY[f.value]+" → "+CITY[t.value]+" · "+kgTxt+" kg · delivered "+(intra?"same day":"next day");
+    pr.textContent=intra?("Rs "+comma(KHI_MIN)+"–"+comma(KHI_MAX)):("Rs "+comma(price));
+    nt.textContent=CITY[f.value]+" → "+CITY[t.value]+" · "+kgTxt+" kg · delivered "+(intra?"same day":"next day")+
+      (intra?" · priced by distance from your pickup point":"");
   }
   [f,t,w].forEach(function(el){ el.addEventListener("input",calc); el.addEventListener("change",calc); });
   calc();

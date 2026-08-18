@@ -2023,7 +2023,12 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       });
       if(Object.keys(map).length) replaceAwbRefs(appState,map);
     }
-    function isDeliveredLedgerParcel(p){ return p.status==="Delivered" || p.steps.includes("COD collected"); }
+    /* NovaX fix: rider.html already guarded this as (p.steps||[]) after hitting
+       the crash there, but the same guard was never propagated here or to admin.
+       isDeliveredLedgerParcel() feeds clientMetrics() which feeds render(), so a
+       single parcel arriving without steps (stale localStorage cache, legacy row)
+       blanked the entire dashboard. */
+    function isDeliveredLedgerParcel(p){ return p.status==="Delivered" || (p.steps||[]).includes("COD collected"); }
     // NovaX fix (dashboard/invoices/wallet desync): one canonical definition
     // of "this invoice is fully closed out -- nothing more is owed to or by
     // the client on it". Four different admin actions land an invoice here
@@ -2584,7 +2589,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       return {level:"ok",label:"Within SLA",due:`${24-Math.round(h)}h left`};
     }
     function urgencyClass(l){ if(l==="critical"||l==="super urgent") return "bad"; if(l==="warning"||l==="urgent") return "warn"; return "good"; }
-    function setParcelStatus(p,status){ p.status=status; p.statusAgeHours=0; p.statusSince=new Date().toISOString(); p.updated=time(); p.stage=Math.max(0,STATUS_TAGS.indexOf(status)); if(!p.steps.includes(status)) p.steps.push(status); }
+    function setParcelStatus(p,status){ p.status=status; p.statusAgeHours=0; p.statusSince=new Date().toISOString(); p.updated=time(); p.stage=Math.max(0,STATUS_TAGS.indexOf(status)); if(!Array.isArray(p.steps)) p.steps=[]; if(!p.steps.includes(status)) p.steps.push(status); }
     function percent(v,m){ if(!m) return 0; return Math.max(0,Math.min(100,Math.round((v/m)*100))); }
     // NovaX fix (duplicate formatters): fmt() here and fmtRs() further down
     // the file were byte-identical implementations in two different script
@@ -2597,7 +2602,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     function money(v){ return PKR.format(v).replace("PKR","Rs"); }
     function fmt(v){ return nvFormatNumber(v); }
     function statusClass(p){ const a=alertForParcel(p); if(a.level==="critical"||p.risk>=65||p.exception) return "bad"; if(a.level==="warning") return "warn"; if(["Delivered","Return to shipper"].includes(p.status)) return "good"; if(p.stage<5) return "info"; if(p.stage<8) return "warn"; return "good"; }
-    function isRefusalReview(p){ return /refus|attempt disputed|consignee denies|not available/i.test(`${p.status} ${p.exception||""} ${p.steps.join(" ")}`); }
+    function isRefusalReview(p){ return /refus|attempt disputed|consignee denies|not available/i.test(`${p.status} ${p.exception||""} ${(p.steps||[]).join(" ")}`); }
     function meterClass(v){ if(v>=75) return "red"; if(v>=45) return "amber"; return "blue"; }
     function metricCard(label,value,fill,caption,kind="",icon="",action=""){
       const iconHtml = icon ? `<span class="metric-icon">${icon}</span>` : "";
@@ -2748,7 +2753,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     }
     function whatsappMessageText(p, kind){
       const step=WA_NEXT_STEP[kind]||"Please check the latest status using the tracking link below.";
-      return `Hello ${p.consignee||""}, this is NovaX Logistics.
+      return `Hello ${escLabelText(p.consignee||"")}, this is NovaX Logistics.
 AWB: ${p.awb}
 Status: ${kind}
 ${step}
@@ -3219,7 +3224,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         ["Return to shipper","Returned"]
       ];
       const rows=important
-        .filter(([status])=>p.steps.includes(status)||p.status===status||(["Refused","Consignee not available","Reattempt"].includes(status)&&isRefusalReview(p)))
+        .filter(([status])=>(p.steps||[]).includes(status)||p.status===status||(["Refused","Consignee not available","Reattempt"].includes(status)&&isRefusalReview(p)))
         .map(([status,label],i)=>{
           const current=p.status===status;
           const problem=current && (p.exception||/Refused|not available/i.test(status));
@@ -3412,7 +3417,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          before this field existed. */
       const allowOpen=(p&&p.allowOpen==="Yes")?"Yes":"No";
       const referenceNo=parcelReferenceNo(p);
-      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${origin} &rarr; ${destination}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${orderId}</strong></div><div class="awb-field"><span>Reference No</span><strong>${referenceNo}</strong></div>${nvAwbDistanceField(p)}</div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${phone}</strong></div><div class="awb-field awb-cod"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen==="Yes"?"is-yes":"is-no"}"><span>Allow to Open</span><strong>${allowOpen==="Yes"?"YES &mdash; customer may open":"NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${address}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div></section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
+      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${escLabelText(origin)} &rarr; ${escLabelText(destination)}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${escLabelText(orderId)}</strong></div><div class="awb-field"><span>Reference No</span><strong>${escLabelText(referenceNo)}</strong></div>${nvAwbDistanceField(p)}</div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${escLabelText(consignee)}</strong></div><div class="awb-field"><span>Phone</span><strong>${escLabelText(phone)}</strong></div><div class="awb-field awb-cod"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen==="Yes"?"is-yes":"is-no"}"><span>Allow to Open</span><strong>${allowOpen==="Yes"?"YES &mdash; customer may open":"NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${escLabelText(address)}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div></section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
     }
     /* NovaX: AWB print mode -- "thermal" (real 4x6in courier label, one per
        page, portrait) or "a4" (3-up on a landscape office sheet). Thermal
@@ -6854,7 +6859,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var myInvoices=function(){ return (state.invoices||[]).filter(function(i){return i.clientId===cid()&&i.status!=='Deleted';}); };
         var myWithdrawals=function(){ return (state.walletWithdrawals||[]).filter(function(w){return w.clientId===cid();}); };
         function invLine(iv){ return 'Invoice <b>'+esc(iv.id)+'</b> - status <b>'+esc(iv.status)+'</b><br>Payable <b>Rs '+fmt(iv.payable)+'</b> (COD Rs '+fmt(iv.cod)+' - charges Rs '+fmt(iv.charges)+') · '+((iv.parcelRefs||[]).length)+' parcel(s)'; }
-        function pLine(p){ return '<b>'+esc(p.awb)+'</b> - <b>'+esc(p.status)+'</b><br>'+esc(p.consignee||'')+(p.city?' · '+esc(p.city):'')+(p.updated?' · updated '+esc(p.updated):'')+(p.exception?'<br>⚠������� '+esc(p.exception):''); }
+        function pLine(p){ return '<b>'+esc(p.awb)+'</b> - <b>'+esc(p.status)+'</b><br>'+esc(p.consignee||'')+(p.city?' · '+esc(p.city):'')+(p.updated?' · updated '+esc(p.updated):'')+(p.exception?'<br>⚠️ '+esc(p.exception):''); }
         function engine(raw){
           var q=String(raw||'').trim(); if(!q) return {text:'Ask me about a parcel (e.g. <b>SAMPLE-AWB-1</b>), your invoice, wallet balance, or any delivery issue.'};
           var low=q.toLowerCase();

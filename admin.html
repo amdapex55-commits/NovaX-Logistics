@@ -5596,6 +5596,8 @@
                     <div class="field"><label>Password</label><input id="userPassword" type="password" value="NovaX@123" required></div>
                     <div class="field"><label>Role</label><select id="userRole"><option>Admin</option><option>Ops Manager</option><option>Branch Manager</option><option>Finance</option><option>Rider Supervisor</option><option>Client Support</option><option>Rider</option></select></div>
                     <div class="field"><label>Access Side</label><select id="userAccessSide"><option>Admin Portal</option><option>Client Web Portal</option><option>Rider App</option><option>Both Admin And Web</option></select><small class="hint" style="display:block;margin-top:4px;color:var(--muted,#7c8b86)">Admin Portal users can process orders.</small></div>
+                    <!-- NovaX fix (rider logins were never linked): a rider user needs to be tied to a roster row in `riders`, because rider.html refuses to guess an identity and shows the empty "no rider account" screen when profiles.rider_id is null. There was no control for this anywhere in the UI, so every rider login ever created from here was unlinked and dead on arrival. Shown only when Access Side is the Rider App -- see toggleRiderPicker(). -->
+                    <div class="field" id="userRiderField" style="display:none"><label>Link To Rider (required for Rider App)</label><select id="userRiderSelect"></select><div class="footer-note" style="margin-top:4px">The roster row this login controls. Add the rider under Riders first if they are not listed.</div></div>
                     <div class="field"><label>Assign Branch</label><select id="userBranch"><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option></select></div>
                     <div class="field"><label>Show Staff Tab</label><select id="userStaffTab"><option value="no">No</option><option value="yes">Yes — give this user the Staff tab</option></select></div>
                     <div class="field"><label>Staff Role</label><select id="userStaffRole"><option>Support</option><option>Sales</option><option>HR</option></select></div>
@@ -6744,7 +6746,7 @@
       state.parcels.forEach((parcel, index) => {
         const client = clientById(parcel.clientId);
         parcel.phone = parcel.phone || `0311${String(index + 1).padStart(7, "0")}`;
-        parcel.address = parcel.address || `${parcel.consignee} delivery address, ${parcel.city}`;
+        parcel.address = parcel.address || `${parcel.consignee} delivery address, ${escLabelText(parcel.city)}`;
         parcel.pickupCity = parcel.pickupCity || client.city || "Karachi";
         parcel.origin = parcel.origin || parcel.pickupCity;
         parcel.weight = parcel.weight || `${(0.6 + index * 0.35).toFixed(1)} kg`;
@@ -6755,8 +6757,8 @@
         parcel.steps = Array.isArray(parcel.steps) && parcel.steps.length ? parcel.steps : ["New booked"];
         parcel.processHistory = Array.isArray(parcel.processHistory) ? parcel.processHistory : parcel.steps.map((step, stepIndex) => ({
           status: step,
-          branch: step.includes("destination") || step.includes("delivery") || step === "Delivered" ? `${parcel.city} Hub` : parcel.branch,
-          time: stepIndex === parcel.steps.length - 1 ? parcel.updated : "system logged",
+          branch: step.includes("destination") || step.includes("delivery") || step === "Delivered" ? `${escLabelText(parcel.city)} Hub` : parcel.branch,
+          time: stepIndex === ((parcel.steps||[]).length - 1) ? parcel.updated : "system logged",
           processor: stepIndex === parcel.steps.length - 1 ? "System import" : "Journey engine",
           username: "system",
           at: `${parcel.date || "2026-06-24"} ${stepIndex === parcel.steps.length - 1 ? parcel.updated : "08:00"}`
@@ -7940,7 +7942,7 @@
       if (!parcel.steps.includes(status)) parcel.steps.push(status);
       const processorName = processor.name || currentAdminName();
       const username = processor.username || "admin";
-      const branch = processor.branch || parcel.branch || `${parcel.city} Hub`;
+      const branch = processor.branch || parcel.branch || `${escLabelText(parcel.city)} Hub`;
       parcel.branch = branch;
       parcel.lastProcessedBy = processorName;
       parcel.lastProcessedAt = stamp;
@@ -8225,7 +8227,7 @@
     function filteredParcels() {
       const term = document.getElementById("clientSearch")?.value.trim().toLowerCase() || "";
       return clientScopedParcels().filter(p => {
-        const haystack = `${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase();
+        const haystack = `${p.awb} ${escLabelText(p.consignee)} ${escLabelText(p.city)} ${p.status}`.toLowerCase();
         return haystack.includes(term);
       });
     }
@@ -8252,8 +8254,8 @@
         const progress = percent(p.stage, p.totalStages);
         return `
           <tr class="clickable-row ${p.awb === state.selectedAwb ? "selected" : ""}" onclick="openClientParcelJourney('${p.awb}')">
-            <td><strong>${p.awb}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${p.city} | ${p.updated}</span></td>
-            <td>${p.consignee}<br><span class="footer-note">${p.branch}</span></td>
+            <td><strong>${p.awb}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${p.updated}</span></td>
+            <td>${escLabelText(p.consignee)}<br><span class="footer-note">${p.branch}</span></td>
             <td>${money(p.cod)}</td>
             <td>
               <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>
@@ -8276,8 +8278,8 @@
               <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>
             </div>
             <dl>
-              <div><dt>Consignee</dt><dd>${p.consignee}</dd></div>
-              <div><dt>City</dt><dd>${p.city}</dd></div>
+              <div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div>
+              <div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div>
               <div><dt>COD</dt><dd>${money(p.cod)}</dd></div>
               <div><dt>Updated</dt><dd>${p.updated}</dd></div>
             </dl>
@@ -8810,11 +8812,11 @@
         reportStatusFilterEl.value = reportStatusFilter;
       }
       if (clientFilterEl) {
-        clientFilterEl.innerHTML = `<option value="">All clients</option>${state.clients.map(client => `<option value="${client.id}">${shortClientCode(client)} | ${client.name}</option>`).join("")}`;
+        clientFilterEl.innerHTML = `<option value="">All clients</option>${state.clients.map(client => `<option value="${client.id}">${shortClientCode(client)} | ${escLabelText(client.name)}</option>`).join("")}`;
         clientFilterEl.value = clientFilter;
       }
       if (reportClientFilterEl) {
-        reportClientFilterEl.innerHTML = `<option value="">All clients</option>${state.clients.map(client => `<option value="${client.id}">${shortClientCode(client)} | ${client.name}</option>`).join("")}`;
+        reportClientFilterEl.innerHTML = `<option value="">All clients</option>${state.clients.map(client => `<option value="${client.id}">${shortClientCode(client)} | ${escLabelText(client.name)}</option>`).join("")}`;
         reportClientFilterEl.value = reportClientFilter;
       }
       if (cityFilterEl) {
@@ -8840,7 +8842,7 @@
       const ridersInBranch = batchRiderBranch ? state.riders.filter(rider => rider.branch === batchRiderBranch) : state.riders;
       const riderPool = ridersInBranch.length ? ridersInBranch : state.riders;
       if (processingRiderSelect) {
-        processingRiderSelect.innerHTML = riderPool.length ? riderPool.map(rider => `<option value="${rider.id}">${rider.name} | ${rider.branch}</option>`).join("") : `<option value="">No riders — create a rider first</option>`;
+        processingRiderSelect.innerHTML = riderPool.length ? riderPool.map(rider => `<option value="${rider.id}">${escLabelText(rider.name)} | ${rider.branch}</option>`).join("") : `<option value="">No riders — create a rider first</option>`;
         const poolHasPending = riderPool.some(rider => rider.id === state.pendingProcessingRider);
         processingRiderSelect.value = poolHasPending ? state.pendingProcessingRider : (riderPool[0] && riderPool[0].id || "");
       }
@@ -8865,8 +8867,8 @@
         const alert = alertForParcel(p);
         return `
           <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${p.awb}')">
-            <td><strong>${p.awb}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${p.city} | ${p.updated}</span></td>
-            <td>${shortClientCode(client)}<br><strong>${client.name}</strong></td>
+            <td><strong>${p.awb}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${p.updated}</span></td>
+            <td>${shortClientCode(client)}<br><strong>${escLabelText(client.name)}</strong></td>
             <td>${nvChargesCell(p)}</td>
             <td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span></td>
             <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">status clock</span></td>
@@ -8921,7 +8923,7 @@
       document.getElementById("adminOrderRows").innerHTML = state.parcels.filter(p => {
         const client = clientById(p.clientId);
         const alert = alertForParcel(p);
-        const haystack = `${p.awb} ${client.name} ${client.id} ${p.consignee} ${p.address} ${p.city} ${p.status} ${p.branch} ${parcelOrigin(p)} ${p.weight}`.toLowerCase();
+        const haystack = `${p.awb} ${escLabelText(client.name)} ${client.id} ${escLabelText(p.consignee)} ${p.address} ${escLabelText(p.city)} ${p.status} ${p.branch} ${parcelOrigin(p)} ${p.weight}`.toLowerCase();
         return haystack.includes(adminOrderSearch)
           && (!clientFilter || p.clientId === clientFilter)
           && (!statusFilter || p.status === statusFilter)
@@ -8940,14 +8942,14 @@
         return `
           <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${p.awb}')">
             <td><strong>${p.awb}</strong><br><span class="footer-note">${p.updated}</span></td>
-            <td>${p.consignee}<br><span class="footer-note">${p.phone || "phone pending"}</span></td>
+            <td>${escLabelText(p.consignee)}<br><span class="footer-note">${p.phone || "phone pending"}</span></td>
             <td class="addr-compact">${p.address || "Address pending"}</td>
-            <td>${p.city}</td>
+            <td>${escLabelText(p.city)}</td>
             <td>
               <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>
               <div class="footer-note">${alert.label}</div>
             </td>
-            <td>${client.name}<br><span class="footer-note">${shortClientCode(client)}</span></td>
+            <td>${escLabelText(client.name)}<br><span class="footer-note">${shortClientCode(client)}</span></td>
             <td>${parcelOrigin(p)}</td>
             <td>${money(p.cod)}</td>
             <td>${p.weight || "0.8 kg"}</td>
@@ -8969,7 +8971,7 @@
 
       const reportRows = state.parcels.filter(p => {
         const client = clientById(p.clientId);
-        const haystack = `${p.awb} ${client.name} ${client.id} ${p.consignee} ${p.city} ${p.status} ${p.address}`.toLowerCase();
+        const haystack = `${p.awb} ${escLabelText(client.name)} ${client.id} ${escLabelText(p.consignee)} ${escLabelText(p.city)} ${p.status} ${p.address}`.toLowerCase();
         return haystack.includes(orderReportSearch)
           && (!reportStatusFilter || p.status === reportStatusFilter)
           && (!reportClientFilter || p.clientId === reportClientFilter);
@@ -8991,9 +8993,9 @@
         const progress = percent(p.stage, p.totalStages);
         return `
           <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}">
-            <td><strong>${p.awb}</strong><br><span class="footer-note">${p.city} | ${parcelOrigin(p)}</span></td>
-            <td>${shortClientCode(client)}<br><strong>${client.name}</strong></td>
-            <td>${p.consignee}<br><span class="footer-note">${p.address}</span></td>
+            <td><strong>${p.awb}</strong><br><span class="footer-note">${escLabelText(p.city)} | ${parcelOrigin(p)}</span></td>
+            <td>${shortClientCode(client)}<br><strong>${escLabelText(client.name)}</strong></td>
+            <td>${escLabelText(p.consignee)}<br><span class="footer-note">${p.address}</span></td>
             <td>${nvChargesCell(p)}</td>
             <td><strong>${deliveryJourneyLabel(p)}</strong><br><span class="footer-note">Booked ${p.date || "system date"}</span></td>
             <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status}</span></td>
@@ -9057,7 +9059,7 @@
       }).slice(-12).reverse().map(({ parcel, client, log }) => `
         <div class="log-item">
           <strong>${parcel.awb}</strong>
-          <div><strong>${log.status}</strong><div class="footer-note" style="margin-top:2px">${client.name} | ${parcel.consignee} | ${log.branch}</div></div>
+          <div><strong>${log.status}</strong><div class="footer-note" style="margin-top:2px">${escLabelText(client.name)} | ${parcel.consignee} | ${log.branch}</div></div>
           <span class="chip info">${log.processor} | ${log.at}</span>
         </div>
       `).join("") || `<div class="ops-card"><strong>No processing log yet</strong><p>Scan a parcel and update status to create the first audit entry.</p></div>`;
@@ -9068,7 +9070,7 @@
       const signupLeadCards = state.pendingClients.map(client => `
         <div class="ops-card">
           <div class="ops-card-head">
-            <strong>${shortClientCode(client)} | ${client.name}</strong>
+            <strong>${shortClientCode(client)} | ${escLabelText(client.name)}</strong>
             <span class="chip good">Signup - login already active</span>
           </div>
           <p>${client.city} | ${client.email || "email on file"} | ${client.phone}. This seller already has a working login - review and activate to unlock their full workspace.</p>
@@ -9160,13 +9162,13 @@
         const rc = normalizeRateCard(client.rateCard, client.rate);
         return `
           <div class="log-item">
-            <strong>${shortClientCode(client)}<br>${client.name}</strong>
+            <strong>${shortClientCode(client)}<br>${escLabelText(client.name)}</strong>
             <div>
               <strong>${client.displayBusinessType} | ${client.displayCity}</strong>
               <div class="footer-note">${client.displayOwner} | ${client.displayEmail} | ${client.displayPhone} | ${client.displayAddress}</div>
               <button class="ghost-btn" onclick="toggleSignupDetails('${client.id}')" style="margin-top:4px">Signup Details</button>
               <div class="footer-note" id="signupDetails-${client.id}" style="display:none;margin-top:6px;padding:8px;background:#f7f8fa;border-radius:8px">
-                Store name: ${client.name}<br>
+                Store name: ${escLabelText(client.name)}<br>
                 Owner/contact: ${client.displayOwner}<br>
                 Email: ${client.displayEmail}<br>
                 Phone: ${client.displayPhone}<br>
@@ -9187,7 +9189,7 @@
             <button class="ghost-btn" onclick="editClientLogin('${client.id}')">Edit Login</button>
             <select class="ghost-btn client-rider-pick" onchange="assignRiderToClient('${client.id}', this.value)">
               <option value="" ${!client.assignedRider ? "selected" : ""}>Assign pickup rider…</option>
-              ${state.riders.map(r => `<option value="${r.id}" ${client.assignedRider === r.id ? "selected" : ""}>${r.name} | ${r.branch}</option>`).join("")}
+              ${state.riders.map(r => `<option value="${r.id}" ${client.assignedRider === r.id ? "selected" : ""}>${escLabelText(r.name)} | ${r.branch}</option>`).join("")}
             </select>
             <button class="ghost-btn" style="color:#b3261e" onclick="deleteClient('${client.id}')">Delete Client</button>
           </div>
@@ -9199,7 +9201,7 @@
       if (signupAuditEl) {
         signupAuditEl.innerHTML = clientsNeedingAudit.length ? clientsNeedingAudit.map(client => `
           <div class="log-item">
-            <strong>${shortClientCode(client)}<br>${client.name}</strong>
+            <strong>${shortClientCode(client)}<br>${escLabelText(client.name)}</strong>
             <div class="footer-note">${(client.auditReasons || []).join(", ")}</div>
             <button class="ghost-btn" onclick="editClientDetails('${client.id}')">Edit Details</button>
           </div>
@@ -9219,7 +9221,7 @@
         return `
           <tr>
             <td><strong>${shortClientCode(client)}</strong><br><span class="footer-note">${client.status}</span></td>
-            <td>${client.name}<br><span class="footer-note">${client.displayCity} | ${client.displayEmail}</span></td>
+            <td>${escLabelText(client.name)}<br><span class="footer-note">${client.displayCity} | ${client.displayEmail}</span></td>
             <td>${client.displayOwner}<br><span class="footer-note">${client.displayPhone}</span></td>
             <td>
               <button class="action-btn" onclick="toggleRateForm('${client.id}')">${rateOpen ? "Close Rates" : "Add Rates"}</button>
@@ -9333,7 +9335,7 @@
         const blocked = exposureAmount > r.cashLimit;
         return `
           <tr>
-            <td><strong>${r.name}</strong><br><span class="footer-note">${r.username || "no username set"}</span></td>
+            <td><strong>${escLabelText(r.name)}</strong><br><span class="footer-note">${r.username || "no username set"}</span></td>
             <td>${r.username || "pending"}<br><span class="footer-note">Pass: hidden | ${r.manager || "No manager"}</span></td>
             <td><strong>${money(receivable)}</strong><br><span class="footer-note">Delivered COD not collected by branch</span></td>
             <td>${money(r.cashHeld)}<br><span class="footer-note">Expenses deducted ${money(r.expenses || 0)}</span></td>
@@ -9347,7 +9349,7 @@
           </tr>
         `;
       }).join("");
-      document.getElementById("riderCashSelect").innerHTML = state.riders.map(r => `<option value="${r.id}">${r.name}</option>`).join("");
+      document.getElementById("riderCashSelect").innerHTML = state.riders.map(r => `<option value="${r.id}">${escLabelText(r.name)}</option>`).join("");
       updateRiderCashPreview();
       renderRiderReport();
 
@@ -9374,7 +9376,7 @@
           const invType = invoice.invoiceType || "COD Settlement";
           return `
             <div class="ops-card">
-              <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${ui.chipClass}">${escLabelText(ui.chipLabel)}</span></div>
+              <div class="ops-card-head"><strong>${invoice.id} | ${escLabelText(client.name)}</strong><span class="chip ${ui.chipClass}">${escLabelText(ui.chipLabel)}</span></div>
               <p>${invType} \u00b7 ${invoice.parcelRefs.join(", ")}<br>${due > 0 && invoice.payable <= 0 ? `Amount due to NovaX ${money(due)}` : `Payable ${money(invoice.payable)}`} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
               ${ui.primaryAction === "push" ? `<p class="footer-note" style="color:#0c7c59">Push To Client Wallet credits client balance.</p>` : ""}
               ${ui.primaryAction === "paidNovax" ? `<p class="footer-note" style="color:#0c7c59">Mark Paid To NovaX records money received by NovaX.</p>` : ""}
@@ -9389,7 +9391,7 @@
 
       const invoiceClientSelect = document.getElementById("invoiceClientSelect");
       if (invoiceClientSelect) {
-        invoiceClientSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${shortClientCode(client)} | ${client.name}</option>`).join("");
+        invoiceClientSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${shortClientCode(client)} | ${escLabelText(client.name)}</option>`).join("");
         // NovaX fix (Medium #8): never default back to the first client.
         if (!state.activeInvoiceClient || !state.clients.some(client => client.id === state.activeInvoiceClient)) state.activeInvoiceClient = "";
         invoiceClientSelect.value = state.activeInvoiceClient;
@@ -9409,7 +9411,7 @@
           <tr>
             <td><input type="checkbox" data-invoice-parcel="${parcel.awb}" onchange="toggleInvoiceParcel('${parcel.awb}', this.checked)" ${selectedSet.has(parcel.awb) ? "checked" : ""}></td>
             <td><strong>${parcel.awb}</strong><br><span class="footer-note">${parcel.branch}</span></td>
-            <td>${parcel.consignee}<br><span class="footer-note">${parcel.city}</span></td>
+            <td>${parcel.consignee}<br><span class="footer-note">${escLabelText(parcel.city)}</span></td>
             <td><span class="chip ${isRet ? "bad" : "good"}">${parcel.status}</span>${isRet ? `<br><span class="footer-note">return — charge only</span>` : ""}</td>
             <td>${isRet ? `<span class="footer-note">no COD</span>` : money(parcel.cod)}</td>
             <td>${money(parcel.fee)}</td>
@@ -9582,10 +9584,15 @@
       `).join("");
 
       const userClientSelectEl = document.getElementById("userClientSelect");
-      if (userClientSelectEl) userClientSelectEl.innerHTML = state.clients.map(client => `<option value="${client.id}">${shortClientCode(client)} | ${client.name}</option>`).join("");
-      const riderUserSelect = document.getElementById("riderUserSelect");
-      if (riderUserSelect) {
-        riderUserSelect.innerHTML = state.riders.length ? state.riders.map(rider => `<option value="${rider.id}">${rider.name} | ${rider.branch || "No branch"}</option>`).join("") : `<option value="">No riders yet — add a rider first</option>`;
+      if (userClientSelectEl) userClientSelectEl.innerHTML = state.clients.map(client => `<option value="${client.id}">${shortClientCode(client)} | ${escLabelText(client.name)}</option>`).join("");
+      // NovaX fix: populate the new rider link picker on the Create Users form.
+      const userRiderSelect = document.getElementById("userRiderSelect");
+      if (userRiderSelect) {
+        const keep = userRiderSelect.value;
+        userRiderSelect.innerHTML = state.riders.length
+          ? `<option value="">Select the rider...</option>` + state.riders.map(rider => `<option value="${escLabelText(rider.id)}">${escLabelText(rider.name)} | ${escLabelText(rider.branch || "No branch")}</option>`).join("")
+          : `<option value="">No riders yet — add a rider first</option>`;
+        if (keep) userRiderSelect.value = keep;
       }
       const canDeleteUsers = /^admin$/i.test(String((typeof currentStaffUser === "function" ? (currentStaffUser() || {}).role : "Admin") || "").trim());
       document.getElementById("userAccessList").innerHTML = state.users.map(user => `
@@ -9687,7 +9694,7 @@
             <thead><tr><th>Rider</th><th>Delivered</th><th>Returned</th><th>Success</th><th>Route Time</th><th>Cash Handled</th><th>Fuel Cost</th><th>Vs Others</th></tr></thead>
             <tbody>
             ${rows.map(({ r, s }) => `<tr>
-              <td><strong>${r.name}</strong><br><span class="footer-note">${r.username || "no username set"}</span></td>
+              <td><strong>${escLabelText(r.name)}</strong><br><span class="footer-note">${r.username || "no username set"}</span></td>
               <td><strong>${s.delivered}</strong></td>
               <td>${s.returned}</td>
               <td><span class="chip ${s.success >= 80 ? "good" : s.success >= 50 ? "warn" : "bad"}">${s.success}%</span></td>
@@ -9713,8 +9720,8 @@
               <span class="status ${blocked ? "bad" : statusClass(p)}"><span class="mini-dot"></span>${blocked ? "Cash block" : p.status}</span>
             </div>
             <dl>
-              <div><dt>Consignee</dt><dd>${p.consignee}</dd></div>
-              <div><dt>City</dt><dd>${p.city}</dd></div>
+              <div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div>
+              <div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div>
               <div><dt>COD</dt><dd>${money(p.cod)}</dd></div>
               <div><dt>Required</dt><dd>Scan + GPS + Call</dd></div>
             </dl>
@@ -9726,8 +9733,8 @@
       const p = state.parcels.find(parcel => parcel.awb === state.selectedAwb) || emptyParcel();
       document.getElementById("awbPreview").innerHTML = `
         <code>${p.awb}</code>
-        <strong>${p.city} | COD ${money(p.cod)}</strong>
-        <span>${p.consignee}</span>
+        <strong>${escLabelText(p.city)} | COD ${money(p.cod)}</strong>
+        <span>${escLabelText(p.consignee)}</span>
         <span class="chip ${statusClass(p)}">${p.status}</span>
       `;
     }
@@ -9786,8 +9793,8 @@
             <p>${draftParcels.map(p => p.awb).join(", ") || "Scan AWBs to prepare a manifest."}</p>
             ${offRoute.length ? `<div class="footer-note" style="color:#8c271f;font-weight:800">Remove ${offRoute.length} off-route parcel(s) before this manifest to ${hubCity(manifestToVal) || "destination"} can be created.</div>` : ""}
           </div>
-          ${offRoute.map(p => `<div class="ops-card alert-row critical"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip bad">WRONG ROUTE</span></div><p>Destined for ${p.city}, not ${hubCity(manifestToVal) || "this route"}. Remove before creating manifest.</p></div>`).join("")}
-          ${onRoute.map(p => `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip ${statusClass(p)}">${p.status}</span></div><p>${p.consignee} | ${p.city} | ${p.branch}</p></div>`).join("")}
+          ${offRoute.map(p => `<div class="ops-card alert-row critical"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip bad">WRONG ROUTE</span></div><p>Destined for ${escLabelText(p.city)}, not ${hubCity(manifestToVal) || "this route"}. Remove before creating manifest.</p></div>`).join("")}
+          ${onRoute.map(p => `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip ${statusClass(p)}">${p.status}</span></div><p>${escLabelText(p.consignee)} | ${escLabelText(p.city)} | ${p.branch}</p></div>`).join("")}
           ${missing.map(awb => `<div class="ops-card alert-row critical"><strong>${awb}</strong><p>Not found in parcel database.</p></div>`).join("")}
         `;
       }
@@ -9866,7 +9873,7 @@
       const activeClient = clientById(activeClientId);
       const walletSelect = document.getElementById("walletClientSelect");
       if (walletSelect) {
-        walletSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${shortClientCode(client)} | ${client.name}</option>`).join("");
+        walletSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${shortClientCode(client)} | ${escLabelText(client.name)}</option>`).join("");
         walletSelect.value = activeClientId;
       }
       const walletTotal = state.clients.reduce((sum, client) => sum + walletBalance(client.id), 0);
@@ -9959,7 +9966,7 @@
           const inWallet = invoiceUiState(invoice).enteredWallet;
           const dueAmt = Number(invoice.dueToNovax || 0);
           return `<div class="ops-card ${inWallet ? "" : "alert-row"}">
-            <div class="ops-card-head"><strong>${invoice.id} | ${client.name}</strong><span class="chip ${inWallet ? "good" : "warn"}">${invoice.status}</span></div>
+            <div class="ops-card-head"><strong>${invoice.id} | ${escLabelText(client.name)}</strong><span class="chip ${inWallet ? "good" : "warn"}">${invoice.status}</span></div>
             <p>${invoice.parcelRefs.join(", ")} | Payable ${money(invoice.payable)} | Charges ${money(invoice.charges)}${dueAmt > 0 ? ` | Due to NovaX ${money(dueAmt)}` : ""}</p>
             <div class="footer-note">${inWallet ? `Entered wallet at ${invoice.walletPushedAt || invoice.paidAt}` : (dueAmt > 0 ? "Delivery-charges invoice -- amount due to NovaX, never enters wallet." : "Visible invoice only. Not in wallet until pushed.")}</div>
           </div>`;
@@ -9986,7 +9993,7 @@
           // Wallets spec -- falls back to "Not saved" for older requests made
           // before bank-details snapshotting existed.
           return `<div class="ops-card ${lock.locked ? "alert-row" : ""}">
-            <div class="ops-card-head"><strong>${item.code || item.id} | ${client.name}</strong><span class="chip ${statusChipClass}">${statusLabel}</span></div>
+            <div class="ops-card-head"><strong>${item.code || item.id} | ${escLabelText(client.name)}</strong><span class="chip ${statusChipClass}">${statusLabel}</span></div>
             <p>Pay ${money(item.net)} to IBAN ${item.iban}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed)}).</p>
             <div class="footer-note">Account holder: <b>${item.holderName || "Not saved"}</b>${item.bankName ? (" &middot; " + item.bankName) : ""}</div>
             <div class="footer-note">Created ${item.createdAt}. Wallet reconciliation: ${recon.mismatch ? `mismatch of ${money(recon.difference)}` : "clean"}.</div>
@@ -10005,7 +10012,7 @@
         paidHistory.innerHTML = paidWithdrawals.map(item => {
           const client = clientById(item.clientId);
           return `<div class="ops-card">
-            <div class="ops-card-head"><strong>${item.code || item.id} | ${client.name}</strong><span class="chip good">Paid</span></div>
+            <div class="ops-card-head"><strong>${item.code || item.id} | ${escLabelText(client.name)}</strong><span class="chip good">Paid</span></div>
             <p>Paid ${money(item.net)} to IBAN ${item.iban} (${walletSpeedLabel(item.speed)}, fee ${money(item.fee)}).</p>
             <div class="footer-note">${item.paidTxnId ? `Paid with reference ${item.paidTxnId}` : "Paid"}${item.paidBy ? ` by ${item.paidBy}` : ""}${item.paidAt ? ` on ${item.paidAt}` : ""}.${item.paidProof ? ` Proof: ${item.paidProof}` : ""}</div>
           </div>`;
@@ -10028,7 +10035,7 @@
         const groupHtml = Object.keys(groups).map(key => {
           const group = groups[key];
           if (!group.rows.length) return `<div class="ops-card"><strong>${group.label}</strong><p>No entries yet.</p></div>`;
-          const items = group.rows.map(row => `<div class="footer-note">${row.createdAt} | ${row.note || row.referenceCode || row.entryType} | ${money(row.amount)}${row.referenceCode ? ` | ref ${row.referenceCode}` : ""}</div>`).join("");
+          const items = group.rows.map(row => `<div class="footer-note">${row.createdAt} | ${escLabelText(row.note || row.referenceCode || row.entryType)} | ${money(row.amount)}${row.referenceCode ? ` | ref ${row.referenceCode}` : ""}</div>`).join("");
           return `<div class="ops-card"><strong>${group.label} (${group.rows.length})</strong>${items}</div>`;
         }).join("");
         ledgerDrilldown.innerHTML = `<div class="ops-card ${activeRecon.mismatch ? "alert-row" : ""}">
@@ -10338,9 +10345,9 @@
     }
 
     function processingBranchForStatus(parcel, status) {
-      if (/destination|delivery|delivered|refused|consignee|reattempt|reassigned/i.test(status)) return `${parcel.city} Hub`;
+      if (/destination|delivery|delivered|refused|consignee|reattempt|reassigned/i.test(status)) return `${escLabelText(parcel.city)} Hub`;
       if (/return received at origin|return out for delivery|returned/i.test(status)) return `${parcelOrigin(parcel)} Hub`;
-      if (/transit/i.test(status)) return `${parcelOrigin(parcel)} to ${parcel.city}`;
+      if (/transit/i.test(status)) return `${parcelOrigin(parcel)} to ${escLabelText(parcel.city)}`;
       return `${parcelOrigin(parcel)} Hub`;
     }
 
@@ -10727,7 +10734,7 @@
     function renderNotificationCenter(){
       const list=document.getElementById("notificationCenterList"); if(!list) return;
       const clientSel=document.getElementById("notifClientFilter");
-      if(clientSel && clientSel.options.length<=1){ clientSel.innerHTML=`<option value="">All clients</option>`+(state.clients||[]).map(c=>`<option value="${c.id}">${c.name}</option>`).join(""); }
+      if(clientSel && clientSel.options.length<=1){ clientSel.innerHTML=`<option value="">All clients</option>`+(state.clients||[]).map(c=>`<option value="${c.id}">${escLabelText(c.name)}</option>`).join(""); }
       const rows=state.notificationCenterRows||[];
       list.innerHTML=rows.length?rows.map(n=>`<div class="ops-card"><div class="ops-card-head"><strong>${n.event_type}</strong><span class="chip ${n.status==='sent'||n.status==='manual'?'good':n.status==='failed'?'bad':'warn'}">${n.status}</span></div><p class="footer-note">${n.client_name||n.client_id||"Unknown client"} &middot; ${n.awb||"No AWB"} &middot; ${n.channel}${n.recipient?(" &middot; "+n.recipient):""}</p><p class="footer-note">${new Date(n.created_at).toLocaleString()}${n.error?(" &middot; "+n.error):""}${n.retry_count?(" &middot; retries: "+n.retry_count):""}</p><div class="inline-actions" style="margin-top:6px">${n.status==='failed'?`<button class="action-btn ghost" onclick="retryNotification('${n.id}')">Retry</button>`:""}${n.status!=='sent'&&n.status!=='manual'?`<button class="action-btn ghost" onclick="markNotificationSent('${n.id}')">Mark Sent</button>`:""}</div></div>`).join(""):`<p class="footer-note">No notifications logged yet.</p>`;
       const tpl=document.getElementById("notificationTemplateList");
@@ -10780,9 +10787,9 @@
 
     function renderAdminIntegrations(){
       if(!Array.isArray(state.storeConnections)) state.storeConnections=[];
-      const fillSelect=(id)=>{ const sel=document.getElementById(id); if(!sel) return; const cur=sel.value; sel.innerHTML=(state.clients||[]).filter(c=>c.id&&c.id!=="CL-0000").map(c=>`<option value="${c.id}">${c.id} &middot; ${c.name}</option>`).join("")||`<option value="">No clients</option>`; if(cur) sel.value=cur; };
+      const fillSelect=(id)=>{ const sel=document.getElementById(id); if(!sel) return; const cur=sel.value; sel.innerHTML=(state.clients||[]).filter(c=>c.id&&c.id!=="CL-0000").map(c=>`<option value="${c.id}">${c.id} &middot; ${escLabelText(c.name)}</option>`).join("")||`<option value="">No clients</option>`; if(cur) sel.value=cur; };
       fillSelect("shopifyClientSelect"); fillSelect("wooClientSelect"); fillSelect("webClientSelect");
-      const renderList=(platform,elId)=>{ const el=document.getElementById(elId); if(!el) return; const rows=(state.storeConnections||[]).filter(c=>c.platform===platform); el.innerHTML=rows.length?rows.map(c=>{ const cl=clientById(c.clientId); return `<div class="ops-card" style="margin-bottom:8px"><div class="ops-card-head"><strong>${cl?cl.name:c.clientId}</strong><span class="chip ${c.connected?"good":""}">${c.connected?"Connected":"Pending"}</span></div><p class="footer-note">${c.storeUrl||""}${c.lastSync?` &middot; last sync ${c.lastSync}`:""}${c.importedCount?` &middot; ${c.importedCount} imported`:""}</p><p class="footer-note" style="margin-top:8px">Orders arrive automatically via webhook -- no manual pull needed.</p></div>`; }).join(""):`<p class="footer-note">No stores connected yet.</p>`; };
+      const renderList=(platform,elId)=>{ const el=document.getElementById(elId); if(!el) return; const rows=(state.storeConnections||[]).filter(c=>c.platform===platform); el.innerHTML=rows.length?rows.map(c=>{ const cl=clientById(c.clientId); return `<div class="ops-card" style="margin-bottom:8px"><div class="ops-card-head"><strong>${escLabelText(cl?cl.name:c.clientId)}</strong><span class="chip ${c.connected?"good":""}">${c.connected?"Connected":"Pending"}</span></div><p class="footer-note">${c.storeUrl||""}${c.lastSync?` &middot; last sync ${c.lastSync}`:""}${c.importedCount?` &middot; ${c.importedCount} imported`:""}</p><p class="footer-note" style="margin-top:8px">Orders arrive automatically via webhook -- no manual pull needed.</p></div>`; }).join(""):`<p class="footer-note">No stores connected yet.</p>`; };
       renderList("woocommerce","wooConnList"); renderList("web","webConnList");
       renderAdminShopifyHealth();
     }
@@ -11860,6 +11867,16 @@
       const permissions = [...document.querySelectorAll("[data-user-permission]:checked")].map(item => item.value);
       const role = document.getElementById("userRole").value;
       const accessSide = document.getElementById("userAccessSide").value;
+      // NovaX fix (rider logins were never linked): stop here rather than
+      // create an account that can authenticate but has no rider identity --
+      // rider.html will only ever show it the empty "no rider account" screen.
+      if (/rider/i.test(accessSide)) {
+        const linkedRider = (document.getElementById("userRiderSelect") || {}).value || "";
+        if (!linkedRider) {
+          toast("Pick which rider this login belongs to. A Rider App login with no linked rider cannot see any route.", "error");
+          return;
+        }
+      }
       const branch = document.getElementById("userBranch").value;
       const wantsStaff = (document.getElementById("userStaffTab")||{}).value === "yes";
       const staffRole = (document.getElementById("userStaffRole")||{}).value || "Support";
@@ -11883,6 +11900,11 @@
           // NovaX fix (Medium #8): never default a new staff user's clientId
           // to the first client in the list.
           clientId: null,
+          // NovaX fix (rider logins were never linked): this object never
+          // carried riderId, so linkProfile() below could never resolve a
+          // rider UUID and profiles.rider_id was never written -- while the
+          // toast still claimed a "real, working Rider App login".
+          riderId: (/rider/i.test(accessSide) ? ((document.getElementById("userRiderSelect")||{}).value || null) : null),
           permissions,
           status: "Active",
           staffTab: wantsStaff,
@@ -11921,71 +11943,22 @@
       });
     }
 
-    function createRiderUser() {
-      const riderId = document.getElementById("riderUserSelect")?.value || state.riders[0]?.id || "";
-      const rider = state.riders.find(item => item.id === riderId) || state.riders[0];
-      const email = (document.getElementById("riderUserEmail")?.value || rider?.username || rider?.id || "").trim();
-      const password = (document.getElementById("riderUserPassword")?.value || "").trim();
-      if (!rider || !email || !password) {
-        toast("Rider, username, and password are mandatory.");
-        return;
-      }
-      if (!window.__nvSignupClient || !window.__nvSb) {
-        toast("Cloud connection not ready — wait a moment and try again.");
-        return;
-      }
-      window.__nvSignupClient.auth.signUp({ email, password }).then(res => {
-        if (res.error) {
-          toast(`Account creation failed: ${res.error.message}`);
-          return;
-        }
-        const newUserId = res.data && res.data.user && res.data.user.id;
-        rider.username = email;
-        rider.password = password;
-        state.users.unshift({
-          id: nextId("USR", state.users),
-          name: rider.name,
-          email,
-          password,
-          role: "Rider",
-          accessSide: "Rider App",
-          branch: rider.branch,
-          // NovaX fix (Medium #8): riders are branch staff, not tied to a
-          // single client -- never default their login row to the first
-          // client in the list or the demo placeholder client id.
-          clientId: null,
-          riderId: rider.id,
-          permissions: ["rider-route", "scan", "delivery-proof", "cash-submit"],
-          status: "Active"
-        });
-        saveState();
-        showAdminTab("users-edit");
-        const linkProfile = attemptsLeft => {
-          const riderUuid = rider._uuid;
-          if (!riderUuid && attemptsLeft > 0) {
-            setTimeout(() => linkProfile(attemptsLeft - 1), 700);
-            return;
-          }
-          const patch = Object.assign({ role: "rider", status: "active" }, riderUuid ? { rider_id: riderUuid } : {});
-          const q = newUserId
-            ? window.__nvSb.from("profiles").update(patch).eq("id", newUserId).select("id")
-            : window.__nvSb.from("profiles").update(patch).eq("email", email).select("id");
-          q.then(r => {
-            if (r && r.error) {
-              toast(`${rider.name} account created, but login link failed: ${r.error.message}`);
-              return;
-            }
-            if (!r || !r.data || r.data.length === 0) {
-              toast(`${rider.name} account created, but no profile row was found to link yet. Run the profile auto-create fix, then re-open Users and save this rider again.`);
-              return;
-            }
-            toast(`${rider.name} rider login created and linked.`);
-          });
-        };
-        setTimeout(() => linkProfile(4), 900);
-      });
+    /* NovaX fix (rider logins were never linked): the rider picker only makes
+       sense for a Rider App account, so it is revealed by Access Side. Bound
+       below next to the other Users-tab listeners. */
+    function toggleRiderPicker() {
+      const side = (document.getElementById("userAccessSide") || {}).value || "";
+      const field = document.getElementById("userRiderField");
+      if (field) field.style.display = /rider/i.test(side) ? "" : "none";
     }
 
+    /* NovaX cleanup: createRiderUser() removed. It was unreachable (no button,
+       no binding, no window export) and structurally broken -- its three inputs
+       (riderUserSelect / riderUserEmail / riderUserPassword) had no markup, so
+       `password` was always "" and it always bailed at the mandatory check, and
+       its rider fell back to state.riders[0]. addRider() used to point staff at
+       it as "Create Rider Login"; that copy now points at Users > Create Users,
+       which links profiles.rider_id properly. */
     function deleteUser(userId) {
       const user = state.users.find(u => u.id === userId);
       if (!user) { toast("User not found."); return; }
@@ -12003,8 +11976,8 @@
       const parcelCount = state.parcels.filter(p => p.clientId === clientId).length;
       const invoiceCount = (state.invoices || []).filter(i => i.clientId === clientId).length;
       const warnMsg = (parcelCount || invoiceCount)
-        ? `Delete client ${client.name} (${shortClientCode(client)})? This will also remove their ${parcelCount} parcel(s), ${invoiceCount} invoice(s), wallet history, and any linked login from the live database. This cannot be undone.`
-        : `Delete client ${client.name} (${shortClientCode(client)})? This cannot be undone.`;
+        ? `Delete client ${escLabelText(client.name)} (${shortClientCode(client)})? This will also remove their ${parcelCount} parcel(s), ${invoiceCount} invoice(s), wallet history, and any linked login from the live database. This cannot be undone.`
+        : `Delete client ${escLabelText(client.name)} (${shortClientCode(client)})? This cannot be undone.`;
       if (!window.confirm(warnMsg)) return;
 
       // Cloud-first delete: the generic sync layer only inserts/updates, it never
@@ -12056,9 +12029,9 @@
       if (!client) { toast("Client not found."); return; }
       let user = state.users.find(u => u.clientId === clientId && /client/i.test(`${u.accessSide || ""} ${u.role || ""}`));
       const currentLogin = user ? (user.email || user.username || user.name) : (client.email || "");
-      const newLogin = (window.prompt(`Client login username / email for ${client.name}:`, currentLogin) || "").trim();
+      const newLogin = (window.prompt(`Client login username / email for ${escLabelText(client.name)}:`, currentLogin) || "").trim();
       if (!newLogin) { toast("Login username is required."); return; }
-      const newPass = (window.prompt(`New login password for ${client.name} (leave blank to keep their current real password unchanged):`, "") || "").trim();
+      const newPass = (window.prompt(`New login password for ${escLabelText(client.name)} (leave blank to keep their current real password unchanged):`, "") || "").trim();
       if (!user) {
         user = {
           id: nextId("USR", state.users),
@@ -12100,7 +12073,7 @@
       // original signup_leads row) instead of the raw field, which may
       // still be blank or a leftover fake placeholder.
       const cleanFor = (display, placeholder) => (display && display !== placeholder) ? display : "";
-      const newName = (window.prompt(`Business / account name for ${client.name}:`, client.name || "") || "").trim();
+      const newName = (window.prompt(`Business / account name for ${escLabelText(client.name)}:`, client.name || "") || "").trim();
       if (!newName) { toast("Account name is required."); return; }
       const newOwner = (window.prompt(`Owner / contact person name:`, cleanFor(client.displayOwner, "Unassigned")) || "").trim();
       const newPhone = (window.prompt(`Phone number:`, cleanFor(client.displayPhone, "Phone missing")) || "").trim();
@@ -12480,7 +12453,7 @@
       saveState();
       render();
       showAdminTab("riders-summary");
-      toast(`${id} roster profile created for ${branch}. This rider cannot log in yet -- use "Create Rider Login" to set up their real account.`, "success");
+      toast(`${id} roster profile created for ${branch}. This rider cannot log in yet -- go to Users > Create Users, set Access Side to "Rider App" and link this rider to give them a working account.`, "success");
     }
 
     function addRiderExpense() {
@@ -12496,7 +12469,7 @@
       const id = nextId("EXP", state.expenses);
       state.expenses.unshift({
         id,
-        name: `${type} - ${rider.name}`,
+        name: `${type} - ${escLabelText(rider.name)}`,
         type,
         amount,
         owner: rider.manager || rider.name,
@@ -12819,7 +12792,7 @@
       const clientId = document.getElementById("orderReportClientFilter")?.value || "";
       return state.parcels.filter(parcel => {
         const client = clientById(parcel.clientId);
-        const haystack = `${parcel.awb} ${client.name} ${client.id} ${parcel.consignee} ${parcel.city} ${parcel.status} ${parcel.address}`.toLowerCase();
+        const haystack = `${parcel.awb} ${escLabelText(client.name)} ${client.id} ${parcel.consignee} ${escLabelText(parcel.city)} ${parcel.status} ${parcel.address}`.toLowerCase();
         return haystack.includes(search)
           && (!status || parcel.status === status)
           && (!clientId || parcel.clientId === clientId);
@@ -12930,7 +12903,7 @@
          Defaults to No for parcels booked before the field existed. */
       const allowOpen = (p && p.allowOpen === "Yes") ? "Yes" : "No";
       const referenceNo = parcelReferenceNo(p);
-      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${origin} &rarr; ${destination}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${orderId}</strong></div><div class="awb-field"><span>Reference No</span><strong>${referenceNo}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${consignee}</strong></div><div class="awb-field"><span>Phone</span><strong>${phone}</strong></div><div class="awb-field awb-cod"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen === "Yes" ? "is-yes" : "is-no"}"><span>Allow to Open</span><strong>${allowOpen === "Yes" ? "YES &mdash; customer may open" : "NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${address}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div></section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
+      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${escLabelText(origin)} &rarr; ${escLabelText(destination)}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${escLabelText(orderId)}</strong></div><div class="awb-field"><span>Reference No</span><strong>${escLabelText(referenceNo)}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${escLabelText(consignee)}</strong></div><div class="awb-field"><span>Phone</span><strong>${escLabelText(phone)}</strong></div><div class="awb-field awb-cod"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen === "Yes" ? "is-yes" : "is-no"}"><span>Allow to Open</span><strong>${allowOpen === "Yes" ? "YES &mdash; customer may open" : "NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${escLabelText(address)}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div></section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
     }
 
     /* ===== NovaX (admin AWB parity with client portal) =====
@@ -13350,7 +13323,7 @@
           : (line.collected
               ? money(line.codAmount)
               : `${money(0)}<div style="font-size:9px;color:#8a8a8a;font-weight:600">not collected</div>`);
-        return `<tr><td>${escLabelText(line.awb)}</td><td>${line.bookingDate}</td><td>${line.destinationCity}</td><td>${line.consignee}</td><td>${pill}</td><td>${line.paymentMode}</td><td>${codCell}</td><td>${money(line.deliveryCharge)}</td><td>${money(line.netLineAmount)}</td></tr>`;
+        return `<tr><td>${escLabelText(line.awb)}</td><td>${line.bookingDate}</td><td>${line.destinationCity}</td><td>${escLabelText(line.consignee)}</td><td>${pill}</td><td>${line.paymentMode}</td><td>${codCell}</td><td>${money(line.deliveryCharge)}</td><td>${money(line.netLineAmount)}</td></tr>`;
       }).join("");
       const nDelivered = lines.filter(l => l.outcomeKey === "delivered").length;
       const nReturned = lines.filter(l => ["returned", "refused", "cancelled"].includes(l.outcomeKey)).length;
@@ -14062,7 +14035,7 @@
             <strong>${parcel.awb}</strong>
             <span class="chip ${statusClass(parcel)}">${parcel.status}</span>
           </div>
-          <p>${parcel.consignee} | ${parcel.city} | Updated ${parcel.updated}. Current clock: ${agingLabel(agingHours(parcel))}.</p>
+          <p>${parcel.consignee} | ${escLabelText(parcel.city)} | Updated ${parcel.updated}. Current clock: ${agingLabel(agingHours(parcel))}.</p>
           ${parcel.resolutionRemark ? `<div class="resolved-note"><strong>Admin remarks:</strong> ${parcel.resolutionRemark}</div>` : ""}
           <button class="ghost-btn" style="margin-top:10px" onclick="openTrackedParcel('${parcel.awb}')">Open Full Journey</button>
         </div>
@@ -14236,6 +14209,13 @@
     });
     document.getElementById("walletWithdrawBtn")?.addEventListener("click", requestWalletWithdrawal);
     document.getElementById("createUserBtn").addEventListener("click", createUser);
+    // NovaX fix (rider logins were never linked): reveal/hide the rider link
+    // picker with Access Side, and set its initial state on load.
+    (function(){
+      const side = document.getElementById("userAccessSide");
+      if (side) side.addEventListener("change", toggleRiderPicker);
+      try { toggleRiderPicker(); } catch(e){}
+    })();
 
     document.getElementById("adminRunBtn").addEventListener("click", runAdminAction);
     document.getElementById("riderScanBtn").addEventListener("click", riderScan);
@@ -15395,7 +15375,7 @@
         var style=document.createElement('style');
         style.textContent='.nvai-btn{position:fixed;right:18px;bottom:18px;z-index:99999;width:58px;height:58px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#14c77b);color:#fff;font-size:24px;box-shadow:0 12px 30px rgba(20,199,123,.45);display:grid;place-items:center;border:0;cursor:pointer}.nvai-dim{opacity:.7}.nvai-panel{position:fixed;right:18px;bottom:86px;z-index:99999;width:360px;max-width:calc(100vw - 36px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #cfe6dc;border-radius:18px;box-shadow:0 26px 70px rgba(13,91,64,.28);display:none;flex-direction:column;overflow:hidden}.nvai-panel.open{display:flex}.nvai-head{background:linear-gradient(135deg,#0b2a1f,#0c7c59);color:#eafff5;padding:13px 16px;display:flex;align-items:center;gap:10px}.nvai-head b{font-size:15px;line-height:1.1}.nvai-head small{font-size:11px;opacity:.8}.nvai-x{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:0;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px}.nvai-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f3fff9}.nvai-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}.nvai-m.u{align-self:flex-end;background:#dcffe9;color:#08311f;border-bottom-right-radius:4px}.nvai-m.b{align-self:flex-start;background:#fff;border:1px solid #e1f0e8;color:#0b2a1f;border-bottom-left-radius:4px}.nvai-bar{display:flex;gap:8px;padding:10px;border-top:1px solid #e1f0e8;background:#fff}.nvai-bar input{flex:1;min-width:0;height:42px;border-radius:11px;border:1px solid #cfe6dc;padding:0 12px;font:inherit;font-size:14px}.nvai-bar button{height:42px;padding:0 16px;border-radius:11px;background:#14c77b;color:#04130d;font-weight:800;border:0;cursor:pointer}@media (max-width:520px){.nvai-panel{right:10px;left:10px;width:auto;bottom:78px;height:72vh}.nvai-btn{right:14px;bottom:14px}}';
         document.head.appendChild(style);
-        var btn=document.createElement('button'); btn.className='nvai-btn'; btn.title='NovaX Admin AI'; btn.innerHTML='�����';
+        var btn=document.createElement('button'); btn.className='nvai-btn'; btn.title='NovaX Admin AI'; btn.innerHTML='✨';
         var panel=document.createElement('div'); panel.className='nvai-panel';
         panel.innerHTML='<div class=nvai-head><div><b>NovaX Admin AI</b><br><small>live control-room data · never guesses</small></div><button class=nvai-x type=button>×</button></div><div class=nvai-msgs></div><div class=nvai-bar><input type=text><button type=button>Send</button></div>';
         document.body.appendChild(btn); document.body.appendChild(panel);
@@ -15499,7 +15479,7 @@
         <div class="ops-list">
         ${list.length? list.map(u=>{
           return `<div class="ops-card" style="cursor:pointer" onclick="staffOpen('${u.id}')">
-            <div class="ops-card-head"><strong>${u.name}</strong><span class="chip info">${u.staffRole||"Staff"}</span></div>
+            <div class="ops-card-head"><strong>${escLabelText(u.name)}</strong><span class="chip info">${u.staffRole||"Staff"}</span></div>
             <p>score ${staffScore(u)}</p></div>`;}).join("")
           : `<p class="footer-note">No staff yet. Create a user with "Show Staff Tab = Yes".</p>`}
         </div>
@@ -15507,13 +15487,13 @@
       if(staffSelected){ const u=list.find(x=>x.id===staffSelected); if(u) html+=staffWorkspacePanels(u,true); }
       const ranked=list.slice().sort((a,b)=>staffScore(b)-staffScore(a));
       html+=`<div class="panel"><div class="section-head"><div><h3>Leaderboard</h3><p>Ranked by score this week.</p></div></div>
-        <div class="ops-list">${ranked.map((u,i)=>`<div class="ops-card" style="cursor:pointer" onclick="staffOpen('${u.id}')"><div class="ops-card-head"><strong>#${i+1} ${u.name}</strong><span class="chip ${i===0?'warn':'info'}">${staffScore(u)}</span></div><p>${u.staffRole||""}</p></div>`).join("")}</div></div>`;
+        <div class="ops-list">${ranked.map((u,i)=>`<div class="ops-card" style="cursor:pointer" onclick="staffOpen('${u.id}')"><div class="ops-card-head"><strong>#${i+1} ${escLabelText(u.name)}</strong><span class="chip ${i===0?'warn':'info'}">${staffScore(u)}</span></div><p>${u.staffRole||""}</p></div>`).join("")}</div></div>`;
       return html;
     }
     function staffOwnView(id){
       const u=(state.users||[]).find(x=>x.id===id);
       if(!u) return `<div class="panel"><h3>No workspace</h3><p class="footer-note">Ask admin to enable your Staff tab.</p></div>`;
-      return `<div class="panel"><div class="section-head"><div><h3>My Workspace</h3><p>${u.name} · ${u.staffRole||"Staff"}. You only see your own work here.</p></div><span class="realtime"><span class="pulse"></span> Live</span></div></div>${staffWorkspacePanels(u,false)}`;
+      return `<div class="panel"><div class="section-head"><div><h3>My Workspace</h3><p>${escLabelText(u.name)} · ${u.staffRole||"Staff"}. You only see your own work here.</p></div><span class="realtime"><span class="pulse"></span> Live</span></div></div>${staffWorkspacePanels(u,false)}`;
     }
     function staffWorkspacePanels(u,forManager){
       const isSales=u.staffRole==="Sales";

@@ -371,6 +371,11 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     function riderReceivable(riderId){ return (state.parcels||[]).filter(p => p.rider===riderId && isDeliveredLedgerParcel(p) && !p.cashReceived).reduce((s,p)=>s+(p.cod||0),0); }
     function nextId(prefix, items){ const max=(items||[]).reduce((v,it)=>{ const n=Number(String(it.id||"").replace(prefix+"-","")); return Number.isFinite(n)?Math.max(v,n):v; },0); return `${prefix}-${String(max+1).padStart(4,"0")}`; }
     function setParcelStatus(p,status){ p.status=status; p.statusAgeHours=0; p.updated=time(); p.stage=Math.max(0,STATUS_TAGS.indexOf(status)); p.steps=Array.isArray(p.steps)?p.steps:[]; if(!p.steps.includes(status)) p.steps.push(status); }
+    /* NovaX security fix: the rider app rendered consignee name, address,
+       phone and client name straight into innerHTML. All of those are chosen
+       by a merchant or their customer (bookings, Shopify webhook orders), so
+       a crafted value executed script inside the rider's session. */
+    function rEsc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
     function moneyBox(label,value,note){ return `<div class="money-box"><span>${label}</span><strong>${value}</strong><div class="footer-note">${note||""}</div></div>`; }
     function toast(msg){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(window.__t); window.__t=setTimeout(()=>el.classList.remove("show"),3200); }
 
@@ -418,7 +423,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         const myClients = (state.clients||[]).filter(c => c.assignedRider === rider.id);
         myPickups.innerHTML = myClients.map(c => {
           const pending = (state.parcels||[]).filter(p => p.clientId === c.id && p.status === "New booked");
-          return `<div class="ops-card"><div class="ops-card-head"><strong>${c.name}</strong><span class="chip ${pending.length ? "warn" : "info"}">${pending.length} to pick up</span></div><p class="footer-note">${c.city || ""}${c.address ? " · " + c.address : ""}</p></div>`;
+          return `<div class="ops-card"><div class="ops-card-head"><strong>${rEsc(c.name)}</strong><span class="chip ${pending.length ? "warn" : "info"}">${pending.length} to pick up</span></div><p class="footer-note">${rEsc(c.city || "")}${c.address ? " · " + rEsc(c.address) : ""}</p></div>`;
         }).join("") || `<div class="ops-card"><strong>No clients assigned</strong><p>When admin assigns a client to you, your pickups and parcel counts appear here.</p></div>`;
       }
 
@@ -437,10 +442,10 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
               <span class="chip ${isReturn ? "warn" : "info"}">${isReturn ? "🔁 Return · " : "📦 Delivery · "}${p.city}</span>
             </div>
             <div class="money-grid" style="margin-top:6px">
-              ${moneyBox("Consignee", p.consignee, client.name)}
-              ${moneyBox("Phone", p.phone || "n/a", "tap Call below")}
+              ${moneyBox("Consignee", rEsc(p.consignee), rEsc(client.name))}
+              ${moneyBox("Phone", rEsc(p.phone || "n/a"), "tap Call below")}
             </div>
-            <p style="margin-top:8px"><strong>Address:</strong> ${p.address || "Address pending"}</p>
+            <p style="margin-top:8px"><strong>Address:</strong> ${rEsc(p.address || "Address pending")}</p>
             ${p.proofPhoto ? `<img src="${p.proofPhoto}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:190px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">` : ""}
             <div class="inline-actions" style="margin-top:10px">
               <a class="ghost-btn" href="tel:${tel}">📞 Call</a>
@@ -458,8 +463,8 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       document.getElementById("riderHistory").innerHTML = actioned.map(p => {
         const cls = p.status==="Delivered" ? "good" : p.status==="Refused" ? "bad" : "warn";
         return `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip ${cls}">${p.status}</span></div>
-          <p>${p.consignee} · ${p.city} · ${p.updated}${p.status==="Delivered" ? ` · ${money(p.cod)} in your account` : ""}</p>
-          ${p.exception ? `<p class="footer-note">${p.exception}</p>` : ""}
+          <p>${rEsc(p.consignee)} · ${rEsc(p.city)} · ${rEsc(p.updated)}${p.status==="Delivered" ? ` · ${money(p.cod)} in your account` : ""}</p>
+          ${p.exception ? `<p class="footer-note">${rEsc(p.exception)}</p>` : ""}
           ${p.proofPhoto ? `<img src="${p.proofPhoto}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:150px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">` : ""}
           ${p.signature ? `<div class="footer-note" style="margin-top:6px">Signature captured ${p.signedAt || ""}</div><img src="${p.signature}" alt="signature" loading="lazy" style="margin-top:4px;width:100%;max-height:120px;object-fit:contain;border-radius:12px;border:1px solid var(--line);background:#fff">` : ""}
         </div>`;
