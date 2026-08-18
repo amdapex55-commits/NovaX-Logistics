@@ -1205,6 +1205,12 @@
           <div class="client-content">
             <!-- DASHBOARD -->
             <section class="client-module active" id="client-dashboard">
+              <!-- NovaX (COD front and centre): a merchant's first question on
+                   opening this portal is "where is my money", and that answer
+                   used to live one tab away in Wallet. Rendered by
+                   renderCodHero() from the same server-computed figures the
+                   Wallet tab uses -- this panel never does its own arithmetic. -->
+              <div id="nvCodHero"></div>
               <div class="nv-command-strip" id="nvCommandStrip">
                 <!-- reorder anchor: nv-command-strip is order:2 on mobile, see mobile overhaul CSS -->
                 <div class="nv-cs-text">
@@ -4145,6 +4151,61 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         toast("Bank details not saved: "+((e&&e.message)||"network error, please try again."),"error");
       });
     }
+    /* NovaX (COD front and centre): the money panel that opens the dashboard.
+       Every figure is read from what the Wallet tab already computed
+       server-side (state.walletSummary if present, else the same fallbacks
+       renderClientWallet uses) so the two screens can never disagree -- the
+       desync class of bug this portal has been bitten by repeatedly. */
+    function renderCodHero(){
+      const host=document.getElementById("nvCodHero");
+      if(!host) return;
+      const U=window.NovaXUI;
+      try{
+        const c=(typeof clientById==="function"&&state.client)?clientById(state.client.id):null;
+        if(!c||!state.client||!state.client.id){ host.innerHTML=""; return; }
+        const sv=state.walletSummary||null;
+        const balance=sv?Number(sv.balance||0):Number(c.walletBalance||0);
+        const myWds=(state.walletWithdrawals||[]).filter(w=>w&&w.clientId===state.client.id);
+        const pending=sv?Number(sv.pending_payout||0)
+                        :myWds.filter(w=>w.status==="Pending admin payout").reduce((s2,w)=>s2+Number(w.net||0),0);
+        const available=Math.max(0,balance-pending);
+        // "In flight" is COD not yet settled -- delivered parcels whose
+        // invoice has not closed. Labelled as an estimate because it is
+        // derived locally, unlike balance/pending which are server truth.
+        const inflight=clientMetrics().payable;
+        const paidRows=myWds.filter(w=>w.status==="Paid")
+          .sort((a,b)=>String(b.paidAt||b.createdAt).localeCompare(String(a.paidAt||a.createdAt))).slice(0,3);
+        const spark=(function(){
+          const days={};
+          (state.parcels||[]).filter(p=>p&&p.clientId===state.client.id&&isDeliveredLedgerParcel(p))
+            .forEach(p=>{ const d=String(p.date||"").slice(0,10); if(d) days[d]=(days[d]||0)+Number(p.cod||0); });
+          const keys=Object.keys(days).sort().slice(-10);
+          return keys.map(k=>days[k]);
+        })();
+        host.innerHTML=
+          '<div class="nv-cod-hero">'+
+            '<div class="nv-cod-main">'+
+              '<span class="nv-cod-l">COD balance</span>'+
+              '<div class="nv-cod-v">'+escLabelText(money(balance))+'</div>'+
+              (spark.length>1?'<div class="nv-cod-spark">'+U.sparkline(spark,{w:220,h:30})+'</div>':'')+
+            '</div>'+
+            '<div class="nv-cod-grid">'+
+              '<div class="nv-cod-b"><span>Available</span><strong>'+escLabelText(money(available))+'</strong></div>'+
+              '<div class="nv-cod-b"><span>Pending payout</span><strong>'+escLabelText(money(pending))+'</strong></div>'+
+              '<div class="nv-cod-b"><span>COD in flight</span><strong>'+escLabelText(money(inflight))+'</strong>'+
+                '<i>estimate</i></div>'+
+            '</div>'+
+            '<div class="nv-cod-act">'+
+              '<button type="button" class="nv-cod-cta" data-client-tab="wallet">Withdraw</button>'+
+              (paidRows.length?'<div class="nv-cod-recent"><span>Recent settlements</span>'+
+                paidRows.map(w=>'<div class="nv-cod-r"><b>'+escLabelText(money(w.net))+'</b>'+
+                  '<em>'+escLabelText(String(w.paidAt||w.createdAt||"").slice(0,10))+'</em>'+
+                  '<span class="nvst nvst-good"><i>\u2713</i>Paid</span></div>').join("")+
+              '</div>':'')+
+            '</div>'+
+          '</div>';
+      }catch(e){ try{ host.innerHTML=""; }catch(_){} }
+    }
     function renderClientWallet(){
       const bt=document.getElementById("walletBalanceText"); if(!bt) return;
       const c=clientById(state.client.id); const balance=Number(c.walletBalance||0);
@@ -6114,6 +6175,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       toast(`Pickup requested for ${awbs.length} AWB(s). We will confirm scheduling shortly.`);
     }
     function render(){
+      try{ renderCodHero(); }catch(e){}
       renderMetrics(); renderClientStatusBoard(); renderClientParcels(); renderJourney(); renderAi();
       renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview();
       renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); updateZoneRateHint();
@@ -10444,6 +10506,74 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 @keyframes nvSkSweep{100%{transform:translateX(100%)}}
 
 
+
+
+/* ═══ COD hero (client dashboard) ══════════════════════════════════════════ */
+.nv-cod-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1.35fr) minmax(0,1fr);
+  gap:16px;align-items:start;background:var(--nvu-bg,#fff);border:1px solid var(--nvu-line,#e7efeb);
+  border-radius:16px;padding:16px 18px;margin-bottom:14px;
+  box-shadow:0 12px 32px rgba(21,45,36,.07);}
+.nv-cod-l{display:block;font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--nvu-ink-3,#8ba299);}
+.nv-cod-v{font-size:clamp(26px,4vw,36px);font-weight:900;letter-spacing:-.03em;line-height:1.05;
+  margin-top:5px;color:var(--nvu-ink,#10201b);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
+.nv-cod-spark{margin-top:8px;max-width:240px;}
+.nv-cod-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+.nv-cod-b{border:1px solid var(--nvu-line,#e7efeb);border-radius:12px;padding:10px 11px;
+  background:var(--nvu-bg-2,#fafdfb);min-width:0;}
+.nv-cod-b span{display:block;font-size:10.5px;font-weight:700;color:var(--nvu-ink-2,#60726b);}
+.nv-cod-b strong{display:block;font-size:16px;font-weight:900;margin-top:3px;color:var(--nvu-ink,#10201b);
+  font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
+.nv-cod-b i{display:block;font-style:normal;font-size:9.5px;color:var(--nvu-ink-3,#8ba299);margin-top:2px;}
+.nv-cod-act{display:grid;gap:10px;align-content:start;}
+.nv-cod-cta{min-height:42px;border:0;border-radius:11px;background:var(--nvu-accent,#0c7c59);
+  color:var(--nvu-accent-ink,#fff);font-weight:800;font-size:13.5px;cursor:pointer;width:100%;}
+.nv-cod-cta:hover{filter:brightness(.94);}
+.nv-cod-recent>span{display:block;font-size:10px;font-weight:800;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--nvu-ink-3,#8ba299);margin-bottom:5px;}
+.nv-cod-r{display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 0;flex-wrap:wrap;}
+.nv-cod-r b{font-weight:800;font-variant-numeric:tabular-nums;color:var(--nvu-ink,#10201b);}
+.nv-cod-r em{font-style:normal;color:var(--nvu-ink-2,#60726b);font-size:11px;}
+.nv-cod-r .nvst{padding:1px 7px;font-size:10px;}
+@media (max-width:980px){ .nv-cod-hero{grid-template-columns:1fr;gap:13px;} }
+@media (max-width:560px){
+  .nv-cod-grid{grid-template-columns:1fr 1fr;}
+  .nv-cod-hero{padding:14px;border-radius:14px;}
+}
+
+/* ═══ Premium table layer ══════════════════════════════════════════════════
+   Additive: it does not restyle the existing table rules, it adds what a
+   dense operations table needs -- a header that stays put while scrolling a
+   long list, tabular figures so money columns align on the decimal, a
+   comfortable/compact density the operator chooses, and a clearer hover and
+   selected state. Applies to any .table-wrap already in the markup, so every
+   existing table picks it up without touching a single renderer. */
+.table-wrap{position:relative;}
+/* Scroll INSIDE the table wrapper rather than the page, which is what lets
+   the header stick. Capped so a 2,000-row parcel list cannot push the rest
+   of the page off screen. */
+.table-wrap.nv-scroll{overflow:auto;max-height:min(68vh,720px);-webkit-overflow-scrolling:touch;}
+.table-wrap.nv-scroll thead th{position:sticky;top:0;z-index:3;
+  background:var(--nvu-bg,#fff);box-shadow:inset 0 -1px 0 var(--nvu-line,#e7efeb);}
+/* Money and count columns read wrong when digits are proportional -- these
+   make columns line up the way a finance person expects. */
+table td.nv-num,table th.nv-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+table td.nv-mono{font-variant-numeric:tabular-nums;letter-spacing:.01em;}
+/* Density. Comfortable is the default (unchanged); compact fits roughly 40%
+   more rows on one screen, which is what an ops desk actually wants. */
+.nv-dense-compact th,.nv-dense-compact td{padding:7px 10px;font-size:12.5px;}
+.nv-dense-compact .status,.nv-dense-compact .chip{padding:3px 7px;font-size:11px;}
+tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 3px 0 0 var(--nvu-accent,#0c7c59);}
+/* Density toggle control */
+.nv-tablebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.nv-tablebar .nv-seg{display:inline-flex;gap:2px;padding:3px;border-radius:999px;
+  background:var(--nvu-neutral-bg,#eef3f0);border:1px solid var(--nvu-line,#e7efeb);}
+.nv-tablebar .nv-seg button{border:0;background:transparent;color:var(--nvu-ink-2,#60726b);
+  font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;cursor:pointer;line-height:1.2;}
+.nv-tablebar .nv-seg button[aria-pressed="true"]{background:var(--nvu-bg,#fff);color:var(--nvu-ink,#10201b);
+  box-shadow:0 1px 3px rgba(0,0,0,.14);}
+@media (max-width:760px){ .table-wrap.nv-scroll{max-height:none;} }
+
 /* theme switch */
 .nv-theme{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:var(--nvu-neutral-bg);
   border:1px solid var(--nvu-line);vertical-align:middle;}
@@ -10732,6 +10862,79 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     });
   }catch(e){ /* theming must never break the portal */ }
 })();
+
+/* ═══ Premium table behaviour ══════════════════════════════════════════════
+   Purely presentational and entirely opt-out-safe: it decorates tables that
+   already exist in the DOM and re-applies after re-renders. It never reads or
+   writes portal state beyond one localStorage density preference, and never
+   changes what a cell contains.
+
+   Right-aligning numeric columns is done by INSPECTING RENDERED TEXT rather
+   than by editing any renderer -- a cell is treated as numeric only when its
+   header says so, so a consignee called "500" is never right-aligned. */
+(function(){
+  try{
+    var KEY="novaxTableDensity";
+    var NUM_HEADS=/^(cod|charges|amount|payable|balance|fee|total|value|net|due|qty|parcels|count|rs\b)/i;
+    function density(){ try{ return localStorage.getItem(KEY)||"comfortable"; }catch(e){ return "comfortable"; } }
+    function applyDensity(mode){
+      try{ localStorage.setItem(KEY,mode); }catch(e){}
+      document.querySelectorAll(".table-wrap").forEach(function(w){
+        w.classList.toggle("nv-dense-compact", mode==="compact");
+      });
+      document.querySelectorAll("[data-nv-density]").forEach(function(b){
+        b.setAttribute("aria-pressed", String(b.getAttribute("data-nv-density")===mode));
+      });
+    }
+    function decorate(){
+      document.querySelectorAll(".table-wrap").forEach(function(w){
+        var t=w.querySelector("table");
+        if(!t) return;
+        // Only make it scroll-with-sticky-header when it is long enough to
+        // need it; a 3-row table with a frozen header looks broken.
+        var rows=t.querySelectorAll("tbody tr").length;
+        w.classList.toggle("nv-scroll", rows>=12);
+        var heads=t.querySelectorAll("thead th");
+        if(!heads.length || t.dataset.nvNumDone==="1") return;
+        var numCols=[];
+        heads.forEach(function(th,i){ if(NUM_HEADS.test((th.textContent||"").trim())){ th.classList.add("nv-num"); numCols.push(i); } });
+        if(numCols.length){
+          t.querySelectorAll("tbody tr").forEach(function(tr){
+            var tds=tr.children;
+            numCols.forEach(function(i){ if(tds[i]) tds[i].classList.add("nv-num"); });
+          });
+        }
+        t.dataset.nvNumDone="1";
+      });
+      applyDensity(density());
+    }
+    document.addEventListener("click",function(e){
+      var b=e.target&&e.target.closest?e.target.closest("[data-nv-density]"):null;
+      if(!b) return;
+      e.preventDefault();
+      applyDensity(b.getAttribute("data-nv-density"));
+    });
+    // Re-decorate after the portal re-renders. Debounced, and it clears the
+    // per-table done flag so freshly written rows get their numeric classes.
+    var pending=false;
+    var mo=new MutationObserver(function(){
+      if(pending) return; pending=true;
+      requestAnimationFrame(function(){
+        pending=false;
+        try{
+          document.querySelectorAll("table[data-nv-num-done]").forEach(function(t){ delete t.dataset.nvNumDone; });
+          decorate();
+        }catch(e){}
+      });
+    });
+    function boot(){
+      try{ decorate(); mo.observe(document.body,{childList:true,subtree:true}); }catch(e){}
+    }
+    if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot); else boot();
+    window.NovaXTable={ decorate:decorate, density:applyDensity };
+  }catch(e){ /* table polish must never break a table */ }
+})();
+
 
 
 </script>

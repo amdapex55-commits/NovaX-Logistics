@@ -16259,6 +16259,40 @@
 @keyframes nvSkSweep{100%{transform:translateX(100%)}}
 
 
+
+/* ═══ Premium table layer ══════════════════════════════════════════════════
+   Additive: it does not restyle the existing table rules, it adds what a
+   dense operations table needs -- a header that stays put while scrolling a
+   long list, tabular figures so money columns align on the decimal, a
+   comfortable/compact density the operator chooses, and a clearer hover and
+   selected state. Applies to any .table-wrap already in the markup, so every
+   existing table picks it up without touching a single renderer. */
+.table-wrap{position:relative;}
+/* Scroll INSIDE the table wrapper rather than the page, which is what lets
+   the header stick. Capped so a 2,000-row parcel list cannot push the rest
+   of the page off screen. */
+.table-wrap.nv-scroll{overflow:auto;max-height:min(68vh,720px);-webkit-overflow-scrolling:touch;}
+.table-wrap.nv-scroll thead th{position:sticky;top:0;z-index:3;
+  background:var(--nvu-bg,#fff);box-shadow:inset 0 -1px 0 var(--nvu-line,#e7efeb);}
+/* Money and count columns read wrong when digits are proportional -- these
+   make columns line up the way a finance person expects. */
+table td.nv-num,table th.nv-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+table td.nv-mono{font-variant-numeric:tabular-nums;letter-spacing:.01em;}
+/* Density. Comfortable is the default (unchanged); compact fits roughly 40%
+   more rows on one screen, which is what an ops desk actually wants. */
+.nv-dense-compact th,.nv-dense-compact td{padding:7px 10px;font-size:12.5px;}
+.nv-dense-compact .status,.nv-dense-compact .chip{padding:3px 7px;font-size:11px;}
+tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 3px 0 0 var(--nvu-accent,#0c7c59);}
+/* Density toggle control */
+.nv-tablebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.nv-tablebar .nv-seg{display:inline-flex;gap:2px;padding:3px;border-radius:999px;
+  background:var(--nvu-neutral-bg,#eef3f0);border:1px solid var(--nvu-line,#e7efeb);}
+.nv-tablebar .nv-seg button{border:0;background:transparent;color:var(--nvu-ink-2,#60726b);
+  font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;cursor:pointer;line-height:1.2;}
+.nv-tablebar .nv-seg button[aria-pressed="true"]{background:var(--nvu-bg,#fff);color:var(--nvu-ink,#10201b);
+  box-shadow:0 1px 3px rgba(0,0,0,.14);}
+@media (max-width:760px){ .table-wrap.nv-scroll{max-height:none;} }
+
 /* theme switch */
 .nv-theme{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:var(--nvu-neutral-bg);
   border:1px solid var(--nvu-line);vertical-align:middle;}
@@ -16547,6 +16581,79 @@
     });
   }catch(e){ /* theming must never break the portal */ }
 })();
+
+/* ═══ Premium table behaviour ══════════════════════════════════════════════
+   Purely presentational and entirely opt-out-safe: it decorates tables that
+   already exist in the DOM and re-applies after re-renders. It never reads or
+   writes portal state beyond one localStorage density preference, and never
+   changes what a cell contains.
+
+   Right-aligning numeric columns is done by INSPECTING RENDERED TEXT rather
+   than by editing any renderer -- a cell is treated as numeric only when its
+   header says so, so a consignee called "500" is never right-aligned. */
+(function(){
+  try{
+    var KEY="novaxTableDensity";
+    var NUM_HEADS=/^(cod|charges|amount|payable|balance|fee|total|value|net|due|qty|parcels|count|rs\b)/i;
+    function density(){ try{ return localStorage.getItem(KEY)||"comfortable"; }catch(e){ return "comfortable"; } }
+    function applyDensity(mode){
+      try{ localStorage.setItem(KEY,mode); }catch(e){}
+      document.querySelectorAll(".table-wrap").forEach(function(w){
+        w.classList.toggle("nv-dense-compact", mode==="compact");
+      });
+      document.querySelectorAll("[data-nv-density]").forEach(function(b){
+        b.setAttribute("aria-pressed", String(b.getAttribute("data-nv-density")===mode));
+      });
+    }
+    function decorate(){
+      document.querySelectorAll(".table-wrap").forEach(function(w){
+        var t=w.querySelector("table");
+        if(!t) return;
+        // Only make it scroll-with-sticky-header when it is long enough to
+        // need it; a 3-row table with a frozen header looks broken.
+        var rows=t.querySelectorAll("tbody tr").length;
+        w.classList.toggle("nv-scroll", rows>=12);
+        var heads=t.querySelectorAll("thead th");
+        if(!heads.length || t.dataset.nvNumDone==="1") return;
+        var numCols=[];
+        heads.forEach(function(th,i){ if(NUM_HEADS.test((th.textContent||"").trim())){ th.classList.add("nv-num"); numCols.push(i); } });
+        if(numCols.length){
+          t.querySelectorAll("tbody tr").forEach(function(tr){
+            var tds=tr.children;
+            numCols.forEach(function(i){ if(tds[i]) tds[i].classList.add("nv-num"); });
+          });
+        }
+        t.dataset.nvNumDone="1";
+      });
+      applyDensity(density());
+    }
+    document.addEventListener("click",function(e){
+      var b=e.target&&e.target.closest?e.target.closest("[data-nv-density]"):null;
+      if(!b) return;
+      e.preventDefault();
+      applyDensity(b.getAttribute("data-nv-density"));
+    });
+    // Re-decorate after the portal re-renders. Debounced, and it clears the
+    // per-table done flag so freshly written rows get their numeric classes.
+    var pending=false;
+    var mo=new MutationObserver(function(){
+      if(pending) return; pending=true;
+      requestAnimationFrame(function(){
+        pending=false;
+        try{
+          document.querySelectorAll("table[data-nv-num-done]").forEach(function(t){ delete t.dataset.nvNumDone; });
+          decorate();
+        }catch(e){}
+      });
+    });
+    function boot(){
+      try{ decorate(); mo.observe(document.body,{childList:true,subtree:true}); }catch(e){}
+    }
+    if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot); else boot();
+    window.NovaXTable={ decorate:decorate, density:applyDensity };
+  }catch(e){ /* table polish must never break a table */ }
+})();
+
 
 
 </script>
