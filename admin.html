@@ -5953,7 +5953,11 @@ html,body{ background:var(--bg); color:var(--ink); }
                 <div class="grid metrics" id="duesSummaryCards"></div>
               </div>
               <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Outstanding Balances</h3><p>Largest first. "Oldest" shows how long the earliest unpaid charge has been sitting.</p></div></div>
+                <div class="section-head"><div><h3>Outstanding Balances</h3><p>Largest first. "Oldest" shows how long the earliest unpaid charge has been sitting.</p></div>
+                  <div class="inline-actions">
+                    <button class="action-btn" type="button" onclick="printAllOutstandingInvoices()" title="Prints every invoice that still owes NovaX, one client per page.">Print All Invoices</button>
+                    <button class="ghost-btn" type="button" onclick="downloadOutstandingCsv()" title="Call sheet: client, contact, phone and amount owed.">Download Call Sheet</button>
+                  </div></div>
                 <div class="ops-list" id="duesList"></div>
               </div>
             </section>
@@ -13498,6 +13502,71 @@ html,body{ background:var(--bg); color:var(--ink); }
       }, 200);
     }
 
+    /* ═══ Bill every outstanding account in one pass ═══════════════════════
+       Negative Accounts lists who owes NovaX, but billing them meant opening
+       each client, finding the invoice and printing it one at a time. These
+       two actions work the whole list at once, and deliberately keep each
+       client on their OWN document -- a merchant must never receive a sheet
+       showing another merchant's charges.
+
+       Scope is "invoices that still owe NovaX and are not closed", read from
+       the same invoice rows the rest of Finance uses. Wallet balance is
+       ignored entirely: what is billable is what the invoice says is due, not
+       whatever the wallet happens to net out to. */
+    function nvOutstandingInvoices() {
+      return (state.invoices || [])
+        .filter(inv => Number(inv.dueToNovax || 0) > 0
+                    && !["Paid to NovaX", "Cancelled", "Deleted"].includes(inv.status))
+        .sort((a, b) => {
+          const an = (clientById(a.clientId).name || "").toLowerCase();
+          const bn = (clientById(b.clientId).name || "").toLowerCase();
+          return an.localeCompare(bn) || String(a.createdAt).localeCompare(String(b.createdAt));
+        });
+    }
+
+    function printAllOutstandingInvoices() {
+      const list = nvOutstandingInvoices();
+      if (!list.length) { toast("No outstanding invoices to bill.", "error"); return; }
+      const stage = document.getElementById("adminPrintStage");
+      if (!stage) { toast("Print stage unavailable — refresh and try again.", "error"); return; }
+      /* page-break-after on every invoice except the last: each client gets a
+         clean sheet, so the stack can be split and sent without re-sorting. */
+      stage.innerHTML = list.map((inv, i) =>
+        '<div style="' + (i < list.length - 1 ? "page-break-after:always;break-after:page;" : "") + '">'
+        + adminInvoiceHtml(inv) + '</div>').join("");
+      stage.classList.add("show");
+      const clients = new Set(list.map(inv => inv.clientId)).size;
+      setTimeout(() => {
+        nvAdminPrintDoc(() => { stage.classList.remove("show"); stage.innerHTML = ""; });
+        toast(`${list.length} invoice(s) for ${clients} client(s) sent to print, one per page. Use Save as PDF to keep them.`);
+      }, 250);
+    }
+
+    function downloadOutstandingCsv() {
+      const list = nvOutstandingInvoices();
+      if (!list.length) { toast("No outstanding invoices to export.", "error"); return; }
+      /* The collections call sheet: who, which number to ring, how much, and
+         how long it has been sitting. Same figures as the printed invoices. */
+      const head = ["invoice", "client", "contact", "phone", "email", "city",
+                    "amount_due_to_novax", "charges", "parcels", "created", "status"];
+      const rows = list.map(inv => {
+        const c = clientById(inv.clientId) || {};
+        return [inv.id, c.name || "", c.owner || "", c.phone || "", c.email || "", c.city || "",
+                Number(inv.dueToNovax || 0), Number(inv.charges || 0),
+                (inv.parcelRefs || []).length, inv.createdAt || "", inv.status || ""]
+               .map(adminBulkCsvEscape).join(",");
+      });
+      const total = list.reduce((n, inv) => n + Number(inv.dueToNovax || 0), 0);
+      rows.push(["TOTAL", "", "", "", "", "", total, "", "", "", ""].map(adminBulkCsvEscape).join(","));
+      const blob = new Blob([head.join(",") + "\n" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `novax-outstanding-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast(`${list.length} outstanding invoice(s) exported.`, "success");
+    }
+
     function downloadAdminInvoiceCsv(id) {
       const invoice = state.invoices.find(item => item.id === id);
       if (!invoice) { toast("Invoice not found."); return; }
@@ -14375,6 +14444,8 @@ html,body{ background:var(--bg); color:var(--ink); }
     window.pushInvoiceToWallet = pushInvoiceToWallet;
     window.deleteInvoice = deleteInvoice;
     window.markInvoicePaid = markInvoicePaid;
+    window.printAllOutstandingInvoices = printAllOutstandingInvoices;
+    window.downloadOutstandingCsv = downloadOutstandingCsv;
     window.markWalletWithdrawalPaid = markWalletWithdrawalPaid;
     window.addReturnProof = addReturnProof;
     window.showView = showView;
