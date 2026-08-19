@@ -11141,6 +11141,17 @@ html,body{ background:var(--bg); color:var(--ink); }
     function bookParcel(overrides = {}) {
       const clientId = overrides.clientId || (state.client && state.client.id);
       if (!clientId) { toast("Select a client before booking a parcel.", "error"); return null; }
+      // NovaX fix: a parcel may not be created without a real delivery address
+      // and a real consignee phone. This used to fall through to placeholders
+      // ("Address pending" / "+92 300 1111111"), which produced parcels that
+      // could never actually be delivered and which the state normaliser then
+      // dressed up as plausible-looking data. Both booking screens already
+      // enforce these fields; this is the backstop so no other code path can
+      // create an undeliverable parcel.
+      const bookAddress = String(overrides.address || "").trim();
+      const bookPhone = String(overrides.phone || "").trim();
+      if (!bookAddress) { toast("Delivery address is required before an AWB can be created.", "error"); return null; }
+      if (!bookPhone) { toast("Consignee phone is required before an AWB can be created.", "error"); return null; }
       const codAmount = (overrides.cod !== undefined && overrides.cod !== null) ? overrides.cod : 3500 + Math.round(Math.random() * 11000);
       const client = clientById(clientId);
       const awb = nextAwbForClient(clientId);
@@ -11158,7 +11169,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         city: bookedCity,
         cod: codAmount,
         fee: bookedFee,
-        phone: overrides.phone || "+92 300 1111111",
+        phone: bookPhone,
         pickupCity: overrides.pickupCity || "Karachi",
         service: overrides.service || "COD Standard",
         category: overrides.category || "Fashion",
@@ -11166,7 +11177,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         weight: bookedWeight,
         paymentMode: overrides.paymentMode || "Cash on Delivery",
         referenceNo: overrides.referenceNo || overrides.reference || overrides.ref || "",
-        address: overrides.address || "Address pending",
+        address: bookAddress,
         status: "New booked",
         statusAgeHours: 0,
         stage: 0,

@@ -1,31 +1,42 @@
--- NovaX: clear the consignee phone/address values that admin.html used to invent.
--- The old normaliser filled blank fields with:
+-- NovaX: clear invented consignee phone/address values on ACTIVE parcels.
+--
+-- admin.html's state normaliser used to fill blank consignee fields with:
 --     address = '<consignee> delivery address, <city>'
 --     phone   = '0311' || lpad(row_index, 7, '0')
--- and the parcel sync then wrote those inventions back to Supabase. That is why
--- the merchant drawer showed the consignee NAME where the delivery address belongs.
--- The code no longer does this. These statements remove the rows it already poisoned.
+-- and the parcel sync wrote those inventions back to Supabase. The generator is
+-- now removed, and bookParcel() refuses to create a parcel without a real
+-- address and phone, so no NEW order can pick this up.
+--
+-- This script only touches parcels that are still moving. Closed parcels
+-- (Delivered / Return to shipper / Cancelled) keep their historical rows --
+-- rewriting settled records serves no operational purpose.
 
--- STEP 1 -- preview. Run this alone first and eyeball the count.
-select awb, consignee, city, address, phone
+-- STEP 1 -- what is still active and carrying invented details.
+select awb, client_id, consignee, city, status, booked_at::date,
+       address, phone
 from public.parcels
-where address = consignee || ' delivery address, ' || city
-   or phone ~ '^0311000[0-9]{4}$'
-order by booked_at desc;
+where status not in ('Delivered','Return to shipper','Parcel returned to consignee','Cancelled')
+  and (address = consignee || ' delivery address, ' || city
+       or phone ~ '^0311000[0-9]{4}$')
+order by booked_at;
 
--- STEP 2 -- clear the fabricated addresses.
+-- STEP 2 -- clear them. Blank reads as "Address pending" / "Not provided" in
+-- both portals, which is true; the invented string reads as a real address,
+-- which is not. Ops must collect the real details from the merchant before
+-- these parcels can be delivered.
 update public.parcels
 set address = ''
-where address = consignee || ' delivery address, ' || city;
+where status not in ('Delivered','Return to shipper','Parcel returned to consignee','Cancelled')
+  and address = consignee || ' delivery address, ' || city;
 
--- STEP 3 -- clear the fabricated phone numbers.
--- Only touches the exact shape the generator produced (0311 + 3 zeros + 4 digits).
 update public.parcels
 set phone = ''
-where phone ~ '^0311000[0-9]{4}$';
+where status not in ('Delivered','Return to shipper','Parcel returned to consignee','Cancelled')
+  and phone ~ '^0311000[0-9]{4}$';
 
--- STEP 4 -- confirm nothing is left.
-select count(*) as still_fabricated
+-- STEP 3 -- confirm. Should return 0.
+select count(*) as active_still_fabricated
 from public.parcels
-where address = consignee || ' delivery address, ' || city
-   or phone ~ '^0311000[0-9]{4}$';
+where status not in ('Delivered','Return to shipper','Parcel returned to consignee','Cancelled')
+  and (address = consignee || ' delivery address, ' || city
+       or phone ~ '^0311000[0-9]{4}$');
