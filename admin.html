@@ -6834,8 +6834,22 @@ html,body{ background:var(--bg); color:var(--ink); }
       });
       state.parcels.forEach((parcel, index) => {
         const client = clientById(parcel.clientId);
-        parcel.phone = parcel.phone || `0311${String(index + 1).padStart(7, "0")}`;
-        parcel.address = parcel.address || `${parcel.consignee} delivery address, ${escLabelText(parcel.city)}`;
+        // NovaX fix: never invent consignee contact details. These two lines used
+        // to synthesise a phone (0311 + row index) and an address
+        // ("<consignee> delivery address, <city>") whenever the real values were
+        // blank, and fParcel() then wrote that invention straight back to
+        // Supabase -- so the merchant's parcel drawer showed the consignee's NAME
+        // where the delivery address belongs, and a rider would call a number
+        // that does not exist. Blank stays blank; the UI already renders
+        // "Address pending" / "-" for empty values.
+        parcel.phone = parcel.phone || "";
+        parcel.address = parcel.address || "";
+        // One-time scrub of values the old normaliser already wrote into this
+        // browser's cached state. Without this, a stale localStorage copy would
+        // re-sync the invented address/phone back to Supabase after the database
+        // has been cleaned.
+        if(parcel.address && parcel.address === `${parcel.consignee} delivery address, ${parcel.city}`) parcel.address = "";
+        if(/^0311000[0-9]{4}$/.test(String(parcel.phone))) parcel.phone = "";
         parcel.pickupCity = parcel.pickupCity || client.city || "Karachi";
         parcel.origin = parcel.origin || parcel.pickupCity;
         parcel.weight = parcel.weight || `${(0.6 + index * 0.35).toFixed(1)} kg`;

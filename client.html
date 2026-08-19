@@ -3075,8 +3075,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       '<div class="nvdr-sec"><h4>Shipment</h4><dl class="nvdr-kv">'+
         '<dt>Consignee</dt><dd>'+escLabelText(p.consignee||"—")+'</dd>'+
         '<dt>City</dt><dd>'+escLabelText(p.city||"—")+'</dd>'+
-        '<dt>Address</dt><dd>'+escLabelText(p.address||"—")+'</dd>'+
-        '<dt>Phone</dt><dd>'+escLabelText(p.phone||"—")+'</dd>'+
+        '<dt>Address</dt><dd>'+escLabelText(p.address||"Not provided")+'</dd>'+
+        '<dt>Phone</dt><dd>'+escLabelText(p.phone||"Not provided")+'</dd>'+
         '<dt>Delivery charge</dt><dd>'+escLabelText(money(p.fee||0))+'</dd>'+
         (p.orderId?'<dt>Your order</dt><dd>'+escLabelText(p.orderId)+'</dd>':'')+
         '<dt>Booked</dt><dd>'+escLabelText(p.date||"—")+'</dd>'+
@@ -6760,7 +6760,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
       function dtpart(t){ return t?String(t).replace("T"," ").slice(0,16):""; }
       function pmeta(p){ return { service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, fragile:p.fragile, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", source:p.source, branch:p.branch, risk:p.risk, steps:p.steps, clientFeedback:p.clientFeedback, returnProof:p.returnProof, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"" }; }
-      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", trackingToken:r.tracking_token||"",
+      // Admin used to fill blank consignee details with invented values --
+      // address = "<consignee> delivery address, <city>", phone = 0311 + row
+      // index -- and sync those to Supabase. That is why this drawer showed the
+      // consignee's name where the delivery address belongs. The generator is
+      // gone, but rows written before the fix can still be in the table, so we
+      // refuse to display them: an empty address reads as "Not provided", which
+      // is true, while the invented string reads as a real address, which is not.
+      function nvRealAddress(addr, consignee, city){
+        var a=String(addr||"").trim();
+        if(!a) return "";
+        if(a===String(consignee||"").trim()+" delivery address, "+String(city||"").trim()) return "";
+        return a;
+      }
+      function nvRealPhone(phone){
+        var v=String(phone||"").trim();
+        return /^0311000[0-9]{4}$/.test(v) ? "" : v;
+      }
+      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", trackingToken:r.tracking_token||"",
         // NovaX distance pricing. Null on every parcel booked before it existed,
         // which is exactly how the label and invoice detect "flat, show nothing".
         pricingMode:r.pricing_mode||"", distanceKm:(r.distance_km!=null?Number(r.distance_km):null),
