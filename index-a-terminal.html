@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NovaX — COD in 15 minutes</title>
+<meta name="description" content="Operate NovaX before you sign up. Track a live parcel, price a real route, watch a payout clear in 15 minutes.">
+<meta name="theme-color" content="#050706">
+<link rel="preconnect" href="https://rhzunbzbdzicajqtohwp.supabase.co">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ══ CONCEPT A — THE TERMINAL ══════════════════════════════════════════════
+   The page is not about NovaX, it IS NovaX with the chrome removed. Three
+   real operations stacked on one screen: locate a parcel, price a route,
+   clear a payout. Every panel is a live control, nothing is a claim.
+   Aesthetic: an ops console at 2am. Phosphor green on black, IBM Plex Mono
+   throughout, hairline grid, no rounded marketing cards. Prose appears only
+   as terminal output. ══════════════════════════════════════════════════ */
+:root{
+  --bg:#050706; --panel:#0A0E0C; --panel-2:#0E1411; --line:#17211D; --line-2:#233129;
+  --ink:#D8E8E0; --dim:#6E8479; --dimmer:#455349;
+  --grn:#3BE28A;   --grn-dark:#0E7A4B; --amber:#F0B849; --red:#FF6B5C;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;overflow-x:clip;scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--ink);line-height:1.55;overflow-x:clip;
+  -webkit-font-smoothing:antialiased;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:52px 52px;background-position:-1px -1px;}
+button,input,select,textarea{font:inherit;color:inherit;}
+button{border:0;background:none;cursor:pointer;}
+a{color:inherit;text-decoration:none;}
+::selection{background:var(--grn);color:#04120B;}
+:where(a,button,input,select):focus-visible{outline:1px solid var(--grn);outline-offset:2px;}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+.wrap{max-width:1140px;margin:0 auto;padding:0 max(18px,env(safe-area-inset-left));}
+
+/* ── frame ── */
+.topbar{border-bottom:1px solid var(--line);background:rgba(5,7,6,.9);backdrop-filter:blur(10px);
+  position:sticky;top:0;z-index:80;}
+.topbar-in{display:flex;align-items:center;gap:14px;padding:11px 0;font-family:var(--mono);font-size:11.5px;}
+.brandmark{display:flex;align-items:center;gap:8px;}
+.brandmark i{width:22px;height:22px;border-radius:4px;background:var(--grn);color:#04120B;display:grid;place-items:center;
+  font-style:normal;font-weight:700;font-size:10px;}
+.brandmark b{font-weight:600;letter-spacing:.04em;}
+.sysline{color:var(--dimmer);letter-spacing:.1em;display:none;}
+.topbar .sp{margin-left:auto;}
+.tbtn{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;padding:6px 12px;border:1px solid var(--line-2);
+  border-radius:3px;color:var(--dim);transition:color .18s,border-color .18s;}
+.tbtn:hover{color:var(--ink);border-color:var(--grn-dark);}
+.tbtn.hot{background:var(--grn);border-color:var(--grn);color:#04120B;font-weight:600;}
+.tbtn.hot:hover{background:#5BEDA0;color:#04120B;}
+@media(min-width:760px){.sysline{display:inline;}}
+
+/* ── masthead ── */
+.mast{padding:clamp(40px,7vh,78px) 0 clamp(26px,4vh,40px);}
+.mast .tag{font-family:var(--mono);font-size:11px;letter-spacing:.24em;color:var(--grn);text-transform:uppercase;}
+.mast h1{font-family:var(--mono);font-size:clamp(30px,6.4vw,62px);font-weight:600;line-height:1.04;
+  letter-spacing:-.03em;margin:16px 0 0;text-wrap:balance;}
+.mast h1 u{text-decoration:none;color:var(--grn);}
+.mast p{color:var(--dim);font-size:clamp(14px,1.6vw,16.5px);max-width:56ch;margin-top:14px;}
+
+/* ── console grid ── */
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:1px;background:var(--line);
+  border:1px solid var(--line);margin-bottom:60px;}
+.cell{background:var(--panel);padding:0;min-width:0;}
+.c-12{grid-column:span 12;} .c-7{grid-column:span 7;} .c-5{grid-column:span 5;}
+.c-6{grid-column:span 6;} .c-4{grid-column:span 4;}
+@media(max-width:900px){.c-7,.c-5,.c-6,.c-4{grid-column:span 12;}}
+.cell-h{display:flex;align-items:center;gap:9px;padding:10px 15px;border-bottom:1px solid var(--line);
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dimmer);}
+.cell-h .led{width:6px;height:6px;border-radius:50%;background:var(--grn);box-shadow:0 0 6px var(--grn);}
+.cell-h .led.idle{background:var(--dimmer);box-shadow:none;}
+.cell-b{padding:16px 15px;}
+
+/* ── op 1: locate ── */
+.opline{display:flex;gap:8px;}
+.opline input{flex:1;min-width:0;height:46px;background:var(--bg);border:1px solid var(--line-2);border-radius:3px;
+  padding:0 13px;font-family:var(--mono);font-size:15px;letter-spacing:.06em;}
+.opline input::placeholder{color:var(--dimmer);}
+.opline input:focus{outline:0;border-color:var(--grn-dark);}
+.opline button{padding:0 20px;background:var(--grn);color:#04120B;font-family:var(--mono);font-size:12px;
+  font-weight:600;letter-spacing:.1em;border-radius:3px;}
+.opline button:hover{background:#5BEDA0;}
+.out{margin-top:14px;font-family:var(--mono);font-size:12.5px;min-height:96px;}
+.out .ln{display:flex;gap:10px;padding:3px 0;color:var(--dim);}
+.out .ln b{color:var(--ink);font-weight:500;}
+.out .ln .k{color:var(--dimmer);min-width:74px;flex:0 0 auto;}
+.rail{display:flex;gap:2px;margin-top:12px;}
+.rail i{flex:1;height:3px;background:var(--line-2);border-radius:2px;transition:background .35s;}
+.rail i.on{background:var(--grn);}
+.rail-l{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;
+  color:var(--dimmer);margin-top:7px;letter-spacing:.06em;}
+
+/* ── op 2: price ── */
+.dial{display:grid;gap:13px;}
+.drow{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.dfld label{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--dimmer);margin-bottom:6px;}
+.dfld select{width:100%;height:40px;background:var(--bg);border:1px solid var(--line-2);border-radius:3px;
+  padding:0 11px;font-family:var(--mono);font-size:13px;-webkit-appearance:none;appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--grn) 50%),linear-gradient(135deg,var(--grn) 50%,transparent 50%);
+  background-position:calc(100% - 16px) 18px,calc(100% - 11px) 18px;background-size:5px 5px;background-repeat:no-repeat;}
+.dfld select:focus{outline:0;border-color:var(--grn-dark);}
+.dfld select option{background:var(--panel);}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;border:0;outline:0;border-radius:3px;
+  background:linear-gradient(90deg,var(--grn) var(--fill,10%),var(--line-2) var(--fill,10%));}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:2px;
+  background:var(--grn);cursor:ew-resize;}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:2px;background:var(--grn);border:0;cursor:ew-resize;}
+.quote{margin-top:15px;padding:15px;background:var(--panel-2);border:1px solid var(--line);}
+.quote .q-v{font-family:var(--mono);font-size:clamp(26px,4.4vw,38px);font-weight:600;color:var(--grn);
+  letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;}
+.quote .q-n{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:8px;line-height:1.6;}
+
+/* ── op 3: payout ── */
+.pay{text-align:center;padding:22px 15px 26px;}
+.pay .clk{font-family:var(--mono);font-size:clamp(46px,10vw,84px);font-weight:600;letter-spacing:-.035em;
+  line-height:1;font-variant-numeric:tabular-nums;color:var(--amber);transition:color .3s;}
+.pay.done .clk{color:var(--grn);}
+.pay .st{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--dimmer);margin-top:12px;}
+.pay .amt{font-family:var(--mono);font-size:13px;color:var(--dim);margin-top:5px;}
+.pay button{margin-top:18px;padding:11px 22px;border:1px solid var(--amber);color:var(--amber);
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;border-radius:3px;transition:background .2s,color .2s;}
+.pay button:hover{background:var(--amber);color:#120C02;}
+.pay button:disabled{opacity:.4;cursor:not-allowed;}
+.stamp{display:inline-block;margin-top:16px;padding:6px 14px;border:2px solid var(--grn);color:var(--grn);
+  font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.18em;transform:rotate(-3deg) scale(.7);
+  opacity:0;transition:opacity .25s,transform .35s cubic-bezier(.3,1.5,.4,1);}
+.stamp.on{opacity:1;transform:rotate(-3deg) scale(1);}
+
+/* ── ledger strip ── */
+.ledger{font-family:var(--mono);font-size:11.5px;}
+.lrow{display:grid;grid-template-columns:64px 1fr auto;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);color:var(--dim);}
+.lrow:last-child{border-bottom:0;}
+.lrow .t{color:var(--dimmer);}
+.lrow .v{color:var(--ink);font-variant-numeric:tabular-nums;}
+.lrow .v.pos{color:var(--grn);}
+.lrow .v.neg{color:var(--red);}
+
+/* ── facts strip ── */
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--line);
+  border:1px solid var(--line);margin-bottom:60px;}
+.fact{background:var(--panel);padding:18px 16px;}
+.fact b{display:block;font-family:var(--mono);font-size:clamp(19px,2.6vw,26px);font-weight:600;color:var(--grn);
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
+.fact span{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--dimmer);margin-top:7px;line-height:1.5;}
+
+/* ── closing ── */
+.close{border:1px solid var(--line);background:var(--panel);padding:clamp(26px,5vw,52px);text-align:center;margin-bottom:56px;}
+.close h2{font-family:var(--mono);font-size:clamp(21px,3.4vw,34px);font-weight:600;letter-spacing:-.025em;}
+.close p{color:var(--dim);font-size:14px;margin:12px auto 22px;max-width:46ch;}
+.cta{display:flex;gap:9px;justify-content:center;flex-wrap:wrap;}
+.btn{font-family:var(--mono);font-size:12.5px;letter-spacing:.08em;padding:13px 24px;border-radius:3px;
+  border:1px solid var(--line-2);color:var(--ink);transition:border-color .2s,background .2s;}
+.btn:hover{border-color:var(--grn-dark);}
+.btn-primary{background:var(--grn);border-color:var(--grn);color:#04120B;font-weight:600;}
+.btn-primary:hover{background:#5BEDA0;border-color:#5BEDA0;}
+footer{border-top:1px solid var(--line);padding:22px 0 calc(26px + env(safe-area-inset-bottom));
+  font-family:var(--mono);font-size:10.5px;color:var(--dimmer);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+
+/* ── modals, themed to the terminal ── */
+
+.ov{position:fixed;inset:0;z-index:1000;background:rgba(2,6,4,.88);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:none;align-items:center;justify-content:center;padding:18px;}
+.ov.on{display:flex;}
+.mdl{width:100%;max-width:462px;max-height:90dvh;overflow-y:auto;overscroll-behavior:contain;}
+.mdl-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;}
+.mdl-top p{font-size:12.5px;opacity:.7;line-height:1.5;margin-top:4px;}
+.mdl-x{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;font-size:18px;flex:0 0 auto;cursor:pointer;}
+.fld{margin-bottom:11px;}
+.fld label{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;opacity:.6;margin-bottom:6px;}
+.fld .opt{text-transform:none;letter-spacing:0;}
+.mdl input,.mdl select,.mdl textarea{width:100%;height:44px;border-radius:9px;padding:0 13px;font-size:16px;}
+.mdl textarea{height:auto;min-height:70px;padding:11px 13px;resize:vertical;font-family:inherit;line-height:1.5;}
+.mdl .btn{width:100%;margin-top:8px;}
+.form-msg{font-size:12.5px;font-weight:600;padding:10px 12px;border-radius:9px;margin-top:11px;display:none;line-height:1.5;}
+.done{display:grid;place-items:center;text-align:center;padding:26px 6px;}
+.done-tick{width:70px;height:70px;border-radius:999px;display:grid;place-items:center;font-size:32px;font-weight:900;}
+.done h3{margin:16px 0 7px;}
+.done p{font-size:13.5px;opacity:.75;line-height:1.55;max-width:310px;}
+#handoff{position:fixed;inset:0;z-index:4000;display:none;align-items:center;justify-content:center;}
+#handoff.on{display:flex;}
+.hd-in{display:grid;place-items:center;gap:14px;font-size:13px;letter-spacing:.04em;}
+.hd-spin{width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.18);animation:hdSpin .8s linear infinite;}
+@keyframes hdSpin{to{transform:rotate(360deg)}}
+
+.mdl{background:var(--panel);border:1px solid var(--line-2);padding:22px;}
+.mdl-top h3{font-family:var(--mono);font-size:16px;font-weight:600;}
+.mdl-x{background:var(--panel-2);border:1px solid var(--line);color:var(--dim);}
+.mdl input,.mdl select,.mdl textarea{background:var(--bg);border:1px solid var(--line-2);border-radius:3px;
+  font-family:var(--mono);font-size:15px;}
+.mdl input:focus,.mdl select:focus,.mdl textarea:focus{outline:0;border-color:var(--grn-dark);}
+.mdl select option{background:var(--panel);}
+.fld label{font-family:var(--mono);}
+.form-msg.err{background:rgba(255,107,92,.1);border:1px solid rgba(255,107,92,.3);color:var(--red);}
+.form-msg.ok{background:rgba(59,226,138,.1);border:1px solid rgba(59,226,138,.3);color:var(--grn);}
+.done-tick.g{background:var(--grn);color:#04120B;} .done-tick.v{background:var(--amber);color:#120C02;}
+#handoff{background:rgba(5,7,6,.95);color:var(--dim);font-family:var(--mono);}
+.hd-spin{border-top-color:var(--grn);}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style></head>
+<body>
+
+<div class="topbar"><div class="wrap topbar-in">
+  <span class="brandmark"><i>NX</i><b>NOVAX</b></span>
+  <span class="sysline">// COD SETTLEMENT · KHI LHE ISB RWP</span>
+  <span class="sp"></span>
+  <button class="tbtn" data-mdl="signin">SIGN IN</button>
+  <button class="tbtn hot" data-mdl="signup">START SHIPPING</button>
+</div></div>
+
+<div class="wrap">
+
+  <header class="mast">
+    <span class="tag">Live system · try it before you sign up</span>
+    <h1>Your COD, in your account in <u>15 minutes</u>.</h1>
+    <p>Everything below is the real system, not a demo of it. Look up a live parcel, price a real route, and watch a payout clear.</p>
+  </header>
+
+  <!-- ── OP 1 + 2 ── -->
+  <div class="grid">
+    <div class="cell c-7">
+      <div class="cell-h"><span class="led"></span>01 · Locate a parcel</div>
+      <div class="cell-b">
+        <div class="opline">
+          <input id="trackInput" type="text" autocomplete="off" spellcheck="false" placeholder="N9830042" aria-label="Tracking number">
+          <button id="trackBtn" type="button">TRACK</button>
+        </div>
+        <div class="out" id="trackOut"></div>
+      </div>
+    </div>
+    <div class="cell c-5">
+      <div class="cell-h"><span class="led"></span>02 · Price a route</div>
+      <div class="cell-b">
+        <div class="dial">
+          <div class="drow">
+            <div class="dfld"><label for="cFrom">From</label>
+              <select id="cFrom"><option value="karachi">Karachi</option><option value="lahore">Lahore</option><option value="islamabad">Islamabad</option><option value="rawalpindi">Rawalpindi</option></select></div>
+            <div class="dfld"><label for="cTo">To</label>
+              <select id="cTo"><option value="karachi">Karachi</option><option value="lahore">Lahore</option><option value="islamabad">Islamabad</option><option value="rawalpindi">Rawalpindi</option></select></div>
+          </div>
+          <div class="dfld"><label for="cWeight">Weight · <span class="mono" id="cwVal">1 kg</span></label>
+            <input id="cWeight" type="range" min="0.5" max="10" step="0.5" value="1" aria-label="Weight"></div>
+        </div>
+        <div class="quote"><div class="q-v" id="cPrice">Rs 120–320</div><div class="q-n" id="cNote"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── OP 3 ── -->
+  <div class="grid">
+    <div class="cell c-5">
+      <div class="cell-h"><span class="led idle" id="payLed"></span>03 · Clear a payout</div>
+      <div class="cell-b pay" id="payPanel">
+        <div class="clk" id="payClk">15:00</div>
+        <div class="st" id="payState">Awaiting request</div>
+        <div class="amt">Rs 84,320 · instant tier · 0.7%</div>
+        <button id="payBtn" type="button">REQUEST PAYOUT</button>
+        <div><span class="stamp" id="payStamp">PAID</span></div>
+      </div>
+    </div>
+    <div class="cell c-7">
+      <div class="cell-h"><span class="led"></span>Wallet ledger · append only</div>
+      <div class="cell-b">
+        <div class="ledger" id="ledger">
+          <div class="lrow"><span class="t">09:04</span><span>COD collected · N9830042</span><span class="v pos">+4,200</span></div>
+          <div class="lrow"><span class="t">09:04</span><span>Delivery charge</span><span class="v neg">−240</span></div>
+          <div class="lrow"><span class="t">11:38</span><span>COD collected · N9830051</span><span class="v pos">+7,850</span></div>
+          <div class="lrow"><span class="t">11:38</span><span>Delivery charge</span><span class="v neg">−180</span></div>
+          <div class="lrow"><span class="t">14:20</span><span>COD collected · N9830066</span><span class="v pos">+2,900</span></div>
+        </div>
+        <div class="q-n mono" style="margin-top:13px;color:var(--dimmer);font-size:10.5px;line-height:1.7">
+          Every row is permanent. If the ledger and your balance ever disagree,<br>the payout is blocked rather than paid from a number we cannot prove.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="facts">
+    <div class="fact"><b>15:00</b><span>Maximum payout wait</span></div>
+    <div class="fact"><b>150+</b><span>Karachi areas priced</span></div>
+    <div class="fact"><b>4</b><span>Cities live</span></div>
+    <div class="fact"><b>0</b><span>Setup fee · no contract</span></div>
+  </div>
+
+  <div class="close">
+    <h2>Stop financing your courier.</h2>
+    <p>Your workspace opens immediately and your first parcel can go out today.</p>
+    <div class="cta">
+      <button class="btn btn-primary" data-mdl="signup">START SHIPPING</button>
+      <button class="btn" data-mdl="sales">TALK TO SALES</button>
+    </div>
+  </div>
+
+  <footer>
+    <span>© 2026 NOVAX LOGISTICS · KARACHI</span>
+    <span><a href="tracking.html">TRACK A PARCEL</a></span>
+  </footer>
+</div>
+
+
+<div class="ov" id="ovSignup"><div class="mdl" id="mdlSignup">
+  <div class="mdl-top"><div><h3>Start shipping</h3><p>Your workspace opens as soon as this is done.</p></div>
+    <button class="mdl-x" data-close aria-label="Close">&times;</button></div>
+  <form id="fSignup" novalidate>
+    <div class="fld"><label for="merchantStoreName">Store name</label><input id="merchantStoreName" placeholder="Your brand or shop" autocomplete="organization"></div>
+    <div class="fld"><label for="merchantName">Your name</label><input id="merchantName" placeholder="Full name" autocomplete="name"></div>
+    <div class="fld"><label for="merchantPhone">Phone</label><input id="merchantPhone" type="tel" inputmode="numeric" placeholder="03001234567" autocomplete="tel"></div>
+    <div class="fld"><label for="merchantCity">City</label><select id="merchantCity"><option value="">Select city</option><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
+    <div class="fld"><label for="merchantAddress">Pickup address</label><textarea id="merchantAddress" placeholder="Where riders collect from"></textarea></div>
+    <div class="fld"><label for="merchantProduct">What do you sell?</label><input id="merchantProduct" placeholder="clothing, cosmetics, electronics"></div>
+    <div class="fld"><label for="merchantWebsite">Website or Instagram <span class="opt">(optional)</span></label><input id="merchantWebsite" placeholder="novaxstore.pk"></div>
+    <div class="fld"><label for="merchantEmail">Email</label><input id="merchantEmail" type="email" placeholder="you@yourstore.pk" autocomplete="email"></div>
+    <div class="fld"><label for="merchantPassword">Password</label><input id="merchantPassword" type="password" placeholder="At least 6 characters" autocomplete="new-password"></div>
+    <button class="btn btn-primary" id="merchantSubmit" type="submit">Create my workspace</button>
+    <div class="form-msg" id="mSignup"></div>
+  </form></div></div>
+
+<div class="ov" id="ovSales"><div class="mdl" id="mdlSales">
+  <div class="mdl-top"><div><h3>Talk to sales</h3><p>Shipping in volume? We call back today.</p></div>
+    <button class="mdl-x" data-close aria-label="Close">&times;</button></div>
+  <form id="fSales" novalidate>
+    <div class="fld"><label for="salesLeadName">Name</label><input id="salesLeadName" placeholder="Your name" autocomplete="name"></div>
+    <div class="fld"><label for="salesLeadPhone">Phone</label><input id="salesLeadPhone" type="tel" inputmode="numeric" placeholder="03001234567" autocomplete="tel"></div>
+    <div class="fld"><label for="salesLeadParcels">Parcels per month</label><select id="salesLeadParcels"><option>Under 100</option><option>100 – 500</option><option>500 – 2,000</option><option>2,000+</option></select></div>
+    <button class="btn btn-primary" id="salesLeadSubmit" type="submit">Request a callback</button>
+    <div class="form-msg" id="mSales"></div>
+  </form></div></div>
+
+<div class="ov" id="ovSignin"><div class="mdl" id="mdlSignin">
+  <div class="mdl-top"><div><h3>Sign in</h3><p>Sellers, riders and staff sign in here.</p></div>
+    <button class="mdl-x" data-close aria-label="Close">&times;</button></div>
+  <form id="fSignin" novalidate>
+    <div class="fld"><label for="signinEmail">Email</label><input id="signinEmail" type="email" placeholder="you@yourstore.pk" autocomplete="email"></div>
+    <div class="fld"><label for="signinPassword">Password</label><input id="signinPassword" type="password" placeholder="Your password" autocomplete="current-password"></div>
+    <button class="btn btn-primary" id="signinContinue" type="submit">Continue</button>
+    <div class="form-msg" id="mSignin"></div>
+  </form></div></div>
+
+<div id="handoff"><div class="hd-in"><div class="hd-spin"></div><div id="handoffText">Opening your workspace</div></div></div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){"use strict";
+
+var CFG={SB_URL:"https://rhzunbzbdzicajqtohwp.supabase.co",SB_KEY:"sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA"};
+var __nvSb=null,trackSb=null;
+try{ if(window.supabase&&window.supabase.createClient) __nvSb=window.supabase.createClient(CFG.SB_URL,CFG.SB_KEY); }catch(e){}
+try{ if(window.supabase&&window.supabase.createClient) trackSb=window.supabase.createClient(CFG.SB_URL,CFG.SB_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:"sb-nv-track-widget"}}); }catch(e){}
+function esc(v){return String(v==null?"":v).replace(/[&<>"'`]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;","`":"&#96;"}[c];});}
+function $(id){return document.getElementById(id);}
+function comma(n){return Math.round(n).toLocaleString("en-US");}
+var AWB_RE=/^[A-Z0-9][A-Z0-9\-]{2,23}$/;
+var FLOW=["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered"];
+function ageLabel(iso){if(!iso)return "just now";var h=Math.max(0,(Date.now()-new Date(iso).getTime())/36e5);if(h<1)return "just now";if(h<24)return Math.round(h)+"h ago";return Math.floor(h/24)+"d ago";}
+
+/* tracking -- host page supplies renderTrack(state,payload) */
+function nvTrack(){
+  var tIn=$("trackInput"); if(!tIn) return;
+  var raw=(tIn.value||"").trim().toUpperCase();
+  if(!raw){ renderTrack("error",{msg:"Enter a tracking number."}); return; }
+  if(!AWB_RE.test(raw)){ renderTrack("error",{msg:"That is not a valid tracking number."}); return; }
+  if(!trackSb){ renderTrack("error",{msg:"Tracking is unavailable right now."}); return; }
+  renderTrack("loading",{awb:raw});
+  trackSb.rpc("track_parcel_public",{p_awb:raw}).then(function(r){
+    var row=r&&r.data&&r.data[0];
+    if((r&&r.error)||!row){ renderTrack("error",{msg:"No parcel found with that number.",awb:raw}); return; }
+    var status=String(row.status||"New booked");
+    var idx=Math.max(0,FLOW.indexOf(status));
+    renderTrack("ok",{awb:raw,status:status,city:row.city||"In transit",
+      age:ageLabel(row.updated_at),idx:idx,pct:Math.max(8,Math.round((idx/(FLOW.length-1))*100))});
+  }).catch(function(){ renderTrack("error",{msg:"Could not reach tracking. Try again."}); });
+}
+
+/* modals */
+var OV={signup:$("ovSignup"),sales:$("ovSales"),signin:$("ovSignin")},lastFocus=null;
+function openM(k){var o=OV[k];if(!o)return;lastFocus=document.activeElement;
+  Object.keys(OV).forEach(function(x){if(OV[x])OV[x].classList.remove("on");});
+  o.classList.add("on");document.body.style.overflow="hidden";
+  var f=o.querySelector("input");if(f)setTimeout(function(){try{f.focus();}catch(e){}},120);}
+function closeM(){Object.keys(OV).forEach(function(x){if(OV[x])OV[x].classList.remove("on");});
+  document.body.style.overflow="";if(lastFocus&&lastFocus.focus)try{lastFocus.focus();}catch(e){}}
+document.addEventListener("click",function(e){
+  var t=e.target.closest&&e.target.closest("[data-mdl]");
+  if(t){e.preventDefault();openM(t.getAttribute("data-mdl"));return;}
+  if(e.target.closest&&e.target.closest("[data-close]")){e.preventDefault();closeM();return;}
+  if(e.target.classList&&e.target.classList.contains("ov"))closeM();});
+addEventListener("keydown",function(e){if(e.key==="Escape")closeM();});
+(function(){var h=(location.hash||"").replace("#","");
+  if(h==="signup")setTimeout(function(){openM("signup");},400);
+  else if(h==="signin")setTimeout(function(){openM("signin");},400);
+  else if(h==="contact-sales")setTimeout(function(){openM("sales");},400);})();
+
+/* form helpers */
+function showMsg(id,txt,ok){var el=$(id);if(!el)return;el.className="form-msg "+(ok?"ok":"err");el.textContent=txt;}
+function clearMsg(id){var el=$(id);if(el)el.className="form-msg";}
+function val(id){var el=$(id);return el?String(el.value||"").trim():"";}
+var PHONE_RE=/^03\d{9}$/,EMAIL_RE=/^\S+@\S+\.\S+$/;
+function clearNovaxSession(){try{localStorage.removeItem("novaxSession");}catch(e){}}
+function renderDone(modalId,cls,title,body){var el=$(modalId);if(!el)return;
+  el.innerHTML='<div class="done"><div class="done-tick '+cls+'">&#10003;</div><h3>'+esc(title)+'</h3><p>'+esc(body)+'</p></div>';}
+["merchantPhone","salesLeadPhone"].forEach(function(id){var el=$(id);if(!el)return;
+  el.addEventListener("input",function(){this.value=this.value.replace(/\D/g,"").slice(0,11);});});
+
+/* workspace handoff -- concepts render their own overlay if they have one */
+function goWorkspace(target,label){
+  var ov=$("handoff");
+  if(ov){ var t=$("handoffText"); if(t)t.textContent=label||"Opening your workspace"; ov.classList.add("on"); }
+  setTimeout(function(){ window.location.href=target; }, ov?900:0);
+}
+
+/* signup */
+var fu=$("fSignup"); if(fu) fu.addEventListener("submit",function(e){
+  e.preventDefault();
+  var storeName=val("merchantStoreName"),city=val("merchantCity"),name=val("merchantName"),
+      phone=val("merchantPhone"),address=val("merchantAddress"),product=val("merchantProduct"),
+      website=val("merchantWebsite"),email=val("merchantEmail").toLowerCase(),password=val("merchantPassword");
+  if(!city||!storeName||!name||!phone||!address||!product||!email||!password){
+    showMsg("mSignup","Store name, your name, city, phone, address, product, email and password are all required.",false);return;}
+  if(!PHONE_RE.test(phone)){showMsg("mSignup","Phone must be 11 digits starting 03.",false);return;}
+  if(!EMAIL_RE.test(email)){showMsg("mSignup","Please enter a valid email address.",false);return;}
+  if(password.length<6){showMsg("mSignup","Password must be at least 6 characters.",false);return;}
+  if(!__nvSb||!__nvSb.auth){showMsg("mSignup","Signup is unavailable. Please refresh.",false);return;}
+  clearMsg("mSignup");
+  var btn=$("merchantSubmit"),old=btn.textContent;btn.disabled=true;btn.textContent="Creating…";
+  __nvSb.auth.signUp({email:email,password:password,options:{data:{business_name:storeName,owner_name:name,full_name:name,role:"client",phone:phone,city:city,address:address,business_type:product,website:website||""}}})
+  .then(function(r){
+    if(r&&r.error){btn.disabled=false;btn.textContent=old;showMsg("mSignup",r.error.message||"Could not create your account.",false);return;}
+    var nu=r&&r.data&&r.data.user,ns=r&&r.data&&r.data.session;
+    if(nu&&Array.isArray(nu.identities)&&nu.identities.length===0){btn.disabled=false;btn.textContent=old;
+      showMsg("mSignup","This email already has an account. Please sign in instead.",false);return;}
+    __nvSb.from("signup_leads").insert({name:storeName,phone:phone,email:email,city:city,address:address,
+      business_type:product,website:website||"",auth_user_id:(nu&&nu.id)||null,status:"pending_workspace"})
+    .select("id").maybeSingle().then(function(lr){
+      var leadId=lr&&lr.data&&lr.data.id;
+      if(!ns){ if(leadId)__nvSb.from("signup_leads").update({status:"awaiting_verification"}).eq("id",leadId).then(function(){});
+        btn.disabled=false;btn.textContent=old;
+        renderDone("mdlSignup","g","Check your email","Account created. Verify your email, then sign in — your workspace opens automatically.");return;}
+      __nvSb.rpc("create_client_workspace",{p_name:storeName,p_owner:name,p_phone:phone,p_city:city,p_address:address,p_business_type:product,p_website:website||""})
+      .then(function(rr){
+        if(rr&&rr.error){ if(leadId)__nvSb.from("signup_leads").update({status:"failed",error_message:String(rr.error.message||"").slice(0,300)}).eq("id",leadId).then(function(){});
+          btn.disabled=false;btn.textContent=old;showMsg("mSignup","Login created, workspace is being prepared. Please sign in again.",false);return;}
+        if(leadId)__nvSb.from("signup_leads").update({status:"workspace_created"}).eq("id",leadId).then(function(){});
+        try{localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email,uid:(nu&&nu.id)||null,client_id:(rr&&rr.data)||null,rider_id:null,at:Date.now()}));}catch(e){}
+        renderDone("mdlSignup","g","Workspace ready","Opening your booking desk.");
+        goWorkspace("client.html?welcome=1&firstBooking=1","Building "+storeName);
+      }).catch(function(err){btn.disabled=false;btn.textContent=old;showMsg("mSignup",(err&&err.message)||"Workspace could not be prepared.",false);});
+    });
+  }).catch(function(err){btn.disabled=false;btn.textContent=old;showMsg("mSignup",(err&&err.message)||"Could not create your account.",false);});
+});
+
+/* sales */
+var fs_=$("fSales"); if(fs_) fs_.addEventListener("submit",function(e){
+  e.preventDefault();
+  var name=val("salesLeadName"),phone=val("salesLeadPhone"),parcels=val("salesLeadParcels");
+  if(!name||!phone){showMsg("mSales","Name and phone number are required.",false);return;}
+  if(!PHONE_RE.test(phone)){showMsg("mSales","Phone must be 11 digits starting 03.",false);return;}
+  if(!__nvSb){showMsg("mSales","Unavailable right now. Please refresh.",false);return;}
+  clearMsg("mSales");
+  var btn=$("salesLeadSubmit"),old=btn.textContent;btn.disabled=true;btn.textContent="Sending…";
+  __nvSb.from("sales_leads").insert({name:name,phone:phone,parcels_per_month:parcels,status:"New"}).then(function(r){
+    btn.disabled=false;btn.textContent=old;
+    if(r&&r.error){showMsg("mSales",r.error.message||"Could not send your request.",false);return;}
+    renderDone("mdlSales","v","Request received","Our team will call you back today.");
+    setTimeout(closeM,2600);
+  }).catch(function(){btn.disabled=false;btn.textContent=old;showMsg("mSales","Could not send your request.",false);});
+});
+
+/* signin -- full role routing */
+var ADMIN_ROLES=["admin","owner","superadmin","ops","ops manager","branch manager","warehouse","warehouse staff","processing","processing staff","staff","rider supervisor"];
+var fi=$("fSignin"); if(fi) fi.addEventListener("submit",function(e){
+  e.preventDefault();
+  var email=val("signinEmail").toLowerCase(),pass=val("signinPassword");
+  if(!email||!pass){showMsg("mSignin","Email and password are required.",false);return;}
+  if(!__nvSb||!__nvSb.auth){showMsg("mSignin","Sign in is unavailable. Please refresh.",false);return;}
+  clearMsg("mSignin");
+  var btn=$("signinContinue"),old=btn.textContent;btn.disabled=true;btn.textContent="Checking…";
+  __nvSb.auth.signInWithPassword({email:email,password:pass}).then(function(res){
+    if(res.error||!res.data||!res.data.user){btn.disabled=false;btn.textContent=old;
+      showMsg("mSignin","Sign in failed: "+((res.error&&res.error.message)||"invalid email or password"),false);return;}
+    var uid=res.data.user.id,meta=(res.data.user&&res.data.user.user_metadata)||{};
+    __nvSb.from("profiles").select("role,client_id,rider_id,status").eq("id",uid).single().then(function(p){
+      if(p.error||!p.data){
+        if(String(meta.role||"").toLowerCase()!=="client"){try{__nvSb.auth.signOut();}catch(e){}
+          clearNovaxSession();btn.disabled=false;btn.textContent=old;
+          showMsg("mSignin","Workspace profile not linked. Please contact NovaX.",false);return;}
+        btn.textContent="Preparing…";
+        __nvSb.rpc("create_client_workspace",{p_name:meta.business_name||meta.full_name||email.split("@")[0],
+          p_owner:meta.owner_name||meta.full_name||"",p_phone:meta.phone||"",p_city:meta.city||"",
+          p_address:meta.address||"",p_business_type:meta.business_type||"",p_website:meta.website||""})
+        .then(function(rr){
+          if(!rr||rr.error||!rr.data){try{__nvSb.auth.signOut();}catch(e){}clearNovaxSession();
+            btn.disabled=false;btn.textContent=old;showMsg("mSignin","Workspace could not be prepared.",false);return;}
+          try{localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email,uid:uid,client_id:rr.data,rider_id:null,at:Date.now()}));}catch(e){}
+          renderDone("mdlSignin","g","Workspace ready","Opening your seller portal…");
+          goWorkspace("client.html?welcome=1&firstBooking=1","Finishing setup");
+        }).catch(function(){try{__nvSb.auth.signOut();}catch(e){}clearNovaxSession();
+          btn.disabled=false;btn.textContent=old;showMsg("mSignin","Workspace could not be prepared.",false);});
+        return;}
+      var status=String(p.data.status||"active").toLowerCase();
+      if(status==="blocked"||status==="disabled"){try{__nvSb.auth.signOut();}catch(e){}clearNovaxSession();
+        btn.disabled=false;btn.textContent=old;showMsg("mSignin","This account is blocked.",false);return;}
+      var role=String(p.data.role||"client").toLowerCase(),target;
+      if(ADMIN_ROLES.indexOf(role)>-1)target="admin.html";
+      else if(role==="rider")target="rider.html";
+      else if(role==="client"){
+        if(p.data.client_id)target="client.html";
+        else if(String(meta.role||"").toLowerCase()==="client")target="client.html";
+        else{try{__nvSb.auth.signOut();}catch(e){}clearNovaxSession();btn.disabled=false;btn.textContent=old;
+          showMsg("mSignin","Workspace not linked. Please contact NovaX support.",false);return;}
+      } else {try{__nvSb.auth.signOut();}catch(e){}clearNovaxSession();btn.disabled=false;btn.textContent=old;
+        showMsg("mSignin","Workspace profile not linked. Please contact NovaX.",false);return;}
+      try{localStorage.setItem("novaxSession",JSON.stringify({role:target.replace(".html",""),email:email,uid:uid,
+        client_id:p.data.client_id||null,rider_id:p.data.rider_id||null,at:Date.now()}));}catch(e){}
+      renderDone("mdlSignin","g","Signed in","Opening your NovaX workspace…");
+      goWorkspace(target,target==="admin.html"?"Opening ops console":target==="rider.html"?"Opening rider app":"Opening your workspace");
+    }).catch(function(){btn.disabled=false;btn.textContent=old;showMsg("mSignin","Could not verify your workspace.",false);});
+  }).catch(function(err){btn.disabled=false;btn.textContent=old;showMsg("mSignin",(err&&err.message)||"Sign in failed.",false);});
+});
+
+
+/* ── op 1 output, rendered as terminal lines ── */
+var FLOW_SHORT=["BOOKED","PICKED","HUB","TRANSIT","AT CITY","OUT","DELIVERED"];
+function renderTrack(state,d){
+  var el=$("trackOut"); if(!el) return;
+  if(state==="loading"){ el.innerHTML='<div class="ln"><span class="k">QUERY</span><b>'+esc(d.awb)+'</b></div><div class="ln"><span class="k">STATUS</span>…</div>'; return; }
+  if(state==="error"){ el.innerHTML='<div class="ln"><span class="k">ERROR</span><b style="color:var(--red)">'+esc(d.msg)+'</b></div>'; return; }
+  var rail=""; for(var i=0;i<7;i++) rail+='<i class="'+(i<=d.idx?"on":"")+'"></i>';
+  el.innerHTML=
+    '<div class="ln"><span class="k">AWB</span><b>'+esc(d.awb)+'</b></div>'+
+    '<div class="ln"><span class="k">STATUS</span><b>'+esc(d.status)+'</b></div>'+
+    '<div class="ln"><span class="k">LOCATION</span><b>'+esc(d.city)+'</b></div>'+
+    '<div class="ln"><span class="k">UPDATED</span><b>'+esc(d.age)+'</b></div>'+
+    '<div class="rail">'+rail+'</div>'+
+    '<div class="rail-l"><span>'+FLOW_SHORT[0]+'</span><span>'+FLOW_SHORT[6]+'</span></div>'+
+    '<div class="ln" style="margin-top:10px"><span class="k"></span><a href="tracking.html?awb='+encodeURIComponent(d.awb)+'" style="color:var(--grn)">FULL JOURNEY →</a></div>';
+}
+$("trackBtn").addEventListener("click",nvTrack);
+$("trackInput").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();this.blur();nvTrack();}});
+(function(){var q="";try{var p=new URLSearchParams(location.search);q=(p.get("awb")||p.get("track")||"").trim().toUpperCase();}catch(e){}
+ if(q&&AWB_RE.test(q)){$("trackInput").value=q;nvTrack();}
+ else $("trackOut").innerHTML='<div class="ln"><span class="k">READY</span><span>Enter a tracking number. No login required.</span></div>';})();
+
+/* ── op 2: the real rate card ── */
+(function(){
+  var f=$("cFrom"),t=$("cTo"),w=$("cWeight"),wv=$("cwVal"),pr=$("cPrice"),nt=$("cNote");
+  var CITY={karachi:"Karachi",lahore:"Lahore",islamabad:"Islamabad",rawalpindi:"Rawalpindi"};
+  function calc(){
+    w.style.setProperty("--fill",((w.value-w.min)/(w.max-w.min)*100)+"%");
+    var kg=+w.value,intra=(f.value===t.value);
+    var BASE=180,ADDL=60,KHI_MIN=120,KHI_MAX=320;
+    var price=intra?KHI_MIN:(BASE+Math.max(0,Math.ceil(kg-1))*ADDL);
+    var kgTxt=(kg%1===0?kg:kg.toFixed(1));
+    wv.textContent=kgTxt+" kg";
+    pr.textContent=intra?("Rs "+comma(KHI_MIN)+"–"+comma(KHI_MAX)):("Rs "+comma(price));
+    nt.innerHTML=intra
+      ? CITY[f.value]+" → "+CITY[t.value]+" · same day<br>Rs 120 covers 6 km, then Rs 20/km, capped Rs 320."
+      : CITY[f.value]+" → "+CITY[t.value]+" · next day<br>Rs 180 first kg, then Rs 60 per additional kg.";
+  }
+  [f,t,w].forEach(function(el){el.addEventListener("input",calc);el.addEventListener("change",calc);});
+  calc();
+})();
+
+/* ── op 3: the payout clock. Compressed 15:00 -> 00:00 so a visitor can
+   actually watch it clear. Labelled as a simulation of the SLA, not a
+   live transaction -- it is the one thing on this page that is not real,
+   and it says so. ── */
+(function(){
+  var btn=$("payBtn"),clk=$("payClk"),st=$("payState"),led=$("payLed"),stamp=$("payStamp"),panel=$("payPanel");
+  var running=false;
+  btn.addEventListener("click",function(){
+    if(running) return; running=true;
+    btn.disabled=true; led.classList.remove("idle"); stamp.classList.remove("on");
+    panel.classList.remove("done");
+    st.textContent="Transfer in progress";
+    var total=900, t=total, step=total/60;   // 15:00 shown over ~6 seconds
+    var iv=setInterval(function(){
+      t-=step; if(t<=0){ t=0; clearInterval(iv);
+        clk.textContent="00:00"; st.textContent="Settled to bank";
+        panel.classList.add("done"); stamp.classList.add("on");
+        btn.disabled=false; btn.textContent="RUN AGAIN"; running=false; return; }
+      var m=Math.floor(t/60), s=Math.floor(t%60);
+      clk.textContent=(m<10?"0":"")+m+":"+(s<10?"0":"")+s;
+    },100);
+  });
+})();
+})();
+</script>
+</body></html>

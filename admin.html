@@ -6765,6 +6765,18 @@ html,body{ background:var(--bg); color:var(--ink); }
 
 
     function normalizeStateShape() {
+      /* NovaX fix (one bad parcel broke invoice selection): ~15 places read
+         parcel.steps directly with .includes/.join/.length. Guarding each call
+         site individually is how the earlier partial fix left this one behind,
+         so steps is normalised ONCE here instead -- every parcel is guaranteed
+         an array before any renderer or filter touches it. The Supabase mapper
+         already does this; the gap was parcels restored from an older
+         localStorage cache or built locally. */
+      try{
+        (state.parcels || []).forEach(function(p){
+          if (p && !Array.isArray(p.steps)) p.steps = p.steps ? [String(p.steps)] : [];
+        });
+      }catch(e){}
       // NovaX fix: phone/address/business type/owner/email fallbacks below
       // are DISPLAY-ONLY (client.display*). They are never written onto the
       // real client.phone/address/businessType/owner/email fields, so a
@@ -7534,7 +7546,14 @@ html,body{ background:var(--bg); color:var(--ink); }
     }
 
     function isDeliveredLedgerParcel(parcel) {
-      return parcel.status === "Delivered" || parcel.steps.includes("COD collected");
+      /* NovaX fix (invoice selection collapsed on one bad parcel): parcel.steps
+         was read unguarded here. clientInvoiceParcels() runs this over EVERY
+         parcel, so a single row arriving without steps -- a legacy row, or a
+         stale localStorage cache -- threw a TypeError that took the whole
+         filter with it, leaving the invoice draft empty and Generate Invoice
+         doing nothing. rider.html and client.html were already guarded; this
+         call site was missed. */
+      return parcel && (parcel.status === "Delivered" || (parcel.steps || []).includes("COD collected"));
     }
 
     // Revenue should be earned as soon as a rider has physically picked up the
@@ -13422,6 +13441,14 @@ html,body{ background:var(--bg); color:var(--ink); }
           <div><span>Client</span><strong>${labelText(client && client.name, "NovaX Client")}</strong></div>
           <div><span>City</span><strong>${labelText(client && client.city)}</strong></div>
           <div><span>Email</span><strong>${labelText(client && client.email, "-")}</strong></div>
+          <!-- NovaX new (delivery-charge collection): a Delivery Charges
+               invoice is money the CLIENT owes NovaX, so somebody has to ring
+               them. The document carried name, city and email but no phone and
+               no contact person, which meant the collections team had to go
+               back to the Clients tab for every single one. Both are real
+               columns on clients and print on every invoice type. -->
+          <div><span>Contact</span><strong>${labelText(client && client.owner, "-")}</strong></div>
+          <div><span>Phone</span><strong>${labelText(client && client.phone, "-")}</strong></div>
           <div><span>Invoice Type</span><strong>${escLabelText(invType)}</strong></div>
           <div><span>Status</span><strong>${escLabelText(invoice.status)}</strong></div>
         </div>

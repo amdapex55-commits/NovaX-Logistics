@@ -1,0 +1,1205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NovaX Logistics — COD in your account in 15 minutes</title>
+<meta name="description" content="Courier and COD platform for Pakistani online sellers. Cash on delivery settled to your account within 15 minutes of collection. Karachi, Lahore, Islamabad, Rawalpindi.">
+<meta name="theme-color" content="#050A08">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="format-detection" content="telephone=no">
+<link rel="canonical" href="https://novaxlogistics.com/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="NovaX Logistics — COD in your account in 15 minutes">
+<meta property="og:description" content="Cash on delivery settled within 15 minutes. Distance-based pricing across 150+ Karachi areas. Track any parcel without logging in.">
+<meta property="og:image" content="assets/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/favicon.ico">
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://rhzunbzbdzicajqtohwp.supabase.co">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Organization","name":"NovaX Logistics",
+"url":"https://novaxlogistics.com","areaServed":["Karachi","Lahore","Islamabad","Rawalpindi"],
+"description":"Courier and cash-on-delivery platform for Pakistani e-commerce sellers."}
+</script>
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   NovaX index v2
+
+   DIRECTION — the page is about two numbers: how long the seller waits for
+   their cash, and where a parcel is right now. So the design is built around
+   NUMERALS. Every figure on the page is set in JetBrains Mono with tabular
+   figures, on hairline-ruled rows that read like a ledger or a printed
+   receipt — the subject's own instruments. Inter carries the prose and gets
+   out of the way. Colour is disciplined: green is the brand and does the
+   work, and a single cash-gold accent is reserved exclusively for money and
+   time, so those two things are the only places the page raises its voice.
+
+   Ground is #050A08 — near-black biased green, not pure black, so the green
+   reads as belonging to it rather than sitting on top.
+
+   PERFORMANCE — no WebGL, no scroll-scrubbing, nothing animating at rest.
+   Motion is entrance reveals and hover states only, all inside
+   prefers-reduced-motion. The old page cost ~500KB and ran a render loop
+   forever; this one is text, one input, and a marquee that pauses.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root{
+  --bg:#050A08;
+  --bg-2:#0A120E;
+  --surface:#0C1411;
+  --surface-2:#111C17;
+  --line:#1B2A24;
+  --line-2:#263A31;
+  --ink:#E9F5EF;
+  --ink-2:#93AFA4;
+  --ink-3:#638075;
+  --green:#14C77B;
+  --green-2:#4EE6A5;
+  --green-deep:#0C7C59;
+  --gold:#E8B64C;          /* money + time ONLY */
+  --red:#E0604B;
+  --r:12px; --r-lg:18px;
+  --sp:clamp(64px,9vw,116px);
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;overflow-x:clip;}
+body{
+  background:var(--bg);color:var(--ink);line-height:1.6;overflow-x:clip;min-width:0;
+  -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:rgba(20,199,123,.16);
+}
+img,svg{display:block;max-width:100%;}
+button,input,select{font:inherit;color:inherit;}
+button{border:0;background:none;cursor:pointer;}
+a{color:inherit;text-decoration:none;}
+::selection{background:var(--green);color:#02130C;}
+:where(a,button,input,select):focus-visible{outline:2px solid var(--green-2);outline-offset:3px;border-radius:4px;}
+
+.wrap{width:100%;max-width:1180px;margin:0 auto;padding-left:max(20px,env(safe-area-inset-left));padding-right:max(20px,env(safe-area-inset-right));}
+.band{padding:var(--sp) 0;position:relative;}
+.band + .band{border-top:1px solid var(--line);}
+
+/* ── type ─────────────────────────────────────────────────────────────── */
+h1{font-size:clamp(38px,7.2vw,80px);font-weight:900;line-height:1.02;letter-spacing:-.042em;text-wrap:balance;}
+h2{font-size:clamp(27px,4vw,44px);font-weight:800;line-height:1.1;letter-spacing:-.03em;text-wrap:balance;}
+h3{font-size:clamp(17px,2vw,21px);font-weight:700;letter-spacing:-.015em;}
+.lead{font-size:clamp(15.5px,1.7vw,18.5px);color:var(--ink-2);max-width:60ch;line-height:1.62;}
+.eyebrow{
+  font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--green-2);display:block;margin-bottom:16px;
+}
+.sec-head{max-width:62ch;margin-bottom:44px;}
+.sec-head h2{margin-bottom:14px;}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+
+/* ── nav ──────────────────────────────────────────────────────────────── */
+header{position:sticky;top:0;z-index:900;background:rgba(5,10,8,.82);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid transparent;transition:border-color .3s;}
+header.stuck{border-bottom-color:var(--line);}
+.nav{display:flex;align-items:center;gap:16px;padding:13px 0;}
+.logo{display:flex;align-items:center;gap:10px;flex:0 0 auto;}
+.logo-mk{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-weight:900;font-size:14px;color:#02130C;background:linear-gradient(150deg,var(--green-2),var(--green-deep));}
+.logo b{font-size:15.5px;font-weight:800;letter-spacing:-.02em;display:block;line-height:1.1;}
+.logo small{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);letter-spacing:.16em;}
+.nav-links{display:flex;gap:2px;margin-left:auto;}
+.nav-links a{padding:8px 11px;border-radius:8px;font-size:13px;font-weight:500;color:var(--ink-2);transition:color .2s,background .2s;white-space:nowrap;}
+.nav-links a:hover{color:var(--ink);background:var(--surface-2);}
+/* .m-cta exists only so the collapsed mobile menu carries Sign in / Start
+   shipping. Hidden by default -- v1 shipped without this and rendered both
+   of them twice on desktop, beside the real buttons. .nav-links.open a below
+   out-specifies it (two classes + tag), so the mobile menu is unaffected. */
+.m-cta{display:none;}
+.nav-cta{display:flex;gap:8px;align-items:center;flex:0 0 auto;}
+.burger{display:none;width:40px;height:40px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface);place-items:center;margin-left:auto;flex:0 0 auto;}
+.burger span{display:block;width:16px;height:1.5px;background:var(--ink);border-radius:2px;position:relative;transition:transform .25s,background .25s;}
+.burger span::before,.burger span::after{content:'';position:absolute;left:0;width:16px;height:1.5px;background:var(--ink);border-radius:2px;transition:transform .25s,top .25s;}
+.burger span::before{top:-5px;} .burger span::after{top:5px;}
+.burger.on span{background:transparent;}
+.burger.on span::before{top:0;transform:rotate(45deg);}
+.burger.on span::after{top:0;transform:rotate(-45deg);}
+
+/* ── buttons ──────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:700;border-radius:11px;
+  padding:13px 22px;font-size:14px;min-height:46px;transition:transform .18s,background .18s,border-color .18s;
+  white-space:nowrap;text-align:center;letter-spacing:-.01em;}
+.btn-primary{background:var(--green);color:#02130C;}
+.btn-primary:hover{background:var(--green-2);transform:translateY(-1px);}
+.btn-ghost{background:transparent;border:1px solid var(--line-2);color:var(--ink);}
+.btn-ghost:hover{border-color:var(--green);background:var(--surface-2);}
+.btn-quiet{color:var(--ink-2);padding:9px 12px;font-size:13px;font-weight:600;min-height:auto;}
+.btn-quiet:hover{color:var(--ink);}
+.btn-lg{padding:16px 28px;font-size:15px;min-height:54px;border-radius:13px;}
+.btn:disabled{opacity:.55;cursor:not-allowed;transform:none!important;}
+
+/* ── hero ─────────────────────────────────────────────────────────────── */
+#hero{padding-top:clamp(52px,8vh,86px);padding-bottom:calc(var(--sp)*.8);}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1.06fr) minmax(320px,.94fr);gap:clamp(34px,5vw,68px);align-items:center;}
+h1 .gold{color:var(--gold);}
+.hero-sub{margin-top:22px;}
+.hero-cta{display:flex;gap:11px;flex-wrap:wrap;margin-top:30px;}
+.hero-facts{display:flex;gap:22px;flex-wrap:wrap;margin-top:26px;font-family:var(--mono);font-size:12px;color:var(--ink-3);}
+.hero-facts b{color:var(--green-2);font-weight:500;}
+
+/* tracking console — the page's primary control, styled as an AWB field */
+.track-card{background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-lg);overflow:hidden;}
+.track-top{display:flex;align-items:center;gap:9px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--bg-2);}
+.track-top .dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex:0 0 auto;}
+.track-top span{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);}
+.track-body{padding:18px 16px 16px;}
+.track-body label{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-bottom:9px;}
+.track-in{display:flex;gap:9px;}
+.track-in input{flex:1;min-width:0;height:52px;border-radius:11px;border:1px solid var(--line-2);background:var(--bg);
+  padding:0 15px;font-family:var(--mono);font-size:16px;font-weight:500;letter-spacing:.04em;transition:border-color .2s;}
+.track-in input::placeholder{color:var(--ink-3);letter-spacing:.02em;}
+.track-in input:focus{outline:0;border-color:var(--green);}
+.track-in button{flex:0 0 auto;padding:0 20px;border-radius:11px;background:var(--green);color:#02130C;font-weight:700;font-size:14px;}
+.track-in button:hover{background:var(--green-2);}
+.track-res{margin-top:14px;min-height:52px;}
+.tres{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r);padding:15px;}
+.tres.bad{border-color:rgba(224,96,75,.4);}
+.tres-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:9px;flex-wrap:wrap;}
+.tres-awb{font-family:var(--mono);font-size:14.5px;font-weight:700;letter-spacing:.04em;word-break:break-all;}
+.chip{font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;border-radius:999px;padding:4px 10px;white-space:nowrap;}
+.chip.good{background:rgba(20,199,123,.16);color:var(--green-2);}
+.chip.info{background:rgba(147,175,164,.14);color:var(--ink-2);}
+.chip.warn{background:rgba(232,182,76,.16);color:var(--gold);}
+.chip.bad{background:rgba(224,96,75,.16);color:#F0A396;}
+.tres-meta{font-size:12.5px;color:var(--ink-2);}
+.tres-bar{height:4px;border-radius:4px;background:rgba(255,255,255,.07);margin-top:12px;overflow:hidden;}
+.tres-bar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--green-deep),var(--green-2));width:0;transition:width 1s cubic-bezier(.2,.8,.2,1);}
+.tres-link{display:inline-block;margin-top:11px;font-size:12.5px;font-weight:700;color:var(--green-2);}
+.tres-link:hover{text-decoration:underline;}
+.track-foot{padding:11px 16px;border-top:1px solid var(--line);background:var(--bg-2);font-family:var(--mono);font-size:10.5px;color:var(--ink-3);}
+
+/* ── the 15 minutes ───────────────────────────────────────────────────── */
+.clock-wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.82fr);gap:clamp(30px,5vw,64px);align-items:center;}
+.clock{
+  background:linear-gradient(165deg,rgba(232,182,76,.09),transparent 62%),var(--surface);
+  border:1px solid rgba(232,182,76,.26);border-radius:var(--r-lg);padding:clamp(24px,4vw,40px);text-align:center;
+}
+.clock-l{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);}
+.clock-v{font-family:var(--mono);font-size:clamp(48px,9.5vw,86px);font-weight:700;line-height:1;letter-spacing:-.03em;
+  color:var(--gold);margin:14px 0 6px;font-variant-numeric:tabular-nums;}
+.clock-c{font-size:13px;color:var(--ink-2);}
+.tiers{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-top:26px;}
+.tier{background:var(--surface);padding:14px 16px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.tier b{font-size:14px;font-weight:700;}
+.tier .fee{font-family:var(--mono);font-size:14px;color:var(--gold);font-variant-numeric:tabular-nums;}
+.tier span{font-size:12.5px;color:var(--ink-3);flex-basis:100%;}
+
+/* ── generic cards ────────────────────────────────────────────────────── */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));gap:14px;}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:24px;transition:border-color .28s,transform .28s;}
+.card:hover{border-color:var(--line-2);transform:translateY(-3px);}
+.card .card-n{font-family:var(--mono);font-size:11px;color:var(--green-2);letter-spacing:.12em;margin-bottom:14px;display:block;}
+.card h3{margin-bottom:8px;}
+.card p{font-size:13.5px;color:var(--ink-2);line-height:1.62;}
+
+/* ── steps ────────────────────────────────────────────────────────────── */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0;border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;}
+.step{padding:26px 22px;border-right:1px solid var(--line);background:var(--surface);}
+.step:last-child{border-right:0;}
+.step .s-n{font-family:var(--mono);font-size:11px;color:var(--green-2);letter-spacing:.14em;}
+.step h3{margin:12px 0 7px;font-size:16.5px;}
+.step p{font-size:13px;color:var(--ink-2);line-height:1.6;}
+
+/* ── coverage ─────────────────────────────────────────────────────────── */
+.cov{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;}
+.cov-city{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px;}
+.cov-city b{display:block;font-size:17px;font-weight:800;letter-spacing:-.02em;}
+.cov-city span{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);display:block;margin-top:5px;}
+.cov-city.hub{border-color:rgba(20,199,123,.3);background:linear-gradient(160deg,rgba(20,199,123,.07),transparent 60%),var(--surface);}
+.cov-city.hub span{color:var(--green-2);}
+
+/* ── rate calculator ──────────────────────────────────────────────────── */
+.calc{background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-lg);padding:clamp(22px,3vw,32px);max-width:620px;margin:0 auto;}
+.calc-row{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-bottom:18px;}
+.fld label{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px;}
+.fld select,.fld input[type=range]{width:100%;}
+.fld select{height:48px;border-radius:11px;border:1px solid var(--line-2);background:var(--bg);padding:0 14px;font-size:15px;font-weight:600;-webkit-appearance:none;appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--green) 50%),linear-gradient(135deg,var(--green) 50%,transparent 50%);
+  background-position:calc(100% - 18px) calc(50% + 1px),calc(100% - 13px) calc(50% + 1px);background-size:5px 5px;background-repeat:no-repeat;}
+.fld select:focus{outline:0;border-color:var(--green);}
+.fld select option{background:var(--surface);color:var(--ink);}
+.sl-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;gap:12px;}
+.sl-val{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green-2);font-variant-numeric:tabular-nums;}
+input[type=range]{-webkit-appearance:none;appearance:none;height:5px;border-radius:5px;border:0;outline:0;
+  background:linear-gradient(90deg,var(--green) var(--fill,50%),rgba(255,255,255,.09) var(--fill,50%));}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:23px;height:23px;border-radius:50%;background:#fff;border:4px solid var(--green);cursor:grab;}
+input[type=range]::-moz-range-thumb{width:23px;height:23px;border-radius:50%;background:#fff;border:4px solid var(--green);cursor:grab;}
+.calc-out{text-align:center;padding:22px;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r);margin-top:6px;}
+.calc-price{font-family:var(--mono);font-size:clamp(28px,5vw,42px);font-weight:700;color:var(--gold);letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1;}
+.calc-note{font-size:12.5px;color:var(--ink-2);margin-top:10px;}
+.calc-fine{margin-top:12px;font-size:11.5px;line-height:1.5;color:var(--ink-3);text-align:center;}
+
+/* ── merchant marquee ─────────────────────────────────────────────────── */
+#clients{display:none;}
+.mq{overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,#000 9%,#000 91%,transparent);mask-image:linear-gradient(90deg,transparent,#000 9%,#000 91%,transparent);}
+.mq + .mq{margin-top:11px;}
+.mq-track{display:flex;gap:11px;width:max-content;animation:mqRun 64s linear infinite;}
+.mq.rev .mq-track{animation-direction:reverse;animation-duration:78s;}
+.mq:hover .mq-track{animation-play-state:paused;}
+@keyframes mqRun{to{transform:translateX(-50%);}}
+.mq-item{display:flex;align-items:center;padding:11px 19px;border-radius:999px;background:var(--surface);border:1px solid var(--line);
+  font-size:13.5px;font-weight:600;color:var(--ink-2);white-space:nowrap;letter-spacing:-.01em;}
+
+/* ── faq ──────────────────────────────────────────────────────────────── */
+.faq{max-width:800px;margin:0 auto;display:grid;gap:9px;}
+details{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;transition:border-color .25s;}
+details[open]{border-color:var(--line-2);}
+summary{padding:17px 20px;font-weight:600;font-size:14.5px;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:14px;min-height:52px;}
+summary::-webkit-details-marker{display:none;}
+summary:hover{color:var(--green-2);}
+summary::after{content:'+';font-family:var(--mono);font-size:19px;font-weight:400;color:var(--green);flex:0 0 auto;transition:transform .25s;}
+details[open] summary::after{transform:rotate(45deg);}
+details p{padding:0 20px 19px;font-size:13.5px;color:var(--ink-2);line-height:1.68;}
+
+/* ── final + footer ───────────────────────────────────────────────────── */
+.final{text-align:center;}
+.final h2{margin-bottom:16px;}
+.final .lead{margin:0 auto 30px;}
+footer{border-top:1px solid var(--line);padding:40px 0 calc(30px + env(safe-area-inset-bottom));}
+.ft-grid{display:flex;justify-content:space-between;gap:26px;flex-wrap:wrap;margin-bottom:26px;}
+.ft-links{display:flex;gap:20px;flex-wrap:wrap;}
+.ft-links a{font-size:13px;color:var(--ink-2);font-weight:500;}
+.ft-links a:hover{color:var(--green-2);}
+.ft-base{font-family:var(--mono);font-size:11px;color:var(--ink-3);border-top:1px solid var(--line);padding-top:20px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;line-height:1.7;}
+
+/* ── modals ───────────────────────────────────────────────────────────── */
+.ov{position:fixed;inset:0;z-index:1000;background:rgba(2,6,4,.86);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:none;align-items:center;justify-content:center;padding:18px;padding-top:max(18px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom));}
+.ov.on{display:flex;animation:ovIn .22s ease;}
+@keyframes ovIn{from{opacity:0}to{opacity:1}}
+.mdl{background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-lg);padding:clamp(20px,3vw,28px);width:100%;max-width:466px;
+  max-height:90dvh;overflow-y:auto;overscroll-behavior:contain;animation:mdlIn .28s cubic-bezier(.2,.9,.3,1.1);}
+@keyframes mdlIn{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+.mdl-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;}
+.mdl-top h3{margin-bottom:5px;}
+.mdl-top p{font-size:12.5px;color:var(--ink-2);line-height:1.55;}
+.mdl-x{width:38px;height:38px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line);display:grid;place-items:center;font-size:18px;color:var(--ink-2);flex:0 0 auto;}
+.mdl-x:hover{color:var(--ink);border-color:var(--line-2);}
+.mdl .fld{margin-bottom:12px;}
+.mdl input,.mdl select,.mdl textarea{width:100%;height:46px;border-radius:10px;border:1px solid var(--line-2);background:var(--bg);padding:0 14px;font-size:16px;font-weight:500;}
+.mdl textarea{height:auto;min-height:74px;padding:12px 14px;resize:vertical;font-family:inherit;line-height:1.5;}
+.mdl input:focus,.mdl select:focus,.mdl textarea:focus{outline:0;border-color:var(--green);}
+.mdl input::placeholder,.mdl textarea::placeholder{color:var(--ink-3);}
+.mdl select option{background:var(--surface);color:var(--ink);}
+.mdl .btn{width:100%;margin-top:8px;}
+.mdl-note{font-size:11px;color:var(--ink-3);text-align:center;margin-top:11px;line-height:1.5;}
+.form-msg{font-size:12.5px;font-weight:600;padding:11px 13px;border-radius:10px;margin-top:12px;display:none;line-height:1.5;}
+.form-msg.err{display:block;background:rgba(224,96,75,.12);border:1px solid rgba(224,96,75,.34);color:#F0A396;}
+.form-msg.ok{display:block;background:rgba(20,199,123,.12);border:1px solid rgba(20,199,123,.3);color:var(--green-2);}
+.done{display:grid;place-items:center;text-align:center;padding:26px 6px;}
+.done-tick{width:76px;height:76px;border-radius:999px;display:grid;place-items:center;color:#02130C;font-size:38px;font-weight:900;animation:tickPop .5s cubic-bezier(.2,.9,.3,1.5);}
+.done-tick.g{background:linear-gradient(150deg,var(--green-2),var(--green-deep));}
+.done-tick.v{background:linear-gradient(150deg,var(--gold),#C08A22);}
+@keyframes tickPop{from{transform:scale(0) rotate(-20deg);opacity:0}to{transform:none;opacity:1}}
+.done h3{margin:18px 0 8px;}
+.done p{color:var(--ink-2);font-size:13.5px;line-height:1.55;max-width:320px;}
+.done-bar{width:170px;height:3px;border-radius:3px;background:rgba(255,255,255,.1);margin-top:18px;overflow:hidden;}
+.done-bar i{display:block;height:100%;width:0;border-radius:3px;background:var(--green);animation:doneRun 1.4s linear forwards;}
+@keyframes doneRun{to{width:100%}}
+
+/* ── workspace launch (salvaged) ──────────────────────────────────────── */
+#launch{position:fixed;inset:0;z-index:4000;display:none;align-items:center;justify-content:center;overflow:hidden;
+  background:radial-gradient(120% 90% at 50% 8%,#0A2318,#04100B 72%);opacity:0;transition:opacity .4s ease;}
+#launch.on{display:flex;opacity:1;}
+.lx{position:relative;z-index:2;width:min(420px,92vw);text-align:center;padding:0 14px;}
+.lx h3{font-size:clamp(19px,4vw,24px);font-weight:900;letter-spacing:-.02em;}
+.lx .lx-sub{color:var(--ink-2);font-size:13px;margin-top:5px;min-height:1.4em;}
+.lx-slot{width:210px;height:8px;margin:0 auto;border-radius:4px;background:#0A2318;border:1px solid rgba(126,224,175,.25);position:relative;}
+.lx-slot i{position:absolute;left:8px;right:8px;top:2px;height:2px;background:var(--green-2);opacity:0;box-shadow:0 0 12px var(--green);transition:opacity .2s;}
+.lx-slot.hot i{opacity:1;}
+.lx-stagearea{position:relative;width:min(208px,64vw);aspect-ratio:208/292;max-height:44svh;margin:14px auto 0;}
+#lxLabel{position:absolute;inset:0;background:#F7F5EE;border-radius:3px;color:#11150F;padding:clamp(10px,3.2vw,14px) clamp(9px,3vw,13px);
+  transform:translate3d(0,-340px,0);transform-origin:top center;box-shadow:0 14px 30px rgba(0,0,0,.45);text-align:left;will-change:transform;}
+.lxl-top{display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #11150F;padding-bottom:7px;}
+.lxl-top b{font-weight:900;font-size:13px;}
+.lxl-top span{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;}
+.lxl-k{font-family:var(--mono);font-size:clamp(7.5px,2.4vw,8.5px);color:#5C6157;letter-spacing:.1em;margin-top:clamp(7px,2.4vw,11px);}
+.lxl-v{font-weight:800;font-size:clamp(13px,3.9vw,15px);min-height:1.3em;overflow-wrap:anywhere;line-height:1.2;}
+.lxl-row{display:flex;gap:clamp(9px,3vw,14px);margin-top:clamp(6px,2vw,9px);}
+.lxl-row .lxl-k{margin-top:0;font-size:clamp(7px,2.2vw,8px);}
+.lxl-row div{min-width:0;}
+.lxl-row div>div:last-child{font-size:clamp(10px,3.1vw,11.5px);font-weight:800;min-height:1.2em;overflow-wrap:anywhere;}
+#lxBars{margin-top:clamp(8px,2.6vw,13px);height:clamp(36px,12vw,50px);display:flex;align-items:flex-end;gap:1.5px;overflow:hidden;clip-path:inset(0 100% 0 0);transition:clip-path .56s linear;}
+#lxBars.drawn{clip-path:inset(0 0 0 0);}
+#lxBars i{display:block;background:#11150F;flex:0 0 auto;}
+#lxNum{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-align:center;margin-top:5px;min-height:1.3em;}
+#lxStamp{position:absolute;right:12px;bottom:14px;border:2.5px solid #1D9E75;color:#0F6E56;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.1em;padding:5px 9px;border-radius:3px;
+  transform:rotate(-14deg) scale(2.4);opacity:0;transition:transform .3s cubic-bezier(.3,1.5,.4,1),opacity .2s;}
+#lxStamp.on{opacity:1;transform:rotate(-14deg) scale(1);}
+.lx-cap{font-family:var(--mono);font-size:11px;color:var(--green-2);letter-spacing:.05em;margin-top:16px;min-height:1.4em;transition:opacity .25s;}
+#lxWipe{position:absolute;left:50%;top:50%;width:240vmax;height:240vmax;border-radius:50%;background:var(--green);transform:translate3d(-50%,-50%,0) scale(0);opacity:.96;z-index:3;}
+#lxWipe.go{transition:transform .68s cubic-bezier(.7,0,.3,1);transform:translate3d(-50%,-50%,0) scale(1);}
+
+/* ── reveal ───────────────────────────────────────────────────────────── */
+.rv{opacity:0;transform:translateY(22px);transition:opacity .7s cubic-bezier(.16,.84,.28,1),transform .7s cubic-bezier(.16,.84,.28,1);}
+.rv.in{opacity:1;transform:none;}
+.rv-d1{transition-delay:.06s}.rv-d2{transition-delay:.12s}.rv-d3{transition-delay:.18s}
+
+/* ── responsive ───────────────────────────────────────────────────────── */
+@media (max-width:1000px){
+  .hero-grid,.clock-wrap{grid-template-columns:1fr;}
+  .step{border-right:0;border-bottom:1px solid var(--line);}
+  .step:last-child{border-bottom:0;}
+}
+@media (max-width:900px){
+  .nav-links,.nav-cta .btn-quiet{display:none;}
+  .burger{display:grid;}
+  .nav-links.open{display:flex;position:absolute;top:calc(100% + 8px);left:20px;right:20px;flex-direction:column;
+    background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r);padding:9px;gap:1px;box-shadow:0 24px 60px rgba(0,0,0,.6);}
+  .nav-links.open a{padding:13px 14px;font-size:14.5px;min-height:46px;display:flex;align-items:center;}
+  .calc-row{grid-template-columns:1fr;}
+}
+@media (max-width:560px){
+  .hero-cta .btn{width:100%;}
+  .track-in{flex-direction:column;}
+  .track-in button{height:48px;}
+  .ft-base{flex-direction:column;gap:6px;}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto;}
+  .rv{opacity:1!important;transform:none!important;transition:none;}
+  .mq-track{animation:none!important;}
+  .mq{-webkit-mask-image:none;mask-image:none;overflow-x:auto;}
+  .mq-track{flex-wrap:wrap;width:auto;}
+  *{animation-duration:.001ms!important;transition-duration:.001ms!important;}
+}
+</style>
+</head>
+<body>
+
+<!-- ═════ NAV ═════ -->
+<header id="hdr">
+  <div class="wrap nav" style="position:relative">
+    <a href="#hero" class="logo"><div class="logo-mk">NX</div><div><b>NovaX</b><small>LOGISTICS</small></div></a>
+    <nav class="nav-links" id="navLinks">
+      <a href="#payout">Payout</a>
+      <a href="#rates">Rates</a>
+      <a href="#coverage">Coverage</a>
+      <a href="#safety">Your money</a>
+      <a href="#faq">FAQ</a>
+      <a href="#signin" class="m-cta" data-mdl="signin">Sign in</a>
+      <a href="#signup" class="m-cta" data-mdl="signup">Start shipping</a>
+    </nav>
+    <div class="nav-cta">
+      <button class="btn btn-quiet" data-mdl="signin">Sign in</button>
+      <button class="btn btn-primary" data-mdl="signup" style="padding:10px 18px;min-height:42px;font-size:13.5px">Start shipping</button>
+    </div>
+    <button class="burger" id="burger" aria-label="Open menu" aria-expanded="false"><span></span></button>
+  </div>
+</header>
+
+<main>
+
+<!-- ═════ HERO ═════ -->
+<section id="hero">
+  <span id="signup" style="position:absolute"></span><span id="signin" style="position:absolute"></span><span id="contact-sales" style="position:absolute"></span>
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow">Karachi · Lahore · Islamabad · Rawalpindi</span>
+      <h1>Your COD, in your account in <span class="gold">15 minutes.</span></h1>
+      <p class="lead hero-sub">Not next week. Not after a reconciliation cycle. You request a withdrawal, and the money is on its way to your bank within fifteen minutes — every parcel backed by a ledger you can audit line by line.</p>
+      <div class="hero-cta">
+        <button class="btn btn-primary btn-lg" data-mdl="signup">Start shipping</button>
+        <button class="btn btn-ghost btn-lg" data-mdl="sales">Talk to sales</button>
+      </div>
+      <div class="hero-facts">
+        <span><b>150+</b> Karachi areas priced</span>
+        <span><b>No</b> setup fee</span>
+        <span><b>No</b> contract</span>
+      </div>
+    </div>
+
+    <!-- The tracking box is the page's primary control: most people who land
+         here want one parcel located, not a pitch. It is also the honest
+         demo -- a real lookup against a real parcel. -->
+    <div class="track-card rv rv-d1">
+      <div class="track-top"><span class="dot"></span><span>Track a parcel</span></div>
+      <div class="track-body">
+        <label for="trackInput">Tracking number</label>
+        <div class="track-in">
+          <input id="trackInput" type="text" inputmode="latin" autocomplete="off" spellcheck="false" placeholder="e.g. N9830042" aria-label="Tracking number">
+          <button id="trackBtn" type="button">Track</button>
+        </div>
+        <div class="track-res" id="trackResult"></div>
+      </div>
+      <div class="track-foot">No login. No account. Works for your customers too.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════ THE 15 MINUTES ═════ -->
+<section class="band" id="payout">
+  <div class="wrap clock-wrap">
+    <div class="rv">
+      <span class="eyebrow">The number that matters</span>
+      <h2>Every other courier makes you wait for your own money.</h2>
+      <p class="lead" style="margin-top:14px">COD is your working capital. Holding it for a week is the industry's habit, not a technical necessity. NovaX settles on request — and the fee scales with how fast you want it, not with how much you're owed.</p>
+      <div class="tiers">
+        <div class="tier"><b>Within 24 hours</b><span class="fee">0.1%</span><span>Lowest fee. Next working morning.</span></div>
+        <div class="tier"><b>Within 12 hours</b><span class="fee">0.3%</span><span>Same working day.</span></div>
+        <div class="tier"><b>Instant</b><span class="fee">0.7%</span><span>Fifteen minutes, maximum.</span></div>
+      </div>
+    </div>
+    <div class="clock rv rv-d1">
+      <div class="clock-l">Maximum wait</div>
+      <div class="clock-v">00:15</div>
+      <p class="clock-c">From withdrawal request to money leaving NovaX. Not an average — a ceiling.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═════ RATES ═════ -->
+<section class="band" id="rates">
+  <div class="wrap">
+    <div class="sec-head rv" style="margin-left:auto;margin-right:auto;text-align:center">
+      <span class="eyebrow">Rates</span>
+      <h2>Know the price before you book.</h2>
+      <p class="lead" style="margin:0 auto">Karachi is priced by real road distance from your pickup point, so a two-kilometre drop never costs the same as a twenty-kilometre one.</p>
+    </div>
+    <div class="calc rv rv-d1">
+      <div class="calc-row">
+        <div class="fld">
+          <label for="cFrom">From</label>
+          <select id="cFrom"><option value="karachi" selected>Karachi</option><option value="lahore">Lahore</option><option value="islamabad">Islamabad</option><option value="rawalpindi">Rawalpindi</option></select>
+        </div>
+        <div class="fld">
+          <label for="cTo">To</label>
+          <select id="cTo"><option value="karachi" selected>Karachi</option><option value="lahore">Lahore</option><option value="islamabad">Islamabad</option><option value="rawalpindi">Rawalpindi</option></select>
+        </div>
+      </div>
+      <div class="fld" style="margin-bottom:20px">
+        <div class="sl-top"><label for="cWeight" style="margin:0">Weight</label><span class="sl-val" id="cwVal">1 kg</span></div>
+        <input id="cWeight" type="range" min="0.5" max="10" step="0.5" value="1" aria-label="Parcel weight in kilograms">
+      </div>
+      <div class="calc-out">
+        <div class="calc-price" id="cPrice">Rs 120–320</div>
+        <p class="calc-note" id="cNote"></p>
+      </div>
+      <p class="calc-fine">Standard rate card. Your agreed rate applies at booking and is always shown before you confirm.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═════ HOW IT WORKS ═════ -->
+<section class="band">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">How it works</span>
+      <h2>Four steps, and you are only involved in the first.</h2>
+    </div>
+    <div class="steps rv rv-d1">
+      <div class="step"><div class="s-n">01</div><h3>Book</h3><p>One order, a pasted WhatsApp message, or a CSV of three hundred. Your Shopify and WooCommerce orders import themselves.</p></div>
+      <div class="step"><div class="s-n">02</div><h3>We collect</h3><p>A rider picks up from your address. You print the label, or we scan the one already on the box.</p></div>
+      <div class="step"><div class="s-n">03</div><h3>We deliver</h3><p>Your customer tracks it without an account, in English or Roman Urdu, and signs for it with a photo on file.</p></div>
+      <div class="step"><div class="s-n">04</div><h3>You withdraw</h3><p>COD lands in your NovaX wallet. Request it, and it is on the way to your bank within fifteen minutes.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════ COVERAGE ═════ -->
+<section class="band" id="coverage">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">Coverage</span>
+      <h2>Four cities. And in Karachi, your actual neighbourhood.</h2>
+      <p class="lead">Karachi is mapped to more than 150 individual areas — DHA phases, Gulshan blocks, North Nazimabad blocks, Korangi sectors — each priced on its own road distance rather than a flat city rate.</p>
+    </div>
+    <div class="cov rv rv-d1">
+      <div class="cov-city hub"><b>Karachi</b><span>150+ areas · distance priced</span></div>
+      <div class="cov-city"><b>Lahore</b><span>City-wide</span></div>
+      <div class="cov-city"><b>Islamabad</b><span>City-wide</span></div>
+      <div class="cov-city"><b>Rawalpindi</b><span>City-wide</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════ MONEY SAFETY ═════ -->
+<section class="band" id="safety">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">Your money</span>
+      <h2>A promise this specific has to be built, not claimed.</h2>
+      <p class="lead">Fifteen minutes only works if the accounting underneath is exact. Here is what actually enforces it.</p>
+    </div>
+    <div class="cards rv rv-d1">
+      <div class="card">
+        <span class="card-n">01</span>
+        <h3>An append-only ledger</h3>
+        <p>Every credit, fee and payout is a permanent row. Nothing is edited after the fact, so your balance can always be rebuilt from its own history.</p>
+      </div>
+      <div class="card">
+        <span class="card-n">02</span>
+        <h3>A mismatch blocks the payout</h3>
+        <p>If the ledger and your balance ever disagree, NovaX stops the payment and shows the gap instead of paying out a number it cannot prove. Silence is the failure mode we designed against.</p>
+      </div>
+      <div class="card">
+        <span class="card-n">03</span>
+        <h3>Labels never leave our systems</h3>
+        <p>Barcodes and QR codes are generated inside NovaX. Your tracking numbers and customer details are never handed to a third-party image service to draw a label.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════ MERCHANT MARQUEE — populated from a live RPC, hidden if empty ═════ -->
+<section class="band" id="clients">
+  <div class="wrap">
+    <div class="sec-head rv" style="margin-left:auto;margin-right:auto;text-align:center">
+      <span class="eyebrow">Who ships with NovaX</span>
+      <h2>Pakistani sellers already moving cash through this.</h2>
+    </div>
+  </div>
+  <div class="rv rv-d1">
+    <div class="mq"><div class="mq-track" id="mqA"></div></div>
+    <div class="mq rev"><div class="mq-track" id="mqB"></div></div>
+  </div>
+</section>
+
+<!-- ═════ CONSIGNEE EXPERIENCE ═════ -->
+<section class="band">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">What your customer sees</span>
+      <h2>Your buyer never has to message you asking where it is.</h2>
+    </div>
+    <div class="cards rv rv-d1">
+      <div class="card">
+        <span class="card-n">EN / UR</span>
+        <h3>Roman Urdu, not just English</h3>
+        <p>“Aaj aapka parcel pohnch raha hai — cash tayyar rakhein.” Every status is written in plain English and Roman Urdu, because most consignees read the second one more comfortably.</p>
+      </div>
+      <div class="card">
+        <span class="card-n">NO LOGIN</span>
+        <h3>Tracking without an account</h3>
+        <p>One link, one page, the cash amount to keep ready and where the parcel is. No signup wall between your customer and their order.</p>
+      </div>
+      <div class="card">
+        <span class="card-n">PROOF</span>
+        <h3>Signed and photographed</h3>
+        <p>Deliveries are signed on the rider's phone. Refusals and failed attempts are photographed at the door, so a disputed delivery has evidence attached.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════ FAQ ═════ -->
+<section class="band" id="faq">
+  <div class="wrap">
+    <div class="sec-head rv" style="margin-left:auto;margin-right:auto;text-align:center">
+      <span class="eyebrow">Questions</span>
+      <h2>The things sellers actually ask.</h2>
+    </div>
+    <div class="faq rv rv-d1">
+      <details><summary>Is fifteen minutes real, or an average?<span></span></summary><p>It is a ceiling on the instant tier, not a median. You request a withdrawal and the transfer leaves NovaX within fifteen minutes. Your bank's own posting time is outside our control, which is why we state the part we control.</p></details>
+      <details><summary>What does it cost to send a parcel?<span></span></summary><p>Karachi is priced by road distance from your pickup point: Rs 120 covers the first six kilometres, then Rs 20 per kilometre, capped at Rs 320. Inter-city is a flat Rs 180 for the first kilogram plus Rs 60 per additional kilogram. The calculator above is the same rate card the portal charges.</p></details>
+      <details><summary>What happens if a customer refuses the parcel?<span></span></summary><p>The rider photographs the doorstep and records the refusal, and the parcel is routed back to you. You are charged the delivery fee for the trip out and back — netted off your COD on the same invoice, never billed separately.</p></details>
+      <details><summary>Do you integrate with my store?<span></span></summary><p>Shopify and WooCommerce orders import automatically. There is also a generic webhook if you run something custom, and a CSV importer that validates every row — city, phone, COD, weight, duplicate order IDs — before a single AWB is generated.</p></details>
+      <details><summary>Which areas do you actually cover?<span></span></summary><p>Karachi, Lahore, Islamabad and Rawalpindi. Karachi is broken into more than 150 named areas so pricing reflects the real distance rather than a city-wide flat rate. If your area is not listed at booking, tell us and we will map it.</p></details>
+      <details><summary>How do I know my COD balance is right?<span></span></summary><p>Your wallet shows an append-only ledger — every credit, fee and payout with its source and timestamp. If the ledger ever disagrees with your balance, the system blocks the payout and flags it rather than quietly paying a number it cannot prove.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- ═════ FINAL ═════ -->
+<section class="band final">
+  <div class="wrap">
+    <div class="rv">
+      <h2>Stop financing your courier.</h2>
+      <p class="lead">Your workspace opens immediately. No contract, no setup fee, and your first booking can go out today.</p>
+      <div style="display:flex;gap:11px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-primary btn-lg" data-mdl="signup">Start shipping</button>
+        <button class="btn btn-ghost btn-lg" data-mdl="sales">Talk to sales</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="ft-grid">
+      <a href="#hero" class="logo"><div class="logo-mk">NX</div><div><b>NovaX</b><small>LOGISTICS</small></div></a>
+      <div class="ft-links">
+        <a href="#payout">Payout</a><a href="#rates">Rates</a><a href="#coverage">Coverage</a>
+        <a href="#safety">Your money</a><a href="#faq">FAQ</a><a href="tracking.html">Track a parcel</a>
+      </div>
+    </div>
+    <div class="ft-base">
+      <span>© 2026 NovaX Logistics · Karachi, Pakistan</span>
+      <span>COD settled in 15 minutes</span>
+    </div>
+  </div>
+</footer>
+
+<!-- ═════ MODALS ═════ -->
+<div class="ov" id="ovSignup">
+  <div class="mdl" id="mdlSignup">
+    <div class="mdl-top">
+      <div><h3>Start shipping</h3><p>Your workspace opens as soon as this is done.</p></div>
+      <button class="mdl-x" data-close aria-label="Close">&times;</button>
+    </div>
+    <form id="fSignup" novalidate>
+      <div class="fld"><label for="merchantStoreName">Store name</label><input id="merchantStoreName" placeholder="Your brand or shop name" autocomplete="organization"></div>
+      <div class="fld"><label for="merchantName">Your name</label><input id="merchantName" placeholder="Full name" autocomplete="name"></div>
+      <div class="fld"><label for="merchantPhone">Phone</label><input id="merchantPhone" type="tel" inputmode="numeric" placeholder="03001234567" autocomplete="tel"></div>
+      <div class="fld"><label for="merchantCity">City</label>
+        <select id="merchantCity"><option value="">Select your city</option><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
+      <div class="fld"><label for="merchantAddress">Pickup address</label><textarea id="merchantAddress" placeholder="Where should riders collect from?"></textarea></div>
+      <div class="fld"><label for="merchantProduct">What do you sell?</label><input id="merchantProduct" placeholder="e.g. clothing, cosmetics, electronics"></div>
+      <div class="fld"><label for="merchantWebsite">Website or Instagram <span style="color:var(--ink-3);font-weight:400">(optional)</span></label><input id="merchantWebsite" placeholder="novaxstore.pk"></div>
+      <div class="fld"><label for="merchantEmail">Email</label><input id="merchantEmail" type="email" placeholder="you@yourstore.pk" autocomplete="email"></div>
+      <div class="fld"><label for="merchantPassword">Password</label><input id="merchantPassword" type="password" placeholder="At least 6 characters" autocomplete="new-password"></div>
+      <button class="btn btn-primary" id="merchantSubmit" type="submit">Create my workspace</button>
+      <div class="form-msg" id="mSignup"></div>
+      <p class="mdl-note">No contract, no setup fee. You can book your first parcel straight away.</p>
+    </form>
+  </div>
+</div>
+
+<div class="ov" id="ovSales">
+  <div class="mdl" id="mdlSales">
+    <div class="mdl-top">
+      <div><h3>Talk to sales</h3><p>Shipping in volume? We will call you back today.</p></div>
+      <button class="mdl-x" data-close aria-label="Close">&times;</button>
+    </div>
+    <form id="fSales" novalidate>
+      <div class="fld"><label for="salesLeadName">Name</label><input id="salesLeadName" placeholder="Your name" autocomplete="name"></div>
+      <div class="fld"><label for="salesLeadPhone">Phone</label><input id="salesLeadPhone" type="tel" inputmode="numeric" placeholder="03001234567" autocomplete="tel"></div>
+      <div class="fld"><label for="salesLeadParcels">Parcels per month</label>
+        <select id="salesLeadParcels"><option>Under 100</option><option>100 – 500</option><option>500 – 2,000</option><option>2,000+</option></select></div>
+      <button class="btn btn-primary" id="salesLeadSubmit" type="submit">Request a callback</button>
+      <div class="form-msg" id="mSales"></div>
+    </form>
+  </div>
+</div>
+
+<div class="ov" id="ovSignin">
+  <div class="mdl" id="mdlSignin">
+    <div class="mdl-top">
+      <div><h3>Sign in</h3><p>Sellers, riders and staff all sign in here.</p></div>
+      <button class="mdl-x" data-close aria-label="Close">&times;</button>
+    </div>
+    <form id="fSignin" novalidate>
+      <div class="fld"><label for="signinEmail">Email</label><input id="signinEmail" type="email" placeholder="you@yourstore.pk" autocomplete="email"></div>
+      <div class="fld"><label for="signinPassword">Password</label><input id="signinPassword" type="password" placeholder="Your password" autocomplete="current-password"></div>
+      <button class="btn btn-primary" id="signinContinue" type="submit">Continue</button>
+      <div class="form-msg" id="mSignin"></div>
+      <p class="mdl-note">Signing in takes you to your own portal automatically.</p>
+    </form>
+  </div>
+</div>
+
+<!-- ═════ WORKSPACE LAUNCH ═════ -->
+<div id="launch">
+  <div class="lx">
+    <h3 id="lxTitle">Building your workspace</h3>
+    <p class="lx-sub" id="lxSub">Setting things up…</p>
+    <div class="lx-slot" id="lxSlot"><i></i></div>
+    <div class="lx-stagearea">
+      <div id="lxLabel">
+        <div class="lxl-top"><b>NovaX</b><span>COD</span></div>
+        <div class="lxl-k">MERCHANT</div>
+        <div class="lxl-v" id="lxWho"></div>
+        <div class="lxl-row">
+          <div><div class="lxl-k">CITY</div><div id="lxCity"></div></div>
+          <div><div class="lxl-k">PLAN</div><div id="lxPlan"></div></div>
+        </div>
+        <div id="lxBars"></div>
+        <div id="lxNum"></div>
+        <div id="lxStamp">READY</div>
+      </div>
+    </div>
+    <div class="lx-cap" id="lxCap">Preparing…</div>
+    <div id="lxWipe"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function(){
+"use strict";
+
+/* ═════ CONFIG + SUPABASE (salvaged from v1, unchanged) ═════ */
+var CFG = window.NOVAX_CONFIG = {
+  SB_URL:"https://rhzunbzbdzicajqtohwp.supabase.co",
+  SB_KEY:"sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA"
+};
+var __nvSb=null;
+try{ if(window.supabase&&window.supabase.createClient) __nvSb=window.supabase.createClient(CFG.SB_URL,CFG.SB_KEY); }
+catch(e){ console.warn("NovaX: cloud init failed",e); }
+var trackSb=null;
+try{
+  if(window.supabase&&window.supabase.createClient){
+    trackSb=window.supabase.createClient(CFG.SB_URL,CFG.SB_KEY,{
+      auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:"sb-nv-track-widget"}
+    });
+  }
+}catch(e){}
+
+/* ═════ HELPERS (salvaged) ═════ */
+function esc(v){
+  return String(v==null?"":v).replace(/[&<>"'`]/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;","`":"&#96;"}[c];
+  });
+}
+var AWB_RE=/^[A-Z0-9][A-Z0-9\-]{2,23}$/;
+function comma(n){ return Math.round(n).toLocaleString("en-US"); }
+function $(id){ return document.getElementById(id); }
+function onView(el,fn,th){
+  if(!el) return;
+  if(!("IntersectionObserver" in window)){ fn(); return; }
+  var io=new IntersectionObserver(function(en){
+    en.forEach(function(e){ if(e.isIntersecting){ fn(); io.disconnect(); } });
+  },{threshold:th||0.15});
+  io.observe(el);
+}
+
+/* ═════ HEADER + REVEAL ═════ */
+(function(){
+  var hdr=$("hdr"), ticking=false;
+  addEventListener("scroll",function(){
+    if(ticking) return; ticking=true;
+    requestAnimationFrame(function(){ hdr.classList.toggle("stuck",(window.scrollY||0)>10); ticking=false; });
+  },{passive:true});
+})();
+(function(){
+  var els=document.querySelectorAll(".rv");
+  if(!("IntersectionObserver" in window)){ els.forEach(function(e){e.classList.add("in");}); return; }
+  var io=new IntersectionObserver(function(en){
+    en.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target); } });
+  },{threshold:0.08,rootMargin:"0px 0px -40px 0px"});
+  els.forEach(function(e){io.observe(e);});
+})();
+
+/* ═════ MOBILE NAV ═════ */
+(function(){
+  var burger=$("burger"), navLinks=$("navLinks");
+  burger.addEventListener("click",function(){
+    var open=navLinks.classList.toggle("open");
+    burger.classList.toggle("on",open);
+    burger.setAttribute("aria-expanded",open?"true":"false");
+  });
+  navLinks.addEventListener("click",function(e){
+    if(e.target.tagName==="A"){ navLinks.classList.remove("open"); burger.classList.remove("on"); burger.setAttribute("aria-expanded","false"); }
+  });
+  document.addEventListener("click",function(e){
+    if(!navLinks.contains(e.target)&&!burger.contains(e.target)&&navLinks.classList.contains("open")){
+      navLinks.classList.remove("open"); burger.classList.remove("on"); burger.setAttribute("aria-expanded","false");
+    }
+  });
+})();
+
+/* ═════ RATE CALCULATOR (salvaged, Karachi range intact) ═════ */
+(function(){
+  var f=$("cFrom"), t=$("cTo"), w=$("cWeight");
+  var wv=$("cwVal"), pr=$("cPrice"), nt=$("cNote");
+  if(!f||!t||!w) return;
+  var CITY={karachi:"Karachi",lahore:"Lahore",islamabad:"Islamabad",rawalpindi:"Rawalpindi"};
+  function fill(el){ el.style.setProperty("--fill",((el.value-el.min)/(el.max-el.min)*100)+"%"); }
+  function calc(){
+    fill(w);
+    var kg=+w.value, intra=(f.value===t.value);
+    /* Karachi intra-city is distance-priced (base Rs 120 for the first 6km,
+       Rs 20/km after, capped Rs 320), so the exact fee depends on a delivery
+       area not chosen yet. Showing the true floor-to-ceiling range beats a
+       single fabricated number. Inter-city is flat. Keep in step with
+       novax_pricing_config. */
+    var BASE=180, ADDL_KG=60;
+    var KHI_MIN=120, KHI_MAX=320;
+    var price=intra?KHI_MIN:(BASE+Math.max(0,Math.ceil(kg-1))*ADDL_KG);
+    var kgTxt=(kg%1===0?kg:kg.toFixed(1));
+    wv.textContent=kgTxt+" kg";
+    pr.textContent=intra?("Rs "+comma(KHI_MIN)+"–"+comma(KHI_MAX)):("Rs "+comma(price));
+    nt.textContent=CITY[f.value]+" → "+CITY[t.value]+" · "+kgTxt+" kg · delivered "+(intra?"same day":"next day")+
+      (intra?" · priced by distance from your pickup point":"");
+  }
+  [f,t,w].forEach(function(el){ el.addEventListener("input",calc); el.addEventListener("change",calc); });
+  calc();
+})();
+
+/* ═════ TRACKING (salvaged, XSS-safe) ═════ */
+var FLOW=["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered"];
+var tIn=$("trackInput"), tRes=$("trackResult");
+function ageLabel(iso){
+  if(!iso) return "just now";
+  var h=Math.max(0,(Date.now()-new Date(iso).getTime())/36e5);
+  if(h<1) return "just now";
+  if(h<24) return Math.round(h)+"h ago";
+  return Math.floor(h/24)+"d ago";
+}
+function noParcel(msg){
+  tRes.innerHTML='<div class="tres bad"><div class="tres-top"><span class="tres-awb">Not found</span>'+
+    '<span class="chip bad">check id</span></div><div class="tres-meta">'+esc(msg)+'</div></div>';
+}
+function track(){
+  var raw=(tIn.value||"").trim().toUpperCase();
+  if(!raw){ noParcel("Enter a tracking number to look it up."); return; }
+  if(!AWB_RE.test(raw)){ noParcel("That doesn't look like a valid tracking number. Check it and try again."); return; }
+  if(!trackSb){ noParcel("Tracking is temporarily unavailable. Please try again in a moment."); return; }
+  tRes.innerHTML='<div class="tres"><div class="tres-top"><span class="tres-awb">'+esc(raw)+'</span><span class="chip info">Looking up…</span></div></div>';
+  trackSb.rpc("track_parcel_public",{p_awb:raw}).then(function(r){
+    var row=r&&r.data&&r.data[0];
+    if((r&&r.error)||!row){ noParcel("We couldn't find a parcel with that tracking number."); return; }
+    var status=String(row.status||"New booked");
+    var idx=Math.max(0,FLOW.indexOf(status));
+    var prog=Math.max(9,Math.round((idx/(FLOW.length-1))*100));
+    var chip=/deliver/i.test(status)?"good":(idx<4?"info":"warn");
+    tRes.innerHTML='<div class="tres"><div class="tres-top"><span class="tres-awb">'+esc(raw)+
+      '</span><span class="chip '+chip+'">'+esc(status)+'</span></div>'+
+      '<div class="tres-meta">'+esc(row.city||"In transit")+' · updated '+esc(ageLabel(row.updated_at))+'</div>'+
+      '<div class="tres-bar"><i></i></div>'+
+      '<a class="tres-link" href="tracking.html?awb='+encodeURIComponent(raw)+'">See the full journey →</a></div>';
+    requestAnimationFrame(function(){ var b=tRes.querySelector(".tres-bar i"); if(b) b.style.width=prog+"%"; });
+  }).catch(function(){ noParcel("We couldn't reach the tracking service. Please try again."); });
+}
+$("trackBtn").addEventListener("click",track);
+tIn.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); tIn.blur(); track(); } });
+(function(){
+  var q="";
+  try{ var p=new URLSearchParams(location.search); q=(p.get("track")||p.get("awb")||"").trim().toUpperCase(); }catch(e){}
+  if(q && AWB_RE.test(q)){ tIn.value=q; track(); }
+  else tRes.innerHTML='<div class="tres" style="opacity:.72"><div class="tres-meta">Enter a tracking number to see live status — no login required.</div></div>';
+})();
+
+/* ═════ MERCHANT MARQUEE ═════
+   Names come from public_website_clients(), which returns display names only
+   for merchants who have opted in. NOTHING is hardcoded: the client list must
+   never enter this public repository. If the RPC is missing (migration not
+   applied yet), errors, or returns nothing, the whole section stays hidden --
+   an empty marquee is worse than no marquee, and inventing names is the exact
+   thing this rebuild exists to stop. */
+(function(){
+  var sec=$("clients"), a=$("mqA"), b=$("mqB");
+  if(!sec||!a||!b||!trackSb) return;
+  trackSb.rpc("public_website_clients").then(function(r){
+    if(!r||r.error||!r.data||!r.data.length) return;
+    var names=r.data.map(function(x){ return (typeof x==="string")?x:(x&&x.name); })
+                    .filter(function(n){ return n&&String(n).trim(); })
+                    .map(function(n){ return String(n).trim(); });
+    if(names.length<6) return;                       // too few to read as a wall
+    var half=Math.ceil(names.length/2);
+    function fill(el,list){
+      var html=list.map(function(n){ return '<span class="mq-item">'+esc(n)+'</span>'; }).join("");
+      el.innerHTML=html+html;                        // duplicated for a seamless loop
+    }
+    fill(a,names.slice(0,half));
+    fill(b,names.slice(half).concat(names.slice(0,Math.max(0,6-(names.length-half)))));
+    sec.style.display="block";
+    sec.querySelectorAll(".rv").forEach(function(el){ el.classList.add("in"); });
+  }).catch(function(){ /* stays hidden */ });
+})();
+
+/* ═════ MODALS (salvaged) ═════ */
+var OV={signup:$("ovSignup"),sales:$("ovSales"),signin:$("ovSignin")};
+var lastFocus=null;
+function openM(k){
+  var o=OV[k]; if(!o) return;
+  lastFocus=document.activeElement;
+  Object.keys(OV).forEach(function(x){OV[x].classList.remove("on");});
+  o.classList.add("on"); document.body.style.overflow="hidden";
+  var f=o.querySelector("input"); if(f) setTimeout(function(){ try{f.focus();}catch(e){} },120);
+}
+function closeM(){
+  Object.keys(OV).forEach(function(x){OV[x].classList.remove("on");});
+  document.body.style.overflow="";
+  if(lastFocus&&lastFocus.focus) try{ lastFocus.focus(); }catch(e){}
+}
+document.addEventListener("click",function(e){
+  var t=e.target.closest("[data-mdl]");
+  if(t){ e.preventDefault(); openM(t.getAttribute("data-mdl")); return; }
+  if(e.target.closest("[data-close]")){ e.preventDefault(); closeM(); return; }
+  if(e.target.classList&&e.target.classList.contains("ov")) closeM();
+});
+addEventListener("keydown",function(e){ if(e.key==="Escape") closeM(); });
+(function(){
+  var h=(location.hash||"").replace("#","");
+  if(h==="signup") setTimeout(function(){openM("signup");},400);
+  else if(h==="signin") setTimeout(function(){openM("signin");},400);
+  else if(h==="contact-sales") setTimeout(function(){openM("sales");},400);
+})();
+
+/* ═════ FORM HELPERS + LAUNCH + HANDLERS (salvaged) ═════ */
+function showMsg(id,txt,ok){ var el=$(id); if(!el) return; el.className="form-msg "+(ok?"ok":"err"); el.textContent=txt;
+  try{ el.scrollIntoView({block:"nearest",behavior:"smooth"}); }catch(e){} }
+function clearMsg(id){ var el=$(id); if(el) el.className="form-msg"; }
+function val(id){ var el=$(id); return el?String(el.value||"").trim():""; }
+var PHONE_RE=/^03\d{9}$/;
+var EMAIL_RE=/^\S+@\S+\.\S+$/;
+function clearNovaxSession(){ try{ localStorage.removeItem("novaxSession"); }catch(e){} }
+
+function launchWorkspace(target,title,sub,info){
+  var ov=$("launch");
+  if(!ov){ window.location.href=target; return; }
+  var RMx=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  info=info||{};
+  var who=String(info.who||"Your workspace").slice(0,26),
+      city=String(info.city||"Pakistan").slice(0,18),
+      plan=String(info.plan||"Free · 50 parcels").slice(0,20);
+  var slot=$("lxSlot"), label=$("lxLabel"), whoEl=$("lxWho"), cityEl=$("lxCity"),
+      planEl=$("lxPlan"), bars=$("lxBars"), num=$("lxNum"), stamp=$("lxStamp"),
+      cap=$("lxCap"), wipe=$("lxWipe");
+  var timers=[], gone=false;
+  function go(){ if(gone) return; gone=true; window.location.href=target; }
+  function at(fn,ms){ timers.push(setTimeout(fn,ms)); }
+  function type(el,txt,speed){
+    if(!el) return;
+    var i=0; el.textContent="";
+    (function tick(){ el.textContent=txt.slice(0,++i); if(i<txt.length) at(tick,speed); })();
+  }
+  function code(){
+    var s=(info.seed||who), n=0;
+    for(var i=0;i<s.length;i++) n=(n*31+s.charCodeAt(i))>>>0;
+    return "NVX-MER-"+String(n%100000).padStart(5,"0");
+  }
+  $("lxTitle").textContent=title||"Building your workspace";
+  $("lxSub").textContent=sub||"Setting things up…";
+  ov.classList.add("on");
+  try{ document.body.style.overflow="hidden"; }catch(e){}
+
+  if(RMx){
+    if(label) label.style.transform="translate3d(0,0,0)";
+    if(bars){ var bh="", BW=[1.5,2,3.5];
+      for(var bi=0;bi<44;bi++) bh+='<i style="width:'+BW[bi%3]+'px;height:'+(38+((bi*7)%14))+'%"></i>';
+      bars.innerHTML=bh; bars.classList.add("drawn"); }
+    if(whoEl) whoEl.textContent=who;
+    if(cityEl) cityEl.textContent=city;
+    if(planEl) planEl.textContent=plan;
+    if(num) num.textContent=code();
+    if(stamp) stamp.classList.add("on");
+    if(cap) cap.textContent="Workspace ready";
+    setTimeout(go,800);
+    return;
+  }
+  at(function(){
+    if(slot) slot.classList.add("hot");
+    if(label){ label.style.transition="transform 1.1s cubic-bezier(.25,.9,.3,1)"; label.style.transform="translate3d(0,0,0)"; }
+  },150);
+  at(function(){ type(whoEl,who,42); },600);
+  at(function(){ if(cityEl) cityEl.textContent=city; if(planEl) planEl.textContent=plan; },1030);
+  at(function(){
+    if(cap) cap.textContent="Generating your account code…";
+    if(!bars) return;
+    var W=[1.5,2,3.5], html="";
+    for(var i=0;i<44;i++) html+='<i style="width:'+W[i%3]+'px;height:'+(38+((i*7)%14))+'%"></i>';
+    bars.innerHTML=html;
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ bars.classList.add("drawn"); }); });
+  },1230);
+  at(function(){ type(num,code(),34); },1800);
+  at(function(){ if(slot) slot.classList.remove("hot"); if(stamp) stamp.classList.add("on"); if(cap) cap.textContent="Workspace ready"; },2250);
+  at(function(){
+    if(label){ label.style.transition="transform .58s cubic-bezier(.5,0,.75,0)"; label.style.transform="translate3d(0,110%,0)"; }
+    if(cap) cap.style.opacity="0";
+  },2720);
+  at(function(){ if(wipe) wipe.classList.add("go"); },2980);
+  at(go,3520);
+  at(go,8000);
+}
+
+function renderDone(modalId,cls,title,body,withBar){
+  var el=$(modalId); if(!el) return;
+  el.innerHTML='<div class="done"><div class="done-tick '+cls+'">✓</div><h3>'+esc(title)+'</h3><p>'+esc(body)+'</p>'+
+    (withBar?'<div class="done-bar"><i></i></div>':'')+'</div>';
+}
+["merchantPhone","salesLeadPhone"].forEach(function(id){
+  var el=$(id); if(!el) return;
+  el.addEventListener("input",function(){ this.value=this.value.replace(/\D/g,"").slice(0,11); });
+});
+
+/* ── signup ── */
+$("fSignup").addEventListener("submit",function(e){
+  e.preventDefault();
+  var storeName=val("merchantStoreName"), city=val("merchantCity"), name=val("merchantName"),
+      phone=val("merchantPhone"), address=val("merchantAddress"), product=val("merchantProduct"),
+      website=val("merchantWebsite"), email=val("merchantEmail").toLowerCase(), password=val("merchantPassword");
+  if(!city||!storeName||!name||!phone||!address||!product||!email||!password){
+    showMsg("mSignup","Store name, your name, city, phone, address, product, email and password are all required.",false); return; }
+  if(!PHONE_RE.test(phone)){ showMsg("mSignup","Phone must be 11 digits starting 03. Example: 03001234567.",false); return; }
+  if(!EMAIL_RE.test(email)){ showMsg("mSignup","Please enter a valid email address.",false); return; }
+  if(password.length<6){ showMsg("mSignup","Password must be at least 6 characters.",false); return; }
+  if(!__nvSb||!__nvSb.auth){ showMsg("mSignup","Signup is unavailable right now. Please refresh and try again.",false); return; }
+
+  clearMsg("mSignup");
+  var btn=$("merchantSubmit"), oldTxt=btn.textContent;
+  btn.disabled=true; btn.textContent="Creating your workspace…";
+
+  __nvSb.auth.signUp({
+    email:email, password:password,
+    options:{ data:{ business_name:storeName, owner_name:name, full_name:name, role:"client",
+      phone:phone, city:city, address:address, business_type:product, website:website||"" } }
+  }).then(function(r){
+    if(r&&r.error){ btn.disabled=false; btn.textContent=oldTxt;
+      showMsg("mSignup",r.error.message||"Could not create your account. Please try again.",false); return; }
+    var newUser=r&&r.data&&r.data.user, newSession=r&&r.data&&r.data.session;
+    if(newUser&&Array.isArray(newUser.identities)&&newUser.identities.length===0){
+      btn.disabled=false; btn.textContent=oldTxt;
+      showMsg("mSignup","This email already has an account. Please sign in instead.",false); return;
+    }
+    __nvSb.from("signup_leads").insert({
+      name:storeName, phone:phone, email:email, city:city, address:address,
+      business_type:product, website:website||"", auth_user_id:(newUser&&newUser.id)||null, status:"pending_workspace"
+    }).select("id").maybeSingle().then(function(leadRes){
+      if(leadRes&&leadRes.error) console.warn("NovaX signup_leads insert:",leadRes.error.message);
+      var leadId=leadRes&&leadRes.data&&leadRes.data.id;
+      if(!newSession){
+        if(leadId) __nvSb.from("signup_leads").update({status:"awaiting_verification"}).eq("id",leadId).then(function(){});
+        btn.disabled=false; btn.textContent=oldTxt;
+        renderDone("mdlSignup","g","Check your email",
+          "Account created. Verify your email address, then sign in — your workspace opens automatically.",false);
+        return;
+      }
+      __nvSb.rpc("create_client_workspace",{
+        p_name:storeName, p_owner:name, p_phone:phone, p_city:city,
+        p_address:address, p_business_type:product, p_website:website||""
+      }).then(function(rpcRes){
+        if(rpcRes&&rpcRes.error){
+          console.warn("NovaX workspace:",rpcRes.error.message);
+          if(leadId) __nvSb.from("signup_leads").update({status:"failed",error_message:String(rpcRes.error.message||"").slice(0,300)}).eq("id",leadId).then(function(){});
+          btn.disabled=false; btn.textContent=oldTxt;
+          showMsg("mSignup","Login created, workspace is being prepared. Please sign in again.",false);
+          return;
+        }
+        if(leadId) __nvSb.from("signup_leads").update({status:"workspace_created"}).eq("id",leadId).then(function(){});
+        try{ localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email,
+          uid:(newUser&&newUser.id)||null,client_id:(rpcRes&&rpcRes.data)||null,rider_id:null,at:Date.now()})); }catch(e){}
+        renderDone("mdlSignup","g","Workspace ready","Opening your booking desk.",true);
+        launchWorkspace("client.html?welcome=1&firstBooking=1",
+          "Building your workspace","Welcome to NovaX, "+(name.split(" ")[0]||"there")+".",
+          { who:storeName, city:city, plan:"Free · 50 parcels", seed:email });
+      }).catch(function(err){
+        btn.disabled=false; btn.textContent=oldTxt;
+        showMsg("mSignup",(err&&err.message)||"Workspace could not be prepared. Please sign in again.",false);
+      });
+    });
+  }).catch(function(err){
+    btn.disabled=false; btn.textContent=oldTxt;
+    showMsg("mSignup",(err&&err.message)||"Could not create your account. Please try again.",false);
+  });
+});
+
+/* ── sales ── */
+$("fSales").addEventListener("submit",function(e){
+  e.preventDefault();
+  var name=val("salesLeadName"), phone=val("salesLeadPhone"), parcels=val("salesLeadParcels");
+  if(!name||!phone){ showMsg("mSales","Name and phone number are required.",false); return; }
+  if(!PHONE_RE.test(phone)){ showMsg("mSales","Phone must be 11 digits starting 03. Example: 03001234567.",false); return; }
+  if(!__nvSb){ showMsg("mSales","This is unavailable right now. Please refresh and try again.",false); return; }
+  clearMsg("mSales");
+  var btn=$("salesLeadSubmit"), oldTxt=btn.textContent;
+  btn.disabled=true; btn.textContent="Sending…";
+  __nvSb.from("sales_leads").insert({name:name,phone:phone,parcels_per_month:parcels,status:"New"}).then(function(r){
+    btn.disabled=false; btn.textContent=oldTxt;
+    if(r&&r.error){ showMsg("mSales",r.error.message||"Could not send your request. Please try again.",false); return; }
+    renderDone("mdlSales","v","Request received","Our team will call you back today.",false);
+    setTimeout(closeM,2600);
+  }).catch(function(){
+    btn.disabled=false; btn.textContent=oldTxt;
+    showMsg("mSales","Could not send your request. Please try again.",false);
+  });
+});
+
+/* ── signin (full role routing, salvaged verbatim) ── */
+var ADMIN_ROLES=["admin","owner","superadmin","ops","ops manager","branch manager","warehouse","warehouse staff","processing","processing staff","staff","rider supervisor"];
+$("fSignin").addEventListener("submit",function(e){
+  e.preventDefault();
+  var email=val("signinEmail").toLowerCase(), pass=val("signinPassword");
+  if(!email||!pass){ showMsg("mSignin","Email and password are required.",false); return; }
+  if(!__nvSb||!__nvSb.auth){ showMsg("mSignin","Sign in is unavailable right now. Please refresh and try again.",false); return; }
+  clearMsg("mSignin");
+  var btn=$("signinContinue"), oldTxt=btn.textContent;
+  btn.disabled=true; btn.textContent="Checking…";
+
+  __nvSb.auth.signInWithPassword({email:email,password:pass}).then(function(res){
+    if(res.error||!res.data||!res.data.user){
+      btn.disabled=false; btn.textContent=oldTxt;
+      showMsg("mSignin","Sign in failed: "+((res.error&&res.error.message)||"invalid email or password"),false); return;
+    }
+    var uid=res.data.user.id, meta=(res.data.user&&res.data.user.user_metadata)||{};
+    __nvSb.from("profiles").select("role,client_id,rider_id,status").eq("id",uid).single().then(function(p){
+      if(p.error||!p.data){
+        if(String(meta.role||"").toLowerCase()!=="client"){
+          try{ __nvSb.auth.signOut(); }catch(e){}
+          clearNovaxSession(); btn.disabled=false; btn.textContent=oldTxt;
+          showMsg("mSignin","Workspace profile not linked. Please contact NovaX.",false); return;
+        }
+        btn.textContent="Preparing your workspace…";
+        __nvSb.rpc("create_client_workspace",{
+          p_name: meta.business_name||meta.full_name||email.split("@")[0],
+          p_owner: meta.owner_name||meta.full_name||"",
+          p_phone: meta.phone||"", p_city: meta.city||"", p_address: meta.address||"",
+          p_business_type: meta.business_type||"", p_website: meta.website||""
+        }).then(function(rpcRes){
+          if(!rpcRes||rpcRes.error||!rpcRes.data){
+            try{ __nvSb.auth.signOut(); }catch(e){}
+            clearNovaxSession(); btn.disabled=false; btn.textContent=oldTxt;
+            showMsg("mSignin","Workspace could not be prepared. Please contact NovaX.",false); return;
+          }
+          try{ localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email,uid:uid,client_id:rpcRes.data,rider_id:null,at:Date.now()})); }catch(e){}
+          renderDone("mdlSignin","g","Workspace ready","Opening your seller portal…",true);
+          launchWorkspace("client.html?welcome=1&firstBooking=1",
+            "Building your workspace","Finishing your first-time setup…",
+            { who:(meta.business_name||meta.full_name||email.split("@")[0]),
+              city:(meta.city||"Pakistan"), plan:"Free · 50 parcels", seed:email });
+        }).catch(function(){
+          try{ __nvSb.auth.signOut(); }catch(e){}
+          clearNovaxSession(); btn.disabled=false; btn.textContent=oldTxt;
+          showMsg("mSignin","Workspace could not be prepared. Please contact NovaX.",false);
+        });
+        return;
+      }
+      var status=String(p.data.status||"active").toLowerCase();
+      if(status==="blocked"||status==="disabled"){
+        try{ __nvSb.auth.signOut(); }catch(e){}
+        clearNovaxSession(); btn.disabled=false; btn.textContent=oldTxt;
+        showMsg("mSignin","This account is blocked.",false); return;
+      }
+      var role=String(p.data.role||"client").toLowerCase(), target;
+      if(ADMIN_ROLES.indexOf(role)>-1) target="admin.html";
+      else if(role==="rider") target="rider.html";
+      else if(role==="client"){
+        if(p.data.client_id) target="client.html";
+        else if(String(meta.role||"").toLowerCase()==="client") target="client.html";
+        else{
+          try{ __nvSb.auth.signOut(); }catch(e){}
+          clearNovaxSession(); btn.disabled=false; btn.textContent=oldTxt;
+          showMsg("mSignin","Workspace not linked. Please contact NovaX support.",false); return;
+        }
+      } else {
+        try{ __nvSb.auth.signOut(); }catch(e){}
+        clearNovaxSession(); btn.disabled=false; btn.textContent=oldTxt;
+        showMsg("mSignin","Workspace profile not linked. Please contact NovaX.",false); return;
+      }
+      try{ localStorage.setItem("novaxSession",JSON.stringify({role:target.replace(".html",""),email:email,uid:uid,
+        client_id:p.data.client_id||null,rider_id:p.data.rider_id||null,at:Date.now()})); }catch(e){}
+      renderDone("mdlSignin","g","Signed in","Opening your NovaX workspace…",true);
+      launchWorkspace(target,
+        target==="admin.html"?"Opening ops console":target==="rider.html"?"Opening rider app":"Opening your workspace",
+        "Signed in as "+email,
+        { who:(meta.business_name||meta.full_name||email.split("@")[0]),
+          city:(meta.city||"Pakistan"),
+          plan:(target==="admin.html"?"Ops console":target==="rider.html"?"Rider app":"Merchant"),
+          seed:email });
+    }).catch(function(){
+      btn.disabled=false; btn.textContent=oldTxt;
+      showMsg("mSignin","Could not verify your workspace. Please try again.",false);
+    });
+  }).catch(function(err){
+    btn.disabled=false; btn.textContent=oldTxt;
+    showMsg("mSignin",(err&&err.message)||"Sign in failed. Please try again.",false);
+  });
+});
+
+})();
+</script>
+</body>
+</html>
