@@ -1299,7 +1299,7 @@
                          quote call) keeps working with no change. readonly, not
                          disabled -- disabled inputs are omitted from form data. -->
                     <input id="bookingPickupCity" class="nv-locked" value="Karachi" readonly tabindex="-1" aria-readonly="true">
-                    <div class="footer-note">All pickups run from our Karachi hub.</div></div>
+                    <div class="footer-note" id="bookingPickupNote">All pickups run from our Karachi hub.</div></div>
                   <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote()"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
                   <!-- NovaX (distance pricing): shown only for Karachi, and only
                        once the areas exist server-side. Hidden entirely otherwise,
@@ -4175,6 +4175,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        server-side (state.walletSummary if present, else the same fallbacks
        renderClientWallet uses) so the two screens can never disagree -- the
        desync class of bug this portal has been bitten by repeatedly. */
+    /* NovaX new (per-client pickup city): the field and its note were fixed
+       text reading "Karachi", so a Lahore merchant saw the wrong origin on
+       every booking and on every printed AWB. Both now follow the client
+       record. Still readonly -- only NovaX can move a merchant's pickup city,
+       from the admin Clients tab. */
+    function applyPickupCity(){
+      try{
+        var city=(state.client&&state.client.pickupCity)||"Karachi";
+        var el=document.getElementById("bookingPickupCity");
+        if(el && el.value!==city) el.value=city;
+        var note=document.getElementById("bookingPickupNote");
+        if(note) note.textContent="All your pickups run from our "+city+" hub.";
+      }catch(e){}
+    }
     function renderCodHero(){
       const host=document.getElementById("nvCodHero");
       if(!host) return;
@@ -4607,7 +4621,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvGeoActive(){
       var cityEl = document.getElementById("bookingCity");
       var isKhi  = cityEl && String(cityEl.value||"").toLowerCase()==="karachi";
-      return !!(NV_GEO.ready && NV_GEO.enabled && isKhi && NV_GEO.pickup && NV_GEO.pickup.area_id);
+      /* NovaX fix (per-client pickup city): distance pricing measures road
+         distance from the merchant's Karachi pickup point across the Karachi
+         area map. For a merchant collecting from Lahore that origin does not
+         exist, so the area picker must not appear and the quote must not run
+         -- it would price a Lahore parcel off a Karachi pickup point. */
+      var pickFrom = String((state.client&&state.client.pickupCity)||"Karachi").toLowerCase();
+      return !!(NV_GEO.ready && NV_GEO.enabled && isKhi && pickFrom==="karachi"
+                && NV_GEO.pickup && NV_GEO.pickup.area_id);
     }
     function nvGeoToggleAreaField(){
       var f = document.getElementById("bookingDestAreaField");
@@ -4954,6 +4975,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ["bookingName","bookingPhone","bookingCod","bookingCategory","bookingAddress"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
       const weightEl=document.getElementById("bookingWeight"); if(weightEl) weightEl.value="0.8 kg";
       ["bookingPickupCity","bookingCity","bookingService","bookingCategory","bookingFragile","bookingPaymentMode"].forEach(id=>{ const el=document.getElementById(id); if(el&&el.tagName==="SELECT") el.selectedIndex=0; });
+      try{ applyPickupCity(); }catch(e){}   // keep the merchant's real pickup city after a reset
       document.querySelectorAll("#client-newBooking .field.nvfield-missing").forEach(f=>f.classList.remove("nvfield-missing"));
       try{ updateZoneRateHint(); }catch(e){}
     }
@@ -6194,6 +6216,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       toast(`Pickup requested for ${awbs.length} AWB(s). We will confirm scheduling shortly.`);
     }
     function render(){
+      try{ applyPickupCity(); }catch(e){}
       try{ renderCodHero(); }catch(e){}
       renderMetrics(); renderClientStatusBoard(); renderClientParcels(); renderJourney(); renderAi();
       renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview();
@@ -6850,7 +6873,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           try{ state.clientBankDetails=(c&&c.bank_details)?c.bank_details:(state.clientBankDetails||null); }catch(e){ state.clientBankDetails=state.clientBankDetails||null; }
           var name=c.name||"Client";
           var rate=Number((c&&c.rate)||250), bal=Number((c&&c.wallet_balance)||0), rc=normalizeRateCard((c&&c.rate_card), rate);
-          state.client={ id:MY, name:name, walletBalance:bal, rate:rate, rateCard:rc, premiumTier:(c&&c.status)||"", walletTopup:0, shippingDue:0, subAccounts:0 };
+          /* NovaX new (per-client pickup city): admin sets this on the client
+             record (clients.meta.pickupCity). Defaults to Karachi, which is
+             what every existing merchant already has, so nothing changes for
+             them. Read-only here -- a merchant cannot move their own pickup
+             city, only NovaX can. */
+          var pickupCity=(c&&c.meta&&c.meta.pickupCity)||"Karachi";
+          state.client={ id:MY, name:name, walletBalance:bal, rate:rate, rateCard:rc, premiumTier:(c&&c.status)||"", walletTopup:0, shippingDue:0, subAccounts:0, pickupCity:pickupCity };
           state.clients=[{ id:MY, name:name, owner:(c&&c.owner)||"", city:(c&&c.city)||"", status:(c&&c.status)||"Active", tier:(c&&c.status)||"", rate:rate, rateCard:rc, walletBalance:bal, risk:Number((c&&c.risk_score)||0), health:90, problemsResolved:0 }];
           state.parcels=((res[1]&&res[1].data)||[]).map(mapParcel);
           state.invoices=((res[2]&&res[2].data)||[]).map(mapInvoice);

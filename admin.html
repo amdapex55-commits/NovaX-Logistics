@@ -9283,6 +9283,9 @@ html,body{ background:var(--bg); color:var(--ink); }
             <button class="ghost-btn" onclick="showAdminTab('clients-clients')">Edit Rates: Zone A ${money(rc.A.overnight)} | Zone B ${money(rc.B.overnight)}</button>
             <button class="ghost-btn" onclick="editClientDetails('${client.id}')">Edit Details</button>
             <button class="ghost-btn" onclick="editClientLogin('${client.id}')">Edit Login</button>
+            <select class="ghost-btn client-rider-pick" onchange="setClientPickupCity('${client.id}', this.value)" title="Which city this merchant's parcels are collected from. Their booking form follows this.">
+              ${["Karachi","Lahore","Islamabad","Rawalpindi"].map(c => `<option value="${c}" ${(client.pickupCity||"Karachi")===c ? "selected" : ""}>Pickup: ${c}</option>`).join("")}
+            </select>
             <select class="ghost-btn client-rider-pick" onchange="assignRiderToClient('${client.id}', this.value)">
               <option value="" ${!client.assignedRider ? "selected" : ""}>Assign pickup rider…</option>
               ${state.riders.map(r => `<option value="${r.id}" ${client.assignedRider === r.id ? "selected" : ""}>${escLabelText(r.name)} | ${r.branch}</option>`).join("")}
@@ -12107,6 +12110,28 @@ html,body{ background:var(--bg); color:var(--ink); }
       toast(`${client.name} and related records removed.`);
     }
 
+    /* NovaX new (per-client pickup city): pickup was hardcoded to Karachi in
+       the merchant booking form, so a Lahore-based merchant could not book at
+       all without their parcels being described as collected from Karachi.
+       Stored on clients.meta.pickupCity -- meta is already synced, so this
+       needs no migration -- and defaults to Karachi for every existing client,
+       which is exactly what they have today.
+
+       NOTE: this sets where the parcel is COLLECTED FROM. It does not by
+       itself change what is charged: client_book_parcel computes the fee
+       server-side from the destination city and the client's rate card. Until
+       that function learns a same-city rule, a Lahore->Lahore booking is still
+       priced on the Zone B card. */
+    function setClientPickupCity(clientId, city) {
+      const client = clientById(clientId);
+      if (!client || !client.id) { toast("Client not found.", "error"); return; }
+      const next = ["Karachi","Lahore","Islamabad","Rawalpindi"].includes(city) ? city : "Karachi";
+      client.pickupCity = next;
+      saveState();
+      renderAdmin();
+      toast(`${client.name} now collects from ${next}. Their booking form will show it on next load.`, "success");
+    }
+
     function assignRiderToClient(clientId, riderId) {
       const client = state.clients.find(c => c.id === clientId);
       if (!client) { toast("Client not found."); return; }
@@ -14444,6 +14469,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     window.pushInvoiceToWallet = pushInvoiceToWallet;
     window.deleteInvoice = deleteInvoice;
     window.markInvoicePaid = markInvoicePaid;
+    window.setClientPickupCity = setClientPickupCity;
     window.printAllOutstandingInvoices = printAllOutstandingInvoices;
     window.downloadOutstandingCsv = downloadOutstandingCsv;
     window.markWalletWithdrawalPaid = markWalletWithdrawalPaid;
@@ -14538,7 +14564,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
       function sigOf(row){ return JSON.stringify(row,function(k,v){ return k==="updated_at"?undefined:v; }); }
       var DRC={ overnight:250, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 };
-      function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||250), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||250)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
+      function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", pickupCity:m.pickupCity||"Karachi", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||250), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||250)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
       function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0),
         /* NovaX fix (status rename): this was a raw `r.status` read, so any
@@ -14645,7 +14671,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       // That overwrite was the root cause of withdrawals staying "withdrawable"
       // after being marked Paid. wallet_balance is now read-only from this
       // sync path; it only ever changes inside the wallet RPCs.
-      function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||250), rate_card:normalizeRateCard(c.rateCard,Number(c.rate||250)), risk_score:Number(c.risk||0), meta:{ tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"" } }; }
+      function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||250), rate_card:normalizeRateCard(c.rateCard,Number(c.rate||250)), risk_score:Number(c.risk||0), meta:{ tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"", pickupCity:c.pickupCity||"Karachi" } }; }
       function fRider(r){ return { name:r.name||"", phone:r.phone||"", branch:r.branch||r.manager||"", access:r.access||"Active", cash_limit:Number(r.cashLimit||0), meta:{ username:r.username, manager:r.manager, cashHeld:r.cashHeld, scans:r.scans, fakeRisk:r.fakeRisk, expenses:r.expenses } }; }
       function fParcel(p){ var cid=cuid(p.clientId); if(!cid) return null; var rid=ruid(p.rider);
         // NovaX fix (metadata-loss guard): start the outgoing meta object from
