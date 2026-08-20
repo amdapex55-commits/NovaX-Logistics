@@ -5138,6 +5138,7 @@ html,body{ background:var(--bg); color:var(--ink); }
               <button type="button" class="admin-nav-main" data-admin-tab="pickup-requests">PICKUP REQUESTS</button>
 
               <button type="button" class="admin-nav-main" data-admin-tab="reviews">REVIEWS <span class="nv-pickup-badge" id="reviewPendingBadge" hidden>0</span></button>
+              <button type="button" class="admin-nav-main" data-admin-tab="novaai">NOVAX AI <span class="nv-pickup-badge" id="aiQuotaBadge" hidden>0</span></button>
 
 
 
@@ -5690,6 +5691,27 @@ html,body{ background:var(--bg); color:var(--ink); }
               </div>
             </section>
 
+            <!-- NovaX AI: merchants get 50 AI messages; past that they can
+                 request more and an admin tops them back up here. -->
+            <section class="admin-module" id="admin-novaai">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>NovaX AI &mdash; message limit requests <span class="nv-pickup-badge" id="aiQueueBadge" hidden>0</span></h3>
+                  <p>Every merchant gets 50 NovaX AI messages. When a merchant runs out they can request more from inside their portal, and the request lands here. Approving resets that merchant&rsquo;s counter to zero; denying leaves them capped. Questions NovaX AI could not answer are filed as normal tickets in the Tickets tab.</p></div>
+                  <button class="ghost-btn" type="button" style="white-space:nowrap;flex:0 0 auto" onclick="loadAiQuotaQueue()">Refresh</button>
+                </div>
+                <div class="table-wrap wide-scroll">
+                  <table class="data-table">
+                    <thead><tr>
+                      <th>Merchant</th><th>Used</th><th>Requested</th><th>Reason</th><th style="text-align:right">Decision</th>
+                    </tr></thead>
+                    <tbody id="aiQuotaRows">
+                      <tr><td colspan="5" class="footer-note">Loading&hellip;</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
             <section class="admin-module" id="admin-reviews">
               <div class="panel">
                 <div class="section-head">
@@ -10409,6 +10431,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (state.activeAdminTab === "system-notifications") { try { loadNotificationCenter(); } catch(e){} }
       if (state.activeAdminTab === "system-errors") { try { loadErrorMonitor(); } catch(e){} }
       if (state.activeAdminTab === "reviews") { try { loadAdminReviews(); } catch(e){} }
+      if (state.activeAdminTab === "novaai") { try { loadAiQuotaQueue(); } catch(e){} }
     }
 
     // NovaX fix (Order Processing RPC scope bug): rParcel() is defined much
@@ -13810,6 +13833,73 @@ html,body{ background:var(--bg); color:var(--ink); }
       }).join("");
     }
 
+    /* ═══ NovaX AI — message-limit approvals ═══
+       Reads admin_ai_quota_pending() and decides through
+       admin_ai_quota_decide(), which enforces the admin role in Postgres.
+       Approving zeroes that merchant's counter. */
+    function loadAiQuotaQueue(){
+      var body = document.getElementById("aiQuotaRows");
+      if (!body) return;
+      var sb = window.__nvSb;
+      if (!sb){ body.innerHTML = '<tr><td colspan="5" class="footer-note">Cloud connection not ready.</td></tr>'; return; }
+
+      Promise.resolve(sb.rpc("admin_ai_quota_pending"))
+        .catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+        .then(function(r){
+          if (r && r.error){
+            var m = String(r.error.message || "");
+            body.innerHTML = '<tr><td colspan="5" class="footer-note">' +
+              (/function .* does not exist/i.test(m)
+                ? 'NovaX AI is not installed yet &mdash; run sql_novax_ai_core.sql.'
+                : 'Could not load requests: ' + nvEscAdmin(m)) + '</td></tr>';
+            return;
+          }
+          var rows = (r && r.data) || [];
+          setAiQuotaBadges(rows.length);
+          if (!rows.length){
+            body.innerHTML = '<tr><td colspan="5" class="footer-note">No pending requests. Every merchant is inside their limit.</td></tr>';
+            return;
+          }
+          body.innerHTML = rows.map(function(q){
+            var when = q.requested_at ? new Date(q.requested_at).toLocaleString("en-PK",{timeZone:"Asia/Karachi"}) : "";
+            return '<tr>' +
+              '<td><strong>' + nvEscAdmin(q.client_name || "(unnamed merchant)") + '</strong></td>' +
+              '<td>' + nvEscAdmin(String(q.used)) + ' / ' + nvEscAdmin(String(q.cap)) + '</td>' +
+              '<td class="footer-note">' + nvEscAdmin(when) + ' PKT</td>' +
+              '<td class="footer-note">' + nvEscAdmin(q.reason || "\u2014") + '</td>' +
+              '<td style="text-align:right;white-space:nowrap">' +
+                '<button class="action-btn" type="button" onclick="decideAiQuota(\'' + nvEscAdmin(q.id) + '\',true)">Approve</button> ' +
+                '<button class="ghost-btn" type="button" onclick="decideAiQuota(\'' + nvEscAdmin(q.id) + '\',false)">Deny</button>' +
+              '</td></tr>';
+          }).join("");
+        });
+    }
+
+    function decideAiQuota(requestId, approve){
+      var sb = window.__nvSb;
+      if (!sb) return;
+      if (!approve && !window.confirm("Deny this request? The merchant stays capped until you approve a later one.")) return;
+      Promise.resolve(sb.rpc("admin_ai_quota_decide", { p_request_id: requestId, p_approve: !!approve, p_note: null }))
+        .catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+        .then(function(r){
+          if (r && r.error){ toast("Could not save that decision: " + r.error.message, "error"); return; }
+          toast(approve ? "Approved \u2014 their 50 messages are back." : "Request denied.", approve ? "success" : "info");
+          loadAiQuotaQueue();
+        });
+    }
+
+    function setAiQuotaBadges(n){
+      ["aiQuotaBadge","aiQueueBadge"].forEach(function(id){
+        var b = document.getElementById(id);
+        if (!b) return;
+        if (n > 0){ b.textContent = String(n); b.hidden = false; }
+        else { b.hidden = true; }
+      });
+    }
+
+    window.loadAiQuotaQueue = loadAiQuotaQueue;
+    window.decideAiQuota = decideAiQuota;
+
     function loadAdminReviews(){
       var sb = window.__nvSb;
       var tbody = document.getElementById("adminReviewQueue");
@@ -16485,6 +16575,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       ["manifest-dispute","Dispute","Manifest disputes"],
       ["pickup-requests","Pickup Requests","Merchant pickup queue"],
       ["reviews","Reviews","Approve merchant testimonials"],
+      ["novaai","NovaX AI","Approve AI message-limit requests"],
       ["riders-route","Riders — On Route","Live rider routes"],
       ["riders-report","Riders — Report","Rider performance and cash"],
       ["finance-invoices","Finance — Invoices","Generate and settle invoices"],

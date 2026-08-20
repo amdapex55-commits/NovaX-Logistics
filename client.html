@@ -1211,6 +1211,123 @@
   .nv-wd-tick, .nvrv-tick{ max-width:60px; max-height:60px; }
   .nv-wd-tick *, .nvrv-tick *{ fill:none; }
 </style>
+<style id="nvAiStyles">
+/* ═══ NovaX AI console ═══
+   Built only on the portal's existing theme tokens (--panel, --ink,
+   --line, --green...) so it follows dark/light without a second palette.
+   Deliberately NOT a chat-support widget: the AI turn is presented as
+   content, and the data lands in cards rather than paragraphs. */
+.nvai{display:flex;flex-direction:column;min-height:min(72vh,660px);
+  background:var(--panel);border:1px solid var(--line);border-radius:18px;
+  overflow:hidden;position:relative}
+.nvai::before{content:"";position:absolute;inset:0 0 auto 0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--green-2),transparent);opacity:.7}
+
+.nvai-head{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:16px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.nvai-brand{display:flex;align-items:center;gap:11px;min-width:0}
+.nvai-mark{width:36px;height:36px;flex:none;border-radius:11px;display:grid;place-items:center;
+  color:#fff;background:linear-gradient(135deg,var(--green),var(--green-2));
+  box-shadow:0 4px 14px rgba(19,163,111,.28)}
+.nvai-title{display:flex;flex-direction:column;line-height:1.25;min-width:0}
+.nvai-title strong{font-size:15.5px;letter-spacing:-.01em;color:var(--ink)}
+.nvai-sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.nvai-quota{display:flex;align-items:center;gap:9px;flex:none}
+.nvai-quota-bar{width:66px;height:5px;border-radius:99px;background:var(--line);overflow:hidden;display:block}
+.nvai-quota-bar i{display:block;height:100%;width:0;border-radius:99px;
+  background:var(--green-2);transition:width .5s cubic-bezier(.2,.9,.2,1)}
+.nvai-quota.low .nvai-quota-bar i{background:#e0a63a}
+.nvai-quota.out .nvai-quota-bar i{background:#d4574e}
+.nvai-quota-txt{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+.nvai-stream{flex:1;overflow-y:auto;padding:20px 18px 8px;display:flex;
+  flex-direction:column;gap:20px;scroll-behavior:smooth}
+
+.nvai-turn{display:flex;gap:11px;align-items:flex-start;animation:nvaiIn .34s cubic-bezier(.2,.9,.2,1) both}
+@keyframes nvaiIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+.nvai-turn .nvai-av{width:27px;height:27px;flex:none;border-radius:9px;display:grid;place-items:center;
+  font-size:11px;font-weight:800;color:#fff;
+  background:linear-gradient(135deg,var(--green),var(--green-2))}
+.nvai-body{min-width:0;flex:1}
+.nvai-say{font-size:14.5px;line-height:1.6;color:var(--ink);white-space:pre-wrap;word-wrap:break-word}
+
+/* Merchant turn: compact, right-aligned, no avatar. */
+.nvai-turn.me{justify-content:flex-end}
+.nvai-turn.me .nvai-body{flex:0 1 auto;max-width:78%}
+.nvai-turn.me .nvai-say{background:var(--panel-soft);border:1px solid var(--line);
+  padding:9px 14px;border-radius:15px 15px 4px 15px;font-size:14px}
+
+/* Result cards — this is where data goes, never the answer text. */
+.nvai-cards{display:grid;gap:9px;margin-top:12px}
+.nvai-card{border:1px solid var(--line);border-radius:13px;padding:12px 14px;
+  background:var(--panel-soft);position:relative;overflow:hidden}
+.nvai-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--green-2)}
+.nvai-card[data-kind="money"]::before{background:#4bb8e8}
+.nvai-card[data-kind="ticket"]::before{background:#e0a63a}
+.nvai-card[data-kind="stat"]::before{background:#9d7bf0}
+.nvai-card-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.nvai-card-title{font-weight:750;font-size:13.5px;color:var(--ink);letter-spacing:-.01em}
+.nvai-card-status{font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;
+  background:var(--mint);color:var(--green);white-space:nowrap}
+.nvai-card-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.nvai-card-lines{display:grid;gap:4px;margin-top:9px}
+.nvai-card-line{display:flex;justify-content:space-between;gap:12px;font-size:12.5px}
+.nvai-card-line span:first-child{color:var(--muted)}
+.nvai-card-line span:last-child{color:var(--ink);font-weight:650;font-variant-numeric:tabular-nums;text-align:right}
+
+/* Suggestion chips — always offered, so the merchant never faces a blank box. */
+.nvai-chips{display:flex;flex-wrap:wrap;gap:8px;padding:4px 18px 0}
+.nvai-chips:empty{display:none}
+.nvai-chip{border:1px solid var(--line-strong,var(--line));background:transparent;color:var(--ink);
+  font:inherit;font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:99px;cursor:pointer;
+  transition:background .18s,border-color .18s,transform .18s;animation:nvaiIn .3s both}
+.nvai-chip:hover{background:var(--mint);border-color:var(--green-2)}
+.nvai-chip:active{transform:scale(.97)}
+
+.nvai-think{display:flex;gap:5px;align-items:center;padding:2px 0}
+.nvai-think i{width:6px;height:6px;border-radius:50%;background:var(--green-2);
+  animation:nvaiPulse 1.15s ease-in-out infinite}
+.nvai-think i:nth-child(2){animation-delay:.16s}
+.nvai-think i:nth-child(3){animation-delay:.32s}
+@keyframes nvaiPulse{0%,80%,100%{opacity:.25;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+
+.nvai-composer{display:flex;align-items:flex-end;gap:9px;margin:12px 18px 18px;
+  border:1px solid var(--line);border-radius:16px;padding:7px 7px 7px 15px;
+  background:var(--panel-soft);transition:border-color .18s,box-shadow .18s}
+.nvai-composer:focus-within{border-color:var(--green-2);box-shadow:0 0 0 3px rgba(19,163,111,.13)}
+.nvai-composer textarea{flex:1;border:0;background:transparent;resize:none;outline:none;
+  font:inherit;font-size:14.5px;color:var(--ink);padding:8px 0;max-height:132px;line-height:1.5}
+.nvai-composer textarea::placeholder{color:var(--muted)}
+.nvai-send{flex:none;width:38px;height:38px;border:0;border-radius:12px;cursor:pointer;
+  display:grid;place-items:center;color:#fff;
+  background:linear-gradient(135deg,var(--green),var(--green-2));
+  transition:transform .18s,opacity .18s}
+.nvai-send:hover{transform:translateY(-1px)}
+.nvai-send:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+.nvai-capped{margin:0 18px 18px;padding:15px 16px;border-radius:14px;
+  border:1px solid var(--line);background:var(--panel-soft);text-align:center}
+.nvai-capped p{margin:0 0 11px;font-size:13.5px;color:var(--ink);line-height:1.5}
+.nvai-req{border:0;border-radius:11px;padding:10px 18px;cursor:pointer;font:inherit;
+  font-size:13px;font-weight:700;color:#fff;
+  background:linear-gradient(135deg,var(--green),var(--green-2))}
+.nvai-req:disabled{opacity:.55;cursor:default}
+
+@media (max-width:640px){
+  .nvai{min-height:auto;border-radius:14px}
+  .nvai-stream{padding:16px 13px 6px;gap:16px;max-height:58vh}
+  .nvai-chips{padding:4px 13px 0}
+  .nvai-composer{margin:10px 13px 13px}
+  .nvai-turn.me .nvai-body{max-width:88%}
+  .nvai-card-line{font-size:12px}
+}
+@media (prefers-reduced-motion:reduce){
+  .nvai-turn,.nvai-chip{animation:none}
+  .nvai-think i{animation:none;opacity:.6}
+  .nvai-stream{scroll-behavior:auto}
+}
+</style>
 </head>
 <!-- AUTH_GATE_VERSION: 2026-07-16-auth-flow-v3 -->
 <body>
@@ -2135,19 +2252,48 @@
               </div>
             </section>
             <section class="client-module" id="client-support">
-              <div class="grid two">
-                <div class="panel">
-                  <div class="section-head"><div><h3>Full AI in Web</h3><p>AI reads portal truth, then answers or escalates missing data.</p></div><button class="ghost-btn" id="askAiBtn2">Ask AI</button></div>
-                  <div class="footer-note" style="background:#eafff5;border:1px solid #bfe8d7;border-radius:10px;padding:10px 12px;margin-bottom:10px"><strong style="color:#0c7c59">AI can help instantly</strong> with parcel status, invoice/wallet questions, and printing AWBs. For refunds, disputes, or anything needing a person, contact NovaX support directly.</div>
-                  <div class="ai-chat" id="clientAi"></div>
-                  <div class="inline-actions" style="margin-top:10px">
-                    <input id="clientAiInput" placeholder="Ask about a parcel, invoice, wallet balance..." style="flex:1">
-                    <button class="action-btn" id="clientAiSendBtn">Send</button>
+              <!-- ═══ NovaX AI console ═══
+                   Replaces the old two-panel "Full AI in Web" + Escalation
+                   Inbox. One full-width surface: NovaX AI opens the
+                   conversation itself, answers from live account data,
+                   renders results as cards, and files tickets when it
+                   can't resolve something. -->
+              <div class="nvai" id="nvAiShell">
+                <div class="nvai-head">
+                  <div class="nvai-brand">
+                    <span class="nvai-mark" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3l2.1 5.6L20 10.5l-5.9 1.9L12 18l-2.1-5.6L4 10.5l5.9-1.9z"/>
+                      </svg>
+                    </span>
+                    <div class="nvai-title">
+                      <strong>NovaX AI</strong>
+                      <span class="nvai-sub" id="nvAiSub">Reading your account&hellip;</span>
+                    </div>
+                  </div>
+                  <div class="nvai-quota" id="nvAiQuota" title="Messages used on this account">
+                    <span class="nvai-quota-bar"><i id="nvAiQuotaFill"></i></span>
+                    <span class="nvai-quota-txt" id="nvAiQuotaTxt">&mdash;</span>
                   </div>
                 </div>
-                <div class="panel">
-                  <div class="section-head"><div><h3>Escalation Inbox</h3><p>AI pings branch managers and admin when portal data is incomplete.</p></div></div>
-                  <div class="ops-list" id="supportEscalations"></div>
+
+                <div class="nvai-stream" id="nvAiStream" role="log" aria-live="polite"></div>
+
+                <div class="nvai-chips" id="nvAiChips"></div>
+
+                <div class="nvai-composer" id="nvAiComposer">
+                  <textarea id="nvAiInput" rows="1" placeholder="Ask about a parcel, a payout, your rates&hellip;"
+                            aria-label="Message NovaX AI"></textarea>
+                  <button class="nvai-send" id="nvAiSend" aria-label="Send">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M5 12h14M13 6l6 6-6 6"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <div class="nvai-capped" id="nvAiCapped" hidden>
+                  <p id="nvAiCappedMsg">You&rsquo;ve used all 50 NovaX AI messages on this account.</p>
+                  <button class="nvai-req" id="nvAiReqMore">Request more from admin</button>
                 </div>
               </div>
               <div class="panel" style="margin-top:14px">
@@ -4115,7 +4261,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ nvApplyRolePermissions(); }catch(e){}
       try{ renderMoneyHero(); }catch(e){ console.warn("NovaX money hero", e); }
       try{ nvGuardWalletRender(); }catch(e){}
-      document.getElementById("supportEscalations").innerHTML=state.parcels.filter(p=>p.exception&&p.clientId===state.client.id).map(p=>`<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(p.awb)}</strong><span class="chip bad">escalated</span></div><p>${escLabelText(p.exception)}</p>${p.proofPhoto?`<img src="${escLabelText(p.proofPhoto)}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:200px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">`:""}</div>`).join("")||`<div class="ops-card"><strong>No escalations</strong><p>AI has complete portal data right now.</p></div>`;
+      var __esc=document.getElementById("supportEscalations"); if(__esc) __esc.innerHTML=state.parcels.filter(p=>p.exception&&p.clientId===state.client.id).map(p=>`<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(p.awb)}</strong><span class="chip bad">escalated</span></div><p>${escLabelText(p.exception)}</p>${p.proofPhoto?`<img src="${escLabelText(p.proofPhoto)}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:200px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">`:""}</div>`).join("")||`<div class="ops-card"><strong>No escalations</strong><p>AI has complete portal data right now.</p></div>`;
     }
     function renderAi(){
       // NovaX fix (fabricated conversation): this used to print a scripted
@@ -7743,10 +7889,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       };
       setTimeout(tryAnswer,150);
     }
-    document.getElementById("clientAiSendBtn").addEventListener("click",sendClientAiTabMessage);
-    document.getElementById("clientAiInput").addEventListener("keydown",e=>{ if(e.key==="Enter") sendClientAiTabMessage(); });
-    document.getElementById("askAiBtn").addEventListener("click",()=>{ showClientTab("support"); renderAi(); setTimeout(()=>{ const el=document.getElementById("clientAiInput"); if(el) el.focus(); },50); });
-    document.getElementById("askAiBtn2").addEventListener("click",()=>{ renderAi(); const el=document.getElementById("clientAiInput"); if(el) el.focus(); });
+    /* NovaX AI: the old #clientAiSendBtn / #clientAiInput composer was
+       replaced by the NovaX AI console (#nvAiShell). These bindings are
+       kept only so a stale cached page doesn't crash on a null element --
+       the real composer binds in the nvAi module below. */
+    (function(){
+      var sendBtn=document.getElementById("clientAiSendBtn");
+      if(sendBtn) sendBtn.addEventListener("click",sendClientAiTabMessage);
+      var legacyInput=document.getElementById("clientAiInput");
+      if(legacyInput) legacyInput.addEventListener("keydown",function(e){ if(e.key==="Enter") sendClientAiTabMessage(); });
+    })();
+    /* Both "Ask AI" entry points now open the NovaX AI console and focus
+       its composer. #askAiBtn2 was removed with the old panel, so it is
+       bound defensively. */
+    (function(){
+      function openNovaAi(){
+        try{ showClientTab("support"); }catch(e){}
+        setTimeout(function(){
+          var el=document.getElementById("nvAiInput");
+          if(el) el.focus();
+        },120);
+      }
+      var a1=document.getElementById("askAiBtn");  if(a1) a1.addEventListener("click",openNovaAi);
+      var a2=document.getElementById("askAiBtn2"); if(a2) a2.addEventListener("click",openNovaAi);
+    })();
     /* ===== NovaX fix (fake invite flow + fake sub accounts + real roles) =====
        Deleted from this spot: a global document.querySelectorAll("button")
        listener that attached a click handler to EVERY button on the page and
@@ -13205,5 +13371,250 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
   </div>
 </div>
 
+<script>
+/* ═══════════════════ NovaX AI console ═══════════════════
+   Talks only to the novax-ai Edge Function, which holds the API key.
+   The browser never sees a model key. Every answer the function returns
+   was grounded in RPCs run under this merchant's own JWT. */
+(function(){
+  "use strict";
+
+  var STREAM, CHIPS, INPUT, SEND, SUB, QWRAP, QFILL, QTXT, CAPPED, CAPMSG, REQBTN, COMPOSER;
+  var convId = null, busy = false, booted = false;
+
+  function esc(v){
+    return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+  function el(id){ return document.getElementById(id); }
+
+  function cache(){
+    STREAM=el("nvAiStream"); CHIPS=el("nvAiChips"); INPUT=el("nvAiInput");
+    SEND=el("nvAiSend"); SUB=el("nvAiSub"); QWRAP=el("nvAiQuota");
+    QFILL=el("nvAiQuotaFill"); QTXT=el("nvAiQuotaTxt"); CAPPED=el("nvAiCapped");
+    CAPMSG=el("nvAiCappedMsg"); REQBTN=el("nvAiReqMore"); COMPOSER=el("nvAiComposer");
+    return !!STREAM;
+  }
+
+  function scroll(){ if(STREAM) STREAM.scrollTop = STREAM.scrollHeight; }
+
+  /* ---- rendering ---- */
+  function cardHtml(c){
+    if(!c || !c.title) return "";
+    var kind = String(c.kind || "stat").toLowerCase();
+    var lines = Array.isArray(c.lines) ? c.lines : [];
+    var rows = lines.map(function(pair){
+      if(!Array.isArray(pair) || !pair.length) return "";
+      return '<div class="nvai-card-line"><span>' + esc(pair[0]) +
+             '</span><span>' + esc(pair[1] == null ? "" : pair[1]) + '</span></div>';
+    }).join("");
+    return '<div class="nvai-card" data-kind="' + esc(kind) + '">' +
+             '<div class="nvai-card-top">' +
+               '<span class="nvai-card-title">' + esc(c.title) + '</span>' +
+               (c.status ? '<span class="nvai-card-status">' + esc(c.status) + '</span>' : '') +
+             '</div>' +
+             (c.subtitle ? '<div class="nvai-card-sub">' + esc(c.subtitle) + '</div>' : '') +
+             (rows ? '<div class="nvai-card-lines">' + rows + '</div>' : '') +
+           '</div>';
+  }
+
+  function turn(role, text, cards){
+    if(!STREAM) return null;
+    var wrap = document.createElement("div");
+    wrap.className = "nvai-turn" + (role === "me" ? " me" : "");
+    var cardHtmls = (Array.isArray(cards) ? cards : []).map(cardHtml).join("");
+    wrap.innerHTML =
+      (role === "me" ? "" : '<span class="nvai-av" aria-hidden="true">NX</span>') +
+      '<div class="nvai-body">' +
+        '<div class="nvai-say">' + esc(text) + '</div>' +
+        (cardHtmls ? '<div class="nvai-cards">' + cardHtmls + '</div>' : '') +
+      '</div>';
+    STREAM.appendChild(wrap);
+    scroll();
+    return wrap;
+  }
+
+  function thinking(){
+    if(!STREAM) return null;
+    var wrap = document.createElement("div");
+    wrap.className = "nvai-turn";
+    wrap.setAttribute("data-thinking","1");
+    wrap.innerHTML = '<span class="nvai-av" aria-hidden="true">NX</span>' +
+      '<div class="nvai-body"><div class="nvai-think"><i></i><i></i><i></i></div></div>';
+    STREAM.appendChild(wrap); scroll();
+    return wrap;
+  }
+
+  function chips(list){
+    if(!CHIPS) return;
+    CHIPS.innerHTML = "";
+    (Array.isArray(list) ? list : []).slice(0,3).forEach(function(t, i){
+      if(!t) return;
+      var b = document.createElement("button");
+      b.className = "nvai-chip";
+      b.type = "button";
+      b.textContent = String(t);
+      b.style.animationDelay = (i * 60) + "ms";
+      b.addEventListener("click", function(){ send(String(t)); });
+      CHIPS.appendChild(b);
+    });
+  }
+
+  function quota(q){
+    if(!q || !QFILL) return;
+    var used = Number(q.used || 0), cap = Number(q.cap || 50);
+    var pct = cap > 0 ? Math.min(100, (used / cap) * 100) : 0;
+    QFILL.style.width = pct + "%";
+    if(QTXT) QTXT.textContent = used + " / " + cap;
+    if(QWRAP){
+      QWRAP.classList.toggle("low", pct >= 80 && pct < 100);
+      QWRAP.classList.toggle("out", pct >= 100);
+    }
+    setCapped(!!q.blocked, !!q.pending_request);
+  }
+
+  function setCapped(isCapped, pending){
+    if(!CAPPED || !COMPOSER) return;
+    CAPPED.hidden = !isCapped;
+    COMPOSER.style.display = isCapped ? "none" : "";
+    if(isCapped && REQBTN){
+      REQBTN.disabled = !!pending;
+      REQBTN.textContent = pending ? "Request sent — waiting for admin" : "Request more from admin";
+      if(CAPMSG && pending){
+        CAPMSG.textContent = "You've used all your NovaX AI messages. An admin has your request and can top you back up.";
+      }
+    }
+  }
+
+  /* ---- transport ---- */
+  function endpoint(){
+    var base = (window.NOVAX_CONFIG && window.NOVAX_CONFIG.SB_URL) || "";
+    return base.replace(/\/+$/,"") + "/functions/v1/novax-ai";
+  }
+
+  function client(){ return window.__nvSb || null; }
+
+  function call(payload){
+    var sb = client();
+    if(!sb) return Promise.reject(new Error("not connected"));
+    return sb.auth.getSession().then(function(res){
+      var token = res && res.data && res.data.session && res.data.session.access_token;
+      if(!token) throw new Error("not signed in");
+      return fetch(endpoint(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify(payload)
+      });
+    }).then(function(r){
+      return r.json().then(function(j){ return { status: r.status, body: j }; });
+    });
+  }
+
+  function receive(res){
+    var b = (res && res.body) || {};
+    if(b.conv_id) convId = b.conv_id;
+    if(b.quota) quota(b.quota);
+    if(b.capped){
+      turn("ai", b.answer || "You've reached your message limit.");
+      setCapped(true, (b.quota && b.quota.pending_request) || false);
+      chips([]);
+      return;
+    }
+    if(res.status === 429){ chips([]); return; }
+    turn("ai", b.answer || b.error || "I didn't catch that — try again?", b.cards);
+    chips(b.suggestions);
+    if(SUB) SUB.textContent = b.tools_used && b.tools_used.length
+      ? "Checked: " + b.tools_used.filter(function(t,i,a){return a.indexOf(t)===i;}).join(", ")
+      : "Reading your live account data";
+  }
+
+  function fail(e){
+    turn("ai", "I couldn't reach my service just now. Your data is fine — try again in a moment.");
+    chips(["Try again"]);
+    if(SUB) SUB.textContent = "Connection interrupted";
+    console.warn("NovaX AI:", e && e.message ? e.message : e);
+  }
+
+  function lock(on){
+    busy = on;
+    if(SEND) SEND.disabled = on;
+    if(INPUT) INPUT.disabled = on;
+  }
+
+  function send(text){
+    text = String(text || "").trim();
+    if(!text || busy) return;
+    if(INPUT){ INPUT.value = ""; INPUT.style.height = "auto"; }
+    turn("me", text);
+    chips([]);
+    lock(true);
+    var t = thinking();
+    call({ conv_id: convId, message: text, mode: "chat" })
+      .then(function(res){ if(t) t.remove(); receive(res); })
+      .catch(function(e){ if(t) t.remove(); fail(e); })
+      .then(function(){ lock(false); if(INPUT) INPUT.focus(); });
+  }
+
+  /* ---- the proactive opener ---- */
+  function boot(){
+    if(booted || !cache()) return;
+    booted = true;
+    lock(true);
+    var t = thinking();
+    if(SUB) SUB.textContent = "Checking what needs your attention…";
+    call({ mode: "open" })
+      .then(function(res){ if(t) t.remove(); receive(res); })
+      .catch(function(e){ if(t) t.remove(); fail(e); })
+      .then(function(){ lock(false); });
+  }
+
+  function requestMore(){
+    var sb = client();
+    if(!sb || !REQBTN) return;
+    REQBTN.disabled = true;
+    REQBTN.textContent = "Sending…";
+    Promise.resolve(sb.rpc("ai_quota_request_reset", { p_reason: "Requested from NovaX AI console" }))
+      .then(function(){ setCapped(true, true); })
+      .catch(function(){ REQBTN.disabled = false; REQBTN.textContent = "Request more from admin"; });
+  }
+
+  function bind(){
+    if(!cache()) return;
+    if(INPUT){
+      INPUT.addEventListener("input", function(){
+        INPUT.style.height = "auto";
+        INPUT.style.height = Math.min(INPUT.scrollHeight, 132) + "px";
+      });
+      INPUT.addEventListener("keydown", function(e){
+        if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(INPUT.value); }
+      });
+    }
+    if(SEND) SEND.addEventListener("click", function(){ if(INPUT) send(INPUT.value); });
+    if(REQBTN) REQBTN.addEventListener("click", requestMore);
+  }
+
+  /* Boot the opener the first time the Support tab is actually shown, so
+     an unused tab never spends a message. */
+  function watchTab(){
+    var orig = window.showClientTab;
+    if(typeof orig !== "function"){ setTimeout(watchTab, 400); return; }
+    window.showClientTab = function(id){
+      var out = orig.apply(this, arguments);
+      try{ if(String(id) === "support") setTimeout(boot, 60); }catch(e){}
+      return out;
+    };
+    try{
+      if(typeof state !== "undefined" && state && state.activeClientTab === "support") setTimeout(boot, 300);
+    }catch(e){}
+  }
+
+  function init(){ bind(); watchTab(); }
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
+
+  window.novaxAiOpen = function(){ boot(); };
+})();
+</script>
 </body>
 </html>
