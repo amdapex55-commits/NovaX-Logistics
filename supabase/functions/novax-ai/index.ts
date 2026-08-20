@@ -107,6 +107,48 @@ const TOOLS = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "search_parcels",
+    description:
+      "Search this merchant's parcels by any combination of status, destination city, consignee name, how recently they were booked, and how long they have sat without a status update. Prefer this over list_parcels whenever the merchant narrows by anything other than status.",
+    input_schema: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Exact status, e.g. 'In transit'." },
+        city: { type: "string", description: "Destination city; partial match is fine." },
+        consignee: { type: "string", description: "Customer name; partial match is fine." },
+        days: { type: "integer", description: "Only parcels booked in the last N days." },
+        stale_hours: { type: "integer", description: "Only parcels with no update for at least N hours." },
+        limit: { type: "integer", description: "Rows to return, 1-25. Default 15." },
+      },
+    },
+  },
+  {
+    name: "consignee_history",
+    description:
+      "How this customer's past parcels went — delivered, refused, or returned — looked up by phone number. Check this BEFORE advising whether to reattempt a delivery or send it back: a customer who has refused twice before is a different decision from a first-timer.",
+    input_schema: {
+      type: "object",
+      properties: { phone: { type: "string", description: "The consignee's phone number." } },
+      required: ["phone"],
+    },
+  },
+  {
+    name: "propose_booking",
+    description:
+      "Prefill the booking form from an order the merchant describes or pastes (WhatsApp order text works well). This does NOT create a parcel — it opens the normal booking form with the fields filled so the merchant reviews and submits it themselves. Always tell them to check the details before submitting.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Consignee name." },
+        phone: { type: "string" },
+        city: { type: "string" },
+        address: { type: "string" },
+        cod: { type: "string", description: "COD amount in PKR, digits only." },
+        product: { type: "string" },
+      },
+    },
+  },
+  {
     name: "raise_ticket",
     description:
       "File a support ticket into the NovaX ticketing system for the operations team. Call this when you cannot resolve something from the data, when the merchant asks for a human, when a parcel needs physical investigation, or when the merchant is clearly frustrated. Always tell the merchant you have done it and give them the ticket reference.",
@@ -330,6 +372,29 @@ Deno.serve(async (req: Request) => {
           return (await sb.rpc("ai_tool_list_invoices", { p_limit: Number(input.limit ?? 10) })).data;
         case "rate_card":
           return (await sb.rpc("ai_tool_rate_card")).data;
+        case "search_parcels":
+          return (await sb.rpc("ai_tool_search_parcels", {
+            p_status: input.status ? String(input.status) : null,
+            p_city: input.city ? String(input.city) : null,
+            p_consignee: input.consignee ? String(input.consignee) : null,
+            p_days: input.days ? Number(input.days) : null,
+            p_stale_hours: input.stale_hours ? Number(input.stale_hours) : null,
+            p_limit: Number(input.limit ?? 15),
+          })).data;
+        case "consignee_history":
+          return (await sb.rpc("ai_tool_consignee_history", { p_phone: String(input.phone ?? "") })).data;
+        case "propose_booking":
+          // Writes nothing. The draft is handed to the widget, which opens
+          // the merchant's normal booking form pre-filled.
+          bookingDraft = {
+            name: String(input.name ?? ""), phone: String(input.phone ?? ""),
+            city: String(input.city ?? ""), address: String(input.address ?? ""),
+            cod: String(input.cod ?? ""), product: String(input.product ?? ""),
+          };
+          return {
+            proposed: true,
+            note: "The booking form will open pre-filled. Nothing is created until the merchant reviews the fields and submits it themselves — tell them that.",
+          };
         case "raise_ticket":
           return (await sb.rpc("ai_tool_raise_ticket", {
             p_subject: String(input.subject ?? ""),
@@ -349,6 +414,7 @@ Deno.serve(async (req: Request) => {
 
   // ---- the loop -----------------------------------------------------
   const toolsUsed: string[] = [];
+  let bookingDraft: Record<string, string> | null = null;
   let presented: Record<string, unknown> | null = null;
 
   const askClaude = async (msgs: Array<{ role: string; content: unknown }>) => {
@@ -458,12 +524,29 @@ Deno.serve(async (req: Request) => {
 
   const { data: quota } = await sb.rpc("ai_quota_status");
 
+  // Two shapes from one call: answer/cards/suggestions drive the NovaX AI
+  // console; reply/actions are the shape the floating widget understands.
+  const suggestions = Array.isArray(presented.suggestions) ? presented.suggestions : [];
+  const actions: Array<Record<string, unknown>> = [];
+  if (bookingDraft) {
+    actions.push({ label: "Review & Book", kind: "local", type: "prefill_booking", draft: bookingDraft });
+  }
+  for (const sug of suggestions.slice(0, 3)) {
+    if (sug) actions.push({ label: String(sug), kind: "send", message: String(sug) });
+  }
+
   return json({
     conv_id: convId,
     answer,
+    reply: answer,
     cards: presented.cards ?? [],
-    suggestions: presented.suggestions ?? [],
+    suggestions,
+    actions,
+    draft: bookingDraft,
     resolved: presented.resolved ?? false,
+    intent: "brain",
+    source: "brain:anthropic",
+    toolsUsed,
     tools_used: toolsUsed,
     quota: quota ?? null,
   });
