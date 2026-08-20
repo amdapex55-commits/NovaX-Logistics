@@ -1301,6 +1301,31 @@
   .nvai-chip{flex:0 0 auto;scroll-snap-align:start;max-width:72vw}
 }
 
+/* Console entrance. Replayed on every open, not just first mount. */
+@keyframes nvaiOpen{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
+.nvai.nv-opening{animation:nvaiOpen .42s cubic-bezier(.2,.9,.2,1) both}
+.nvai.nv-opening .nvai-head{animation:nvaiOpen .42s cubic-bezier(.2,.9,.2,1) .06s both}
+.nvai.nv-opening .nvai-stream{animation:nvaiOpen .42s cubic-bezier(.2,.9,.2,1) .12s both}
+.nvai.nv-opening .nvai-composer{animation:nvaiOpen .42s cubic-bezier(.2,.9,.2,1) .18s both}
+@media (prefers-reduced-motion:reduce){
+  .nvai.nv-opening,.nvai.nv-opening .nvai-head,.nvai.nv-opening .nvai-stream,
+  .nvai.nv-opening .nvai-composer{animation:none}
+}
+/* The assistant is the headline feature -- it should not look like the
+   ninth item in a list. */
+.nv-ai-tab{display:flex!important;align-items:center;gap:9px;
+  border:1px solid var(--green-2)!important;
+  background:linear-gradient(135deg,rgba(12,124,89,.14),rgba(19,163,111,.08))!important;
+  color:var(--ink)!important;font-weight:750!important;position:relative;overflow:hidden}
+.nv-ai-tab::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(120deg,transparent 30%,rgba(19,163,111,.18),transparent 70%);
+  transform:translateX(-100%);transition:transform .6s cubic-bezier(.2,.9,.2,1)}
+.nv-ai-tab:hover::after{transform:translateX(100%)}
+.nv-ai-tab:hover{border-color:var(--green)!important}
+.nv-ai-tab-spark{display:grid;place-items:center;width:24px;height:24px;border-radius:8px;flex:none;
+  color:#fff;background:linear-gradient(140deg,var(--green),var(--green-2));
+  box-shadow:0 3px 10px rgba(19,163,111,.34)}
+@media (prefers-reduced-motion:reduce){.nv-ai-tab::after{display:none}}
 /* Confirm bar — the only place a write is triggered. Deliberately
    distinct from a suggestion chip: this one changes a live parcel. */
 .nvai-confirm{border:1px solid var(--green-2);border-radius:14px;padding:13px 15px;
@@ -1787,6 +1812,7 @@
               <button class="hamburger-btn" id="clientMenuToggle" aria-label="Open client menu" aria-expanded="false"><span></span><span></span><span></span><span class="hamburger-label">Menu</span></button>
             </div>
             <nav class="client-menu" id="clientMenu" aria-label="Client portal sections">
+              <button class="client-tab nv-ai-tab" data-client-tab="support"><span class="nv-ai-tab-spark" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.1 5.6L20 10.5l-5.9 1.9L12 18l-2.1-5.6L4 10.5l5.9-1.9z"/></svg></span>Talk to NovaX AI</button>
               <button class="client-tab active" data-client-tab="dashboard">Dashboard</button>
               <button class="client-tab" data-client-tab="newBooking">New Booking</button>
               <button class="client-tab" data-client-tab="awbLabel">AWB Label</button>
@@ -1797,7 +1823,6 @@
               <button class="client-tab" data-client-tab="logs">Order Logs</button>
               <button class="client-tab" data-client-tab="subAccounts">Sub Accounts</button>
               <button class="client-tab" data-client-tab="tickets">Support Tickets</button>
-              <button class="client-tab" data-client-tab="support">AI Support</button>
             </nav>
           </aside>
           <div class="client-content">
@@ -7974,8 +7999,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // merging the tabs without this change would have handed every Finance
       // sub-account the ability to withdraw to any IBAN they typed.
       Owner:     ["dashboard","newBooking","awbLabel","bulkBooking","integrations","reports","money","logs","subAccounts","tickets","support"],
-      Finance:   ["dashboard","reports","money","logs","tickets"],
-      Warehouse: ["dashboard","newBooking","bulkBooking","awbLabel"],
+      Finance:   ["dashboard","reports","money","logs","tickets","support"],
+      Warehouse: ["dashboard","newBooking","bulkBooking","awbLabel","support"],
       Support:   ["dashboard","logs","tickets","support"]
     };
     function nvClientRole(){ var r=window.__novaxClientRole; return NOVAX_ROLE_TABS[r]?r:"Owner"; }
@@ -13729,7 +13754,15 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
       var out = orig.apply(this, arguments);
       try{
         var onConsole = String(id) === "support";
-        if(onConsole) setTimeout(boot, 60);
+        if(onConsole){
+          setTimeout(boot, 60);
+          var shell = document.getElementById("nvAiShell");
+          if(shell){
+            shell.classList.remove("nv-opening");
+            void shell.offsetWidth;          // force reflow so it replays
+            shell.classList.add("nv-opening");
+          }
+        }
         // One assistant at a time. With the console open, the floating
         // launcher is a second entry point to the same brain sitting on
         // top of it -- it reads as two competing bots.
