@@ -6279,6 +6279,14 @@ html,body{ background:var(--bg); color:var(--ink); }
       s = String(s == null ? "" : s);
       return NV_STATUS_ALIASES[s] || s;
     }
+    /* Rolling window for the admin working set. Anything older is still in
+       the database and reachable by direct lookup; it just is not pulled into
+       memory on every refresh. */
+    var NV_ADMIN_WINDOW_DAYS = 120;
+    function NV_ADMIN_WINDOW(){
+      return new Date(Date.now() - NV_ADMIN_WINDOW_DAYS*24*3600*1000).toISOString();
+    }
+
     const STATUS_TAGS = [
       "New booked",
       "Collected by rider",
@@ -14939,7 +14947,12 @@ html,body{ background:var(--bg); color:var(--ink); }
         return Promise.all([
           sb.from("clients").select("*").order("created_at",{ascending:false}).limit(5000),
           sb.from("riders").select("*").order("created_at",{ascending:false}).limit(5000),
-          sb.from("parcels").select("*").order("booked_at",{ascending:false}).limit(5000),
+          /* Admin still needs closed parcels -- invoices are generated FROM delivered
+             ones -- so this is bounded by age, not by status. 5000 rows of full
+             history was pulled on every admin refresh; a 120-day window covers
+             every parcel that can still be invoiced, disputed or reconciled,
+             and keeps the working set flat as the business grows. */
+          sb.from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}).limit(5000),
           sb.from("invoices").select("*").order("created_at",{ascending:false}).limit(5000),
           sb.from("expenses").select("*").order("created_at",{ascending:false}).limit(3000),
           sb.from("withdrawals").select("*").order("created_at",{ascending:false}).limit(3000),
@@ -15034,7 +15047,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           set: function(d){ state.walletWithdrawals = d.map(rWd); }
         },
         parcels: {
-          q: function(){ return sb.from("parcels").select("*").order("booked_at",{ascending:false}).limit(5000); },
+          q: function(){ return sb.from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}).limit(5000); },
           set: function(d){ state.parcels = d.map(rParcel); }
         }
       };

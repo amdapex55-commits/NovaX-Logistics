@@ -2474,6 +2474,12 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     // COD Payable tile kept counting it even though Payments showed the
     // invoice Settled and Wallet showed the payout already made. Every call
     // site that used to hardcode its own status list now reads this.
+    /* Terminal parcel states. Once a parcel reaches one of these nothing
+       about it can change, so it never needs to be in the live working set.
+       "Parcel returned to consignee" is the legacy alias nvStatus() maps to
+       "Return to shipper"; both are listed because the DB still holds rows
+       written under the old name. */
+    const NV_CLOSED_STATUSES=["Delivered","Return to shipper","Parcel returned to consignee","Cancelled"];
     const NV_INVOICE_CLOSED_STATUSES=["Paid","Pushed to wallet","Settled","Paid to NovaX"];
     function isInvoiceClosed(status){ return NV_INVOICE_CLOSED_STATUSES.indexOf(status)>-1; }
     function paidParcelRefs(){ return new Set(state.invoices.filter(i=>isInvoiceClosed(i.status)).flatMap(i=>i.parcelRefs||[])); }
@@ -7717,6 +7723,60 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var v=String(phone||"").trim();
         return /^0311000[0-9]{4}$/.test(v) ? "" : v;
       }
+      /* Pulls only the closed parcels that loaded invoices point at, skipping
+         any already in memory, and merges them in. Runs after the main load so
+         it never delays first paint. */
+      var __nvInvoicedFetched={}, __nvClosedWindowDone=false;
+      function nvLoadInvoicedParcels(){
+        var want={};
+        (state.invoices||[]).forEach(function(inv){
+          (inv.parcelRefs||[]).forEach(function(awb){ if(awb) want[awb]=1; });
+        });
+        var have={};
+        (state.parcels||[]).forEach(function(p){ if(p&&p.awb) have[p.awb]=1; });
+        /* Also keep a RECENT window of closed parcels. Dropping every closed
+           parcel would empty the Delivered counters, the Live Status Board's
+           delivered group and the city report -- a merchant expects to see
+           what was delivered today and this month. 45 days, capped, so the
+           working set stays flat as the account ages instead of growing
+           without limit. */
+        if(!__nvClosedWindowDone){
+          __nvClosedWindowDone=true;
+          var since=new Date(Date.now()-45*24*3600*1000).toISOString();
+          sb.from("parcels").select("*").eq("client_id",MY)
+            .in("status",NV_CLOSED_STATUSES)
+            .gte("booked_at",since)
+            .order("booked_at",{ascending:false}).limit(400)
+            .then(function(r){
+              if(!r||r.error||!r.data||!r.data.length) return;
+              var seen={};
+              (state.parcels||[]).forEach(function(p){ if(p&&p.awb) seen[p.awb]=1; });
+              var add=r.data.map(mapParcel).filter(function(p){ return p&&p.awb&&!seen[p.awb]; });
+              if(!add.length) return;
+              state.parcels=(state.parcels||[]).concat(add);
+              try{ render(); }catch(e){}
+            });
+        }
+        var need=Object.keys(want).filter(function(a){ return !have[a] && !__nvInvoicedFetched[a]; });
+        if(!need.length) return;
+        need.forEach(function(a){ __nvInvoicedFetched[a]=1; });
+        // Chunked so a merchant with hundreds of invoiced parcels cannot build
+        // a URL long enough to be rejected.
+        var CH=120, chunks=[];
+        for(var i=0;i<need.length;i+=CH) chunks.push(need.slice(i,i+CH));
+        chunks.forEach(function(ch){
+          sb.from("parcels").select("*").eq("client_id",MY).in("awb",ch).then(function(r){
+            if(!r||r.error||!r.data||!r.data.length) return;
+            var seen={};
+            (state.parcels||[]).forEach(function(p){ if(p&&p.awb) seen[p.awb]=1; });
+            var add=r.data.map(mapParcel).filter(function(p){ return p&&p.awb&&!seen[p.awb]; });
+            if(!add.length) return;
+            state.parcels=(state.parcels||[]).concat(add);
+            try{ render(); }catch(e){}
+          });
+        });
+      }
+
       function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", trackingToken:r.tracking_token||"",
         // NovaX distance pricing. Null on every parcel booked before it existed,
         // which is exactly how the label and invoice detect "flat, show nothing".
@@ -7789,7 +7849,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // alone.
         return Promise.all([
           sb.from("clients").select("*").eq("id",MY).maybeSingle(),
-          sb.from("parcels").select("*").eq("client_id",MY).order("booked_at",{ascending:false}),
+          /* Only parcels that are still MOVING. Delivered and Return to
+             shipper are terminal -- nothing about them can change again, so
+             re-pulling a merchant's entire history on every load was pure
+             waste that grew forever. The closed parcels an invoice actually
+             references are fetched separately below, by AWB, so invoice
+             statements stay complete. */
+          sb.from("parcels").select("*").eq("client_id",MY)
+            .not("status","in","("+NV_CLOSED_STATUSES.map(function(x){return '"'+x+'"';}).join(",")+")")
+            .order("booked_at",{ascending:false}),
           sb.from("invoices").select("*").eq("client_id",MY).order("created_at",{ascending:false}),
           sb.from("withdrawals").select("*").eq("client_id",MY).order("created_at",{ascending:false}),
           sb.from("payment_logs").select("*").eq("client_id",MY).order("created_at",{ascending:false}),
@@ -7840,6 +7908,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           state.clients=[{ id:MY, name:name, owner:(c&&c.owner)||"", city:(c&&c.city)||"", status:(c&&c.status)||"Active", tier:(c&&c.status)||"", rate:rate, rateCard:rc, walletBalance:bal, risk:Number((c&&c.risk_score)||0), health:90, problemsResolved:0 }];
           state.parcels=((res[1]&&res[1].data)||[]).map(mapParcel);
           state.invoices=((res[2]&&res[2].data)||[]).map(mapInvoice);
+          /* Closed parcels are no longer in the main pull, but an invoice
+             statement resolves every line by finding the parcel in
+             state.parcels -- and every invoiced parcel is Delivered or Return
+             to shipper. Without this the statements would silently degrade to
+             "Not on this account" with Rs 0 lines. Fetch exactly the AWBs the
+             loaded invoices reference: typically a few dozen rows, once,
+             instead of the merchant's entire history on every load. */
+          try{ nvLoadInvoicedParcels(); }catch(e){ console.warn("NovaX invoiced parcels", e); }
           state.walletWithdrawals=((res[3]&&res[3].data)||[]).map(mapWd);
           state.paymentLogs=((res[4]&&res[4].data)||[]).map(mapPl);
           state.storeConnections=((res[5]&&res[5].data)||[]).map(mapSc);
