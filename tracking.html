@@ -35,8 +35,11 @@
      cash to keep ready. */
   :root{
     --ink:#0d1220; --muted:#6b7280; --line:#e6e8ef;
-    --bg:#f6f7fb; --panel:#ffffff;
-    --brand:#4f46e5; --brand-2:#7c3aed;
+    /* NovaX brand, matching novaxlogistics.com. This page was indigo/violet
+       from a starter template -- the first NovaX surface most consignees ever
+       see, in someone else's colours. */
+    --bg:#04100b; --panel:#0d1c15;
+    --brand:#0c7c59; --brand-2:#14c77b;
     --good:#059669; --warn:#b45309; --bad:#dc2626;
     --radius:14px;
   }
@@ -125,6 +128,25 @@
     .status-head{font-size:19px;}
     .cod .amt{font-size:23px;}
   }
+  .cta-ask{ font-size:13px; font-weight:800; letter-spacing:.02em; color:#8ff0c7;
+            text-align:center; margin:22px 0 8px; text-transform:uppercase; }
+  /* Dark surface to match the rest of NovaX. Kept as an additive block so the
+     original layout rules are untouched. */
+  body{ background:var(--bg); color:#eafff5; }
+  .card{ background:var(--panel) !important; border:1px solid rgba(20,199,123,.16) !important;
+         color:#eafff5 !important; box-shadow:0 18px 40px -22px rgba(0,0,0,.8) !important; }
+  .msg,.d,.sub{ color:#9dbdae !important; }
+  .pill{ background:rgba(20,199,123,.10) !important; border:1px solid rgba(20,199,123,.26) !important;
+         color:#8ff0c7 !important; }
+  .pill.good{ background:rgba(20,199,123,.16) !important; color:#4ee6a5 !important; }
+  .pill.bad{ background:rgba(224,96,75,.14) !important; border-color:rgba(224,96,75,.34) !important;
+             color:#ff8a75 !important; }
+  .pill.warn{ background:rgba(232,182,76,.14) !important; border-color:rgba(232,182,76,.32) !important;
+              color:#f0d9a8 !important; }
+  .brandbar{ box-shadow:0 14px 34px -18px rgba(20,199,123,.55); }
+  .skel{ background:linear-gradient(90deg,#0f2419,#14301f,#0f2419) !important; }
+  .cta{ box-shadow:0 14px 30px -14px rgba(20,199,123,.6); }
+  .cta-sub{ color:#7d9a8d !important; }
 </style>
 </head>
 <body>
@@ -162,6 +184,19 @@
   var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
   var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
   var SITE="https://novaxlogistics.com";
+
+  /* Everything a consignee sees is Pakistan time, whatever their phone is set
+     to. The page previously printed a raw sliced ISO string ("2026-08-20T07:19"),
+     which is both ugly and in UTC. */
+  function pktTime(v){
+    if(!v) return "";
+    try{
+      var d=new Date(String(v).indexOf("T")>-1?v:String(v).replace(" ","T")+"+05:00");
+      if(isNaN(d)) return String(v).slice(0,16).replace("T"," ");
+      return d.toLocaleString("en-GB",{ timeZone:"Asia/Karachi", day:"numeric", month:"short",
+                                        hour:"2-digit", minute:"2-digit", hour12:true })+" PKT";
+    }catch(e){ return String(v).slice(0,16).replace("T"," "); }
+  }
 
   var FLOW=["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Delivered"];
 
@@ -238,8 +273,13 @@
     show('<div class="card"><div class="msg"><strong>'+esc(title)+'</strong>'+esc(sub)+'</div></div>'+ctaHtml());
   }
   function ctaHtml(){
-    return '<a class="cta" href="'+SITE+'" target="_blank" rel="noopener noreferrer">Ship your own parcels with NovaX</a>'+
-           '<div class="cta-sub">Same-day COD payouts for online sellers across Pakistan.</div>';
+    /* Whoever is holding this link is a customer of an online seller -- which
+       makes them, or someone they know, a candidate. Point at the signup
+       anchor on the homepage rather than the homepage root, so the signup
+       actually opens. */
+    return '<div class="cta-ask">Are you a seller?</div>'+
+           '<a class="cta" href="'+SITE+'/#signup" target="_blank" rel="noopener noreferrer">Ship your parcels with NovaX</a>'+
+           '<div class="cta-sub">COD collected, and your money in your wallet the day it lands. Karachi &middot; Lahore &middot; Islamabad &middot; Rawalpindi.</div>';
   }
 
   function timelineHtml(row){
@@ -346,7 +386,7 @@
           '</div>'+
           '<div class="msg" style="margin-top:10px">'+
             esc(row.city||"In transit")+
-            (row.updated_at?(' &middot; updated '+esc(String(row.updated_at).slice(0,16).replace("T"," "))):"")+
+            (row.updated_at?(' &middot; updated '+esc(pktTime(row.updated_at))):"")+
           '</div>'+
           '<div class="msg" style="margin-top:10px;opacity:.8">For the full step-by-step journey, open the tracking link your seller sent you.</div>'+
         '</div>'+ctaHtml()

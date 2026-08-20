@@ -38,9 +38,13 @@
            system", so a merchant who had deliberately chosen Light on a
            dark-mode laptop got dark components anyway. Light is now stamped
            explicitly; only the untouched "system" default leaves it off. */
+        /* NovaX: the portal opens DARK for everyone -- existing merchants and
+           new signups alike -- and stays wherever they last put it. Only an
+           explicit "light" choice turns it back; no saved choice means dark,
+           where it used to mean light. */
         var savedTheme = localStorage.getItem("novaxTheme");
-        if (savedTheme === "dark") { document.documentElement.setAttribute("data-theme", "dark"); }
-        else if (savedTheme === "light") { document.documentElement.setAttribute("data-theme", "light"); }
+        if (savedTheme === "light") { document.documentElement.setAttribute("data-theme", "light"); }
+        else { document.documentElement.setAttribute("data-theme", "dark"); }
       } catch (e) {}
     })();
   </script>
@@ -1086,6 +1090,36 @@
   html[data-theme="dark"] .nv-paymode{ background:rgba(20,199,123,.09); border-color:rgba(20,199,123,.24); color:#4ee6a5; }
   html[data-theme="dark"] .nv-paymode.is-prepaid{ background:rgba(232,182,76,.10); border-color:rgba(232,182,76,.30); color:#f0d9a8; }
   @media (max-width:560px){ .nv-wchip{ min-height:40px; padding:9px 14px; } }
+
+  /* ═══ Journey with timestamps ═════════════════════════════════════════ */
+  .nv-jt{ display:flex; flex-direction:column; gap:0; }
+  .nv-jt-row{ display:flex; gap:11px; padding:0 0 14px; position:relative; }
+  .nv-jt-row:last-child{ padding-bottom:0; }
+  .nv-jt-row::before{
+    content:""; position:absolute; left:5px; top:16px; bottom:0; width:2px;
+    background:var(--line-strong); border-radius:2px;
+  }
+  .nv-jt-row:last-child::before{ display:none; }
+  .nv-jt-dot{
+    flex:0 0 12px; width:12px; height:12px; border-radius:50%; margin-top:3px;
+    background:var(--line-strong); position:relative; z-index:1;
+  }
+  .nv-jt-row.is-done .nv-jt-dot{ background:#14c77b; }
+  .nv-jt-row.is-done::before{ background:#14c77b; opacity:.45; }
+  .nv-jt-row.is-now .nv-jt-dot{ background:#14c77b; box-shadow:0 0 0 4px rgba(20,199,123,.20); }
+  .nv-jt-row.is-todo .nv-jt-dot{ background:transparent; border:2px solid var(--line-strong); }
+  .nv-jt-body{ min-width:0; flex:1; }
+  .nv-jt-label{ font-size:13.5px; font-weight:700; color:var(--ink); display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+  .nv-jt-row.is-todo .nv-jt-label{ color:var(--muted); font-weight:600; }
+  .nv-jt-gap{
+    font-size:11px; font-weight:700; color:var(--muted);
+    background:var(--mint); border:1px solid var(--line); border-radius:999px; padding:1px 7px;
+  }
+  html[data-theme="dark"] .nv-jt-gap{ background:rgba(20,199,123,.10); border-color:rgba(20,199,123,.22); }
+  .nv-jt-at{ font-size:11.5px; color:var(--muted); font-weight:600; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .nv-jt-none{ opacity:.6; font-style:italic; }
+  .nv-jt-note{ font-size:12px; color:#b3261e; margin-top:3px; }
+  html[data-theme="dark"] .nv-jt-note{ color:#ff8a75; }
 
   /* ═══ WITHDRAWAL RECEIPT DRAWER ═══════════════════════════════════════
      Shown only after request_wallet_withdrawal has confirmed server-side.
@@ -3186,8 +3220,12 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     function customerTrackUrl(p){
       var tok=(p&&p.trackingToken)||"";
       if(!tok) return "";
-      try{ return location.origin+"/track.html?t="+encodeURIComponent(tok); }
-      catch(e){ return "https://novaxlogistics.com/track.html?t="+encodeURIComponent(tok); }
+      /* Was "/track.html" -- a file that has never existed in this repo. Every
+         customer tracking link a merchant shared 404'd. The page is
+         tracking.html, and its ?t= branch is the one that returns the full
+         journey via public_track_parcel(). */
+      try{ return location.origin+"/tracking.html?t="+encodeURIComponent(tok); }
+      catch(e){ return "https://novaxlogistics.com/tracking.html?t="+encodeURIComponent(tok); }
     }
     function customerTrackMessage(p){
       var url=customerTrackUrl(p);
@@ -3535,13 +3573,89 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         (p.orderId?'<dt>Your order</dt><dd>'+escLabelText(p.orderId)+'</dd>':'')+
         '<dt>Booked</dt><dd>'+escLabelText(p.date||"—")+'</dd>'+
       '</dl></div>'+
-      '<div class="nvdr-sec"><h4>Journey</h4>'+U.timeline(rows)+'</div>'+
+      '<div class="nvdr-sec"><h4>Journey</h4>'+nvJourneyHtml(p,rows)+'</div>'+
       '<div class="nvdr-actions">'+
         (tel?'<a href="tel:'+escLabelText(tel)+'">Call consignee</a>':'')+
         '<button type="button" class="nvdr-primary" data-nv-drawer-act="print" data-awb="'+escLabelText(p.awb)+'">Print AWB</button>'+
-        '<button type="button" data-nv-drawer-act="track" data-awb="'+escLabelText(p.awb)+'">Tracking link</button>'+
+        '<button type="button" data-nv-drawer-act="track" data-awb="'+escLabelText(p.awb)+'">Open tracking</button>'+
+        '<button type="button" data-nv-drawer-act="copytrack" data-awb="'+escLabelText(p.awb)+'">Copy link</button>'+
+        '<button type="button" data-nv-drawer-act="sharetrack" data-awb="'+escLabelText(p.awb)+'">Share</button>'+
       '</div>';
     }
+    /* ═══ Journey timestamps, Pakistan Standard Time ══════════════════════
+       Admin already records a processHistory entry per status change into
+       parcel meta ({status, at, processor}); the client portal simply never
+       read it, so the drawer showed the sequence of steps with no idea WHEN
+       any of it happened. Everything renders in Asia/Karachi regardless of
+       the device's own timezone -- a merchant checking from Dubai must see
+       the same clock as their warehouse. */
+    function nvPkt(v){
+      if(!v) return null;
+      var d=new Date(String(v).indexOf("T")>-1 ? v : String(v).replace(" ","T")+(String(v).length<=16?"+05:00":""));
+      return isNaN(d) ? null : d;
+    }
+    function nvPktLabel(v){
+      var d=nvPkt(v);
+      if(!d) return "";
+      try{
+        return d.toLocaleString("en-GB",{ timeZone:"Asia/Karachi", day:"numeric", month:"short",
+                                          hour:"2-digit", minute:"2-digit", hour12:true });
+      }catch(e){ return String(v).slice(0,16).replace("T"," "); }
+    }
+    /* "2d 4h" / "5h 20m" / "18m" -- how long the parcel sat at that step. */
+    function nvGapLabel(from,to){
+      var a=nvPkt(from), b=nvPkt(to);
+      if(!a||!b) return "";
+      var ms=b-a; if(!(ms>0)) return "";
+      var m=Math.round(ms/60000), h=Math.floor(m/60), d=Math.floor(h/24);
+      if(d>0) return d+"d "+(h%24)+"h";
+      if(h>0) return h+"h "+(m%60)+"m";
+      return m+"m";
+    }
+    /* Maps each timeline row to its recorded time, and the gap since the step
+       before it. Falls back cleanly when a parcel predates processHistory. */
+    function nvStampRows(p, rows){
+      var hist=Array.isArray(p&&p.processHistory)?p.processHistory:[];
+      var byStatus={};
+      hist.forEach(function(h){
+        if(!h||!h.status) return;
+        var when=h.at||h.time||"";
+        if(when && !byStatus[h.status]) byStatus[h.status]=when;
+      });
+      var prev=null;
+      return rows.map(function(r){
+        var when=byStatus[r.status]||"";
+        if(!when && r.status==="New booked" && p.date) when=p.date;
+        var out=Object.assign({},r);
+        if(when){
+          out.at=nvPktLabel(when);
+          out.gap=prev?nvGapLabel(prev,when):"";
+          prev=when;
+        }
+        return out;
+      });
+    }
+
+    /* The timeline with its times. Keeps the existing dot/line vocabulary so
+       nothing about the look changes -- it just stops being silent about when. */
+    function nvJourneyHtml(p, rows){
+      var stamped=nvStampRows(p,rows);
+      return '<div class="nv-jt">'+stamped.map(function(r){
+        var cls = r.state==="now" ? "is-now" : (r.state==="todo" ? "is-todo" : "is-done");
+        return '<div class="nv-jt-row '+cls+'">'+
+                 '<span class="nv-jt-dot"></span>'+
+                 '<div class="nv-jt-body">'+
+                   '<div class="nv-jt-label">'+escLabelText(r.label||r.status||"")+
+                     (r.gap?'<span class="nv-jt-gap">+'+escLabelText(r.gap)+'</span>':'')+
+                   '</div>'+
+                   (r.at?'<div class="nv-jt-at">'+escLabelText(r.at)+' PKT</div>':
+                         (r.state==="todo"?'':'<div class="nv-jt-at nv-jt-none">time not recorded</div>'))+
+                   (r.note?'<div class="nv-jt-note">'+escLabelText(r.note)+'</div>':'')+
+                 '</div>'+
+               '</div>';
+      }).join("")+'</div>';
+    }
+
     function openClientParcelJourney(awb){
       state.selectedAwb=awb; saveState();
       const p=(state.parcels||[]).find(x=>x&&x.awb===awb);
@@ -3577,10 +3691,28 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         try{ window.NovaXUI.closeDrawer(); }catch(_){}
         state.selectedAwb=awb; saveState();
         if(typeof showClientTab==="function") showClientTab("awbLabel");
-      } else if(act==="track"){
-        const url=(typeof trackingUrl==="function")?trackingUrl(awb):("https://novaxlogistics.com/tracking.html?awb="+encodeURIComponent(awb));
+      } else if(act==="track" || act==="copytrack" || act==="sharetrack"){
+        /* Prefer the tokenised link: it resolves to the FULL journey via
+           public_track_parcel(). The ?awb= form only ever returns a status
+           summary and tells the reader to "open the link your seller sent" --
+           nonsense when the seller is the one holding it. */
+        const p=(state.parcels||[]).find(x=>x&&x.awb===awb);
+        const url=(typeof customerTrackUrl==="function" && customerTrackUrl(p))
+                  || ((typeof trackingUrl==="function")?trackingUrl(awb)
+                     :("https://novaxlogistics.com/tracking.html?awb="+encodeURIComponent(awb)));
+        if(act==="track"){ try{ window.open(url,"_blank","noopener"); }catch(_){ toast(url); } return; }
+        if(act==="sharetrack"){
+          const msg=(typeof customerTrackMessage==="function" && customerTrackMessage(p)) || url;
+          if(navigator.share){
+            navigator.share({ title:"NovaX tracking "+awb, text:msg, url:url }).catch(function(){});
+            return;
+          }
+          try{ window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank","noopener"); }
+          catch(_){ toast(url); }
+          return;
+        }
         if(navigator.clipboard&&navigator.clipboard.writeText){
-          navigator.clipboard.writeText(url).then(function(){ toast("Tracking link copied."); },function(){ toast(url); });
+          navigator.clipboard.writeText(url).then(function(){ toast("Tracking link copied.","success"); },function(){ toast(url); });
         } else toast(url);
       }
     });
@@ -7997,7 +8129,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         });
       }
 
-      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", trackingToken:r.tracking_token||"",
+      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", trackingToken:r.tracking_token||"",
         // NovaX distance pricing. Null on every parcel booked before it existed,
         // which is exactly how the label and invoice detect "flat, show nothing".
         pricingMode:r.pricing_mode||"", distanceKm:(r.distance_km!=null?Number(r.distance_km):null),
