@@ -748,6 +748,32 @@
     .barcode-img{width:100% !important;max-width:39mm !important;height:11mm !important;padding:0 !important;object-fit:contain !important;}
     .awb-scan .chip{font-size:9px !important;font-weight:900 !important;letter-spacing:.04em !important;padding:1px 4px !important;border:1px solid #000 !important;background:#fff !important;color:#000 !important;border-radius:2px !important;}
   
+</style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    // NovaX fix (config consolidation): single source of truth for the
+    // Supabase project URL and publishable key. Every other <script> block in
+    // this file now reads these two values from window.NOVAX_CONFIG instead of
+    // repeating the same literals. Values are unchanged. The <head>
+    // preconnect/dns-prefetch hints stay literal on purpose -- the browser
+    // resolves them before any script runs, so they cannot read this object.
+    window.NOVAX_CONFIG = window.NOVAX_CONFIG || {
+      SB_URL: "https://rhzunbzbdzicajqtohwp.supabase.co",
+      SB_KEY: "sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA",
+      // Optional address autocomplete provider (Phase 3, Task 17). Leave key
+      // empty and the booking form behaves exactly as before -- no network
+      // calls, no UI change. Set url with {q} and {key} placeholders, e.g.
+      // "https://api.provider.com/autocomplete?key={key}&text={q}".
+      ADDRESS_AUTOCOMPLETE: { provider: "", key: "", url: "" }
+    };
+  </script>
+<style id="nvMoneyScreen">
+  /* Screen styles for the Money tab and the payout receipt drawer.
+     These were previously appended to <style id="nvPrintA4" media="print">,
+     so not one rule applied on screen: the hero rendered as bare text
+     lines and the drawer, whose display:none lived here, was permanently
+     visible and unstyled at the bottom of the portal. Own block, no media
+     attribute, so it cannot be swallowed by a print sheet again. */
   /* ═══════════════ MONEY TAB ═══════════════
      Ten animations, each tied to a real event -- nothing decorative fires on
      a render that changed nothing.
@@ -995,24 +1021,16 @@
   }
 
 </style>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script>
-    // NovaX fix (config consolidation): single source of truth for the
-    // Supabase project URL and publishable key. Every other <script> block in
-    // this file now reads these two values from window.NOVAX_CONFIG instead of
-    // repeating the same literals. Values are unchanged. The <head>
-    // preconnect/dns-prefetch hints stay literal on purpose -- the browser
-    // resolves them before any script runs, so they cannot read this object.
-    window.NOVAX_CONFIG = window.NOVAX_CONFIG || {
-      SB_URL: "https://rhzunbzbdzicajqtohwp.supabase.co",
-      SB_KEY: "sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA",
-      // Optional address autocomplete provider (Phase 3, Task 17). Leave key
-      // empty and the booking form behaves exactly as before -- no network
-      // calls, no UI change. Set url with {q} and {key} placeholders, e.g.
-      // "https://api.provider.com/autocomplete?key={key}&text={q}".
-      ADDRESS_AUTOCOMPLETE: { provider: "", key: "", url: "" }
-    };
-  </script>
+<style id="nvSvgGuard">
+  /* An inline <svg> with a viewBox but no width/height fills its
+     container, and <circle>/<path> default to fill:black. When the
+     Money CSS was mis-scoped to a print sheet, the drawer tick did
+     exactly that -- a full-width black disc across the portal. These
+     two rules make that failure mode impossible regardless of which
+     stylesheet loads. */
+  .nv-wd-tick, .nvrv-tick{ max-width:60px; max-height:60px; }
+  .nv-wd-tick *, .nvrv-tick *{ fill:none; }
+</style>
 </head>
 <!-- AUTH_GATE_VERSION: 2026-07-16-auth-flow-v3 -->
 <body>
@@ -4272,12 +4290,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var counting = invoices.filter(function(i){
         return !isInvoiceClosed(i.status) && i.status !== "Cancelled" && i.status !== "Pushed to wallet";
       }).reduce(function(s,i){ return s + Number(i.payable||0); }, 0);
-      var ready = Number((c && c.walletBalance) || 0);
+      // A wallet can legitimately go negative when delivery charges on prepaid
+      // parcels exceed COD collected. "Ready to withdraw -Rs 1,760 / yours
+      // right now" is nonsense and looks broken to a merchant, so a negative
+      // balance is reported as nothing withdrawable, and the shortfall is
+      // surfaced through the charges-to-pay block instead where it belongs.
+      var rawBalance = Number((c && c.walletBalance) || 0);
+      var ready = Math.max(0, rawBalance);
+      var shortfall = rawBalance < 0 ? Math.abs(rawBalance) : 0;
       var paid  = invoices.filter(function(i){ return isInvoiceClosed(i.status); })
                           .reduce(function(s,i){ return s + Number(i.payable||0); }, 0);
       var owed  = invoices.filter(function(i){ return i.status !== "Paid to NovaX" && i.status !== "Cancelled"; })
                           .reduce(function(s,i){ return s + Number(i.dueToNovax||0); }, 0);
-      return { invoices:invoices, counting:counting, ready:ready, paid:paid, owed:owed };
+      return { invoices:invoices, counting:counting, ready:ready, paid:paid,
+               owed:owed, shortfall:shortfall, rawBalance:rawBalance };
     }
 
     /* Hero Withdraw scrolls to the payout form rather than opening another
@@ -4326,17 +4352,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(note){
         note.textContent = live
           ? "Paid to your IBAN, usually within 15 minutes."
-          : (f.counting > 0
-              ? money(f.counting) + " is still being counted — it moves here once released."
-              : "Delivered parcels turn into invoices, then into withdrawable balance.");
+          : (f.shortfall > 0
+              ? "Your wallet is " + money(f.shortfall) + " short. New COD clears that first, then the rest is yours to withdraw."
+              : (f.counting > 0
+                  ? money(f.counting) + " is still being counted — it moves here once released."
+                  : "Delivered parcels turn into invoices, then into withdrawable balance."));
       }
 
       // Money owed to NovaX: separate block, never mixed with money owed to them.
       var owedPanel = document.getElementById("nvOwedPanel");
       if(owedPanel){
-        owedPanel.style.display = f.owed > 0 ? "" : "none";
+        var owedTotal = f.owed + f.shortfall;
+        owedPanel.style.display = owedTotal > 0 ? "" : "none";
         var amt = document.getElementById("nvOwedAmount");
-        if(amt) amt.textContent = money(f.owed);
+        if(amt) amt.textContent = money(owedTotal);
         var list = document.getElementById("nvOwedList");
         if(list){
           list.innerHTML = f.invoices.filter(function(i){
@@ -12052,9 +12081,9 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
         <span class="nvrv-ring"></span>
         <span class="nvrv-ring nvrv-ring-2"></span>
         <div class="nvrv-burst" id="nvrvBurst" aria-hidden="true"></div>
-        <svg class="nvrv-tick" viewBox="0 0 60 60" aria-hidden="true">
-          <circle cx="30" cy="30" r="24"></circle>
-          <path d="M19 30.5 L26.5 38 L41 23.5"></path>
+        <svg class="nvrv-tick" viewBox="0 0 60 60" width="54" height="54" fill="none" stroke="#14c77b" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="30" cy="30" r="24" fill="none"></circle>
+          <path d="M19 30.5 L26.5 38 L41 23.5" fill="none"></path>
         </svg>
       </div>
       <div class="nvrv-echo" id="nvrvEcho" aria-hidden="true"></div>
@@ -12257,9 +12286,9 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
      review prompt this one IS dismissible; it is a receipt, not a gate. -->
 <div id="nvWdOverlay" role="dialog" aria-modal="true" aria-labelledby="nvWdTitle">
   <div class="nv-wd-card">
-    <svg class="nv-wd-tick" viewBox="0 0 60 60" aria-hidden="true">
-      <circle cx="30" cy="30" r="24"></circle>
-      <path d="M19 30.5 L26.5 38 L41 23.5"></path>
+    <svg class="nv-wd-tick" viewBox="0 0 60 60" width="56" height="56" fill="none" stroke="#14c77b" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="30" cy="30" r="24" fill="none"></circle>
+      <path d="M19 30.5 L26.5 38 L41 23.5" fill="none"></path>
     </svg>
     <h3 id="nvWdTitle">Withdrawal requested</h3>
     <div class="nv-wd-amt" id="nvWdAmount">Rs 0</div>
