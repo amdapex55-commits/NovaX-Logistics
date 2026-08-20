@@ -37,6 +37,11 @@ const MIN_MS_BETWEEN_MESSAGES = 1500;
 // as plain text instead of a tool_use block, which would silently break
 // every grounded lookup in this file.
 
+function userTextForTrack(b: { message?: string }): string {
+  const m = String(b.message ?? "").trim();
+  return m || "[The customer just opened the tracking page. Tell them where their parcel is right now, in one or two sentences.]";
+}
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -180,6 +185,33 @@ const TOOLS = [
     },
   },
   {
+    name: "propose_fix_address",
+    description:
+      "Offer to fill in a missing delivery address or phone on one parcel. This does NOT change anything — it shows the merchant a confirm button, and only their tap writes it. Use when a parcel has no address or phone and the merchant tells you what it should be. It can only fill blanks; it can never overwrite an address that already exists.",
+    input_schema: {
+      type: "object",
+      properties: {
+        awb: { type: "string" },
+        address: { type: "string", description: "The full delivery address to write." },
+        phone: { type: "string", description: "The consignee phone to write." },
+      },
+      required: ["awb"],
+    },
+  },
+  {
+    name: "propose_reattempt",
+    description:
+      "Offer to ask operations to reattempt a delivery. Shows the merchant a confirm button; only their tap files it. Use when a parcel was refused, the consignee was unavailable, or the merchant asks for another attempt. Check consignee_history first — if this customer has refused repeatedly, say so before offering.",
+    input_schema: {
+      type: "object",
+      properties: {
+        awb: { type: "string" },
+        note: { type: "string", description: "Why a reattempt is being asked for." },
+      },
+      required: ["awb"],
+    },
+  },
+  {
     name: "present",
     description:
       "Deliver your final answer to the merchant. You MUST end every turn by calling this exactly once — it is the only thing the merchant actually sees. Everything else is internal.",
@@ -283,8 +315,75 @@ Deno.serve(async (req: Request) => {
     { global: { headers: { Authorization: authHeader } } },
   );
 
-  let body: { conv_id?: string; message?: string; mode?: string };
+  let body: { conv_id?: string; message?: string; mode?: string; token?: string };
   try { body = await req.json(); } catch { return json({ error: "Bad request body." }, 400); }
+
+  // ── Public tracking mode ────────────────────────────────────────────
+  // Called from tracking.html by a consignee with no account. Scoped by
+  // the tracking token in the link, not by client_id, and deliberately
+  // narrow: one parcel, one tool, no history, no quota, no writes. The
+  // merchant's own data is unreachable from here.
+  if (body.mode === "track") {
+    const token = String((body as Record<string, unknown>).token ?? "").trim();
+    if (!token) return json({ error: "No tracking reference." }, 400);
+
+    const { data: lookup } = await sb.rpc("ai_public_parcel", { p_token: token });
+    if (!lookup || (lookup as Record<string, unknown>).found !== true) {
+      return json({
+        answer: "I could not find a parcel for that tracking link. Double-check the link, or ask the shop you ordered from.",
+        suggestions: [],
+      });
+    }
+
+    const publicSystem = `You are NovaX AI, answering for NovaX Logistics — a Pakistani courier — on a public tracking page. You are speaking to the person WAITING for this parcel, not the shop that sent it.
+
+You can see exactly one parcel, shown below. That is everything you know.
+
+${JSON.stringify(lookup, null, 2)}
+
+Answer only about this parcel. If they ask about anything else — another order, their account, the shop's business — say you can only see this one parcel from this link.
+
+Never predict a delivery date. Riders carry these parcels and a guess from you becomes a broken promise. Say where it is and when it last moved. If they need it faster or want to change the address, tell them to contact the shop they ordered from, because the shop is who instructs us.
+
+Answer in the language they write in — Roman Urdu in, Roman Urdu out.
+
+Be brief and warm. Two or three sentences. End by calling present exactly once.`;
+
+    try {
+      const r = await fetch(ANTHROPIC_URL, {
+        method: "POST",
+        headers: { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json" },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 1024,
+          output_config: { effort: "low" },
+          system: publicSystem,
+          tools: TOOLS.filter((t) => t.name === "present"),
+          tool_choice: { type: "tool", name: "present" },
+          messages: [{ role: "user", content: userTextForTrack(body) }],
+        }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const data = await r.json() as { content: Block[] };
+      const block = data.content.find((b) => b.type === "tool_use") as unknown as ToolUse | undefined;
+      const out = (block?.input ?? {}) as Record<string, unknown>;
+      return json({
+        answer: String(out.answer ?? "Here is where your parcel is."),
+        cards: out.cards ?? [],
+        suggestions: out.suggestions ?? [],
+        parcel: (lookup as Record<string, unknown>).parcel,
+      });
+    } catch (e) {
+      console.error("NovaX AI public track failed:", e);
+      const p = (lookup as Record<string, Record<string, unknown>>).parcel;
+      return json({
+        answer: `Your parcel ${p?.awb} is currently "${p?.status}"${p?.city ? " in " + p.city : ""}.`,
+        cards: [],
+        suggestions: [],
+        parcel: p,
+      });
+    }
+  }
 
   const mode = body.mode === "open" ? "open" : "chat";
   const userText = (body.message ?? "").trim();
@@ -395,6 +494,23 @@ Deno.serve(async (req: Request) => {
             proposed: true,
             note: "The booking form will open pre-filled. Nothing is created until the merchant reviews the fields and submits it themselves — tell them that.",
           };
+        case "propose_fix_address":
+          pendingAction = {
+            type: "fix_address",
+            awb: String(input.awb ?? "").toUpperCase(),
+            address: String(input.address ?? ""),
+            phone: String(input.phone ?? ""),
+            label: "Save this address",
+          };
+          return { proposed: true, note: "A confirm button is now showing. Nothing is written until the merchant taps it — tell them to check the address first." };
+        case "propose_reattempt":
+          pendingAction = {
+            type: "reattempt",
+            awb: String(input.awb ?? "").toUpperCase(),
+            note: String(input.note ?? ""),
+            label: "Request reattempt",
+          };
+          return { proposed: true, note: "A confirm button is now showing. Nothing is filed until the merchant taps it." };
         case "raise_ticket":
           return (await sb.rpc("ai_tool_raise_ticket", {
             p_subject: String(input.subject ?? ""),
@@ -415,6 +531,7 @@ Deno.serve(async (req: Request) => {
   // ---- the loop -----------------------------------------------------
   const toolsUsed: string[] = [];
   let bookingDraft: Record<string, string> | null = null;
+  let pendingAction: Record<string, string> | null = null;
   let presented: Record<string, unknown> | null = null;
 
   const askClaude = async (msgs: Array<{ role: string; content: unknown }>) => {
@@ -531,6 +648,9 @@ Deno.serve(async (req: Request) => {
   if (bookingDraft) {
     actions.push({ label: "Review & Book", kind: "local", type: "prefill_booking", draft: bookingDraft });
   }
+  if (pendingAction) {
+    actions.push({ label: pendingAction.label, kind: "local", type: "confirm_action", action: pendingAction });
+  }
   for (const sug of suggestions.slice(0, 3)) {
     if (sug) actions.push({ label: String(sug), kind: "send", message: String(sug) });
   }
@@ -543,6 +663,7 @@ Deno.serve(async (req: Request) => {
     suggestions,
     actions,
     draft: bookingDraft,
+    pending_action: pendingAction,
     resolved: presented.resolved ?? false,
     intent: "brain",
     source: "brain:anthropic",

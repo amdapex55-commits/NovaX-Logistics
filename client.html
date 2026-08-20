@@ -1301,6 +1301,22 @@
   .nvai-chip{flex:0 0 auto;scroll-snap-align:start;max-width:72vw}
 }
 
+/* Confirm bar — the only place a write is triggered. Deliberately
+   distinct from a suggestion chip: this one changes a live parcel. */
+.nvai-confirm{border:1px solid var(--green-2);border-radius:14px;padding:13px 15px;
+  background:var(--mint);animation:nvaiIn .3s both}
+.nvai-confirm-txt{font-size:13.5px;line-height:1.55;color:var(--ink);white-space:pre-wrap;
+  font-weight:600;margin-bottom:11px}
+.nvai-confirm-row{display:flex;gap:9px;flex-wrap:wrap}
+.nvai-go,.nvai-no{display:inline-flex;align-items:center;height:38px;padding:0 16px;border-radius:99px;
+  font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;box-sizing:border-box;
+  transition:transform .18s,filter .18s,background .18s}
+.nvai-go{border:0;color:#fff;background:linear-gradient(135deg,var(--green),var(--green-2));
+  box-shadow:0 4px 14px rgba(19,163,111,.3)}
+.nvai-go:hover{transform:translateY(-1px);filter:brightness(1.07)}
+.nvai-go:disabled{opacity:.55;cursor:default;transform:none}
+.nvai-no{border:1px solid var(--line);background:transparent;color:var(--muted)}
+.nvai-no:hover{background:var(--panel);color:var(--ink)}
 .nvai-think{display:flex;gap:5px;align-items:center;padding:2px 0}
 .nvai-think i{width:6px;height:6px;border-radius:50%;background:var(--green-2);
   animation:nvaiPulse 1.15s ease-in-out infinite}
@@ -13435,20 +13451,112 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
            '</div>';
   }
 
-  function turn(role, text, cards){
+  /* Progressive reveal. This is NOT token streaming -- the full answer has
+     already arrived. Revealing it a few characters at a time removes the
+     dead pause where a finished reply lands as one block, which is what
+     actually reads as slow. Cards appear once the text finishes. */
+  function reveal(el, text, done){
+    var full = String(text || "");
+    if (prefersReducedMotion() || full.length < 40){
+      el.textContent = full; if(done) done(); return;
+    }
+    var i = 0, step = Math.max(2, Math.round(full.length / 90));
+    (function tick(){
+      i = Math.min(full.length, i + step);
+      el.textContent = full.slice(0, i);
+      scroll();
+      if(i < full.length) setTimeout(tick, 16);
+      else if(done) done();
+    })();
+  }
+
+  function prefersReducedMotion(){
+    try{ return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
+    catch(e){ return false; }
+  }
+
+  function turn(role, text, cards, onDone){
     if(!STREAM) return null;
     var wrap = document.createElement("div");
     wrap.className = "nvai-turn" + (role === "me" ? " me" : "");
-    var cardHtmls = (Array.isArray(cards) ? cards : []).map(cardHtml).join("");
     wrap.innerHTML =
       (role === "me" ? "" : '<span class="nvai-av" aria-hidden="true">NX</span>') +
-      '<div class="nvai-body">' +
-        '<div class="nvai-say">' + esc(text) + '</div>' +
-        (cardHtmls ? '<div class="nvai-cards">' + cardHtmls + '</div>' : '') +
-      '</div>';
+      '<div class="nvai-body"><div class="nvai-say"></div>' +
+        '<div class="nvai-cards" hidden></div></div>';
     STREAM.appendChild(wrap);
-    scroll();
+
+    var say = wrap.querySelector(".nvai-say");
+    var box = wrap.querySelector(".nvai-cards");
+    var cardHtmls = (Array.isArray(cards) ? cards : []).map(cardHtml).join("");
+
+    if(role === "me"){
+      say.textContent = String(text || "");
+      scroll();
+      if(onDone) onDone();
+    } else {
+      reveal(say, text, function(){
+        if(cardHtmls){ box.innerHTML = cardHtmls; box.hidden = false; }
+        scroll();
+        if(onDone) onDone();
+      });
+    }
     return wrap;
+  }
+
+  /* A write the merchant has to approve. The model only ever proposes;
+     this button is the only thing that calls the writing RPC. */
+  function confirmBar(action){
+    if(!STREAM || !action || !action.type) return;
+    var wrap = document.createElement("div");
+    wrap.className = "nvai-turn";
+    wrap.innerHTML =
+      '<span class="nvai-av" aria-hidden="true">NX</span>' +
+      '<div class="nvai-body"><div class="nvai-confirm">' +
+        '<div class="nvai-confirm-txt">' + esc(confirmText(action)) + '</div>' +
+        '<div class="nvai-confirm-row">' +
+          '<button class="nvai-go" type="button">' + esc(action.label || "Confirm") + '</button>' +
+          '<button class="nvai-no" type="button">Not now</button>' +
+        '</div></div></div>';
+    STREAM.appendChild(wrap); scroll();
+
+    wrap.querySelector(".nvai-no").addEventListener("click", function(){ wrap.remove(); });
+    wrap.querySelector(".nvai-go").addEventListener("click", function(){
+      runAction(action, wrap);
+    });
+  }
+
+  function confirmText(a){
+    if(a.type === "fix_address"){
+      return "Save this to " + a.awb + "?\n" + (a.address || "") + (a.phone ? "\n" + a.phone : "");
+    }
+    if(a.type === "reattempt") return "Ask operations to reattempt " + a.awb + "?";
+    return "Confirm this?";
+  }
+
+  function runAction(a, wrap){
+    var sb = client();
+    if(!sb) return;
+    var go = wrap.querySelector(".nvai-go");
+    go.disabled = true; go.textContent = "Working...";
+    var call = a.type === "fix_address"
+      ? sb.rpc("ai_action_fix_address", { p_awb: a.awb, p_address: a.address || null, p_phone: a.phone || null })
+      : sb.rpc("ai_action_request_reattempt", { p_awb: a.awb, p_note: a.note || null });
+    Promise.resolve(call)
+      .catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+      .then(function(r){
+        wrap.remove();
+        if(r && r.error){ turn("ai", "That did not go through: " + r.error.message); return; }
+        var d = r && r.data;
+        if(d && d.ok === false){
+          turn("ai", d.reason === "not_your_parcel"
+            ? "That parcel is not on your account, so I left it alone."
+            : "I could not complete that.");
+          return;
+        }
+        turn("ai", a.type === "fix_address"
+          ? "Saved. " + a.awb + " has its address now, so the rider will not be stuck at the door."
+          : "Filed. Operations have the reattempt request for " + a.awb + ".");
+      });
   }
 
   function thinking(){
@@ -13538,7 +13646,9 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
       return;
     }
     if(res.status === 429){ chips([]); return; }
-    turn("ai", b.answer || b.error || "I didn't catch that — try again?", b.cards);
+    turn("ai", b.answer || b.error || "I didn't catch that — try again?", b.cards, function(){
+      if(b.pending_action) confirmBar(b.pending_action);
+    });
     chips(b.suggestions);
     if(SUB) SUB.textContent = b.tools_used && b.tools_used.length
       ? "Checked: " + b.tools_used.filter(function(t,i,a){return a.indexOf(t)===i;}).join(", ")
@@ -13639,7 +13749,36 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
     }catch(e){}
   }
 
-  function init(){ bind(); watchTab(); }
+  /* Proactive nudge. One cheap RPC -- no model call, no quota spend --
+     so the launcher can say "3 need you" before anyone opens anything. */
+  function attentionBadge(){
+    var sb = client();
+    if(!sb) { setTimeout(attentionBadge, 3000); return; }
+    Promise.resolve(sb.rpc("ai_context_digest"))
+      .catch(function(){ return null; })
+      .then(function(r){
+        var d = r && r.data;
+        if(!d || d.error) return;
+        var n = Number(d.needs_attention || 0);
+        var btn = document.querySelector(".nvauto-btn");
+        if(!btn) return;
+        var old = btn.querySelector(".nvauto-badge");
+        if(old) old.remove();
+        if(n > 0){
+          var b = document.createElement("span");
+          b.className = "nvauto-badge";
+          b.textContent = n > 9 ? "9+" : String(n);
+          btn.appendChild(b);
+          btn.classList.add("nv-pulse");
+          var sub = document.getElementById("nvAiSub");
+          if(sub) sub.textContent = n + " parcel" + (n === 1 ? "" : "s") + " need attention";
+        } else {
+          btn.classList.remove("nv-pulse");
+        }
+      });
+  }
+
+  function init(){ bind(); watchTab(); setTimeout(attentionBadge, 2600); }
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 
