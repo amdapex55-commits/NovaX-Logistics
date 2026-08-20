@@ -377,7 +377,7 @@
       100%{background-color:transparent;}
     }
     /* ═══ AWB print reveal (nvAwbReveal) ═══════════════════════════════ */
-    #nvAwbReveal{position:fixed;inset:0;z-index:9998;display:grid;place-items:center;
+    #nvAwbReveal{position:fixed;inset:0;z-index:2000001;display:grid;place-items:center;
       background:radial-gradient(120% 90% at 50% 10%,rgba(10,35,24,.94),rgba(4,16,11,.97));
       opacity:0;transition:opacity .28s ease;cursor:pointer;padding:16px;}
     #nvAwbReveal.on{opacity:1;}
@@ -990,6 +990,35 @@
     0%,55%{ background-color:rgba(20,199,123,.14); }
     100%  { background-color:transparent; }
   }
+
+
+  /* ═══ Placeholder weight ═══════════════════════════════════════════════
+     Placeholders were rendering at full text colour and weight, so an empty
+     booking form read as a wall of confident, already-filled values. A
+     merchant could not tell at a glance what they had typed and what was only
+     a hint. Softened everywhere, in both themes, without touching real input
+     text. */
+  input::placeholder,
+  textarea::placeholder,
+  .field input::placeholder,
+  .field textarea::placeholder,
+  .search::placeholder{
+    color:var(--muted) !important;
+    opacity:.62 !important;
+    font-weight:500 !important;
+  }
+  html[data-theme="dark"] input::placeholder,
+  html[data-theme="dark"] textarea::placeholder,
+  html[data-theme="dark"] .field input::placeholder,
+  html[data-theme="dark"] .field textarea::placeholder,
+  html[data-theme="dark"] .search::placeholder{
+    color:var(--muted) !important;
+    opacity:.55 !important;
+    font-weight:500 !important;
+  }
+  /* Real typed text stays at full strength -- only the hint is quiet. */
+  input:not(:placeholder-shown),
+  textarea:not(:placeholder-shown){ font-weight:inherit; }
 
   /* ═══ WITHDRAWAL RECEIPT DRAWER ═══════════════════════════════════════
      Shown only after request_wallet_withdrawal has confirmed server-side.
@@ -5370,11 +5399,29 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        after ~3.4s, the booking has ALREADY succeeded before this runs, and
        every part is wrapped so a failure here can never affect the booking.
        Skipped entirely under prefers-reduced-motion. */
-    function nvAwbReveal(awb, consignee, city, cod){
+    /* onDone fires when the label animation has finished and cleared the
+       screen. Everything that used to render on top of it -- the what-next
+       card, the autopilot nudge -- now waits for this instead of covering it.
+       Called on EVERY booking, not just the first. */
+    function nvAwbReveal(awb, consignee, city, cod, onDone){
+      var done=false;
+      function finish(){ if(done) return; done=true; try{ if(onDone) onDone(); }catch(e){} }
       try{
-        if(!awb) return;
-        if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-        if(document.getElementById("nvAwbReveal")) return;
+        if(!awb){ finish(); return; }
+        if(matchMedia("(prefers-reduced-motion: reduce)").matches){ finish(); return; }
+        // A second booking while one reveal is still on screen: retire the old
+        // one immediately so the new parcel gets its own animation rather than
+        // being silently skipped.
+        var prev=document.getElementById("nvAwbReveal");
+        if(prev){
+          // Settle the outgoing reveal's callback before discarding it,
+          // otherwise a merchant who books twice quickly never sees the first
+          // parcel's next-step card -- it would wait on a promise nothing ever
+          // keeps.
+          try{ if(typeof window.__nvRevealFinish==="function") window.__nvRevealFinish(); }catch(e){}
+          if(prev.parentNode) prev.parentNode.removeChild(prev);
+        }
+        window.__nvRevealFinish=finish;
         var bar=""; try{ bar=barcodeUrl(awb)||""; }catch(e){}
         var ov=document.createElement("div");
         ov.id="nvAwbReveal";
@@ -5409,7 +5456,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         function close(){
           timers.forEach(clearTimeout);
           ov.classList.add("out");
-          setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); },320);
+          setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); finish(); },320);
         }
         ov.addEventListener("click",close);
         requestAnimationFrame(function(){ ov.classList.add("on"); });
@@ -5426,7 +5473,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         at(function(){ var b=ov.querySelector(".nvar-bar"); if(b) b.classList.add("drawn"); if(cap) cap.textContent="Ready to print"; },1450);
         at(function(){ if(slot) slot.classList.remove("hot"); var st=ov.querySelector(".nvar-stamp"); if(st) st.classList.add("on"); },1900);
         at(close,3400);
-      }catch(e){ /* never let a flourish break a completed booking */ }
+      }catch(e){ /* never let a flourish break a completed booking */ finish(); }
     }
 
     function nvTweenFee(el, from, to){
@@ -5566,17 +5613,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         toast(`${awb} synced to NovaX. AWB ready to print.`,"success");
         /* NovaX motion: the parcel just became real -- print its label. Runs
            after the booking has already succeeded and cannot affect it. */
-        try{ nvAwbReveal(awb, consignee, document.getElementById("bookingCity").value, cod); }catch(e){}
-        if(preBookingCount===0 && localStorage.getItem("novaxFirstBookingCompleted")!=="1"){
-          try{ localStorage.setItem("novaxFirstBookingCompleted","1"); }catch(e){}
-          if(window.novaxShowFirstBookingSuccess) window.novaxShowFirstBookingSuccess(awb);
-          if(window.novaxAutopilotSay) window.novaxAutopilotSay("Great. Your first parcel is booked. I\u2019ll watch it from pickup to delivery and tell you if anything needs attention.",[
-            { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:awb },
-            { label:"Print AWB", kind:"local", type:"go_awb_label" }
-          ]);
-        } else if(window.innerWidth<=760 && window.novaxShowFirstBookingSuccess){
-          window.novaxShowFirstBookingSuccess(awb);
-        }
+        // The label animation owns the screen first; the what-next card and
+        // the autopilot nudge queue behind it instead of landing on top.
+        var __afterReveal=function(){
+          if(preBookingCount===0 && localStorage.getItem("novaxFirstBookingCompleted")!=="1"){
+            try{ localStorage.setItem("novaxFirstBookingCompleted","1"); }catch(e){}
+            if(window.novaxShowFirstBookingSuccess) window.novaxShowFirstBookingSuccess(awb);
+            if(window.novaxAutopilotSay) window.novaxAutopilotSay("Great. Your first parcel is booked. I\u2019ll watch it from pickup to delivery and tell you if anything needs attention.",[
+              { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:awb },
+              { label:"Print AWB", kind:"local", type:"go_awb_label" }
+            ]);
+          } else if(window.innerWidth<=760 && window.novaxShowFirstBookingSuccess){
+            window.novaxShowFirstBookingSuccess(awb);
+          }
+        };
+        try{
+          nvAwbReveal(awb, consignee, document.getElementById("bookingCity").value, cod, __afterReveal);
+        }catch(e){ __afterReveal(); }
       }catch(e){
         console.error("Booking failed", e);
         const msg=(e&&e.message)?e.message:"Booking could not be completed. Please try again.";
@@ -7661,11 +7714,50 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             if(!subscribed){
               subscribed=true;
               try{
+                // Coalesce bursts: admin pushing five invoices should cause one
+                // reload, not five.
+                var __rtTimer=null;
+                function rtReload(){
+                  clearTimeout(__rtTimer);
+                  __rtTimer=setTimeout(function(){ try{ loadAll(); }catch(e){} }, 350);
+                }
                 sb.channel("novax_client_"+MY)
-                  .on("postgres_changes",{event:"*",schema:"public",table:"parcels",filter:"client_id=eq."+MY},function(){ loadAll(); })
-                  .on("postgres_changes",{event:"*",schema:"public",table:"invoices",filter:"client_id=eq."+MY},function(){ loadAll(); })
-                  .on("postgres_changes",{event:"*",schema:"public",table:"withdrawals",filter:"client_id=eq."+MY},function(){ loadAll(); })
-                  .subscribe(function(status,err){ if(err) console.warn("NovaX client realtime",status,err.message||err); });
+                  .on("postgres_changes",{event:"*",schema:"public",table:"parcels",filter:"client_id=eq."+MY},rtReload)
+                  .on("postgres_changes",{event:"*",schema:"public",table:"invoices",filter:"client_id=eq."+MY},rtReload)
+                  .on("postgres_changes",{event:"*",schema:"public",table:"withdrawals",filter:"client_id=eq."+MY},rtReload)
+                  // clients was missing: wallet_balance changes when admin pushes
+                  // an invoice or marks a payout paid, and none of that reached
+                  // the merchant until they reloaded the page by hand.
+                  .on("postgres_changes",{event:"*",schema:"public",table:"clients",filter:"id=eq."+MY},rtReload)
+                  .subscribe(function(status,err){
+                    if(err) console.warn("NovaX client realtime",status,err.message||err);
+                    if(status==="SUBSCRIBED") window.__nvRealtimeLive=true;
+                  });
+
+                /* Realtime only delivers if the table is in the
+                   supabase_realtime publication. If it is not -- or the socket
+                   drops on a phone that slept, changed network, or was
+                   backgrounded -- the merchant simply never sees new data and
+                   has to reload by hand. These three fallbacks make the portal
+                   keep itself current either way, and cost one query each. */
+                function nvQuietRefresh(){
+                  if(document.hidden) return;
+                  try{ loadAll(); }catch(e){}
+                }
+                // 1. every 30s while the tab is actually being looked at
+                if(!window.__nvPollTimer){
+                  window.__nvPollTimer=setInterval(nvQuietRefresh, 30000);
+                }
+                // 2. the moment the merchant comes back to the tab
+                if(!window.__nvVisBound){
+                  window.__nvVisBound=true;
+                  document.addEventListener("visibilitychange",function(){
+                    if(!document.hidden) nvQuietRefresh();
+                  });
+                  window.addEventListener("focus", nvQuietRefresh);
+                  // 3. and when the phone/laptop regains a connection
+                  window.addEventListener("online", nvQuietRefresh);
+                }
               }catch(e){ console.warn("NovaX client realtime",e); }
             }
           }
