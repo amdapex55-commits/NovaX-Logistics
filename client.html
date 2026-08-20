@@ -1033,6 +1033,38 @@
      choice the merchant made. */
   select.nv-unset, select:invalid{ color:var(--muted) !important; opacity:.72; }
 
+  /* ═══ Area confirm chip + missing-pickup notice ═══════════════════════ */
+  .nv-areachip{
+    display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+    margin:0 0 10px; padding:10px 12px; border-radius:11px;
+    font-size:13px; font-weight:600; line-height:1.4;
+    background:var(--mint); border:1px solid var(--line-strong); color:var(--ink);
+  }
+  .nv-areachip i{ font-style:normal; color:var(--muted); font-weight:500; }
+  .nv-areachip-dot{
+    width:8px; height:8px; border-radius:50%; background:#14c77b; flex:0 0 auto;
+    box-shadow:0 0 0 3px rgba(20,199,123,.18);
+  }
+  .nv-areachip-btn{
+    margin-left:auto; border:1px solid var(--line-strong); background:transparent;
+    color:var(--ink); border-radius:8px; padding:6px 11px; min-height:34px;
+    font-size:12.5px; font-weight:700; cursor:pointer;
+  }
+  .nv-areachip-btn:hover{ border-color:#14c77b; color:#0c7c59; }
+  html[data-theme="dark"] .nv-areachip{ background:rgba(20,199,123,.09); border-color:rgba(20,199,123,.26); }
+  html[data-theme="dark"] .nv-areachip-btn:hover{ color:#4ee6a5; }
+
+  .nv-nopickup{
+    padding:13px 14px; border-radius:12px; margin-bottom:12px;
+    background:#fff6e5; border:1px solid #f0d9a8; color:#6b4a00;
+  }
+  .nv-nopickup-h{ font-size:14px; font-weight:800; margin-bottom:4px; }
+  .nv-nopickup p{ margin:0 0 10px; font-size:12.5px; line-height:1.5; }
+  .nv-nopickup .action-btn{ min-height:40px; }
+  html[data-theme="dark"] .nv-nopickup{
+    background:rgba(232,182,76,.10); border-color:rgba(232,182,76,.30); color:#f0d9a8;
+  }
+
   /* ═══ WITHDRAWAL RECEIPT DRAWER ═══════════════════════════════════════
      Shown only after request_wallet_withdrawal has confirmed server-side.
      Animations 11-14: scrim fade, sheet rise, tick draw, then the three
@@ -1660,10 +1692,11 @@
                          disabled -- disabled inputs are omitted from form data. -->
                     <input id="bookingPickupCity" class="nv-locked" value="Karachi" readonly tabindex="-1" aria-readonly="true">
                     <div class="footer-note" id="bookingPickupNote">All pickups run from our Karachi hub.</div></div>
-                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote()"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
+                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote();try{nvAutoAreaFromAddress()}catch(e){}"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
                   <!-- NovaX (distance pricing): shown only for Karachi, and only
                        once the areas exist server-side. Hidden entirely otherwise,
                        so a merchant on flat pricing sees no change at all. -->
+                  <div id="nvAreaAutoChip" class="nv-areachip" style="display:none;grid-column:1/-1"></div>
                   <div class="field" id="bookingDestAreaField" style="display:none"><label>Delivery Area <span class="required-star">*</span></label>
                     <!-- Search box FILTERS the select below; the select is the real
                          control and is always visible, so the merchant can always
@@ -5254,6 +5287,98 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        while a function of the same name existed -- element ids become
        properties of window, so the two collided.
        ================================================================== */
+
+    /* ═══ 1. Derive the delivery area from the address already typed ═══════
+       Delivery Address is mandatory, and novax_areas already carries the
+       aliases that make "dha 5", "defence phase 5" and "phase v" all mean DHA
+       Phase 5. So the 60-option picker does not need to be the merchant's
+       first move -- it becomes the correction path when the address is
+       ambiguous. Matching is deliberately conservative: a wrong auto-match
+       prices a parcel wrongly, which is worse than asking.
+
+       Scoring, longest wins:
+         - the matched token must sit on a word boundary in the address
+         - it must be at least 4 characters, so "5" or "dha" alone never wins
+         - if two different areas tie on the best score it is ambiguous and we
+           do NOT choose; the picker opens instead                            */
+    function nvNormAddr(t){
+      return " " + String(t||"").toLowerCase()
+        .replace(/[^a-z0-9\s]/g," ")
+        .replace(/\s+/g," ").trim() + " ";
+    }
+    function nvDetectArea(addressText){
+      if(!addressText || !NV_GEO.areas || !NV_GEO.areas.length) return null;
+      var hay = nvNormAddr(addressText);
+      var best = null, bestLen = 0, tied = false;
+      NV_GEO.areas.forEach(function(a){
+        var cands = [String(a.name||"")].concat(a.aliases||[]);
+        cands.forEach(function(c){
+          var t = nvNormAddr(c).trim();
+          if(t.length < 4) return;                       // too short to trust
+          if(hay.indexOf(" " + t + " ") === -1) return;  // word-boundary only
+          if(t.length > bestLen){ best = a; bestLen = t.length; tied = false; }
+          else if(t.length === bestLen && best && best.id !== a.id){ tied = true; }
+        });
+      });
+      if(!best || tied) return null;
+      return { area: best, matchedLength: bestLen };
+    }
+
+    /* The confirm chip. Shows what we decided and makes changing it one tap,
+       so the merchant is never quietly priced against an area they did not
+       choose. */
+    function nvRenderAreaChip(area, autoPicked){
+      var host = document.getElementById("nvAreaAutoChip");
+      if(!host) return;
+      if(!area){ host.innerHTML=""; host.style.display="none"; return; }
+      host.style.display="";
+      host.innerHTML =
+        '<span class="nv-areachip-dot"></span>' +
+        '<span>Delivering to <b>' + escLabelText(area.name) + '</b>' +
+        (autoPicked ? ' <i>&mdash; read from your address</i>' : '') + '</span>' +
+        '<button type="button" class="nv-areachip-btn" id="nvAreaChipChange">Change</button>';
+      var btn = document.getElementById("nvAreaChipChange");
+      if(btn) btn.addEventListener("click", function(){
+        var f = document.getElementById("bookingDestAreaField");
+        if(f){ f.dataset.forceOpen="1"; f.style.display=""; }
+        var q = document.getElementById("nvAreaFilter");
+        if(q){ q.focus(); }
+      });
+    }
+
+    /* Runs on address input. Never overwrites a choice the merchant made by
+       hand -- only a slot that is empty or that we filled ourselves. */
+    function nvAutoAreaFromAddress(){
+      try{
+        if(!nvGeoActive()) return;
+        var sel = document.getElementById("bookingDestArea");
+        var addr = (document.getElementById("bookingAddress")||{}).value || "";
+        if(!sel) return;
+        if(sel.value && sel.dataset.auto !== "1"){
+          // Merchant chose it by hand -- authoritative. Keep the picker
+          // reachable rather than leaving it collapsed from a previous
+          // auto-detect.
+          var fh=document.getElementById("bookingDestAreaField");
+          if(fh && fh.dataset.forceOpen!=="1") fh.style.display="";
+          return;
+        }
+        var hit = nvDetectArea(addr);
+        var field = document.getElementById("bookingDestAreaField");
+        if(hit){
+          sel.value = hit.area.id;
+          sel.dataset.auto = "1";
+          nvRenderAreaChip(hit.area, true);
+          // Collapse the picker unless the merchant asked to see it.
+          if(field && field.dataset.forceOpen !== "1") field.style.display = "none";
+          try{ nvRefreshQuote(); }catch(e){}
+        } else {
+          if(sel.dataset.auto === "1"){ sel.value=""; sel.dataset.auto=""; }
+          nvRenderAreaChip(null,false);
+          if(field) field.style.display = "";
+        }
+      }catch(e){ console.warn("NovaX area detect", e); }
+    }
+
     function nvAreaMatches(area, q){
       if(!q) return true;
       var cands=[String(area.name||"")].concat(area.aliases||[]).map(function(x){ return String(x).toLowerCase(); });
@@ -5292,7 +5417,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var sel=document.getElementById("bookingDestArea");
       if(sel && !sel.dataset.wired){
         sel.dataset.wired="1";
-        sel.addEventListener("change", nvRefreshQuote);
+        sel.addEventListener("change", function(){
+          // A hand-picked area is authoritative from then on.
+          sel.dataset.auto="";
+          var a=(NV_GEO.areas||[]).filter(function(x){ return x.id===sel.value; })[0];
+          nvRenderAreaChip(a||null,false);
+          nvRefreshQuote();
+        });
+      }
+      var addrEl=document.getElementById("bookingAddress");
+      if(addrEl && !addrEl.dataset.nvAreaWired){
+        addrEl.dataset.nvAreaWired="1";
+        var t=null;
+        var run=function(){ clearTimeout(t); t=setTimeout(nvAutoAreaFromAddress,320); };
+        addrEl.addEventListener("input", run);
+        addrEl.addEventListener("blur", nvAutoAreaFromAddress);
+        addrEl.addEventListener("paste", function(){ setTimeout(nvAutoAreaFromAddress,60); });
       }
       if(filterEl && !filterEl.dataset.wired){
         filterEl.dataset.wired="1";
@@ -5326,13 +5466,37 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     function nvGeoToggleAreaField(){
       var f = document.getElementById("bookingDestAreaField");
-      if(f) f.style.display = nvGeoActive() ? "" : "none";
+      if(!f) return;
+      if(!nvGeoActive()){ f.style.display="none"; return; }
+      // Stay collapsed while an auto-detected area is standing, unless the
+      // merchant explicitly opened it via Change.
+      var sel=document.getElementById("bookingDestArea");
+      var autoStanding = sel && sel.dataset.auto==="1" && sel.value;
+      f.style.display = (autoStanding && f.dataset.forceOpen!=="1") ? "none" : "";
     }
 
     function nvGeoRenderPickup(){
       var host = document.getElementById("nvPickupBanner");
       if(!host) return;
       if(!NV_GEO.ready || !NV_GEO.enabled){ host.innerHTML=""; return; }
+      /* A merchant with no pickup point mapped fails the nvGeoActive() gate
+         and is quietly charged the flat zone rate forever, with nothing on
+         screen to say so. They are not choosing the fallback -- they do not
+         know it exists. Say it plainly, and make fixing it one tap. */
+      var pickFrom = String((state.client&&state.client.pickupCity)||"Karachi").toLowerCase();
+      if(pickFrom==="karachi" && !(NV_GEO.pickup && NV_GEO.pickup.area_id)){
+        host.innerHTML =
+          '<div class="nv-nopickup">' +
+            '<div class="nv-nopickup-h">You are being charged the flat rate</div>' +
+            '<p>NovaX can price your Karachi parcels by the actual road distance from your shop, which is usually cheaper than the flat rate. We just need to know where we collect from &mdash; it takes a moment and you only do it once.</p>' +
+            '<button type="button" class="action-btn" id="nvSetPickupNow">Set my pickup point</button>' +
+          '</div>';
+        var b=document.getElementById("nvSetPickupNow");
+        if(b) b.addEventListener("click", function(){
+          try{ nvOpenPickupSetup(); }catch(e){ console.warn("NovaX pickup setup", e); }
+        });
+        return;
+      }
       if(NV_GEO.pickup && NV_GEO.pickup.area_id){
         host.innerHTML = '<div class="footer-note" style="background:#eafff5;border:1px solid #cfeee0;border-radius:8px;padding:8px 11px;margin-bottom:10px">'+
           'Pricing distance from your pickup point: <b>'+escLabelText(NV_GEO.pickup.area_name||NV_GEO.pickup.label)+'</b>'+
@@ -5615,7 +5779,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{
         if(!window.__novaxBookParcel){ throw new Error("Booking service is unavailable. Please refresh and try again."); }
         const mapped=await window.__novaxBookParcel({ consignee, city:document.getElementById("bookingCity").value, cod, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address, orderId:(document.getElementById("bookingOrderId")||{}).value||"", allowOpen:((document.getElementById("bookingAllowOpen")||{}).value==="Yes"?"Yes":"No"),
-          destAreaId:((document.getElementById("bookingDestArea")||{}).value||null) });
+          /* Only ever send an area when distance pricing is genuinely active
+             for this parcel. The select keeps its value when the field hides,
+             so switching Karachi -> Lahore after choosing an area would
+             otherwise post a Karachi area id on a Lahore booking. Pre-existing
+             hole; auto-detection would have made it far easier to hit. */
+          destAreaId:((typeof nvGeoActive==="function" && nvGeoActive())
+            ? ((document.getElementById("bookingDestArea")||{}).value||null)
+            : null) });
         const awb=mapped&&mapped.awb;
         resetBookingForm();
         if(riskWarnEl){ riskWarnEl.style.display="none"; }
@@ -5691,6 +5862,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     function resetBookingForm(){
       ["bookingName","bookingPhone","bookingCod","bookingCategory","bookingAddress"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
+      // Clear the detected area with the form, otherwise parcel two is priced
+      // against parcel one's neighbourhood.
+      try{
+        // Clear the area ALWAYS, not only when we auto-detected it. The
+        // address has just been wiped, so no area -- however it was chosen --
+        // is still valid. Leaving a hand-picked one behind priced the next
+        // parcel against the previous customer's neighbourhood.
+        const da=document.getElementById("bookingDestArea");
+        if(da){ da.value=""; da.dataset.auto=""; }
+        const fld=document.getElementById("bookingDestAreaField");
+        if(fld) fld.dataset.forceOpen="";
+        if(typeof nvRenderAreaChip==="function") nvRenderAreaChip(null,false);
+        if(typeof nvGeoToggleAreaField==="function") nvGeoToggleAreaField();
+      }catch(e){}
       const weightEl=document.getElementById("bookingWeight"); if(weightEl) weightEl.value="0.8 kg";
       ["bookingPickupCity","bookingCity","bookingService","bookingCategory","bookingFragile","bookingPaymentMode"].forEach(id=>{ const el=document.getElementById(id); if(el&&el.tagName==="SELECT") el.selectedIndex=0; });
       try{ applyPickupCity(); }catch(e){}   // keep the merchant's real pickup city after a reset
