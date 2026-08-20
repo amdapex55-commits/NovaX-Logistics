@@ -963,6 +963,34 @@
     border-color:#d6e6de !important;
   }
 
+
+  /* ═══ Toast + change-highlight: never white ═══════════════════════════
+     .toast used background:var(--ink) with color:white. In the dark theme
+     --ink is a LIGHT colour, so every unclassified toast rendered as a white
+     box with white text -- invisible, and exactly the white bar that appeared
+     under an admin action. Feedback is now green (done) or red (failed) in
+     both themes, and never neutral-white. */
+  .toast{ background:#1e7d32 !important; color:#ffffff !important; }
+  .toast.success{ background:#1e7d32 !important; color:#ffffff !important; }
+  .toast.error{ background:#b3261e !important; color:#ffffff !important; }
+  html[data-theme="dark"] .toast{ background:#12693f !important; color:#eafff5 !important; }
+  html[data-theme="dark"] .toast.success{ background:#12693f !important; color:#eafff5 !important; }
+  html[data-theme="dark"] .toast.error{ background:#8e2118 !important; color:#ffe9e6 !important; }
+
+  /* The "this row just changed" sweep ended on background-color:#fff, so in
+     dark mode the newest wallet-ledger row stayed a glaring white block. */
+  html[data-theme="dark"] .nv-changed{ animation-name:nvRowChangedDark !important; }
+  @keyframes nvRowChangedDark{
+    0%  { background-color:rgba(20,199,123,.16); box-shadow:0 0 0 2px rgba(20,199,123,.40); }
+    55% { background-color:rgba(20,199,123,.12); box-shadow:0 0 0 2px rgba(20,199,123,.26); }
+    100%{ background-color:transparent;          box-shadow:0 0 0 0 rgba(20,199,123,0); }
+  }
+  html[data-theme="dark"] tr.nv-changed>td{ animation-name:nvCellChangedDark !important; }
+  @keyframes nvCellChangedDark{
+    0%,55%{ background-color:rgba(20,199,123,.14); }
+    100%  { background-color:transparent; }
+  }
+
   /* ═══ WITHDRAWAL RECEIPT DRAWER ═══════════════════════════════════════
      Shown only after request_wallet_withdrawal has confirmed server-side.
      Animations 11-14: scrim fade, sheet rise, tick draw, then the three
