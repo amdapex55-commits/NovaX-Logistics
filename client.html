@@ -4558,6 +4558,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     const WALLET_FEE={ "24h":0.001, "12h":0.003, "instant":0.007 };
     function walletFeeRate(s){ return WALLET_FEE[s] ?? 0.001; }
     function walletFeePct(s){ return s==="instant"?"0.7%":s==="12h"?"0.3%":"0.1%"; }
+    /* The payout fee is computed server-side by request_wallet_withdrawal as
+         v_rate := case p_speed when 'instant' then 0.007 when '12h' then 0.003 else 0.001 end;
+         v_fee  := round(p_amount * v_rate, 2);
+       -- to two decimals, i.e. paisa. The browser previewed it with
+       Math.round(), i.e. whole rupees, so the figure a merchant confirmed
+       could differ from the figure actually recorded by up to 50 paisa (on
+       Rs 21,120 at 0.3%: preview Rs 63, recorded Rs 63.36). The rates
+       themselves always agreed; only the rounding drifted. This mirrors the
+       server exactly so the preview and the receipt can never disagree.
+       The server remains authoritative -- wherever the RPC returns fee/net,
+       those values are used in preference to this. */
+    function nvPayoutFee(amount, speed){
+      return Math.round(Number(amount||0) * walletFeeRate(speed) * 100) / 100;
+    }
+
     function walletSpeedLabel(s){ return s==="instant"?"Instant 2-3 hours":s==="12h"?"12 hours":"24 hours"; }
     function walletBalance(id){ return Number(clientById(id).walletBalance||0); }
     function selectWalletSpeed(s){ state.walletWithdrawSpeed=s; saveState(); renderClientWallet(); }
@@ -4882,7 +4897,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(ibanInput && !ibanInput.dataset.touched && !ibanInput.value && bd && bd.iban) ibanInput.value=bd.iban;
       const typedIban=(ibanInput&&ibanInput.value||"").trim().toUpperCase();
       const typedIbanErr=validateIbanValue(typedIban);
-      const fee=Math.round(useAmt*walletFeeRate(speed)); const net=useAmt-fee;
+      const fee=nvPayoutFee(useAmt,speed); const net=useAmt-fee;
       let blockReason="";
       if(state.__withdrawInFlight) blockReason="Submitting your withdrawal request...";
       else if(typedIbanErr) blockReason=typedIban?typedIbanErr:"Enter the IBAN this payout should go to.";
@@ -4964,7 +4979,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // that has moved, never an optimistic flourish.
         try{ nvMoneySentAnimation(amt); }catch(e){}
         const d=r&&r.data;
-        const fee=Number(d&&d.fee!=null?d.fee:Math.round(amt*walletFeeRate(speed)));
+        const fee=Number(d&&d.fee!=null?d.fee:nvPayoutFee(amt,speed));
         const net=Number(d&&d.net!=null?d.net:amt-fee);
         // Receipt drawer. Uses the server's fee/net when the RPC returned them
         // so the merchant is shown the figures that were actually recorded,
