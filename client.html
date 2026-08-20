@@ -941,6 +941,15 @@
   }
   html[data-theme="dark"] .tier-card.active strong{ color:#4ee6a5; }
 
+  .nv-inv-absorb{
+    margin:7px 0 0; padding:7px 10px; border-radius:9px;
+    font-size:12.5px; line-height:1.45; font-weight:600;
+    color:var(--green); background:var(--mint); border:1px solid var(--line-strong);
+  }
+  html[data-theme="dark"] .nv-inv-absorb{
+    color:#4ee6a5; background:rgba(20,199,123,.09); border-color:rgba(20,199,123,.24);
+  }
+
   /* ═══ WITHDRAWAL RECEIPT DRAWER ═══════════════════════════════════════
      Shown only after request_wallet_withdrawal has confirmed server-side.
      Animations 11-14: scrim fade, sheet rise, tick draw, then the three
@@ -3712,6 +3721,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // of another client's invoices.
       const myId=state.client&&state.client.id;
       const invoices=myId?state.invoices.filter(i=>i.clientId===myId&&i.status!=="Deleted"):[];
+      // If the wallet is currently negative, the next settlement absorbs that
+      // shortfall automatically -- wallet_balance + payable is simple addition,
+      // so -1,760 + 21,120 lands at 19,360. The merchant should be told that
+      // before it happens, otherwise the balance appears to jump and Rs 1,760
+      // appears to vanish. Computed once here and shown per pending invoice.
+      let __nvShortfall = 0;
+      try{ __nvShortfall = nvMoneyFigures().shortfall || 0; }catch(e){}
       (document.getElementById("paymentSummary")||{}).innerHTML=[
         moneyBox("Generated invoices",invoices.length,"admin created only"),
         moneyBox("Invoice COD",money(invoices.reduce((s,i)=>s+i.cod,0)),"delivered parcels only"),
@@ -3741,7 +3757,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const sum = owed>0
           ? `${n} prepaid parcel(s) &middot; <strong>${money(inv.charges)}</strong> delivery charges &rarr; <strong>${money(owed)}</strong> to pay NovaX`
           : `${n} parcel(s) &middot; ${money(inv.cod)} collected &minus; ${money(inv.charges)} charges = <strong>${money(inv.payable)}</strong> to you`;
-        return `<div class="invoice-card nv-inv-row" style="animation-delay:${Math.min(idx*70,560)}ms"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="footer-note" style="margin-left:auto">${escLabelText(inv.createdAt)}</span></div><p style="margin:6px 0 0">${sum}</p>${nvInvoiceSteps(inv.status)}<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Statement PDF</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">CSV</button></div></div>`;
+        // Only on an invoice that has not reached the wallet yet, and only
+        // while a shortfall actually exists.
+        const notYetInWallet = !isInvoiceClosed(inv.status) && inv.status!=="Cancelled" && inv.status!=="Pushed to wallet";
+        const clears = (owed<=0 && notYetInWallet && __nvShortfall>0)
+          ? Math.min(__nvShortfall, Number(inv.payable||0))
+          : 0;
+        const absorbLine = clears>0
+          ? `<p class="nv-inv-absorb">${money(clears)} of this clears the charges already on your account &mdash; <strong>${money(Math.max(0, Number(inv.payable||0)-clears))}</strong> reaches your wallet.</p>`
+          : "";
+        return `<div class="invoice-card nv-inv-row" style="animation-delay:${Math.min(idx*70,560)}ms"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="footer-note" style="margin-left:auto">${escLabelText(inv.createdAt)}</span></div><p style="margin:6px 0 0">${sum}</p>${absorbLine}${nvInvoiceSteps(inv.status)}<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Statement PDF</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">CSV</button></div></div>`;
       }).join("")||`<div class="ops-card"><strong>No invoices yet</strong><p>Once a delivered parcel is invoiced it appears here with a full statement.</p></div>`;
       // NovaX (Shopify Final Test Visibility): "View imported orders" sets
       // state.orderLogSourceFilter="shopify" so this feed narrows to source=shopify.
