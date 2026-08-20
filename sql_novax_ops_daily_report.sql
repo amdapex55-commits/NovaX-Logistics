@@ -37,7 +37,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = public
-as $$
+as $fn$
 begin
   if TG_OP = 'INSERT' then
     insert into public.nv_parcel_status_log (parcel_id, awb, client_id, from_status, to_status, changed_at)
@@ -50,7 +50,7 @@ begin
   end if;
   return NEW;
 end;
-$$;
+$fn$;
 
 drop trigger if exists trg_parcel_status_log on public.parcels;
 create trigger trg_parcel_status_log
@@ -98,7 +98,7 @@ returns table (
 language plpgsql
 security definer
 set search_path = public
-as $$
+as $fn$
 declare
   v_ok boolean;
   v_today date := (now() at time zone 'Asia/Karachi')::date;
@@ -169,7 +169,7 @@ begin
   left join money m      on m.d  = d.day
   order by d.day desc;
 end;
-$$;
+$fn$;
 
 revoke all on function public.ops_daily_report(text, int) from public;
 grant execute on function public.ops_daily_report(text, int) to anon, authenticated;
