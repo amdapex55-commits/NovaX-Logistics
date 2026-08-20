@@ -411,6 +411,10 @@ h1 .line{padding-bottom:.06em}
 /* ═══════════════ HERO ═══════════════ */
 #hero{padding-top:clamp(104px,14vh,168px);padding-bottom:calc(var(--sp) * .7)}
 .hero-grid{display:grid;grid-template-columns:minmax(0,1.02fr) minmax(300px,.98fr);gap:44px;align-items:center}
+/* Grid items default to min-width:auto, so a max-content child (the review
+   river lanes) makes the whole column size to that content instead of the
+   track. The tracks already use minmax(0,..); the children must match. */
+.hero-grid > *{min-width:0}
 h1 .line{display:block}
 .hero-rot{font-size:clamp(15px,2.1vw,21px);font-weight:800;color:var(--green-2);margin:18px 0 4px;font-family:var(--mono);letter-spacing:-.01em}
 .hero-cta{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:26px}
@@ -908,6 +912,20 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
       <div class="hero-micro">
         <span><i>✓</i>Workspace opens instantly</span><span><i>✓</i>No contract</span><span><i>✓</i>No setup fee</span>
       </div>
+
+    <!-- Real merchant reviews, straight under the sign-up actions. Hidden
+           until public_reviews() returns at least one approved row -- it never
+           shows a placeholder testimonial. -->
+      <div id="nvrev" hidden>
+        <div class="nvrev-head">
+          <span class="nvrev-score" id="nvrevScore">0.0</span>
+          <span class="nvrev-scorestars" id="nvrevScoreStars"></span>
+          <span class="nvrev-count" id="nvrevCount"></span>
+        </div>
+        <div class="nvrev-river" id="nvrevRiver"></div>
+
+
+      </div>
     </div>
 
     <div class="console rv rv-d2">
@@ -943,73 +961,93 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
         <span>AI ACTIONS/HR <b id="aiOps">3,400</b></span><span>MANUAL TOUCHES <b>0</b></span><span>ILLUSTRATIVE</span>
       </div>
     </div>
+
   </div>
 </section>
 
 
-<!-- ═════ REAL MERCHANT REVIEWS — approved in admin, nothing else ═════
-     Renders only what public_reviews() returns. If no review has been
-     approved yet the whole band stays hidden -- it never shows placeholder
-     testimonials. -->
-<section class="band nvrev-band" id="reviews" hidden>
-  <div class="wrap">
-    <div class="sec-head rv">
-      <span class="sec-n">FROM OUR MERCHANTS</span>
-      <h2>Not our words. <span class="grad">Theirs.</span></h2>
-      <p class="sec-p">Every review below was left by a merchant inside their own NovaX portal, after their first payout landed.</p>
-    </div>
 
-    <div class="nvrev-stage">
-      <button class="nvrev-nav prev" type="button" aria-label="Previous review">&#8249;</button>
-      <div class="nvrev-view"><div class="nvrev-track" id="nvrevTrack"></div></div>
-      <button class="nvrev-nav next" type="button" aria-label="Next review">&#8250;</button>
-    </div>
-    <div class="nvrev-dots" id="nvrevDots"></div>
-  </div>
-</section>
-
+<!-- ═════ MERCHANT REVIEW RIVER ═════
+     Not a slideshow. A continuously flowing wall of every approved review,
+     directly beneath the signup actions, so the proof sits where the decision
+     is made. Cards stream past on their own, lift when hovered, and the whole
+     river pauses while the visitor is reading one. Hidden entirely until
+     public_reviews() returns at least one approved row. -->
 <style>
-  .nvrev-stage{ position:relative; display:flex; align-items:center; gap:12px; }
-  .nvrev-view{ overflow:hidden; flex:1; border-radius:18px; }
-  .nvrev-track{ display:flex; transition:transform .62s cubic-bezier(.22,1,.36,1); }
-  .nvrev-slide{
-    flex:0 0 100%; box-sizing:border-box; padding:34px 34px 30px;
-    background:var(--panel); border:1px solid var(--line); border-radius:18px;
-    min-height:196px; display:flex; flex-direction:column; justify-content:center;
+  /* min-width:0 matters -- the lanes are width:max-content, and without this
+     the flex/grid ancestor sizes to that content and the block balloons to
+     several thousand pixels instead of the column width. */
+  #nvrev{ margin-top:26px; min-width:0; max-width:100%; opacity:0;
+          animation:nvrevIn .8s cubic-bezier(.22,1,.36,1) .25s forwards; }
+  @keyframes nvrevIn{ from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:none} }
+
+  .nvrev-head{ display:flex; align-items:baseline; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+  .nvrev-score{
+    font-size:26px; font-weight:900; letter-spacing:-.03em; color:var(--ink);
+    font-family:var(--mono);
   }
-  .nvrev-stars{ color:#e8b64c; letter-spacing:3px; font-size:17px; margin-bottom:14px; }
-  .nvrev-stars .off{ color:var(--ink-3); opacity:.45; }
-  .nvrev-quote{
-    font-size:clamp(16px,2vw,21px); line-height:1.55; font-weight:600;
-    color:var(--ink); letter-spacing:-.015em; margin:0 0 18px;
+  .nvrev-scorestars{ color:#e8b64c; font-size:15px; letter-spacing:2.5px; }
+  .nvrev-scorestars i{ font-style:normal; display:inline-block; opacity:0; transform:scale(.3);
+    animation:nvrevStar .5s cubic-bezier(.34,1.56,.64,1) forwards; }
+  @keyframes nvrevStar{ to{ opacity:1; transform:none } }
+  .nvrev-count{ font-size:12.5px; font-weight:700; color:var(--ink-3); }
+
+  .nvrev-river{
+    position:relative; overflow:hidden; min-width:0; max-width:100%;
+    -webkit-mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent);
+            mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent);
   }
-  .nvrev-who{ font-size:13px; font-weight:800; color:var(--green-2); font-family:var(--mono); }
-  .nvrev-when{ font-size:12px; color:var(--ink-3); font-weight:600; margin-left:8px; }
-  .nvrev-nav{
-    flex:0 0 auto; width:40px; height:40px; border-radius:50%;
-    background:var(--panel-2); border:1px solid var(--line);
-    color:var(--ink-2); font-size:21px; line-height:1; cursor:pointer;
-    transition:background .2s ease, color .2s ease, transform .2s ease;
+  .nvrev-lane{ display:flex; gap:11px; width:max-content; will-change:transform; }
+  .nvrev-lane + .nvrev-lane{ margin-top:11px; }
+  .nvrev-lane.a{ animation:nvrevFlowA var(--dur,46s) linear infinite; }
+  .nvrev-lane.b{ animation:nvrevFlowB var(--dur,58s) linear infinite; }
+  @keyframes nvrevFlowA{ from{transform:translateX(0)}      to{transform:translateX(-50%)} }
+  @keyframes nvrevFlowB{ from{transform:translateX(-50%)}   to{transform:translateX(0)} }
+  .nvrev-river:hover .nvrev-lane{ animation-play-state:paused; }
+
+  .nvrev-card{
+    flex:0 0 auto; width:268px; box-sizing:border-box;
+    padding:14px 16px 13px;
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    transition:transform .32s cubic-bezier(.22,1,.36,1), border-color .32s ease, background .32s ease;
   }
-  .nvrev-nav:hover{ background:var(--green-deep); color:#fff; transform:scale(1.06); }
-  .nvrev-dots{ display:flex; gap:7px; justify-content:center; margin-top:20px; }
-  .nvrev-dot{
-    width:7px; height:7px; border-radius:50%; border:0; padding:0; cursor:pointer;
-    background:var(--ink-3); opacity:.4; transition:opacity .25s ease, width .25s ease, background .25s ease;
+  .nvrev-card:hover{
+    transform:translateY(-5px) scale(1.025);
+    border-color:var(--line-2); background:var(--panel-2);
   }
-  .nvrev-dot.on{ opacity:1; width:22px; border-radius:4px; background:var(--green); }
+  .nvrev-card .st{ color:#e8b64c; font-size:12px; letter-spacing:2px; margin-bottom:7px; }
+  .nvrev-card .st .off{ color:var(--ink-3); opacity:.4; }
+  .nvrev-card p{
+    margin:0 0 10px; font-size:13.5px; line-height:1.5; font-weight:600; color:var(--ink);
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .nvrev-card .who{
+    display:flex; align-items:center; gap:7px;
+    font-size:11.5px; font-weight:800; color:var(--green-2); font-family:var(--mono);
+  }
+  .nvrev-av{
+    width:20px; height:20px; border-radius:6px; flex:0 0 auto;
+    display:grid; place-items:center; font-size:10px; font-weight:900; color:#04100b;
+    background:linear-gradient(140deg,var(--green-2),var(--green));
+  }
+  .nvrev-card .when{ color:var(--ink-3); font-weight:600; margin-left:auto; font-family:inherit; }
+
   @media (max-width:760px){
-    .nvrev-nav{ display:none; }
-    .nvrev-slide{ padding:26px 22px 24px; min-height:auto; }
+    .nvrev-card{ width:250px; }
+    .nvrev-lane.b{ display:none; }   /* one lane on phones: calmer, cheaper */
+    #nvrev{ margin-top:20px; }
   }
   @media (prefers-reduced-motion:reduce){
-    .nvrev-track{ transition:none; }
+    #nvrev{ animation:none; opacity:1; }
+    .nvrev-lane{ animation:none !important; }
+    .nvrev-river{ overflow-x:auto; }
+    .nvrev-scorestars i{ animation:none; opacity:1; transform:none; }
   }
 </style>
 
 <script>
 (function(){
-  var track, dotsHost, band, items = [], idx = 0, timer = null;
+  var host, river, scoreEl, starsEl, countEl;
 
   function esc(s){
     return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
@@ -1019,77 +1057,105 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 
   function stars(n){
     n = Math.max(0, Math.min(5, Number(n) || 0));
-    return '<div class="nvrev-stars" aria-label="' + n + ' out of 5">' +
-           "★".repeat(n) + '<span class="off">' + "★".repeat(5 - n) + "</span></div>";
+    return '<div class="st">' + "★".repeat(n) +
+           '<span class="off">' + "★".repeat(5 - n) + "</span></div>";
   }
 
   function monthYear(iso){
     if(!iso) return "";
     var d = new Date(iso);
-    if(isNaN(d)) return "";
-    return d.toLocaleDateString("en-GB", { month:"short", year:"numeric" });
+    return isNaN(d) ? "" : d.toLocaleDateString("en-GB", { month:"short", year:"numeric" });
   }
 
-  function go(n){
-    if(!items.length) return;
-    idx = (n + items.length) % items.length;
-    track.style.transform = "translateX(" + (-idx * 100) + "%)";
-    Array.prototype.forEach.call(dotsHost.children, function(d, i){
-      d.classList.toggle("on", i === idx);
-    });
+  function initials(name){
+    var parts = String(name || "N").trim().split(/\s+/);
+    return ((parts[0] || "N")[0] + (parts.length > 1 ? parts[parts.length-1][0] : "")).toUpperCase();
   }
 
-  function autoplay(){
-    clearInterval(timer);
-    if(items.length < 2) return;
-    timer = setInterval(function(){ go(idx + 1); }, 6500);
+  function card(r){
+    var body = r.comment && r.comment.trim()
+      ? "&ldquo;" + esc(r.comment.trim()) + "&rdquo;"
+      : "Rated " + (Number(r.rating) || 0) + " out of 5.";
+    var who = r.display_name || "NovaX merchant";
+    var when = monthYear(r.created_at);
+    return '<article class="nvrev-card">' + stars(r.rating) +
+           "<p>" + body + "</p>" +
+           '<div class="who"><span class="nvrev-av">' + esc(initials(who)) + "</span>" +
+           "<span>" + esc(who) + "</span>" +
+           (when ? '<span class="when">' + esc(when) + "</span>" : "") +
+           "</div></article>";
   }
 
-  function paint(){
-    track.innerHTML = items.map(function(r){
-      var body = r.comment && r.comment.trim()
-        ? "&ldquo;" + esc(r.comment.trim()) + "&rdquo;"
-        : "Rated " + (Number(r.rating) || 0) + " out of 5.";
-      var when = monthYear(r.created_at);
-      return '<article class="nvrev-slide">' + stars(r.rating) +
-             '<p class="nvrev-quote">' + body + "</p>" +
-             '<div><span class="nvrev-who">' + esc(r.display_name || "NovaX merchant") + "</span>" +
-             (when ? '<span class="nvrev-when">' + esc(when) + "</span>" : "") +
-             "</div></article>";
+  function lane(rows, cls, seconds){
+    // The row is duplicated so the -50% keyframe lands exactly on a seam and
+    // the loop is invisible.
+    var html = rows.map(card).join("");
+    return '<div class="nvrev-lane ' + cls + '" style="--dur:' + seconds + 's">' +
+           html + html + "</div>";
+  }
+
+  function paint(rows){
+    var avg = rows.reduce(function(s, r){ return s + (Number(r.rating) || 0); }, 0) / rows.length;
+    scoreEl.textContent = avg.toFixed(1);
+    starsEl.innerHTML = [0,1,2,3,4].map(function(i){
+      return '<i style="animation-delay:' + (0.35 + i * 0.09) + 's">' +
+             (i < Math.round(avg) ? "★" : "☆") + "</i>";
     }).join("");
+    countEl.textContent = "from " + rows.length +
+      (rows.length === 1 ? " verified merchant" : " verified merchants");
 
-    dotsHost.innerHTML = items.map(function(_, i){
-      return '<button class="nvrev-dot' + (i === 0 ? " on" : "") + '" type="button" ' +
-             'aria-label="Review ' + (i + 1) + '"></button>';
-    }).join("");
+    // Two lanes drifting opposite ways. With few reviews each lane is repeated
+    // until it is wide enough to fill the viewport without a visible gap.
+    // Two counter-flowing lanes only once there is enough material to fill
+    // them. Below that a second lane would just mirror the first, and repeated
+    // cards sitting side by side read as padding rather than proof.
+    var a, b = [];
+    if(rows.length >= 4){
+      var half = Math.ceil(rows.length / 2);
+      a = rows.slice(0, half);
+      b = rows.slice(half).concat(rows.slice(0, half));
+    } else {
+      a = rows.slice();
+    }
+    while(a.length && a.length < 5) a = a.concat(a);
+    while(b.length && b.length < 5) b = b.concat(b);
 
-    Array.prototype.forEach.call(dotsHost.children, function(d, i){
-      d.addEventListener("click", function(){ go(i); autoplay(); });
-    });
+    river.innerHTML = lane(a, "a", 46) + (b.length ? lane(b, "b", 58) : "");
+    host.hidden = false;
+  }
 
-    band.hidden = false;
-    go(0);
-    autoplay();
+  function client(){
+    // index.html builds its own Supabase client inside a strict-mode IIFE, so
+    // it is NOT on window. Build a separate one from the global config object.
+    if(window.__nvRevSb) return window.__nvRevSb;
+    var CFG = window.NOVAX_CONFIG;
+    if(!CFG || !window.supabase || !window.supabase.createClient) return null;
+    try{
+      window.__nvRevSb = window.supabase.createClient(CFG.SB_URL, CFG.SB_KEY, {
+        auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false,
+               storageKey:"sb-nv-reviews" }
+      });
+      return window.__nvRevSb;
+    }catch(e){ return null; }
   }
 
   function boot(){
-    band     = document.getElementById("reviews");
-    track    = document.getElementById("nvrevTrack");
-    dotsHost = document.getElementById("nvrevDots");
-    if(!band || !track || !dotsHost) return;
-
-    band.querySelector(".nvrev-nav.prev").addEventListener("click", function(){ go(idx - 1); autoplay(); });
-    band.querySelector(".nvrev-nav.next").addEventListener("click", function(){ go(idx + 1); autoplay(); });
+    host    = document.getElementById("nvrev");
+    river   = document.getElementById("nvrevRiver");
+    scoreEl = document.getElementById("nvrevScore");
+    starsEl = document.getElementById("nvrevScoreStars");
+    countEl = document.getElementById("nvrevCount");
+    if(!host || !river) return;
 
     var tries = 0;
     (function wait(){
-      var sb = window.__nvSb;
-      if(!sb){ if(++tries > 30) return; return setTimeout(wait, 400); }
+      var sb = client();
+      if(!sb){ if(++tries > 40) return console.warn("NovaX reviews: no Supabase client"); return setTimeout(wait, 250); }
       sb.rpc("public_reviews", {}).then(function(r){
-        if(!r || r.error || !r.data || !r.data.length) return;   // stay hidden
-        items = r.data;
-        paint();
-      }).catch(function(){});
+        if(r && r.error){ console.warn("NovaX reviews:", r.error.message); return; }
+        if(!r || !r.data || !r.data.length) return;   // stay hidden
+        paint(r.data);
+      }).catch(function(e){ console.warn("NovaX reviews:", e && e.message); });
     })();
   }
 
