@@ -83,7 +83,7 @@ function refreshNow() {
   var out = rows.map(function (r) {
     var k = r.day;
     return [
-      new Date(r.day + 'T00:00:00'),
+      dateOf(r.day),
       Number(r.picked)    || 0,
       Number(r.delivered) || 0,
       Number(r.returned)  || 0,
@@ -163,7 +163,20 @@ function stamp(msg) {
 }
 
 function keyOf(d) {
+  // Must round-trip with the Date built in refreshNow(). That Date is
+  // constructed from y/m/d components, so it is midnight in the SCRIPT's
+  // timezone -- format it back in that same zone, never a hard-coded one.
+  // Hard-coding 'Asia/Karachi' here while the script project ran in another
+  // zone would shift the key by a day and silently drop Adnan's expenses.
   return (d instanceof Date)
-    ? Utilities.formatDate(d, 'Asia/Karachi', 'yyyy-MM-dd')
+    ? Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd')
     : String(d).slice(0, 10);
+}
+
+function dateOf(ymd) {
+  // Component construction -> midnight in the script's own timezone. Parsing
+  // the ISO string instead would land on a different instant depending on the
+  // project timezone, which is what breaks the expense key.
+  var p = String(ymd).slice(0, 10).split('-');
+  return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
 }
