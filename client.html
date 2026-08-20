@@ -1527,6 +1527,7 @@
     }
     if(!__gsb||!__gsb.auth){ denyWithError(); return; }
     __gsb.auth.getSession().then(function(r){
+      try{ window.__novaxGateSession=(r&&r.data&&r.data.session)||null; }catch(e){}
       var session=r&&r.data&&r.data.session;
       if(!session){ redirectAway("index.html"); return; }
       // NovaX fix (auth flow v3): read the auth email and signup metadata
@@ -8078,6 +8079,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       /* Pulls only the closed parcels that loaded invoices point at, skipping
          any already in memory, and merges them in. Runs after the main load so
          it never delays first paint. */
+      /* Both closed-parcel follow-ups can land within milliseconds of each
+         other, and render() walks the whole dashboard. Coalesce them into one
+         repaint instead of three. */
+      var __nvRenderTimer=null;
+      function nvRenderSoon(){
+        clearTimeout(__nvRenderTimer);
+        __nvRenderTimer=setTimeout(function(){ try{ render(); }catch(e){} }, 120);
+      }
       var __nvInvoicedFetched={}, __nvClosedWindowDone=false;
       function nvLoadInvoicedParcels(){
         var want={};
@@ -8106,7 +8115,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               var add=r.data.map(mapParcel).filter(function(p){ return p&&p.awb&&!seen[p.awb]; });
               if(!add.length) return;
               state.parcels=(state.parcels||[]).concat(add);
-              try{ render(); }catch(e){}
+              nvRenderSoon();
             });
         }
         var need=Object.keys(want).filter(function(a){ return !have[a] && !__nvInvoicedFetched[a]; });
@@ -8124,7 +8133,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             var add=r.data.map(mapParcel).filter(function(p){ return p&&p.awb&&!seen[p.awb]; });
             if(!add.length) return;
             state.parcels=(state.parcels||[]).concat(add);
-            try{ render(); }catch(e){}
+            nvRenderSoon();
           });
         });
       }
@@ -8334,7 +8343,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // recovery path below can only ever run for a confirmed client
         // session, never for an admin/rider session sharing this browser.
         (window.__novaxAuthGateReady||Promise.resolve()).then(function(){
-        sb.auth.getSession().then(function(r){
+        /* The auth gate has ALREADY fetched and validated this session a
+           moment ago. Calling getSession() again added a third serial round
+           trip before the first data query could even start -- and this
+           database is in Sydney while the merchants are in Karachi, so every
+           avoidable hop costs ~300ms of staring at an empty dashboard.
+           Reuse the gate's result and only fall back to a fetch if it is
+           somehow absent. */
+        (window.__novaxGateSession
+           ? Promise.resolve({ data:{ session: window.__novaxGateSession } })
+           : sb.auth.getSession()
+        ).then(function(r){
           var session=r&&r.data&&r.data.session; if(!session){ window.__novaxClientDataReady=true; return; }
           function subscribeClientChannel(){
             if(!subscribed){
