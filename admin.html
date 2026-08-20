@@ -7122,7 +7122,13 @@ html,body{ background:var(--bg); color:var(--ink); }
       return manifestDisputeMinutes(log) >= DISPUTE_DELAY_MIN;
     }
 
-    function defaultRateCard(rate = 250) {
+    /* NovaX Zone A base. This is the LAST-RESORT fallback used only when a
+   client row has no rate and no rate card at all. It was 250 while the
+   real Zone A rate in the database was 100, so a client with a missing
+   rate card silently priced at a third number nobody chose. Kept in step
+   with the DB rate (now 200) so the two cannot disagree. */
+    var NV_ZONE_A_BASE=200;
+    function defaultRateCard(rate = NV_ZONE_A_BASE) {
       return {
         overnight: rate,
         additionalKg: 85,
@@ -14775,7 +14781,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
       function sigOf(row){ return JSON.stringify(row,function(k,v){ return k==="updated_at"?undefined:v; }); }
       var DRC={ overnight:250, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 };
-      function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", pickupCity:m.pickupCity||"Karachi", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||250), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||250)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
+      function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", pickupCity:m.pickupCity||"Karachi", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||NV_ZONE_A_BASE), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||NV_ZONE_A_BASE)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
       function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0),
         /* NovaX fix (status rename): this was a raw `r.status` read, so any

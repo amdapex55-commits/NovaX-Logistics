@@ -2419,7 +2419,13 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     const ZONE_CITY_MAP={ karachi:"A", lahore:"B", islamabad:"B", rawalpindi:"B" };
     function zoneForCity(city){ return ZONE_CITY_MAP[String(city||"").trim().toLowerCase()]||"B"; }
     function zoneLabel(zone){ return zone==="A"?"Zone A (Karachi)":"Zone B (Lahore / Islamabad / Rawalpindi)"; }
-    function defaultRateCard(rate){ rate=rate||250; return { overnight:rate, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 }; }
+    /* NovaX Zone A base. This is the LAST-RESORT fallback used only when a
+   client row has no rate and no rate card at all. It was 250 while the
+   real Zone A rate in the database was 100, so a client with a missing
+   rate card silently priced at a third number nobody chose. Kept in step
+   with the DB rate (now 200) so the two cannot disagree. */
+    var NV_ZONE_A_BASE=200;
+    function defaultRateCard(rate){ rate=rate||NV_ZONE_A_BASE; return { overnight:rate, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 }; }
     function normalizeRateCard(raw, rate){
       const fallback=defaultRateCard(rate);
       if(raw && raw.A && raw.B && typeof raw.A.overnight==="number" && typeof raw.B.overnight==="number"){
