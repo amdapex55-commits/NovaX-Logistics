@@ -199,7 +199,7 @@ begin
   if not exists (
     select 1 from public.profiles p
     where p.id = auth.uid()
-      and lower(p.role) in ('admin','owner','superadmin','ops','ops manager')
+      and lower(p.role::text) in ('admin','owner','superadmin','ops','ops manager')
   ) then
     raise exception 'Admin access required.';
   end if;
@@ -227,7 +227,7 @@ begin
   if not exists (
     select 1 from public.profiles p
     where p.id = auth.uid()
-      and lower(p.role) in ('admin','owner','superadmin','ops','ops manager')
+      and lower(p.role::text) in ('admin','owner','superadmin','ops','ops manager')
   ) then
     raise exception 'Admin access required.';
   end if;

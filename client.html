@@ -11368,15 +11368,57 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
   .nvrv-submit:disabled{ opacity:.42; cursor:not-allowed; box-shadow:none; }
   .nvrv-err{ margin:10px 0 0; font-size:12.5px; font-weight:700; color:#e0604b; min-height:16px; }
 
-  /* ---- thank-you state ---- */
-  .nvrv-done{ display:none; padding:8px 0 4px; }
-  .nvrv-done.show{ display:block; animation:nvrvFadeUp .42s cubic-bezier(.22,1,.36,1) both; }
-  @keyframes nvrvFadeUp{ from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none} }
-  .nvrv-tick{ width:54px; height:54px; margin:0 auto 14px; }
+  /* ---- thank-you state ---------------------------------------------------
+     The form does not just disappear: it scales away while the confirmation
+     rises through it, so the card reads as one surface changing state rather
+     than two screens swapping. Tick draws, two rings radiate, a spark burst
+     fires outward, and the merchant's own rating pops back in star by star. */
+  #nvrvForm{ transition:opacity .26s ease, transform .3s cubic-bezier(.22,1,.36,1); }
+  #nvrvForm.nvrv-leaving{ opacity:0; transform:scale(.95) translateY(-8px); pointer-events:none; }
+
+  .nvrv-done{ display:none; padding:14px 0 8px; }
+  .nvrv-done.show{ display:block; }
+
+  .nvrv-tickwrap{ position:relative; width:66px; height:66px; margin:0 auto 6px; display:grid; place-items:center; }
+  .nvrv-tick{ width:60px; height:60px; position:relative; z-index:2;
+    animation:nvrvTickIn .5s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes nvrvTickIn{ from{transform:scale(.5); opacity:0} to{transform:scale(1); opacity:1} }
   .nvrv-tick circle, .nvrv-tick path{ fill:none; stroke:#14c77b; stroke-width:3.4; stroke-linecap:round; stroke-linejoin:round; }
-  .nvrv-tick circle{ stroke-dasharray:151; stroke-dashoffset:151; animation:nvrvDraw .55s cubic-bezier(.65,0,.45,1) forwards; }
-  .nvrv-tick path{ stroke-dasharray:36; stroke-dashoffset:36; animation:nvrvDraw .32s cubic-bezier(.65,0,.45,1) .45s forwards; }
+  .nvrv-tick circle{ stroke-dasharray:151; stroke-dashoffset:151; animation:nvrvDraw .6s cubic-bezier(.65,0,.45,1) .06s forwards; }
+  .nvrv-tick path{ stroke-dasharray:36; stroke-dashoffset:36; animation:nvrvDraw .34s cubic-bezier(.65,0,.45,1) .5s forwards; }
   @keyframes nvrvDraw{ to{ stroke-dashoffset:0 } }
+
+  .nvrv-ring{
+    position:absolute; inset:0; border-radius:50%;
+    border:2px solid #14c77b; opacity:0;
+    animation:nvrvRing 1.5s cubic-bezier(.22,1,.36,1) .52s;
+  }
+  .nvrv-ring-2{ animation-delay:.72s; }
+  @keyframes nvrvRing{
+    0%{ transform:scale(.65); opacity:.65 }
+    75%{ opacity:0 }
+    100%{ transform:scale(2.5); opacity:0 }
+  }
+
+  .nvrv-burst{ position:absolute; inset:0; pointer-events:none; }
+  .nvrv-spark{
+    position:absolute; top:50%; left:50%; width:5px; height:5px; border-radius:50%;
+    background:#14c77b; opacity:0;
+    animation:nvrvSpark .82s cubic-bezier(.22,1,.36,1) .5s forwards;
+  }
+  @keyframes nvrvSpark{
+    0%{ transform:translate(-50%,-50%) scale(.4); opacity:1 }
+    70%{ opacity:.85 }
+    100%{ transform:translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.15); opacity:0 }
+  }
+
+  .nvrv-echo{ height:26px; margin-bottom:4px; font-size:21px; letter-spacing:5px; color:#f0b429; line-height:1; }
+  .nvrv-echo span{ display:inline-block; opacity:0; animation:nvrvEchoPop .42s cubic-bezier(.34,1.56,.64,1) forwards; }
+  @keyframes nvrvEchoPop{ from{opacity:0; transform:scale(.2) translateY(8px)} to{opacity:1; transform:none} }
+
+  .nvrv-thanks{ animation:nvrvRise .5s cubic-bezier(.22,1,.36,1) .3s both; }
+  .nvrv-thanks-sub{ animation:nvrvRise .5s cubic-bezier(.22,1,.36,1) .42s both; }
+  @keyframes nvrvRise{ from{opacity:0; transform:translateY(12px)} to{opacity:1; transform:none} }
 
   /* ---- mobile: bottom sheet, thumb-reachable ---- */
   @media (max-width:560px){
@@ -11425,12 +11467,18 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
     </div>
 
     <div class="nvrv-done" id="nvrvDone">
-      <svg class="nvrv-tick" viewBox="0 0 60 60" aria-hidden="true">
-        <circle cx="30" cy="30" r="24"></circle>
-        <path d="M19 30.5 L26.5 38 L41 23.5"></path>
-      </svg>
-      <h3>Thank you.</h3>
-      <p class="nvrv-sub" style="margin-bottom:2px">That means a lot to the team in Karachi.</p>
+      <div class="nvrv-tickwrap">
+        <span class="nvrv-ring"></span>
+        <span class="nvrv-ring nvrv-ring-2"></span>
+        <div class="nvrv-burst" id="nvrvBurst" aria-hidden="true"></div>
+        <svg class="nvrv-tick" viewBox="0 0 60 60" aria-hidden="true">
+          <circle cx="30" cy="30" r="24"></circle>
+          <path d="M19 30.5 L26.5 38 L41 23.5"></path>
+        </svg>
+      </div>
+      <div class="nvrv-echo" id="nvrvEcho" aria-hidden="true"></div>
+      <h3 class="nvrv-thanks">Thank you.</h3>
+      <p class="nvrv-sub nvrv-thanks-sub" style="margin-bottom:2px">That means a lot to the team in Karachi.</p>
     </div>
   </div>
 </div>
@@ -11506,6 +11554,53 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
     }, 380);
   }
 
+  /* The confirmation. Form scales away while the tick rises through it, a
+     spark burst fires outward, and the merchant's own rating pops back star by
+     star so the last thing they see is what they actually said. */
+  function celebrate(){
+    var form = el("nvrvForm");
+    var done = el("nvrvDone");
+    var reduce = false;
+    try{ reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+
+    // spark burst -- 12 dots radiating from the tick
+    var burst = el("nvrvBurst");
+    if(burst && !reduce){
+      burst.innerHTML = "";
+      for(var i = 0; i < 12; i++){
+        var a = (Math.PI * 2 * i) / 12;
+        var dist = 42 + (i % 3) * 9;
+        var sp = document.createElement("span");
+        sp.className = "nvrv-spark";
+        sp.style.setProperty("--dx", (Math.cos(a) * dist).toFixed(1) + "px");
+        sp.style.setProperty("--dy", (Math.sin(a) * dist).toFixed(1) + "px");
+        sp.style.animationDelay = (0.5 + (i % 4) * 0.045) + "s";
+        if(i % 2) sp.style.background = "#4ee6a5";
+        burst.appendChild(sp);
+      }
+    }
+
+    // echo their rating back, staggered
+    var echo = el("nvrvEcho");
+    if(echo){
+      echo.innerHTML = "";
+      for(var j = 0; j < rating; j++){
+        var st = document.createElement("span");
+        st.textContent = "\u2605";
+        st.style.animationDelay = (reduce ? 0 : 0.62 + j * 0.075) + "s";
+        echo.appendChild(st);
+      }
+    }
+
+    form.classList.add("nvrv-leaving");
+    setTimeout(function(){
+      form.style.display = "none";
+      done.classList.add("show");
+    }, reduce ? 0 : 240);
+
+    setTimeout(close, reduce ? 1200 : 3000);
+  }
+
   function submit(){
     if(submitting || !rating) return;
     var sb = window.__nvSb;
@@ -11527,9 +11622,7 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
         el("nvrvErr").textContent = "Could not send that — " + r.error.message;
         return;
       }
-      el("nvrvForm").style.display = "none";
-      el("nvrvDone").classList.add("show");
-      setTimeout(close, 2100);
+      celebrate();
     }).catch(function(e){
       submitting = false;
       btn.disabled = false;
