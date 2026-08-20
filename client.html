@@ -6797,13 +6797,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        showClientTab("wallet") / data-client-tab="payments" call sites across
        the cockpit, AI panel, command palette, coach tips and onboarding tour
        keep working untouched. */
-    var NV_CLIENT_TABS = ["dashboard","newBooking","awbLabel","bulkBooking","integrations",
-                          "reports","money","logs","subAccounts","tickets","support"];
-    var NV_TAB_ALIASES = { wallet:"money", payments:"money", payment:"money", invoices:"money" };
+    /* Both tables live INSIDE the function on purpose. They were module-level
+       `var`s, and normalizeClientTab() is called during state restore near the
+       top of the file -- long before that assignment runs. `var` hoists the
+       declaration but not the value, so NV_TAB_ALIASES was undefined at call
+       time and the whole portal died on
+         TypeError: Cannot read properties of undefined (reading 'wallet')
+       A function declaration is fully hoisted, so keeping the data inside it
+       makes the call safe from any point in the file. */
     function normalizeClientTab(id){
+      var TABS = ["dashboard","newBooking","awbLabel","bulkBooking","integrations",
+                  "reports","money","logs","subAccounts","tickets","support"];
+      var ALIASES = { wallet:"money", payments:"money", payment:"money", invoices:"money" };
       var v = String(id || "").trim();
-      if(NV_TAB_ALIASES[v]) v = NV_TAB_ALIASES[v];
-      return NV_CLIENT_TABS.indexOf(v) > -1 ? v : "dashboard";
+      if(ALIASES[v]) v = ALIASES[v];
+      return TABS.indexOf(v) > -1 ? v : "dashboard";
     }
 
     function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
