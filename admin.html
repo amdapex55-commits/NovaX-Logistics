@@ -6875,8 +6875,7 @@ html,body{ background:var(--bg); color:var(--ink); }
          Pickup address missing".
          The pending queue still uses state.signupLeads (unchanged), but the
          display fallback now looks at every lead, completed ones included. */
-      const __allLeads=(state.signupLeads||[]).concat(state.signupLeadsAll||[]);
-      __allLeads.forEach(l=>{ if(l.authUserId && !leadsByAuthUser[l.authUserId]) leadsByAuthUser[l.authUserId]=l; if(l.email && !leadsByEmail[String(l.email).toLowerCase()]) leadsByEmail[String(l.email).toLowerCase()]=l; });
+      (state.signupLeads||[]).forEach(l=>{ if(l.authUserId && !leadsByAuthUser[l.authUserId]) leadsByAuthUser[l.authUserId]=l; if(l.email && !leadsByEmail[String(l.email).toLowerCase()]) leadsByEmail[String(l.email).toLowerCase()]=l; });
       const profileByClientId={};
       (state.clientProfiles||[]).forEach(p=>{ if(p.clientId) profileByClientId[p.clientId]=p; });
       [...state.clients, ...state.pendingClients].forEach(client => {
@@ -14994,18 +14993,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           state.paymentLogs=D(6).map(rPl);
           state.salesLeads=D(7).map(rSalesLead);
           state.signupLeads=D(8).map(rSignupLead);
-          /* The completed leads, fetched separately so the pending queue above
-             keeps its exact meaning. Only the columns the display fallback
-             needs. Fire-and-forget: it never blocks or breaks the load. */
-          try{
-            sb.from("signup_leads").select("id,auth_user_id,email,phone,address,business_type,city,name,website,status,created_at")
-              .eq("status","workspace_created").order("created_at",{ascending:false}).limit(3000)
-              .then(function(r){
-                if(!r||r.error||!r.data) return;
-                state.signupLeadsAll=r.data.map(rSignupLead);
-                try{ render(); }catch(e){}
-              });
-          }catch(e){ console.warn("NovaX completed leads", e); }
+
           state.operationsIssues=D(9).map(rOpsIssue);
           state.resolvedAlerts=D(10).map(rResolvedAlert);
           var manifestRows=D(11).map(rManifest);
@@ -15260,7 +15248,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       }
       function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
       var _save=saveState; saveState=function(){ try{ if(typeof syncRidersFromUsers==="function") syncRidersFromUsers(); }catch(e){} try{ _save.apply(this,arguments); }catch(e){} try{ syncAll(); }catch(e){} };
-      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[]; state.signupLeads=[]; state.signupLeadsAll=[]; state.operationsIssues=[]; state.resolvedAlerts=[]; state.transit=[]; state.completedSacks=[]; state.users=[]; state.staffActivity=[]; state.walletLedger=[]; state.pickupRequests=[];
+      state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[]; state.signupLeads=[]; state.operationsIssues=[]; state.resolvedAlerts=[]; state.transit=[]; state.completedSacks=[]; state.users=[]; state.staffActivity=[]; state.walletLedger=[]; state.pickupRequests=[];
       window.markSalesLeadContacted=function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;

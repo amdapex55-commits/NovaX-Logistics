@@ -8087,7 +8087,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         clearTimeout(__nvRenderTimer);
         __nvRenderTimer=setTimeout(function(){ try{ render(); }catch(e){} }, 120);
       }
-      var __nvInvoicedFetched={}, __nvClosedWindowDone=false;
+      var __nvInvoicedFetched={}, __nvClosedWindowAt=0;
       function nvLoadInvoicedParcels(){
         var want={};
         (state.invoices||[]).forEach(function(inv){
@@ -8101,8 +8101,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            what was delivered today and this month. 45 days, capped, so the
            working set stays flat as the account ages instead of growing
            without limit. */
-        if(!__nvClosedWindowDone){
-          __nvClosedWindowDone=true;
+        /* Was a once-per-page boolean. A parcel that reaches Delivered leaves
+           the active query, and its cached row still carries the OLD active
+           status, so the merge above cannot recognise it as closed -- without
+           a periodic refetch it would disappear until the next full reload.
+           At most once a minute, so this stays cheap. */
+        var __now=Date.now();
+        if(__now - __nvClosedWindowAt > 60000){
+          __nvClosedWindowAt=__now;
           var since=new Date(Date.now()-45*24*3600*1000).toISOString();
           sb.from("parcels").select("*").eq("client_id",MY)
             .in("status",NV_CLOSED_STATUSES)
@@ -8267,7 +8273,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           var pickupCity=(c&&c.meta&&c.meta.pickupCity)||"Karachi";
           state.client={ id:MY, name:name, walletBalance:bal, rate:rate, rateCard:rc, premiumTier:(c&&c.status)||"", walletTopup:0, shippingDue:0, subAccounts:0, pickupCity:pickupCity };
           state.clients=[{ id:MY, name:name, owner:(c&&c.owner)||"", city:(c&&c.city)||"", status:(c&&c.status)||"Active", tier:(c&&c.status)||"", rate:rate, rateCard:rc, walletBalance:bal, risk:Number((c&&c.risk_score)||0), health:90, problemsResolved:0 }];
-          state.parcels=((res[1]&&res[1].data)||[]).map(mapParcel);
+          /* MERGE, do not replace. res[1] is the ACTIVE-only query, so
+             assigning it straight to state.parcels wiped every Delivered /
+             Return-to-shipper parcel that was already in memory -- which is
+             why the dashboard showed data on first paint and then blanked it
+             a moment later, and flashed on every refresh. Closed parcels
+             already loaded are carried across; the active set is replaced. */
+          (function(){
+            var freshActive=((res[1]&&res[1].data)||[]).map(mapParcel);
+            var activeAwbs={};
+            freshActive.forEach(function(p){ if(p&&p.awb) activeAwbs[p.awb]=1; });
+            var keptClosed=(state.parcels||[]).filter(function(p){
+              return p && p.awb && !activeAwbs[p.awb]
+                     && NV_CLOSED_STATUSES.indexOf(p.status)>-1;
+            });
+            state.parcels=freshActive.concat(keptClosed);
+          })();
           state.invoices=((res[2]&&res[2].data)||[]).map(mapInvoice);
           /* Closed parcels are no longer in the main pull, but an invoice
              statement resolves every line by finding the parcel in
