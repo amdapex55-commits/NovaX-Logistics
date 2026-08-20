@@ -10427,6 +10427,23 @@ html,body{ background:var(--bg); color:var(--ink); }
     // mapper never reaches outside its own scope for anything.
     function mapProcessingDate(t) { return t ? String(t).slice(0, 10) : new Date().toISOString().slice(0, 10); }
     function mapProcessingTime(t) { return t ? String(t).replace("T", " ").slice(11, 16) : ""; }
+    // NovaX fix (address/phone loss): admin_processing_update_status returns a
+    // parcel row that may omit columns it did not touch. Replacing the parcel
+    // in state wholesale turned those omissions into "" in memory, and the
+    // saveState() -> syncAll() -> syncEntity() full-row UPDATE then wrote ""
+    // over the real address in Postgres. This merge keeps any value we already
+    // hold when the incoming row has nothing for that field.
+    function nvMergeParcelKeepContact(prev, next) {
+      if (!prev) return next;
+      if (!next) return prev;
+      ["address","phone","consignee","city"].forEach(function(k){
+        var incoming = next[k];
+        if (incoming === undefined || incoming === null || String(incoming).trim() === "") {
+          if (prev[k] !== undefined && String(prev[k] || "").trim() !== "") next[k] = prev[k];
+        }
+      });
+      return next;
+    }
     function mapProcessingParcelRow(r) {
       if (!r) return null;
       const m = r.meta || {};
@@ -10514,7 +10531,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           const parcel = mapProcessingParcelRow(row);
           if (!parcel || !parcel.awb) return;
           const idx = state.parcels.findIndex(p => (p._uuid && p._uuid === parcel._uuid) || p.awb === parcel.awb);
-          if (idx >= 0) state.parcels[idx] = parcel; else state.parcels.push(parcel);
+          if (idx >= 0) state.parcels[idx] = nvMergeParcelKeepContact(state.parcels[idx], parcel); else state.parcels.push(parcel);
         });
         const found = parcelsByAwbs(awbs);
         if (!found.length) {
@@ -10624,7 +10641,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           const parcel = mapProcessingParcelRow(row);
           if (!parcel || !parcel.awb) return;
           const idx = state.parcels.findIndex(p => (p._uuid && p._uuid === parcel._uuid) || p.awb === parcel.awb);
-          if (idx >= 0) state.parcels[idx] = parcel; else state.parcels.push(parcel);
+          if (idx >= 0) state.parcels[idx] = nvMergeParcelKeepContact(state.parcels[idx], parcel); else state.parcels.push(parcel);
         });
         state.selectedAwb = rows[0] ? String(rows[0].awb || "").toUpperCase() : state.selectedAwb;
         state.activeProcessingAwb = state.selectedAwb;
@@ -14889,6 +14906,18 @@ html,body{ background:var(--bg); color:var(--ink); }
       // sync path; it only ever changes inside the wallet RPCs.
       function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||250), rate_card:normalizeRateCard(c.rateCard,Number(c.rate||250)), risk_score:Number(c.risk||0), meta:{ tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"", pickupCity:c.pickupCity||"Karachi" } }; }
       function fRider(r){ return { name:r.name||"", phone:r.phone||"", branch:r.branch||r.manager||"", access:r.access||"Active", cash_limit:Number(r.cashLimit||0), meta:{ username:r.username, manager:r.manager, cashHeld:r.cashHeld, scans:r.scans, fakeRisk:r.fakeRisk, expenses:r.expenses } }; }
+      // NovaX fix (address/phone loss backstop): syncEntity() sends a FULL-row
+      // UPDATE. Any field that is blank in browser memory therefore erases the
+      // stored value. Contact fields are booked by the client and must never be
+      // cleared by an admin-side sync, so drop them from the payload when blank
+      // -- Postgres then keeps whatever it already has. Clearing an address is
+      // deliberate and belongs in an explicit RPC, not in a background sync.
+      function nvStripBlankContact(row){
+        ["address","phone","consignee"].forEach(function(k){
+          if(!row[k] || String(row[k]).trim()==="") delete row[k];
+        });
+        return row;
+      }
       function fParcel(p){ var cid=cuid(p.clientId); if(!cid) return null; var rid=ruid(p.rider);
         // NovaX fix (metadata-loss guard): start the outgoing meta object from
         // whatever raw backend meta rParcel last attached to this parcel
@@ -14903,7 +14932,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           // save action didn't touch them.
           source:p.source||baseMeta.source||"", shopifyOrderId:p.shopifyOrderId||baseMeta.shopifyOrderId||"", shopifyOrderNumber:p.shopifyOrderNumber||baseMeta.shopifyOrderNumber||"", shopifyOrderName:p.shopifyOrderName||baseMeta.shopifyOrderName||"", shopifyStoreUrl:p.shopifyStoreUrl||baseMeta.shopifyStoreUrl||"", trackingUrl:p.trackingUrl||baseMeta.trackingUrl||"", importedAt:p.importedAt||baseMeta.importedAt||"", externalOrderId:p.externalOrderId||baseMeta.externalOrderId||"", orderReference:p.orderReference||baseMeta.orderReference||""
         });
-        return { awb:p.awb, client_id:cid, rider_id:rid, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:(p.date?new Date(p.date).toISOString():new Date().toISOString()), updated_at:new Date().toISOString(), meta:meta }; }
+        var _r = { awb:p.awb, client_id:cid, rider_id:rid, consignee:p.consignee||"", city:p.city||"", address:p.address||"", phone:p.phone||"", status:p.status||"New booked", cod_amount:Number(p.cod||0), fee:Number(p.fee||0), exception:p.exception||"", booked_at:(p.date?new Date(p.date).toISOString():new Date().toISOString()), updated_at:new Date().toISOString(), meta:meta }; return nvStripBlankContact(_r); }
       // NovaX fix (rebuild integration mismatch): invoices are RPC-owned --
       // admin_generate_invoice/admin_push_invoice_to_wallet/admin_mark_invoice_paid/
       // admin_cancel_invoice are the only things allowed to write the
