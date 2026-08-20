@@ -82,3 +82,34 @@ drop trigger if exists trg_nv_log_parcel_contact on public.parcels;
 create trigger trg_nv_log_parcel_contact
   after update on public.parcels
   for each row execute function public.nv_log_parcel_contact();
+
+-- ---------------------------------------------------------------
+-- 3. Same guard for clients. The admin portal full-row UPDATEs the
+--    clients table too, so a blank in browser memory could erase a
+--    merchant's phone/address, or reset a negotiated rate/rate_card.
+-- ---------------------------------------------------------------
+create or replace function public.nv_protect_client_contact()
+returns trigger
+language plpgsql
+as $fn$
+begin
+  if coalesce(btrim(new.phone), '') = '' and coalesce(btrim(old.phone), '') <> '' then
+    new.phone := old.phone;
+  end if;
+  if coalesce(btrim(new.address), '') = '' and coalesce(btrim(old.address), '') <> '' then
+    new.address := old.address;
+  end if;
+  if coalesce(new.rate, 0) = 0 and coalesce(old.rate, 0) <> 0 then
+    new.rate := old.rate;
+  end if;
+  if new.rate_card is null and old.rate_card is not null then
+    new.rate_card := old.rate_card;
+  end if;
+  return new;
+end
+$fn$;
+
+drop trigger if exists trg_nv_protect_client_contact on public.clients;
+create trigger trg_nv_protect_client_contact
+  before update on public.clients
+  for each row execute function public.nv_protect_client_contact();
