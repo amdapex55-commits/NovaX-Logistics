@@ -903,6 +903,158 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   </div>
 </section>
 
+
+<!-- ═════ REAL MERCHANT REVIEWS — approved in admin, nothing else ═════
+     Renders only what public_reviews() returns. If no review has been
+     approved yet the whole band stays hidden -- it never shows placeholder
+     testimonials. -->
+<section class="band nvrev-band" id="reviews" hidden>
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="sec-n">FROM OUR MERCHANTS</span>
+      <h2>Not our words. <span class="grad">Theirs.</span></h2>
+      <p class="sec-p">Every review below was left by a merchant inside their own NovaX portal, after their first payout landed.</p>
+    </div>
+
+    <div class="nvrev-stage">
+      <button class="nvrev-nav prev" type="button" aria-label="Previous review">&#8249;</button>
+      <div class="nvrev-view"><div class="nvrev-track" id="nvrevTrack"></div></div>
+      <button class="nvrev-nav next" type="button" aria-label="Next review">&#8250;</button>
+    </div>
+    <div class="nvrev-dots" id="nvrevDots"></div>
+  </div>
+</section>
+
+<style>
+  .nvrev-stage{ position:relative; display:flex; align-items:center; gap:12px; }
+  .nvrev-view{ overflow:hidden; flex:1; border-radius:18px; }
+  .nvrev-track{ display:flex; transition:transform .62s cubic-bezier(.22,1,.36,1); }
+  .nvrev-slide{
+    flex:0 0 100%; box-sizing:border-box; padding:34px 34px 30px;
+    background:var(--panel); border:1px solid var(--line); border-radius:18px;
+    min-height:196px; display:flex; flex-direction:column; justify-content:center;
+  }
+  .nvrev-stars{ color:#e8b64c; letter-spacing:3px; font-size:17px; margin-bottom:14px; }
+  .nvrev-stars .off{ color:var(--ink-3); opacity:.45; }
+  .nvrev-quote{
+    font-size:clamp(16px,2vw,21px); line-height:1.55; font-weight:600;
+    color:var(--ink); letter-spacing:-.015em; margin:0 0 18px;
+  }
+  .nvrev-who{ font-size:13px; font-weight:800; color:var(--green-2); font-family:var(--mono); }
+  .nvrev-when{ font-size:12px; color:var(--ink-3); font-weight:600; margin-left:8px; }
+  .nvrev-nav{
+    flex:0 0 auto; width:40px; height:40px; border-radius:50%;
+    background:var(--panel-2); border:1px solid var(--line);
+    color:var(--ink-2); font-size:21px; line-height:1; cursor:pointer;
+    transition:background .2s ease, color .2s ease, transform .2s ease;
+  }
+  .nvrev-nav:hover{ background:var(--green-deep); color:#fff; transform:scale(1.06); }
+  .nvrev-dots{ display:flex; gap:7px; justify-content:center; margin-top:20px; }
+  .nvrev-dot{
+    width:7px; height:7px; border-radius:50%; border:0; padding:0; cursor:pointer;
+    background:var(--ink-3); opacity:.4; transition:opacity .25s ease, width .25s ease, background .25s ease;
+  }
+  .nvrev-dot.on{ opacity:1; width:22px; border-radius:4px; background:var(--green); }
+  @media (max-width:760px){
+    .nvrev-nav{ display:none; }
+    .nvrev-slide{ padding:26px 22px 24px; min-height:auto; }
+  }
+  @media (prefers-reduced-motion:reduce){
+    .nvrev-track{ transition:none; }
+  }
+</style>
+
+<script>
+(function(){
+  var track, dotsHost, band, items = [], idx = 0, timer = null;
+
+  function esc(s){
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+      return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+    });
+  }
+
+  function stars(n){
+    n = Math.max(0, Math.min(5, Number(n) || 0));
+    return '<div class="nvrev-stars" aria-label="' + n + ' out of 5">' +
+           "★".repeat(n) + '<span class="off">' + "★".repeat(5 - n) + "</span></div>";
+  }
+
+  function monthYear(iso){
+    if(!iso) return "";
+    var d = new Date(iso);
+    if(isNaN(d)) return "";
+    return d.toLocaleDateString("en-GB", { month:"short", year:"numeric" });
+  }
+
+  function go(n){
+    if(!items.length) return;
+    idx = (n + items.length) % items.length;
+    track.style.transform = "translateX(" + (-idx * 100) + "%)";
+    Array.prototype.forEach.call(dotsHost.children, function(d, i){
+      d.classList.toggle("on", i === idx);
+    });
+  }
+
+  function autoplay(){
+    clearInterval(timer);
+    if(items.length < 2) return;
+    timer = setInterval(function(){ go(idx + 1); }, 6500);
+  }
+
+  function paint(){
+    track.innerHTML = items.map(function(r){
+      var body = r.comment && r.comment.trim()
+        ? "&ldquo;" + esc(r.comment.trim()) + "&rdquo;"
+        : "Rated " + (Number(r.rating) || 0) + " out of 5.";
+      var when = monthYear(r.created_at);
+      return '<article class="nvrev-slide">' + stars(r.rating) +
+             '<p class="nvrev-quote">' + body + "</p>" +
+             '<div><span class="nvrev-who">' + esc(r.display_name || "NovaX merchant") + "</span>" +
+             (when ? '<span class="nvrev-when">' + esc(when) + "</span>" : "") +
+             "</div></article>";
+    }).join("");
+
+    dotsHost.innerHTML = items.map(function(_, i){
+      return '<button class="nvrev-dot' + (i === 0 ? " on" : "") + '" type="button" ' +
+             'aria-label="Review ' + (i + 1) + '"></button>';
+    }).join("");
+
+    Array.prototype.forEach.call(dotsHost.children, function(d, i){
+      d.addEventListener("click", function(){ go(i); autoplay(); });
+    });
+
+    band.hidden = false;
+    go(0);
+    autoplay();
+  }
+
+  function boot(){
+    band     = document.getElementById("reviews");
+    track    = document.getElementById("nvrevTrack");
+    dotsHost = document.getElementById("nvrevDots");
+    if(!band || !track || !dotsHost) return;
+
+    band.querySelector(".nvrev-nav.prev").addEventListener("click", function(){ go(idx - 1); autoplay(); });
+    band.querySelector(".nvrev-nav.next").addEventListener("click", function(){ go(idx + 1); autoplay(); });
+
+    var tries = 0;
+    (function wait(){
+      var sb = window.__nvSb;
+      if(!sb){ if(++tries > 30) return; return setTimeout(wait, 400); }
+      sb.rpc("public_reviews", {}).then(function(r){
+        if(!r || r.error || !r.data || !r.data.length) return;   // stay hidden
+        items = r.data;
+        paint();
+      }).catch(function(){});
+    })();
+  }
+
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
+})();
+</script>
+
 <div class="mq"><div class="mq-track" id="mq1"></div></div>
 
 <!-- ═════ THE JOURNEY — scroll-driven parcel story ═════ -->

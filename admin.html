@@ -5091,6 +5091,8 @@ html,body{ background:var(--bg); color:var(--ink); }
 
               <button type="button" class="admin-nav-main" data-admin-tab="pickup-requests">PICKUP REQUESTS</button>
 
+              <button type="button" class="admin-nav-main" data-admin-tab="reviews">REVIEWS <span class="nv-pickup-badge" id="reviewPendingBadge" hidden>0</span></button>
+
 
 
               <div class="admin-nav-group" data-admin-group="riders">
@@ -5638,6 +5640,22 @@ html,body{ background:var(--bg); color:var(--ink); }
                 <div class="panel">
                   <div class="section-head"><div><h3>Expense Logs</h3><p>Admin expense entries affect profit dashboards immediately.</p></div></div>
                   <div class="log-feed" id="adminExpenseLogs"></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="admin-module" id="admin-reviews">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>Client Reviews <span class="nv-pickup-badge" id="reviewQueueBadge" hidden>0</span></h3>
+                  <p>Reviews submitted by merchants from their portal. Nothing appears on novaxlogistics.com until it is approved here. The public name can be edited before approving &mdash; use the merchant's trading name, not a person's name, unless they clearly are the brand.</p></div>
+                  <button class="ghost-btn" type="button" onclick="loadAdminReviews()">Refresh</button>
+                </div>
+                <div class="table-wrap wide-scroll">
+                  <table class="desktop-table">
+                    <thead><tr><th>Merchant</th><th>Rating</th><th>Review</th><th>Shown publicly as</th><th>Submitted</th><th>Status</th><th>Actions</th></tr></thead>
+                    <tbody id="adminReviewQueue"><tr><td colspan="7" class="footer-note">Loading reviews…</td></tr></tbody>
+                  </table>
                 </div>
               </div>
             </section>
@@ -9412,6 +9430,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const opsUrgency = document.getElementById("opsUrgencyFilter")?.value || "";
       const opsResolved = document.getElementById("opsResolvedFilter")?.value || "open";
       try { renderPickupQueue(); } catch (e) {}
+      try { renderAdminReviews(); } catch (e) {}
       try { renderExceptionControlRoom(); } catch (e) {}
       try { renderReconciliationAudit(); } catch (e) {}
 
@@ -10320,6 +10339,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (state.activeAdminTab === "system-health") { try { renderSystemHealth(); } catch(e){} }
       if (state.activeAdminTab === "system-notifications") { try { loadNotificationCenter(); } catch(e){} }
       if (state.activeAdminTab === "system-errors") { try { loadErrorMonitor(); } catch(e){} }
+      if (state.activeAdminTab === "reviews") { try { loadAdminReviews(); } catch(e){} }
     }
 
     // NovaX fix (Order Processing RPC scope bug): rParcel() is defined much
@@ -13655,6 +13675,108 @@ html,body{ background:var(--bg); color:var(--ink); }
       toast(`${invoice.id} CSV downloaded.`);
     }
 
+
+    /* ═════════════════ NovaX Client Reviews (moderation) ═════════════════
+       Merchants submit from their portal; nothing reaches the public website
+       until it is approved here. Reads and writes go through SECURITY DEFINER
+       RPCs that check the caller's role server-side -- the buttons below are
+       convenience, not the access control. */
+    var NV_REVIEWS = [];
+
+    function nvReviewStars(n){
+      n = Math.max(0, Math.min(5, Number(n) || 0));
+      return '<span style="color:#f0b429;letter-spacing:2px;font-size:15px">' +
+             "★".repeat(n) + '<span style="color:#c9d6cf">' + "★".repeat(5-n) + '</span></span>';
+    }
+
+    function renderAdminReviews(){
+      var tbody = document.getElementById("adminReviewQueue");
+      if(!tbody) return;
+      var rows = NV_REVIEWS || [];
+      var pending = rows.filter(function(r){ return r.status === "pending"; }).length;
+      ["reviewPendingBadge","reviewQueueBadge"].forEach(function(id){
+        var b = document.getElementById(id);
+        if(b){ b.textContent = String(pending); b.hidden = pending === 0; }
+      });
+
+      if(!rows.length){
+        tbody.innerHTML = '<tr><td colspan="7" class="footer-note">No reviews submitted yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = rows.map(function(r){
+        var chip = r.status === "approved" ? "good" : (r.status === "rejected" ? "bad" : "warn");
+        var actions =
+          (r.status !== "approved" ? '<button class="action-btn" type="button" onclick="setReviewStatus(\'' + escLabelText(r.id) + '\',\'approved\')">Approve</button> ' : "") +
+          (r.status !== "rejected" ? '<button class="ghost-btn" type="button" onclick="setReviewStatus(\'' + escLabelText(r.id) + '\',\'rejected\')">Reject</button> ' : "") +
+          (r.status !== "pending"  ? '<button class="ghost-btn" type="button" onclick="setReviewStatus(\'' + escLabelText(r.id) + '\',\'pending\')">Undo</button>' : "");
+        return '<tr>' +
+          '<td>' + labelText(r.clientName, "Unknown merchant") + '</td>' +
+          '<td>' + nvReviewStars(r.rating) + '</td>' +
+          '<td style="max-width:340px;white-space:normal">' + (r.comment ? escLabelText(r.comment) : '<span class="footer-note">No comment left</span>') + '</td>' +
+          '<td><input value="' + escLabelText(r.displayName || "") + '" style="width:150px" ' +
+              'onchange="renameReviewDisplay(\'' + escLabelText(r.id) + '\', this.value)" ' +
+              'placeholder="Public name"></td>' +
+          '<td>' + escLabelText(String(r.createdAt || "").slice(0,16).replace("T"," ")) + '</td>' +
+          '<td><span class="chip ' + chip + '">' + escLabelText(r.status) + '</span></td>' +
+          '<td>' + actions + '</td>' +
+        '</tr>';
+      }).join("");
+    }
+
+    function loadAdminReviews(){
+      var sb = window.__nvSb;
+      var tbody = document.getElementById("adminReviewQueue");
+      if(!sb){
+        if(tbody) tbody.innerHTML = '<tr><td colspan="7" class="footer-note">Cloud connection not ready.</td></tr>';
+        return;
+      }
+      sb.rpc("admin_list_reviews", {}).then(function(r){
+        if(r && r.error){
+          if(tbody) tbody.innerHTML = '<tr><td colspan="7" class="footer-note">Could not load reviews: ' + escLabelText(r.error.message) + '</td></tr>';
+          return;
+        }
+        NV_REVIEWS = (r.data || []).map(function(x){
+          return { id:x.id, clientId:x.client_id, clientName:x.client_name || "",
+                   rating:Number(x.rating||0), comment:x.comment || "",
+                   status:x.status || "pending", displayName:x.display_name || "",
+                   createdAt:x.created_at || "" };
+        });
+        renderAdminReviews();
+      }).catch(function(e){
+        if(tbody) tbody.innerHTML = '<tr><td colspan="7" class="footer-note">Could not load reviews: ' + escLabelText((e && e.message) || e) + '</td></tr>';
+      });
+    }
+
+    function setReviewStatus(id, status){
+      var sb = window.__nvSb;
+      if(!sb){ toast("Cloud connection not ready.", "error"); return; }
+      var row = (NV_REVIEWS || []).find(function(r){ return r.id === id; });
+      sb.rpc("admin_set_review_status", {
+        p_review_id: id,
+        p_status: status,
+        p_display_name: row ? (row.displayName || null) : null
+      }).then(function(r){
+        if(r && r.error){ toast("Could not update review: " + r.error.message, "error"); return; }
+        if(row) row.status = status;
+        renderAdminReviews();
+        toast(status === "approved"
+          ? "Review approved — it is now live on novaxlogistics.com."
+          : (status === "rejected" ? "Review rejected. It will not be shown publicly."
+                                   : "Review moved back to pending."));
+      }).catch(function(e){ toast("Could not update review: " + ((e && e.message) || e), "error"); });
+    }
+
+    function renameReviewDisplay(id, value){
+      var row = (NV_REVIEWS || []).find(function(r){ return r.id === id; });
+      if(row) row.displayName = String(value || "").trim();
+      // Persisted on the next approve/reject; approving is what publishes it.
+    }
+
+    window.loadAdminReviews = loadAdminReviews;
+    window.setReviewStatus = setReviewStatus;
+    window.renameReviewDisplay = renameReviewDisplay;
+
     function renderPickupQueue() {
       const tbody = document.getElementById("pickupRequestQueue");
       if (!tbody) return;
@@ -16235,6 +16357,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       ["manifest-reached","Reached","Arrived manifests"],
       ["manifest-dispute","Dispute","Manifest disputes"],
       ["pickup-requests","Pickup Requests","Merchant pickup queue"],
+      ["reviews","Reviews","Approve merchant testimonials"],
       ["riders-route","Riders — On Route","Live rider routes"],
       ["riders-report","Riders — Report","Rider performance and cash"],
       ["finance-invoices","Finance — Invoices","Generate and settle invoices"],

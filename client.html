@@ -11229,5 +11229,349 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
 
 
 </script>
+
+<!-- ═══════════════════ NovaX Client Review Prompt ═══════════════════
+     Shown once per merchant account, ever. "Once" is guaranteed by a UNIQUE
+     constraint on reviews.client_id in Postgres, not by localStorage -- a
+     merchant who clears their browser or signs in on the shop laptop still
+     never sees it twice. There is deliberately no close control: the only
+     way out is to submit. -->
+<style>
+  /* Self-contained palette. client.html does NOT define --card / --ink-2 /
+     --ink-3 / --line-2 / --field, so inheriting them would silently fall back
+     to light values and paint a white card in dark mode. These tokens are
+     owned by the prompt and flip on the same html[data-theme="dark"] attribute
+     the rest of the portal uses. */
+  #nvrvOverlay{
+    --rv-card:#ffffff;
+    --rv-ink:#0d1a14;
+    --rv-ink-2:#5c7568;
+    --rv-ink-3:#7b9488;
+    --rv-line:rgba(12,124,89,.18);
+    --rv-star-off:#d3e2da;
+    --rv-field:rgba(4,25,16,.03);
+    --rv-scrim:rgba(6,20,15,.62);
+    --rv-shadow:0 30px 80px -20px rgba(4,25,16,.45);
+  }
+  html[data-theme="dark"] #nvrvOverlay{
+    --rv-card:#101d18;
+    --rv-ink:#eaf3ee;
+    --rv-ink-2:#9db3ac;
+    --rv-ink-3:#7d938c;
+    --rv-line:#2b463d;
+    --rv-star-off:#335046;
+    --rv-field:rgba(255,255,255,.045);
+    --rv-scrim:rgba(2,10,7,.74);
+    --rv-shadow:0 30px 80px -20px rgba(0,0,0,.72);
+  }
+
+  #nvrvOverlay{
+    position:fixed; inset:0; z-index:99999;
+    display:none; align-items:center; justify-content:center;
+    padding:20px;
+    background:var(--rv-scrim);
+    -webkit-backdrop-filter:blur(7px); backdrop-filter:blur(7px);
+    opacity:0; transition:opacity .34s cubic-bezier(.22,1,.36,1);
+  }
+  #nvrvOverlay.nvrv-open{ display:flex; }
+  #nvrvOverlay.nvrv-in{ opacity:1; }
+
+  .nvrv-card{
+    width:min(470px,100%);
+    background:var(--rv-card);
+    color:var(--rv-ink);
+    border:1px solid var(--rv-line);
+    border-radius:20px;
+    box-shadow:var(--rv-shadow);
+    padding:28px 26px 24px;
+    text-align:center;
+    transform:translateY(22px) scale(.94);
+    opacity:0;
+    transition:transform .42s cubic-bezier(.22,1.2,.36,1), opacity .3s ease;
+    max-height:calc(100vh - 40px);
+    overflow-y:auto;
+  }
+  #nvrvOverlay.nvrv-in .nvrv-card{ transform:none; opacity:1; }
+  #nvrvOverlay.nvrv-out{ opacity:0; }
+  #nvrvOverlay.nvrv-out .nvrv-card{ transform:translateY(-10px) scale(.97); opacity:0; }
+
+  .nvrv-mark{
+    width:46px; height:46px; margin:0 auto 14px;
+    border-radius:14px;
+    display:grid; place-items:center;
+    background:linear-gradient(140deg,#14c77b,#0c7c59);
+    color:#fff; font-weight:900; font-size:19px; letter-spacing:-.02em;
+    box-shadow:0 8px 22px -8px rgba(20,199,123,.7);
+  }
+  .nvrv-card h3{ margin:0 0 6px; font-size:20px; font-weight:800; letter-spacing:-.02em; color:var(--rv-ink); }
+  .nvrv-sub{ margin:0 0 20px; font-size:13.5px; line-height:1.5; color:var(--rv-ink-2); }
+
+  /* ---- stars: 44px minimum touch target ---- */
+  .nvrv-stars{ display:flex; gap:4px; justify-content:center; margin-bottom:4px; }
+  .nvrv-star{
+    background:none; border:0; cursor:pointer; line-height:1;
+    min-width:44px; min-height:44px;
+    display:grid; place-items:center;
+    font-size:32px; color:var(--rv-star-off);
+    -webkit-tap-highlight-color:transparent;
+    transition:transform .18s cubic-bezier(.34,1.56,.64,1), color .18s ease;
+  }
+  .nvrv-star:hover{ transform:scale(1.16) rotate(-6deg); }
+  .nvrv-star:focus-visible{ outline:2px solid #14c77b; outline-offset:2px; border-radius:10px; }
+  .nvrv-star.on{ color:#f0b429; }
+  .nvrv-star.pop{ animation:nvrvPop .38s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes nvrvPop{ 0%{transform:scale(1)} 45%{transform:scale(1.32) rotate(8deg)} 100%{transform:scale(1)} }
+  .nvrv-ratelabel{
+    min-height:19px; font-size:13px; font-weight:700; color:#14c77b;
+    margin-bottom:14px; opacity:0; transform:translateY(4px);
+    transition:opacity .22s ease, transform .22s ease;
+  }
+  .nvrv-ratelabel.show{ opacity:1; transform:none; }
+
+  .nvrv-card textarea{
+    width:100%; min-height:96px; resize:vertical; box-sizing:border-box;
+    padding:12px 13px; border-radius:12px;
+    border:1px solid var(--rv-line);
+    background:var(--rv-field);
+    color:var(--rv-ink); font:inherit; font-size:16px;
+    transition:border-color .2s ease, box-shadow .2s ease;
+  }
+  .nvrv-card textarea::placeholder{ color:var(--rv-ink-3); }
+  .nvrv-card textarea:focus{
+    outline:none; border-color:#14c77b;
+    box-shadow:0 0 0 3px rgba(20,199,123,.18);
+  }
+  .nvrv-must{
+    margin:12px 0 0; padding:9px 12px;
+    border-radius:10px;
+    background:rgba(20,199,123,.10);
+    border:1px solid rgba(20,199,123,.28);
+    font-size:12.5px; font-weight:700; line-height:1.45; color:#0c7c59;
+  }
+  html[data-theme="dark"] .nvrv-must{ color:#4ee6a5; background:rgba(20,199,123,.09); border-color:rgba(20,199,123,.24); }
+  .nvrv-note{ margin:10px 0 0; font-size:11.5px; line-height:1.5; color:var(--rv-ink-3); }
+
+  .nvrv-submit{
+    width:100%; margin-top:16px; padding:15px 18px;
+    border:0; border-radius:12px; cursor:pointer;
+    background:linear-gradient(140deg,#14c77b,#0c7c59); color:#fff;
+    font-size:15px; font-weight:800; letter-spacing:-.01em;
+    -webkit-tap-highlight-color:transparent;
+    transition:transform .16s ease, box-shadow .2s ease, opacity .2s ease;
+    box-shadow:0 10px 26px -12px rgba(12,124,89,.9);
+  }
+  .nvrv-submit:hover:not(:disabled){ transform:translateY(-1px); box-shadow:0 14px 30px -12px rgba(12,124,89,.95); }
+  .nvrv-submit:disabled{ opacity:.42; cursor:not-allowed; box-shadow:none; }
+  .nvrv-err{ margin:10px 0 0; font-size:12.5px; font-weight:700; color:#e0604b; min-height:16px; }
+
+  /* ---- thank-you state ---- */
+  .nvrv-done{ display:none; padding:8px 0 4px; }
+  .nvrv-done.show{ display:block; animation:nvrvFadeUp .42s cubic-bezier(.22,1,.36,1) both; }
+  @keyframes nvrvFadeUp{ from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none} }
+  .nvrv-tick{ width:54px; height:54px; margin:0 auto 14px; }
+  .nvrv-tick circle, .nvrv-tick path{ fill:none; stroke:#14c77b; stroke-width:3.4; stroke-linecap:round; stroke-linejoin:round; }
+  .nvrv-tick circle{ stroke-dasharray:151; stroke-dashoffset:151; animation:nvrvDraw .55s cubic-bezier(.65,0,.45,1) forwards; }
+  .nvrv-tick path{ stroke-dasharray:36; stroke-dashoffset:36; animation:nvrvDraw .32s cubic-bezier(.65,0,.45,1) .45s forwards; }
+  @keyframes nvrvDraw{ to{ stroke-dashoffset:0 } }
+
+  /* ---- mobile: bottom sheet, thumb-reachable ---- */
+  @media (max-width:560px){
+    #nvrvOverlay{ align-items:flex-end; padding:0; }
+    .nvrv-card{
+      width:100%; max-width:none;
+      border-radius:22px 22px 0 0;
+      border-left:0; border-right:0; border-bottom:0;
+      padding:26px 20px calc(22px + env(safe-area-inset-bottom,0px));
+      max-height:88vh;
+      transform:translateY(100%);
+      transition:transform .44s cubic-bezier(.22,1,.36,1), opacity .26s ease;
+    }
+    #nvrvOverlay.nvrv-in .nvrv-card{ transform:translateY(0); }
+    #nvrvOverlay.nvrv-out .nvrv-card{ transform:translateY(100%); opacity:1; }
+    .nvrv-card h3{ font-size:19px; }
+    .nvrv-star{ font-size:30px; min-width:46px; }
+    .nvrv-submit{ padding:16px 18px; font-size:16px; }
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    #nvrvOverlay, .nvrv-card, .nvrv-star, .nvrv-submit{ transition:none !important; }
+    .nvrv-star.pop, .nvrv-done.show, .nvrv-tick circle, .nvrv-tick path{ animation:none !important; }
+    .nvrv-tick circle, .nvrv-tick path{ stroke-dashoffset:0 !important; }
+  }
+</style>
+
+<div id="nvrvOverlay" role="dialog" aria-modal="true" aria-labelledby="nvrvTitle">
+  <div class="nvrv-card">
+    <div id="nvrvForm">
+      <div class="nvrv-mark">NX</div>
+      <h3 id="nvrvTitle">How are we doing?</h3>
+      <p class="nvrv-sub">You've shipped with NovaX. Before you carry on &mdash; how has it been?</p>
+
+      <div class="nvrv-stars" id="nvrvStars" role="radiogroup" aria-label="Rating out of five"></div>
+      <div class="nvrv-ratelabel" id="nvrvRateLabel"></div>
+
+      <textarea id="nvrvComment" maxlength="600"
+        placeholder="What do you like about us? (optional)"
+        aria-label="What do you like about us"></textarea>
+      <p class="nvrv-must">We ask this only once &mdash; this window stays open until you submit.</p>
+      <p class="nvrv-note">Your store name may be shown with your review on novaxlogistics.com once our team approves it.</p>
+
+      <div class="nvrv-err" id="nvrvErr"></div>
+      <button type="button" class="nvrv-submit" id="nvrvSubmit" disabled>Pick a rating to continue</button>
+    </div>
+
+    <div class="nvrv-done" id="nvrvDone">
+      <svg class="nvrv-tick" viewBox="0 0 60 60" aria-hidden="true">
+        <circle cx="30" cy="30" r="24"></circle>
+        <path d="M19 30.5 L26.5 38 L41 23.5"></path>
+      </svg>
+      <h3>Thank you.</h3>
+      <p class="nvrv-sub" style="margin-bottom:2px">That means a lot to the team in Karachi.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var LABELS = {
+    1:"Not good — tell us what went wrong",
+    2:"Below what you expected",
+    3:"It's okay",
+    4:"Good — we'll keep pushing",
+    5:"Excellent — thank you!"
+  };
+  var rating = 0, submitting = false, mounted = false;
+
+  function el(id){ return document.getElementById(id); }
+
+  function buildStars(){
+    var host = el("nvrvStars");
+    if(!host || host.children.length) return;
+    for(var i=1;i<=5;i++){
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "nvrv-star";
+      b.dataset.v = String(i);
+      b.setAttribute("role","radio");
+      b.setAttribute("aria-checked","false");
+      b.setAttribute("aria-label", i + " star" + (i>1?"s":""));
+      b.textContent = "★";
+      b.addEventListener("click", onStar);
+      host.appendChild(b);
+    }
+  }
+
+  function onStar(e){
+    var v = Number(e.currentTarget.dataset.v || 0);
+    if(!v) return;
+    rating = v;
+    var stars = el("nvrvStars").children;
+    for(var i=0;i<stars.length;i++){
+      var on = (i+1) <= v;
+      stars[i].classList.toggle("on", on);
+      stars[i].setAttribute("aria-checked", (i+1)===v ? "true" : "false");
+      stars[i].classList.remove("pop");
+      if(on){ void stars[i].offsetWidth; stars[i].classList.add("pop"); }
+    }
+    var lab = el("nvrvRateLabel");
+    lab.textContent = LABELS[v] || "";
+    lab.classList.add("show");
+    var btn = el("nvrvSubmit");
+    btn.disabled = false;
+    btn.textContent = "Submit review";
+  }
+
+  function show(){
+    if(mounted) return;
+    mounted = true;
+    buildStars();
+    var ov = el("nvrvOverlay");
+    ov.classList.add("nvrv-open");
+    // force a frame so the transition actually runs
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ ov.classList.add("nvrv-in"); }); });
+    try{ document.body.style.overflow = "hidden"; }catch(e){}
+  }
+
+  function close(){
+    var ov = el("nvrvOverlay");
+    ov.classList.remove("nvrv-in");
+    ov.classList.add("nvrv-out");
+    setTimeout(function(){
+      ov.classList.remove("nvrv-open","nvrv-out");
+      try{ document.body.style.overflow = ""; }catch(e){}
+    }, 380);
+  }
+
+  function submit(){
+    if(submitting || !rating) return;
+    var sb = window.__nvSb;
+    if(!sb){ el("nvrvErr").textContent = "Still connecting — try again in a moment."; return; }
+    submitting = true;
+    var btn = el("nvrvSubmit");
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+    el("nvrvErr").textContent = "";
+
+    sb.rpc("submit_client_review", {
+      p_rating: rating,
+      p_comment: (el("nvrvComment").value || "").trim()
+    }).then(function(r){
+      if(r && r.error){
+        submitting = false;
+        btn.disabled = false;
+        btn.textContent = "Submit review";
+        el("nvrvErr").textContent = "Could not send that — " + r.error.message;
+        return;
+      }
+      el("nvrvForm").style.display = "none";
+      el("nvrvDone").classList.add("show");
+      setTimeout(close, 2100);
+    }).catch(function(e){
+      submitting = false;
+      btn.disabled = false;
+      btn.textContent = "Submit review";
+      el("nvrvErr").textContent = "Could not send that — " + ((e && e.message) || e);
+    });
+  }
+
+  /* There is no close control by design, but a stray Escape keypress or a
+     backdrop click must not dismiss it either -- the merchant has to submit. */
+  function guard(){
+    var ov = el("nvrvOverlay");
+    if(!ov) return;
+    ov.addEventListener("click", function(ev){ if(ev.target === ov) ev.stopPropagation(); });
+    document.addEventListener("keydown", function(ev){
+      if(ev.key === "Escape" && ov.classList.contains("nvrv-open")){
+        ev.preventDefault(); ev.stopPropagation();
+      }
+    }, true);
+  }
+
+  function boot(){
+    var btn = el("nvrvSubmit");
+    if(btn) btn.addEventListener("click", submit);
+    guard();
+
+    var tries = 0;
+    (function waitForSb(){
+      var sb = window.__nvSb;
+      if(!sb){
+        if(++tries > 40) return;          // ~20s, then give up quietly
+        return setTimeout(waitForSb, 500);
+      }
+      sb.rpc("client_review_prompt_state", {}).then(function(r){
+        if(!r || r.error || !r.data) return;
+        var d = r.data;
+        if(typeof d === "string"){ try{ d = JSON.parse(d); }catch(e){ return; } }
+        if(d && d.eligible === true) setTimeout(show, 1400);
+      }).catch(function(){});
+    })();
+  }
+
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
+})();
+</script>
+
 </body>
 </html>
