@@ -747,7 +747,254 @@
     .qr-img{width:30mm !important;height:30mm !important;padding:0 !important;object-fit:contain !important;}
     .barcode-img{width:100% !important;max-width:39mm !important;height:11mm !important;padding:0 !important;object-fit:contain !important;}
     .awb-scan .chip{font-size:9px !important;font-weight:900 !important;letter-spacing:.04em !important;padding:1px 4px !important;border:1px solid #000 !important;background:#fff !important;color:#000 !important;border-radius:2px !important;}
-  </style>
+  
+  /* ═══════════════ MONEY TAB ═══════════════
+     Ten animations, each tied to a real event -- nothing decorative fires on
+     a render that changed nothing.
+       1  odometer count-up on each hero figure, only when the value moved
+       2  "ready to withdraw" breathing glow while money is actually available
+       3  flow pulse travelling left-to-right along the arrows between figures
+       4  withdraw button shimmer while funds are waiting
+       5  amount hand-off: the figure lifts out of Ready when a payout is sent
+       6  success ripple on the hero after the RPC confirms
+       7  invoice rows stagger in
+       8  per-invoice 3-stage progress dots filling in sequence
+       9  invoice row lift + border warm on hover
+      10  skeleton shimmer while the first load is still in flight            */
+
+  .nv-money-hero{ position:relative; overflow:hidden; }
+  .nv-mh-grid{ display:flex; align-items:stretch; gap:6px; flex-wrap:wrap; }
+  .nv-mh-cell{
+    flex:1 1 160px; min-width:0; padding:14px 16px; border-radius:14px;
+    background:var(--mint,rgba(12,124,89,.05)); border:1px solid var(--line);
+    display:flex; flex-direction:column; gap:3px;
+  }
+  .nv-mh-lab{ font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted,#5c7568); }
+  .nv-mh-val{ font-size:clamp(20px,3.4vw,27px); font-weight:900; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .nv-mh-sub{ font-size:11.5px; color:var(--muted,#5c7568); font-weight:600; }
+
+  /* 2 — the money-is-yours state */
+  .nv-mh-cell.is-ready.nv-live{
+    border-color:rgba(20,199,123,.55);
+    animation:nvMhBreathe 3.4s ease-in-out infinite;
+  }
+  .nv-mh-cell.is-ready.nv-live .nv-mh-val{ color:#0c7c59; }
+  html[data-theme="dark"] .nv-mh-cell.is-ready.nv-live .nv-mh-val{ color:#4ee6a5; }
+  @keyframes nvMhBreathe{
+    0%,100%{ box-shadow:0 0 0 0 rgba(20,199,123,0) }
+    50%    { box-shadow:0 0 0 6px rgba(20,199,123,.10) }
+  }
+
+  /* 3 — flow between the three figures */
+  .nv-mh-arrow{
+    align-self:center; flex:0 0 22px; height:2px; border-radius:2px;
+    background:linear-gradient(90deg,var(--line),var(--line));
+    position:relative; overflow:hidden;
+  }
+  .nv-mh-arrow::after{
+    content:""; position:absolute; inset:0; width:40%;
+    background:linear-gradient(90deg,transparent,#14c77b,transparent);
+    transform:translateX(-120%); animation:nvMhFlow 2.6s ease-in-out infinite;
+  }
+  .nv-mh-arrow:nth-of-type(2)::after{ animation-delay:.5s; }
+  @keyframes nvMhFlow{ 0%{transform:translateX(-120%)} 60%,100%{transform:translateX(300%)} }
+
+  .nv-mh-act{ display:flex; align-items:center; gap:12px; margin-top:14px; flex-wrap:wrap; }
+  .nv-mh-btn{
+    position:relative; overflow:hidden;
+    padding:12px 26px; border:0; border-radius:12px; cursor:pointer;
+    background:linear-gradient(140deg,#14c77b,#0c7c59); color:#fff;
+    font-size:14.5px; font-weight:800; letter-spacing:-.01em;
+    box-shadow:0 10px 24px -12px rgba(12,124,89,.9);
+    transition:transform .16s ease, opacity .2s ease, box-shadow .2s ease;
+  }
+  .nv-mh-btn:hover:not(:disabled){ transform:translateY(-1px); }
+  .nv-mh-btn:disabled{ opacity:.4; cursor:not-allowed; box-shadow:none; }
+  /* 4 — shimmer only while there is something to withdraw */
+  .nv-mh-btn.nv-live::after{
+    content:""; position:absolute; top:0; bottom:0; width:38%;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.32),transparent);
+    transform:translateX(-140%); animation:nvMhShine 3.2s ease-in-out infinite;
+  }
+  @keyframes nvMhShine{ 0%{transform:translateX(-140%)} 55%,100%{transform:translateX(320%)} }
+  .nv-mh-note{ font-size:12.5px; font-weight:700; color:var(--muted,#5c7568); }
+
+  /* 5 — the amount lifting away when a payout is requested */
+  .nv-mh-fly{
+    position:fixed; z-index:9998; pointer-events:none;
+    font-size:22px; font-weight:900; color:#0c7c59; font-variant-numeric:tabular-nums;
+    animation:nvMhFly 1.05s cubic-bezier(.4,0,.2,1) forwards;
+  }
+  html[data-theme="dark"] .nv-mh-fly{ color:#4ee6a5; }
+  @keyframes nvMhFly{
+    0%  { opacity:1; transform:translateY(0) scale(1) }
+    70% { opacity:.85 }
+    100%{ opacity:0; transform:translateY(-90px) scale(.6) }
+  }
+  /* 6 — confirmation ripple */
+  .nv-money-hero.nv-sent::after{
+    content:""; position:absolute; left:50%; top:44%; width:14px; height:14px;
+    margin:-7px 0 0 -7px; border-radius:50%; border:2px solid #14c77b;
+    animation:nvMhRipple 1.1s cubic-bezier(.22,1,.36,1) forwards;
+  }
+  @keyframes nvMhRipple{ from{transform:scale(.6);opacity:.7} to{transform:scale(26);opacity:0} }
+
+  /* 7 — invoice rows arriving */
+  .nv-inv-row{ animation:nvInvIn .5s cubic-bezier(.22,1,.36,1) both; }
+  @keyframes nvInvIn{ from{opacity:0; transform:translateY(12px)} to{opacity:1; transform:none} }
+
+  /* 8 — three-stage progress per invoice */
+  .nv-inv-steps{ display:flex; align-items:center; gap:5px; margin-top:9px; }
+  .nv-inv-dot{
+    width:8px; height:8px; border-radius:50%; background:var(--line-strong,#cfe3d8);
+    transition:background .3s ease, transform .3s ease;
+  }
+  .nv-inv-dot.on{ background:#14c77b; animation:nvDotIn .45s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes nvDotIn{ from{transform:scale(.2);opacity:0} to{transform:scale(1);opacity:1} }
+  .nv-inv-bar{ flex:0 0 26px; height:2px; border-radius:2px; background:var(--line-strong,#cfe3d8); }
+  .nv-inv-bar.on{ background:#14c77b; }
+  .nv-inv-stage{ font-size:11.5px; font-weight:800; margin-left:6px; color:var(--muted,#5c7568); }
+
+  /* 9 — row hover */
+  .nv-inv-row{ transition:transform .28s cubic-bezier(.22,1,.36,1), border-color .28s ease; }
+  .nv-inv-row:hover{ transform:translateY(-2px); border-color:rgba(20,199,123,.45); }
+
+  /* 10 — first-load skeleton */
+  .nv-skel{ border-radius:10px; background:linear-gradient(90deg,var(--line) 25%,var(--line-strong,#dfeee7) 37%,var(--line) 63%);
+    background-size:400% 100%; animation:nvSkel 1.3s ease-in-out infinite; }
+  @keyframes nvSkel{ 0%{background-position:100% 50%} 100%{background-position:0 50%} }
+
+  .nv-owed-amt{ font-size:26px; font-weight:900; color:#b3261e; letter-spacing:-.02em; margin-bottom:8px; }
+  html[data-theme="dark"] .nv-owed-amt{ color:#ff8a75; }
+
+  /* Light mode gives the ready cell a little more presence than --mint alone;
+     dark mode needs the opposite, a lift off the panel rather than a tint.
+     Both themes' tokens (--mint, --line, --line-strong, --muted, --panel) are
+     defined in :root AND in html[data-theme="dark"], so every colour here
+     flips with the portal instead of falling back to a hardcoded value. */
+  .nv-mh-cell.is-ready{ background:var(--mint); border-color:var(--line-strong); }
+  html[data-theme="dark"] .nv-mh-cell{ background:rgba(255,255,255,.03); }
+  html[data-theme="dark"] .nv-mh-cell.is-ready{ background:rgba(20,199,123,.08); }
+  html[data-theme="dark"] .nv-inv-dot{ background:#315046; }
+
+  @media (max-width:760px){
+    .nv-mh-arrow{ display:none; }
+    .nv-mh-cell{ flex:1 1 100%; padding:13px 14px; }
+    .nv-mh-val{ font-size:23px; }
+    .nv-mh-grid{ gap:9px; }
+    .nv-mh-act{ margin-top:12px; }
+    .nv-mh-btn{ width:100%; padding:15px 20px; font-size:15.5px; }
+    .nv-mh-note{ font-size:12px; line-height:1.45; }
+    /* Thumb-sized targets on the invoice rows -- these are the only controls
+       a merchant taps on this screen. */
+    .invoice-card .inline-actions{ gap:7px; }
+    .invoice-card .inline-actions .ghost-btn{ flex:1 1 auto; min-height:42px; }
+    .nv-inv-steps{ flex-wrap:wrap; }
+    .nv-inv-stage{ margin-left:0; flex:1 1 100%; margin-top:4px; }
+    .nv-owed-amt{ font-size:23px; }
+  }
+  @media (max-width:420px){
+    .nv-mh-val{ font-size:21px; }
+    .nv-mh-lab{ font-size:10.5px; }
+  }
+  @media (prefers-reduced-motion:reduce){
+    .nv-mh-cell.is-ready.nv-live, .nv-mh-arrow::after, .nv-mh-btn.nv-live::after,
+    .nv-inv-row, .nv-inv-dot.on, .nv-skel, .nv-mh-fly{ animation:none !important; }
+    .nv-money-hero.nv-sent::after{ display:none; }
+  }
+
+
+  /* Payout-speed selector in dark mode. `html[data-theme="dark"] .tier-card`
+     has specificity (0,2,1) and beats `.tier-card.active` at (0,2,0), so the
+     SELECTED speed lost its green fill in dark and looked almost identical to
+     the two unselected ones. This restores the selected state. */
+  html[data-theme="dark"] .tier-card.active{
+    background:linear-gradient(145deg,rgba(20,199,123,.18),rgba(255,255,255,.03));
+    border-color:#14c77b;
+    box-shadow:0 14px 30px -14px rgba(20,199,123,.45);
+  }
+  html[data-theme="dark"] .tier-card.active strong{ color:#4ee6a5; }
+
+  /* ═══ WITHDRAWAL RECEIPT DRAWER ═══════════════════════════════════════
+     Shown only after request_wallet_withdrawal has confirmed server-side.
+     Animations 11-14: scrim fade, sheet rise, tick draw, then the three
+     payout stages lighting in sequence. */
+  #nvWdOverlay{
+    position:fixed; inset:0; z-index:99997; display:none;
+    align-items:center; justify-content:center; padding:20px;
+    background:rgba(6,20,15,.58);
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+    opacity:0; transition:opacity .3s cubic-bezier(.22,1,.36,1);
+  }
+  #nvWdOverlay.open{ display:flex; }
+  #nvWdOverlay.in{ opacity:1; }
+  .nv-wd-card{
+    width:min(420px,100%); box-sizing:border-box;
+    background:var(--panel); color:var(--ink);
+    border:1px solid var(--line); border-radius:20px;
+    box-shadow:0 30px 80px -20px rgba(4,25,16,.5);
+    padding:26px 24px 20px; text-align:center;
+    transform:translateY(20px) scale(.95); opacity:0;
+    transition:transform .42s cubic-bezier(.22,1.2,.36,1), opacity .28s ease;
+    max-height:calc(100vh - 40px); overflow-y:auto;
+  }
+  html[data-theme="dark"] .nv-wd-card{ box-shadow:0 30px 80px -20px rgba(0,0,0,.75); }
+  #nvWdOverlay.in .nv-wd-card{ transform:none; opacity:1; }
+  #nvWdOverlay.out{ opacity:0; }
+  #nvWdOverlay.out .nv-wd-card{ transform:translateY(-8px) scale(.97); opacity:0; }
+
+  .nv-wd-tick{ width:56px; height:56px; margin:0 auto 12px; }
+  .nv-wd-tick circle,.nv-wd-tick path{ fill:none; stroke:#14c77b; stroke-width:3.4; stroke-linecap:round; stroke-linejoin:round; }
+  .nv-wd-tick circle{ stroke-dasharray:151; stroke-dashoffset:151; animation:nvWdDraw .6s cubic-bezier(.65,0,.45,1) .1s forwards; }
+  .nv-wd-tick path{ stroke-dasharray:36; stroke-dashoffset:36; animation:nvWdDraw .34s cubic-bezier(.65,0,.45,1) .55s forwards; }
+  @keyframes nvWdDraw{ to{ stroke-dashoffset:0 } }
+
+  .nv-wd-card h3{ margin:0 0 4px; font-size:19px; font-weight:800; letter-spacing:-.02em; }
+  .nv-wd-amt{ font-size:31px; font-weight:900; letter-spacing:-.03em; color:#0c7c59; margin:6px 0 2px; font-variant-numeric:tabular-nums;
+    animation:nvWdRise .5s cubic-bezier(.22,1,.36,1) .3s both; }
+  html[data-theme="dark"] .nv-wd-amt{ color:#4ee6a5; }
+  .nv-wd-sub{ margin:0 0 16px; font-size:13px; color:var(--muted); animation:nvWdRise .5s cubic-bezier(.22,1,.36,1) .4s both; }
+  @keyframes nvWdRise{ from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none} }
+
+  .nv-wd-kv{ display:grid; grid-template-columns:auto 1fr; gap:7px 14px; text-align:left;
+    font-size:13px; padding:13px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line);
+    animation:nvWdRise .5s cubic-bezier(.22,1,.36,1) .48s both; }
+  .nv-wd-kv dt{ color:var(--muted); font-weight:600; }
+  .nv-wd-kv dd{ margin:0; text-align:right; font-weight:800; font-variant-numeric:tabular-nums; }
+
+  .nv-wd-steps{ display:flex; align-items:center; gap:6px; justify-content:center; margin:16px 0 4px; }
+  .nv-wd-step{ display:flex; flex-direction:column; align-items:center; gap:5px; flex:0 0 auto; }
+  .nv-wd-step i{ width:11px; height:11px; border-radius:50%; background:var(--line-strong); display:block; font-style:normal; }
+  .nv-wd-step.on i{ background:#14c77b; animation:nvWdDot .45s cubic-bezier(.34,1.56,.64,1) both; }
+  .nv-wd-step:nth-child(1).on i{ animation-delay:.62s }
+  .nv-wd-step:nth-child(3).on i{ animation-delay:.74s }
+  .nv-wd-step:nth-child(5).on i{ animation-delay:.86s }
+  @keyframes nvWdDot{ from{transform:scale(.2);opacity:0} to{transform:scale(1);opacity:1} }
+  .nv-wd-step span{ font-size:10px; font-weight:700; color:var(--muted); white-space:nowrap; }
+  .nv-wd-step.on span{ color:var(--ink); }
+  .nv-wd-line{ flex:0 0 26px; height:2px; background:var(--line-strong); border-radius:2px; margin-bottom:15px; }
+
+  .nv-wd-done{ width:100%; margin-top:16px; padding:13px 18px; border:0; border-radius:12px; cursor:pointer;
+    background:linear-gradient(140deg,#14c77b,#0c7c59); color:#fff; font-size:14.5px; font-weight:800;
+    animation:nvWdRise .5s cubic-bezier(.22,1,.36,1) .6s both; }
+
+  @media (max-width:560px){
+    #nvWdOverlay{ align-items:flex-end; padding:0; }
+    .nv-wd-card{ width:100%; border-radius:22px 22px 0 0; border-left:0; border-right:0; border-bottom:0;
+      padding:24px 18px calc(20px + env(safe-area-inset-bottom,0px)); max-height:90vh;
+      transform:translateY(100%); transition:transform .44s cubic-bezier(.22,1,.36,1), opacity .26s ease; }
+    #nvWdOverlay.in .nv-wd-card{ transform:translateY(0); }
+    #nvWdOverlay.out .nv-wd-card{ transform:translateY(100%); opacity:1; }
+    .nv-wd-step span{ font-size:9.5px; }
+    .nv-wd-line{ flex:0 0 16px; }
+  }
+  @media (prefers-reduced-motion:reduce){
+    #nvWdOverlay,.nv-wd-card{ transition:none !important; }
+    .nv-wd-tick circle,.nv-wd-tick path{ animation:none !important; stroke-dashoffset:0 !important; }
+    .nv-wd-amt,.nv-wd-sub,.nv-wd-kv,.nv-wd-done,.nv-wd-step.on i{ animation:none !important; }
+  }
+
+</style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     // NovaX fix (config consolidation): single source of truth for the
@@ -1198,8 +1445,7 @@
               <button class="client-tab" data-client-tab="bulkBooking">Bulk Booking</button>
               <button class="client-tab" data-client-tab="integrations">API</button>
               <button class="client-tab" data-client-tab="reports">Full Report</button>
-              <button class="client-tab" data-client-tab="payments">Payments</button>
-              <button class="client-tab" data-client-tab="wallet">Wallet</button>
+              <button class="client-tab" data-client-tab="money">Money</button>
               <button class="client-tab" data-client-tab="logs">Order Logs</button>
               <button class="client-tab" data-client-tab="subAccounts">Sub Accounts</button>
               <button class="client-tab" data-client-tab="tickets">Support Tickets</button>
@@ -1544,32 +1790,52 @@
                 </div>
               </div>
             </section>
-            <!-- PAYMENTS -->
-            <section class="client-module" id="client-payments">
-              <div class="panel">
-                <div class="section-head"><div><h3>Payments</h3><p>Only admin-generated invoices are shown here so payment numbers stay clean.</p></div></div>
-                <div class="footer-note" style="background:#eafff5;border:1px solid #bfe8d7;border-radius:10px;padding:10px 12px;margin-bottom:12px"><strong style="color:#0c7c59">How this works:</strong> An invoice is generated first (money owed, not yet available) &rarr; admin pushes it to your wallet (now withdrawable) &rarr; you request a payout from the Wallet tab (admin must pay it) &rarr; paid means fully settled.</div>
-                <div class="money-grid" id="paymentSummary"></div>
+            <!-- WALLET -->
+            <!-- MONEY (Payments + Wallet merged) -->
+            <section class="client-module" id="client-money">
+
+              <!-- One answer, at the top: what is coming, what is ready, what
+                   has already been paid. These three partition every rupee. -->
+              <div class="panel nv-money-hero" id="nvMoneyHero">
+                <div class="nv-mh-grid">
+                  <div class="nv-mh-cell" data-k="counting">
+                    <span class="nv-mh-lab">Being counted</span>
+                    <strong class="nv-mh-val" id="nvMhCounting">Rs 0</strong>
+                    <span class="nv-mh-sub">delivered, not released yet</span>
+                  </div>
+                  <span class="nv-mh-arrow" aria-hidden="true"></span>
+                  <div class="nv-mh-cell is-ready" data-k="ready">
+                    <span class="nv-mh-lab">Ready to withdraw</span>
+                    <strong class="nv-mh-val" id="nvMhReady">Rs 0</strong>
+                    <span class="nv-mh-sub">yours right now</span>
+                  </div>
+                  <span class="nv-mh-arrow" aria-hidden="true"></span>
+                  <div class="nv-mh-cell" data-k="paid">
+                    <span class="nv-mh-lab">Paid to you</span>
+                    <strong class="nv-mh-val" id="nvMhPaid">Rs 0</strong>
+                    <span class="nv-mh-sub">lifetime, into your bank</span>
+                  </div>
+                </div>
+                <div class="nv-mh-act">
+                  <button type="button" class="nv-mh-btn" id="nvMhWithdrawBtn">Withdraw</button>
+                  <span class="nv-mh-note" id="nvMhNote"></span>
+                </div>
               </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Latest Invoice</h3><p>Most recent invoice generated by admin. Download it as CSV or PDF.</p></div></div>
-                <div id="clientLatestInvoice"></div>
+
+              <!-- Money the merchant OWES NovaX is a different direction of
+                   travel and never shares a list with money they are owed. -->
+              <div class="panel nv-owed" id="nvOwedPanel" style="display:none">
+                <div class="section-head"><div><h3>Charges to pay NovaX</h3><p>Delivery charges on prepaid parcels, where there was no COD to deduct them from.</p></div></div>
+                <div class="nv-owed-amt" id="nvOwedAmount">Rs 0</div>
+                <div class="ops-list" id="nvOwedList"></div>
               </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Payment Timeline</h3><p>Where your latest invoice currently stands.</p></div></div>
-                <div class="ops-list" id="paymentTimeline"></div>
-              </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>Payment History</h3><p>Generated invoices only. COD scans, rider cash, and internal ledger events stay on the admin side.</p></div></div>
-                <div class="log-feed" id="clientPaymentHistory"></div>
-              </div>
-              <div class="panel" style="margin-top:14px">
-                <div class="section-head"><div><h3>All Invoices</h3><p>Admin-created invoice numbers, payment summaries, and paid confirmations.</p></div></div>
+
+              <div class="panel" id="nvInvoicePanel" style="margin-top:14px">
+                <div class="section-head"><div><h3>Your Invoices</h3><p>Every invoice NovaX has issued you. Open one to see exactly what was collected, what we charged, and what was deducted.</p></div></div>
                 <div class="ops-list" id="clientInvoiceList"></div>
               </div>
-            </section>
-            <!-- WALLET -->
-            <section class="client-module" id="client-wallet">
+
+
               <!-- NovaX new (Smart Portal B): forward-looking money. Every
                    figure here is server-computed by client_wallet_incoming();
                    the browser never does financial arithmetic. Hidden until
@@ -1593,6 +1859,10 @@
                    IBAN anytime -- even at Rs 0 balance -- instead of only
                    ever seeing an IBAN input after they already have money
                    to withdraw. -->
+              <!-- Payout controls. nvGuardWalletRender() replaces the contents
+                   of this zone for any non-Owner seat, so Finance can read the
+                   money but never move it. -->
+              <div id="nvWithdrawZone">
               <div class="panel" style="margin-top:14px">
                 <div class="section-head"><div><h3>Bank Account / IBAN</h3><p>Add your payout bank details anytime, even before you have any wallet balance.</p></div></div>
                 <div id="bankDetailsSection"></div>
@@ -1608,6 +1878,7 @@
                 </div>
                 <div id="withdrawSummary" style="display:none;margin-top:14px"></div>
               </div>
+              </div>
               <div class="panel" style="margin-top:14px">
                 <div class="section-head"><div><h3>Withdrawal History</h3><p>Your payout requests and their status.</p></div></div>
                 <div class="ops-list" id="withdrawHistory"></div>
@@ -1616,8 +1887,8 @@
                 <div class="section-head"><div><h3>Wallet Ledger</h3><p>Every credit and deduction that moved your wallet balance.</p></div><button class="ghost-btn" onclick="nvWalletStatement()">Download statement</button></div>
                 <div class="ops-list" id="walletLedgerList"></div>
               </div>
+            
             </section>
-            <!-- ORDER LOGS -->
             <section class="client-module" id="client-logs">
               <div class="panel">
                 <div class="section-head"><div><h3>Order Logs</h3><p>Clean parcel activity summary for every parcel you have booked.</p></div></div>
@@ -1869,7 +2140,9 @@
       localStorage.setItem(STORAGE_KEY, persistStateJson());
     }
     normalizeStateAwbs(state);
-    state.activeClientTab = state.activeClientTab || "dashboard";
+    state.activeClientTab = (typeof normalizeClientTab==="function")
+      ? normalizeClientTab(state.activeClientTab)
+      : (state.activeClientTab || "dashboard");
     (function(){
       try{
         var qp=new URLSearchParams(location.search);
@@ -3421,7 +3694,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // of another client's invoices.
       const myId=state.client&&state.client.id;
       const invoices=myId?state.invoices.filter(i=>i.clientId===myId&&i.status!=="Deleted"):[];
-      document.getElementById("paymentSummary").innerHTML=[
+      (document.getElementById("paymentSummary")||{}).innerHTML=[
         moneyBox("Generated invoices",invoices.length,"admin created only"),
         moneyBox("Invoice COD",money(invoices.reduce((s,i)=>s+i.cod,0)),"delivered parcels only"),
         moneyBox("Delivery charges",money(invoices.reduce((s,i)=>s+i.charges,0)),"deducted from COD"),
@@ -3439,12 +3712,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         ["Invoice generated","Invoice appears in seller payments",invoices.length>0],
         ["Payment status","Paid or pending is controlled by admin ledger",invoices.some(i=>isInvoiceClosed(i.status))]
       ].map((r,i)=>`<div class="journey-item ${r[2]?"":"pending"}"><div class="step-dot">${r[2]?"OK":i+1}</div><div><strong>${r[0]}</strong><span>${r[1]}</span></div><span class="chip ${r[2]?"good":"info"}">${r[2]?"verified":"waiting"}</span></div>`).join("");
-      document.getElementById("clientPaymentHistory").innerHTML=invoices.map(inv=>`<div class="log-item"><strong>${escLabelText(inv.id)}</strong><div><strong>${escLabelText(inv.status)}</strong><div class="footer-note" style="margin-top:2px">${escLabelText(inv.createdAt)} | ${inv.parcelRefs.length} parcel(s)</div></div><span class="chip ${invoiceChipClass(inv.status)}">${money(inv.payable)}</span></div>`).join("")||`<div class="ops-card"><strong>No generated invoices</strong><p>Delivered parcels will show here once admin creates an invoice.</p></div>`;
-      document.getElementById("clientInvoiceList").innerHTML=invoices.map(inv=>{
+      (document.getElementById("clientPaymentHistory")||{}).innerHTML=invoices.map(inv=>`<div class="log-item"><strong>${escLabelText(inv.id)}</strong><div><strong>${escLabelText(inv.status)}</strong><div class="footer-note" style="margin-top:2px">${escLabelText(inv.createdAt)} | ${inv.parcelRefs.length} parcel(s)</div></div><span class="chip ${invoiceChipClass(inv.status)}">${money(inv.payable)}</span></div>`).join("")||`<div class="ops-card"><strong>No generated invoices</strong><p>Delivered parcels will show here once admin creates an invoice.</p></div>`;
+      (document.getElementById("clientInvoiceList")||{}).innerHTML=invoices.map((inv,idx)=>{
         const invType=inv.invoiceType||"COD Settlement";
-        const cities=[...new Set((inv.parcelRefs||[]).map(awb=>{ const p=state.parcels.find(x=>x.awb===awb); return p&&p.city; }).filter(Boolean))].join(", ");
-        return `<div class="invoice-card"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="chip ${invoiceChipClass(inv.status)}">${escLabelText(inv.status)}</span></div><p>${escLabelText(inv.summary)}${cities?(" | Destination: "+escLabelText(cities)):""}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${invoiceMoneyBox(inv)}${moneyBox("Date",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div><div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View Invoice</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">Download CSV</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Download PDF</button></div></div>`;
-      }).join("")||`<div class="ops-card"><strong>No invoices yet</strong></div>`;
+        const owed=Number(inv.dueToNovax||0);
+        const n=(inv.parcelRefs||[]).length;
+        // One readable sentence per invoice: what was collected, what we
+        // charged, what is left for the merchant. The subtraction is shown
+        // rather than left for them to do across separate tiles.
+        const sum = owed>0
+          ? `${n} prepaid parcel(s) &middot; <strong>${money(inv.charges)}</strong> delivery charges &rarr; <strong>${money(owed)}</strong> to pay NovaX`
+          : `${n} parcel(s) &middot; ${money(inv.cod)} collected &minus; ${money(inv.charges)} charges = <strong>${money(inv.payable)}</strong> to you`;
+        return `<div class="invoice-card nv-inv-row" style="animation-delay:${Math.min(idx*70,560)}ms"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="footer-note" style="margin-left:auto">${escLabelText(inv.createdAt)}</span></div><p style="margin:6px 0 0">${sum}</p>${nvInvoiceSteps(inv.status)}<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Statement PDF</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">CSV</button></div></div>`;
+      }).join("")||`<div class="ops-card"><strong>No invoices yet</strong><p>Once a delivered parcel is invoiced it appears here with a full statement.</p></div>`;
       // NovaX (Shopify Final Test Visibility): "View imported orders" sets
       // state.orderLogSourceFilter="shopify" so this feed narrows to source=shopify.
       const orderLogFilterBar=document.getElementById("orderLogFilterBar");
@@ -3455,6 +3735,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // not real users. Sub accounts now come from public.staff_users.
       try{ renderSubAccounts(); }catch(e){}
       try{ nvApplyRolePermissions(); }catch(e){}
+      try{ renderMoneyHero(); }catch(e){ console.warn("NovaX money hero", e); }
       try{ nvGuardWalletRender(); }catch(e){}
       document.getElementById("supportEscalations").innerHTML=state.parcels.filter(p=>p.exception&&p.clientId===state.client.id).map(p=>`<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(p.awb)}</strong><span class="chip bad">escalated</span></div><p>${escLabelText(p.exception)}</p>${p.proofPhoto?`<img src="${escLabelText(p.proofPhoto)}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:200px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">`:""}</div>`).join("")||`<div class="ops-card"><strong>No escalations</strong><p>AI has complete portal data right now.</p></div>`;
     }
@@ -3932,6 +4213,231 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // NovaX new (Negative/Delivery-Charges Invoices): the branded template is
     // now type-aware -- COD Settlement, Delivery Charges, or Mixed -- and is
     // shared between the print/PDF flow and the in-app View Invoice modal.
+
+    /* ═══════════════ MONEY TAB ═══════════════════════════════════════════
+       One surface for every rupee. The three hero figures partition the whole
+       balance: being counted -> ready to withdraw -> paid to you. Everything
+       here is display only; the amounts come from the same server-computed
+       fields the old Payments and Wallet tabs read, and no arithmetic that
+       decides money happens in this browser. */
+
+    /* Merchant-facing wording. The stored status strings are money-critical
+       and shared with admin.html and the RPCs (isInvoiceClosed,
+       admin_push_invoice_to_wallet), so they are never rewritten -- only
+       relabelled at the display boundary. */
+    function nvMoneyLabel(status){
+      var m = {
+        "Generated":"Being counted",
+        "Pushed to wallet":"Ready to withdraw",
+        "Settled":"Paid to you",
+        "Paid":"Paid to you",
+        "Paid to NovaX":"You've paid this",
+        "Cancelled":"Cancelled"
+      };
+      return m[status] || status || "Being counted";
+    }
+    function nvMoneyStage(status){
+      if(status === "Cancelled") return 0;
+      if(isInvoiceClosed(status)) return 3;
+      if(status === "Pushed to wallet") return 2;
+      return 1;
+    }
+
+    /* Animation 1 -- odometer. Fires only when the figure actually moved, so a
+       routine re-render never replays it. */
+    var NV_MH_LAST = {};
+    function nvCountTo(el, to, key){
+      if(!el) return;
+      var from = Number(NV_MH_LAST[key]);
+      if(!isFinite(from)) from = 0;
+      NV_MH_LAST[key] = to;
+      var reduce = false;
+      try{ reduce = matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+      if(reduce || from === to){ el.textContent = money(to); return; }
+      var t0 = performance.now(), dur = 850;
+      (function step(now){
+        var k = Math.min(1, (now - t0) / dur);
+        var e = 1 - Math.pow(1 - k, 3);
+        el.textContent = money(Math.round(from + (to - from) * e));
+        if(k < 1) requestAnimationFrame(step);
+      })(t0);
+    }
+
+    function nvMoneyFigures(){
+      var myId = state.client && state.client.id;
+      var invoices = myId ? (state.invoices||[]).filter(function(i){
+        return i.clientId === myId && i.status !== "Deleted";
+      }) : [];
+      var c = myId ? clientById(myId) : null;
+      var counting = invoices.filter(function(i){
+        return !isInvoiceClosed(i.status) && i.status !== "Cancelled" && i.status !== "Pushed to wallet";
+      }).reduce(function(s,i){ return s + Number(i.payable||0); }, 0);
+      var ready = Number((c && c.walletBalance) || 0);
+      var paid  = invoices.filter(function(i){ return isInvoiceClosed(i.status); })
+                          .reduce(function(s,i){ return s + Number(i.payable||0); }, 0);
+      var owed  = invoices.filter(function(i){ return i.status !== "Paid to NovaX" && i.status !== "Cancelled"; })
+                          .reduce(function(s,i){ return s + Number(i.dueToNovax||0); }, 0);
+      return { invoices:invoices, counting:counting, ready:ready, paid:paid, owed:owed };
+    }
+
+    /* Hero Withdraw scrolls to the payout form rather than opening another
+       screen -- everything now lives on one surface. */
+    (function nvWireHeroWithdraw(){
+      function bind(){
+        var b=document.getElementById("nvMhWithdrawBtn");
+        if(!b||b._nvWired) return;
+        b._nvWired=true;
+        b.addEventListener("click",function(){
+          var f=document.getElementById("withdrawAmount");
+          if(!f){ try{ toast("Withdrawals are Owner-only on this account."); }catch(e){} return; }
+          try{
+            var fig=nvMoneyFigures();
+            if(!f.value) f.value=String(Math.round(fig.ready));
+          }catch(e){}
+          f.scrollIntoView({behavior:"smooth",block:"center"});
+          setTimeout(function(){ try{ f.focus(); }catch(e){} },320);
+        });
+      }
+      if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",bind);
+      else bind();
+    })();
+
+    function renderMoneyHero(){
+      var hero = document.getElementById("nvMoneyHero");
+      if(!hero) return;
+      var f = nvMoneyFigures();
+
+      nvCountTo(document.getElementById("nvMhCounting"), f.counting, "counting");
+      nvCountTo(document.getElementById("nvMhReady"),    f.ready,    "ready");
+      nvCountTo(document.getElementById("nvMhPaid"),     f.paid,     "paid");
+
+      // Animations 2 and 4: the live state only exists while money is actually
+      // withdrawable. No money, no glow, no shimmer.
+      var live = f.ready > 0;
+      var cell = hero.querySelector(".nv-mh-cell.is-ready");
+      if(cell) cell.classList.toggle("nv-live", live);
+      var btn = document.getElementById("nvMhWithdrawBtn");
+      if(btn){
+        btn.disabled = !live;
+        btn.classList.toggle("nv-live", live);
+        btn.textContent = live ? ("Withdraw " + money(f.ready)) : "Nothing to withdraw yet";
+      }
+      var note = document.getElementById("nvMhNote");
+      if(note){
+        note.textContent = live
+          ? "Paid to your IBAN, usually within 15 minutes."
+          : (f.counting > 0
+              ? money(f.counting) + " is still being counted — it moves here once released."
+              : "Delivered parcels turn into invoices, then into withdrawable balance.");
+      }
+
+      // Money owed to NovaX: separate block, never mixed with money owed to them.
+      var owedPanel = document.getElementById("nvOwedPanel");
+      if(owedPanel){
+        owedPanel.style.display = f.owed > 0 ? "" : "none";
+        var amt = document.getElementById("nvOwedAmount");
+        if(amt) amt.textContent = money(f.owed);
+        var list = document.getElementById("nvOwedList");
+        if(list){
+          list.innerHTML = f.invoices.filter(function(i){
+            return Number(i.dueToNovax||0) > 0 && i.status !== "Paid to NovaX" && i.status !== "Cancelled";
+          }).map(function(i){
+            return '<div class="log-item"><strong>' + escLabelText(i.id) + '</strong>' +
+                   '<div><strong>' + money(i.dueToNovax) + '</strong>' +
+                   '<div class="footer-note" style="margin-top:2px">' + escLabelText(i.createdAt) +
+                   ' &middot; ' + ((i.parcelRefs||[]).length) + ' parcel(s)</div></div>' +
+                   '<button class="ghost-btn" onclick="printInvoice(&quot;' + i.id + '&quot;)">Statement PDF</button></div>';
+          }).join("");
+        }
+      }
+    }
+
+
+    /* ═══ Withdrawal receipt drawer ═══════════════════════════════════════
+       Opens only from the success branch of request_wallet_withdrawal, so it
+       can only ever describe a withdrawal the server actually created. The
+       figures come from the RPC response (d.fee / d.net) when present -- the
+       browser's own fee calculation is a preview, never the record. */
+    function nvShowWithdrawDrawer(o){
+      try{
+        var ov = document.getElementById("nvWdOverlay");
+        if(!ov) return;
+        var set = function(id, v){ var e=document.getElementById(id); if(e) e.textContent=v; };
+        set("nvWdAmount", money(o.net));
+        set("nvWdGross",  money(o.gross));
+        set("nvWdFee",    o.fee > 0 ? "\u2212 " + money(o.fee) + " (" + o.pct + ")" : "None");
+        set("nvWdNet",    money(o.net));
+        set("nvWdSpeed",  o.speedLabel);
+        set("nvWdIban",   o.iban);
+        var sub = document.getElementById("nvWdSub");
+        if(sub) sub.textContent = "NovaX is sending this to your bank \u2014 " + o.eta + ".";
+
+        ov.classList.add("open");
+        requestAnimationFrame(function(){ requestAnimationFrame(function(){ ov.classList.add("in"); }); });
+        try{ document.body.style.overflow="hidden"; }catch(e){}
+      }catch(e){ console.warn("NovaX withdraw drawer", e); }
+    }
+    function nvCloseWithdrawDrawer(){
+      var ov = document.getElementById("nvWdOverlay");
+      if(!ov) return;
+      ov.classList.remove("in"); ov.classList.add("out");
+      setTimeout(function(){
+        ov.classList.remove("open","out");
+        try{ document.body.style.overflow=""; }catch(e){}
+      }, 360);
+    }
+    (function nvWireWdDrawer(){
+      function bind(){
+        var b=document.getElementById("nvWdClose"), ov=document.getElementById("nvWdOverlay");
+        if(b && !b._nvWired){ b._nvWired=true; b.addEventListener("click", nvCloseWithdrawDrawer); }
+        // A receipt may be dismissed: backdrop click and Escape both close it.
+        if(ov && !ov._nvWired){
+          ov._nvWired=true;
+          ov.addEventListener("click", function(ev){ if(ev.target===ov) nvCloseWithdrawDrawer(); });
+          document.addEventListener("keydown", function(ev){
+            if(ev.key==="Escape" && ov.classList.contains("open")) nvCloseWithdrawDrawer();
+          });
+        }
+      }
+      if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",bind);
+      else bind();
+    })();
+
+    /* Animations 5 and 6 -- the hand-off. The amount lifts out of the Ready
+       figure and a ripple crosses the panel, but only after the withdrawal RPC
+       has actually confirmed. It is a receipt, not a promise. */
+    function nvMoneySentAnimation(amount){
+      try{
+        if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        var src = document.getElementById("nvMhReady");
+        var hero = document.getElementById("nvMoneyHero");
+        if(src){
+          var r = src.getBoundingClientRect();
+          var fly = document.createElement("div");
+          fly.className = "nv-mh-fly";
+          fly.textContent = "− " + money(amount);
+          fly.style.left = r.left + "px";
+          fly.style.top  = r.top + "px";
+          document.body.appendChild(fly);
+          setTimeout(function(){ fly.remove(); }, 1100);
+        }
+        if(hero){
+          hero.classList.remove("nv-sent"); void hero.offsetWidth;
+          hero.classList.add("nv-sent");
+          setTimeout(function(){ hero.classList.remove("nv-sent"); }, 1200);
+        }
+      }catch(e){}
+    }
+
+    /* Animations 7, 8, 9 -- the invoice list. */
+    function nvInvoiceSteps(status){
+      var st = nvMoneyStage(status);
+      var d = function(n){ return '<span class="nv-inv-dot' + (st >= n ? " on" : "") + '"></span>'; };
+      var b = function(n){ return '<span class="nv-inv-bar' + (st >  n ? " on" : "") + '"></span>'; };
+      return '<div class="nv-inv-steps">' + d(1) + b(1) + d(2) + b(2) + d(3) +
+             '<span class="nv-inv-stage">' + escLabelText(nvMoneyLabel(status)) + "</span></div>";
+    }
+
     function clientInvoiceHtml(inv){
       const c=clientById(inv.clientId);
       const lines=clientInvoiceLineItems(inv);
@@ -4002,6 +4508,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         ${paidEvent?`<div style="background:#f6faf8;border:1px solid #d6e6de;border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:13px">Settled on <b>${escLabelText(paidEvent)}</b></div>`:""}
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#5b6b64;margin-bottom:6px">Summary</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <tr><td colspan="2" style="padding:12px 8px 4px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#0c7c59">What we collected</td></tr>
+          <tr><td style="padding:8px;border-bottom:1px solid #e5edea">COD collected on your behalf</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">${money(inv.cod||0)}</td></tr>
+          <tr><td colspan="2" style="padding:12px 8px 4px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#b3261e">What we deducted</td></tr>
+          <tr><td style="padding:8px;border-bottom:1px solid #e5edea">Delivery charges &mdash; ${lines.filter(l=>l.outcomeKey==="delivered").length} delivered parcel(s)</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">&minus; ${money(lines.filter(l=>l.outcomeKey==="delivered").reduce((a,l)=>a+Number(l.deliveryCharge||0),0))}</td></tr>
+          ${(function(){ const rl=lines.filter(l=>l.outcomeKey==="returned"||l.outcomeKey==="refused"||l.outcomeKey==="cancelled"); const rc=rl.reduce((a,l)=>a+Number(l.deliveryCharge||0),0); return rc>0?`<tr><td style="padding:8px;border-bottom:1px solid #e5edea">Return charges &mdash; ${rl.length} returned / refused parcel(s), no COD collected</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">&minus; ${money(rc)}</td></tr>`:""; })()}
+          <tr><td colspan="2" style="padding:12px 8px 4px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#5c7568">Summary</td></tr>
           <tr><td style="padding:8px;border-bottom:1px solid #e5edea">Total Parcels</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">${lines.length}</td></tr>
           <tr><td style="padding:8px;border-bottom:1px solid #e5edea">COD Subtotal</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">${money(inv.cod||0)}</td></tr>
           <tr><td style="padding:8px;border-bottom:1px solid #e5edea">Delivery Charges Subtotal</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">${money(inv.charges||0)}</td></tr>
@@ -4447,9 +4959,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           renderClientWallet();
           return;
         }
+        // Animations 5 + 6: the hand-off plays only here, after the server
+        // has actually created the withdrawal row. It is a receipt for money
+        // that has moved, never an optimistic flourish.
+        try{ nvMoneySentAnimation(amt); }catch(e){}
         const d=r&&r.data;
         const fee=Number(d&&d.fee!=null?d.fee:Math.round(amt*walletFeeRate(speed)));
         const net=Number(d&&d.net!=null?d.net:amt-fee);
+        // Receipt drawer. Uses the server's fee/net when the RPC returned them
+        // so the merchant is shown the figures that were actually recorded,
+        // not the browser's preview of them.
+        try{
+          nvShowWithdrawDrawer({
+            gross: amt, fee: fee, net: net,
+            pct: walletFeePct(speed),
+            speedLabel: walletSpeedLabel(speed),
+            iban: (typeof maskIban==="function" ? maskIban(iban) : String(iban||"").slice(-6).padStart(10,"\u2022")),
+            eta: (speed==="instant" ? "usually within 2-3 hours"
+                 : speed==="12h" ? "within 12 hours" : "within 24 hours")
+          });
+        }catch(e){ console.warn("NovaX withdraw drawer", e); }
         // NovaX fix (rebuild integration mismatch): wallet_balance must never
         // be mutated in the browser -- request_wallet_withdrawal already
         // reserved this amount atomically on the server the moment it
@@ -5731,7 +6260,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // wallet balance. All real withdrawals must now go through the Wallet
     // tab's request_wallet_withdrawal RPC, so this just opens Wallet and
     // guides the user there instead of faking a request.
-    function requestPayout(){ showClientTab("wallet"); toast("Choose an amount, payout speed, and IBAN in Wallet to request your withdrawal."); }
+    function requestPayout(){ showClientTab("money"); toast("Choose an amount, payout speed, and IBAN in Wallet to request your withdrawal."); }
     // NovaX note: requestPayout() is a manual admin-review payout only (no amount/IBAN
     // validation). The real bank withdrawal flow is confirmWalletWithdraw() + the
     // request_wallet_withdrawal RPC below, which requires amount + IBAN + speed. NovaX
@@ -6243,7 +6772,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       tickMeters();
     }
     function tickMeters(){ requestAnimationFrame(()=>{ document.querySelectorAll(".meter>span").forEach(s=>{ const w=s.style.width; s.style.width="0"; requestAnimationFrame(()=>{ s.style.width=w; }); }); }); }
-    function showClientTab(id){ if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
+    /* ═══ Tab identity ═══════════════════════════════════════════════════
+       Payments and Wallet merged into one "Money" tab. state.activeClientTab
+       is persisted to localStorage and was only ever defaulted with
+       `|| "dashboard"` -- which catches falsy, never an UNKNOWN id. Any
+       merchant whose last session ended on Payments or Wallet would restore a
+       tab id matching no .client-module and get a blank portal with no error.
+       Every legacy id is aliased here, so the ~12 existing
+       showClientTab("wallet") / data-client-tab="payments" call sites across
+       the cockpit, AI panel, command palette, coach tips and onboarding tour
+       keep working untouched. */
+    var NV_CLIENT_TABS = ["dashboard","newBooking","awbLabel","bulkBooking","integrations",
+                          "reports","money","logs","subAccounts","tickets","support"];
+    var NV_TAB_ALIASES = { wallet:"money", payments:"money", payment:"money", invoices:"money" };
+    function normalizeClientTab(id){
+      var v = String(id || "").trim();
+      if(NV_TAB_ALIASES[v]) v = NV_TAB_ALIASES[v];
+      return NV_CLIENT_TABS.indexOf(v) > -1 ? v : "dashboard";
+    }
+
+    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
     function toast(msg,type){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.remove("success","error"); const kind=type||(/reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(msg)?"error":/success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach/i.test(msg)?"success":""); if(kind) el.classList.add(kind); el.classList.add("show"); clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
     /* Events */
@@ -6432,8 +6980,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          rpc revoke_staff_user(p_staff_id uuid)
        If a table/RPC is missing, the UI says exactly what is missing. */
     var NOVAX_ROLE_TABS = {
-      Owner:     ["dashboard","newBooking","awbLabel","bulkBooking","integrations","reports","payments","wallet","logs","subAccounts","tickets","support"],
-      Finance:   ["dashboard","reports","payments","logs","tickets"],
+      // "money" replaces the old payments + wallet pair. Finance keeps access
+      // to it, because withdrawal is now guarded at SECTION level by
+      // nvGuardWalletRender() rather than by which tab a role can open --
+      // the old split was quietly acting as the permission boundary, so
+      // merging the tabs without this change would have handed every Finance
+      // sub-account the ability to withdraw to any IBAN they typed.
+      Owner:     ["dashboard","newBooking","awbLabel","bulkBooking","integrations","reports","money","logs","subAccounts","tickets","support"],
+      Finance:   ["dashboard","reports","money","logs","tickets"],
       Warehouse: ["dashboard","newBooking","bulkBooking","awbLabel"],
       Support:   ["dashboard","logs","tickets","support"]
     };
@@ -6470,7 +7024,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvGuardWalletRender(){
       try{
         if(nvIsOwnerSeat()) return;
-        var el=document.getElementById("client-wallet");
+        // Was #client-wallet -- i.e. the whole tab. Now only the payout
+        // controls are restricted, so a Finance seat can still read invoices,
+        // balances and the ledger inside Money while remaining unable to move
+        // money out. This is what makes the tab merge safe.
+        var el=document.getElementById("nvWithdrawZone");
         if(el) el.innerHTML='<div class="ops-card"><div class="ops-card-head"><strong>Wallet is Owner-only</strong><span class="chip warn">restricted</span></div><p>Balances, withdrawal requests and bank details are visible only to the account Owner.</p></div>';
       }catch(e){}
     }
@@ -11669,6 +12227,37 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
   else boot();
 })();
 </script>
+
+
+<!-- Withdrawal receipt. Opens only after the server has created the
+     withdrawal row -- it reports money that has actually moved. Unlike the
+     review prompt this one IS dismissible; it is a receipt, not a gate. -->
+<div id="nvWdOverlay" role="dialog" aria-modal="true" aria-labelledby="nvWdTitle">
+  <div class="nv-wd-card">
+    <svg class="nv-wd-tick" viewBox="0 0 60 60" aria-hidden="true">
+      <circle cx="30" cy="30" r="24"></circle>
+      <path d="M19 30.5 L26.5 38 L41 23.5"></path>
+    </svg>
+    <h3 id="nvWdTitle">Withdrawal requested</h3>
+    <div class="nv-wd-amt" id="nvWdAmount">Rs 0</div>
+    <p class="nv-wd-sub" id="nvWdSub">On its way to your bank.</p>
+    <dl class="nv-wd-kv">
+      <dt>Amount</dt><dd id="nvWdGross">Rs 0</dd>
+      <dt>Payout fee</dt><dd id="nvWdFee">Rs 0</dd>
+      <dt>Reaching your bank</dt><dd id="nvWdNet">Rs 0</dd>
+      <dt>Speed</dt><dd id="nvWdSpeed">-</dd>
+      <dt>To IBAN</dt><dd id="nvWdIban">-</dd>
+    </dl>
+    <div class="nv-wd-steps">
+      <div class="nv-wd-step on"><i></i><span>Requested</span></div>
+      <span class="nv-wd-line"></span>
+      <div class="nv-wd-step"><i></i><span>NovaX sending</span></div>
+      <span class="nv-wd-line"></span>
+      <div class="nv-wd-step"><i></i><span>In your bank</span></div>
+    </div>
+    <button type="button" class="nv-wd-done" id="nvWdClose">Done</button>
+  </div>
+</div>
 
 </body>
 </html>
