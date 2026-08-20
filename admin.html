@@ -15313,16 +15313,25 @@ html,body{ background:var(--bg); color:var(--ink); }
             ["clients","riders","parcels","invoices","expenses","withdrawals","payment_logs","sales_leads","signup_leads","operations_issues","resolved_alerts","manifest_logs","staff_users","staff_activity","pickup_requests"].forEach(function(t){
               liveChannel.on("postgres_changes",{event:"*",schema:"public",table:t},function(){ nvLiveChange(t); });
             });
-            liveChannel.subscribe(function(status,err){ if(err) console.warn("NovaX admin realtime",status,err.message||err); });
+            liveChannel.subscribe(function(status,err){
+              if(err) console.warn("NovaX admin realtime",status,err.message||err);
+              window.__nvAdminRealtimeLive = (status==="SUBSCRIBED");
+            });
             /* Same fallbacks as the client portal. Realtime only delivers if
                each table is in the supabase_realtime publication, and the
                socket dies on a laptop that slept or a network that changed --
                without these, ops sit on a stale control room and reload by
                hand. */
             if(!window.__nvAdminPoll){
+              /* Safety net only -- see the client portal note. loadAll() here
+                 is 23 queries; at 30s that was 46 req/min from one open admin
+                 tab, which is most of the project's traffic. Realtime is the
+                 primary channel; this only covers a dead socket. */
               window.__nvAdminPoll=setInterval(function(){
-                if(!document.hidden){ try{ loadAll(); }catch(e){} }
-              }, 30000);
+                if(document.hidden) return;
+                if(window.__nvAdminRealtimeLive) return;
+                try{ loadAll(); }catch(e){}
+              }, 180000);
               var back=function(){ if(!document.hidden){ try{ loadAll(); }catch(e){} } };
               document.addEventListener("visibilitychange", back);
               window.addEventListener("focus", back);

@@ -7942,9 +7942,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                   if(document.hidden) return;
                   try{ loadAll(); }catch(e){}
                 }
-                // 1. every 30s while the tab is actually being looked at
+                /* 1. A SAFETY NET, not the primary channel. Realtime is the
+                   primary channel; polling exists only for the case where the
+                   publication is missing a table or the socket died. Polling
+                   unconditionally every 30s cost 8 queries x 2/min per open
+                   client tab (23 x 2 on admin) and dominated the project's
+                   entire request volume with a single merchant online. It now
+                   runs only while realtime is NOT connected, and at 3 minutes. */
                 if(!window.__nvPollTimer){
-                  window.__nvPollTimer=setInterval(nvQuietRefresh, 30000);
+                  window.__nvPollTimer=setInterval(function(){
+                    if(window.__nvRealtimeLive) return;   // realtime has it covered
+                    nvQuietRefresh();
+                  }, 180000);
                 }
                 // 2. the moment the merchant comes back to the tab
                 if(!window.__nvVisBound){
