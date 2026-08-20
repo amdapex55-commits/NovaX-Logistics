@@ -6138,7 +6138,33 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const possibleDupe=(state.parcels||[]).find(p=>p.clientId===myClientId&&p.consignee===consignee&&p.phone===(phoneValid?phone:phoneRaw)&&p.address===address&&Number(p.cod)===cod&&p.statusSince&&(now-new Date(p.statusSince).getTime())<dupeWindowMs);
         if(possibleDupe) addProblem("dup_row",`Already booked as ${possibleDupe.awb} recently with the same consignee/phone/address/COD.`,"This sheet may have already been uploaded.");
         const fragile=/^(yes|y|true|1)$/i.test(fragileRaw)?"Yes":"No";
-        const record={ consignee, phone:phoneValid?phone:phoneRaw, city:cityValid?cityCap:cityRaw, address, cod:Number.isFinite(cod)?cod:0, weight:weightKg+" kg", orderId, product, paymentMode, referenceNo, fragile };
+        /* Distance pricing on bulk. Until now the CSV had no area column at
+           all and client_book_parcel needs p_dest_area_id, so EVERY bulk row
+           fell back to the flat zone rate by construction -- on the exact path
+           merchants use for 10-20 parcels at a time.
+           An optional "area" column wins if present; otherwise the area is read
+           from the address with the same conservative matcher the single
+           booking form uses. Karachi only, and only while the merchant's
+           pickup point is mapped -- outside that there is no distance to
+           measure and the flat rate is correct, not a fallback. */
+        let destAreaId=null, areaName="", areaSource="";
+        try{
+          if(typeof nvGeoActive==="function" && nvGeoActive()
+             && String(cityValid?cityCap:cityRaw).toLowerCase()==="karachi"){
+            const explicit=(idx("area")>-1 ? String(get(row,"area")||"").trim() : "");
+            if(explicit){
+              const hit=(NV_GEO.areas||[]).filter(function(a){
+                return typeof nvAreaMatches==="function" && nvAreaMatches(a, explicit.toLowerCase());
+              })[0];
+              if(hit){ destAreaId=hit.id; areaName=hit.name; areaSource="column"; }
+            }
+            if(!destAreaId){
+              const det=(typeof nvDetectArea==="function") ? nvDetectArea(address) : null;
+              if(det){ destAreaId=det.area.id; areaName=det.area.name; areaSource="address"; }
+            }
+          }
+        }catch(e){ /* pricing never blocks an import */ }
+        const record={ consignee, phone:phoneValid?phone:phoneRaw, city:cityValid?cityCap:cityRaw, address, cod:Number.isFinite(cod)?cod:0, weight:weightKg+" kg", orderId, product, paymentMode, referenceNo, fragile, destAreaId, areaName, areaSource };
         return { line, ok:problems.length===0, problems, record };
       });
       return { totalRows:results.length, results };
@@ -6168,7 +6194,42 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         ["Invalid COD",bulkProblemCount(parsed,"cod"),bulkProblemCount(parsed,"cod")?"warn":"good"],
         ["Invalid/missing weight",bulkProblemCount(parsed,"weight"),bulkProblemCount(parsed,"weight")?"warn":"good"]
       ];
+      /* Distance pricing coverage. Nothing here rejects a row -- a row with no
+         area still books at the flat rate exactly as before. It just makes
+         visible how many parcels are getting the cheaper distance price, and
+         how many are not, which is the difference between "the price looks
+         wrong" and "I can see why". */
+      try{
+        if(typeof nvGeoActive==="function" && nvGeoActive()){
+          var khi=validRows.filter(function(r){
+            return String((r.record&&r.record.city)||"").toLowerCase()==="karachi"; });
+          var priced=khi.filter(function(r){ return r.record && r.record.destAreaId; });
+          if(khi.length){
+            summary.push(["Karachi rows priced by distance", priced.length+"/"+khi.length,
+                          priced.length===khi.length ? "good" : "warn"]);
+          }
+        }
+      }catch(e){}
       let html=`<div class="grid metrics" style="margin-bottom:12px">${summary.map(s=>`<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(s[0])}</strong><span class="chip ${s[2]}">${s[1]}</span></div></div>`).join("")}</div>`;
+      try{
+        if(typeof nvGeoActive==="function" && nvGeoActive()){
+          var unpriced=validRows.filter(function(r){
+            return r.record && String(r.record.city||"").toLowerCase()==="karachi" && !r.record.destAreaId; });
+          if(unpriced.length){
+            html+='<div class="ops-card" style="margin-bottom:12px">'+
+              '<div class="ops-card-head"><strong>'+unpriced.length+' Karachi row(s) will book at the flat rate</strong>'+
+              '<span class="chip warn">no area matched</span></div>'+
+              '<p>These import fine &mdash; we just could not read a delivery area from the address, so they are priced flat instead of by distance. '+
+              'Add an <b>area</b> column to your sheet, or write the area into the address (for example &ldquo;DHA Phase 5&rdquo;), and they will price by the kilometres actually covered.</p>'+
+              '<div class="footer-note" style="margin-top:6px">'+
+              unpriced.slice(0,6).map(function(r){
+                return "Row "+r.line+": "+escLabelText(String(r.record.address||"").slice(0,60));
+              }).join("<br>")+
+              (unpriced.length>6 ? "<br>&hellip; and "+(unpriced.length-6)+" more" : "")+
+              '</div></div>';
+          }
+        }
+      }catch(e){}
       if(invalidRows.length){
         /* NovaX new (bulk CSV fix-in-place): rejected rows used to be a
            read-only list, so a 50-row sheet with 3 bad cells meant going
@@ -6301,7 +6362,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const awbs=[]; const failed=[];
       for(const r of records){
         try{
-          const mapped=window.__novaxBookParcel?await window.__novaxBookParcel({ consignee:r.consignee, city:r.city, cod:r.cod, phone:r.phone, weight:r.weight, orderId:r.orderId, referenceNo:r.referenceNo, category:r.product, paymentMode:r.paymentMode, address:r.address, fragile:r.fragile }):null;
+          const mapped=window.__novaxBookParcel?await window.__novaxBookParcel({ consignee:r.consignee, city:r.city, cod:r.cod, phone:r.phone, weight:r.weight, orderId:r.orderId, referenceNo:r.referenceNo, category:r.product, paymentMode:r.paymentMode, address:r.address, fragile:r.fragile, destAreaId:r.destAreaId||null }):null;
           if(mapped&&mapped.awb) awbs.push(mapped.awb);
           else failed.push({ row:r, error:"Booking service is not ready yet." });
         }catch(e){
@@ -6315,11 +6376,54 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const el=document.getElementById("bulkValidationList");
       if(el) el.insertAdjacentHTML("afterbegin", `<div class="ops-card" style="margin-bottom:10px"><strong>Import complete: ${awbs.length} AWB(s) created${skipped?`, ${skipped} row(s) skipped`:""}</strong><p>Booked rows are saved on the server now. New AWBs appear in "New Booked AWBs" for printing.</p></div>`);
       if(failed.length){
-        toast(`${awbs.length} AWB(s) booked. ${failed.length} row(s) failed: ${failed[0].error}`,"error");
+        /* Bulk import is deliberately NOT transactional -- a rejected row must
+           never undo parcels the server already accepted. But the merchant was
+           only told how many failed and shown the FIRST error, which on a
+           50-row sheet is not enough to fix anything. List every failure with
+           its consignee and the server's own reason, and offer the failures
+           back as a CSV so they can be corrected and re-uploaded on their own. */
+        try{
+          const rows=failed.map(function(f,i){
+            const r=f.row||{};
+            return '<div class="log-item"><strong>'+escLabelText(r.consignee||("Row "+(i+1)))+'</strong>'+
+              '<div><span class="chip bad">not booked</span>'+
+              '<div class="footer-note" style="margin-top:2px">'+escLabelText(f.error||"Server rejected this row.")+'</div></div></div>';
+          }).join("");
+          if(el) el.insertAdjacentHTML("afterbegin",
+            '<div class="ops-card alert-row" style="margin-bottom:10px">'+
+            '<div class="ops-card-head"><strong>'+failed.length+' row(s) were not booked</strong>'+
+            '<span class="chip bad">action needed</span></div>'+
+            '<p>Everything else imported and is already live. These rows were rejected by the server and no AWB was created for them &mdash; fix and re-upload just these.</p>'+
+            '<div class="inline-actions" style="margin:8px 0 10px"><button class="ghost-btn" onclick="nvDownloadFailedBulk()">Download failed rows as CSV</button></div>'+
+            '<div class="log-feed">'+rows+'</div></div>');
+          window.__nvBulkFailed=failed;
+        }catch(e){ console.warn("NovaX bulk failure report", e); }
+        toast(`${awbs.length} AWB(s) booked. ${failed.length} row(s) failed \u2014 see the list above.`,"error");
       } else {
         toast(`${awbs.length} AWB(s) booked and synced to NovaX.`,"success");
       }
     }
+    /* Re-exports only the rejected rows, in the same column order as the
+       upload template, so the merchant fixes a short sheet rather than hunting
+       through the original. */
+    function nvDownloadFailedBulk(){
+      try{
+        const failed=window.__nvBulkFailed||[];
+        if(!failed.length){ toast("No failed rows to download."); return; }
+        const head=["consignee","phone","city","address","cod","weight","order_id","product","payment_mode","area","why_it_failed"];
+        const lines=[head.map(csvCell).join(",")].concat(failed.map(function(f){
+          const r=f.row||{};
+          return [r.consignee,r.phone,r.city,r.address,r.cod,r.weight,r.orderId,r.product,
+                  r.paymentMode,r.areaName||"",f.error||""].map(csvCell).join(",");
+        }));
+        const a=document.createElement("a");
+        a.href=URL.createObjectURL(new Blob([lines.join("\n")],{type:"text/csv"}));
+        a.download="novax-failed-rows.csv"; a.click();
+        toast("Failed rows downloaded.","success");
+      }catch(e){ toast("Could not build that file: "+((e&&e.message)||e),"error"); }
+    }
+    window.nvDownloadFailedBulk=nvDownloadFailedBulk;
+
     function requestRedelivery(awb){
       // NovaX fix (item 2): same false-success bug as requestReturnToOrigin --
       // now calls the real client_create_ops_request RPC and only shows
