@@ -5139,8 +5139,6 @@ html,body{ background:var(--bg); color:var(--ink); }
 
               <button type="button" class="admin-nav-main" data-admin-tab="reviews">REVIEWS <span class="nv-pickup-badge" id="reviewPendingBadge" hidden>0</span></button>
 
-              <button type="button" class="admin-nav-main" data-admin-tab="fixaddress">MISSING ADDRESSES <span class="nv-pickup-badge" id="fixAddrBadge" hidden>0</span></button>
-
 
 
               <div class="admin-nav-group" data-admin-group="riders">
@@ -5689,17 +5687,6 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <div class="section-head"><div><h3>Expense Logs</h3><p>Admin expense entries affect profit dashboards immediately.</p></div></div>
                   <div class="log-feed" id="adminExpenseLogs"></div>
                 </div>
-              </div>
-            </section>
-
-            <section class="admin-module" id="admin-fixaddress">
-              <div class="panel">
-                <div class="section-head">
-                  <div><h3>Parcels with no delivery address <span class="nv-pickup-badge" id="fixAddrCount" hidden>0</span></h3>
-                  <p>These cannot be delivered as they stand. Each row shows the merchant and their phone &mdash; get the address, type it here, and the AWB label prints correctly straight away. Closed parcels are not listed.</p></div>
-                  <button class="ghost-btn" style="white-space:nowrap" type="button" onclick="renderFixAddress()">Refresh</button>
-                </div>
-                <div class="ops-list" id="fixAddrList"></div>
               </div>
             </section>
 
@@ -9513,7 +9500,6 @@ html,body{ background:var(--bg); color:var(--ink); }
       const opsResolved = document.getElementById("opsResolvedFilter")?.value || "open";
       try { renderPickupQueue(); } catch (e) {}
       try { renderAdminReviews(); } catch (e) {}
-      try { renderFixAddress(); } catch (e) {}
       try { renderExceptionControlRoom(); } catch (e) {}
       try { renderReconciliationAudit(); } catch (e) {}
 
@@ -10423,7 +10409,6 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (state.activeAdminTab === "system-notifications") { try { loadNotificationCenter(); } catch(e){} }
       if (state.activeAdminTab === "system-errors") { try { loadErrorMonitor(); } catch(e){} }
       if (state.activeAdminTab === "reviews") { try { loadAdminReviews(); } catch(e){} }
-      if (state.activeAdminTab === "fixaddress") { try { renderFixAddress(); } catch(e){} }
     }
 
     // NovaX fix (Order Processing RPC scope bug): rParcel() is defined much
@@ -13134,21 +13119,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       const destination = labelText(p.city);
       const clientLabel = labelText(client && client.name, "NovaX Client");
       const consignee = labelText(p.consignee);
-      /* A label with no address is not a delivery document -- it is a parcel
-         that cannot be delivered. "phone pending" read like a note to look it
-         up later; it needs to stop the parcel at the print desk instead, and
-         carry the ONE number that can resolve it: the merchant's. */
-      const nvMissingPhone = !String(p.phone || "").trim();
-      const nvMissingAddr  = !String(p.address || "").trim();
-      const nvMerchantPhone = labelText(client && client.phone, "");
-      const nvMerchantName  = labelText(client && client.name, "the merchant");
-      const phone = nvMissingPhone
-        ? ("CALL " + nvMerchantName + (nvMerchantPhone ? " " + nvMerchantPhone : ""))
-        : labelText(p.phone, "");
-      const address = nvMissingAddr
-        ? ("ADDRESS MISSING \u2014 do not dispatch. Get it from " + nvMerchantName +
-           (nvMerchantPhone ? " (" + nvMerchantPhone + ")" : "") + " and add it in Admin.")
-        : labelText(p.address, "");
+      const phone = labelText(p.phone, "phone pending");
+      const address = labelText(p.address, "Address attached in portal");
       const cod = money(p.cod);
       const paymentMode = parcelPaymentMode(p);
       const service = labelText(p.service, "COD Standard");
@@ -13873,78 +13845,6 @@ html,body{ background:var(--bg); color:var(--ink); }
     window.loadAdminReviews = loadAdminReviews;
     window.setReviewStatus = setReviewStatus;
     window.renameReviewDisplay = renameReviewDisplay;
-
-
-    /* ═══ Missing-address repair ═══════════════════════════════════════════
-       A parcel with no consignee address cannot be delivered, and until now
-       nothing in the portal listed them -- the only symptom was a printed
-       label reading "Address attached in portal". This is the worklist, with
-       the merchant's own number on every row so the address is one call away. */
-    function nvNeedsAddress(){
-      var CLOSED = ["Delivered","Return to shipper","Parcel returned to consignee","Cancelled"];
-      return (state.parcels||[]).filter(function(p){
-        if(!p) return false;
-        if(CLOSED.indexOf(p.status) > -1) return false;
-        return !String(p.address||"").trim() || !String(p.phone||"").trim();
-      }).sort(function(a,b){ return String(a.date||"").localeCompare(String(b.date||"")); });
-    }
-    function renderFixAddress(){
-      var host = document.getElementById("fixAddrList");
-      if(!host) return;
-      var rows = nvNeedsAddress();
-      ["fixAddrBadge","fixAddrCount"].forEach(function(id){
-        var b = document.getElementById(id);
-        if(b){ b.textContent = String(rows.length); b.hidden = rows.length === 0; }
-      });
-      if(!rows.length){
-        host.innerHTML = '<div class="ops-card"><strong>Nothing missing</strong><p>Every open parcel has a delivery address and a phone number.</p></div>';
-        return;
-      }
-      host.innerHTML = rows.map(function(p){
-        var c = clientById(p.clientId) || {};
-        var mp = String(c.phone||"").trim();
-        return '<div class="ops-card" data-awb="'+escLabelText(p.awb)+'">'+
-          '<div class="ops-card-head"><strong>'+escLabelText(p.awb)+'</strong>'+
-            '<span class="chip warn">'+escLabelText(p.status)+'</span>'+
-            '<span class="footer-note" style="margin-left:auto">'+escLabelText(p.date||"")+'</span></div>'+
-          '<p style="margin:4px 0 8px">'+escLabelText(p.consignee||"—")+' &middot; '+escLabelText(p.city||"")+
-            ' &middot; '+money(p.cod||0)+'</p>'+
-          '<p class="footer-note" style="margin:0 0 8px">Merchant: <b>'+escLabelText(c.name||"—")+'</b>'+
-            (mp ? ' &middot; <a href="tel:'+escLabelText(mp)+'">'+escLabelText(mp)+'</a>'+
-                  ' &middot; <a href="https://wa.me/92'+escLabelText(mp.replace(/^0/,""))+
-                  '?text='+encodeURIComponent("Assalam o Alaikum, "+(c.name||"")+" — AWB "+p.awb+" ("+(p.consignee||"")+", "+(p.city||"")+") ka delivery address chahiye. Please share.")+
-                  '" target="_blank" rel="noopener">WhatsApp</a>' : '')+
-          '</p>'+
-          '<div class="form-grid" style="gap:8px">'+
-            '<div class="field" style="grid-column:1/-1"><label>Delivery address</label>'+
-              '<textarea id="fa-addr-'+escLabelText(p.awb)+'" placeholder="Full delivery address">'+escLabelText(p.address||"")+'</textarea></div>'+
-            '<div class="field"><label>Consignee phone</label>'+
-              '<input id="fa-ph-'+escLabelText(p.awb)+'" maxlength="11" placeholder="03001234567" value="'+escLabelText(p.phone||"")+'"></div>'+
-          '</div>'+
-          '<div class="inline-actions" style="margin-top:10px">'+
-            '<button class="action-btn" onclick="saveParcelContact(\''+p.awb+'\')">Save &amp; make deliverable</button>'+
-          '</div></div>';
-      }).join("");
-    }
-    function saveParcelContact(awb){
-      var sb = window.__nvSb;
-      if(!sb){ toast("Cloud connection not ready.","error"); return; }
-      var a = (document.getElementById("fa-addr-"+awb)||{}).value || "";
-      var ph = (document.getElementById("fa-ph-"+awb)||{}).value || "";
-      if(!String(a).trim()){ toast("A delivery address is required.","error"); return; }
-      var digits = String(ph).replace(/\D/g,"");
-      if(digits && !/^03\d{9}$/.test(digits)){ toast("Phone must be 11 digits starting 03.","error"); return; }
-      sb.rpc("admin_fix_parcel_contact",{ p_awb:awb, p_address:a, p_phone:digits }).then(function(r){
-        if(r && r.error){ toast("Could not save: "+r.error.message,"error"); return; }
-        var p = (state.parcels||[]).find(function(x){ return x.awb===awb; });
-        if(p){ if(!String(p.address||"").trim()) p.address=String(a).trim();
-               if(!String(p.phone||"").trim() && digits) p.phone=digits; }
-        toast(awb+" is now deliverable. Reprint the AWB.","success");
-        renderFixAddress();
-      }).catch(function(e){ toast("Could not save: "+((e&&e.message)||e),"error"); });
-    }
-    window.renderFixAddress = renderFixAddress;
-    window.saveParcelContact = saveParcelContact;
 
     function renderPickupQueue() {
       const tbody = document.getElementById("pickupRequestQueue");
@@ -16556,7 +16456,6 @@ html,body{ background:var(--bg); color:var(--ink); }
       ["manifest-dispute","Dispute","Manifest disputes"],
       ["pickup-requests","Pickup Requests","Merchant pickup queue"],
       ["reviews","Reviews","Approve merchant testimonials"],
-      ["fixaddress","Missing Addresses","Parcels that cannot be delivered"],
       ["riders-route","Riders — On Route","Live rider routes"],
       ["riders-report","Riders — Report","Rider performance and cash"],
       ["finance-invoices","Finance — Invoices","Generate and settle invoices"],
