@@ -950,6 +950,19 @@
     color:#4ee6a5; background:rgba(20,199,123,.09); border-color:rgba(20,199,123,.24);
   }
 
+  /* The invoice is a DOCUMENT -- black ink on white paper, identical on
+     screen and in print. A blanket dark-mode rule,
+       html[data-theme="dark"] [style*="background:#fff"]
+         { background:var(--panel-soft)!important; color:var(--ink)!important }
+     was repainting it dark while its ink stayed near-black, so Billed to,
+     Invoice date and Invoice type were black-on-dark and effectively invisible
+     in the modal. Higher specificity so it wins regardless of source order. */
+  html[data-theme="dark"] div.nv-doc-paper{
+    background:#ffffff !important;
+    color:#0b1f16 !important;
+    border-color:#d6e6de !important;
+  }
+
   /* ═══ WITHDRAWAL RECEIPT DRAWER ═══════════════════════════════════════
      Shown only after request_wallet_withdrawal has confirmed server-side.
      Animations 11-14: scrim fade, sheet rise, tick draw, then the three
@@ -4176,7 +4189,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           '<div class="nv-doc-box big"><span>Amount received</span><strong>'+escLabelText(money(w.net))+'</strong></div>'+
           '<div class="nv-doc-box"><span>Paid to</span><strong>'+escLabelText(maskIban(w.iban))+'</strong></div>'+
           '<div class="nv-doc-box"><span>Requested on</span><strong>'+escLabelText(w.createdAt||"-")+'</strong></div>'+
-          '<div class="nv-doc-box"><span>Paid on</span><strong>'+escLabelText(w.paidAt||(paid?"-":"pending"))+'</strong></div>'+
+          '<div class="nv-doc-box"><span>Paid on</span><strong>'+escLabelText(w.paidAt?nvNiceDate(w.paidAt):(paid?"-":"pending"))+'</strong></div>'+
         '</div>'+
         '<table><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>'+
           '<tr><td>Withdrawal requested</td><td class="num">'+escLabelText(money(w.amount))+'</td></tr>'+
@@ -4492,6 +4505,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              '<span class="nv-inv-stage">' + escLabelText(nvMoneyLabel(status)) + "</span></div>";
     }
 
+    /* Raw Postgres timestamps were being printed straight onto merchant-facing
+       documents -- "Settled on 2026-07-20T07:19:51.373934+00:00". */
+    function nvNiceDate(v){
+      if(!v) return "";
+      var d=new Date(v);
+      if(isNaN(d)) return String(v).slice(0,16).replace("T"," ");
+      return d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}) +
+             ", " + d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+    }
+
     function clientInvoiceHtml(inv){
       const c=clientById(inv.clientId);
       const lines=clientInvoiceLineItems(inv);
@@ -4544,7 +4567,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       </div>`:"";
       const balanceLabel=due>0?"Amount Due to NovaX":"Grand Total Payable";
       const balanceValue=due>0?money(due):money(inv.payable||0);
-      return `<div style="font-family:Arial,Helvetica,sans-serif;color:#0b1f16;padding:26px;max-width:820px;margin:0 auto">
+      return `<div class="nv-doc-paper" style="font-family:Arial,Helvetica,sans-serif;color:#0b1f16;background:#ffffff;padding:26px;max-width:820px;margin:0 auto;border-radius:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #0c7c59;padding-bottom:14px;margin-bottom:18px">
           <div><div style="font-size:24px;font-weight:800;color:#0c7c59;letter-spacing:.5px">NovaX Logistics</div><div style="font-size:11px;color:#5b6b64">Courier &amp; COD Operating Account | novaxlogistics.com</div></div>
           <div style="text-align:right"><div style="font-size:18px;font-weight:800">INVOICE</div><div style="font-size:13px">${escLabelText(inv.id)}</div></div>
@@ -4558,8 +4581,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#5b6b64;margin-bottom:6px">Tracking &amp; delivery charge breakdown</div>
         ${outcomeStrip}
         ${driftNote}
-        <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px"><thead><tr style="background:#eef7f2"><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Tracking ID / AWB</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Booking Date</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Destination City</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Consignee</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Outcome</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Payment Mode</th><th style="text-align:right;padding:7px;border:1px solid #d6e6de">COD Amount</th><th style="text-align:right;padding:7px;border:1px solid #d6e6de">Delivery Charge</th><th style="text-align:right;padding:7px;border:1px solid #d6e6de">Net Line Amount</th></tr></thead><tbody>${rows}</tbody></table>
-        ${paidEvent?`<div style="background:#f6faf8;border:1px solid #d6e6de;border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:13px">Settled on <b>${escLabelText(paidEvent)}</b></div>`:""}
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:16px"><table style="width:100%;min-width:640px;border-collapse:collapse;font-size:12px"><thead><tr style="background:#eef7f2"><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Tracking ID / AWB</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Booking Date</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Destination City</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Consignee</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Outcome</th><th style="text-align:left;padding:7px;border:1px solid #d6e6de">Payment Mode</th><th style="text-align:right;padding:7px;border:1px solid #d6e6de">COD Amount</th><th style="text-align:right;padding:7px;border:1px solid #d6e6de">Delivery Charge</th><th style="text-align:right;padding:7px;border:1px solid #d6e6de">Net Line Amount</th></tr></thead><tbody>${rows}</tbody></table></div>
+        ${paidEvent?`<div style="background:#f6faf8;border:1px solid #d6e6de;border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:13px">Settled on <b>${escLabelText(nvNiceDate(paidEvent))}</b></div>`:""}
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#5b6b64;margin-bottom:6px">Summary</div>
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <tr><td colspan="2" style="padding:12px 8px 4px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#0c7c59">What we collected</td></tr>
@@ -4567,7 +4590,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           <tr><td colspan="2" style="padding:12px 8px 4px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#b3261e">What we deducted</td></tr>
           <tr><td style="padding:8px;border-bottom:1px solid #e5edea">Delivery charges &mdash; ${lines.filter(l=>l.outcomeKey==="delivered").length} delivered parcel(s)</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">&minus; ${money(lines.filter(l=>l.outcomeKey==="delivered").reduce((a,l)=>a+Number(l.deliveryCharge||0),0))}</td></tr>
           ${(function(){ const rl=lines.filter(l=>l.outcomeKey==="returned"||l.outcomeKey==="refused"||l.outcomeKey==="cancelled"); const rc=rl.reduce((a,l)=>a+Number(l.deliveryCharge||0),0); return rc>0?`<tr><td style="padding:8px;border-bottom:1px solid #e5edea">Return charges &mdash; ${rl.length} returned / refused parcel(s), no COD collected</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">&minus; ${money(rc)}</td></tr>`:""; })()}
-          <tr><td colspan="2" style="padding:12px 8px 4px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#5c7568">Summary</td></tr>
           <tr><td style="padding:8px;border-bottom:1px solid #e5edea">Total Parcels</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">${lines.length}</td></tr>
           <tr><td style="padding:8px;border-bottom:1px solid #e5edea">COD Subtotal</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">${money(inv.cod||0)}</td></tr>
           <tr><td style="padding:8px;border-bottom:1px solid #e5edea">Delivery Charges Subtotal</td><td style="padding:8px;border-bottom:1px solid #e5edea;text-align:right">${money(inv.charges||0)}</td></tr>
@@ -4604,7 +4626,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function exportReportPdf(){
       const rows=state.parcels.filter(p=>p.clientId===state.client.id);
       const stage=document.getElementById("printStage");
-      stage.innerHTML=`<div style="font-family:sans-serif;color:#000;padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(p.status)}</td><td>${money(p.cod)}</td></tr>`).join("")}</table></div>`;
+      stage.innerHTML=`<div style="font-family:sans-serif;color:#000;background:#fff;padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(p.status)}</td><td>${money(p.cod)}</td></tr>`).join("")}</table></div>`;
       stage.style.display="block"; window.print(); setTimeout(()=>{ stage.style.display="none"; },500);
     }
 
@@ -4911,7 +4933,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const entryLabels={ invoice_credit:"Invoice credited", withdrawal_requested:"Withdrawal requested", payout_fee:"Payout fee deducted", payout_paid:"Payout paid", admin_adjustment:"Admin adjustment", delivery_charge_due:"Delivery charge collected" };
       const ledgerList=document.getElementById("walletLedgerList");
       if(ledgerList){
-        ledgerList.innerHTML=myLedger.slice(0,50).map(l=>`<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${l.amount>=0?"good":"warn"}">${money(l.amount)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(l.createdAt)}</div></div>`).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
+        ledgerList.innerHTML=myLedger.slice(0,50).map(l=>`<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${l.amount>=0?"good":"warn"}">${money(l.amount)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(nvNiceDate(l.createdAt))}</div></div>`).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
         /* NovaX motion: when the balance actually moved this render, flag the
            newest ledger row so the merchant can see what caused it, rather
            than just noticing a different total. Same .nv-changed sweep the
