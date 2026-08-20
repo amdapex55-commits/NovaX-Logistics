@@ -992,33 +992,46 @@
   }
 
 
+
   /* ═══ Placeholder weight ═══════════════════════════════════════════════
-     Placeholders were rendering at full text colour and weight, so an empty
-     booking form read as a wall of confident, already-filled values. A
-     merchant could not tell at a glance what they had typed and what was only
-     a hint. Softened everywhere, in both themes, without touching real input
-     text. */
+     Placeholders rendered at full text colour and weight, so an empty booking
+     form read as a wall of confident, already-filled values -- a merchant
+     could not tell what they had typed from what was only a hint. Second
+     pass: lighter still, and extended to every input type in both portals
+     (search, number, tel, date, textarea, the command palette) rather than
+     just .field inputs. Real typed text is never touched. */
+  ::placeholder,
   input::placeholder,
   textarea::placeholder,
+  input[type="text"]::placeholder,
+  input[type="search"]::placeholder,
+  input[type="number"]::placeholder,
+  input[type="tel"]::placeholder,
+  input[type="email"]::placeholder,
+  input[type="date"]::placeholder,
   .field input::placeholder,
   .field textarea::placeholder,
-  .search::placeholder{
+  .search::placeholder,
+  #nvck input::placeholder{
     color:var(--muted) !important;
-    opacity:.62 !important;
-    font-weight:500 !important;
+    opacity:.48 !important;
+    font-weight:400 !important;
+    letter-spacing:0 !important;
   }
+  html[data-theme="dark"] ::placeholder,
   html[data-theme="dark"] input::placeholder,
   html[data-theme="dark"] textarea::placeholder,
   html[data-theme="dark"] .field input::placeholder,
   html[data-theme="dark"] .field textarea::placeholder,
-  html[data-theme="dark"] .search::placeholder{
+  html[data-theme="dark"] .search::placeholder,
+  html[data-theme="dark"] #nvck input::placeholder{
     color:var(--muted) !important;
-    opacity:.55 !important;
-    font-weight:500 !important;
+    opacity:.42 !important;
+    font-weight:400 !important;
   }
-  /* Real typed text stays at full strength -- only the hint is quiet. */
-  input:not(:placeholder-shown),
-  textarea:not(:placeholder-shown){ font-weight:inherit; }
+  /* A select still showing its own default option is a hint too, not a
+     choice the merchant made. */
+  select.nv-unset, select:invalid{ color:var(--muted) !important; opacity:.72; }
 
   /* ═══ WITHDRAWAL RECEIPT DRAWER ═══════════════════════════════════════
      Shown only after request_wallet_withdrawal has confirmed server-side.
