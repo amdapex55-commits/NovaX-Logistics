@@ -1311,21 +1311,30 @@
   .nvai.nv-opening,.nvai.nv-opening .nvai-head,.nvai.nv-opening .nvai-stream,
   .nvai.nv-opening .nvai-composer{animation:none}
 }
-/* The assistant is the headline feature -- it should not look like the
-   ninth item in a list. */
-.nv-ai-tab{display:flex!important;align-items:center;gap:9px;
-  border:1px solid var(--green-2)!important;
-  background:linear-gradient(135deg,rgba(12,124,89,.14),rgba(19,163,111,.08))!important;
-  color:var(--ink)!important;font-weight:750!important;position:relative;overflow:hidden}
-.nv-ai-tab::after{content:"";position:absolute;inset:0;
-  background:linear-gradient(120deg,transparent 30%,rgba(19,163,111,.18),transparent 70%);
-  transform:translateX(-100%);transition:transform .6s cubic-bezier(.2,.9,.2,1)}
-.nv-ai-tab:hover::after{transform:translateX(100%)}
-.nv-ai-tab:hover{border-color:var(--green)!important}
-.nv-ai-tab-spark{display:grid;place-items:center;width:24px;height:24px;border-radius:8px;flex:none;
+/* Standalone assistant entry. Deliberately NOT a .client-tab: the role
+   filter sets style.display on every .client-tab, and something in this
+   portal hides several of them. This must always be reachable. */
+.nv-ai-entry{display:flex;align-items:center;gap:11px;width:100%;margin:0 0 10px;
+  padding:11px 13px;border-radius:var(--radius,12px);cursor:pointer;text-align:left;
+  border:1px solid var(--green-2);
+  background:linear-gradient(135deg,rgba(12,124,89,.16),rgba(19,163,111,.07));
+  position:relative;overflow:hidden;font:inherit;
+  transition:transform .2s cubic-bezier(.2,.9,.2,1),box-shadow .2s,border-color .2s}
+.nv-ai-entry:hover{transform:translateY(-1px);border-color:var(--green);
+  box-shadow:0 6px 20px rgba(19,163,111,.2)}
+.nv-ai-entry:active{transform:translateY(0) scale(.99)}
+.nv-ai-entry::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(120deg,transparent 30%,rgba(19,163,111,.2),transparent 70%);
+  transform:translateX(-100%);transition:transform .65s cubic-bezier(.2,.9,.2,1)}
+.nv-ai-entry:hover::after{transform:translateX(100%)}
+.nv-ai-entry-spark{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;flex:none;
   color:#fff;background:linear-gradient(140deg,var(--green),var(--green-2));
-  box-shadow:0 3px 10px rgba(19,163,111,.34)}
-@media (prefers-reduced-motion:reduce){.nv-ai-tab::after{display:none}}
+  box-shadow:0 3px 12px rgba(19,163,111,.36)}
+.nv-ai-entry-txt{display:flex;flex-direction:column;line-height:1.25;min-width:0}
+.nv-ai-entry-txt b{font-size:13.5px;font-weight:750;color:var(--ink);letter-spacing:-.01em}
+.nv-ai-entry-txt small{font-size:10.5px;color:var(--muted);font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (prefers-reduced-motion:reduce){.nv-ai-entry::after{display:none}}
 /* Confirm bar — the only place a write is triggered. Deliberately
    distinct from a suggestion chip: this one changes a live parcel. */
 .nvai-confirm{border:1px solid var(--green-2);border-radius:14px;padding:13px 15px;
@@ -1811,8 +1820,14 @@
               <button class="nv-theme-toggle" id="nvThemeToggleBtn" type="button" onclick="toggleNovaxTheme()" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
               <button class="hamburger-btn" id="clientMenuToggle" aria-label="Open client menu" aria-expanded="false"><span></span><span></span><span></span><span class="hamburger-label">Menu</span></button>
             </div>
-            <nav class="client-menu" id="clientMenu" aria-label="Client portal sections">
-              <button class="client-tab nv-ai-tab" data-client-tab="support"><span class="nv-ai-tab-spark" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.1 5.6L20 10.5l-5.9 1.9L12 18l-2.1-5.6L4 10.5l5.9-1.9z"/></svg></span>Talk to NovaX AI</button>
+            <button type="button" class="nv-ai-entry" id="nvAiEntry"
+                      onclick="showClientTab('support')">
+                <span class="nv-ai-entry-spark" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.1 5.6L20 10.5l-5.9 1.9L12 18l-2.1-5.6L4 10.5l5.9-1.9z"/></svg>
+                </span>
+                <span class="nv-ai-entry-txt"><b>Talk to NovaX AI</b><small>Ask about parcels, payouts, rates</small></span>
+              </button>
+              <nav class="client-menu" id="clientMenu" aria-label="Client portal sections">
               <button class="client-tab active" data-client-tab="dashboard">Dashboard</button>
               <button class="client-tab" data-client-tab="newBooking">New Booking</button>
               <button class="client-tab" data-client-tab="awbLabel">AWB Label</button>
