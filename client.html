@@ -3098,6 +3098,58 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     }
     function urgencyClass(l){ if(l==="critical"||l==="super urgent") return "bad"; if(l==="warning"||l==="urgent") return "warn"; return "good"; }
     function setParcelStatus(p,status){ p.status=status; p.statusAgeHours=0; p.statusSince=new Date().toISOString(); p.updated=time(); p.stage=Math.max(0,STATUS_TAGS.indexOf(status)); if(!Array.isArray(p.steps)) p.steps=[]; if(!p.steps.includes(status)) p.steps.push(status); }
+    /* ═══ Parcel progress ══════════════════════════════════════════════════
+       STATUS_TAGS is not a linear pipeline. Indices 0-6 are the delivery path;
+       7-11 are exceptions that happen AT the delivery attempt; 12-16 are the
+       return leg. Measuring progress as stage/16 therefore reported a
+       DELIVERED parcel -- the successful end state -- as 38% complete, and a
+       returned one as 100%. Progress is now measured along the path the parcel
+       is actually on. */
+    var NV_DELIVERY_PATH=["New booked","Collected by rider","Arrived at warehouse",
+                          "Parcel now in transit","Parcel received at destination",
+                          "Parcel out for delivery","Delivered"];
+    var NV_EXCEPTION_AT_DOOR=["Refused","Consignee not available","Reattempt",
+                              "Reassigned","Out of service area"];
+    var NV_RETURN_PATH=["Ready for return","Return in transit","Return received at origin",
+                        "Return out for delivery","Return to shipper"];
+    function nvProgressPct(status){
+      var st=(typeof nvStatus==="function"?nvStatus(status):status)||"";
+      if(st==="Delivered") return 100;
+      var d=NV_DELIVERY_PATH.indexOf(st);
+      if(d>-1) return Math.round((d/(NV_DELIVERY_PATH.length-1))*100);
+      if(NV_EXCEPTION_AT_DOOR.indexOf(st)>-1) return 83;   // reached the door
+      var r=NV_RETURN_PATH.indexOf(st);
+      if(r>-1) return 85+Math.round((r/(NV_RETURN_PATH.length-1))*15);
+      return 0;
+    }
+    /* "5 of 7" along whichever path applies, instead of "6/16". */
+    function nvProgressStep(status){
+      var st=(typeof nvStatus==="function"?nvStatus(status):status)||"";
+      var d=NV_DELIVERY_PATH.indexOf(st);
+      if(d>-1) return (d+1)+"/"+NV_DELIVERY_PATH.length;
+      if(NV_EXCEPTION_AT_DOOR.indexOf(st)>-1) return "6/7";
+      var r=NV_RETURN_PATH.indexOf(st);
+      if(r>-1) return "R"+(r+1)+"/"+NV_RETURN_PATH.length;
+      return "1/"+NV_DELIVERY_PATH.length;
+    }
+
+    /* ═══ Idempotent repaints ══════════════════════════════════════════════
+       Three timers rewrote dashboard sections every 3 seconds whether or not
+       anything had changed -- innerHTML on a live container drops and rebuilds
+       its subtree, so the merchant saw the panels blink and relayout twice a
+       second between them. nvPaint() writes only when the HTML actually
+       differs, which makes an unchanged tick free and invisible. */
+    var __nvPaintSig={};
+    function nvPaint(id, html){
+      var el=document.getElementById(id);
+      if(!el) return false;
+      if(__nvPaintSig[id]===html) return false;   // nothing moved -- do not touch the DOM
+      __nvPaintSig[id]=html;
+      el.innerHTML=html;
+      return true;
+    }
+    window.nvPaint=nvPaint;
+
     function percent(v,m){ if(!m) return 0; return Math.max(0,Math.min(100,Math.round((v/m)*100))); }
     // NovaX fix (duplicate formatters): fmt() here and fmtRs() further down
     // the file were byte-identical implementations in two different script
@@ -3763,8 +3815,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     function renderClientParcels(){
       const parcels=filteredParcels();
-      document.getElementById("clientParcelRows").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${p.stage}/${p.totalStages}</span><span>${pr}%</span></div></td></tr>`; }).join("")||`<tr><td colspan="5">No parcels in range.</td></tr>`;
-      document.getElementById("clientParcelCards").innerHTML=parcels.map(p=>{ const pr=percent(p.stage,p.totalStages); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${isCancellableBooking(p)?`<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn nv-cancel-booking" type="button" onclick="cancelClientBooking('${escLabelText(p.awb)}',event)">Cancel booking</button></div>`:""}</article>`; }).join("");
+      document.getElementById("clientParcelRows").innerHTML=parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${nvProgressStep(p.status)}</span><span>${pr}%</span></div></td></tr>`; }).join("")||`<tr><td colspan="5">No parcels in range.</td></tr>`;
+      document.getElementById("clientParcelCards").innerHTML=parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${isCancellableBooking(p)?`<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn nv-cancel-booking" type="button" onclick="cancelClientBooking('${escLabelText(p.awb)}',event)">Cancel booking</button></div>`:""}</article>`; }).join("");
       nvMarkChanged("clientParcelRows",parcels,"rows");
       nvMarkChanged("clientParcelCards",parcels,"cards");
     }
@@ -8678,7 +8730,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }catch(e){}
         }
 
-        setInterval(function(){ mountWelcomeStrip(); renderDashboardEmptyState(); },3000);
+        setInterval(function(){ if(document.hidden) return; mountWelcomeStrip(); renderDashboardEmptyState(); },15000);
         setTimeout(function(){ mountWelcomeStrip(); renderDashboardEmptyState(); if(window.novaxFocusFirstBookingField) window.novaxFocusFirstBookingField(); },300);
         showFirstBookingAutopilotWelcome();
         cleanWelcomeUrl();
@@ -8746,7 +8798,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }catch(e){}
     }
     (function(){
-      setInterval(renderDashboardEmptyState,3000);
+      setInterval(function(){ if(!document.hidden) renderDashboardEmptyState(); },15000);
       setTimeout(renderDashboardEmptyState,400);
       document.addEventListener("DOMContentLoaded",renderDashboardEmptyState);
     })();
@@ -8884,7 +8936,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }catch(e){}
     }
     (function(){
-      setInterval(renderDailyCommandCenter,3000);
+      setInterval(function(){ if(!document.hidden) renderDailyCommandCenter(); },20000);
       setTimeout(renderDailyCommandCenter,400);
       document.addEventListener("DOMContentLoaded",renderDailyCommandCenter);
     })();
