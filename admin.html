@@ -7168,7 +7168,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       return zone === "A" ? "Zone A (Karachi)" : "Zone B (Lahore / Islamabad / Rawalpindi)";
     }
     function normalizeRateCard(raw, rate) {
-      const fallback = defaultRateCard(rate || 250);
+      const fallback = defaultRateCard(rate || NV_ZONE_A_BASE);
       if (raw && raw.A && raw.B && typeof raw.A.overnight === "number" && typeof raw.B.overnight === "number") {
         return { A: { ...fallback, ...raw.A }, B: { ...fallback, ...raw.B } };
       }
@@ -7186,8 +7186,8 @@ html,body{ background:var(--bg); color:var(--ink); }
     // charge = baseRate + ceil(max(0, weightKg-1)) * additionalKgRate, capped at the 5kg normal slab.
     function bookingChargeBreakdown(rateCard, zone, weightInput) {
       var z = zone === "A" ? "A" : "B";
-      var card = (rateCard && rateCard[z]) || (rateCard && typeof rateCard.overnight === "number" ? rateCard : defaultRateCard(250));
-      var base = Number(card.overnight) || 250;
+      var card = (rateCard && rateCard[z]) || (rateCard && typeof rateCard.overnight === "number" ? rateCard : defaultRateCard(NV_ZONE_A_BASE));
+      var base = Number(card.overnight) || NV_ZONE_A_BASE;
       var addlRate = Number(card.additionalKg) || 85;
       var weightKg = parseWeightKg(weightInput);
       var cappedKg = Math.min(weightKg, 5);
@@ -7607,7 +7607,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     }
 
     function safeRateCard(client, zone) {
-      const rc = normalizeRateCard(client && client.rateCard, client ? client.rate : 250);
+      const rc = normalizeRateCard(client && client.rateCard, client ? client.rate : NV_ZONE_A_BASE);
       return rc[zone === "A" ? "A" : "B"];
     }
 
@@ -11602,7 +11602,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast("This login email already exists.");
         return;
       }
-      const rateCard = { A: defaultRateCard(250), B: defaultRateCard(250) };
+      const rateCard = { A: defaultRateCard(NV_ZONE_A_BASE), B: defaultRateCard(NV_ZONE_A_BASE) };
       state.clients = state.clients.filter(item => item.id !== "CL-0000");
       const id = nextId("CL", state.clients);
       const newClient = {
@@ -14942,7 +14942,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       function dpart(t){ return t?String(t).slice(0,10):new Date().toISOString().slice(0,10); }
       function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
       function sigOf(row){ return JSON.stringify(row,function(k,v){ return k==="updated_at"?undefined:v; }); }
-      var DRC={ overnight:250, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 };
+      var DRC={ overnight:NV_ZONE_A_BASE, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 };
       function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", pickupCity:m.pickupCity||"Karachi", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||NV_ZONE_A_BASE), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||NV_ZONE_A_BASE)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
       function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0),
