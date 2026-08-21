@@ -12054,9 +12054,29 @@ html,body{ background:var(--bg); color:var(--ink); }
         return;
       }
       window.__nvSb.rpc("admin_mark_withdrawal_paid", { p_withdrawal_id: withdrawal._uuid, p_txn_id: txnId, p_paid_by: paidBy, p_proof: proof || null }).then(r => {
-        if (r && r.error) { toast(`Could not mark ${id} paid: ${r.error.message}`, "error"); return; }
+        function nvRefreshPayouts(){
+          if (typeof nvRefresh === "function") nvRefresh(["withdrawals","clients","wallet_ledger","payment_logs"]);
+          else if (typeof loadAll === "function") loadAll();
+        }
+        if (r && r.error) {
+          var nvMsg = String((r.error && r.error.message) || "");
+          /* "not pending" means the RPC refused to pay twice -- the transfer
+             already happened. Reporting that as a failure is the dangerous
+             way round: ops reads "could not mark paid", assumes the money did
+             not move, and pays again out of band. Treat it as stale UI,
+             refresh the queue so the card leaves, and say so plainly. */
+          if (/not pending|already been paid|current status:\s*Paid/i.test(nvMsg)) {
+            closeMarkPaidModal();
+            nvRefreshPayouts();
+            toast(`${id} was already paid — that transfer went out. Queue refreshed.`);
+            return;
+          }
+          toast(`Could not mark ${id} paid: ${nvMsg}`, "error");
+          nvRefreshPayouts();
+          return;
+        }
         closeMarkPaidModal();
-        if (typeof nvRefresh === "function") nvRefresh(["withdrawals","clients","wallet_ledger","payment_logs"]); else if (typeof loadAll === "function") loadAll();
+        nvRefreshPayouts();
         toast(`${id} marked paid with reference ${txnId}.`);
       }).catch(e => toast(`Could not mark ${id} paid: ${(e && e.message) || e}`, "error"));
     }
