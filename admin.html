@@ -15565,7 +15565,7 @@ html,body{ background:var(--bg); color:var(--ink); }
        Isolated from render(): a ticket failure cannot take the admin down.
        =================================================================== */
     var NV_ATK = { list: [], replies: {}, filter: "open", openId: null,
-                   q: "", loading: false, openCount: 0 };
+                   q: "", loading: false, openCount: 0, drafts: {} };
     window.NV_ATK = NV_ATK;
 
     function nvAtkEsc(v){
@@ -15647,6 +15647,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         .then(function(r){
           if (r && r.error){ toast("Could not send the reply: " + r.error.message, "error"); return; }
           if (el) el.value = "";
+          if (NV_ATK.drafts) delete NV_ATK.drafts[id];
           // first_response_at is stamped by the DB trigger, so just refetch.
           toast("Reply sent.");
           nvAtkLoadReplies(id);
@@ -15675,28 +15676,43 @@ html,body{ background:var(--bg); color:var(--ink); }
       var stChip = t.status === "resolved" ? "good" : t.status === "pending_client" ? "warn" : "info";
       var prChip = t.priority === "high" ? "bad" : t.priority === "low" ? "info" : "warn";
       var slaChip = sla.state === "breached" ? "bad" : sla.state === "missed" ? "warn" : "good";
+      var id = nvAtkEsc(t.id);
       var reps = NV_ATK.replies[t.id] || [];
+      var loaded = Object.prototype.hasOwnProperty.call(NV_ATK.replies, t.id);
+
+      /* The conversation still collapses so a long queue stays scannable, but
+         the reply box below is always present. It used to render only for the
+         one expanded ticket, and the only hint a card could even be opened was
+         a pointer cursor, so a reply looked impossible on every other ticket. */
       var thread = "";
       if (open){
         thread = '<div class="nv-atk-thread">' +
           (reps.length ? reps.map(function(r){
             return '<div class="nv-atk-msg ' + (r.by_side === "admin" ? "mine" : "") + '">' +
               '<div class="nv-atk-meta">' + nvAtkEsc(r.by_name || (r.by_side === "admin" ? "NovaX" : "Client")) +
-              ' · ' + nvAtkEsc(String(r.created_at || "").replace("T", " ").slice(0, 16)) + '</div>' +
+              ' \u00b7 ' + nvAtkEsc(String(r.created_at || "").replace("T", " ").slice(0, 16)) + '</div>' +
               '<div>' + nvAtkEsc(r.body) + '</div></div>';
-          }).join("") : '<p class="footer-note">No replies yet.</p>') +
-          '<div class="inline-actions" style="margin-top:10px;gap:6px;flex-wrap:wrap">' +
-            '<input class="nv-atk-reply" id="nvAtkReply-' + nvAtkEsc(t.id) + '" placeholder="Reply to the merchant...">' +
-            '<button class="action-btn" data-nv-atkreply="' + nvAtkEsc(t.id) + '">Send reply</button>' +
-            (t.status !== "resolved"
-              ? '<button class="ghost-btn" data-nv-atkstatus="pending_client" data-nv-atkid="' + nvAtkEsc(t.id) + '">Waiting on client</button>' +
-                '<button class="action-btn" data-nv-atkstatus="resolved" data-nv-atkid="' + nvAtkEsc(t.id) + '">Resolve</button>'
-              : '<button class="ghost-btn" data-nv-atkstatus="open" data-nv-atkid="' + nvAtkEsc(t.id) + '">Reopen</button>') +
-          '</div></div>';
+          }).join("") : '<p class="footer-note">' + (loaded ? "No replies yet." : "Loading conversation\u2026") + '</p>') +
+          '</div>';
       }
+
+      var threadLabel = open ? "Hide conversation"
+                       : (loaded && reps.length ? "Show conversation (" + reps.length + ")" : "Show conversation");
+
+      var replyRow =
+        '<div class="inline-actions nv-atk-actions" style="margin-top:10px;gap:6px;flex-wrap:wrap">' +
+          '<input class="nv-atk-reply" id="nvAtkReply-' + id + '" placeholder="Reply to the merchant\u2026">' +
+          '<button class="action-btn" data-nv-atkreply="' + id + '">Send reply</button>' +
+          (t.status !== "resolved"
+            ? '<button class="ghost-btn" data-nv-atkstatus="pending_client" data-nv-atkid="' + id + '">Waiting on client</button>' +
+              '<button class="action-btn" data-nv-atkstatus="resolved" data-nv-atkid="' + id + '">Resolve</button>'
+            : '<button class="ghost-btn" data-nv-atkstatus="open" data-nv-atkid="' + id + '">Reopen</button>') +
+          '<button class="ghost-btn" data-nv-atkopen="' + id + '">' + threadLabel + '</button>' +
+        '</div>';
+
       return '<div class="ops-card nv-atk-card' + (sla.state === "breached" ? " nv-atk-breach" : "") + '">' +
-        '<div class="ops-card-head" data-nv-atkopen="' + nvAtkEsc(t.id) + '" style="cursor:pointer">' +
-          '<strong>' + nvAtkEsc(t.code || "Ticket") + ' · ' + nvAtkEsc(t.subject) + '</strong>' +
+        '<div class="ops-card-head" data-nv-atkopen="' + id + '" style="cursor:pointer">' +
+          '<strong>' + nvAtkEsc(t.code || "Ticket") + ' \u00b7 ' + nvAtkEsc(t.subject) + '</strong>' +
           '<span class="chip ' + stChip + '">' + nvAtkEsc(t.status.replace("_", " ")) + '</span></div>' +
         '<div class="inline-actions" style="flex-wrap:wrap;gap:6px;margin:6px 0">' +
           '<span class="chip ' + prChip + '">' + nvAtkEsc(t.priority) + '</span>' +
@@ -15706,7 +15722,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           '<span class="chip info">Opened ' + nvAtkEsc(String(t.created_at || "").replace("T", " ").slice(0, 16)) + '</span>' +
         '</div>' +
         (t.body ? '<p style="font-size:13px;margin:6px 0">' + nvAtkEsc(t.body) + '</p>' : "") +
-        thread + '</div>';
+        thread + replyRow + '</div>';
     }
 
     function nvAtkRender(){
@@ -15737,9 +15753,30 @@ html,body{ background:var(--bg); color:var(--ink); }
             .join(" ").toLowerCase().indexOf(q) !== -1;
         });
       }
+      /* This wipes innerHTML, and a poll refreshes the list every 45s, so an
+         admin halfway through typing would lose the reply under their hands.
+         Carry the drafts (and the caret) across the re-render. */
+      var drafts = NV_ATK.drafts || (NV_ATK.drafts = {});
+      Array.prototype.forEach.call(host.querySelectorAll(".nv-atk-reply"), function(inp){
+        var k = inp.id.replace("nvAtkReply-", "");
+        if (inp.value) drafts[k] = inp.value; else delete drafts[k];
+      });
+      var act = document.activeElement;
+      var keepId = (act && act.classList && act.classList.contains("nv-atk-reply")) ? act.id : null;
+      var caret = keepId ? act.selectionStart : null;
+
       host.innerHTML = rows.length
         ? rows.map(nvAtkCard).join("")
         : '<div class="ops-card"><strong>Nothing here</strong><p class="footer-note">No tickets match this filter.</p></div>';
+
+      Array.prototype.forEach.call(host.querySelectorAll(".nv-atk-reply"), function(inp){
+        var k = inp.id.replace("nvAtkReply-", "");
+        if (drafts[k]) inp.value = drafts[k];
+      });
+      if (keepId){
+        var back = document.getElementById(keepId);
+        if (back){ back.focus(); try { back.setSelectionRange(caret, caret); } catch(e){} }
+      }
     }
 
     function nvAtkWire(){
@@ -15755,6 +15792,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         if (st){ nvAtkSetStatus(st.getAttribute("data-nv-atkid"), st.getAttribute("data-nv-atkstatus")); return; }
         var rp = ev.target.closest("[data-nv-atkreply]");
         if (rp){ nvAtkReply(rp.getAttribute("data-nv-atkreply")); return; }
+        if (ev.target.closest(".nv-atk-reply")) return;
         var o = ev.target.closest("[data-nv-atkopen]");
         if (o){
           var id = o.getAttribute("data-nv-atkopen");
