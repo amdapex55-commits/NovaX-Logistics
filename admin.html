@@ -8517,13 +8517,13 @@ html,body{ background:var(--bg); color:var(--ink); }
       document.getElementById("clientJourney").innerHTML = allSteps.map((step, index) => {
         const done = p.steps.includes(step) || p.status === step;
         const alert = p.exception && p.status === step;
-        const detail = done ? `${p.branch} | ${index === p.stage ? p.updated : "system logged"}` : "Waiting for previous control";
+        const detail = done ? `${escLabelText(p.branch)} | ${index === p.stage ? escLabelText(p.updated) : "system logged"}` : "Waiting for previous control";
         return `
           <div class="journey-item ${done ? "" : "pending"} ${alert ? "alert" : ""}">
             <div class="step-dot">${done ? "OK" : index + 1}</div>
             <div>
               <strong>${step}</strong>
-              <span>${alert ? p.exception : detail}</span>
+              <span>${alert ? escLabelText(p.exception) : detail}</span>
             </div>
             <span class="chip ${done ? (alert ? "bad" : "good") : "info"}">${done ? "locked" : "next"}</span>
           </div>
@@ -8891,8 +8891,8 @@ html,body{ background:var(--bg); color:var(--ink); }
         return;
       }
       const reply = p.exception
-        ? `${p.awb} has an exception: ${p.exception}. I have escalated it to ${p.branch} and admin finance.`
-        : `${p.awb} is ${p.status}. Last verified update was ${p.updated} from ${p.branch}.`;
+        ? `${p.awb} has an exception: ${escLabelText(p.exception)}. I have escalated it to ${escLabelText(p.branch)} and admin finance.`
+        : `${p.awb} is ${escLabelText(p.status)}. Last verified update was ${escLabelText(p.updated)} from ${escLabelText(p.branch)}.`;
       document.getElementById("clientAi").innerHTML = `
         <div class="bubble">Client: Where is ${p.awb}, and when will COD settle?</div>
         <div class="bubble ai">AI: ${reply} COD payable updates only after rider cash and bank deposit controls close.</div>
@@ -9160,23 +9160,23 @@ html,body{ background:var(--bg); color:var(--ink); }
         const transitStarted = STATUS_TAGS.indexOf(p.status) >= STATUS_TAGS.indexOf("Parcel now in transit");
         return `
           <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${p.awb}')">
-            <td><strong>${p.awb}</strong><br><span class="footer-note">${p.updated}</span></td>
-            <td>${escLabelText(p.consignee)}<br><span class="footer-note">${p.phone || "phone pending"}</span></td>
-            <td class="addr-compact">${p.address || "Address pending"}</td>
+            <td><strong>${p.awb}</strong><br><span class="footer-note">${escLabelText(p.updated)}</span></td>
+            <td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.phone || "phone pending")}</span></td>
+            <td class="addr-compact">${escLabelText(p.address || "Address pending")}</td>
             <td>${escLabelText(p.city)}</td>
             <td>
-              <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>
+              <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>
               <div class="footer-note">${alert.label}</div>
             </td>
             <td>${escLabelText(client.name)}<br><span class="footer-note">${shortClientCode(client)}</span></td>
             <td>${parcelOrigin(p)}</td>
             <td>${money(p.cod)}</td>
-            <td>${p.weight || "0.8 kg"}</td>
+            <td>${escLabelText(p.weight || "0.8 kg")}</td>
             <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status === "Parcel now in transit" ? "transit clock" : "status clock"}</span></td>
             <td>
-              ${process.scanned ? `<strong>${process.by}</strong><br><span class="footer-note">${process.at}</span><br>` : `<strong class="footer-note">Not yet scanned</strong><br>`}
-              <span class="footer-note">${process.branch} | ${transitStarted ? "transit timer active" : "pre-transit"}</span>
-              ${/refused|return/i.test(p.status) ? `<div class="footer-note">${p.returnProof || "Return proof required before manager acceptance."}</div><div class="field"><label>Return proof</label><input id="proof-${p.awb}" value="${p.returnProof || "Photo proof + rider scan + branch receiving signature"}"></div><button class="ghost-btn" onclick="event.stopPropagation(); addReturnProof('${p.awb}')">Add Proof</button>` : ""}
+              ${process.scanned ? `<strong>${escLabelText(process.by)}</strong><br><span class="footer-note">${escLabelText(process.at)}</span><br>` : `<strong class="footer-note">Not yet scanned</strong><br>`}
+              <span class="footer-note">${escLabelText(process.branch)} | ${transitStarted ? "transit timer active" : "pre-transit"}</span>
+              ${/refused|return/i.test(p.status) ? `<div class="footer-note">${escLabelText(p.returnProof || "Return proof required before manager acceptance.")}</div><div class="field"><label>Return proof</label><input id="proof-${p.awb}" value="${escLabelText(p.returnProof || "Photo proof + rider scan + branch receiving signature")}"></div><button class="ghost-btn" onclick="event.stopPropagation(); addReturnProof('${p.awb}')">Add Proof</button>` : ""}
             </td>
             <td>
               <div class="inline-actions" style="flex-wrap:wrap;gap:5px">
@@ -9214,10 +9214,10 @@ html,body{ background:var(--bg); color:var(--ink); }
           <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}">
             <td><strong>${p.awb}</strong><br><span class="footer-note">${escLabelText(p.city)} | ${parcelOrigin(p)}</span></td>
             <td>${shortClientCode(client)}<br><strong>${escLabelText(client.name)}</strong></td>
-            <td>${escLabelText(p.consignee)}<br><span class="footer-note">${p.address}</span></td>
+            <td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.address)}</span></td>
             <td>${nvChargesCell(p)}</td>
             <td><strong>${deliveryJourneyLabel(p)}</strong><br><span class="footer-note">Booked ${p.date || "system date"}</span></td>
-            <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status}</span></td>
+            <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${escLabelText(p.status)}</span></td>
             <td>
               <div class="meter ${progress < 45 ? "amber" : ""}"><span style="width:${progress}%"></span></div>
               <div class="meter-caption"><span>${p.steps.length} scan logs</span><span>${progress}%</span></div>
@@ -9245,7 +9245,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           preview.innerHTML = `
             <span class="chip ${processBatch.length > 1 ? "good" : statusClass(processParcel)}">${processBatch.length} loaded</span>
             <strong>${processBatch.length === 1 ? processParcel.awb : "Batch Processing"}</strong>
-            <p>${processBatch.length === 1 ? `${processParcel.consignee} | ${processParcel.address}` : "Ready to update all loaded AWBs together."}</p>
+            <p>${processBatch.length === 1 ? `${escLabelText(processParcel.consignee)} | ${escLabelText(processParcel.address)}` : "Ready to update all loaded AWBs together."}</p>
             <div class="money-grid">
               ${moneyBox("Shipper", client.name, client.id)}
               ${moneyBox("Parcels", processBatch.length, `${processBatch.map(p => p.status).slice(0, 2).join(", ")}`)}
@@ -9253,7 +9253,7 @@ html,body{ background:var(--bg); color:var(--ink); }
               ${moneyBox("Delivery charges", money(nvChargesTotals(processBatch).fee), "batch total billed to shipper")}
               ${moneyBox("Clock", agingLabel(agingHours(processParcel)), alert.label)}
             </div>
-            <div class="resolved-note"><strong>Last processed:</strong> ${process.scanned ? `${process.by} at ${process.at}` : "Not yet scanned"}. Branch: ${process.branch}.</div>
+            <div class="resolved-note"><strong>Last processed:</strong> ${process.scanned ? `${escLabelText(process.by)} at ${escLabelText(process.at)}` : "Not yet scanned"}. Branch: ${escLabelText(process.branch)}.</div>
           `;
           // Per-AWB line now carries the money too -- an operator pushing a
           // batch out for delivery needs to see what each rider is carrying,
@@ -9278,8 +9278,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       }).slice(-12).reverse().map(({ parcel, client, log }) => `
         <div class="log-item">
           <strong>${parcel.awb}</strong>
-          <div><strong>${log.status}</strong><div class="footer-note" style="margin-top:2px">${escLabelText(client.name)} | ${parcel.consignee} | ${log.branch}</div></div>
-          <span class="chip info">${log.processor} | ${log.at}</span>
+          <div><strong>${escLabelText(log.status)}</strong><div class="footer-note" style="margin-top:2px">${escLabelText(client.name)} | ${escLabelText(parcel.consignee)} | ${escLabelText(log.branch)}</div></div>
+          <span class="chip info">${escLabelText(log.processor)} | ${escLabelText(log.at)}</span>
         </div>
       `).join("") || `<div class="ops-card"><strong>No processing log yet</strong><p>Scan a parcel and update status to create the first audit entry.</p></div>`;
 
@@ -9292,8 +9292,8 @@ html,body{ background:var(--bg); color:var(--ink); }
             <strong>${shortClientCode(client)} | ${escLabelText(client.name)}</strong>
             <span class="chip good">Signup - login already active</span>
           </div>
-          <p>${client.city} | ${client.email || "email on file"} | ${client.phone}. This seller already has a working login - review and activate to unlock their full workspace.</p>
-          <div class="footer-note">Products: ${client.businessType}. Pickup: ${client.address}. Signed up: ${client.appliedAt || "recently"}.</div>
+          <p>${escLabelText(client.city)} | ${escLabelText(client.email || "email on file")} | ${escLabelText(client.phone)}. This seller already has a working login - review and activate to unlock their full workspace.</p>
+          <div class="footer-note">Products: ${escLabelText(client.businessType)}. Pickup: ${escLabelText(client.address)}. Signed up: ${escLabelText(client.appliedAt || "recently")}.</div>
           <button class="action-btn" onclick="approveClient('${client.id}')">Verify And Activate Seller</button>
         </div>
       `);
@@ -9304,12 +9304,12 @@ html,body{ background:var(--bg); color:var(--ink); }
       const salesLeadCards = salesLeads.map(lead => `
         <div class="ops-card">
           <div class="ops-card-head">
-            <strong>${lead.name}</strong>
-            <span class="chip ${leadStageClass(lead.status)}">${lead.status || "New"}</span>
+            <strong>${escLabelText(lead.name)}</strong>
+            <span class="chip ${leadStageClass(lead.status)}">${escLabelText(lead.status || "New")}</span>
           </div>
-          <p>Phone: ${lead.phone}. ${lead.businessType ? "Business: " + lead.businessType + ". " : ""}${lead.city ? "City: " + lead.city + ". " : ""}Ships about ${lead.parcels || "an unknown amount of"} parcels/month.${lead.website ? " Site: " + lead.website + "." : ""}</p>
-          <div class="footer-note">Requested: ${lead.createdAt || "recently"}.${lead.nextFollowup ? " Next follow-up: " + lead.nextFollowup + "." : ""}${lead.assignedTo ? " Assigned: " + lead.assignedTo + "." : ""}${lead.demoAt ? " Demo: " + lead.demoAt + "." : ""}</div>
-          ${lead.notes ? `<div class="footer-note">Notes: ${lead.notes}</div>` : ""}
+          <p>Phone: ${escLabelText(lead.phone)}. ${lead.businessType ? "Business: " + escLabelText(lead.businessType) + ". " : ""}${lead.city ? "City: " + escLabelText(lead.city) + ". " : ""}Ships about ${escLabelText(lead.parcels || "an unknown amount of")} parcels/month.${lead.website ? " Site: " + escLabelText(lead.website) + "." : ""}</p>
+          <div class="footer-note">Requested: ${escLabelText(lead.createdAt || "recently")}.${lead.nextFollowup ? " Next follow-up: " + escLabelText(lead.nextFollowup) + "." : ""}${lead.assignedTo ? " Assigned: " + escLabelText(lead.assignedTo) + "." : ""}${lead.demoAt ? " Demo: " + escLabelText(lead.demoAt) + "." : ""}</div>
+          ${lead.notes ? `<div class="footer-note">Notes: ${escLabelText(lead.notes)}</div>` : ""}
           <div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px">
             ${lead.status !== "Contacted" && lead.status !== "Lost" ? `<button class="action-btn" onclick="markSalesLeadContacted('${lead.id}')">Mark Contacted</button>` : ""}
             ${lead.status !== "Interested" && lead.status !== "Lost" ? `<button class="ghost-btn" onclick="setSalesLeadStage('${lead.id}','Interested')">Mark Interested</button>` : ""}
@@ -9327,11 +9327,11 @@ html,body{ background:var(--bg); color:var(--ink); }
       const stuckSignupCards = stuckSignups.map(lead => `
         <div class="ops-card">
           <div class="ops-card-head">
-            <strong>${lead.name}</strong>
+            <strong>${escLabelText(lead.name)}</strong>
             <span class="chip warn">Signup stuck - workspace never created</span>
           </div>
-          <p>Phone: ${lead.phone}. Email: ${lead.email || "n/a"}. City: ${lead.city || "n/a"}. Sells: ${lead.businessType || "n/a"}. This person already has a login but no client workspace was created - set one up manually then mark resolved.</p>
-          <div class="footer-note">Signed up: ${lead.createdAt || "recently"}.${lead.errorMessage ? " Error: " + lead.errorMessage : ""}</div>
+          <p>Phone: ${escLabelText(lead.phone)}. Email: ${escLabelText(lead.email || "n/a")}. City: ${escLabelText(lead.city || "n/a")}. Sells: ${escLabelText(lead.businessType || "n/a")}. This person already has a login but no client workspace was created - set one up manually then mark resolved.</p>
+          <div class="footer-note">Signed up: ${escLabelText(lead.createdAt || "recently")}.${lead.errorMessage ? " Error: " + escLabelText(lead.errorMessage) : ""}</div>
           <button class="action-btn" onclick="resolveSignupLead('${lead.id}')">Mark Resolved</button>
         </div>
       `);
@@ -9633,9 +9633,9 @@ html,body{ background:var(--bg); color:var(--ink); }
         return `
           <tr>
             <td><input type="checkbox" data-invoice-parcel="${parcel.awb}" onchange="toggleInvoiceParcel('${parcel.awb}', this.checked)" ${selectedSet.has(parcel.awb) ? "checked" : ""}></td>
-            <td><strong>${parcel.awb}</strong><br><span class="footer-note">${parcel.branch}</span></td>
-            <td>${parcel.consignee}<br><span class="footer-note">${escLabelText(parcel.city)}</span></td>
-            <td><span class="chip ${isRet ? "bad" : "good"}">${parcel.status}</span>${isRet ? `<br><span class="footer-note">return — charge only</span>` : ""}</td>
+            <td><strong>${parcel.awb}</strong><br><span class="footer-note">${escLabelText(parcel.branch)}</span></td>
+            <td>${escLabelText(parcel.consignee)}<br><span class="footer-note">${escLabelText(parcel.city)}</span></td>
+            <td><span class="chip ${isRet ? "bad" : "good"}">${escLabelText(parcel.status)}</span>${isRet ? `<br><span class="footer-note">return — charge only</span>` : ""}</td>
             <td>${isRet ? `<span class="footer-note">no COD</span>` : money(parcel.cod)}</td>
             <td>${money(parcel.fee)}</td>
             <td><strong${isRet ? ` style="color:#e0604b"` : ""}>${isRet ? "-" : ""}${money(Math.abs(line))}</strong></td>
@@ -12582,10 +12582,10 @@ html,body{ background:var(--bg); color:var(--ink); }
       const branchSel = document.getElementById("excBranchFilter"), issueSel = document.getElementById("excIssueFilter"), urgencySel = document.getElementById("excUrgencyFilter"), clientSel = document.getElementById("excClientFilter");
       if (branchSel && branchSel.options.length <= 1) {
         const branches = [...new Set((state.parcels || []).map(p => p.branch).filter(Boolean))];
-        branchSel.innerHTML = "<option value=\"\">All branches</option>" + branches.map(b => "<option>" + b + "</option>").join("");
+        branchSel.innerHTML = "<option value=\"\">All branches</option>" + branches.map(b => "<option>" + escLabelText(b) + "</option>").join("");
       }
       if (clientSel && clientSel.options.length <= 1) {
-        clientSel.innerHTML = "<option value=\"\">All clients</option>" + (state.clients || []).map(c => "<option value=\"" + c.id + "\">" + c.name + "</option>").join("");
+        clientSel.innerHTML = "<option value=\"\">All clients</option>" + (state.clients || []).map(c => "<option value=\"" + escLabelText(c.id) + "\">" + escLabelText(c.name) + "</option>").join("");
       }
       const rows = computeExceptionQueue().filter(r =>
         (!branchSel || !branchSel.value || r.branch === branchSel.value) &&
@@ -12596,9 +12596,9 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!rows.length) { list.innerHTML = "<div class=\"ops-card\"><strong>No exceptions match these filters</strong><p>Every tracked parcel is clean right now.</p></div>"; return; }
       list.innerHTML = rows.map(r => `
         <div class="ops-card ${r.urgency === "critical" ? "alert-row" : ""}">
-          <div class="ops-card-head"><strong>${r.awb}</strong><span class="chip ${r.urgency === "critical" ? "bad" : r.urgency === "warning" ? "warn" : "info"}">${r.issueType}</span></div>
-          <p>${r.clientName} &middot; ${r.consignee || "-"} &middot; ${r.phone || "-"} &middot; ${r.city || "-"} / ${r.branch || "-"} &middot; status: ${r.status} &middot; aging ${agingLabel(r.agingHours)} &middot; priority: <strong>${r.urgency === "critical" ? "High" : r.urgency === "warning" ? "Medium" : "Normal"}</strong></p>
-          <p class="footer-note">Reason: ${r.exception || "Not noted"}${r.lastNote ? (" &middot; Last note: " + r.lastNote) : ""}</p>
+          <div class="ops-card-head"><strong>${r.awb}</strong><span class="chip ${r.urgency === "critical" ? "bad" : r.urgency === "warning" ? "warn" : "info"}">${escLabelText(r.issueType)}</span></div>
+          <p>${escLabelText(r.clientName)} &middot; ${escLabelText(r.consignee || "-")} &middot; ${escLabelText(r.phone || "-")} &middot; ${escLabelText(r.city || "-")} / ${escLabelText(r.branch || "-")} &middot; status: ${escLabelText(r.status)} &middot; aging ${agingLabel(r.agingHours)} &middot; priority: <strong>${r.urgency === "critical" ? "High" : r.urgency === "warning" ? "Medium" : "Normal"}</strong></p>
+          <p class="footer-note">Reason: ${escLabelText(r.exception || "Not noted")}${r.lastNote ? (" &middot; Last note: " + escLabelText(r.lastNote)) : ""}</p>
           <p class="footer-note">Suggested: ${exceptionSuggestedAction(r.issueType)}</p>
           <div class="inline-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
 
