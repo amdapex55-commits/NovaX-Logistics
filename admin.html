@@ -10636,6 +10636,30 @@ html,body{ background:var(--bg); color:var(--ink); }
         // RPC (backend authority + validated transition), never a local mutation
         // + generic syncAll(). "Parcel updated" is only shown once the backend
         // actually confirms the write.
+        /* NovaX fix (missing return reason): admin_processing_update_status
+           records the status and nothing else, so when ops marked a parcel
+           returned or refused the WHY was never stored -- the merchant's
+           drawer renders p.exception and had nothing to render. Ask for a
+           reason on the statuses where "why" is the whole question, then
+           write it to the exception column alone.
+
+           Deliberately a single-column update, not a full-row write: a
+           whole-row UPDATE from the browser is what blanked 298 addresses. */
+        var NV_NEEDS_REASON = ["Return to shipper","Parcel returned to consignee",
+                               "Refused","Consignee not available","Cancelled",
+                               "Out of service area","Ready for return"];
+        var nvReason = "";
+        if (NV_NEEDS_REASON.indexOf(status) > -1) {
+          nvReason = (window.prompt(
+            "Why is " + (batchAwbs.length > 1 ? batchAwbs.length + " parcels" : batchAwbs[0]) +
+            " marked \"" + status + "\"?\n\nThe merchant sees this in their parcel drawer.",
+            "") || "").trim();
+          if (!nvReason) {
+            toast("Cancelled — a reason is required for " + status + ".", "error");
+            return;
+          }
+        }
+
         const r = await window.__nvSb.rpc("admin_processing_update_status", {
           p_awbs: batchAwbs,
           p_status: status,
@@ -10659,6 +10683,18 @@ html,body{ background:var(--bg); color:var(--ink); }
         if (!rows.length) {
           toast("Status update failed: backend returned no updated parcels.", "error");
           return;
+        }
+
+        if (nvReason) {
+          try {
+            await window.__nvSb.from("parcels")
+              .update({ exception: nvReason })
+              .in("awb", batchAwbs);
+            rows.forEach(function(row){ row.exception = nvReason; });
+          } catch (e) {
+            console.warn("NovaX: status saved but reason did not:", e);
+            toast("Status saved, but the reason did not save. Add it from the parcel row.", "error");
+          }
         }
         rows.forEach(row => {
           const parcel = mapProcessingParcelRow(row);

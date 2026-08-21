@@ -1311,6 +1311,14 @@
   .nvai.nv-opening,.nvai.nv-opening .nvai-head,.nvai.nv-opening .nvai-stream,
   .nvai.nv-opening .nvai-composer{animation:none}
 }
+/* The return reason. A merchant seeing "Returned" with no explanation
+   has to ring ops to find out why -- which is the call this is meant to
+   stop them making. */
+.nvdr-why{margin-top:10px;padding:11px 13px;border-radius:12px;
+  border:1px solid rgba(212,87,78,.38);background:rgba(212,87,78,.09);
+  font-size:13px;line-height:1.5;color:var(--ink)}
+.nvdr-why span{display:block;font-size:10.5px;font-weight:800;letter-spacing:.08em;
+  text-transform:uppercase;color:#d4574e;margin-bottom:4px}
 /* Standalone assistant entry. Deliberately NOT a .client-tab: the role
    filter sets style.display on every .client-tab, and something in this
    portal hides several of them. This must always be reachable. */
@@ -3833,7 +3841,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         '<div class="nvdr-money">'+(Number(p.cod)>0?escLabelText(money(p.cod)):"Prepaid")+
           '<small>'+(Number(p.cod)>0?"COD to collect":"no cash due")+'</small></div>'+
         '<div style="margin-top:8px">'+U.statusPill(p.status)+(paid?' <span class="nv-paid-tape">PAID</span>':'')+'</div>'+
-        (p.exception?'<div class="nv-tl-n" style="margin-top:8px">'+escLabelText(p.exception)+'</div>':'')+
+        (p.exception?'<div class="nvdr-why"><span>'+
+            (/return|refus|cancel/i.test(String(p.status||"")) ? "Why it came back" : "What happened")+
+          '</span>'+escLabelText(p.exception)+'</div>':'')+
       '</div>'+
       '<div class="nvdr-sec"><h4>Shipment</h4><dl class="nvdr-kv">'+
         '<dt>Consignee</dt><dd>'+escLabelText(p.consignee||"—")+'</dd>'+
