@@ -2956,12 +2956,22 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       var sb=window.__nvSb;
       if(!sb||!sb.rpc) return;
       try{
-        sb.rpc("consignee_history",{ p_phone: raw }).then(function(r){
-          if(!r||r.error||!r.data||!r.data.length){ host.style.display="none"; host.innerHTML=""; return; }
+        /* Three separate contract mismatches, all failing silently into the
+           hide-the-badge branch, so this refusal-history warning has never
+           once appeared since it shipped:
+             - the RPC is ai_tool_consignee_history, not consignee_history
+             - it returns a jsonb OBJECT, so the old r.data.length check was
+               undefined and always fell through
+             - the fields are delivered/refused, not delivered_count/refused_count
+           Verified against sql_novax_ai_tools_v2.sql, which also grants
+           execute on it to authenticated. */
+        sb.rpc("ai_tool_consignee_history",{ p_phone: raw }).then(function(r){
+          if(!r||r.error||!r.data){ host.style.display="none"; host.innerHTML=""; return; }
           var d=Array.isArray(r.data)?r.data[0]:r.data;
+          if(!d||d.error){ host.style.display="none"; host.innerHTML=""; return; }
           var total=Number(d.total_parcels||0);
-          var del=Number(d.delivered_count||0);
-          var ref=Number(d.refused_count||0);
+          var del=Number(d.delivered||0);
+          var ref=Number(d.refused||0);
           if(total<=0){ host.style.display="none"; host.innerHTML=""; return; }
           var html;
           if(ref>0){
