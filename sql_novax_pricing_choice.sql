@@ -199,65 +199,38 @@ $fn$;
 
 
 -- ----------------------------------------------------------------------------
--- 5. The no-fallback guard
+-- 5. REMOVED -- do not reinstate without reading this.
 --
---    Stamps every new parcel with the mode its merchant actually chose, and
---    refuses a distance-priced parcel for a flat-mode merchant.
+--    An earlier version of this file installed a BEFORE INSERT trigger on
+--    parcels that raised an exception whenever parcels.pricing_mode (a
+--    column that PRE-DATES this migration and belongs to the earlier,
+--    already-live distance-pricing feature) disagreed with clients.pricing_mode
+--    (the column this migration owns).
 --
---    It deliberately does NOT recompute fee. The booking RPCs own that and are
---    not visible here; a second pricing implementation in a trigger is exactly
---    the "same rule written twice" split that caused the 180/200/250 drift.
---    This only asserts the mode is the one on record.
+--    That assumed parcels.pricing_mode records "was THIS parcel actually
+--    priced by distance." It does not appear to. On 2026-08-22 it refused a
+--    perfectly ordinary flat booking for a flat-mode Karachi client
+--    (Hayar Scents) -- verified client-side that the booking went through
+--    client_book_parcel, the plain unmodified flat RPC, not the geo RPC, so
+--    the parcel was never mispriced. The trigger's own assumption about a
+--    column it does not own was wrong, and it blocked live customer bookings
+--    until manually dropped:
+--
+--        DROP TRIGGER IF EXISTS trg_nv_enforce_pricing_mode ON public.parcels;
+--
+--    The actual protection against silent mischarging was never this
+--    trigger -- it is the client-side guard already in client.html's
+--    __novaxBookParcel and admin.html's nvAdminBookForClient, which check
+--    the merchant's OWN chosen mode (client.pricingMode / clients.pricing_mode)
+--    before deciding which RPC to call, and refuse rather than silently
+--    falling back. Those are unaffected by this section's removal.
+--
+--    If a DB-side backstop is wanted again, it must first establish -- by
+--    reading the actual client_book_parcel / client_book_parcel_geo bodies,
+--    not by assuming -- what parcels.pricing_mode and parcels.distance_km
+--    actually represent, since neither is defined anywhere in this repo.
 -- ----------------------------------------------------------------------------
-create or replace function public.nv_enforce_pricing_mode()
-returns trigger
-language plpgsql
-as $fn$
-declare
-  v_mode text;
-begin
-  if new.client_id is null then
-    return new;
-  end if;
-
-  select pricing_mode into v_mode
-  from public.clients where id = new.client_id;
-
-  if v_mode is null then
-    return new;               -- unknown client: leave the booking path alone
-  end if;
-
-  if v_mode = 'flat' then
-    -- A flat merchant must never be handed a distance price.
-    if new.pricing_mode is not null and new.pricing_mode like 'distance%' then
-      raise exception
-        'Client % is on flat pricing but this parcel was priced by distance. Booking refused rather than silently charging a rate the merchant did not choose.',
-        new.client_id;
-    end if;
-    new.pricing_mode := 'flat';
-    new.distance_km  := null;
-  end if;
-
-  -- The mirror case. Lahore IS flat for a distance merchant, so only a
-  -- Karachi parcel is suspect: priced flat there, the merchant is paying a
-  -- rate they explicitly declined. Backstop only -- both booking paths
-  -- already refuse this before it reaches the database.
-  if v_mode = 'distance'
-     and lower(coalesce(new.city, '')) = 'karachi'
-     and coalesce(new.pricing_mode, '') not like 'distance%' then
-    raise exception
-      'Client % chose per-kilometre pricing but this Karachi parcel was priced flat. Booking refused rather than charging a rate the merchant declined.',
-      new.client_id;
-  end if;
-
-  return new;
-end
-$fn$;
-
-drop trigger if exists trg_nv_enforce_pricing_mode on public.parcels;
-create trigger trg_nv_enforce_pricing_mode
-  before insert on public.parcels
-  for each row execute function public.nv_enforce_pricing_mode();
+drop function if exists public.nv_enforce_pricing_mode() cascade;
 
 
 -- ----------------------------------------------------------------------------
