@@ -7246,6 +7246,20 @@ html,body{ background:var(--bg); color:var(--ink); }
     }
     /* 'flat' unless the merchant chose otherwise -- matches the column default
        so an unanswered merchant is quoted exactly what they are billed today. */
+    /* HTML-entity escaping does NOT protect a JS string sitting inside an
+       HTML attribute: the parser decodes &#39; back to a real quote before
+       the JS is parsed, so the value still breaks out. Verified in a browser
+       -- both escLabelText variants (admin's, which leaves ' alone, and
+       client's, which turns it into &#39;) were equally exploitable in an
+       onclick; only backslash-escaping held.
+
+       Order matters: backslash first, then the quote, then the HTML set. */
+    function nvEscAttrJs(v) {
+      return String(v === undefined || v === null ? "" : v)
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'")
+        .replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; });
+    }
     function nvClientPricingMode(client) {
       return String((client && client.pricingMode) || "flat") === "distance" ? "distance" : "flat";
     }
@@ -8670,13 +8684,13 @@ html,body{ background:var(--bg); color:var(--ink); }
       document.getElementById("clientParcelRows").innerHTML = parcels.map(p => {
         const progress = percent(p.stage, p.totalStages);
         return `
-          <tr class="clickable-row ${p.awb === state.selectedAwb ? "selected" : ""}" onclick="openClientParcelJourney('${p.awb}')">
+          <tr class="clickable-row ${p.awb === state.selectedAwb ? "selected" : ""}" onclick="openClientParcelJourney('${nvEscAttrJs(p.awb)}')">
             <td><strong>${p.awb}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${p.updated}</span></td>
             <td>${escLabelText(p.consignee)}<br><span class="footer-note">${p.branch}</span></td>
             <td>${money(p.cod)}</td>
             <td>
               <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>
-              ${isRefusalReview(p) ? `<button class="ghost-btn" style="margin-top:8px" onclick="event.stopPropagation(); openClientParcelJourney('${p.awb}')">Review</button>` : ""}
+              ${isRefusalReview(p) ? `<button class="ghost-btn" style="margin-top:8px" onclick="event.stopPropagation(); openClientParcelJourney('${nvEscAttrJs(p.awb)}')">Review</button>` : ""}
             </td>
             <td>
               <div class="meter ${statusClass(p) === "bad" ? "red" : "blue"}"><span style="width:${progress}%"></span></div>
@@ -8689,7 +8703,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       document.getElementById("clientParcelCards").innerHTML = parcels.map(p => {
         const progress = percent(p.stage, p.totalStages);
         return `
-          <article class="parcel-card ${p.awb === state.selectedAwb ? "selected" : ""}" onclick="openClientParcelJourney('${p.awb}')">
+          <article class="parcel-card ${p.awb === state.selectedAwb ? "selected" : ""}" onclick="openClientParcelJourney('${nvEscAttrJs(p.awb)}')">
             <div class="top">
               <strong>${p.awb}</strong>
               <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>
@@ -8700,7 +8714,7 @@ html,body{ background:var(--bg); color:var(--ink); }
               <div><dt>COD</dt><dd>${money(p.cod)}</dd></div>
               <div><dt>Updated</dt><dd>${p.updated}</dd></div>
             </dl>
-            ${isRefusalReview(p) ? `<button class="ghost-btn" style="margin-top:10px" onclick="event.stopPropagation(); openClientParcelJourney('${p.awb}')">Review Rider Input</button>` : ""}
+            ${isRefusalReview(p) ? `<button class="ghost-btn" style="margin-top:10px" onclick="event.stopPropagation(); openClientParcelJourney('${nvEscAttrJs(p.awb)}')">Review Rider Input</button>` : ""}
             <div class="meter ${statusClass(p) === "bad" ? "red" : "blue"}" style="margin-top:12px"><span style="width:${progress}%"></span></div>
           </article>
         `;
@@ -8769,7 +8783,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             ${moneyBox("Rider note", input.riderNote, input.photoProof)}
           </div>
           <textarea id="redeliveryFeedback">Consignee confirmed they want delivery again. Please re-attempt and call before arrival.</textarea>
-          <button class="action-btn" onclick="requestRedelivery('${p.awb}')">Send Consignee Feedback And Reassign</button>
+          <button class="action-btn" onclick="requestRedelivery('${nvEscAttrJs(p.awb)}')">Send Consignee Feedback And Reassign</button>
         </div>
       `;
     }
@@ -9050,7 +9064,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         const remarks = p.resolutionRemark ? [{ awb: p.awb, step: `Admin remarks: ${p.resolutionRemark}`, status: "Resolved", time: p.resolvedAt || p.updated, risk: 0 }] : [];
         return [...p.steps.map(step => ({ awb: p.awb, step, status: p.status, time: p.updated, risk: p.risk })), ...remarks];
       }).slice(0, 14).map(log => `
-        <div class="log-item clickable-row" onclick="openClientParcelJourney('${log.awb}')">
+        <div class="log-item clickable-row" onclick="openClientParcelJourney('${nvEscAttrJs(log.awb)}')">
           <strong>${log.time}</strong>
           <div><strong>${log.awb}</strong><div class="footer-note" style="margin-top:2px">${log.step} | ${log.status}</div></div>
           <span class="chip ${log.risk > 60 ? "bad" : "good"}">${log.risk > 60 ? "review" : "locked"}</span>
@@ -9273,7 +9287,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         return acc;
       }, {});
       document.getElementById("statusQueueTabs").innerHTML = STATUS_TAGS.map(status => `
-        <button class="queue-btn ${activeStatus === status ? "active" : ""}" onclick="setStatusQueue('${status}')">
+        <button class="queue-btn ${activeStatus === status ? "active" : ""}" onclick="setStatusQueue('${nvEscAttrJs(status)}')">
           <span>${status}</span><strong>${queueCounts[status] || 0}</strong>
         </button>
       `).join("");
@@ -9283,7 +9297,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         const client = clientById(p.clientId);
         const alert = alertForParcel(p);
         return `
-          <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${p.awb}')">
+          <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${nvEscAttrJs(p.awb)}')">
             <td><strong>${p.awb}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${p.updated}</span></td>
             <td>${shortClientCode(client)}<br><strong>${escLabelText(client.name)}</strong></td>
             <td>${nvChargesCell(p)}</td>
@@ -9295,7 +9309,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             </td>
             <td>
               <div class="field"><label>Reason</label><input id="resolve-${p.awb}" value="${alert.label} checked by operations"></div>
-              <button class="ghost-btn" onclick="event.stopPropagation(); resolveParcelAlert('${p.awb}')">Resolve With Reason</button>
+              <button class="ghost-btn" onclick="event.stopPropagation(); resolveParcelAlert('${nvEscAttrJs(p.awb)}')">Resolve With Reason</button>
             </td>
           </tr>
         `;
@@ -9327,9 +9341,9 @@ html,body{ background:var(--bg); color:var(--ink); }
       document.getElementById("adminExceptionRows").innerHTML = exceptionRows.map(row => `
         <tr>
           <td><span class="status ${row.risk > 55 ? "bad" : "warn"}"><span class="mini-dot"></span>${row.risk}%</span></td>
-          <td><strong>${row.parcel}</strong></td>
-          <td>${row.owner}</td>
-          <td>${row.problem}${row.proofPhoto?`<br><a href="${row.proofPhoto}" target="_blank" rel="noopener"><img src="${row.proofPhoto}" alt="proof" loading="lazy" style="margin-top:6px;width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line);vertical-align:middle"></a>`:""}${row.signature?` <a href="${row.signature}" target="_blank" rel="noopener" class="chip info" style="margin-left:6px">Signature</a>`:""}</td>
+          <td><strong>${escLabelText(row.parcel)}</strong></td>
+          <td>${escLabelText(row.owner)}</td>
+          <td>${escLabelText(row.problem)}${row.proofPhoto?`<br><a href="${row.proofPhoto}" target="_blank" rel="noopener"><img src="${row.proofPhoto}" alt="proof" loading="lazy" style="margin-top:6px;width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line);vertical-align:middle"></a>`:""}${row.signature?` <a href="${row.signature}" target="_blank" rel="noopener" class="chip info" style="margin-left:6px">Signature</a>`:""}</td>
           <td>
             <div class="meter ${meterClass(row.risk)}"><span style="width:${Math.min(100, row.risk)}%"></span></div>
             <div class="meter-caption"><span>escalation pressure</span><span>${row.risk}%</span></div>
@@ -9357,7 +9371,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         const process = lastProcess(p);
         const transitStarted = STATUS_TAGS.indexOf(p.status) >= STATUS_TAGS.indexOf("Parcel now in transit");
         return `
-          <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${p.awb}')">
+          <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${nvEscAttrJs(p.awb)}')">
             <td><strong>${p.awb}</strong><br><span class="footer-note">${escLabelText(p.updated)}</span></td>
             <td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.phone || "phone pending")}</span></td>
             <td class="addr-compact">${escLabelText(p.address || "Address pending")}</td>
@@ -9374,12 +9388,12 @@ html,body{ background:var(--bg); color:var(--ink); }
             <td>
               ${process.scanned ? `<strong>${escLabelText(process.by)}</strong><br><span class="footer-note">${escLabelText(process.at)}</span><br>` : `<strong class="footer-note">Not yet scanned</strong><br>`}
               <span class="footer-note">${escLabelText(process.branch)} | ${transitStarted ? "transit timer active" : "pre-transit"}</span>
-              ${/refused|return/i.test(p.status) ? `<div class="footer-note">${escLabelText(p.returnProof || "Return proof required before manager acceptance.")}</div><div class="field"><label>Return proof</label><input id="proof-${p.awb}" value="${escLabelText(p.returnProof || "Photo proof + rider scan + branch receiving signature")}"></div><button class="ghost-btn" onclick="event.stopPropagation(); addReturnProof('${p.awb}')">Add Proof</button>` : ""}
+              ${/refused|return/i.test(p.status) ? `<div class="footer-note">${escLabelText(p.returnProof || "Return proof required before manager acceptance.")}</div><div class="field"><label>Return proof</label><input id="proof-${p.awb}" value="${escLabelText(p.returnProof || "Photo proof + rider scan + branch receiving signature")}"></div><button class="ghost-btn" onclick="event.stopPropagation(); addReturnProof('${nvEscAttrJs(p.awb)}')">Add Proof</button>` : ""}
             </td>
             <td>
               <div class="inline-actions" style="flex-wrap:wrap;gap:5px">
-                <button class="ghost-btn" style="padding:5px 9px;font-size:11.5px" onclick="event.stopPropagation(); nvOpenParcelEdit('${p.awb}')">Edit</button>
-                ${p.status === "New booked" ? `<button class="ghost-btn" style="padding:5px 9px;font-size:11.5px;color:#e0604b;border-color:#e0604b" onclick="event.stopPropagation(); nvAdminDeleteParcel('${p.awb}')">Delete</button>` : ""}
+                <button class="ghost-btn" style="padding:5px 9px;font-size:11.5px" onclick="event.stopPropagation(); nvOpenParcelEdit('${nvEscAttrJs(p.awb)}')">Edit</button>
+                ${p.status === "New booked" ? `<button class="ghost-btn" style="padding:5px 9px;font-size:11.5px;color:#e0604b;border-color:#e0604b" onclick="event.stopPropagation(); nvAdminDeleteParcel('${nvEscAttrJs(p.awb)}')">Delete</button>` : ""}
               </div>
             </td>
           </tr>
@@ -9425,7 +9439,7 @@ html,body{ background:var(--bg); color:var(--ink); }
               <span class="chip ${urgencyClass(alert.level)}">${alert.label}</span><br><span class="footer-note">${alert.due}</span>
             </td>
             <td>${process.scanned ? `<strong>${escLabelText(process.by)}</strong><br><span class="footer-note">${escLabelText(process.at)}</span><br>` : `<strong class="footer-note">Not yet scanned</strong><br>`}<span class="footer-note">${escLabelText(process.branch)}</span></td>
-            <td><button class="ghost-btn" style="padding:5px 9px;font-size:11.5px" onclick="event.stopPropagation(); nvOpenParcelEdit('${escLabelText(p.awb)}')">Edit</button></td>
+            <td><button class="ghost-btn" style="padding:5px 9px;font-size:11.5px" onclick="event.stopPropagation(); nvOpenParcelEdit('${nvEscAttrJs(p.awb)}')">Edit</button></td>
           </tr>
         `;
       }).join("") || `<tr><td colspan="10">No report rows match these filters.</td></tr>`;
@@ -9493,7 +9507,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           </div>
           <p>${escLabelText(client.city)} | ${escLabelText(client.email || "email on file")} | ${escLabelText(client.phone)}. This seller already has a working login - review and activate to unlock their full workspace.</p>
           <div class="footer-note">Products: ${escLabelText(client.businessType)}. Pickup: ${escLabelText(client.address)}. Signed up: ${escLabelText(client.appliedAt || "recently")}.</div>
-          <button class="action-btn" onclick="approveClient('${client.id}')">Verify And Activate Seller</button>
+          <button class="action-btn" onclick="approveClient('${nvEscAttrJs(client.id)}')">Verify And Activate Seller</button>
         </div>
       `);
       const stageFilterVal = document.getElementById("salesStageFilter")?.value || "";
@@ -9510,15 +9524,15 @@ html,body{ background:var(--bg); color:var(--ink); }
           <div class="footer-note">Requested: ${escLabelText(lead.createdAt || "recently")}.${lead.nextFollowup ? " Next follow-up: " + escLabelText(lead.nextFollowup) + "." : ""}${lead.assignedTo ? " Assigned: " + escLabelText(lead.assignedTo) + "." : ""}${lead.demoAt ? " Demo: " + escLabelText(lead.demoAt) + "." : ""}</div>
           ${lead.notes ? `<div class="footer-note">Notes: ${escLabelText(lead.notes)}</div>` : ""}
           <div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px">
-            ${lead.status !== "Contacted" && lead.status !== "Lost" ? `<button class="action-btn" onclick="markSalesLeadContacted('${lead.id}')">Mark Contacted</button>` : ""}
-            ${lead.status !== "Interested" && lead.status !== "Lost" ? `<button class="ghost-btn" onclick="setSalesLeadStage('${lead.id}','Interested')">Mark Interested</button>` : ""}
-            ${lead.status !== "Demo Scheduled" && lead.status !== "Lost" ? `<button class="ghost-btn" onclick="scheduleSalesLeadDemo('${lead.id}')">Schedule Demo</button>` : ""}
-            ${lead.status !== "Onboarded" && lead.status !== "Lost" ? `<button class="ghost-btn" onclick="setSalesLeadStage('${lead.id}','Onboarded')">Mark Onboarded</button>` : ""}
-            ${!lead.convertedClientId ? `<button class="action-btn" onclick="convertSalesLeadToClient('${lead.id}')">Convert To Client</button>` : `<span class="chip good">Converted</span>`}
-            <button class="ghost-btn" onclick="addSalesLeadNote('${lead.id}')">Add Note</button>
-            <button class="ghost-btn" onclick="setSalesLeadFollowup('${lead.id}')">Set Follow-up</button>
-            ${lead.status !== "Lost" ? `<button class="ghost-btn" style="color:#b3261e" onclick="setSalesLeadStage('${lead.id}','Lost')">Mark Lost</button>` : ""}
-            <button class="ghost-btn" style="color:#b3261e" onclick="deleteSalesLead('${lead.id}')">Delete Lead</button>
+            ${lead.status !== "Contacted" && lead.status !== "Lost" ? `<button class="action-btn" onclick="markSalesLeadContacted('${nvEscAttrJs(lead.id)}')">Mark Contacted</button>` : ""}
+            ${lead.status !== "Interested" && lead.status !== "Lost" ? `<button class="ghost-btn" onclick="setSalesLeadStage('${nvEscAttrJs(lead.id)}','Interested')">Mark Interested</button>` : ""}
+            ${lead.status !== "Demo Scheduled" && lead.status !== "Lost" ? `<button class="ghost-btn" onclick="scheduleSalesLeadDemo('${nvEscAttrJs(lead.id)}')">Schedule Demo</button>` : ""}
+            ${lead.status !== "Onboarded" && lead.status !== "Lost" ? `<button class="ghost-btn" onclick="setSalesLeadStage('${nvEscAttrJs(lead.id)}','Onboarded')">Mark Onboarded</button>` : ""}
+            ${!lead.convertedClientId ? `<button class="action-btn" onclick="convertSalesLeadToClient('${nvEscAttrJs(lead.id)}')">Convert To Client</button>` : `<span class="chip good">Converted</span>`}
+            <button class="ghost-btn" onclick="addSalesLeadNote('${nvEscAttrJs(lead.id)}')">Add Note</button>
+            <button class="ghost-btn" onclick="setSalesLeadFollowup('${nvEscAttrJs(lead.id)}')">Set Follow-up</button>
+            ${lead.status !== "Lost" ? `<button class="ghost-btn" style="color:#b3261e" onclick="setSalesLeadStage('${nvEscAttrJs(lead.id)}','Lost')">Mark Lost</button>` : ""}
+            <button class="ghost-btn" style="color:#b3261e" onclick="deleteSalesLead('${nvEscAttrJs(lead.id)}')">Delete Lead</button>
           </div>
         </div>
       `);
@@ -9531,7 +9545,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           </div>
           <p>Phone: ${escLabelText(lead.phone)}. Email: ${escLabelText(lead.email || "n/a")}. City: ${escLabelText(lead.city || "n/a")}. Sells: ${escLabelText(lead.businessType || "n/a")}. This person already has a login but no client workspace was created - set one up manually then mark resolved.</p>
           <div class="footer-note">Signed up: ${escLabelText(lead.createdAt || "recently")}.${lead.errorMessage ? " Error: " + escLabelText(lead.errorMessage) : ""}</div>
-          <button class="action-btn" onclick="resolveSignupLead('${lead.id}')">Mark Resolved</button>
+          <button class="action-btn" onclick="resolveSignupLead('${nvEscAttrJs(lead.id)}')">Mark Resolved</button>
         </div>
       `);
       document.getElementById("pendingClientList").innerHTML = stuckSignupCards.concat(salesLeadCards).concat(signupLeadCards).join("") || `<div class="ops-card"><strong>No pending approvals</strong><p>New self-signups and sales contact requests will wait here.</p></div>`;
@@ -9584,7 +9598,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <div>
               <strong>${client.displayBusinessType} | ${client.displayCity}</strong>
               <div class="footer-note">${client.displayOwner} | ${client.displayEmail} | ${client.displayPhone} | ${client.displayAddress}</div>
-              <button class="ghost-btn" onclick="toggleSignupDetails('${client.id}')" style="margin-top:4px">Signup Details</button>
+              <button class="ghost-btn" onclick="toggleSignupDetails('${nvEscAttrJs(client.id)}')" style="margin-top:4px">Signup Details</button>
               <div class="footer-note" id="signupDetails-${client.id}" style="display:none;margin-top:6px;padding:8px;background:#f7f8fa;border-radius:8px">
                 Store name: ${escLabelText(client.name)}<br>
                 Owner/contact: ${client.displayOwner}<br>
@@ -9603,8 +9617,8 @@ html,body{ background:var(--bg); color:var(--ink); }
             <span class="chip info">${parcels.length} parcels | ${delivered.length} delivered</span>
             <span class="chip ${issues.length ? "bad" : "good"}">${issues.length} issue(s)</span>
             <button class="ghost-btn" onclick="showAdminTab('clients-clients')">Edit Rates: Zone A ${money(rc.A.overnight)} | Zone B ${money(rc.B.overnight)}</button>
-            <button class="ghost-btn" onclick="editClientDetails('${client.id}')">Edit Details</button>
-            <button class="ghost-btn" onclick="editClientLogin('${client.id}')">Edit Login</button>
+            <button class="ghost-btn" onclick="editClientDetails('${nvEscAttrJs(client.id)}')">Edit Details</button>
+            <button class="ghost-btn" onclick="editClientLogin('${nvEscAttrJs(client.id)}')">Edit Login</button>
             <select class="ghost-btn client-rider-pick" onchange="setClientPickupCity('${client.id}', this.value)" title="Which city this merchant's parcels are collected from. Their booking form follows this.">
               ${["Karachi","Lahore","Islamabad","Rawalpindi"].map(c => `<option value="${c}" ${(client.pickupCity||"Karachi")===c ? "selected" : ""}>Pickup: ${c}</option>`).join("")}
             </select>
@@ -9615,7 +9629,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <select class="ghost-btn client-rider-pick" onchange="nvSetClientPricingMode('${client.id}', this.value)" title="Flat rate, or per-kilometre for their Karachi parcels. The merchant picks this themselves; change it here only if they are stuck.">
               ${["flat","distance"].map(m => `<option value="${m}" ${nvClientPricingMode(client)===m ? "selected" : ""}>${m==="flat" ? "Rate: Flat" : "Rate: Per-km"}</option>`).join("")}
             </select>
-            <button class="ghost-btn" style="color:#b3261e" onclick="deleteClient('${client.id}')">Delete Client</button>
+            <button class="ghost-btn" style="color:#b3261e" onclick="deleteClient('${nvEscAttrJs(client.id)}')">Delete Client</button>
           </div>
         `;
       }).join("");
@@ -9627,7 +9641,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           <div class="log-item">
             <strong>${shortClientCode(client)}<br>${escLabelText(client.name)}</strong>
             <div class="footer-note">${(client.auditReasons || []).join(", ")}</div>
-            <button class="ghost-btn" onclick="editClientDetails('${client.id}')">Edit Details</button>
+            <button class="ghost-btn" onclick="editClientDetails('${nvEscAttrJs(client.id)}')">Edit Details</button>
           </div>
         `).join("") : `<div class="log-item"><strong>All clear</strong><div class="footer-note">Every client has real phone, address, and product details on file.</div></div>`;
       }
@@ -9648,7 +9662,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <td>${escLabelText(client.name)}<br><span class="footer-note">${client.displayCity} | ${client.displayEmail}</span></td>
             <td>${client.displayOwner}<br><span class="footer-note">${client.displayPhone}</span></td>
             <td>
-              <button class="action-btn" onclick="toggleRateForm('${client.id}')">${rateOpen ? "Close Rates" : "Add Rates"}</button>
+              <button class="action-btn" onclick="toggleRateForm('${nvEscAttrJs(client.id)}')">${rateOpen ? "Close Rates" : "Add Rates"}</button>
               <div class="footer-note">Zone A (Karachi) ${money(rc.A.overnight)} | Zone B (Lahore/Islamabad/Rawalpindi) ${money(rc.B.overnight)}</div>
               ${rateOpen ? `
                 <div class="rate-form">
@@ -9670,7 +9684,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                     <div class="field"><label>Overland 9kg+ base</label><input id="rate-${client.id}-B-overlandBase" type="number" value="${rc.B.overlandBase}"></div>
                     <div class="field"><label>Overland 9+1 till 999kg</label><input id="rate-${client.id}-B-overlandAdditionalKg" type="number" value="${rc.B.overlandAdditionalKg}"></div>
                   </div>
-                  <button class="action-btn" style="margin-top:10px" onclick="updateClientRate('${client.id}')">Save Rate Cards</button>
+                  <button class="action-btn" style="margin-top:10px" onclick="updateClientRate('${nvEscAttrJs(client.id)}')">Save Rate Cards</button>
                 </div>
               ` : ""}
             </td>
@@ -9682,7 +9696,7 @@ html,body{ background:var(--bg); color:var(--ink); }
               <div class="meter ${deliveryRate < 55 ? "amber" : "good"}"><span style="width:${deliveryRate}%"></span></div>
               <div class="meter-caption"><span>delivery health ${client.health || deliveryRate}%</span><span>${deliveryRate}%</span></div>
             </td>
-            <td><button class="ghost-btn" onclick="showAdminTab('orders')">Track Parcels</button><button class="ghost-btn" style="margin-top:6px;color:#b3261e" onclick="deleteClient('${client.id}')">Delete Client</button></td>
+            <td><button class="ghost-btn" onclick="showAdminTab('orders')">Track Parcels</button><button class="ghost-btn" style="margin-top:6px;color:#b3261e" onclick="deleteClient('${nvEscAttrJs(client.id)}')">Delete Client</button></td>
           </tr>
         `;
       }).join("");
@@ -9741,7 +9755,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           <p>${issue.problem}. ${issue.awb ? `Parcel ${issue.awb}.` : ""}</p>
           <div class="footer-note">Open for ${agingLabel(issue.openedHours)}${issue.resolved ? ` | solved in ${agingLabel(issue.resolvedHours || issue.openedHours)} by ${issue.resolvedBy || "admin"}` : " | SLA clock active"}</div>
           ${issue.resolutionReason ? `<div class="resolved-note"><strong>Reason:</strong> ${issue.resolutionReason}</div>` : ""}
-          ${issue.resolved ? "" : `<div class="field" style="margin-top:10px"><label>Resolution reason</label><input id="issueReason-${issue.id}" value="${issue.problem} checked and assigned action completed"></div><button class="action-btn" data-resolve-issue="${issue.id}" onclick="resolveOperationIssue('${issue.id}')">Resolve With Reason</button>`}
+          ${issue.resolved ? "" : `<div class="field" style="margin-top:10px"><label>Resolution reason</label><input id="issueReason-${issue.id}" value="${issue.problem} checked and assigned action completed"></div><button class="action-btn" data-resolve-issue="${issue.id}" onclick="resolveOperationIssue('${nvEscAttrJs(issue.id)}')">Resolve With Reason</button>`}
         </div>
       `).join("") || `<div class="ops-card"><strong>No ${opsResolved} issues</strong><p>Filters are clear for this view.</p></div>`;
 
@@ -9807,7 +9821,7 @@ html,body{ background:var(--bg); color:var(--ink); }
               ${ui.primaryAction === "paidNovax" ? `<p class="footer-note" style="color:#0c7c59">Mark Paid To NovaX records money received by NovaX.</p>` : ""}
               <div class="inline-actions" style="margin-top:8px">
                 ${invoiceActionButtons(invoice)}
-                <button class="ghost-btn" type="button" onclick="viewAdminInvoice('${invoice.id}')">View</button>
+                <button class="ghost-btn" type="button" onclick="viewAdminInvoice('${nvEscAttrJs(invoice.id)}')">View</button>
               </div>
             </div>
           `;
@@ -9944,7 +9958,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         const typeChipClass = invType === "Delivery Charges" ? "bad" : invType === "Mixed" ? "warn" : "info";
         const canCancel = invoice.status === "Generated";
         const returnCharges = invoiceReturnCharges(invoice);
-        const actions = invoiceActionButtons(invoice) + (canCancel ? `<button class="ghost-btn" type="button" onclick="deleteInvoice('${invoice.id}')" title="Cancels this invoice and returns its parcels to the delivered invoice pool. Only available before Push To Client Wallet / Mark Paid To NovaX.">Cancel Invoice</button>` : "");
+        const actions = invoiceActionButtons(invoice) + (canCancel ? `<button class="ghost-btn" type="button" onclick="deleteInvoice('${nvEscAttrJs(invoice.id)}')" title="Cancels this invoice and returns its parcels to the delivered invoice pool. Only available before Push To Client Wallet / Mark Paid To NovaX.">Cancel Invoice</button>` : "");
         return `
           <div class="log-item">
             <strong>${escLabelText(invoice.id)}<br>${escLabelText(client.name)}</strong>
@@ -9963,9 +9977,9 @@ html,body{ background:var(--bg); color:var(--ink); }
             <span class="chip ${ui.chipClass}">${escLabelText(ui.chipLabel)}</span>
             <div class="inline-actions">
               ${actions}
-              <button class="ghost-btn" type="button" onclick="viewAdminInvoice('${invoice.id}')">View Invoice</button>
-              <button class="ghost-btn" type="button" onclick="printAdminInvoice('${invoice.id}')">Download PDF</button>
-              <button class="ghost-btn" type="button" onclick="downloadAdminInvoiceCsv('${invoice.id}')">Download CSV</button>
+              <button class="ghost-btn" type="button" onclick="viewAdminInvoice('${nvEscAttrJs(invoice.id)}')">View Invoice</button>
+              <button class="ghost-btn" type="button" onclick="printAdminInvoice('${nvEscAttrJs(invoice.id)}')">Download PDF</button>
+              <button class="ghost-btn" type="button" onclick="downloadAdminInvoiceCsv('${nvEscAttrJs(invoice.id)}')">Download CSV</button>
             </div>
           </div>
         `;
@@ -10031,7 +10045,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             ${moneyBox("Client", user.clientId, "assigned account")}
           </div>
           <div class="footer-note" style="margin-top:8px">Allowed controls: ${(user.permissions || []).join(", ") || "dashboard"}.</div>
-          ${canDeleteUsers ? `<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="revokeUserAccess('${user.id}')">Revoke Access</button></div>` : ""}
+          ${canDeleteUsers ? `<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="revokeUserAccess('${nvEscAttrJs(user.id)}')">Revoke Access</button></div>` : ""}
         </div>
       `).join("") || `<div class="ops-card"><strong>No users yet</strong><p>Create users from the Create Users tab.</p></div>`;
 
@@ -10364,7 +10378,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                 <div class="ops-card-head"><strong>${(client && client.name) || row.clientId}</strong><span class="chip bad">Wallet mismatch</span></div>
                 <p>Ledger expects ${money(row.expected)} but the wallet balance is ${money(row.actual)} -- a difference of ${money(row.difference)}.</p>
                 <div class="footer-note">Mark Payout Paid and Wallet Adjustment are blocked for this client until this is resolved.</div>
-                <button class="action-btn" style="margin-top:10px" onclick="reviewClientLedger('${row.clientId}')">Run reconciliation / review ledger</button>
+                <button class="action-btn" style="margin-top:10px" onclick="reviewClientLedger('${nvEscAttrJs(row.clientId)}')">Run reconciliation / review ledger</button>
               </div>`;
             }).join("")
           : `<div class="ops-card"><strong>No wallet mismatches</strong><p>Every client's wallet ledger matches their wallet balance.</p></div>`;
@@ -10425,8 +10439,8 @@ html,body{ background:var(--bg); color:var(--ink); }
             ${lock.reasons.length ? `<div class="footer-note" style="color:#b42318">Risk reasons: ${lock.reasons.join("; ")}${!hardBlocked ? " -- click Mark Paid to review and confirm" : ""}</div>` : ""}
             <div class="footer-note" style="margin-top:6px">Mark Paid closes payout after bank transfer -- it never reduces the wallet balance again (that already happened when this was requested).</div>
             <div class="inline-actions" style="margin-top:10px">
-              <button class="action-btn${hardBlocked ? " btn-locked" : ""}" ${btnTitle ? `title="${btnTitle}"` : ""} onclick="markWalletWithdrawalPaid('${item.id}')">Mark Paid${!hardBlocked && lock.locked ? " (Review)" : ""}</button>
-              <button class="ghost-btn" type="button" onclick="rejectWalletWithdrawal('${item.id}')">Reject / Cancel</button>
+              <button class="action-btn${hardBlocked ? " btn-locked" : ""}" ${btnTitle ? `title="${btnTitle}"` : ""} onclick="markWalletWithdrawalPaid('${nvEscAttrJs(item.id)}')">Mark Paid${!hardBlocked && lock.locked ? " (Review)" : ""}</button>
+              <button class="ghost-btn" type="button" onclick="rejectWalletWithdrawal('${nvEscAttrJs(item.id)}')">Reject / Cancel</button>
             </div>
           </div>`;
         }).join("") || `<div class="ops-card"><strong>No pending payouts</strong><p>Withdrawal requests will appear here with IBAN and net payable until they're marked paid.</p></div>`;
@@ -11217,7 +11231,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const clientSel=document.getElementById("notifClientFilter");
       if(clientSel && clientSel.options.length<=1){ clientSel.innerHTML=`<option value="">All clients</option>`+(state.clients||[]).map(c=>`<option value="${c.id}">${escLabelText(c.name)}</option>`).join(""); }
       const rows=state.notificationCenterRows||[];
-      list.innerHTML=rows.length?rows.map(n=>`<div class="ops-card"><div class="ops-card-head"><strong>${n.event_type}</strong><span class="chip ${n.status==='sent'||n.status==='manual'?'good':n.status==='failed'?'bad':'warn'}">${n.status}</span></div><p class="footer-note">${n.client_name||n.client_id||"Unknown client"} &middot; ${n.awb||"No AWB"} &middot; ${n.channel}${n.recipient?(" &middot; "+n.recipient):""}</p><p class="footer-note">${new Date(n.created_at).toLocaleString()}${n.error?(" &middot; "+n.error):""}${n.retry_count?(" &middot; retries: "+n.retry_count):""}</p><div class="inline-actions" style="margin-top:6px">${n.status==='failed'?`<button class="action-btn ghost" onclick="retryNotification('${n.id}')">Retry</button>`:""}${n.status!=='sent'&&n.status!=='manual'?`<button class="action-btn ghost" onclick="markNotificationSent('${n.id}')">Mark Sent</button>`:""}</div></div>`).join(""):`<p class="footer-note">No notifications logged yet.</p>`;
+      list.innerHTML=rows.length?rows.map(n=>`<div class="ops-card"><div class="ops-card-head"><strong>${nvEscAdmin(n.event_type)}</strong><span class="chip ${n.status==='sent'||n.status==='manual'?'good':n.status==='failed'?'bad':'warn'}">${nvEscAdmin(n.status)}</span></div><p class="footer-note">${nvEscAdmin(n.client_name||n.client_id||"Unknown client")} &middot; ${nvEscAdmin(n.awb||"No AWB")} &middot; ${nvEscAdmin(n.channel)}${n.recipient?(" &middot; "+nvEscAdmin(n.recipient)):""}</p><p class="footer-note">${nvEscAdmin(new Date(n.created_at).toLocaleString())}${n.error?(" &middot; "+nvEscAdmin(n.error)):""}${n.retry_count?(" &middot; retries: "+nvEscAdmin(n.retry_count)):""}</p><div class="inline-actions" style="margin-top:6px">${n.status==='failed'?`<button class="action-btn ghost" onclick="retryNotification('${nvEscAttrJs(n.id)}')">Retry</button>`:""}${n.status!=='sent'&&n.status!=='manual'?`<button class="action-btn ghost" onclick="markNotificationSent('${nvEscAttrJs(n.id)}')">Mark Sent</button>`:""}</div></div>`).join(""):`<p class="footer-note">No notifications logged yet.</p>`;
       const tpl=document.getElementById("notificationTemplateList");
       if(tpl && !tpl.dataset.filled){
         const events=["booked","picked_up","in_transit","out_for_delivery","delivered","refused","returned","invoice_pushed","wallet_paid"];
@@ -11255,7 +11269,11 @@ html,body{ background:var(--bg); color:var(--ink); }
       if(source) rows=rows.filter(r=>r.source===source);
       if(severity) rows=rows.filter(r=>r.severity===severity);
       if(resolvedFilter==="open") rows=rows.filter(r=>!r.resolved);
-      list.innerHTML=rows.length?rows.map(r=>`<div class="ops-card"><div class="ops-card-head"><strong>${r.rpc_name||"Unknown call"}</strong><span class="chip ${r.severity==='critical'?'bad':r.severity==='warning'?'warn':''}">${r.severity}</span></div><p class="footer-note">${r.source} &middot; ${r.page||"unknown page"}${r.user_email?(" &middot; "+r.user_email):""}</p><p class="footer-note">${r.message}</p><p class="footer-note">${new Date(r.created_at).toLocaleString()}</p>${!r.resolved?`<div class="inline-actions" style="margin-top:6px"><button class="action-btn ghost" onclick="resolveErrorLog('${r.id}')">Mark Resolved</button></div>`:""}</div>`).join(""):`<p class="footer-note">No errors logged in this filter.</p>`;
+      /* Every field here originates from log_portal_error(), a plain RPC any
+         authenticated client or rider can call directly with crafted text --
+         and it renders into the highest-value session in the product. It was
+         interpolated raw. */
+      list.innerHTML=rows.length?rows.map(r=>`<div class="ops-card"><div class="ops-card-head"><strong>${nvEscAdmin(r.rpc_name||"Unknown call")}</strong><span class="chip ${r.severity==='critical'?'bad':r.severity==='warning'?'warn':''}">${nvEscAdmin(r.severity)}</span></div><p class="footer-note">${nvEscAdmin(r.source)} &middot; ${nvEscAdmin(r.page||"unknown page")}${r.user_email?(" &middot; "+nvEscAdmin(r.user_email)):""}</p><p class="footer-note">${nvEscAdmin(r.message)}</p><p class="footer-note">${nvEscAdmin(new Date(r.created_at).toLocaleString())}</p>${!r.resolved?`<div class="inline-actions" style="margin-top:6px"><button class="action-btn ghost" onclick="resolveErrorLog('${nvEscAttrJs(nvEscAdmin(r.id))}')">Mark Resolved</button></div>`:""}</div>`).join(""):`<p class="footer-note">No errors logged in this filter.</p>`;
       const openCount=(state.errorMonitorRows||[]).filter(r=>!r.resolved).length;
       const subBadge=document.getElementById("systemErrorsSubtabBadge");
       if(subBadge){ subBadge.style.display=openCount?"inline-block":"none"; subBadge.textContent=String(openCount); }
@@ -11375,12 +11393,12 @@ html,body{ background:var(--bg); color:var(--ink); }
             + `<p class="footer-note">Last error: ${row.last_error||"none"} &middot; Last signature fail: ${row.last_signature_fail_at ? new Date(row.last_signature_fail_at).toLocaleString() : "never"}</p>`
             + `<p class="footer-note" style="font-weight:600">Next action: ${shopifyAdminNextAction(row)}</p>`
             + `<div class="inline-actions" style="margin-top:8px;flex-wrap:wrap">`
-            + (intakeUrl ? `<button class="ghost-btn" onclick="navigator.clipboard&&navigator.clipboard.writeText('${intakeUrl}');toast('Intake URL copied.')">Copy URL</button>` : "")
-            + `<button class="ghost-btn" onclick="adminCopyShopifySetupInstructions('${row.client_id}')">Copy setup instructions</button>`
-            + `<button class="ghost-btn" onclick="adminRegenerateShopifyIntake('${row.client_id}')">Regenerate intake URL</button>`
-            + `<button class="ghost-btn" onclick="adminResetShopifySecret('${row.client_id}')">Reset signing secret</button>`
-            + `<button class="ghost-btn" onclick="adminSetShopifyDisabled('${row.client_id}', ${row.disabled?"false":"true"})">${row.disabled?"Enable":"Disable"} integration</button>`
-            + `<button class="ghost-btn" onclick="viewShopifyParcelsForClient('${row.client_id}')">View Shopify parcels</button>`
+            + (intakeUrl ? `<button class="ghost-btn" onclick="navigator.clipboard&&navigator.clipboard.writeText('${nvEscAttrJs(intakeUrl)}');toast('Intake URL copied.')">Copy URL</button>` : "")
+            + `<button class="ghost-btn" onclick="adminCopyShopifySetupInstructions('${nvEscAttrJs(row.client_id)}')">Copy setup instructions</button>`
+            + `<button class="ghost-btn" onclick="adminRegenerateShopifyIntake('${nvEscAttrJs(row.client_id)}')">Regenerate intake URL</button>`
+            + `<button class="ghost-btn" onclick="adminResetShopifySecret('${nvEscAttrJs(row.client_id)}')">Reset signing secret</button>`
+            + `<button class="ghost-btn" onclick="adminSetShopifyDisabled('${nvEscAttrJs(row.client_id)}', ${row.disabled?"false":"true"})">${row.disabled?"Enable":"Disable"} integration</button>`
+            + `<button class="ghost-btn" onclick="viewShopifyParcelsForClient('${nvEscAttrJs(row.client_id)}')">View Shopify parcels</button>`
             + `</div></div>`;
         }).join("");
       }).catch(function(e){ el.innerHTML=`<p class="footer-note">Failed to load Shopify integrations: ${e}</p>`; });
@@ -12991,17 +13009,17 @@ html,body{ background:var(--bg); color:var(--ink); }
           <p class="footer-note">Suggested: ${exceptionSuggestedAction(r.issueType)}</p>
           <div class="inline-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
 
-            <button class="ghost-btn" onclick="assignToBranchTeam('${r.awb}')">Assign Branch/Team</button>
-            <button class="ghost-btn" onclick="requestReattemptAdmin('${r.awb}')">Request Reattempt</button>
-            <button class="ghost-btn" onclick="markReturnToOriginAdmin('${r.awb}')">Mark Return to Origin</button>
-            <button class="ghost-btn" onclick="requestClientDecisionAdmin('${r.awb}')">Request Client Decision</button>
-            <button class="ghost-btn" onclick="queueNotifyClientAdmin('${r.awb}')">Queue Notification</button>
-            <button class="ghost-btn" onclick="viewParcelJourneyAdmin('${r.awb}')">View Parcel Journey</button>
-            <button class="ghost-btn" onclick="nvOpenParcelEdit('${r.awb}')">Edit Parcel Details</button>
+            <button class="ghost-btn" onclick="assignToBranchTeam('${nvEscAttrJs(r.awb)}')">Assign Branch/Team</button>
+            <button class="ghost-btn" onclick="requestReattemptAdmin('${nvEscAttrJs(r.awb)}')">Request Reattempt</button>
+            <button class="ghost-btn" onclick="markReturnToOriginAdmin('${nvEscAttrJs(r.awb)}')">Mark Return to Origin</button>
+            <button class="ghost-btn" onclick="requestClientDecisionAdmin('${nvEscAttrJs(r.awb)}')">Request Client Decision</button>
+            <button class="ghost-btn" onclick="queueNotifyClientAdmin('${nvEscAttrJs(r.awb)}')">Queue Notification</button>
+            <button class="ghost-btn" onclick="viewParcelJourneyAdmin('${nvEscAttrJs(r.awb)}')">View Parcel Journey</button>
+            <button class="ghost-btn" onclick="nvOpenParcelEdit('${nvEscAttrJs(r.awb)}')">Edit Parcel Details</button>
           </div>
           ${waActionsHtml(r.awb, waKindForStatus(r.status))}
           <div class="field" style="margin-top:8px"><label>Resolution note (required to resolve)</label><input id="excNote_${r.awb}" placeholder="What was done to resolve this?"></div>
-          <button class="action-btn" style="margin-top:6px" onclick="resolveExceptionIssue('${r.awb}')">Resolve</button>
+          <button class="action-btn" style="margin-top:6px" onclick="resolveExceptionIssue('${nvEscAttrJs(r.awb)}')">Resolve</button>
         </div>
       `).join("");
     }
@@ -14660,9 +14678,9 @@ html,body{ background:var(--bg); color:var(--ink); }
            does NOT touch any parcel status. */
         const isAssigned = (req.status === "Assigned" || req.status === "Rider dispatched" || req.status === "Scheduled");
         let actions =
-          `<button class="ghost-btn${isAssigned ? "" : " nv-pk-on"}" type="button" onclick="markPickupUnassigned('${req.id}')">Unassigned</button> ` +
-          `<button class="ghost-btn${isAssigned ? " nv-pk-on" : ""}" type="button" onclick="markPickupAssigned('${req.id}')">Assigned</button> ` +
-          `<button class="action-btn" type="button" onclick="markPickedUp('${req.id}')">Picked</button>`;
+          `<button class="ghost-btn${isAssigned ? "" : " nv-pk-on"}" type="button" onclick="markPickupUnassigned('${nvEscAttrJs(req.id)}')">Unassigned</button> ` +
+          `<button class="ghost-btn${isAssigned ? " nv-pk-on" : ""}" type="button" onclick="markPickupAssigned('${nvEscAttrJs(req.id)}')">Assigned</button> ` +
+          `<button class="action-btn" type="button" onclick="markPickedUp('${nvEscAttrJs(req.id)}')">Picked</button>`;
         return `<tr><td>${clientLabel}</td><td>${(req.awbs || []).length} AWB(s)<div class="footer-note">${awbList}</div></td><td>${labelText(req.pickupAddress, "-")}</td><td>${labelText(req.requestedFor, req.createdAt || "-")}</td><td><span class="chip ${statusChipClass}">${escLabelText(req.status)}</span></td><td><select onchange="assignPickupRider('${req.id}', this.value)" ${req.status === "Picked Up" || req.status === "Cancelled" ? "disabled" : ""}>${riderOptions}</select></td><td>${actions}</td></tr>`;
       }).join("");
     }
@@ -15202,7 +15220,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           </div>
           <p>${parcel.consignee} | ${escLabelText(parcel.city)} | Updated ${parcel.updated}. Current clock: ${agingLabel(agingHours(parcel))}.</p>
           ${parcel.resolutionRemark ? `<div class="resolved-note"><strong>Admin remarks:</strong> ${parcel.resolutionRemark}</div>` : ""}
-          <button class="ghost-btn" style="margin-top:10px" onclick="openTrackedParcel('${parcel.awb}')">Open Full Journey</button>
+          <button class="ghost-btn" style="margin-top:10px" onclick="openTrackedParcel('${nvEscAttrJs(parcel.awb)}')">Open Full Journey</button>
         </div>
       `;
     }
@@ -16725,7 +16743,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         <div class="section-head"><div><h3>Team</h3><p>Status, workload, and performance. Click to manage.</p></div></div>
         <div class="ops-list">
         ${list.length? list.map(u=>{
-          return `<div class="ops-card" style="cursor:pointer" onclick="staffOpen('${u.id}')">
+          return `<div class="ops-card" style="cursor:pointer" onclick="staffOpen('${nvEscAttrJs(u.id)}')">
             <div class="ops-card-head"><strong>${escLabelText(u.name)}</strong><span class="chip info">${u.staffRole||"Staff"}</span></div>
             <p>score ${staffScore(u)}</p></div>`;}).join("")
           : `<p class="footer-note">No staff yet. Create a user with "Show Staff Tab = Yes".</p>`}
@@ -16734,7 +16752,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if(staffSelected){ const u=list.find(x=>x.id===staffSelected); if(u) html+=staffWorkspacePanels(u,true); }
       const ranked=list.slice().sort((a,b)=>staffScore(b)-staffScore(a));
       html+=`<div class="panel"><div class="section-head"><div><h3>Leaderboard</h3><p>Ranked by score this week.</p></div></div>
-        <div class="ops-list">${ranked.map((u,i)=>`<div class="ops-card" style="cursor:pointer" onclick="staffOpen('${u.id}')"><div class="ops-card-head"><strong>#${i+1} ${escLabelText(u.name)}</strong><span class="chip ${i===0?'warn':'info'}">${staffScore(u)}</span></div><p>${u.staffRole||""}</p></div>`).join("")}</div></div>`;
+        <div class="ops-list">${ranked.map((u,i)=>`<div class="ops-card" style="cursor:pointer" onclick="staffOpen('${nvEscAttrJs(u.id)}')"><div class="ops-card-head"><strong>#${i+1} ${escLabelText(u.name)}</strong><span class="chip ${i===0?'warn':'info'}">${staffScore(u)}</span></div><p>${u.staffRole||""}</p></div>`).join("")}</div></div>`;
       return html;
     }
     function staffOwnView(id){
@@ -16748,12 +16766,12 @@ html,body{ background:var(--bg); color:var(--ink); }
       <div class="panel"><div class="section-head"><div><h3>${forManager?u.name+" — workspace":"My performance"}</h3><p>${staffRoleBlurb(u.staffRole)}</p></div>${forManager?`<button class="ghost-btn" onclick="staffClose()">Close</button>`:""}</div>
         <div class="grid metrics"><div class="metric"><span>Score</span><strong>${staffScore(u)}</strong></div><div class="metric"><span>Status</span><strong style="font-size:16px">${u.status||"Active"}</strong></div></div></div>
       ${isSales?`<div class="panel"><div class="section-head"><div><h3>Calls</h3><p>Log calls for the leaderboard.</p></div></div>
-        <div class="filter-bar"><input id="stk_call_${u.id}" placeholder="Who did you call?"><button class="action-btn" onclick="staffLogCall('${u.id}')">Log Call</button></div></div>`:""}
-      <div class="panel"><div class="section-head"><div><h3>Targets</h3><p>Tap +/- to update progress.</p></div>${forManager?`<button class="ghost-btn" onclick="staffAssignTarget('${u.id}')">+ Assign Target</button>`:""}</div>
+        <div class="filter-bar"><input id="stk_call_${u.id}" placeholder="Who did you call?"><button class="action-btn" onclick="staffLogCall('${nvEscAttrJs(u.id)}')">Log Call</button></div></div>`:""}
+      <div class="panel"><div class="section-head"><div><h3>Targets</h3><p>Tap +/- to update progress.</p></div>${forManager?`<button class="ghost-btn" onclick="staffAssignTarget('${nvEscAttrJs(u.id)}')">+ Assign Target</button>`:""}</div>
         ${(u.staffTargets||[]).map(t=>{const pct=t.pct?t.now:Math.min(100,Math.round((t.now/t.goal)*100));
-          return `<div class="ops-card"><div class="ops-card-head"><strong>${t.label}</strong><span>${t.pct?t.now+"%":t.now+" / "+t.goal} ${!t.pct?`<button class="ghost-btn" onclick="staffBump('${u.id}','${t.id}',-1)">−</button><button class="ghost-btn" onclick="staffBump('${u.id}','${t.id}',1)">+</button>`:""}${forManager?`<button class="ghost-btn" onclick="staffRemoveTarget('${u.id}','${t.id}')">✕</button>`:""}</span></div><div class="meter" style="margin-top:8px"><span style="width:${pct}%"></span></div></div>`;}).join("")||'<p class="footer-note">No targets yet.</p>'}</div>
+          return `<div class="ops-card"><div class="ops-card-head"><strong>${t.label}</strong><span>${t.pct?t.now+"%":t.now+" / "+t.goal} ${!t.pct?`<button class="ghost-btn" onclick="staffBump('${nvEscAttrJs(u.id)}','${nvEscAttrJs(t.id)}',-1)">−</button><button class="ghost-btn" onclick="staffBump('${nvEscAttrJs(u.id)}','${nvEscAttrJs(t.id)}',1)">+</button>`:""}${forManager?`<button class="ghost-btn" onclick="staffRemoveTarget('${nvEscAttrJs(u.id)}','${nvEscAttrJs(t.id)}')">✕</button>`:""}</span></div><div class="meter" style="margin-top:8px"><span style="width:${pct}%"></span></div></div>`;}).join("")||'<p class="footer-note">No targets yet.</p>'}</div>
       <div class="panel"><div class="section-head"><div><h3>Activity</h3><p>Logins and key actions, newest first.</p></div></div>
-        <div class="filter-bar"><input id="stk_note_${u.id}" placeholder="Log an activity note…"><button class="action-btn" onclick="staffNote('${u.id}')">Add</button></div>
+        <div class="filter-bar"><input id="stk_note_${u.id}" placeholder="Log an activity note…"><button class="action-btn" onclick="staffNote('${nvEscAttrJs(u.id)}')">Add</button></div>
         <div class="ops-list">${staffActivityFor(u.id).map(a=>`<div class="ops-card"><p>${a.t} <span class="footer-note">· ${a.time}</span></p></div>`).join("")||'<p class="footer-note">No activity yet.</p>'}</div></div>`;
     }
     /* =================== END NOVAX STAFF TAB =================== */
