@@ -5825,7 +5825,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                 <div class="table-wrap" style="margin-top:14px">
                   <div class="wide-scroll">
                     <table>
-                      <thead><tr><th>AWB</th><th>Client</th><th>Consignee</th><th>COD / Charges</th><th>Journey Aging</th><th>Current Clock</th><th>Progress</th><th>Report</th><th>Last Processed</th></tr></thead>
+                      <thead><tr><th>AWB</th><th>Client</th><th>Consignee</th><th>COD / Charges</th><th>Journey Aging</th><th>Current Clock</th><th>Progress</th><th>Report</th><th>Last Processed</th><th>Fix</th></tr></thead>
                       <tbody id="orderReportRows"></tbody>
                     </table>
                   </div>
@@ -7319,7 +7319,17 @@ html,body{ background:var(--bg); color:var(--ink); }
       document.getElementById("npeConsignee").value = p.consignee || "";
       document.getElementById("npePhone").value = p.phone || "";
       document.getElementById("npeAddress").value = p.address || "";
-      document.getElementById("npeCity").value = p.city || "";
+      /* A parcel already carrying a city outside the four serviceable ones would
+         otherwise be silently rewritten to blank by the dropdown. Keep it as a
+         visible option so ops can see what it actually says before changing it. */
+      var citySel = document.getElementById("npeCity");
+      var cur = String(p.city || "").trim();
+      if (cur && !Array.prototype.some.call(citySel.options, function(o){
+            return o.value.toLowerCase() === cur.toLowerCase(); })) {
+        citySel.insertAdjacentHTML("beforeend",
+          '<option value="' + nvEscAdmin(cur) + '">' + nvEscAdmin(cur) + ' (not a serviceable city)</option>');
+      }
+      citySel.value = cur;
       document.getElementById("npeCod").value = Number(p.cod || 0);
       document.getElementById("npeFee").value = Number(p.fee || 0);
       document.getElementById("npeWeight").value = p.weight || "";
@@ -7332,8 +7342,76 @@ html,body{ background:var(--bg); color:var(--ink); }
           : ("Current status: " + p.status + ". Changes are logged against your account.");
         warn.style.color = frozen ? "#e0604b" : "";
       }
+      /* The warning used to say the parcel could no longer be edited while
+         leaving Save fully clickable, so ops pressed it and got a raw RPC
+         rejection. Match the button to the sentence. */
+      var frozenNow = (p.status === "Delivered" || p.status === "Return to shipper");
+      var saveBtn = document.getElementById("npeSave");
+      if (saveBtn) {
+        saveBtn.disabled = frozenNow;
+        saveBtn.textContent = frozenNow ? "Locked — parcel is " + p.status : "Save Changes";
+        saveBtn.title = frozenNow ? "Settled parcels cannot be edited." : "";
+      }
+      nvNpeCheckCity();
       host.classList.add("show");
       host.style.display = "flex";
+    }
+    /* The city field decides the zone, and the zone decides the rate. A Karachi
+       address filed as Lahore is exactly how N3690090 ended up on the wrong
+       side of the rate card, so flag the disagreement before it is saved
+       rather than after ops notices the fee. Markers only -- it warns, it
+       never overrides what a human typed. */
+    var NV_CITY_MARKERS = {
+      /* Spelling in real Pakistani addresses is not consistent, and the parcel
+         that prompted this was typed "gulstan-e-johar" -- no i. Variants are
+         listed explicitly rather than fuzzy-matched, because the near-miss
+         that matters here is Gulistan-e-Johar (Karachi) against Johar Town
+         (Lahore), and fuzzy matching is exactly how you conflate those two. */
+      Karachi: ["gulistan-e-jauhar","gulistan-e-johar","gulistan e johar","gulistan e jauhar",
+                "gulstan-e-johar","gulstan e johar","gulishtan-e-johar","gulshan-e-johar",
+                "johar block","jauhar block","gulshan-e-iqbal","gulshan e iqbal","gulshan block",
+                "korangi","nazimabad","malir","landhi","orangi","liaquatabad","shah faisal","lyari",
+                "saddar karachi","defence karachi","dha karachi","clifton","baldia","gadap","surjani",
+                "north karachi","federal b area","f.b area","saadabad","karachi"],
+      Lahore:   ["johar town","model town","gulberg lahore","dha lahore","defence lahore","iqbal town",
+                 "wapda town","faisal town","garden town","township lahore","cantt lahore","lahore"],
+      Islamabad:["islamabad","f-6","f-7","f-8","f-10","f-11","g-9","g-10","g-11","i-8","blue area"],
+      Rawalpindi:["rawalpindi","satellite town","chaklala","westridge","pindi"]
+    };
+    function nvCityFromAddress(addr){
+      var a = String(addr || "").toLowerCase();
+      if (!a.trim()) return null;
+      /* Earliest marker in the string wins, and on a tie the longer marker
+         wins. That ordering is what keeps "Johar Town, Lahore" out of Karachi:
+         the bare "karachi"/"lahore" catch-alls sit at the end of each list but
+         are judged on position, not list order. */
+      var best = null, bestAt = Infinity, bestLen = 0;
+      Object.keys(NV_CITY_MARKERS).forEach(function(city){
+        NV_CITY_MARKERS[city].forEach(function(m){
+          var at = a.indexOf(m);
+          if (at === -1) return;
+          if (at < bestAt || (at === bestAt && m.length > bestLen)) {
+            best = city; bestAt = at; bestLen = m.length;
+          }
+        });
+      });
+      return best;
+    }
+    function nvNpeCheckCity(){
+      var warn = document.getElementById("npeCityWarn");
+      var citySel = document.getElementById("npeCity");
+      var addr = document.getElementById("npeAddress");
+      if (!warn || !citySel || !addr) return;
+      var chosen = String(citySel.value || "").trim();
+      var looks = nvCityFromAddress(addr.value);
+      if (looks && chosen && looks.toLowerCase() !== chosen.toLowerCase()) {
+        warn.style.display = "";
+        warn.innerHTML = "<b>This address looks like " + nvEscAdmin(looks) + ", not " + nvEscAdmin(chosen) + ".</b> " +
+          "The city sets the zone and therefore the rate. Change it if the address is right, or leave it if you know better \u2014 nothing is blocked.";
+      } else {
+        warn.style.display = "none";
+        warn.innerHTML = "";
+      }
     }
     function nvCloseParcelEdit(){
       var host = document.getElementById("nvParcelEditModal");
@@ -7343,6 +7421,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       var sb = window.__nvSb;
       if (!sb || !sb.rpc) { toast("Cloud connection not ready."); return; }
       var awb = document.getElementById("npeAwbHidden").value;
+      var cityVal = String((document.getElementById("npeCity") || {}).value || "").trim();
+      if (!cityVal) { toast("Pick a destination city — it sets the zone and the rate.", "error"); return; }
       var btn = document.getElementById("npeSave");
       var old = btn ? btn.textContent : "";
       if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
@@ -7351,7 +7431,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         p_consignee: document.getElementById("npeConsignee").value,
         p_phone: document.getElementById("npePhone").value,
         p_address: document.getElementById("npeAddress").value,
-        p_city: document.getElementById("npeCity").value,
+        p_city: cityVal,
         p_cod: Number(document.getElementById("npeCod").value || 0),
         p_fee: Number(document.getElementById("npeFee").value || 0),
         p_weight: document.getElementById("npeWeight").value,
@@ -9259,10 +9339,11 @@ html,body{ background:var(--bg); color:var(--ink); }
               ${alert.level === "critical" ? `<span class="siren-chip">Escalate now</span><br>` : ""}
               <span class="chip ${urgencyClass(alert.level)}">${alert.label}</span><br><span class="footer-note">${alert.due}</span>
             </td>
-            <td>${process.scanned ? `<strong>${process.by}</strong><br><span class="footer-note">${process.at}</span><br>` : `<strong class="footer-note">Not yet scanned</strong><br>`}<span class="footer-note">${process.branch}</span></td>
+            <td>${process.scanned ? `<strong>${escLabelText(process.by)}</strong><br><span class="footer-note">${escLabelText(process.at)}</span><br>` : `<strong class="footer-note">Not yet scanned</strong><br>`}<span class="footer-note">${escLabelText(process.branch)}</span></td>
+            <td><button class="ghost-btn" style="padding:5px 9px;font-size:11.5px" onclick="event.stopPropagation(); nvOpenParcelEdit('${escLabelText(p.awb)}')">Edit</button></td>
           </tr>
         `;
-      }).join("") || `<tr><td colspan="9">No report rows match these filters.</td></tr>`;
+      }).join("") || `<tr><td colspan="10">No report rows match these filters.</td></tr>`;
 
       const processBatch = processingParcels();
       const processParcel = processBatch[0] || processingParcel();
@@ -12641,6 +12722,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <button class="ghost-btn" onclick="requestClientDecisionAdmin('${r.awb}')">Request Client Decision</button>
             <button class="ghost-btn" onclick="queueNotifyClientAdmin('${r.awb}')">Queue Notification</button>
             <button class="ghost-btn" onclick="viewParcelJourneyAdmin('${r.awb}')">View Parcel Journey</button>
+            <button class="ghost-btn" onclick="nvOpenParcelEdit('${r.awb}')">Edit Parcel Details</button>
           </div>
           ${waActionsHtml(r.awb, waKindForStatus(r.status))}
           <div class="field" style="margin-top:8px"><label>Resolution note (required to resolve)</label><input id="excNote_${r.awb}" placeholder="What was done to resolve this?"></div>
@@ -16259,11 +16341,18 @@ html,body{ background:var(--bg); color:var(--ink); }
     <div class="grid two" style="margin-top:8px">
       <div class="field"><label>Consignee name</label><input id="npeConsignee"></div>
       <div class="field"><label>Phone</label><input id="npePhone" maxlength="11"></div>
-      <div class="field"><label>Destination city</label><input id="npeCity"></div>
+      <div class="field"><label>Destination city</label>
+        <select id="npeCity" onchange="nvNpeCheckCity()">
+          <option value="">Select a city…</option>
+          <option>Karachi</option><option>Lahore</option>
+          <option>Islamabad</option><option>Rawalpindi</option>
+        </select>
+      </div>
       <div class="field"><label>Package weight</label><input id="npeWeight" placeholder="0.8 kg"></div>
       <div class="field"><label>COD amount</label><input id="npeCod" type="number" min="0"></div>
       <div class="field"><label>Delivery fee</label><input id="npeFee" type="number" min="0"></div>
-      <div class="field" style="grid-column:1/-1"><label>Delivery address</label><textarea id="npeAddress"></textarea></div>
+      <div class="field" style="grid-column:1/-1"><label>Delivery address</label><textarea id="npeAddress" oninput="nvNpeCheckCity()"></textarea></div>
+      <div id="npeCityWarn" style="grid-column:1/-1;display:none;background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.5"></div>
       <div class="field" style="grid-column:1/-1"><label>Reason for this change (recorded in the audit log)</label><input id="npeNote" placeholder="e.g. client called to correct the COD"></div>
     </div>
     <p class="footer-note" style="margin-top:8px">Changing the destination city or weight does not automatically reprice the parcel &mdash; adjust the delivery fee yourself if it genuinely needs to change, so it stays a deliberate decision.</p>
