@@ -7198,7 +7198,35 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var rows = NV_TK.filter === "open" ? openOnes
                : NV_TK.filter === "resolved" ? all.filter(function(t){ return t.status === "resolved"; })
                : all;
+      /* This rebuild fires on a 3-second tick, and nvTkCard() emits a brand
+         new EMPTY reply input each time -- so a merchant typing a reply to
+         support had their text wiped roughly every three seconds. There was
+         no draft handling here at all. Carry the drafts, the focus and the
+         caret across the rebuild. */
+      var drafts = {}, activeId = null, selStart = null, selEnd = null;
+      Array.prototype.forEach.call(host.querySelectorAll("input.nv-tk-reply"), function(el){
+        if (el.value) drafts[el.id] = el.value;
+        if (document.activeElement === el){
+          activeId = el.id;
+          try{ selStart = el.selectionStart; selEnd = el.selectionEnd; }catch(e){}
+        }
+      });
+
       host.innerHTML = rows.map(nvTkCard).join("");
+
+      Object.keys(drafts).forEach(function(id){
+        var el = document.getElementById(id);
+        if (el) el.value = drafts[id];
+      });
+      if (activeId){
+        var back = document.getElementById(activeId);
+        if (back){
+          try{
+            back.focus();
+            if (selStart !== null) back.setSelectionRange(selStart, selEnd);
+          }catch(e){}
+        }
+      }
     }
 
     function nvTkSubmit(){
