@@ -61,7 +61,7 @@
     :root{
       color-scheme: light;
       --ink:#10201b;--muted:#60726b;--line:#d9e4df;--line-strong:#b6c9c0;--bg:#f4f8f5;
-      --panel:#ffffff;--panel-soft:#edf5f1;--green:#0c7c59;--green-2:#13a36f;--mint:#dff6ea;
+      --panel:#ffffff;--panel-soft:#edf5f1;--green:#0c7c59;--green-ink:#0c7c59;/* --green was doing two incompatible jobs. As TEXT on a light surface it must be dark to read; as a SURFACE under a white label it must also stay dark. In DARK MODE those diverge: text has to brighten against the dark ground, a button surface must not, or its white label falls to 2.21:1. Aliasing --green to the bright accent would fix the 10 text uses and break 29 buttons. Split instead: --green = surface, --green-ink = text/icon on a light surface. */--green-2:#13a36f;--mint:#dff6ea;
       --amber:#c77913;--amber-soft:#fff0d7;--red:#b03a2e;--red-soft:#ffe3df;--blue:#1d6f9f;--blue-soft:#dff1fb;
       --shadow:0 18px 50px rgba(21,45,36,.12);--radius:8px;--speed:260ms;
       font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -267,10 +267,10 @@
     .nv-onboarding{background:var(--nvu-bg);border:1px solid var(--line);border-radius:var(--r-xl);padding:14px 16px;margin:0 0 14px;box-shadow:var(--shadow)}
     .nv-onboarding h4{margin:0 0 8px;font-size:13px;color:var(--ink)}
     .nv-onboarding-item{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;color:var(--muted)}
-    .nv-onboarding-item.done{color:var(--green)}
+    .nv-onboarding-item.done{color:var(--green-ink)}
     .nv-onboarding-dot{width:20px;height:20px;border-radius:50%;border:2px solid var(--line-strong);display:flex;align-items:center;justify-content:center;font-size:11px;flex:none;color:var(--muted)}
     .nv-onboarding-item.done .nv-onboarding-dot{border-color:var(--green);background:var(--green);color:#fff}
-    .nv-onboarding-item button{margin-left:auto;border:1px solid var(--line-strong);background:var(--nvu-bg);color:var(--green);border-radius:var(--r-sm);padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}
+    .nv-onboarding-item button{margin-left:auto;border:1px solid var(--line-strong);background:var(--nvu-bg);color:var(--green-ink);border-radius:var(--r-sm);padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}
 
     /* NovaX dashboard refresh: metric icon (inline style handles click cursor per-card) */
     .metric{position:relative}
@@ -286,7 +286,7 @@
     .nv-trend-labels span{flex:1;text-align:center;font-size:10px;color:var(--muted)}
 
     /* NovaX dashboard refresh: optional dark mode (gated behind data-theme attr, zero effect unless toggled) */
-    html[data-theme="dark"]{color-scheme:dark;--ink:#eaf3ee;--muted:#9db3ac;--line:#274038;--line-strong:#345449;--bg:#0b1512;--panel:#101d18;--panel-soft:#132420;--mint:#123227;}
+    html[data-theme="dark"]{--green-ink:#3ddc97;color-scheme:dark;--ink:#eaf3ee;--muted:#9db3ac;--line:#274038;--line-strong:#345449;--bg:#0b1512;--panel:#101d18;--panel-soft:#132420;--mint:#123227;}
     html[data-theme="dark"] body{background:var(--bg);color:var(--ink)}
     html[data-theme="dark"] .panel,html[data-theme="dark"] .ops-card,html[data-theme="dark"] .metric,html[data-theme="dark"] .nv-onboarding,html[data-theme="dark"] .nv-trend-panel,html[data-theme="dark"] .seller-step,html[data-theme="dark"] .client-menu-head,html[data-theme="dark"] .client-side{background:var(--panel);border-color:var(--line);color:var(--ink)}
     html[data-theme="dark"] table{color:var(--ink)}
@@ -948,7 +948,7 @@
   .nv-inv-absorb{
     margin:7px 0 0; padding:7px 10px; border-radius:var(--r-lg);
     font-size:12.5px; line-height:1.45; font-weight:600;
-    color:var(--green); background:var(--mint); border:1px solid var(--line-strong);
+    color:var(--green-ink); background:var(--mint); border:1px solid var(--line-strong);
   }
   html[data-theme="dark"] .nv-inv-absorb{
     color:#4ee6a5; background:rgba(20,199,123,.09); border-color:rgba(20,199,123,.24);
@@ -1078,13 +1078,13 @@
     transition:background .18s ease, border-color .18s ease, color .18s ease, transform .14s ease;
   }
   .nv-wchip:hover{ border-color:#14c77b; transform:translateY(-1px); }
-  .nv-wchip.on{ background:var(--mint); border-color:#14c77b; color:var(--green); }
+  .nv-wchip.on{ background:var(--mint); border-color:#14c77b; color:var(--green-ink); }
   html[data-theme="dark"] .nv-wchip.on{ background:rgba(20,199,123,.14); border-color:#14c77b; color:#4ee6a5; }
 
   .nv-paymode{
     margin-top:7px; padding:7px 10px; border-radius:var(--r-lg);
     font-size:12px; line-height:1.45; font-weight:600;
-    background:var(--mint); border:1px solid var(--line-strong); color:var(--green);
+    background:var(--mint); border:1px solid var(--line-strong); color:var(--green-ink);
   }
   .nv-paymode.is-prepaid{ background:var(--nvu-warn-bg); border-color:var(--nvu-warn-ln); color:#6b4a00; }
   html[data-theme="dark"] .nv-paymode{ background:rgba(20,199,123,.09); border-color:rgba(20,199,123,.24); color:#4ee6a5; }
@@ -1269,7 +1269,7 @@
 .nvai-card-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .nvai-card-title{font-weight:750;font-size:13.5px;color:var(--ink);letter-spacing:-.01em}
 .nvai-card-status{font-size:11px;font-weight:700;padding:3px 9px;border-radius:var(--r-pill);
-  background:var(--mint);color:var(--green);white-space:nowrap}
+  background:var(--mint);color:var(--green-ink);white-space:nowrap}
 .nvai-card-sub{font-size:12px;color:var(--muted);margin-top:2px}
 .nvai-card-lines{display:grid;gap:4px;margin-top:9px}
 .nvai-card-line{display:flex;justify-content:space-between;gap:12px;font-size:12.5px}
@@ -1542,7 +1542,7 @@
   .hamburger-btn[aria-expanded="true"] span:nth-of-type(3){transform:translateY(-0.9px) rotate(-45deg);}
 
   .hamburger-label{font-size:13px;font-weight:650;letter-spacing:-.01em;color:var(--ink);}
-  .hamburger-btn[aria-expanded="true"] .hamburger-label{color:var(--green);}
+  .hamburger-btn[aria-expanded="true"] .hamburger-label{color:var(--green-ink);}
 
   [data-theme="dark"] .hamburger-btn{background:var(--panel);border-color:var(--line);}
   [data-theme="dark"] .hamburger-btn span:not(.hamburger-label){background:var(--ink);}
@@ -1662,7 +1662,7 @@
      instantly reads as a page refresh. Driven by JS below. */
   .nv-bump{animation:nvBump .42s cubic-bezier(.34,1.56,.64,1);}
   @keyframes nvBump{0%{transform:scale(1)}38%{transform:scale(1.085)}100%{transform:scale(1)}}
-  .nv-bump-up{color:var(--green)!important;transition:color .9s ease;}
+  .nv-bump-up{color:var(--green-ink)!important;transition:color .9s ease;}
   .nv-bump-down{color:var(--amber)!important;transition:color .9s ease;}
   @media (prefers-reduced-motion:reduce){
     .nv-skel::after{animation:none}
@@ -12495,7 +12495,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   --r-xs:2px; --r-sm:6px; --r-md:8px; --r-lg:10px;
   --r-xl:12px; --r-2xl:16px; --r-pill:999px;
   --nvu-bg:#ffffff; --nvu-bg-2:#fafdfb; --nvu-line:#e7efeb; --nvu-line-2:#d8e6e0;
-  --nvu-ink:#10201b; --nvu-ink-2:#60726b; --nvu-ink-3:#8ba299;
+  --nvu-ink:#10201b; --nvu-ink-2:#60726b; --nvu-ink-3:#687972;
   --nvu-accent:#0c7c59; --nvu-accent-ink:#ffffff;
   --nvu-good-bg:#e6f6ee; --nvu-good-fg:#0c7c59; --nvu-good-ln:#b7e3ce;
   --nvu-warn-bg:#fff6e5; --nvu-warn-fg:#8a5a00; --nvu-warn-ln:#f0d9a8;
