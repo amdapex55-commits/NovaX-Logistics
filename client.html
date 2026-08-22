@@ -7767,7 +7767,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function connectStore(platform){
       if(!Array.isArray(state.storeConnections)) state.storeConnections=[];
       const map={
-        woocommerce:{url:"wooStoreUrl",fields:{key:"wooKey",secret:"wooSecret"},intakeFn:"woo-order-intake",requireSecret:true,label:"WooCommerce"},
+                woocommerce:{url:"wooStoreUrl",fields:{key:"wooKey",secret:"wooSecret"},intakeFn:"woo-order-intake",requireSecret:true,label:"WooCommerce"},
         web:{url:"webEndpoint",fields:{key:"webKey"},intakeFn:"web-order-intake",requireSecret:false,label:"Custom Web/API"}
       };
       const cfg=map[platform]; if(!cfg) return;
@@ -11869,7 +11869,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     window.fetch=function(input,init){
       try{
         var url=typeof input==="string"?input:(input&&input.url)||"";
-        if(url.indexOf("novax-ai-support")>=0 && init && typeof init.body==="string"){
+        /* Matched only "novax-ai-support", which is not deployed on this
+           project, so this never fired and the Roman-Urdu/English toggle did
+           nothing at all. Match any NovaX AI endpoint instead. novax-ai does
+           not read a `language` field, so the instruction is also appended to
+           the message itself -- that reaches the model whichever backend
+           answers, and is ignored harmlessly by one that handles the field. */
+        if(/\/functions\/v1\/novax-ai/.test(url) && init && typeof init.body==="string"){
           var body=JSON.parse(init.body);
           var msg=body.message||body.question||body.text||"";
           var useUrdu=wantUrdu(msg);
@@ -11877,6 +11883,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           body.languageInstruction=useUrdu
             ? "Reply in Roman Urdu (Urdu written in Latin script), simple and friendly. Keep AWB numbers, amounts, currency values and NovaX status names exactly as they are, in English."
             : "Reply in English.";
+          if(useUrdu && typeof body.message==="string" && body.message.trim()){
+            body.message = body.message +
+              "\n\n(Reply in Roman Urdu \u2014 Urdu written in Latin script. Keep AWB numbers, amounts and NovaX status names exactly as they are, in English.)";
+          }
           init=Object.assign({},init,{ body:JSON.stringify(body) });
         }
       }catch(e){}

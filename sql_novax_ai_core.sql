@@ -470,10 +470,35 @@ begin
   if coalesce(btrim(p_fact),'') = '' then
     return jsonb_build_object('ok',false,'reason','empty_fact');
   end if;
+
+  /* This is the one AI write-tool the model calls directly -- every other
+     write is propose-then-human-tap. Whatever lands here is re-injected into
+     the system prompt of every future conversation for this merchant, so a
+     fact containing instruction-shaped text would quietly steer the model
+     from then on. The tool results the model reads include rider-written
+     exception notes and merchant-written consignee names, so that text is
+     reachable from outside.
+
+     Full propose/confirm is the proper fix and needs a frontend change.
+     This is the proportionate half: strip the framing a payload needs and
+     cap the length, so a remembered fact can be wrong but cannot issue
+     orders. Blast radius stays inside this merchant''s own context either
+     way -- nv_ai_memory is never read across clients. */
+  p_fact := btrim(p_fact);
+  p_fact := regexp_replace(p_fact, '[\u0000-\u001F\u007F]', ' ', 'g');
+  p_fact := regexp_replace(p_fact, '`{2,}', '''', 'g');
+  p_fact := regexp_replace(p_fact, '(Human|Assistant|System)\s*:', '-', 'gi');
+  p_fact := regexp_replace(p_fact, '</?\s*(system|instructions?|prompt)[^>]*>', '', 'gi');
+  p_fact := btrim(regexp_replace(p_fact, '\s{2,}', ' ', 'g'));
+  if length(p_fact) > 240 then p_fact := left(p_fact, 240); end if;
+  if p_fact = '' then
+    return jsonb_build_object('ok',false,'reason','empty_fact');
+  end if;
+
   insert into public.nv_ai_memory (client_id, fact, source)
-  values (c, btrim(p_fact), coalesce(p_source,'chat'))
+  values (c, p_fact, coalesce(p_source,'chat'))
   on conflict (client_id, fact) do nothing;
-  return jsonb_build_object('ok',true,'remembered',btrim(p_fact));
+  return jsonb_build_object('ok',true,'remembered',p_fact);
 end
 $fn$;
 
