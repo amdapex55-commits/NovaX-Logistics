@@ -565,22 +565,53 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     }
     function uploadProofFile(fileOrBlob, awb, label){
       return new Promise(function(resolve){
+        /* The base64 fallback is the right call -- a delivery must not be
+           blocked by a slow photo upload. But the result becomes the
+           PERMANENT value of proofPhoto/callRecord, and that string then
+           rides inside parcels.meta on every subsequent status PATCH. A
+           full-size phone photo is easily 2-4MB of base64, so the fallback
+           for a failed upload was making every later status write heavier --
+           on exactly the bad connection that caused the failure. Downscale
+           hard first: this is dispute evidence, not a gallery image. */
         function toBase64(){
           const reader = new FileReader();
           reader.onload = () => resolve(reader.result);
           reader.onerror = () => resolve("");
           reader.readAsDataURL(fileOrBlob);
         }
+        function shrinkThenBase64(){
+          try{
+            if(!fileOrBlob.type || fileOrBlob.type.indexOf("image")!==0){ toBase64(); return; }
+            var url=URL.createObjectURL(fileOrBlob);
+            var img=new Image();
+            img.onload=function(){
+              try{
+                var MAX=900;
+                var w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+                var s=Math.min(1, MAX/Math.max(w,h));
+                var cv=document.createElement("canvas");
+                cv.width=Math.max(1,Math.round(w*s)); cv.height=Math.max(1,Math.round(h*s));
+                cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);
+                var out=cv.toDataURL("image/jpeg",0.62);
+                URL.revokeObjectURL(url);
+                /* If shrinking somehow made it bigger, keep the smaller one. */
+                resolve(out);
+              }catch(e){ URL.revokeObjectURL(url); toBase64(); }
+            };
+            img.onerror=function(){ URL.revokeObjectURL(url); toBase64(); };
+            img.src=url;
+          }catch(e){ toBase64(); }
+        }
         const sbc = window.__nvSb;
-        if(!sbc || !sbc.storage || !fileOrBlob){ toBase64(); return; }
+        if(!sbc || !sbc.storage || !fileOrBlob){ shrinkThenBase64(); return; }
         const ext = (fileOrBlob.type && fileOrBlob.type.indexOf("png") > -1) ? "png" : "jpg";
         const path = (awb||"unknown") + "/" + label + "-" + Date.now() + "-" + Math.random().toString(36).slice(2,8) + "." + ext;
         sbc.storage.from("delivery-proofs").upload(path, fileOrBlob, { contentType: fileOrBlob.type || "image/jpeg", upsert:false }).then(function(res){
-          if(res && res.error){ console.warn("NovaX proof upload failed, using local copy.", res.error.message); toBase64(); return; }
+          if(res && res.error){ console.warn("NovaX proof upload failed, using local copy.", res.error.message); shrinkThenBase64(); return; }
           const pub = sbc.storage.from("delivery-proofs").getPublicUrl(path);
           const url = pub && pub.data && pub.data.publicUrl;
-          if(url) resolve(url); else toBase64();
-        }).catch(function(){ toBase64(); });
+          if(url) resolve(url); else shrinkThenBase64();
+        }).catch(function(){ shrinkThenBase64(); });
       });
     }
     function handleRiderPhoto(file){
@@ -588,10 +619,68 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       const { awb, kind } = riderPhotoCtx;
       uploadProofFile(file, awb, kind==="notresponding"?"call":"photo").then(url => applyRiderPhoto(awb, kind, url));
     }
-    function applyRiderPhoto(awb, kind, dataUrl){
+    /* Real coordinates, or an honest record that we have none.
+
+       This used to write the fixed string "GPS captured at doorstep" into
+       every refusal record -- no Geolocation call existed anywhere in this
+       file. That string then synced to Supabase inside meta.riderInput and
+       would be produced as evidence in a delivery dispute, asserting
+       something that never happened. A missing fix is bad; a fabricated one
+       is worse, because somebody will rely on it.
+
+       Best-effort and non-blocking: a rider in a basement or with location
+       denied still completes the delivery, the record just says so. */
+    var NV_GEO_LAST=null;
+    function nvCaptureGps(){
+      return new Promise(function(resolve){
+        if(!navigator.geolocation){ resolve({ ok:false, note:"Location not supported on this device" }); return; }
+        var settled=false;
+        var t=setTimeout(function(){
+          if(settled) return; settled=true;
+          resolve({ ok:false, note:"Location unavailable (timed out)" });
+        },8000);
+        try{
+          navigator.geolocation.getCurrentPosition(function(pos){
+            if(settled) return; settled=true; clearTimeout(t);
+            var c=pos&&pos.coords||{};
+            NV_GEO_LAST={ lat:c.latitude, lng:c.longitude, acc:c.accuracy, at:Date.now() };
+            resolve({ ok:true, lat:Number(c.latitude), lng:Number(c.longitude),
+                      accuracy_m: c.accuracy==null?null:Math.round(c.accuracy),
+                      captured_at:new Date().toISOString() });
+          }, function(err){
+            if(settled) return; settled=true; clearTimeout(t);
+            var why=(err&&err.code===1)?"Location permission denied by rider"
+                   :(err&&err.code===2)?"Location unavailable (no fix)"
+                   :"Location unavailable";
+            resolve({ ok:false, note:why });
+          }, { enableHighAccuracy:true, timeout:7000, maximumAge:30000 });
+        }catch(e){
+          if(settled) return; settled=true; clearTimeout(t);
+          resolve({ ok:false, note:"Location unavailable" });
+        }
+      });
+    }
+    /* Renders to the same string field the portal already reads, so nothing
+       downstream has to change -- but it can no longer claim a fix we do
+       not have. */
+    function nvGpsText(g){
+      if(!g) return "No location captured";
+      if(g.ok) return "GPS "+g.lat.toFixed(5)+", "+g.lng.toFixed(5)+
+                      (g.accuracy_m!=null?" (±"+g.accuracy_m+"m)":"")+" at "+
+                      new Date(g.captured_at).toLocaleTimeString("en-PK",{hour12:false});
+      return g.note||"No location captured";
+    }
+
+    async function applyRiderPhoto(awb, kind, dataUrl){
       const p = state.parcels.find(x=>x.awb===awb); if(!p) return;
+      if(!nvActionClaim(awb, "photo")) return;
+      try{
       const rider = riderById(state.activeRider);
       p.proofPhoto = dataUrl;
+      /* Ask the device where we actually are. Non-blocking in the sense that
+         it always resolves within 8s -- the delivery record is written either
+         way, it just stops claiming a fix we never had. */
+      const gps = await nvCaptureGps();
       state.operationsIssues = Array.isArray(state.operationsIssues) ? state.operationsIssues : [];
       state.paymentLogs = Array.isArray(state.paymentLogs) ? state.paymentLogs : [];
       if (kind === "notresponding"){
@@ -606,14 +695,45 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         setParcelStatus(p, "Refused");
         p.exception = "Consignee refused the parcel on the doorstep — house photo attached by " + rider.name;
         p.returnProof = "Doorstep refusal house photo by " + rider.name;
-        p.riderInput = { attemptTime: time(), gps: "GPS captured at doorstep", callProof: "Rider attempted contact", riderNote: "Consignee refused at doorstep", photoProof: "House photo captured" };
+        p.riderInput = { attemptTime: time(), gps: nvGpsText(gps), gpsFix: (gps && gps.ok) ? { lat:gps.lat, lng:gps.lng, accuracy_m:gps.accuracy_m, captured_at:gps.captured_at } : null, callProof: "Rider attempted contact", riderNote: "Consignee refused at doorstep", photoProof: "House photo captured" };
         p.risk = Math.min(96, (p.risk||20) + 20);
         state.operationsIssues.unshift({ id: nextId("OPS", state.operationsIssues), branch: p.branch, urgency: "urgent", problem: "Doorstep refusal (" + awb + ") — house photo attached", awb, openedHours: 0, resolved: false });
         toast(awb + " → refused at doorstep. House photo posted to portal.");
       }
       riderPhotoCtx = null;
       saveState(); renderRider();
+      } finally { nvActionRelease(awb, "photo"); }
     }
+    /* Double-tap protection. There was none: not one .disabled in this file.
+       It happened to be safe only because each handler re-reads p.status
+       synchronously and the second tap fails that check -- incidental, not
+       designed, and it breaks the moment an await lands between the check and
+       the write (which applyRiderPhoto now has, for the GPS capture).
+
+       On a cheap phone with a laggy screen a rider double-taps constantly.
+       Keyed per parcel+action so two different parcels never block each
+       other, and always released in a finally. */
+    var NV_BUSY = {};
+    function nvActionClaim(awb, action){
+      var k = action + ":" + awb;
+      if (NV_BUSY[k]) return false;
+      NV_BUSY[k] = true;
+      try{
+        document.querySelectorAll('[onclick*="' + awb + '"]').forEach(function(b){
+          if(b.tagName === "BUTTON"){ b.disabled = true; b.style.opacity = ".55"; }
+        });
+      }catch(e){}
+      return true;
+    }
+    function nvActionRelease(awb, action){
+      delete NV_BUSY[action + ":" + awb];
+      try{
+        document.querySelectorAll('[onclick*="' + awb + '"]').forEach(function(b){
+          if(b.tagName === "BUTTON"){ b.disabled = false; b.style.opacity = ""; }
+        });
+      }catch(e){}
+    }
+
     function riderDeliver(awb){
       const p = state.parcels.find(x=>x.awb===awb); if(!p){ toast(`${awb} not found.`); return; }
       const rider = riderById(state.activeRider);
