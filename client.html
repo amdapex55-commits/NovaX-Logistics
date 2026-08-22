@@ -2705,8 +2705,8 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     // charge = baseRate + ceil(max(0, weightKg-1)) * additionalKgRate, capped at the 5kg normal slab.
     function bookingChargeBreakdown(rateCard, zone, weightInput){
       var z=zone==="A"?"A":"B";
-      var card=(rateCard&&rateCard[z])||(rateCard&&typeof rateCard.overnight==="number"?rateCard:defaultRateCard(250));
-      var base=Number(card.overnight)||250;
+      var card=(rateCard&&rateCard[z])||(rateCard&&typeof rateCard.overnight==="number"?rateCard:defaultRateCard(NV_ZONE_A_BASE));
+      var base=Number(card.overnight)||NV_ZONE_A_BASE;
       var addlRate=Number(card.additionalKg)||85;
       var weightKg=parseWeightKg(weightInput);
       var cappedKg=Math.min(weightKg,5);
@@ -5990,8 +5990,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          exist, so the area picker must not appear and the quote must not run
          -- it would price a Lahore parcel off a Karachi pickup point. */
       var pickFrom = String((state.client&&state.client.pickupCity)||"Karachi").toLowerCase();
+      /* The merchant's own choice is now the first gate. Distance pricing used
+         to switch itself on the moment a pickup point existed, which is how the
+         same route could quote two different prices on two different days. */
+      if(nvPricingMode() !== "distance") return false;
       return !!(NV_GEO.ready && NV_GEO.enabled && isKhi && pickFrom==="karachi"
                 && NV_GEO.pickup && NV_GEO.pickup.area_id);
+    }
+
+    /* 'flat' until the merchant says otherwise -- matches the column default,
+       so an unanswered prompt bills exactly what it billed yesterday. */
+    function nvPricingMode(){
+      return String((state.client && state.client.pricingMode) || "flat") === "distance"
+        ? "distance" : "flat";
     }
     function nvGeoToggleAreaField(){
       var f = document.getElementById("bookingDestAreaField");
@@ -6008,16 +6019,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var host = document.getElementById("nvPickupBanner");
       if(!host) return;
       if(!NV_GEO.ready || !NV_GEO.enabled){ host.innerHTML=""; return; }
+      /* A merchant on flat CHOSE flat. The old banner told them they were
+         "being charged the flat rate" as though it were a mistake, which is
+         the exact confusion this feature exists to end. Say nothing. */
+      if(nvPricingMode() !== "distance"){ host.innerHTML=""; return; }
       /* A merchant with no pickup point mapped fails the nvGeoActive() gate
          and is quietly charged the flat zone rate forever, with nothing on
          screen to say so. They are not choosing the fallback -- they do not
          know it exists. Say it plainly, and make fixing it one tap. */
       var pickFrom = String((state.client&&state.client.pickupCity)||"Karachi").toLowerCase();
       if(pickFrom==="karachi" && !(NV_GEO.pickup && NV_GEO.pickup.area_id)){
+        /* They picked per-km, so we do not quietly hand them the flat rate --
+           that silent substitution is the whole bug. Say the quote is blocked
+           and make fixing it one tap. */
         host.innerHTML =
           '<div class="nv-nopickup">' +
-            '<div class="nv-nopickup-h">You are being charged the flat rate</div>' +
-            '<p>NovaX can price your Karachi parcels by the actual road distance from your shop, which is usually cheaper than the flat rate. We just need to know where we collect from &mdash; it takes a moment and you only do it once.</p>' +
+            '<div class="nv-nopickup-h">We cannot price your parcels yet</div>' +
+            '<p>You chose per-kilometre pricing, which measures the real road distance from where we collect. We do not have your pickup point yet, so there is no distance to price from &mdash; and we will not put you on the flat rate without asking. Set it once and your quotes start working.</p>' +
             '<button type="button" class="action-btn" id="nvSetPickupNow">Set my pickup point</button>' +
           '</div>';
         var b=document.getElementById("nvSetPickupNow");
@@ -8564,7 +8582,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           // only, so a missing column never breaks the rest of the load.
           try{ state.clientBankDetails=(c&&c.bank_details)?c.bank_details:(state.clientBankDetails||null); }catch(e){ state.clientBankDetails=state.clientBankDetails||null; }
           var name=c.name||"Client";
-          var rate=Number((c&&c.rate)||250), bal=Number((c&&c.wallet_balance)||0), rc=normalizeRateCard((c&&c.rate_card), rate);
+          var rate=Number((c&&c.rate)||NV_ZONE_A_BASE), bal=Number((c&&c.wallet_balance)||0), rc=normalizeRateCard((c&&c.rate_card), rate);
           /* NovaX new (per-client pickup city): admin sets this on the client
              record (clients.meta.pickupCity). Defaults to Karachi, which is
              what every existing merchant already has, so nothing changes for
@@ -8641,7 +8659,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       var _save=saveState; saveState=function(){ try{ _save.apply(this,arguments); }catch(e){} try{ syncNew(); }catch(e){} };
       state.parcels=[]; state.invoices=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[]; state.pickupRequests=[];
-      state.client={ id:null, name:"Verifying account...", walletBalance:0, rate:250, rateCard:{}, subAccounts:0 };
+      state.client={ id:null, name:"Verifying account...", walletBalance:0, rate:NV_ZONE_A_BASE, rateCard:{}, subAccounts:0 };
       state.clients=[state.client];
       // NovaX fix (client identity leak): accountNotLinked/clientRecordMissing
       // are the only signals the UI uses to show their respective error
@@ -13843,5 +13861,498 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
   window.novaxAiOpen = function(){ boot(); };
 })();
 </script>
+
+<!-- =====================================================================
+     NovaX -- pricing mode chooser.
+
+     Distance pricing has been live since 2026-08-13, but nobody chose it.
+     It applied when a merchant happened to have a pickup point mapped and
+     fell back to the flat rate when they did not, silently, which is why
+     merchants kept asking why the same route cost two different amounts.
+     This makes it a decision they make once, on purpose.
+
+     Modelled on the review prompt: same identity chain, same one-shot
+     gate, same overlay mechanics. Like that one it is a gate, not a
+     dismissible card -- an unanswered prompt just recreates the ambiguity.
+     ===================================================================== -->
+<div id="nvpmOverlay" role="dialog" aria-modal="true" aria-labelledby="nvpmTitle">
+  <div class="nvpm-card" role="document">
+    <div class="nvpm-head">
+      <div class="nvpm-mark">Rs</div>
+      <h3 id="nvpmTitle">Choose how you pay for delivery</h3>
+      <p class="nvpm-sub">One choice, and your rate stops changing between parcels. Pick whichever is cheaper for the way you actually ship.</p>
+    </div>
+
+    <div class="nvpm-grid">
+      <!-- LEFT: per kilometre -->
+      <button type="button" class="nvpm-opt nvpm-left" data-nvpm="distance" aria-pressed="false">
+        <span class="nvpm-badge">Usually cheaper in-city</span>
+        <span class="nvpm-opt-h">Pay per kilometre</span>
+        <span class="nvpm-price"><b>Rs 120</b><small>minimum</small></span>
+        <ul class="nvpm-list">
+          <li><span>Karachi</span><b>Rs 20 / km</b></li>
+          <li><span>First 6 km</span><b>Rs 120</b></li>
+          <li><span>Never more than</span><b>Rs 320</b></li>
+          <li><span>Lahore</span><b>Rs 200</b></li>
+        </ul>
+        <span class="nvpm-note">Priced on the real road distance from your pickup point. Short hops cost less; long ones stop at Rs 320.</span>
+        <span class="nvpm-tick" aria-hidden="true">✓</span>
+      </button>
+
+      <!-- RIGHT: flat -->
+      <button type="button" class="nvpm-opt nvpm-right" data-nvpm="flat" aria-pressed="false">
+        <span class="nvpm-badge nvpm-badge-alt">Same price every time</span>
+        <span class="nvpm-opt-h">Flat rate</span>
+        <span class="nvpm-price"><b>Rs 200</b><small>per parcel</small></span>
+        <ul class="nvpm-list">
+          <li><span>Karachi</span><b>Rs 200</b></li>
+          <li><span>Any distance</span><b>Rs 200</b></li>
+          <li><span>Lahore</span><b>Rs 200</b></li>
+          <li><span>No pickup setup</span><b>Not needed</b></li>
+        </ul>
+        <span class="nvpm-note">One number, whatever the distance. Simplest to predict if you ship right across the city.</span>
+        <span class="nvpm-tick" aria-hidden="true">✓</span>
+      </button>
+    </div>
+
+    <!-- The deciding fact, not decoration: under 10 km per-km wins, over it
+         flat does. Merchants cannot work that out from two rate tables. -->
+    <div class="nvpm-compare">
+      <div class="nvpm-compare-h">What a Karachi parcel costs you</div>
+      <div class="nvpm-bars" id="nvpmBars"></div>
+      <div class="nvpm-breakeven">Per-kilometre is cheaper under <b>10 km</b>. Past that the flat rate wins, and per-kilometre never passes <b>Rs 320</b>.</div>
+    </div>
+
+    <div class="nvpm-same">Lahore is <b>Rs 200</b> either way &mdash; this choice only changes Karachi.</div>
+
+    <div id="nvpmPickupWarn" class="nvpm-warn" hidden>
+      <b>Set your pickup point first.</b>
+      <span>Per-kilometre pricing measures from where we collect. Without it we cannot quote a distance &mdash; and we will not quietly charge you the flat rate instead.</span>
+    </div>
+
+    <button type="button" class="nvpm-confirm" id="nvpmConfirm" disabled>Select an option</button>
+    <p class="nvpm-foot" id="nvpmFoot">You can ask support to switch this later.</p>
+  </div>
+</div>
+
+<style>
+  /* Self-contained palette, same reasoning as the review prompt: client.html
+     does not define --card / --ink-2 / --line-2, so inheriting them paints a
+     white card in dark mode. These tokens flip on the same attribute. */
+  #nvpmOverlay{
+    --pm-card:#ffffff;
+    --pm-ink:#0d1a14;
+    --pm-ink-2:#5c7568;
+    --pm-ink-3:#7b9488;
+    --pm-line:rgba(12,124,89,.18);
+    --pm-line-2:rgba(12,124,89,.10);
+    --pm-field:rgba(4,25,16,.03);
+    --pm-scrim:rgba(6,20,15,.62);
+    --pm-shadow:0 30px 80px -20px rgba(4,25,16,.45);
+    --pm-green:#0c7c59;
+    --pm-green-2:#14c77b;
+    --pm-flat:#4a6fa5;
+    --pm-flat-2:#6d93c4;
+    --pm-warn-bg:#fff6e5;
+    --pm-warn-ink:#8a5a00;
+    --pm-warn-line:#f0d9a8;
+  }
+  html[data-theme="dark"] #nvpmOverlay{
+    --pm-card:#101d18;
+    --pm-ink:#eaf3ee;
+    --pm-ink-2:#9db3ac;
+    --pm-ink-3:#7d938c;
+    --pm-line:#2b463d;
+    --pm-line-2:#22382f;
+    --pm-field:rgba(255,255,255,.045);
+    --pm-scrim:rgba(2,10,7,.74);
+    --pm-shadow:0 30px 80px -20px rgba(0,0,0,.72);
+    --pm-green:#1fd18e;
+    --pm-green-2:#14c77b;
+    --pm-flat:#8fb3e0;
+    --pm-flat-2:#6d93c4;
+    --pm-warn-bg:#33270f;
+    --pm-warn-ink:#f0c877;
+    --pm-warn-line:#4d3d1a;
+  }
+
+  #nvpmOverlay{
+    position:fixed; inset:0; z-index:99999;
+    display:none; align-items:center; justify-content:center;
+    padding:20px;
+    background:var(--pm-scrim);
+    -webkit-backdrop-filter:blur(7px); backdrop-filter:blur(7px);
+    opacity:0; transition:opacity .34s cubic-bezier(.22,1,.36,1);
+  }
+  #nvpmOverlay.nvpm-open{ display:flex; }
+  #nvpmOverlay.nvpm-in{ opacity:1; }
+
+  .nvpm-card{
+    width:min(760px,100%);
+    background:var(--pm-card);
+    color:var(--pm-ink);
+    border:1px solid var(--pm-line);
+    border-radius:22px;
+    box-shadow:var(--pm-shadow);
+    padding:26px 24px 20px;
+    transform:translateY(22px) scale(.94);
+    opacity:0;
+    transition:transform .42s cubic-bezier(.22,1.2,.36,1), opacity .3s ease;
+    max-height:calc(100vh - 40px);
+    overflow-y:auto;
+  }
+  #nvpmOverlay.nvpm-in .nvpm-card{ transform:none; opacity:1; }
+  #nvpmOverlay.nvpm-out{ opacity:0; }
+  #nvpmOverlay.nvpm-out .nvpm-card{ transform:translateY(-10px) scale(.97); opacity:0; }
+
+  .nvpm-head{ text-align:center; margin-bottom:18px; }
+  .nvpm-mark{
+    width:46px; height:46px; margin:0 auto 12px;
+    border-radius:14px; display:grid; place-items:center;
+    background:linear-gradient(140deg,var(--pm-green-2),var(--pm-green));
+    color:#fff; font-weight:900; font-size:16px; letter-spacing:-.02em;
+    box-shadow:0 8px 22px -8px rgba(20,199,123,.7);
+  }
+  .nvpm-card h3{ margin:0 0 6px; font-size:21px; font-weight:800; letter-spacing:-.02em; color:var(--pm-ink); }
+  .nvpm-sub{ margin:0 auto; max-width:52ch; font-size:13.5px; line-height:1.5; color:var(--pm-ink-2); }
+
+  .nvpm-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
+
+  .nvpm-opt{
+    position:relative; text-align:left; cursor:pointer;
+    display:flex; flex-direction:column; gap:8px;
+    background:var(--pm-field);
+    border:1.5px solid var(--pm-line); border-radius:16px;
+    padding:16px 15px 14px; font:inherit; color:var(--pm-ink);
+    transition:transform .22s cubic-bezier(.22,1.2,.36,1), border-color .2s ease, box-shadow .25s ease, background .2s ease;
+  }
+  /* Each card arrives from its own side, so left and right read as a pair of
+     alternatives rather than a list of two things. */
+  /* backwards, NOT both: `both` keeps the keyframe's final opacity:1 applied
+     after the animation ends, and an animated value outranks a normal
+     declaration -- which silently killed the .nvpm-picked dimming below.
+     `backwards` still holds the from-state through the delay, so the entrance
+     is unchanged, but the cascade takes over once it finishes. */
+  #nvpmOverlay.nvpm-in .nvpm-left { animation:nvpmInLeft  .52s cubic-bezier(.22,1,.36,1) .10s backwards; }
+  #nvpmOverlay.nvpm-in .nvpm-right{ animation:nvpmInRight .52s cubic-bezier(.22,1,.36,1) .18s backwards; }
+  @keyframes nvpmInLeft { from{opacity:0; transform:translateX(-26px) rotate(-1.4deg)} to{opacity:1; transform:none} }
+  @keyframes nvpmInRight{ from{opacity:0; transform:translateX(26px)  rotate(1.4deg)}  to{opacity:1; transform:none} }
+
+  .nvpm-opt:hover{ transform:translateY(-3px); border-color:var(--pm-green); box-shadow:0 14px 30px -16px rgba(12,124,89,.55); }
+  .nvpm-opt:focus-visible{ outline:2px solid var(--pm-green-2); outline-offset:2px; }
+  .nvpm-opt[aria-pressed="true"]{
+    border-color:var(--pm-green); border-width:2px;
+    background:linear-gradient(160deg, rgba(20,199,123,.10), transparent 70%);
+    box-shadow:0 16px 36px -18px rgba(12,124,89,.7);
+  }
+  /* The unchosen card recedes rather than vanishing -- it stays legible so a
+     merchant can still compare after clicking. */
+  .nvpm-grid.nvpm-picked .nvpm-opt:not([aria-pressed="true"]){ opacity:.5; transform:scale(.975); }
+
+  .nvpm-badge{
+    align-self:flex-start; font-size:10px; font-weight:800; letter-spacing:.04em;
+    text-transform:uppercase; padding:3px 8px; border-radius:20px;
+    background:rgba(20,199,123,.14); color:var(--pm-green);
+  }
+  .nvpm-badge-alt{ background:rgba(74,111,165,.15); color:var(--pm-flat); }
+
+  .nvpm-opt-h{ font-size:16px; font-weight:800; letter-spacing:-.01em; }
+  .nvpm-price{ display:flex; align-items:baseline; gap:6px; }
+  .nvpm-price b{ font-size:27px; font-weight:900; letter-spacing:-.03em; }
+  .nvpm-price small{ font-size:11.5px; color:var(--pm-ink-3); font-weight:700; }
+
+  .nvpm-list{ list-style:none; margin:2px 0 0; padding:0; display:flex; flex-direction:column; gap:5px; }
+  .nvpm-list li{
+    display:flex; justify-content:space-between; gap:10px;
+    font-size:12.5px; padding-bottom:5px; border-bottom:1px solid var(--pm-line-2);
+  }
+  .nvpm-list li:last-child{ border-bottom:0; padding-bottom:0; }
+  .nvpm-list span{ color:var(--pm-ink-2); }
+  .nvpm-list b{ font-weight:800; font-variant-numeric:tabular-nums; }
+
+  .nvpm-note{ font-size:11.5px; line-height:1.45; color:var(--pm-ink-3); }
+
+  .nvpm-tick{
+    position:absolute; top:12px; right:12px;
+    width:22px; height:22px; border-radius:50%;
+    display:grid; place-items:center;
+    background:var(--pm-green); color:#fff; font-size:12px; font-weight:900;
+    opacity:0; transform:scale(.4);
+    transition:opacity .2s ease, transform .34s cubic-bezier(.34,1.56,.64,1);
+  }
+  .nvpm-opt[aria-pressed="true"] .nvpm-tick{ opacity:1; transform:scale(1); }
+
+  .nvpm-compare{
+    background:var(--pm-field); border:1px solid var(--pm-line-2);
+    border-radius:14px; padding:13px 14px; margin-bottom:10px;
+  }
+  .nvpm-compare-h{ font-size:11px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--pm-ink-3); margin-bottom:9px; }
+  .nvpm-bars{ display:flex; gap:7px; align-items:flex-end; }
+  .nvpm-bar{ flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .nvpm-bar-pair{ display:flex; gap:2px; align-items:flex-end; height:52px; width:100%; justify-content:center; }
+  .nvpm-bar-d, .nvpm-bar-f{ width:11px; border-radius:3px 3px 0 0; transition:height .5s cubic-bezier(.22,1,.36,1); }
+  .nvpm-bar-d{ background:linear-gradient(180deg,var(--pm-green-2),var(--pm-green)); }
+  .nvpm-bar-f{ background:var(--pm-flat-2); opacity:.65; }
+  .nvpm-bar-km{ font-size:10px; font-weight:800; color:var(--pm-ink-3); }
+  .nvpm-bar-amt{ font-size:9.5px; font-weight:700; color:var(--pm-ink-2); font-variant-numeric:tabular-nums; }
+  .nvpm-breakeven{ margin-top:9px; font-size:12px; line-height:1.5; color:var(--pm-ink-2); }
+  .nvpm-breakeven b{ color:var(--pm-ink); }
+
+  .nvpm-same{
+    text-align:center; font-size:12px; color:var(--pm-ink-2);
+    padding:8px 10px; border-radius:10px; background:var(--pm-field); margin-bottom:12px;
+  }
+  .nvpm-same b{ color:var(--pm-ink); }
+
+  .nvpm-warn{
+    background:var(--pm-warn-bg); border:1px solid var(--pm-warn-line); color:var(--pm-warn-ink);
+    border-radius:11px; padding:10px 12px; margin-bottom:12px; font-size:12.5px; line-height:1.5;
+  }
+  .nvpm-warn b{ display:block; margin-bottom:2px; }
+
+  .nvpm-confirm{
+    width:100%; padding:14px 18px; font:inherit; font-size:15px; font-weight:800;
+    border:0; border-radius:13px; cursor:pointer; color:#fff;
+    background:linear-gradient(135deg,var(--pm-green-2),var(--pm-green));
+    box-shadow:0 12px 28px -12px rgba(12,124,89,.8);
+    transition:transform .18s ease, opacity .2s ease, box-shadow .2s ease;
+  }
+  .nvpm-confirm:hover:not(:disabled){ transform:translateY(-1px); }
+  .nvpm-confirm:disabled{ opacity:.45; cursor:not-allowed; box-shadow:none; }
+  .nvpm-foot{ margin:9px 0 0; text-align:center; font-size:11.5px; color:var(--pm-ink-3); }
+
+  @media (max-width:620px){
+    #nvpmOverlay{ align-items:flex-end; padding:0; }
+    .nvpm-card{
+      width:100%; max-width:none; border-radius:22px 22px 0 0;
+      border-left:0; border-right:0; border-bottom:0;
+      padding:24px 18px calc(20px + env(safe-area-inset-bottom,0px));
+      max-height:92vh; transform:translateY(100%);
+      transition:transform .44s cubic-bezier(.22,1,.36,1), opacity .26s ease;
+    }
+    #nvpmOverlay.nvpm-in .nvpm-card{ transform:translateY(0); }
+    #nvpmOverlay.nvpm-out .nvpm-card{ transform:translateY(100%); opacity:1; }
+    .nvpm-grid{ grid-template-columns:1fr; }
+    .nvpm-card h3{ font-size:19px; }
+    .nvpm-confirm{ padding:16px 18px; font-size:16px; }
+    .nvpm-bar-amt{ display:none; }
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    #nvpmOverlay, .nvpm-card, .nvpm-opt, .nvpm-confirm, .nvpm-tick, .nvpm-bar-d, .nvpm-bar-f{ transition:none !important; }
+    #nvpmOverlay.nvpm-in .nvpm-left, #nvpmOverlay.nvpm-in .nvpm-right{ animation:none !important; }
+  }
+</style>
+
+<script>
+/* NovaX pricing mode chooser.
+
+   Reads client_pricing_choice_state(), shows the two options once, writes the
+   answer through client_set_pricing_choice(). Everything else in the portal
+   keys off state.client.pricingMode, which nvGeoActive() now respects, so a
+   merchant on flat never sees a per-km quote and a merchant on per-km is never
+   quietly dropped back onto the flat rate. */
+(function(){
+  var CHOSEN = null, BUSY = false;
+
+  function el(id){ return document.getElementById(id); }
+
+  /* Same curve the server prices on: base 120, 6 km included, Rs 20/km,
+     capped at 320. Read from novax_pricing_config when it is already loaded
+     so this card can never quote numbers the booking form disagrees with. */
+  function curve(){
+    var c = (window.NV_GEO && NV_GEO.cfg) || {};
+    return {
+      base: Number(c.base_fee    != null ? c.base_fee    : 120),
+      incl: Number(c.included_km != null ? c.included_km : 6),
+      per:  Number(c.per_km      != null ? c.per_km      : 20),
+      cap:  Number(c.max_fee     != null ? c.max_fee     : 320)
+    };
+  }
+  function distanceFee(km){
+    var c = curve();
+    var f = c.base + Math.max(0, Math.ceil(km - c.incl)) * c.per;
+    return c.cap > 0 ? Math.min(f, c.cap) : f;
+  }
+  function flatFee(){
+    var r = Number((window.state && state.client && state.client.rate) || 200);
+    return r > 0 ? r : 200;
+  }
+
+  function drawBars(){
+    var host = el("nvpmBars"); if(!host) return;
+    var kms = [3, 6, 10, 15, 20];
+    var flat = flatFee();
+    var peak = Math.max(flat, distanceFee(kms[kms.length - 1])) || 1;
+    host.innerHTML = kms.map(function(km){
+      var d = distanceFee(km);
+      var hd = Math.max(4, Math.round(d / peak * 52));
+      var hf = Math.max(4, Math.round(flat / peak * 52));
+      return '<div class="nvpm-bar">' +
+        '<div class="nvpm-bar-pair">' +
+          '<div class="nvpm-bar-d" style="height:' + hd + 'px" title="Per km: Rs ' + d + '"></div>' +
+          '<div class="nvpm-bar-f" style="height:' + hf + 'px" title="Flat: Rs ' + flat + '"></div>' +
+        '</div>' +
+        '<div class="nvpm-bar-amt">' + d + ' / ' + flat + '</div>' +
+        '<div class="nvpm-bar-km">' + km + ' km</div>' +
+      '</div>';
+    }).join("");
+  }
+
+  /* Per-km needs an origin. Rather than let a merchant pick it and then
+     discover their bookings are blocked, say so before they commit. */
+  function hasPickup(){
+    return !!(window.NV_GEO && NV_GEO.pickup && NV_GEO.pickup.area_id);
+  }
+
+  function refreshConfirm(){
+    var btn = el("nvpmConfirm"), warn = el("nvpmPickupWarn");
+    if(!btn) return;
+    if(!CHOSEN){
+      btn.disabled = true; btn.textContent = "Select an option";
+      if(warn) warn.hidden = true;
+      return;
+    }
+    if(CHOSEN === "distance" && !hasPickup()){
+      if(warn) warn.hidden = false;
+      btn.disabled = false;
+      btn.textContent = "Set pickup point and continue";
+      return;
+    }
+    if(warn) warn.hidden = true;
+    btn.disabled = false;
+    btn.textContent = CHOSEN === "distance"
+      ? "Confirm per-kilometre pricing"
+      : "Confirm flat rate";
+  }
+
+  function pick(mode){
+    CHOSEN = mode;
+    var grid = document.querySelector(".nvpm-grid");
+    if(grid) grid.classList.add("nvpm-picked");
+    Array.prototype.forEach.call(document.querySelectorAll("[data-nvpm]"), function(b){
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-nvpm") === mode));
+    });
+    refreshConfirm();
+  }
+
+  function show(){
+    var ov = el("nvpmOverlay"); if(!ov) return;
+    drawBars();
+    ov.classList.add("nvpm-open");
+    requestAnimationFrame(function(){ ov.classList.add("nvpm-in"); });
+    var first = document.querySelector("[data-nvpm]");
+    if(first) setTimeout(function(){ try{ first.focus(); }catch(e){} }, 420);
+  }
+  function hide(){
+    var ov = el("nvpmOverlay"); if(!ov) return;
+    ov.classList.remove("nvpm-in"); ov.classList.add("nvpm-out");
+    setTimeout(function(){ ov.classList.remove("nvpm-open","nvpm-out"); }, 340);
+  }
+
+  function save(){
+    if(BUSY || !CHOSEN) return;
+
+    // Per-km with no origin: send them to the existing pickup modal instead of
+    // recording a choice the booking form cannot honour.
+    if(CHOSEN === "distance" && !hasPickup()){
+      hide();
+      setTimeout(function(){
+        if(typeof window.nvOpenPickupSetup === "function"){
+          window.nvOpenPickupSetup();
+          if(typeof toast === "function") toast("Set your pickup point, then pick your rate again.");
+        }
+        // Reopen once they are mapped so the choice actually gets recorded.
+        var tries = 0;
+        var t = setInterval(function(){
+          if(++tries > 120){ clearInterval(t); return; }
+          if(hasPickup()){ clearInterval(t); CHOSEN = null; boot(true); }
+        }, 1000);
+      }, 360);
+      return;
+    }
+
+    var sb = window.__nvSb;
+    if(!sb){ if(typeof toast === "function") toast("Not connected yet.","error"); return; }
+    BUSY = true;
+    var btn = el("nvpmConfirm");
+    if(btn){ btn.disabled = true; btn.textContent = "Saving..."; }
+
+    Promise.resolve(sb.rpc("client_set_pricing_choice", { p_choice: CHOSEN }))
+      .catch(function(e){ return { error:{ message:String((e && e.message) || e) } }; })
+      .then(function(r){
+        BUSY = false;
+        var d = r && r.data;
+        if(typeof d === "string"){ try{ d = JSON.parse(d); }catch(e){} }
+
+        if((r && r.error) || !(d && d.ok)){
+          // already_chosen is not a failure -- another tab got there first.
+          if(d && d.error === "already_chosen"){ hide(); return; }
+          if(btn){ btn.disabled = false; }
+          refreshConfirm();
+          var msg = (r && r.error && r.error.message) || (d && d.error) || "unknown error";
+          if(typeof toast === "function") toast("Could not save that choice: " + msg, "error");
+          return;
+        }
+
+        if(window.state && state.client) state.client.pricingMode = CHOSEN;
+        hide();
+        if(typeof toast === "function"){
+          toast(CHOSEN === "distance"
+            ? "You are on per-kilometre pricing. Your Karachi bookings now quote by distance."
+            : "You are on the flat rate. Every parcel is priced the same.", "success");
+        }
+        // Rebuild the booking form against the mode just chosen.
+        try{ if(typeof nvGeoRenderPickup === "function") nvGeoRenderPickup(); }catch(e){}
+        try{ if(typeof nvGeoToggleAreaField === "function") nvGeoToggleAreaField(); }catch(e){}
+      });
+  }
+
+  function wire(){
+    Array.prototype.forEach.call(document.querySelectorAll("[data-nvpm]"), function(b){
+      if(b._nvpmWired) return;
+      b._nvpmWired = true;
+      b.addEventListener("click", function(){ pick(b.getAttribute("data-nvpm")); });
+    });
+    var c = el("nvpmConfirm");
+    if(c && !c._nvpmWired){ c._nvpmWired = true; c.addEventListener("click", save); }
+  }
+
+  function boot(force){
+    wire();
+    var tries = 0;
+    (function waitForSb(){
+      var sb = window.__nvSb;
+      if(!sb){
+        if(++tries > 40) return;          // ~20s, then give up quietly
+        return setTimeout(waitForSb, 500);
+      }
+      Promise.resolve(sb.rpc("client_pricing_choice_state", {}))
+        .then(function(r){
+          if(!r || r.error || !r.data) return;
+          var d = r.data;
+          if(typeof d === "string"){ try{ d = JSON.parse(d); }catch(e){ return; } }
+          if(!d) return;
+
+          // Remember the answer either way so the booking form can key off it.
+          if(window.state && state.client && d.mode) state.client.pricingMode = d.mode;
+
+          if(d.eligible === true){
+            // Let the dashboard settle, and let NV_GEO finish loading so the
+            // card quotes the same curve the booking form will.
+            setTimeout(show, force ? 300 : 1800);
+          }
+        })
+        .catch(function(){});
+    })();
+  }
+
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", function(){ boot(false); });
+  else boot(false);
+
+  window.novaxPricingChooser = function(){ CHOSEN = null; boot(true); };
+})();
+</script>
+
 </body>
 </html>
