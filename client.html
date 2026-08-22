@@ -12447,6 +12447,31 @@ Track your parcel: ${trackingUrl(p.awb)}`;
    only inside a media query. Dark is the obsidian palette (#050706 /
    #0B0F0D / #101512) rather than pure black, with the NovaX green kept as
    the accent so status tones stay recognisable across both themes. */
+/* ── WHY THERE ARE THREE COLOUR NAMESPACES, AND WHY THEY STAY THAT WAY ──
+   NovaX has --nvu-* (below), the older --green/--ink/--line/--panel set, and
+   --pm-* on the pricing modal. That looks like duplication begging to be
+   merged. It was measured, and it is not.
+
+   In LIGHT mode several legacy tokens are byte-identical to an --nvu-*
+   equivalent, so aliasing looks free. In DARK they diverge deliberately:
+   --ink 5.8, --muted 6.3, --line 7.1, --panel 7.9 deltaE away from their
+   nearest --nvu-* counterpart. They are a second dark palette, not sloppy
+   copies, and aliasing them would visibly change dark mode.
+
+   --green was the one real candidate: identical in light, and no dark
+   override at all, so it would simply inherit --nvu-accent. Do NOT do it.
+   It is used 38 times -- 8 as text, 18 as a background. Aliasing raises the
+   text uses from 3.34:1 to 7.83:1, which is the fix it looks like, but it
+   drops white-on-green backgrounds from 5.19:1 to 2.21:1, which fails AA
+   badly. Net regression: 18 broken to fix 8.
+
+   The real fix is to split the role, not merge the token -- a surface green
+   and an on-surface green need different dark values. That is per-call-site
+   work, not a rename, so it belongs with the inline-style pass.
+
+   Known and separate: --nvu-ink-3 on --nvu-bg is 2.72:1 in light, below AA
+   for any text size. Pre-existing. Changing it moves every existing use, so
+   it needs a deliberate decision rather than a silent tweak. */
 :root{
   --nvu-bg:#ffffff; --nvu-bg-2:#fafdfb; --nvu-line:#e7efeb; --nvu-line-2:#d8e6e0;
   --nvu-ink:#10201b; --nvu-ink-2:#60726b; --nvu-ink-3:#8ba299;
