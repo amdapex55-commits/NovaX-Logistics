@@ -6897,6 +6897,45 @@ html,body{ background:var(--bg); color:var(--ink); }
       return state.riders.find(rider => rider.id === id) || state.riders[0];
     }
 
+    /* Five admin actions repeated the pattern the payout fix removed: on an
+       RPC error they toast and return, leaving a stale card on screen with a
+       live button, so a second admin sees "failed" for something that already
+       succeeded and clicks again. This is that fix, once, for all of them.
+
+       Returns true when the error means "somebody already did this" -- which
+       is not a failure and should not be dressed as one. */
+    function nvAlreadyDone(msg) {
+      return /not pending|already (been )?(paid|rejected|closed|resolved|decided|settled)|current status:|no longer|not in a (pushable|editable) state|already exists/i
+        .test(String(msg || ""));
+    }
+    /* Wraps an admin action so a stale queue can never survive it: the list is
+       refreshed whichever way the call goes, and an "already done" outcome is
+       reported calmly instead of in red. */
+    function nvAdminOutcome(opts) {
+      var err     = opts.error ? String(opts.error.message || opts.error) : "";
+      var refresh = opts.refresh || function(){};
+      var close   = opts.close || function(){};
+      if (!err) { close(); refresh(); if (opts.okMsg) toast(opts.okMsg, "success"); return true; }
+      if (nvAlreadyDone(err)) {
+        close(); refresh();
+        toast(opts.staleMsg || "That was already done — the list has been refreshed.");
+        return true;
+      }
+      refresh();
+      toast((opts.failPrefix || "Could not complete that") + ": " + err, "error");
+      return false;
+    }
+    /* Guards a button against a second click while its request is in flight.
+       admin_mark_withdrawal_paid moves real money; if it is not row-locked
+       server-side, two overlapping clicks are two transfers. */
+    var NV_INFLIGHT = {};
+    function nvClaim(key) {
+      if (NV_INFLIGHT[key]) return false;
+      NV_INFLIGHT[key] = true;
+      return true;
+    }
+    function nvRelease(key) { delete NV_INFLIGHT[key]; }
+
     function currentAdminName() {
       return "Admin Control";
     }
@@ -7668,17 +7707,28 @@ html,body{ background:var(--bg); color:var(--ink); }
 
       var sb = window.__nvSb || window.sbClient || null;
       if (!sb || !sb.rpc) { toast("Cloud connection not ready."); return; }
+      /* The outstanding figure above came from a snapshot that may be minutes
+         old. Recording against a stale balance is how the same payment gets
+         entered twice, so the list is refreshed whichever way this goes. */
+      var nvDueKey = "due:" + clientId;
+      if (!nvClaim(nvDueKey)) { toast("Already recording a payment for this client — one moment."); return; }
       sb.rpc("admin_record_due_payment", {
         p_client_id: clientId, p_amount: amt, p_method: "Manual",
         p_reference: ref, p_note: ""
       }).then(function(r){
-        if (r && r.error) { toast("Could not record payment: " + r.error.message); return; }
+        nvRelease(nvDueKey);
+        if (r && r.error) {
+          nvAdminOutcome({ error: r.error, refresh: loadClientDues,
+            staleMsg: "That payment was already recorded — list refreshed.",
+            failPrefix: "Could not record payment" });
+          return;
+        }
         var left = Number((r && r.data) || 0);
         toast(left > 0
           ? ("Payment recorded. " + nvMoney(left) + " still outstanding.")
           : "Payment recorded. Account is now clear.");
         loadClientDues();
-      }).catch(function(e){ toast("Could not record payment: " + ((e && e.message) || e)); });
+      }).catch(function(e){ nvRelease(nvDueKey); loadClientDues(); toast("Could not record payment: " + ((e && e.message) || e)); });
     }
 
     function loadWalletBalances(){
@@ -9561,6 +9611,9 @@ html,body{ background:var(--bg); color:var(--ink); }
             <select class="ghost-btn client-rider-pick" onchange="assignRiderToClient('${client.id}', this.value)">
               <option value="" ${!client.assignedRider ? "selected" : ""}>Assign pickup rider…</option>
               ${state.riders.map(r => `<option value="${r.id}" ${client.assignedRider === r.id ? "selected" : ""}>${escLabelText(r.name)} | ${r.branch}</option>`).join("")}
+            </select>
+            <select class="ghost-btn client-rider-pick" onchange="nvSetClientPricingMode('${client.id}', this.value)" title="Flat rate, or per-kilometre for their Karachi parcels. The merchant picks this themselves; change it here only if they are stuck.">
+              ${["flat","distance"].map(m => `<option value="${m}" ${nvClientPricingMode(client)===m ? "selected" : ""}>${m==="flat" ? "Rate: Flat" : "Rate: Per-km"}</option>`).join("")}
             </select>
             <button class="ghost-btn" style="color:#b3261e" onclick="deleteClient('${client.id}')">Delete Client</button>
           </div>
@@ -12154,11 +12207,21 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast(`${id} cannot be rejected yet -- this withdrawal is not synced to the cloud. Wait for sync and try again.`, "error");
         return;
       }
+      var nvRejKey = "rej:" + withdrawal._uuid;
+      if (!nvClaim(nvRejKey)) { toast("Already rejecting this one — one moment."); return; }
+      var nvRejRefresh = function(){
+        if (typeof nvRefresh === "function") nvRefresh(["withdrawals","clients","wallet_ledger"]);
+        else if (typeof loadAll === "function") loadAll();
+      };
       window.__nvSb.rpc("admin_reject_wallet_withdrawal", { p_withdrawal_id: withdrawal._uuid, p_reason: reason.trim() }).then(r => {
-        if (r && r.error) { toast(`Could not reject ${id}: ${r.error.message}`, "error"); return; }
-        if (typeof nvRefresh === "function") nvRefresh(["withdrawals","clients","wallet_ledger"]); else if (typeof loadAll === "function") loadAll();
-        toast(`${id} rejected/cancelled. Reserved amount returned to the client's wallet.`, "success");
-      }).catch(e => toast(`Could not reject ${id}: ${(e && e.message) || e}`, "error"));
+        nvRelease(nvRejKey);
+        nvAdminOutcome({
+          error: r && r.error, refresh: nvRejRefresh,
+          okMsg: `${id} rejected/cancelled. Reserved amount returned to the client's wallet.`,
+          staleMsg: `${id} was already closed by someone else — queue refreshed.`,
+          failPrefix: `Could not reject ${id}`
+        });
+      }).catch(e => { nvRelease(nvRejKey); nvRejRefresh(); toast(`Could not reject ${id}: ${(e && e.message) || e}`, "error"); });
     }
 
     function confirmMarkWalletWithdrawalPaid() {
@@ -12203,7 +12266,20 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast("Cloud connection not ready yet, please try again in a moment.", "error");
         return;
       }
+      /* This moves real money. If admin_mark_withdrawal_paid is not row-locked
+         server-side, two overlapping clicks are two transfers -- and the
+         graceful "already paid" handling below only helps AFTER the first call
+         returns. Nothing may be in flight twice for the same withdrawal. */
+      var nvPayKey = "pay:" + withdrawal._uuid;
+      if (!nvClaim(nvPayKey)) { toast("Already marking this one paid — one moment."); return; }
+      var nvPayBtn = document.querySelector('#markPaidModal .action-btn');
+      if (nvPayBtn) { nvPayBtn.disabled = true; nvPayBtn.textContent = "Marking paid…"; }
+      var nvPayDone = function(){
+        nvRelease(nvPayKey);
+        if (nvPayBtn) { nvPayBtn.disabled = false; nvPayBtn.textContent = "Confirm Paid"; }
+      };
       window.__nvSb.rpc("admin_mark_withdrawal_paid", { p_withdrawal_id: withdrawal._uuid, p_txn_id: txnId, p_paid_by: paidBy, p_proof: proof || null }).then(r => {
+        nvPayDone();
         function nvRefreshPayouts(){
           if (typeof nvRefresh === "function") nvRefresh(["withdrawals","clients","wallet_ledger","payment_logs"]);
           else if (typeof loadAll === "function") loadAll();
@@ -12228,7 +12304,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         closeMarkPaidModal();
         nvRefreshPayouts();
         toast(`${id} marked paid with reference ${txnId}.`);
-      }).catch(e => toast(`Could not mark ${id} paid: ${(e && e.message) || e}`, "error"));
+      }).catch(e => { nvPayDone(); toast(`Could not mark ${id} paid: ${(e && e.message) || e}`, "error"); });
     }
 
     function submitWalletAdjustment() {
@@ -12428,46 +12504,116 @@ html,body{ background:var(--bg); color:var(--ink); }
       toast(`${user.name} removed from Users.`);
     }
 
+    /* Deleting a client used to fire five raw deletes in parallel behind
+       `.catch(() => {})`, wipe local state regardless of the outcome, and
+       always toast "removed". Two of those tables were `withdrawals` and
+       `payment_logs` -- the payout audit trail for a COD business -- so a
+       silent RLS denial or a dropped connection destroyed records nobody
+       could recover and told the admin it had worked.
+
+       Now: money records are never deleted, the counts come from the server
+       rather than a page-limited local cache, each step is checked before the
+       next runs, and nothing is reported as done unless it actually is. */
+    function nvDeactivateClient(cid, name) {
+      var sb = window.__nvSb;
+      if (!sb) { toast("Cloud connection not ready.", "error"); return; }
+      Promise.resolve(sb.from("clients").update({ status: "Inactive" }).eq("id", cid))
+        .catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+        .then(function(r){
+          if (r && r.error) { toast("Could not deactivate: " + r.error.message, "error"); return; }
+          return Promise.resolve(sb.from("profiles").update({ status: "blocked" }).eq("client_id", cid))
+            .catch(function(){ return {}; })
+            .then(function(){
+              toast(name + " set to Inactive. Their history is intact.");
+              if (typeof nvRefresh === "function") nvRefresh(["clients"]);
+              else if (typeof loadAll === "function") loadAll();
+            });
+        });
+    }
+
     function deleteClient(clientId) {
       const client = state.clients.find(c => c.id === clientId);
       if (!client) { toast("Client not found."); return; }
       if (clientId === "CL-0000") { toast("This workspace record cannot be deleted."); return; }
-      const parcelCount = state.parcels.filter(p => p.clientId === clientId).length;
-      const invoiceCount = (state.invoices || []).filter(i => i.clientId === clientId).length;
-      const warnMsg = (parcelCount || invoiceCount)
-        ? `Delete client ${escLabelText(client.name)} (${shortClientCode(client)})? This will also remove their ${parcelCount} parcel(s), ${invoiceCount} invoice(s), wallet history, and any linked login from the live database. This cannot be undone.`
-        : `Delete client ${escLabelText(client.name)} (${shortClientCode(client)})? This cannot be undone.`;
-      if (!window.confirm(warnMsg)) return;
 
-      // Cloud-first delete: the generic sync layer only inserts/updates, it never
-      // deletes rows, so removing a client from local state alone would leave it
-      // in Supabase and it would reappear on next reload. Delete directly instead.
       const cid = client._uuid;
       const sb = window.__nvSb;
-      if (sb && cid) {
-        Promise.all([
-          sb.from("parcels").delete().eq("client_id", cid),
-          sb.from("invoices").delete().eq("client_id", cid),
-          sb.from("withdrawals").delete().eq("client_id", cid),
-          sb.from("payment_logs").delete().eq("client_id", cid),
-          sb.from("profiles").update({ status: "blocked", client_id: null }).eq("client_id", cid)
-        ]).catch(() => {}).then(() => {
-          sb.from("clients").delete().eq("id", cid).then(r => {
-            if (r && r.error) toast(`Cloud delete failed: ${r.error.message}`);
-          });
-        });
-      }
+      if (!sb || !cid) { toast("Cloud connection not ready — nothing was deleted.", "error"); return; }
 
-      state.parcels = state.parcels.filter(p => p.clientId !== clientId);
-      state.invoices = (state.invoices || []).filter(i => i.clientId !== clientId);
-      state.walletWithdrawals = (state.walletWithdrawals || []).filter(w => w.clientId !== clientId);
-      state.paymentLogs = (state.paymentLogs || []).filter(pl => pl.clientId !== clientId);
-      state.users = (state.users || []).filter(u => u.clientId !== clientId);
-      if (state.activeRateClient === clientId) state.activeRateClient = null;
-      state.clients = state.clients.filter(c => c.id !== clientId);
-      saveState();
-      render();
-      toast(`${client.name} and related records removed.`);
+      const nm = client.name || shortClientCode(client);
+
+      /* Local state is page-limited (loadAll caps every table), so counting
+         from it would under-report and could green-light a delete that
+         destroys records the browser never loaded. Ask the server. */
+      const cnt = (t) => Promise.resolve(
+        sb.from(t).select("id", { count: "exact", head: true }).eq("client_id", cid)
+      ).catch(function(){ return { count: null }; });
+
+      toast("Checking " + nm + "'s records…");
+
+      Promise.all([cnt("withdrawals"), cnt("payment_logs"), cnt("parcels"), cnt("invoices")])
+        .then(function(res){
+          const nW = res[0] && res[0].count, nP = res[1] && res[1].count;
+          const nPar = res[2] && res[2].count, nInv = res[3] && res[3].count;
+
+          if (nW === null || nP === null) {
+            toast("Could not read " + nm + "'s payout history, so nothing was deleted.", "error");
+            return;
+          }
+
+          /* A client who has ever been paid is not deletable. Their payout and
+             payment rows are the evidence in any dispute, and orphaning or
+             erasing them to tidy a list is never the right trade. */
+          if (nW > 0 || nP > 0) {
+            const msg = nm + " has " + nW + " payout record(s) and " + nP + " payment log entr(y/ies).\n\n" +
+              "Deleting the account would destroy that payout history, which you may need for a dispute or an audit. " +
+              "NovaX will not do that.\n\n" +
+              "Set the account to Inactive instead? They stop appearing as active and their login is blocked, but every record is kept.";
+            if (window.confirm(msg)) nvDeactivateClient(cid, nm);
+            return;
+          }
+
+          const typed = window.prompt(
+            "Permanently delete " + nm + "?\n\n" +
+            "This removes " + nPar + " parcel(s) and " + nInv + " invoice(s) and unlinks their login. It cannot be undone.\n" +
+            "They have no payout history, so nothing financial is lost.\n\n" +
+            "Type DELETE to confirm.", "");
+          if (String(typed || "").trim().toUpperCase() !== "DELETE") { toast("Cancelled — nothing was deleted."); return; }
+
+          /* Sequential and checked. The old parallel version could delete the
+             parcels, fail on the invoices, and still drop the client row --
+             leaving invoices pointing at a merchant that no longer exists. */
+          const done = [];
+          const step = (label, run) => () => Promise.resolve(run())
+            .catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+            .then(function(r){
+              if (r && r.error) throw new Error(label + " — " + r.error.message);
+              done.push(label);
+            });
+
+          const refresh = () => {
+            if (typeof nvRefresh === "function") nvRefresh(["clients","parcels","invoices"]);
+            else if (typeof loadAll === "function") loadAll();
+          };
+
+          step("parcels", () => sb.from("parcels").delete().eq("client_id", cid))()
+            .then(step("invoices", () => sb.from("invoices").delete().eq("client_id", cid)))
+            .then(step("login unlinked", () => sb.from("profiles").update({ status: "blocked", client_id: null }).eq("client_id", cid)))
+            .then(step("client record", () => sb.from("clients").delete().eq("id", cid)))
+            .then(function(){
+              if (state.activeRateClient === clientId) state.activeRateClient = null;
+              toast(nm + " deleted.");
+              refresh();
+            })
+            .catch(function(err){
+              /* Say exactly how far it got. A half-finished delete that
+                 reports success is how orphaned rows appear months later. */
+              toast("Stopped at " + err.message +
+                    (done.length ? " — already removed: " + done.join(", ") + "." : " — nothing was removed."),
+                    "error");
+              refresh();
+            });
+        });
     }
 
     /* NovaX new (per-client pickup city): pickup was hardcoded to Karachi in
@@ -12482,6 +12628,51 @@ html,body{ background:var(--bg); color:var(--ink); }
        server-side from the destination city and the client's rate card. Until
        that function learns a same-city rule, a Lahore->Lahore booking is still
        priced on the Zone B card. */
+    /* Merchants choose their own pricing mode from the card in their portal.
+       This exists for the case that choice creates: a merchant on per-km whose
+       area is not mapped has their Karachi bookings refused by design, and
+       without this the only way to move them was a SQL statement. */
+    function nvSetClientPricingMode(clientId, mode) {
+      const client = clientById(clientId);
+      if (!client || !client._uuid) { toast("Client not found.", "error"); return; }
+      const sb = window.__nvSb;
+      if (!sb) { toast("Cloud connection not ready.", "error"); return; }
+      const want = (mode === "distance") ? "distance" : "flat";
+      if (nvClientPricingMode(client) === want) return;
+
+      const nm = client.name || shortClientCode(client);
+      const msg = want === "distance"
+        ? ("Move " + nm + " to per-kilometre pricing?\n\nTheir Karachi parcels will be priced on road distance from their pickup point (Rs 120 min, Rs 20/km, Rs 320 cap). If their pickup point is not set, their Karachi bookings will be refused rather than quietly charged the flat rate.")
+        : ("Move " + nm + " to the flat rate?\n\nEvery parcel becomes Rs 200 regardless of distance. Use this if they are stuck on per-km and cannot book.");
+      if (!window.confirm(msg)) { renderAdmin(); return; }
+
+      const key = "pmode:" + client._uuid;
+      if (!nvClaim(key)) { toast("Already saving that change — one moment."); return; }
+      Promise.resolve(sb.rpc("admin_set_client_pricing_mode", { p_client_id: client._uuid, p_mode: want }))
+        .catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+        .then(function(r){
+          nvRelease(key);
+          const refresh = function(){
+            if (typeof nvRefresh === "function") nvRefresh(["clients"]);
+            else if (typeof loadAll === "function") loadAll();
+          };
+          var d = r && r.data;
+          if (typeof d === "string") { try { d = JSON.parse(d); } catch(e){} }
+          if ((r && r.error) || !(d && d.ok)) {
+            refresh();
+            var why = (r && r.error && r.error.message) || (d && d.error) || "unknown error";
+            if (/function .*does not exist|schema cache|not find/i.test(String(why))) {
+              toast("Pricing modes are not enabled on this project yet — run sql_novax_pricing_choice.sql first.", "error");
+            } else {
+              toast("Could not change " + nm + "'s pricing: " + why, "error");
+            }
+            return;
+          }
+          toast(nm + " is now on " + (want === "distance" ? "per-kilometre" : "flat") + " pricing.", "success");
+          refresh();
+        });
+    }
+
     function setClientPickupCity(clientId, city) {
       const client = clientById(clientId);
       if (!client || !client.id) { toast("Client not found.", "error"); return; }
@@ -13100,11 +13291,23 @@ html,body{ background:var(--bg); color:var(--ink); }
       // status. This runs as one atomic Postgres RPC (invoice status only).
       const client = clientById(invoice.clientId);
       if (window.__nvSb && invoice._uuid) {
+        var nvInvKey = "inv:" + invoice._uuid;
+        if (!nvClaim(nvInvKey)) { toast("Already closing this invoice — one moment."); return; }
+        var nvInvRefresh = function(){
+          if (typeof nvRefresh === "function") nvRefresh(["invoices","clients","wallet_ledger","payment_logs"]);
+          else if (typeof loadAll === "function") loadAll();
+        };
         window.__nvSb.rpc("admin_mark_invoice_paid", { p_invoice_id: invoice._uuid }).then(r => {
-          if (r && r.error) { toast(`Could not close ${id}: ${r.error.message}`, "error"); return; }
-          if (typeof nvRefresh === "function") nvRefresh(["invoices","clients","wallet_ledger","payment_logs"]); else if (typeof loadAll === "function") loadAll();
+          nvRelease(nvInvKey);
+          if (r && r.error) {
+            nvAdminOutcome({ error: r.error, refresh: nvInvRefresh,
+              staleMsg: `${id} was already closed — list refreshed.`,
+              failPrefix: `Could not close ${id}` });
+            return;
+          }
+          nvInvRefresh();
           toast(isDueInvoice ? `${id} marked Paid to NovaX. ${money(invoice.dueToNovax)} delivery charges collected from ${client.name}.` : `${id} closed as Settled. Wallet balance is unaffected -- payouts happen from the withdrawal queue.`);
-        }).catch(e => toast(`Could not close ${id}: ${(e && e.message) || e}`, "error"));
+        }).catch(e => { nvRelease(nvInvKey); nvInvRefresh(); toast(`Could not close ${id}: ${(e && e.message) || e}`, "error"); });
         return;
       }
       // Live settlement must never succeed locally -- block and tell admin to
@@ -14086,12 +14289,18 @@ html,body{ background:var(--bg); color:var(--ink); }
       var sb = window.__nvSb;
       if (!sb) return;
       if (!approve && !window.confirm("Deny this request? The merchant stays capped until you approve a later one.")) return;
+      var nvQKey = "quota:" + requestId;
+      if (!nvClaim(nvQKey)) { toast("Already saving that decision — one moment."); return; }
       Promise.resolve(sb.rpc("admin_ai_quota_decide", { p_request_id: requestId, p_approve: !!approve, p_note: null }))
         .catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
         .then(function(r){
-          if (r && r.error){ toast("Could not save that decision: " + r.error.message, "error"); return; }
-          toast(approve ? "Approved \u2014 their 50 messages are back." : "Request denied.", approve ? "success" : "info");
-          loadAiQuotaQueue();
+          nvRelease(nvQKey);
+          nvAdminOutcome({
+            error: r && r.error, refresh: loadAiQuotaQueue,
+            okMsg: approve ? "Approved \u2014 their 50 messages are back." : "Request denied.",
+            staleMsg: "Another admin already decided this request — queue refreshed.",
+            failPrefix: "Could not save that decision"
+          });
         });
     }
 
