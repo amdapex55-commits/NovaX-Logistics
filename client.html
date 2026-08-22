@@ -2548,8 +2548,13 @@
       ],
       resolvedAlerts:[]
     };
+    /* Above cleanStartState() on purpose: that function runs at top level on a
+       first load with no cached state. Declared further down the file it was
+       still undefined at that point and the blank workspace seeded an
+       undefined rate -- the same trap already fixed in admin.html. */
+    var NV_ZONE_A_BASE=200;
     function cleanStartState(){
-      const blankClient={ id:"CL-0000", name:"New Merchant Workspace", owner:"", city:"", walletTopup:0, shippingDue:0, risk:0, status:"Draft", rate:240, rateCard:{overnight:240,additionalKg:80,detainBase:520,detainAdditionalKg:120,overlandBase:900,overlandAdditionalKg:45}, problemsResolved:0, health:0, walletBalance:0 };
+      const blankClient={ id:"CL-0000", name:"New Merchant Workspace", owner:"", city:"", walletTopup:0, shippingDue:0, risk:0, status:"Draft", rate:NV_ZONE_A_BASE, rateCard:defaultRateCard(NV_ZONE_A_BASE), problemsResolved:0, health:0, walletBalance:0 };
       return {
         _cleanStartV2:true,
         selectedAwb:"", activeStatusQueue:STATUS_TAGS[0], activeRateClient:"", activeSackMode:"create",
@@ -2685,7 +2690,6 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
    real Zone A rate in the database was 100, so a client with a missing
    rate card silently priced at a third number nobody chose. Kept in step
    with the DB rate (now 200) so the two cannot disagree. */
-    var NV_ZONE_A_BASE=200;
     function defaultRateCard(rate){ rate=rate||NV_ZONE_A_BASE; return { overnight:rate, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 }; }
     function normalizeRateCard(raw, rate){
       const fallback=defaultRateCard(rate);
@@ -8327,6 +8331,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            No area, or the RPC not deployed -> we fall through to exactly the
            call that has always been made. Flat pricing is never routed
            through the new code, and no existing parcel is affected. */
+        /* NO SILENT FALLBACK.
+
+           This block used to drop to flat pricing in two places: when no
+           delivery area was picked, and when the geo RPC was missing. For a
+           merchant who explicitly chose per-kilometre that means being charged
+           a rate they did not agree to, with nothing on screen saying so --
+           the exact behaviour this whole feature removes. A merchant on
+           per-km now gets a refused booking and a reason instead of a
+           surprise price. Flat merchants are untouched and never enter here. */
+        var wantsDistance = (typeof nvPricingMode === "function") && nvPricingMode() === "distance";
+        var isKarachiDest = String(o.city || "").trim().toLowerCase() === "karachi";
+
+        if (wantsDistance && isKarachiDest && !o.destAreaId) {
+          return Promise.reject(new Error(
+            "You are on per-kilometre pricing and we do not have a delivery area for this parcel yet, so there is no distance to price it on. Pick the delivery area (or the nearest one) and book again — we will not put this parcel on the flat rate without asking."
+          ));
+        }
+
         if (o.destAreaId) {
           var geoArgs = Object.assign({}, argsWithOpen, {
             p_origin_area_id: null,            // server resolves the default pickup
@@ -8335,6 +8357,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           return Promise.resolve(sb.rpc("client_book_parcel_geo", geoArgs)).then(function(rg){
             var mg = (rg && rg.error && rg.error.message) || "";
             if (mg && /client_book_parcel_geo|does not exist|not find|schema cache|no function matches/i.test(mg)) {
+              if (wantsDistance) {
+                // Flat-pricing them here would be the silent substitution again.
+                throw new Error("Per-kilometre pricing is not available on the server right now. Your parcel has not been booked, because we will not charge you the flat rate instead without asking. Please try again shortly or contact support.");
+              }
               console.warn("NovaX: client_book_parcel_geo not deployed - booking on flat pricing.");
               return sb.rpc("client_book_parcel", argsWithOpen);
             }
@@ -8563,7 +8589,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             state.identityVerified=true;
             state.clientRecordMissing=true;
             state.accountNotLinked=false;
-            state.client={ id:MY, name:"We're preparing your workspace. Refresh or sign in again.", walletBalance:0, rate:0, rateCard:{}, premiumTier:"", walletTopup:0, shippingDue:0, subAccounts:0 };
+            state.client={ id:MY, name:"We're preparing your workspace. Refresh or sign in again.", walletBalance:0, rate:NV_ZONE_A_BASE, rateCard:defaultRateCard(NV_ZONE_A_BASE), premiumTier:"", walletTopup:0, shippingDue:0, subAccounts:0 };
             state.clients=[state.client];
             state.parcels=[]; state.invoices=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[]; state.walletLedger=[]; state.pickupRequests=[];
             state.clientBankDetails=null;
@@ -11188,7 +11214,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       __introTries++;
       if(hasClientIdentity()){
         clearInterval(__introTimer);
-        setTimeout(function(){ panel.classList.add("open"); openPanel(); },900);
+        setTimeout(function(){
+          /* Same queue as the review prompt: never open the intro on top of
+             the pricing card. */
+          var go = function(){ panel.classList.add("open"); openPanel(); };
+          if(typeof window.__nvWaitForGate === "function") window.__nvWaitForGate(go); else go();
+        },900);
       } else if(__introTries>40){ clearInterval(__introTimer); }
     },500);
   }
@@ -13430,7 +13461,14 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
         if(!r || r.error || !r.data) return;
         var d = r.data;
         if(typeof d === "string"){ try{ d = JSON.parse(d); }catch(e){ return; } }
-        if(d && d.eligible === true) setTimeout(show, 1400);
+        /* The pricing card decides what this merchant is charged, so it goes
+           first. Without this both overlays open and the review prompt --
+           which mounts later -- lands on top of a decision they have not
+           made yet. */
+        if(d && d.eligible === true) setTimeout(function(){
+          if(typeof window.__nvWaitForGate === "function") window.__nvWaitForGate(show);
+          else show();
+        }, 1400);
       }).catch(function(){});
     })();
   }
@@ -14121,6 +14159,30 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
   .nvpm-confirm:disabled{ opacity:.45; cursor:not-allowed; box-shadow:none; }
   .nvpm-foot{ margin:9px 0 0; text-align:center; font-size:11.5px; color:var(--pm-ink-3); }
 
+  /* Confirmation: the chosen card pulses and its tick draws, the rest of the
+     dialog settles back, then the whole thing leaves. */
+  .nvpm-card.nvpm-done .nvpm-confirm,
+  .nvpm-card.nvpm-done .nvpm-compare,
+  .nvpm-card.nvpm-done .nvpm-same{ opacity:.35; transition:opacity .3s ease; }
+  /* Must outrank #nvpmOverlay.nvpm-in .nvpm-left/.nvpm-right (1 id, 2 classes),
+     which still owns `animation` on these elements after the entrance. Scoped
+     with the id so the win animation actually plays instead of being ignored. */
+  #nvpmOverlay.nvpm-in .nvpm-opt.nvpm-won{
+    animation:nvpmWon .62s cubic-bezier(.34,1.4,.64,1) both;
+    border-color:var(--pm-green) !important;
+  }
+  #nvpmOverlay .nvpm-opt.nvpm-won .nvpm-tick{ animation:nvpmTickPop .5s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes nvpmWon{
+    0%{ transform:none; }
+    40%{ transform:scale(1.035); box-shadow:0 20px 44px -16px rgba(12,124,89,.85); }
+    100%{ transform:scale(1.01); box-shadow:0 16px 36px -18px rgba(12,124,89,.7); }
+  }
+  @keyframes nvpmTickPop{
+    0%{ transform:scale(1); }
+    45%{ transform:scale(1.5); }
+    100%{ transform:scale(1.15); }
+  }
+
   @media (max-width:620px){
     #nvpmOverlay{ align-items:flex-end; padding:0; }
     .nvpm-card{
@@ -14140,7 +14202,9 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
 
   @media (prefers-reduced-motion:reduce){
     #nvpmOverlay, .nvpm-card, .nvpm-opt, .nvpm-confirm, .nvpm-tick, .nvpm-bar-d, .nvpm-bar-f{ transition:none !important; }
-    #nvpmOverlay.nvpm-in .nvpm-left, #nvpmOverlay.nvpm-in .nvpm-right{ animation:none !important; }
+    #nvpmOverlay.nvpm-in .nvpm-left, #nvpmOverlay.nvpm-in .nvpm-right,
+    #nvpmOverlay.nvpm-in .nvpm-opt.nvpm-won,
+    #nvpmOverlay .nvpm-opt.nvpm-won .nvpm-tick{ animation:none !important; }
   }
 </style>
 
@@ -14154,6 +14218,18 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
    quietly dropped back onto the flat rate. */
 (function(){
   var CHOSEN = null, BUSY = false;
+
+  /* Three things want the screen on a first load: this card, the review
+     prompt, and the Autopilot intro. Stacked, they bury each other. This card
+     wins because it decides what the merchant is charged -- the other two wait
+     their turn rather than being suppressed. */
+  var GATE = window.__nvPricingGate = { pending:false, open:false };
+  window.__nvGateBusy = function(){ return !!(GATE.pending || GATE.open); };
+  window.__nvWaitForGate = function(fn, waited){
+    waited = waited || 0;
+    if(!window.__nvGateBusy() || waited > 90000){ fn(); return; }
+    setTimeout(function(){ window.__nvWaitForGate(fn, waited + 500); }, 500);
+  };
 
   function el(id){ return document.getElementById(id); }
 
@@ -14190,13 +14266,26 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
       var hf = Math.max(4, Math.round(flat / peak * 52));
       return '<div class="nvpm-bar">' +
         '<div class="nvpm-bar-pair">' +
-          '<div class="nvpm-bar-d" style="height:' + hd + 'px" title="Per km: Rs ' + d + '"></div>' +
-          '<div class="nvpm-bar-f" style="height:' + hf + 'px" title="Flat: Rs ' + flat + '"></div>' +
+          '<div class="nvpm-bar-d" style="height:2px" data-h="' + hd + '" title="Per km: Rs ' + d + '"></div>' +
+          '<div class="nvpm-bar-f" style="height:2px" data-h="' + hf + '" title="Flat: Rs ' + flat + '"></div>' +
         '</div>' +
         '<div class="nvpm-bar-amt">' + d + ' / ' + flat + '</div>' +
         '<div class="nvpm-bar-km">' + km + ' km</div>' +
       '</div>';
     }).join("");
+  }
+
+  /* Staggered so the eye follows the curve left to right instead of the whole
+     chart appearing at once. Honours reduced-motion by jumping to final. */
+  function growBars(){
+    var reduce = false;
+    try{ reduce = matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+    var bars = document.querySelectorAll("#nvpmBars [data-h]");
+    Array.prototype.forEach.call(bars, function(b, i){
+      var h = b.getAttribute("data-h") + "px";
+      if(reduce){ b.style.height = h; return; }
+      setTimeout(function(){ b.style.height = h; }, i * 55);
+    });
   }
 
   /* Per-km needs an origin. Rather than let a merchant pick it and then
@@ -14238,14 +14327,21 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
 
   function show(){
     var ov = el("nvpmOverlay"); if(!ov) return;
+    GATE.pending = false; GATE.open = true;
     drawBars();
     ov.classList.add("nvpm-open");
+    try{ document.body.style.overflow = "hidden"; }catch(e){}
     requestAnimationFrame(function(){ ov.classList.add("nvpm-in"); });
+    // Bars grow into place once the cards have landed, so the comparison
+    // reads as a result rather than as decoration that was always there.
+    setTimeout(growBars, 520);
     var first = document.querySelector("[data-nvpm]");
     if(first) setTimeout(function(){ try{ first.focus(); }catch(e){} }, 420);
   }
   function hide(){
     var ov = el("nvpmOverlay"); if(!ov) return;
+    GATE.open = false; GATE.pending = false;
+    try{ document.body.style.overflow = ""; }catch(e){}
     ov.classList.remove("nvpm-in"); ov.classList.add("nvpm-out");
     setTimeout(function(){ ov.classList.remove("nvpm-open","nvpm-out"); }, 340);
   }
@@ -14296,7 +14392,15 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
         }
 
         if(window.state && state.client) state.client.pricingMode = CHOSEN;
-        hide();
+
+        // Land the choice visually before the card leaves, so the merchant
+        // sees which one took rather than just a dialog vanishing.
+        var card = document.querySelector(".nvpm-card");
+        var won  = document.querySelector('[data-nvpm="' + CHOSEN + '"]');
+        if(card) card.classList.add("nvpm-done");
+        if(won)  won.classList.add("nvpm-won");
+        setTimeout(hide, 620);
+
         if(typeof toast === "function"){
           toast(CHOSEN === "distance"
             ? "You are on per-kilometre pricing. Your Karachi bookings now quote by distance."
@@ -14320,7 +14424,7 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
 
   function boot(force){
     wire();
-    var tries = 0;
+    var tries = 0, wsTries = 0;
     (function waitForSb(){
       var sb = window.__nvSb;
       if(!sb){
@@ -14334,16 +14438,28 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,#e6f6ee);box-shadow:inset 
           if(typeof d === "string"){ try{ d = JSON.parse(d); }catch(e){ return; } }
           if(!d) return;
 
+          /* Straight after signup the workspace row can lag the first dashboard
+             paint by a second or two. Without this retry a brand new merchant
+             -- the one who most needs to pick a rate before their first
+             booking -- would simply never be asked. */
+          if(d.eligible === false && d.reason === "no_workspace" && ++wsTries <= 15){
+            return setTimeout(waitForSb, 1000);
+          }
+
           // Remember the answer either way so the booking form can key off it.
           if(window.state && state.client && d.mode) state.client.pricingMode = d.mode;
 
           if(d.eligible === true){
-            // Let the dashboard settle, and let NV_GEO finish loading so the
-            // card quotes the same curve the booking form will.
+            // Claim the gate immediately, before the delay, so the review
+            // prompt and the Autopilot intro know to stand down rather than
+            // opening a second full-screen overlay on top of this one.
+            GATE.pending = true;
             setTimeout(show, force ? 300 : 1800);
+          } else {
+            GATE.pending = false; GATE.open = false;
           }
         })
-        .catch(function(){});
+        .catch(function(){ GATE.pending = false; });
     })();
   }
 

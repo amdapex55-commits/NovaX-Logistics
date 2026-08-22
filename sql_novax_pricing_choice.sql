@@ -238,8 +238,18 @@ begin
     new.distance_km  := null;
   end if;
 
-  -- Distance merchants are not forced the other way: Lahore is flat 200 in
-  -- both modes, so a flat-priced parcel is legitimate for them.
+  -- The mirror case. Lahore IS flat for a distance merchant, so only a
+  -- Karachi parcel is suspect: priced flat there, the merchant is paying a
+  -- rate they explicitly declined. Backstop only -- both booking paths
+  -- already refuse this before it reaches the database.
+  if v_mode = 'distance'
+     and lower(coalesce(new.city, '')) = 'karachi'
+     and coalesce(new.pricing_mode, '') not like 'distance%' then
+    raise exception
+      'Client % chose per-kilometre pricing but this Karachi parcel was priced flat. Booking refused rather than charging a rate the merchant declined.',
+      new.client_id;
+  end if;
+
   return new;
 end
 $fn$;

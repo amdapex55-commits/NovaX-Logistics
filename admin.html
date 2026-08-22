@@ -7171,6 +7171,11 @@ html,body{ background:var(--bg); color:var(--ink); }
     function zoneLabel(zone) {
       return zone === "A" ? "Zone A (Karachi)" : "Zone B (Lahore / Islamabad / Rawalpindi)";
     }
+    /* 'flat' unless the merchant chose otherwise -- matches the column default
+       so an unanswered merchant is quoted exactly what they are billed today. */
+    function nvClientPricingMode(client) {
+      return String((client && client.pricingMode) || "flat") === "distance" ? "distance" : "flat";
+    }
     function normalizeRateCard(raw, rate) {
       const fallback = defaultRateCard(rate || NV_ZONE_A_BASE);
       if (raw && raw.A && raw.B && typeof raw.A.overnight === "number" && typeof raw.B.overnight === "number") {
@@ -7209,7 +7214,15 @@ html,body{ background:var(--bg); color:var(--ink); }
       const zone = zoneForCity(el.value);
       const weightEl = document.getElementById("bookingWeight");
       const breakdown = bookingChargeBreakdown(rc, zone, weightEl ? weightEl.value : "0.8 kg");
-      hint.textContent = zoneLabel(zone) + " · base Rs " + fmt(breakdown.base) + " + additional Rs " + fmt(breakdown.additional) + " (" + breakdown.extraKg + " extra kg) = estimated total Rs " + fmt(breakdown.total) + (breakdown.overCap ? " (over 5kg normal slab, confirm manually)" : "");
+      /* A per-km merchant is not priced off this card at all. Printing a flat
+         total for them is the same silent mis-quote this change exists to
+         remove, so say which basis actually applies. */
+      const mode = nvClientPricingMode(client);
+      if (mode === "distance" && zone === "A") {
+        hint.textContent = "Per-kilometre merchant \u00b7 Karachi is priced on road distance from their pickup point (Rs 120 min, Rs 20/km, Rs 320 cap), not this flat card.";
+        return;
+      }
+      hint.textContent = zoneLabel(zone) + " · base Rs " + fmt(breakdown.base) + " + additional Rs " + fmt(breakdown.additional) + " (" + breakdown.extraKg + " extra kg) = estimated total Rs " + fmt(breakdown.total) + (breakdown.overCap ? " (over 5kg normal slab, confirm manually)" : "") + (mode === "distance" ? " \u00b7 per-km merchant, flat applies outside Karachi" : "");
     }
 
     /* Delivered Parcel Pool filter. Re-runs the same renderAdmin() the page
@@ -7395,6 +7408,22 @@ html,body{ background:var(--bg); color:var(--ink); }
       for (var id in required) { if (!v(id)) { toast(required[id] + " is required."); return; } }
       var phone = v("abkPhone").replace(/\D/g, "");
       if (!/^03\d{9}$/.test(phone)) { toast("Phone must be 11 digits starting 03."); return; }
+
+      /* admin_book_parcel_for_client has no distance variant, so a Karachi
+         parcel booked here for a per-km merchant would be charged the flat
+         rate they did not choose. Refuse rather than mis-price: the merchant
+         portal can book it correctly, and ops can move them to flat if that
+         is genuinely what they want. */
+      var abkClient = clientById(NV_ABK.clientId);
+      if (nvClientPricingMode(abkClient) === "distance" &&
+          String(v("abkCity") || "").trim().toLowerCase() === "karachi") {
+        var abkOut = document.getElementById("abkResult");
+        var abkMsg = (abkClient && abkClient.name ? abkClient.name : "This merchant") +
+          " is on per-kilometre pricing, which is measured from their pickup point. Booking here would charge them the flat rate instead, so it has been stopped. Book this Karachi parcel from their own portal, or move them to flat pricing first.";
+        if (abkOut) abkOut.innerHTML = '<span style="color:#e0604b">' + nvEscAdmin(abkMsg) + '</span>';
+        toast("Not booked — " + (abkClient && abkClient.name ? abkClient.name : "this merchant") + " is priced per kilometre.", "error");
+        return;
+      }
 
       var btn = document.getElementById("abkSubmit");
       var old = btn ? btn.textContent : "";
@@ -14947,7 +14976,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
       function sigOf(row){ return JSON.stringify(row,function(k,v){ return k==="updated_at"?undefined:v; }); }
       var DRC={ overnight:NV_ZONE_A_BASE, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 };
-      function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", pickupCity:m.pickupCity||"Karachi", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", rate:Number(r.rate||NV_ZONE_A_BASE), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||NV_ZONE_A_BASE)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
+      function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", pickupCity:m.pickupCity||"Karachi", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", pricingMode:(String(r.pricing_mode||"flat")==="distance"?"distance":"flat"), rate:Number(r.rate||NV_ZONE_A_BASE), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||NV_ZONE_A_BASE)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
       function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0),
         /* NovaX fix (status rename): this was a raw `r.status` read, so any
