@@ -247,10 +247,14 @@
       return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
     });
   }
+  /* admin, client and rider all render "Rs 1,234" via a shared
+     Intl.NumberFormat. This page -- the only one a customer actually sees,
+     and the one with no login -- was the odd one out at "₨ 1,234".
+     Same value, different face, on the highest-traffic surface. */
   function money(n){
     var v=Number(n||0);
     if(!isFinite(v)) v=0;
-    return "₨ "+v.toLocaleString("en-PK",{maximumFractionDigits:0});
+    return "Rs "+v.toLocaleString("en-PK",{maximumFractionDigits:0});
   }
   function when(x){
     if(!x) return "";

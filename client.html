@@ -3401,7 +3401,13 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     window.nvFormatNumber=nvFormatNumber;
     function money(v){ return PKR.format(v).replace("PKR","Rs"); }
     function fmt(v){ return nvFormatNumber(v); }
-    function statusClass(p){ const a=alertForParcel(p); if(a.level==="critical"||p.risk>=65||p.exception) return "bad"; if(a.level==="warning") return "warn"; if(["Delivered","Return to shipper"].includes(p.status)) return "good"; if(p.stage<5) return "info"; if(p.stage<8) return "warn"; return "good"; }
+    /* Kept deliberately in step with admin.html's statusClass(). The
+       "Cancelled by client" early-return was present there and missing here,
+       so a cancelled parcel fell through to the stage-based branches and
+       rendered as info/warn/good in the merchant portal while showing as
+       neutral in admin -- the same parcel, two different colours, depending
+       on who was looking at it. */
+    function statusClass(p){ const a=alertForParcel(p); if(a.level==="critical"||p.risk>=65||p.exception) return "bad"; if(a.level==="warning") return "warn"; if(p.status==="Cancelled by client") return ""; if(["Delivered","Return to shipper"].includes(p.status)) return "good"; if(p.stage<5) return "info"; if(p.stage<8) return "warn"; return "good"; }
     function isRefusalReview(p){ return /refus|attempt disputed|consignee denies|not available/i.test(`${p.status} ${p.exception||""} ${(p.steps||[]).join(" ")}`); }
     function meterClass(v){ if(v>=75) return "red"; if(v>=45) return "amber"; return "blue"; }
     function metricCard(label,value,fill,caption,kind="",icon="",action=""){
@@ -8618,12 +8624,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           sb.from("parcels").select("*").eq("client_id",MY)
             .not("status","in","("+NV_CLOSED_STATUSES.map(function(x){return '"'+x+'"';}).join(",")+")")
             .order("booked_at",{ascending:false}),
-          sb.from("invoices").select("*").eq("client_id",MY).order("created_at",{ascending:false}),
-          sb.from("withdrawals").select("*").eq("client_id",MY).order("created_at",{ascending:false}),
-          sb.from("payment_logs").select("*").eq("client_id",MY).order("created_at",{ascending:false}),
+          /* These four were unbounded and are re-issued on every debounced
+             realtime change, so a long-tenured merchant re-pulled their entire
+             invoice/payout/payment history from scratch on every tick. Capped
+             to match wallet_ledger, which was already sensibly limited. Newest
+             first, so the cap only ever drops old history the dashboard does
+             not surface anyway. */
+          sb.from("invoices").select("*").eq("client_id",MY).order("created_at",{ascending:false}).limit(500),
+          sb.from("withdrawals").select("*").eq("client_id",MY).order("created_at",{ascending:false}).limit(500),
+          sb.from("payment_logs").select("*").eq("client_id",MY).order("created_at",{ascending:false}).limit(500),
           sb.from("store_connections").select("*").eq("client_id",MY),
           sb.from("wallet_ledger").select("*").eq("client_id",MY).order("created_at",{ascending:false}).limit(500),
-          sb.from("pickup_requests").select("*").eq("client_id",MY).order("created_at",{ascending:false})
+          sb.from("pickup_requests").select("*").eq("client_id",MY).order("created_at",{ascending:false}).limit(500)
         ]).then(function(res){
           var c=res[0]&&res[0].data;
           // NovaX fix (High #3 - "My Store" fallback): a client_id can exist on
@@ -9139,7 +9151,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }catch(e){}
     }
     (function(){
-      setInterval(function(){ if(!document.hidden) renderDashboardEmptyState(); },15000);
+      /* Removed: a second 15s interval calling renderDashboardEmptyState().
+         Another one already does exactly this (alongside mountWelcomeStrip),
+         so the two together re-ran the same DOM work every ~7.5s for the
+         lifetime of the tab. */
       setTimeout(renderDashboardEmptyState,400);
       document.addEventListener("DOMContentLoaded",renderDashboardEmptyState);
     })();
