@@ -1946,7 +1946,7 @@
                          disabled -- disabled inputs are omitted from form data. -->
                     <input id="bookingPickupCity" class="nv-locked" value="Karachi" readonly tabindex="-1" aria-readonly="true">
                     <div class="footer-note" id="bookingPickupNote">All pickups run from our Karachi hub.</div></div>
-                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote();try{nvAutoAreaFromAddress()}catch(e){}"><option value="">Select destination city…</option><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
+                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote();try{nvAutoAreaFromAddress()}catch(e){};try{nvCheckBookingCity()}catch(e){}"><option value="">Select destination city…</option><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
                   <!-- NovaX (distance pricing): shown only for Karachi, and only
                        once the areas exist server-side. Hidden entirely otherwise,
                        so a merchant on flat pricing sees no change at all. -->
@@ -1969,6 +1969,7 @@
                   <div class="field"><label>Your Order ID</label><input id="bookingOrderId" placeholder="e.g. #1042 (from your website)" maxlength="40" autocomplete="off"><div class="footer-note" style="margin-top:4px">Optional. Printed on the AWB so you can match the parcel to your own order.</div></div>
                   <div class="field"><label>Allow to Open</label><select id="bookingAllowOpen"><option value="No" selected>No &mdash; do not allow</option><option value="Yes">Yes &mdash; customer may open before paying</option></select><div class="footer-note" style="margin-top:4px">Off by default. If Yes, it is printed on the AWB for the rider.</div></div>
                   <div class="field" style="grid-column:1/-1"><label>Delivery Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full delivery address where the parcel is going" required></textarea></div>
+                  <div id="bookingCityWarn" style="grid-column:1/-1;display:none;background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.5"></div>
                 </div>
                 <div class="footer-note" id="bookingConfirmLine" style="display:none;margin-top:12px;font-weight:700;color:var(--green)"></div>
               </div>
@@ -4132,6 +4133,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         btns+=`<button class="ghost-btn" type="button" onclick="copyExceptionMessage('${p.awb}')">Copy Message</button>`;
         if(!hideDeliveryActions) btns+=`<button class="action-btn" type="button" onclick="requestRedelivery('${p.awb}')">Reattempt</button><button class="ghost-btn" type="button" onclick="requestReturnToOrigin('${p.awb}')">Return</button>`;
         btns+=`<button class="ghost-btn" type="button" onclick="messageCustomerException('${p.awb}')">Message Customer</button>`;
+        /* Admin can correct a mis-typed city on a booked parcel; a merchant
+           previously had to phone support. This gives them the same route
+           without letting them re-zone their own parcel unilaterally --
+           changing the destination city changes the zone and therefore the
+           price, so it goes to ops as a request rather than a direct edit. */
+        btns+=`<button class="ghost-btn" type="button" onclick="requestAddressFix('${p.awb}')">Wrong address / city</button>`;
         return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>AI Exception Resolution</h3><p>Deterministic read of this parcel's issue and the fastest next step.</p></div><span class="chip warn">review needed</span></div><div class="money-grid">${moneyBox("Problem",cls.problem,"")}${moneyBox("Likely cause",cls.cause,"")}${moneyBox("Recommended action",cls.action,"")}</div><div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
       }catch(e){ return ""; }
     }
@@ -5693,6 +5700,57 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function openWalletDone(){ const m=document.getElementById("walletDoneModal"); m.classList.add("show"); const t=m.querySelector(".tick"); if(t){ t.style.animation="none"; void t.offsetWidth; t.style.animation=""; } }
     function closeWalletDone(){ document.getElementById("walletDoneModal").classList.remove("show"); }
 
+    /* Same marker table admin.html uses for its parcel-edit warning. Ported
+       here because catching a wrong city BEFORE the AWB exists is worth far
+       more than correcting it afterwards: the city sets the zone, the zone
+       sets the price, and a Karachi address filed as Lahore is exactly how
+       N3690090 went out mispriced and misrouted.
+
+       "Johar Town" is Lahore and "Gulistan-e-Johar" is Karachi, one word
+       apart, so matches resolve by earliest position then longest marker
+       rather than list order. Spelling in real addresses is loose, hence the
+       variants. It warns; it never blocks or overrides. */
+    var NV_CITY_MARKERS_C = {
+      Karachi: ["gulistan-e-jauhar","gulistan-e-johar","gulistan e johar","gulistan e jauhar",
+                "gulstan-e-johar","gulstan e johar","gulishtan-e-johar","gulshan-e-johar",
+                "johar block","jauhar block","gulshan-e-iqbal","gulshan e iqbal","gulshan block",
+                "korangi","nazimabad","malir","landhi","orangi","liaquatabad","shah faisal","lyari",
+                "saddar karachi","defence karachi","dha karachi","clifton","baldia","gadap","surjani",
+                "north karachi","federal b area","f.b area","saadabad","karachi"],
+      Lahore:   ["johar town","model town","gulberg lahore","dha lahore","defence lahore","iqbal town",
+                 "wapda town","faisal town","garden town","township lahore","cantt lahore","lahore"],
+      Islamabad:["islamabad","f-6","f-7","f-8","f-10","f-11","g-9","g-10","g-11","i-8","blue area"],
+      Rawalpindi:["rawalpindi","satellite town","chaklala","westridge","pindi"]
+    };
+    function nvCityFromAddressC(addr){
+      var a=String(addr||"").toLowerCase();
+      if(!a.trim()) return null;
+      var best=null,bestAt=Infinity,bestLen=0;
+      Object.keys(NV_CITY_MARKERS_C).forEach(function(city){
+        NV_CITY_MARKERS_C[city].forEach(function(m){
+          var at=a.indexOf(m);
+          if(at===-1) return;
+          if(at<bestAt || (at===bestAt && m.length>bestLen)){ best=city; bestAt=at; bestLen=m.length; }
+        });
+      });
+      return best;
+    }
+    function nvCheckBookingCity(){
+      var warn=document.getElementById("bookingCityWarn");
+      var citySel=document.getElementById("bookingCity");
+      var addr=document.getElementById("bookingAddress");
+      if(!warn||!citySel||!addr) return;
+      var chosen=String(citySel.value||"").trim();
+      var looks=nvCityFromAddressC(addr.value);
+      if(looks && chosen && looks.toLowerCase()!==chosen.toLowerCase()){
+        warn.style.display="";
+        warn.innerHTML="<b>This address looks like "+escLabelText(looks)+", not "+escLabelText(chosen)+".</b> "+
+          "The city sets the delivery zone and the price. Change it if the address is right \u2014 nothing is blocked.";
+      } else {
+        warn.style.display="none"; warn.innerHTML="";
+      }
+    }
+
     /* Booking */
     function updateZoneRateHint(){
       const el=document.getElementById("bookingCity");
@@ -5982,9 +6040,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(addrEl && !addrEl.dataset.nvAreaWired){
         addrEl.dataset.nvAreaWired="1";
         var t=null;
-        var run=function(){ clearTimeout(t); t=setTimeout(nvAutoAreaFromAddress,320); };
+        var run=function(){
+          clearTimeout(t);
+          t=setTimeout(function(){
+            try{ nvAutoAreaFromAddress(); }catch(e){}
+            /* Runs regardless of whether distance pricing is on --
+               nvAutoAreaFromAddress() bails early for non-Karachi merchants,
+               but a wrong city is a wrong city in every zone. */
+            try{ nvCheckBookingCity(); }catch(e){}
+          },320);
+        };
         addrEl.addEventListener("input", run);
-        addrEl.addEventListener("blur", nvAutoAreaFromAddress);
+        addrEl.addEventListener("blur", function(){
+          try{ nvAutoAreaFromAddress(); }catch(e){}
+          try{ nvCheckBookingCity(); }catch(e){}
+        });
         addrEl.addEventListener("paste", function(){ setTimeout(nvAutoAreaFromAddress,60); });
       }
       if(filterEl && !filterEl.dataset.wired){
@@ -6465,6 +6535,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ applyPickupCity(); }catch(e){}   // keep the merchant's real pickup city after a reset
       document.querySelectorAll("#client-newBooking .field.nvfield-missing").forEach(f=>f.classList.remove("nvfield-missing"));
       try{ updateZoneRateHint(); }catch(e){}
+      try{ var cw=document.getElementById("bookingCityWarn"); if(cw){ cw.style.display="none"; cw.innerHTML=""; } }catch(e){}
     }
 
     /* ===== Paste Order To Book (item 3) ===== */
@@ -7021,6 +7092,50 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         toast(`${awb} sent to operations for redelivery.`);
       }).catch(function(e){ toast(`Could not send the reattempt request: ${(e&&e.message)||e}`); throw e; });
     }
+    /* Merchant-side correction request for an already-booked parcel.
+
+       Deliberately a request, not an edit. The city sets the delivery zone
+       and therefore the fee, so letting a merchant silently re-zone a parcel
+       after booking would be a pricing hole. Ops reviews and applies it with
+       the admin parcel editor, which already has the same mismatch warning.
+
+       Uses client_create_ops_request, which already exists and is already
+       used by the reattempt and return flows -- no new RPC to deploy. */
+    function requestAddressFix(awb){
+      const p=state.parcels.find(x=>x.awb===awb);
+      if(!p){ toast("Parcel not found."); return Promise.reject(new Error("Parcel not found.")); }
+      if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment."); return Promise.reject(new Error("Cloud connection not ready.")); }
+
+      /* Pre-fill with what we can already see is wrong, so ops gets a
+         specific, actionable note instead of "address is wrong". */
+      let hint="";
+      try{
+        const looks=nvCityFromAddressC(p.address);
+        if(looks && p.city && looks.toLowerCase()!==String(p.city).toLowerCase()){
+          hint="The address looks like "+looks+" but the parcel is filed as "+p.city+". ";
+        }
+      }catch(e){}
+
+      const note=window.prompt(
+        "What needs correcting on "+awb+"?\n\n" +
+        "Currently filed as: "+(p.city||"(no city)")+"\n"+(p.address||"(no address)")+"\n\n" +
+        "Operations will review and apply the change.",
+        hint);
+      if(note===null) return Promise.resolve();
+      const body=String(note||"").trim();
+      if(!body){ toast("Describe what needs correcting so operations can act on it.","error"); return Promise.resolve(); }
+
+      toast(`Sending correction request for ${awb}...`);
+      return window.__nvSb.rpc("client_create_ops_request", { p_awb: awb, p_kind: "address_fix", p_note: body })
+        .then(function(r){
+          if(r && r.error){ toast(`Could not send that request: ${r.error.message}`,"error"); throw new Error(r.error.message); }
+          toast(`${awb} sent to operations. They will confirm once corrected.`,"success");
+          try{ if(typeof loadAll==="function") loadAll(); }catch(e){}
+        })
+        .catch(function(e){ toast(`Could not send that request: ${(e&&e.message)||e}`,"error"); throw e; });
+    }
+    window.requestAddressFix=requestAddressFix;
+
     /* ===================================================================
        Cancel a booking (merchant self-service)
 
