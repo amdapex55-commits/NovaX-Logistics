@@ -111,17 +111,23 @@ create policy nvai_qr_admin on public.nv_ai_quota_requests
     select 1 from public.profiles p
     where p.id = auth.uid() and lower(p.role::text) in ('admin','owner','staff')));
 
+-- NOTE: the two policies below deliberately EXCLUDE 'staff'.
+--
+-- These are real merchant conversations with the AI: merchants discuss COD
+-- amounts, wallet balances, rate disputes and their own customers in them.
+-- Read access is an ops/ownership decision, not a general staff one, so it is
+-- narrowed to admin and owner. Widen it again only on purpose.
 drop policy if exists nvai_conv_admin on public.nv_ai_conversations;
 create policy nvai_conv_admin on public.nv_ai_conversations
   for select to authenticated using (exists (
     select 1 from public.profiles p
-    where p.id = auth.uid() and lower(p.role::text) in ('admin','owner','staff')));
+    where p.id = auth.uid() and lower(p.role::text) in ('admin','owner')));
 
 drop policy if exists nvai_msg_admin on public.nv_ai_messages;
 create policy nvai_msg_admin on public.nv_ai_messages
   for select to authenticated using (exists (
     select 1 from public.profiles p
-    where p.id = auth.uid() and lower(p.role::text) in ('admin','owner','staff')));
+    where p.id = auth.uid() and lower(p.role::text) in ('admin','owner')));
 
 ---- PART 4: quota -- the 50-message cap -----------------------------
 

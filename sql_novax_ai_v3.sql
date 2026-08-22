@@ -9,6 +9,19 @@
 -- Deliberately narrow: the consignee sees where their parcel is and what
 -- they owe. They do NOT see the merchant's phone, the delivery fee, or
 -- internal exception notes.
+-- SECURITY: the lookup below matches on the tracking token ONLY.
+--
+-- It used to also accept a bare AWB:  or upper(p.awb) = upper(tok)
+--
+-- That defeated the entire point of an unguessable token. This function is
+-- granted to anon and returns consignee name, COD amount and merchant name,
+-- and NovaX AWBs are sequential -- 'N' + a 3-digit client code + a 4-digit
+-- counter, so roughly a 10 million keyspace that a script can walk in an
+-- afternoon. Anyone could therefore harvest the consignee and COD of every
+-- parcel in the system without logging in.
+--
+-- Real tracking links always carry the token, so nothing legitimate breaks.
+-- What stops working is bare-AWB lookup, which is exactly the hole.
 create or replace function public.ai_public_parcel(p_token text)
 returns jsonb
 language plpgsql
@@ -36,7 +49,6 @@ begin
     from public.parcels p
     left join public.clients c on c.id = p.client_id
    where p.meta->>'trackingToken' = tok
-      or upper(p.awb) = upper(tok)
    limit 1;
 
   if r is null then return jsonb_build_object('found', false); end if;
