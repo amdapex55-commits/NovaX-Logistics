@@ -10520,7 +10520,13 @@ html,body{ background:var(--bg); color:var(--ink); }
       let changed = false;
       const claimed = new Set(state.users.map(u => u.riderId).filter(Boolean));
       state.users.forEach(u => {
-        const isRider = u.accessSide === "Rider App" || u.role === "Rider";
+        /* Two separate role vocabularies live in this app: profiles.role is
+           always lowercase ("rider"), state.users[].role is capitalized
+           ("Admin", "Finance"). "Rider" capitalized is never actually
+           assigned here, so this half of the check was dead -- but comparing
+           case-insensitively is strictly safer than deleting it, and closes
+           the trap for whoever later syncs profiles.role into state.users. */
+        const isRider = u.accessSide === "Rider App" || String(u.role || "").toLowerCase() === "rider";
         if (!isRider) return;
         if (u.riderId && state.riders.some(r => r.id === u.riderId)) return;
         let rider = state.riders.find(r => r.name === u.name && r.branch === u.branch && !claimed.has(r.id));
@@ -14738,19 +14744,6 @@ html,body{ background:var(--bg); color:var(--ink); }
       renderAdmin();
       toast(`Pickup request ${req.id} marked Assigned.`);
     }
-
-    function markPickupDispatched(id) {
-      const req = (state.pickupRequests || []).find(r => r.id === id);
-      if (!req) { toast("Pickup request not found."); return; }
-      req.status = "Rider dispatched";
-      saveState();
-      renderAdmin();
-      toast(`Pickup request ${req.id} marked Rider dispatched.`);
-    }
-
-    // Kept as an alias so any older onclick references / saved automations
-    // pointing at the previous function name keep working.
-    function markPickupScheduled(id) { markPickupDispatched(id); }
 
     function cancelPickupRequest(id) {
       const req = (state.pickupRequests || []).find(r => r.id === id);
