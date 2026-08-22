@@ -965,14 +965,49 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
               loaded=true;
               try{ var sel=document.getElementById("riderSelect"); if(sel) sel.dataset.filled=""; }catch(e){}
               try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(state)); }catch(e){}
+              /* Only a real, authenticated, server-backed load earns the
+                 marker that lets the next boot trust this cache. */
+              try{ state._liveCache=true; saveState(); }catch(e){}
+              try{ nvClearStaleBanner(); }catch(e){}
               try{ renderRider(); }catch(e){ console.warn("NovaX rider render",e); }
               if(!subscribed && RIDER_UUID){ subscribed=true; try{ sb.channel("novax_rider_"+RIDER_UUID).on("postgres_changes",{event:"*",schema:"public",table:"parcels",filter:"rider_id=eq."+RIDER_UUID},function(){ loadAll(); }).subscribe(function(status,err){ if(err) console.warn("NovaX rider realtime",status,err.message||err); }); }catch(e){ console.warn("NovaX rider realtime",e); } }
             });
           });
-        }).catch(function(e){ console.warn("NovaX rider load failed",e); });
+        }).catch(function(e){
+          /* Was a bare console.warn -- the rider saw an empty screen with no
+             explanation and no way to tell a real empty route from a failed
+             fetch. */
+          console.warn("NovaX rider load failed",e);
+          try{ if(state && state._liveCache===true) nvShowStaleBanner(); }catch(_e){}
+        });
       }
       var _save=saveState; saveState=function(){ try{ _save.apply(this,arguments); }catch(e){} try{ syncParcels(); }catch(e){} };
-      state.parcels=[]; state.riders=[]; state.clients=[]; state.activeRider="";
+      /* This used to wipe unconditionally on every boot, which is why an
+         offline rider saw "No stops yet" while a perfectly good route sat in
+         localStorage one variable away. The wipe exists for a real reason --
+         baseState carries demo seed parcels that must never be shown as a
+         real route -- so the fix is not to stop wiping, it is to keep only
+         cache that a previously AUTHENTICATED load actually wrote. Seed data
+         never carries this marker, so it is still discarded. */
+      if(state && state._liveCache === true){
+        try{ nvShowStaleBanner(); }catch(e){}
+      } else {
+        state.parcels=[]; state.riders=[]; state.clients=[]; state.activeRider="";
+      }
+
+      /* Says plainly that the screen is last-known, not live. Removed the
+         moment a real load lands. */
+      function nvShowStaleBanner(){
+        if(document.getElementById("nvStaleBar")) return;
+        var b=document.createElement("div");
+        b.id="nvStaleBar";
+        b.style.cssText="position:sticky;top:0;z-index:99997;padding:8px 12px;background:#33270f;color:#f0c877;font:600 12.5px/1.4 system-ui,sans-serif;text-align:center";
+        b.textContent="Showing your last saved route \u2014 reconnecting\u2026";
+        try{ document.body.insertBefore(b, document.body.firstChild); }catch(e){}
+      }
+      function nvClearStaleBanner(){
+        var b=document.getElementById("nvStaleBar"); if(b) b.remove();
+      }
       try{ var rb=document.getElementById("riderRefreshBtn"); if(rb) rb.addEventListener("click", function(){ loadAll(); }); }catch(e){}
       if(sb.auth){ sb.auth.getSession().then(function(r){ var s=r&&r.data&&r.data.session; if(!s){ return; } loadAll(); }); }
 
