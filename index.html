@@ -1558,6 +1558,15 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
     <div class="fld"><label for="signinEmail">Email</label><input id="signinEmail" type="email" placeholder="you@store.com" autocomplete="email" inputmode="email"></div>
     <div class="fld"><label for="signinPassword">Password</label><input id="signinPassword" type="password" placeholder="Your password" autocomplete="current-password"></div>
     <button class="btn btn-primary" type="submit" id="signinContinue">Continue</button>
+    <!-- There was no password recovery anywhere in the product, for any role.
+         The only related text in the whole codebase was the AI assistant
+         declining to help and suggesting the user contact support. -->
+    <div style="text-align:center;margin-top:10px">
+      <button type="button" id="signinForgot"
+              style="background:none;border:0;padding:4px;font:inherit;font-size:13px;color:#0c7c59;text-decoration:underline;cursor:pointer">
+        Forgot your password?
+      </button>
+    </div>
     <div class="form-msg" id="mSignin" role="alert"></div>
     <div class="mdl-note">New merchants get instant workspace access after signup.</div>
   </form>
@@ -2549,6 +2558,52 @@ addEventListener("scroll",function(){
   if(!ticking){ ticking=true; requestAnimationFrame(frame); }
 },{passive:true});
 frame();
+})();
+</script>
+<script>
+/* Password recovery. Supabase sends a recovery link; reset.html completes it.
+   Deliberately always reports the same thing whether or not the address is
+   registered -- telling a stranger which emails have NovaX accounts is an
+   account-enumeration gift, and this form is public. */
+(function(){
+  function go(){
+    var btn=document.getElementById("signinForgot");
+    if(!btn||btn._nvWired) return;
+    btn._nvWired=true;
+    btn.addEventListener("click",function(){
+      var emailEl=document.getElementById("signinEmail");
+      var msg=document.getElementById("mSignin");
+      var email=String((emailEl&&emailEl.value)||"").trim().toLowerCase();
+      function say(t,good){
+        if(!msg) return;
+        msg.textContent=t;
+        msg.style.color=good?"#0c7c59":"#c0392b";
+        msg.style.display="block";
+      }
+      if(!email||email.indexOf("@")===-1){
+        say("Enter your email address above first, then tap Forgot your password.",false);
+        if(emailEl) emailEl.focus();
+        return;
+      }
+      var sb=window.__nvSb;
+      if(!sb||!sb.auth||!sb.auth.resetPasswordForEmail){
+        say("Password reset is unavailable right now. Please contact NovaX support.",false);
+        return;
+      }
+      btn.disabled=true; var old=btn.textContent; btn.textContent="Sending\u2026";
+      Promise.resolve(sb.auth.resetPasswordForEmail(email,{
+        redirectTo: location.origin.replace(/\/$/,"")+"/new-password.html"
+      })).catch(function(e){ return { error:e }; }).then(function(r){
+        btn.disabled=false; btn.textContent=old;
+        if(r&&r.error){
+          console.warn("NovaX reset",r.error.message||r.error);
+        }
+        /* Same message either way -- see the note above. */
+        say("If "+email+" has a NovaX account, a reset link is on its way. Check your inbox and spam folder.",true);
+      });
+    });
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",go); else go();
 })();
 </script>
 </body>
