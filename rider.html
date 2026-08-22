@@ -144,16 +144,92 @@
       try{ if(__gsb&&__gsb.auth) __gsb.auth.signOut(); }catch(e){}
       redirectAway("index.html?authError=1");
     }
+
+    /* A rider on a motorbike with one bar of signal is not an intruder.
+       This gate used to route EVERY profile-lookup failure -- including a
+       plain timeout -- into denyWithError(), which calls signOut() and so
+       destroys the very token that would have let them back in. They were
+       then bounced to a login page that itself needs network. This splits
+       "we could not ask" from "we asked and the answer was no". */
+    var VERIFY_KEY="novaxRiderVerified";
+    var GRACE_MS=7*24*60*60*1000;          // a week of offline grace
+    function rememberVerified(uid,role){
+      try{ localStorage.setItem(VERIFY_KEY, JSON.stringify({uid:uid,role:role,at:Date.now()})); }catch(e){}
+    }
+    function cachedVerified(uid){
+      try{
+        var v=JSON.parse(localStorage.getItem(VERIFY_KEY)||"null");
+        if(!v||v.uid!==uid||v.role!=="rider") return false;
+        return (Date.now()-Number(v.at||0)) < GRACE_MS;
+      }catch(e){ return false; }
+    }
+    /* Transport failure, not an authorization answer. Supabase surfaces these
+       as thrown TypeErrors or as errors with no PostgREST code. A genuine
+       "no such row" (PGRST116) or an RLS refusal carries a code and is NOT
+       treated as transport. */
+    function isTransport(err){
+      if(!err) return false;
+      if(err.code) return false;                       // PostgREST answered
+      var m=String(err.message||err).toLowerCase();
+      return /fetch|network|timeout|timed out|failed to|abort|offline|connection|econn|dns|load failed/.test(m);
+    }
+    function unreachableScreen(retryFn){
+      var g=document.getElementById("nvAuthGate"); if(!g) return;
+      g.innerHTML='<div style="max-width:300px;text-align:center;padding:20px">'+
+        '<div style="font-size:16px;font-weight:800;margin-bottom:6px">No connection</div>'+
+        '<div style="font-size:13.5px;line-height:1.5;color:#3a5a4e;margin-bottom:16px">'+
+        'We could not reach NovaX to confirm your account. You have not been signed out \u2014 '+
+        'your route is still here. Reconnect and try again.</div>'+
+        '<button id="nvGateRetry" style="width:100%;padding:13px;border:0;border-radius:10px;'+
+        'background:#0c7c59;color:#fff;font-size:15px;font-weight:800;cursor:pointer">Try again</button></div>';
+      var b=document.getElementById("nvGateRetry");
+      if(b) b.addEventListener("click",function(){
+        g.innerHTML='<div style="width:34px;height:34px;border-radius:50%;border:3px solid #cfe4da;border-top-color:#0c7c59;animation:nvGateSpin .8s linear infinite;"></div><div style="font-size:15px;font-weight:700;margin-top:12px">Checking account\u2026</div>';
+        retryFn();
+      });
+      // Reconnecting is itself the retry signal -- don't make them tap.
+      window.addEventListener("online", function onWake(){
+        window.removeEventListener("online", onWake); retryFn();
+      });
+    }
+
     if(!__gsb||!__gsb.auth){ denyWithError(); return; }
     __gsb.auth.getSession().then(function(r){
       var session=r&&r.data&&r.data.session;
       if(!session){ redirectAway("index.html"); return; }
-      __gsb.from("profiles").select("role,status,client_id").eq("id",session.user.id).single().then(function(p){
-        if(p&&p.error){
-          console.warn("NovaX auth gate: profile lookup failed",p.error.message);
-          denyWithError();
+      var uid=session.user.id;
+      var tries=0;
+      function lookup(){
+        __gsb.from("profiles").select("role,status,client_id").eq("id",uid).single().then(function(p){
+          if(p&&p.error){
+            if(isTransport(p.error)){ softFail(p.error); return; }
+            console.warn("NovaX auth gate: profile lookup refused",p.error.message);
+            denyWithError();
+            return;
+          }
+          onProfile(p);
+        }).catch(function(e){
+          // A thrown error here is almost always transport, never a verdict.
+          if(isTransport(e)||!(e&&e.code)){ softFail(e); return; }
+          console.warn("NovaX auth gate: profile lookup error",e); denyWithError();
+        });
+      }
+      function softFail(err){
+        console.warn("NovaX auth gate: could not reach profiles ("+String((err&&err.message)||err)+")");
+        if(++tries<3){ setTimeout(lookup, tries*1200); return; }
+        /* Retries exhausted. The session token is valid (getSession read it
+           locally), and we verified this exact user as a rider recently --
+           so let them work. Never signOut() here. */
+        if(cachedVerified(uid)){
+          window.__novaxVerifiedProfile={ role:"rider", status:"active", offline:true };
+          window.__nvGateOffline=true;
+          var gateEl=document.getElementById("nvAuthGate"); if(gateEl) gateEl.style.display="none";
+          __resolveGate("rider");
           return;
         }
+        unreachableScreen(function(){ tries=0; lookup(); });
+      }
+      function onProfile(p){
         var role=p&&p.data?String(p.data.role||"").toLowerCase():"";
         var status=p&&p.data?String(p.data.status||"").toLowerCase():"";
         if(!role){ denyWithError(); return; }
@@ -164,9 +240,11 @@
         // Verified: real Supabase session + profiles.role === "rider". Only
         // now is it safe to reveal the Rider App.
         window.__novaxVerifiedProfile={ role:role, status:status };
+        rememberVerified(uid, role);
         var gateEl=document.getElementById("nvAuthGate"); if(gateEl) gateEl.style.display="none";
         __resolveGate(role);
-      }).catch(function(e){ console.warn("NovaX auth gate: profile lookup error",e); denyWithError(); });
+      }
+      lookup();
     }).catch(function(e){ console.warn("NovaX auth gate: session lookup error",e); denyWithError(); });
   })();
   </script>
