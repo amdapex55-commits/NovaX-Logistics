@@ -12091,6 +12091,19 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast("Only a Generated invoice can be cancelled. Wallet-active or closed invoices cannot be deleted -- reverse through the payout/ledger flow instead.");
         return;
       }
+      /* Its three closest siblings -- deleteUser/revokeUserAccess,
+         rejectWalletWithdrawal and deleteClient -- all require a deliberate
+         confirmation, and deleteClient goes as far as a typed DELETE. This
+         one cancelled a real, customer-facing finance document on a single
+         misclick. Friction should track consequence, not which day the
+         handler was written. */
+      const invClient = clientById(invoice.clientId);
+      if (!window.confirm(
+        `Cancel invoice ${id}` + (invClient && invClient.name ? ` for ${invClient.name}` : "") + `?\n\n` +
+        `Amount: ${money(Number(invoice.payable || 0))}\n\n` +
+        `This cannot be undone from here — a cancelled invoice has to be regenerated.`
+      )) return;
+
       if (!(window.__nvSb && invoice._uuid)) {
         toast(`${id} cannot be cancelled yet -- this invoice is not synced to the cloud. Wait for sync and try again.`, "error");
         return;
@@ -12617,13 +12630,30 @@ html,body{ background:var(--bg); color:var(--ink); }
 
       toast("Checking " + nm + "'s records…");
 
-      Promise.all([cnt("withdrawals"), cnt("payment_logs"), cnt("parcels"), cnt("invoices")])
+      Promise.all([cnt("withdrawals"), cnt("payment_logs"), cnt("parcels"), cnt("invoices"), cnt("wallet_ledger")])
         .then(function(res){
           const nW = res[0] && res[0].count, nP = res[1] && res[1].count;
           const nPar = res[2] && res[2].count, nInv = res[3] && res[3].count;
+          /* wallet_ledger was missing from this check. A manual admin wallet
+             adjustment writes ONLY to wallet_ledger -- no withdrawal row, no
+             payment_log -- so a client who had been credited or debited by
+             hand passed the old gate and could be hard-deleted, orphaning
+             those ledger rows against a client that no longer exists. The
+             current balance is checked too: a non-zero balance is money owed
+             in one direction or the other. */
+          const nL = res[4] && res[4].count;
+          const bal = Number((client && client.walletBalance) || 0);
 
-          if (nW === null || nP === null) {
-            toast("Could not read " + nm + "'s payout history, so nothing was deleted.", "error");
+          if (nW === null || nP === null || nL === null) {
+            toast("Could not read " + nm + "'s financial history, so nothing was deleted.", "error");
+            return;
+          }
+          if (nL > 0 || bal !== 0) {
+            const msg = nm + " has " + nL + " wallet ledger entr(y/ies)" +
+              (bal !== 0 ? " and a balance of " + money(bal) : "") + ".\n\n" +
+              "Deleting the account would orphan those financial records. NovaX will not do that.\n\n" +
+              "Set the account to Inactive instead? Everything is kept.";
+            if (window.confirm(msg)) nvDeactivateClient(cid, nm);
             return;
           }
 
@@ -14680,7 +14710,12 @@ html,body{ background:var(--bg); color:var(--ink); }
         let actions =
           `<button class="ghost-btn${isAssigned ? "" : " nv-pk-on"}" type="button" onclick="markPickupUnassigned('${nvEscAttrJs(req.id)}')">Unassigned</button> ` +
           `<button class="ghost-btn${isAssigned ? " nv-pk-on" : ""}" type="button" onclick="markPickupAssigned('${nvEscAttrJs(req.id)}')">Assigned</button> ` +
-          `<button class="action-btn" type="button" onclick="markPickedUp('${nvEscAttrJs(req.id)}')">Picked</button>`;
+          `<button class="action-btn" type="button" onclick="markPickedUp('${nvEscAttrJs(req.id)}')">Picked</button> ` +
+          /* cancelPickupRequest() was fully implemented -- confirm dialog,
+             state change, re-render -- but no button anywhere called it, so
+             admin simply could not cancel a pickup. The renderer's own
+             comment above describes Cancelled as an intended outcome. */
+          `<button class="ghost-btn" type="button" onclick="cancelPickupRequest('${nvEscAttrJs(req.id)}')">Cancel</button>`;
         return `<tr><td>${clientLabel}</td><td>${(req.awbs || []).length} AWB(s)<div class="footer-note">${awbList}</div></td><td>${labelText(req.pickupAddress, "-")}</td><td>${labelText(req.requestedFor, req.createdAt || "-")}</td><td><span class="chip ${statusChipClass}">${escLabelText(req.status)}</span></td><td><select onchange="assignPickupRider('${req.id}', this.value)" ${req.status === "Picked Up" || req.status === "Cancelled" ? "disabled" : ""}>${riderOptions}</select></td><td>${actions}</td></tr>`;
       }).join("");
     }
