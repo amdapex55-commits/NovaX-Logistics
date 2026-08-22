@@ -4888,7 +4888,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
                   <div class="field"><label>Phone <span class="required-star">*</span></label><input id="bookingPhone" placeholder="03xxxxxxxxx" maxlength="11" required></div>
                   <div class="field"><label>Pickup City <span class="required-star">*</span></label><select id="bookingPickupCity" required><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
-                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint()"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
+                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint()"><option value="">Select destination city…</option><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
                   <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required></div>
                   <div class="field"><label>Service Type <span class="required-star">*</span></label><select id="bookingService" required><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option><option>Prepaid Delivery</option></select></div>
                   <div class="field"><label>Product Category <span class="required-star">*</span></label><select id="bookingCategory" required><option>Fashion</option><option>Cosmetics</option><option>Electronics</option><option>Documents</option><option>Home Goods</option></select></div>
@@ -6015,7 +6015,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <div class="field"><label>Consignee Name *</label><input id="abkName" placeholder="Receiver full name"></div>
                   <div class="field"><label>Phone *</label><input id="abkPhone" placeholder="03001234567" maxlength="11"></div>
                   <div class="field"><label>Pickup City *</label><select id="abkPickupCity"><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
-                  <div class="field"><label>Destination City *</label><select id="abkCity"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
+                  <div class="field"><label>Destination City *</label><select id="abkCity"><option value="">Select destination city…</option><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
                   <div class="field"><label>COD Amount *</label><input id="abkCod" type="number" min="0" placeholder="e.g. 2500"></div>
                   <div class="field"><label>Service Type</label><select id="abkService"><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option><option>Prepaid Delivery</option></select></div>
                   <div class="field"><label>Product Details *</label><input id="abkCategory" placeholder="Exact product details"></div>
@@ -7211,6 +7211,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!el || !hint) return;
       const client = clientById(state.client && state.client.id);
       const rc = normalizeRateCard(client && client.rateCard, client && client.rate);
+      if (!String(el.value || "").trim()) { hint.textContent = "Pick the destination city to see the rate."; return; }
       const zone = zoneForCity(el.value);
       const weightEl = document.getElementById("bookingWeight");
       const breakdown = bookingChargeBreakdown(rc, zone, weightEl ? weightEl.value : "0.8 kg");
@@ -7484,7 +7485,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!sb || !sb.rpc) { toast("Cloud connection not ready."); return; }
       if (!NV_ABK.clientId) { toast("Search and select a client first."); return; }
       function v(id){ var e = document.getElementById(id); return e ? String(e.value || "").trim() : ""; }
-      var required = { abkName: "Consignee name", abkPhone: "Phone", abkCod: "COD amount", abkCategory: "Product details", abkAddress: "Delivery address" };
+      var required = { abkName: "Consignee name", abkPhone: "Phone", abkCity: "Destination city", abkCod: "COD amount", abkCategory: "Product details", abkAddress: "Delivery address" };
       for (var id in required) { if (!v(id)) { toast(required[id] + " is required."); return; } }
       var phone = v("abkPhone").replace(/\D/g, "");
       if (!/^03\d{9}$/.test(phone)) { toast("Phone must be 11 digits starting 03."); return; }

@@ -1946,7 +1946,7 @@
                          disabled -- disabled inputs are omitted from form data. -->
                     <input id="bookingPickupCity" class="nv-locked" value="Karachi" readonly tabindex="-1" aria-readonly="true">
                     <div class="footer-note" id="bookingPickupNote">All pickups run from our Karachi hub.</div></div>
-                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote();try{nvAutoAreaFromAddress()}catch(e){}"><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
+                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote();try{nvAutoAreaFromAddress()}catch(e){}"><option value="">Select destination city…</option><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
                   <!-- NovaX (distance pricing): shown only for Karachi, and only
                        once the areas exist server-side. Hidden entirely otherwise,
                        so a merchant on flat pricing sees no change at all. -->
@@ -5684,6 +5684,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!el||!hint) return;
       const client=clientById(state.client&&state.client.id);
       const rc=normalizeRateCard(client&&client.rateCard, client&&client.rate);
+      /* No placeholder used to exist here, so an untouched dropdown submitted
+         "Lahore" and zoneForCity() happily priced it. With a real empty option
+         the hint must say nothing rather than quietly quoting Zone B. */
+      if(!String(el.value||"").trim()){ hint.textContent="Pick the destination city to see the rate."; return; }
       const zone=zoneForCity(el.value);
       const weightEl=document.getElementById("bookingWeight");
       const breakdown=bookingChargeBreakdown(rc, zone, weightEl?weightEl.value:"0.8 kg");
