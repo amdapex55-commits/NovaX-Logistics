@@ -15042,7 +15042,11 @@ html,body{ background:var(--bg); color:var(--ink); }
       var base = num("nvPricingBase", 120), incl = num("nvPricingIncluded", 6),
           per = num("nvPricingPerKm", 20), cap = num("nvPricingMax", 320);
       var fee = function (km) { var f = base + Math.max(0, Math.ceil(km - incl)) * per; return cap > 0 ? Math.min(f, cap) : f; };
-      var flat = 250;
+      /* Was hardcoded 250 against a real default of NV_ZONE_A_BASE (200) --
+         the same stale-constant bug the comment block near NV_ZONE_A_BASE
+         describes as already fixed. It made every saving/cost figure in this
+         comparison table Rs 50 too favourable to distance pricing. */
+      var flat = NV_ZONE_A_BASE;
       host.innerHTML = '<div class="footer-note" style="margin-bottom:6px">What a merchant would pay, against a Rs ' + flat + ' flat rate:</div>' +
         '<div class="table-wrap"><div class="wide-scroll"><table><thead><tr>' +
         [2, 5, 8, 10, 15, 20, 30].map(function (k) { return '<th>' + k + ' km</th>'; }).join("") + '</tr></thead><tbody><tr>' +
@@ -16632,7 +16636,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           if(/how many|count|summary|overview|today|deliver/.test(low)){ var ps2=state.parcels||[]; var del=ps2.filter(function(p){return /delivered/i.test(p.status);}).length; var exn=ps2.filter(function(p){return p.exception;}).length; return {text:'Network: <b>'+ps2.length+'</b> parcels - <b>'+del+'</b> delivered, <b>'+exn+'</b> with issues. Clients: <b>'+((state.clients||[]).length)+'</b>, riders: <b>'+((state.riders||[]).length)+'</b>.'}; }
           if(/list|show|recent|all parcels|all orders/.test(low)&&/parcel|order|shipment/.test(low)){ var ap=(state.parcels||[]); if(!ap.length) return {text:'No parcels in the system yet.'}; return {text:'Recent parcels:<br>'+ap.slice(0,8).map(pLine).join('<br><br>')+(ap.length>8?'<br><span class=nvai-dim>+'+(ap.length-8)+' more.</span>':'')}; }
           if(/client|seller|merchant/.test(low)){ var cs=(state.clients||[]); if(!cs.length) return {text:'No clients on file.'}; var clid2=(q.match(/CL-\d+/i)||[])[0]; if(clid2){ var cc=cs.find(function(c){return String(c.id||'').toUpperCase()===clid2.toUpperCase();}); if(cc) return {text:'<b>'+esc(cc.name)+'</b> ('+esc(cc.id)+')<br>'+esc(cc.city||'')+(cc.email?' · '+esc(cc.email):'')+'<br>Wallet: <b>Rs '+fmt(walletBalance(cc.id))+'</b> · status '+esc(cc.status||'Active')}; return {text:'No client <b>'+esc(clid2.toUpperCase())+'</b> found.'}; } return {text:'<b>'+cs.length+'</b> client(s):<br>'+cs.slice(0,8).map(function(c){return '• '+esc(c.name)+' ('+esc(c.id)+') - '+esc(c.city||'')+' · wallet Rs '+fmt(walletBalance(c.id));}).join('<br>')+(cs.length>8?'<br><span class=nvai-dim>+'+(cs.length-8)+' more.</span>':'')}; }
-          if(/rate|price|pricing|tariff|charge per/.test(low)) return {text:'Delivery rates are set per client in their profile (default Rs 240/shipment). Ask me for a client by their id for their exact rate and wallet.'};
+          if(/rate|price|pricing|tariff|charge per/.test(low)) return {text:'Delivery rates are set per client in their profile (default Rs '+NV_ZONE_A_BASE+'/shipment). Ask me for a client by their id for their exact rate and wallet.'};
           if(/help|what can you|capabilit|how.*(use|work)|guide|menu|options|commands|what do you do/.test(low)) return {text:'I read the live control room. Ask me: parcel status (AWB), <i>rider cash</i>, <i>finance totals</i>, a client wallet (by client id), <i>exceptions and SLA</i>, <i>list clients</i>, or a network summary.'};
           if(/track|where|status|location/.test(low)) return {text:'Give me the AWB (e.g. <b>SAMPLE-AWB-1</b>) for exact live status.'};
           return {text:'I can answer anything in the control room - try <i>where is [an AWB]</i>, <i>rider cash</i>, <i>total COD</i>, <i>a client wallet</i>, <i>exceptions</i>, or <i>list clients</i>.'};
