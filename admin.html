@@ -10031,7 +10031,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             ${moneyBox("Client", user.clientId, "assigned account")}
           </div>
           <div class="footer-note" style="margin-top:8px">Allowed controls: ${(user.permissions || []).join(", ") || "dashboard"}.</div>
-          ${canDeleteUsers ? `<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="deleteUser('${user.id}')">Delete User</button></div>` : ""}
+          ${canDeleteUsers ? `<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="revokeUserAccess('${user.id}')">Revoke Access</button></div>` : ""}
         </div>
       `).join("") || `<div class="ops-card"><strong>No users yet</strong><p>Create users from the Create Users tab.</p></div>`;
 
@@ -12494,15 +12494,63 @@ html,body{ background:var(--bg); color:var(--ink); }
        its rider fell back to state.riders[0]. addRider() used to point staff at
        it as "Create Rider Login"; that copy now points at Users > Create Users,
        which links profiles.rider_id properly. */
-    function deleteUser(userId) {
+    /* This used to filter a local JS array, write to localStorage, and toast
+       "removes their app access immediately". It made no Supabase call at
+       all -- the Auth account and profiles row were untouched, so a departing
+       or compromised staff member could still sign in, and the row reappeared
+       on the next loadAll() refresh. createUser() in this same file does
+       genuinely provision an account, so the asymmetry was an incomplete
+       implementation, not a missing pattern.
+
+       A browser cannot delete a Supabase Auth user (that needs the service
+       role), so this does the thing that actually revokes access and that the
+       browser IS allowed to do: block the profile. All three portals' auth
+       gates already refuse a session whose profiles.status is "blocked", so
+       this genuinely locks them out on their next request. The local row is
+       kept and marked Blocked rather than hidden -- hiding it is what created
+       the false impression in the first place. */
+    function revokeUserAccess(userId) {
       const user = state.users.find(u => u.id === userId);
       if (!user) { toast("User not found."); return; }
-      if (!window.confirm(`Delete user ${user.name} (${user.email})? This removes their app access immediately.`)) return;
-      state.users = state.users.filter(u => u.id !== userId);
-      saveState();
-      render();
-      toast(`${user.name} removed from Users.`);
+      const email = String(user.email || "").trim();
+      if (!email) { toast(`${user.name} has no email on record, so their login cannot be identified.`, "error"); return; }
+
+      const sb = window.__nvSb;
+      if (!sb) { toast("Cloud connection not ready — nothing was changed.", "error"); return; }
+
+      if (!window.confirm(
+        `Revoke app access for ${user.name} (${email})?\n\n` +
+        `They will be signed out and refused on their next request, on every portal. ` +
+        `Their record is kept so you can see who was revoked and when.`
+      )) return;
+
+      const key = "revoke:" + email;
+      if (!nvClaim(key)) { toast("Already revoking that account — one moment."); return; }
+
+      Promise.resolve(
+        sb.from("profiles").update({ status: "blocked", client_id: null, rider_id: null }).eq("email", email).select("id")
+      ).catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+       .then(function(r){
+        nvRelease(key);
+        if (r && r.error) {
+          toast(`Could not revoke ${user.name}: ${r.error.message}`, "error");
+          return;
+        }
+        if (!r || !r.data || r.data.length === 0) {
+          /* Say so plainly rather than reporting success. A missing profile
+             row means the account was never linked, so there is nothing to
+             block -- and pretending otherwise is the original bug. */
+          toast(`No profile found for ${email}. Nothing was revoked — check the email on this record.`, "error");
+          return;
+        }
+        user.status = "Blocked";
+        saveState();
+        render();
+        toast(`${user.name} revoked. They are locked out of every portal.`, "success");
+      });
     }
+    /* Old name kept so any saved automation or stale markup still resolves. */
+    function deleteUser(userId) { return revokeUserAccess(userId); }
 
     /* Deleting a client used to fire five raw deletes in parallel behind
        `.catch(() => {})`, wipe local state regardless of the outcome, and
