@@ -924,11 +924,43 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
           var profP=session?sb.from("profiles").select("rider_id").eq("id",session.user.id).single():Promise.resolve(null);
           return profP.then(function(pr){
             var linkedId=pr&&pr.data&&pr.data.rider_id;
+            /* These three reads used to be unscoped select("*") -- every
+               parcel, every client and every rider in the company was
+               downloaded to this phone on every login, every refresh and
+               every realtime tick, then narrowed to "mine" only in the render
+               layer. That shipped every client's consignee names, phone
+               numbers, addresses and COD amounts to every rider's browser,
+               and made the query cost scale with the whole business's parcel
+               volume rather than one rider's route.
+
+               Scoping is safe for pickup: findParcelForPickup() also accepts
+               a parcel whose client is assigned to this rider, but rClient()
+               never maps assignedRider, so that branch is already inert --
+               in practice pickup only ever matched p.rider === rider.id, and
+               such a parcel carries rider_id and is still returned here.
+
+               An unlinked login gets no rider identity at all (see below), so
+               there is nothing to fetch -- don't pull the tables just to
+               throw them away. */
+            if(!linkedId){
+              return Promise.resolve({ riders:[], parcels:[], clients:[] }).then(function(){
+                RIDER_UUID=null; state.parcels=[]; state.clients=[]; state.riders=[];
+                console.warn("NovaX: this login has no rider_id linked. Showing the no-rider screen rather than guessing an identity.");
+                loaded=true;
+                try{ renderRider(); }catch(e){ console.warn("NovaX rider render",e); }
+                return null;
+              });
+            }
             return Promise.all([
-              sb.from("riders").select("*"),
-              sb.from("parcels").select("*").order("booked_at",{ascending:false}),
-              sb.from("clients").select("*")
-            ]).then(function(res){
+              sb.from("riders").select("*").eq("id",linkedId),
+              sb.from("parcels").select("*").eq("rider_id",linkedId).order("booked_at",{ascending:false})
+            ]).then(function(head){
+              var parcelRows=(head[1]&&head[1].data)||[];
+              /* Only the clients this rider's own parcels actually reference. */
+              var cids=[]; parcelRows.forEach(function(r){ if(r.client_id && cids.indexOf(r.client_id)===-1) cids.push(r.client_id); });
+              var cliP = cids.length ? sb.from("clients").select("*").in("id",cids) : Promise.resolve({data:[]});
+              return Promise.resolve(cliP).then(function(cli){ return [head[0], head[1], cli]; });
+            }).then(function(res){
               function D(i){ return (res[i]&&res[i].data)||[]; }
               var allRiders=D(0).map(rRider);
               state.parcels=D(1).map(rParcel);
