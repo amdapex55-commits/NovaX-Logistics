@@ -184,6 +184,15 @@
   var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
   var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
   var SITE="https://novaxlogistics.com";
+  /* These are `var`s inside this IIFE, so they are local to it -- they were
+     never on window. The AI widget lives in a SEPARATE script block further
+     down, in its own IIFE, and could not see them, so its typeof guards
+     both fell through: it
+     built a bare relative URL, sent an empty Bearer token, hit this static
+     site's own 404 page, failed to parse the HTML as JSON, and showed
+     "I could not reach the tracking service" -- every time, for every
+     visitor, since launch. Publishing them deliberately is the fix. */
+  window.__nvTrackCfg = { url: SB_URL, key: SB_KEY };
 
   /* Everything a consignee sees is Pakistan time, whatever their phone is set
      to. The page previously printed a raw sliced ISO string ("2026-08-20T07:19"),
@@ -572,14 +581,22 @@
         CHIPS.appendChild(b);
       });
     }
+    function cfg(){ return (window.__nvTrackCfg||{}); }
     function endpoint(){
-      var base=(typeof SB_URL!=="undefined"&&SB_URL)?SB_URL:"";
+      var base=cfg().url||"";
       return String(base).replace(/\/+$/,"")+"/functions/v1/novax-ai";
     }
-    function anonKey(){ return (typeof SB_KEY!=="undefined"&&SB_KEY)?SB_KEY:""; }
+    function anonKey(){ return cfg().key||""; }
+    /* Never call the endpoint without real config -- a bare relative path is
+       what produced the permanent failure this fix removes. */
+    function configured(){ return !!(cfg().url && cfg().key); }
 
     function ask(text){
       if(busy) return;
+      if(!configured()){
+        turn("ai","The assistant is not available on this page right now. Your tracking details above are still accurate.");
+        return;
+      }
       busy=true; SEND.disabled=true;
       if(text){ turn("me",text); INPUT.value=""; }
       chips([]);
@@ -607,7 +624,13 @@
       if(e.key==="Enter"){ e.preventDefault(); ask(INPUT.value.trim()); }
     });
 
-    ask("");
+    /* Deliberately NOT auto-firing. This used to run ask("") on mount, so
+       every single visitor to a tracking link triggered a paid model call
+       before typing anything. While the widget was broken that cost nothing;
+       now that it works, an unprompted call on every page view is real money
+       for a question nobody asked. The greeting is static and the first real
+       call happens only when the visitor actually asks something. */
+    turn("ai","Ask me anything about this parcel \u2014 where it is, when it should arrive, or what a status means.");
   }
 
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",function(){ setTimeout(mount,900); });

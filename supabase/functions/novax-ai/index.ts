@@ -297,6 +297,14 @@ End every turn by calling \`present\` exactly once. It is the only thing the mer
 }
 
 // ---- handler --------------------------------------------------------
+/* Public tracking-mode rate limit. In-memory per isolate: not a perfect
+   global limiter, but it turns "unlimited billed calls from one script" into
+   a hard per-caller ceiling, which is the actual exposure. A durable limiter
+   belongs in the database if this ever needs to survive isolate recycling. */
+const TRACK_WINDOW_MS = 60_000;
+const TRACK_MAX_PER_WINDOW = 8;
+const TRACK_HITS = new Map<string, number[]>();
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -326,6 +334,39 @@ Deno.serve(async (req: Request) => {
   if (body.mode === "track") {
     const token = String((body as Record<string, unknown>).token ?? "").trim();
     if (!token) return json({ error: "No tracking reference." }, 400);
+
+    /* Rate limit. This branch is reachable by anyone: no account, no quota,
+       CORS is "*", and the Bearer check is satisfied by the publishable anon
+       key printed in tracking.html's own source. Both existing cost controls
+       -- the burst guard and the 50-message cap -- are gated on
+       mode === "chat" and so never applied here. Every call is a billed
+       model call, so without this an attacker (or a crawler) could run the
+       bill up indefinitely from a shell one-liner.
+
+       Keyed on the caller's IP and the tracking token together: a shared
+       office NAT should not lock everyone out because one person is asking
+       questions, and one token should not be hammerable from a botnet. */
+    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim()
+      || req.headers.get("cf-connecting-ip") || "unknown";
+    const bucket = `${ip}|${token}`;
+    const now = Date.now();
+    const hits = (TRACK_HITS.get(bucket) ?? []).filter((t) => now - t < TRACK_WINDOW_MS);
+    if (hits.length >= TRACK_MAX_PER_WINDOW) {
+      return json({
+        answer: "You have asked a lot of questions in a short time. Please wait a minute and try again — your tracking details above are still up to date.",
+        suggestions: [],
+      }, 429);
+    }
+    hits.push(now);
+    TRACK_HITS.set(bucket, hits);
+    /* Bound the map so a spray of unique tokens cannot grow it without limit
+       for the lifetime of the isolate. */
+    if (TRACK_HITS.size > 5000) {
+      for (const [k, v] of TRACK_HITS) {
+        if (!v.some((t) => now - t < TRACK_WINDOW_MS)) TRACK_HITS.delete(k);
+        if (TRACK_HITS.size <= 4000) break;
+      }
+    }
 
     const { data: lookup } = await sb.rpc("ai_public_parcel", { p_token: token });
     if (!lookup || (lookup as Record<string, unknown>).found !== true) {
