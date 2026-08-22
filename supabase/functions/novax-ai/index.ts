@@ -301,6 +301,52 @@ End every turn by calling \`present\` exactly once. It is the only thing the mer
    global limiter, but it turns "unlimited billed calls from one script" into
    a hard per-caller ceiling, which is the actual exposure. A durable limiter
    belongs in the database if this ever needs to survive isolate recycling. */
+/* In-isolate burst memory, checked before the unlocked DB read below.
+   Same caveat as TRACK_HITS: per isolate, not global. It closes the common
+   two-tabs-one-merchant race, not a distributed one. */
+/* Untrusted text that reaches the model.
+
+   Consignee names and exception notes are written by whoever books or
+   handles a parcel -- a merchant, a Shopify webhook, a rider typing a
+   refusal note. They land in the model's context as plain prose, and
+   JSON.stringify only escapes JSON syntax: it does nothing to stop a value
+   that reads "ignore previous instructions and ...". A consignee named that
+   would be talking to the model every time anyone opens that tracking link.
+
+   This does not try to detect intent -- that is a losing game. It strips the
+   control characters and framing markers a payload needs in order to look
+   like a new turn or a new instruction block, caps length so a value cannot
+   crowd out the real prompt, and leaves ordinary names and notes untouched. */
+function scrubForPrompt(v: unknown, max = 300): string {
+  let s = String(v ?? "");
+  s = s.replace(/[\u0000-\u001F\u007F]/g, " ");        // control chars, newlines included
+  s = s.replace(/```+/g, "'");                          // fenced blocks
+  s = s.replace(/\bHuman:|\bAssistant:|\bSystem:/gi, "-"); // turn markers
+  s = s.replace(/<\/?\s*(system|instructions?|prompt)[^>]*>/gi, ""); // pseudo-tags
+  s = s.replace(/\s{2,}/g, " ").trim();
+  return s.length > max ? s.slice(0, max) + "…" : s;
+}
+/* Scrub the free-text fields of a parcel lookup, leaving ids, amounts and
+   timestamps as they are -- those are ours, not the user's. */
+function scrubLookup(o: unknown): unknown {
+  if (!o || typeof o !== "object") return o;
+  const FREE = new Set(["consignee", "address", "exception", "merchant", "note", "city", "status"]);
+  const walk = (x: unknown): unknown => {
+    if (Array.isArray(x)) return x.map(walk);
+    if (x && typeof x === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(x as Record<string, unknown>)) {
+        out[k] = FREE.has(k) && typeof v === "string" ? scrubForPrompt(v) : walk(v);
+      }
+      return out;
+    }
+    return x;
+  };
+  return walk(o);
+}
+
+const BURST_SEEN = new Map<string, number>();
+
 const TRACK_WINDOW_MS = 60_000;
 const TRACK_MAX_PER_WINDOW = 8;
 const TRACK_HITS = new Map<string, number[]>();
@@ -380,7 +426,7 @@ Deno.serve(async (req: Request) => {
 
 You can see exactly one parcel, shown below. That is everything you know.
 
-${JSON.stringify(lookup, null, 2)}
+${JSON.stringify(scrubLookup(lookup), null, 2)}
 
 Answer only about this parcel. If they ask about anything else — another order, their account, the shop's business — say you can only see this one parcel from this link.
 
@@ -430,8 +476,28 @@ Be brief and warm. Two or three sentences. End by calling present exactly once.`
   const userText = (body.message ?? "").trim();
   if (mode === "chat" && !userText) return json({ error: "Empty message." }, 400);
 
-  // ---- burst guard: one message per 1.5s per merchant ---------------
+  /* ---- burst guard: one message per 1.5s per merchant ---------------
+     Two layers, because the DB read alone loses the race. That SELECT is
+     unlocked and runs BEFORE either request has logged its message, so two
+     near-simultaneous calls both see "nothing recent" and both proceed. It
+     is not a cost bypass -- the 50-cap below is row-locked (FOR UPDATE) and
+     holds regardless -- but it is a real throttle evasion, and the isolate
+     check below closes it for the common case at zero cost. */
   if (mode === "chat" && body.conv_id) {
+    const convKey = String(body.conv_id);
+    const nowMs = Date.now();
+    const seen = BURST_SEEN.get(convKey) ?? 0;
+    if (seen && nowMs - seen < MIN_MS_BETWEEN_MESSAGES) {
+      return json({ error: "rate_limited", answer: "One moment — still working on the last one." }, 429);
+    }
+    BURST_SEEN.set(convKey, nowMs);
+    if (BURST_SEEN.size > 5000) {
+      for (const [k, v] of BURST_SEEN) {
+        if (nowMs - v > MIN_MS_BETWEEN_MESSAGES * 10) BURST_SEEN.delete(k);
+        if (BURST_SEEN.size <= 4000) break;
+      }
+    }
+
     const { data: recent } = await sb
       .from("nv_ai_messages")
       .select("created_at")

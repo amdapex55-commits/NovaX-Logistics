@@ -44,7 +44,18 @@ function matchedOrigin(req: Request): string | null {
 function isAllowedCaller(req: Request): boolean {
   const origin = req.headers.get("origin");
   const referer = req.headers.get("referer");
-  if (!origin && !referer) return true; // non-browser/server test callers
+
+  /* This used to `return true` when BOTH headers were absent, to let
+     non-browser test callers through. But omitting a header is the easiest
+     thing in the world to do -- `curl` does it by default -- so the allowlist
+     rejected exactly the callers it did not need to stop (browsers on other
+     origins) and waved through the ones it did (scripts). Fail closed.
+
+     Browsers always send Origin on a cross-origin POST and Referer on a
+     same-origin one, so no real page loses access. A server-side caller that
+     legitimately needs in should present a real credential, not the absence
+     of a header. */
+  if (!origin && !referer) return false;
   return matchedOrigin(req) !== null;
 }
 
