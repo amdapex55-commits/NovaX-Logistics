@@ -5138,7 +5138,15 @@ html,body{ background:var(--bg); color:var(--ink); }
               <button type="button" class="admin-nav-main" data-admin-tab="pickup-requests">PICKUP REQUESTS</button>
 
               <button type="button" class="admin-nav-main" data-admin-tab="reviews">REVIEWS <span class="nv-pickup-badge" id="reviewPendingBadge" hidden>0</span></button>
-              <button type="button" class="admin-nav-main" data-admin-tab="novaai">NOVAX AI <span class="nv-pickup-badge" id="aiQuotaBadge" hidden>0</span></button>
+              <div class="admin-nav-group" data-admin-group="novaxai">
+                <button type="button" class="admin-nav-main" data-admin-group-toggle="novaxai" aria-expanded="false">
+                  <span>NOVAX AI <span class="nv-pickup-badge" id="aiQuotaBadge" hidden>0</span></span><span class="chevron">v</span>
+                </button>
+                <div class="admin-subnav">
+                  <button type="button" class="admin-subtab" data-admin-tab="novaai">Message Limits</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="ai-chats">Merchant Conversations</button>
+                </div>
+              </div>
 
 
 
@@ -5710,6 +5718,31 @@ html,body{ background:var(--bg); color:var(--ink); }
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </section>
+
+            <!-- NovaX AI conversation log. Read-only: the RLS policies on
+                 nv_ai_conversations / nv_ai_messages already allow admin,
+                 owner and staff to SELECT, so this needs no new RPC. Nothing
+                 here can write to or reply into a merchant conversation. -->
+            <section class="admin-module" id="admin-ai-chats">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>NovaX AI &mdash; merchant conversations <span class="nv-pickup-badge" id="aiChatBadge" hidden>0</span></h3>
+                  <p>Every question merchants have asked NovaX AI, newest first. Read-only &mdash; useful for spotting what people keep getting stuck on. These are real customer conversations, so treat them the way you would a support inbox.</p></div>
+                  <button class="ghost-btn" type="button" style="white-space:nowrap;flex:0 0 auto" onclick="nvAicLoad()">Refresh</button>
+                </div>
+                <div class="inline-actions" style="flex-wrap:wrap;gap:8px;margin:4px 0 12px">
+                  <input id="nvAicSearch" class="search" placeholder="Search merchant, question or answer" style="flex:1 1 260px;min-width:0">
+                  <select id="nvAicDays" onchange="nvAicLoad()" style="flex:0 0 auto">
+                    <option value="7">Last 7 days</option>
+                    <option value="30" selected>Last 30 days</option>
+                    <option value="90">Last 90 days</option>
+                    <option value="0">All time</option>
+                  </select>
+                </div>
+                <div id="nvAicStats" class="grid metrics" style="margin-bottom:12px"></div>
+                <div id="nvAicList" class="ops-list"><div class="footer-note">Loading conversations&hellip;</div></div>
               </div>
             </section>
             <section class="admin-module" id="admin-reviews">
@@ -6658,6 +6691,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       manifest: ["manifest-summary", "manifest-transit", "manifest-reached", "manifest-dispute"],
       riders: ["riders-route", "riders-report", "riders-summary"],
       support: ["support-tickets"],
+      novaxai: ["novaai", "ai-chats"],
       finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-dues", "finance-balances", "finance-summary", "finance-overall", "finance-revenue"],
       clients: ["clients-summary", "clients-leads", "clients-create-new", "clients-clients"],
       users: ["users-create", "users-edit", "users-staff"],
@@ -10547,6 +10581,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (state.activeAdminTab === "system-errors") { try { loadErrorMonitor(); } catch(e){} }
       if (state.activeAdminTab === "reviews") { try { loadAdminReviews(); } catch(e){} }
       if (state.activeAdminTab === "novaai") { try { loadAiQuotaQueue(); } catch(e){} }
+      if (state.activeAdminTab === "ai-chats") { try { nvAicLoad(); } catch(e){} }
     }
 
     // NovaX fix (Order Processing RPC scope bug): rParcel() is defined much
@@ -14070,6 +14105,190 @@ html,body{ background:var(--bg); color:var(--ink); }
     }
 
     window.loadAiQuotaQueue = loadAiQuotaQueue;
+
+    /* ===================================================================
+       NovaX AI -- merchant conversation log.
+
+       Read-only by construction. nv_ai_conversations and nv_ai_messages
+       already carry SELECT policies for admin/owner/staff, so this reads the
+       tables directly rather than adding another RPC. There is deliberately
+       no write path: an admin can see what a merchant asked, but cannot edit
+       it or reply into the merchant's AI thread from here. Replying is what
+       the support ticket queue is for.
+       =================================================================== */
+    var NV_AIC = { convs: [], msgs: {}, openId: null, q: "", days: 30, loading: false };
+
+    function nvAicWhen(t){
+      if (!t) return "";
+      var s = String(t).replace("T", " ").slice(0, 16);
+      return s;
+    }
+    function nvAicAgo(t){
+      if (!t) return "";
+      var ms = Date.now() - new Date(t).getTime();
+      if (!isFinite(ms) || ms < 0) return "";
+      var m = Math.floor(ms / 60000);
+      if (m < 60) return m + "m ago";
+      var h = Math.floor(m / 60);
+      if (h < 24) return h + "h ago";
+      return Math.floor(h / 24) + "d ago";
+    }
+    function nvAicClientName(id){
+      var c = (state.clients || []).filter(function(x){ return x.id === id; })[0];
+      return (c && c.name) || "Unknown merchant";
+    }
+
+    function nvAicLoad(){
+      var sb = window.__nvSb, host = document.getElementById("nvAicList");
+      if (!sb || !host) return;
+      if (NV_AIC.loading) return;
+      NV_AIC.loading = true;
+      var daysEl = document.getElementById("nvAicDays");
+      NV_AIC.days = daysEl ? Number(daysEl.value || 30) : 30;
+      host.innerHTML = '<div class="footer-note">Loading conversations&hellip;</div>';
+
+      var q = sb.from("nv_ai_conversations")
+                .select("id,client_id,started_at,last_at,title,resolved")
+                .order("last_at", { ascending: false })
+                .limit(300);
+      if (NV_AIC.days > 0) {
+        var since = new Date(Date.now() - NV_AIC.days * 86400000).toISOString();
+        q = q.gte("last_at", since);
+      }
+
+      Promise.resolve(q)
+        .catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+        .then(function(r){
+          NV_AIC.loading = false;
+          if (r && r.error) {
+            host.innerHTML = '<div class="ops-card"><strong>Could not load conversations</strong>' +
+              '<p class="footer-note">' + nvEscAdmin(r.error.message) + '</p>' +
+              '<p class="footer-note">If this says the table does not exist, the NovaX AI migration has not been run on this project yet.</p></div>';
+            return;
+          }
+          NV_AIC.convs = (r && r.data) || [];
+          nvAicRender();
+          nvAicStats();
+        });
+    }
+
+    /* One query for the whole window rather than one per conversation -- a
+       per-row count would be 300 round trips for a page nobody is waiting on. */
+    function nvAicStats(){
+      var sb = window.__nvSb, host = document.getElementById("nvAicStats");
+      if (!sb || !host) return;
+      var since = NV_AIC.days > 0
+        ? new Date(Date.now() - NV_AIC.days * 86400000).toISOString()
+        : "1970-01-01T00:00:00Z";
+      Promise.resolve(
+        sb.from("nv_ai_messages").select("client_id,role,created_at").gte("created_at", since).limit(5000)
+      ).catch(function(){ return { data: [] }; })
+       .then(function(r){
+        var rows = (r && r.data) || [];
+        var asked = rows.filter(function(m){ return m.role === "user"; }).length;
+        var merchants = {}; rows.forEach(function(m){ merchants[m.client_id] = 1; });
+        var label = NV_AIC.days > 0 ? ("last " + NV_AIC.days + " days") : "all time";
+        host.innerHTML =
+          '<div class="metric"><label>Conversations</label><strong>' + fmt(NV_AIC.convs.length) + '</strong><div class="meter-caption">' + label + '</div></div>' +
+          '<div class="metric"><label>Questions asked</label><strong>' + fmt(asked) + '</strong><div class="meter-caption">merchant messages</div></div>' +
+          '<div class="metric"><label>Merchants using it</label><strong>' + fmt(Object.keys(merchants).length) + '</strong><div class="meter-caption">' + label + '</div></div>';
+        var badge = document.getElementById("nvAicBadge");
+        if (badge) { badge.textContent = NV_AIC.convs.length; badge.hidden = !NV_AIC.convs.length; }
+      });
+    }
+
+    function nvAicOpenThread(id){
+      NV_AIC.openId = (NV_AIC.openId === id) ? null : id;
+      if (NV_AIC.openId && !NV_AIC.msgs[id]) {
+        var sb = window.__nvSb;
+        if (!sb) return;
+        Promise.resolve(
+          sb.from("nv_ai_messages").select("role,content,tools_used,created_at")
+            .eq("conv_id", id).order("created_at", { ascending: true }).limit(200)
+        ).catch(function(){ return { data: [] }; })
+         .then(function(r){ NV_AIC.msgs[id] = (r && r.data) || []; nvAicRender(); });
+      }
+      nvAicRender();
+    }
+
+    function nvAicCard(c){
+      var open = NV_AIC.openId === c.id;
+      var msgs = NV_AIC.msgs[c.id] || [];
+      var loaded = Object.prototype.hasOwnProperty.call(NV_AIC.msgs, c.id);
+      var name = nvAicClientName(c.client_id);
+
+      var thread = "";
+      if (open) {
+        thread = '<div class="nv-atk-thread">' + (
+          msgs.length
+            ? msgs.map(function(m){
+                var mine = m.role === "assistant";
+                var tools = (m.tools_used && m.tools_used.length)
+                  ? '<div class="nv-atk-meta" style="margin-top:4px;opacity:.75">looked up: ' + nvEscAdmin(m.tools_used.join(", ")) + '</div>' : "";
+                return '<div class="nv-atk-msg ' + (mine ? "mine" : "") + '">' +
+                  '<div class="nv-atk-meta">' + (mine ? "NovaX AI" : nvEscAdmin(name)) +
+                  ' · ' + nvEscAdmin(nvAicWhen(m.created_at)) + '</div>' +
+                  '<div>' + nvEscAdmin(m.content) + '</div>' + tools + '</div>';
+              }).join("")
+            : '<p class="footer-note">' + (loaded ? "This conversation has no messages." : "Loading…") + '</p>'
+        ) + '</div>';
+      }
+
+      return '<div class="ops-card nv-atk-card">' +
+        '<div class="ops-card-head" style="cursor:pointer" onclick="nvAicOpenThread(\'' + nvEscAdmin(c.id) + '\')">' +
+          '<strong>' + nvEscAdmin(name) + '</strong>' +
+          '<span class="chip ' + (c.resolved ? "good" : "info") + '">' + (c.resolved ? "resolved" : "open") + '</span>' +
+        '</div>' +
+        '<div class="inline-actions" style="flex-wrap:wrap;gap:6px;margin:6px 0">' +
+          (c.title ? '<span class="chip info">' + nvEscAdmin(c.title) + '</span>' : "") +
+          '<span class="chip info">Last message ' + nvEscAdmin(nvAicAgo(c.last_at) || nvAicWhen(c.last_at)) + '</span>' +
+          '<span class="chip info">Started ' + nvEscAdmin(nvAicWhen(c.started_at)) + '</span>' +
+        '</div>' +
+        thread +
+        '<div class="inline-actions" style="margin-top:8px">' +
+          '<button class="ghost-btn" onclick="nvAicOpenThread(\'' + nvEscAdmin(c.id) + '\')">' +
+            (open ? "Hide conversation" : (loaded && msgs.length ? "Read conversation (" + msgs.length + ")" : "Read conversation")) +
+          '</button>' +
+        '</div></div>';
+    }
+
+    function nvAicRender(){
+      var host = document.getElementById("nvAicList");
+      if (!host) return;
+      var rows = NV_AIC.convs.slice();
+      var q = String(NV_AIC.q || "").trim().toLowerCase();
+      if (q) {
+        /* Searches the loaded message bodies too, but only for threads already
+           expanded -- the rest match on merchant and title. Say so rather than
+           letting an admin conclude a question was never asked. */
+        rows = rows.filter(function(c){
+          var hay = [nvAicClientName(c.client_id), c.title || ""].join(" ").toLowerCase();
+          if (hay.indexOf(q) !== -1) return true;
+          var m = NV_AIC.msgs[c.id];
+          return !!(m && m.some(function(x){ return String(x.content || "").toLowerCase().indexOf(q) !== -1; }));
+        });
+      }
+      host.innerHTML = rows.length
+        ? (q ? '<p class="footer-note" style="margin-bottom:8px">Searching merchant names and titles. Message text is only searched in conversations you have already opened.</p>' : "")
+          + rows.map(nvAicCard).join("")
+        : '<div class="ops-card"><strong>Nothing here</strong><p class="footer-note">' +
+            (NV_AIC.convs.length ? "No conversation matches that search." : "No merchant has used NovaX AI in this period yet.") +
+          '</p></div>';
+    }
+
+    (function nvAicWire(){
+      var t = setInterval(function(){
+        var box = document.getElementById("nvAicSearch");
+        if (!box) return;
+        clearInterval(t);
+        if (box._nvWired) return;
+        box._nvWired = true;
+        box.addEventListener("input", function(){ NV_AIC.q = box.value; nvAicRender(); });
+      }, 500);
+    })();
+
+    window.nvAicLoad = nvAicLoad;
+    window.nvAicOpenThread = nvAicOpenThread;
     window.decideAiQuota = decideAiQuota;
 
     function loadAdminReviews(){
@@ -16792,7 +17011,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       ["manifest-dispute","Dispute","Manifest disputes"],
       ["pickup-requests","Pickup Requests","Merchant pickup queue"],
       ["reviews","Reviews","Approve merchant testimonials"],
-      ["novaai","NovaX AI","Approve AI message-limit requests"],
+      ["novaai","NovaX AI — Message Limits","Approve AI message-limit requests"],
+      ["ai-chats","NovaX AI — Merchant Conversations","Read what merchants ask the AI"],
       ["riders-route","Riders — On Route","Live rider routes"],
       ["riders-report","Riders — Report","Rider performance and cash"],
       ["finance-invoices","Finance — Invoices","Generate and settle invoices"],
