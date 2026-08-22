@@ -815,6 +815,92 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         var baseMeta=(p._meta && typeof p._meta==="object")?p._meta:{};
         var meta=Object.assign({}, baseMeta, { statusAgeHours:p.statusAgeHours, stage:p.stage, totalStages:p.totalStages, steps:p.steps, risk:p.risk, branch:p.branch, cashReceived:p.cashReceived, returnProof:p.returnProof, resolutionRemark:p.resolutionRemark, riderInput:p.riderInput, service:p.service, weight:p.weight, deliveredBy:p.deliveredBy, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord });
         return { status:p.status||"New booked", exception:p.exception||"", updated_at:new Date().toISOString(), meta:meta }; }
+      /* ── Durable audit queue ──────────────────────────────────────────
+         Scan and COD-ledger writes used to be fire-and-forget: the in-memory
+         "already posted" flag was set BEFORE the insert was sent, the error
+         branch only console.warn'd, and nothing ever retried. A rider who
+         collected cash in a dead zone could have the parcel-status write
+         succeed (that path self-heals) while the cod_ledger write vanished --
+         permanently, because on reload markLoaded() re-derived "already
+         posted" from status alone without ever checking the ledger.
+
+         Now every write is queued to localStorage first, survives a reload,
+         a crash and a dead battery, and is only removed once the server has
+         actually confirmed it. Before re-inserting, the flush checks whether
+         the row already landed, so a response lost in transit cannot become
+         a double-posted payment. */
+      var NVQ_KEY="novaxRiderAuditQueue";
+      function nvqLoad(){ try{ return JSON.parse(localStorage.getItem(NVQ_KEY)||"[]")||[]; }catch(e){ return []; } }
+      function nvqSave(q){ try{ localStorage.setItem(NVQ_KEY, JSON.stringify(q.slice(0,500))); }catch(e){} }
+      function nvqAdd(kind,key,payload){
+        var q=nvqLoad();
+        if(q.some(function(i){ return i.key===key; })) return;   // already waiting
+        q.push({ kind:kind, key:key, payload:payload, at:Date.now(), tries:0 });
+        nvqSave(q);
+        nvqRenderBadge();
+      }
+      var nvqFlushing=false;
+      function nvqFlush(){
+        if(nvqFlushing) return;
+        var q=nvqLoad();
+        if(!q.length){ nvqRenderBadge(); return; }
+        nvqFlushing=true;
+        var item=q[0];
+        function drop(){
+          var cur=nvqLoad().filter(function(i){ return i.key!==item.key; });
+          nvqSave(cur); nvqFlushing=false; nvqRenderBadge();
+          if(cur.length) setTimeout(nvqFlush,250);
+        }
+        function keep(err){
+          var cur=nvqLoad();
+          for(var i=0;i<cur.length;i++){ if(cur[i].key===item.key){ cur[i].tries=(cur[i].tries||0)+1; cur[i].lastError=String((err&&err.message)||err||""); } }
+          nvqSave(cur); nvqFlushing=false; nvqRenderBadge();
+        }
+        try{
+          if(item.kind==="cod"){
+            /* Existence check first. If the insert actually landed last time
+               and only the response was lost, re-inserting would double-count
+               real money against the client's wallet. */
+            sb.from("cod_ledger").select("id").eq("parcel_id",item.payload.parcel_id).limit(1)
+              .then(function(chk){
+                if(chk&&chk.error){ keep(chk.error); return; }
+                if(chk&&chk.data&&chk.data.length){ drop(); return; }   // already there
+                sb.from("cod_ledger").insert(item.payload)
+                  .then(function(r){ if(r&&r.error){ keep(r.error); return; } drop(); })
+                  .catch(keep);
+              }).catch(keep);
+          } else {
+            sb.from("scans").select("id").eq("parcel_id",item.payload.parcel_id).eq("status",item.payload.status).limit(1)
+              .then(function(chk){
+                if(chk&&chk.error){ keep(chk.error); return; }
+                if(chk&&chk.data&&chk.data.length){ drop(); return; }
+                sb.from("scans").insert(item.payload)
+                  .then(function(r){ if(r&&r.error){ keep(r.error); return; } drop(); })
+                  .catch(keep);
+              }).catch(keep);
+          }
+        }catch(e){ keep(e); }
+      }
+      /* A rider must be able to see that something has not reached NovaX yet
+         -- silently holding unsynced cash records is how the original bug
+         stayed invisible. */
+      function nvqRenderBadge(){
+        var n=nvqLoad().length;
+        var el=document.getElementById("nvqBadge");
+        if(!el){
+          if(!n) return;
+          el=document.createElement("div");
+          el.id="nvqBadge";
+          el.style.cssText="position:fixed;left:10px;right:10px;bottom:10px;z-index:99998;padding:10px 13px;border-radius:11px;font:600 13px/1.4 system-ui,sans-serif;text-align:center;box-shadow:0 8px 24px -10px rgba(0,0,0,.5)";
+          document.body.appendChild(el);
+          el.addEventListener("click", nvqFlush);
+        }
+        if(!n){ el.remove(); return; }
+        var off=(typeof navigator!=="undefined" && navigator.onLine===false);
+        el.style.background = off ? "#3b2a10" : "#33270f";
+        el.style.color="#f0c877";
+        el.textContent = n + (n===1?" delivery record":" delivery records") + " waiting to reach NovaX" + (off?" \u2014 you are offline":" \u2014 tap to retry");
+      }
       function markLoaded(p){ p._scanned=p._scanned||{}; if(TERMINAL.indexOf(p.status)>-1){ p._scanned[p.status]=true; if(p.status==="Delivered") p._codPosted=true; } }
       function maybeAudit(p){
         if(!RIDER_UUID||!p._uuid) return;
@@ -822,11 +908,12 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         if(TERMINAL.indexOf(p.status)>-1 && !p._scanned[p.status]){
           p._scanned[p.status]=true;
           var srow={ parcel_id:p._uuid, rider_id:RIDER_UUID, type:(p.status==="Delivered"||p.status==="Return to shipper")?"delivery":"exception", status:p.status, note:p.exception||"", photo_url:"", meta:{ awb:p.awb, signedAt:p.signedAt||"", hasPhoto:!!p.proofPhoto, hasSignature:!!p.signature, riderInput:p.riderInput||null } };
-          sb.from("scans").insert(srow).then(function(r){ if(r&&r.error) console.warn("NovaX scan insert",r.error.message); });
+          nvqAdd("scan","scan:"+p._uuid+":"+p.status, srow);
           if(p.status==="Delivered" && Number(p.cod)>0 && !p._codPosted){
             p._codPosted=true;
-            sb.from("cod_ledger").insert({ parcel_id:p._uuid, client_id:p.clientId, rider_id:RIDER_UUID, direction:"in", amount:Number(p.cod), reference:p.awb }).then(function(r){ if(r&&r.error) console.warn("NovaX cod insert",r.error.message); });
+            nvqAdd("cod","cod:"+p._uuid, { parcel_id:p._uuid, client_id:p.clientId, rider_id:RIDER_UUID, direction:"in", amount:Number(p.cod), reference:p.awb });
           }
+          nvqFlush();
         }
       }
       function rebuildShadow(){ shadow={}; (state.parcels||[]).forEach(function(p){ if(p._uuid){ markLoaded(p); try{ shadow[p._uuid]=sigOf(fParcel(p)); }catch(e){} } }); }
@@ -888,6 +975,20 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       state.parcels=[]; state.riders=[]; state.clients=[]; state.activeRider="";
       try{ var rb=document.getElementById("riderRefreshBtn"); if(rb) rb.addEventListener("click", function(){ loadAll(); }); }catch(e){}
       if(sb.auth){ sb.auth.getSession().then(function(r){ var s=r&&r.data&&r.data.session; if(!s){ return; } loadAll(); }); }
+
+      /* Drain anything the last session could not deliver. A queue nobody
+         flushes is no better than the fire-and-forget it replaced, so this
+         runs on load, the moment the phone regains signal, and on a slow
+         heartbeat for the case where the browser never fires an online event
+         (common when Android switches between mobile data and wifi). */
+      try{
+        nvqRenderBadge();
+        setTimeout(nvqFlush, 1500);
+        window.addEventListener("online", function(){ nvqRenderBadge(); setTimeout(nvqFlush, 400); });
+        window.addEventListener("offline", nvqRenderBadge);
+        setInterval(function(){ if(nvqLoad().length) nvqFlush(); }, 60000);
+        document.addEventListener("visibilitychange", function(){ if(!document.hidden) nvqFlush(); });
+      }catch(e){ console.warn("NovaX audit queue boot", e); }
     })();
     document.getElementById("riderPhotoInput").addEventListener("change", e => handleRiderPhoto(e.target.files && e.target.files[0]));
     document.getElementById("deliverFlash").addEventListener("click", () => document.getElementById("deliverFlash").classList.remove("show"));
