@@ -6343,6 +6343,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             ? ((document.getElementById("bookingDestArea")||{}).value||null)
             : null) });
         const awb=mapped&&mapped.awb;
+        /* Captured BEFORE resetBookingForm() runs. That function sets every
+           select back to index 0 -- which used to land on "Lahore" but now
+           lands on the blank "Select destination city..." placeholder added
+           to stop the dropdown silently defaulting. Reading the city AFTER
+           the reset (as this used to) fed the just-booked parcel's own AWB
+           reveal an empty city instead of the one it was actually booked to. */
+        const revealCity=document.getElementById("bookingCity").value;
         resetBookingForm();
         if(riskWarnEl){ riskWarnEl.style.display="none"; }
         if(confirmLine){ confirmLine.textContent=`Synced to NovaX. AWB ${awb} is ready to print.`; confirmLine.style.color=""; confirmLine.style.display="block"; }
@@ -6367,7 +6374,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }
         };
         try{
-          nvAwbReveal(awb, consignee, document.getElementById("bookingCity").value, cod, __afterReveal);
+          nvAwbReveal(awb, consignee, revealCity, cod, __afterReveal);
         }catch(e){ __afterReveal(); }
       }catch(e){
         console.error("Booking failed", e);
