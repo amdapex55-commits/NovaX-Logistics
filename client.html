@@ -531,7 +531,13 @@
     .nv-doc-total{margin-top:14px;border-top:2px solid #111;padding-top:10px;display:flex;justify-content:space-between;font-size:14px;font-weight:900;}
     .nv-doc-foot{margin-top:22px;border-top:1px solid #ccc;padding-top:10px;font-size:9.5px;color:#666;line-height:1.6;}
     @media (max-width:760px){ .nv-doc{padding:14px;} .nv-doc-grid{grid-template-columns:1fr;} }
-    @media (max-width:1080px){.client-shell{grid-template-columns:1fr;}.client-side{position:static;}.grid.two,.grid.three{grid-template-columns:1fr;}.grid.metrics{grid-template-columns:repeat(2,minmax(0,1fr));}}
+    /* minmax(0,1fr), never a bare 1fr. A 1fr track is minmax(auto,1fr), whose
+       floor is the min-content width of .client-content -- so a single wide
+       child (the NovaX AI suggestion chips, a long reply, a table) widened the
+       whole column to ~750px inside a 375px phone, and .app-shell's
+       overflow-x:clip then hid everything past the screen edge with no way to
+       scroll to it. Desktop had this right; only the mobile override was wrong. */
+    @media (max-width:1080px){.client-shell{grid-template-columns:minmax(0,1fr);}.client-side{position:static;}.grid.two,.grid.three{grid-template-columns:1fr;}.grid.metrics{grid-template-columns:repeat(2,minmax(0,1fr));}}
     @media (max-width:760px){
       .hamburger-btn{display:grid;}
       .client-menu{display:none;}
@@ -547,7 +553,7 @@
     /* Mobile polish layer for investor preview and seller use on phones. */
     html,body{width:100%;max-width:100%;}
     img,svg,canvas,video{max-width:100%;}
-    .topbar-inner,.brand,.nav-tabs,.auth-actions,.client-shell,.client-side,.client-main,.view,.panel,.metric,.table-wrap,.awb-label,.awb-codes,.ops-card,.money-box{min-width:0;}
+    .topbar-inner,.brand,.nav-tabs,.auth-actions,.client-shell,.client-side,.client-content,.client-main,.view,.panel,.metric,.table-wrap,.awb-label,.awb-codes,.ops-card,.money-box{min-width:0;}
     .action-btn,.ghost-btn,.tab-btn,.client-tab{min-width:0;max-width:100%;overflow-wrap:anywhere;text-align:center;}
     .field,.field input,.field select,.field textarea,.search,.segmented{min-width:0;max-width:100%;}
     .wide-scroll{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
@@ -631,6 +637,61 @@
       .nvauto-action-btn.nv-confirm,.nvauto-action-btn.nv-cancel{min-height:42px;font-weight:800;}
       .nvcoach-bar{padding:10px 12px;}
       .nvcoach-ctl button{min-height:32px;padding:4px 2px;}
+
+      /* --- Touch targets and text that phones actually clipped ---------------
+         Measured at 375px in a browser, not inferred from the CSS.
+
+         .hamburger-btn: the header row shrinks all three of its children to
+         fit, and this button carries overflow:hidden -- which zeroes its
+         automatic minimum size, so it is allowed to shrink below its own
+         label. "Menu" rendered as "Men". The min-width:76px set earlier in
+         this block never applied: a later rule in the sheet resets it to 0.
+         Refusing to shrink, plus a label that keeps its max-content width,
+         is what actually holds the word. */
+      .hamburger-btn{flex:0 0 auto;}
+      /* Descendant selector on purpose: a bare .hamburger-label rule further
+         down the sheet has the same specificity and would win on source
+         order, which is exactly how the earlier min-width:76px here was
+         silently cancelled. */
+      .hamburger-btn .hamburger-label{width:max-content;white-space:nowrap;}
+
+      /* NovaX AI composer. 14.5px is below the 16px threshold at which iOS
+         Safari zooms the whole page in on focus -- the merchant taps to type
+         a question and the portal jumps. The send button was 38px, under the
+         44px minimum, and sits next to the edge of the screen. */
+      #nvAiInput{font-size:16px;}
+      /* Same reason as the label above: .nvai-send is redeclared at 38px
+         later in the sheet. */
+      .nvai-composer .nvai-send{width:44px;height:44px;flex:0 0 auto;}
+      .nvai-composer{gap:8px;}
+
+      /* Primary CTAs that were 30-31px tall on a phone. */
+      .nv-command-strip button{min-height:44px;padding:10px 14px;}
+      /* button.nv-c-btn, not .nv-c-btn: the cockpit's stylesheet is injected
+         at runtime and appended to <head>, so it lands after this sheet and
+         wins any tie on source order. The element selector breaks the tie on
+         specificity instead. */
+      button.nv-c-btn{min-height:44px;padding:8px 12px;font-size:12px;}
+      /* The .search wrapper is 42px but its input was 21px, so half the
+         control did nothing when tapped. */
+      .search input{min-height:40px;}
+      input[type=file]{min-height:44px;}
+
+      /* Native checkboxes render at 13px, which is half the 24px minimum for
+         a control someone taps with a thumb. Scale the box itself rather than
+         padding the label, so the hit area moves with it. */
+      input[type=checkbox],input[type=radio]{width:20px;height:20px;flex:0 0 auto;}
+
+      /* Under 16px, iOS Safari zooms the page in on focus and does not zoom
+         back out. Applies to every text control, not just the AI composer
+         above -- a merchant filling the booking form should never have the
+         portal jump on them. The viewport tag deliberately still allows
+         pinch zoom, so this is the only lever. */
+      input:not([type=checkbox]):not([type=radio]):not([type=file]),
+      select,textarea{font-size:16px;}
+      /* select.wa-kind-select, not .wa-kind-select: the base 12px rule for it
+         sits further down this sheet and would win the tie on source order. */
+      select.wa-kind-select{font-size:16px;min-height:44px;}
     }
   </style>
   <!-- NovaX: AWB print modes. Exactly one of these two is left enabled at
@@ -1212,6 +1273,11 @@
   .nv-wd-tick *, .nvrv-tick *{ fill:none; }
 </style>
 <style id="nvAiStyles">
+/* Sized here rather than in the inline style the <select> is built with:
+   an inline declaration beats every stylesheet rule, so at 12px it kept
+   triggering iOS zoom-on-focus whatever the mobile block said. Desktop is
+   unchanged; the mobile block below takes it to 16px. */
+.wa-kind-select{font-size:12px;}
 /* ═══ NovaX AI console ═══
    Built only on the portal's existing theme tokens (--panel, --ink,
    --line, --green...) so it follows dark/light without a second palette.
@@ -3568,7 +3634,7 @@ ${step}
 Track your parcel: ${trackingUrl(p.awb)}`;
     }
     function waSelectHtml(awb, selectedKind){
-      return `<select id="waKind_${awb}" class="wa-kind-select" onclick="event.stopPropagation()" style="padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:inherit;font-size:12px">${WA_MESSAGE_KINDS.map(k=>`<option value="${k}" ${k===selectedKind?"selected":""}>${k}</option>`).join("")}</select>`;
+      return `<select id="waKind_${awb}" class="wa-kind-select" onclick="event.stopPropagation()" style="padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:inherit">${WA_MESSAGE_KINDS.map(k=>`<option value="${k}" ${k===selectedKind?"selected":""}>${k}</option>`).join("")}</select>`;
     }
     function waActionsHtml(awb, selectedKind){
       return `<div class="wa-actions" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center" onclick="event.stopPropagation()">${waSelectHtml(awb,selectedKind)}<button class="ghost-btn" onclick="event.stopPropagation();copyWhatsappMessage('${awb}', document.getElementById('waKind_${awb}').value)">Copy WhatsApp Message</button><button class="ghost-btn" onclick="event.stopPropagation();messageCustomer('${awb}', document.getElementById('waKind_${awb}').value)">Message Customer</button><button class="ghost-btn" onclick="event.stopPropagation();shareTrackingLink('${awb}')">Copy tracking link</button></div>`;

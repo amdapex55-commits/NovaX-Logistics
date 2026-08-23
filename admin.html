@@ -2799,7 +2799,13 @@
       }
 
       .client-shell, .admin-shell {
-        grid-template-columns: 1fr;
+        /* minmax(0,1fr), never 1fr: a bare 1fr track is minmax(auto,1fr), so
+           its floor is the content's min-content width. One wide child then
+           widens the whole column past the viewport, and .app-shell's
+           overflow-x:clip hides the excess instead of letting it scroll --
+           the content is simply unreachable. See client.html, where this
+           made every NovaX AI reply run off the side of the phone. */
+        grid-template-columns: minmax(0, 1fr);
       }
 
       .client-side, .admin-side {
@@ -2998,6 +3004,12 @@
         justify-self: start;
       }
     }
+
+    /* Size lives here, not in the inline style this <select> is built with:
+       an inline declaration outranks every stylesheet rule, so at 12px it
+       kept triggering iOS's zoom-on-focus no matter what the mobile block
+       said. Desktop is unchanged at 12px. */
+    .wa-kind-select { font-size: 12px; }
 
     @media (max-width: 640px) {
       :root {
@@ -3472,6 +3484,55 @@
         max-width: 100%;
         overflow: hidden;
       }
+
+      /* Touch targets, measured at 375px rather than assumed. Ops staff work
+         this console from a phone during a shift; a 13px checkbox and a 25px
+         search field are below what a thumb can hit reliably. Scaling the
+         control itself rather than padding its label keeps the hit area and
+         the drawn box the same shape. */
+      input[type=checkbox],
+      input[type=radio] {
+        width: 20px;
+        height: 20px;
+        flex: 0 0 auto;
+      }
+
+      .search input,
+      input.search,
+      input[type="search"] {
+        min-height: 44px;
+      }
+
+      input[type=file] {
+        min-height: 44px;
+      }
+
+      /* iOS Safari zooms the entire page in when a control with a computed
+         font-size under 16px takes focus, and it does not zoom back out. On
+         this console that meant tapping a status <select> in the operations
+         queue threw the layout off and left ops pinching to recover. 16px is
+         the threshold, not a preference -- there is no way to opt out of the
+         behaviour while keeping the page user-zoomable, which it must stay.
+         The wide tables already scroll horizontally, so the extra couple of
+         pixels of control height costs nothing there. */
+      input:not([type=checkbox]):not([type=radio]):not([type=file]),
+      select,
+      textarea,
+      .wa-kind-select {
+        font-size: 16px;
+      }
+
+      select,
+      textarea,
+      input[type=text],
+      input[type=search],
+      input[type=number],
+      input[type=email],
+      input[type=tel],
+      input[type=date],
+      input:not([type]) {
+        min-height: 44px;
+      }
     }
 
     @media (max-width: 640px) {
@@ -3841,6 +3902,8 @@
     .table-wrap,
     .admin-shell,
     .client-shell,
+    .admin-content,
+    .client-content,
     .admin-main,
     .client-main,
     .processing-desk,
@@ -8875,7 +8938,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       return "Hello " + (p.consignee || "") + ", this is NovaX Logistics (" + (client ? client.name : "seller") + ").\nAWB: " + p.awb + "\nStatus: " + kind + "\n" + step + "\nTrack your parcel: " + trackingUrl(p.awb);
     }
     function waSelectHtml(awb, selectedKind) {
-      return "<select id=\"waKind_" + awb + "\" class=\"wa-kind-select\" onclick=\"event.stopPropagation()\" style=\"padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:inherit;font-size:12px\">" + WA_MESSAGE_KINDS.map(k => "<option value=\"" + k + "\" " + (k === selectedKind ? "selected" : "") + ">" + k + "</option>").join("") + "</select>";
+      return "<select id=\"waKind_" + awb + "\" class=\"wa-kind-select\" onclick=\"event.stopPropagation()\" style=\"padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:inherit\">" + WA_MESSAGE_KINDS.map(k => "<option value=\"" + k + "\" " + (k === selectedKind ? "selected" : "") + ">" + k + "</option>").join("") + "</select>";
     }
     function waActionsHtml(awb, selectedKind) {
       return "<div class=\"wa-actions\" style=\"margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center\" onclick=\"event.stopPropagation()\">" + waSelectHtml(awb, selectedKind) + "<button class=\"ghost-btn\" onclick=\"event.stopPropagation();copyWhatsappMessage('" + awb + "', document.getElementById('waKind_" + awb + "').value)\">Copy WA Msg</button><button class=\"ghost-btn\" onclick=\"event.stopPropagation();messageCustomer('" + awb + "', document.getElementById('waKind_" + awb + "').value)\">Message Customer</button></div>";

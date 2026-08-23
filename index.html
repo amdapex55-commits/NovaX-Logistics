@@ -647,10 +647,22 @@ h1 .line{display:block}
 .fld select option{background:var(--bg-2);color:var(--ink)}
 .sl-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:11px;gap:12px}
 .sl-val{font-size:18px;font-weight:900;color:var(--green-2);font-variant-numeric:tabular-nums}
-input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:6px;padding:0;
-  background:linear-gradient(90deg,var(--green) var(--fill,50%),rgba(255,255,255,.1) var(--fill,50%));outline:0;border:0}
+/* The weight slider on the rate calculator. The bar is 6px and used to be
+   the element itself, so the whole hit area was 6px tall -- a pointer target
+   a thumb cannot reliably land on, and this is the one interactive control
+   on the marketing page. The 26px thumb was painted outside that box, which
+   made it look grabbable when it was not: hit-testing stops at the input's
+   own border box. The element is now 26px tall for the touch, and the 6px
+   bar moved to the track pseudo-element so it paints exactly as before.
+   --fill still drives it; custom properties inherit into pseudo-elements. */
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:26px;padding:0;
+  background:transparent;outline:0;border:0;display:block}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:6px;
+  background:linear-gradient(90deg,var(--green) var(--fill,50%),rgba(255,255,255,.1) var(--fill,50%))}
+input[type=range]::-moz-range-track{height:6px;border-radius:6px;
+  background:linear-gradient(90deg,var(--green) var(--fill,50%),rgba(255,255,255,.1) var(--fill,50%))}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#fff;border:4px solid var(--green);
-  box-shadow:0 4px 16px rgba(20,199,123,.5);cursor:grab}
+  box-shadow:0 4px 16px rgba(20,199,123,.5);cursor:grab;margin-top:-10px}
 input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:#fff;border:4px solid var(--green);box-shadow:0 4px 16px rgba(20,199,123,.5);cursor:grab}
 .calc-out{text-align:center;padding:21px;background:rgba(20,199,123,.09);border:1px solid var(--line-2);border-radius:var(--r);margin-top:5px}
 .calc-price{font-size:clamp(30px,4.8vw,46px);font-weight:900;color:var(--green-2);letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1}
