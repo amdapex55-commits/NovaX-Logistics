@@ -324,7 +324,17 @@
      .awb-field{border:1px solid #d7ddda;border-radius:var(--r-sm);padding:7px 9px;min-width:0;background:var(--nvu-bg);}
      .awb-field span{display:block;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;color:#5a6b62;margin-bottom:3px;}
      .awb-field strong{display:block;font-size:14px;line-height:1.25;font-weight:800;color:#07100d;overflow-wrap:anywhere;}
-     .awb-address strong,.awb-item strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+     /* The address gets four lines, the item description keeps two.
+
+     Both were clamped to two, which on a real Karachi address (104 chars,
+     needs four lines) hid exactly half of it -- scrollHeight 70px against a
+     clientHeight of 35px -- so the printed label carried a delivery address
+     the rider could not deliver from. The clamp itself is not the bug and is
+     kept: .awb-label is a fixed 100x150mm thermal box, and an unbounded field
+     would push the barcode off the paper. Four lines fits the longest address
+     seen and grows the label by 35px, about 3%. */
+  .awb-address strong{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;}
+  .awb-item strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
      .qr-img{width:112px;height:112px;border:1px solid #c8d2cc;border-radius:var(--r-sm);background:var(--nvu-bg);padding:6px;object-fit:contain;}
      .barcode-img{width:140px;height:46px;border:1px solid #c8d2cc;border-radius:var(--r-sm);background:var(--nvu-bg);padding:4px;object-fit:contain;}
     .review-panel{margin-top:12px;padding:12px;border:1px solid var(--amber);border-radius:var(--radius);background:rgba(242,169,59,.1);}
@@ -691,7 +701,10 @@
       select,textarea{font-size:16px;}
       /* select.wa-kind-select, not .wa-kind-select: the base 12px rule for it
          sits further down this sheet and would win the tie on source order. */
-      select.wa-kind-select{font-size:16px;min-height:44px;}
+      /* max-width, because raising this to 16px (to stop iOS zooming the
+         page on focus) also made the control wider than the 125px action
+         cell it sits in -- it ran 36px off the side of the screen. */
+      select.wa-kind-select{font-size:16px;min-height:44px;max-width:100%;min-width:0;}
     }
   </style>
   <!-- NovaX: AWB print modes. Exactly one of these two is left enabled at
@@ -733,7 +746,8 @@
     .awb-field.awb-cod{grid-column:1 / -1 !important;border:1.5px solid #111 !important;padding:1.8mm !important;background:var(--nvu-warn-bg) !important;}
     .awb-field.awb-cod span{font-size:8px !important;}
     .awb-field.awb-cod strong{font-size:17px !important;font-weight:900 !important;}
-    .awb-address strong,.awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
+    .awb-address strong{display:-webkit-box !important;-webkit-line-clamp:4 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
+  .awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
     .qr-img{width:20mm !important;height:20mm !important;padding:.8mm !important;object-fit:contain !important;flex:0 0 auto;}
     .barcode-img{width:auto !important;max-width:52mm !important;height:14mm !important;padding:.6mm !important;object-fit:contain !important;margin:0 2mm;}
     .awb-scan .chip{font-size:9px !important;font-weight:900 !important;padding:1.5px 4px !important;}
@@ -807,7 +821,8 @@
     .awb-field.awb-cod{grid-column:1 / -1 !important;border:2px solid #000 !important;padding:1.6mm !important;background:var(--nvu-bg) !important;}
     .awb-field.awb-cod span{font-size:7px !important;color:#000 !important;}
     .awb-field.awb-cod strong{font-size:17px !important;font-weight:900 !important;line-height:1 !important;}
-    .awb-address strong,.awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
+    .awb-address strong{display:-webkit-box !important;-webkit-line-clamp:4 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
+  .awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
     .awb-scan{align-items:center !important;justify-content:center !important;gap:1.5mm !important;}
     .qr-img{width:30mm !important;height:30mm !important;padding:0 !important;object-fit:contain !important;}
     .barcode-img{width:100% !important;max-width:39mm !important;height:11mm !important;padding:0 !important;object-fit:contain !important;}
@@ -1495,9 +1510,25 @@
      vertical stack. Amounts, AWBs and short labels must never break mid-token;
      only long free text should. Tables already sit in .wide-scroll containers,
      so keeping numbers intact scrolls rather than shatters. */
+  /* This rule keeps FIGURES on one line -- a wrapped "Rs 171,700" reads as
+     two numbers. `.awb-field strong` used to be in this list, and that was
+     wrong: on the shipping label those elements hold prose, not figures.
+     nowrap + word-break:keep-all made a real Karachi address render 737px
+     wide inside a 250px label box, so 487px of it was simply cut off the
+     label -- along with 258px of the consignee's name and 251px of the
+     shipper's. A rider cannot deliver from that. It also silently overrode
+     the overflow-wrap:anywhere the label styles already set on these fields.
+
+     `.order-log-card strong` came out for the same reason: it holds the
+     parcel status, so "Parcel received at destination" rendered 225px wide
+     in a 125px cell and ran 51px off the side of the phone, on 48 elements
+     of the order-log tab at once.
+
+     The COD box keeps nowrap, because that one genuinely is a figure and
+     must never break across lines. */
   .money-box strong,.metric strong,.nv-ins-stat strong,.nv-inc-amt,
-  .nv-doc-box strong,.ops-card-head strong,.awb-field strong,
-  .nv-awb-compact-top strong,.order-log-card strong,.nv-inc-chip{
+  .nv-doc-box strong,.ops-card-head strong,.awb-field.awb-cod strong,
+  .nv-awb-compact-top strong,.nv-inc-chip{
     overflow-wrap:normal;word-break:keep-all;white-space:nowrap;
     font-variant-numeric:tabular-nums;letter-spacing:-.01em;
   }
@@ -4125,13 +4156,37 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }catch(e){ /* cosmetic only */ }
     }
 
+    /* Only the list that is actually on screen is built.
+
+       The table and the card list are two renderings of the same parcels, and
+       exactly one of them is display:none at every width -- cards at 760px and
+       below, the table above it. Building both meant roughly 4,400 DOM nodes
+       per render that nobody could see, about a quarter of the whole page, plus
+       the string work to produce them. Measured with 220 active parcels: 4,451
+       nodes for the hidden card list on desktop, 4,401 for the hidden table on
+       a phone.
+
+       The off-screen host is emptied rather than left holding stale markup, so
+       it can never paint the previous render's parcels for a frame after the
+       breakpoint is crossed. The matchMedia listener below is what makes that
+       safe -- without it, a rotating phone would reveal an empty list. */
+    const NV_CARDS_MQ = window.matchMedia("(max-width:760px)");
     function renderClientParcels(){
       const parcels=filteredParcels();
-      document.getElementById("clientParcelRows").innerHTML=parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${nvProgressStep(p.status)}</span><span>${pr}%</span></div></td></tr>`; }).join("")||`<tr><td colspan="5">No parcels in range.</td></tr>`;
-      document.getElementById("clientParcelCards").innerHTML=parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${isCancellableBooking(p)?`<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn nv-cancel-booking" type="button" onclick="cancelClientBooking('${escLabelText(p.awb)}',event)">Cancel booking</button></div>`:""}</article>`; }).join("");
-      nvMarkChanged("clientParcelRows",parcels,"rows");
-      nvMarkChanged("clientParcelCards",parcels,"cards");
+      const cardsOnScreen=NV_CARDS_MQ.matches;
+      const rowsHost=document.getElementById("clientParcelRows");
+      const cardsHost=document.getElementById("clientParcelCards");
+      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${nvProgressStep(p.status)}</span><span>${pr}%</span></div></td></tr>`; }).join("")||`<tr><td colspan="5">No parcels in range.</td></tr>`);
+      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${isCancellableBooking(p)?`<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn nv-cancel-booking" type="button" onclick="cancelClientBooking('${escLabelText(p.awb)}',event)">Cancel booking</button></div>`:""}</article>`; }).join("")) : "";
+      if(cardsOnScreen) nvMarkChanged("clientParcelCards",parcels,"cards");
+      else nvMarkChanged("clientParcelRows",parcels,"rows");
     }
+    try{
+      var nvSwapParcelLists=function(){ try{ renderClientParcels(); }catch(e){} };
+      if(NV_CARDS_MQ.addEventListener) NV_CARDS_MQ.addEventListener("change", nvSwapParcelLists);
+      else if(NV_CARDS_MQ.addListener) NV_CARDS_MQ.addListener(nvSwapParcelLists);
+    }catch(e){}
+
     function toggleStatusBoard(){ state.statusBoardOpen=!state.statusBoardOpen; renderClientStatusBoard(); }
     function renderClientStatusBoard(){
       const el=document.getElementById("clientStatusBoard"); if(!el) return;
@@ -10138,8 +10193,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         nvSafeCall(function(){ nvNotifRender(false); });
         nvSafeCall(nvBarSync);
       }
-      if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",function(){ setTimeout(nvP3Tick,300); });
-      else setTimeout(nvP3Tick,300);
+      /* Run the first tick immediately, not on a 300ms timer.
+
+          nvRenderCockpit inserts #nvCockpit -- measured at 1,205px with 220
+          parcels -- above the command strip and the metric row. On a 300ms
+          delay that insertion landed after the dashboard had already painted,
+          so everything below it was shoved down by 1,233px and the merchant
+          watched the page jump a screen and a half. Filmed frame by frame:
+          nvCommandStrip 663px -> 1,896px between t=347 and t=380.
+
+          state is hydrated synchronously from localStorage by loadState(), so
+          on every visit after the first the buckets are already populated here
+          and the cockpit is in place before the first paint instead of after
+          it. The 300ms call is kept as a second pass for anything that mounts
+          late, and both are idempotent -- nvP3Tick's own guards make repeat
+          calls no-ops. A first-ever load still fills the cockpit when its data
+          arrives; there is nothing to render before that. */
+      function nvP3Boot(){ nvP3Tick(); setTimeout(nvP3Tick,300); }
+      if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",nvP3Boot);
+      else nvP3Boot();
       setInterval(nvP3Tick,2500);
       window.__novaxPhase3={ cockpit:nvRenderCockpit, notif:nvNotifRender, search:nvOmniSearch, selected:nvSelList };
     })();
