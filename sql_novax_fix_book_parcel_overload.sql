@@ -21,7 +21,9 @@
 -- parcel. This file is committed for exactly that reason: the fix must not
 -- live only in the database as well.
 --
--- RUN THIS IN THE SUPABASE SQL EDITOR, IN ORDER.
+-- RUN THESE ONE AT A TIME -- highlight a single statement and press Cmd+Enter.
+-- Running the whole file in one go executes the DROP in STEP 4 before you have
+-- read the backup from STEP 2, and those function bodies exist nowhere else.
 -- ===========================================================================
 
 
@@ -53,12 +55,19 @@ ORDER  BY p.pronargs;
 -- STEP 3 -- does anything else call the old 13-argument form? client_book_parcel_geo
 -- wraps it, and if it calls with 13 arguments it will start failing the moment
 -- the old one is gone (unless STEP 1 showed p_allow_open has a default).
-SELECT p.proname, pg_get_functiondef(p.oid) AS body
+--
+-- Reads prosrc rather than calling pg_get_functiondef() across the schema:
+-- pg_get_functiondef() raises 42809 the moment it meets an aggregate, so the
+-- obvious version of this query dies on array_agg before it finds anything.
+-- prokind='f' keeps it to plain functions for the same reason.
+SELECT p.proname,
+       pg_get_function_identity_arguments(p.oid) AS signature
 FROM   pg_proc p
 JOIN   pg_namespace n ON n.oid = p.pronamespace
 WHERE  n.nspname = 'public'
-AND    pg_get_functiondef(p.oid) ILIKE '%client_book_parcel(%'
-AND    p.proname <> 'client_book_parcel';
+AND    p.prokind = 'f'
+AND    p.proname <> 'client_book_parcel'
+AND    p.prosrc ILIKE '%client_book_parcel%';
 
 
 -- STEP 4 -- the fix. Drops ONLY the older 13-argument overload, leaving the
