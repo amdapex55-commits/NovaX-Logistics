@@ -6072,13 +6072,19 @@ html,body{ background:var(--bg); color:var(--ink); }
                 <div class="section-head"><div><h3>Paid Payout History</h3><p>Settled withdrawals with bank transaction reference and staff who marked them paid.</p></div></div>
                 <div class="ops-list" id="walletPaidHistory"></div>
               </div>
+              <!-- The old inline Wallet Adjustment form lived here. It had no
+                   client selector of its own -- it read "the client selected
+                   above", meaning the dropdown in the Request Withdrawal panel
+                   three panels up, which defaults to NOTHING selected. So an
+                   admin who scrolled straight to this form was adjusting a
+                   client called "Unknown client" that clientById() invents for
+                   a blank id, and the failure surfaced as "Cloud connection not
+                   ready yet" -- a completely wrong diagnosis of "you have not
+                   picked a merchant". Replaced by the Add to Wallet tab, which
+                   owns its selector and cannot be used without choosing one. -->
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>Wallet Adjustment</h3><p>Manual credit or reversal for the client selected above. Always ledgered, never a raw balance edit. Blocked while that client's wallet is mismatched.</p></div></div>
-                <div class="grid two">
-                  <div class="field"><label>Amount (negative to reverse)</label><input id="walletAdjustAmount" type="number"></div>
-                  <div class="field"><label>Note (required)</label><input id="walletAdjustNote" placeholder="Reason for this adjustment"></div>
-                </div>
-                <div class="inline-actions mt-10"><button class="action-btn" onclick="submitWalletAdjustment()">Submit Adjustment</button></div>
+                <div class="section-head"><div><h3>Wallet Adjustment</h3><p>Moved to its own tab so it always knows which merchant you mean.</p></div></div>
+                <div class="inline-actions mt-10"><button class="action-btn" type="button" onclick="showAdminTab('finance-topup')">Go to Add to Wallet</button></div>
               </div>
               <div class="panel mt-14">
                 <div class="section-head"><div><h3>Ledger Drilldown</h3><p>For the client selected above: invoice credits, withdrawal reservations, payout fees, payout paid proof, admin adjustments, and expected vs actual balance.</p></div></div>
@@ -10407,9 +10413,15 @@ html,body{ background:var(--bg); color:var(--ink); }
          adjustment onto a different merchant while an admin is typing. */
       const topupSelect = document.getElementById("nvTopupClientSelect");
       if (topupSelect) {
+        /* The placeholder is not decoration. Without it a <select> shows its
+           first option as chosen, so this form would silently arm itself
+           against whichever merchant happens to sort first -- an admin could
+           type an amount, hit the button, and move real money into an account
+           they never picked. Nothing is selected until someone selects it. */
         const keep = topupSelect.value;
-        topupSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${shortClientCode(client)} | ${escLabelText(client.name)}</option>`).join("");
-        if (keep && state.clients.some(c => c.id === keep)) topupSelect.value = keep;
+        topupSelect.innerHTML = '<option value="">Select a client...</option>' +
+          state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${shortClientCode(client)} | ${escLabelText(client.name)}</option>`).join("");
+        topupSelect.value = (keep && state.clients.some(c => c.id === keep)) ? keep : "";
         try { nvRenderTopupPreview(); } catch (e) {}
       }
       const walletTotal = state.clients.reduce((sum, client) => sum + walletBalance(client.id), 0);
@@ -12455,16 +12467,25 @@ html,body{ background:var(--bg); color:var(--ink); }
        ledger is flagged as mismatched and has their payouts BLOCKED. A raw
        balance write would credit the merchant and lock them out of
        withdrawing it in the same action. */
+    /* clientById("") does NOT return null -- it returns an invented
+       {id:null, name:"Unknown client", walletBalance:0} placeholder. That is
+       what produced "Unknown client / Expected Rs 0 vs actual Rs 0 -- matches"
+       in the Ledger Drilldown, and it is why the old adjustment form failed
+       with a network error instead of "pick a merchant". Resolve the blank
+       case to null here so every caller below can trust a falsy check. */
     function nvTopupSelectedClient(){
       var sel=document.getElementById("nvTopupClientSelect");
-      return sel ? clientById(sel.value) : null;
+      var id=sel?String(sel.value||""):"";
+      if(!id) return null;
+      var c=clientById(id);
+      return (c && c.id) ? c : null;
     }
 
     function nvRenderTopupPreview(){
       var el=document.getElementById("nvTopupPreview");
       if(!el) return;
       var client=nvTopupSelectedClient();
-      if(!client){ el.textContent=""; return; }
+      if(!client){ el.textContent="Choose a client to see their current balance."; return; }
       var now=Number(client.walletBalance||0);
       var amtEl=document.getElementById("nvTopupAmount");
       var amt=Number(amtEl && amtEl.value);
@@ -12497,8 +12518,16 @@ html,body{ background:var(--bg); color:var(--ink); }
       var note=String((noteEl && noteEl.value)||"").trim();
       if(!amount){ toast("Enter an amount. Negative takes money back.","error"); return; }
       if(!note){ toast("Write why you are adjusting this wallet \u2014 it goes in the merchant's ledger.","error"); return; }
-      if(!(window.__nvSb && client._uuid)){
-        toast("Cloud connection not ready yet, please try again in a moment.","error");
+      /* Two genuinely different failures that used to share one wrong
+         message. A merchant with no _uuid is not a network problem -- it is a
+         client that never synced, and telling an admin to "try again in a
+         moment" sends them in a circle forever. */
+      if(!window.__nvSb){
+        toast("Not connected to the database yet \u2014 wait a moment and try again.","error");
+        return;
+      }
+      if(!client._uuid){
+        toast(client.name+" has not finished syncing to the cloud yet, so their wallet cannot be adjusted.","error");
         return;
       }
       if(!window.confirm("Adjust "+client.name+" by "+money(amount)+"?\n\n"+
@@ -12536,39 +12565,11 @@ html,body{ background:var(--bg); color:var(--ink); }
       if(e && e.target && e.target.id==="nvTopupClientSelect") nvRenderTopupPreview();
     });
 
-    function submitWalletAdjustment() {
-      // NovaX new (Wallet Ledger v1, item 2/5): manual admin credit/reversal
-      // now always goes through admin_wallet_adjustment, which writes a
-      // wallet_ledger row -- never a raw wallet_balance UPDATE. This is the
-      // proper replacement for any future ad-hoc SQL reconciliation.
-      const clientId = document.getElementById("walletClientSelect").value;
-      const client = clientById(clientId);
-      // NovaX new (Finance Control Room v2, item 3): wallet adjustments are
-      // blocked for any client whose ledger does not reconcile with their
-      // wallet balance -- fix the mismatch first, then adjust.
-      const adjustRecon = computeWalletReconciliation(clientId);
-      if (adjustRecon.mismatch) {
-        toast(`${(client && client.name) || clientId}'s wallet ledger does not match their balance (difference ${money(adjustRecon.difference)}). Review the ledger before adjusting.`, "error");
-        return;
-      }
-      const amountEl = document.getElementById("walletAdjustAmount");
-      const noteEl = document.getElementById("walletAdjustNote");
-      const amount = Number(amountEl && amountEl.value);
-      const note = (noteEl && noteEl.value || "").trim();
-      if (!amount) { toast("Enter a non-zero adjustment amount (negative to reverse).", "error"); return; }
-      if (!note) { toast("A note explaining the adjustment is required.", "error"); return; }
-      if (!(window.__nvSb && client && client._uuid)) {
-        toast("Cloud connection not ready yet, please try again in a moment.", "error");
-        return;
-      }
-      window.__nvSb.rpc("admin_wallet_adjustment", { p_client_id: client._uuid, p_amount: amount, p_note: note }).then(r => {
-        if (r && r.error) { toast(`Adjustment rejected: ${r.error.message}`, "error"); return; }
-        if (amountEl) amountEl.value = "";
-        if (noteEl) noteEl.value = "";
-        if (typeof nvRefresh === "function") nvRefresh(["clients","wallet_ledger","payment_logs"]); else if (typeof loadAll === "function") loadAll();
-        toast(`${client.name} wallet adjusted by ${money(amount)}.`);
-      }).catch(e => toast(`Adjustment failed: ${(e && e.message) || e}`, "error"));
-    }
+    /* submitWalletAdjustment() removed with the inline form it belonged to.
+       Its inputs (walletAdjustAmount / walletAdjustNote) no longer exist, so
+       it could only ever have read null and thrown. The same operation now
+       lives in nvSubmitWalletTopup() on the Add to Wallet tab, with its own
+       client selector, a balance preview and a confirm step. */
 
     function addExpense() {
       const type = document.getElementById("expenseType").value;
