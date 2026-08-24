@@ -8609,6 +8609,40 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // once Supabase has actually accepted them, and the exact Supabase
       // error is surfaced to the caller (console + toast) instead of a fake
       // local "reserved" parcel.
+      /* A merchant should never be shown a Postgres error.
+
+         The booking form used to print `r.error.message` straight onto the
+         page, so a function-overload collision filled the screen with two
+         full SQL signatures -- unreadable to the shopkeeper trying to book,
+         and it puts the schema in front of anyone who asks for it. The raw
+         error still goes to the console for us; the merchant gets a sentence
+         telling them whether to retry, fix something, or call support. */
+      function nvBookingError(err){
+        var msg = String((err && err.message) || "");
+        if (/could not choose the best candidate|is not unique/i.test(msg)) {
+          return "Booking is temporarily unavailable while we finish a server update. " +
+                 "Nothing was charged and no parcel was created. Please try again shortly, " +
+                 "or send this parcel to support and we will book it for you.";
+        }
+        if (/row-level security|permission denied|not authorized/i.test(msg)) {
+          return "Your account does not have permission to book this parcel. " +
+                 "Please sign out and back in, or contact support if it keeps happening.";
+        }
+        if (/duplicate key|already exists/i.test(msg)) {
+          return "This parcel looks like it has already been booked. " +
+                 "Check your parcel list before booking it again.";
+        }
+        if (/violates check constraint|invalid input syntax|numeric/i.test(msg)) {
+          return "One of the parcel details was not accepted — most often the COD amount " +
+                 "or the weight. Please check those two fields and try again.";
+        }
+        if (/timeout|fetch|network|Failed to fetch/i.test(msg)) {
+          return "We could not reach the server. Your parcel has NOT been booked — " +
+                 "check your connection and try again.";
+        }
+        return msg || "Server rejected this booking.";
+      }
+
       window.__novaxBookParcel=function(o){
         o=o||{};
         if(!sb||!MY) return Promise.reject(new Error("We're preparing your workspace. Refresh or sign in again."));
@@ -8678,6 +8712,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
         return Promise.resolve(sb.rpc("client_book_parcel", argsWithOpen)).then(function(r0){
           var m0 = (r0 && r0.error && r0.error.message) || "";
+          /* Retrying without p_allow_open only helps when the 14-argument
+             function is MISSING. If the database holds both overloads the
+             13-argument call is ambiguous too, so retrying would just produce
+             the same failure twice -- check for that first. */
+          if (m0 && /could not choose the best candidate|is not unique/i.test(m0)) {
+            return r0;
+          }
           if (m0 && /p_allow_open|does not exist|not find|schema cache|without function|no function matches/i.test(m0)) {
             console.warn("NovaX: p_allow_open not deployed yet — booking without it. Run sql/novax_allow_open_v1.sql to enable the toggle.");
             return sb.rpc("client_book_parcel", args);
@@ -8686,7 +8727,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }).then(function(r){
           if(r&&r.error){
             console.error("NovaX client_book_parcel RPC failed:", r.error.message||r.error, r.error);
-            throw new Error(r.error.message||"Server rejected this booking.");
+            throw new Error(nvBookingError(r.error));
           }
           var row=r&&r.data;
           if(!row||!row.id){
