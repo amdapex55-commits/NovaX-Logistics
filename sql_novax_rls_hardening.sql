@@ -119,8 +119,22 @@ begin
   if new.fee is distinct from old.fee then
     raise exception 'Delivery fee cannot be changed from the portal. Contact NovaX support if it is wrong.';
   end if;
+  -- COD is editable in exactly one situation: the merchant is fixing their
+  -- own booking through client_edit_new_booked_parcel(), which has already
+  -- re-checked ownership, status, invoicing and rider assignment, and which
+  -- sets this transaction-local flag immediately before its UPDATE.
+  --
+  -- A browser cannot forge this. set_config(..., true) is scoped to the
+  -- transaction, and the only statement that sets it lives inside a
+  -- SECURITY DEFINER function the merchant cannot modify. The status
+  -- re-check below is deliberately redundant with the one in that function:
+  -- if a future caller ever sets the flag without checking, COD still
+  -- cannot be rewritten on a parcel that has already moved.
   if new.cod_amount is distinct from old.cod_amount then
-    raise exception 'COD amount cannot be changed after booking. Contact NovaX support if it is wrong.';
+    if coalesce(current_setting('novax.parcel_edit', true), '') <> '1'
+       or coalesce(old.status, '') <> 'New booked' then
+      raise exception 'COD amount cannot be changed after booking. Contact NovaX support if it is wrong.';
+    end if;
   end if;
   if new.client_id is distinct from old.client_id then
     raise exception 'A parcel cannot be moved to another merchant.';
@@ -174,3 +188,11 @@ create trigger trg_nv_freeze_parcel_money
 --
 -- Then, as a MERCHANT (not admin), this must now fail:
 --   update parcels set fee = 0 where awb = '<one of your own>';
+--
+-- ...and so must a raw COD rewrite, even on your own New booked parcel,
+-- because a plain UPDATE never sets the novax.parcel_edit flag:
+--   update parcels set cod_amount = 1 where awb = '<one of your own>';
+--
+-- ...while the supported path must still succeed (see
+-- sql_novax_client_edit_parcel.sql):
+--   select public.client_edit_new_booked_parcel('<your New booked awb>', ...);

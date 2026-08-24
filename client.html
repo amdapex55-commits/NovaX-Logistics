@@ -510,6 +510,14 @@
        toggleable <style> tags below (#nvPrintThermal / #nvPrintA4) so JS
        can enable exactly one of them right before window.print(). */
     @media print{
+      /* Limited guard, NOT the mechanism. color-scheme only affects surfaces
+         the browser itself paints -- form controls, scrollbars, the canvas
+         behind the page -- it does NOT re-resolve the --nvu-* custom
+         properties, which are set by html[data-theme="dark"] and are
+         media-independent. The actual theme swap is nvPrintThemeLight(), and
+         every print path in this file goes through it. This line only stops a
+         raw Cmd-P from putting a dark UA canvas behind the label. */
+      :root{color-scheme:light !important;}
       body{margin:0 !important;background:var(--nvu-bg) !important;}
       body *{visibility:hidden !important;}
       #printStage,#printStage *,#adminPrintStage,#adminPrintStage *{visibility:visible !important;}
@@ -1043,6 +1051,53 @@
     border-color:#d6e6de !important;
   }
 
+
+  /* ═══ The AWB label is paper, in every theme ═══════════════════════════
+     .awb-label sets `background:var(--nvu-bg)` with a hardcoded
+     `color:#07100d`, and `.awb-label *{color:inherit}` pushes that ink into
+     every child. In the dark theme --nvu-bg resolves dark, so the whole label
+     rendered near-black ink on a near-black ground: the AWB number, the
+     consignee, the address and the COD figure were all effectively invisible
+     on screen. The same applies to .awb-zone and .awb-field.
+
+     nvPrintThemeLight() fixes the PRINTED output by forcing the light theme
+     for the duration of a print, but the on-screen preview in the AWB Label
+     tab and in the "AWB Created" modal is not a print -- it needs to be
+     readable in its own right, and a merchant proof-reading a consignee
+     address before printing is exactly when it matters most.
+
+     So the label commits to paper-white in both themes, the same call already
+     made for div.nv-doc-paper (the invoice). A courier label is a physical
+     document; it does not have a night mode. */
+  html[data-theme="dark"] .awb-label,
+  html[data-theme="dark"] .awb-zone,
+  html[data-theme="dark"] .awb-field{ background:#ffffff !important; }
+  html[data-theme="dark"] .awb-label{ color:#07100d !important; box-shadow:none !important; }
+
+  /* ═══ Warm notice cards stay light in both themes ══════════════════════
+     Two panels are deliberately "a note on cream paper": the dashboard's
+     Action needed card and the wallet review note. Both hardcoded
+     background:#fffaf0 / #fff7e6 inline while setting NO text colour, so
+     their headings and body inherited --ink / --muted. In light mode that was
+     fine. Now that the portal defaults to dark, --ink is #eaf3ee -- near-white
+     text on near-white cream, i.e. an Action needed card nobody could read.
+
+     Same call as div.nv-doc-paper above: this surface is a document-like
+     notice, so it commits to light and carries its own ink, rather than being
+     converted to theme tokens. Both colours are checked against #fffaf0
+     (roughly 10:1 for the heading, 6.5:1 for body copy). */
+  .nv-notice-warm{ background:#fffaf0 !important; border:1px solid #f0d6a0 !important; color:#5a4212 !important; }
+  .nv-notice-warm h3,
+  .nv-notice-warm strong{ color:#5a4212 !important; }
+  .nv-notice-warm p,
+  .nv-notice-warm .footer-note,
+  .nv-notice-warm .section-head p{ color:#7a5f22 !important; }
+  /* The cards INSIDE the notice have to come with it. html[data-theme="dark"]
+     .ops-card paints them near-black, and the ink rules above would then be
+     dark-brown text on a near-black card -- worse than what was there before.
+     If the surface is paper, all of it is paper. */
+  .nv-notice-warm .ops-card{ background:#fffdf7 !important; border-color:#eadcc0 !important; color:#5a4212 !important; }
+  .nv-notice-warm .ops-card .chip.warn{ background:#fdf0d5 !important; border-color:#e6cf9c !important; color:#7a5406 !important; }
 
   /* ═══ Toast + change-highlight: never white ═══════════════════════════
      .toast used background:var(--ink) with color:white. In the dark theme
@@ -2362,7 +2417,7 @@
                 <span class="wallet-pulse"><span class="pulse"></span><span id="walletPushNote">No admin credit yet</span></span>
               </div>
               <div class="footer-note" style="background:#eafff5;border:1px solid #bfe8d7;border-radius:10px;padding:10px 12px;margin-top:12px"><strong style="color:#0c7c59">Wallet Balance</strong> is available to withdraw right now. Once you request a payout it moves to <strong>Pending admin payout</strong> (admin still needs to send it) until it shows <strong>Paid</strong>, which means the money has actually reached your IBAN.</div>
-              <div class="footer-note" id="walletReviewNote" style="display:none;background:#fff7e6;border:1px solid #f4dca0;border-radius:10px;padding:10px 12px;margin-top:10px"><strong style="color:#9a6b00">Finance is reviewing your wallet statement.</strong> This doesn't affect your ability to keep using NovaX -- we'll let you know as soon as it's done.</div>
+              <div class="footer-note nv-notice-warm" id="walletReviewNote" style="display:none;border-radius:10px;padding:10px 12px;margin-top:10px"><strong>Finance is reviewing your wallet statement.</strong> This doesn't affect your ability to keep using NovaX -- we'll let you know as soon as it's done.</div>
               <div class="panel mt-14">
                 <div class="section-head"><div><h3>Wallet Summary</h3><p>Available balance, pending payout, and what you've been paid.</p></div></div>
                 <div class="money-grid" id="walletSummaryCards"></div>
@@ -2531,6 +2586,41 @@
   </div>
 
   <!-- AWB modal -->
+  <!-- NovaX: edit a booking that has not moved yet. Delivery charge is shown
+       but NOT editable -- it is fixed at booking and the server refuses to
+       change it (see sql_novax_client_edit_parcel.sql, which does not even
+       accept a fee parameter). -->
+  <div class="modal-overlay" id="nvEditParcelModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div><h3>Edit booking</h3><p class="footer-note" id="nvEditParcelSub"></p></div>
+        <button class="modal-close" type="button" onclick="nvCloseEditParcel()" aria-label="Close">&times;</button>
+      </div>
+      <div class="form-grid">
+        <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="nvEdName" maxlength="120"></div>
+        <div class="field"><label>Phone <span class="required-star">*</span></label><input id="nvEdPhone" maxlength="11" inputmode="numeric"></div>
+        <div class="field"><label>Destination City <span class="required-star">*</span></label>
+          <select id="nvEdCity"><option value="">Select destination city…</option><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
+        <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="nvEdCod" type="number" min="0" inputmode="numeric"></div>
+        <div class="field"><label>Product Details <span class="required-star">*</span></label><input id="nvEdCategory" maxlength="140"></div>
+        <div class="field"><label>Package Weight</label><input id="nvEdWeight" maxlength="20" placeholder="0.8 kg"></div>
+        <div class="field"><label>Service Type</label><select id="nvEdService"><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option></select></div>
+        <div class="field"><label>Payment Mode</label><select id="nvEdPaymentMode"><option>COD</option><option>Non COD Prepaid</option></select></div>
+        <div class="field"><label>Fragile</label><select id="nvEdFragile"><option>No</option><option>Yes</option></select></div>
+        <div class="field"><label>Allow to Open</label><select id="nvEdAllowOpen"><option value="No">No &mdash; do not allow</option><option value="Yes">Yes &mdash; customer may open before paying</option></select></div>
+        <div class="field"><label>Your Order ID</label><input id="nvEdOrderId" maxlength="40"></div>
+        <div class="field"><label>Delivery Charge</label>
+          <input id="nvEdFee" class="nv-locked" readonly tabindex="-1" aria-readonly="true">
+          <div class="footer-note mt-4">Fixed at booking. If this looks wrong, open a support ticket and we will correct it.</div></div>
+        <div class="field" style="grid-column:1/-1"><label>Delivery Address <span class="required-star">*</span></label><textarea id="nvEdAddress" rows="3" maxlength="400"></textarea></div>
+      </div>
+      <div class="footer-note nv-notice-warm" id="nvEditParcelError" style="display:none;border-radius:10px;padding:10px 12px;margin-top:12px"></div>
+      <div class="inline-actions mt-14" style="flex-wrap:wrap;gap:8px">
+        <button class="action-btn" type="button" id="nvEditParcelSave" onclick="nvSaveEditParcel()">Save changes</button>
+        <button class="ghost-btn" type="button" onclick="nvCloseEditParcel()">Cancel</button>
+      </div>
+    </div>
+  </div>
   <div class="modal-overlay" id="awbModal">
     <div class="modal-card">
       <div class="modal-head"><h3>AWB Created</h3><button class="modal-close" onclick="closeAwbModal()">&times;</button></div>
@@ -2895,16 +2985,41 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     function isInvoiceClosed(status){ return NV_INVOICE_CLOSED_STATUSES.indexOf(status)>-1; }
     function paidParcelRefs(){ return new Set(state.invoices.filter(i=>isInvoiceClosed(i.status)).flatMap(i=>i.parcelRefs||[])); }
     function isUnpaidDeliveredParcel(p){ return isDeliveredLedgerParcel(p) && !paidParcelRefs().has(p.awb); }
+    /* ═══ What counts as a delivery attempt ═══════════════════════════════
+       A delivery rate of delivered/ALL parcels punished the merchant for
+       booking. A parcel booked five minutes ago that no rider has touched
+       cannot have been delivered OR failed -- NovaX has not had its chance at
+       it yet -- so counting it as a miss meant a good morning's booking run
+       dragged the rate down, and the dashboard paints this metric amber below
+       40%. Volume was literally turning the merchant's own scorecard orange.
+
+       ratedTotal is the honest denominator: parcels NovaX has actually taken
+       responsibility for. Excluded:
+         - "New booked"        -- not collected yet, no attempt has happened
+         - "Cancelled by client" -- the merchant pulled it; not a failed delivery
+       Parcels in transit stay IN the denominator. They are live commitments,
+       and hiding them would flatter the number.
+
+       cm.total is untouched, so "My Parcels" still counts everything. */
+    function nvIsRatedParcel(p){
+      if(!p) return false;
+      var st=String(p.status||"").trim();
+      if(!st) return false;
+      if(st==="New booked") return false;
+      if(st==="Cancelled by client") return false;
+      return true;
+    }
     function clientMetrics(){
       const parcels=clientScopedParcels();
       const delivered=parcels.filter(p=>p.status.includes("Delivered")).length;
+      const ratedTotal=parcels.filter(nvIsRatedParcel).length;
       const deliveredParcels=parcels.filter(isDeliveredLedgerParcel);
       const unpaid=parcels.filter(isUnpaidDeliveredParcel);
       const codCollected=deliveredParcels.reduce((s,p)=>s+p.cod,0);
       const deliveryCharges=deliveredParcels.reduce((s,p)=>s+p.fee,0);
       const payable=Math.max(0,unpaid.reduce((s,p)=>s+p.cod-p.fee,0));
       const avgProgress=parcels.length?parcels.reduce((s,p)=>s+(p.stage/p.totalStages),0)/parcels.length:0;
-      return { parcels, delivered, total:parcels.length, codCollected, deliveryCharges, payable, avgProgress };
+      return { parcels, delivered, total:parcels.length, ratedTotal, codCollected, deliveryCharges, payable, avgProgress };
     }
     function isRiderCashHolding(p){
       if(!p) return false;
@@ -3397,16 +3512,26 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
        "follow my phone" is reachable, which is what most merchants actually
        want. Falls back to the old two-way behaviour if the controller is
        somehow absent. */
+    /* Two states now, not three -- "follows your device" was retired when dark
+       became the portal default (see the NovaXTheme controller). The icon shows
+       what tapping will GIVE you, not what you are currently on: on dark it
+       offers the sun, on light it offers the moon. */
     function nvSyncThemeButton(){
       try{
-        var mode=(window.NovaXTheme&&window.NovaXTheme.get)?window.NovaXTheme.get():"system";
+        /* This runs ~10,000 lines BEFORE the NovaXTheme controller is defined,
+           so the fallback is not decoration -- it is the path taken on first
+           paint. Read the attribute the boot script already stamped rather
+           than assuming dark, or a merchant who chose Light gets the wrong
+           icon until they next tap it. */
+        var mode=(window.NovaXTheme&&window.NovaXTheme.get)?window.NovaXTheme.get()
+                 :(document.documentElement.getAttribute("data-theme")==="light"?"light":"dark");
         var btn=document.getElementById("nvThemeToggleBtn");
         if(!btn) return;
-        var face={system:"\u{1F319}",light:"\u2600\uFE0F",dark:"\u{1F319}"};
-        var label={system:"Theme: follows your device",light:"Theme: light",dark:"Theme: dark"};
-        btn.textContent=mode==="light"?"\u2600\uFE0F":(mode==="dark"?"\u{1F311}":"\u{1F319}");
-        btn.setAttribute("aria-label",label[mode]+" — tap to change");
-        btn.setAttribute("title",label[mode]+" — tap to change");
+        var isLight=(mode==="light");
+        var label=isLight?"Theme: light \u2014 tap for dark":"Theme: dark \u2014 tap for light";
+        btn.textContent=isLight?"\u{1F319}":"\u2600\uFE0F";
+        btn.setAttribute("aria-label",label);
+        btn.setAttribute("title",label);
       }catch(e){}
     }
     function toggleNovaxTheme(){
@@ -3525,13 +3650,18 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     function statusClass(p){ const a=alertForParcel(p); if(a.level==="critical"||p.risk>=65||p.exception) return "bad"; if(a.level==="warning") return "warn"; if(p.status==="Cancelled by client") return ""; if(["Delivered","Return to shipper"].includes(p.status)) return "good"; if(p.stage<5) return "info"; if(p.stage<8) return "warn"; return "good"; }
     function isRefusalReview(p){ return /refus|attempt disputed|consignee denies|not available/i.test(`${p.status} ${p.exception||""} ${(p.steps||[]).join(" ")}`); }
     function meterClass(v){ if(v>=75) return "red"; if(v>=45) return "amber"; return "blue"; }
-    function metricCard(label,value,fill,caption,kind="",icon="",action=""){
+    /* hidePct: an eighth, optional argument, defaulted so every existing
+       caller is untouched. It exists for the "nothing picked up yet" state of
+       the delivery-rate cards, where the value is an em dash -- printing
+       "\u2014 ... 0%" beside it would put back exactly the false zero the
+       card is trying to avoid. */
+    function metricCard(label,value,fill,caption,kind="",icon="",action="",hidePct=false){
       const iconHtml = icon ? `<span class="metric-icon">${icon}</span>` : "";
       // NovaX fix (inline handler with interpolated data): the action is now a
       // data attribute picked up by one delegated listener, so nothing
       // user-derived is ever concatenated into executable onclick JavaScript.
       const clickAttrs = action ? ` data-metric-action="${escLabelText(action)}" role="button" tabindex="0" style="cursor:pointer"` : "";
-      return `<article class="metric"${clickAttrs}>${iconHtml}<label>${label}</label><strong>${value}</strong><div class="meter ${kind}"><span style="width:${fill}%"></span></div><div class="meter-caption"><span>${caption}</span><span>${fill}%</span></div></article>`;
+      return `<article class="metric"${clickAttrs}>${iconHtml}<label>${label}</label><strong>${value}</strong><div class="meter ${kind}"><span style="width:${fill}%"></span></div><div class="meter-caption"><span>${caption}</span><span>${hidePct?"":`${fill}%`}</span></div></article>`;
     }
     // NovaX dashboard refresh: metric cards are clickable shortcuts into the
     // matching filtered view -- purely additive UI sugar, no data logic changes.
@@ -3929,13 +4059,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     function renderMetrics(){
       const cm=clientMetrics();
-      const rate=percent(cm.delivered,cm.total);
+      /* Denominator is ratedTotal, not total -- see nvIsRatedParcel(). With
+         nothing picked up yet the rate is UNDEFINED, not 0%: percent(x,0)
+         returns 0, which would show a brand-new merchant "0/0, 0%" in amber
+         on their first morning. Show an em dash and stay neutral instead. */
+      const rated=cm.ratedTotal;
+      const rate=rated?percent(cm.delivered,rated):0;
+      const rateKnown=rated>0;
       const ops=Math.round(cm.avgProgress*100);
       const nvMetricsEl0=document.getElementById("clientMetrics");
       const wasExpanded=nvMetricsEl0 && nvMetricsEl0.classList.contains("nv-show-all");
       document.getElementById("clientMetrics").innerHTML=[
         metricCard("My Parcels",cm.total,ops,"in selected range","blue","📦","clear"),
-        metricCard("Delivered",`${cm.delivered}/${cm.total}`,rate,"confirmed deliveries",rate<40?"amber":"","✅","filter:Delivered"),
+        metricCard("Delivered",
+          rateKnown?`${cm.delivered}/${rated}`:"\u2014",
+          rate,
+          rateKnown?`of ${rated} picked up`:"nothing picked up yet",
+          (rateKnown&&rate<40)?"amber":"","✅","filter:Delivered",!rateKnown),
         metricCard("Delivery Charges",money(cm.deliveryCharges),percent(cm.deliveryCharges,3000),"courier charges","amber","💳","filter:Delivered"),
         metricCard("Invoice Payable Pending",money(cm.payable),percent(cm.payable,60000),"delivered, not yet in wallet","good","🧾","tab:payments"),
         metricCard("Wallet Balance",money(Number((state.client&&state.client.walletBalance)||0)),percent(Number((state.client&&state.client.walletBalance)||0),60000),"ready to withdraw","blue","💰","tab:wallet"),
@@ -3996,6 +4136,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         '<button type="button" data-nv-drawer-act="track" data-awb="'+escLabelText(p.awb)+'">Open tracking</button>'+
         '<button type="button" data-nv-drawer-act="copytrack" data-awb="'+escLabelText(p.awb)+'">Copy link</button>'+
         '<button type="button" data-nv-drawer-act="sharetrack" data-awb="'+escLabelText(p.awb)+'">Share</button>'+
+        /* Desktop has no parcel card, so the drawer is the ONLY place these
+           two reach a merchant on a laptop. Same gates as the mobile card. */
+        (isEditableBooking(p)
+          ? '<button type="button" data-nv-drawer-act="edit" data-awb="'+escLabelText(p.awb)+'">Edit booking</button>' : '')+
+        (nvCanRaiseTicket(p) && (typeof nvCanUseTab!=="function" || nvCanUseTab("tickets"))
+          ? '<button type="button" data-nv-drawer-act="ticket" data-awb="'+escLabelText(p.awb)+'">Report an issue</button>' : '')+
       '</div>';
     }
     /* ═══ Journey timestamps, Pakistan Standard Time ══════════════════════
@@ -4107,6 +4253,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         try{ window.NovaXUI.closeDrawer(); }catch(_){}
         state.selectedAwb=awb; saveState();
         if(typeof showClientTab==="function") showClientTab("awbLabel");
+      } else if(act==="edit"){
+        nvOpenEditParcel(awb, e);
+      } else if(act==="ticket"){
+        nvRaiseTicketFor(awb, e);
       } else if(act==="track" || act==="copytrack" || act==="sharetrack"){
         /* Prefer the tokenised link: it resolves to the FULL journey via
            public_track_parcel(). The ?awb= form only ever returns a status
@@ -4191,13 +4341,33 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        breakpoint is crossed. The matchMedia listener below is what makes that
        safe -- without it, a rotating phone would reveal an empty list. */
     const NV_CARDS_MQ = window.matchMedia("(max-width:760px)");
+    /* One place that decides which per-parcel buttons exist, so the mobile
+       card, the drawer and anything added later cannot drift apart on who is
+       allowed to do what. The gates are deliberately mutually exclusive:
+       edit/cancel while "New booked", raise a ticket once it has moved. */
+    function nvParcelCardActions(p){
+      var btns=[];
+      var a=escLabelText(p.awb);
+      if(isEditableBooking(p)){
+        btns.push('<button class="ghost-btn" type="button" onclick="nvOpenEditParcel(\''+a+'\',event)">Edit</button>');
+      }
+      if(isCancellableBooking(p)){
+        btns.push('<button class="ghost-btn nv-cancel-booking" type="button" onclick="cancelClientBooking(\''+a+'\',event)">Cancel booking</button>');
+      }
+      if(nvCanRaiseTicket(p) && (typeof nvCanUseTab!=="function" || nvCanUseTab("tickets"))){
+        btns.push('<button class="ghost-btn" type="button" onclick="nvRaiseTicketFor(\''+a+'\',event)">Report an issue</button>');
+      }
+      if(!btns.length) return "";
+      return '<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap;gap:6px">'+btns.join("")+'</div>';
+    }
+
     function renderClientParcels(){
       const parcels=filteredParcels();
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
       if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${nvProgressStep(p.status)}</span><span>${pr}%</span></div></td></tr>`; }).join("")||`<tr><td colspan="5">No parcels in range.</td></tr>`);
-      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${isCancellableBooking(p)?`<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn nv-cancel-booking" type="button" onclick="cancelClientBooking('${escLabelText(p.awb)}',event)">Cancel booking</button></div>`:""}</article>`; }).join("")) : "";
+      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${nvParcelCardActions(p)}</article>`; }).join("")) : "";
       if(cardsOnScreen) nvMarkChanged("clientParcelCards",parcels,"cards");
       else nvMarkChanged("clientParcelRows",parcels,"rows");
     }
@@ -4413,8 +4583,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const _acc=document.getElementById("topAccountName"); if(_acc) _acc.textContent=clientDisplayState().label;
       const cm=clientMetrics();
       const deliveredCod=cm.parcels.filter(isDeliveredLedgerParcel).reduce((s,p)=>s+p.cod,0);
-      const pendingCod=cm.parcels.filter(p=>!isDeliveredLedgerParcel(p)).reduce((s,p)=>s+p.cod,0);
-      const rate=percent(cm.delivered,cm.total);
+      /* "Pending COD" used to be every parcel that was not delivered, which
+         swept in bookings a rider had not even collected yet and presented
+         their face value as money the merchant was owed. Nothing is owed on a
+         parcel nobody has picked up -- there is no cash anywhere in the system
+         for it. Split into money that is genuinely in flight, and a plain
+         COUNT of what is still sitting waiting for a rider.
+
+         The second figure is deliberately a count, not a rupee amount: the
+         whole complaint about this screen was rupee amounts that do not
+         correspond to any real cash. */
+      const inFlight=cm.parcels.filter(p=>!isDeliveredLedgerParcel(p) && nvIsRatedParcel(p));
+      const pendingCod=inFlight.reduce((s,p)=>s+p.cod,0);
+      const awaitingPickup=cm.parcels.filter(p=>String(p.status||"").trim()==="New booked").length;
+      /* Same denominator as the dashboard card -- these two screens used to
+         compute the rate independently and would have drifted apart. */
+      const rated=cm.ratedTotal;
+      const rateKnown=rated>0;
+      const rate=rateKnown?percent(cm.delivered,rated):0;
       const open=Math.max(0,cm.total-cm.delivered);
       const fromI=document.getElementById("clientDateFrom"), toI=document.getElementById("clientDateTo");
       if(fromI && fromI.value!==state.clientDateFrom) fromI.value=state.clientDateFrom||"";
@@ -4438,9 +4624,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           : `<div class="ops-card"><strong>No file checked yet</strong><p>Upload a CSV to see per-row validation.</p></div>`;
       }
       document.getElementById("clientReportMetrics").innerHTML=[
-        metricCard("Delivery Rate",`${rate}%`,rate,"delivered parcels",rate<45?"amber":""),
+        metricCard("Delivery Rate",
+          rateKnown?`${rate}%`:"\u2014",
+          rate,
+          rateKnown?`${cm.delivered} of ${rated} picked up`:"nothing picked up yet",
+          (rateKnown&&rate<45)?"amber":"","","",!rateKnown),
         metricCard("Delivered COD",money(deliveredCod),percent(deliveredCod,deliveredCod+pendingCod),"cash collected","good"),
-        metricCard("Pending COD",money(pendingCod),percent(pendingCod,deliveredCod+pendingCod),"not closed yet","amber"),
+        metricCard("Pending COD",money(pendingCod),percent(pendingCod,deliveredCod+pendingCod),"picked up, not delivered yet","amber"),
+        metricCard("Awaiting Pickup",awaitingPickup,percent(awaitingPickup,Math.max(1,cm.total)),"no COD due until collected",awaitingPickup?"blue":"good"),
         metricCard("Open Parcels",open,percent(open,Math.max(1,cm.total)),"not delivered yet",open?"blue":"good")
       ].join("");
       document.getElementById("clientReportRows").innerHTML=cityReport(cm.parcels).map(r=>`<tr><td><strong>${escLabelText(r.city)}</strong></td><td>${r.parcels}</td><td>${money(r.cod)}</td><td>${money(r.revenue)}</td><td><span class="chip ${r.delivered?"good":"info"}">${r.delivered}/${r.parcels}</span></td></tr>`).join("");
@@ -4576,6 +4767,42 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!p || p.pricingMode!=="distance" || p.distanceKm==null) return "";
       return '<div class="awb-field"><span>Distance</span><strong>'+escLabelText(p.distanceKm)+' km</strong></div>';
     }
+    /* ═══ Printing is always light ════════════════════════════════════════
+       A courier label is INK ON PAPER. The print stylesheet paints the page
+       with var(--nvu-bg), and every label/document body uses the same theme
+       tokens -- so with the portal defaulting to dark, every print came out
+       on a dark ground, burning toner and producing a label a scanner
+       struggles with.
+
+       The document is therefore forced to the light theme for the duration of
+       the print, then put back exactly as it was. `prev` is captured rather
+       than assumed, so a merchant who deliberately chose Light is restored to
+       Light and never silently flipped to dark.
+
+       `active` is a separate flag from `prev` on purpose: prev===null is a
+       legitimate value (no attribute at all), so it cannot double as "not
+       currently forcing". Re-entrancy is guarded because two print paths can
+       overlap if a merchant hits print twice quickly -- the second call must
+       not capture "light" as the value to restore. */
+    var NV_PRINT_THEME={ active:false, prev:null };
+    function nvPrintThemeLight(){
+      try{
+        if(NV_PRINT_THEME.active) return;
+        NV_PRINT_THEME.active=true;
+        NV_PRINT_THEME.prev=document.documentElement.getAttribute("data-theme");
+        document.documentElement.setAttribute("data-theme","light");
+      }catch(e){}
+    }
+    function nvPrintThemeRestore(){
+      try{
+        if(!NV_PRINT_THEME.active) return;
+        NV_PRINT_THEME.active=false;
+        var prev=NV_PRINT_THEME.prev; NV_PRINT_THEME.prev=null;
+        if(prev===null) document.documentElement.removeAttribute("data-theme");
+        else document.documentElement.setAttribute("data-theme",prev);
+      }catch(e){}
+    }
+
     function awbLabelHtml(p){
       const client=clientById(p.clientId);
       const origin=labelText(p.pickupCity||p.origin,"Karachi");
@@ -4693,6 +4920,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           stage.style.display="none"; stage.classList.remove("bulk-print");
           return;
         }
+        nvPrintThemeLight();
         window.print();
         // NovaX fix (Autopilot AWB printing v1): the old fixed 500ms
         // cleanup could fire before the browser's print dialog actually
@@ -4703,6 +4931,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         let cleaned=false;
         function cleanupPrintStage(){
           if(cleaned) return; cleaned=true;
+          nvPrintThemeRestore();
           stage.style.display="none"; stage.innerHTML=""; stage.classList.remove("bulk-print");
           if(window.onafterprint===cleanupPrintStage) window.onafterprint=null;
         }
@@ -4845,13 +5074,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       stage.innerHTML=html;
       stage.style.display="block";
       function restore(){
+        nvPrintThemeRestore();
         stage.style.display="none"; stage.innerHTML="";
         if(th&&prevTh!==null) th.disabled=prevTh;
         if(a4&&prevA4!==null) a4.disabled=prevA4;
         window.removeEventListener("afterprint",restore);
       }
       window.addEventListener("afterprint",restore);
-      setTimeout(function(){ try{ window.print(); }catch(e){ restore(); } },60);
+      setTimeout(function(){ nvPrintThemeLight(); try{ window.print(); }catch(e){ restore(); } },60);
       /* Safety net: some browsers never fire afterprint. */
       setTimeout(restore,8000);
     }
@@ -5319,11 +5549,41 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         <div style="margin-top:22px;font-size:11px;color:#5b6b64;border-top:1px solid var(--nvu-line);padding-top:12px">Generated by NovaX Logistics. This is a system-generated invoice, no tax/GST applied unless shown above. For questions, ask the in-app AI assistant. Parcels: ${escLabelText(inv.parcelRefs.join(", "))}.</div>
       </div>`;
     }
+    /* Shared print tail for the two plain-#printStage documents (invoice and
+       report). Both used to do:
+
+           stage.style.display="block"; window.print();
+           setTimeout(()=>{ stage.style.display="none"; },500);
+
+       which is the SAME fixed-500ms cleanup that was already diagnosed and
+       removed from printLabels(): on a slower device the stage could be
+       hidden before the browser had finished reading it, producing a blank
+       printout. Cleanup now hangs off the real afterprint event, with a long
+       timer only as a fallback for browsers that never fire it. It also
+       restores the theme, so these two documents print on paper-white like
+       the labels do. */
+    function nvPrintStageNow(){
+      var stage=document.getElementById("printStage");
+      if(!stage) return;
+      stage.style.display="block";
+      var cleaned=false;
+      function done(){
+        if(cleaned) return; cleaned=true;
+        nvPrintThemeRestore();
+        stage.style.display="none"; stage.innerHTML="";
+        window.removeEventListener("afterprint",done);
+      }
+      window.addEventListener("afterprint",done);
+      setTimeout(done,8000);
+      nvPrintThemeLight();
+      try{ window.print(); }catch(e){ done(); }
+    }
+
     function printInvoice(id){
       const inv=state.invoices.find(i=>i.id===id); if(!inv) return;
       const stage=document.getElementById("printStage"); if(!stage) return;
       stage.innerHTML=clientInvoiceHtml(inv);
-      stage.style.display="block"; window.print(); setTimeout(()=>{ stage.style.display="none"; },500);
+      nvPrintStageNow();
     }
     function viewInvoice(id){
       const inv=state.invoices.find(i=>i.id===id); if(!inv){ toast("Invoice not found."); return; }
@@ -5346,7 +5606,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const rows=state.parcels.filter(p=>p.clientId===state.client.id);
       const stage=document.getElementById("printStage");
       stage.innerHTML=`<div style="font-family:sans-serif;color:#000;background:var(--nvu-bg);padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(p.status)}</td><td>${money(p.cod)}</td></tr>`).join("")}</table></div>`;
-      stage.style.display="block"; window.print(); setTimeout(()=>{ stage.style.display="none"; },500);
+      nvPrintStageNow();
     }
 
     /* Wallet */
@@ -7310,6 +7570,193 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(p.invoiceId) return false;                       // already billed
       if(p.rider || p.riderId) return false;              // a rider is already assigned
       return true;
+    }
+
+    /* ===================================================================
+       Raise a support ticket about one specific parcel
+
+       The mirror image of the cancel gate: cancelling is for a parcel that
+       has NOT moved, a ticket is for one that HAS. While a booking is still
+       "New booked" nothing has happened to complain about -- the merchant can
+       still edit it or cancel it themselves, so offering a ticket there would
+       just route self-service work through support.
+
+       No new SQL. novax_ticket_open() already accepts p_awb; this only fills
+       the form the merchant would otherwise have to fill by hand, which is
+       the whole point -- an AWB typed from memory into a support ticket is
+       how tickets end up attached to the wrong parcel.
+       =================================================================== */
+    /* ═══ Edit a booking that has not moved ═══════════════════════════════
+       Same three conditions as the Cancel button (isCancellableBooking), for
+       the same reason: once a rider has the parcel, or it has been invoiced,
+       the merchant is no longer the only party who knows what is in it.
+
+       The REAL boundary is client_edit_new_booked_parcel() on the server,
+       which re-checks ownership, status, invoicing and rider assignment, and
+       which has no fee parameter at all. This decides what button to show.
+
+       There is no optimistic local write. If the server rejects the edit --
+       because the parcel moved between the modal opening and Save being
+       pressed, which is a real race on a busy morning -- the merchant must
+       not be left looking at a number that was never stored. Reload wins. */
+    function isEditableBooking(p){ return isCancellableBooking(p); }
+
+    var NV_EDIT_AWB="";
+
+    function nvEditParcelError(msg){
+      var el=document.getElementById("nvEditParcelError");
+      if(!el) return;
+      if(!msg){ el.style.display="none"; el.textContent=""; return; }
+      el.textContent=msg; el.style.display="block";
+    }
+
+    function nvSetVal(id,v){ var el=document.getElementById(id); if(el) el.value=(v==null?"":String(v)); }
+    function nvGetVal(id){ var el=document.getElementById(id); return el?String(el.value||"").trim():""; }
+
+    function nvOpenEditParcel(awb, ev){
+      try{ if(ev && ev.stopPropagation) ev.stopPropagation(); }catch(e){}
+      var p=(state.parcels||[]).find(function(x){ return x && x.awb===awb; });
+      if(!p){ toast("That booking is no longer on your account.","error"); return; }
+      if(!isEditableBooking(p)){
+        toast("This parcel has already moved, so it can no longer be edited.","error");
+        return;
+      }
+      try{ if(window.NovaXUI && window.NovaXUI.closeDrawer) window.NovaXUI.closeDrawer(); }catch(e){}
+      NV_EDIT_AWB=awb;
+      nvEditParcelError("");
+      var sub=document.getElementById("nvEditParcelSub");
+      if(sub) sub.textContent=awb+" \u00b7 still New booked, so everything except the delivery charge can be changed.";
+      nvSetVal("nvEdName",p.consignee);
+      nvSetVal("nvEdPhone",p.phone);
+      nvSetVal("nvEdCity",p.city);
+      nvSetVal("nvEdCod",Number(p.cod||0));
+      nvSetVal("nvEdCategory",p.category);
+      nvSetVal("nvEdWeight",p.weight);
+      nvSetVal("nvEdService",p.service||"COD Standard");
+      nvSetVal("nvEdPaymentMode",p.paymentMode||"COD");
+      nvSetVal("nvEdFragile",(p.fragile==="Yes")?"Yes":"No");
+      nvSetVal("nvEdAllowOpen",(p.allowOpen==="Yes")?"Yes":"No");
+      nvSetVal("nvEdOrderId",p.orderId);
+      nvSetVal("nvEdAddress",p.address);
+      nvSetVal("nvEdFee",money(Number(p.fee||0)));
+      var m=document.getElementById("nvEditParcelModal");
+      if(m) m.classList.add("show");
+      setTimeout(function(){ var f=document.getElementById("nvEdName"); if(f){ try{ f.focus(); }catch(e){} } },0);
+    }
+
+    function nvCloseEditParcel(){
+      var m=document.getElementById("nvEditParcelModal");
+      if(m) m.classList.remove("show");
+      NV_EDIT_AWB="";
+      nvEditParcelError("");
+    }
+
+    function nvSaveEditParcel(){
+      var awb=NV_EDIT_AWB;
+      if(!awb){ nvCloseEditParcel(); return; }
+      var p=(state.parcels||[]).find(function(x){ return x && x.awb===awb; });
+      if(!p || !isEditableBooking(p)){
+        nvEditParcelError("This parcel has moved since you opened this form, so it can no longer be edited.");
+        return;
+      }
+
+      var name=nvGetVal("nvEdName"), phone=nvGetVal("nvEdPhone"),
+          city=nvGetVal("nvEdCity"), addr=nvGetVal("nvEdAddress"),
+          cat=nvGetVal("nvEdCategory"), codRaw=nvGetVal("nvEdCod");
+
+      /* Checked here only so the merchant gets an answer without a round
+         trip. The server re-checks every one of these. */
+      if(!name){ nvEditParcelError("Consignee name cannot be empty."); return; }
+      if(!phone){ nvEditParcelError("Consignee phone cannot be empty."); return; }
+      if(!/^0[0-9]{10}$/.test(phone.replace(/[^0-9]/g,""))){
+        nvEditParcelError("Phone must be 11 digits starting with 0, e.g. 03001234567."); return;
+      }
+      if(!city){ nvEditParcelError("Pick a destination city."); return; }
+      if(!addr){ nvEditParcelError("Delivery address cannot be empty."); return; }
+      if(!cat){ nvEditParcelError("Product details cannot be empty."); return; }
+      var cod=Number(codRaw);
+      if(!Number.isFinite(cod) || cod<0){ nvEditParcelError("COD amount must be zero or more."); return; }
+
+      var sb=window.__nvSb;
+      if(!sb || !sb.rpc){ nvEditParcelError("Cloud connection not ready yet, please try again in a moment."); return; }
+
+      var btn=document.getElementById("nvEditParcelSave");
+      if(btn){ btn.disabled=true; btn.textContent="Saving..."; }
+      nvEditParcelError("");
+
+      /* supabase.rpc() is a thenable WITHOUT .catch(), so wrap before chaining
+         -- the same pattern cancelClientBooking() uses. */
+      Promise.resolve(
+        sb.rpc("client_edit_new_booked_parcel",{
+          p_awb: awb,
+          p_consignee: name,
+          p_phone: phone.replace(/[^0-9]/g,""),
+          p_address: addr,
+          p_city: city,
+          p_cod: cod,
+          p_weight: nvGetVal("nvEdWeight"),
+          p_category: cat,
+          p_fragile: nvGetVal("nvEdFragile"),
+          p_service: nvGetVal("nvEdService"),
+          p_payment_mode: nvGetVal("nvEdPaymentMode"),
+          p_allow_open: nvGetVal("nvEdAllowOpen"),
+          p_order_id: nvGetVal("nvEdOrderId")
+        })
+      ).catch(function(e){
+        return { error:{ message:String((e&&e.message)||e||"network error") } };
+      }).then(function(r){
+        if(btn){ btn.disabled=false; btn.textContent="Save changes"; }
+        if(r && r.error){
+          var m=String(r.error.message||"");
+          nvEditParcelError(/does not exist|schema cache/i.test(m)
+            ? "Editing is not enabled on the server yet (run sql_novax_client_edit_parcel.sql)."
+            : m);
+          return;
+        }
+        nvCloseEditParcel();
+        toast(awb+" updated.","success");
+        /* Re-read from the server rather than patching local state: the
+           server is what decides what was actually stored. */
+        try{ if(typeof loadAll==="function") loadAll(); }catch(e){}
+      });
+    }
+
+    function nvCanRaiseTicket(p){
+      if(!p) return false;
+      var st=String(p.status||"").trim();
+      if(!st) return false;
+      if(st==="New booked") return false;
+      return true;
+    }
+
+    function nvRaiseTicketFor(awb, ev){
+      try{ if(ev && ev.stopPropagation) ev.stopPropagation(); }catch(e){}
+      if(typeof nvCanUseTab==="function" && !nvCanUseTab("tickets")){
+        toast("Your role does not have access to Support Tickets.","error");
+        return;
+      }
+      var p=(state.parcels||[]).find(function(x){ return x && x.awb===awb; });
+      try{ if(window.NovaXUI && window.NovaXUI.closeDrawer) window.NovaXUI.closeDrawer(); }catch(e){}
+      if(typeof showClientTab==="function") showClientTab("tickets");
+      /* Next tick: showClientTab() flips module visibility, and focusing a
+         field that is still display:none silently does nothing. */
+      setTimeout(function(){
+        var awbEl=document.getElementById("nvTkAwb");
+        var subEl=document.getElementById("nvTkSubject");
+        if(awbEl) awbEl.value=String(awb||"").toUpperCase();
+        /* Never overwrite a subject the merchant is already typing. */
+        if(subEl && !String(subEl.value||"").trim()){
+          var st=p?String(p.status||"").trim():"";
+          subEl.value="Issue with "+awb+(st?(" \u2014 "+st):"");
+        }
+        try{
+          var pane=document.getElementById("client-tickets");
+          if(pane && pane.scrollIntoView) pane.scrollIntoView({behavior:"smooth",block:"start"});
+        }catch(e){}
+        if(subEl){
+          try{ subEl.focus(); subEl.setSelectionRange(subEl.value.length,subEl.value.length); }catch(e){}
+        }
+      },0);
     }
 
     function cancelClientBooking(awb, ev){
@@ -9518,14 +9965,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const isRefused=p.status==="Refused"; const isReturn=p.status==="Ready for return";
         const label=isRefused?"We need your decision":isReturn?"Return to shipper -- confirm":p.status==="Consignee not available"?"Approve reattempt":"Delayed -- update available";
         const eAwb=escLabelText(p.awb);
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">${escLabelText(label)}</span></div><p class="footer-note">${escLabelText(p.consignee||"")} &middot; ${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="clientActionNeededReattempt('${eAwb}')">Approve reattempt</button><button class="action-btn ghost" onclick="clientActionNeededReturn('${eAwb}')">Return to shipper</button><button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button><button class="action-btn ghost" onclick="clientActionNeededAskAi('${eAwb}')">Ask AI</button></div></div>`;
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">${escLabelText(label)}</span></div><p class="footer-note">${escLabelText(p.consignee||"")} &middot; ${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="clientActionNeededReattempt('${eAwb}')">Approve reattempt</button><button class="action-btn ghost" onclick="clientActionNeededReturn('${eAwb}')">Return to shipper</button><button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button><button class="action-btn ghost" onclick="clientActionNeededAskAi('${eAwb}')">Ask AI</button>${nvCanRaiseTicket(p)&&(typeof nvCanUseTab!=="function"||nvCanUseTab("tickets"))?`<button class="action-btn ghost" onclick="nvRaiseTicketFor('${eAwb}',event)">Report an issue</button>`:""}</div></div>`;
       });
       const missingInfoCards=missingInfoItems.slice(0,4).map(function(p){
         const eAwb=escLabelText(p.awb);
         return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">Missing address or phone</span></div><p class="footer-note">${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button></div></div>`;
       });
       const walletCard=payable>0 ? [`<div class="ops-card"><div class="ops-card-head"><strong>Wallet</strong><span class="chip warn">Payable balance ready</span></div><p class="footer-note">You have a payable balance waiting -- review it in your wallet.</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="typeof showClientTab==='function'&&showClientTab('wallet')">View wallet</button></div></div>`] : [];
-      host.innerHTML=`<div class="panel" style="border:1px solid #f0d6a0;background:#fffaf0"><div class="section-head"><div><h3>Action needed</h3><p>${totalItems} item(s) are waiting on a quick decision from you -- nothing urgent, just pick an option below.</p></div></div><div class="ops-list">`+parcelCards.concat(missingInfoCards).concat(walletCard).join("")+`</div></div>`;
+      host.innerHTML=`<div class="panel nv-notice-warm"><div class="section-head"><div><h3>Action needed</h3><p>${totalItems} item(s) are waiting on a quick decision from you -- nothing urgent, just pick an option below.</p></div></div><div class="ops-list">`+parcelCards.concat(missingInfoCards).concat(walletCard).join("")+`</div></div>`;
     }
 
     function clientActionNeededReattempt(awb){
@@ -13396,10 +13843,11 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
 })();
 
 /* ═══ NovaX theme controller ═══════════════════════════════════════════════
-   Three states: "light", "dark", or "system" (the default -- stamps NO
-   attribute, so prefers-color-scheme decides). Stored per browser under
-   novaxTheme. The <html> attribute is set as early as this script runs so a
-   dark user does not get a white flash before the sheet applies.
+   Two states: "dark" (the default for every merchant, new or existing) and
+   "light" (only ever set by an explicit tap on the toggle). Stored per browser
+   under novaxTheme. The <html> attribute is also stamped by a boot script at
+   the top of <head>, so a dark user does not get a white flash before the
+   sheet applies; this controller must agree with that script, and does.
 
    Scope note: this drives the NovaX UI primitives (--nvu-* tokens), which are
    fully themed. The surrounding legacy stylesheet still carries hardcoded
@@ -13409,19 +13857,29 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
 (function(){
   try{
     var KEY="novaxTheme";
-    function stored(){ try{ return localStorage.getItem(KEY)||"system"; }catch(e){ return "system"; } }
-    /* NovaX fix (system mode rendered a split portal): "system" used to leave
-       data-theme unset. The shared UI primitives resolve dark from
-       prefers-color-scheme, but the portal's own ~39 dark rules only match
-       html[data-theme="dark"] -- so on a dark-mode device, System produced
-       dark components sitting inside a light portal. System now RESOLVES to
-       an explicit attribute (while still being stored as "system", so it
-       keeps following the device), which makes every existing rule agree. */
-    function effective(mode){
-      if(mode==="dark"||mode==="light") return mode;
-      try{ return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }
-      catch(e){ return "light"; }
+    /* NovaX fix (dark was the default in name only): this controller runs
+       ~13,000 lines AFTER the boot script at the top of <head>, and it used to
+       default to "system", resolve that against prefers-color-scheme, and
+       OVERWRITE the dark attribute the boot script had just set. A merchant on
+       a light-mode laptop who had never touched the toggle therefore saw a
+       dark flash and then a light portal -- the default never actually held.
+
+       The portal is dark for everyone, new signup or existing merchant, until
+       they explicitly choose Light. So:
+         - no stored value means "dark", matching the boot script exactly;
+         - a stored "system" is migrated to "dark" on read. Someone who once
+           chose "follow my device" did not choose Light, and the rule now is
+           dark-until-Light. apply() writes the migrated value back, so this
+           happens once per browser and then stays settled;
+         - effective() never consults the OS again, because nothing can reach
+           it with a non-dark/light mode any more. It is kept as the single
+           place that maps a stored mode to an attribute value. */
+    function stored(){
+      var v;
+      try{ v=localStorage.getItem(KEY); }catch(e){ v=null; }
+      return (v==="light") ? "light" : "dark";
     }
+    function effective(mode){ return (mode==="light") ? "light" : "dark"; }
     function apply(mode){
       var el=document.documentElement;
       el.setAttribute("data-theme", effective(mode));
@@ -13435,15 +13893,12 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
       });
     }
     apply(stored());
-    try{
-      var mq=matchMedia("(prefers-color-scheme: dark)");
-      var onOs=function(){ if(stored()==="system") apply("system"); };
-      if(mq.addEventListener) mq.addEventListener("change",onOs);
-      else if(mq.addListener) mq.addListener(onOs);
-    }catch(e){}
+    /* The prefers-color-scheme listener that used to live here is gone on
+       purpose: with "system" retired there is no mode left for it to act on,
+       and leaving it would let the OS quietly repaint a merchant who had
+       explicitly chosen Light. */
     window.NovaXTheme={ get:stored, set:apply, cycle:function(){
-      var order=["system","light","dark"], i=order.indexOf(stored());
-      apply(order[(i+1)%order.length]);
+      apply(stored()==="light" ? "dark" : "light");
       return stored();
     }};
     document.addEventListener("click",function(e){
