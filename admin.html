@@ -2287,8 +2287,20 @@
       max-width: min(360px, calc(100vw - 36px));
       padding: 13px 14px;
       border-radius: var(--radius);
-      background: var(--ink);
-      color: white;
+      /* NovaX fix (white-on-white toast): this was background:var(--ink) with
+         color:white. In the LIGHT palette at the top of this file --ink is
+         #10201b and that reads fine -- but admin is a dark-only portal and
+         :root is redefined further down with --ink:#edf8f2. So the neutral
+         toast painted near-white text on a near-white box, which is the pale
+         unreadable panel that showed up bottom-right after a wallet
+         adjustment. client.html hit exactly this and fixed it; admin never
+         got the same treatment.
+
+         A toast is a verdict, so it is never neutral here: green unless it is
+         an error, and explicit hex rather than tokens so a future palette
+         change cannot quietly turn it white again. */
+      background: #12693f;
+      color: #eafff5;
       box-shadow: var(--shadow);
       transform: translateY(20px);
       opacity: 0;
@@ -2306,13 +2318,15 @@
        action succeeded or failed, instead of always showing as a plain
        white/dark neutral box. White text on solid color for readability. */
     .toast.success {
-      background: #1e7d32;
-      color: var(--nvu-bg);
+      background: #12693f;
+      color: #eafff5;
     }
 
+    /* --nvu-bg is the page ground, which is near-black in this portal, so
+       "red box, near-black text" was low contrast. Light ink on deep red. */
     .toast.error {
-      background: var(--nvu-bad-fg);
-      color: var(--nvu-bg);
+      background: #8e2118;
+      color: #ffe9e6;
     }
 
     .mobile-card-list {
@@ -6156,6 +6170,18 @@ html,body{ background:var(--bg); color:var(--ink); }
                 </div>
                 <div class="footer-note mt-10" id="nvTopupPreview"></div>
                 <div class="inline-actions mt-10"><button class="action-btn" type="button" onclick="nvSubmitWalletTopup()" id="nvTopupBtn">Add to wallet</button></div>
+              </div>
+              <!-- The trail lives on THIS tab, bound to THIS tab's selector.
+                   The existing Ledger Drilldown on Finance > Wallets shows the
+                   same data but follows walletClientSelect, which defaults to
+                   nothing -- so after making an adjustment here you would go
+                   looking for the record and find "Unknown client / No entries
+                   yet". An audit trail you have to go hunting for is not one. -->
+              <div class="panel mt-14">
+                <div class="section-head"><div><h3>Wallet trail</h3><p>Every credit and deduction on this merchant's wallet, newest first. This is the same ledger the merchant sees in their own Money tab.</p></div>
+                  <span class="chip" id="nvTopupReconChip" style="display:none"></span>
+                </div>
+                <div class="ops-list" id="nvTopupTrail"></div>
               </div>
             </section>
             <section class="admin-module" id="admin-finance-dues">
@@ -10423,6 +10449,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${shortClientCode(client)} | ${escLabelText(client.name)}</option>`).join("");
         topupSelect.value = (keep && state.clients.some(c => c.id === keep)) ? keep : "";
         try { nvRenderTopupPreview(); } catch (e) {}
+        try { nvRenderTopupTrail(); } catch (e) {}
       }
       const walletTotal = state.clients.reduce((sum, client) => sum + walletBalance(client.id), 0);
       const pushedInvoices = state.invoices.filter(invoice => invoiceUiState(invoice).enteredWallet);
@@ -11265,9 +11292,23 @@ html,body{ background:var(--bg); color:var(--ink); }
       // NovaX: auto color-grade by message content when no explicit type is
       // passed, so existing toast("...") call sites across the app light up
       // red/green without needing every call site rewritten individually.
+      /* Grading order matters, and the neutral case is no longer safe to get
+         wrong: an unmatched toast now paints GREEN rather than the old
+         white-on-white box, so a failure that slips through reads as a
+         success. An audit of the 152 literal toast() calls in this file found
+         ten real failures -- "Cloud connection not ready.", "No client
+         selected.", "Phone must be 11 digits..." -- that matched neither list
+         and would have gone green. The error vocabulary below covers them.
+
+         DONE runs FIRST because a caveat does not undo a completed action:
+         "PKR-42 cleared from the pickup queue. No parcel status was changed."
+         and "CL-9 created as a workspace. Login is NOT ready yet" both
+         succeeded, and both contain failure words. If the subject of the
+         sentence already happened, it is a success whatever follows. */
       const kind = type || (
-        /reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(message) ? "error" :
-        /success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach|will handle/i.test(message) ? "success" : ""
+        /^\S+ (was |has been )?(created|added|updated|saved|cleared|generated|deleted|removed|assigned|adjusted|paid|printed|booked|linked|resolved|opened|restored)\b/i.test(message) ? "success" :
+        /reject|error|fail|invalid|required|not found|denied|declined|unable|cannot|can not|could not|couldn't|can't|exceeds|locked|missing|expired|wrong|incorrect|not ready|try again|must be|must start|must have|not delivered|no client|no delivered|not selected|nothing to/i.test(message) ? "error" :
+        /success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|adjusted|refunded|will reach|will handle/i.test(message) ? "success" : ""
       );
       if (kind) el.classList.add(kind);
       el.classList.add("show");
@@ -12500,6 +12541,73 @@ html,body{ background:var(--bg); color:var(--ink); }
         (amt<0?"  (taking "+money(Math.abs(amt))+" back)":"  (adding "+money(amt)+")");
     }
 
+    /* Reads state.walletLedger, which nvRefresh() refetches after every
+       adjustment (wallet_ledger -> financeWallet in NV_RENDER_MAP), so the
+       row you just created appears without a page reload.
+
+       It deliberately shows EVERY entry type, not just admin adjustments. A
+       merchant whose balance looks wrong is usually looking at the interaction
+       between an invoice credit and a delivery charge, and hiding the other
+       rows is how you end up unable to explain a number to them. */
+    var NV_LEDGER_LABELS={
+      invoice_credit:"Invoice credited",
+      withdrawal_requested:"Withdrawal requested",
+      payout_fee:"Payout fee deducted",
+      payout_paid:"Payout paid",
+      admin_adjustment:"Admin adjustment",
+      delivery_charge_due:"Delivery charge (non-COD)"
+    };
+
+    function nvRenderTopupTrail(){
+      var host=document.getElementById("nvTopupTrail");
+      var chip=document.getElementById("nvTopupReconChip");
+      if(!host) return;
+      var client=nvTopupSelectedClient();
+      if(!client){
+        host.innerHTML='<div class="ops-card"><strong>No client chosen</strong><p>Pick a merchant above to see their wallet history.</p></div>';
+        if(chip) chip.style.display="none";
+        return;
+      }
+
+      /* Balance vs ledger, stated plainly. If an adjustment ever moves the
+         balance without writing a ledger row, this is where it shows up --
+         and that matters, because a client whose balance and ledger disagree
+         has their payouts blocked. */
+      if(chip){
+        var recon=computeWalletReconciliation(client.id);
+        chip.style.display="";
+        chip.className="chip "+(recon.mismatch?"bad":"good");
+        chip.textContent=recon.mismatch
+          ? "Ledger off by "+money(recon.difference)
+          : "Balance "+money(recon.actual)+" matches ledger";
+      }
+
+      var rows=(state.walletLedger||[])
+        .filter(function(r){ return r.clientId===client.id; })
+        .slice()
+        .sort(function(a,b){ return String(b.createdAt).localeCompare(String(a.createdAt)); });
+
+      if(!rows.length){
+        host.innerHTML='<div class="ops-card"><strong>No wallet activity yet</strong>'+
+          '<p>Nothing has moved '+nvEscAdmin(client.name)+"'s wallet. Once an invoice is pushed, a payout is made, or you adjust it here, every entry appears in this list.</p></div>";
+        return;
+      }
+
+      host.innerHTML=rows.slice(0,20).map(function(r){
+        var amt=Number(r.amount||0);
+        var label=NV_LEDGER_LABELS[r.entryType]||r.entryType||"Ledger entry";
+        var detail=r.note||r.referenceCode||"";
+        return '<div class="ops-card">'+
+          '<div class="ops-card-head"><strong>'+nvEscAdmin(label)+'</strong>'+
+            '<span class="chip '+(amt>=0?"good":"warn")+'">'+nvEscAdmin((amt>=0?"+":"")+money(amt))+'</span></div>'+
+          (detail?'<p>'+nvEscAdmin(detail)+'</p>':'')+
+          '<div class="footer-note">'+nvEscAdmin(r.createdAt||"")+
+            (r.affectsBalance?"":" \u00b7 does not affect balance")+'</div>'+
+        '</div>';
+      }).join("")+
+      (rows.length>20?'<div class="footer-note">Showing the 20 most recent of '+rows.length+' entries.</div>':"");
+    }
+
     function nvSubmitWalletTopup(){
       var client=nvTopupSelectedClient();
       if(!client){ toast("Pick a client first.","error"); return; }
@@ -12551,10 +12659,27 @@ html,body{ background:var(--bg); color:var(--ink); }
         }
         if(amtEl) amtEl.value="";
         if(noteEl) noteEl.value="";
-        if(typeof nvRefresh==="function") nvRefresh(["clients","wallet_ledger","payment_logs"]);
-        else if(typeof loadAll==="function") loadAll();
-        toast(client.name+" wallet adjusted by "+money(amount)+".");
-        setTimeout(nvRenderTopupPreview,600);
+
+        /* Confirm BEFORE refreshing, and never let a refresh failure swallow
+           the confirmation. The money has already moved at this point. If
+           nvRefresh() throws -- a renderer blowing up on unrelated state, say
+           -- the old ordering meant the admin got no toast, no updated
+           balance and no trail entry, while the button reset itself to "Add
+           to wallet". The obvious next move is to click it again, and adjust
+           the merchant's wallet a second time. A broken screen must not be
+           able to turn one payment into two. */
+        toast(client.name+" wallet adjusted by "+money(amount)+".","success");
+        try{
+          if(typeof nvRefresh==="function") nvRefresh(["clients","wallet_ledger","payment_logs"]);
+          else if(typeof loadAll==="function") loadAll();
+        }catch(err){
+          console.warn("NovaX: wallet adjusted, but refreshing the screen failed:", err);
+          toast("Adjustment saved, but the screen could not refresh. Reload to see the new balance.","error");
+        }
+        setTimeout(function(){
+          try{ nvRenderTopupPreview(); }catch(e){}
+          try{ nvRenderTopupTrail(); }catch(e){}
+        },600);
       });
     }
 
@@ -12562,7 +12687,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if(e && e.target && e.target.id==="nvTopupAmount") nvRenderTopupPreview();
     });
     document.addEventListener("change",function(e){
-      if(e && e.target && e.target.id==="nvTopupClientSelect") nvRenderTopupPreview();
+      if(e && e.target && e.target.id==="nvTopupClientSelect"){ nvRenderTopupPreview(); nvRenderTopupTrail(); }
     });
 
     /* submitWalletAdjustment() removed with the inline form it belonged to.
