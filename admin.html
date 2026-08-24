@@ -5246,6 +5246,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <button type="button" class="admin-subtab" data-admin-tab="finance-expense">Expense</button>
                   <button type="button" class="admin-subtab" data-admin-tab="finance-invoices">Invoices</button>
                   <button type="button" class="admin-subtab" data-admin-tab="finance-wallets">Wallets <span class="nav-badge" id="walletsSubtabBadge" style="display:none">0</span></button>
+                  <button type="button" class="admin-subtab" data-admin-tab="finance-topup">Add to Wallet</button>
                   <button type="button" class="admin-subtab" data-admin-tab="finance-dues">Negative Accounts <span class="nav-badge" id="duesSubtabBadge" style="display:none">0</span></button>
                   <button type="button" class="admin-subtab" data-admin-tab="finance-balances">Wallet Balances</button>
                   <button type="button" class="admin-subtab" data-admin-tab="finance-summary">Summary</button>
@@ -6134,6 +6135,23 @@ html,body{ background:var(--bg); color:var(--ink); }
                  charges on prepaid parcels (no COD to deduct them from). The
                  debt itself comes from the 'Delivery Charges' invoices the
                  generator already creates; this screen surfaces and clears it. -->
+            <!-- NovaX: adding money to a merchant wallet already existed, but as
+                 the SIXTH panel on Finance > Wallets, below the payout queue and
+                 the reconciliation screens, where nobody found it. This is the
+                 same operation on its own subtab: pick a merchant, type an
+                 amount, say why. Nothing else on the page to read past. -->
+            <section class="admin-module" id="admin-finance-topup">
+              <div class="panel">
+                <div class="section-head"><div><h3>Add money to a client wallet</h3><p>Credit or reverse an amount on a merchant's wallet. Every adjustment is written to their wallet ledger with your note, and the merchant sees it as "Admin adjustment".</p></div></div>
+                <div class="grid two">
+                  <div class="field"><label>Client</label><select id="nvTopupClientSelect"></select></div>
+                  <div class="field"><label>Amount (negative to take money back)</label><input id="nvTopupAmount" type="number" step="1" placeholder="e.g. 520"></div>
+                  <div class="field" style="grid-column:1/-1"><label>Reason (required)</label><input id="nvTopupNote" maxlength="200" placeholder="e.g. Refund of double-charged delivery fees on INV-26082350ad3"></div>
+                </div>
+                <div class="footer-note mt-10" id="nvTopupPreview"></div>
+                <div class="inline-actions mt-10"><button class="action-btn" type="button" onclick="nvSubmitWalletTopup()" id="nvTopupBtn">Add to wallet</button></div>
+              </div>
+            </section>
             <section class="admin-module" id="admin-finance-dues">
               <div class="panel">
                 <div class="section-head"><div><h3>Negative Accounts</h3><p>Merchants who owe NovaX delivery charges on prepaid parcels. Balances build up from every Delivery Charges invoice and stay here until payment is recorded.</p></div><button class="ghost-btn" onclick="loadClientDues()">Refresh</button></div>
@@ -6760,7 +6778,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       riders: ["riders-route", "riders-report", "riders-summary"],
       support: ["support-tickets"],
       novaxai: ["novaai", "ai-chats"],
-      finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-dues", "finance-balances", "finance-summary", "finance-overall", "finance-revenue"],
+      finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-topup", "finance-dues", "finance-balances", "finance-summary", "finance-overall", "finance-revenue"],
       clients: ["clients-summary", "clients-leads", "clients-create-new", "clients-clients"],
       users: ["users-create", "users-edit", "users-staff"],
       api: ["api-shopify", "api-web", "api-woo-commerce"],
@@ -10383,6 +10401,17 @@ html,body{ background:var(--bg); color:var(--ink); }
         walletSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${shortClientCode(client)} | ${escLabelText(client.name)}</option>`).join("");
         walletSelect.value = activeClientId;
       }
+      /* Its own selector, filled from the same list -- see nvSubmitWalletTopup()
+         for why it does not share walletClientSelect. Selection is preserved
+         across re-renders so a background refresh cannot silently move the
+         adjustment onto a different merchant while an admin is typing. */
+      const topupSelect = document.getElementById("nvTopupClientSelect");
+      if (topupSelect) {
+        const keep = topupSelect.value;
+        topupSelect.innerHTML = state.clients.filter(client => client.status !== "Pending approval").map(client => `<option value="${client.id}">${shortClientCode(client)} | ${escLabelText(client.name)}</option>`).join("");
+        if (keep && state.clients.some(c => c.id === keep)) topupSelect.value = keep;
+        try { nvRenderTopupPreview(); } catch (e) {}
+      }
       const walletTotal = state.clients.reduce((sum, client) => sum + walletBalance(client.id), 0);
       const pushedInvoices = state.invoices.filter(invoice => invoiceUiState(invoice).enteredWallet);
       const pendingInvoices = state.invoices.filter(invoice => invoice.status === "Generated" || invoice.status === "Pending");
@@ -12411,6 +12440,101 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast(`${id} marked paid with reference ${txnId}.`);
       }).catch(e => { nvPayDone(); toast(`Could not mark ${id} paid: ${(e && e.message) || e}`, "error"); });
     }
+
+    /* ═══ Add money to a client wallet ════════════════════════════════════
+       Deliberately its own screen. The identical operation already existed at
+       the bottom of Finance > Wallets, but behind five other panels and
+       dependent on a client selector shared with the payout form -- so which
+       merchant you were adjusting depended on what you had last done
+       somewhere else on the page. This one owns its own selector.
+
+       It writes through admin_wallet_adjustment(), NOT a direct balance
+       update, and that is not optional. clients.wallet_balance is required to
+       equal the sum of that client's wallet_ledger rows -- computeWalletReconciliation()
+       checks exactly this, and any client whose balance drifts from their
+       ledger is flagged as mismatched and has their payouts BLOCKED. A raw
+       balance write would credit the merchant and lock them out of
+       withdrawing it in the same action. */
+    function nvTopupSelectedClient(){
+      var sel=document.getElementById("nvTopupClientSelect");
+      return sel ? clientById(sel.value) : null;
+    }
+
+    function nvRenderTopupPreview(){
+      var el=document.getElementById("nvTopupPreview");
+      if(!el) return;
+      var client=nvTopupSelectedClient();
+      if(!client){ el.textContent=""; return; }
+      var now=Number(client.walletBalance||0);
+      var amtEl=document.getElementById("nvTopupAmount");
+      var amt=Number(amtEl && amtEl.value);
+      var recon=computeWalletReconciliation(client.id);
+      if(recon.mismatch){
+        el.innerHTML='<span style="color:#b45309;font-weight:700">'+nvEscAdmin(client.name)+"'s ledger does not match their balance (off by "+
+          nvEscAdmin(money(recon.difference))+'). Adjusting is blocked until that is resolved \u2014 see Finance &gt; Wallets.</span>';
+        return;
+      }
+      if(!amt){ el.textContent=client.name+" currently holds "+money(now)+"."; return; }
+      el.textContent=client.name+": "+money(now)+" \u2192 "+money(now+amt)+
+        (amt<0?"  (taking "+money(Math.abs(amt))+" back)":"  (adding "+money(amt)+")");
+    }
+
+    function nvSubmitWalletTopup(){
+      var client=nvTopupSelectedClient();
+      if(!client){ toast("Pick a client first.","error"); return; }
+
+      /* Same guard as the original panel: never stack an adjustment on top of
+         a wallet that already disagrees with its own ledger. */
+      var recon=computeWalletReconciliation(client.id);
+      if(recon.mismatch){
+        toast(client.name+"'s wallet ledger does not match their balance (difference "+money(recon.difference)+"). Resolve that before adjusting.","error");
+        return;
+      }
+
+      var amtEl=document.getElementById("nvTopupAmount");
+      var noteEl=document.getElementById("nvTopupNote");
+      var amount=Number(amtEl && amtEl.value);
+      var note=String((noteEl && noteEl.value)||"").trim();
+      if(!amount){ toast("Enter an amount. Negative takes money back.","error"); return; }
+      if(!note){ toast("Write why you are adjusting this wallet \u2014 it goes in the merchant's ledger.","error"); return; }
+      if(!(window.__nvSb && client._uuid)){
+        toast("Cloud connection not ready yet, please try again in a moment.","error");
+        return;
+      }
+      if(!window.confirm("Adjust "+client.name+" by "+money(amount)+"?\n\n"+
+                         money(Number(client.walletBalance||0))+" \u2192 "+money(Number(client.walletBalance||0)+amount)+
+                         "\n\nReason: "+note+"\n\nThis is real money and the merchant will see it immediately.")) return;
+
+      var btn=document.getElementById("nvTopupBtn");
+      if(btn){ btn.disabled=true; btn.textContent="Adding..."; }
+
+      Promise.resolve(
+        window.__nvSb.rpc("admin_wallet_adjustment",{ p_client_id: client._uuid, p_amount: amount, p_note: note })
+      ).catch(function(e){ return { error:{ message:String((e&&e.message)||e||"network error") } }; })
+       .then(function(r){
+        if(btn){ btn.disabled=false; btn.textContent="Add to wallet"; }
+        if(r && r.error){
+          var m=String(r.error.message||"");
+          toast(/does not exist|schema cache/i.test(m)
+            ? "admin_wallet_adjustment() is not deployed on this database yet \u2014 run sql_novax_admin_wallet_adjustment.sql."
+            : "Adjustment rejected: "+m, "error");
+          return;
+        }
+        if(amtEl) amtEl.value="";
+        if(noteEl) noteEl.value="";
+        if(typeof nvRefresh==="function") nvRefresh(["clients","wallet_ledger","payment_logs"]);
+        else if(typeof loadAll==="function") loadAll();
+        toast(client.name+" wallet adjusted by "+money(amount)+".");
+        setTimeout(nvRenderTopupPreview,600);
+      });
+    }
+
+    document.addEventListener("input",function(e){
+      if(e && e.target && e.target.id==="nvTopupAmount") nvRenderTopupPreview();
+    });
+    document.addEventListener("change",function(e){
+      if(e && e.target && e.target.id==="nvTopupClientSelect") nvRenderTopupPreview();
+    });
 
     function submitWalletAdjustment() {
       // NovaX new (Wallet Ledger v1, item 2/5): manual admin credit/reversal
@@ -16538,7 +16662,7 @@ html,body{ background:var(--bg); color:var(--ink); }
 
       // Only the long, hard-to-navigate lists. Short fixed lists (status,
       // city, tier) are fine as native selects and are left alone.
-      var TARGETS = ["invoiceClientSelect","walletClientSelect","adminBulkClientId",
+      var TARGETS = ["invoiceClientSelect","walletClientSelect","nvTopupClientSelect","adminBulkClientId",
                      "excClientFilter","reconClientFilter","shopifyClientSelect",
                      "webClientSelect","orderReportClientFilter","adminOrderClientFilter",
                      "userClientSelect","rateClientSelect","adminClientSelect"];
@@ -17392,6 +17516,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       ["riders-report","Riders — Report","Rider performance and cash"],
       ["finance-invoices","Finance — Invoices","Generate and settle invoices"],
       ["finance-wallets","Finance — Wallets","Payout queue, reconciliation"],
+      ["finance-topup","Finance — Add to Wallet","Credit or reverse a client wallet"],
       ["finance-dues","Finance — Negative Accounts","Clients owing NovaX"],
       ["finance-balances","Finance — Wallet Balances","Balances by client"],
       ["finance-expense","Finance — Expense","Log and review expenses"],
