@@ -4569,6 +4569,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        distance. Every older parcel has pricingMode null and prints exactly
        as before -- no layout shift, no blank field. */
     function nvAwbDistanceField(p){
+      return "";                     // per-km retired; labels carry no km
+    }
+
+    function nvAwbDistanceField__retired(p){
       if(!p || p.pricingMode!=="distance" || p.distanceKm==null) return "";
       return '<div class="awb-field"><span>Distance</span><strong>'+escLabelText(p.distanceKm)+' km</strong></div>';
     }
@@ -6213,7 +6217,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     /* The picker only makes sense for Karachi with distance pricing on AND a
        pickup point mapped -- without an origin there is no distance to
        measure, so showing the field would just be a dead end. */
-    function nvGeoActive(){
+    /* PER-KILOMETRE PRICING IS RETIRED (2026-08-24). Every parcel is flat
+       Rs 200, in every city, for every merchant.
+
+       These two gates are the chokepoint the whole distance feature hangs off:
+       the delivery-area picker, the pickup-area block, the live quote, the
+       destAreaId argument that routes a booking to client_book_parcel_geo,
+       and the separate area lookup in the bulk CSV importer all ask one of
+       them first. Returning false and "flat" here makes every one of those
+       paths dormant in a single place, which is a far smaller change to a
+       live 18k-line file than deleting them one by one -- and it cannot leave
+       one caller behind still sending area ids.
+
+       The dead code below is deliberately left in place for now, unreachable.
+       Same reasoning as the SQL side: nothing is dropped while bookings are
+       live. */
+    function nvGeoActive(){ return false; }
+
+    function nvGeoActive__retired(){
       var cityEl = document.getElementById("bookingCity");
       var isKhi  = cityEl && String(cityEl.value||"").toLowerCase()==="karachi";
       /* NovaX fix (per-client pickup city): distance pricing measures road
@@ -6232,10 +6253,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     /* 'flat' until the merchant says otherwise -- matches the column default,
        so an unanswered prompt bills exactly what it billed yesterday. */
-    function nvPricingMode(){
-      return String((state.client && state.client.pricingMode) || "flat") === "distance"
-        ? "distance" : "flat";
-    }
+    function nvPricingMode(){ return "flat"; }
     function nvGeoToggleAreaField(){
       var f = document.getElementById("bookingDestAreaField");
       if(!f) return;
@@ -14962,6 +14980,14 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
         if(++tries > 40) return;          // ~20s, then give up quietly
         return setTimeout(waitForSb, 500);
       }
+      /* Retired 2026-08-24. There is no choice to make any more -- every
+         merchant is flat Rs 200 -- so the chooser must never open. Bailing
+         here rather than deleting the modal keeps the change small and
+         reversible while bookings are live; the RPC is left deployed and
+         simply never asked. */
+      GATE.pending = false; GATE.open = false;
+      if (true) return;
+
       Promise.resolve(sb.rpc("client_pricing_choice_state", {}))
         .then(function(r){
           if(!r || r.error || !r.data) return;

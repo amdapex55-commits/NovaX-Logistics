@@ -7328,9 +7328,12 @@ html,body{ background:var(--bg); color:var(--ink); }
         .replace(/'/g, "\\'")
         .replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; });
     }
-    function nvClientPricingMode(client) {
-      return String((client && client.pricingMode) || "flat") === "distance" ? "distance" : "flat";
-    }
+    /* Per-kilometre pricing retired 2026-08-24 -- every merchant is flat
+       Rs 200. Reporting "flat" for everyone makes the per-km rate-card hint,
+       the km badge on parcel rows, and the guard that blocked admin booking
+       for per-km merchants all take their flat branch. That guard is the one
+       that mattered: it stopped ops booking for those merchants at all. */
+    function nvClientPricingMode(client) { return "flat"; }
     function normalizeRateCard(raw, rate) {
       const fallback = defaultRateCard(rate || NV_ZONE_A_BASE);
       if (raw && raw.A && raw.B && typeof raw.A.overnight === "number" && typeof raw.B.overnight === "number") {
@@ -9693,9 +9696,6 @@ html,body{ background:var(--bg); color:var(--ink); }
             <select class="ghost-btn client-rider-pick" onchange="assignRiderToClient('${client.id}', this.value)">
               <option value="" ${!client.assignedRider ? "selected" : ""}>Assign pickup rider…</option>
               ${state.riders.map(r => `<option value="${r.id}" ${client.assignedRider === r.id ? "selected" : ""}>${escLabelText(r.name)} | ${r.branch}</option>`).join("")}
-            </select>
-            <select class="ghost-btn client-rider-pick" onchange="nvSetClientPricingMode('${client.id}', this.value)" title="Flat rate, or per-kilometre for their Karachi parcels. The merchant picks this themselves; change it here only if they are stuck.">
-              ${["flat","distance"].map(m => `<option value="${m}" ${nvClientPricingMode(client)===m ? "selected" : ""}>${m==="flat" ? "Rate: Flat" : "Rate: Per-km"}</option>`).join("")}
             </select>
             <button class="ghost-btn" style="color:#b3261e" onclick="deleteClient('${nvEscAttrJs(client.id)}')">Delete Client</button>
           </div>
