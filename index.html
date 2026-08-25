@@ -868,6 +868,77 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   details,.ov,.nav-links.open,.aiwrap,.mock,.plat{
     backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 }
+
+/* ═════ AUTOPILOT AI — section 04 redesign ═════
+   Leads with the model by name. Every claim in this section is checkable in
+   the repo: the model string is in supabase/functions/novax-ai/index.ts, the
+   tool count is the ai_tool_* / ai_action_* set, and the isolation claim is
+   the RLS predicate those tools run under. Deliberately carries no usage or
+   traction numbers -- six merchants have used it so far, and saying so would
+   undercut a section whose whole argument is that we do not inflate. */
+.ai2-cred{display:inline-flex;align-items:center;gap:12px;padding:9px 16px 9px 11px;
+  border:1px solid var(--line-2);border-radius:999px;margin-bottom:22px;
+  background:linear-gradient(100deg,rgba(20,199,123,.12),rgba(157,123,240,.10))}
+.ai2-cred .sp{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+  background:linear-gradient(135deg,#d97757,#c15f3c);flex:0 0 auto;font-weight:900;font-size:13px;color:#fff}
+.ai2-cred b{font-size:13.5px;color:var(--ink);letter-spacing:-.01em}
+.ai2-cred>span:not(.sp){font-size:12px;color:var(--ink-2)}
+.ai2-cred i{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--green-2);
+  border-left:1px solid var(--line-2);padding-left:12px}
+.ai2-vs{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:44px}
+.ai2-col{border:1px solid var(--line);border-radius:var(--r-lg);padding:22px 22px 8px;background:var(--panel)}
+.ai2-col.bad{opacity:.72}
+.ai2-col.good{border-color:var(--line-2);background:linear-gradient(180deg,rgba(20,199,123,.07),rgba(255,255,255,.03))}
+.ai2-col h3{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-family:var(--mono);
+  color:var(--ink-3);margin-bottom:16px;font-weight:700}
+.ai2-col.good h3{color:var(--green-2)}
+.ai2-row{display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--line);
+  font-size:14.5px;line-height:1.5;color:var(--ink-2)}
+.ai2-col.good .ai2-row{color:var(--ink)}
+.ai2-row:first-of-type{border-top:0}
+.ai2-m{flex:0 0 auto;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;
+  font-size:11px;font-weight:900;margin-top:2px}
+.bad .ai2-m{background:rgba(224,96,75,.16);color:var(--red)}
+.good .ai2-m{background:rgba(20,199,123,.18);color:var(--green-2)}
+.ai2-proof{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:44px}
+.ai2-p{border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;background:var(--panel);position:relative;overflow:hidden}
+.ai2-p::after{content:"";position:absolute;inset:auto auto -40% -10%;width:120%;height:80%;
+  background:radial-gradient(ellipse at center,rgba(20,199,123,.10),transparent 70%);pointer-events:none}
+.ai2-p .n{font-family:var(--mono);font-size:clamp(26px,3vw,34px);font-weight:700;color:var(--green-2);letter-spacing:-.03em;line-height:1}
+.ai2-p .t{margin-top:9px;font-size:14px;font-weight:700;color:var(--ink)}
+.ai2-p .d{margin-top:5px;font-size:12.5px;line-height:1.5;color:var(--ink-2)}
+.ai2-demo{display:grid;grid-template-columns:1.02fr .98fr;gap:26px;margin-top:52px;align-items:start}
+.ai2-wh{display:flex;align-items:center;gap:11px;padding:14px 17px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(255,255,255,.05),transparent)}
+.ai2-wh .av{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-size:15px;
+  background:linear-gradient(135deg,var(--green-deep),var(--green));flex:0 0 auto}
+.ai2-wh b{font-size:14px;display:block;color:var(--ink)}
+.ai2-wh small{font-size:11.5px;color:var(--ink-2);display:flex;align-items:center;gap:6px}
+/* The tool-call receipt between messages. This is the argument of the whole
+   section made visible: the model reaching into the account, in the open. */
+.ai2-tool{align-self:flex-start;font-family:var(--mono);font-size:11px;color:var(--ink-3);
+  display:flex;align-items:center;gap:7px;padding:5px 11px;border:1px dashed var(--line-2);
+  border-radius:999px;background:rgba(20,199,123,.05);opacity:0;transform:translateY(10px)}
+.ai2-tool.show{animation:msgIn .45s cubic-bezier(.2,.9,.3,1.3) forwards}
+.ai2-tool em{font-style:normal;color:var(--green-2)}
+.ai2-lock{border:1px solid var(--line-2);border-radius:var(--r-lg);padding:24px;
+  background:linear-gradient(150deg,rgba(157,123,240,.10),rgba(20,199,123,.05))}
+.ai2-lock h4{font-size:17px;margin-bottom:10px;letter-spacing:-.02em}
+.ai2-lock p{font-size:14px;line-height:1.62;color:var(--ink-2)}
+.ai2-lock code{font-family:var(--mono);font-size:12.5px;color:var(--green-2);
+  background:rgba(20,199,123,.1);padding:2px 7px;border-radius:6px;white-space:nowrap}
+.ai2-note{font-size:12.5px;color:var(--ink-3);margin-top:14px;line-height:1.6;font-family:var(--mono)}
+.ai2-cta{display:flex;gap:11px;flex-wrap:wrap;margin-top:22px}
+@media(max-width:900px){
+  .ai2-vs{grid-template-columns:1fr}
+  .ai2-proof{grid-template-columns:1fr 1fr}
+  .ai2-demo{grid-template-columns:1fr;gap:20px}
+}
+@media(max-width:560px){
+  .ai2-proof{grid-template-columns:1fr}
+  .ai2-cred{flex-wrap:wrap;border-radius:var(--r)}
+  .ai2-cred i{border-left:0;padding-left:0;flex:1 1 100%}
+}
 </style>
 </head>
 <body>
@@ -1341,22 +1412,75 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 
 <!-- ═════ AUTOPILOT ═════ -->
 <section class="band" id="autopilot">
-  <div class="wrap ap">
+  <div class="wrap">
+
     <div class="rv">
       <span class="sec-n">04 / AUTOPILOT AI</span>
-      <h2>An AI that already knows <span class="grad">your account.</span></h2>
-      <p class="lead" style="margin-top:15px">Autopilot isn't a script-reading chatbot. It reads your live parcels, invoices and exceptions on every single message — then takes the action for you. Roman Urdu or English, 24 hours a day.</p>
-      <div class="ap-feats">
-        <div class="ap-feat"><div class="ap-fic">⚡</div><div><b>It speaks first</b><span>"3 parcels in Faisalabad have been stuck 26 hours — want the list?"</span></div></div>
-        <div class="ap-feat"><div class="ap-fic">🎯</div><div><b>It takes action</b><span>Book from pasted WhatsApp text, reschedule a delivery, print today's labels — one tap, with confirmation.</span></div></div>
-        <div class="ap-feat"><div class="ap-fic">🔍</div><div><b>It predicts</b><span>Flags high-risk addresses at booking time and warns when a city's return rate starts climbing.</span></div></div>
-        <div class="ap-feat"><div class="ap-fic">🇵🇰</div><div><b>Roman Urdu native</b><span>"Mera parcel kahan hai?" gets a real answer in the language you asked it in.</span></div></div>
+
+      <div class="ai2-cred">
+        <span class="sp">A</span>
+        <b>Runs on Claude Opus&nbsp;5</b>
+        <span>by Anthropic</span>
+        <i>the same model class used by frontier AI labs</i>
+      </div>
+
+      <h2>Everyone says&nbsp;&ldquo;AI&rdquo;.<br><span class="grad">Ask them which model.</span></h2>
+      <p class="lead">Most courier &ldquo;AI&rdquo; is a keyword matcher with a chat bubble drawn around it. Ours is Claude Opus&nbsp;5, wired directly into your live account through sixteen permissioned tools. It reads your real parcels, your real invoices, your real exceptions &mdash; and it can act on them.</p>
+    </div>
+
+    <div class="ai2-vs rv rv-d1">
+      <div class="ai2-col bad">
+        <h3>What the industry calls AI</h3>
+        <div class="ai2-row"><span class="ai2-m">&#10005;</span><span>A decision tree with twelve canned replies</span></div>
+        <div class="ai2-row"><span class="ai2-m">&#10005;</span><span>&ldquo;Please share your tracking ID&rdquo; &mdash; then hands you to a human anyway</span></div>
+        <div class="ai2-row"><span class="ai2-m">&#10005;</span><span>Invents an answer when it doesn&rsquo;t know</span></div>
+        <div class="ai2-row"><span class="ai2-m">&#10005;</span><span>Can read a FAQ. Cannot change anything.</span></div>
+        <div class="ai2-row"><span class="ai2-m">&#10005;</span><span>English only, office hours only</span></div>
+      </div>
+      <div class="ai2-col good">
+        <h3>What actually runs here</h3>
+        <div class="ai2-row"><span class="ai2-m">&#10003;</span><span><b>Claude Opus&nbsp;5</b>, called on every single message</span></div>
+        <div class="ai2-row"><span class="ai2-m">&#10003;</span><span>Already knows who you are &mdash; no tracking ID, no queue, no ticket</span></div>
+        <div class="ai2-row"><span class="ai2-m">&#10003;</span><span>Answers only from your live rows. No row, no answer &mdash; it says so.</span></div>
+        <div class="ai2-row"><span class="ai2-m">&#10003;</span><span>Raises tickets, fixes addresses, orders re-attempts</span></div>
+        <div class="ai2-row"><span class="ai2-m">&#10003;</span><span>Roman Urdu, Urdu or English. 3am included.</span></div>
       </div>
     </div>
-    <div class="ap-win rv rv-d2">
-      <div class="ap-head"><div class="ap-av">🛰️</div><div><b>NovaX Autopilot</b><small><span class="live-dot"></span>Live account-aware assistant</small></div></div>
-      <div class="ap-body" id="apBody"></div>
+
+    <div class="ai2-proof rv rv-d1">
+      <div class="ai2-p"><div class="n">16</div><div class="t">Permissioned tools</div>
+        <div class="d">Thirteen that read your account, three that change it. Nothing else is reachable.</div></div>
+      <div class="ai2-p"><div class="n">0</div><div class="t">Rows from anyone else</div>
+        <div class="d">Every tool is filtered to your workspace at the database, not in the prompt.</div></div>
+      <div class="ai2-p"><div class="n">24/7</div><div class="t">No office hours</div>
+        <div class="d">COD questions at 2am on a Sunday get the same answer as Monday at noon.</div></div>
+      <div class="ai2-p"><div class="n">1</div><div class="t">Message to act</div>
+        <div class="d">&ldquo;Is parcel wapas bhejo&rdquo; raises the return. No form, no follow-up call.</div></div>
     </div>
+
+    <div class="ai2-demo rv rv-d2">
+      <div class="ap-win">
+        <div class="ai2-wh">
+          <div class="av">&#128760;</div>
+          <div><b>NovaX Autopilot</b><small><span class="live-dot"></span>Claude Opus 5 &middot; reading your live account</small></div>
+        </div>
+        <div class="ap-body" id="apBody"></div>
+      </div>
+
+      <div>
+        <div class="ai2-lock">
+          <h4>The part nobody else will show you</h4>
+          <p>Every tool Autopilot can call is filtered by <code>client_id = auth.uid()</code> in the database itself &mdash; not asked for politely in a prompt. A prompt can be talked around. A row-level policy cannot. Another merchant&rsquo;s parcels are not hidden from your AI; they are unreachable by it.</p>
+          <p style="margin-top:13px">And when your data doesn&rsquo;t contain the answer, it tells you that instead of inventing one. That is the whole difference between a model with tools and a chatbot with confidence.</p>
+        </div>
+        <p class="ai2-note">// claude-opus-5 &middot; anthropic api &middot; 16 grounded tools<br>// no training on your data &middot; no shared context between merchants</p>
+        <div class="ai2-cta">
+          <button class="btn btn-primary" data-mdl="signup">Signup As NovaX Merchant</button>
+          <button class="btn btn-ghost" data-mdl="sales">Talk To Sales Today</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </section>
 
@@ -1963,16 +2087,24 @@ document.querySelectorAll(".bar-fl").forEach(function(b){
 /* ═════ AUTOPILOT DEMO ═════ */
 (function(){
   var box=$("apBody"); if(!box) return;
+  /* w:"c" is a tool-call receipt. The section argues that this assistant
+     reaches into the real account rather than guessing, so the demo shows the
+     reach happening instead of only asserting it. Tool names are the real
+     ones from sql_novax_ai_core.sql. */
   var S=[
     {w:"u",x:"Mera parcel N0010023 kahan hai?",d:600},
-    {w:"t",d:1400},
+    {w:"c",x:"ai_tool_get_parcel",n:"your workspace only",d:1150},
+    {w:"t",d:1100},
     {w:"b",x:"Lahore mein out for delivery hai 🛵 — rider assign ho gaya, aaj 6 PM se pehle pohnch jayega.",d:1900},
     {w:"a",x:["Send tracking to customer","Call rider"],d:1700},
-    {w:"t",d:1400},
-    {w:"b",x:"Aur — invoice INV-260726A <b>(Rs 149,100)</b> abhi aap ke wallet mein credit ho gaya. ✅",d:2200},
-    {w:"t",d:1500},
-    {w:"b",x:"Ek warning: Faisalabad ke <b>3 parcels</b> 26 ghante se stuck hain, aur us city ka return rate 4% se <b>19%</b> ho gaya hai.",d:2400},
-    {w:"a",x:["Show me the list","Show me the report"],d:2800}
+    {w:"u",x:"Faisalabad wale parcels ka kya scene hai?",d:1500},
+    {w:"c",x:"ai_tool_exceptions",n:"your rows only",d:1150},
+    {w:"t",d:1200},
+    {w:"b",x:"Faisalabad ke <b>3 parcels</b> 26 ghante se stuck hain, aur us city ka return rate 4% se <b>19%</b> ho gaya hai.",d:2400},
+    {w:"u",x:"Pehle wale ka ticket bana do",d:1500},
+    {w:"c",x:"ai_tool_raise_ticket",n:"confirmed with you first",d:1150},
+    {w:"b",x:"Ticket ban gaya — ops team ko assign kar diya. Aap ko update yahin milega.",d:2400},
+    {w:"a",x:["Show me the list","Open the ticket"],d:2800}
   ];
   var typing=document.createElement("div");
   typing.className="typing"; typing.innerHTML='<span class="tdot"></span><span class="tdot"></span><span class="tdot"></span>';
@@ -1987,6 +2119,13 @@ document.querySelectorAll(".bar-fl").forEach(function(b){
         box.appendChild(typing); typing.classList.add("show"); box.scrollTop=box.scrollHeight;
         loop=setTimeout(function(){ typing.classList.remove("show"); if(typing.parentNode) typing.parentNode.removeChild(typing); next(); },s.d);
         return;
+      }
+      if(s.w==="c"){
+        var c=document.createElement("div"); c.className="ai2-tool";
+        c.innerHTML='\u2699 called <em>'+esc(s.x)+'</em>'+(s.n?' \u00b7 '+esc(s.n):'');
+        box.appendChild(c);
+        requestAnimationFrame(function(){ c.classList.add("show"); });
+        box.scrollTop=box.scrollHeight; loop=setTimeout(next,s.d); return;
       }
       if(s.w==="a"){
         var a=document.createElement("div"); a.className="msg-act";
