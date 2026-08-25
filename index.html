@@ -929,7 +929,183 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   .ai2-proof{grid-template-columns:1fr}
   .ai2-cred{flex-wrap:wrap;border-radius:var(--r)}
   .ai2-cred i{border-left:0;padding-left:0;flex:1 1 100%}
+  /* The tool receipt is a single-line pill on desktop. On a 375px screen the
+     tool name plus the scope note is far too wide for one line, and as a
+     nowrap flex row it broke into an unreadable stagger -- the icon, the name
+     and the scope all landing on different baselines. Let it be a small block
+     that wraps like text instead of pretending to be a pill. */
+  .ai2-tool{
+    display:block; border-radius:10px; line-height:1.6;
+    padding:6px 10px; max-width:100%; word-break:break-word;
+  }
+  .ai2-tool em{display:inline-block}
 }
+/* ═════ THE PORTAL — section 02 ═════
+   A working miniature of the real merchant portal, embedded in the page and
+   playable before signup. Section 02 used to sell store-webhook automation:
+   339 of 374 parcels ever booked came from the portal, 6 from admin, and not
+   one from a store webhook -- only 2 of 216 clients have even connected a
+   store. The portal is what merchants actually use, so the portal is what the
+   page should show.
+
+   Everything animated here is transform/opacity only, so it stays on the
+   compositor and never triggers layout. The whole timeline pauses when the
+   section is off-screen and collapses to its finished state under
+   prefers-reduced-motion. Merchants here are on mid-range Android over
+   patchy 4G; a demo that stutters sells the opposite of what it claims. */
+.pd{margin-top:40px;position:relative}
+.pd-frame{position:relative;border:1px solid var(--line-2);border-radius:var(--r-xl);
+  background:linear-gradient(180deg,var(--bg-2),var(--bg-3));overflow:hidden;
+  box-shadow:0 40px 110px -40px rgba(0,0,0,.9);
+  opacity:0;transform:scale(.965) translateY(26px);
+  transition:opacity .7s cubic-bezier(.16,.84,.28,1),transform .7s cubic-bezier(.16,.84,.28,1)}
+.pd.on .pd-frame{opacity:1;transform:none}
+
+/* window chrome */
+.pd-chrome{display:flex;align-items:center;gap:9px;padding:11px 15px;
+  border-bottom:1px solid var(--line);background:rgba(255,255,255,.03)}
+.pd-dot{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.16)}
+.pd-dot.r{background:#e0604b}.pd-dot.y{background:#e8b64c}.pd-dot.g{background:#14c77b}
+.pd-url{margin-left:8px;font-family:var(--mono);font-size:11px;color:var(--ink-3);
+  background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:7px;padding:4px 11px}
+.pd-livedot{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--green-2);
+  display:flex;align-items:center;gap:6px}
+.pd-livedot i{width:6px;height:6px;border-radius:50%;background:var(--green-2);
+  box-shadow:0 0 0 0 rgba(20,199,123,.55);animation:pdPulse 2s infinite}
+@keyframes pdPulse{70%{box-shadow:0 0 0 7px rgba(20,199,123,0)}100%{box-shadow:0 0 0 0 rgba(20,199,123,0)}}
+
+.pd-body{display:grid;grid-template-columns:172px 1fr;min-height:430px}
+
+/* sidebar */
+.pd-side{border-right:1px solid var(--line);padding:14px 11px;display:flex;flex-direction:column;gap:5px;
+  background:rgba(0,0,0,.18)}
+.pd-brand{display:flex;align-items:center;gap:8px;padding:0 5px 12px;margin-bottom:6px;
+  border-bottom:1px solid var(--line)}
+.pd-brand .m{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,var(--green-deep),var(--green));
+  display:grid;place-items:center;font-size:11px;font-weight:900;color:#fff}
+.pd-brand b{font-size:12px;color:var(--ink)}
+.pd-nav{font-size:12px;color:var(--ink-2);padding:8px 10px;border-radius:9px;font-weight:600;
+  opacity:0;transform:translateX(-14px);position:relative}
+.pd.on .pd-nav{animation:pdIn .5s cubic-bezier(.2,.9,.3,1) forwards}
+.pd-nav.sel{background:rgba(20,199,123,.14);color:var(--green-2)}
+.pd-nav.hit::after{content:"";position:absolute;inset:0;border-radius:9px;
+  background:rgba(20,199,123,.4);animation:pdRipple .55s ease-out forwards}
+@keyframes pdRipple{from{opacity:.8;transform:scale(.85)}to{opacity:0;transform:scale(1.04)}}
+@keyframes pdIn{to{opacity:1;transform:none}}
+
+/* main */
+.pd-main{padding:16px;min-width:0;position:relative}
+.pd-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.pd-m{border:1px solid var(--line);border-radius:12px;padding:11px 12px;background:var(--panel);
+  opacity:0;transform:translateY(16px)}
+.pd.on .pd-m{animation:pdIn .55s cubic-bezier(.2,.9,.3,1) forwards}
+.pd-m .k{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-family:var(--mono)}
+.pd-m .v{font-size:19px;font-weight:800;color:var(--ink);margin-top:4px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.pd-m.cash .v{color:var(--green-2)}
+.pd-m.flash{animation:pdFlash 1.1s ease-out}
+@keyframes pdFlash{0%{box-shadow:0 0 0 0 rgba(20,199,123,.55);border-color:var(--green-2)}
+  100%{box-shadow:0 0 0 16px rgba(20,199,123,0)}}
+
+/* table */
+.pd-tbl{margin-top:13px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:rgba(0,0,0,.16)}
+.pd-th,.pd-tr{display:grid;grid-template-columns:88px 1fr 74px 96px;gap:8px;align-items:center;
+  padding:9px 12px;font-size:11.5px}
+.pd-th{background:rgba(255,255,255,.035);color:var(--ink-3);font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.09em;text-transform:uppercase}
+.pd-tr{border-top:1px solid var(--line);color:var(--ink-2);position:relative;
+  opacity:0;transform:translateY(10px)}
+.pd.on .pd-tr{animation:pdIn .45s cubic-bezier(.2,.9,.3,1) forwards}
+.pd-tr .awb{font-family:var(--mono);color:var(--ink);font-size:11px}
+.pd-tr .cod{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+.pd-tr.fresh{background:rgba(20,199,123,.09)}
+.pd-tr.sweep::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(20,199,123,.22),transparent);
+  transform:translateX(-100%);animation:pdSweep .85s ease-out}
+@keyframes pdSweep{to{transform:translateX(100%)}}
+.pd-chip{font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;white-space:nowrap;
+  border:1px solid var(--line-2);color:var(--ink-2);background:rgba(255,255,255,.05);
+  display:inline-block;transition:color .3s,background .3s,border-color .3s}
+.pd-chip.s1{color:var(--ink-2)}
+.pd-chip.s2{color:#8fd0f0;border-color:rgba(75,184,232,.4);background:rgba(75,184,232,.12)}
+.pd-chip.s3{color:#e8c97a;border-color:rgba(232,182,76,.4);background:rgba(232,182,76,.12)}
+.pd-chip.s4{color:var(--green-3);border-color:var(--line-2);background:rgba(20,199,123,.14)}
+.pd-chip.pop{animation:pdPop .42s cubic-bezier(.2,.9,.3,1.5)}
+@keyframes pdPop{0%{transform:scale(.7)}60%{transform:scale(1.1)}100%{transform:scale(1)}}
+
+/* booking sheet */
+.pd-sheet{position:absolute;inset:14px 14px auto;border:1px solid var(--line-2);border-radius:14px;
+  background:linear-gradient(180deg,rgba(8,26,19,.98),rgba(6,20,15,.99));padding:15px;
+  box-shadow:0 30px 70px -20px rgba(0,0,0,.9);
+  opacity:0;transform:translateY(-14px) scale(.98);pointer-events:none;
+  transition:opacity .4s cubic-bezier(.16,.84,.28,1),transform .4s cubic-bezier(.16,.84,.28,1)}
+.pd-sheet.up{opacity:1;transform:none}
+.pd-sheet h4{font-size:12.5px;margin-bottom:11px;color:var(--ink)}
+.pd-f{margin-bottom:9px}
+.pd-f label{display:block;font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);font-family:var(--mono);margin-bottom:4px}
+.pd-inp{border:1px solid var(--line);border-radius:9px;background:rgba(0,0,0,.35);
+  padding:8px 11px;font-size:12.5px;color:var(--ink);min-height:34px;font-family:inherit}
+.pd-inp.caret::after{content:"";display:inline-block;width:1.5px;height:13px;background:var(--green-2);
+  margin-left:1px;vertical-align:-2px;animation:pdCaret .9s steps(1) infinite}
+@keyframes pdCaret{50%{opacity:0}}
+.pd-go{margin-top:4px;width:100%;border:0;border-radius:10px;padding:10px;font-size:12.5px;font-weight:800;
+  background:linear-gradient(135deg,var(--green),#0fa866);color:#02130c;position:relative;overflow:hidden;
+  cursor:pointer;font-family:inherit}
+.pd-go.hit::after{content:"";position:absolute;inset:0;background:rgba(255,255,255,.4);
+  animation:pdRipple .5s ease-out forwards}
+
+/* the AWB that materialises */
+.pd-awb{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%) scale(.86);
+  border:1px solid var(--line-2);border-radius:14px;padding:15px 20px;text-align:center;
+  background:linear-gradient(180deg,rgba(10,32,23,.99),rgba(6,20,15,.99));
+  box-shadow:0 30px 80px -20px rgba(0,0,0,.95);opacity:0;pointer-events:none;
+  transition:opacity .35s,transform .45s cubic-bezier(.2,.9,.3,1.4)}
+.pd-awb.up{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.pd-awb .lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.pd-awb .no{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--green-2);margin:5px 0 9px;letter-spacing:.02em}
+.pd-bars{display:flex;gap:2px;justify-content:center;height:34px;align-items:flex-end}
+.pd-bars i{width:2px;background:var(--ink);transform:scaleY(0);transform-origin:bottom;border-radius:1px}
+.pd-awb.up .pd-bars i{animation:pdBar .028s linear forwards}
+@keyframes pdBar{to{transform:scaleY(1)}}
+
+/* ghost cursor */
+.pd-cur{position:absolute;left:0;top:0;width:19px;height:19px;pointer-events:none;z-index:6;
+  opacity:0;transition:opacity .3s;will-change:transform}
+.pd-cur svg{display:block;filter:drop-shadow(0 3px 7px rgba(0,0,0,.75))}
+.pd-cur.show{opacity:1}
+
+/* toast */
+.pd-toast{position:absolute;right:14px;bottom:14px;z-index:7;max-width:78%;
+  border:1px solid var(--line-2);border-radius:11px;padding:10px 13px;font-size:12px;font-weight:700;
+  background:linear-gradient(135deg,rgba(12,105,63,.97),rgba(8,72,44,.97));color:#eafff5;
+  opacity:0;transform:translateY(12px);transition:opacity .35s,transform .35s;
+  box-shadow:0 18px 44px -12px rgba(0,0,0,.85)}
+.pd-toast.up{opacity:1;transform:none}
+
+/* footer cta */
+.pd-cta{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-top:20px}
+.pd-hint{font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+.pd-replay{border:1px solid var(--line-2);background:transparent;color:var(--green-2);
+  border-radius:10px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit}
+
+@media(max-width:820px){
+  .pd-body{grid-template-columns:1fr}
+  .pd-side{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);
+    padding:10px;gap:7px;scrollbar-width:none}
+  .pd-side::-webkit-scrollbar{display:none}
+  .pd-brand{display:none}
+  .pd-nav{white-space:nowrap;flex:0 0 auto;transform:none;opacity:1}
+  .pd-metrics{grid-template-columns:1fr 1fr}
+  .pd-th,.pd-tr{grid-template-columns:76px 1fr 84px;font-size:11px}
+  .pd-th span:nth-child(3),.pd-tr .cod{display:none}
+  .pd-cur{display:none}          /* a fake cursor on a touch screen is a lie */
+}
+@media (prefers-reduced-motion:reduce){
+  .pd-frame,.pd-nav,.pd-m,.pd-tr{opacity:1!important;transform:none!important;animation:none!important}
+  .pd-cur{display:none}
+  .pd-tr.sweep::before,.pd-chip.pop,.pd-m.flash{animation:none!important}
+}
+
 </style>
 </head>
 <body>
@@ -1378,36 +1554,81 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   </div>
 </section>
 
-<!-- ═════ AUTOMATION ═════ -->
+<!-- ═════ THE PORTAL ═════ -->
 <section class="band" id="automation">
   <div class="wrap">
     <div class="sec-head rv">
-      <span class="sec-n">02 / AUTOMATION</span>
-      <h2>Seven steps. <span class="grad">Zero of them yours.</span></h2>
-      <p class="lead">From the second an order lands in your store to the second the cash lands in your wallet — the platform runs the whole chain. You just pack the box.</p>
+      <span class="sec-n">02 / THE PORTAL</span>
+      <h2>Don&rsquo;t take our word for it. <span class="grad">Book one right here.</span></h2>
+      <p class="lead">This is the real merchant portal, running on this page. Watch a parcel get booked, dispatched, delivered and paid &mdash; then do it yourself. No account, no sales call, no demo request form.</p>
     </div>
-    <div class="flow rv rv-d1">
-      <div class="flow-nodes" id="flowNodes">
-        <div class="beam"></div><div class="pulse"></div>
-        <div class="fnode"><div class="fn-ic">🛒</div><div class="fn-t">Order lands</div><div class="fn-s">webhook</div></div>
-        <div class="fnode"><div class="fn-ic">⚙️</div><div class="fn-t">Auto-import</div><div class="fn-s">0.4s</div></div>
-        <div class="fnode"><div class="fn-ic">🏷️</div><div class="fn-t">AWB created</div><div class="fn-s">auto</div></div>
-        <div class="fnode"><div class="fn-ic">🛵</div><div class="fn-t">Rider assigned</div><div class="fn-s">zone AI</div></div>
-        <div class="fnode"><div class="fn-ic">💬</div><div class="fn-t">Customer told</div><div class="fn-s">WhatsApp</div></div>
-        <div class="fnode"><div class="fn-ic">🧾</div><div class="fn-t">Invoice + wallet</div><div class="fn-s">ledgered</div></div>
+
+    <div class="pd rv rv-d1" id="portalDemo">
+      <div class="pd-frame">
+        <div class="pd-chrome">
+          <span class="pd-dot r"></span><span class="pd-dot y"></span><span class="pd-dot g"></span>
+          <span class="pd-url">novaxlogistics.com/client</span>
+          <span class="pd-livedot"><i></i>LIVE DEMO</span>
+        </div>
+
+        <div class="pd-body">
+          <aside class="pd-side">
+            <div class="pd-brand"><span class="m">NX</span><b>Client Menu</b></div>
+            <div class="pd-nav sel" data-nav="dash">Dashboard</div>
+            <div class="pd-nav" data-nav="book">New Booking</div>
+            <div class="pd-nav" data-nav="awb">AWB Label</div>
+            <div class="pd-nav" data-nav="money">Money</div>
+            <div class="pd-nav" data-nav="tickets">Support</div>
+          </aside>
+
+          <main class="pd-main">
+            <div class="pd-metrics">
+              <div class="pd-m"><div class="k">Parcels</div><div class="v" data-n="128">0</div></div>
+              <div class="pd-m"><div class="k">In transit</div><div class="v" data-n="34">0</div></div>
+              <div class="pd-m"><div class="k">Delivered</div><div class="v" data-n="877">0</div></div>
+              <div class="pd-m cash"><div class="k">Wallet</div><div class="v" data-n="41250" data-rs="1">0</div></div>
+            </div>
+
+            <div class="pd-tbl">
+              <div class="pd-th"><span>AWB</span><span>Consignee</span><span>COD</span><span>Status</span></div>
+              <div class="pd-rows" id="pdRows">
+                <div class="pd-tr"><span class="awb">N3690112</span><span>Bilal Ahmed &middot; Lahore</span><span class="cod">2,400</span><span><i class="pd-chip s4">Delivered</i></span></div>
+                <div class="pd-tr"><span class="awb">N3690109</span><span>Fatima Noor &middot; Karachi</span><span class="cod">1,500</span><span><i class="pd-chip s3">Out for delivery</i></span></div>
+                <div class="pd-tr"><span class="awb">N3690104</span><span>Hamza Ali &middot; Islamabad</span><span class="cod">3,600</span><span><i class="pd-chip s2">In transit</i></span></div>
+              </div>
+            </div>
+
+            <div class="pd-sheet" id="pdSheet">
+              <h4>New Booking</h4>
+              <div class="pd-f"><label>Consignee</label><div class="pd-inp" id="pdF1"></div></div>
+              <div class="pd-f"><label>Destination city</label><div class="pd-inp" id="pdF2"></div></div>
+              <div class="pd-f"><label>COD amount</label><div class="pd-inp" id="pdF3"></div></div>
+              <button class="pd-go" id="pdGo" type="button">Create Booking</button>
+            </div>
+
+            <div class="pd-awb" id="pdAwb">
+              <div class="lbl">Air waybill</div>
+              <div class="no" id="pdAwbNo">N3690118</div>
+              <div class="pd-bars" id="pdBars"></div>
+            </div>
+          </main>
+        </div>
+
+        <div class="pd-cur" id="pdCur" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="19" height="19"><path d="M3 2l13 6.5-5.6 1.6L8.2 16z" fill="#eafff5" stroke="#04100b" stroke-width="1.1" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="pd-toast" id="pdToast"></div>
       </div>
-      <div class="flow-cap">A seller doing <b>100 parcels a day</b> touches this chain <b>zero times</b>. Every step is logged, reversible, and visible in the portal.</div>
-    </div>
-    <div class="cards" style="margin-top:32px">
-      <div class="card rv"><div class="card-ic">🔌</div><h3>Store sync, signature-verified</h3><p>Shopify and WooCommerce orders arrive as parcels automatically. Every webhook is HMAC-verified and idempotent — a retry can never double-book the same order.</p><span class="card-tag">Zero re-entry</span></div>
-      <div class="card rv rv-d1"><div class="card-ic">📥</div><h3>Bulk upload that validates first</h3><p>Drop a CSV of 300 orders. The engine checks city serviceability, phone format, COD value and weight per row, flags the bad ones, and imports the rest.</p><span class="card-tag">300 rows / 8s</span></div>
-      <div class="card rv rv-d2"><div class="card-ic">🎯</div><h3>Zone-aware dispatch</h3><p>Rider allocation reads destination zone, current load and cash-in-hand limits — so no rider is handed more COD than they're cleared to carry.</p><span class="card-tag">Automatic</span></div>
-      <div class="card rv rv-d3"><div class="card-ic">🚨</div><h3>Exception engine</h3><p>Stuck parcels, failed attempts and address gaps are detected on a timer and escalated with a countdown — before a customer complains.</p><span class="card-tag">Proactive</span></div>
-      <div class="card rv rv-d4"><div class="card-ic">📸</div><h3>Proof on everything</h3><p>Delivery photos, return proof, rider remarks and settlement transaction IDs are attached to the parcel record permanently. Nothing is he-said-she-said.</p><span class="card-tag">Auditable</span></div>
-      <div class="card rv rv-d5"><div class="card-ic">👥</div><h3>Scoped team access</h3><p>Warehouse gets booking. Finance gets reports. Support gets tracking. Only the owner gets payouts. Roles are enforced server-side, not hidden with CSS.</p><span class="card-tag">Role-based</span></div>
+
+      <div class="pd-cta">
+        <button class="btn btn-primary" id="pdTry" type="button">Book one yourself</button>
+        <button class="pd-replay" id="pdReplay" type="button">Replay</button>
+        <span class="pd-hint" id="pdHint">// nothing is sent anywhere &mdash; this runs entirely in your browser</span>
+      </div>
     </div>
   </div>
 </section>
+
 
 <div class="mq rev"><div class="mq-track" id="mq2"></div></div>
 
@@ -2708,6 +2929,315 @@ frame();
   }
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",go); else go();
 })();
+</script>
+<script>
+/* ═════ THE PORTAL — live demo ═════
+   Drives the miniature portal in section 02. One cancellable timeline; every
+   step is a promise-free setTimeout registered in T[] so a replay, a tab
+   switch or a user takeover can kill the whole thing cleanly instead of
+   leaving orphaned callbacks racing each other.
+
+   Only transform and opacity are animated, so nothing here triggers layout.
+   The timeline does not start until the section is on screen and stops the
+   moment it leaves or the tab is hidden -- a demo looping in a background tab
+   is exactly the kind of wasted work this codebase has been burned by. */
+(function(){
+  var root = document.getElementById("portalDemo");
+  if(!root) return;
+
+  var RM = window.matchMedia && matchMedia("(prefers-reduced-motion:reduce)").matches;
+  var TOUCH = matchMedia("(max-width:820px)").matches;
+
+  var rows  = document.getElementById("pdRows");
+  var sheet = document.getElementById("pdSheet");
+  var awb   = document.getElementById("pdAwb");
+  var awbNo = document.getElementById("pdAwbNo");
+  var bars  = document.getElementById("pdBars");
+  var cur   = document.getElementById("pdCur");
+  var toast = document.getElementById("pdToast");
+  var go    = document.getElementById("pdGo");
+  var F     = [document.getElementById("pdF1"), document.getElementById("pdF2"), document.getElementById("pdF3")];
+
+  var T = [], running = false, seq = 0;
+  function at(ms, fn){ T.push(setTimeout(fn, ms)); }
+
+  /* Cancelling the timeline is not enough on its own. The first build cleared
+     the timers and left whatever was mid-flight frozen on screen -- observed
+     during testing as the booking sheet stuck open at 1600ms with an empty
+     form and a stranded cursor, because the observer fired a not-intersecting
+     event mid-run. Anything that stops the run must also put the UI back to a
+     state it is willing to be seen in. */
+  function reset(){
+    sheet.classList.remove("up");
+    awb.classList.remove("up");
+    cur.classList.remove("show");
+    toast.classList.remove("up");
+    F.forEach(function(f){ f.classList.remove("caret"); if(!f.isContentEditable) f.textContent = ""; });
+    var nb = root.querySelector('[data-nav="book"]'), nd = root.querySelector('[data-nav="dash"]');
+    if(nb) nb.classList.remove("sel");
+    if(nd) nd.classList.add("sel");
+  }
+  function stop(){ T.forEach(clearTimeout); T = []; running = false; seq++; reset(); }
+
+  /* ── barcode ── */
+  (function(){
+    var h = "";
+    for(var i=0;i<52;i++){
+      var w = (i%7===0) ? 3 : (i%3===0 ? 2 : 1);
+      h += '<i style="width:'+w+'px;height:'+(58+((i*37)%42))+'%;animation-delay:'+(i*14)+'ms"></i>';
+    }
+    bars.innerHTML = h;
+  })();
+
+  /* ── stagger the assembly ── */
+  (function(){
+    var d = 0;
+    root.querySelectorAll(".pd-nav").forEach(function(n){ n.style.animationDelay = (120+d)+"ms"; d+=55; });
+    d = 0;
+    root.querySelectorAll(".pd-m").forEach(function(m){ m.style.animationDelay = (300+d)+"ms"; d+=70; });
+    d = 0;
+    root.querySelectorAll(".pd-tr").forEach(function(r){ r.style.animationDelay = (560+d)+"ms"; d+=80; });
+  })();
+
+  /* ── counters ── */
+  /* The first build ran this as a bare rAF loop with no cancellation, which
+     strands a wrong number on screen in two ways. Both were observed:
+
+     1. requestAnimationFrame is throttled or stopped in a background tab, so
+        the loop simply stops mid-count. Measured during testing: the wallet
+        sat on "Rs 5,771" indefinitely while the real figure underneath had
+        already advanced to 48,750.
+     2. A replay, the loop restarting, or the visitor taking over starts a
+        second countUp on the same element while the first is still running,
+        and the two fight over textContent.
+
+     A money figure frozen on a wrong value is the worst possible bug in a
+     section whose whole job is to make merchants trust the wallet. So: the
+     run generation is captured, a superseded loop bails, and the final value
+     is written unconditionally at the end -- and immediately, without any
+     animation, when the tab is hidden and rAF cannot be relied on. */
+  function paint(el, v, rs){ el.textContent = (rs?"Rs ":"") + v.toLocaleString("en-PK"); }
+  function countUp(el, to, rs, ms){
+    var mine = seq, t0 = 0, done = false;
+    function land(){ if(!done){ done = true; paint(el, to, rs); } }
+    if(RM || document.hidden){ land(); return; }
+    function frame(ts){
+      if(done) return;
+      if(mine !== seq){ land(); return; }              /* superseded: land it, do not linger */
+      if(!t0) t0 = ts;
+      var p = Math.min(1, (ts-t0)/ms);
+      paint(el, Math.round(to*(1-Math.pow(1-p,3))), rs);
+      if(p < 1) requestAnimationFrame(frame);
+      else land();                                     /* exact final value, no rounding artefact */
+    }
+    requestAnimationFrame(frame);
+    /* Watchdog. requestAnimationFrame is not a guarantee -- it is throttled or
+       suspended in a background tab, and it stalls under main-thread pressure
+       on the mid-range Android these merchants actually use. Measured here:
+       the loop stopped partway and left the wallet reading Rs 2,407 while the
+       real figure was Rs 53,650. A money number frozen on a wrong value is the
+       worst thing this section could show, so setTimeout -- which keeps firing
+       when rAF does not -- force-lands the figure if the animation has not
+       finished on time. Whichever gets there first wins; land() is idempotent. */
+    setTimeout(land, ms + 400);
+  }
+  function fillMetrics(){
+    root.querySelectorAll(".pd-m .v").forEach(function(el){
+      countUp(el, +el.dataset.n, el.dataset.rs === "1", 900);
+    });
+  }
+
+  /* ── ghost cursor ── */
+  function moveTo(el, ms){
+    if(TOUCH || RM || !el) return;
+    var f = root.querySelector(".pd-frame").getBoundingClientRect();
+    var r = el.getBoundingClientRect();
+    var x = r.left - f.left + r.width*0.42, y = r.top - f.top + r.height*0.55;
+    cur.style.transition = "transform "+ms+"ms cubic-bezier(.42,.02,.24,1), opacity .3s";
+    cur.style.transform = "translate("+x+"px,"+y+"px)";
+  }
+  function tap(el){
+    if(!el) return;
+    el.classList.add("hit");
+    setTimeout(function(){ el.classList.remove("hit"); }, 560);
+  }
+
+  /* ── typing ── */
+  function type(el, text, ms, done){
+    var mine = seq;
+    el.classList.add("caret");
+    el.textContent = "";
+    var i = 0, step = Math.max(18, ms/Math.max(1,text.length));
+    (function tick(){
+      if(mine !== seq) return;
+      el.textContent = text.slice(0, ++i);
+      if(i < text.length) at(step, tick);
+      else { el.classList.remove("caret"); if(done) done(); }
+    })();
+  }
+
+  function say(msg){
+    toast.textContent = msg;
+    toast.classList.add("up");
+    at(3200, function(){ toast.classList.remove("up"); });
+  }
+
+  var NAMES = ["Ayesha Khan","Usman Tariq","Zainab Iqbal","Bilal Ahmed","Mariam Shah"];
+  var CITY  = ["Karachi","Lahore","Islamabad","Rawalpindi"];
+  var STAGES = [["Picked up","s2",0],["In transit","s2",1],["Out for delivery","s3",2],["Delivered","s4",3]];
+
+  function newAwb(){ return "N36901" + (20 + Math.floor(Math.random()*79)); }
+
+  /* ── one full run ── */
+  function run(custom){
+    stop(); running = true;
+    var mine = seq;
+    var who  = custom ? custom.who  : NAMES[Math.floor(Math.random()*NAMES.length)];
+    var city = custom ? custom.city : CITY[Math.floor(Math.random()*CITY.length)];
+    var cod  = custom ? custom.cod  : [1500,2400,3600,999,12400][Math.floor(Math.random()*5)];
+    var no   = newAwb();
+
+    root.classList.add("on");
+    fillMetrics();
+
+    if(RM){ finish(who, city, cod, no, true); return; }
+
+    var navBook = root.querySelector('[data-nav="book"]');
+    var navDash = root.querySelector('[data-nav="dash"]');
+
+    at(300,  function(){ cur.classList.add("show"); moveTo(navBook, 900); });
+    at(1250, function(){
+      tap(navBook);
+      navDash.classList.remove("sel"); navBook.classList.add("sel");
+      sheet.classList.add("up");
+    });
+    at(1750, function(){ moveTo(F[0], 420); type(F[0], who, 520); });
+    at(2450, function(){ moveTo(F[1], 380); type(F[1], city, 400); });
+    at(3050, function(){ moveTo(F[2], 380); type(F[2], "Rs " + cod.toLocaleString("en-PK"), 380); });
+    at(3700, function(){ moveTo(go, 420); });
+    at(4200, function(){
+      tap(go);
+      awbNo.textContent = no;
+      sheet.classList.remove("up");
+      awb.classList.add("up");
+      cur.classList.remove("show");
+    });
+    at(5500, function(){
+      awb.classList.remove("up");
+      navBook.classList.remove("sel"); navDash.classList.add("sel");
+      finish(who, city, cod, no, false);
+    });
+  }
+
+  /* ── insert the row, walk it through the chain, land the money ── */
+  function finish(who, city, cod, no, instant){
+    var mine = seq;
+    var tr = document.createElement("div");
+    tr.className = "pd-tr fresh";
+    tr.style.animationDelay = "0ms";
+    tr.innerHTML = '<span class="awb">'+no+'</span>'
+      + '<span>'+who+' · '+city+'</span>'
+      + '<span class="cod">'+cod.toLocaleString("en-PK")+'</span>'
+      + '<span><i class="pd-chip s1">New booked</i></span>';
+    rows.insertBefore(tr, rows.firstChild);
+    while(rows.children.length > 4) rows.removeChild(rows.lastChild);
+
+    var chip = tr.querySelector(".pd-chip");
+    if(instant){
+      chip.className = "pd-chip s4"; chip.textContent = "Delivered";
+      creditWallet(cod, true);
+      return;
+    }
+
+    say("AWB " + no + " created · label ready to print");
+
+    STAGES.forEach(function(s, i){
+      at(900 + i*1150, function(){
+        if(mine !== seq) return;
+        chip.className = "pd-chip " + s[1] + " pop";
+        chip.textContent = s[0];
+        tr.classList.remove("sweep");
+        void tr.offsetWidth;                    /* restart the sweep cleanly */
+        tr.classList.add("sweep");
+        if(i === STAGES.length-1){
+          at(420, function(){ creditWallet(cod, false); });
+        }
+      });
+    });
+  }
+
+  function creditWallet(cod, instant){
+    var m = root.querySelector(".pd-m.cash");
+    var v = m.querySelector(".v");
+    var to = (+v.dataset.n) + cod;
+    v.dataset.n = to;
+    if(instant){ paint(v, to, true); return; }
+    m.classList.remove("flash"); void m.offsetWidth; m.classList.add("flash");
+    countUp(v, to, true, 1100);
+    say("Rs " + cod.toLocaleString("en-PK") + " COD credited to your wallet");
+    at(2600, function(){ if(running) run(); });      /* loop */
+  }
+
+  /* ── let them drive ── */
+  document.getElementById("pdTry").addEventListener("click", function(){
+    stop();
+    root.classList.add("on");
+    sheet.classList.add("up");
+    cur.classList.remove("show");
+    F.forEach(function(f){ f.textContent = ""; f.setAttribute("contenteditable","true"); f.classList.add("live"); });
+    F[0].focus();
+    document.getElementById("pdHint").textContent = "// type anything, then Create Booking";
+  });
+
+  go.addEventListener("click", function(){
+    if(!F[0].isContentEditable) return;            /* ghost run owns the button */
+    var who  = (F[0].textContent || "Your customer").trim().slice(0,28);
+    var city = (F[1].textContent || "Karachi").trim().slice(0,18);
+    var cod  = parseInt((F[2].textContent||"").replace(/[^0-9]/g,""), 10) || 2500;
+    F.forEach(function(f){ f.removeAttribute("contenteditable"); f.classList.remove("live"); });
+    sheet.classList.remove("up");
+    awbNo.textContent = newAwb();
+    awb.classList.add("up");
+    seq++;                                          /* cancel anything pending */
+    running = true;
+    setTimeout(function(){
+      awb.classList.remove("up");
+      finish(who, city, cod, awbNo.textContent, false);
+    }, 1300);
+  });
+
+  document.getElementById("pdReplay").addEventListener("click", function(){
+    F.forEach(function(f){ f.removeAttribute("contenteditable"); f.textContent=""; });
+    document.getElementById("pdHint").innerHTML = "// nothing is sent anywhere — this runs entirely in your browser";
+    run();
+  });
+
+  /* ── only run while it is actually being looked at ── */
+  /* threshold:0 rather than 0.25. The demo is taller than a short viewport,
+     so a quarter of it being visible is not a reliable proxy for "being
+     looked at" -- a small scroll or a reveal-animation layout shift dropped
+     it under the threshold and killed the run mid-booking. Any part visible
+     is enough; leaving the viewport entirely still stops it. */
+  var started = false;
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if(e.isIntersecting && !document.hidden){
+        if(!started){ started = true; run(); }
+      } else if(!e.isIntersecting){
+        stop(); started = false;
+      }
+    });
+  }, { threshold: 0, rootMargin: "0px 0px -40px 0px" });
+  io.observe(root);
+
+  document.addEventListener("visibilitychange", function(){
+    if(document.hidden) stop();
+    else if(started === false && root.getBoundingClientRect().top < innerHeight && root.getBoundingClientRect().bottom > 0){
+      started = true; run();
+    }
+  });
+})();
+
 </script>
 </body>
 </html>
