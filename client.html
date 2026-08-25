@@ -4789,6 +4789,164 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        overlap if a merchant hits print twice quickly -- the second call must
        not capture "light" as the value to restore. */
     var NV_PRINT_THEME={ active:false, prev:null };
+    /* ═══ Haptics ═════════════════════════════════════════════════════════
+       A courier app is used one-handed, outdoors, often without looking
+       closely at the screen. A confirmation the merchant can FEEL is worth
+       more than one they have to read.
+
+       Deliberately tiny. Android only -- iOS Safari does not implement
+       navigator.vibrate at all, so this is silently inert on iPhone. That is
+       stated here so a future reader does not spend an afternoon debugging
+       "haptics don't work" on their own phone.
+
+       Honours prefers-reduced-motion: some people set it precisely because
+       motion and buzzing make them unwell. */
+    function nvHaptic(kind){
+      try{
+        if(!navigator.vibrate) return;
+        if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        if(!kind) return;                       /* neutral toast: no buzz */
+        if(kind === "error")   { navigator.vibrate([30,20,30]); return; }
+        if(kind === "warning") { navigator.vibrate(20); return; }
+        navigator.vibrate(10);
+      }catch(e){}
+    }
+
+    /* ═══ The booking form survives an app switch ═════════════════════════
+       Merchants copy consignee addresses out of WhatsApp. Switching apps
+       mid-booking is the normal flow here, not an edge case -- and on a phone
+       with little memory the tab is discarded, so the merchant came back to
+       an empty form and retyped everything.
+
+       Saved to localStorage, debounced, and deliberately short-lived: a
+       24-hour expiry. A merchant who abandoned a booking on purpose should
+       not be handed it back days later.
+
+       No beforeunload prompt: mobile browsers ignore it, and on desktop it is
+       an irritation that does not prevent the loss it warns about. */
+    var NV_DRAFT_KEY   = "novaxBookingDraft";
+    var NV_DRAFT_FIELDS = ["bookingName","bookingPhone","bookingCity","bookingCod",
+                           "bookingService","bookingCategory","bookingFragile","bookingWeight",
+                           "bookingPaymentMode","bookingOrderId","bookingAllowOpen","bookingAddress"];
+    var NV_DRAFT_T = null;
+
+    function nvSaveBookingDraft(){
+      try{
+        var d = {}, any = false;
+        NV_DRAFT_FIELDS.forEach(function(id){
+          var el = document.getElementById(id);
+          if(!el) return;
+          d[id] = el.value;
+          /* Selects carry a default from markup; only a text field with real
+             content means the merchant actually started something. */
+          if(String(el.value||"").trim() && el.tagName !== "SELECT") any = true;
+        });
+        if(!any){ try{ localStorage.removeItem(NV_DRAFT_KEY); }catch(e){} return; }
+        d.__savedAt = Date.now();
+        localStorage.setItem(NV_DRAFT_KEY, JSON.stringify(d));
+      }catch(e){}
+    }
+
+    function nvClearBookingDraft(){
+      try{ localStorage.removeItem(NV_DRAFT_KEY); }catch(e){}
+      var n = document.getElementById("nvDraftNote");
+      if(n && n.remove) n.remove();
+    }
+
+    function nvRestoreBookingDraft(){
+      try{
+        var raw = localStorage.getItem(NV_DRAFT_KEY);
+        if(!raw) return;
+        var d = JSON.parse(raw);
+        if(!d || !d.__savedAt || (Date.now() - d.__savedAt) > 86400000){ nvClearBookingDraft(); return; }
+        var restored = 0;
+        NV_DRAFT_FIELDS.forEach(function(id){
+          var el = document.getElementById(id);
+          if(!el || d[id] === undefined) return;
+          /* Never overwrite what the merchant has already typed this session.
+             The draft is a fallback, not an authority. */
+          if(String(el.value||"").trim()) return;
+          el.value = d[id];
+          if(String(d[id]||"").trim()) restored++;
+        });
+        if(!restored) return;
+        var host = document.getElementById("bookingName");
+        host = host && host.closest(".form-grid");
+        if(host && !document.getElementById("nvDraftNote")){
+          var mins = Math.max(1, Math.round((Date.now() - d.__savedAt)/60000));
+          var when = mins < 60 ? (mins + " min ago") : (Math.round(mins/60) + "h ago");
+          var note = document.createElement("div");
+          note.id = "nvDraftNote";
+          note.className = "footer-note";
+          note.style.cssText = "grid-column:1/-1;display:flex;align-items:center;gap:10px;flex-wrap:wrap";
+          note.innerHTML = '<span>Restored the booking you started ' + when + '.</span>' +
+            '<button type="button" class="ghost-btn" style="padding:4px 10px;font-size:12px" ' +
+            'onclick="nvDiscardBookingDraft()">Start fresh</button>';
+          host.insertBefore(note, host.firstChild);
+        }
+      }catch(e){}
+    }
+
+    function nvDiscardBookingDraft(){
+      NV_DRAFT_FIELDS.forEach(function(id){
+        var el = document.getElementById(id);
+        if(el && el.tagName !== "SELECT") el.value = "";
+      });
+      nvClearBookingDraft();
+      try{ toast("Cleared. Starting fresh."); }catch(e){}
+    }
+    window.nvDiscardBookingDraft = nvDiscardBookingDraft;
+
+    document.addEventListener("input", function(e){
+      if(!e || !e.target || NV_DRAFT_FIELDS.indexOf(e.target.id) === -1) return;
+      clearTimeout(NV_DRAFT_T);
+      NV_DRAFT_T = setTimeout(nvSaveBookingDraft, 400);
+    });
+    document.addEventListener("change", function(e){
+      if(!e || !e.target || NV_DRAFT_FIELDS.indexOf(e.target.id) === -1) return;
+      nvSaveBookingDraft();
+    });
+
+    /* ═══ Timers that stop when nobody is looking ══════════════════════════
+       There were 17 setInterval calls in this file. Six had no visibility
+       guard at all -- a 1s clock repaint, nvP3Tick at 2.5s, a 3s tick,
+       checkMoments at 4s, a 5s badge refresh -- and four more hand-rolled
+       their own `if(document.hidden) return;` check.
+
+       None of them make network calls, so this was never a data cost. It is
+       CPU and repaint: a backgrounded tab on a phone waking up several times
+       a second to redraw a clock nobody can see.
+
+       nvInterval() registers centrally and suspends the whole set on
+       visibilitychange. On resume it fires each callback ONCE immediately so
+       clocks and badges are correct straight away rather than stale until the
+       next tick -- which is the bug you get from naive pausing. */
+    var NV_TIMERS = [];
+    function nvInterval(fn, ms, opts){
+      var rec = { fn:fn, ms:ms, id:null, always:!!(opts&&opts.always) };
+      rec.id = setInterval(fn, ms);
+      NV_TIMERS.push(rec);
+      return rec.id;
+    }
+    (function nvWireTimerSuspension(){
+      function suspend(){
+        NV_TIMERS.forEach(function(r){
+          if(r.always || r.id === null) return;
+          clearInterval(r.id); r.id = null;
+        });
+      }
+      function resume(){
+        NV_TIMERS.forEach(function(r){
+          if(r.always || r.id !== null) return;
+          try{ r.fn(); }catch(e){}          /* catch up immediately */
+          r.id = setInterval(r.fn, r.ms);
+        });
+      }
+      document.addEventListener("visibilitychange", function(){
+        if(document.hidden) suspend(); else resume();
+      });
+    })();
+
     function nvPrintThemeLight(){
       try{
         if(NV_PRINT_THEME.active) return;
@@ -6885,7 +7043,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // NovaX fix (confidence messaging): explicit "synced" + "ready to
         // print" pairing matches the two things the client actually needs to
         // know once the server has confirmed the booking.
-        toast(`${awb} synced to NovaX. AWB ready to print.`,"success");
+        nvClearBookingDraft(); toast(`${awb} synced to NovaX. AWB ready to print.`,"success");
         /* NovaX motion: the parcel just became real -- print its label. Runs
            after the booking has already succeeded and cannot affect it. */
         // The label animation owns the screen first; the what-next card and
@@ -6930,7 +7088,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // NovaX fix (confidence messaging): explicit "synced" + "ready to
         // print" pairing matches the two things the client actually needs to
         // know once the server has confirmed the booking.
-        toast(`${awb} synced to NovaX. AWB ready to print.`,"success");
+        nvClearBookingDraft(); toast(`${awb} synced to NovaX. AWB ready to print.`,"success");
         if(isFirstParcel && localStorage.getItem("novaxFirstBookingCompleted")!=="1"){
           try{ localStorage.setItem("novaxFirstBookingCompleted","1"); }catch(e){}
           if(window.novaxShowFirstBookingSuccess) window.novaxShowFirstBookingSuccess(awb);
@@ -7492,7 +7650,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }catch(e){ console.warn("NovaX bulk failure report", e); }
         toast(`${awbs.length} AWB(s) booked. ${failed.length} row(s) failed \u2014 see the list above.`,"error");
       } else {
-        toast(`${awbs.length} AWB(s) booked and synced to NovaX.`,"success");
+        nvClearBookingDraft(); toast(`${awbs.length} AWB(s) booked and synced to NovaX.`,"success");
       }
     }
     /* Re-exports only the rejected rows, in the same column order as the
@@ -8147,10 +8305,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
       }
       setTimeout(function(){ tick(); try{ nvTkLoad(); }catch(e){} }, 900);
-      setInterval(tick, 3000);
+      nvInterval(tick, 3000);
       // Refresh from the server only while the merchant is actually looking
       // at the tickets tab, and only once a minute -- v1 polled constantly.
-      setInterval(function(){
+      nvInterval(function(){
         var pane=document.getElementById("client-tickets");
         if(pane && pane.classList.contains("active") && document.visibilityState!=="hidden"){
           try{ nvTkLoad(); }catch(e){}
@@ -8719,8 +8877,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return TABS.indexOf(v) > -1 ? v : "dashboard";
     }
 
-    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
-    function toast(msg,type){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.remove("success","error"); const kind=type||(/reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(msg)?"error":/success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach/i.test(msg)?"success":""); if(kind) el.classList.add(kind); el.classList.add("show"); clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
+    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
+    function toast(msg,type){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.remove("success","error"); const kind=type||(/reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(msg)?"error":/success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach/i.test(msg)?"success":""); if(kind) el.classList.add(kind); el.classList.add("show"); /* One hook here rather than at 21 call sites: every existing success and error toast now carries a haptic, and any future one does automatically. */ try{ nvHaptic(kind==="error"?"error":(kind==="success"?"success":null)); }catch(e){} clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
     /* Events */
     document.querySelectorAll(".client-tab").forEach(b=>b.addEventListener("click",()=>showClientTab(b.dataset.clientTab)));
@@ -9147,7 +9305,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     function nvHideStaleBanner(){ var b=document.getElementById("nvStaleBanner"); if(b&&b.parentNode) b.parentNode.removeChild(b); }
     window.__novaxMarkDataFresh=function(){ window.__novaxRealDataArrived=true; nvHideStaleBanner(); };
-    setInterval(()=>{ const el=document.getElementById("clockB"); if(el) el.textContent=`Live ${time()}`; },1000);
+    nvInterval(()=>{ const el=document.getElementById("clockB"); if(el) el.textContent=`Live ${time()}`; },1000);
 
     // NovaX fix (withdrawal UX v3): saveBankDetails/editBankDetails/
     // cancelBankDetailsEdit/requestWalletWithdrawal were missing from this
@@ -9698,7 +9856,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                    entire request volume with a single merchant online. It now
                    runs only while realtime is NOT connected, and at 3 minutes. */
                 if(!window.__nvPollTimer){
-                  window.__nvPollTimer=setInterval(function(){
+                  window.__nvPollTimer=nvInterval(function(){
                     if(window.__nvRealtimeLive) return;   // realtime has it covered
                     nvQuietRefresh();
                   }, 180000);
@@ -9958,7 +10116,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }catch(e){}
         }
 
-        setInterval(function(){ if(document.hidden) return; mountWelcomeStrip(); renderDashboardEmptyState(); },15000);
+        nvInterval(function(){ if(document.hidden) return; mountWelcomeStrip(); renderDashboardEmptyState(); },15000);
         setTimeout(function(){ mountWelcomeStrip(); renderDashboardEmptyState(); if(window.novaxFocusFirstBookingField) window.novaxFocusFirstBookingField(); },300);
         showFirstBookingAutopilotWelcome();
         cleanWelcomeUrl();
@@ -10167,7 +10325,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }catch(e){}
     }
     (function(){
-      setInterval(function(){ if(!document.hidden) renderDailyCommandCenter(); },20000);
+      nvInterval(function(){ if(!document.hidden) renderDailyCommandCenter(); },20000);
       setTimeout(renderDailyCommandCenter,400);
       document.addEventListener("DOMContentLoaded",renderDailyCommandCenter);
     })();
@@ -10854,7 +11012,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function nvP3Boot(){ nvP3Tick(); setTimeout(nvP3Tick,300); }
       if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",nvP3Boot);
       else nvP3Boot();
-      setInterval(nvP3Tick,2500);
+      nvInterval(nvP3Tick,2500);
       window.__novaxPhase3={ cockpit:nvRenderCockpit, notif:nvNotifRender, search:nvOmniSearch, selected:nvSelList };
     })();
   </script>
@@ -10982,7 +11140,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") pingThrottled(15000); });
     document.addEventListener("click",function(){ setTimeout(function(){ pingThrottled(45000); },150); });
-    setInterval(function(){ if(document.visibilityState==="visible") pingThrottled(55000); },60000);
+    nvInterval(function(){ if(document.visibilityState==="visible") pingThrottled(55000); },60000);
     __lastPing = Date.now(); ping();
   })();
   </script>
@@ -11071,12 +11229,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       } else if(badgeEl){ badgeEl.remove(); }
     }catch(e){}
   }
-  setInterval(refreshLauncherBadge,5000);
+  nvInterval(refreshLauncherBadge,5000);
   setTimeout(refreshLauncherBadge,1500);
 
   (function attachStickyBarWatch(){
     var tries=0;
-    var iv=setInterval(function(){
+    var iv=nvInterval(function(){
       tries++;
       var stickyBar=document.getElementById("nvMobileBookBar");
       if(stickyBar){
@@ -11375,7 +11533,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }catch(e){}
       },2500);
       var watchTries=0;
-      var watch=setInterval(function(){
+      var watch=nvInterval(function(){
         watchTries++;
         if(panel && panel.classList.contains("open")){ tryDailyBriefing(false); clearInterval(watch); }
         if(watchTries>600){ clearInterval(watch); }
@@ -12204,7 +12362,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   }
   if(PORTAL==="client" && !localStorage.getItem(INTRO_KEY)){
     var __introTries=0;
-    var __introTimer=setInterval(function(){
+    var __introTimer=nvInterval(function(){
       __introTries++;
       if(hasClientIdentity()){
         clearInterval(__introTimer);
@@ -12344,7 +12502,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   bar.querySelector("#nvcoachHide").addEventListener("click",function(e){ e.stopPropagation(); try{ localStorage.setItem(HIDE_KEY,"1"); }catch(e){} bar.classList.remove("show"); });
   bar.addEventListener("click",function(e){ if(e.target.closest("button")) return; goToTip(getTip()); });
 
-  setInterval(function(){
+  nvInterval(function(){
     try{
       var tab=(typeof state!=="undefined" && state.activeClientTab)||null;
       if(tab!==lastTab){ lastTab=tab; renderCoach(); }
@@ -12472,7 +12630,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }catch(e){}
   }
 
-  setInterval(checkMoments,4000);
+  nvInterval(checkMoments,4000);
   setTimeout(checkMoments,3000);
 })();
 </script>
@@ -12794,7 +12952,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   });
 
   var lastOpen=false;
-  setInterval(function(){
+  nvInterval(function(){
     injectToggle();
     var panel=document.querySelector(".nvauto-panel");
     var open=!!(panel&&panel.classList.contains("open"));
@@ -12887,7 +13045,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
   function pump(){
     if (timer) return;
-    timer = setInterval(function(){
+    timer = nvInterval(function(){
       tries++;
       if (sb()) { flush(); clearInterval(timer); timer = null; return; }
       if (tries > 20) { clearInterval(timer); timer = null; queue.length = 0; }  // ~40s, then stop
@@ -15480,7 +15638,7 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
         }
         // Reopen once they are mapped so the choice actually gets recorded.
         var tries = 0;
-        var t = setInterval(function(){
+        var t = nvInterval(function(){
           if(++tries > 120){ clearInterval(t); return; }
           if(hasPickup()){ clearInterval(t); CHOSEN = null; boot(true); }
         }, 1000);
