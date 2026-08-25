@@ -77,6 +77,44 @@ other `admin_*` / `client_*` functions exist **only in the deployed database**.
 **You cannot verify their behaviour by reading this repo.** Do not assume what
 they do. If a change depends on one, ask for `pg_get_functiondef` output first.
 
+### 3.1b Two triggers silently revert writes to `parcels` — no error raised
+
+An `update public.parcels set fee = ...` from the Supabase SQL editor
+**reports success and changes nothing.** It cost two failed attempts to find
+this on 2026-08-24.
+
+`parcels_guard_columns()` (BEFORE UPDATE, and **not in this repo**) does:
+
+```sql
+if public.is_admin() or public.can_process_orders() then return new; end if;
+new.awb := old.awb;  new.client_id := old.client_id;  new.rider_id := old.rider_id;
+new.consignee := old.consignee;  new.city := old.city;  new.address := old.address;
+new.phone := old.phone;  new.cod_amount := old.cod_amount;  new.fee := old.fee;
+new.booked_at := old.booked_at;
+```
+
+In the SQL editor `auth.uid()` is NULL, so `is_admin()` is false and the guard
+restores every one of those columns. It **assigns rather than raises**, so
+psql prints `UPDATE 19` and nothing has moved. `nv_freeze_parcel_money` covers
+the same ground for `fee`/`cod_amount`/`client_id` but *does* raise, so it is
+the one you notice first — fix only that and you get the silent failure.
+
+To change any of those columns as an operator, suspend BOTH inside one
+transaction and restore them in the same one:
+
+```sql
+begin;
+alter table public.parcels disable trigger trg_nv_freeze_parcel_money;
+alter table public.parcels disable trigger parcels_guard_columns_trg;
+-- ... the update ...
+alter table public.parcels enable trigger trg_nv_freeze_parcel_money;
+alter table public.parcels enable trigger parcels_guard_columns_trg;
+commit;
+```
+
+Always verify afterwards that both are back (`tgenabled <> 'D'`). They are what
+stop a merchant editing their own fee, COD, address and consignee.
+
 ### 3.2 RLS policies for the most sensitive tables are NOT in this repo
 `create policy` statements exist here for only six tables (`nv_ai_*`,
 `parcel_contact_history`, `reviews`). There is **nothing** for `parcels`,
