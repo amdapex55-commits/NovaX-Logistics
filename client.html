@@ -360,7 +360,7 @@
     .ai-chat{display:grid;gap:10px;}
     .bubble{padding:11px 12px;border-radius:var(--radius);background:var(--panel-soft);color:var(--ink);font-size:13px;line-height:1.45;}
     .bubble.ai{background:var(--ink);color:white;}
-    .toast{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:120;max-width:min(360px,calc(100vw - 36px));padding:13px 14px;border-radius:var(--radius);background:var(--ink);color:white;box-shadow:var(--shadow);transform:translateY(20px);opacity:0;pointer-events:none;transition:opacity var(--speed),transform var(--speed);font-size:13px;}
+    .toast{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:var(--z-toast);max-width:min(360px,calc(100vw - 36px));padding:13px 14px;border-radius:var(--radius);background:var(--ink);color:white;box-shadow:var(--shadow);transform:translateY(20px);opacity:0;pointer-events:none;transition:opacity var(--speed),transform var(--speed);font-size:13px;}
     .toast.show{opacity:1;transform:translateY(0);}
     /* NovaX: color-grade the toast so it's obvious at a glance whether an
        action succeeded or failed, instead of always showing as a plain
@@ -619,7 +619,7 @@
       .mobile-card-list{display:grid!important;}
       .awb-no{font-size:20px;}
       .awb-scan{max-width:240px;margin:0 auto;}
-      .toast{left:8px;right:8px;bottom:calc(84px + env(safe-area-inset-bottom));max-width:none;}
+      .toast{left:8px;right:8px;bottom:calc(var(--nv-stack-2) + 76px);max-width:none;}
     }
     /* ===== NovaX Mobile Overhaul: nav, dashboard order, touch targets, tables, sheets ===== */
     @media (max-width:760px){
@@ -1106,7 +1106,7 @@
   @keyframes nvOffPulse{ 50%{ opacity:.35; } }
   @media (prefers-reduced-motion: reduce){ #nvOfflineBanner .nvoff-dot{ animation:none; } }
   @media (max-width:760px){
-    #nvOfflineBanner{ bottom:calc(58px + env(safe-area-inset-bottom)); }
+    #nvOfflineBanner{ bottom:calc(var(--nv-stack-2) + 10px); }
   }
 
   /* ═══ Bottom navigation (mobile only) ══════════════════════════════════
@@ -1142,16 +1142,22 @@
        would have covered it rather than the other way round. The AI PANEL is
        lifted rather than the launcher alone -- its composer sits at the very
        bottom of the screen, exactly where the bar goes. */
+    /* These were pinned to a hardcoded 70px, which cleared the bottom nav but
+       not the sticky booking bar -- measured 25 Aug: the assistant button sat
+       at 686-742 directly on top of #nvMobileBookBar at 688-755. Driving them
+       from --nv-stack-2 means one number describes how much of the bottom of
+       the screen is already spoken for, and everything above it moves together
+       when the booking bar appears. */
     #nvAiLauncher,.nvai-launcher,.nvauto-btn{
-      bottom:calc(70px + env(safe-area-inset-bottom)) !important;
+      bottom:calc(var(--nv-stack-2) + 10px) !important;
     }
     .nvauto-panel{
-      bottom:calc(58px + env(safe-area-inset-bottom)) !important;
-      max-height:calc(100vh - 58px - env(safe-area-inset-bottom)) !important;
+      bottom:var(--nv-nav-h) !important;
+      max-height:calc(100vh - var(--nv-nav-h)) !important;
     }
-    #nvStaleBanner{ bottom:calc(58px + env(safe-area-inset-bottom)) !important; }
+    #nvStaleBanner{ bottom:calc(var(--nv-stack-2) + 10px) !important; }
     /* The sticky booking CTA sits at the bottom of the New Booking tab. */
-    #nvMobileBookBar{ bottom:calc(58px + env(safe-area-inset-bottom)) !important; }
+    #nvMobileBookBar{ bottom:var(--nv-nav-h) !important; }
   }
 
   /* Inline busy dot inside a pressed button. */
@@ -3157,6 +3163,40 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       var printedAt=p.awbPrintedAt||p.printedAt;
       return !printed && !printedAt;
     }
+    /* ONE definition of "does this parcel need the merchant".
+       Before this there were two, rendered about 200px apart on the same
+       dashboard: the command strip counted dailyCommandData().issues while the
+       cockpit header counted nvTodayBuckets().needs, which reads the NEEDS_ME
+       list. With the production status mix that was 6 against 2, both labelled
+       "need attention", both on screen at once.
+
+       The whole disagreement was one status: this set counts Return to
+       shipper, NEEDS_ME did not. A parcel coming back IS the merchant's
+       problem -- they have to receive it and it is revenue they did not earn --
+       so the wider set is the honest one and it is now the only one.
+
+       Kept separate from dailyCommandData() so the cockpit, which re-renders
+       every 2.5s, does not have to call clientMetrics() to get a count. */
+    function nvAttentionParcels(){
+      var myId=(state.client&&state.client.id)||null;
+      var all=(state.parcels||[]).filter(function(p){ return p.clientId===myId; });
+      var set={};
+      all.forEach(function(p){
+        if(!p||!p.awb) return;
+        var st=String(p.status||"");
+        var late=(typeof isDelayed==="function")
+          ? isDelayed(p)
+          : (st!=="Delivered" && typeof agingHours==="function" && agingHours(p)>24);
+        var cash=(typeof isRiderCashHolding==="function") && isRiderCashHolding(p);
+        if(late || st==="Refused" || /return/i.test(st) ||
+           (p.exception && String(p.exception).trim()) || cash){
+          set[p.awb]=p;
+        }
+      });
+      return Object.keys(set).map(function(k){ return set[k]; });
+    }
+    window.nvAttentionParcels=nvAttentionParcels;
+
     function dailyCommandData(){
       var myId=(state.client&&state.client.id)||null;
       var all=(state.parcels||[]).filter(function(p){ return p.clientId===myId; });
@@ -3167,9 +3207,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       var returned=all.filter(function(p){ return /return/i.test(p.status||""); });
       var withException=all.filter(function(p){ return p.exception && String(p.exception).trim(); });
       var cashHolding=all.filter(isRiderCashHolding);
-      var issueSet={};
-      delayed.concat(refused,returned,withException,cashHolding).forEach(function(p){ issueSet[p.awb]=p; });
-      var issues=Object.keys(issueSet).map(function(k){ return issueSet[k]; });
+      var issues=nvAttentionParcels();
       var unprinted=all.filter(isUnprintedLabel);
       // NovaX fix: always source "payable" from the same COD-payable metric the
       // dashboard uses (clientMetrics().payable) so Daily Command Center never
@@ -4775,25 +4813,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // appears to vanish. Computed once here and shown per pending invoice.
       let __nvShortfall = 0;
       try{ __nvShortfall = nvMoneyFigures().shortfall || 0; }catch(e){}
-      (document.getElementById("paymentSummary")||{}).innerHTML=[
-        moneyBox("Generated invoices",invoices.length,"admin created only"),
-        moneyBox("Invoice COD",money(invoices.reduce((s,i)=>s+i.cod,0)),"delivered parcels only"),
-        moneyBox("Delivery charges",money(invoices.reduce((s,i)=>s+i.charges,0)),"deducted from COD"),
-        // NovaX fix (dashboard/invoices/wallet desync): these three tiles must
-        // partition every invoice into exactly one bucket. Checking only
-        // "Paid"/"Pushed to wallet" left "Settled" and "Paid to NovaX"
-        // invoices out of all three -- still counted as pending here while
-        // Payment History and the Wallet tab both already showed them closed.
-        moneyBox("Payable (pending)",money(invoices.filter(i=>!isInvoiceClosed(i.status)&&i.status!=="Cancelled").reduce((s,i)=>s+i.payable,0)),"not yet pushed to wallet"),
-        moneyBox("In wallet",money(invoices.filter(i=>i.status==="Pushed to wallet").reduce((s,i)=>s+i.payable,0)),"ready to withdraw"),
-        moneyBox("Paid in full",money(invoices.filter(i=>isInvoiceClosed(i.status)).reduce((s,i)=>s+i.payable,0)),"settled - nothing owed")
-      ].join("");
-      (document.getElementById("paymentTimeline")||{}).innerHTML=[
-        ["Delivered parcel selected","Admin can invoice delivered parcels only",true],
-        ["Invoice generated","Invoice appears in seller payments",invoices.length>0],
-        ["Payment status","Paid or pending is controlled by admin ledger",invoices.some(i=>isInvoiceClosed(i.status))]
-      ].map((r,i)=>`<div class="journey-item ${r[2]?"":"pending"}"><div class="step-dot">${r[2]?"OK":i+1}</div><div><strong>${r[0]}</strong><span>${r[1]}</span></div><span class="chip ${r[2]?"good":"info"}">${r[2]?"verified":"waiting"}</span></div>`).join("");
-      (document.getElementById("clientPaymentHistory")||{}).innerHTML=invoices.map(inv=>`<div class="log-item"><strong>${escLabelText(inv.id)}</strong><div><strong>${escLabelText(inv.status)}</strong><div class="footer-note" style="margin-top:2px">${escLabelText(inv.createdAt)} | ${inv.parcelRefs.length} parcel(s)</div></div><span class="chip ${invoiceChipClass(inv.status)}">${money(inv.payable)}</span></div>`).join("")||`<div class="ops-card"><strong>No generated invoices</strong><p>Delivered parcels will show here once admin creates an invoice.</p></div>`;
+      /* Removed 25 Aug 2026: wrote into #paymentSummary, #paymentTimeline and
+         #clientPaymentHistory. None of those three ids exists anywhere in this
+         file -- not in markup, not in a template literal, not assigned via
+         element.id. They are leftovers from a payments panel that was replaced.
+         Every lookup was guarded with ||{} so nothing ever threw; this was work
+         done on every render that no one could see. #clientInvoiceList below IS
+         real and is untouched. */
       (document.getElementById("clientInvoiceList")||{}).innerHTML=invoices.map((inv,idx)=>{
         const invType=inv.invoiceType||"COD Settlement";
         const owed=Number(inv.dueToNovax||0);
@@ -4827,35 +4853,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ nvApplyRolePermissions(); }catch(e){}
       try{ renderMoneyHero(); }catch(e){ console.warn("NovaX money hero", e); }
       try{ nvGuardWalletRender(); }catch(e){}
-      var __esc=document.getElementById("supportEscalations"); if(__esc) __esc.innerHTML=state.parcels.filter(p=>p.exception&&p.clientId===state.client.id).map(p=>`<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(p.awb)}</strong><span class="chip bad">escalated</span></div><p>${escLabelText(p.exception)}</p>${p.proofPhoto?`<img src="${escLabelText(p.proofPhoto)}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:200px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">`:""}</div>`).join("")||`<div class="ops-card"><strong>No escalations</strong><p>AI has complete portal data right now.</p></div>`;
+      /* Removed 25 Aug 2026: #supportEscalations does not exist in this file. */
     }
-    function renderAi(){
-      // NovaX fix (fabricated conversation): this used to print a scripted
-      // "Client: ... / AI: ..." exchange the user never had, which made the
-      // assistant look like it had already answered. It now shows a genuine
-      // empty state with real prompt chips -- every answer below this point
-      // comes from sendClientAiTabMessage() and live portal data only.
-      const host=document.getElementById("clientAi");
-      if(!host) return;
-      const p=state.parcels.find(x=>x.awb===state.selectedAwb)||emptyParcel();
-      const chips=[
-        p.awb?`Where is ${p.awb}?`:"Where is my latest parcel?",
-        "Which of my parcels are stuck?",
-        "Why was a delivery attempt failed?",
-        "How do I upload a bulk booking?"
-      ];
-      host.innerHTML=`<div class="bubble ai">AI: Hi ${escLabelText((state.client&&state.client.name)||"there")} — ask me anything about your parcels, bookings or pickups. I answer only from your live portal data.</div>`
-        +`<div class="inline-actions" style="flex-wrap:wrap;gap:6px;margin-top:8px">`
-        +chips.map(c=>`<button class="ghost-btn" data-nv-ai-chip="${escLabelText(c)}">${escLabelText(c)}</button>`).join("")
-        +`</div>`;
-      host.querySelectorAll("[data-nv-ai-chip]").forEach(function(b){
-        b.addEventListener("click",function(){
-          const el=document.getElementById("clientAiInput");
-          if(el){ el.value=b.getAttribute("data-nv-ai-chip"); el.focus(); }
-          if(typeof sendClientAiTabMessage==="function") sendClientAiTabMessage();
-        });
-      });
-    }
+    /* renderAi() removed 25 Aug 2026: its host #clientAi and the composer it
+       focused (#clientAiInput) do not exist. The live assistant is the NovaX AI
+       console (#nvAiShell) plus the Autopilot panel. */
 
     /* ===== Added: AWB label, print, modals, bulk preview, report, invoice download, wallet ===== */
     function awbCompleteBadge(p){ return p.awbPrinted ? `<div class="chip good" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700">✅ AWB printed — booking complete${p.awbPrintedAt?" · "+p.awbPrintedAt:""}</div>` : `<div class="chip warn" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700">⏳ AWB not printed yet</div>`; }
@@ -5398,7 +5400,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     var NV_TIMERS = [];
     function nvInterval(fn, ms, opts){
       var rec = { fn:fn, ms:ms, id:null, always:!!(opts&&opts.always) };
-      rec.id = setInterval(fn, ms);
+      /* The suspension below listens for visibilitychange. A tab opened in the
+         background -- cmd-click, or a restored session with many tabs -- is
+         already hidden and never fires that event, so every timer registered
+         here used to start ticking and keep ticking until the tab was first
+         focused. Observed directly during the UI audit: document.hidden true
+         with 13 timers running. Checking the current state once at
+         registration closes that gap; resume() starts them on first focus. */
+      if(rec.always || !document.hidden) rec.id = setInterval(fn, ms);
       NV_TIMERS.push(rec);
       return rec.id;
     }
@@ -5624,13 +5633,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}</td><td>${escLabelText(p.date||"-")}</td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td><span class="status ${statusClass(p)}">${escLabelText(p.status)}</span></td><td>${money(p.cod)}</td><td>${money(p.fee)}</td><td>${agingLabel(agingHours(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
     }
 
-    function renderLatestInvoice(){
-      const el=document.getElementById("clientLatestInvoice"); if(!el) return;
-      const inv=state.invoices.filter(i=>i.clientId===state.client.id && i.status!=="Deleted")[0];
-      if(!inv){ el.innerHTML=`<div class="ops-card"><strong>No invoice yet</strong><p>Invoices created by admin will appear here.</p></div>`; return; }
-      const invType=inv.invoiceType||"COD Settlement";
-      el.innerHTML=`<div class="invoice-card"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="chip ${invoiceChipClass(inv.status)}">${escLabelText(inv.status)}</span></div><p>${escLabelText(inv.summary)}</p><div class="money-grid" style="margin-top:10px">${moneyBox("COD",money(inv.cod),inv.parcelRefs.length+" parcel(s)")}${moneyBox("Charges",money(inv.charges),"NovaX revenue")}${invoiceMoneyBox(inv)}${moneyBox("Created",inv.createdAt,inv.paidAt?("Paid "+inv.paidAt):"pending")}</div><div class="inline-actions" style="margin-top:12px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View Invoice</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">Download CSV</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Download PDF</button></div></div>`;
-    }
+    /* renderLatestInvoice() removed 25 Aug 2026: #clientLatestInvoice does not
+       exist. The live invoice list is #clientInvoiceList in renderClientModules. */
+
     // NovaX new (Negative/Delivery-Charges Invoices): per-line breakdown
     // shared by CSV export, View Invoice modal, and the print/PDF template.
     /* =====================================================================
@@ -8910,6 +8915,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         out.innerHTML = '<span class="footer-note">Shopify import is not switched on for this account yet. '
                       + 'Ask NovaX to enable it &mdash; nothing is wrong on your side.</span>';
       }
+      /* client_set_shopify_domain and client_shopify_bulk_state are not
+         deployed on this database. The panel degraded honestly but was still
+         rendered in full -- two inputs, a token walkthrough and an Import
+         button -- advertising a feature no merchant here can use. Collapse the
+         whole box to the one honest sentence instead of dressing it up. */
+      var box = document.getElementById("shopifyBulkBox");
+      if(box && !box.dataset.nvCollapsed){
+        box.dataset.nvCollapsed = "1";
+        Array.prototype.forEach.call(box.children, function(el){
+          if(el !== out && el.id !== "shopifyBulkChip") el.style.display = "none";
+        });
+        var head = box.querySelector(".ops-card-head");
+        if(head) head.style.display = "";
+        if(out) out.style.display = "";
+      }
       if(reason) console.warn("NovaX: Shopify RPCs are not deployed (" + reason + "). Polling stopped.");
     }
 
@@ -9308,8 +9328,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function render(){
       try{ applyPickupCity(); }catch(e){}
       try{ renderCodHero(); }catch(e){}
-      renderMetrics(); renderClientStatusBoard(); renderClientParcels(); renderJourney(); renderAi();
-      renderClientModules(); renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview();
+      renderMetrics(); renderClientStatusBoard(); renderClientParcels(); renderJourney();
+      renderClientModules(); renderClientReportFull(); renderClientWallet(); renderBulkPreview();
       renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); updateZoneRateHint();
       // NovaX fix (client identity leak): the Client Menu workspace label used
       // to be a hard-coded demo workspace name string in the HTML, so it
@@ -9356,7 +9376,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return TABS.indexOf(v) > -1 ? v : "dashboard";
     }
 
-    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } try{ nvRenderBottomNav(); }catch(e){} renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
+    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } try{ nvRenderBottomNav(); }catch(e){} renderClientReportFull();  renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
     function toast(msg,type){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.remove("success","error"); const kind=type||(/reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(msg)?"error":/success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach/i.test(msg)?"success":""); if(kind) el.classList.add(kind); el.classList.add("show"); /* One hook here rather than at 21 call sites: every existing success and error toast now carries a haptic, and any future one does automatically. */ try{ nvHaptic(kind==="error"?"error":(kind==="success"?"success":null)); }catch(e){} clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
     /* Events */
@@ -9519,16 +9539,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       };
       setTimeout(tryAnswer,150);
     }
-    /* NovaX AI: the old #clientAiSendBtn / #clientAiInput composer was
-       replaced by the NovaX AI console (#nvAiShell). These bindings are
-       kept only so a stale cached page doesn't crash on a null element --
-       the real composer binds in the nvAi module below. */
-    (function(){
-      var sendBtn=document.getElementById("clientAiSendBtn");
-      if(sendBtn) sendBtn.addEventListener("click",sendClientAiTabMessage);
-      var legacyInput=document.getElementById("clientAiInput");
-      if(legacyInput) legacyInput.addEventListener("keydown",function(e){ if(e.key==="Enter") sendClientAiTabMessage(); });
-    })();
+    /* Removed 25 Aug 2026: bound #clientAiSendBtn and #clientAiInput, neither of
+       which exists. The real composer binds in the nvAi module below. */
     /* Both "Ask AI" entry points now open the NovaX AI console and focus
        its composer. #askAiBtn2 was removed with the old panel, so it is
        bound defensively. */
@@ -9772,7 +9784,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var b=document.createElement("div");
       b.id="nvStaleBanner";
       b.setAttribute("role","status");
-      b.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:9998;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:10px 14px;background:var(--nvu-warn-fg);color:#fff;font-weight:700;font-size:13px";
+      b.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:121;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:10px 14px;background:var(--nvu-warn-fg);color:#fff;font-weight:700;font-size:13px";
       b.innerHTML='<span>Reconnecting — showing last known data, so numbers may be out of date.</span>'
         +'<button class="ghost-btn" id="nvStaleRetry" style="color:#fff;border:1px solid rgba(255,255,255,.55)">Retry now</button>'
         +'<button class="ghost-btn" id="nvStaleDismiss" style="color:#fff;border:1px solid rgba(255,255,255,.55)">Dismiss</button>';
@@ -11053,7 +11065,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
         if(document.activeElement && box.contains(document.activeElement)) return;
         var b=nvTodayBuckets();
-        var needsList=b.needs.concat(b.stuck.filter(function(p){ return b.needs.indexOf(p)<0; })).slice(0,4);
+        /* Same predicate the command strip uses, so the two cannot disagree.
+           Falls back to the old bucket if the helper is somehow out of scope,
+           which keeps a stale cached page rendering rather than blank. */
+        var attn=(typeof nvAttentionParcels==="function") ? nvAttentionParcels() : b.needs;
+        var needsList=attn.concat(b.stuck.filter(function(p){ return attn.indexOf(p)<0; })).slice(0,4);
         var needsHtml=needsList.length?needsList.map(function(p){
           return nvItem(p,'<button class="nv-c-btn" data-nv-cock="journey" data-awb="'+nvEsc(p.awb)+'">Journey</button>'
             +'<button class="nv-c-btn" data-nv-cock="reattempt" data-awb="'+nvEsc(p.awb)+'">Re-attempt</button>');
@@ -11076,7 +11092,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           nextHtml+='<div class="nv-c-item"><strong>'+b.delivered.length+' delivered parcel(s)</strong><span>Check payment status in Payments</span><div class="nv-c-acts"><button class="nv-c-btn" data-nv-cock="tab" data-tab="payments">Open Payments</button>'
             +(nvIsOwner()?'<button class="nv-c-btn" data-nv-cock="tab" data-tab="wallet">Open Wallet</button>':"")+"</div></div>";
         }
-        box.innerHTML='<div class="nv-cockpit-head"><b>Today</b><span class="nv-c-sub">'+b.all.length+' parcel(s) \u00b7 '+b.needs.length+' need attention \u00b7 '+b.moving.length+' moving</span></div>'
+        box.innerHTML='<div class="nv-cockpit-head"><b>Today</b><span class="nv-c-sub">'+b.all.length+' parcel(s) \u00b7 '+attn.length+' need attention \u00b7 '+b.moving.length+' moving</span></div>'
           +'<div class="nv-cockpit-cols">'
           +'<div class="nv-c-col"><h4>What needs me</h4>'+needsHtml+"</div>"
           +'<div class="nv-c-col"><h4>What\u2019s moving</h4>'+movingHtml+"</div>"
@@ -11676,7 +11692,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       : "/functions/v1/novax-ai");
 
   var style=document.createElement("style");
-  style.textContent='.nvauto-btn{position:fixed;right:22px;left:auto;bottom:calc(22px + env(safe-area-inset-bottom));z-index:99998;display:flex;align-items:center;gap:11px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:var(--r-2xl);padding:8px 17px 8px 8px;cursor:pointer;min-height:54px;box-sizing:border-box;box-shadow:var(--sh-1);transition:transform .22s cubic-bezier(.2,.9,.2,1),box-shadow .22s,border-color .22s}.nvauto-btn:hover{transform:translateY(-2px);border-color:var(--green-2);box-shadow:var(--sh-2)}.nvauto-btn:active{transform:translateY(0) scale(.985)}.nvauto-btn-icon{position:relative;width:38px;height:38px;border-radius:var(--r-xl);flex-shrink:0;display:grid;place-items:center;color:#fff;background:linear-gradient(140deg,var(--green),var(--green-2));box-shadow:0 5px 16px rgba(19,163,111,.42),inset 0 1px 0 rgba(255,255,255,.22)}.nvauto-btn-icon svg{display:block;position:relative;z-index:1}.nvauto-btn-icon::after{content:"";position:absolute;inset:-3px;border-radius:var(--r-2xl);background:linear-gradient(140deg,var(--green),var(--green-2));opacity:.26;filter:blur(7px);z-index:0}.nvauto-btn-text{display:flex;flex-direction:column;line-height:1.2;text-align:left}.nvauto-btn-text b{font-size:13.5px;font-weight:750;color:var(--ink);letter-spacing:-.01em}.nvauto-btn-text small{font-size:10.5px;color:var(--muted);font-weight:600}.nvauto-badge{position:absolute;top:-6px;right:-6px;min-width:19px;height:19px;padding:0 5px;border-radius:var(--r-lg);background:#d4574e;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:var(--sh-1)}.nvauto-btn.nv-pulse .nvauto-btn-icon::after{animation:nvGlow 2.4s ease-in-out infinite}@keyframes nvGlow{0%,100%{opacity:.26;transform:scale(1)}50%{opacity:.55;transform:scale(1.12)}}.nvauto-panel{position:fixed;right:22px;left:auto;bottom:92px;top:auto;z-index:99998;width:392px;max-width:calc(100vw - 36px);height:auto;max-height:min(640px,calc(100vh - 130px));background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:var(--sh-2);display:none;flex-direction:column;overflow:hidden;transform-origin:100% 100%}.nvauto-panel.open{display:flex;animation:nvPanelIn .34s cubic-bezier(.2,.9,.2,1)}@keyframes nvPanelIn{from{opacity:0;transform:translateY(14px) scale(.94)}to{opacity:1;transform:none}}.nvauto-panel::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;z-index:2;background:linear-gradient(90deg,transparent,var(--green-2),transparent)}.nvauto-head{background:var(--panel);color:var(--ink);padding:15px 16px;display:flex;align-items:center;gap:11px;flex-shrink:0;border-bottom:1px solid var(--line)}.nvauto-avatar{width:36px;height:36px;border-radius:var(--r-xl);flex-shrink:0;display:grid;place-items:center;color:#fff;background:linear-gradient(140deg,var(--green),var(--green-2));box-shadow:var(--glow-1)}.nvauto-head b{font-size:15px;line-height:1.15;display:block;color:var(--ink);letter-spacing:-.01em;font-weight:750}.nvauto-head small{font-size:11px;color:var(--muted);display:flex;align-items:center;margin-top:2px}.nvauto-live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green-2);margin-right:6px;box-shadow:var(--ring);animation:nvLiveDot 2s ease-in-out infinite}@keyframes nvLiveDot{0%,100%{opacity:1;box-shadow:var(--ring)}50%{opacity:.5;box-shadow:var(--ring)}}.nvauto-x{margin-left:auto;background:transparent;color:var(--muted);border:1px solid var(--line);width:32px;height:32px;border-radius:var(--r-lg);cursor:pointer;font-size:15px;flex-shrink:0;display:grid;place-items:center;transition:background .18s,color .18s}.nvauto-x:hover{background:var(--panel-soft);color:var(--ink)}.nvauto-chips{display:flex;gap:7px;flex-wrap:wrap;padding:13px 15px 3px;background:var(--panel);flex-shrink:0}.nvauto-chips button{display:inline-flex;align-items:center;height:36px;box-sizing:border-box;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;font-size:12px;font-weight:650;padding:0 14px;border-radius:var(--r-pill);cursor:pointer;transition:background .2s,border-color .2s,transform .2s,box-shadow .2s;animation:nvChipIn .18s cubic-bezier(.2,.7,.3,1) both}@keyframes nvChipIn{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}.nvauto-chips button:hover{background:var(--mint);border-color:var(--green-2);transform:translateY(-1px);box-shadow:var(--glow-1)}.nvauto-chips button:active{transform:scale(.97)}.nvauto-chips button .cl-short{display:none}.nvauto-msgs{flex:1;overflow-y:auto;padding:15px;display:flex;flex-direction:column;gap:16px;background:var(--panel);min-height:0;scroll-behavior:smooth}.nvauto-m{max-width:100%;font-size:14px;line-height:1.6;white-space:pre-line;color:var(--ink);animation:nvMsgIn .3s cubic-bezier(.2,.9,.2,1) both}@keyframes nvMsgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}.nvauto-m.u{align-self:flex-end;max-width:80%;background:var(--panel-soft);border:1px solid var(--line);color:var(--ink);padding:9px 14px;border-radius:var(--r-2xl) 15px 4px 15px;font-size:13.5px}.nvauto-m.b{align-self:stretch;position:relative;padding-left:15px}.nvauto-m.b::before{content:"";position:absolute;left:0;top:3px;bottom:3px;width:2px;border-radius:var(--r-xs);background:linear-gradient(180deg,var(--green-2),transparent)}.nvauto-m.nvauto-loading{opacity:.6}.nvauto-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}.nvauto-action-btn{display:inline-flex;align-items:center;height:38px;box-sizing:border-box;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;font-size:12px;font-weight:700;padding:0 15px;border-radius:var(--r-pill);cursor:pointer;transition:background .2s,border-color .2s,transform .2s,box-shadow .2s;animation:nvChipIn .18s cubic-bezier(.2,.7,.3,1) both}.nvauto-action-btn:hover{background:var(--mint);border-color:var(--green-2);transform:translateY(-1px);box-shadow:var(--glow-1)}.nvauto-action-btn:active{transform:scale(.97)}.nvauto-action-btn.nv-confirm{background:linear-gradient(135deg,var(--green),var(--green-2));color:#fff;border-color:transparent;box-shadow:var(--glow-1)}.nvauto-action-btn.nv-confirm:hover{filter:brightness(1.07)}.nvauto-action-btn.nv-cancel{background:transparent;color:#d4574e;border-color:rgba(212,87,78,.4)}.nvauto-action-btn.nv-cancel:hover{background:rgba(212,87,78,.08)}.nvauto-fb{display:flex;align-items:center;gap:7px;margin-top:9px;font-size:10.5px;color:var(--muted);opacity:.8}.nvauto-fb-btn{border:0;background:transparent;color:var(--muted);font:inherit;font-size:10.5px;font-weight:700;cursor:pointer;padding:2px 4px;transition:color .18s}.nvauto-fb-btn:hover{color:var(--ink)}.nvauto-fb-btn.active{color:var(--green-2)}.nvauto-fb-sep{opacity:.45}.nvauto-bar{display:flex;gap:8px;padding:12px 15px;padding-bottom:calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--panel);flex-shrink:0}.nvauto-bar input{flex:1;min-width:0;height:44px;border-radius:14px;border:1px solid var(--line);background:var(--panel-soft);padding:0 15px;font:inherit;font-size:16px;color:var(--ink);outline:none;transition:border-color .18s,box-shadow .18s}.nvauto-bar input:focus{border-color:var(--green-2);box-shadow:var(--ring)}.nvauto-bar input::placeholder{font-size:13px;color:var(--muted)}.nvauto-bar button{height:44px;padding:0 18px;border-radius:14px;font:inherit;font-weight:750;font-size:13.5px;background:linear-gradient(135deg,var(--green),var(--green-2));color:#fff;border:0;cursor:pointer;flex-shrink:0;box-shadow:var(--glow-1);transition:transform .18s,filter .18s}.nvauto-bar button:hover{transform:translateY(-1px);filter:brightness(1.07)}.nvauto-bar button:active{transform:none}.nvauto-nudge{position:fixed;z-index:99997;max-width:274px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:var(--r-2xl);border-bottom-right-radius:5px;padding:12px 15px;font-size:12.5px;line-height:1.5;font-weight:600;box-shadow:var(--sh-2);cursor:pointer;opacity:0;transform:translateY(8px) scale(.96);pointer-events:none;transition:opacity .3s cubic-bezier(.2,.9,.2,1),transform .3s cubic-bezier(.2,.9,.2,1),border-color .18s}.nvauto-nudge.show{opacity:1;transform:none;pointer-events:auto}.nvauto-nudge:hover{border-color:var(--green-2)}.nvauto-btn{user-select:none;-webkit-user-select:none}.nvauto-btn:active{cursor:grabbing}@media (prefers-reduced-motion:reduce){.nvauto-btn,.nvauto-btn-icon::after,.nvauto-panel.open,.nvauto-live-dot,.nvauto-m,.nvauto-nudge{animation:none!important;transition:none!important}.nvauto-msgs{scroll-behavior:auto}}@media (max-width:760px){.nvauto-btn{right:14px;bottom:calc(14px + env(safe-area-inset-bottom));padding:0;width:56px;height:56px;border-radius:18px;justify-content:center;gap:0}.nvauto-btn.nv-above-stickybar{bottom:calc(96px + env(safe-area-inset-bottom))!important}.nvauto-btn-text{display:none}.nvauto-btn-icon{width:100%;height:100%;border-radius:18px}.nvauto-panel{left:0;right:0;bottom:0;top:auto;width:100%;max-width:100%;height:80vh;max-height:80vh;border-radius:20px 20px 0 0;border-left:0;border-right:0;border-bottom:0}.nvauto-chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:4px}.nvauto-chips::-webkit-scrollbar{display:none}.nvauto-chips button{flex:0 0 auto;max-width:70vw}.nvauto-action-btn{height:42px}.nvauto-chips button .cl-full{display:none}.nvauto-chips button .cl-short{display:inline}.nvauto-action-btn{min-height:42px;padding:10px 14px}.nvauto-msgs{padding:13px;gap:14px}}.nvauto-btn.nv-console-open,.nvauto-nudge.nv-console-open{opacity:0;pointer-events:none;transform:translateY(10px) scale(.9);transition:opacity .25s,transform .25s}';
+  style.textContent='.nvauto-btn{position:fixed;right:22px;left:auto;bottom:calc(22px + env(safe-area-inset-bottom));z-index:var(--z-fab);display:flex;align-items:center;gap:11px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:var(--r-2xl);padding:8px 17px 8px 8px;cursor:pointer;min-height:54px;box-sizing:border-box;box-shadow:var(--sh-1);transition:transform .22s cubic-bezier(.2,.9,.2,1),box-shadow .22s,border-color .22s}.nvauto-btn:hover{transform:translateY(-2px);border-color:var(--green-2);box-shadow:var(--sh-2)}.nvauto-btn:active{transform:translateY(0) scale(.985)}.nvauto-btn-icon{position:relative;width:38px;height:38px;border-radius:var(--r-xl);flex-shrink:0;display:grid;place-items:center;color:#fff;background:linear-gradient(140deg,var(--green),var(--green-2));box-shadow:0 5px 16px rgba(19,163,111,.42),inset 0 1px 0 rgba(255,255,255,.22)}.nvauto-btn-icon svg{display:block;position:relative;z-index:1}.nvauto-btn-icon::after{content:"";position:absolute;inset:-3px;border-radius:var(--r-2xl);background:linear-gradient(140deg,var(--green),var(--green-2));opacity:.26;filter:blur(7px);z-index:0}.nvauto-btn-text{display:flex;flex-direction:column;line-height:1.2;text-align:left}.nvauto-btn-text b{font-size:13.5px;font-weight:750;color:var(--ink);letter-spacing:-.01em}.nvauto-btn-text small{font-size:10.5px;color:var(--muted);font-weight:600}.nvauto-badge{position:absolute;top:-6px;right:-6px;min-width:19px;height:19px;padding:0 5px;border-radius:var(--r-lg);background:#d4574e;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:var(--sh-1)}.nvauto-btn.nv-pulse .nvauto-btn-icon::after{animation:nvGlow 2.4s ease-in-out infinite}@keyframes nvGlow{0%,100%{opacity:.26;transform:scale(1)}50%{opacity:.55;transform:scale(1.12)}}.nvauto-panel{position:fixed;right:22px;left:auto;bottom:92px;top:auto;z-index:99998;width:392px;max-width:calc(100vw - 36px);height:auto;max-height:min(640px,calc(100vh - 130px));background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:var(--sh-2);display:none;flex-direction:column;overflow:hidden;transform-origin:100% 100%}.nvauto-panel.open{display:flex;animation:nvPanelIn .34s cubic-bezier(.2,.9,.2,1)}@keyframes nvPanelIn{from{opacity:0;transform:translateY(14px) scale(.94)}to{opacity:1;transform:none}}.nvauto-panel::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;z-index:2;background:linear-gradient(90deg,transparent,var(--green-2),transparent)}.nvauto-head{background:var(--panel);color:var(--ink);padding:15px 16px;display:flex;align-items:center;gap:11px;flex-shrink:0;border-bottom:1px solid var(--line)}.nvauto-avatar{width:36px;height:36px;border-radius:var(--r-xl);flex-shrink:0;display:grid;place-items:center;color:#fff;background:linear-gradient(140deg,var(--green),var(--green-2));box-shadow:var(--glow-1)}.nvauto-head b{font-size:15px;line-height:1.15;display:block;color:var(--ink);letter-spacing:-.01em;font-weight:750}.nvauto-head small{font-size:11px;color:var(--muted);display:flex;align-items:center;margin-top:2px}.nvauto-live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green-2);margin-right:6px;box-shadow:var(--ring);animation:nvLiveDot 2s ease-in-out infinite}@keyframes nvLiveDot{0%,100%{opacity:1;box-shadow:var(--ring)}50%{opacity:.5;box-shadow:var(--ring)}}.nvauto-x{margin-left:auto;background:transparent;color:var(--muted);border:1px solid var(--line);width:32px;height:32px;border-radius:var(--r-lg);cursor:pointer;font-size:15px;flex-shrink:0;display:grid;place-items:center;transition:background .18s,color .18s}.nvauto-x:hover{background:var(--panel-soft);color:var(--ink)}.nvauto-chips{display:flex;gap:7px;flex-wrap:wrap;padding:13px 15px 3px;background:var(--panel);flex-shrink:0}.nvauto-chips button{display:inline-flex;align-items:center;height:36px;box-sizing:border-box;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;font-size:12px;font-weight:650;padding:0 14px;border-radius:var(--r-pill);cursor:pointer;transition:background .2s,border-color .2s,transform .2s,box-shadow .2s;animation:nvChipIn .18s cubic-bezier(.2,.7,.3,1) both}@keyframes nvChipIn{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}.nvauto-chips button:hover{background:var(--mint);border-color:var(--green-2);transform:translateY(-1px);box-shadow:var(--glow-1)}.nvauto-chips button:active{transform:scale(.97)}.nvauto-chips button .cl-short{display:none}.nvauto-msgs{flex:1;overflow-y:auto;padding:15px;display:flex;flex-direction:column;gap:16px;background:var(--panel);min-height:0;scroll-behavior:smooth}.nvauto-m{max-width:100%;font-size:14px;line-height:1.6;white-space:pre-line;color:var(--ink);animation:nvMsgIn .3s cubic-bezier(.2,.9,.2,1) both}@keyframes nvMsgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}.nvauto-m.u{align-self:flex-end;max-width:80%;background:var(--panel-soft);border:1px solid var(--line);color:var(--ink);padding:9px 14px;border-radius:var(--r-2xl) 15px 4px 15px;font-size:13.5px}.nvauto-m.b{align-self:stretch;position:relative;padding-left:15px}.nvauto-m.b::before{content:"";position:absolute;left:0;top:3px;bottom:3px;width:2px;border-radius:var(--r-xs);background:linear-gradient(180deg,var(--green-2),transparent)}.nvauto-m.nvauto-loading{opacity:.6}.nvauto-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}.nvauto-action-btn{display:inline-flex;align-items:center;height:38px;box-sizing:border-box;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;font-size:12px;font-weight:700;padding:0 15px;border-radius:var(--r-pill);cursor:pointer;transition:background .2s,border-color .2s,transform .2s,box-shadow .2s;animation:nvChipIn .18s cubic-bezier(.2,.7,.3,1) both}.nvauto-action-btn:hover{background:var(--mint);border-color:var(--green-2);transform:translateY(-1px);box-shadow:var(--glow-1)}.nvauto-action-btn:active{transform:scale(.97)}.nvauto-action-btn.nv-confirm{background:linear-gradient(135deg,var(--green),var(--green-2));color:#fff;border-color:transparent;box-shadow:var(--glow-1)}.nvauto-action-btn.nv-confirm:hover{filter:brightness(1.07)}.nvauto-action-btn.nv-cancel{background:transparent;color:#d4574e;border-color:rgba(212,87,78,.4)}.nvauto-action-btn.nv-cancel:hover{background:rgba(212,87,78,.08)}.nvauto-fb{display:flex;align-items:center;gap:7px;margin-top:9px;font-size:10.5px;color:var(--muted);opacity:.8}.nvauto-fb-btn{border:0;background:transparent;color:var(--muted);font:inherit;font-size:10.5px;font-weight:700;cursor:pointer;padding:2px 4px;transition:color .18s}.nvauto-fb-btn:hover{color:var(--ink)}.nvauto-fb-btn.active{color:var(--green-2)}.nvauto-fb-sep{opacity:.45}.nvauto-bar{display:flex;gap:8px;padding:12px 15px;padding-bottom:calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--panel);flex-shrink:0}.nvauto-bar input{flex:1;min-width:0;height:44px;border-radius:14px;border:1px solid var(--line);background:var(--panel-soft);padding:0 15px;font:inherit;font-size:16px;color:var(--ink);outline:none;transition:border-color .18s,box-shadow .18s}.nvauto-bar input:focus{border-color:var(--green-2);box-shadow:var(--ring)}.nvauto-bar input::placeholder{font-size:13px;color:var(--muted)}.nvauto-bar button{height:44px;padding:0 18px;border-radius:14px;font:inherit;font-weight:750;font-size:13.5px;background:linear-gradient(135deg,var(--green),var(--green-2));color:#fff;border:0;cursor:pointer;flex-shrink:0;box-shadow:var(--glow-1);transition:transform .18s,filter .18s}.nvauto-bar button:hover{transform:translateY(-1px);filter:brightness(1.07)}.nvauto-bar button:active{transform:none}.nvauto-nudge{position:fixed;z-index:var(--z-nudge);max-width:274px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:var(--r-2xl);border-bottom-right-radius:5px;padding:12px 15px;font-size:12.5px;line-height:1.5;font-weight:600;box-shadow:var(--sh-2);cursor:pointer;opacity:0;transform:translateY(8px) scale(.96);pointer-events:none;transition:opacity .3s cubic-bezier(.2,.9,.2,1),transform .3s cubic-bezier(.2,.9,.2,1),border-color .18s}.nvauto-nudge.show{opacity:1;transform:none;pointer-events:auto}.nvauto-nudge:hover{border-color:var(--green-2)}.nvauto-btn{user-select:none;-webkit-user-select:none}.nvauto-btn:active{cursor:grabbing}@media (prefers-reduced-motion:reduce){.nvauto-btn,.nvauto-btn-icon::after,.nvauto-panel.open,.nvauto-live-dot,.nvauto-m,.nvauto-nudge{animation:none!important;transition:none!important}.nvauto-msgs{scroll-behavior:auto}}@media (max-width:760px){.nvauto-btn{right:14px;bottom:calc(var(--nv-stack-2) + 10px);padding:0;width:56px;height:56px;border-radius:18px;justify-content:center;gap:0}.nvauto-btn.nv-above-stickybar{bottom:calc(var(--nv-stack-2) + 10px)!important}.nvauto-btn-text{display:none}.nvauto-btn-icon{width:100%;height:100%;border-radius:18px}.nvauto-panel{left:0;right:0;bottom:0;top:auto;width:100%;max-width:100%;height:80vh;max-height:80vh;border-radius:20px 20px 0 0;border-left:0;border-right:0;border-bottom:0}.nvauto-chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:4px}.nvauto-chips::-webkit-scrollbar{display:none}.nvauto-chips button{flex:0 0 auto;max-width:70vw}.nvauto-action-btn{height:42px}.nvauto-chips button .cl-full{display:none}.nvauto-chips button .cl-short{display:inline}.nvauto-action-btn{min-height:42px;padding:10px 14px}.nvauto-msgs{padding:13px;gap:14px}}.nvauto-btn.nv-console-open,.nvauto-nudge.nv-console-open{opacity:0;pointer-events:none;transform:translateY(10px) scale(.9);transition:opacity .25s,transform .25s}';
   document.head.appendChild(style);
 
   var btn=document.createElement("button");
@@ -12007,15 +12023,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           window.novaxAutopilotSay(data.briefingText,briefingActions(data));
         }catch(e){}
       }
-      setTimeout(function(){
-        try{
-          if(typeof dailyCommandData!=="function") return;
-          var key=briefingKey();
-          if(localStorage.getItem(key)==="1") return;
-          var data=dailyCommandData();
-          if(data.issues.length>0) tryDailyBriefing(true);
-        }catch(e){}
-      },2500);
+      /* This used to call tryDailyBriefing(true) 2.5 seconds after load for
+         any merchant holding at least one issue parcel. force=true routes
+         through novaxAutopilotSay(), which runs panel.classList.add("open") --
+         so the chat panel opened itself over the dashboard, covering the right
+         half on desktop and effectively all of it on a phone, and it landed
+         AFTER the merchant had started reading, moving the page under them.
+
+         Nobody asked for it. The briefing is not lost: the watch below already
+         delivers it the moment the merchant opens the panel themselves, and
+         openPanel() greets with it too. The FAB badge already carries the
+         count and already pulses, so the signal survives without the takeover. */
       var watchTries=0;
       var watch=nvInterval(function(){
         watchTries++;
@@ -13123,7 +13141,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 (function(){
   if(window.__novaxMobileBookBarLoaded) return; window.__novaxMobileBookBarLoaded=true;
   var style=document.createElement("style");
-  style.textContent='.nv-mobile-book-bar{position:fixed;left:0;right:0;bottom:0;z-index:9997;display:none;background:var(--nvu-bg);border-top:1px solid #d7ede1;padding:10px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:var(--sh-1);box-sizing:border-box}.nv-mobile-book-bar.show{display:block}.nv-mobile-book-risk{font-size:12px;font-weight:700;color:#a15c00;background:var(--nvu-warn-bg);border:1px solid #f0d6a0;border-radius:var(--r-md);padding:6px 9px;margin-bottom:8px}.nv-mobile-book-bar button{width:100%;min-height:46px;border-radius:var(--r-lg);background:var(--nvu-accent);color:#fff;font-weight:800;font-size:14px;border:0}.nv-mobile-book-bar button[disabled]{opacity:.65}@media (min-width:761px){.nv-mobile-book-bar{display:none!important}}';
+  style.textContent='.nv-mobile-book-bar{position:fixed;left:0;right:0;bottom:0;z-index:var(--z-bottombar);display:none;background:var(--nvu-bg);border-top:1px solid #d7ede1;padding:10px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:var(--sh-1);box-sizing:border-box}.nv-mobile-book-bar.show{display:block}.nv-mobile-book-risk{font-size:12px;font-weight:700;color:#a15c00;background:var(--nvu-warn-bg);border:1px solid #f0d6a0;border-radius:var(--r-md);padding:6px 9px;margin-bottom:8px}.nv-mobile-book-bar button{width:100%;min-height:46px;border-radius:var(--r-lg);background:var(--nvu-accent);color:#fff;font-weight:800;font-size:14px;border:0}.nv-mobile-book-bar button[disabled]{opacity:.65}@media (min-width:761px){.nv-mobile-book-bar{display:none!important}}';
   document.head.appendChild(style);
 
   var bar=document.createElement("div");
@@ -13181,6 +13199,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var blocked=anyBlockingOverlayOpen();
       var visible=!!(isMobile && onBooking && !blocked);
       bar.classList.toggle("show", visible);
+      /* The in-page Create Booking button and this sticky bar say the same
+         thing 113px apart on a phone. Mark the body so CSS can hide the
+         in-page one -- but only while this bar is actually showing, so a
+         failure to mount it can never leave the merchant with no button. */
+      try{ document.body.classList.toggle("nv-has-book-bar", visible); }catch(e){}
       var bookingPanel=document.getElementById("client-newBooking");
       if(bookingPanel) bookingPanel.classList.toggle("nv-sticky-pad", visible);
       if(isMobile && onBooking){ syncButton(); syncRisk(); }
@@ -16240,5 +16263,119 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
 })();
 </script>
 
+
+<style id="nvUiAuditFixes">
+/* =====================================================================
+   UI audit fixes, 25 Aug 2026. See PLAN_client_ui_audit.md.
+   Last stylesheet in the document on purpose: these are corrections to
+   rules defined earlier and in injected <style> strings, and source order
+   is what settles the ties.
+   ===================================================================== */
+
+/* --- The z-index ladder ---------------------------------------------
+   Before this there was no scale: values in use ran 110, 120, 125, 130,
+   500, 9997, 9998, 99997, 99998, 99999, 999999, 2000001, assigned ad hoc.
+   Two of them collided in the bottom-right corner of a phone screen: the
+   assistant button at 99998 sat on top of the toast at 120, so the message
+   telling a merchant their booking succeeded was drawn underneath a green
+   circle. Verified with elementFromPoint before and after.
+
+   Only the bottom-of-screen cluster is renumbered here. Modals, drawers,
+   overlays and the auth gate keep the values they already had -- they work,
+   and renumbering them would be risk without benefit. */
+:root{
+  --z-bottomnav: 110;   /* #nvBottomNav -- the floor */
+  --z-bottombar: 120;   /* contextual bars: #nvMobileBookBar, bulk bar */
+  --z-banner:    121;   /* connection / stale-data banners */
+  --z-nudge:     130;   /* assistant nudge bubble */
+  --z-fab:       131;   /* assistant button, quick-book button */
+  --z-toast:     140;   /* must beat the FAB: it carries booking confirmations */
+
+  /* How much of the bottom of the screen is already spoken for. Desktop has
+     no bottom nav, so both are zero and every calc() below collapses to the
+     original desktop value. */
+  --nv-nav-h:    0px;
+  --nv-stack-2:  0px;
+}
+
+@media (max-width:760px){
+  :root{
+    --nv-nav-h:   calc(57px + env(safe-area-inset-bottom));
+    --nv-stack-2: var(--nv-nav-h);
+  }
+  /* While the sticky booking bar is up, everything above it moves up too.
+     The class is set in JS only while the bar is genuinely visible. */
+  body.nv-has-book-bar{ --nv-stack-2: calc(var(--nv-nav-h) + 68px); }
+
+  /* --- Reclaiming the top of the screen ----------------------------
+     Measured on a 375x812 phone: 721px of scrolling before the first
+     booking field, 427px before the COD balance. The space was filled
+     with copy written for a logged-out visitor, shown to someone already
+     inside their own workspace. */
+
+  /* Marketing tagline in the header. */
+  .topbar .brand-text span{ display:none; }
+
+  /* "Home / Seller Suite". Home is the marketing site and Seller Suite is
+     the page you are on; the bottom nav does the real navigating. Only
+     anchors WITH an href are hidden -- the auth gate appends a Log out
+     button here with no href when it cannot find one in .auth-actions,
+     and that must stay reachable. */
+  .topbar .nav-tabs a.tab-btn[href]{ display:none; }
+
+  /* The "For e-commerce sellers: book parcels, track real status..."
+     paragraph. client.html is only reachable once signed in. */
+  .portal-title p{ display:none; }
+  .portal-title{ align-items:center; gap:10px; }
+  .portal-title h2{ font-size:21px; line-height:1.2; margin:0; }
+
+  /* Third door to the assistant, after the FAB and the bottom nav. */
+  #nvAiEntry{ display:none; }
+
+  /* --- One primary booking button, not two -------------------------
+     #quickBookingBtn and #nvStickyBookBtn both read "Create Booking" and
+     were 113px apart. The sticky bar wins on a phone -- but only while it
+     is actually on screen, hence the body class rather than a blanket rule. */
+  body.nv-has-book-bar #quickBookingBtn{ display:none; }
+
+  /* --- The connection banner ---------------------------------------
+     158px, 19% of the viewport, for a one-sentence message. */
+  /* Was 158px -- 19% of the viewport -- for one sentence. Forcing nowrap made
+     it worse: the two buttons overflowed off both edges of a 375px screen.
+     Two tidy rows instead: the message on its own line, the buttons compact
+     and right-aligned under it. */
+  #nvStaleBanner{
+    padding:8px 12px calc(8px + env(safe-area-inset-bottom)) !important;
+    gap:6px !important;
+    font-size:12.5px !important;
+    line-height:1.35 !important;
+    flex-wrap:wrap !important;
+    justify-content:flex-end !important;
+    text-align:left !important;
+  }
+  #nvStaleBanner > span{ flex:1 1 100%; min-width:0; }
+  /* The base .ghost-btn is full-width on mobile, which put Retry and Dismiss on
+     a row each. Forced back to their content width so both fit on one line.
+     The right padding reserves the corner the assistant button occupies
+     (56px wide at right:14px) so it can never land on top of Dismiss. */
+  #nvStaleBanner .ghost-btn{
+    flex:0 0 auto !important;
+    width:auto !important;
+    min-width:0 !important;
+    min-height:30px !important;
+    padding:4px 12px !important;
+    font-size:12px !important;
+    white-space:nowrap !important;
+  }
+  #nvStaleBanner{ padding-right:84px !important; }
+}
+
+/* Two different banners can describe the same outage: #nvOfflineBanner
+   ("No connection") and #nvStaleBanner ("Reconnecting -- showing last known
+   data"). The stale one is strictly more useful because it also explains the
+   numbers on screen, so when it is present the other stands down rather than
+   stacking a second bar on top of the first. */
+body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
+</style>
 </body>
 </html>
