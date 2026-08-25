@@ -4482,7 +4482,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return '<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap;gap:6px">'+btns.join("")+'</div>';
     }
 
-    function renderClientParcels(){
+    function renderClientParcels(){ return nvKeepPlace(function(){ return __renderClientParcels(); }); }
+    function __renderClientParcels(){
       const parcels=filteredParcels();
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
@@ -4933,6 +4934,62 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(kind === "warning") { navigator.vibrate(20); return; }
         navigator.vibrate(10);
       }catch(e){}
+    }
+
+    /* ═══ Rebuilds that do not throw the merchant out of their place ═══════
+       138 innerHTML assignments and 29 full render() calls, several driven by
+       timers and realtime. Every one replaces a whole section, which resets
+       scroll, drops focus, closes an open dropdown and wipes a caret.
+
+       The ticket list already carries hand-rolled draft-and-caret preservation
+       for exactly this reason -- merchants' typing was being wiped every 3
+       seconds. That fix is a symptom of the pattern, not a cure for it.
+
+       True DOM diffing across 138 call sites is a large, risky refactor.
+       nvKeepPlace() is the contained version that removes what the merchant
+       actually feels: it snapshots the focused element, its caret and every
+       scroll position, runs the rebuild, then puts them back. The element is
+       re-found by id, so it survives being replaced rather than merely moved.
+
+       If nothing is focused and nothing is scrolled, it costs one function
+       call and does nothing. */
+    function nvKeepPlace(fn){
+      var active = document.activeElement;
+      var id = active && active.id ? active.id : null;
+      var selStart = null, selEnd = null;
+      if(id){
+        try{ selStart = active.selectionStart; selEnd = active.selectionEnd; }catch(e){}
+      }
+      var pageY = window.scrollY || document.documentElement.scrollTop || 0;
+      /* Any inner scroller that is not at the top -- lists, drawers, modals. */
+      var scrollers = [];
+      try{
+        document.querySelectorAll("[id]").forEach(function(el){
+          if(el.scrollTop > 0) scrollers.push({ id: el.id, top: el.scrollTop, left: el.scrollLeft });
+        });
+      }catch(e){}
+
+      try{ fn(); }
+      finally{
+        try{
+          scrollers.forEach(function(rec){
+            var el = document.getElementById(rec.id);
+            if(el){ el.scrollTop = rec.top; el.scrollLeft = rec.left; }
+          });
+          if(pageY) window.scrollTo(0, pageY);
+          if(id){
+            var back = document.getElementById(id);
+            /* Only restore if it actually left -- refocusing something that
+               never lost focus can dismiss a native picker on Android. */
+            if(back && document.activeElement !== back){
+              back.focus({ preventScroll: true });
+              if(selStart !== null && back.setSelectionRange){
+                try{ back.setSelectionRange(selStart, selEnd); }catch(e){}
+              }
+            }
+          }
+        }catch(e){}
+      }
     }
 
     /* ═══ Say so when the connection drops ════════════════════════════════
@@ -10723,7 +10780,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(bBook && !bBook._nvWired){ bBook._nvWired=true; bBook.addEventListener("click",function(){ if(window.novaxFocusFirstBookingField) window.novaxFocusFirstBookingField(); else if(typeof showClientTab==="function") showClientTab("newBooking"); }); }
       }catch(e){}
     }
-    function renderDailyCommandCenter(){
+    function renderDailyCommandCenter(){ return nvKeepPlace(function(){ return __renderDailyCommandCenter(); }); }
+    function __renderDailyCommandCenter(){
       try{
         if(typeof state==="undefined" || !state.client) return;
         var strip=document.getElementById("nvCommandStrip");
