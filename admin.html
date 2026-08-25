@@ -13306,7 +13306,35 @@ html,body{ background:var(--bg); color:var(--ink); }
       state.operationsIssues = state.operationsIssues || [];
       let added = false;
       rows.forEach(r => {
-        const exists = state.operationsIssues.some(issue => issue.awb === r.awb && issue.exceptionType === r.issueType && !issue.resolved);
+        /* THE INSERT STORM LIVED HERE. This used to dedupe on
+           issue.exceptionType -- a field that exists ONLY in browser memory.
+           rOpsIssue() does not read it back and fOpsIssue() does not send it,
+           and operations_issues has no exception_type column, so every issue
+           loaded from the database had exceptionType === undefined. The check
+           was therefore `undefined === "Proof missing"`, false every time, so
+           every issue was re-added after every refetch.
+
+           That is a self-sustaining loop, not linear growth: the insert fires
+           a realtime postgres_changes event, the admin tab refetches, the
+           refetched rows arrive without exceptionType, they are re-added, and
+           that inserts again. One open admin tab kept it running at roughly
+           1,200 rows a minute.
+
+           By 2026-08-25 it had produced 397,886 rows for 779 distinct
+           problems -- 511 copies of each -- and it was most of the database's
+           write load and its 11.6% transaction rollback rate.
+
+           Deduping on `problem` breaks the loop at the refetch: nothing is
+           re-added, so nothing is inserted, so no event fires.
+
+           `problem` is the key now: it is a real column, both mappers carry
+           it, and its value is exactly `${issueType}: ${awb}`. exceptionType
+           is still checked first so rows created earlier in this same session
+           short-circuit without a string build. */
+        const key = `${r.issueType}: ${r.awb}`;
+        const exists = state.operationsIssues.some(issue =>
+          !issue.resolved && issue.awb === r.awb &&
+          (issue.exceptionType === r.issueType || issue.problem === key));
         if (exists) return;
         state.operationsIssues.unshift({ id: nextId("OPS", state.operationsIssues), branch: r.branch || "", urgency: r.urgency === "critical" ? "super urgent" : (r.urgency === "warning" ? "urgent" : "normal"), problem: `${r.issueType}: ${r.awb}`, awb: r.awb, exceptionType: r.issueType, openedHours: r.agingHours || 0, resolved: false, source: "exception_queue" });
         added = true;
@@ -16015,8 +16043,8 @@ html,body{ background:var(--bg); color:var(--ink); }
         return { client_id:cid, amount:Number(w.amount||0), fee:Number(w.fee||0), net:Number(w.net||0), iban:w.iban||"", speed:w.speed||"", status:w.status||"Pending admin payout", paid_at:paidAtIso };
       }
       function fPl(p){ var cid=cuid(p.clientId); if(!cid) return null; return { client_id:cid, type:p.type||"", amount:Number(p.amount||0), status:p.status||"", reference:p.ref||"" }; }
-      function rOpsIssue(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.localId||r.id, branch:r.branch||"", urgency:r.urgency||"", problem:r.problem||"", awb:r.awb||"", openedHours:Number(m.openedHours||0), resolved:!!r.resolved, resolvedHours:Number(r.resolved_hours||0), resolvedBy:r.resolved_by||"", resolutionReason:r.resolution_reason||"", resolvedAt:r.resolved_at||"" }; }
-      function fOpsIssue(o){ return { branch:o.branch||"", urgency:o.urgency||"", problem:o.problem||"", awb:o.awb||"", resolved:!!o.resolved, resolved_hours:o.resolvedHours||null, resolved_by:o.resolvedBy||"", resolution_reason:o.resolutionReason||"", resolved_at:o.resolvedAt||null, meta:{ localId:o.id, openedHours:o.openedHours } }; }
+      function rOpsIssue(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.localId||r.id, branch:r.branch||"", urgency:r.urgency||"", problem:r.problem||"", awb:r.awb||"", exceptionType:m.exceptionType||null, openedHours:Number(m.openedHours||0), resolved:!!r.resolved, resolvedHours:Number(r.resolved_hours||0), resolvedBy:r.resolved_by||"", resolutionReason:r.resolution_reason||"", resolvedAt:r.resolved_at||"" }; }
+      function fOpsIssue(o){ return { branch:o.branch||"", urgency:o.urgency||"", problem:o.problem||"", awb:o.awb||"", resolved:!!o.resolved, resolved_hours:o.resolvedHours||null, resolved_by:o.resolvedBy||"", resolution_reason:o.resolutionReason||"", resolved_at:o.resolvedAt||null, meta:{ localId:o.id, exceptionType:o.exceptionType||null, openedHours:o.openedHours } }; }
       function rResolvedAlert(r){ var m=r.meta||{}; return { _uuid:r.id, id:m.localId||r.id, awb:r.awb||"", branch:r.branch||"", resolvedBy:r.resolved_by||"", reason:r.reason||"", alert:r.alert||"", solvedHours:Number(r.solved_hours||0), resolvedAt:r.resolved_at||"" }; }
       function fResolvedAlert(o){ return { awb:o.awb||"", branch:o.branch||"", resolved_by:o.resolvedBy||"", reason:o.reason||"", alert:o.alert||"", solved_hours:o.solvedHours||null, resolved_at:o.resolvedAt||null, meta:{ localId:o.id } }; }
       function rManifest(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.code||m.localId||r.id, from:r.from_branch||"", to:r.to_branch||"", expected:Number(r.expected||0), scanned:Number(r.scanned||0), demanifested:Number(r.demanifested||0), health:Number(r.health||0), status:r.status||"Active", type:r.type||"parcel manifest", parcels:Array.isArray(m.parcels)?m.parcels:[], demanifestedAwbs:Array.isArray(m.demanifestedAwbs)?m.demanifestedAwbs:[], missingAwbs:Array.isArray(m.missingAwbs)?m.missingAwbs:[], createdAt:m.createdAt||"", completedAt:r.completed_at||"" }; }
