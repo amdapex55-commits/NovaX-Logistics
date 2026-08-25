@@ -39,8 +39,16 @@ patches, not a schema**. See the warning in §3.
 
 Other files: `reset.html` (internal "Reset to Zero" ops tool — *not* a password
 reset), `new-password.html` (that one *is* password reset), `sw.js`,
-`nv3d-hero.js`, `nv-codegen.js`, `index-v2.html` / `index-a-terminal.html`
-(alternate landing pages).
+`index-v2.html` / `index-a-terminal.html` (alternate landing pages).
+
+`nv3d-hero.js` and `nv-codegen.js` were **deleted on 25 Aug 2026**. The first
+drove a full-screen WebGL conveyor behind the landing page and pulled in
+three.js — 150 KB gzipped, 73% of the desktop payload, for a background. The
+second was already unreferenced: the barcode generator it held was inlined
+into `client.html` and `admin.html` years earlier, after the external file
+404'd in production and silently took AWB printing down with it. Comments in
+both portals still mention `nv-codegen.js` by name; they are explaining why
+that code is inlined, and they remain accurate.
 
 ---
 

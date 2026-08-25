@@ -111,20 +111,8 @@ a{color:inherit;text-decoration:none;touch-action:manipulation}
 .band{padding:var(--sp) 0;position:relative}
 .anchor{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
-/* ═══════════════ 3D HERO CANVAS (nv3d-hero.js) ═══════════════ */
-/* width:100% not 100vw — 100vw includes the scrollbar gutter, so this canvas
-   ends up wider than the viewport and creates a phantom horizontal scroll.
-   inset:0 already sizes it correctly. */
-#nv3dbg{position:fixed;inset:0;width:100%;height:100vh;height:100dvh;z-index:0;pointer-events:none;
-  opacity:0;transition:opacity 1.4s ease}
-html.nv3d-ready #nv3dbg{opacity:.62}
-html.no-nv3d #nv3dbg{display:none}
-
 /* ═══════════════ CSS BACKDROP (fallback + companion) ═══════════════ */
 #bgfx{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;transition:opacity 1.4s ease}
-/* when the 3D conveyor is live, dim the CSS layer so they don't fight */
-html.nv3d-ready #bgfx{opacity:.42}
-html.nv3d-ready #gridfx{display:none}
 .aur{position:absolute;border-radius:50%;filter:blur(105px);opacity:.4;will-change:transform}
 .a1{width:62vmax;height:62vmax;background:radial-gradient(circle,rgba(20,199,123,.3),transparent 66%);top:-25vmax;left:-15vmax;animation:aurA 24s ease-in-out infinite alternate}
 .a2{width:54vmax;height:54vmax;background:radial-gradient(circle,rgba(75,184,232,.2),transparent 66%);bottom:-22vmax;right:-13vmax;animation:aurB 29s ease-in-out infinite alternate}
@@ -799,8 +787,6 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   h1{font-size:clamp(31px,8.4vw,48px)}
   .pipe{grid-template-columns:repeat(3,1fr);gap:6px}
   .tiers{grid-template-columns:1fr}
-  /* 3D background is heavy on phones — soften the CSS layer further */
-  html.nv3d-ready #bgfx{opacity:.3}
 }
 @media (max-width:640px){
   .final div[style*="justify-content:center"] .btn{width:100%}
@@ -1110,8 +1096,6 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 </head>
 <body>
 
-<!-- 3D conveyor background (nv3d-hero.js) -->
-<canvas id="nv3dbg" aria-hidden="true"></canvas>
 <div id="bgfx"><div class="aur a1"></div><div class="aur a2"></div><div class="aur a3"></div><div id="gridfx"></div></div>
 <div id="noise"></div><div id="spot"></div><div id="sp"></div>
 
@@ -1911,52 +1895,12 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<!-- NovaX mobile fix: three.js (~600KB) plus a full-screen WebGL loop is by far
-     the heaviest thing on this page, and on a phone it buys almost nothing --
-     the CSS aurora backdrop already carries the hero. Load it only on wide
-     fine-pointer screens. Phones get .no-nv3d set up front, which the
-     handshake below already knows how to handle, and never pay the download.
-     async=false is required: dynamically inserted scripts default to async,
-     and nv3d-hero.js must not run before THREE exists. -->
-<script>
-(function(){
-  var root=document.documentElement;
-  var coarse=window.matchMedia && window.matchMedia('(pointer:coarse)').matches;
-  var narrow=window.innerWidth<900;
-  var saveData=navigator.connection && navigator.connection.saveData;
-  if(coarse || narrow || saveData){ root.classList.add('no-nv3d'); return; }
-  ['https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js','nv3d-hero.js']
-    .forEach(function(src){
-      var el=document.createElement('script');
-      el.src=src; el.async=false;
-      el.onerror=function(){ root.classList.add('no-nv3d'); };
-      document.head.appendChild(el);
-    });
-})();
-</script>
 <script>
 (function(){
 "use strict";
 var RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
 var TOUCH = matchMedia("(pointer:coarse)").matches;
 
-/* ═════ 3D BACKGROUND HANDSHAKE ═════
-   nv3d-hero.js adds .no-nv3d to <html> if THREE, the canvas, or WebGL fails.
-   If it didn't, the conveyor is rendering — mark .nv3d-ready so the CSS
-   backdrop dims and the two layers never fight. */
-(function(){
-  var root=document.documentElement;
-  function settle(){
-    if(root.classList.contains("no-nv3d")) return;
-    var c=document.getElementById("nv3dbg");
-    var ok=false;
-    try{ ok=!!(c && (c.getContext("webgl")||c.getContext("experimental-webgl"))); }catch(e){}
-    if(ok && window.THREE) root.classList.add("nv3d-ready");
-    else root.classList.add("no-nv3d");
-  }
-  if(document.readyState==="complete") setTimeout(settle,220);
-  else addEventListener("load",function(){ setTimeout(settle,220); });
-})();
 
 /* ═════ CONFIG ═════ */
 var CFG = window.NOVAX_CONFIG = {
