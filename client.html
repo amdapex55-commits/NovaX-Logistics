@@ -5289,8 +5289,31 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var rawBalance = Number((c && c.walletBalance) || 0);
       var ready = Math.max(0, rawBalance);
       var shortfall = rawBalance < 0 ? Math.abs(rawBalance) : 0;
-      var paid  = invoices.filter(function(i){ return isInvoiceClosed(i.status); })
-                          .reduce(function(s,i){ return s + Number(i.payable||0); }, 0);
+      /* "Paid to you -- lifetime, into your bank" counted CLOSED INVOICES,
+         and NV_INVOICE_CLOSED_STATUSES includes "Pushed to wallet". So the
+         moment an invoice was pushed, this tile told the merchant the money
+         had reached their bank -- while it was still sitting in their wallet,
+         unwithdrawn, being counted a second time by `ready` two tiles to the
+         left. The comment above these three tiles says they "partition every
+         rupee"; they did not, they double-counted the same money.
+
+         Money reaches a bank when a withdrawal is PAID, and nothing else.
+         client_wallet_summary().lifetime_withdrawn is the server's own answer
+         and was already being fetched for the Wallet screen -- this tile just
+         never read it. The local fallback mirrors renderClientWallet()
+         exactly, so the two screens cannot disagree.
+
+         With this, the three tiles genuinely do partition: invoiced but not
+         pushed -> counting; in the wallet -> ready; withdrawn -> paid. */
+      var paid = 0;
+      try{
+        var sv = state.serverWalletSummary;
+        paid = sv
+          ? Number(sv.lifetime_withdrawn || 0)
+          : (state.walletWithdrawals || [])
+              .filter(function(w){ return w.clientId === myId && w.status === "Paid"; })
+              .reduce(function(s,w){ return s + Number(w.net || 0); }, 0);
+      }catch(e){ paid = 0; }
       var owed  = invoices.filter(function(i){ return i.status !== "Paid to NovaX" && i.status !== "Cancelled"; })
                           .reduce(function(s,i){ return s + Number(i.dueToNovax||0); }, 0);
       return { invoices:invoices, counting:counting, ready:ready, paid:paid,
