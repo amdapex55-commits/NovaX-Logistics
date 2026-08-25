@@ -10,20 +10,36 @@
   <meta http-equiv="Expires" content="0">
   <script>
     (function () {
-      var APP_VERSION = "2026-07-10.1";
+      /* This used to hold APP_VERSION = "2026-07-10.1" and, on any change,
+         delete every cache, unregister every service worker and force-reload.
+         It was a blunt instrument for a real problem -- an early cache-first
+         worker had pinned merchants to a stale portal. But the constant was
+         hardcoded and six weeks stale, so on a repo that deploys several times
+         a day it had stopped firing entirely, while still leaving the portal
+         with no caching whatsoever. Every visit re-downloaded 276 KB.
+
+         sw.js is now network-first for HTML, so a merchant on a working
+         connection always gets the live deploy and the cache is only ever a
+         fallback for a failed network. Versioning is handled inside the worker
+         by its cache name, which is the right place for it.
+
+         Registration is deliberately late -- after load -- so it never
+         competes with first paint. ?nosw=1 is the kill switch. */
       try {
-        var stored = localStorage.getItem("novaxAppVersion");
-        if (stored !== APP_VERSION) {
-          localStorage.setItem("novaxAppVersion", APP_VERSION);
-          if (stored !== null && "caches" in window) {
-            caches.keys().then(function (names) { names.forEach(function (n) { caches.delete(n); }); });
-          }
-          if (stored !== null && "serviceWorker" in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function (regs) { regs.forEach(function (r) { r.unregister(); }); });
-          }
-          if (stored !== null && !sessionStorage.getItem("novaxJustReloaded")) {
-            sessionStorage.setItem("novaxJustReloaded", "1");
-            location.reload(true);
+        if ("serviceWorker" in navigator && location.protocol === "https:") {
+          if (new URLSearchParams(location.search).has("nosw")) {
+            navigator.serviceWorker.getRegistrations().then(function (rs) {
+              rs.forEach(function (r) { r.unregister(); });
+            });
+            if ("caches" in window) {
+              caches.keys().then(function (n) { n.forEach(function (k) { caches.delete(k); }); });
+            }
+          } else {
+            window.addEventListener("load", function () {
+              navigator.serviceWorker.register("/sw.js").catch(function (e) {
+                console.warn("NovaX service worker failed to register:", e && e.message);
+              });
+            });
           }
         }
       } catch (e) {}
@@ -1073,6 +1089,25 @@
   html[data-theme="dark"] .awb-zone,
   html[data-theme="dark"] .awb-field{ background:#ffffff !important; }
   html[data-theme="dark"] .awb-label{ color:#07100d !important; box-shadow:none !important; }
+
+  /* Offline banner. Above the bottom nav, below modals. */
+  #nvOfflineBanner{
+    position:fixed; left:0; right:0; bottom:0; z-index:125;
+    display:none; align-items:center; gap:9px;
+    padding:11px 14px calc(11px + env(safe-area-inset-bottom));
+    background:#8e2118; color:#ffe9e6;
+    font-size:12.5px; font-weight:700; line-height:1.45;
+  }
+  #nvOfflineBanner.show{ display:flex; }
+  #nvOfflineBanner .nvoff-dot{
+    width:9px; height:9px; border-radius:50%; background:#ffb4a8; flex:0 0 auto;
+    animation:nvOffPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes nvOffPulse{ 50%{ opacity:.35; } }
+  @media (prefers-reduced-motion: reduce){ #nvOfflineBanner .nvoff-dot{ animation:none; } }
+  @media (max-width:760px){
+    #nvOfflineBanner{ bottom:calc(58px + env(safe-area-inset-bottom)); }
+  }
 
   /* ═══ Bottom navigation (mobile only) ══════════════════════════════════
      Nine destinations sat behind a hamburger at the TOP of the screen -- the
@@ -4899,6 +4934,48 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         navigator.vibrate(10);
       }catch(e){}
     }
+
+    /* ═══ Say so when the connection drops ════════════════════════════════
+       navigator.onLine was checked zero times in this file and there was no
+       offline listener, so a merchant who walked into a lift got silent
+       failures and no explanation -- every action just appeared not to work.
+
+       onLine alone lies: it reports true for a captive portal or a dead
+       upstream. So a failed fetch also trips the banner, and a successful one
+       clears it, which makes it reflect reality rather than the OS's opinion. */
+    (function nvConnectionBanner(){
+      var el = null, offline = false;
+
+      function ensure(){
+        if(el) return el;
+        el = document.createElement("div");
+        el.id = "nvOfflineBanner";
+        el.setAttribute("role","status");
+        el.innerHTML = '<span class="nvoff-dot"></span>' +
+          '<span>No connection. You can still read what is already loaded \u2014 ' +
+          'anything you send will fail until it is back.</span>';
+        document.body.appendChild(el);
+        return el;
+      }
+      function show(){ if(offline) return; offline = true; ensure().classList.add("show"); }
+      function hide(){ if(!offline) return; offline = false; if(el) el.classList.remove("show"); }
+
+      window.addEventListener("offline", show);
+      window.addEventListener("online", function(){
+        hide();
+        try{ if(typeof window.nvQuietRefresh === "function") window.nvQuietRefresh(); }catch(e){}
+      });
+
+      /* A failed fetch is better evidence than navigator.onLine. */
+      if(window.fetch){
+        var orig = window.fetch;
+        window.fetch = function(){
+          return orig.apply(this, arguments).then(function(r){ hide(); return r; })
+                     .catch(function(e){ if(!navigator.onLine) show(); throw e; });
+        };
+      }
+      if(!navigator.onLine) show();
+    })();
 
     /* ═══ Bottom navigation ════════════════════════════════════════════════
        Same source of truth as the side menu -- nvRoleTabs() -- so the two can
