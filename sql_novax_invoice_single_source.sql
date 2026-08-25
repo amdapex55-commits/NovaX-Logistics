@@ -88,6 +88,16 @@ led as (
   from public.wallet_ledger l
   where l.affects_balance
   group by l.client_id
+),
+manual as (
+  -- A refund already given by hand through Add to Wallet. Without this, a
+  -- client who was already made whole would be paid the same money twice.
+  select l.client_id, sum(l.amount) as manual_credits
+  from public.wallet_ledger l
+  where l.entry_type = 'admin_adjustment'
+    and l.affects_balance
+    and l.amount > 0
+  group by l.client_id
 )
 select c.name,
        c.wallet_balance,
@@ -99,12 +109,16 @@ select c.name,
        -- Does this client's balance already disagree with their own ledger,
        -- BEFORE anything here runs? Such a client is already payout-blocked
        -- and that is a separate problem this migration does not fix.
-       (c.wallet_balance is distinct from coalesce(led.ledger_sum, 0))            as already_mismatched
+       (c.wallet_balance is distinct from coalesce(led.ledger_sum, 0))            as already_mismatched,
+       coalesce(manual.manual_credits, 0)                                        as manual_credits_given,
+       (coalesce(manual.manual_credits, 0) >= coalesce(dupes.invoiced_dupes, 0)
+        and coalesce(dupes.invoiced_dupes, 0) > 0)                               as already_refunded_by_hand
 from public.clients c
 left join charged on charged.client_id = c.id
 left join dupes   on dupes.client_id   = c.id
 left join by_meta on by_meta.client_id = c.id
 left join led     on led.client_id     = c.id
+left join manual  on manual.client_id  = c.id
 where charged.client_id is not null or dupes.client_id is not null
 order by coalesce(dupes.invoiced_dupes, 0) desc;
 
@@ -140,6 +154,7 @@ drop trigger if exists trg_parcels_post_non_cod_delivery_charge on public.parcel
 --   agrees = true                (ledger matches what the parcels say)
 --   same_by_payment_mode matches (both definitions of prepaid agree)
 --   already_mismatched = false   (their books balance before we start)
+--   already_refunded_by_hand = false (you have not already paid it manually)
 --   no existing refund row       (so re-running changes nothing)
 -- Everything else is reported by part 1 and deliberately left alone.
 -- Re-running this is a no-op: the guard skips any client that already has a
@@ -180,6 +195,14 @@ begin
       from public.wallet_ledger l
       where l.affects_balance
       group by l.client_id
+    ),
+    manual as (
+      select l.client_id, sum(l.amount) as manual_credits
+      from public.wallet_ledger l
+      where l.entry_type = 'admin_adjustment'
+        and l.affects_balance
+        and l.amount > 0
+      group by l.client_id
     )
     select d.client_id, d.invoiced_dupes as amount
     from dupes d
@@ -187,6 +210,7 @@ begin
     join public.clients cl on cl.id = d.client_id
     left join by_meta m on m.client_id = d.client_id
     left join led on led.client_id = d.client_id
+    left join manual mn on mn.client_id = d.client_id
     where -c.ledger_charged = d.invoiced_dupes      -- the ledger and the parcels agree
       and d.invoiced_dupes > 0
       -- Both definitions of "prepaid" must agree. cod_amount = 0 is a proxy;
@@ -198,6 +222,10 @@ begin
       -- ledger. They are payout-blocked for a reason that predates this fix,
       -- and moving their balance again buries the original cause.
       and cl.wallet_balance is not distinct from coalesce(led.ledger_sum, 0)
+      -- Already refunded by hand through the Add to Wallet tab. Paying it
+      -- again would hand the merchant the same money a second time, which is
+      -- the mirror image of the bug this file exists to fix.
+      and coalesce(mn.manual_credits, 0) < d.invoiced_dupes
       and not exists (
         select 1 from public.wallet_ledger x
         where x.client_id = d.client_id
