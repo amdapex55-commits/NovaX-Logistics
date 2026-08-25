@@ -1074,6 +1074,16 @@
   html[data-theme="dark"] .awb-field{ background:#ffffff !important; }
   html[data-theme="dark"] .awb-label{ color:#07100d !important; box-shadow:none !important; }
 
+  /* Inline busy dot inside a pressed button. */
+  .nvbusy-dot{
+    display:inline-block; width:11px; height:11px; margin-right:7px;
+    vertical-align:-1px; border-radius:50%;
+    border:2px solid currentColor; border-top-color:transparent;
+    animation:nvPullSpin .7s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce){ .nvbusy-dot{ animation:none; opacity:.6; } }
+  button[aria-busy="true"]{ cursor:progress; opacity:.85; }
+
   /* ═══ Pull-to-refresh indicator ════════════════════════════════════════
      Fixed at the very top, translated down by the drag. Sits above the
      header but below modals (z-index 130) so it can never cover a dialog.
@@ -4498,6 +4508,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{
         var p=state.parcels.find(function(x){ return x.awb===awb; }); if(!p) return Promise.reject(new Error("Parcel not found."));
         if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment."); return Promise.reject(new Error("Cloud connection not ready.")); }
+        var __done = nvBusy("Sending\u2026");
         toast(`Sending return request for ${awb}...`);
         /* A return is a REQUEST, not something a merchant performs. The old
            code set the status to "Ready for return" in the browser -- moving
@@ -4509,7 +4520,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           "high"
         ).then(function(){
           toast(`${awb}: return requested. Operations will confirm in your ticket.`,"success");
-        }).catch(function(e){ toast(`Could not send the return request: ${(e&&e.message)||e}`,"error"); throw e; });
+        }).catch(function(e){ toast(`Could not send the return request: ${(e&&e.message)||e}`,"error"); throw e; })
+          .finally(function(){ __done(); });
       }catch(e){ return Promise.reject(e); }
     }
     /* AUDIT FIX (shadowed function): this used to be a SECOND
@@ -4836,6 +4848,47 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(kind === "warning") { navigator.vibrate(20); return; }
         navigator.vibrate(10);
       }catch(e){}
+    }
+
+    /* ═══ Feedback on the control you actually pressed ════════════════════
+       Booking, cancel, reattempt, return and address-fix each fired an RPC and
+       left the screen unchanged until it came back. On mobile data that is
+       several seconds of "did that work?", and the only feedback was a toast
+       at the opposite end of the screen from the thumb that pressed it.
+
+       The five are invoked from inline onclick attributes, so the handler
+       never receives its own button. Rather than rewrite five sets of markup,
+       a capture-phase listener records the button BEFORE the inline handler
+       runs -- capture is the detail that makes this work, since the inline
+       onclick fires at target.
+
+       nvBusy() returns a release function. Every exit path must call it,
+       including the early returns, or the merchant is left with a permanently
+       dead button -- which is worse than the silence it replaced. */
+    var NV_LAST_BTN = null;
+    document.addEventListener("click", function(e){
+      try{ NV_LAST_BTN = (e.target && e.target.closest) ? e.target.closest("button") : null; }
+      catch(err){ NV_LAST_BTN = null; }
+    }, true);
+
+    function nvBusy(label){
+      var b = NV_LAST_BTN;
+      if(!b || b.disabled) return function(){};
+      var prevHTML = b.innerHTML, prevW = b.style.minWidth;
+      /* Pin the width first, or the button shrinks to fit "Sending..." and the
+         row reflows under the merchant's thumb mid-press. */
+      try{ b.style.minWidth = b.getBoundingClientRect().width + "px"; }catch(e){}
+      b.disabled = true;
+      b.setAttribute("aria-busy","true");
+      if(label) b.innerHTML = '<span class="nvbusy-dot"></span>' + label;
+      var released = false;
+      return function release(){
+        if(released) return; released = true;
+        b.disabled = false;
+        b.removeAttribute("aria-busy");
+        b.innerHTML = prevHTML;
+        b.style.minWidth = prevW;
+      };
     }
 
     /* ═══ Pull to refresh ═════════════════════════════════════════════════
@@ -7920,6 +7973,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const p=state.parcels.find(x=>x.awb===awb); if(!p) return Promise.reject(new Error("Parcel not found."));
       const fb=document.getElementById("redeliveryFeedback")?.value.trim()||"Client requested redelivery.";
       if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment."); return Promise.reject(new Error("Cloud connection not ready.")); }
+      var __done = nvBusy("Sending\u2026");
       toast(`Sending reattempt request for ${awb}...`);
       /* ai_action_request_reattempt is the same RPC the AI assistant uses for
          this, so the button and the AI now do one thing rather than two. The
@@ -7943,7 +7997,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         saveState();
         try{ if(typeof loadAll==="function") loadAll(); }catch(e2){}
         toast(`${awb} sent to operations for redelivery.`,"success");
-      }).catch(function(e){ toast(`Could not send the reattempt request: ${(e&&e.message)||e}`,"error"); throw e; });
+      }).catch(function(e){ toast(`Could not send the reattempt request: ${(e&&e.message)||e}`,"error"); throw e; })
+        .finally(function(){ __done(); });
     }
     /* Merchant-side correction request for an already-booked parcel.
 
@@ -7979,6 +8034,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const body=String(note||"").trim();
       if(!body){ toast("Describe what needs correcting so operations can act on it.","error"); return Promise.resolve(); }
 
+      var __done = nvBusy("Sending\u2026");
       toast(`Sending correction request for ${awb}...`);
       /* ai_action_fix_address() exists but takes (p_awb, p_address, p_phone)
          -- structured fields, not the free-text note this flow collects. A
@@ -7990,7 +8046,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         "normal"
       ).then(function(){
         toast(`${awb} sent to operations. They will confirm in your ticket once corrected.`,"success");
-      }).catch(function(e){ toast(`Could not send that request: ${(e&&e.message)||e}`,"error"); throw e; });
+      }).catch(function(e){ toast(`Could not send that request: ${(e&&e.message)||e}`,"error"); throw e; })
+        .finally(function(){ __done(); });
     }
     window.requestAddressFix=requestAddressFix;
 
@@ -8213,6 +8270,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!window.confirm("Cancel booking "+label+"?\n\nThe booking is removed completely. Only possible before a rider collects it. This cannot be undone.")) return Promise.resolve();
       if(!window.__nvSb || !window.__nvSb.rpc){ toast("Cloud connection not ready yet, please try again in a moment.","error"); return Promise.resolve(); }
 
+      var __done = nvBusy("Cancelling\u2026");
       toast("Cancelling "+awb+"...");
       // Uses delete_new_booked_parcel, which is ALREADY DEPLOYED -- admin calls
       // the same RPC today. deleteNewBooking() below has wrapped it since it was
@@ -8234,7 +8292,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         try{ render(); }catch(e){}
         try{ if(typeof loadAll==="function") loadAll(); }catch(e){}
         toast(awb+" cancelled.","success");
-      });
+      }).finally(function(){ __done(); });
     }
 
     /* ===================================================================
