@@ -1074,6 +1074,51 @@
   html[data-theme="dark"] .awb-field{ background:#ffffff !important; }
   html[data-theme="dark"] .awb-label{ color:#07100d !important; box-shadow:none !important; }
 
+  /* ═══ Bottom navigation (mobile only) ══════════════════════════════════
+     Nine destinations sat behind a hamburger at the TOP of the screen -- the
+     hardest place to reach one-handed on a phone, and two taps from anywhere.
+     The four a merchant actually uses hourly now sit under the thumb.
+
+     z-index 110: above page content, below the pull-to-refresh bar (120) and
+     well below modals (130), so it can never cover a dialog. */
+  .nv-bottomnav{ display:none; }
+  @media (max-width:760px){
+    .nv-bottomnav{
+      display:grid; grid-auto-flow:column; grid-auto-columns:1fr;
+      position:fixed; left:0; right:0; bottom:0; z-index:110;
+      background:var(--panel); border-top:1px solid var(--line);
+      padding-bottom:env(safe-area-inset-bottom);
+      box-shadow:0 -2px 14px rgba(0,0,0,.18);
+    }
+    .nv-bottomnav button{
+      background:none; border:0; cursor:pointer;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:3px; min-height:56px; padding:6px 2px;
+      color:var(--muted); font-size:10.5px; font-weight:700; letter-spacing:.01em;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .nv-bottomnav button .nvbn-ico{ font-size:17px; line-height:1; }
+    .nv-bottomnav button.is-active{ color:var(--green-ink); }
+    .nv-bottomnav button.is-active .nvbn-ico{ transform:translateY(-1px); }
+    /* Clear the bar so the last row of any list is not trapped under it. */
+    body{ padding-bottom:calc(58px + env(safe-area-inset-bottom)); }
+    /* Everything else that is fixed to the bottom has to clear the bar.
+       Found by measuring, not by reading: these sit at z-index 99998, so they
+       would have covered it rather than the other way round. The AI PANEL is
+       lifted rather than the launcher alone -- its composer sits at the very
+       bottom of the screen, exactly where the bar goes. */
+    #nvAiLauncher,.nvai-launcher,.nvauto-btn{
+      bottom:calc(70px + env(safe-area-inset-bottom)) !important;
+    }
+    .nvauto-panel{
+      bottom:calc(58px + env(safe-area-inset-bottom)) !important;
+      max-height:calc(100vh - 58px - env(safe-area-inset-bottom)) !important;
+    }
+    #nvStaleBanner{ bottom:calc(58px + env(safe-area-inset-bottom)) !important; }
+    /* The sticky booking CTA sits at the bottom of the New Booking tab. */
+    #nvMobileBookBar{ bottom:calc(58px + env(safe-area-inset-bottom)) !important; }
+  }
+
   /* Inline busy dot inside a pressed button. */
   .nvbusy-dot{
     display:inline-block; width:11px; height:11px; margin-right:7px;
@@ -2626,6 +2671,11 @@
        but NOT editable -- it is fixed at booking and the server refuses to
        change it (see sql_novax_client_edit_parcel.sql, which does not even
        accept a fee parameter). -->
+  <!-- Mobile bottom navigation. Built at runtime from nvRoleTabs() so a
+       Warehouse seat never sees Money, exactly like the side menu. Hidden
+       above 760px, where the side menu is already reachable. -->
+  <nav class="nv-bottomnav" id="nvBottomNav" aria-label="Main sections"></nav>
+
   <div class="modal-overlay" id="nvEditParcelModal">
     <div class="modal-card">
       <div class="modal-head">
@@ -4849,6 +4899,61 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         navigator.vibrate(10);
       }catch(e){}
     }
+
+    /* ═══ Bottom navigation ════════════════════════════════════════════════
+       Same source of truth as the side menu -- nvRoleTabs() -- so the two can
+       never disagree about what a role may open. Rendered rather than
+       hardcoded for exactly that reason.
+
+       Four slots plus More. The four are the hourly destinations; More opens
+       the existing side menu so nothing becomes unreachable. */
+    var NV_BOTTOM_TABS = [
+      { id:"dashboard",  label:"Home",    ico:"\u2302" },
+      { id:"newBooking", label:"Book",    ico:"\u002B" },
+      { id:"money",      label:"Money",   ico:"\u20A8" },
+      { id:"tickets",    label:"Support", ico:"\u263A" }
+    ];
+
+    function nvRenderBottomNav(){
+      var host = document.getElementById("nvBottomNav");
+      if(!host) return;
+      var allowed = NV_BOTTOM_TABS.filter(function(t){
+        return (typeof nvCanUseTab !== "function") || nvCanUseTab(t.id);
+      });
+      var active = state.activeClientTab || "dashboard";
+      host.innerHTML = allowed.map(function(t){
+        return '<button type="button" data-nvbn="' + t.id + '"' +
+               (t.id === active ? ' class="is-active" aria-current="page"' : '') + '>' +
+               '<span class="nvbn-ico" aria-hidden="true">' + t.ico + '</span>' +
+               '<span>' + t.label + '</span></button>';
+      }).join("") +
+      '<button type="button" data-nvbn="__more"><span class="nvbn-ico" aria-hidden="true">\u2261</span><span>More</span></button>';
+    }
+
+    (function(){
+      function boot(){ try{ nvRenderBottomNav(); }catch(e){} }
+      if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+      else boot();
+      /* role arrives with the profile, after boot -- re-render a few times */
+      var n=0, iv=setInterval(function(){ boot(); if(++n>6) clearInterval(iv); }, 700);
+    })();
+
+    document.addEventListener("click", function(e){
+      var b = e.target && e.target.closest ? e.target.closest("[data-nvbn]") : null;
+      if(!b) return;
+      var id = b.getAttribute("data-nvbn");
+      if(id === "__more"){
+        var menu = document.getElementById("clientMenu");
+        var tgl  = document.getElementById("clientMenuToggle");
+        if(menu){
+          var open = menu.classList.toggle("open");
+          if(tgl) tgl.setAttribute("aria-expanded", String(open));
+        }
+        return;
+      }
+      try{ nvHaptic("success"); }catch(err){}
+      if(typeof showClientTab === "function") showClientTab(id);
+    });
 
     /* ═══ Feedback on the control you actually pressed ════════════════════
        Booking, cancel, reattempt, return and address-fix each fired an RPC and
@@ -9117,7 +9222,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return TABS.indexOf(v) > -1 ? v : "dashboard";
     }
 
-    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
+    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } try{ nvRenderBottomNav(); }catch(e){} renderClientReportFull(); renderLatestInvoice(); renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
     function toast(msg,type){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.remove("success","error"); const kind=type||(/reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(msg)?"error":/success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach/i.test(msg)?"success":""); if(kind) el.classList.add(kind); el.classList.add("show"); /* One hook here rather than at 21 call sites: every existing success and error toast now carries a haptic, and any future one does automatically. */ try{ nvHaptic(kind==="error"?"error":(kind==="success"?"success":null)); }catch(e){} clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
     /* Events */
