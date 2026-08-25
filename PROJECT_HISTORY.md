@@ -304,10 +304,89 @@ that had never once returned an answer. Verify against the code path.
 ## 8. Useful context
 
 - Base Zone A (Karachi) rate: **Rs 200** (`NV_ZONE_A_BASE`)
-- Per-km pricing (Karachi only): base **120**, 6 km included, **Rs 20/km**,
-  cap **Rs 320**, road factor 1.35. Break-even against flat is **10 km**.
-- Lahore is flat Rs 200 in both pricing modes.
+- **Distance/per-km pricing was removed entirely on 24 Aug 2026.** Everything
+  is flat Rs 200. It was killed at four layers (config flag, trigger,
+  `p_force_mode` bypass, client `pricing_mode`) — see
+  `sql_novax_kill_distance_pricing.sql` — and 19 already-booked parcels were
+  repriced. If you find per-km constants still described anywhere, they are
+  stale text, not live behaviour.
+- Lahore is flat Rs 200.
 - Zone map: `karachi:"A"`, everything else `"B"`. Unknown city defaults to B.
 - AI quota: 50 messages per merchant, admin-approvable top-up.
 - Full audit report (22 sections, 34 findings) was published as an artifact —
   ask the user for the link if you need the detail behind §4.
+
+---
+
+## 9. Monitoring (added 25 Aug 2026)
+
+Until this date **nothing watched the database**. Every problem was found by
+hand, late: the `operations_issues` insert loop reached 412,786 rows, the SLA
+cron burned ~25M writes a day against a column that does not exist, and 86,814
+junk tickets accumulated. None of it announced itself.
+
+There is now a watchdog. It contains no LLM — it is plain SQL on `pg_cron`.
+
+### What runs
+
+| job | schedule (UTC) | what it does |
+|---|---|---|
+| `novax_health_snapshot` | `0 21 * * *` (02:00 PKT) | `nv_health_take()` — one metrics snapshot a night, capped at 400 |
+| `novax_backup_canary` | `7 * * * *` (hourly) | `nv_backup_beat()` — heartbeat + row-count fingerprint, capped at 840 |
+| `novax_weekly_digests` | `0 3 * * 1` | pre-existing |
+| `novax_sla_enforce` | disabled | **leave it disabled** — see §6 |
+
+### How to read it
+
+```sql
+select * from public.nv_health_report();   -- returns NOTHING when healthy
+select * from public.nv_backup_verify();   -- always returns six rows
+```
+
+`nv_health_report()` compares the two most recent snapshots and returns a row
+only for a real problem. Six checks, each traced to a bug this project has
+actually had: wallet balance vs its own ledger, delivered-but-uninvoiced,
+runaway table growth, duplicated open ops issues, dead rows exceeding live,
+and rollback ratio over the interval.
+
+A scheduled task `novax-daily-health` reads both at 09:00 PKT and reports only
+what needs acting on.
+
+### Two things that are easy to get wrong
+
+**A registered cron job is not a working cron job.** `novax_sla_enforce` was
+registered and `active` for weeks while every single run rolled back. Anything
+added to `cron.job` must be proved to execute *and commit* — schedule a
+one-minute probe, confirm rows persisted in `cron.job_run_details`, then
+unschedule the probe.
+
+**The `operations_issues` loop needed two fixes, not one.** The dedupe fix in
+`admin.html` was correct but could not engage: the dashboard's load of a
+412,000-row table under an RLS policy calling the `PARALLEL UNSAFE`
+`is_staff_admin()`, with no index on `created_at`, took 4,725 ms — at the
+PostgREST statement timeout. The load intermittently returned nothing,
+`D(i)` turned null into `[]`, and an empty array dedupes against nothing. The
+bloat had become its own cause. After the cleanup the same query takes 9.4 ms.
+A partial unique index `operations_issues_open_unique` now makes the duplicate
+structurally impossible.
+
+### CI
+
+`.github/workflows/checks.yml` runs `scripts/check-build.mjs` (every inline
+script block must parse; no credentials in tracked files) and
+`scripts/check-sw-version.mjs` (a cache-first asset may not change without a
+`CACHE` bump). Both are runnable by hand:
+
+```bash
+node scripts/check-build.mjs . && node scripts/check-sw-version.mjs HEAD~1
+```
+
+### Backups
+
+`archive_mode=on` via `admin-mgr wal-push`, forced every 2 min, 40,000+
+segments archived, zero failures. `nv_backup_verify()` watches it.
+
+None of that proves a **restore** works — only a restore proves that. The
+drill is at the bottom of `sql_novax_backup_verify.sql`. The canary exists so
+a restore can be checked against a known point instead of by noticing missing
+parcels. An untested backup is a belief, not a backup.
