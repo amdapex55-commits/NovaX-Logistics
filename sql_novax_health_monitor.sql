@@ -135,12 +135,22 @@ begin
   -- 1. WAL archiving. archive_timeout is 120s, so a segment is forced every
   --    two minutes even when idle. Anything past 30 minutes means PITR has
   --    a hole and the backup is not what it claims to be.
+  --
+  --    Measured against the snapshot's OWN taken_at, not now(). Comparing a
+  --    stored timestamp to the current time asks "how long ago was that
+  --    archive relative to this moment", which for a nightly snapshot grows by
+  --    24 hours a day and fires critical every single morning regardless of
+  --    the truth. Caught on the first run: it reported a 45-minute stall while
+  --    pg_stat_archiver showed the last push 1.6 minutes earlier with zero
+  --    failures. A watchdog that cries wolf daily is worse than no watchdog,
+  --    because it teaches you to ignore it. The real question is how stale
+  --    archiving was at the moment we looked.
   if (cur->'archiver'->>'last_archived_time') is not null then
-    hours := extract(epoch from (now() - (cur->'archiver'->>'last_archived_time')::timestamptz)) / 60.0;
+    hours := extract(epoch from (cur_at - (cur->'archiver'->>'last_archived_time')::timestamptz)) / 60.0;
     if hours > 30 then
       return query select 'critical'::text, 'wal archiving stalled'::text,
-        format('Last WAL archived %s minutes ago. Point-in-time recovery is behind by that much.',
-               round(hours));
+        format('Last WAL archived %s minutes before the %s snapshot. Point-in-time recovery had a hole that wide.',
+               round(hours), to_char(cur_at at time zone 'Asia/Karachi', 'DD Mon HH24:MI'));
     end if;
   else
     return query select 'critical'::text, 'wal archiving'::text,
