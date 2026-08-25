@@ -4473,13 +4473,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var p=state.parcels.find(function(x){ return x.awb===awb; }); if(!p) return Promise.reject(new Error("Parcel not found."));
         if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment."); return Promise.reject(new Error("Cloud connection not ready.")); }
         toast(`Sending return request for ${awb}...`);
-        return window.__nvSb.rpc("client_create_ops_request", { p_awb: awb, p_kind: "return", p_note: "Client requested return to origin" }).then(function(r){
-          if(r && r.error){ toast(`Could not send the return request: ${r.error.message}`); throw new Error(r.error.message); }
-          setParcelStatus(p,"Ready for return"); p.exception="Client requested return to origin";
-          saveState(); render();
-          try{ if(typeof loadAll==="function") loadAll(); }catch(e2){}
-          toast(`${awb} marked for return to origin.`);
-        }).catch(function(e){ toast(`Could not send the return request: ${(e&&e.message)||e}`); throw e; });
+        /* A return is a REQUEST, not something a merchant performs. The old
+           code set the status to "Ready for return" in the browser -- moving
+           a parcel through the operational pipeline from the merchant's
+           laptop. It opens a ticket now and ops moves the parcel. */
+        return nvOpsRequestTicket(awb,
+          "Return to origin requested for " + awb,
+          "The merchant has asked for this parcel to be returned to origin.",
+          "high"
+        ).then(function(){
+          toast(`${awb}: return requested. Operations will confirm in your ticket.`,"success");
+        }).catch(function(e){ toast(`Could not send the return request: ${(e&&e.message)||e}`,"error"); throw e; });
       }catch(e){ return Promise.reject(e); }
     }
     /* AUDIT FIX (shadowed function): this used to be a SECOND
@@ -7489,10 +7493,64 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     window.nvDownloadFailedBulk=nvDownloadFailedBulk;
 
+    /* ═══ Operations requests from the merchant ═══════════════════════════
+       Reattempt, return-to-origin and address correction all called
+       client_create_ops_request(p_awb, p_kind, p_note). That function does
+       not exist in the database and never has -- a comment in this file even
+       asserts that it "already exists". Every one of these three buttons has
+       been failing with "Could not find the function" since the day it
+       shipped, so a merchant with a refused parcel has had no working way to
+       ask for anything.
+
+       Rather than invent a new RPC and a table and an admin screen to read
+       it, these now use what is already deployed and already has a human
+       workflow behind it:
+
+         reattempt  -> ai_action_request_reattempt(p_awb, p_note), the same
+                       function the AI assistant already calls for this. One
+                       action, one path, instead of the button and the AI
+                       doing different things.
+         everything -> novax_ticket_open(), which opens a real support ticket
+         else          the merchant can follow and reply to, and that ops
+                       already works through in the ticket hub.
+
+       If the specific action RPC is missing or refuses, it falls back to a
+       ticket rather than failing. A merchant asking for help must never hit
+       a dead end -- worst case a person reads it. */
+    function nvOpsRequestTicket(awb, subject, body, priority){
+      var sb = window.__nvSb;
+      if(!sb || !sb.rpc) return Promise.reject(new Error("Cloud connection not ready."));
+      var p = (state.parcels||[]).find(function(x){ return x && x.awb===awb; }) || {};
+      /* Ops needs the parcel's state to act on this without going and looking
+         it up, so it goes in the body rather than being left implied. */
+      var ctx = "\n\n--- parcel details ---" +
+                "\nAWB: " + awb +
+                "\nStatus: " + (p.status || "unknown") +
+                "\nConsignee: " + (p.consignee || "-") +
+                "\nCity: " + (p.city || "-") +
+                "\nAddress: " + (p.address || "-") +
+                "\nPhone: " + (p.phone || "-") +
+                "\nCOD: " + (Number(p.cod)||0);
+      return Promise.resolve(
+        sb.rpc("novax_ticket_open", {
+          p_subject: subject,
+          p_body: String(body||"") + ctx,
+          p_awb: String(awb||"").toUpperCase(),
+          p_priority: priority || "normal"
+        })
+      ).catch(function(e){ return { error:{ message:String((e&&e.message)||e) } }; })
+       .then(function(r){
+        if(r && r.error) throw new Error(r.error.message || "Could not send that request.");
+        try{ if(typeof nvTkLoad==="function") nvTkLoad(); }catch(e){}
+        return r;
+      });
+    }
+
     function requestRedelivery(awb){
-      // NovaX fix (item 2): same false-success bug as requestReturnToOrigin --
-      // now calls the real client_create_ops_request RPC and only shows
-      // success after Supabase accepts it.
+      // NovaX fix (item 2): this once "called the real
+      // client_create_ops_request RPC" -- a function that has never existed
+      // in the database. Now calls ai_action_request_reattempt, which does,
+      // and falls back to a ticket when it cannot.
       // NovaX fix (item 3 follow-up): returns the underlying promise so
       // callers (like Autopilot) can wait for the real result instead of
       // announcing success before the RPC resolves.
@@ -7500,13 +7558,29 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const fb=document.getElementById("redeliveryFeedback")?.value.trim()||"Client requested redelivery.";
       if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment."); return Promise.reject(new Error("Cloud connection not ready.")); }
       toast(`Sending reattempt request for ${awb}...`);
-      return window.__nvSb.rpc("client_create_ops_request", { p_awb: awb, p_kind: "reattempt", p_note: fb }).then(function(r){
-        if(r && r.error){ toast(`Could not send the reattempt request: ${r.error.message}`); throw new Error(r.error.message); }
-        setParcelStatus(p,"Reattempt"); p.exception="Client requested redelivery after review"; p.clientFeedback=fb; p.risk=Math.max(20,p.risk-18);
-        saveState(); render();
+      /* ai_action_request_reattempt is the same RPC the AI assistant uses for
+         this, so the button and the AI now do one thing rather than two. The
+         status is NOT set locally: whatever that function decides is the
+         truth, and loadAll() reads it back. If it is missing or refuses, the
+         request becomes a ticket instead of dying. */
+      return Promise.resolve(
+        window.__nvSb.rpc("ai_action_request_reattempt", { p_awb: awb, p_note: fb })
+      ).catch(function(e){ return { error:{ message:String((e&&e.message)||e) } }; })
+       .then(function(r){
+        if(r && r.error){
+          return nvOpsRequestTicket(awb,
+            "Reattempt requested for " + awb,
+            fb || "Client requested redelivery after review.",
+            "high"
+          ).then(function(){
+            toast(`${awb}: reattempt requested. Operations will confirm in your ticket.`,"success");
+          });
+        }
+        p.clientFeedback = fb;
+        saveState();
         try{ if(typeof loadAll==="function") loadAll(); }catch(e2){}
-        toast(`${awb} sent to operations for redelivery.`);
-      }).catch(function(e){ toast(`Could not send the reattempt request: ${(e&&e.message)||e}`); throw e; });
+        toast(`${awb} sent to operations for redelivery.`,"success");
+      }).catch(function(e){ toast(`Could not send the reattempt request: ${(e&&e.message)||e}`,"error"); throw e; });
     }
     /* Merchant-side correction request for an already-booked parcel.
 
@@ -7515,8 +7589,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        after booking would be a pricing hole. Ops reviews and applies it with
        the admin parcel editor, which already has the same mismatch warning.
 
-       Uses client_create_ops_request, which already exists and is already
-       used by the reattempt and return flows -- no new RPC to deploy. */
+       This comment used to claim client_create_ops_request "already exists".
+       It never has. Opens a support ticket instead -- a real deployed RPC
+       with a human workflow behind it. */
     function requestAddressFix(awb){
       const p=state.parcels.find(x=>x.awb===awb);
       if(!p){ toast("Parcel not found."); return Promise.reject(new Error("Parcel not found.")); }
@@ -7542,13 +7617,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!body){ toast("Describe what needs correcting so operations can act on it.","error"); return Promise.resolve(); }
 
       toast(`Sending correction request for ${awb}...`);
-      return window.__nvSb.rpc("client_create_ops_request", { p_awb: awb, p_kind: "address_fix", p_note: body })
-        .then(function(r){
-          if(r && r.error){ toast(`Could not send that request: ${r.error.message}`,"error"); throw new Error(r.error.message); }
-          toast(`${awb} sent to operations. They will confirm once corrected.`,"success");
-          try{ if(typeof loadAll==="function") loadAll(); }catch(e){}
-        })
-        .catch(function(e){ toast(`Could not send that request: ${(e&&e.message)||e}`,"error"); throw e; });
+      /* ai_action_fix_address() exists but takes (p_awb, p_address, p_phone)
+         -- structured fields, not the free-text note this flow collects. A
+         ticket carries the merchant's own words to a person, which is what
+         "what needs correcting?" actually needs. */
+      return nvOpsRequestTicket(awb,
+        "Address correction for " + awb,
+        body,
+        "normal"
+      ).then(function(){
+        toast(`${awb} sent to operations. They will confirm in your ticket once corrected.`,"success");
+      }).catch(function(e){ toast(`Could not send that request: ${(e&&e.message)||e}`,"error"); throw e; });
     }
     window.requestAddressFix=requestAddressFix;
 
@@ -8115,7 +8194,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!d){ toast("Enter your Shopify store domain first."); return; }
       if(!window.__nvSb){ toast("Cloud connection not ready yet."); return; }
       window.__nvSb.rpc("client_set_shopify_domain",{ p_domain:d }).then(function(r){
-        if(r&&r.error){ toast("Could not save domain: "+r.error.message); return; }
+        if(r&&r.error){
+          /* client_shopify_bulk_state already detects a missing RPC and
+             disables the whole Shopify panel. This one did not, so a
+             merchant on a database without the Shopify functions got
+             "Could not save domain: Could not find the function..." and no
+             explanation, while the rest of the section quietly greyed out.
+             Same detection, same outcome. */
+          if(typeof nvRpcMissing==="function" && nvRpcMissing(r.error)){
+            NV_RPC_DEAD.client_set_shopify_domain = true;
+            try{ nvShopifyDisable(r.error.message); }catch(e){}
+            toast("Shopify integration is not enabled on this account yet.","error");
+            return;
+          }
+          toast("Could not save domain: "+r.error.message,"error"); return;
+        }
         var el=document.getElementById("shopifyDomainInput");
         if(el&&r&&r.data) el.value=r.data;
         toast("Store domain saved.");
@@ -11778,8 +11871,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(!action) return;
     try{
       if(action.type==="request_return_awb"){
-        // NovaX fix (item 3): requestReturnToOrigin() is now async (it must
-        // wait for the real client_create_ops_request RPC) -- Autopilot must
+        // NovaX fix (item 3): requestReturnToOrigin() is async (it waits for
+        // the ticket to be accepted server-side) -- Autopilot must
         // wait for that same result instead of announcing success the
         // instant the call is fired. On failure, tell the client clearly
         // instead of leaving the earlier "sent to operations" message as the

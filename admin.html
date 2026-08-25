@@ -15448,78 +15448,34 @@ html,body{ background:var(--bg); color:var(--ink); }
        decides the price of every parcel that merchant ever books, so a wrong
        guess mis-prices their whole account silently. */
     var NV_COVERAGE = [], NV_COV_AREAS = [];
+    /* ═══ Per-km coverage screen — retired ════════════════════════════════
+       This screen existed to move merchants ONTO distance pricing. It scored
+       clients as "on distance pricing" versus "still on flat", flagged the
+       flat ones in amber as work outstanding, and let ops assign a pickup
+       area to switch a merchant over.
+
+       Distance pricing was removed on 2026-08-24 -- the config flag, the
+       novax_parcel_autoprice trigger, and the p_force_mode bypass inside
+       novax_quote_fee. Every merchant is on flat Rs 200.
+
+       So this screen was telling ops the exact opposite of the truth: that
+       flat clients were a backlog to clear. Its assign control also called
+       admin_set_client_pickup(), which does not exist in the database and
+       never did, so it failed on click regardless.
+
+       Left as an explicit notice rather than deleted, so anyone who goes
+       looking for it learns where it went instead of finding a blank panel. */
     function nvCoverageLoad() {
-      var sb = window.__nvSb, host = document.getElementById("nvCoverage");
-      if (!sb || !host) return;
-      host.innerHTML = '<div class="footer-note">Loading client coverage...</div>';
-      Promise.all([
-        sb.rpc("novax_pricing_coverage", {}),
-        sb.rpc("novax_areas_list", { p_city: "Karachi" })
-      ]).then(function (res) {
-        var cov = res[0], ar = res[1];
-        if (cov && cov.error) {
-          host.innerHTML = '<div class="footer-note">Could not load: ' + nvEscAdmin(cov.error.message) + '. Run <code>sql/novax_distance_pricing_v4_admin_assign.sql</code>.</div>';
-          return;
-        }
-        NV_COVERAGE = cov.data || [];
-        NV_COV_AREAS = (ar && ar.data) || [];
-        nvCoverageRender();
-      }).catch(function () { host.innerHTML = '<div class="footer-note">Could not load client coverage.</div>'; });
-    }
-    function nvCoverageRender() {
-      var host = document.getElementById("nvCoverage"); if (!host) return;
-      var khi = NV_COVERAGE.filter(function (r) { return String(r.city || "").toLowerCase() === "karachi"; });
-      var on = khi.filter(function (r) { return r.on_distance; }).length;
-      var off = khi.length - on;
-      var opts = function (sel) {
-        return '<option value="">Not set - flat pricing</option>' + NV_COV_AREAS.map(function (a) {
-          return '<option value="' + nvEscAdmin(a.id) + '"' + (a.id === sel ? " selected" : "") + '>' + nvEscAdmin(a.name) + '</option>';
-        }).join("");
-      };
-      var rows = NV_COVERAGE.map(function (r) {
-        var isKhi = String(r.city || "").toLowerCase() === "karachi";
-        return '<tr>' +
-          '<td><strong>' + nvEscAdmin(r.client_name || "Unnamed") + '</strong>' +
-            '<div style="font-size:10.5px;color:#7c8f86;max-width:280px;overflow-wrap:anywhere">' + nvEscAdmin(r.address || "no address on file") + '</div></td>' +
-          '<td>' + nvEscAdmin(r.city || "-") + '</td>' +
-          '<td>' + fmt(r.parcels_30d || 0) + '</td>' +
-          '<td>' + (r.on_distance
-              ? '<span class="chip good">per km</span>'
-              : (isKhi ? '<span class="chip warn">flat</span>' : '<span class="chip info">outside Karachi</span>')) + '</td>' +
-          '<td>' + (isKhi
-              ? '<select class="nv-cov-area" data-client="' + nvEscAdmin(r.client_id) + '" style="min-width:190px">' + opts(r.area_id) + '</select>'
-              : '<span class="footer-note">n/a</span>') + '</td>' +
-        '</tr>';
-      }).join("");
+      var host = document.getElementById("nvCoverage");
+      if (!host) return;
       host.innerHTML =
-        '<div class="grid metrics" style="margin-bottom:10px">' +
-          '<div class="metric"><label>On distance pricing</label><strong>' + fmt(on) + '</strong><div class="meter-caption">Karachi clients</div></div>' +
-          '<div class="metric" style="' + (off ? 'border:2px solid #c77913' : '') + '"><label>Still on flat</label><strong>' + fmt(off) + '</strong><div class="meter-caption">need a pickup area</div></div>' +
-        '</div>' +
-        (off ? '<div class="data-note" style="background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;display:block;line-height:1.55">' +
-               '<b>' + fmt(off) + ' client(s) are still on flat pricing.</b> Their signup address did not clearly name an area, so nothing was guessed &mdash; a wrong pickup point would mis-price every parcel they book. Pick the right area below and it saves immediately.</div>' : '') +
-        '<div class="table-wrap"><div class="wide-scroll"><table>' +
-        '<thead><tr><th>Client</th><th>City</th><th>Parcels 30d</th><th>Pricing</th><th>Pickup area</th></tr></thead>' +
-        '<tbody>' + (rows || '<tr><td colspan="5">No clients.</td></tr>') + '</tbody></table></div></div>';
-      // Delegated so it survives re-render.
-      Array.prototype.forEach.call(host.querySelectorAll(".nv-cov-area"), function (sel) {
-        sel.addEventListener("change", function () { nvCoverageAssign(sel.dataset.client, sel.value, sel); });
-      });
+        '<div class="panel" style="padding:14px 16px">' +
+          '<strong>Per-kilometre pricing has been retired.</strong>' +
+          '<p style="margin:6px 0 0">Every merchant is on flat Rs 200. There is no longer a distance rate to assign a client to, ' +
+          'so this screen no longer has anything to set. Pickup addresses are managed per merchant in their own account.</p>' +
+        '</div>';
     }
-    function nvCoverageAssign(clientId, areaId, el) {
-      var sb = window.__nvSb; if (!sb || !clientId) return;
-      if (el) el.disabled = true;
-      sb.rpc("admin_set_client_pickup", { p_client_id: clientId, p_area_id: areaId || null, p_label: "Main pickup" })
-        .then(function (r) {
-          if (el) el.disabled = false;
-          if (r && r.error) { toast("Could not save: " + r.error.message, "error"); return; }
-          var row = Array.isArray(r.data) ? r.data[0] : r.data;
-          toast(areaId
-            ? ("Pickup set to " + ((row && row.area_name) || "the selected area") + " - this client is now on per-km pricing.")
-            : "Pickup cleared - this client is back on flat pricing.", "success");
-          nvCoverageLoad();
-        }).catch(function () { if (el) el.disabled = false; toast("Could not save pickup area.", "error"); });
-    }
+    function nvCoverageRender() { nvCoverageLoad(); }
 
     function printProcessingBatchAwbs() {
       const awbs = (state.processingBatchAwbs && state.processingBatchAwbs.length) ? state.processingBatchAwbs : [state.activeProcessingAwb].filter(Boolean);
