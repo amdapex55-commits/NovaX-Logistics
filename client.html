@@ -1074,6 +1074,32 @@
   html[data-theme="dark"] .awb-field{ background:#ffffff !important; }
   html[data-theme="dark"] .awb-label{ color:#07100d !important; box-shadow:none !important; }
 
+  /* ═══ Pull-to-refresh indicator ════════════════════════════════════════
+     Fixed at the very top, translated down by the drag. Sits above the
+     header but below modals (z-index 130) so it can never cover a dialog.
+     Hidden entirely on pointer devices -- a mouse user has no way to pull. */
+  #nvPullBar{
+    position:fixed; top:0; left:0; right:0; z-index:120;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    height:52px; opacity:0; pointer-events:none;
+    transform:translateY(0);
+    background:linear-gradient(180deg, var(--panel) 0%, transparent 100%);
+    color:var(--ink); font-size:12.5px; font-weight:700; letter-spacing:.01em;
+  }
+  #nvPullBar .nvpull-dot{
+    width:16px; height:16px; border-radius:50%;
+    border:2px solid var(--green-ink); border-top-color:transparent;
+    animation:nvPullSpin .8s linear infinite;
+  }
+  @keyframes nvPullSpin{ to{ transform:rotate(360deg); } }
+  @media (hover:hover) and (pointer:fine){ #nvPullBar{ display:none; } }
+  @media (prefers-reduced-motion: reduce){
+    #nvPullBar .nvpull-dot{ animation:none; }
+  }
+  /* Stops iOS rubber-banding fighting the gesture, and stops a scroll inside
+     a list chaining out to bounce the whole page. */
+  html,body{ overscroll-behavior-y:contain; }
+
   /* ═══ Warm notice cards stay light in both themes ══════════════════════
      Two panels are deliberately "a note on cream paper": the dashboard's
      Action needed card and the wallet review note. Both hardcoded
@@ -4811,6 +4837,162 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         navigator.vibrate(10);
       }catch(e){}
     }
+
+    /* ═══ Pull to refresh ═════════════════════════════════════════════════
+       The gesture every phone user reaches for first did nothing here, so
+       merchants either hunted for a refresh control or reloaded the page --
+       which on this portal is a 276 KB download.
+
+       Deliberately conservative: it only engages when the page is genuinely
+       at the top, only on a downward drag, and it hands off to the same
+       nvQuietRefresh() the focus and visibility handlers already use, so
+       there is one refresh path rather than two.
+
+       overscroll-behavior-y is set on the document so iOS rubber-banding does
+       not fight the gesture. Needs checking on a real iPhone -- Safari's
+       native bounce is not fully reproducible in a desktop browser. */
+    (function nvPullToRefresh(){
+      var THRESHOLD = 70, MAX = 110;
+      var startY = null, pulling = false, bar = null;
+
+      function reduced(){
+        try{ return matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){ return false; }
+      }
+      function ensureBar(){
+        if(bar) return bar;
+        bar = document.createElement("div");
+        bar.id = "nvPullBar";
+        bar.setAttribute("aria-hidden","true");
+        bar.innerHTML = '<span class="nvpull-dot"></span><span class="nvpull-txt">Pull to refresh</span>';
+        document.body.appendChild(bar);
+        return bar;
+      }
+      function setPull(dy, label){
+        var b = ensureBar();
+        b.style.transform = "translateY(" + Math.min(dy, MAX) + "px)";
+        b.style.opacity = Math.min(1, dy / THRESHOLD);
+        var t = b.querySelector(".nvpull-txt");
+        if(t && label) t.textContent = label;
+      }
+      function reset(){
+        if(!bar) return;
+        bar.style.transition = "transform .22s ease, opacity .22s ease";
+        bar.style.transform = "translateY(0)";
+        bar.style.opacity = "0";
+        setTimeout(function(){ if(bar) bar.style.transition = ""; }, 240);
+      }
+
+      document.addEventListener("touchstart", function(e){
+        if(e.touches.length !== 1) return;
+        /* only from a true top-of-page, and never while an overlay is up */
+        if((window.scrollY || document.documentElement.scrollTop || 0) > 0) return;
+        if(NV_OVERLAY_STACK.length) return;
+        startY = e.touches[0].clientY;
+        pulling = false;
+      }, { passive: true });
+
+      document.addEventListener("touchmove", function(e){
+        if(startY === null) return;
+        var dy = e.touches[0].clientY - startY;
+        if(dy <= 0){ startY = null; return; }
+        if((window.scrollY || 0) > 0){ startY = null; return; }
+        pulling = true;
+        if(!reduced()) setPull(dy * 0.5, dy * 0.5 >= THRESHOLD ? "Release to refresh" : "Pull to refresh");
+      }, { passive: true });
+
+      document.addEventListener("touchend", function(e){
+        if(startY === null || !pulling){ startY = null; return; }
+        var dy = ((e.changedTouches && e.changedTouches[0].clientY) || startY) - startY;
+        startY = null; pulling = false;
+        if(dy * 0.5 < THRESHOLD){ reset(); return; }
+        setPull(THRESHOLD, "Refreshing\u2026");
+        try{ nvHaptic("success"); }catch(err){}
+        try{
+          if(typeof window.nvQuietRefresh === "function") window.nvQuietRefresh();
+          else if(typeof loadAll === "function") loadAll();
+        }catch(err){}
+        setTimeout(reset, 900);
+      }, { passive: true });
+    })();
+
+    /* ═══ The Android back button closes overlays instead of leaving ══════
+       history.pushState appeared zero times in this file, against 12 places
+       that open a modal or drawer. So on Android, back from an open AWB modal
+       or the parcel drawer left the portal entirely -- and with no offline
+       cache that is a full re-download to get back in.
+
+       Rather than patch 12 call sites, one MutationObserver watches for the
+       class flip that makes an overlay visible. Anything added later is
+       covered for free.
+
+       The tricky part is closing by button or backdrop instead of by back:
+       that must unwind the history entry too, or the stack fills with dead
+       entries and the merchant taps back several times with nothing moving.
+       So a manual close calls history.back(), and NV_POPPING stops that
+       round-tripping into a second close. */
+    var NV_OVERLAY_STACK = [];
+    var NV_POPPING = false;
+
+    function nvOverlayIsOpen(el){
+      return el.classList.contains("show") || el.classList.contains("open");
+    }
+
+    function nvCloseTopOverlay(){
+      var top = NV_OVERLAY_STACK[NV_OVERLAY_STACK.length - 1];
+      if(!top) return false;
+      try{
+        if(top.el.id === "nvDrawer" && window.NovaXUI && window.NovaXUI.closeDrawer){
+          window.NovaXUI.closeDrawer();
+        } else {
+          top.el.classList.remove("show","open");
+        }
+      }catch(e){}
+      return true;
+    }
+
+    window.addEventListener("popstate", function(){
+      if(!NV_OVERLAY_STACK.length) return;
+      NV_POPPING = true;
+      nvCloseTopOverlay();
+      /* the observer pops the stack when the class actually disappears */
+      setTimeout(function(){ NV_POPPING = false; }, 0);
+    });
+
+    (function nvWatchOverlays(){
+      function track(el){
+        if(el.__nvTracked) return;
+        el.__nvTracked = true;
+        var wasOpen = nvOverlayIsOpen(el);
+        new MutationObserver(function(){
+          var isOpen = nvOverlayIsOpen(el);
+          if(isOpen === wasOpen) return;
+          wasOpen = isOpen;
+          if(isOpen){
+            NV_OVERLAY_STACK.push({ el: el });
+            try{ history.pushState({ nvOverlay: el.id || true }, ""); }catch(e){}
+          } else {
+            var i = NV_OVERLAY_STACK.map(function(o){ return o.el; }).lastIndexOf(el);
+            if(i > -1) NV_OVERLAY_STACK.splice(i, 1);
+            /* closed by button or backdrop -- unwind the entry we pushed */
+            if(!NV_POPPING){ try{ history.back(); }catch(e){} }
+          }
+        }).observe(el, { attributes:true, attributeFilter:["class"] });
+      }
+
+      function scan(){
+        document.querySelectorAll(".modal-overlay, #nvDrawer, .nvdr-wrap").forEach(track);
+      }
+      if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", scan);
+      else scan();
+      /* the drawer is created lazily by the UI module, so re-scan a few times */
+      var n = 0, iv = setInterval(function(){ scan(); if(++n > 10) clearInterval(iv); }, 500);
+
+      /* Escape was handled on only 2 of the 12. Now all of them. */
+      document.addEventListener("keydown", function(e){
+        if(e.key !== "Escape" || !NV_OVERLAY_STACK.length) return;
+        nvCloseTopOverlay();
+      });
+    })();
 
     /* ═══ The booking form survives an app switch ═════════════════════════
        Merchants copy consignee addresses out of WhatsApp. Switching apps
@@ -9848,6 +10030,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                   if(document.hidden) return;
                   try{ loadAll(); }catch(e){}
                 }
+                /* Exposed so pull-to-refresh can reach it: loadAll() and this
+                   both live inside the Supabase closure, and the gesture
+                   handler is defined outside it. */
+                window.nvQuietRefresh = nvQuietRefresh;
                 /* 1. A SAFETY NET, not the primary channel. Realtime is the
                    primary channel; polling exists only for the case where the
                    publication is missing a table or the socket died. Polling
