@@ -123,7 +123,11 @@ for (const file of tracked) {
 notes.push(`secret scan: ${scanned} files`);
 
 for (const f of readdirSync(root).filter(f => f.endsWith(".html"))) checkHtml(f);
-for (const f of ["sw.js", "nv-codegen.js", "nv3d-hero.js"]) {
+/* client-app.js is the portal's whole application bundle now. If it fails to
+   parse, client.html renders as a dead shell -- markup with no behaviour and
+   no error the merchant can see. nv-codegen.js and nv3d-hero.js were deleted
+   on 25 Aug and are gone from this list with them. */
+for (const f of ["sw.js", "client-app.js"]) {
   try { checkJs(f); } catch { /* file may not exist; not a failure */ }
 }
 
