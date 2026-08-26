@@ -516,11 +516,24 @@ Be brief and warm. Two or three sentences. End by calling present exactly once.`
     const { data: q } = await sb.rpc("ai_quota_consume");
     if (!q?.ok) {
       const status = (await sb.rpc("ai_quota_status")).data ?? {};
+      // ai_quota_consume fails for TWO different reasons and they are not the
+      // same problem. "cap_reached" means the merchant really has used their
+      // 50. "no_client" means nv_ai_my_client() returned null -- the caller's
+      // profile is not linked to a client at all, which is a setup fault, not
+      // a usage one. Both used to return the identical "you've used all 50"
+      // line, so a merchant with 0 of 50 used was told they were out and
+      // pointed at an admin top-up that would not have fixed anything.
+      // Confirmed live on 25 Aug: every account was under 10 of 50.
+      const reason = String((q as { reason?: unknown } | null)?.reason ?? "");
+      const notLinked = reason === "no_client";
       return json({
-        capped: true,
+        capped: !notLinked,          // not a cap, so the UI must not offer a top-up
+        notLinked,
+        reason: reason || null,
         quota: status,
-        answer:
-          "You've used all 50 NovaX AI messages on this account. I've kept everything we discussed — request more and an admin can top you back up.",
+        answer: notLinked
+          ? "This account is not linked to a merchant workspace yet, so I cannot see any parcels. This is not a usage limit — ask NovaX support to link your login and I will work straight away."
+          : "You've used all 50 NovaX AI messages on this account. I've kept everything we discussed — request more and an admin can top you back up.",
       }, 200);
     }
   }
