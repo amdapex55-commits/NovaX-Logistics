@@ -5906,7 +5906,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        scopes them to this merchant); writes go through the SECURITY DEFINER
        RPCs so the rules live in the database, not the browser.
        =================================================================== */
-    var NV_TK = { list: [], replies: {}, filter: "open", openId: null, loading: false };
+    var NV_TK = { list: [], replies: {}, replyError: {}, filter: "open", openId: null, loading: false };
 
     function nvTkEsc(v){
       return String(v == null ? "" : v).replace(/[&<>"']/g, function(c){
@@ -5968,8 +5968,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if (!sb || !id) return Promise.resolve();
       return Promise.resolve(
         sb.from("novax_ticket_replies").select("*").eq("ticket_id", id).order("created_at", { ascending: true })
-      ).catch(function(){ return { data: [] }; })
-       .then(function(r){ NV_TK.replies[id] = (r && r.data) || []; nvTkRender(); });
+      ).catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+       .then(function(r){
+         /* A failed load used to become an empty array, which on screen is
+            indistinguishable from "NovaX has not replied yet". Keep whatever
+            was already loaded and record why, so the thread can say so. */
+         if (r && r.error){
+           NV_TK.replyError[id] = r.error.message;
+           console.warn("NovaX tickets: could not load replies", r.error.message);
+         } else {
+           delete NV_TK.replyError[id];
+           NV_TK.replies[id] = (r && r.data) || [];
+         }
+         nvTkRender();
+       });
     }
 
     function nvTkCard(t){
@@ -5984,6 +5996,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var thread = "";
       if (open){
         thread = '<div class="nv-tk-thread">' +
+          (!reps.length && NV_TK.replyError[t.id]
+            ? '<p class="footer-note">Could not load the replies just now \u2014 ' +
+              nvTkEsc(NV_TK.replyError[t.id]) + '</p>'
+            : "") +
           (reps.length ? reps.map(function(r){
             return '<div class="nv-tk-msg ' + (r.by_side === "client" ? "mine" : "") + '">' +
               '<div class="nv-tk-meta">' + nvTkEsc(r.by_name || (r.by_side === "client" ? "You" : "NovaX Support")) +
@@ -6123,7 +6139,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if (o){
             var id = o.getAttribute("data-nv-tkopen");
             NV_TK.openId = (NV_TK.openId === id) ? null : id;
-            if (NV_TK.openId && !NV_TK.replies[id]) nvTkLoadReplies(id); else nvTkRender();
+            nvTkRender();
+            if (NV_TK.openId) nvTkLoadReplies(id);
             return;
           }
           var rp = ev.target.closest("[data-nv-tkreply]");
@@ -6151,6 +6168,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var pane=document.getElementById("client-tickets");
         if(pane && pane.classList.contains("active") && document.visibilityState!=="hidden"){
           try{ nvTkLoad(); }catch(e){}
+          /* The open thread too. nvTkLoad() only refreshes the ticket LIST,
+             so without this a reply arriving while the merchant is reading
+             the thread stays invisible until they collapse and reopen it. */
+          if (NV_TK.openId){ try{ nvTkLoadReplies(NV_TK.openId); }catch(e){} }
         }
       }, 60000);
     })();
