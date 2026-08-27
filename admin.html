@@ -1417,7 +1417,25 @@
     /* PAID tape — set the moment admin_generate_invoice_v2 stamps invoice_id.
        Covers returned/refused parcels too, since a return only receives an
        invoice_id once its delivery charge has been netted off. Display only. */
-    .nv-paid-tape{display:inline-flex;align-items:center;background:#c0392b;color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.8px;padding:2px 7px;border-radius:var(--r-xs);text-transform:uppercase;box-shadow:var(--sh-1);white-space:nowrap;vertical-align:middle;}
+    /* Money state on the orders sheet. Four states, but only two are loud:
+   UNBILLED and INVOICED both mean somebody still has to do something, so they
+   carry colour. PAID is deliberately quiet -- it is the resting state and
+   should not compete for attention on a sheet the operator scans for work. */
+.nv-money{display:inline-block;vertical-align:middle;font-size:9.5px;font-weight:800;letter-spacing:.7px;
+  padding:3px 8px;border-radius:999px;text-transform:uppercase;white-space:nowrap;border:1px solid transparent}
+/* Two other tables (renderClientParcels, renderAdmin) put this pill inline
+   beside the AWB, so the default has to sit on the baseline. Only the orders
+   sheet stacks it under the COD figure, and only there does it need the gap. */
+.nv-money-cell .nv-money{display:block;margin-top:5px;width:fit-content}
+.nv-money-paid{background:rgba(20,199,123,.14);color:#4ee6a5;border-color:rgba(20,199,123,.4)}
+.nv-money-invoiced{background:rgba(75,184,232,.14);color:#8fd0f0;border-color:rgba(75,184,232,.4)}
+.nv-money-unbilled{background:rgba(232,182,76,.16);color:#e8c97a;border-color:rgba(232,182,76,.5)}
+.nv-money-owing{background:rgba(224,96,75,.14);color:#e0604b;border-color:rgba(224,96,75,.45)}
+.nv-money-cell{white-space:nowrap}
+/* The address was its own column and still truncated. Folded under the
+   consignee it gets the width it needed all along. */
+.orders-compact-table .addr-compact{max-width:none;white-space:normal;line-height:1.45;margin:3px 0 2px}
+.nv-paid-tape{display:inline-flex;align-items:center;background:#c0392b;color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.8px;padding:2px 7px;border-radius:var(--r-xs);text-transform:uppercase;box-shadow:var(--sh-1);white-space:nowrap;vertical-align:middle;}
     .clickable-row, .parcel-card {
       cursor: pointer;
     }
@@ -3761,20 +3779,23 @@
 
       .portal-title h2 {
         font-size: 28px;
-        color: #071d17;
       }
 
-      .portal-title p,
-      .portal-title .realtime {
-        color: #526b61;
-      }
+      /* The three colour overrides that used to live here were written for
+         the light body gradient above, back when this block was authored.
+         The second, deliberately unscoped :root later made the console dark
+         unconditionally -- and it overrode the BACKGROUND while leaving these
+         text colours alone, because they sit behind a more specific media
+         query. The phone therefore painted light-background text on a dark
+         ground: 46 contrast failures at 375px against 5 at 1280px, the worst
+         of them --nvu-line-2, a hairline token, used as a text colour at
+         1.39:1.
 
-      .admin-nav-main,
-      .admin-subtab,
-      .admin-tab,
-      .client-tab {
-        color: var(--nvu-line-2);
-      }
+         Gone rather than re-pointed: the base rules (--muted, and
+         .admin-subtab's #c7d8cf) are already correct, and a phone has no
+         reason to colour its nav differently from a desktop. Do not
+         reintroduce a colour here -- this block cannot see the theme, so
+         anything it sets will drift from the palette again. */
 
       .client-side,
       .admin-side {
@@ -5563,7 +5584,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                 <div class="table-wrap">
                   <div class="wide-scroll">
                     <table class="orders-compact-table">
-                      <thead><tr><th>AWB</th><th>Consignee Name</th><th>Address</th><th>City</th><th>Status</th><th>Shipper Name</th><th>Origin</th><th>COD</th><th>Weight</th><th>Timer</th><th>Last Process</th><th>Actions</th></tr></thead>
+                      <thead><tr><th>AWB</th><th>Consignee &amp; address</th><th>Status</th><th>COD &amp; payment</th><th>Timer</th><th>Shipper</th><th>Last process</th><th>Actions</th></tr></thead>
                       <tbody id="adminOrderRows"></tbody>
                     </table>
                   </div>
@@ -6950,11 +6971,11 @@ html,body{ background:var(--bg); color:var(--ink); }
       const deliveredParcels = parcels.filter(isDeliveredLedgerParcel);
       const unpaidDeliveredParcels = parcels.filter(isUnpaidDeliveredParcel);
       const revenueParcels = parcels.filter(isPickedUpParcel);
-      const codCollected = deliveredParcels.reduce((s, p) => s + p.cod, 0);
-      const deliveryCharges = revenueParcels.reduce((s, p) => s + p.fee, 0);
-      const payable = Math.max(0, unpaidDeliveredParcels.reduce((s, p) => s + p.cod - p.fee, 0));
-      const avgProgress = parcels.length ? parcels.reduce((s, p) => s + (p.stage / p.totalStages), 0) / parcels.length : 0;
-      const risk = parcels.length ? Math.round(parcels.reduce((s, p) => s + p.risk, 0) / parcels.length) : 0;
+      const codCollected = deliveredParcels.reduce((s, p) => s + Number(p.cod || 0), 0);
+      const deliveryCharges = revenueParcels.reduce((s, p) => s + Number(p.fee || 0), 0);
+      const payable = Math.max(0, unpaidDeliveredParcels.reduce((s, p) => s + Number(p.cod || 0) - Number(p.fee || 0), 0));
+      const avgProgress = parcels.length ? parcels.reduce((s, p) => s + (Number(p.totalStages) ? Number(p.stage || 0) / Number(p.totalStages) : 0), 0) / parcels.length : 0;
+      const risk = parcels.length ? Math.round(parcels.reduce((s, p) => s + Number(p.risk || 0), 0) / parcels.length) : 0;
       return { parcels, delivered, total: parcels.length, codCollected, deliveryCharges, payable, avgProgress, risk };
     }
 
@@ -8052,7 +8073,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     function riderReceivable(riderId) {
       return state.parcels
         .filter(p => p.rider === riderId && isDeliveredLedgerParcel(p) && !p.cashReceived)
-        .reduce((sum, p) => sum + p.cod, 0);
+        .reduce((sum, p) => sum + Number(p.cod || 0), 0);
     }
 
     function syncRiderAccess() {
@@ -8556,14 +8577,14 @@ html,body{ background:var(--bg); color:var(--ink); }
       const deliveredParcels = parcels.filter(isDeliveredLedgerParcel);
       const unpaidDeliveredParcels = parcels.filter(isUnpaidDeliveredParcel);
       const revenueParcels = parcels.filter(isPickedUpParcel);
-      const codCollected = deliveredParcels.reduce((s, p) => s + p.cod, 0);
-      const revenue = revenueParcels.reduce((s, p) => s + p.fee, 0);
-      const expenses = state.expenses.reduce((s, e) => s + e.amount, 0);
-      const payable = Math.max(0, unpaidDeliveredParcels.reduce((s, p) => s + p.cod - p.fee, 0));
-      const avgProgress = parcels.reduce((s, p) => s + (p.stage / p.totalStages), 0) / parcels.length;
-      const risk = Math.round(parcels.reduce((s, p) => s + p.risk, 0) / parcels.length);
-      const cashHeld = state.riders.reduce((s, r) => s + r.cashHeld, 0);
-      const cashLimit = state.riders.reduce((s, r) => s + r.cashLimit, 0);
+      const codCollected = deliveredParcels.reduce((s, p) => s + Number(p.cod || 0), 0);
+      const revenue = revenueParcels.reduce((s, p) => s + Number(p.fee || 0), 0);
+      const expenses = state.expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+      const payable = Math.max(0, unpaidDeliveredParcels.reduce((s, p) => s + Number(p.cod || 0) - Number(p.fee || 0), 0));
+      const avgProgress = parcels.length ? parcels.reduce((s, p) => s + (Number(p.totalStages) ? Number(p.stage || 0) / Number(p.totalStages) : 0), 0) / parcels.length : 0;
+      const risk = parcels.length ? Math.round(parcels.reduce((s, p) => s + Number(p.risk || 0), 0) / parcels.length) : 0;
+      const cashHeld = state.riders.reduce((s, r) => s + Number(r.cashHeld || 0), 0);
+      const cashLimit = state.riders.reduce((s, r) => s + Number(r.cashLimit || 0), 0);
       const exceptions = parcels.filter(p => p.exception).length + state.transit.filter(t => t.scanned !== t.expected).length;
       return { delivered, total: parcels.length, codCollected, revenue, expenses, payable, avgProgress, risk, cashHeld, cashLimit, exceptions };
     }
@@ -8612,8 +8633,15 @@ html,body{ background:var(--bg); color:var(--ink); }
       return { cod, fee, count: rows.length };
     }
 
+    /* Every money figure in this console goes through here. PKR.format() of
+       undefined, NaN or a non-numeric string returns the literal "PKR NaN",
+       which rendered as "RsNaN" -- a broken word, not a number, on the screen
+       ops staff read to decide payouts. Non-finite input now formats as Rs 0,
+       which is exactly what money(null) already did, so nothing that formats
+       correctly today changes. */
     function money(value) {
-      return PKR.format(value).replace("PKR", "Rs");
+      const n = Number(value);
+      return PKR.format(Number.isFinite(n) ? n : 0).replace("PKR", "Rs");
     }
 
     function statusClass(parcel) {
@@ -8653,26 +8681,47 @@ html,body{ background:var(--bg); color:var(--ink); }
        push and not the withdrawal. Returned/refused parcels are covered by the
        same test, because a return is only given an invoice_id once its
        delivery charge has been deducted on that invoice. Display only. */
-    function nvIsPaidParcel(p){ return !!(p && p.invoiceId); }
-    function nvPaidPill(p){ return nvIsPaidParcel(p) ? '<span class="nv-paid-tape" title="Invoiced &mdash; payment settled">PAID</span>' : ""; }
+    /* MONEY STATE PER PARCEL.
+       nvIsPaidParcel used to return true for ANY invoice_id, and nvPaidPill
+       called that "payment settled". Those are not the same thing: of the
+       invoices on this account, 25 sit at "Generated" -- raised, not yet
+       pushed to the merchant's wallet. Marking those PAID tells the operator
+       money has moved when it has not. Worse, nvPaidPill was never actually
+       called from the orders table, so the sheet showed no money state at all.
+
+       Four honest states, and the two that need action are the loud ones:
+         unbilled  delivered, no invoice     -> money owed, nothing raised yet
+         invoiced  invoice raised, not sent  -> awaiting push to wallet
+         paid      pushed to wallet/settled  -> merchant has it
+         owing     "Paid to NovaX"           -> the negative-invoice case
+       Anything not delivered has no money state and stays blank, so the
+       column only speaks when there is something to do. */
+    function nvParcelMoney(p){
+      if(!p) return null;
+      var st = String(p.status||"");
+      if(st !== "Delivered") return null;
+      if(!p.invoiceId) return { cls:"unbilled", label:"UNBILLED", title:"Delivered but no invoice raised yet \u2014 this COD has not been billed." };
+      var inv = (state.invoices||[]).find(function(i){ return i._uuid === p.invoiceId || i.id === p.invoiceId; });
+      if(!inv) return { cls:"invoiced", label:"INVOICED", title:"Invoice linked but not loaded in this view." };
+      var s2 = String(inv.status||"");
+      if(s2 === "Paid to NovaX") return { cls:"owing", label:"PAID TO NOVAX", title:"Negative invoice \u2014 settled the other way." };
+      if(s2 === "Settled" || s2 === "Pushed to wallet")
+        return { cls:"paid", label:"PAID", title:"Invoice " + (inv.id||"") + " \u2014 " + s2 + ". Money is with the merchant." };
+      return { cls:"invoiced", label:"INVOICED", title:"Invoice " + (inv.id||"") + " raised (" + s2 + ") but not yet pushed to the wallet." };
+    }
+    function nvIsPaidParcel(p){ var m = nvParcelMoney(p); return !!(m && m.cls === "paid"); }
+    function nvPaidPill(p){
+      var m = nvParcelMoney(p);
+      return m ? '<span class="nv-money nv-money-' + m.cls + '" title="' + m.title + '">' + m.label + '</span>' : "";
+    }
 
     function renderMetrics() {
       const m = metrics();
       const deliveryRate = percent(m.delivered, m.total);
       const cashExposure = percent(m.cashHeld, m.cashLimit);
-      const opsHealth = Math.round(m.avgProgress * 100);
-      const cleanData = Math.max(0, 100 - m.risk);
       const cm = clientMetrics();
       const clientDeliveryRate = percent(cm.delivered, cm.total);
       const clientOpsHealth = Math.round(cm.avgProgress * 100);
-      const html = [
-        metricCard("Live Parcels", m.total, opsHealth, "journey completion", "blue"),
-        metricCard("COD Collected", money(m.codCollected), percent(m.codCollected, 60000), "ledger backed", "good"),
-        metricCard("Data Cleanliness", `${cleanData}%`, cleanData, "risk adjusted", cleanData < 65 ? "amber" : ""),
-        metricCard("Cash Exposure", money(m.cashHeld), cashExposure, "rider cash limit", cashExposure > 100 ? "red" : "amber")
-      ].join("");
-      const landingMetrics = document.getElementById("landingMetrics");
-      if (landingMetrics) landingMetrics.innerHTML = html;
       document.getElementById("clientMetrics").innerHTML = [
         metricCard("My Parcels", cm.total, clientOpsHealth, "assigned account only", "blue"),
         metricCard("Delivered", `${cm.delivered}/${cm.total}`, clientDeliveryRate, "confirmed deliveries", clientDeliveryRate < 40 ? "amber" : ""),
@@ -8918,27 +8967,12 @@ html,body{ background:var(--bg); color:var(--ink); }
       // renderRider(), tickMeters() and the tab badges below it never ran.
       const sc = state.client || { walletTopup: 0, shippingDue: 0, subAccounts: 0, premiumTier: "" };
       const clientAvailable = Math.max(0, (sc.walletTopup || 0) - (sc.shippingDue || 0));
-      const paidRefs = paidParcelRefs();
-      const branchCashInHand = state.parcels.filter(p => isCashCollectedParcel(p) && !paidRefs.has(p.awb)).reduce((sum, p) => sum + p.cod, 0);
-      const riderReceivableTotal = state.riders.reduce((sum, rider) => sum + riderReceivable(rider.id), 0);
       document.getElementById("clientWallet").innerHTML = [
         moneyBox("COD payable", money(cm.payable), "Your account only"),
         moneyBox("Shipping wallet", money(clientAvailable), state.client ? `${sc.premiumTier || "No"} tier balance` : "No client selected"),
         moneyBox("Sub accounts", sc.subAccounts || 0, "role based permissions"),
         moneyBox("Fast settlement", "T+1 ready", "premium fintech path")
       ].join("");
-
-      const adminAccounting = document.getElementById("adminAccounting");
-      if (adminAccounting) {
-        adminAccounting.innerHTML = [
-          moneyBox("Company revenue", money(m.revenue), "delivery fees only"),
-          moneyBox("Client COD payable", money(m.payable), "liability ledger"),
-          moneyBox("Cash in hand true", money(branchCashInHand), "cash received from riders"),
-          moneyBox("Rider receivable", money(riderReceivableTotal), "delivered COD not collected"),
-          moneyBox("Operating expenses", money(m.expenses), "expense tab"),
-          moneyBox("Rider cash held", money(m.cashHeld), "cash control wallet")
-        ].join("");
-      }
 
       const rider = state.riders[1] || state.riders[0] || {};
       document.getElementById("riderWallet").innerHTML = [
@@ -9091,8 +9125,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       renderClientTabs();
       renderAwbLabel();
       const cm = clientMetrics();
-      const deliveredCod = cm.parcels.filter(isDeliveredLedgerParcel).reduce((s, p) => s + p.cod, 0);
-      const pendingCod = cm.parcels.filter(p => !isDeliveredLedgerParcel(p)).reduce((s, p) => s + p.cod, 0);
+      const deliveredCod = cm.parcels.filter(isDeliveredLedgerParcel).reduce((s, p) => s + Number(p.cod || 0), 0);
+      const pendingCod = cm.parcels.filter(p => !isDeliveredLedgerParcel(p)).reduce((s, p) => s + Number(p.cod || 0), 0);
       const deliveryRate = percent(cm.delivered, cm.total);
       const openParcels = Math.max(0, cm.total - cm.delivered);
       const fromInput = document.getElementById("clientDateFrom");
@@ -9173,7 +9207,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             </div>
             <p>${invoice.summary}</p>
             <div class="money-grid" style="margin-top:10px">
-              ${moneyBox("COD collected", money(invoice.cod), `${invoice.parcelRefs.length} parcel(s)`)}
+              ${moneyBox("COD collected", money(invoice.cod), `${(invoice.parcelRefs || []).length} parcel(s)`)}
               ${moneyBox("Delivery charges", money(invoice.charges), "NovaX revenue")}
               ${moneyBox("Client payable", money(invoice.payable), "Amount due to client")}
               ${moneyBox("Invoice date", invoice.createdAt, invoice.paidAt ? `Paid ${invoice.paidAt}` : "Pending payment")}
@@ -9493,19 +9527,15 @@ html,body{ background:var(--bg); color:var(--ink); }
         const transitStarted = STATUS_TAGS.indexOf(p.status) >= STATUS_TAGS.indexOf("Parcel now in transit");
         return `
           <tr class="${alert.level === "critical" ? "alert-row critical" : alert.level === "warning" ? "alert-row" : ""}" onclick="if(!(window.getSelection()||{}).toString()) selectParcel('${nvEscAttrJs(p.awb)}')">
-            <td><strong>${p.awb}</strong><br><span class="footer-note">${escLabelText(p.updated)}</span></td>
-            <td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.phone || "phone pending")}</span></td>
-            <td class="addr-compact">${escLabelText(p.address || "Address pending")}</td>
-            <td>${escLabelText(p.city)}</td>
+            <td><strong>${p.awb}</strong><br><span class="footer-note">${escLabelText(p.updated)}</span><br><span class="footer-note">${escLabelText(p.weight || "0.8 kg")}</span></td>
+            <td><strong>${escLabelText(p.consignee)}</strong><br><span class="footer-note">${escLabelText(p.phone || "phone pending")}</span><div class="addr-compact footer-note">${escLabelText(p.address || "Address pending")}</div><span class="footer-note">${escLabelText(p.city)}</span></td>
             <td>
               <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>
               <div class="footer-note">${alert.label}</div>
             </td>
-            <td>${escLabelText(client.name)}<br><span class="footer-note">${shortClientCode(client)}</span></td>
-            <td>${parcelOrigin(p)}</td>
-            <td>${money(p.cod)}</td>
-            <td>${escLabelText(p.weight || "0.8 kg")}</td>
+            <td class="nv-money-cell"><strong>${money(p.cod)}</strong>${nvPaidPill(p)}</td>
             <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status === "Parcel now in transit" ? "transit clock" : "status clock"}</span></td>
+            <td>${escLabelText(client.name)}<br><span class="footer-note">${shortClientCode(client)}</span><br><span class="footer-note">${parcelOrigin(p)}</span></td>
             <td>
               ${process.scanned ? `<strong>${escLabelText(process.by)}</strong><br><span class="footer-note">${escLabelText(process.at)}</span><br>` : `<strong class="footer-note">Not yet scanned</strong><br>`}
               <span class="footer-note">${escLabelText(process.branch)} | ${transitStarted ? "transit timer active" : "pre-transit"}</span>
@@ -9519,7 +9549,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             </td>
           </tr>
         `;
-      }).join("") || `<tr><td colspan="12">No parcels match these filters.</td></tr>`;
+      }).join("") || `<tr><td colspan="8">No parcels match these filters.</td></tr>`;
 
       const reportRows = state.parcels.filter(p => {
         const client = clientById(p.clientId);
@@ -9766,10 +9796,10 @@ html,body{ background:var(--bg); color:var(--ink); }
 
       document.getElementById("adminClientRows").innerHTML = state.clients.filter(client => client.id !== "CL-0000").map(client => {
         const parcels = state.parcels.filter(p => p.clientId === client.id);
-        const cod = parcels.reduce((s, p) => s + p.cod, 0);
+        const cod = parcels.reduce((s, p) => s + Number(p.cod || 0), 0);
       const deliveredParcels = parcels.filter(isUnpaidDeliveredParcel);
-        const fees = deliveredParcels.reduce((s, p) => s + p.fee, 0);
-        const collected = deliveredParcels.reduce((s, p) => s + p.cod, 0);
+        const fees = deliveredParcels.reduce((s, p) => s + Number(p.fee || 0), 0);
+        const collected = deliveredParcels.reduce((s, p) => s + Number(p.cod || 0), 0);
         const payable = Math.max(0, collected - fees);
         const deliveryRate = percent(deliveredParcels.length, parcels.length || 1);
         const rc = normalizeRateCard(client.rateCard, client.rate);
@@ -9934,7 +9964,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           return `
             <div class="ops-card">
               <div class="ops-card-head"><strong>${invoice.id} | ${escLabelText(client.name)}</strong><span class="chip ${ui.chipClass}">${escLabelText(ui.chipLabel)}</span></div>
-              <p>${invType} \u00b7 ${invoice.parcelRefs.join(", ")}<br>${due > 0 && invoice.payable <= 0 ? `Amount due to NovaX ${money(due)}` : `Payable ${money(invoice.payable)}`} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
+              <p>${invType} \u00b7 ${(invoice.parcelRefs || []).join(", ")}<br>${due > 0 && invoice.payable <= 0 ? `Amount due to NovaX ${money(due)}` : `Payable ${money(invoice.payable)}`} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
               ${ui.primaryAction === "push" ? `<p class="footer-note" style="color:#0c7c59">Push To Client Wallet credits client balance.</p>` : ""}
               ${ui.primaryAction === "paidNovax" ? `<p class="footer-note" style="color:#0c7c59">Mark Paid To NovaX records money received by NovaX.</p>` : ""}
               <div class="inline-actions" style="margin-top:8px">
@@ -10081,7 +10111,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           <div class="log-item">
             <strong>${escLabelText(invoice.id)}<br>${escLabelText(client.name)}</strong>
             <div>
-              <strong>${invoice.parcelRefs.join(", ")}</strong>
+              <strong>${(invoice.parcelRefs || []).join(", ")}</strong>
               <div class="footer-note">${escLabelText(invoice.summary || "Delivered parcel invoice")} | Created ${escLabelText(invoice.createdAt || "now")}</div>
               ${ui.primaryAction === "push" ? `<div class="footer-note" style="color:#0c7c59;margin-top:4px">Push To Client Wallet credits this client's wallet balance.</div>` : ""}
               ${ui.primaryAction === "paidNovax" ? `<div class="footer-note" style="color:#0c7c59;margin-top:4px">Mark Paid To NovaX records money received by NovaX -- it never touches the client wallet.</div>` : ""}
@@ -10140,8 +10170,6 @@ html,body{ background:var(--bg); color:var(--ink); }
         </div>
       `).join("");
 
-      const userClientSelectEl = document.getElementById("userClientSelect");
-      if (userClientSelectEl) userClientSelectEl.innerHTML = state.clients.map(client => `<option value="${client.id}">${shortClientCode(client)} | ${escLabelText(client.name)}</option>`).join("");
       // NovaX fix: populate the new rider link picker on the Create Users form.
       const userRiderSelect = document.getElementById("userRiderSelect");
       if (userRiderSelect) {
@@ -10229,10 +10257,10 @@ html,body{ background:var(--bg); color:var(--ink); }
       const contentEl = document.getElementById("riderReportContent");
       if (!contentEl) return;
       const stats = state.riders.map(r => ({ r, s: riderReportStats(r.id) }));
-      const totalDelivered = stats.reduce((a, x) => a + x.s.delivered, 0);
-      const totalReturned = stats.reduce((a, x) => a + x.s.returned, 0);
-      const totalCash = stats.reduce((a, x) => a + x.s.cashHandled, 0);
-      const totalFuel = stats.reduce((a, x) => a + x.s.fuel, 0);
+      const totalDelivered = stats.reduce((a, x) => a + Number(x.s.delivered || 0), 0);
+      const totalReturned = stats.reduce((a, x) => a + Number(x.s.returned || 0), 0);
+      const totalCash = stats.reduce((a, x) => a + Number(x.s.cashHandled || 0), 0);
+      const totalFuel = stats.reduce((a, x) => a + Number(x.s.fuel || 0), 0);
       if (metricsEl) {
         metricsEl.innerHTML = [
           metricCard("Total Delivered", totalDelivered, Math.min(100, totalDelivered * 4), "all riders", "good"),
@@ -10542,7 +10570,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           const dueAmt = Number(invoice.dueToNovax || 0);
           return `<div class="ops-card ${inWallet ? "" : "alert-row"}">
             <div class="ops-card-head"><strong>${invoice.id} | ${escLabelText(client.name)}</strong><span class="chip ${inWallet ? "good" : "warn"}">${invoice.status}</span></div>
-            <p>${invoice.parcelRefs.join(", ")} | Payable ${money(invoice.payable)} | Charges ${money(invoice.charges)}${dueAmt > 0 ? ` | Due to NovaX ${money(dueAmt)}` : ""}</p>
+            <p>${(invoice.parcelRefs || []).join(", ")} | Payable ${money(invoice.payable)} | Charges ${money(invoice.charges)}${dueAmt > 0 ? ` | Due to NovaX ${money(dueAmt)}` : ""}</p>
             <div class="footer-note">${inWallet ? `Entered wallet at ${invoice.walletPushedAt || invoice.paidAt}` : (dueAmt > 0 ? "Delivery-charges invoice -- amount due to NovaX, never enters wallet." : "Visible invoice only. Not in wallet until pushed.")}</div>
           </div>`;
         }).join("") || `<div class="ops-card"><strong>No wallet invoices</strong><p>Push generated invoices into wallets to start payout flow.</p></div>`;
@@ -13605,7 +13633,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     function collectRiderCash() {
       const rider = riderById(document.getElementById("riderCashSelect").value);
       const parcels = state.parcels.filter(p => p.rider === rider.id && isDeliveredLedgerParcel(p) && !p.cashReceived);
-      const amount = parcels.reduce((sum, p) => sum + p.cod, 0);
+      const amount = parcels.reduce((sum, p) => sum + Number(p.cod || 0), 0);
       if (!parcels.length) {
         toast("No delivered COD parcels are pending cash collection for this rider.");
         return;
@@ -14849,8 +14877,6 @@ html,body{ background:var(--bg); color:var(--ink); }
           '<div class="metric"><label>Conversations</label><strong>' + fmt(NV_AIC.convs.length) + '</strong><div class="meter-caption">' + label + '</div></div>' +
           '<div class="metric"><label>Questions asked</label><strong>' + fmt(asked) + '</strong><div class="meter-caption">merchant messages</div></div>' +
           '<div class="metric"><label>Merchants using it</label><strong>' + fmt(Object.keys(merchants).length) + '</strong><div class="meter-caption">' + label + '</div></div>';
-        var badge = document.getElementById("nvAicBadge");
-        if (badge) { badge.textContent = NV_AIC.convs.length; badge.hidden = !NV_AIC.convs.length; }
       });
     }
 
@@ -15240,8 +15266,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       const host = document.getElementById("codBoardCities");
       if (!host) return;
       const { rows } = nvCodBoardData();
-      const total = rows.reduce((s, r) => s + r.cod, 0);
-      const totalParcels = rows.reduce((s, r) => s + r.parcels, 0);
+      const total = rows.reduce((s, r) => s + Number(r.cod || 0), 0);
+      const totalParcels = rows.reduce((s, r) => s + Number(r.parcels || 0), 0);
 
       host.innerHTML = rows.filter(r => NV_COD_CITIES.includes(r.city)).map(r => `
         <div class="metric">
@@ -15298,7 +15324,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!sel || !host) return;
       const { rows, undated } = nvCodBoardData();
 
-      const opts = [`<option value="__all__">All destinations (${rows.reduce((s, r) => s + r.parcels, 0)})</option>`]
+      const opts = [`<option value="__all__">All destinations (${rows.reduce((s, r) => s + Number(r.parcels || 0), 0)})</option>`]
         .concat(rows.filter(r => r.parcels > 0).map(r => `<option value="${escLabelText(r.city)}">${escLabelText(r.city)} (${r.parcels})</option>`));
       if (undated.length) opts.push(`<option value="__undated__">Not counted — no delivery time (${undated.length})</option>`);
       sel.innerHTML = opts.join("");
@@ -15320,7 +15346,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       }
 
       if (!items.length) { host.innerHTML = `<div class="footer-note">No parcels in this selection.</div>`; return; }
-      const total = items.reduce((s, i) => s + (i.prepaid ? 0 : i.cod), 0);
+      const total = items.reduce((s, i) => s + (i.prepaid ? 0 : Number(i.cod || 0)), 0);
       host.innerHTML = `
         <div class="table-wrap"><div class="wide-scroll">
           <table>
@@ -15366,8 +15392,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       const since = nvCodResetAt ? new Date(nvCodResetAt).toISOString() : "";
       const head = ["destination_city", "parcels_delivered", "cod_to_collect", "prepaid_parcels", "counting_since"];
       const body = rows.map(r => [r.city, r.parcels, r.cod, r.prepaid, since].map(adminBulkCsvEscape).join(","));
-      const total = rows.reduce((s, r) => s + r.cod, 0);
-      body.push(["TOTAL", rows.reduce((s, r) => s + r.parcels, 0), total, "", since].map(adminBulkCsvEscape).join(","));
+      const total = rows.reduce((s, r) => s + Number(r.cod || 0), 0);
+      body.push(["TOTAL", rows.reduce((s, r) => s + Number(r.parcels || 0), 0), total, "", since].map(adminBulkCsvEscape).join(","));
       const blob = new Blob([head.join(",") + "\n" + body.join("\n")], { type: "text/csv;charset=utf-8" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -15724,7 +15750,6 @@ html,body{ background:var(--bg); color:var(--ink); }
       saveState();
       renderAdmin();
     });
-    document.getElementById("walletWithdrawBtn")?.addEventListener("click", requestWalletWithdrawal);
     document.getElementById("createUserBtn").addEventListener("click", createUser);
     // NovaX fix (rider logins were never linked): reveal/hide the rider link
     // picker with Access Side, and set its initial state on load.
@@ -16737,7 +16762,8 @@ html,body{ background:var(--bg); color:var(--ink); }
         if (o){
           var id = o.getAttribute("data-nv-atkopen");
           NV_ATK.openId = (NV_ATK.openId === id) ? null : id;
-          if (NV_ATK.openId && !NV_ATK.replies[id]) nvAtkLoadReplies(id); else nvAtkRender();
+          nvAtkRender();
+          if (NV_ATK.openId) nvAtkLoadReplies(id);
           return;
         }
       });
@@ -16775,7 +16801,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       var TARGETS = ["invoiceClientSelect","walletClientSelect","nvTopupClientSelect","adminBulkClientId",
                      "excClientFilter","reconClientFilter","shopifyClientSelect",
                      "webClientSelect","orderReportClientFilter","adminOrderClientFilter",
-                     "userClientSelect","rateClientSelect","adminClientSelect"];
+                     "rateClientSelect","adminClientSelect"];
       var MIN_FOR_SEARCH = 8;   // below this a native select is genuinely faster
 
       function esc(v){
