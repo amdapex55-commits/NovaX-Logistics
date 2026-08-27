@@ -58,6 +58,396 @@
     // the underlying profiles.role via novax_role_hard_stop_v2_repair.sql.
     var __ADMIN_EMAIL_DENYLIST=["admin@novax.pk"];
     var __resolveGate; window.__novaxAuthGateReady=new Promise(function(res){ __resolveGate=res; });
+
+    /* ═══════════════════════════════════════════════════════════════════
+       DEMO PORTAL  —  client.html?demo=1
+       ───────────────────────────────────────────────────────────────────
+       Opens the real merchant portal, fully navigable, with sample data and
+       no account. It exists because the portal is the product: 339 of 374
+       parcels ever booked came through it, and until now nobody could see it
+       without signing up first.
+
+       THE DESIGN DECISION THAT MATTERS: there is no backend.
+
+       No session, no Supabase client, no endpoint. Every read is answered
+       from a fixture held in memory; every write is refused. A demo ACCOUNT
+       was considered and rejected -- it is a real authenticated session, so
+       any write path missed writes a real row, it needs a new RLS policy set
+       on the surface PROJECT_HISTORY 3.2 already lists as an open risk, and
+       it is an endpoint strangers can hammer from a public homepage link.
+
+       Here, writing is structurally impossible rather than merely blocked.
+
+       Everything below is inert unless ?demo= is in the URL, so a real
+       merchant session never touches a line of it.
+       ═══════════════════════════════════════════════════════════════════ */
+    var NV_DEMO = (function(){
+      try{ return new URLSearchParams(location.search).has("demo"); }
+      catch(e){ return location.search.indexOf("demo=") > -1; }
+    })();
+    window.__NOVAX_DEMO = NV_DEMO;
+
+    /* Fixtures are attached in phase 2; the shim reads whatever is here. */
+    window.__nvDemoData = window.__nvDemoData || {};
+
+    function nvDemoTables(){ return window.__nvDemoData.tables || {}; }
+    function nvDemoRpcs(){ return window.__nvDemoData.rpcs || {}; }
+
+    /* Fired whenever the visitor tries to change something. A blocked write
+       is the moment of intent, so it asks for the signup rather than saying
+       "disabled" -- see nvDemoPrompt(), attached in phase 3. */
+    function nvDemoBlocked(what){
+      try{ if(typeof window.nvDemoPrompt === "function") window.nvDemoPrompt(what); }catch(e){}
+      return { data:null, error:{ message:"__DEMO__", code:"DEMO_READONLY" } };
+    }
+
+    /* A thenable query builder covering exactly the chain this portal uses:
+       select/eq/in/is/not/gte/order/limit/single/maybeSingle. Anything not
+       modelled still resolves rather than throwing, because a demo that
+       breaks on an unmodelled filter is worse than one that shows a little
+       too much sample data. */
+    function nvDemoQuery(table){
+      var rows = (nvDemoTables()[table] || []).slice();
+      var one = false;
+      var api = {};
+      function pass(){ return api; }
+      api.select = pass; api.order = pass; api.limit = pass;
+      api.range = pass; api.or = pass; api.ilike = pass; api.lte = pass; api.lt = pass; api.gt = pass;
+      api.eq = function(col, val){
+        rows = rows.filter(function(r){ return String(r[col]) === String(val); }); return api; };
+      api.in = function(col, vals){
+        var set = (vals||[]).map(String);
+        rows = rows.filter(function(r){ return set.indexOf(String(r[col])) > -1; }); return api; };
+      api.is = function(col, val){
+        rows = rows.filter(function(r){ return val === null ? (r[col] == null) : (r[col] === val); }); return api; };
+      api.not = function(col, op, val){
+        rows = rows.filter(function(r){ return String(r[col]) !== String(val); }); return api; };
+      api.gte = function(col, val){
+        rows = rows.filter(function(r){ return String(r[col]) >= String(val); }); return api; };
+      api.single = function(){ one = true; return api; };
+      api.maybeSingle = function(){ one = true; return api; };
+      api.insert = function(){ return Promise.resolve(nvDemoBlocked("save")); };
+      api.update = function(){ return Promise.resolve(nvDemoBlocked("save")); };
+      api.upsert = function(){ return Promise.resolve(nvDemoBlocked("save")); };
+      api.delete = function(){ return Promise.resolve(nvDemoBlocked("delete")); };
+      api.then = function(res, rej){
+        return Promise.resolve({ data: one ? (rows[0] || null) : rows, error:null }).then(res, rej); };
+      api.catch = function(f){ return api.then(function(v){ return v; }).catch(f); };
+      return api;
+    }
+
+    function nvDemoClient(){
+      return {
+        __isDemo: true,
+        from: function(table){ return nvDemoQuery(table); },
+        rpc: function(name, args){
+          var map = nvDemoRpcs();
+          if (Object.prototype.hasOwnProperty.call(map, name)) {
+            var v = map[name];
+            return Promise.resolve({ data: (typeof v === "function" ? v(args) : v), error:null });
+          }
+          /* Anything that books, edits, pays, connects or sets is a write. */
+          if (/^(client_(book|edit|set|save|cancel|generate|request)|novax_ticket|ai_action|request_)/.test(name)) {
+            return Promise.resolve(nvDemoBlocked("save"));
+          }
+          return Promise.resolve({ data:null, error:null });
+        },
+        auth: {
+          getSession: function(){ return Promise.resolve({ data:{ session:null }, error:null }); },
+          getUser:    function(){ return Promise.resolve({ data:{ user:null }, error:null }); },
+          signOut:    function(){ return Promise.resolve({ error:null }); },
+          onAuthStateChange: function(){ return { data:{ subscription:{ unsubscribe:function(){} } } }; }
+        },
+        channel: function(){
+          var ch = {}; ch.on = function(){ return ch; }; ch.subscribe = function(){ return ch; };
+          ch.unsubscribe = function(){ return Promise.resolve(); }; return ch; },
+        removeChannel: function(){ return Promise.resolve(); },
+        getChannels: function(){ return []; }
+      };
+    }
+
+    /* ── The fixture ──────────────────────────────────────────────────
+       Rows are in DATABASE column shape, not the portal's JS shape, so the
+       real mappers, the real loaders and the real render paths all run
+       untouched. A demo that reimplements the portal proves nothing about
+       the portal.
+
+       The five parcels are chosen to walk the money loop end to end, which
+       is the thing a fifty-courier aggregator structurally cannot copy:
+       delivered and paid into the wallet, out for delivery, in transit, a
+       refusal handled honestly, and one waiting for pickup. Showing the
+       refusal is deliberate -- five green rows read as a mockup.
+
+       Every name, address and number here is invented. AWBs use an N9xxxxxx
+       block the live sequence does not reach, so a demo AWB can never be
+       confused for a real parcel. */
+    function nvDemoSeed(){
+      var now = Date.now(), H = 3600000, D = 24 * H;
+      function iso(ms){ return new Date(ms).toISOString(); }
+      var CID = "demo-client";
+      function parcel(o){
+        return { id:"demo-p-"+o.awb, awb:o.awb, client_id:CID, status:o.status,
+          consignee:o.consignee, phone:o.phone, city:"Karachi", address:o.address,
+          cod_amount:o.cod, fee:200, exception:o.exception||null,
+          booked_at:iso(now-o.age), updated_at:iso(now-o.upd),
+          invoice_id:o.invoice||null, invoiced_at:o.invoice?iso(now-6*H):null,
+          rider_id:o.rider||null, pricing_mode:null, distance_km:null,
+          quoted_fee:null, rate_version:null,
+          meta:{ weight:o.kg||"0.5 kg", service:"COD Standard", branch:"Karachi Hub",
+                 paymentMode:"COD", steps:o.steps||null, risk:0 } };
+      }
+      return {
+        tables: {
+          profiles: [{ id:"demo-user", client_id:CID, role:"client", status:"active" }],
+          clients: [{ id:CID, name:"Sana's Closet", code:"SC", phone:"0300-0000000",
+                      city:"Karachi", address:"Shop 14, Tariq Road, Karachi",
+                      wallet_balance:3450, rate:200, status:"Active",
+                      rate_card:{ A:{overnight:200, additionalKg:60}, B:{overnight:200, additionalKg:60} },
+                      meta:{ pickupCity:"Karachi" } }],
+          parcels: [
+            parcel({ awb:"N9000001", status:"Delivered", consignee:"Hina Raza",
+                     phone:"0300-0000001", address:"Flat 3B, Block 7, Gulshan-e-Iqbal, Karachi",
+                     cod:3450, age:5*D, upd:6*H, invoice:"demo-inv-1", rider:"demo-rider" }),
+            parcel({ awb:"N9000002", status:"Parcel out for delivery", consignee:"Bilal Ahmed",
+                     phone:"0300-0000002", address:"House 21, Phase 5, DHA, Karachi",
+                     cod:1899, age:2*D, upd:2*H, rider:"demo-rider", kg:"1 kg" }),
+            parcel({ awb:"N9000003", status:"Parcel now in transit", consignee:"Ayesha Siddiqui",
+                     phone:"0300-0000003", address:"Shop 8, Bahadurabad, Karachi",
+                     cod:2750, age:1*D, upd:5*H }),
+            parcel({ awb:"N9000004", status:"Refused", consignee:"Usman Tariq",
+                     phone:"0300-0000004", address:"House 44, North Nazimabad, Karachi",
+                     cod:1200, age:3*D, upd:20*H,
+                     exception:"Consignee refused at doorstep - asked to reattempt Saturday" }),
+            parcel({ awb:"N9000005", status:"New booked", consignee:"Maryam Khan",
+                     phone:"0300-0000005", address:"Flat 12, Clifton Block 2, Karachi",
+                     cod:4300, age:3*H, upd:3*H, kg:"1.5 kg" })
+          ],
+          invoices: [{ id:"demo-inv-1", code:"INV-DEMO001", client_id:CID,
+            parcel_refs:["N9000001"], cod_total:3450, fee_total:200, net_payable:3250,
+            due_to_novax:0, invoice_type:"COD Settlement", status:"Pushed to wallet",
+            created_at:iso(now-6*H), wallet_pushed_at:iso(now-5*H), meta:{} }],
+          wallet_ledger: [
+            { id:"demo-l-1", client_id:CID, entry_type:"invoice_credit", amount:3250,
+              affects_balance:true, status:"Credited", reference_type:"invoice",
+              reference_code:"INV-DEMO001", created_at:iso(now-5*H),
+              note:"Invoice INV-DEMO001 credited to wallet. Rs 3,250 now available to withdraw." },
+            { id:"demo-l-2", client_id:CID, entry_type:"admin_adjustment", amount:200,
+              affects_balance:true, status:"Credited", created_at:iso(now-4*D),
+              note:"Welcome credit" }
+          ],
+          withdrawals: [], payment_logs: [], pickup_requests: [],
+          store_connections: [], staff_users: [],
+          novax_tickets: [{ id:"demo-t-1", client_id:CID, code:"TKT-DEMO1",
+            subject:"Reattempt for N9000004", status:"resolved", priority:"normal",
+            awb:"N9000004", sla_hours:24, created_at:iso(now-22*H),
+            first_response_at:iso(now-21*H), updated_at:iso(now-20*H) }],
+          novax_ticket_replies: [
+            { id:"demo-r-1", ticket_id:"demo-t-1", by_side:"client", by_name:"Sana's Closet",
+              body:"Customer refused. Can we try again on Saturday?", created_at:iso(now-22*H) },
+            { id:"demo-r-2", ticket_id:"demo-t-1", by_side:"admin", by_name:"NovaX Support",
+              body:"Booked for Saturday and the rider will call before arriving. No extra charge for a reattempt.",
+              created_at:iso(now-21*H) }
+          ]
+        },
+        /* Read RPCs the portal calls to render. Writes are refused by the
+           shim's pattern match, so only the read side needs answers. */
+        rpcs: {
+          client_wallet_summary: [{ available_balance:3450, pending_payout:0,
+            paid_this_month:0, lifetime_withdrawn:0 }],
+          client_wallet_incoming: [{ delivered_uninvoiced:5849, parcels:2 }],
+          client_bank_details: [],
+          client_pickup_locations_list: [{ id:"demo-loc", label:"Shop 14, Tariq Road",
+            city:"Karachi", is_default:true }],
+          client_pricing_choice_state: { mode:"flat", locked:true },
+          client_review_prompt_state: { should_prompt:false },
+          client_shopify_status: [{ connected:false }],
+          client_get_notification_prefs: { whatsapp:true, email:true },
+          ai_quota_status: { used:3, cap:50, remaining:47 }
+        }
+      };
+    }
+
+    if (NV_DEMO) {
+      /* Installed BEFORE the gate reads window.__nvSb, so the gate never
+         constructs a real client and never reaches getSession(). */
+      window.__nvSb = nvDemoClient();
+      window.__nvGuardSb = window.__nvSb;
+      window.__nvDemoData = nvDemoSeed();
+      window.__novaxVerifiedProfile = { role:"client", status:"active", clientId:"demo-client" };
+      /* The data layer reuses the gate's session rather than re-fetching.
+         Handing it a demo session makes the real loader run end to end:
+         profiles -> client_id -> loadAll() -> the fixture. */
+      window.__novaxGateSession = { user:{ id:"demo-user", email:"demo@novaxlogistics.com",
+        user_metadata:{ role:"client", name:"Sana's Closet" } } };
+      /* Nothing is stale here -- the numbers are the numbers. Suppresses the
+         "Reconnecting, showing last known data" banner via its own API. */
+      window.__novaxRealDataArrived = true;
+      try{ var g=document.getElementById("nvAuthGate"); if(g) g.remove(); }catch(e){}
+      document.addEventListener("DOMContentLoaded", function(){
+        try{ var g2=document.getElementById("nvAuthGate"); if(g2) g2.remove(); }catch(e){}
+      });
+      nvDemoInstallUI();
+      __resolveGate("demo-client");
+      return;
+    }
+
+    /* ── Demo chrome: banner, blocked-write prompt, 25s invitation ────────
+       Motion discipline is inherited from the landing page: transform and
+       opacity only, so everything stays on the compositor and never triggers
+       layout. The audience is mid-range Android over patchy 4G, and a demo
+       that stutters sells the opposite of what it claims. Everything
+       collapses to its finished state under prefers-reduced-motion. */
+    function nvDemoInstallUI(){
+      var SIGNUP = "index.html?src=demo#signup";
+      var css = document.createElement("style");
+      css.textContent = [
+        "@keyframes nvdIn{from{opacity:0;transform:translateY(-100%)}to{opacity:1;transform:none}}",
+        "@keyframes nvdPop{0%{opacity:0;transform:translateY(22px) scale(.94)}",
+          "60%{opacity:1;transform:translateY(-4px) scale(1.012)}100%{opacity:1;transform:none}}",
+        "@keyframes nvdFade{from{opacity:0}to{opacity:1}}",
+        "@keyframes nvdPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}",
+        "@keyframes nvdSheen{0%{transform:translateX(-120%)}100%{transform:translateX(220%)}}",
+        "@keyframes nvdRise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}",
+        /* top banner */
+        ".nvd-bar{position:fixed;top:0;left:0;right:0;z-index:100000;display:flex;align-items:center;gap:10px;",
+          "padding:calc(8px + env(safe-area-inset-top)) 14px 8px;",
+          "background:linear-gradient(90deg,#0e2c1f,#123c2a 55%,#0e2c1f);color:#eaf7f0;",
+          "border-bottom:1px solid rgba(20,199,123,.38);font-size:12.5px;font-weight:600;",
+          "box-shadow:0 10px 30px -18px rgba(0,0,0,.9);animation:nvdIn .5s cubic-bezier(.2,.9,.25,1) both}",
+        ".nvd-dot{width:7px;height:7px;border-radius:50%;background:#14c77b;flex:0 0 auto;",
+          "box-shadow:0 0 0 0 rgba(20,199,123,.6);animation:nvdPulse 2.2s ease-in-out infinite}",
+        ".nvd-bar b{color:#fff;font-weight:750}",
+        ".nvd-bar .nvd-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+        ".nvd-cta{position:relative;overflow:hidden;flex:0 0 auto;background:linear-gradient(135deg,#14c77b,#0fa968);",
+          "color:#04140c;border:0;border-radius:999px;padding:7px 15px;font:inherit;font-weight:800;",
+          "font-size:12px;cursor:pointer;text-decoration:none;white-space:nowrap;",
+          "transition:transform .18s cubic-bezier(.2,.9,.25,1),filter .18s}",
+        ".nvd-cta:hover{transform:translateY(-1px);filter:brightness(1.07)}",
+        ".nvd-cta:active{transform:translateY(0) scale(.97)}",
+        ".nvd-cta::after{content:'';position:absolute;top:0;bottom:0;width:38%;",
+          "background:linear-gradient(90deg,transparent,rgba(255,255,255,.42),transparent);",
+          "animation:nvdSheen 3.6s ease-in-out infinite}",
+        ".nvd-exit{flex:0 0 auto;color:#9fd8bd;text-decoration:none;font-size:11.5px;font-weight:650;opacity:.9}",
+        ".nvd-exit:hover{opacity:1;text-decoration:underline}",
+        /* push the app down so nothing hides behind the bar */
+        "body.nvd-on{padding-top:calc(42px + env(safe-area-inset-top))}",
+        /* modal */
+        ".nvd-ov{position:fixed;inset:0;z-index:100001;display:none;align-items:center;justify-content:center;",
+          "padding:20px;background:rgba(3,10,7,.72);backdrop-filter:blur(4px);animation:nvdFade .28s ease both}",
+        ".nvd-ov.on{display:flex}",
+        ".nvd-card{width:100%;max-width:392px;background:linear-gradient(180deg,#10201a,#0b1712);",
+          "border:1px solid rgba(20,199,123,.34);border-radius:20px;padding:24px 22px 20px;color:#eaf7f0;",
+          "box-shadow:0 40px 110px -30px rgba(0,0,0,.95);animation:nvdPop .46s cubic-bezier(.2,.9,.25,1) both}",
+        ".nvd-card h3{margin:0 0 8px;font-size:19px;line-height:1.25;color:#fff;letter-spacing:-.01em}",
+        ".nvd-card p{margin:0 0 16px;font-size:13.5px;line-height:1.6;color:#a9c7ba}",
+        ".nvd-card .nvd-b{animation:nvdRise .4s cubic-bezier(.2,.9,.25,1) both}",
+        ".nvd-card .nvd-b:nth-child(2){animation-delay:.06s}",
+        ".nvd-card .nvd-b:nth-child(3){animation-delay:.12s}",
+        ".nvd-list{margin:0 0 18px;padding:0;list-style:none;display:grid;gap:9px}",
+        ".nvd-list li{display:grid;grid-template-columns:18px 1fr;gap:9px;font-size:13px;color:#c8e2d6;",
+          "animation:nvdRise .42s cubic-bezier(.2,.9,.25,1) both}",
+        ".nvd-list li:nth-child(1){animation-delay:.10s}.nvd-list li:nth-child(2){animation-delay:.17s}",
+        ".nvd-list li:nth-child(3){animation-delay:.24s}",
+        ".nvd-list li::before{content:'✓';color:#14c77b;font-weight:800}",
+        ".nvd-go{display:block;width:100%;text-align:center;background:linear-gradient(135deg,#14c77b,#0fa968);",
+          "color:#04140c;border:0;border-radius:13px;padding:14px;font:inherit;font-weight:800;font-size:15px;",
+          "cursor:pointer;text-decoration:none;position:relative;overflow:hidden;",
+          "transition:transform .18s cubic-bezier(.2,.9,.25,1),filter .18s}",
+        ".nvd-go:hover{transform:translateY(-1px);filter:brightness(1.07)}.nvd-go:active{transform:none}",
+        ".nvd-go::after{content:'';position:absolute;top:0;bottom:0;width:34%;",
+          "background:linear-gradient(90deg,transparent,rgba(255,255,255,.4),transparent);",
+          "animation:nvdSheen 3.2s ease-in-out infinite}",
+        ".nvd-later{display:block;width:100%;margin-top:10px;background:none;border:0;color:#8fb3a3;",
+          "font:inherit;font-size:12.5px;cursor:pointer;padding:8px}",
+        ".nvd-later:hover{color:#cfe8dd}",
+        "@media (max-width:700px){.nvd-bar{font-size:11.5px;gap:8px;padding-left:11px;padding-right:11px}",
+          ".nvd-bar .nvd-exit{display:none}.nvd-cta{padding:7px 13px}",
+          /* The long sentence ellipsises at 375px and reads as broken. Swap
+             in a short version rather than letting it trail off. */
+          ".nvd-txt-long{display:none}.nvd-txt-short{display:inline}",
+          /* Body already clears the bottom nav (58px) but not the Autopilot
+             FAB above it, so the FAB sits on top of card actions -- audit
+             finding 18. Scoped to the demo: this is the surface prospects
+             judge, and widening it to every merchant is a separate change. */
+          "body.nvd-on{padding-bottom:calc(126px + env(safe-area-inset-bottom))}}",
+        "@media (prefers-reduced-motion:reduce){.nvd-bar,.nvd-card,.nvd-list li,.nvd-card .nvd-b{animation:none!important}",
+          ".nvd-dot,.nvd-cta::after,.nvd-go::after{animation:none!important}",
+          ".nvd-cta,.nvd-go{transition:none!important}}"
+      ].join("");
+      document.head.appendChild(css);
+
+      function build(){
+        document.body.classList.add("nvd-on");
+
+        var bar = document.createElement("div");
+        bar.className = "nvd-bar";
+        bar.innerHTML =
+          '<span class="nvd-dot" aria-hidden="true"></span>' +
+          '<span class="nvd-txt">' +
+            '<span class="nvd-txt-long">You are exploring a <b>live demo</b> with sample parcels. Nothing here is real.</span>' +
+            '<span class="nvd-txt-short" style="display:none"><b>Live demo</b> · sample data</span>' +
+          '</span>' +
+          '<a class="nvd-cta" href="' + SIGNUP + '">Start shipping free</a>' +
+          '<a class="nvd-exit" href="index.html">Exit demo</a>';
+        document.body.appendChild(bar);
+
+        var ov = document.createElement("div");
+        ov.className = "nvd-ov"; ov.id = "nvdOverlay";
+        ov.setAttribute("role","dialog"); ov.setAttribute("aria-modal","true");
+        ov.innerHTML =
+          '<div class="nvd-card">' +
+            '<h3 class="nvd-b" id="nvdTitle">This is the portal you get.</h3>' +
+            '<p class="nvd-b" id="nvdBody">Everything you just used is what a NovaX merchant sees on day one — with their own parcels in it.</p>' +
+            '<ul class="nvd-list">' +
+              '<li>Your COD in a wallet you can reconcile to the rupee</li>' +
+              '<li>Real status on every parcel, not a scraped feed</li>' +
+              '<li>An assistant that answers from your own data</li>' +
+            '</ul>' +
+            '<a class="nvd-go" href="' + SIGNUP + '">Sign up as a NovaX merchant</a>' +
+            '<button class="nvd-later" type="button" id="nvdLater">Keep looking around</button>' +
+          '</div>';
+        document.body.appendChild(ov);
+
+        function close(){ ov.classList.remove("on"); }
+        ov.addEventListener("click", function(e){ if(e.target === ov) close(); });
+        document.getElementById("nvdLater").addEventListener("click", close);
+        document.addEventListener("keydown", function(e){ if(e.key === "Escape") close(); });
+
+        /* Shown once, 25s in -- long enough to have actually looked around,
+           early enough to catch them while still interested. Dismissing is
+           final: a demo that nags is a demo people close. */
+        var invited = false;
+        window.__nvDemoInvite = function(title, body){
+          if (invited) return; invited = true;
+          if (title) document.getElementById("nvdTitle").textContent = title;
+          if (body)  document.getElementById("nvdBody").textContent  = body;
+          ov.classList.add("on");
+        };
+        setTimeout(function(){ window.__nvDemoInvite(); }, 25000);
+
+        /* A blocked write is the moment of intent, so it asks rather than
+           saying "disabled". If the invitation has already been used, fall
+           back to a toast so the action still explains itself. */
+        window.nvDemoPrompt = function(what){
+          var verb = what === "delete" ? "remove this" : "do that";
+          if (!invited) {
+            window.__nvDemoInvite(
+              "Create your account to " + verb + ".",
+              "The demo is read-only so nobody can change the sample data. Your own workspace is free and takes about a minute.");
+            return;
+          }
+          try{ if(typeof toast === "function"){
+            toast("Demo mode — create your free account to " + verb + "."); return; } }catch(e){}
+          ov.classList.add("on");
+        };
+      }
+
+      if (document.readyState === "loading")
+        document.addEventListener("DOMContentLoaded", build);
+      else build();
+    }
+
+
     function clearLocalSession(){ try{ localStorage.removeItem("novaxSession"); }catch(e){} }
     function redirectAway(url){ clearLocalSession(); window.location.replace(url); }
     var __gsb=null;
@@ -8957,7 +9347,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   // cache only) to decide whether to show the portal.
   function apply(){
     if(!window.__novaxVerifiedProfile||window.__novaxVerifiedProfile.role!=="client") return;
-    var kill=document.querySelectorAll(".auth-btn, a[href*='#signin'], a[href*='#signup']");
+    /* The demo portal's own CTAs are deliberately signup links shown to a
+       visitor who is NOT a merchant, so they are exempt -- without this the
+       one button the demo exists to surface is hidden by the logged-in
+       chrome cleanup. */
+    var kill=document.querySelectorAll(
+      ".auth-btn:not(.nvd-cta):not(.nvd-go), a[href*='#signin']:not(.nvd-cta):not(.nvd-go), a[href*='#signup']:not(.nvd-cta):not(.nvd-go)");
     Array.prototype.forEach.call(kill,function(el){ el.style.display="none"; });
     var actions=document.querySelector(".auth-actions");
     var reused=null;
