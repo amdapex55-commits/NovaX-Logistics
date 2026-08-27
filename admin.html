@@ -7564,23 +7564,53 @@ html,body{ background:var(--bg); color:var(--ink); }
       document.getElementById("npeFee").value = Number(p.fee || 0);
       document.getElementById("npeWeight").value = p.weight || "";
       document.getElementById("npeNote").value = "";
+      /* THREE STATES, not two.
+
+         invoiced   nothing is editable. The fee has been netted into that
+                    invoice and, since sql_novax_invoice_wallet_truth.sql,
+                    into the merchant's wallet -- changing it here would
+                    desync money that is already settled. This case used to
+                    be missed entirely: Save stayed live and ops got a raw
+                    RPC rejection, the same defect that was fixed for status.
+         delivered  the DELIVERY FEE only. Charges get disputed and mis-rated
+                    after delivery; the rest are facts about a delivery that
+                    already happened.
+         otherwise  everything, as before. */
+      var npeInvoiced = !!p.invoiceId;
+      var npeEndState = (p.status === "Delivered" || p.status === "Return to shipper");
+      var npeFeeOnly  = npeEndState && !npeInvoiced;
+
       var warn = document.getElementById("npeWarn");
       if (warn) {
-        var frozen = (p.status === "Delivered" || p.status === "Return to shipper");
-        warn.textContent = frozen
-          ? ("This parcel is " + p.status + " and can no longer be edited.")
-          : ("Current status: " + p.status + ". Changes are logged against your account.");
-        warn.style.color = frozen ? "#e0604b" : "";
+        warn.textContent = npeInvoiced
+          ? ("This parcel is on invoice " + (p.invoiceId || "") + " and is locked. Correct the invoice instead.")
+          : npeFeeOnly
+            ? ("This parcel is " + p.status + ". You can correct the delivery fee only \u2014 everything else is locked.")
+            : ("Current status: " + p.status + ". Changes are logged against your account.");
+        warn.style.color = npeInvoiced ? "#e0604b" : (npeFeeOnly ? "#e8c97a" : "");
       }
+
+      /* Lock the fields the server will refuse, so the form cannot ask for
+         something that is going to come back as an error. */
+      ["npeConsignee","npePhone","npeAddress","npeCity","npeCod","npeWeight"].forEach(function(id){
+        var el = document.getElementById(id);
+        if (el) { el.disabled = npeInvoiced || npeFeeOnly; }
+      });
+      var feeEl = document.getElementById("npeFee");
+      if (feeEl) feeEl.disabled = npeInvoiced;
+
       /* The warning used to say the parcel could no longer be edited while
          leaving Save fully clickable, so ops pressed it and got a raw RPC
          rejection. Match the button to the sentence. */
-      var frozenNow = (p.status === "Delivered" || p.status === "Return to shipper");
       var saveBtn = document.getElementById("npeSave");
       if (saveBtn) {
-        saveBtn.disabled = frozenNow;
-        saveBtn.textContent = frozenNow ? "Locked — parcel is " + p.status : "Save Changes";
-        saveBtn.title = frozenNow ? "Settled parcels cannot be edited." : "";
+        saveBtn.disabled = npeInvoiced;
+        saveBtn.textContent = npeInvoiced
+          ? "Locked \u2014 on an invoice"
+          : (npeFeeOnly ? "Save delivery fee" : "Save Changes");
+        saveBtn.title = npeInvoiced
+          ? "Invoiced parcels cannot be edited. Correct the invoice instead."
+          : "";
       }
       nvNpeCheckCity();
       host.classList.add("show");
@@ -8639,6 +8669,18 @@ html,body{ background:var(--bg); color:var(--ink); }
        ops staff read to decide payouts. Non-finite input now formats as Rs 0,
        which is exactly what money(null) already did, so nothing that formats
        correctly today changes. */
+    /* Thousands separator for counts. This lived as a `var fmt` inside the
+       Admin AI Assistant IIFE near the bottom of the file, while five call
+       sites OUTSIDE that closure used it as if it were global -- so the AI
+       Conversations metrics, the pricing hint and the pricing-insight panel
+       all threw "fmt is not defined" the moment they rendered. It was still
+       throwing on novaxlogistics.com today.
+
+       Declared here as a hoisted function, deliberately: a const or let at
+       top level is exactly the TDZ trap that seeded `undefined` as a
+       merchant's rate twice before (PROJECT_HISTORY 3.4). */
+    function fmt(n) { return Number(n || 0).toLocaleString('en-US'); }
+
     function money(value) {
       const n = Number(value);
       return PKR.format(Number.isFinite(n) ? n : 0).replace("PKR", "Rs");
@@ -16970,7 +17012,6 @@ html,body{ background:var(--bg); color:var(--ink); }
       try{
         if(window.__novaxAiLoaded) return; window.__novaxAiLoaded=true;
         var esc=function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
-        var fmt=function(n){ return Number(n||0).toLocaleString('en-US'); };
         function invLine(iv){ return 'Invoice <b>'+esc(iv.id)+'</b> - status <b>'+esc(iv.status)+'</b><br>Payable <b>Rs '+fmt(iv.payable)+'</b> (COD Rs '+fmt(iv.cod)+' - charges Rs '+fmt(iv.charges)+') · '+((iv.parcelRefs||[]).length)+' parcel(s)'; }
         function pLine(p){ return '<b>'+esc(p.awb)+'</b> - <b>'+esc(p.status)+'</b><br>'+esc(p.consignee||'')+(p.city?' · '+esc(p.city):'')+(p.branch?' · '+esc(p.branch):'')+((p.rider||p.riderId)?' · rider '+esc(p.rider||p.riderId):'')+(p.updated?' · updated '+esc(p.updated):'')+(p.exception?'<br>⚠️ '+esc(p.exception):''); }
         function engine(raw){
