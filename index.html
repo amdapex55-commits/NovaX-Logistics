@@ -943,6 +943,23 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
      the last item is never cut off by browser chrome. */
   .nav-links.open{background:#04100b!important;
     max-height:calc(100svh - 96px);overscroll-behavior:contain}
+  /* Six hover effects were removed for touch and nothing was put back, so the
+     page had no response to a finger anywhere. These are the cheap
+     replacements: the press IS the feedback. transform only, no repaint. */
+  .card,.tier,.btn,.ai2-card,.pd-nav,.tres,.guar,.plat,details summary{
+    transition:transform .12s cubic-bezier(.2,.9,.3,1)}
+  .card:active,.tier:active,.btn:active,.ai2-card:active,.pd-nav:active,
+  .tres:active,.guar:active,.plat:active,details summary:active{
+    transform:scale(.978)}
+  /* The scroll rail is desktop-only (#rail is display:none under 1150px), so
+     20 screens of mobile scroll had no sense of position. A 3px bar under the
+     header costs one scaleX per frame. */
+  #mrail{position:fixed;top:calc(64px + var(--sa-t,0px));left:0;right:0;height:3px;
+    z-index:899;pointer-events:none;background:rgba(126,224,175,.10)}
+  #mrail i{display:block;height:100%;transform-origin:0 50%;transform:scaleX(0);
+    background:linear-gradient(90deg,var(--green-2),var(--green));will-change:transform}
+  @media (prefers-reduced-motion:reduce){.card,.tier,.btn,.ai2-card,.pd-nav,
+    .tres,.guar,.plat,details summary{transition:none}}
   /* 11 tap targets sat under 40px -- the footer and nav links were 27px tall,
      which is roughly half a fingertip. And 150 text nodes rendered below 12px,
      41 of them at exactly 11px, on the screen furthest from the reader's eye.
@@ -1021,7 +1038,27 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   .ai2-demo{grid-template-columns:1fr;gap:20px}
 }
 @media(max-width:560px){
-  .ai2-proof{grid-template-columns:1fr}
+  /* Autopilot was 4.5 screens on a phone -- 2,955px, against 1,626px on
+     desktop -- because four stat cards stacked one per screen. One fact per
+     screen is not reading, it is scrolling.
+
+     Carousel instead of stack: cards sit at 82% width so the next one always
+     peeks past the edge, which teaches "swipe me" without a tutorial, and
+     x-mandatory snapping makes each swipe land on a card. Scrolling a flex
+     row costs the compositor nothing. */
+  .ai2-proof{display:flex;grid-template-columns:none;gap:12px;
+    overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;
+    margin-inline:calc(var(--pad,20px) * -1);
+    padding-inline:var(--pad,20px);padding-bottom:6px;
+    overscroll-behavior-x:contain}
+  .ai2-proof::-webkit-scrollbar{display:none}
+  .ai2-proof > *{flex:0 0 82%;scroll-snap-align:center;min-width:0}
+  .ai2-vs{display:flex;grid-template-columns:none;gap:12px;
+    overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;
+    margin-inline:calc(var(--pad,20px) * -1);
+    padding-inline:var(--pad,20px);overscroll-behavior-x:contain}
+  .ai2-vs::-webkit-scrollbar{display:none}
+  .ai2-vs > *{flex:0 0 86%;scroll-snap-align:center;min-width:0}
   .ai2-cred{flex-wrap:wrap;border-radius:var(--r)}
   .ai2-cred i{border-left:0;padding-left:0;flex:1 1 100%}
   /* The tool receipt is a single-line pill on desktop. On a 375px screen the
@@ -3659,6 +3696,51 @@ frame();
   }, 12000);
 })();
 
+</script>
+<script>
+/* Mobile-only additions. Everything here is inert above 1150px, where the
+   desktop rail and hover effects already do the job. */
+(function(){
+  var touch = false;
+  try{ touch = matchMedia("(hover:none)").matches || innerWidth <= 1150; }catch(e){}
+  if(!touch) return;
+
+  /* ---- scroll progress rail --------------------------------------------
+     #rail is display:none under 1150px, so mobile had no sense of position
+     across 20 screens of content. One transform per frame, rAF-throttled. */
+  var rail = document.createElement("div");
+  rail.id = "mrail"; rail.setAttribute("aria-hidden","true");
+  rail.innerHTML = "<i></i>";
+  document.body.appendChild(rail);
+  var fill = rail.firstChild, ticking = false;
+  function paintRail(){
+    ticking = false;
+    var h = document.documentElement.scrollHeight - innerHeight;
+    var p = h > 0 ? Math.min(1, Math.max(0, scrollY / h)) : 0;
+    fill.style.transform = "scaleX(" + p.toFixed(4) + ")";
+  }
+  addEventListener("scroll", function(){
+    if(!ticking){ ticking = true; requestAnimationFrame(paintRail); }
+  }, {passive:true});
+  addEventListener("resize", paintRail, {passive:true});
+  paintRail();
+
+  /* ---- pause the offscreen marquee -------------------------------------
+     .wl-track already has an observer pausing it. .mq-track did not: a 34s
+     loop ran forever whether or not the strip was on screen, waking the
+     compositor the entire time the page is open. */
+  if("IntersectionObserver" in window){
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        en.target.style.animationPlayState = en.isIntersecting ? "running" : "paused";
+      });
+    }, {rootMargin:"120px 0px"});
+    document.querySelectorAll(".mq-track").forEach(function(el){
+      el.style.animationPlayState = "paused";
+      io.observe(el);
+    });
+  }
+})();
 </script>
 </body>
 </html>
