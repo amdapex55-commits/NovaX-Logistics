@@ -942,7 +942,13 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
      straight through the menu. Opaque, and capped to the small viewport so
      the last item is never cut off by browser chrome. */
   .nav-links.open{background:#04100b!important;
-    max-height:calc(100svh - 96px);overscroll-behavior:contain}
+    max-height:calc(100svh - 96px);overscroll-behavior:contain;
+    /* The menu scrolls when it runs out of room, and a hard cut at the bottom
+       looks like the end of the list. A fade says there is more below. */
+    -webkit-mask-image:linear-gradient(180deg,#000 0,#000 86%,transparent 100%);
+    mask-image:linear-gradient(180deg,#000 0,#000 86%,transparent 100%)}
+  /* No fade once you have reached the bottom, or the last item stays dimmed. */
+  .nav-links.open.at-end{-webkit-mask-image:none;mask-image:none}
   /* Six hover effects were removed for touch and nothing was put back, so the
      page had no response to a finger anywhere. These are the cheap
      replacements: the press IS the feedback. transform only, no repaint. */
@@ -958,6 +964,15 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
     z-index:899;pointer-events:none;background:rgba(126,224,175,.10)}
   #mrail i{display:block;height:100%;transform-origin:0 50%;transform:scaleX(0);
     background:linear-gradient(90deg,var(--green-2),var(--green));will-change:transform}
+  /* The spotlight-follow at index.html:2401 was a mousemove effect, so touch
+     got nothing. A ripple at the point of contact is the same idea driven by
+     the only pointer a phone has. transform+opacity, self-removing. */
+  .rip{position:fixed;left:0;top:0;width:14px;height:14px;border-radius:50%;
+    pointer-events:none;z-index:1000;margin:-7px 0 0 -7px;
+    background:radial-gradient(circle,rgba(126,224,175,.55),rgba(126,224,175,0) 70%);
+    animation:ripGo .55s cubic-bezier(.2,.7,.3,1) forwards}
+  @keyframes ripGo{from{transform:scale(.4);opacity:.9}to{transform:scale(9);opacity:0}}
+  @media (prefers-reduced-motion:reduce){.rip{display:none}}
   @media (prefers-reduced-motion:reduce){.card,.tier,.btn,.ai2-card,.pd-nav,
     .tres,.guar,.plat,details summary{transition:none}}
   /* 11 tap targets sat under 40px -- the footer and nav links were 27px tall,
@@ -3738,6 +3753,51 @@ frame();
     document.querySelectorAll(".mq-track").forEach(function(el){
       el.style.animationPlayState = "paused";
       io.observe(el);
+    });
+  }
+
+  /* ---- tap ripple -------------------------------------------------------
+     The spotlight-follow was a mousemove effect, so a phone got nothing at
+     all. Same intent, driven by the only pointer a phone has. */
+  addEventListener("pointerdown", function(e){
+    if(e.pointerType === "mouse") return;
+    var t = e.target;
+    if(t.closest && t.closest("input,textarea,select,#mrail")) return;
+    var d = document.createElement("span");
+    d.className = "rip";
+    d.style.left = e.clientX + "px";
+    d.style.top  = e.clientY + "px";
+    document.body.appendChild(d);
+    setTimeout(function(){ d.remove(); }, 600);
+  }, {passive:true});
+
+  /* ---- the open menu's bottom fade lifts once you reach the end --------- */
+  var menu = document.querySelector(".nav-links");
+  if(menu){
+    menu.addEventListener("scroll", function(){
+      var end = menu.scrollTop + menu.clientHeight >= menu.scrollHeight - 4;
+      menu.classList.toggle("at-end", end);
+    }, {passive:true});
+  }
+
+  /* ---- make the portal demo tappable ------------------------------------
+     .pd-cur is correctly hidden on touch, which left the demo playing itself
+     at you with no narrator. The tabs now respond: tapping one selects it and
+     drives the same booking sheet the scripted cursor was driving, so the
+     demo becomes something you operate instead of something you watch. */
+  var pd = document.querySelector(".pd");
+  if(pd){
+    var sheet = pd.querySelector(".pd-sheet") || pd.querySelector("[class*='sheet']");
+    pd.addEventListener("click", function(e){
+      var nav = e.target.closest && e.target.closest(".pd-nav");
+      if(!nav) return;
+      pd.querySelectorAll(".pd-nav").forEach(function(n){ n.classList.remove("sel"); });
+      nav.classList.add("sel");
+      if(sheet){
+        var k = nav.getAttribute("data-nav");
+        sheet.classList.toggle("up", k === "book");
+      }
+      nav.scrollIntoView({block:"nearest", inline:"center", behavior:"smooth"});
     });
   }
 })();
