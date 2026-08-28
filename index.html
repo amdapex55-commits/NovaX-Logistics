@@ -1540,10 +1540,14 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
    enough to leave the box. */
 @media (pointer:coarse){
   .wd{animation-name:wdInSoft;animation-duration:.42s}
-  .swap i{animation:swapUpSoft .34s cubic-bezier(.2,.9,.2,1)}
+  .swap i{animation:swapFade .32s ease-out}
 }
 @keyframes wdInSoft{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@keyframes swapUpSoft{from{opacity:0;transform:translateY(38%)}to{opacity:1;transform:none}}
+/* Crossfade, not a slide. .swap is exactly one line tall with overflow:hidden,
+   so ANY downward travel clips the glyphs on the way in -- measured at 7.1px
+   of the word sitting below its own box mid-flight, which is the "text looks
+   cut in half" the hero was being blamed for. Opacity cannot clip. */
+@keyframes swapFade{from{opacity:0}to{opacity:1}}
 
 /* The swap box is one line tall and the word is absolutely free to be longer
    than the line, so a wrap pushed the second half below the baseline where it
