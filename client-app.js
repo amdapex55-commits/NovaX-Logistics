@@ -9977,31 +9977,48 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   nudge.setAttribute("role","status");
   document.body.appendChild(nudge);
   var NV_NUDGE_SEEN={};
+  /* Short enough to read at a glance. These sit in a small bubble tethered
+     to the launcher for about two seconds -- a sentence does not fit and,
+     on a phone, a long one wrapped to three lines and read as a stuck card
+     floating on its own with no visible relationship to the button. */
   var NV_TAB_NUDGE={
-    dashboard:["Want the quick read on what needs you today?","What needs my attention?"],
-    newBooking:["Got the order on WhatsApp? Paste it and I'll fill this form.","__paste"],
-    wallet:["Want me to explain when your COD lands?","COD kab milega?"],
-    awbLabel:["Shall I check which parcels still need labels?","which parcels still need AWB labels printed?"],
-    payments:["Want me to break down your latest invoice?","explain my latest invoice"],
-    support:["I can look up any parcel issue for you.","which of my parcels have problems right now?"],
-    tickets:["Open a ticket and a person replies in the same thread.","how do I open a support ticket?"],
-    integrations:["Want a hand connecting your store?","how do I connect my Shopify store?"]
+    dashboard:["See what needs you today?","What needs my attention?"],
+    newBooking:["Paste a WhatsApp order \u2014 I'll fill this in.","__paste"],
+    wallet:["When does your COD land?","COD kab milega?"],
+    awbLabel:["Which parcels need labels?","which parcels still need AWB labels printed?"],
+    payments:["Explain your latest invoice?","explain my latest invoice"],
+    support:["Look up a parcel issue?","which of my parcels have problems right now?"],
+    tickets:["Open a support ticket?","how do I open a support ticket?"],
+    integrations:["Connect your store?","how do I connect my Shopify store?"]
   };
-  function nvHideNudge(){ nudge.classList.remove("show"); }
+  /* Timers are held so a second call can cancel the first. Without this a
+     pending hide from an earlier tab could fire against a newly shown bubble
+     -- or worse, never fire -- which is how it ended up stuck on screen. */
+  var NV_NUDGE_T1=null, NV_NUDGE_T2=null;
+  function nvHideNudge(){
+    clearTimeout(NV_NUDGE_T1); clearTimeout(NV_NUDGE_T2);
+    NV_NUDGE_T1=NV_NUDGE_T2=null;
+    nudge.classList.remove("show");
+  }
   function nvMaybeNudge(){
     try{
       if(panel.classList.contains("open")) return;
       var tab=nvCurrentTab(), cfg=NV_TAB_NUDGE[tab];
       if(!cfg || NV_NUDGE_SEEN[tab]) return;
       NV_NUDGE_SEEN[tab]=true;
+      nvHideNudge();
       nudge.textContent=cfg[0];
       var r=btn.getBoundingClientRect();
-      if(window.innerWidth<760){ nudge.style.left="12px"; nudge.style.right="12px"; nudge.style.width="auto"; }
-      else{
-        nudge.style.width="";
-        nudge.style.right=Math.max(12,window.innerWidth-r.right)+"px";
-        nudge.style.left="auto";
-      }
+      /* Tethered to the launcher at EVERY width. It used to stretch
+         left:12px/right:12px under 760px, which turned it into a full-width
+         card floating with no visible relationship to the button that owns
+         it -- the launcher in one corner, its own speech bubble somewhere
+         else entirely. Right-aligning to the button's edge keeps the two
+         reading as one object. */
+      nudge.style.left="auto";
+      nudge.style.width="";
+      nudge.style.right=Math.max(10,window.innerWidth-r.right)+"px";
+      nudge.style.maxWidth="min(238px, calc(100vw - 28px))";
       nudge.style.bottom=(window.innerHeight-r.top+10)+"px";
       nudge.onclick=function(){
         nvHideNudge();
@@ -10009,11 +10026,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(cfg[1]==="__paste"){ handleAction({ kind:"local", type:"paste_whatsapp_order" }); }
         else send(cfg[1]);
       };
-      setTimeout(function(){ nudge.classList.add("show"); },600);
-      setTimeout(nvHideNudge,11000);
+      /* Two seconds on screen, not eleven. It is a hint, not a message: long
+         enough to read six words, short enough that it is gone before it can
+         be in the way. */
+      NV_NUDGE_T1=setTimeout(function(){ nudge.classList.add("show"); },350);
+      NV_NUDGE_T2=setTimeout(nvHideNudge,2350);
     }catch(e){}
   }
   btn.addEventListener("click",nvHideNudge);
+  /* Anything that moves the launcher or the page invalidates its position,
+     so dismiss rather than leave it hanging in the wrong place. */
+  window.addEventListener("scroll",nvHideNudge,{passive:true});
+  window.addEventListener("resize",nvHideNudge,{passive:true});
   setTimeout(nvMaybeNudge,3500);
 
   var input=document.getElementById("nvautoInput");
