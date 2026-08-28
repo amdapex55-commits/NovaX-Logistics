@@ -334,43 +334,67 @@
         chip: function(t, cls){ return '<span class="nvob-chip '+(cls||'')+'">'+t+'</span>'; }
       };
       return [
-        { t:"Your workspace is live",
+        { t:"Your workspace is live", nav:"dashboard",
           b:"No approval queue, no waiting. You can book a parcel right now and we will collect it.",
           v: m.big("Wallet", "Rs 0", "nothing owed, nothing owing") +
              m.rows([["Account","Active","ok"],["Setup fee","None","ok"],["Contract","None","ok"]]) },
-        { t:"Book your first parcel",
+        { t:"Book your first parcel", nav:"newBooking",
           b:"Consignee, address, COD amount. That is the whole form — we generate the tracking number for you.",
           v: m.form([["Consignee","Hina Raza"],["City","Karachi"],["Address","Flat 3B, Gulshan-e-Iqbal"],["COD","Rs 3,450"]]) },
-        { t:"Got the order on WhatsApp?",
+        { t:"Got the order on WhatsApp?", nav:"newBooking",
           b:"Paste the message and Autopilot fills the form for you. No retyping an address off a phone screen.",
           v: '<div class="nvob-paste">"Hina Raza, Flat 3B Gulshan-e-Iqbal Karachi, 0300‑…, COD 3450"</div>' +
              '<div class="nvob-arrow">↓</div>' + m.form([["Consignee","Hina Raza ✓"],["COD","Rs 3,450 ✓"]]) },
-        { t:"Print the label",
+        { t:"Print the label", nav:"more",
           b:"Every parcel gets an AWB. Print it, stick it on the box, hand it to the rider.",
           v: '<div class="nvob-awb"><b>N9000001</b><div class="nvob-bars"></div><small>Karachi · COD Rs 3,450</small></div>' },
-        { t:"Follow every parcel",
+        { t:"Follow every parcel", nav:"dashboard",
           b:"Real status from our own riders — not a feed scraped from someone else's system.",
           v: m.rows([["Collected","✓","ok"],["In transit","✓","ok"],["Out for delivery","now","live"],["Delivered","—",""]]) },
-        { t:"What needs me",
+        { t:"What needs me", nav:"dashboard",
           b:"Refusals and stuck parcels are surfaced before they turn into an angry customer message.",
           v: '<div class="nvob-alert"><b>N9000004</b> · Refused<span>Consignee asked to reattempt Saturday</span></div>' +
              '<div class="nvob-btns">'+m.chip("Re-attempt","go")+m.chip("Open journey")+'</div>' },
-        { t:"Your COD wallet",
+        { t:"Your COD wallet", nav:"money",
           b:"Every rupee collected on your behalf, and exactly what it is doing right now.",
           v: m.big("COD balance","Rs 3,450") +
              m.rows([["Available","Rs 3,450","ok"],["In transit","Rs 5,849",""],["Pending payout","Rs 0",""]]) },
-        { t:"How charges work",
+        { t:"How charges work", nav:"money",
           b:"COD collected, minus delivery charges, on one invoice. Nothing is taken twice.",
           v: m.rows([["COD collected","Rs 3,450",""],["Delivery charge","− Rs 200",""],["Paid to you","Rs 3,250","ok"]]) },
-        { t:"Get paid out",
+        { t:"Get paid out", nav:"money",
           b:"Request a withdrawal to your own bank account whenever the balance suits you.",
           v: m.form([["To","PK… · your bank"],["Amount","Rs 3,250"]]) +
              '<div class="nvob-btns">'+m.chip("Request withdrawal","go")+'</div>' },
-        { t:"Ask Autopilot anything",
+        { t:"Ask Autopilot anything", nav:"fab",
           b:"“Where is N9000002?” — it answers from your own parcels, in your own words.",
           v: '<div class="nvob-chat"><div class="nvob-q">mera parcel kahan hai?</div>' +
              '<div class="nvob-a">N9000002 is out for delivery in DHA Phase 5 today.</div></div>' }
       ];
+    }
+
+    /* "Where do I find this?" -- the half of onboarding that usually gets
+       left out. Each card shows the real bottom navigation with the tab that
+       owns the feature lit, so the deck teaches the map as well as the
+       feature. Built from NV_BOTTOM_TABS rather than a copy, so it cannot
+       drift from the navigation it is describing. */
+    function nvObWhere(nav){
+      var tabs = (typeof NV_BOTTOM_TABS !== "undefined" && NV_BOTTOM_TABS) ? NV_BOTTOM_TABS : [
+        { id:"dashboard", label:"Home", ico:"\u2302" }, { id:"newBooking", label:"Book", ico:"\u002B" },
+        { id:"money", label:"Money", ico:"\u20A8" }, { id:"tickets", label:"Support", ico:"\u263A" }];
+      var items = tabs.map(function(t){ return { id:t.id, label:t.label, ico:t.ico }; });
+      items.push({ id:"more", label:"More", ico:"\u2261" });
+      if (nav === "fab") {
+        return '<div class="nvob-where"><span class="nvob-w-lbl">Find it here</span>' +
+          '<div class="nvob-w-nav">' + items.map(function(t){
+            return '<span class="nvob-w-i"><i>'+t.ico+'</i>'+t.label+'</span>'; }).join("") +
+          '<span class="nvob-w-fab" aria-hidden="true">\u25CF</span></div>' +
+          '<span class="nvob-w-note">The floating Autopilot button, on every screen</span></div>';
+      }
+      return '<div class="nvob-where"><span class="nvob-w-lbl">Find it here</span>' +
+        '<div class="nvob-w-nav">' + items.map(function(t){
+          return '<span class="nvob-w-i'+(t.id===nav?' on':'')+'"><i>'+t.ico+'</i>'+t.label+'</span>'; }).join("") +
+        '</div></div>';
     }
 
     function nvOnboardBuild(cid){
@@ -438,7 +462,28 @@
         ".nvob-next{flex:1;background:linear-gradient(135deg,#14c77b,#0fa968);color:#04140c;border:0;",
           "border-radius:13px;padding:13px;font:inherit;font-weight:800;font-size:14.5px;cursor:pointer}",
         ".nvob-hint{text-align:center;font-size:11px;color:#6f9384;margin-top:9px}",
-        "@media (max-width:420px){.nvob-card h3{font-size:17.5px}.nvob-ov{padding:13px}}",
+        /* the "find it here" strip */
+        ".nvob-where{margin-top:12px;padding-top:11px;border-top:1px solid rgba(255,255,255,.08)}",
+        ".nvob-w-lbl{display:block;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#6f9384;margin-bottom:7px}",
+        ".nvob-w-nav{position:relative;display:flex;gap:3px;background:rgba(255,255,255,.035);",
+          "border:1px solid rgba(255,255,255,.07);border-radius:11px;padding:5px}",
+        ".nvob-w-i{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 2px;",
+          "border-radius:8px;font-size:8.5px;font-weight:650;color:#7fa694;letter-spacing:.02em;transition:none}",
+        ".nvob-w-i i{font-style:normal;font-size:14px;line-height:1}",
+        ".nvob-w-i.on{background:rgba(20,199,123,.17);color:#7fe9b6;box-shadow:inset 0 0 0 1px rgba(20,199,123,.4)}",
+        ".nvob-w-fab{position:absolute;right:-4px;top:-11px;width:19px;height:19px;border-radius:50%;",
+          "display:grid;place-items:center;font-size:9px;color:#04140c;",
+          "background:linear-gradient(135deg,#14c77b,#0fa968);box-shadow:0 3px 10px rgba(20,199,123,.5)}",
+        ".nvob-w-note{display:block;margin-top:6px;font-size:10.5px;color:#7fa694}",
+        /* Small phones: the deck must fit 375x812 with the strip added, so the
+           card scrolls inside itself rather than pushing the footer off. */
+        "@media (max-width:420px){.nvob-card h3{font-size:17px;margin-bottom:5px}",
+          ".nvob-card p{font-size:12.5px;margin-bottom:11px}",
+          ".nvob-ov{padding:11px}.nvob-card{padding:16px 16px 18px;border-radius:17px}",
+          ".nvob-vis{min-height:0;padding:11px}.nvob-hint{font-size:10.5px;margin-top:7px}",
+          ".nvob-foot{margin-top:11px}.nvob-next{padding:12px;font-size:14px}",
+          ".nvob-nav{width:38px;height:38px}}",
+        "@media (max-height:720px){.nvob-card{max-height:calc(100vh - 168px);overflow-y:auto}}",
         "@media (prefers-reduced-motion:reduce){.nvob-ov,.nvob-wrap{animation:none!important}",
           ".nvob-card{transition:none!important}}"
       ].join("");
@@ -467,7 +512,8 @@
       function paint(){
         var c = cards[i];
         deck.innerHTML = '<div class="nvob-card" id="nvObCard">' +
-          '<h3>' + c.t + '</h3><p>' + c.b + '</p><div class="nvob-vis">' + c.v + '</div></div>';
+          '<h3>' + c.t + '</h3><p>' + c.b + '</p><div class="nvob-vis">' + c.v + '</div>' +
+          nvObWhere(c.nav) + '</div>';
         Array.prototype.forEach.call(dots.children, function(d, n){
           d.classList.toggle("on", n <= i); });
         document.getElementById("nvObPrev").disabled = (i === 0);
