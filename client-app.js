@@ -299,8 +299,13 @@
     }
     /* Exported so the gate can be exercised directly in tests without
        standing up a whole session. */
+    var NV_ONBOARD_SHOWN = false;      // once per page load, demo included
     window.nvOnboardEligible = function(createdAt, clientId, isDemo){
-      if (isDemo) return true;
+      /* loadAll() runs again on every refresh and realtime nudge, so without
+         this the deck rebuilt itself after being dismissed -- permanently in
+         demo, where the check below returns true unconditionally. */
+      if (NV_ONBOARD_SHOWN) return false;
+      if (isDemo) return !nvOnboardDone(clientId);
       if (!createdAt) return false;                 // unknown age -> never show
       var t = Date.parse(createdAt);
       if (!isFinite(t)) return false;               // unparseable -> never show
@@ -313,6 +318,7 @@
         var cid = (window.__novaxVerifiedProfile || {}).clientId || null;
         if (!window.nvOnboardEligible(createdAt, cid, !!window.__NOVAX_DEMO)) return;
         if (document.getElementById("nvObDeck")) return;
+        NV_ONBOARD_SHOWN = true;
         nvOnboardBuild(cid);
       }catch(e){}
     };
@@ -523,6 +529,7 @@
       }
       function finish(goBook){
         if (done) return; done = true;
+        NV_ONBOARD_SHOWN = true;
         nvOnboardMarkDone(cid);
         try{ ov.remove(); }catch(e){}
         document.removeEventListener("keydown", onKey);
@@ -12577,7 +12584,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            first. Without this both overlays open and the review prompt --
            which mounts later -- lands on top of a decision they have not
            made yet. */
+        /* Three overlays can now want the screen: pricing, this, and the
+           onboarding deck. The deck belongs to brand-new merchants and this
+           to merchants who have finished a journey, so they should never
+           overlap -- but if they ever do, wait rather than stack. */
         if(d && d.eligible === true) setTimeout(function(){
+          if(document.getElementById("nvObDeck")){
+            var w=setInterval(function(){
+              if(!document.getElementById("nvObDeck")){ clearInterval(w);
+                if(typeof window.__nvWaitForGate==="function") window.__nvWaitForGate(show); else show(); }
+            },600);
+            return;
+          }
           if(typeof window.__nvWaitForGate === "function") window.__nvWaitForGate(show);
           else show();
         }, 1400);
