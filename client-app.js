@@ -419,10 +419,24 @@
         ".nvob-dot.on{background:#14c77b}",
         ".nvob-skip{background:none;border:0;color:#8fb3a3;font:inherit;font-size:12.5px;font-weight:650;cursor:pointer;padding:4px 2px}",
         ".nvob-skip:hover{color:#dff3e9}",
-        ".nvob-stage{position:relative;touch-action:pan-y}",
+        ".nvob-stage{position:relative;touch-action:none;perspective:1200px}",
+        /* The page scrolled underneath while a card was being dragged: the
+           stage allowed pan-y, and the overlay never locked the body. Both
+           are closed here -- touch-action:none on the stage so a horizontal
+           drag is ours alone, and body.nvob-lock while the deck is open. */
+        "body.nvob-lock{overflow:hidden;touch-action:none;overscroll-behavior:none}",
         ".nvob-card{background:linear-gradient(180deg,#11221b,#0b1712);border:1px solid rgba(20,199,123,.3);",
+          "touch-action:none;-webkit-user-select:none;user-select:none;cursor:grab;",
+          "transform:translate3d(0,0,0);backface-visibility:hidden;",
           "border-radius:20px;padding:20px 20px 22px;color:#eaf7f0;box-shadow:0 34px 90px -30px rgba(0,0,0,.95);",
-          "will-change:transform}",
+          "will-change:transform,opacity}",
+        ".nvob-card:active{cursor:grabbing}",
+        /* enter/exit -- transform+opacity only, so it stays on the compositor */
+        "@keyframes nvobEnterR{from{opacity:0;transform:translate3d(46%,0,0) rotate(7deg)}to{opacity:1;transform:none}}",
+        "@keyframes nvobEnterL{from{opacity:0;transform:translate3d(-46%,0,0) rotate(-7deg)}to{opacity:1;transform:none}}",
+        ".nvob-in-r{animation:nvobEnterR .34s cubic-bezier(.22,.9,.28,1) both}",
+        ".nvob-in-l{animation:nvobEnterL .34s cubic-bezier(.22,.9,.28,1) both}",
+        "@media (prefers-reduced-motion:reduce){.nvob-in-r,.nvob-in-l{animation:none}}",
         ".nvob-card h3{margin:0 0 7px;font-size:19px;line-height:1.25;color:#fff;letter-spacing:-.012em}",
         ".nvob-card p{margin:0 0 15px;font-size:13.5px;line-height:1.6;color:#a9c7ba}",
         /* miniature */
@@ -511,13 +525,15 @@
         '</div>';
       document.body.appendChild(ov);
 
+      document.body.classList.add("nvob-lock");
       deck  = document.getElementById("nvObStage");
       dots  = document.getElementById("nvObDots");
       dots.innerHTML = cards.map(function(){ return '<span class="nvob-dot"></span>'; }).join("");
 
-      function paint(){
+      function paint(dir){
         var c = cards[i];
-        deck.innerHTML = '<div class="nvob-card" id="nvObCard">' +
+        var enter = dir === -1 ? " nvob-in-l" : (dir === 1 ? " nvob-in-r" : "");
+        deck.innerHTML = '<div class="nvob-card' + enter + '" id="nvObCard">' +
           '<h3>' + c.t + '</h3><p>' + c.b + '</p><div class="nvob-vis">' + c.v + '</div>' +
           nvObWhere(c.nav) + '</div>';
         Array.prototype.forEach.call(dots.children, function(d, n){
@@ -530,6 +546,7 @@
       function finish(goBook){
         if (done) return; done = true;
         NV_ONBOARD_SHOWN = true;
+        document.body.classList.remove("nvob-lock");
         nvOnboardMarkDone(cid);
         try{ ov.remove(); }catch(e){}
         document.removeEventListener("keydown", onKey);
@@ -538,20 +555,33 @@
         try{ if(window.__NOVAX_DEMO && typeof window.__nvDemoArmInvite === "function") window.__nvDemoArmInvite(); }catch(e){}
         if (goBook) { try{ showClientTab("newBooking"); }catch(e){} }
       }
-      function go(n){
-        if (n < 0) return;
+      var animating = false;
+      function go(n, dir){
+        if (animating) return;
+        if (n < 0) { return; }
         if (n >= cards.length) { finish(true); return; }
-        i = n; paint();
+        var card = document.getElementById("nvObCard");
+        var reduce = false;
+        try{ reduce = matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+        if (!card || reduce || !dir) { i = n; paint(dir); return; }
+        /* Throw the old card out before the new one arrives, so the deck reads
+           as one continuous motion instead of a hard swap. */
+        animating = true;
+        var away = dir === 1 ? 118 : -118;
+        card.style.transition = "transform .24s cubic-bezier(.4,0,1,1),opacity .24s";
+        card.style.transform  = "translate3d(" + away + "%,0,0) rotate(" + (dir * 11) + "deg)";
+        card.style.opacity    = "0";
+        setTimeout(function(){ animating = false; i = n; paint(dir); }, 200);
       }
       function onKey(e){
         if (e.key === "Escape") finish(false);
-        else if (e.key === "ArrowRight") go(i + 1);
-        else if (e.key === "ArrowLeft") go(i - 1);
+        else if (e.key === "ArrowRight") go(i + 1, 1);
+        else if (e.key === "ArrowLeft") go(i - 1, -1);
       }
       document.addEventListener("keydown", onKey);
       document.getElementById("nvObSkip").addEventListener("click", function(){ finish(false); });
-      document.getElementById("nvObNext").addEventListener("click", function(){ go(i + 1); });
-      document.getElementById("nvObPrev").addEventListener("click", function(){ go(i - 1); });
+      document.getElementById("nvObNext").addEventListener("click", function(){ go(i + 1, 1); });
+      document.getElementById("nvObPrev").addEventListener("click", function(){ go(i - 1, -1); });
 
       /* Drag: translate + a little rotation, commit past 90px or on a flick.
          Right advances, left goes back -- both directions navigate, because
@@ -568,6 +598,7 @@
         });
         card.addEventListener("pointermove", function(e){
           if (x0 === null) return;
+          if (e.cancelable) e.preventDefault();   // the gesture is ours, not the page's
           dx = e.clientX - x0;
           card.style.transform = reduce
             ? "translateX(" + dx + "px)"
@@ -579,7 +610,7 @@
           var fast = (Date.now() - t0) < 260 && Math.abs(dx) > 42;
           var commit = Math.abs(dx) > 90 || fast;
           x0 = null;
-          if (commit) { go(dx < 0 ? i + 1 : i - 1); return; }
+          if (commit) { go(dx < 0 ? i + 1 : i - 1, dx < 0 ? 1 : -1); return; }
           card.style.transition = reduce ? "none" : "transform .28s cubic-bezier(.2,.9,.25,1),opacity .28s";
           card.style.transform = ""; card.style.opacity = "";
         }
