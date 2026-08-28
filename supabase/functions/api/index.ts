@@ -7,7 +7,7 @@
  *   POST   /orders/:awb/cancel cancel a parcel that has not been picked up
  *   GET    /invoices          your invoices
  *   GET    /wallet            COD balance and what is still in flight
- *   PUT    /webhook           where we POST every status change
+ *   PUT    /webhook           where we POST every status change (signed, retried)
  *   GET    /ping              key check
  *
  * AUTH: Authorization: Bearer nvx_live_...   (one credential, nothing else)
@@ -239,16 +239,25 @@ Deno.serve(async (req) => {
       if (target && !/^https:\/\//i.test(target)) {
         return fail(422, "invalid_webhook_url", "Must start with https://");
       }
-      const r = await rpc("nv_api_set_webhook", { p_key_id: acct.key_id, p_url: target });
-      if (!r.ok) return fail(400, "webhook_not_saved");
-      /* Registered, not yet delivering. Outbound push needs retries, HMAC
-         signing and a dead-letter path to be trustworthy with someone's
-         orders, and half of that is worse than none -- a webhook that
-         silently drops a "delivered" is how a merchant loses money. Until it
-         ships, GET /orders/:awb is the supported way to read status. */
-      return json({ ok: true, webhook: target || null,
-        delivery: "registered_not_yet_active",
-        note: "Saved. Push delivery is not live yet -- poll GET /orders/:awb for status until we confirm it is." });
+      const res = await rpc("nv_api_set_webhook_v2", {
+        p_key_id: acct.key_id, p_url: target, p_rotate: b?.rotate_secret === true,
+      });
+      const row = Array.isArray(res.data) ? res.data[0] : res.data;
+      if (!res.ok || (target && !row?.url)) return fail(400, "webhook_not_saved");
+      if (!target) return json({ ok: true, webhook: null, delivery: "disabled" });
+      return json({
+        ok: true,
+        webhook: row.url,
+        delivery: "active",
+        signing_secret: row.secret,
+        verify: {
+          how: "HMAC-SHA256 over `${X-NovaX-Timestamp}.${raw request body}`, hex encoded.",
+          header: "X-NovaX-Signature: sha256=<hex>",
+          note: "Compare with a constant-time equality check, and reject anything whose X-NovaX-Timestamp is more than 5 minutes old.",
+        },
+        retries: "6 attempts over ~9 hours (1m, 5m, 30m, 2h, 6h) on any non-2xx or timeout. Reply 2xx quickly; do your own work after.",
+        redelivery: "Retries repeat the same X-NovaX-Delivery id, so treat that id as an idempotency key.",
+      });
     }
 
     return fail(404, "unknown_endpoint",
