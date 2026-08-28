@@ -3523,6 +3523,27 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       NV_TIMERS.push(rec);
       return rec.id;
     }
+    /* clearInterval() IS NOT ENOUGH FOR AN nvInterval TIMER.
+       suspend()/resume() below tear timers down on blur and rebuild them on
+       focus with a NEW id. Anything that stopped itself with
+       clearInterval(theIdWeWereGiven) therefore only stopped the instance
+       alive at that moment: the record stayed in NV_TIMERS, the next focus
+       resumed it under a new id, and the callback ran forever.
+
+       That is how the Autopilot intro came back after being closed -- a
+       merchant switched apps, came back, and the "open the intro" timer had
+       been resurrected. Use this to stop one for good. */
+    window.nvClearInterval = function(id){
+      if(id == null) return;
+      try{ clearInterval(id); }catch(e){}
+      for(var i = NV_TIMERS.length - 1; i >= 0; i--){
+        if(NV_TIMERS[i].id === id){
+          NV_TIMERS[i].id = null;
+          NV_TIMERS[i].dead = true;
+          NV_TIMERS.splice(i, 1);
+        }
+      }
+    };
     (function nvWireTimerSuspension(){
       function suspend(){
         NV_TIMERS.forEach(function(r){
@@ -3532,6 +3553,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       function resume(){
         NV_TIMERS.forEach(function(r){
+          if(r.dead) return;                 // stopped on purpose, stays stopped
           if(r.always || r.id !== null) return;
           try{ r.fn(); }catch(e){}          /* catch up immediately */
           r.id = setInterval(r.fn, r.ms);
@@ -10267,7 +10289,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
   }
   btn.addEventListener("click",function(){ panel.classList.toggle("open"); if(panel.classList.contains("open")) openPanel(); });
-  panel.querySelector(".nvauto-x").addEventListener("click",function(){ panel.classList.remove("open"); });
+  panel.querySelector(".nvauto-x").addEventListener("click",function(){
+    panel.classList.remove("open");
+    /* Closing IS the dismissal. Nothing recorded it before, so the intro was
+       free to open again on the next render, tab focus or reload. */
+    try{ localStorage.setItem(INTRO_KEY,"1"); }catch(e){}
+  });
   /* ===== Autopilot upgrades: delegated chips, per-tab suggestions,
      draggable launcher, proactive nudge. All additive — if any piece throws,
      the widget keeps working exactly as before. ===================== */
@@ -11091,18 +11118,31 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
   }
   if(PORTAL==="client" && !localStorage.getItem(INTRO_KEY)){
-    var __introTries=0;
+    var __introTries=0, __introDone=false;
+    var __stopIntro=function(){
+      __introDone=true;
+      if(window.nvClearInterval) window.nvClearInterval(__introTimer);
+      else clearInterval(__introTimer);
+    };
     var __introTimer=nvInterval(function(){
+      /* Belt as well as braces. Even if this timer is somehow revived, or the
+         merchant closed the panel in another tab, it must not reopen: a
+         greeting that will not stay shut is worse than no greeting. */
+      if(__introDone || localStorage.getItem(INTRO_KEY)){ __stopIntro(); return; }
       __introTries++;
       if(hasClientIdentity()){
-        clearInterval(__introTimer);
+        __stopIntro();
         setTimeout(function(){
+          if(localStorage.getItem(INTRO_KEY)) return;
           /* Same queue as the review prompt: never open the intro on top of
              the pricing card. */
-          var go = function(){ panel.classList.add("open"); openPanel(); };
+          var go = function(){
+            if(localStorage.getItem(INTRO_KEY)) return;
+            panel.classList.add("open"); openPanel();
+          };
           if(typeof window.__nvWaitForGate === "function") window.__nvWaitForGate(go); else go();
         },900);
-      } else if(__introTries>40){ clearInterval(__introTimer); }
+      } else if(__introTries>40){ __stopIntro(); }
     },500);
   }
 })();
