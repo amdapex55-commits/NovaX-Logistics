@@ -2916,8 +2916,16 @@ $("fSignin").addEventListener("submit",function(e){
           showMsg("mSignin","Workspace profile not linked. Please contact NovaX.",false); return;
         }
         btn.textContent="Preparing your workspace…";
+        /* ROOT CAUSE of "the label shows my own name, not my brand".
+           p_name becomes clients.name, which is what prints under
+           CLIENT / SHIPPER on every AWB label. This fell back to
+           meta.full_name when a signup carried no business_name, so a
+           merchant's personal name was stored as their company name and
+           printed on every parcel they shipped. 48 merchants ended up that
+           way. full_name is a PERSON and must never be written here; it
+           belongs in p_owner, which is exactly where it now goes alone. */
         __nvSb.rpc("create_client_workspace",{
-          p_name: meta.business_name||meta.full_name||email.split("@")[0],
+          p_name: meta.business_name||meta.store_name||meta.brand_name||"",
           p_owner: meta.owner_name||meta.full_name||"",
           p_phone: meta.phone||"", p_city: meta.city||"", p_address: meta.address||"",
           p_business_type: meta.business_type||"", p_website: meta.website||""
