@@ -214,7 +214,7 @@
    overflow-x:clip clips identically but does NOT create a scroll
    container, so sticky works. The hidden line stays first as a fallback
    for old browsers that don't know clip (they ignore the second line). */
-html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;overflow-x:hidden}
+html{-webkit-text-size-adjust:100%;overflow-x:hidden}
 html{overflow-x:clip}
 body{background:var(--bg);color:var(--ink);overflow-x:hidden;line-height:1.5;
   -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:rgba(20,199,123,.16);min-width:0}
@@ -325,7 +325,12 @@ main,header,footer{position:relative;z-index:2}
 /* Every in-page nav tap landed 69px behind the fixed header: sections carry no
    scroll-margin, and header{position:fixed} covers whatever the browser scrolls
    to. One rule, every section and anchor. */
-html{scroll-behavior:smooth}
+/* scroll-behavior:smooth was set globally, so the BROWSER animated every
+   scroll gesture -- on a phone the page glides on after your finger stops and
+   the whole site feels laggy and detached. Native scrolling is restored here;
+   anchor taps are smoothed in JS instead (see smoothAnchors below), which is
+   the only place the easing was ever wanted. */
+html{scroll-behavior:auto}
 section[id],[id].anchor,span.anchor[id],.band[id]{scroll-margin-top:84px}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 
@@ -1514,6 +1519,146 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   .sec-n::after{transform:scaleX(1)!important;transition:none!important}
 }
 
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MOBILE PASS -- 28 Aug 2026
+   Measured on the live site at 375x812 before any of this: the page ran
+   12,635px (15.6 phone screens), the hero blur-animated in and then kept
+   swapping a word that looked clipped mid-flight, and 436 text nodes sat
+   under 12px. Three separate reasons a visitor says "it feels off" without
+   being able to name one. Fixed below in the order they are felt.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ---- 2. A HERO THAT HOLDS STILL ----------------------------------------
+   .wd animated each headline word in from translateY(38px)+rotateX(46deg)
+   behind blur(9px), and .swap slid the rotating word up from translateY(105%)
+   behind blur(5px) inside an overflow:hidden box. Both look fine at desktop
+   refresh rates; on a phone the first paint is a grey smear and every word
+   swap reads as text cut in half. Blur is also the single most expensive
+   filter to composite on a mid-range Android.
+   Motion is kept -- it just no longer distorts the glyphs or moves them far
+   enough to leave the box. */
+@media (pointer:coarse){
+  .wd{animation-name:wdInSoft;animation-duration:.42s}
+  .swap i{animation:swapUpSoft .34s cubic-bezier(.2,.9,.2,1)}
+}
+@keyframes wdInSoft{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes swapUpSoft{from{opacity:0;transform:translateY(38%)}to{opacity:1;transform:none}}
+
+/* The swap box is one line tall and the word is absolutely free to be longer
+   than the line, so a wrap pushed the second half below the baseline where it
+   was clipped. Hard-pin it to a single line. */
+.swap{white-space:nowrap}
+.swap i{white-space:nowrap}
+
+@media (max-width:640px){
+  /* The rotator sat directly under the h1 with 18px of margin and no reserved
+     height, so the line under it lifted on every swap. */
+  .hero-rot{min-height:1.6em;margin:14px 0 4px}
+}
+
+/* ---- 4. HALVING THE TWO LONGEST SECTIONS ON MOBILE ---------------------
+   #autopilot ran 2,136px (2.6 screens) and #payouts 1,582px (1.9). Nothing
+   is deleted -- the deep-technical prose that only a few readers want is
+   moved behind a tap, and the decorative breathing room that reads as
+   generous on a 27" monitor is tightened. */
+@media (max-width:640px){
+  #autopilot .ai2-vs{margin-top:26px}
+  #autopilot .ai2-col{padding:16px 16px 6px}
+  #autopilot .ai2-row{padding:8px 0}
+  #autopilot .ai2-proof{margin-top:26px}
+  #autopilot .ai2-p{padding:14px}
+  #autopilot .ai2-demo{margin-top:30px;gap:14px}
+  #autopilot .ap-body{min-height:210px}
+
+  /* The second half of the RLS explainer is the most technical copy on the
+     page. It is collapsed behind a real <details> rather than display:none,
+     so it is still reachable, still in the DOM for search, and still read by
+     a screen reader. The model footnote stays visible -- "no training on your
+     data" is a trust line, and two short lines are not what makes this
+     section long. */
+  .ai2-lock{padding:16px}
+  /* The section repeats the hero's two buttons verbatim four screens later.
+     One is enough on a phone. */
+  .ai2-cta .btn-ghost{display:none}
+
+  /* Both sections stack two tall visuals on top of each other on a phone.
+     Laid side by side in a snap carousel they cost one card of height instead
+     of two -- the same pattern .ai2-proof and .ai2-vs already use here, so it
+     is a gesture visitors meet elsewhere on the page rather than a new one. */
+  #autopilot .ai2-demo,#payouts .wl,#payouts .tiers{
+    display:flex;grid-template-columns:none;gap:12px;
+    overflow-x:auto;scroll-snap-type:x mandatory;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
+    margin-inline:calc(var(--pad,20px) * -1);
+    padding-inline:var(--pad,20px)}
+  #autopilot .ai2-demo::-webkit-scrollbar,#payouts .wl::-webkit-scrollbar,
+  #payouts .tiers::-webkit-scrollbar{display:none}
+  #autopilot .ai2-demo > *,#payouts .wl > *{
+    flex:0 0 88%;scroll-snap-align:center;min-width:0}
+  /* Three payout tiers read better shoulder to shoulder than stacked --
+     they are a comparison, and a comparison you have to scroll past is not
+     one. 78% so the next tier peeks in and the swipe is discoverable. */
+  #payouts .tiers{margin-top:14px}
+  #payouts .tiers > *{flex:0 0 78%;scroll-snap-align:center;min-width:0}
+  #payouts .tier{padding:14px}
+  #payouts .wl-th,#payouts .wl-s{padding:12px}
+
+  #payouts .pay-grid{gap:16px}
+  #payouts .wl{margin-top:4px}
+  #payouts .wl-tape{max-height:none}
+  #payouts .sec-head .lead{margin-bottom:4px}
+
+  /* Section chrome that is generous on a monitor and merely long on a phone. */
+  #autopilot,#payouts{padding-block:30px}
+  #autopilot .ai2-cred{padding:7px 10px;gap:6px}
+  #autopilot .ai2-cred i{display:none}
+  #autopilot .ai2-col h3{margin-bottom:8px}
+  #autopilot .ai2-p{padding:12px}
+  #autopilot .ai2-lock h4{font-size:15px;margin-bottom:7px}
+  #autopilot .ai2-lock p{font-size:13.5px;line-height:1.55}
+  #autopilot .ai2-cta{margin-top:14px}
+}
+
+/* The disclosure is a phone-only affordance: on a wide screen the summary is
+   hidden and the prose simply reads as the paragraph it always was. It ships
+   with `open` in the markup so that without JS -- and on every desktop --
+   nothing is hidden; the script below closes it only on coarse pointers. */
+.ai2-more > summary{display:none}
+@media (max-width:640px){
+  .ai2-more > summary{
+    display:block;list-style:none;cursor:pointer;margin-top:12px;
+    font:600 13px/1.4 var(--mono);color:var(--green-2);
+    padding:9px 0;min-height:44px;box-sizing:border-box}
+  .ai2-more > summary::-webkit-details-marker{display:none}
+  .ai2-more > summary::after{content:" \203A";display:inline-block;transition:transform .18s}
+  .ai2-more[open] > summary::after{transform:rotate(90deg)}
+  .ai2-more[open] > summary{margin-bottom:2px}
+}
+
+/* ---- 5. A 12px FLOOR ON READABLE TEXT ----------------------------------
+   436 text nodes rendered under 12px, down to 8px. Everything a visitor is
+   expected to READ is lifted to 12px here.
+   The miniature portal/AWB mockups are deliberately small -- they are
+   pictures of an interface, not text, and pushing them to 12px overflows
+   their frames -- so they get a 10px floor instead of a 12px one. */
+@media (max-width:640px){
+  .chip,.card-tag,.fn-s,.sec-n,.eyebrow,.cities,.mq-item,.mdl-note,
+  .ai2-cred i,.ai2-m,.ai2-wh small,.ft-base,.lx-cap,.nav-links a,
+  .nvrev-card .who,.pm-sub,.pm-t,.pm-tx span,.pm-end,.spine-cap,.sync-b,
+  .wl-note,.wl-k,.wl-s .k,.wl-th .tag,.wl-r .m,.sync-h .tag,.sync-arrow,
+  .tier-d,.tier-crown,.sp-app .who,.sp-app .n,.sp-what .f,.bar-nm span,
+  .msg-act span,.ring-u,.cs-foot,.fld label,.calc-fine,.fn-t,.logo small,
+  .nvrev-av,.lx-mach,.lxl-top span,#lxNum,#lxStamp{font-size:12px!important}
+
+  /* Deliberately-miniature interface mockups: raised off 8-9.5px, but not to
+     12px, which would break the frames they live in. */
+  .pd-th,.pd-tr,.pd-tr .awb,.pd-m .k,.pd-f label,.pd-awb .lbl,.pd-chip,
+  .pd-url,.pd-hint,.pd-livedot,.pd-brand .m,
+  .awb-k,.awb-svc,.awb-no,.awb-grid,.awb-cod .lbl,.awbc-bar .s,
+  .awbc-bar .t,.awbc-foot{font-size:10.5px!important}
+}
 </style>
 <style>
 /* "See the portal" — the no-commitment path. Outlined rather than filled so
@@ -1934,7 +2079,10 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
         <div class="ai2-lock">
           <h4>The part nobody else will show you</h4>
           <p>Every tool Autopilot can call is filtered by <code>client_id = auth.uid()</code> in the database itself &mdash; not asked for politely in a prompt. A prompt can be talked around. A row-level policy cannot. Another merchant&rsquo;s parcels are not hidden from your AI; they are unreachable by it.</p>
-          <p style="margin-top:13px">And when your data doesn&rsquo;t contain the answer, it tells you that instead of inventing one. That is the whole difference between a model with tools and a chatbot with confidence.</p>
+          <details class="ai2-more" open>
+            <summary>Why that matters</summary>
+            <p>And when your data doesn&rsquo;t contain the answer, it tells you that instead of inventing one. That is the whole difference between a model with tools and a chatbot with confidence.</p>
+          </details>
         </div>
         <p class="ai2-note">// claude-opus-5 &middot; anthropic api &middot; 16 grounded tools<br>// no training on your data &middot; no shared context between merchants</p>
         <div class="ai2-cta">
@@ -2495,6 +2643,36 @@ if(!TOUCH){
 /* ═════ MOBILE NAV ═════ */
 (function(){
   var burger=$("burger"), navLinks=$("navLinks");
+  /* Anchor taps keep their easing, but nothing else does. Global
+     scroll-behavior:smooth made every flick on a phone feel laggy; this
+     narrows the easing to the one interaction it was meant for, and steps
+     aside entirely when the visitor has asked for reduced motion. */
+  /* The disclosure ships open so nothing is hidden without JS or on desktop.
+     Close it only where it is actually an affordance -- a coarse pointer on a
+     narrow screen -- and leave it alone once the visitor has touched it. */
+  (function collapseDeepCopy(){
+    if(!matchMedia("(max-width:640px)").matches) return;
+    document.querySelectorAll("details.ai2-more").forEach(function(d){
+      if(!d.dataset.userToggled) d.removeAttribute("open");
+      d.addEventListener("toggle", function(){ d.dataset.userToggled = "1"; });
+    });
+  })();
+
+  (function smoothAnchors(){
+    var soft = !matchMedia("(prefers-reduced-motion:reduce)").matches;
+    document.addEventListener("click", function(e){
+      var a = e.target.closest && e.target.closest('a[href^="#"]');
+      if(!a) return;
+      var id = a.getAttribute("href");
+      if(!id || id === "#" || a.hasAttribute("data-mdl")) return;
+      var t = document.querySelector(id);
+      if(!t) return;
+      e.preventDefault();
+      t.scrollIntoView({behavior: soft ? "smooth" : "auto", block: "start"});
+      if(history.replaceState) history.replaceState(null, "", id);
+    }, false);
+  })();
+
   burger.addEventListener("click",function(){
     var open=navLinks.classList.toggle("open");
     burger.classList.toggle("on",open);
