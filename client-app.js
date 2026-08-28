@@ -7585,7 +7585,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     (function(){
       var SB_URL=window.NOVAX_CONFIG.SB_URL;
       var SB_KEY=window.NOVAX_CONFIG.SB_KEY;
-      if(!window.supabase||!window.supabase.createClient){ console.warn("NovaX: cloud library not loaded, local only."); window.__novaxClientDataReady=true; return; }
+      /* The demo supplies its own client and never touches the network, so
+         the CDN library is irrelevant to it. Without this exemption the whole
+         data layer returns here and the demo renders an empty portal -- which
+         is exactly what happened on the deployed site, where the Supabase CDN
+         script is not available, while localhost (where it loads) worked. */
+      if(!window.__NOVAX_DEMO && (!window.supabase||!window.supabase.createClient)){ console.warn("NovaX: cloud library not loaded, local only."); window.__novaxClientDataReady=true; return; }
       // NovaX fix ("Multiple GoTrueClient instances detected"): reuse the
       // client the auth gate already created instead of making a second one on
       // the same storage key.
