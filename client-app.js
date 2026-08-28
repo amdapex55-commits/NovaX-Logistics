@@ -7440,6 +7440,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // client name -- it shows a clear "Verifying account...", "Account not
       // linked", or "Client record missing" state instead whenever the real
       // identity isn't confirmed.
+      try{ if(typeof window.nvFillBusinessName === "function") window.nvFillBusinessName(state.client && state.client.name); }catch(e){}
       const workspaceName = document.getElementById("clientWorkspaceName");
       if (workspaceName) { const cds=clientDisplayState(); workspaceName.textContent = cds.showWorkspaceSuffix ? `${cds.label} workspace` : cds.label; }
       try{ if(typeof renderDashboardEmptyState==="function") renderDashboardEmptyState(); }catch(e){}
@@ -8819,6 +8820,55 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(grid) grid.innerHTML=Object.keys(NOTIF_EVENT_LABELS).map(function(ev){ return `<label class="footer-note" style="display:flex;align-items:center;gap:8px"><input type="checkbox" class="notifPrefEventBox" value="${ev}" ${events.indexOf(ev)>-1?"checked":""}> ${NOTIF_EVENT_LABELS[ev]}</label>`; }).join("");
       }catch(e){ logClientError("client_get_notification_prefs", e.message||e, "warning"); }
     }
+
+    /* The business name prints under CLIENT / SHIPPER on every label. Until
+       now a merchant whose workspace was created with their personal name
+       could only get it changed by messaging support -- which is exactly how
+       the GenZee Creation case reached us. */
+    window.saveClientBusinessName = async function(){
+      var input = document.getElementById("clientBizName");
+      var hint  = document.getElementById("clientBizNameHint");
+      if(!input) return;
+      var val = String(input.value || "").trim();
+      if(val.length < 2){ toast("Enter your business name first.", "error"); input.focus(); return; }
+      var sb = window.__nvSb;
+      if(!sb){ toast("Still connecting \u2014 try again in a moment.", "error"); return; }
+      try{
+        var r = await sb.rpc("client_set_business_name", { p_name: val });
+        if(r && r.error){ toast("Could not save: " + r.error.message, "error"); return; }
+        toast("Business name saved. New labels will show \u201C" + (r.data || val) + "\u201D.");
+        if(hint) hint.textContent = "Saved. Labels printed from now on will show this name.";
+        try{ if(typeof loadAll === "function") loadAll(); }catch(e){}
+      }catch(e){
+        toast("Could not save: " + ((e && e.message) || e), "error");
+      }
+    };
+
+    /* Prefill from the workspace so the merchant sees what is on their labels
+       today, not an empty box that invites a blank save.
+
+       render() runs several times before the real client row lands, and the
+       early passes carry placeholder names ("Verifying account...", "We're
+       preparing your workspace..."). Filling from one of those would offer
+       the merchant a placeholder to save as their company name, so those are
+       skipped and the field keeps syncing until a real name arrives -- but
+       never while they are typing in it. */
+    var NV_BIZ_PLACEHOLDERS = ["verifying", "preparing your workspace",
+                               "loading workspace", "unknown client", "merchant"];
+    window.nvFillBusinessName = function(name){
+      var input = document.getElementById("clientBizName");
+      if(!input || !name) return;
+      if(input === document.activeElement) return;          // they are typing
+      if(input.dataset.touched === "1") return;             // they edited it
+      var low = String(name).toLowerCase();
+      for(var i = 0; i < NV_BIZ_PLACEHOLDERS.length; i++){
+        if(low.indexOf(NV_BIZ_PLACEHOLDERS[i]) > -1) return;
+      }
+      if(input.value !== name) input.value = name;
+    };
+    document.addEventListener("input", function(e){
+      if(e.target && e.target.id === "clientBizName") e.target.dataset.touched = "1";
+    });
 
     async function saveClientNotificationPrefs(){
       try{
