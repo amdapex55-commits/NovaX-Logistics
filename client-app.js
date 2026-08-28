@@ -267,6 +267,277 @@
       };
     }
 
+    /* ═══════════════════════════════════════════════════════════════════
+       ONBOARDING DECK — ten swipeable cards
+       ───────────────────────────────────────────────────────────────────
+       Shown to a brand-new merchant once, and to anyone in the demo. It must
+       NEVER appear for an existing merchant, so the gate fails closed: if we
+       cannot prove someone is new, nothing renders.
+
+           show  ⇔  demo
+                 OR ( workspace created < 15 min ago
+                      AND not already completed on this device )
+
+       clients.created_at is the hard guarantee. A merchant who signed up three
+       weeks ago cannot satisfy a 15-minute window -- not by clearing storage,
+       not by reinstalling, not by signing in on another phone. localStorage is
+       only the "don't show it twice" nicety layered on top; if it is missing,
+       the window still holds.
+
+       Gating on a clients.meta flag instead was rejected: writing it needs an
+       RPC, merchants cannot write to clients directly (the guard triggers
+       block it), and a failed write would either loop the deck forever or need
+       a silent catch that hides the failure. The window needs no write at all.
+       ═══════════════════════════════════════════════════════════════════ */
+    var NV_ONBOARD_WINDOW_MS = 15 * 60 * 1000;
+    function nvOnboardKey(cid){ return "nvOnboardCards:" + (cid || "anon"); }
+    function nvOnboardDone(cid){
+      try{ return localStorage.getItem(nvOnboardKey(cid)) === "1"; }catch(e){ return false; }
+    }
+    function nvOnboardMarkDone(cid){
+      try{ localStorage.setItem(nvOnboardKey(cid), "1"); }catch(e){}
+    }
+    /* Exported so the gate can be exercised directly in tests without
+       standing up a whole session. */
+    window.nvOnboardEligible = function(createdAt, clientId, isDemo){
+      if (isDemo) return true;
+      if (!createdAt) return false;                 // unknown age -> never show
+      var t = Date.parse(createdAt);
+      if (!isFinite(t)) return false;               // unparseable -> never show
+      if (Date.now() - t > NV_ONBOARD_WINDOW_MS) return false;
+      if (Date.now() - t < 0) return false;         // clock skew -> never show
+      return !nvOnboardDone(clientId);
+    };
+    window.nvOnboardMaybeShow = function(createdAt){
+      try{
+        var cid = (window.__novaxVerifiedProfile || {}).clientId || null;
+        if (!window.nvOnboardEligible(createdAt, cid, !!window.__NOVAX_DEMO)) return;
+        if (document.getElementById("nvObDeck")) return;
+        nvOnboardBuild(cid);
+      }catch(e){}
+    };
+
+    /* The ten cards. Weighted toward the first parcel, because that is the
+       measured leak: 216 merchants have signed up and 46 have ever booked.
+       Each carries a CSS miniature rather than a screenshot -- ten PNGs would
+       add most of a megabyte in front of a merchant on patchy 4G, and a
+       screenshot starts lying the next time the UI moves. The landing page
+       already uses this technique in section 02. */
+    function nvOnboardCards(){
+      var m = {
+        rows: function(items){ return '<div class="nvob-rows">' + items.map(function(r){
+          return '<div class="nvob-row"><span class="nvob-r-l">'+r[0]+'</span><span class="nvob-r-r '+(r[2]||'')+'">'+r[1]+'</span></div>';
+        }).join("") + '</div>'; },
+        big: function(label, value, sub){ return '<div class="nvob-big"><span>'+label+'</span><b>'+value+'</b>'+(sub?'<i>'+sub+'</i>':'')+'</div>'; },
+        form: function(fields){ return '<div class="nvob-form">' + fields.map(function(f){
+          return '<label>'+f[0]+'<span>'+(f[1]||'')+'</span></label>'; }).join("") + '</div>'; },
+        chip: function(t, cls){ return '<span class="nvob-chip '+(cls||'')+'">'+t+'</span>'; }
+      };
+      return [
+        { t:"Your workspace is live",
+          b:"No approval queue, no waiting. You can book a parcel right now and we will collect it.",
+          v: m.big("Wallet", "Rs 0", "nothing owed, nothing owing") +
+             m.rows([["Account","Active","ok"],["Setup fee","None","ok"],["Contract","None","ok"]]) },
+        { t:"Book your first parcel",
+          b:"Consignee, address, COD amount. That is the whole form — we generate the tracking number for you.",
+          v: m.form([["Consignee","Hina Raza"],["City","Karachi"],["Address","Flat 3B, Gulshan-e-Iqbal"],["COD","Rs 3,450"]]) },
+        { t:"Got the order on WhatsApp?",
+          b:"Paste the message and Autopilot fills the form for you. No retyping an address off a phone screen.",
+          v: '<div class="nvob-paste">"Hina Raza, Flat 3B Gulshan-e-Iqbal Karachi, 0300‑…, COD 3450"</div>' +
+             '<div class="nvob-arrow">↓</div>' + m.form([["Consignee","Hina Raza ✓"],["COD","Rs 3,450 ✓"]]) },
+        { t:"Print the label",
+          b:"Every parcel gets an AWB. Print it, stick it on the box, hand it to the rider.",
+          v: '<div class="nvob-awb"><b>N9000001</b><div class="nvob-bars"></div><small>Karachi · COD Rs 3,450</small></div>' },
+        { t:"Follow every parcel",
+          b:"Real status from our own riders — not a feed scraped from someone else's system.",
+          v: m.rows([["Collected","✓","ok"],["In transit","✓","ok"],["Out for delivery","now","live"],["Delivered","—",""]]) },
+        { t:"What needs me",
+          b:"Refusals and stuck parcels are surfaced before they turn into an angry customer message.",
+          v: '<div class="nvob-alert"><b>N9000004</b> · Refused<span>Consignee asked to reattempt Saturday</span></div>' +
+             '<div class="nvob-btns">'+m.chip("Re-attempt","go")+m.chip("Open journey")+'</div>' },
+        { t:"Your COD wallet",
+          b:"Every rupee collected on your behalf, and exactly what it is doing right now.",
+          v: m.big("COD balance","Rs 3,450") +
+             m.rows([["Available","Rs 3,450","ok"],["In transit","Rs 5,849",""],["Pending payout","Rs 0",""]]) },
+        { t:"How charges work",
+          b:"COD collected, minus delivery charges, on one invoice. Nothing is taken twice.",
+          v: m.rows([["COD collected","Rs 3,450",""],["Delivery charge","− Rs 200",""],["Paid to you","Rs 3,250","ok"]]) },
+        { t:"Get paid out",
+          b:"Request a withdrawal to your own bank account whenever the balance suits you.",
+          v: m.form([["To","PK… · your bank"],["Amount","Rs 3,250"]]) +
+             '<div class="nvob-btns">'+m.chip("Request withdrawal","go")+'</div>' },
+        { t:"Ask Autopilot anything",
+          b:"“Where is N9000002?” — it answers from your own parcels, in your own words.",
+          v: '<div class="nvob-chat"><div class="nvob-q">mera parcel kahan hai?</div>' +
+             '<div class="nvob-a">N9000002 is out for delivery in DHA Phase 5 today.</div></div>' }
+      ];
+    }
+
+    function nvOnboardBuild(cid){
+      var cards = nvOnboardCards(), i = 0, deck, track, dots, done = false;
+
+      var css = document.createElement("style");
+      css.textContent = [
+        "@keyframes nvobIn{from{opacity:0;transform:translateY(26px) scale(.95)}to{opacity:1;transform:none}}",
+        "@keyframes nvobFade{from{opacity:0}to{opacity:1}}",
+        ".nvob-ov{position:fixed;inset:0;z-index:100002;display:flex;align-items:center;justify-content:center;",
+          "padding:18px;background:rgba(3,10,7,.82);backdrop-filter:blur(5px);animation:nvobFade .3s ease both}",
+        ".nvob-wrap{width:100%;max-width:400px;animation:nvobIn .45s cubic-bezier(.2,.9,.25,1) both}",
+        ".nvob-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}",
+        ".nvob-dots{display:flex;gap:5px;flex:1}",
+        ".nvob-dot{height:3px;flex:1;border-radius:2px;background:rgba(255,255,255,.16);transition:background .3s}",
+        ".nvob-dot.on{background:#14c77b}",
+        ".nvob-skip{background:none;border:0;color:#8fb3a3;font:inherit;font-size:12.5px;font-weight:650;cursor:pointer;padding:4px 2px}",
+        ".nvob-skip:hover{color:#dff3e9}",
+        ".nvob-stage{position:relative;touch-action:pan-y}",
+        ".nvob-card{background:linear-gradient(180deg,#11221b,#0b1712);border:1px solid rgba(20,199,123,.3);",
+          "border-radius:20px;padding:20px 20px 22px;color:#eaf7f0;box-shadow:0 34px 90px -30px rgba(0,0,0,.95);",
+          "will-change:transform}",
+        ".nvob-card h3{margin:0 0 7px;font-size:19px;line-height:1.25;color:#fff;letter-spacing:-.012em}",
+        ".nvob-card p{margin:0 0 15px;font-size:13.5px;line-height:1.6;color:#a9c7ba}",
+        /* miniature */
+        ".nvob-vis{background:rgba(255,255,255,.032);border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:13px;min-height:132px}",
+        ".nvob-big{display:flex;flex-direction:column;gap:2px;margin-bottom:9px}",
+        ".nvob-big span{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#7fa694}",
+        ".nvob-big b{font-size:25px;font-weight:800;color:#fff;letter-spacing:-.02em}",
+        ".nvob-big i{font-style:normal;font-size:11px;color:#7fa694}",
+        ".nvob-rows{display:grid;gap:6px}",
+        ".nvob-row{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;",
+          "padding:6px 9px;background:rgba(255,255,255,.028);border-radius:8px}",
+        ".nvob-r-l{color:#9dbfb0}.nvob-r-r{color:#dff3e9;font-weight:650}",
+        ".nvob-r-r.ok{color:#4ee6a5}.nvob-r-r.live{color:#ffd479}",
+        ".nvob-form{display:grid;gap:7px}",
+        ".nvob-form label{display:flex;flex-direction:column;gap:3px;font-size:9.5px;letter-spacing:.11em;",
+          "text-transform:uppercase;color:#7fa694}",
+        ".nvob-form label span{font-size:13px;letter-spacing:0;text-transform:none;color:#eaf7f0;font-weight:600;",
+          "background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:8px;padding:7px 9px}",
+        ".nvob-paste{font-size:11.5px;line-height:1.5;color:#cfe6da;background:rgba(255,255,255,.05);",
+          "border-radius:9px;padding:9px 10px;font-style:italic}",
+        ".nvob-arrow{text-align:center;color:#14c77b;font-size:15px;margin:5px 0}",
+        ".nvob-awb{text-align:center}.nvob-awb b{font-size:17px;letter-spacing:.06em;color:#fff}",
+        ".nvob-bars{height:38px;margin:9px 0;border-radius:3px;",
+          "background:repeating-linear-gradient(90deg,#eaf7f0 0 2px,transparent 2px 4px,#eaf7f0 4px 7px,transparent 7px 10px)}",
+        ".nvob-awb small{font-size:11px;color:#9dbfb0}",
+        ".nvob-alert{background:rgba(224,96,75,.1);border:1px solid rgba(224,96,75,.34);border-radius:10px;padding:10px}",
+        ".nvob-alert b{font-size:13px;color:#fff}",
+        ".nvob-alert span{display:block;font-size:11.5px;color:#c9a9a2;margin-top:3px}",
+        ".nvob-btns{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap}",
+        ".nvob-chip{font-size:11.5px;font-weight:700;padding:6px 11px;border-radius:999px;",
+          "border:1px solid rgba(255,255,255,.14);color:#cfe6da}",
+        ".nvob-chip.go{background:rgba(20,199,123,.16);border-color:rgba(20,199,123,.45);color:#7fe9b6}",
+        ".nvob-chat{display:grid;gap:7px}",
+        ".nvob-q{justify-self:end;max-width:82%;background:rgba(255,255,255,.06);border-radius:12px 12px 4px 12px;",
+          "padding:8px 11px;font-size:12.5px}",
+        ".nvob-a{justify-self:start;max-width:88%;border-left:2px solid #14c77b;padding:2px 0 2px 10px;",
+          "font-size:12.5px;color:#cfe6da}",
+        /* footer */
+        ".nvob-foot{display:flex;align-items:center;gap:10px;margin-top:14px}",
+        ".nvob-nav{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);color:#dff3e9;",
+          "width:42px;height:42px;border-radius:50%;font-size:17px;cursor:pointer;flex:0 0 auto}",
+        ".nvob-nav:disabled{opacity:.3;cursor:default}",
+        ".nvob-next{flex:1;background:linear-gradient(135deg,#14c77b,#0fa968);color:#04140c;border:0;",
+          "border-radius:13px;padding:13px;font:inherit;font-weight:800;font-size:14.5px;cursor:pointer}",
+        ".nvob-hint{text-align:center;font-size:11px;color:#6f9384;margin-top:9px}",
+        "@media (max-width:420px){.nvob-card h3{font-size:17.5px}.nvob-ov{padding:13px}}",
+        "@media (prefers-reduced-motion:reduce){.nvob-ov,.nvob-wrap{animation:none!important}",
+          ".nvob-card{transition:none!important}}"
+      ].join("");
+      document.head.appendChild(css);
+
+      var ov = document.createElement("div");
+      ov.className = "nvob-ov"; ov.id = "nvObDeck";
+      ov.setAttribute("role","dialog"); ov.setAttribute("aria-modal","true");
+      ov.innerHTML =
+        '<div class="nvob-wrap">' +
+          '<div class="nvob-head"><div class="nvob-dots" id="nvObDots"></div>' +
+            '<button class="nvob-skip" type="button" id="nvObSkip">Skip</button></div>' +
+          '<div class="nvob-stage" id="nvObStage"></div>' +
+          '<div class="nvob-foot">' +
+            '<button class="nvob-nav" type="button" id="nvObPrev" aria-label="Previous">‹</button>' +
+            '<button class="nvob-next" type="button" id="nvObNext">Next</button>' +
+          '</div>' +
+          '<div class="nvob-hint">Swipe left or right · or use the arrow keys</div>' +
+        '</div>';
+      document.body.appendChild(ov);
+
+      deck  = document.getElementById("nvObStage");
+      dots  = document.getElementById("nvObDots");
+      dots.innerHTML = cards.map(function(){ return '<span class="nvob-dot"></span>'; }).join("");
+
+      function paint(){
+        var c = cards[i];
+        deck.innerHTML = '<div class="nvob-card" id="nvObCard">' +
+          '<h3>' + c.t + '</h3><p>' + c.b + '</p><div class="nvob-vis">' + c.v + '</div></div>';
+        Array.prototype.forEach.call(dots.children, function(d, n){
+          d.classList.toggle("on", n <= i); });
+        document.getElementById("nvObPrev").disabled = (i === 0);
+        document.getElementById("nvObNext").textContent =
+          (i === cards.length - 1) ? "Book your first parcel" : "Next";
+        wireDrag();
+      }
+      function finish(goBook){
+        if (done) return; done = true;
+        nvOnboardMarkDone(cid);
+        try{ ov.remove(); }catch(e){}
+        document.removeEventListener("keydown", onKey);
+        /* In demo the signup invitation waits for the deck, so a visitor is
+           never shown two overlays at once. */
+        try{ if(window.__NOVAX_DEMO && typeof window.__nvDemoArmInvite === "function") window.__nvDemoArmInvite(); }catch(e){}
+        if (goBook) { try{ showClientTab("newBooking"); }catch(e){} }
+      }
+      function go(n){
+        if (n < 0) return;
+        if (n >= cards.length) { finish(true); return; }
+        i = n; paint();
+      }
+      function onKey(e){
+        if (e.key === "Escape") finish(false);
+        else if (e.key === "ArrowRight") go(i + 1);
+        else if (e.key === "ArrowLeft") go(i - 1);
+      }
+      document.addEventListener("keydown", onKey);
+      document.getElementById("nvObSkip").addEventListener("click", function(){ finish(false); });
+      document.getElementById("nvObNext").addEventListener("click", function(){ go(i + 1); });
+      document.getElementById("nvObPrev").addEventListener("click", function(){ go(i - 1); });
+
+      /* Drag: translate + a little rotation, commit past 90px or on a flick.
+         Right advances, left goes back -- both directions navigate, because
+         there is nothing here to accept or reject and a merchant who swipes
+         back expects the previous card. */
+      function wireDrag(){
+        var card = document.getElementById("nvObCard");
+        var x0 = null, t0 = 0, dx = 0, reduce = false;
+        try{ reduce = matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+        card.addEventListener("pointerdown", function(e){
+          x0 = e.clientX; t0 = Date.now(); dx = 0;
+          card.setPointerCapture && card.setPointerCapture(e.pointerId);
+          card.style.transition = "none";
+        });
+        card.addEventListener("pointermove", function(e){
+          if (x0 === null) return;
+          dx = e.clientX - x0;
+          card.style.transform = reduce
+            ? "translateX(" + dx + "px)"
+            : "translateX(" + dx + "px) rotate(" + (dx / 26) + "deg)";
+          card.style.opacity = String(Math.max(.45, 1 - Math.abs(dx) / 420));
+        });
+        function release(){
+          if (x0 === null) return;
+          var fast = (Date.now() - t0) < 260 && Math.abs(dx) > 42;
+          var commit = Math.abs(dx) > 90 || fast;
+          x0 = null;
+          if (commit) { go(dx < 0 ? i + 1 : i - 1); return; }
+          card.style.transition = reduce ? "none" : "transform .28s cubic-bezier(.2,.9,.25,1),opacity .28s";
+          card.style.transform = ""; card.style.opacity = "";
+        }
+        card.addEventListener("pointerup", release);
+        card.addEventListener("pointercancel", release);
+        card.addEventListener("pointerleave", release);
+      }
+
+      paint();
+    }
+
     if (NV_DEMO) {
       /* Installed BEFORE the gate reads window.__nvSb, so the gate never
          constructs a real client and never reaches getSession(). */
@@ -423,7 +694,19 @@
           if (body)  document.getElementById("nvdBody").textContent  = body;
           ov.classList.add("on");
         };
-        setTimeout(function(){ window.__nvDemoInvite(); }, 25000);
+        /* The onboarding deck also shows in demo, and two stacked overlays
+           is a worse first impression than either alone. So the invitation is
+           armed by the deck when it finishes rather than started on load. If
+           the deck never appears for some reason, this still arms on its own
+           so the demo is never left without a way to convert. */
+        var armed = false;
+        window.__nvDemoArmInvite = function(){
+          if (armed) return; armed = true;
+          setTimeout(function(){ window.__nvDemoInvite(); }, 25000);
+        };
+        setTimeout(function(){
+          if (!document.getElementById("nvObDeck")) window.__nvDemoArmInvite();
+        }, 1200);
 
         /* A blocked write is the moment of intent, so it asks rather than
            saying "disabled". If the invitation has already been used, fall
@@ -7971,7 +8254,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              them. Read-only here -- a merchant cannot move their own pickup
              city, only NovaX can. */
           var pickupCity=(c&&c.meta&&c.meta.pickupCity)||"Karachi";
-          state.client={ id:MY, name:name, walletBalance:bal, rate:rate, rateCard:rc, premiumTier:(c&&c.status)||"", walletTopup:0, shippingDue:0, subAccounts:0, pickupCity:pickupCity };
+          state.client={ id:MY, name:name, walletBalance:bal, rate:rate, rateCard:rc, premiumTier:(c&&c.status)||"", walletTopup:0, shippingDue:0, subAccounts:0, pickupCity:pickupCity, createdAt:(c&&c.created_at)||null };
+          /* Onboarding deck gate. Carried here because clients.created_at is
+             the ONLY thing that can prove a merchant is brand new, and the
+             deck must never appear for an existing one. */
+          try{ if(typeof window.nvOnboardMaybeShow==="function") window.nvOnboardMaybeShow(state.client.createdAt); }catch(e){}
           state.clients=[{ id:MY, name:name, owner:(c&&c.owner)||"", city:(c&&c.city)||"", status:(c&&c.status)||"Active", tier:(c&&c.status)||"", rate:rate, rateCard:rc, walletBalance:bal, risk:Number((c&&c.risk_score)||0), health:90, problemsResolved:0 }];
           /* MERGE, do not replace. res[1] is the ACTIVE-only query, so
              assigning it straight to state.parcels wiped every Delivered /
