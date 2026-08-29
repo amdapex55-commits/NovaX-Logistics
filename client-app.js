@@ -5314,9 +5314,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     /* Sends the merchant to the pickup panel with this parcel already ticked,
        rather than asking them to find it in a list. It never submits on their
        behalf -- the address and time are theirs to confirm. */
+    /* Finds the tab the pickup panel actually lives in rather than naming it.
+       I hardcoded "newBooking" and it is in "awbLabel", so the button landed
+       merchants on the booking form with nothing selected. Deriving it from
+       the DOM means moving the panel between sections cannot break this
+       again. */
+    function nvPickupTabId(){
+      try{
+        var host=document.getElementById("pickupEligibleList");
+        var view=host&&host.closest('[id^="client-"]');
+        if(view) return view.id.replace(/^client-/,"");
+      }catch(e){}
+      return "awbLabel";
+    }
     function nvQuickPickup(awb){
       try{
-        showClientTab("newBooking");
+        showClientTab(nvPickupTabId());
         setTimeout(function(){
           var host = document.getElementById("pickupEligibleList");
           if(!host){ toast("Open Bulk Booking to request a pickup."); return; }
@@ -5330,7 +5343,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }
           if(addr) addr.focus();
           toast(box ? (awb + " selected \u2014 confirm your pickup address below.")
-                    : "Open the pickup section to request a collection.");
+                    : "Open Request Pickup under AWB Label to book a collection.");
         }, 420);
       }catch(e){ toast("Could not open the pickup form.", "error"); }
     }
