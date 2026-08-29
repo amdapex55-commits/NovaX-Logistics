@@ -993,15 +993,25 @@
       background: var(--nvu-good-bg);
     }
 
+    /* BUG: --nvu-bg is #0B0F0D in the dark theme, painted here on a #071d17
+       pill -- near-black on near-black, about 1.1:1. Written for a light theme
+       this console does not have (admin is dark-only by design), and it styles
+       the ACTIVE tab in the top navigation: the most-looked-at control in the
+       product, unreadable at every width. Explicit light ink rather than a
+       token that flips with a theme we do not ship.
+       This exact block appeared TWICE in the sheet; both are corrected. */
     .tab-btn.active {
       background: #071d17;
-      color: var(--nvu-bg);
+      color: #eafff5;
     }
 
+    /* Same defect inverted: #071d17 text on --nvu-bg, which is #0B0F0D in the
+       dark theme this console actually ships -- 1.15:1. Both halves of the
+       pair were written for a light theme. */
     .auth-actions .ghost-btn {
       background: var(--nvu-bg);
-      color: #071d17;
-      border-color: #cfe6dc;
+      color: #eafff5;
+      border-color: var(--nvu-line-2, #26332e);
     }
 
     .auth-actions .action-btn {
@@ -2809,15 +2819,25 @@
       background: var(--nvu-good-bg);
     }
 
+    /* BUG: --nvu-bg is #0B0F0D in the dark theme, painted here on a #071d17
+       pill -- near-black on near-black, about 1.1:1. Written for a light theme
+       this console does not have (admin is dark-only by design), and it styles
+       the ACTIVE tab in the top navigation: the most-looked-at control in the
+       product, unreadable at every width. Explicit light ink rather than a
+       token that flips with a theme we do not ship.
+       This exact block appeared TWICE in the sheet; both are corrected. */
     .tab-btn.active {
       background: #071d17;
-      color: var(--nvu-bg);
+      color: #eafff5;
     }
 
+    /* Same defect inverted: #071d17 text on --nvu-bg, which is #0B0F0D in the
+       dark theme this console actually ships -- 1.15:1. Both halves of the
+       pair were written for a light theme. */
     .auth-actions .ghost-btn {
       background: var(--nvu-bg);
-      color: #071d17;
-      border-color: #cfe6dc;
+      color: #eafff5;
+      border-color: var(--nvu-line-2, #26332e);
     }
 
     .auth-actions .action-btn {
@@ -11791,7 +11811,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if(!Array.isArray(state.storeConnections)) state.storeConnections=[];
       const fillSelect=(id)=>{ const sel=document.getElementById(id); if(!sel) return; const cur=sel.value; sel.innerHTML=(state.clients||[]).filter(c=>c.id&&c.id!=="CL-0000").map(c=>`<option value="${c.id}">${c.id} &middot; ${escLabelText(c.name)}</option>`).join("")||`<option value="">No clients</option>`; if(cur) sel.value=cur; };
       fillSelect("shopifyClientSelect"); fillSelect("wooClientSelect"); fillSelect("webClientSelect");
-      const renderList=(platform,elId)=>{ const el=document.getElementById(elId); if(!el) return; const rows=(state.storeConnections||[]).filter(c=>c.platform===platform); el.innerHTML=rows.length?rows.map(c=>{ const cl=clientById(c.clientId); return `<div class="ops-card" style="margin-bottom:8px"><div class="ops-card-head"><strong>${escLabelText(cl?cl.name:c.clientId)}</strong><span class="chip ${c.connected?"good":""}">${c.connected?"Connected":"Pending"}</span></div><p class="footer-note">${c.storeUrl||""}${c.lastSync?` &middot; last sync ${c.lastSync}`:""}${c.importedCount?` &middot; ${c.importedCount} imported`:""}</p><p class="footer-note" style="margin-top:8px">Orders arrive automatically via webhook -- no manual pull needed.</p></div>`; }).join(""):`<p class="footer-note">No stores connected yet.</p>`; };
+      const renderList=(platform,elId)=>{ const el=document.getElementById(elId); if(!el) return; const rows=(state.storeConnections||[]).filter(c=>c.platform===platform); el.innerHTML=rows.length?rows.map(c=>{ const cl=clientById(c.clientId); return `<div class="ops-card" style="margin-bottom:8px"><div class="ops-card-head"><strong>${escLabelText(cl?cl.name:c.clientId)}</strong><span class="chip ${c.connected?"good":""}">${c.connected?"Connected":"Pending"}</span></div><p class="footer-note">${escLabelText(c.storeUrl||"")}${c.lastSync?` &middot; last sync ${escLabelText(c.lastSync)}`:""}${c.importedCount?` &middot; ${escLabelText(c.importedCount)} imported`:""}</p><p class="footer-note" style="margin-top:8px">Orders arrive automatically via webhook -- no manual pull needed.</p></div>`; }).join(""):`<p class="footer-note">No stores connected yet.</p>`; };
       renderList("woocommerce","wooConnList"); renderList("web","webConnList");
       renderAdminShopifyHealth();
     }
@@ -11872,7 +11892,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     function renderAdminShopifyHealth(){
       const el=document.getElementById("shopifyConnList"); if(!el || !window.__nvSb) return;
       window.__nvSb.rpc("admin_list_shopify_connections", {}).then(function(r){
-        if(r && r.error){ el.innerHTML=`<p class="footer-note">Failed to load Shopify integrations: ${r.error.message}</p>`; return; }
+        if(r && r.error){ el.innerHTML=`<p class="footer-note">Failed to load Shopify integrations: ${escLabelText(r.error.message)}</p>`; return; }
         const rows = (r && r.data) || [];
         state.shopifyConnectionRows = rows;
         if(typeof renderDailyOps==="function"){ try{ renderDailyOps(); }catch(e){} }
@@ -11904,7 +11924,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             + `<button class="ghost-btn" onclick="viewShopifyParcelsForClient('${nvEscAttrJs(row.client_id)}')">View Shopify parcels</button>`
             + `</div></div>`;
         }).join("");
-      }).catch(function(e){ el.innerHTML=`<p class="footer-note">Failed to load Shopify integrations: ${e}</p>`; });
+      }).catch(function(e){ el.innerHTML=`<p class="footer-note">Failed to load Shopify integrations: ${escLabelText(String(e))}</p>`; });
     }
     function viewShopifyParcelsForClient(clientId){
       showAdminTab("orders-view-all");
@@ -12375,7 +12395,7 @@ html,body{ background:var(--bg); color:var(--ink); }
 
       window.__nvSignupClient.auth.signUp({ email, password }).then(res => {
         if (res.error) {
-          if (result) result.innerHTML = `<div class="ops-card"><strong>${id} created</strong><p>${name}'s workspace is saved, but the login could not be created: ${res.error.message}. Open Users and create/link the login manually.</p></div>`;
+          if (result) result.innerHTML = `<div class="ops-card"><strong>${escLabelText(id)} created</strong><p>${escLabelText(name)}'s workspace is saved, but the login could not be created: ${escLabelText(res.error.message)}. Open Users and create/link the login manually.</p></div>`;
           toast(`${id} created as a workspace. Login is NOT ready: ${res.error.message}`);
           return;
         }
