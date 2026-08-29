@@ -965,10 +965,16 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   /* The scroll rail is desktop-only (#rail is display:none under 1150px), so
      20 screens of mobile scroll had no sense of position. A 3px bar under the
      header costs one scaleX per frame. */
-  #mrail{position:fixed;top:calc(64px + var(--sa-t,0px));left:0;right:0;height:3px;
-    z-index:899;pointer-events:none;background:rgba(126,224,175,.10)}
-  #mrail i{display:block;height:100%;transform-origin:0 50%;transform:scaleX(0);
-    background:linear-gradient(90deg,var(--green-2),var(--green));will-change:transform}
+  /* #mrail removed. It was a SECOND scroll-progress bar: #sp already exists,
+     is updated on every scroll (see the hdr/sp handler), and sits at z-index
+     950 -- above the header. #mrail sat at 899, BEHIND the header's 900, and
+     at top:64px it tucked under a header that is taller than that once the
+     safe-area inset is added. So it cost a transform every frame to paint a
+     bar most phones never showed, duplicating one that was already visible.
+
+     Note for anyone re-reading the audit that flagged this: it said #sp was
+     dead code. It is not -- index.html:2626 sets its width. #mrail was the
+     redundant one. */
   /* The spotlight-follow at index.html:2401 was a mousemove effect, so touch
      got nothing. A ripple at the point of contact is the same idea driven by
      the only pointer a phone has. transform+opacity, self-removing. */
@@ -990,7 +996,68 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   header.stuck,.btn-ghost,.console,.bars,.flow,.card,.calc,.tres,.guar,
   details,.ov,.nav-links.open,.aiwrap,.mock,.plat{
     backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+  /* Stripping the blur on mobile (it is expensive on a mid-range Android) left
+     header.stuck at rgba(4,16,11,.88) with nothing behind it to diffuse --
+     so headings and buttons scrolled visibly THROUGH the header. Frosted glass
+     without the frost is just a dirty window. Opaque where the blur is gone. */
+  header.stuck{background:#04100b!important}
+  .nav-links.open{background:#04100b!important}
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE HEIGHT PASS 2 -- 29 Aug 2026
+   Measured live at 375x812 after the first pass, not taken on trust: the
+   audit's "5,497px across .spine/.sync/.pay-grid/.sync-pills/.ai2-demo" is
+   now 2,343px, because the Autopilot and Settlement work already took the
+   rest. The real remaining offenders are #platform at 1,470px and the .spine
+   inside it at 1,022px.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width:760px){
+  /* .spine is four ~250px rows stacked -- APP 01 through 04 -- costing 1,022px
+     to show a four-item sequence. Laid side by side in a snap carousel it
+     costs one row instead of four, and it is the same gesture the payout tiers
+     and the Autopilot demo already use on this page, so it is nothing new to
+     learn. 86% so the next card peeks in and the swipe is discoverable. */
+  #spine.spine{
+    display:flex;grid-template-columns:none;gap:12px;
+    overflow-x:auto;scroll-snap-type:x mandatory;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
+    margin-inline:calc(var(--pad,20px) * -1);
+    padding-inline:var(--pad,20px);padding-bottom:4px}
+  #spine.spine::-webkit-scrollbar{display:none}
+  #spine.spine > .sp-row{
+    flex:0 0 86%;scroll-snap-align:center;min-width:0;
+    border-radius:16px;border:1px solid var(--line)}
+
+  /* A 223px section heading is a poster on a phone. */
+  #platform .sec-head{padding-block:14px}
+  #platform .sec-head .lead{margin-bottom:6px}
+  #platform,#connected{padding-block:30px}
+  .spine-cap{margin-top:12px}
+}
+
+/* ---- 10. ONE PRIMARY ACTION, NOT FIVE -------------------------------------
+   The first screen offered Signup, See The Portal, Talk To Sales, Track Your
+   Order and Sign In. "Talk To Sales Today" carried a hot pink-orange gradient
+   -- the loudest colour on a green page -- so the eye landed on it before the
+   green signup button, and the page out-shouted its own conversion goal.
+
+   Nothing is removed: sales, tracking and sign-in are all still one tap away.
+   They just stop competing with the button the page exists to get pressed. */
+/* The hero's sales button is .btn-vivid -- confirmed live as
+   linear-gradient(135deg,#ff5f2e,#ff2e93), the hot orange-to-pink that was
+   pulling the eye off the green signup button sitting right above it.
+   Scoped to .hero-cta so .btn-vivid keeps its treatment anywhere else. */
+.hero-cta .btn-vivid{
+  background:rgba(8,22,16,.86)!important;
+  background-image:none!important;
+  color:var(--ink-2,#cfe9dc)!important;
+  border:1px solid var(--line)!important;
+  box-shadow:none!important;
+  font-weight:650!important}
+.hero-cta .btn-vivid:hover{
+  border-color:var(--green-2)!important;color:#fff!important}
 
 /* ═════ AUTOPILOT AI — section 04 redesign ═════
    Leads with the model by name. Every claim in this section is checkable in
@@ -3906,23 +3973,9 @@ frame();
   try{ touch = matchMedia("(hover:none)").matches || innerWidth <= 1150; }catch(e){}
   if(!touch) return;
 
-  /* ---- scroll progress rail --------------------------------------------
-     #rail is display:none under 1150px, so mobile had no sense of position
-     across 20 screens of content. One transform per frame, rAF-throttled. */
-  var rail = document.createElement("div");
-  rail.id = "mrail"; rail.setAttribute("aria-hidden","true");
-  rail.innerHTML = "<i></i>";
-  document.body.appendChild(rail);
-  var fill = rail.firstChild, ticking = false;
-  function paintRail(){
-    ticking = false;
-    var h = document.documentElement.scrollHeight - innerHeight;
-    var p = h > 0 ? Math.min(1, Math.max(0, scrollY / h)) : 0;
-    fill.style.transform = "scaleX(" + p.toFixed(4) + ")";
-  }
-  addEventListener("scroll", function(){
-    if(!ticking){ ticking = true; requestAnimationFrame(paintRail); }
-  }, {passive:true});
+  /* The mobile scroll rail lived here. Removed: #sp does this already, is
+     painted by the header handler, and unlike this one it is not behind the
+     header. One less scroll listener and one less transform per frame. */
   addEventListener("resize", paintRail, {passive:true});
   paintRail();
 
@@ -3948,7 +4001,7 @@ frame();
   addEventListener("pointerdown", function(e){
     if(e.pointerType === "mouse") return;
     var t = e.target;
-    if(t.closest && t.closest("input,textarea,select,#mrail")) return;
+    if(t.closest && t.closest("input,textarea,select")) return;
     var d = document.createElement("span");
     d.className = "rip";
     d.style.left = e.clientX + "px";
