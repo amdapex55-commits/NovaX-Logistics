@@ -7708,8 +7708,19 @@ html,body{ background:var(--bg); color:var(--ink); }
         p_phone: document.getElementById("npePhone").value,
         p_address: document.getElementById("npeAddress").value,
         p_city: cityVal,
-        p_cod: Number(document.getElementById("npeCod").value || 0),
-        p_fee: Number(document.getElementById("npeFee").value || 0),
+        /* BUG: `value || 0` turned an EMPTY box into a deliberate zero, and
+           admin_update_parcel_details treats 0 as a real change
+           (`p_cod is not null and p_cod is distinct from...`). Ops opening a
+           parcel to fix an address, tabbing through and blanking COD saved
+           Rs 0 -- the rider then collects nothing on a Rs 4,500 parcel. Same
+           slip on the fee field zeroed the delivery charge.
+
+           Empty now means "leave it alone" (null), which is exactly what the
+           RPC's is-distinct-from guard expects. Zeroing is still possible --
+           you type 0 -- and it is confirmed once, because a real zero on a
+           COD parcel is worth one question. */
+        p_cod: nvEditMoneyField("npeCod", "COD amount"),
+        p_fee: nvEditMoneyField("npeFee", "delivery charge"),
         p_weight: document.getElementById("npeWeight").value,
         p_category: null,
         p_payment_mode: null,
