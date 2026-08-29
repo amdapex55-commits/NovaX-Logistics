@@ -2613,9 +2613,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        safe -- without it, a rotating phone would reveal an empty list. */
     const NV_CARDS_MQ = window.matchMedia("(max-width:760px)");
     /* One place that decides which per-parcel buttons exist, so the mobile
-       card, the drawer and anything added later cannot drift apart on who is
-       allowed to do what. The gates are deliberately mutually exclusive:
-       edit/cancel while "New booked", raise a ticket once it has moved. */
+       card and the desktop table cannot drift apart on who is allowed to do
+       what. The gates are deliberately mutually exclusive: edit/cancel while
+       "New booked", raise a ticket once it has moved.
+
+       BUG this fixes: only the mobile card ever called this. The desktop
+       table rendered five columns and no actions, so a merchant on a laptop
+       had no way to cancel a booking at all -- the feature existed only if
+       you happened to be on a phone. The table now carries an Actions column
+       fed by this same function, so the two views cannot diverge again. */
     function nvParcelCardActions(p){
       var btns=[];
       var a=escLabelText(p.awb);
@@ -2638,7 +2644,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
-      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${nvProgressStep(p.status)}</span><span>${pr}%</span></div></td></tr>`; }).join("")||`<tr><td colspan="5">No parcels in range.</td></tr>`);
+      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${nvProgressStep(p.status)}</span><span>${pr}%</span></div></td><td onclick="event.stopPropagation()">${nvParcelCardActions(p)||'<span class="footer-note">&mdash;</span>'}</td></tr>`; }).join("")||`<tr><td colspan="6">No parcels in range.</td></tr>`);
       if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${nvParcelCardActions(p)}</article>`; }).join("")) : "";
       if(cardsOnScreen) nvMarkChanged("clientParcelCards",parcels,"cards");
       else nvMarkChanged("clientParcelRows",parcels,"rows");
