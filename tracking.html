@@ -51,6 +51,43 @@
     line-height:1.45; -webkit-font-smoothing:antialiased;
   }
   .wrap{max-width:560px;margin:0 auto;padding:16px 14px 40px;min-width:0;}
+
+  /* ── progress rail ───────────────────────────────────────────────────
+     Five stops. Exception and return states never advance it: a refused
+     parcel has not progressed, and painting it next to "Delivered" is a lie
+     the customer can see through. */
+  .prog{display:flex;align-items:center;gap:0;margin:0 0 12px;padding:14px 12px;
+    background:var(--panel);border-radius:var(--radius);border:1px solid rgba(255,255,255,.06);}
+  .pstep{display:flex;flex-direction:column;align-items:center;gap:6px;flex:0 0 auto;min-width:0;}
+  .pdot{width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.16);
+    box-shadow:0 0 0 3px rgba(255,255,255,.04);transition:background .2s;}
+  .pstep.on .pdot{background:var(--brand-2);box-shadow:0 0 0 3px rgba(20,199,123,.18);}
+  .pstep.cur .pdot{box-shadow:0 0 0 5px rgba(20,199,123,.24);}
+  .pk{font-size:11px;letter-spacing:.02em;color:rgba(255,255,255,.45);white-space:nowrap;}
+  .pstep.on .pk{color:rgba(255,255,255,.86);}
+  .pstep.cur .pk{color:#fff;font-weight:700;}
+  .pbar{flex:1 1 auto;height:2px;background:rgba(255,255,255,.12);margin:0 4px;
+    position:relative;top:-9px;border-radius:2px;}
+  .pbar.on{background:var(--brand-2);}
+  .prog.trouble .pstep.cur .pdot{background:var(--bad);box-shadow:0 0 0 5px rgba(220,38,38,.22);}
+  .prog.returning .pstep.cur .pdot{background:var(--warn);box-shadow:0 0 0 5px rgba(180,83,9,.22);}
+  .prog-note{margin:-6px 2px 12px;font-size:13px;}
+  .prog-note.bad{color:#fca5a5;} .prog-note.warn{color:#fcd34d;}
+
+  .eta{margin:2px 0 10px;font-size:14px;color:var(--brand-2);font-weight:700;}
+  .hist-note{margin:10px 2px 0;font-size:12px;color:rgba(255,255,255,.38);line-height:1.4;}
+
+  /* ── copy / share ─────────────────────────────────────────────────── */
+  .acts{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap;}
+  .act{flex:1 1 46%;min-height:44px;padding:11px 12px;border-radius:12px;cursor:pointer;
+    font:600 14px/1.2 inherit;color:#04140d;background:var(--brand-2);
+    border:1px solid transparent;transition:transform .12s,filter .12s;}
+  .act:hover{filter:brightness(1.06);} .act:active{transform:scale(.985);}
+  .act.ghost{background:transparent;color:#eafff5;border-color:rgba(255,255,255,.16);}
+  .act:focus-visible{outline:2px solid var(--brand-2);outline-offset:2px;}
+
+  @media (max-width:380px){ .pk{font-size:10px;} .prog{padding:12px 8px;} }
+  @media (prefers-reduced-motion:reduce){ .act,.pdot{transition:none;} }
   .brandbar{
     display:flex;align-items:center;gap:10px;margin-bottom:16px;
     padding:12px 14px;border-radius:var(--radius);
@@ -295,57 +332,148 @@
            '<div class="cta-sub">COD collected, and your money in your wallet the day it lands. Karachi &middot; Lahore &middot; Islamabad &middot; Rawalpindi.</div>';
   }
 
+  /* The journey, from nv_parcel_status_log -- a real scan history with a
+     timestamp on every line, which is what TCS, Leopards and M&P all show
+     from a bare tracking number and this page did not.
+
+     The log trigger was added on 20 Aug 2026. Parcels booked before that have
+     no rows, so an empty journey is not an error and must never render as an
+     empty timeline: it falls through to the derived view below, which shows
+     the forward flow up to the current status without inventing times. */
+  function journeyRows(row){
+    var j=row&&row.journey;
+    try{ if(typeof j==="string") j=JSON.parse(j||"[]"); }catch(e){ j=null; }
+    if(!Array.isArray(j)) return [];
+    return j.map(function(e){
+      if(!e||typeof e!=="object") return null;
+      var st=nvStatus(e.status||"");
+      if(!st) return null;
+      return { status:st, at:e.at||null, note:e.note||STEP_NOTE[st]||"" };
+    }).filter(Boolean);
+  }
+
   function timelineHtml(row){
+    var real=journeyRows(row);
+    var html="", i;
+
+    if(real.length){
+      /* Newest first. A customer opening this wants the latest scan at the
+         top, not to scroll to the bottom of a long history to find it. */
+      for(i=real.length-1;i>=0;i--){
+        var e=real[i], isNow=(i===real.length-1);
+        html+='<li class="'+(isNow?"now":"done")+'">'+
+              '<div class="s">'+esc((SAY[e.status]&&SAY[e.status][0])||e.status)+'</div>'+
+              (e.note?'<div class="m">'+esc(e.note)+'</div>':"")+
+              (e.at?'<div class="d">'+esc(when(e.at))+'</div>':"")+
+              '</li>';
+      }
+      return '<div class="card"><h2 class="sec">Journey</h2><ul class="tl">'+html+'</ul></div>';
+    }
+
+    /* ---- no logged history (parcel predates the log) ---- */
     var steps=[];
     try{
       if(Array.isArray(row.steps)) steps=row.steps;
       else if(typeof row.steps==="string") steps=JSON.parse(row.steps||"[]");
-    }catch(e){ steps=[]; }
-
-    var html="";
-    /* AUDIT FIX (high): meta.steps in this codebase is an array of PLAIN
-       STRINGS, not objects -- every writer confirms it (admin.html
-       `parcel.steps.push(status)`, rider.html `p.steps.push(status)`, the
-       order-intake edge functions `steps:["New booked"]`). Reading
-       s.status/s.name off a string primitive yielded undefined, so every
-       parcel with recorded steps rendered a list of BLANK rows -- and
-       because the fallback below only runs when steps.length===0, it never
-       kicked in. That is the entire main content of this page. */
-    var norm=steps.map(function(s){
-      return nvStatus((typeof s==="string")?s:((s&&(s.status||s.name))||""));
+    }catch(e2){ steps=[]; }
+    /* meta.steps is an array of PLAIN STRINGS in this codebase -- every
+       writer confirms it (admin.html `parcel.steps.push(status)`, rider.html,
+       the order-intake edge functions). Reading s.status off a string yields
+       undefined and renders blank rows. */
+    var norm=steps.map(function(x){
+      return nvStatus((typeof x==="string")?x:((x&&(x.status||x.name))||""));
     }).filter(function(st){ return st&&SAY[st]; });
 
-    if(norm.length){
-      norm.forEach(function(st,i){
-        var isLast=i===norm.length-1;
-        html+='<li class="'+(isLast?"now":"done")+'">'+
-              '<div class="s">'+esc(SAY[st][0])+'</div>'+
-              (STEP_NOTE[st]?'<div class="m">'+esc(STEP_NOTE[st])+'</div>':"")+
-              (isLast&&when(row.updated_at)?'<div class="d">'+esc(when(row.updated_at))+'</div>':"")+
-              '</li>';
-      });
-    }else{
-      /* No recorded steps: derive an honest progress view from the standard
-         forward flow, marking only what the current status actually implies.
-         Nothing is invented -- if the parcel is in a return/exception state
-         that is not on the forward flow, we show just that one state. */
+    var list=[];
+    if(norm.length){ list=norm; }
+    else{
       var idx=FLOW.indexOf(nvStatus(row.status));
-      if(idx<0){
-        html+='<li class="now"><div class="s">'+esc((SAY[nvStatus(row.status)]&&SAY[nvStatus(row.status)][0])||nvStatus(row.status)||"Status unavailable")+'</div>'+
-              (when(row.updated_at)?'<div class="d">'+esc(when(row.updated_at))+'</div>':"")+'</li>';
-      }else{
-        FLOW.slice(0,idx+1).forEach(function(st,i){
-          var isNow=i===idx;
-          html+='<li class="'+(isNow?"now":"done")+'">'+
-                '<div class="s">'+esc((SAY[st]&&SAY[st][0])||st)+'</div>'+
-                (STEP_NOTE[st]?'<div class="m">'+esc(STEP_NOTE[st])+'</div>':"")+
-                (isNow&&when(row.updated_at)?'<div class="d">'+esc(when(row.updated_at))+'</div>':"")+
-                '</li>';
-        });
-      }
+      list = idx<0 ? [nvStatus(row.status)] : FLOW.slice(0,idx+1);
     }
-    return '<div class="card"><h2 class="sec">Journey</h2><ul class="tl">'+html+'</ul></div>';
+    for(i=list.length-1;i>=0;i--){
+      var st2=list[i], last=(i===list.length-1);
+      html+='<li class="'+(last?"now":"done")+'">'+
+            '<div class="s">'+esc((SAY[st2]&&SAY[st2][0])||st2||"Status unavailable")+'</div>'+
+            (STEP_NOTE[st2]?'<div class="m">'+esc(STEP_NOTE[st2])+'</div>':"")+
+            (last&&when(row.updated_at)?'<div class="d">'+esc(when(row.updated_at))+'</div>':"")+
+            '</li>';
+    }
+    return '<div class="card"><h2 class="sec">Journey</h2><ul class="tl">'+html+'</ul>'+
+      '<p class="hist-note">Step-by-step times are recorded for parcels booked from 20 August 2026 onward.</p>'+
+      '</div>';
   }
+
+  /* A five-stop progress bar. Exception and return states deliberately do NOT
+     advance it -- a refused parcel has not progressed, and showing it near
+     "Delivered" would be a lie the customer can see through. */
+  var PROGRESS=[
+    {k:"Booked",    at:["New booked"]},
+    {k:"Picked up", at:["Collected by rider","Arrived at warehouse"]},
+    {k:"In transit",at:["Parcel now in transit","Parcel received at destination"]},
+    {k:"Out",       at:["Parcel out for delivery"]},
+    {k:"Delivered", at:["Delivered"]}
+  ];
+  function progressHtml(row){
+    var st=nvStatus(row.status), reached=-1, i, j;
+    for(i=0;i<PROGRESS.length;i++){
+      for(j=0;j<PROGRESS[i].at.length;j++) if(PROGRESS[i].at[j]===st) reached=i;
+    }
+    var isReturn=/^Return|^Ready for return/.test(st);
+    var isTrouble=["Refused","Consignee not available","Out of service area","Reattempt","Reassigned","Cancelled by client"].indexOf(st)>-1;
+    if(reached<0 && !isReturn && !isTrouble) return "";
+    if(reached<0){
+      /* Off the forward flow: show how far it did get, from the log. */
+      var real=journeyRows(row);
+      for(i=0;i<real.length;i++)
+        for(j=0;j<PROGRESS.length;j++)
+          if(PROGRESS[j].at.indexOf(real[i].status)>-1 && j>reached) reached=j;
+    }
+    var cls=isTrouble?"trouble":isReturn?"returning":"";
+    var out='<div class="prog '+cls+'">';
+    for(i=0;i<PROGRESS.length;i++){
+      out+='<div class="pstep'+(i<=reached?" on":"")+(i===reached?" cur":"")+'">'+
+             '<span class="pdot"></span><span class="pk">'+esc(PROGRESS[i].k)+'</span>'+
+           '</div>';
+      if(i<PROGRESS.length-1) out+='<span class="pbar'+(i<reached?" on":"")+'"></span>';
+    }
+    out+='</div>';
+    if(isTrouble)  out+='<p class="prog-note bad">This parcel needs attention &mdash; see the journey below.</p>';
+    if(isReturn)   out+='<p class="prog-note warn">This parcel is on its way back to the seller.</p>';
+    return out;
+  }
+
+  /* Copy and share, the two things a customer actually does with a tracking
+     number. Share falls back to copy where the Web Share API is absent. */
+  function actionsHtml(row){
+    var awb=esc(row.awb||"");
+    return '<div class="acts">'+
+      '<button type="button" class="act" onclick="nvCopyAwb(this)" data-awb="'+awb+'">Copy tracking number</button>'+
+      '<button type="button" class="act ghost" onclick="nvShare(this)" data-awb="'+awb+'">Share</button>'+
+      '</div>';
+  }
+  window.nvCopyAwb=function(btn){
+    var v=btn.getAttribute("data-awb")||"";
+    var done=function(){ var t=btn.textContent; btn.textContent="Copied"; setTimeout(function(){btn.textContent=t;},1400); };
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(v).then(done,function(){}); return; }
+    try{
+      var ta=document.createElement("textarea"); ta.value=v; ta.setAttribute("readonly","");
+      ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta);
+      ta.select(); document.execCommand("copy"); document.body.removeChild(ta); done();
+    }catch(e){}
+  };
+  window.nvShare=function(btn){
+    var v=btn.getAttribute("data-awb")||"";
+    /* Share the AWB link, never location.href -- on a ?t= link that would
+       hand the tokenised URL, and everything behind it, to whoever it is
+       forwarded to. */
+    var url=SITE+"/tracking.html?awb="+encodeURIComponent(v);
+    if(navigator.share){ navigator.share({title:"NovaX parcel "+v, text:"Track NovaX parcel "+v, url:url}).catch(function(){}); return; }
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(url).then(function(){
+        var t=btn.textContent; btn.textContent="Link copied"; setTimeout(function(){btn.textContent=t;},1400);
+      },function(){});
+    }
+  };
 
   function render(row){
     var st=nvStatus(row.status)||"";
@@ -357,6 +485,14 @@
     var head='<div class="card">'+
       '<h1 class="status-head">'+esc(say[0])+'</h1>'+
       (say[1]?'<p class="status-urdu">'+esc(say[1])+'</p>':"")+
+      (function(){
+        /* Delivered parcels get the one fact a customer looks for after the
+           fact -- when. Everything else gets no promise: we do not have a
+           committed SLA per parcel, and inventing "arrives Tuesday" is how a
+           tracking page loses trust the first time it is wrong. */
+        var d=row.delivered_at||(nvStatus(row.status)==="Delivered"?row.updated_at:null);
+        return d?'<p class="eta">Delivered '+esc(when(d))+'</p>':"";
+      })()+
       '<div class="route">'+
         '<div class="city"><span class="lbl">From</span>'+esc(row.origin_city||"—")+'</div>'+
         '<div class="arrow">&rarr;</div>'+
@@ -377,7 +513,7 @@
       (row.exception_note?'<p class="status-urdu" style="margin-top:10px">'+esc(row.exception_note)+'</p>':"")+
     '</div>';
 
-    show(head+timelineHtml(row)+ctaHtml());
+    show(head+progressHtml(row)+timelineHtml(row)+actionsHtml(row)+ctaHtml());
     try{ document.title=say[0]+" · "+(row.awb||"")+" · NovaX"; }catch(e){}
   }
 
@@ -385,30 +521,53 @@
      the homepage tracker already exposes — so no extra data becomes reachable
      by guessing an AWB. Shows current status; the full step-by-step journey
      still requires the tokenised link the seller sends. */
+  /* AWB path. Now calls public_track_awb(), which returns the same journey,
+     route and timestamps as the tokenised link but none of the personal
+     fields -- no consignee name, no COD amount, no rider. So a guessed AWB
+     reveals exactly what every other courier already publishes from a bare
+     tracking number, and nothing that identifies anybody.
+
+     It renders through render(), the same function the token path uses; the
+     personal blocks simply do not appear because the columns are absent. */
   function bootByAwb(sb, awb){
-    sb.rpc("track_parcel_public",{ p_awb: awb }).then(function(r){
+    sb.rpc("public_track_awb",{ p_awb: awb }).then(function(r){
       if(r&&r.error){ fail("Tracking is temporarily unavailable","Please try again in a moment."); return; }
       var row=(r&&r.data&&r.data[0])||null;
       if(!row){ fail("Parcel not found","We couldn't find a parcel with that tracking ID. Please check it and try again."); return; }
-      var st=nvStatus(row.status)||"New booked";
-      show(
-        '<div class="card">'+
-          '<div class="awbline">'+
-            '<span class="pill'+(function(){var t=tone(st);return t?" "+t:"";})()+'">'+esc(awb)+'</span>'+
-            '<span class="pill'+(function(){var t=tone(st);return t?" "+t:"";})()+'">'+esc(st)+'</span>'+
-          '</div>'+
-          '<div class="msg" style="margin-top:10px">'+
-            esc(row.city||"In transit")+
-            (row.updated_at?(' &middot; updated '+esc(pktTime(row.updated_at))):"")+
-          '</div>'+
-          '<div class="msg" style="margin-top:10px;opacity:.8">For the full step-by-step journey, open the tracking link your seller sent you.</div>'+
-        '</div>'+ctaHtml()
-      );
-      try{ document.title=st+" · "+awb+" · NovaX"; }catch(e){}
+      render(row);
+      if(nvIsFinal(row.status)) return;
+      nvStartRefresh(function(){
+        sb.rpc("public_track_awb",{ p_awb: awb }).then(function(r2){
+          var n=(r2&&r2.data&&r2.data[0])||null;
+          if(!n) return;
+          if(n.updated_at!==row.updated_at){ row=n; render(n); }
+          if(nvIsFinal(n.status)) nvStopRefresh();
+        }).catch(function(){});
+      });
     }).catch(function(){
       fail("Cannot reach NovaX right now","Please check your internet connection and try again.");
     });
   }
+
+  /* Quiet refresh while the page is open. A customer watching an out-for-
+     delivery parcel should not have to pull to reload. Paused when the tab is
+     hidden so a forgotten tab is not polling all night, and stopped entirely
+     once the parcel reaches a state that cannot change on its own. */
+  var NV_TIMER=null;
+  /* States that cannot change on their own. Once a parcel reaches one there
+     is nothing left to poll for, so the timer stops rather than hitting the
+     database every minute for a page nobody will see change. */
+  var NV_FINAL=["Delivered","Return to shipper","Cancelled by client"];
+  function nvIsFinal(st){ return NV_FINAL.indexOf(nvStatus(st||""))>-1; }
+
+  function nvStartRefresh(fn){
+    if(NV_TIMER) return;
+    NV_TIMER=setInterval(function(){ if(!document.hidden) fn(); },60000);
+    document.addEventListener("visibilitychange",function(){
+      if(!document.hidden) fn();
+    });
+  }
+  function nvStopRefresh(){ if(NV_TIMER){ clearInterval(NV_TIMER); NV_TIMER=null; } }
 
   function boot(){
     var token=param("t");
