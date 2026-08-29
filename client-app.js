@@ -2424,7 +2424,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        the same clock as their warehouse. */
     function nvPkt(v){
       if(!v) return null;
-      var d=new Date(String(v).indexOf("T")>-1 ? v : String(v).replace(" ","T")+(String(v).length<=16?"+05:00":""));
+      var raw = String(v);
+      /* BUG: a bare "2026-08-25" became "2026-08-25+05:00" -- a date with an
+         offset but no time, which is not valid ISO, so every date-only value
+         in the portal parsed to Invalid Date and this returned null. Parcels
+         store exactly that in .date, so anything asking "when was this
+         booked" silently got nothing. Give a date-only value a midnight PKT
+         time before the offset. */
+      if(/^\d{4}-\d{2}-\d{2}$/.test(raw)) raw = raw + "T00:00:00+05:00";
+      else if(raw.indexOf("T") === -1) raw = raw.replace(" ", "T") + (raw.length <= 16 ? "+05:00" : "");
+      var d = new Date(raw);
       return isNaN(d) ? null : d;
     }
     /* THE one definition of a Pakistani mobile number in this file.
