@@ -10466,17 +10466,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   (function nvFabAutoHide(){
     var lastY = 0, hidden = false, idle = null;
     var show = function(){
-      if(!hidden) return; hidden = false;
+      hidden = false;
       btn.style.transform = ""; btn.style.opacity = "";
-      btn.style.pointerEvents = "";
+      btn.style.pointerEvents = ""; btn.style.visibility = "";
     };
     var hide = function(){
       if(hidden) return;
       if(document.querySelector(".nvauto-panel.open")) return;   // never while open
       hidden = true;
-      btn.style.transform = "translateY(130%)";
+      /* Was translateY(130%). That slid the button DOWN -- straight onto the
+         bottom navigation, where it covered "More" by 56x50 and swallowed the
+         tap: elementFromPoint on the centre of More returned the Autopilot
+         icon, so on a phone that tab could not be opened at all.
+
+         Collapsing in place cannot overlap anything, whatever is beneath it.
+         visibility:hidden as well as pointer-events, so no state mismatch
+         between the two can ever leave an invisible button taking taps. */
+      btn.style.transform = "scale(.6)";
       btn.style.opacity = "0";
-      btn.style.pointerEvents = "none";                          // cannot be tapped while gone
+      btn.style.pointerEvents = "none";
+      btn.style.visibility = "hidden";
     };
     addEventListener("scroll", function(){
       var y = window.scrollY || 0;
