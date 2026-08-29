@@ -1910,7 +1910,16 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     // byte-for-byte identical to before.
     function nvFormatNumber(v){ try{ return Number(v||0).toLocaleString('en-US'); }catch(e){ return String(v); } }
     window.nvFormatNumber=nvFormatNumber;
-    function money(v){ return PKR.format(v).replace("PKR","Rs"); }
+    /* PKR.format(NaN) yields "RsNaN". No live row produces that today, but it
+       is one bad value away -- a missing fee, a half-written invoice -- and
+       "RsNaN" where a merchant expects their money is the kind of thing that
+       ends in a support ticket rather than a bug report. Anything that is not
+       a finite number reads as Rs 0. */
+    function money(v){
+      var n = typeof v === "number" ? v : Number(v);
+      if (!isFinite(n)) n = 0;
+      return PKR.format(n).replace("PKR","Rs");
+    }
     function fmt(v){ return nvFormatNumber(v); }
     /* Kept deliberately in step with admin.html's statusClass(). The
        "Cancelled by client" early-return was present there and missing here,
@@ -5333,7 +5342,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(st === "Delivered" || st === "Return to shipper" || st === "Cancelled by client") return "";
       var e = nvExpectedBy(p);
       if(!e) return "";
-      var late = e.date.getTime() < Date.now();
+      var overdueMs = Date.now() - e.date.getTime();
+      var late = overdueMs > 0;
+      /* Past a week, the promised date stops being useful and starts reading
+         as an old receipt -- a parcel stuck since May printed "Was expected by
+         Sat 2 May", which tells a merchant nothing they can act on. Say how
+         far behind it is instead, which is the thing they would ask support. */
+      if (overdueMs > 7 * 86400000) {
+        var d = Math.floor(overdueMs / 86400000);
+        return '<div class="nv-eta late">' + d + ' days past its expected delivery</div>';
+      }
       return '<div class="nv-eta' + (late ? " late" : "") + '">' +
              (late ? "Was expected by " : "Expected by ") + escLabelText(e.text) + "</div>";
     }

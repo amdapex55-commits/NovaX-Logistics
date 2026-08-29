@@ -122,7 +122,15 @@ Deno.serve(async (req) => {
   if (req.method === "POST" || req.method === "PUT") {
     body = await req.json().catch(() => null);
   }
-  const isDryRun = body?.test === true || body?.test === "true";
+  /* Strict, and loud about anything ambiguous. `test: 1` used to fall through
+     to a REAL booking -- a developer who thought they were dry-running got a
+     live parcel and a rider dispatched. Accepting truthy values instead would
+     be worse (`test: "false"` is truthy), so anything that is not clearly
+     yes or no is rejected with an explanation rather than guessed at. */
+  const rawTest = body?.test;
+  const isDryRun = rawTest === true || rawTest === "true";
+  const testIsAmbiguous = rawTest !== undefined && rawTest !== null &&
+    !(rawTest === true || rawTest === false || rawTest === "true" || rawTest === "false");
 
   const auth = req.headers.get("authorization") || "";
   const key = auth.replace(/^Bearer\s+/i, "").trim();
@@ -207,6 +215,23 @@ Deno.serve(async (req) => {
       if (missing.length) {
         return fail(422, "missing_fields",
           `Required: ${missing.join(", ")}. cod_amount defaults to 0 for prepaid orders.`);
+      }
+
+      if (testIsAmbiguous) {
+        return fail(422, "invalid_test_flag",
+          `"test" must be true or false. Received ${JSON.stringify(rawTest)}. ` +
+          `Nothing was booked -- send "test": true to dry-run, or omit it to book for real.`);
+      }
+
+      /* NovaX delivers to four cities. Accepting an order for anywhere else
+         meant a merchant's customer waited for a parcel that could never be
+         collected, and the merchant found out days later. Better to refuse it
+         at the door and say where we do go. */
+      const SERVED = ["karachi", "lahore", "islamabad", "rawalpindi"];
+      const destCity = String(b.city).trim();
+      if (!SERVED.includes(destCity.toLowerCase())) {
+        return fail(422, "city_not_served",
+          `We do not deliver to "${destCity}" yet. NovaX currently serves Karachi, Lahore, Islamabad and Rawalpindi.`);
       }
 
       const cod = Number(b.cod_amount ?? 0);
