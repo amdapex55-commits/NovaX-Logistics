@@ -9107,6 +9107,15 @@ html,body{ background:var(--bg); color:var(--ink); }
        ══════════════════════════════════════════════════════════════════════ */
     var NV_WA_SENT = Object.create(null);   // awb -> {sent_at, sent_by_label}
 
+    /* Fetched once per visit, then the whole admin repaints so every row --
+       dashboard queue and exception room alike -- shows its real state.
+       Guarded so a render never waits on the network. */
+    function nvWaEnsureSentMap() {
+      if (nvWaEnsureSentMap._started) return;
+      nvWaEnsureSentMap._started = true;
+      nvWaLoadSentMap().then(function () { renderAdmin(); });
+    }
+
     async function nvWaLoadSentMap() {
       if (!window.__nvSb) return;
       try {
@@ -9118,30 +9127,66 @@ html,body{ background:var(--bg); color:var(--ink); }
       } catch (e) { /* the row falls back to showing the button */ }
     }
 
-    function nvWaSentLabel(awb) {
-      const hit = NV_WA_SENT[awb];
-      if (!hit) return "";
-      let when = hit.sent_at;
+    function nvWaStampLabel(label, iso) {
+      let when = iso || "";
       try {
-        const d = new Date(hit.sent_at);
+        const d = new Date(iso);
         when = d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }) +
                " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
       } catch (e) {}
-      return escLabelText((hit.sent_by_label || "an admin").split("@")[0]) + " &middot; " + escLabelText(when);
+      return escLabelText(String(label || "an admin").split("@")[0]) + " &middot; " + escLabelText(when);
     }
 
+    /* Three states, and Done is terminal in all of them:
+
+         not asked   [Ask Merchant on WhatsApp] [Done]
+         asked       "Asked - ali - 09:14"      [Done] [Sent by mistake?]
+         done        "Done - ali - 09:20"              [Reopen]
+
+       Done is offered before the WhatsApp button is ever pressed because ops
+       often settles it another way -- rings them, or catches them in a chat
+       that is already open -- and the row still needs closing without a
+       second message going out. Once done, the WhatsApp button does not come
+       back, which is what stops the same merchant being asked twice. */
     function nvWaMerchantHtml(awb) {
-      const sent = NV_WA_SENT[awb];
-      if (sent) {
-        return '<div class="wa-merchant" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center" onclick="event.stopPropagation()">' +
-          '<span class="chip info">Merchant asked &middot; ' + nvWaSentLabel(awb) + '</span>' +
-          '<button class="ghost-btn" onclick="event.stopPropagation();nvWaUnlock(\'' + nvEscAttrJs(awb) + '\')">Sent by mistake?</button>' +
-          '</div>';
+      const a = nvEscAttrJs(awb);
+      const rec = NV_WA_SENT[awb];
+      const wrap = function (inner) {
+        return '<div class="wa-merchant" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center" onclick="event.stopPropagation()">' + inner + '</div>';
+      };
+
+      if (rec && rec.done_at) {
+        return wrap(
+          '<span class="chip good">Done &middot; ' + nvWaStampLabel(rec.done_by_label, rec.done_at) + '</span>' +
+          '<button class="ghost-btn" onclick="event.stopPropagation();nvWaUnlock(\'' + a + '\')">Reopen</button>');
       }
-      return '<div class="wa-merchant" style="margin-top:6px" onclick="event.stopPropagation()">' +
-        '<button class="action-btn" onclick="event.stopPropagation();nvWaAskMerchant(\'' + nvEscAttrJs(awb) + '\')">Ask Merchant on WhatsApp</button>' +
-        '<span class="footer-note" style="margin-left:8px">Once per parcel</span>' +
-        '</div>';
+      if (rec && rec.sent_at) {
+        return wrap(
+          '<span class="chip info">Asked &middot; ' + nvWaStampLabel(rec.sent_by_label, rec.sent_at) + '</span>' +
+          '<button class="action-btn" onclick="event.stopPropagation();nvWaDone(\'' + a + '\')">Done</button>' +
+          '<button class="ghost-btn" onclick="event.stopPropagation();nvWaUnlock(\'' + a + '\')">Sent by mistake?</button>');
+      }
+      return wrap(
+        '<button class="action-btn" onclick="event.stopPropagation();nvWaAskMerchant(\'' + a + '\')">Ask Merchant on WhatsApp</button>' +
+        '<button class="ghost-btn" onclick="event.stopPropagation();nvWaDone(\'' + a + '\')">Done</button>' +
+        '<span class="footer-note">Once per parcel</span>');
+    }
+
+    async function nvWaDone(awb) {
+      if (!window.__nvSb) { toast("Not connected to the server.", "error"); return; }
+      const note = window.prompt("Mark " + awb + " done? The WhatsApp button will not come back.\n\nNote (optional):", "");
+      if (note === null) return;
+      try {
+        const r = await window.__nvSb.rpc("admin_wa_nudge_done", { p_awb: awb, p_note: note.trim() || null });
+        if (r && r.error) { toast(r.error.message || "Could not mark it done.", "error"); return; }
+        if (!r.data || !r.data.ok) { toast("Could not mark it done.", "error"); return; }
+        NV_WA_SENT[awb] = Object.assign({}, NV_WA_SENT[awb], {
+          done_at: r.data.done_at || new Date().toISOString(),
+          done_by_label: r.data.done_by || currentAdminName()
+        });
+        toast(awb + " marked done.");
+        renderAdmin();
+      } catch (e) { toast("Could not reach the server.", "error"); }
     }
 
     async function nvWaAskMerchant(awb) {
@@ -9168,7 +9213,10 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!d || !d.ok) {
         if (win) win.close();
         const err = d && d.error;
-        if (err === "already_sent") {
+        if (err === "already_done") {
+          toast(awb + " was already marked done by " + (d.done_by || "another admin") + ".", "error");
+          await nvWaLoadSentMap(); renderAdmin();
+        } else if (err === "already_sent") {
           toast("Already asked on " + new Date(d.sent_at).toLocaleString() +
                 " by " + (d.sent_by || "another admin") + ".", "error");
           await nvWaLoadSentMap(); renderAdmin();
@@ -9183,7 +9231,8 @@ html,body{ background:var(--bg); color:var(--ink); }
 
       const url = "https://wa.me/" + d.phone + "?text=" + encodeURIComponent(d.message);
       if (win) { win.location.href = url; } else { window.open(url, "_blank"); }
-      NV_WA_SENT[awb] = { sent_at: new Date().toISOString(), sent_by_label: currentAdminName() };
+      NV_WA_SENT[awb] = Object.assign({}, NV_WA_SENT[awb],
+        { sent_at: new Date().toISOString(), sent_by_label: currentAdminName() });
       toast("WhatsApp opened for " + (d.brand || "the merchant") + ". Press send there.");
       renderAdmin();
     }
@@ -9604,6 +9653,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         </button>
       `).join("");
 
+      nvWaEnsureSentMap();
       const queueRows = state.parcels.filter(p => p.status === activeStatus);
       document.getElementById("statusQueueRows").innerHTML = queueRows.map(p => {
         const client = clientById(p.clientId);
@@ -9622,6 +9672,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <td>
               <div class="field"><label>Reason</label><input id="resolve-${p.awb}" value="${alert.label} checked by operations"></div>
               <button class="ghost-btn" onclick="event.stopPropagation(); resolveParcelAlert('${nvEscAttrJs(p.awb)}')">Resolve With Reason</button>
+              ${nvWaMerchantHtml(p.awb)}
             </td>
           </tr>
         `;
@@ -13557,10 +13608,7 @@ html,body{ background:var(--bg); color:var(--ink); }
          repaint so the rows show "Merchant asked" instead of the button.
          Guarded so the render itself stays synchronous and never waits on
          the network. */
-      if (!renderExceptionControlRoom._loaded) {
-        renderExceptionControlRoom._loaded = true;
-        nvWaLoadSentMap().then(function () { renderExceptionControlRoom(); });
-      }
+      nvWaEnsureSentMap();
       const branchSel = document.getElementById("excBranchFilter"), issueSel = document.getElementById("excIssueFilter"), urgencySel = document.getElementById("excUrgencyFilter"), clientSel = document.getElementById("excClientFilter");
       if (branchSel && branchSel.options.length <= 1) {
         const branches = [...new Set((state.parcels || []).map(p => p.branch).filter(Boolean))];

@@ -233,3 +233,166 @@ revoke all on function public.admin_wa_nudge_map()              from public, ano
 grant execute on function public.admin_wa_nudge_claim(text)       to authenticated;
 grant execute on function public.admin_wa_nudge_unlock(text,text) to authenticated;
 grant execute on function public.admin_wa_nudge_map()             to authenticated;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- "Done" -- 29 Aug 2026
+--
+-- wa.me hands off to another app and tells us nothing, so the claim alone
+-- cannot mean "the merchant was actually asked". Done is the human saying so.
+-- It also covers the case where ops settled it another way -- rang them,
+-- caught them in an existing chat -- and no message is wanted at all, which
+-- is why Done is available before the WhatsApp button is ever pressed.
+--
+-- Once done, the WhatsApp button never comes back for that parcel. That is
+-- what stops the same merchant being asked the same question twice.
+-- ═══════════════════════════════════════════════════════════════════════════
+alter table public.nv_wa_nudge add column if not exists done_at       timestamptz;
+alter table public.nv_wa_nudge add column if not exists done_by       uuid;
+alter table public.nv_wa_nudge add column if not exists done_by_label text;
+alter table public.nv_wa_nudge add column if not exists done_note     text;
+
+-- A parcel can be marked done without ever having been claimed, so the row
+-- has to be creatable here too. The primary key still guarantees one row.
+alter table public.nv_wa_nudge alter column status_at_send drop not null;
+alter table public.nv_wa_nudge alter column template       drop not null;
+alter table public.nv_wa_nudge alter column message        drop not null;
+alter table public.nv_wa_nudge alter column phone_e164     drop not null;
+alter table public.nv_wa_nudge alter column sent_at        drop not null;
+alter table public.nv_wa_nudge alter column sent_at        set default null;
+
+do $$ begin
+  alter table public.nv_wa_nudge_log drop constraint nv_wa_nudge_log_action_check;
+exception when undefined_object then null; end $$;
+alter table public.nv_wa_nudge_log add constraint nv_wa_nudge_log_action_check
+  check (action in ('claim','unlock','blocked','done','undone'));
+
+create or replace function public.admin_wa_nudge_done(p_awb text, p_note text default null)
+returns jsonb
+language plpgsql security definer set search_path to 'public' as $$
+declare v_p parcels; v_actor uuid; v_label text; v_existing nv_wa_nudge;
+begin
+  if not public.is_admin() then raise exception 'Admin access required.'; end if;
+  v_actor := auth.uid();
+  select email into v_label from auth.users where id = v_actor;
+
+  select * into v_p from parcels where awb = p_awb;
+  if v_p.id is null then return jsonb_build_object('ok', false, 'error', 'parcel_not_found'); end if;
+
+  select * into v_existing from nv_wa_nudge where parcel_id = v_p.id;
+  if v_existing.done_at is not null then
+    return jsonb_build_object('ok', true, 'already', true,
+      'done_at', v_existing.done_at, 'done_by', v_existing.done_by_label);
+  end if;
+
+  insert into nv_wa_nudge(parcel_id, client_id, awb, done_at, done_by, done_by_label, done_note)
+  values (v_p.id, v_p.client_id, v_p.awb, now(), v_actor, v_label, nullif(btrim(p_note),''))
+  on conflict (parcel_id) do update
+    set done_at = now(), done_by = v_actor, done_by_label = v_label,
+        done_note = coalesce(nullif(btrim(p_note),''), nv_wa_nudge.done_note);
+
+  insert into nv_wa_nudge_log(parcel_id, awb, client_id, action, detail, actor, actor_label)
+  values (v_p.id, p_awb, v_p.client_id, 'done', nullif(btrim(p_note),''), v_actor, v_label);
+
+  return jsonb_build_object('ok', true, 'done_at', now(), 'done_by', v_label);
+end $$;
+
+-- Unlock must clear the whole row, Done included -- otherwise a released
+-- parcel would still render as done and the button would never return.
+create or replace function public.admin_wa_nudge_unlock(p_awb text, p_reason text)
+returns jsonb
+language plpgsql security definer set search_path to 'public' as $$
+declare v_p parcels; v_actor uuid; v_label text;
+begin
+  if not public.is_admin() then raise exception 'Admin access required.'; end if;
+  if coalesce(btrim(p_reason),'') = '' then
+    return jsonb_build_object('ok', false, 'error', 'reason_required');
+  end if;
+  v_actor := auth.uid();
+  select email into v_label from auth.users where id = v_actor;
+  select * into v_p from parcels where awb = p_awb;
+  if v_p.id is null then return jsonb_build_object('ok', false, 'error', 'parcel_not_found'); end if;
+
+  delete from nv_wa_nudge where parcel_id = v_p.id;
+  if not found then return jsonb_build_object('ok', false, 'error', 'not_claimed'); end if;
+
+  insert into nv_wa_nudge_log(parcel_id, awb, client_id, action, detail, actor, actor_label)
+  values (v_p.id, p_awb, v_p.client_id, 'unlock', btrim(p_reason), v_actor, v_label);
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- The claim must refuse a parcel someone has already closed out.
+create or replace function public.admin_wa_nudge_claim(p_awb text)
+returns jsonb
+language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_p parcels; v_c clients; v_phone text; v_t text; v_m text;
+  v_prev nv_wa_nudge; v_actor uuid; v_label text;
+begin
+  if not public.is_admin() then raise exception 'Admin access required.'; end if;
+  v_actor := auth.uid();
+  select email into v_label from auth.users where id = v_actor;
+
+  select * into v_p from parcels where awb = p_awb;
+  if v_p.id is null then return jsonb_build_object('ok', false, 'error', 'parcel_not_found'); end if;
+
+  select * into v_prev from nv_wa_nudge where parcel_id = v_p.id;
+  if v_prev.done_at is not null then
+    insert into nv_wa_nudge_log(parcel_id, awb, client_id, action, detail, actor, actor_label)
+    values (v_p.id, p_awb, v_p.client_id, 'blocked', 'already marked done', v_actor, v_label);
+    return jsonb_build_object('ok', false, 'error', 'already_done',
+      'done_at', v_prev.done_at, 'done_by', v_prev.done_by_label);
+  end if;
+  if v_prev.sent_at is not null then
+    insert into nv_wa_nudge_log(parcel_id, awb, client_id, action, detail, actor, actor_label)
+    values (v_p.id, p_awb, v_p.client_id, 'blocked',
+            'already sent ' || to_char(v_prev.sent_at, 'DD Mon HH24:MI') ||
+            ' by ' || coalesce(v_prev.sent_by_label,'unknown'), v_actor, v_label);
+    return jsonb_build_object('ok', false, 'error', 'already_sent',
+      'sent_at', v_prev.sent_at, 'sent_by', v_prev.sent_by_label,
+      'status_at_send', v_prev.status_at_send);
+  end if;
+
+  select * into v_c from clients where id = v_p.client_id;
+  if v_c.id is null then return jsonb_build_object('ok', false, 'error', 'client_not_found'); end if;
+
+  v_phone := public.nv_wa_phone(v_c.phone);
+  if v_phone is null then
+    return jsonb_build_object('ok', false, 'error', 'no_usable_phone',
+      'stored_phone', coalesce(nullif(btrim(v_c.phone),''), null), 'brand', v_c.name);
+  end if;
+
+  select template, message into v_t, v_m
+    from public.nv_wa_nudge_message(v_c.name, v_p.awb, v_p.status, v_p.consignee, v_p.city, v_p.cod_amount);
+
+  insert into nv_wa_nudge(parcel_id, client_id, awb, status_at_send, template, message, phone_e164, sent_by, sent_by_label, sent_at)
+  values (v_p.id, v_p.client_id, v_p.awb, v_p.status, v_t, v_m, v_phone, v_actor, v_label, now())
+  on conflict (parcel_id) do nothing;
+
+  if not found then
+    select * into v_prev from nv_wa_nudge where parcel_id = v_p.id;
+    return jsonb_build_object('ok', false, 'error', 'already_sent',
+      'sent_at', v_prev.sent_at, 'sent_by', v_prev.sent_by_label);
+  end if;
+
+  insert into nv_wa_nudge_log(parcel_id, awb, client_id, action, detail, actor, actor_label)
+  values (v_p.id, p_awb, v_p.client_id, 'claim', v_t || ' -> ' || v_phone, v_actor, v_label);
+
+  return jsonb_build_object('ok', true, 'phone', v_phone, 'message', v_m,
+    'brand', v_c.name, 'template', v_t, 'status', v_p.status);
+end $$;
+
+-- The shape gained done_at/done_by_label, and Postgres will not let a
+-- function's OUT parameters change under CREATE OR REPLACE.
+drop function if exists public.admin_wa_nudge_map();
+create or replace function public.admin_wa_nudge_map()
+returns table(awb text, sent_at timestamptz, sent_by_label text, status_at_send text,
+              done_at timestamptz, done_by_label text)
+language plpgsql security definer set search_path to 'public' as $$
+begin
+  if not public.is_admin() then raise exception 'Admin access required.'; end if;
+  return query select n.awb, n.sent_at, n.sent_by_label, n.status_at_send, n.done_at, n.done_by_label
+                 from nv_wa_nudge n;
+end $$;
+
+revoke all on function public.admin_wa_nudge_done(text,text) from public, anon;
+grant execute on function public.admin_wa_nudge_done(text,text) to authenticated;
