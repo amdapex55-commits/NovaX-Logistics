@@ -2427,6 +2427,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var d=new Date(String(v).indexOf("T")>-1 ? v : String(v).replace(" ","T")+(String(v).length<=16?"+05:00":""));
       return isNaN(d) ? null : d;
     }
+    /* THE one definition of a Pakistani mobile number in this file.
+       Accepts every way a person or a spreadsheet writes one --
+       03001234567 / 0300 123 4567 / 0300-123-4567 / +92 300 1234567 /
+       +923001234567 / 00923001234567 / 3001234567 -- and returns the single
+       canonical local form 03XXXXXXXXX, or "" if it is not a valid mobile.
+
+       Booking, bulk import, edit-parcel and the WhatsApp paste parser each
+       had their own rules and disagreed; this is what they should all call. */
+    function nvNormalizePkPhone(raw){
+      var d=String(raw==null?"":raw).replace(/[^\d]/g,"");
+      if(!d) return "";
+      if(d.length===14 && d.slice(0,4)==="0092") d=d.slice(4);
+      else if(d.length===13 && d.slice(0,3)==="092") d=d.slice(3);
+      else if(d.length===12 && d.slice(0,2)==="92") d=d.slice(2);
+      else if(d.length===11 && d.charAt(0)==="0")  d=d.slice(1);
+      return /^3\d{9}$/.test(d) ? ("0"+d) : "";
+    }
+    try{ window.nvNormalizePkPhone=nvNormalizePkPhone; }catch(e){}
+
     function nvPktLabel(v){
       var d=nvPkt(v);
       if(!d) return "";
@@ -2918,7 +2937,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         metricCard("Awaiting Pickup",awaitingPickup,percent(awaitingPickup,Math.max(1,cm.total)),"no COD due until collected",awaitingPickup?"blue":"good"),
         metricCard("Open Parcels",open,percent(open,Math.max(1,cm.total)),"not delivered yet",open?"blue":"good")
       ].join("");
-      document.getElementById("clientReportRows").innerHTML=cityReport(cm.parcels).map(r=>`<tr><td><strong>${escLabelText(r.city)}</strong></td><td>${r.parcels}</td><td>${money(r.cod)}</td><td>${money(r.revenue)}</td><td><span class="chip ${r.delivered?"good":"info"}">${r.delivered}/${r.parcels}</span></td></tr>`).join("");
+      /* BUG: with no rows this emitted "", so a brand-new account saw five
+         bare column headers over nothing at all -- height 0, no explanation.
+         The parcel cards next to it already handle their empty day one; this
+         table did not. */
+      document.getElementById("clientReportRows").innerHTML=cityReport(cm.parcels).map(r=>`<tr><td><strong>${escLabelText(r.city)}</strong></td><td>${r.parcels}</td><td>${money(r.cod)}</td><td>${money(r.revenue)}</td><td><span class="chip ${r.delivered?"good":"info"}">${r.delivered}/${r.parcels}</span></td></tr>`).join("")
+        || '<tr><td colspan="5" class="footer-note" style="padding:14px 8px">No parcels in this date range yet. Book your first parcel and this breaks down by city as they move.</td></tr>';
       // NovaX fix (High #2): never fall back to the demo/default placeholder client id
       // id -- with no confirmed client identity, show zero invoices instead
       // of another client's invoices.
@@ -4586,12 +4610,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{
         const c=(typeof clientById==="function"&&state.client)?clientById(state.client.id):null;
         if(!c||!state.client||!state.client.id){ host.innerHTML=""; return; }
-        const sv=state.walletSummary||null;
-        const balance=sv?Number(sv.balance||0):Number(c.walletBalance||0);
+        /* BUG: this read state.walletSummary, a key that is never assigned
+           anywhere in this file -- the server summary lives on
+           state.serverWalletSummary, which is what the Money tab and the
+           wallet statement both use. So `sv` was always null here, the
+           dashboard silently fell through to local arithmetic, and it
+           disagreed with the Money tab about the merchant's own balance.
+
+           It also subtracted pending payouts a second time:
+           client_wallet_summary.available_balance is ALREADY net of them, so
+           balance-minus-pending double-counted an open withdrawal. Available
+           now comes straight from the server, exactly as Money reads it. */
+        const sv=state.serverWalletSummary||null;
         const myWds=(state.walletWithdrawals||[]).filter(w=>w&&w.clientId===state.client.id);
-        const pending=sv?Number(sv.pending_payout||0)
-                        :myWds.filter(w=>w.status==="Pending admin payout").reduce((s2,w)=>s2+Number(w.net||0),0);
-        const available=Math.max(0,balance-pending);
+        const localPending=myWds.filter(w=>w.status==="Pending admin payout")
+                                .reduce((s2,w)=>s2+Number(w.net||0),0);
+        const pending=sv?Number(sv.pending_payout||0):localPending;
+        const available=sv?Number(sv.available_balance||0)
+                          :Math.max(0,Number(c.walletBalance||0)-localPending);
+        const balance=available+pending;
         // "In flight" is COD not yet settled -- delivered parcels whose
         // invoice has not closed. Labelled as an estimate because it is
         // derived locally, unlike balance/pending which are server truth.
@@ -4726,8 +4763,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(firstRow) firstRow.classList.add("nv-changed");
         }
       }
+      /* BUG: this refilled the box with the full balance the instant it went
+         empty, so you could not clear it to type a smaller number, and it
+         silently snapped an over-balance amount back down with no message --
+         which is also why the "cannot be more than your balance" error below
+         was unreachable: rawAmt was read AFTER the clamp, so amountTooHigh
+         could never be true.
+
+         Seed it once when it has never been touched; after that the merchant
+         owns the field and an invalid amount is explained rather than
+         rewritten. */
       const amtInput=document.getElementById("withdrawAmount");
-      if(amtInput && (!amtInput.value || Number(amtInput.value)>serverBalance)) amtInput.value=serverBalance||"";
+      if(amtInput && !amtInput.dataset.nvTouched && !amtInput.value){
+        amtInput.value=serverBalance||"";
+      }
+      if(amtInput && !amtInput.dataset.nvBound){
+        amtInput.dataset.nvBound="1";
+        amtInput.addEventListener("input",function(){ amtInput.dataset.nvTouched="1"; });
+      }
       // NovaX fix (withdrawal UX v2): default to the 24h speed the first time
       // this tab renders so a payout card is always selected and the fee/net
       // preview is visible immediately, without forcing a click first.
@@ -5770,12 +5823,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var out={ name:"", phone:"", city:"", cod:"", product:"", address:"" };
       if(!text) return out;
 
-      var phoneMatch=text.match(/(\+?92[\s-]?)?0?3\d{2}[\s-]?\d{7}/);
-      if(phoneMatch){
-        var digits=phoneMatch[0].replace(/[^\d]/g,"");
-        if(digits.length>11) digits=digits.slice(-11);
-        if(digits.length===10) digits="0"+digits;
-        out.phone=digits;
+      /* BUG: the old pattern was /(\+?92[\s-]?)?0?3\d{2}[\s-]?\d{7}/ -- it
+         allowed ONE separator after the operator code and then demanded seven
+         contiguous digits, so "0311 332 3923", the way people actually write
+         a number, matched nothing at all and the field came back blank. And
+         digits.slice(-11) truncated from the wrong end, so "+923113323923"
+         became "23113323923". Six of seven real formats failed.
+
+         Now: pull every plausible run of digits and separators out of the
+         message and hand each to nvNormalizePkPhone, which is the one place
+         in this file that knows what a Pakistani mobile looks like. */
+      var phoneCandidates=text.match(/(?:\+|00)?[\d][\d\s\-().]{7,22}\d/g)||[];
+      for(var pi=0;pi<phoneCandidates.length;pi++){
+        var norm=nvNormalizePkPhone(phoneCandidates[pi]);
+        if(norm){ out.phone=norm; break; }
       }
 
       out.city=nvFindCity(text);
@@ -6740,9 +6801,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               '<p class="footer-note">Ask NovaX to run novax_tickets_v2.sql.</p></div>';
             return;
           }
+          /* BUG: every non-missing-table error fell through to a bare
+             console.warn and return, leaving the list showing "No tickets
+             yet." A merchant chasing a lost parcel read that as "my ticket
+             was never created" and opened a duplicate. Say what actually
+             happened, and offer a retry. */
           console.warn("NovaX tickets load", r.error.message);
+          NV_TK.loadError = String(r.error.message || "unknown error");
+          var eHost = document.getElementById("nvTkList");
+          if (eHost) eHost.innerHTML = '<div class="ops-card"><strong>We could not load your tickets</strong>' +
+            '<p class="footer-note">This is a connection problem, not a sign your tickets are gone. ' +
+            'Your existing tickets are safe.</p>' +
+            '<button class="ghost-btn" type="button" style="margin-top:8px" onclick="nvTkLoad()">Try again</button></div>';
           return;
         }
+        NV_TK.loadError = null;
         NV_TK.list = (r && r.data) || [];
         nvTkRender();
       });
@@ -7644,7 +7717,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     })();
     (function(){ var b=document.getElementById("nvPasteFillBtn"); if(b) b.addEventListener("click",applyPastedOrder); })();
     document.getElementById("downloadBulkTemplateBtn").addEventListener("click",downloadBulkTemplate);
-    document.getElementById("bulkUploadBtn").addEventListener("click",uploadBulkCsv);
+    /* BUG: this bound Upload with no disable, and importBulkRows walks the
+       rows one RPC at a time with no in-flight flag. On Karachi mobile data a
+       merchant sees nothing happen for 30 seconds, clicks again, and books
+       every row twice -- real, billable parcels. quickBooking already guards
+       itself; bulk did not. */
+    document.getElementById("bulkUploadBtn").addEventListener("click",function(){
+      var btn=this;
+      if(btn.disabled || window.__nvBulkUploadInFlight) return;
+      window.__nvBulkUploadInFlight=true;
+      var label=btn.textContent;
+      btn.disabled=true; btn.textContent="Uploading\u2026";
+      Promise.resolve()
+        .then(function(){ return uploadBulkCsv(); })
+        .catch(function(e){ console.warn("NovaX bulk upload",e); })
+        .then(function(){
+          window.__nvBulkUploadInFlight=false;
+          btn.disabled=false; btn.textContent=label;
+        });
+    });
     document.getElementById("bulkPrintAllBtn").addEventListener("click",()=>printLabels(state.lastBulkAwbs||[]));
     document.getElementById("printAwbBtn").addEventListener("click",printAwb);
     document.getElementById("newBookedSelectAllBtn")?.addEventListener("click",selectAllNewBooked);
@@ -7965,7 +8056,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // export list, so their onclick="...()" attributes could silently fail
     // to resolve depending on scope timing -- explicitly exporting them
     // alongside the other wallet/bank functions guarantees they're callable.
-    Object.assign(window,{ cancelClientBooking, isCancellableBooking, openClientParcelJourney, selectParcel, requestRedelivery, openAwbModal, closeAwbModal, downloadInvoiceCsv, printInvoice, viewInvoice, closeInvoiceModal, printLabels, confirmWalletWithdraw, requestWalletWithdrawal, selectWalletSpeed, closeWalletDone, saveBankDetails, editBankDetails, cancelBankDetailsEdit });
+    /* nvTkLoad is referenced from an inline onclick in the ticket-load
+       error card, so it has to be reachable from the global scope -- a
+       function that only exists inside this closure is not. */
+    Object.assign(window,{ nvTkLoad, cancelClientBooking, isCancellableBooking, openClientParcelJourney, selectParcel, requestRedelivery, openAwbModal, closeAwbModal, downloadInvoiceCsv, printInvoice, viewInvoice, closeInvoiceModal, printLabels, confirmWalletWithdraw, requestWalletWithdrawal, selectWalletSpeed, closeWalletDone, saveBankDetails, editBankDetails, cancelBankDetailsEdit });
     window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); render(); } });
     /* ===== NovaX data-ready safety net: guarantees isClientDataReady() eventually flips true even if a cloud sync path is missed ===== */
     window.__novaxClientDataReady = window.__novaxClientDataReady || false;
@@ -8145,9 +8239,44 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function stageOf(s){ var i=TAGS.indexOf(s); return i<0?0:i; }
       function stepsOf(s){ var i=stageOf(s); return i<=0?[TAGS[0]]:TAGS.slice(0,i+1); }
       function hrs(t){ if(!t) return 0; var ms=Date.now()-new Date(t).getTime(); return Number.isFinite(ms)?Math.max(0,ms/3600000):0; }
-      function dpart(t){ return t?String(t).slice(0,10):new Date().toISOString().slice(0,10); }
-      function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
-      function dtpart(t){ return t?String(t).replace("T"," ").slice(0,16):""; }
+      /* BUG: these three were raw string slices of a timestamptz, so they
+         printed the UTC clock -- five hours behind Karachi, and a full day out
+         for anything booked after 7pm local, which is exactly when merchants
+         book. It reached parcel rows, parcel cards, the Order Log, the wallet
+         ledger, printed receipts, and the date-range filters that read dpart.
+
+         The file already knew better: nvPktLabel a few thousand lines up pins
+         Asia/Karachi and its comment says "a merchant checking from Dubai must
+         see the same clock as their warehouse." These now do the same, so
+         there is one timezone in the portal and it is the warehouse's.
+
+         en-CA is used for the date because it formats as YYYY-MM-DD, which is
+         what every caller compares and sorts on. */
+      function nvKarachiParts(t){
+        var d = t ? new Date(t) : new Date();
+        if(isNaN(d.getTime())) return null;
+        try{
+          return {
+            date: d.toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" }),
+            time: d.toLocaleTimeString("en-GB",{ timeZone:"Asia/Karachi", hour:"2-digit", minute:"2-digit", hour12:false })
+          };
+        }catch(e){ return null; }
+      }
+      function dpart(t){
+        var k=nvKarachiParts(t);
+        if(k) return k.date;
+        return t?String(t).slice(0,10):new Date().toISOString().slice(0,10);
+      }
+      function tpart(t){
+        if(!t) return "";
+        var k=nvKarachiParts(t);
+        return k?k.time:String(t).replace("T"," ").slice(11,16);
+      }
+      function dtpart(t){
+        if(!t) return "";
+        var k=nvKarachiParts(t);
+        return k?(k.date+" "+k.time):String(t).replace("T"," ").slice(0,16);
+      }
       function pmeta(p){ return { service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, fragile:p.fragile, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", source:p.source, branch:p.branch, risk:p.risk, steps:p.steps, clientFeedback:p.clientFeedback, returnProof:p.returnProof, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"" }; }
       // Admin used to fill blank consignee details with invented values --
       // address = "<consignee> delivery address, <city>", phone = 0311 + row
@@ -8328,6 +8457,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           sb.from("wallet_ledger").select("*").eq("client_id",MY).order("created_at",{ascending:false}).limit(500),
           sb.from("pickup_requests").select("*").eq("client_id",MY).order("created_at",{ascending:false}).limit(500)
         ]).then(function(res){
+          /* BUG: this read only .data. res[0] is {data:null,error} on a 401 or
+             any transport failure, so `!c` below fired and the account was
+             blanked, persisted, and marked ready. Check the error FIRST. */
+          var cErr=res[0]&&res[0].error;
+          if(cErr){
+            if(nvIsAuthError(cErr)){ nvSessionExpired("loadAll/clients"); return; }
+            /* A non-auth failure (offline, 5xx) must not rewrite the account
+               either. Keep whatever is already cached and let the caller
+               retry; blanking is never the right answer to "we could not
+               reach the server". */
+            console.warn("NovaX: clients lookup failed --",cErr.message||cErr);
+            state.identityVerified=true;
+            loaded=true;
+            __nvFirstLoadDone=true;
+            try{ render(); }catch(e){ console.warn("NovaX render",e); }
+            window.__novaxClientDataReady=true;
+            toast("Could not refresh your account just now. Showing your last saved view.","error");
+            return;
+          }
           var c=res[0]&&res[0].data;
           // NovaX fix (High #3 - "My Store" fallback): a client_id can exist on
           // the profile while the matching row in `clients` is missing (bad
@@ -8546,6 +8694,53 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           // wrapped around it). It now gets a genuine full-page stop screen,
           // reusing the same #nvAuthGate overlay the page-load auth gate
           // uses, and loadAll()/render() are never called with invented data.
+          /* There was no 401 handler anywhere in this file. supabase-js does not
+             reject on an auth failure -- it RESOLVES with {data:null,error},
+             so every `if(!data)` branch in here treated an expired token as
+             "this account has no data". A merchant who left the tab open over
+             lunch came back to an empty account, and loadAll() then wrote that
+             emptiness to localStorage so it survived a reload.
+
+             These two helpers are the difference between "your session ended"
+             and "your business has no parcels". */
+          function nvIsAuthError(err){
+            if(!err) return false;
+            var code=String(err.code||"");
+            var msg=String(err.message||"").toLowerCase();
+            var st=Number(err.status||err.statusCode||0);
+            return st===401 || st===403 ||
+                   code==="PGRST301" || code==="PGRST302" || code==="401" ||
+                   /jwt|token|expired|not authenticated|invalid claim|unauthorized/.test(msg);
+          }
+          /* A reachable-but-failing backend is not an unlinked workspace, and
+             not a signed-out session. Offer a retry instead of a dead end. */
+          function nvTransientLoadFailure(msg){
+            var gateEl=document.getElementById("nvAuthGate");
+            if(gateEl){
+              gateEl.innerHTML='<div style="max-width:400px;text-align:center;font-size:15px;font-weight:700;line-height:1.6;">'+
+                (msg||"We could not load your workspace.")+
+                '<br><span style="font-weight:500;opacity:.85">This is usually a connection problem, not your account.</span></div>'+
+                '<button type="button" onclick="location.reload()" style="margin-top:14px;background:var(--nvu-accent,#14c77b);color:#04140d;padding:11px 20px;border-radius:12px;font-weight:700;border:0;font-size:14px;cursor:pointer;">Try again</button>';
+              gateEl.style.display="flex";
+            }
+          }
+
+          function nvSessionExpired(where){
+            if(window.__nvSessionExpiredShown) return;
+            window.__nvSessionExpiredShown=true;
+            console.warn("NovaX: auth error at "+(where||"unknown")+" -- session expired.");
+            /* Deliberately does NOT touch state or localStorage. The cached
+               account stays exactly as it was; the merchant signs in and finds
+               it intact. */
+            var gateEl=document.getElementById("nvAuthGate");
+            if(gateEl){
+              gateEl.innerHTML='<div style="max-width:400px;text-align:center;font-size:15px;font-weight:700;line-height:1.6;">Your session expired.<br><span style="font-weight:500;opacity:.85">Your account and parcels are safe &mdash; please sign in again.</span></div>'+
+                '<a href="index.html#login" style="margin-top:14px;display:inline-block;background:var(--nvu-accent,#14c77b);color:#04140d;padding:11px 20px;border-radius:12px;font-weight:700;text-decoration:none;font-size:14px;">Sign in again</a>';
+              gateEl.style.display="flex";
+            }
+            try{ if(window.__nvSb&&window.__nvSb.auth) window.__nvSb.auth.signOut(); }catch(e){}
+          }
+
           function showWorkspaceNotLinked(){
             state.accountNotLinked=true;
             state.clientRecordMissing=false;
@@ -8601,6 +8796,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           sb.from("profiles").select("client_id").eq("id",session.user.id).single().then(function(p){
             if(p&&p.error){
               console.warn("NovaX profile",p.error.message);
+              /* BUG: ANY error here -- a 401, a dropped connection, a slow
+                 request -- put up the permanent "Workspace not linked, contact
+                 support" wall. Only a genuinely absent row means unlinked;
+                 PGRST116 is .single() finding no row, which is that case. */
+              if(nvIsAuthError(p.error)){ nvSessionExpired("profiles"); return; }
+              var code=String(p.error.code||"");
+              if(code!=="PGRST116"){
+                nvTransientLoadFailure("We could not reach your workspace just now.");
+                return;
+              }
               recoverOrStop();
               return;
             }
@@ -9767,7 +9972,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     var x=document.createElement("button");
     x.type="button"; x.setAttribute("aria-label","Dismiss"); x.textContent="\u00d7";
     x.style.cssText="background:transparent;color:#cfe4da;border:0;font-size:18px;line-height:1;cursor:pointer;flex-shrink:0";
-    x.addEventListener("click",function(){ nvIdleClearWarning(); });
+    /* BUG: the x only removed the banner. Both timers kept running, so the
+       merchant was signed out two minutes later with no second warning,
+       losing anything typed into a ticket or the edit-parcel modal. Flicking
+       a "you are idle" notice away IS activity -- it proves someone is at the
+       keyboard -- so it resets the clock like every other interaction. */
+    x.addEventListener("click",function(){ nvIdleReset(); });
     bar.appendChild(msg); bar.appendChild(stay); bar.appendChild(x);
     document.body.appendChild(bar);
   }

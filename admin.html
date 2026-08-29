@@ -7657,6 +7657,22 @@ html,body{ background:var(--bg); color:var(--ink); }
       });
       return best;
     }
+    /* Blank means "unchanged"; a typed 0 means zero and is confirmed once. */
+    function nvEditMoneyField(id, label) {
+      var el = document.getElementById(id);
+      if (!el) return null;
+      var raw = String(el.value == null ? "" : el.value).trim();
+      if (raw === "") return null;
+      var n = Number(raw);
+      if (!isFinite(n) || n < 0) return null;
+      if (n === 0) {
+        if (!window.confirm("Set the " + label + " to Rs 0?\n\nThis is a real change and the rider will collect nothing. Leave the box empty instead if you did not mean to change it.")) {
+          return null;
+        }
+      }
+      return n;
+    }
+
     function nvNpeCheckCity(){
       var warn = document.getElementById("npeCityWarn");
       var citySel = document.getElementById("npeCity");
@@ -11239,6 +11255,23 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (riderPushStatuses.includes(status) && !riderId) {
         toast("Select a rider before pushing parcels out for delivery.", "error");
         return;
+      }
+      /* A batch of scanned parcels went straight through on one click with no
+         count and no confirmation. Delivered is the status that makes a parcel
+         invoiceable and settles its COD, and it is not in NV_NEEDS_REASON, so
+         one wrong pick on a loaded scan list settled money nobody collected.
+         Wallet top-up already confirms with a number; these now do too. */
+      const NV_CONFIRM_STATUSES = ["Delivered", "Return to shipper", "Cancelled"];
+      if (NV_CONFIRM_STATUSES.includes(status)) {
+        const cod = batch.reduce((n, p) => n + Number(p.cod || p.cod_amount || 0), 0);
+        let msg = "Mark " + batch.length + " parcel" + (batch.length === 1 ? "" : "s") + " as \"" + status + "\"?";
+        if (status === "Delivered") {
+          msg += "\n\nThis makes them invoiceable and settles their COD"
+              + (cod > 0 ? " (" + money(cod) + " across this batch)" : "") + ".";
+        }
+        msg += "\n\n" + batchAwbs.slice(0, 8).join(", ")
+             + (batchAwbs.length > 8 ? " and " + (batchAwbs.length - 8) + " more" : "");
+        if (!window.confirm(msg)) return;
       }
       // riderId in the select is the rider's short code (rider.id); the RPC
       // needs the real Supabase uuid (rider._uuid), same mapping used
