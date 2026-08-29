@@ -399,12 +399,19 @@
       var idx=FLOW.indexOf(nvStatus(row.status));
       list = idx<0 ? [nvStatus(row.status)] : FLOW.slice(0,idx+1);
     }
+    /* Only ever stamp a time we can stand behind. updated_at is when the ROW
+       was last written, not when the step happened -- N4820014 was delivered
+       12 Aug and its row was edited again on 27 Aug, so using updated_at here
+       told the customer their parcel arrived a fortnight after it did.
+       delivered_at is a real event time; everything else on this path has no
+       recorded time and gets none. */
+    var lastAt = (nvStatus(row.status)==="Delivered") ? (row.delivered_at||null) : null;
     for(i=list.length-1;i>=0;i--){
       var st2=list[i], last=(i===list.length-1);
       html+='<li class="'+(last?"now":"done")+'">'+
             '<div class="s">'+esc((SAY[st2]&&SAY[st2][0])||st2||"Status unavailable")+'</div>'+
             (STEP_NOTE[st2]?'<div class="m">'+esc(STEP_NOTE[st2])+'</div>':"")+
-            (last&&when(row.updated_at)?'<div class="d">'+esc(when(row.updated_at))+'</div>':"")+
+            (last&&lastAt&&when(lastAt)?'<div class="d">'+esc(when(lastAt))+'</div>':"")+
             '</li>';
     }
     return '<div class="card"><h2 class="sec">Journey</h2><ul class="tl">'+html+'</ul>'+
