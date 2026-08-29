@@ -4029,9 +4029,15 @@ body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
    .nv-paid-ribbon) are deliberately left small -- they are counters sized to
    sit inside a dot, not prose, and forcing them to 12px bursts the dot. */
 @media (max-width:760px){
-  .nv-c-item span,.nv-c-col h4,.nv-c-sub,
+  /* Specificity matters here: .nv-cockpit-head .nv-c-sub (0,2,0) beat a bare
+     .nv-c-sub, and the bottom-nav labels are unclassed spans whose size comes
+     from .nv-bottomnav button -- neither was reached by the first attempt.
+     Verified live before this change: both were still 11.5px and 10.5px. */
+  .nv-c-item span,.nv-c-col h4,.nv-cockpit-head .nv-c-sub,
   article.metric label,.nvcoach-ctl button,
-  .nav-tabs button span,.nav-tabs a span{font-size:12px;}
+  .nv-bottomnav button,.nv-bottomnav button span{font-size:12px;}
+  /* The icon above each nav label is sized separately and must not grow. */
+  .nv-bottomnav button .nvbn-ico{font-size:17px;}
 }
 
 /* ---- 3. THE BALANCE WAS PRINTED TWICE -------------------------------------
