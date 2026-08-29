@@ -1970,7 +1970,7 @@
     .action-btn:active,.ghost-btn:active,.tab-btn:active,.client-tab:active{transform:none;}
   }
   </style>
-  <script src="client-app.js?v=a70e57be" defer></script>
+  <script src="client-app.js?v=63821c50" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2176,7 +2176,14 @@
                   <div class="field"><label>Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" required></div>
                   <div class="field"><label>Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
                   <div class="field"><label>Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required oninput="updateZoneRateHint();nvRefreshQuote();nvSyncWeightChips()"><!-- One tap for the weights merchants actually use. The field still      accepts anything typed; the chips only fill it. --><div class="nv-wchips" id="nvWeightChips" role="group" aria-label="Common weights"></div></div>
-                  <div class="field"><label>Payment Mode <span class="required-star">*</span></label><select id="bookingPaymentMode" required><option>COD</option><option>Non COD Prepaid</option></select></div>
+                  <!-- Payment Mode was a required question the merchant had already
+                       answered by typing the COD amount: above 0 is COD, 0 is
+                       prepaid. Asking twice invites the two to disagree, and a
+                       parcel whose COD says 2500 and whose mode says Prepaid is a
+                       rider collecting nothing. It is now derived and shown back,
+                       and the select is kept (hidden) so every existing reader of
+                       #bookingPaymentMode keeps working. -->
+                  <div class="field"><label>Payment</label><div id="bookingPayMode" class="nv-derived">Cash on delivery</div><div class="footer-note mt-4">Set from the COD amount above. Enter 0 for a prepaid parcel.</div><select id="bookingPaymentMode" hidden aria-hidden="true" tabindex="-1"><option>COD</option><option>Non COD Prepaid</option></select></div>
                   <div class="field"><label>Your Order ID</label><input id="bookingOrderId" placeholder="e.g. #1042 (from your website)" maxlength="40" autocomplete="off"><div class="footer-note mt-4">Optional. Printed on the AWB so you can match the parcel to your own order.</div></div>
                   <div class="field"><label>Allow to Open</label><select id="bookingAllowOpen"><option value="No" selected>No &mdash; do not allow</option><option value="Yes">Yes &mdash; customer may open before paying</option></select><div class="footer-note mt-4">Off by default. If Yes, it is printed on the AWB for the rider.</div></div>
                   <div class="field" style="grid-column:1/-1"><label>Delivery Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full delivery address where the parcel is going" required></textarea></div>
@@ -4160,6 +4167,98 @@ body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
      16px below. It is a status dot, not a section. */
   .portal-title{margin:0 0 6px!important;padding-block:2px!important}
 }
+
+/* The derived Payment line reads as an answer the portal already has, not as
+   a disabled input -- a greyed-out select looks broken; a stated value looks
+   decided. */
+.nv-derived{display:flex;align-items:center;min-height:44px;padding:0 12px;
+  border:1px dashed var(--nvu-line-2,#26332e);border-radius:12px;
+  font-weight:650;color:var(--nvu-ink,#eafff5);background:transparent}
+.nv-derived[data-mode="prepaid"]{border-style:solid}
+
+/* ── Ageing, pickup prompt and expected date on a parcel ─────────────────
+   Severity is carried by the stripe and the word, never by colour alone --
+   a merchant glancing at this in sunlight on a mid-range Android should be
+   able to tell "waiting" from "not collected" without reading carefully. */
+.nv-eta{margin-top:8px;font-size:12.5px;color:var(--nvu-ink-2,#8fae9f);
+  display:flex;align-items:center;gap:6px}
+.nv-eta::before{content:"";width:6px;height:6px;border-radius:50%;
+  background:var(--nvu-accent,#14c77b);flex:0 0 auto}
+.nv-eta.late{color:#f0b429}
+.nv-eta.late::before{background:#f0b429}
+
+.nv-age{margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:9px 11px;border-radius:12px;border-left:3px solid transparent;
+  font-size:12.5px;line-height:1.35}
+.nv-age.warn{background:rgba(240,180,41,.10);border-left-color:#f0b429;color:#f4d38a}
+.nv-age.bad{background:rgba(224,82,96,.11);border-left-color:#e05260;color:#f2a5ac}
+.nv-age-t{flex:1;min-width:0;font-weight:650}
+.nv-age-ok{font-weight:650;opacity:.85;white-space:nowrap}
+.nv-age-act{min-height:38px;padding:0 13px;border-radius:10px;cursor:pointer;
+  border:1px solid currentColor;background:transparent;color:inherit;
+  font:650 12.5px/1 inherit;white-space:nowrap;flex:0 0 auto}
+.nv-age-act:hover{background:rgba(255,255,255,.06)}
+.nv-age-act:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+@media (pointer:coarse),(max-width:760px){ .nv-age-act{min-height:44px} }
+@media (prefers-reduced-motion:reduce){ .nv-age-act{transition:none} }
+
+/* ── Bottom sheet + the in-flight breakdown ──────────────────────────────
+   A sheet rather than a new page: the merchant is checking a number, not
+   navigating, and should land back exactly where they were. */
+.nv-sheet-ov{position:fixed;inset:0;z-index:100002;background:rgba(3,10,7,.62);
+  display:flex;align-items:flex-end;justify-content:center;
+  animation:nvSheetFade .18s ease both}
+.nv-sheet{background:var(--nvu-panel,#0d1c15);border:1px solid var(--nvu-line,#1d2f27);
+  border-bottom:0;border-radius:20px 20px 0 0;width:100%;max-width:680px;
+  max-height:86vh;display:flex;flex-direction:column;
+  animation:nvSheetUp .26s cubic-bezier(.2,.9,.2,1) both}
+@keyframes nvSheetFade{from{opacity:0}to{opacity:1}}
+@keyframes nvSheetUp{from{transform:translateY(18px)}to{transform:none}}
+.nv-sheet-h{display:flex;align-items:center;gap:12px;padding:15px 16px;
+  border-bottom:1px solid var(--nvu-line,#1d2f27);flex-shrink:0}
+.nv-sheet-h b{font-size:15.5px}
+.nv-sheet-x{margin-left:auto;width:44px;height:44px;border-radius:12px;
+  border:1px solid var(--nvu-line,#1d2f27);background:transparent;
+  color:var(--nvu-ink,#eafff5);font-size:19px;cursor:pointer;flex-shrink:0}
+.nv-sheet-x:focus-visible{outline:2px solid var(--nvu-accent,#14c77b);outline-offset:2px}
+.nv-sheet-b{padding:15px 16px calc(20px + env(safe-area-inset-bottom));
+  overflow-y:auto;-webkit-overflow-scrolling:touch}
+.nv-sheet-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.nv-sheet-tbl th{text-align:left;font-size:11.5px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--nvu-ink-2,#8fae9f);
+  padding:0 0 8px;border-bottom:1px solid var(--nvu-line,#1d2f27)}
+.nv-sheet-tbl td{padding:10px 0;border-bottom:1px solid var(--nvu-line,#1d2f27);
+  vertical-align:top;font-variant-numeric:tabular-nums}
+.nv-sheet-sum{margin-top:14px;padding:13px 14px;border-radius:13px;
+  background:rgba(20,199,123,.09);border:1px solid rgba(20,199,123,.22);
+  display:flex;flex-direction:column;gap:4px;font-size:13px}
+.nv-sheet-sum b{font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){
+  .nv-sheet-ov,.nv-sheet{animation:none}
+}
+
+/* The in-flight tile is now a control, so it has to look like one. */
+.nv-cod-b.tap{cursor:pointer;transition:border-color .18s,background .18s}
+.nv-cod-b.tap:hover{border-color:var(--nvu-accent,#14c77b)}
+.nv-cod-b.tap:focus-visible{outline:2px solid var(--nvu-accent,#14c77b);outline-offset:2px}
+
+/* First-booking card: the three answers under the journey strip. */
+.nvfs-facts{list-style:none;margin:14px 0 0;padding:0;display:flex;
+  flex-direction:column;gap:10px;text-align:left}
+.nvfs-facts li{display:flex;flex-direction:column;gap:2px;padding-left:16px;
+  position:relative;font-size:13px;line-height:1.45}
+.nvfs-facts li::before{content:"";position:absolute;left:0;top:7px;
+  width:6px;height:6px;border-radius:50%;background:var(--nvu-accent,#14c77b)}
+.nvfs-facts b{font-size:13.5px}
+.nvfs-facts span{color:var(--nvu-ink-2,#8fae9f)}
+
+/* ── Empty states the first sweep missed ─────────────────────────────────
+   Three containers rendered by JS had no fallback: a brand-new merchant saw
+   a heading over nothing and no explanation of what would eventually appear.
+   The wording says what WILL be here, not just that it is empty -- "no data"
+   tells someone their account is broken; "this fills up when..." does not. */
+#nvOwedList:empty::after{content:"Nothing owed to NovaX. Prepaid parcels you owe delivery charges on would appear here.";}
+#bulkValidationList:empty::after{content:"Upload a CSV above and every row is checked here before anything is booked.";}
 </style>
 </body>
 </html>

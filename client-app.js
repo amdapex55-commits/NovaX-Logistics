@@ -2446,6 +2446,47 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     try{ window.nvNormalizePkPhone=nvNormalizePkPhone; }catch(e){}
 
+    /* ── Delivery promise ────────────────────────────────────────────────
+       The service standard NovaX commits to, set by the business -- NOT a
+       prediction from history. Aisha set these on 30 Aug 2026.
+
+       For the record, because the gap matters operationally: measured over
+       the last 120 days, Karachi's p80 was 3.6 days (n=226) and Lahore's
+       median was 8.7 days (n=55). These targets are therefore a commitment
+       ops has to hit, not a description of what happens today. If they slip,
+       merchants see a missed promise on every parcel -- so this is the one
+       constant in the portal worth revisiting when TAT changes.
+
+       client_delivery_estimate() in sql_novax_client_portal_v4.sql returns
+       the real observed figures if you ever want to compare the two. */
+    var NV_DELIVERY_PROMISE = {
+      "karachi":    { min: 1, max: 1, label: "Next day" },
+      "lahore":     { min: 3, max: 4, label: "3\u20134 days" },
+      "islamabad":  { min: 3, max: 4, label: "3\u20134 days" },
+      "rawalpindi": { min: 3, max: 4, label: "3\u20134 days" }
+    };
+    var NV_DELIVERY_DEFAULT = { min: 3, max: 4, label: "3\u20134 days" };
+
+    function nvDeliveryPromise(city){
+      var k = String(city == null ? "" : city).trim().toLowerCase();
+      return NV_DELIVERY_PROMISE[k] || NV_DELIVERY_DEFAULT;
+    }
+
+    /* "by Tue 2 Sep" -- the upper bound of the promise, counted from booking,
+       so a merchant can repeat one date to their customer. Sundays are not
+       skipped: NovaX delivers seven days a week, and inventing a working-day
+       rule the operation does not follow would make the date wrong. */
+    function nvExpectedBy(parcel){
+      try{
+        var pr = nvDeliveryPromise(parcel && parcel.city);
+        var base = nvPkt(parcel && (parcel.bookedAt || parcel.booked_at || parcel.date));
+        if(!base) return null;
+        var d = new Date(base.getTime() + pr.max * 86400000);
+        return { date: d, label: pr.label,
+                 text: d.toLocaleDateString("en-GB", { timeZone:"Asia/Karachi", weekday:"short", day:"numeric", month:"short" }) };
+      }catch(e){ return null; }
+    }
+
     function nvPktLabel(v){
       var d=nvPkt(v);
       if(!d) return "";
@@ -2663,8 +2704,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
-      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${nvProgressStep(p.status)}</span><span>${pr}%</span></div></td><td onclick="event.stopPropagation()">${nvParcelCardActions(p)||'<span class="footer-note">&mdash;</span>'}</td></tr>`; }).join("")||`<tr><td colspan="6">No parcels in range.</td></tr>`);
-      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${nvParcelCardActions(p)}</article>`; }).join("")) : "";
+      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td><td>${money(p.cod)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${nvProgressStep(p.status)}</span><span>${pr}%</span></div>${nvEtaHtml(p)}${nvPickupChipHtml(p)}</td><td onclick="event.stopPropagation()">${nvParcelCardActions(p)||'<span class="footer-note">&mdash;</span>'}</td></tr>`; }).join("")||`<tr><td colspan="6">No parcels in range.</td></tr>`);
+      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${nvEtaHtml(p)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
       if(cardsOnScreen) nvMarkChanged("clientParcelCards",parcels,"cards");
       else nvMarkChanged("clientParcelRows",parcels,"rows");
     }
@@ -4657,8 +4698,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             '<div class="nv-cod-grid">'+
               '<div class="nv-cod-b nv-cod-avail"><span>Available</span><strong>'+escLabelText(money(available))+'</strong></div>'+
               '<div class="nv-cod-b"><span>Pending payout</span><strong>'+escLabelText(money(pending))+'</strong></div>'+
-              '<div class="nv-cod-b"><span>COD in flight</span><strong>'+escLabelText(money(inflight))+'</strong>'+
-                '<i>estimate</i></div>'+
+              /* "COD in flight" was a number with the word "estimate" under it
+                 and no way to find out what it meant. It is the merchant's own
+                 money, so it should say which parcels it is waiting on and let
+                 them look. */
+              '<div class="nv-cod-b nv-cod-flight'+(inflight>0?' tap':'')+'"'+
+                (inflight>0?' role="button" tabindex="0" onclick="nvShowInFlight()" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();nvShowInFlight();}"':'')+
+                '><span>COD in flight</span><strong>'+escLabelText(money(inflight))+'</strong>'+
+                '<i>'+(inflight>0?nvInFlightCount()+' delivered, awaiting invoice \u2014 tap':'nothing waiting')+'</i></div>'+
             '</div>'+
             '<div class="nv-cod-act">'+
               '<button type="button" class="nv-cod-cta" data-client-tab="wallet">Withdraw</button>'+
@@ -5201,6 +5248,147 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
       nvSyncWeightChips();
     }
+    /* ── 10 + 11: a booked parcel that is not moving ─────────────────────
+       "New booked" reads like success, so a parcel can sit for days without
+       anyone noticing. 29 were waiting when this was written, 10 of them past
+       72 hours, and 26 of the 29 had no pickup request against them -- the
+       pickup feature works, merchants were simply never prompted.
+
+       So an uncollected parcel now ages visibly, and once it is old enough to
+       matter it offers the one action that fixes it. */
+    function nvHoursSinceBooked(p){
+      try{
+        var b = nvPkt(p && (p.bookedAt || p.booked_at || p.date));
+        if(!b) return 0;
+        return Math.max(0, (Date.now() - b.getTime()) / 3600000);
+      }catch(e){ return 0; }
+    }
+    function nvAwaitingPickup(p){
+      return !!p && String(p.status) === "New booked";
+    }
+    function nvPickupAgeState(p){
+      if(!nvAwaitingPickup(p)) return null;
+      var h = nvHoursSinceBooked(p);
+      if(h < 18) return null;                       // normal same-day turnaround
+      if(h < 48) return { level:"warn", label:"Waiting " + Math.round(h) + "h for pickup" };
+      var d = Math.floor(h / 24);
+      return { level:"bad", label:"Not collected in " + d + " day" + (d===1?"":"s") };
+    }
+    function nvHasPickupRequest(awb){
+      try{ return activePickupAwbs().has(awb); }catch(e){ return false; }
+    }
+    /* The chip, plus a direct action when there is no request outstanding.
+       Deliberately silent under 18 hours: a parcel booked this afternoon has
+       not gone wrong, and crying wolf on every booking would train merchants
+       to ignore the one that matters. */
+    function nvPickupChipHtml(p){
+      var st = nvPickupAgeState(p);
+      if(!st) return "";
+      var has = nvHasPickupRequest(p.awb);
+      var a = escLabelText(p.awb);
+      return '<div class="nv-age ' + st.level + '">' +
+             '<span class="nv-age-t">' + escLabelText(st.label) + '</span>' +
+             (has
+               ? '<span class="nv-age-ok">Pickup requested</span>'
+               : '<button type="button" class="nv-age-act" onclick="event.stopPropagation();nvQuickPickup(\'' + a + '\')">Request pickup</button>') +
+             '</div>';
+    }
+    /* Sends the merchant to the pickup panel with this parcel already ticked,
+       rather than asking them to find it in a list. It never submits on their
+       behalf -- the address and time are theirs to confirm. */
+    function nvQuickPickup(awb){
+      try{
+        showClientTab("newBooking");
+        setTimeout(function(){
+          var host = document.getElementById("pickupEligibleList");
+          if(!host){ toast("Open Bulk Booking to request a pickup."); return; }
+          var box = host.querySelector('.pickup-check[value="' + String(awb).replace(/"/g,'\\"') + '"]');
+          if(box){ box.checked = true; }
+          var card = box ? box.closest(".ops-card") : host;
+          if(card && card.scrollIntoView) card.scrollIntoView({ behavior:"smooth", block:"center" });
+          var addr = document.getElementById("pickupAddress");
+          if(addr && !addr.value){
+            try{ addr.value = (state.client && (state.client.address || "")) || ""; }catch(e){}
+          }
+          if(addr) addr.focus();
+          toast(box ? (awb + " selected \u2014 confirm your pickup address below.")
+                    : "Open the pickup section to request a collection.");
+        }, 420);
+      }catch(e){ toast("Could not open the pickup form.", "error"); }
+    }
+
+    /* ── 12: one date the merchant can repeat to their customer ─────────── */
+    function nvEtaHtml(p){
+      if(!p) return "";
+      var st = String(p.status || "");
+      if(st === "Delivered" || st === "Return to shipper" || st === "Cancelled by client") return "";
+      var e = nvExpectedBy(p);
+      if(!e) return "";
+      var late = e.date.getTime() < Date.now();
+      return '<div class="nv-eta' + (late ? " late" : "") + '">' +
+             (late ? "Was expected by " : "Expected by ") + escLabelText(e.text) + "</div>";
+    }
+
+    /* The parcels that make up "COD in flight": delivered, their COD not yet
+       settled into an invoice. Same source the tile totals from, so the list
+       and the number can never disagree. */
+    function nvInFlightParcels(){
+      try{
+        return (state.parcels||[]).filter(function(p){
+          return p && p.clientId===state.client.id && isDeliveredLedgerParcel(p) && !p.invoiceId;
+        });
+      }catch(e){ return []; }
+    }
+    function nvInFlightCount(){
+      var n=nvInFlightParcels().length;
+      return n+' parcel'+(n===1?'':'s');
+    }
+    function nvShowInFlight(){
+      var rows=nvInFlightParcels();
+      if(!rows.length){ toast("Nothing is waiting to be invoiced right now."); return; }
+      var cod=rows.reduce(function(t,p){ return t+Number(p.cod||0); },0);
+      var fee=rows.reduce(function(t,p){ return t+Number(p.fee||0); },0);
+      var body=rows.slice(0,40).map(function(p){
+        return '<tr><td><strong>'+escLabelText(p.awb)+'</strong><br><span class="footer-note">'+
+               escLabelText(p.consignee||'')+' &middot; '+escLabelText(p.city||'')+'</span></td>'+
+               '<td style="text-align:right">'+escLabelText(money(p.cod))+'</td>'+
+               '<td style="text-align:right" class="footer-note">&minus;'+escLabelText(money(p.fee))+'</td></tr>';
+      }).join("");
+      nvOpenSheet("COD in flight",
+        '<p class="footer-note" style="margin-top:0">These parcels are delivered and the cash is collected. '+
+        'It reaches your wallet as soon as the invoice for them closes.</p>'+
+        '<div class="wide-scroll"><table class="nv-sheet-tbl"><thead><tr><th>Parcel</th>'+
+        '<th style="text-align:right">COD</th><th style="text-align:right">Charge</th></tr></thead>'+
+        '<tbody>'+body+'</tbody></table></div>'+
+        (rows.length>40?'<p class="footer-note">Showing the first 40 of '+rows.length+'.</p>':'')+
+        '<div class="nv-sheet-sum"><span>'+rows.length+' parcel'+(rows.length===1?'':'s')+'</span>'+
+        '<b>'+escLabelText(money(cod))+' collected &minus; '+escLabelText(money(fee))+
+        ' charges = '+escLabelText(money(Math.max(0,cod-fee)))+' to you</b></div>');
+    }
+
+    /* A plain bottom sheet, reused by anything that needs to show a list
+       without navigating away. Escape and the backdrop both close it, and
+       focus returns to where it was. */
+    function nvOpenSheet(title, html){
+      nvCloseSheet();
+      var prev=document.activeElement;
+      var wrap=document.createElement("div");
+      wrap.className="nv-sheet-ov"; wrap.id="nvSheet";
+      wrap.innerHTML='<div class="nv-sheet" role="dialog" aria-modal="true" aria-label="'+escLabelText(title)+'">'+
+        '<div class="nv-sheet-h"><b>'+escLabelText(title)+'</b>'+
+        '<button type="button" class="nv-sheet-x" aria-label="Close">\u00d7</button></div>'+
+        '<div class="nv-sheet-b">'+html+'</div></div>';
+      document.body.appendChild(wrap);
+      var close=function(){ nvCloseSheet(); try{ prev&&prev.focus&&prev.focus(); }catch(e){} };
+      wrap.querySelector(".nv-sheet-x").addEventListener("click",close);
+      wrap.addEventListener("click",function(e){ if(e.target===wrap) close(); });
+      document.addEventListener("keydown",function esc(e){
+        if(e.key==="Escape"){ close(); document.removeEventListener("keydown",esc); }
+      });
+      try{ wrap.querySelector(".nv-sheet-x").focus(); }catch(e){}
+    }
+    function nvCloseSheet(){ var el=document.getElementById("nvSheet"); if(el){ try{ el.remove(); }catch(e){} } }
+
     function nvSyncWeightChips(){
       var host=document.getElementById("nvWeightChips");
       var f=document.getElementById("bookingWeight");
@@ -5230,6 +5418,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(!isFinite(n)) return;
         var wantPrepaid = n===0;
         var target = wantPrepaid ? "Non COD Prepaid" : "COD";
+        /* The Payment question is gone from the form -- it was asking again
+           for something the COD amount already decided, and two fields that
+           can disagree is a rider collecting nothing on a Rs 2,500 parcel.
+           This paints the derived answer where the select used to be; the
+           select itself stays hidden and in sync, so every existing reader of
+           #bookingPaymentMode is untouched. */
+        var derived = document.getElementById("bookingPayMode");
+        if(derived){
+          derived.textContent = wantPrepaid ? "Prepaid \u2014 collect nothing" : "Cash on delivery";
+          derived.setAttribute("data-mode", wantPrepaid ? "prepaid" : "cod");
+        }
         if(mode.value!==target){
           mode.value=target;
           try{ mode.dispatchEvent(new Event("change")); }catch(e){}
@@ -5659,7 +5858,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // accepted anything, which could desync from what Supabase actually has.
     async function quickBooking(){
       if(__bookingInFlight) return;
-      const required=["bookingName","bookingPhone","bookingPickupCity","bookingCity","bookingCod","bookingService","bookingCategory","bookingFragile","bookingWeight","bookingPaymentMode","bookingAddress"];
+      /* bookingPaymentMode dropped from the required list: it is derived from
+         the COD amount now, so it can never be blank and can never disagree
+         with it. */
+      const required=["bookingName","bookingPhone","bookingPickupCity","bookingCity","bookingCod","bookingService","bookingCategory","bookingFragile","bookingWeight","bookingAddress"];
       if(required.some(id=>!String(document.getElementById(id).value||"").trim())){ toast("All booking fields are mandatory before AWB creation.","error"); return; }
       let phone=document.getElementById("bookingPhone").value.replace(/\D/g,"");
       if(phone.length===10&&phone.startsWith("3")) phone="0"+phone;
@@ -8114,7 +8316,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     /* nvTkLoad is referenced from an inline onclick in the ticket-load
        error card, so it has to be reachable from the global scope -- a
        function that only exists inside this closure is not. */
-    Object.assign(window,{ nvTkLoad, cancelClientBooking, isCancellableBooking, openClientParcelJourney, selectParcel, requestRedelivery, openAwbModal, closeAwbModal, downloadInvoiceCsv, printInvoice, viewInvoice, closeInvoiceModal, printLabels, confirmWalletWithdraw, requestWalletWithdrawal, selectWalletSpeed, closeWalletDone, saveBankDetails, editBankDetails, cancelBankDetailsEdit });
+    Object.assign(window,{ nvShowInFlight, nvQuickPickup, nvTkLoad, cancelClientBooking, isCancellableBooking, openClientParcelJourney, selectParcel, requestRedelivery, openAwbModal, closeAwbModal, downloadInvoiceCsv, printInvoice, viewInvoice, closeInvoiceModal, printLabels, confirmWalletWithdraw, requestWalletWithdrawal, selectWalletSpeed, closeWalletDone, saveBankDetails, editBankDetails, cancelBankDetailsEdit });
     window.addEventListener("storage", e => { if(e.key === STORAGE_KEY){ state = loadState(); render(); } });
     /* ===== NovaX data-ready safety net: guarantees isClientDataReady() eventually flips true even if a cloud sync path is missed ===== */
     window.__novaxClientDataReady = window.__novaxClientDataReady || false;
@@ -11625,6 +11827,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     var st=document.createElement("style"); st.id=FSTYLE_ID; st.textContent=css; document.head.appendChild(st);
   }
 
+  /* The delivery promise for THIS parcel's destination, so the first success
+     screen states the same commitment the parcel list will. */
+  function nvFsPromise(awb){
+    try{
+      if(typeof state!=="undefined" && state && state.parcels){
+        var p=state.parcels.filter(function(x){return x&&x.awb===awb;})[0];
+        if(p && typeof nvDeliveryPromise==="function") return nvDeliveryPromise(p.city).label.toLowerCase();
+      }
+    }catch(e){}
+    return "in 3\u20134 days";
+  }
+
   window.novaxShowFirstBookingSuccess=function(awb){
     try{
       injectFirstBookingStyles();
@@ -11641,6 +11855,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         +'<h3>Your first AWB is ready.</h3>'
         +'<div class="nvfs-awb">Tracking ID: '+awb+'</div>'
         +'<p>Next: print this label and attach it to the parcel before pickup.</p>'
+        /* The card told a first-time merchant what to do and showed the
+           journey, but not the three things they actually ask next: when do
+           you collect it, when does it arrive, and when do I get my money.
+           Answered here rather than in a second card, so there is one success
+           moment and not two competing ones. */
+        +'<ul class="nvfs-facts">'
+          +'<li><b>We collect it</b><span>Request a pickup from your dashboard and a rider comes to you.</span></li>'
+          +'<li><b>Delivered '+nvFsPromise(awb)+'</b><span>Every step is visible on your dashboard as it happens.</span></li>'
+          +'<li><b>COD reaches your wallet</b><span>Delivery charges netted off. Withdraw whenever you like.</span></li>'
+        +'</ul>'
         +'<div class="nvfs-journey">'+chips+'</div>'
         +'<div class="nvfs-actions">'
         +'<button class="nvfs-btn primary" id="nvfsPrint">Print AWB</button>'
