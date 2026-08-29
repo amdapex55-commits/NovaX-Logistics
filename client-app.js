@@ -5931,7 +5931,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function checkBookingRisk(o){
       var serious=[], minor=[];
       var phoneDigits=String(o.phone||"").replace(/\D/g,"");
-      if(!/^03\d{9}$/.test(phoneDigits)){ serious.push("Phone number looks incomplete. Use 03XXXXXXXXX."); }
+      /* Normalise first, then validate. Booking used to demand a bare
+         ^03\d{9}$, so "0311 332 3923", "+92 311 332 3923" and a pasted
+         "+923113323923" -- all the same number, all how people actually write
+         it -- were rejected outright. nvNormalizePkPhone is the one definition
+         of a Pakistani mobile in this file; every entry point should agree
+         with it, and now booking does. */
+      var phoneNorm = nvNormalizePkPhone(phoneDigits);
+      if(!phoneNorm){ serious.push("Phone number looks incomplete. Use 03XXXXXXXXX."); }
+      else { phoneDigits = phoneNorm; }
 
       /* NovaX: address FORMAT checking removed entirely.
          It second-guessed the merchant about their own customer's address and
@@ -6031,7 +6039,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(phone.length===10&&phone.startsWith("3")) phone="0"+phone;
         if(phone.length===12&&phone.startsWith("92")) phone="0"+phone.slice(2);
         if(phone.length===11&&phone.startsWith("92")) phone="0"+phone.slice(2);
-        const phoneValid=/^03\d{9}$/.test(phone);
+        const phoneValid=!!nvNormalizePkPhone(phone);
         if(!phoneRaw) addProblem("phone","Phone number is missing.","Add the consignee phone as 03xxxxxxxxx.");
         else if(!phoneValid) addProblem("phone",`Phone "${phoneRaw}" is not a valid Pakistani number.`,"Use format 03xxxxxxxxx (11 digits).");
         // Normalize city capitalization.
@@ -7564,12 +7572,54 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       renderPickupEligibleList(); renderPickupRequestList();
       toast(`Pickup requested for ${awbs.length} AWB(s). We will confirm scheduling shortly.`);
     }
+    /* Runs each renderer in isolation. A thrown error is reported once per
+       renderer per session -- repeating it on every render would flood the
+       console and bury the first, most useful trace. */
+    var NV_RENDER_FAILED = Object.create(null);
+    function nvSafeRender(pairs){
+      for (var i = 0; i < pairs.length; i++) {
+        var name = pairs[i][0], fn = pairs[i][1];
+        if (typeof fn !== "function") continue;
+        try {
+          fn();
+        } catch (e) {
+          if (!NV_RENDER_FAILED[name]) {
+            NV_RENDER_FAILED[name] = true;
+            console.warn("NovaX: the " + name + " panel failed to render.", e);
+            try {
+              if (window.__nvSb && window.__nvSb.rpc) {
+                window.__nvSb.rpc("log_portal_error", {
+                  p_source: "client", p_rpc_name: "render:" + name, p_page: "portal",
+                  p_message: String((e && e.message) || e).slice(0, 400), p_severity: "error",
+                });
+              }
+            } catch (e2) { /* reporting must never break rendering */ }
+          }
+        }
+      }
+    }
+
     function render(){
       try{ applyPickupCity(); }catch(e){}
       try{ renderCodHero(); }catch(e){}
-      renderMetrics(); renderClientStatusBoard(); renderClientParcels(); renderJourney();
-      renderClientModules(); renderClientReportFull(); renderClientWallet(); renderBulkPreview();
-      renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); updateZoneRateHint();
+      /* Fourteen renderers ran bare on one line. Any one of them throwing --
+         a null parcel, an unexpected shape from the server, a missing element
+         after a markup change -- aborted the whole chain, so everything after
+         it never painted and the merchant saw a half-drawn portal with no
+         error. This is the cheapest structural change in the file: the same
+         failure now costs one missing panel instead of the page.
+
+         The name is passed so the console says WHICH renderer failed rather
+         than leaving a stack trace to be matched up by hand. */
+      nvSafeRender([
+        ["metrics", renderMetrics], ["statusBoard", renderClientStatusBoard],
+        ["parcels", renderClientParcels], ["journey", renderJourney],
+        ["modules", renderClientModules], ["reportFull", renderClientReportFull],
+        ["wallet", renderClientWallet], ["bulkPreview", renderBulkPreview],
+        ["integrations", renderIntegrations], ["newBooked", renderNewBookedList],
+        ["pickupEligible", renderPickupEligibleList], ["pickupRequests", renderPickupRequestList],
+        ["zoneRateHint", updateZoneRateHint],
+      ]);
       // NovaX fix (client identity leak): the Client Menu workspace label used
       // to be a hard-coded demo workspace name string in the HTML, so it
       // never reflected the actual logged-in client. Always derive it from
