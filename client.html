@@ -166,7 +166,13 @@
     .form-grid .field > label{min-height:30px;display:flex;align-items:flex-end;line-height:1.25;}
     .form-grid .field > .footer-note{margin-top:2px;}
     .hamburger-btn{width:42px;height:38px;border-radius:var(--radius);background:var(--ink);display:none;place-items:center;gap:4px;padding:9px;}
-    .hamburger-btn span{display:block;width:18px;height:2px;border-radius:var(--r-pill);background:white;}
+    /* BUG: this matched .hamburger-label too, so the word "Menu" was
+       squashed into a 2px-tall white bar and its text spilled out above the
+       button -- the most prominent control in the header, looking like a
+       rendering fault. A later rule at ~1822 already used
+       :not(.hamburger-label); this original never did, and being earlier at
+       equal specificity it still set height/background on the label. */
+    .hamburger-btn span:not(.hamburger-label){display:block;width:18px;height:2px;border-radius:var(--r-pill);background:white;}
     .client-menu{display:grid;gap:8px;padding:10px;border:1px solid rgba(16,32,27,.08);border-radius:var(--radius);background:var(--nvu-bg);box-shadow:var(--sh-1);}
     .client-tab{width:100%;min-height:32px;border-radius:var(--radius);background:transparent;color:var(--muted);text-align:left;padding:0 10px;font-weight:650;font-size:13px;transition:background var(--speed),color var(--speed),transform var(--speed);}
     .client-tab:hover{background:rgba(12,124,89,.08);transform:translateX(2px);}
@@ -1964,7 +1970,7 @@
     .action-btn:active,.ghost-btn:active,.tab-btn:active,.client-tab:active{transform:none;}
   }
   </style>
-  <script src="client-app.js?v=9ebd8ae3" defer></script>
+  <script src="client-app.js?v=1b3d4eb5" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -3022,7 +3028,7 @@ html[data-theme="dark"] .nv-command-strip .nv-cs-ghost{
 }
 html[data-theme="dark"] .ghost-btn:hover,
 html[data-theme="dark"] .nv-command-strip .nv-cs-ghost:hover{ background:var(--mint); }
-html[data-theme="dark"] .hamburger-btn span{ background:var(--ink); }
+html[data-theme="dark"] .hamburger-btn span:not(.hamburger-label){ background:var(--ink); }
 html[data-theme="dark"] .nv-inc-chip{ background:var(--panel-soft);color:var(--ink); }
 html[data-theme="dark"] th{ background:var(--panel-soft);color:var(--muted); }
 html[data-theme="dark"] tbody tr:hover{ background:rgba(19,163,111,.08); }
@@ -3077,6 +3083,74 @@ html[data-theme="dark"] .topbar{
 html[data-theme="dark"] .client-tab{ background:var(--panel-soft); color:var(--ink); }
 html[data-theme="dark"] .client-tab.active{ background:var(--green)!important; color:#04130d!important; }
 html[data-theme="dark"] .client-tab:hover{ background:rgba(19,163,111,.16); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PORTAL POLISH PASS -- 29 Aug 2026
+   Measured on the live demo at 375x812 before any of this: 246px of chrome
+   before the first number (29% of the screen), the COD balance printed twice,
+   six tap targets under 44px including Withdraw, and 54 text nodes under 12px.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ---- 2. LESS CHROME BEFORE THE MONEY --------------------------------------
+   Four stacked bands said nearly the same thing: the announcement bar, the
+   NovaX wordmark, "Client Portal" + its paragraph, then "Client Menu" and the
+   workspace name. A merchant opening the app on a phone spent a third of the
+   screen on branding before seeing their balance. The workspace name is the
+   one line that actually identifies where they are, so that survives; the
+   marketing paragraph and the redundant page title do not. */
+@media (max-width:760px){
+  .portal-title p{display:none;}
+  .portal-title h2{font-size:19px;margin-bottom:2px;}
+  .portal-title{padding-block:8px;gap:6px;}
+  .client-menu-head{padding:10px 12px;}
+  .client-menu-head strong{font-size:13px;}
+}
+
+/* ---- 3. THE BALANCE WAS PRINTED TWICE -------------------------------------
+   The headline and the "Available" box are the same number whenever a payout
+   is not pending, which is most of the time. Two figures that always agree
+   train people to read neither. The headline keeps the number; the box below
+   it now carries the label so nothing is lost when they do differ. */
+.nv-cod-hero[data-same="1"] .nv-cod-b.nv-cod-avail{display:none;}
+.nv-cod-hero[data-same="1"] .nv-cod-l::after{content:" \00b7 available";opacity:.72;letter-spacing:.04em;}
+
+/* ---- 4. A 44px FLOOR ON ANYTHING YOU TAP ----------------------------------
+   Withdraw was 42px, Cancel booking 36px, search 40px, the theme toggle 32px
+   and the notification bell 38px. Withdraw is the button that moves money. */
+@media (pointer:coarse),(max-width:760px){
+  .nv-cod-act .action-btn,.nv-cod-act button{min-height:46px;}
+  .nv-theme-toggle,.nv-bell,[id*="notifBtn"],[class*="bell"]{min-width:44px;min-height:44px;}
+  .inline-actions .ghost-btn,.parcel-card .ghost-btn,.nv-cancel-booking{min-height:44px;padding-block:10px;}
+  .search input,#clientSearch{min-height:44px;}
+  .nav-tabs button,.nav-tabs a{min-height:48px;}
+}
+
+/* ---- 5. A 12px FLOOR ON TEXT ----------------------------------------------
+   The wallet labels a merchant reads most -- COD balance, Available, Pending
+   payout, COD in flight -- were 10.5px. Same pass the landing page got; the
+   portal never had it. */
+@media (max-width:760px){
+  .nv-cod-l,.nv-cod-b span,.footer-note,.chip,.meter-caption,
+  .parcel-card dt,.status-col-head span,.nv-cod-b i{font-size:12px;}
+  .nv-cod-b strong{font-size:17px;}
+}
+
+/* ---- 6. THE AUTOPILOT BUTTON SAT ON TOP OF CARD CONTENT -------------------
+   It floats above the last card in the list, covering the corner of whatever
+   is there -- on the demo, the "Parcel out for delivery" card. Reserving the
+   space it occupies is the honest fix: the button keeps its position and the
+   list simply ends above it. */
+.client-shell,#client .view-body,#clientParcelCards,#clientParcelRows{
+  scroll-padding-bottom:96px;
+}
+@media (max-width:760px){
+  #clientParcelCards,#clientReportRows,.status-board{
+    padding-bottom:calc(var(--nv-stack-2,72px) + 26px);
+  }
+}
+@media (min-width:761px){
+  .client-shell{padding-bottom:96px;}
+}
 
 /* 3. "Client Portal" page heading was #071d17 -- near-black on near-black. */
 html[data-theme="dark"] .portal-title h2{ color:var(--ink); }

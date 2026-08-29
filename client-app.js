@@ -4642,15 +4642,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           const keys=Object.keys(days).sort().slice(-10);
           return keys.map(k=>days[k]);
         })();
+        /* When no payout is pending the headline and the "Available" box are
+           the same number, so the CSS collapses the box and folds its label
+           into the headline instead. They only ever both appear when they
+           genuinely differ. */
+        const sameFigure = Math.round(Number(balance||0)) === Math.round(Number(available||0));
         host.innerHTML=
-          '<div class="nv-cod-hero">'+
+          '<div class="nv-cod-hero"'+(sameFigure?' data-same="1"':'')+'>'+
             '<div class="nv-cod-main">'+
               '<span class="nv-cod-l">COD balance</span>'+
               '<div class="nv-cod-v">'+escLabelText(money(balance))+'</div>'+
               (spark.length>1?'<div class="nv-cod-spark">'+U.sparkline(spark,{w:220,h:30})+'</div>':'')+
             '</div>'+
             '<div class="nv-cod-grid">'+
-              '<div class="nv-cod-b"><span>Available</span><strong>'+escLabelText(money(available))+'</strong></div>'+
+              '<div class="nv-cod-b nv-cod-avail"><span>Available</span><strong>'+escLabelText(money(available))+'</strong></div>'+
               '<div class="nv-cod-b"><span>Pending payout</span><strong>'+escLabelText(money(pending))+'</strong></div>'+
               '<div class="nv-cod-b"><span>COD in flight</span><strong>'+escLabelText(money(inflight))+'</strong>'+
                 '<i>estimate</i></div>'+
