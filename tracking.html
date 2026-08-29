@@ -293,12 +293,21 @@
     if(!isFinite(v)) v=0;
     return "Rs "+v.toLocaleString("en-PK",{maximumFractionDigits:0});
   }
+  /* BUG: this passed no timeZone, so every time on the page rendered in the
+     VIEWER's zone. A parcel scanned 14:26 UTC showed as "7:26 am" to anyone
+     sitting at UTC-7 -- wrong by twelve hours and the wrong meridiem -- while
+     pktTime() two functions up correctly pinned Asia/Karachi. The parcel was
+     scanned at a moment in Pakistan; that is the only zone this page should
+     ever speak in, whoever is looking and whatever their phone is set to.
+     hour12 is stated rather than inferred from the locale, because en-PK
+     resolves to 24-hour on some engines and 12-hour on others. */
   function when(x){
     if(!x) return "";
     try{
       var d=new Date(x);
       if(isNaN(d.getTime())) return "";
-      return d.toLocaleString("en-PK",{day:"numeric",month:"short",hour:"numeric",minute:"2-digit"});
+      return d.toLocaleString("en-GB",{ timeZone:"Asia/Karachi",
+        day:"numeric", month:"short", hour:"2-digit", minute:"2-digit", hour12:true });
     }catch(e){ return ""; }
   }
   /* NovaX status rename: "Parcel returned to consignee" is a STORED value in
