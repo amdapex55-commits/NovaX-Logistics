@@ -1970,7 +1970,7 @@
     .action-btn:active,.ghost-btn:active,.tab-btn:active,.client-tab:active{transform:none;}
   }
   </style>
-  <script src="client-app.js?v=c6f7c327" defer></script>
+  <script src="client-app.js?v=bd6fb16a" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -4259,6 +4259,27 @@ body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
    tells someone their account is broken; "this fills up when..." does not. */
 #nvOwedList:empty::after{content:"Nothing owed to NovaX. Prepaid parcels you owe delivery charges on would appear here.";}
 #bulkValidationList:empty::after{content:"Upload a CSV above and every row is checked here before anything is booked.";}
+
+/* ── The not-collected chip must survive a narrow container ──────────────
+   It shipped into the desktop table's Journey cell, which is sized for a
+   progress meter. The chip is a flex row whose button is nowrap, so the
+   button took its natural width and the label got what was left -- about
+   10px -- and rendered ONE CHARACTER PER LINE in a live merchant's portal.
+
+   The chip has been moved to the Actions cell, and these rules make the
+   failure impossible anywhere rather than just fixing the one place it was
+   seen: the label claims a whole line and the button wraps beneath it the
+   moment there is not room for both. */
+.nv-age{flex-wrap:wrap;min-width:0}
+.nv-age-t{flex:1 1 100%;min-width:0;overflow-wrap:anywhere;white-space:normal}
+.nv-age-act{flex:0 0 auto;align-self:flex-start}
+@media (min-width:900px){
+  /* Side by side again once there is genuinely room for both. */
+  .nv-age-t{flex:1 1 auto;min-width:130px}
+}
+/* Same guard for the expected-delivery line: it was truncating to
+   "Was expected by Thu Aug" in that same narrow cell. */
+.nv-eta{min-width:0;overflow-wrap:anywhere;white-space:normal;flex-wrap:wrap}
 </style>
 </body>
 </html>
