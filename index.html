@@ -3976,8 +3976,12 @@ frame();
   /* The mobile scroll rail lived here. Removed: #sp does this already, is
      painted by the header handler, and unlike this one it is not behind the
      header. One less scroll listener and one less transform per frame. */
-  addEventListener("resize", paintRail, {passive:true});
-  paintRail();
+  /* The resize/initial paint for the removed #mrail lived here. Leaving these
+     two lines behind threw "paintRail is not defined" at load, and because
+     that error was uncaught it aborted the REST of this script block -- which
+     is why the sticky header stopped applying .stuck and the scroll progress
+     bar stopped moving. Removing a function means removing everything that
+     called it. */
 
   /* ---- pause the offscreen marquee -------------------------------------
      .wl-track already has an observer pausing it. .mq-track did not: a 34s
