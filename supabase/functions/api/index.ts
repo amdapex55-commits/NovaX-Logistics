@@ -1,7 +1,7 @@
 /**
  * NovaX Merchant API — one base URL, one key, everything a shipper needs.
  *
- *   POST   /orders            book a parcel, get an AWB back
+ *   POST   /orders            book a parcel  (add "test":true to dry-run), get an AWB back
  *   GET    /orders            list your parcels
  *   GET    /orders/:awb       one parcel with its full status history
  *   POST   /orders/:awb/cancel cancel a parcel that has not been picked up
@@ -19,6 +19,24 @@
  */
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+/* Logged for every call so a broken integration shows up as an error rate
+   rather than a phone call. Failures here are swallowed on purpose -- a
+   logging problem must never cost a merchant a booking. */
+async function logCall(keyId: string | null, clientId: string | null,
+                       route: string, method: string, status: number,
+                       error: string | null, t0: number) {
+  try {
+    await fetch(`${SB_URL}/rest/v1/rpc/nv_api_log_request`, {
+      method: "POST",
+      headers: { "content-type": "application/json", apikey: SB_KEY, authorization: `Bearer ${SB_KEY}` },
+      body: JSON.stringify({
+        p_key_id: keyId, p_client_id: clientId, p_route: route, p_method: method,
+        p_status: status, p_error: error, p_ms: Date.now() - t0,
+      }),
+    });
+  } catch { /* never surfaces */ }
+}
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -84,6 +102,7 @@ function parcelOut(p: any) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
+  const started = Date.now();
   const url = new URL(req.url);
   /* Supabase does not present the path the same way in every environment --
      it can arrive as /functions/v1/api/ping or just /api/ping. Strip either
@@ -94,6 +113,17 @@ Deno.serve(async (req) => {
     .replace(/^\/api(?=\/|$)/, "")
     .replace(/\/+$/, "") || "/";
 
+  /* The body is a stream and can only be read once. The booking rate limit
+     needs to know whether this is a dry run BEFORE authenticating, and the
+     handlers need the same body afterwards, so it is parsed here and passed
+     down rather than read twice -- a second read yields an empty body and
+     would break every real booking. */
+  let body: any = null;
+  if (req.method === "POST" || req.method === "PUT") {
+    body = await req.json().catch(() => null);
+  }
+  const isDryRun = body?.test === true || body?.test === "true";
+
   const auth = req.headers.get("authorization") || "";
   const key = auth.replace(/^Bearer\s+/i, "").trim();
   if (!key) {
@@ -101,15 +131,67 @@ Deno.serve(async (req) => {
       "Send your key as: Authorization: Bearer nvx_live_...");
   }
 
-  const who = await rpc("nv_api_resolve_key", { p_key: key });
-  const acct = Array.isArray(who.data) ? who.data[0] : null;
-  if (!acct) {
+  /* Resolve, count and rate-check in one round trip. The limits are
+     deliberately generous -- 1000 calls and 200 bookings an hour -- because
+     the point is to stop a runaway loop on a merchant's side from dispatching
+     riders to hundreds of parcels, not to ration anyone. Hayat Scents' busiest
+     hour so far is well under a hundred calls. A dry-run booking does not
+     count against the booking limit; it costs us nothing. */
+  const isBooking = path === "/orders" && req.method === "POST" && !isDryRun;
+  const who = await rpc("nv_api_resolve_key_v2", { p_key: key, p_is_booking: isBooking });
+  const acct: any = who.ok ? (Array.isArray(who.data) ? who.data[0] : who.data) : null;
+
+  if (!acct || acct.ok === false) {
+    const e = acct?.error;
+    if (e === "rate_limited" || e === "booking_rate_limited") {
+      const retry = Number(acct.retry_after_seconds) || 60;
+      await logCall(null, null, path, req.method, 429, e, started);
+      return new Response(JSON.stringify({
+        ok: false, error: e,
+        hint: e === "booking_rate_limited"
+          ? `Booking limit of ${acct.limit} parcels/hour reached. Retry in ${retry}s, or contact NovaX to raise it.`
+          : `Rate limit of ${acct.limit} requests/hour reached. Retry in ${retry}s.`,
+        retry_after_seconds: retry,
+      }, null, 2), {
+        status: 429,
+        headers: { ...CORS, "content-type": "application/json", "retry-after": String(retry) },
+      });
+    }
+    await logCall(null, null, path, req.method, 401, "invalid_api_key", started);
     return fail(401, "invalid_api_key",
       "That key is not recognised or has been revoked.");
   }
   const clientId: string = acct.client_id;
+  const keyId: string = acct.key_id;
+  /* Dry runs are logged under their own route so admin_api_health's booking
+     count means real parcels. The first test run reported bookings=1 for a
+     call that created nothing. */
+  const logRoute = isDryRun && path === "/orders" ? "/orders:test" : path;
+
+  /* One log line per call, taken from the response actually returned, so the
+     health view reflects what the merchant saw rather than what we intended.
+     Fire-and-forget: awaiting it would add a round trip to every booking. */
+  const logResult = (res: Response, errCode?: string | null) => {
+    try {
+      /* Read the real error code out of the response rather than logging a
+         generic "error" -- the whole point of the log is being able to see
+         that a merchant is hitting missing_fields, not that something failed.
+         res.clone() so the body the merchant receives is untouched. */
+      if (errCode !== undefined) {
+        logCall(keyId, clientId, logRoute, req.method, res.status, res.status >= 400 ? errCode : null, started);
+      } else if (res.status >= 400) {
+        res.clone().json()
+          .then((j: any) => logCall(keyId, clientId, logRoute, req.method, res.status, j?.error ?? "error", started))
+          .catch(() => logCall(keyId, clientId, logRoute, req.method, res.status, "error", started));
+      } else {
+        logCall(keyId, clientId, logRoute, req.method, res.status, null, started);
+      }
+    } catch { /* never surfaces */ }
+    return res;
+  };
 
   try {
+    const out = await (async (): Promise<Response> => {
     // ---------------------------------------------------------------- ping --
     if (path === "/ping" || path === "/") {
       return json({ ok: true, account: acct.client_name, webhook: acct.webhook_url || null });
@@ -117,7 +199,7 @@ Deno.serve(async (req) => {
 
     // -------------------------------------------------------------- orders --
     if (path === "/orders" && req.method === "POST") {
-      const b = await req.json().catch(() => null) as any;
+      const b = body as any;
       if (!b) return fail(400, "invalid_json", "Body must be JSON.");
 
       const missing = ["consignee", "phone", "city", "address"]
@@ -129,6 +211,55 @@ Deno.serve(async (req) => {
 
       const cod = Number(b.cod_amount ?? 0);
       if (!isFinite(cod) || cod < 0) return fail(422, "invalid_cod_amount", "cod_amount must be 0 or more.");
+
+      /* TEST MODE. "test": true runs every check above -- required fields, COD
+         sanity, and the same fee quote a real booking uses -- then returns the
+         shape a real booking returns, without writing a parcel.
+
+         There was no sandbox, so a developer wiring this up had to create real
+         parcels to see a real response and then remember to cancel each one.
+         Hayat Scents booked 13 live parcels on their first day; some of the
+         early ones were almost certainly meant as tests. A merchant should be
+         able to hammer this endpoint all afternoon without a rider being sent
+         anywhere.
+
+         The AWB is deliberately unmistakable -- TEST-xxxxxxxx, never an
+         N-number -- so a test response cannot be filed as a real consignment,
+         and tracking_url is null because there is nothing to track. */
+      if (b.test === true || b.test === "true") {
+        const quoted = await rpc("novax_quote_fee", {
+          p_client_id: clientId,
+          p_dest_city: String(b.city).trim(),
+          p_weight: String(b.weight ?? "0.5 kg"),
+        });
+        let fee: number | null = null;
+        if (quoted.ok && quoted.data != null) {
+          const q = Array.isArray(quoted.data) ? quoted.data[0] : quoted.data;
+          const n = Number(q && typeof q === "object" ? (q.fee ?? q.total ?? q.amount) : q);
+          if (Number.isFinite(n)) fee = n;
+        }
+        const now = new Date().toISOString();
+        return json({
+          ok: true,
+          test: true,
+          note: "Validation passed. No parcel was created and nothing will be collected.",
+          order: {
+            awb: "TEST-" + crypto.randomUUID().slice(0, 8).toUpperCase(),
+            status: "New booked",
+            consignee: String(b.consignee).trim(),
+            phone: String(b.phone).trim(),
+            city: String(b.city).trim(),
+            address: String(b.address).trim(),
+            cod_amount: cod,
+            delivery_fee: fee,
+            exception: null,
+            booked_at: now,
+            delivered_at: null,
+            last_update: now,
+            tracking_url: null,
+          },
+        }, 200);
+      }
 
       const booked = await rpc("nv_book_parcel_core", {
         p_client_id: clientId,
@@ -234,7 +365,7 @@ Deno.serve(async (req) => {
 
     // ------------------------------------------------------------- webhook --
     if (path === "/webhook" && (req.method === "PUT" || req.method === "POST")) {
-      const b = await req.json().catch(() => null) as any;
+      const b = body as any;
       const target = String(b?.url ?? "").trim();
       if (target && !/^https:\/\//i.test(target)) {
         return fail(422, "invalid_webhook_url", "Must start with https://");
@@ -262,7 +393,10 @@ Deno.serve(async (req) => {
 
     return fail(404, "unknown_endpoint",
       "Valid: POST /orders · GET /orders · GET /orders/:awb · POST /orders/:awb/cancel · GET /invoices · GET /wallet · PUT /webhook · GET /ping");
+    })();
+    return logResult(out);
   } catch (e) {
-    return fail(500, "server_error", String((e as Error)?.message ?? e));
+    const r = fail(500, "server_error", String((e as Error)?.message ?? e));
+    return logResult(r, "server_error");
   }
 });
