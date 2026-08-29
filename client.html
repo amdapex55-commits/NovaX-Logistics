@@ -4105,7 +4105,12 @@ body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
 @media (pointer:coarse),(max-width:760px){
   /* Support: the assistant's own controls were the smallest things on the
      screen a merchant uses when something has gone wrong. */
-  .nvai-chip{min-height:44px;padding-block:10px}
+  /* min-height computed as 44px but the chip still rendered 42: as a flex item
+     under align-items:center it is sized to content, and a bare min-height on
+     an inline-block does not survive that. inline-flex makes the box own its
+     height. */
+  .nvai-chip{min-height:44px!important;padding-block:10px;
+    display:inline-flex;align-items:center}
   #nvAiInput{min-height:46px}
   .nvai-send,#nvAiSend{min-height:46px;min-width:46px}
   #clientBizName{min-height:44px}
@@ -4113,20 +4118,27 @@ body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
   /* Notification checkboxes were 20px. Rather than inflate the box into
      something that looks wrong, the whole row becomes the target -- which is
      how a checkbox should have been built in the first place. */
-  .notif-pref-row,.notif-pref label,label:has(> .notifPrefEventBox),
-  label:has(> #notifPrefWhatsapp),label:has(> #notifPrefSms),label:has(> #notifPrefEmail){
-    display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer}
-  #notifPrefWhatsapp,#notifPrefSms,#notifPrefEmail,.notifPrefEventBox{
-    width:22px;height:22px;flex:0 0 auto}
+  label:has(> .notifPrefEventBox),label:has(> #notifPrefWhatsapp),
+  label:has(> #notifPrefSms),label:has(> #notifPrefEmail){min-height:44px}
 
-  /* Money: View / Statement PDF / CSV all sat at 43px. */
-  #money .ghost-btn,#payments .ghost-btn,#wallet .ghost-btn,
-  .nv-mh-act .ghost-btn,.nv-inv-act .ghost-btn{min-height:44px}
+  /* Money: View / Statement PDF / CSV sat at 43px against an explicit
+     min-height:42px. The first attempt scoped these to #money / #payments /
+     #wallet -- none of which is an ancestor; the real chain is
+     #clientInvoiceList > .invoice-card > .inline-actions > .ghost-btn.
+     !important because this block exists to raise floors over the rules that
+     set them, and those rules are later in the sheet. */
+  .invoice-card .ghost-btn,.inline-actions .ghost-btn,
+  #clientInvoiceList .ghost-btn{min-height:44px!important}
 
   /* The remaining sub-12px labels, all in Money and Support. Numeric badges
      stay small on purpose -- they are counters sized to sit inside a dot. */
   .nv-mh-lab,.nv-mh-sub,.nv-inv-stage,.nv-inc-lbl,
-  .nvai-quota-txt,.nvai-av{font-size:12px}
+  .nvai-quota-txt,.nvai-av{font-size:12px!important}
+
+  /* The notification checkboxes are NOT a defect: each 20px input sits inside
+     a <label> that is already a 44px flex row, so the real tap target is the
+     whole row. Measuring the input rather than the label is what made them
+     look broken in the audit. Left as they are. */
 }
 </style>
 </body>
