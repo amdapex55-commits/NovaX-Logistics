@@ -4043,7 +4043,11 @@ body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
 /* Non-breaking spaces: the label is uppercase with 1.2px letter-spacing,
    and ordinary spaces in generated content collapsed against it so it read
    "COD BALANCE ·AVAILABLE". */
-.nv-cod-hero[data-same="1"] .nv-cod-l::after{content:"\00a0\00b7\00a0available";opacity:.72;}
+/* Six-digit escapes on purpose. A CSS hex escape consumes UP TO six digits,
+   so "\00a0available" was parsed as \00A0A + "vailable" -- U+0A0A, a Gurmukhi
+   letter -- and the label rendered "COD BALANCE ·ਊVAILABLE". Padding each
+   escape to six digits terminates it unambiguously. */
+.nv-cod-hero[data-same="1"] .nv-cod-l::after{content:"\0000a0\0000b7\0000a0available";opacity:.72;}
 
 /* ---- 4. A 44px FLOOR ON ANYTHING YOU TAP ----------------------------------
    Withdraw was 42px, Cancel booking 36px, search 40px, the theme toggle 32px
