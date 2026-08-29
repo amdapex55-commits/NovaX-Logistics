@@ -9113,7 +9113,21 @@ html,body{ background:var(--bg); color:var(--ink); }
     function nvWaEnsureSentMap() {
       if (nvWaEnsureSentMap._started) return;
       nvWaEnsureSentMap._started = true;
-      nvWaLoadSentMap().then(function () { renderAdmin(); });
+      nvWaLoadSentMap().then(nvWaRepaint);
+    }
+
+    /* Swap just the WhatsApp controls in place. renderAdmin() rebuilds the
+       whole queue table, and each row carries a "Reason" input ops may be
+       halfway through typing -- repainting the page under them threw that
+       text away every time someone pressed Done. */
+    function nvWaRepaint(awb) {
+      const sel = awb ? '[data-wa-awb="' + String(awb).replace(/"/g, '\\"') + '"]' : '[data-wa-awb]';
+      document.querySelectorAll(sel).forEach(function (el) {
+        const id = el.getAttribute("data-wa-awb");
+        const html = nvWaMerchantHtml(id);
+        if (!html) { el.outerHTML = ""; return; }
+        el.outerHTML = html;
+      });
     }
 
     async function nvWaLoadSentMap() {
@@ -9148,11 +9162,27 @@ html,body{ background:var(--bg); color:var(--ink); }
        that is already open -- and the row still needs closing without a
        second message going out. Once done, the WhatsApp button does not come
        back, which is what stops the same merchant being asked twice. */
-    function nvWaMerchantHtml(awb) {
+    /* The dashboard queue lists every status, including Delivered and New
+       booked. Asking a merchant to choose between reattempt and return on a
+       parcel that already arrived is noise at best, and the generic template
+       would have written "N001 needs a decision -- its status is Delivered"
+       to a real customer. The button only exists where there is genuinely a
+       decision only they can make. */
+    const NV_WA_DECISION_STATUSES = [
+      "Refused", "Consignee not available", "Out of service area", "Reattempt",
+      "Ready for return", "Return in transit", "Return received at origin",
+      "Return out for delivery", "Return to shipper"
+    ];
+    function nvWaNeedsMerchant(status) {
+      return NV_WA_DECISION_STATUSES.indexOf(String(status || "")) > -1;
+    }
+
+    function nvWaMerchantHtml(awb, status) {
+      if (arguments.length > 1 && !nvWaNeedsMerchant(status)) return "";
       const a = nvEscAttrJs(awb);
       const rec = NV_WA_SENT[awb];
       const wrap = function (inner) {
-        return '<div class="wa-merchant" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center" onclick="event.stopPropagation()">' + inner + '</div>';
+        return '<div class="wa-merchant" data-wa-awb="' + escLabelText(awb) + '" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center" onclick="event.stopPropagation()">' + inner + '</div>';
       };
 
       if (rec && rec.done_at) {
@@ -9185,7 +9215,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           done_by_label: r.data.done_by || currentAdminName()
         });
         toast(awb + " marked done.");
-        renderAdmin();
+        nvWaRepaint(awb);
       } catch (e) { toast("Could not reach the server.", "error"); }
     }
 
@@ -9215,11 +9245,11 @@ html,body{ background:var(--bg); color:var(--ink); }
         const err = d && d.error;
         if (err === "already_done") {
           toast(awb + " was already marked done by " + (d.done_by || "another admin") + ".", "error");
-          await nvWaLoadSentMap(); renderAdmin();
+          await nvWaLoadSentMap(); nvWaRepaint(awb);
         } else if (err === "already_sent") {
           toast("Already asked on " + new Date(d.sent_at).toLocaleString() +
                 " by " + (d.sent_by || "another admin") + ".", "error");
-          await nvWaLoadSentMap(); renderAdmin();
+          await nvWaLoadSentMap(); nvWaRepaint(awb);
         } else if (err === "no_usable_phone") {
           toast((d.brand || "This merchant") + " has no usable WhatsApp number saved" +
                 (d.stored_phone ? (' -- "' + d.stored_phone + '" is not a Pakistani mobile.') : "."), "error");
@@ -9234,7 +9264,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       NV_WA_SENT[awb] = Object.assign({}, NV_WA_SENT[awb],
         { sent_at: new Date().toISOString(), sent_by_label: currentAdminName() });
       toast("WhatsApp opened for " + (d.brand || "the merchant") + ". Press send there.");
-      renderAdmin();
+      nvWaRepaint(awb);
     }
 
     async function nvWaUnlock(awb) {
@@ -9252,7 +9282,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         }
         delete NV_WA_SENT[awb];
         toast(awb + " released -- it can be asked once more.");
-        renderAdmin();
+        nvWaRepaint(awb);
       } catch (e) { toast("Could not reach the server.", "error"); }
     }
 
@@ -9672,7 +9702,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <td>
               <div class="field"><label>Reason</label><input id="resolve-${p.awb}" value="${alert.label} checked by operations"></div>
               <button class="ghost-btn" onclick="event.stopPropagation(); resolveParcelAlert('${nvEscAttrJs(p.awb)}')">Resolve With Reason</button>
-              ${nvWaMerchantHtml(p.awb)}
+              ${nvWaMerchantHtml(p.awb, p.status)}
             </td>
           </tr>
         `;
@@ -13641,7 +13671,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <button class="ghost-btn" onclick="nvOpenParcelEdit('${nvEscAttrJs(r.awb)}')">Edit Parcel Details</button>
           </div>
           ${waActionsHtml(r.awb, waKindForStatus(r.status))}
-          ${nvWaMerchantHtml(r.awb)}
+          ${nvWaMerchantHtml(r.awb, r.status)}
           <div class="field" style="margin-top:8px"><label>Resolution note (required to resolve)</label><input id="excNote_${r.awb}" placeholder="What was done to resolve this?"></div>
           <button class="action-btn" style="margin-top:6px" onclick="resolveExceptionIssue('${nvEscAttrJs(r.awb)}')">Resolve</button>
         </div>
