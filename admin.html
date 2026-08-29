@@ -9092,6 +9092,121 @@ html,body{ background:var(--bg); color:var(--ink); }
       window.open("https://wa.me/" + digits + "?text=" + encodeURIComponent(text), "_blank");
     }
 
+    /* ═══════════════════════════════════════════════════════════════════════
+       "Ask the merchant" -- WhatsApp nudge on an exception row
+       ═══════════════════════════════════════════════════════════════════════
+       Different conversation from messageCustomer() above. That one tells the
+       CONSIGNEE where their parcel is. This one asks the SHIPPER to make the
+       decision only they can make -- reattempt or return -- for the 87 parcels
+       currently stalled waiting on exactly that.
+
+       Once per parcel, and the limit is a unique primary key in nv_wa_nudge,
+       not the disabled state of this button. The RPC takes the slot and hands
+       back the composed message in one call, so there is no window in which we
+       have opened WhatsApp without having recorded it.
+       ══════════════════════════════════════════════════════════════════════ */
+    var NV_WA_SENT = Object.create(null);   // awb -> {sent_at, sent_by_label}
+
+    async function nvWaLoadSentMap() {
+      if (!window.__nvSb) return;
+      try {
+        const r = await window.__nvSb.rpc("admin_wa_nudge_map", {});
+        if (r && !r.error && Array.isArray(r.data)) {
+          NV_WA_SENT = Object.create(null);
+          r.data.forEach(function (row) { NV_WA_SENT[row.awb] = row; });
+        }
+      } catch (e) { /* the row falls back to showing the button */ }
+    }
+
+    function nvWaSentLabel(awb) {
+      const hit = NV_WA_SENT[awb];
+      if (!hit) return "";
+      let when = hit.sent_at;
+      try {
+        const d = new Date(hit.sent_at);
+        when = d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }) +
+               " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+      } catch (e) {}
+      return escLabelText((hit.sent_by_label || "an admin").split("@")[0]) + " &middot; " + escLabelText(when);
+    }
+
+    function nvWaMerchantHtml(awb) {
+      const sent = NV_WA_SENT[awb];
+      if (sent) {
+        return '<div class="wa-merchant" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center" onclick="event.stopPropagation()">' +
+          '<span class="chip info">Merchant asked &middot; ' + nvWaSentLabel(awb) + '</span>' +
+          '<button class="ghost-btn" onclick="event.stopPropagation();nvWaUnlock(\'' + nvEscAttrJs(awb) + '\')">Sent by mistake?</button>' +
+          '</div>';
+      }
+      return '<div class="wa-merchant" style="margin-top:6px" onclick="event.stopPropagation()">' +
+        '<button class="action-btn" onclick="event.stopPropagation();nvWaAskMerchant(\'' + nvEscAttrJs(awb) + '\')">Ask Merchant on WhatsApp</button>' +
+        '<span class="footer-note" style="margin-left:8px">Once per parcel</span>' +
+        '</div>';
+    }
+
+    async function nvWaAskMerchant(awb) {
+      if (!window.__nvSb) { toast("Not connected to the server.", "error"); return; }
+      /* Opened synchronously on the click, before any await. A window.open()
+         that happens after a promise resolves is treated as unrequested by
+         the browser and blocked, which would leave the slot taken and no
+         WhatsApp -- the exact failure this feature cannot afford. */
+      const win = window.open("", "_blank");
+      let r;
+      try {
+        r = await window.__nvSb.rpc("admin_wa_nudge_claim", { p_awb: awb });
+      } catch (e) {
+        if (win) win.close();
+        toast("Could not reach the server. Nothing was sent.", "error");
+        return;
+      }
+      if (r && r.error) {
+        if (win) win.close();
+        toast(r.error.message || "Could not prepare the message.", "error");
+        return;
+      }
+      const d = r && r.data;
+      if (!d || !d.ok) {
+        if (win) win.close();
+        const err = d && d.error;
+        if (err === "already_sent") {
+          toast("Already asked on " + new Date(d.sent_at).toLocaleString() +
+                " by " + (d.sent_by || "another admin") + ".", "error");
+          await nvWaLoadSentMap(); renderAdmin();
+        } else if (err === "no_usable_phone") {
+          toast((d.brand || "This merchant") + " has no usable WhatsApp number saved" +
+                (d.stored_phone ? (' -- "' + d.stored_phone + '" is not a Pakistani mobile.') : "."), "error");
+        } else if (err === "parcel_not_found") { toast("Parcel not found.", "error"); }
+        else if (err === "client_not_found") { toast("This parcel has no merchant attached.", "error"); }
+        else { toast("Could not prepare the message.", "error"); }
+        return;
+      }
+
+      const url = "https://wa.me/" + d.phone + "?text=" + encodeURIComponent(d.message);
+      if (win) { win.location.href = url; } else { window.open(url, "_blank"); }
+      NV_WA_SENT[awb] = { sent_at: new Date().toISOString(), sent_by_label: currentAdminName() };
+      toast("WhatsApp opened for " + (d.brand || "the merchant") + ". Press send there.");
+      renderAdmin();
+    }
+
+    async function nvWaUnlock(awb) {
+      const reason = window.prompt(
+        "This parcel has already been asked once. Release it so it can be asked again?\n\n" +
+        "Why? (recorded against your name)");
+      if (reason === null) return;
+      if (!reason.trim()) { toast("A reason is required to release it.", "error"); return; }
+      try {
+        const r = await window.__nvSb.rpc("admin_wa_nudge_unlock", { p_awb: awb, p_reason: reason.trim() });
+        if (r && r.error) { toast(r.error.message || "Could not release it.", "error"); return; }
+        if (!r.data || !r.data.ok) {
+          toast(r.data && r.data.error === "reason_required" ? "A reason is required." : "Could not release it.", "error");
+          return;
+        }
+        delete NV_WA_SENT[awb];
+        toast(awb + " released -- it can be asked once more.");
+        renderAdmin();
+      } catch (e) { toast("Could not reach the server.", "error"); }
+    }
+
     /* ===== NovaX fix (offline QR + Code128 in ADMIN) =====
        Admin labels still called api.qrserver.com and barcode.tec-it.com — two
        problems the client portal had already solved:
@@ -13438,6 +13553,14 @@ html,body{ background:var(--bg); color:var(--ink); }
     function renderExceptionControlRoom() {
       const list = document.getElementById("exceptionControlRoomList");
       if (!list) return;
+      /* Fetch which parcels have already been asked, once per visit, then
+         repaint so the rows show "Merchant asked" instead of the button.
+         Guarded so the render itself stays synchronous and never waits on
+         the network. */
+      if (!renderExceptionControlRoom._loaded) {
+        renderExceptionControlRoom._loaded = true;
+        nvWaLoadSentMap().then(function () { renderExceptionControlRoom(); });
+      }
       const branchSel = document.getElementById("excBranchFilter"), issueSel = document.getElementById("excIssueFilter"), urgencySel = document.getElementById("excUrgencyFilter"), clientSel = document.getElementById("excClientFilter");
       if (branchSel && branchSel.options.length <= 1) {
         const branches = [...new Set((state.parcels || []).map(p => p.branch).filter(Boolean))];
@@ -13470,6 +13593,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <button class="ghost-btn" onclick="nvOpenParcelEdit('${nvEscAttrJs(r.awb)}')">Edit Parcel Details</button>
           </div>
           ${waActionsHtml(r.awb, waKindForStatus(r.status))}
+          ${nvWaMerchantHtml(r.awb)}
           <div class="field" style="margin-top:8px"><label>Resolution note (required to resolve)</label><input id="excNote_${r.awb}" placeholder="What was done to resolve this?"></div>
           <button class="action-btn" style="margin-top:6px" onclick="resolveExceptionIssue('${nvEscAttrJs(r.awb)}')">Resolve</button>
         </div>
