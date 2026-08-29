@@ -5288,9 +5288,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!nvAwaitingPickup(p)) return null;
       var h = nvHoursSinceBooked(p);
       if(h < 18) return null;                       // normal same-day turnaround
-      if(h < 48) return { level:"warn", label:"Waiting " + Math.round(h) + "h for pickup" };
+      if(h < 48) return { level:"warn", label:"Waiting " + Math.round(h) + "h for pickup", short:Math.round(h)+"h waiting" };
       var d = Math.floor(h / 24);
-      return { level:"bad", label:"Not collected in " + d + " day" + (d===1?"":"s") };
+      return { level:"bad", label:"Not collected in " + d + " day" + (d===1?"":"s"), short:"uncollected "+d+"d" };
     }
     function nvHasPickupRequest(awb){
       try{ return activePickupAwbs().has(awb); }catch(e){ return false; }
@@ -5304,8 +5304,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!st) return "";
       var has = nvHasPickupRequest(p.awb);
       var a = escLabelText(p.awb);
+      /* Was a filled, bordered alert block with a full-width button. Three of
+         those down a page reads as an emergency rather than a nudge, and it is
+         most of what made the rows enormous. Quiet pill, plain link. */
       return '<div class="nv-age ' + st.level + '">' +
-             '<span class="nv-age-t">' + escLabelText(st.label) + '</span>' +
+             '<span class="nv-age-t"><span class="nv-age-long">' + escLabelText(st.label) +
+             '</span><span class="nv-age-short">' + escLabelText(st.short) + '</span></span>' +
              (has
                ? '<span class="nv-age-ok">Pickup requested</span>'
                : '<button type="button" class="nv-age-act" onclick="event.stopPropagation();nvQuickPickup(\'' + a + '\')">Request pickup</button>') +
@@ -5357,16 +5361,27 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!e) return "";
       var overdueMs = Date.now() - e.date.getTime();
       var late = overdueMs > 0;
-      /* Past a week, the promised date stops being useful and starts reading
-         as an old receipt -- a parcel stuck since May printed "Was expected by
-         Sat 2 May", which tells a merchant nothing they can act on. Say how
-         far behind it is instead, which is the thing they would ask support. */
+      /* Two registers for the same fact. A card has room for a sentence; the
+         table's Journey column is sized for a progress meter, and "Was
+         expected by Thu 27 Aug" wrapped onto three lines there -- stacked
+         with the chip it made every row about 250px tall. CSS decides which
+         one shows. Past a week the promised date stops being useful and the
+         lateness is what a merchant would actually ring about. */
+      var longTxt, shortTxt;
       if (overdueMs > 7 * 86400000) {
         var d = Math.floor(overdueMs / 86400000);
-        return '<div class="nv-eta late">' + d + ' days past its expected delivery</div>';
+        longTxt = d + ' days past its expected delivery';
+        shortTxt = d + 'd late';
+      } else if (late) {
+        longTxt = 'Was expected by ' + e.text;
+        shortTxt = 'due ' + e.text;
+      } else {
+        longTxt = 'Expected by ' + e.text;
+        shortTxt = 'by ' + e.text;
       }
-      return '<div class="nv-eta' + (late ? " late" : "") + '">' +
-             (late ? "Was expected by " : "Expected by ") + escLabelText(e.text) + "</div>";
+      return '<div class="nv-eta' + (late ? ' late' : '') + '">' +
+             '<span class="nv-eta-long">' + escLabelText(longTxt) + '</span>' +
+             '<span class="nv-eta-short">' + escLabelText(shortTxt) + '</span></div>';
     }
 
     /* The parcels that make up "COD in flight": delivered, their COD not yet
@@ -10770,8 +10785,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     addMsg("Hi, I'm NovaX Autopilot. I only answer from your real account data \u2014 ask me to track an AWB, start a return, check your COD/wallet, or talk to a human.","b");
   }
 
-  window.novaxOpenAutopilot=function(){ panel.classList.add("open"); openPanel(); };
-  window.novaxAutopilotSay=function(text,actions){ try{ panel.classList.add("open"); greeted=true; addMsg(text,"b",actions); }catch(e){} };
+  window.novaxOpenAutopilot=function(){ panel.classList.add("open"); openPanel(); try{ window.novaxFlushPending(); }catch(e){} };
+  /* This forced the panel open, so anything the assistant wanted to say threw
+     the full chat over the dashboard -- on a phone, the entire screen --
+     unasked. Queued instead and delivered the moment the merchant opens the
+     panel themselves; the launcher offers a short hint meanwhile. */
+  var NV_PENDING_SAY=[];
+  window.novaxAutopilotSay=function(text,actions,force){
+    try{
+      if(force===true || panel.classList.contains("open")){
+        if(force===true) panel.classList.add("open");
+        greeted=true; addMsg(text,"b",actions); return;
+      }
+      NV_PENDING_SAY.push({text:text,actions:actions});
+      if(typeof window.nvNudgeSuggest==="function") window.nvNudgeSuggest(text);
+    }catch(e){}
+  };
+  window.novaxFlushPending=function(){
+    try{ while(NV_PENDING_SAY.length){ var m=NV_PENDING_SAY.shift(); greeted=true; addMsg(m.text,"b",m.actions); } }catch(e){}
+  };
 
   /* ===== Daily Command Center: Autopilot daily briefing (once per client per day) ===== */
   (function(){
@@ -10841,7 +10873,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       addMsg("Hi, I'm NovaX Autopilot. Ask me to track an AWB, start a return, check your COD/wallet, or ask for a human.","b");
     }
   }
-  btn.addEventListener("click",function(){ panel.classList.toggle("open"); if(panel.classList.contains("open")) openPanel(); });
+  btn.addEventListener("click",function(){
+    panel.classList.toggle("open");
+    if(panel.classList.contains("open")){ openPanel(); try{ window.novaxFlushPending(); }catch(e){} }
+  });
   panel.querySelector(".nvauto-x").addEventListener("click",function(){
     panel.classList.remove("open");
     /* Closing IS the dismissal. Nothing recorded it before, so the intro was
@@ -11034,6 +11069,29 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       NV_NUDGE_T2=setTimeout(nvHideNudge,2350);
     }catch(e){}
   }
+  /* A hint on the launcher bubble: tethered to the button, two seconds, gone
+     on a scroll, a resize or a tap. Replaces the two things that used to
+     throw the panel open -- the first-run intro, and anything the assistant
+     wanted to say unprompted. */
+  window.nvNudgeSuggest=function(text){
+    try{
+      if(!text || panel.classList.contains("open")) return;
+      nvHideNudge();
+      nudge.textContent=String(text).slice(0,120);
+      var r=btn.getBoundingClientRect();
+      nudge.style.left="auto"; nudge.style.width="";
+      nudge.style.right=Math.max(10,window.innerWidth-r.right)+"px";
+      nudge.style.maxWidth="min(238px, calc(100vw - 28px))";
+      nudge.style.bottom=(window.innerHeight-r.top+10)+"px";
+      nudge.onclick=function(){
+        nvHideNudge(); panel.classList.add("open"); openPanel(); nvPlacePanel();
+        try{ window.novaxFlushPending(); }catch(e){}
+      };
+      NV_NUDGE_T1=setTimeout(function(){ nudge.classList.add("show"); },250);
+      NV_NUDGE_T2=setTimeout(nvHideNudge,2250);
+    }catch(e){}
+  };
+
   btn.addEventListener("click",nvHideNudge);
   /* Anything that moves the launcher or the page invalidates its position,
      so dismiss rather than leave it hanging in the wrong place. */
@@ -11689,9 +11747,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(localStorage.getItem(INTRO_KEY)) return;
           /* Same queue as the review prompt: never open the intro on top of
              the pricing card. */
+          /* Opened the whole chat over the dashboard the first time a
+             merchant ever signed in -- on a phone, all of it, unasked. A
+             launcher hint instead, marked seen either way. */
           var go = function(){
             if(localStorage.getItem(INTRO_KEY)) return;
-            panel.classList.add("open"); openPanel();
+            try{ localStorage.setItem(INTRO_KEY,"1"); }catch(e){}
+            if(typeof window.nvNudgeSuggest==="function"){
+              window.nvNudgeSuggest("Need a hand? Ask me about a parcel, your COD or a payout.");
+            }
           };
           if(typeof window.__nvWaitForGate === "function") window.__nvWaitForGate(go); else go();
         },900);

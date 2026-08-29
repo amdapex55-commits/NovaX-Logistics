@@ -1970,7 +1970,7 @@
     .action-btn:active,.ghost-btn:active,.tab-btn:active,.client-tab:active{transform:none;}
   }
   </style>
-  <script src="client-app.js?v=86727006" defer></script>
+  <script src="client-app.js?v=d64aa6c0" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -4280,6 +4280,56 @@ body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
 /* Same guard for the expected-delivery line: it was truncating to
    "Was expected by Thu Aug" in that same narrow cell. */
 .nv-eta{min-width:0;overflow-wrap:anywhere;white-space:normal;flex-wrap:wrap}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Quiet the parcel row -- 30 Aug 2026
+   Shipped version: a filled bordered alert box with a full-width button, plus
+   a three-line ETA, inside a table cell sized for a progress meter. Three of
+   those stacked made every desktop row ~250px, and the page read as an
+   emergency. Same information, stated once, quietly.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* One register shows at a time; the other is removed from layout entirely. */
+.nv-eta-short,.nv-age-short{display:none}
+.nv-eta-long,.nv-age-long{display:inline}
+
+/* ── the not-collected pill ── */
+.nv-age{margin-top:6px;padding:0;background:none!important;border:0!important;
+  border-left:0!important;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-size:12px;line-height:1.35;min-width:0}
+.nv-age-t{flex:0 1 auto;min-width:0;font-weight:600;display:inline-flex;
+  align-items:center;gap:6px;overflow-wrap:anywhere}
+.nv-age-t::before{content:"";width:6px;height:6px;border-radius:50%;flex:0 0 auto}
+.nv-age.warn .nv-age-t{color:#e0b64a}
+.nv-age.warn .nv-age-t::before{background:#e0b64a}
+.nv-age.bad .nv-age-t{color:#e0808a}
+.nv-age.bad .nv-age-t::before{background:#e0808a}
+.nv-age-ok{font-weight:600;opacity:.7;font-size:11.5px}
+
+/* A link, not a button. It sits beside a status line, not on a form. */
+.nv-age-act{background:none;border:0;padding:0;min-height:0;color:var(--nvu-accent,#14c77b);
+  font:600 12px/1.35 inherit;cursor:pointer;text-decoration:underline;
+  text-underline-offset:2px;flex:0 0 auto;white-space:nowrap}
+.nv-age-act:hover{color:#4ee6a5}
+.nv-age-act:focus-visible{outline:2px solid var(--nvu-accent,#14c77b);outline-offset:3px;border-radius:3px}
+
+.nv-eta{margin-top:6px;font-size:12px;gap:6px;min-width:0;overflow-wrap:anywhere}
+
+/* ── inside the desktop table, go as tight as possible ── */
+#clientParcelRows .nv-eta,#clientParcelRows .nv-age{margin-top:4px;font-size:11.5px}
+#clientParcelRows .nv-eta-long,#clientParcelRows .nv-age-long{display:none}
+#clientParcelRows .nv-eta-short,#clientParcelRows .nv-age-short{display:inline}
+#clientParcelRows td{vertical-align:top}
+/* The actions column was three stacked full-width buttons. Inline and small. */
+#clientParcelRows .inline-actions{margin-top:6px!important;gap:4px!important}
+#clientParcelRows .inline-actions .ghost-btn{min-height:32px!important;padding:0 10px!important;
+  font-size:11.5px!important;border-radius:8px!important}
+
+/* On a phone the card has the width for the full sentence, and the tap
+   target has to come back up to 44. */
+@media (pointer:coarse),(max-width:760px){
+  .nv-age-act{min-height:44px;display:inline-flex;align-items:center}
+}
 </style>
 </body>
 </html>
