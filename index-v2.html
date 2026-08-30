@@ -848,7 +848,7 @@ function track(){
   if(!AWB_RE.test(raw)){ noParcel("That doesn't look like a valid tracking number. Check it and try again."); return; }
   if(!trackSb){ noParcel("Tracking is temporarily unavailable. Please try again in a moment."); return; }
   tRes.innerHTML='<div class="tres"><div class="tres-top"><span class="tres-awb">'+esc(raw)+'</span><span class="chip info">Looking up…</span></div></div>';
-  trackSb.rpc("track_parcel_public",{p_awb:raw}).then(function(r){
+  trackSb.rpc("public_track_awb",{p_awb:raw}).then(function(r){
     var row=r&&r.data&&r.data[0];
     if((r&&r.error)||!row){ noParcel("We couldn't find a parcel with that tracking number."); return; }
     var status=String(row.status||"New booked");
@@ -857,7 +857,7 @@ function track(){
     var chip=/deliver/i.test(status)?"good":(idx<4?"info":"warn");
     tRes.innerHTML='<div class="tres"><div class="tres-top"><span class="tres-awb">'+esc(raw)+
       '</span><span class="chip '+chip+'">'+esc(status)+'</span></div>'+
-      '<div class="tres-meta">'+esc(row.city||"In transit")+' · updated '+esc(ageLabel(row.updated_at))+'</div>'+
+      '<div class="tres-meta">'+esc(row.destination_city||row.city||"In transit")+' · updated '+esc(ageLabel(row.updated_at))+'</div>'+
       '<div class="tres-bar"><i></i></div>'+
       '<a class="tres-link" href="tracking.html?awb='+encodeURIComponent(raw)+'">See the full journey →</a></div>';
     requestAnimationFrame(function(){ var b=tRes.querySelector(".tres-bar i"); if(b) b.style.width=prog+"%"; });

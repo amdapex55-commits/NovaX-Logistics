@@ -366,12 +366,12 @@ function nvTrack(){
   if(!AWB_RE.test(raw)){ renderTrack("error",{msg:"That is not a valid tracking number."}); return; }
   if(!trackSb){ renderTrack("error",{msg:"Tracking is unavailable right now."}); return; }
   renderTrack("loading",{awb:raw});
-  trackSb.rpc("track_parcel_public",{p_awb:raw}).then(function(r){
+  trackSb.rpc("public_track_awb",{p_awb:raw}).then(function(r){
     var row=r&&r.data&&r.data[0];
     if((r&&r.error)||!row){ renderTrack("error",{msg:"No parcel found with that number.",awb:raw}); return; }
     var status=String(row.status||"New booked");
     var idx=Math.max(0,FLOW.indexOf(status));
-    renderTrack("ok",{awb:raw,status:status,city:row.city||"In transit",
+    renderTrack("ok",{awb:raw,status:status,city:row.destination_city||row.city||"In transit",
       age:ageLabel(row.updated_at),idx:idx,pct:Math.max(8,Math.round((idx/(FLOW.length-1))*100))});
   }).catch(function(){ renderTrack("error",{msg:"Could not reach tracking. Try again."}); });
 }
