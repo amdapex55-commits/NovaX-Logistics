@@ -7693,6 +7693,25 @@ html,body{ background:var(--bg); color:var(--ink); }
       return n;
     }
 
+    /* Rider-supplied media rendered straight into href and src in the ops
+       console -- no escaping, no scheme check. proofPhoto and signature come
+       from the rider app writing parcels.meta, so a value written there could
+       have become javascript:, data: or an arbitrary host, executing inside
+       the session that moves money. Every production value is empty today,
+       which is the only reason this was not already live.
+
+       Escaping alone would not fix it: escLabelText makes javascript:alert(1)
+       safe as TEXT, but it is still a working URL inside an href. The scheme
+       has to be checked first, then the result escaped for the attribute. */
+    function nvSafeMediaUrl(v) {
+      var raw = String(v == null ? "" : v).trim();
+      if (!raw) return "";
+      var u;
+      try { u = new URL(raw, window.location.origin); } catch (e) { return ""; }
+      if (u.protocol !== "https:" && u.protocol !== "http:") return "";
+      return nvEscAdmin(u.href);
+    }
+
     function nvNpeCheckCity(){
       var warn = document.getElementById("npeCityWarn");
       var citySel = document.getElementById("npeCity");
@@ -9820,7 +9839,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           <td><span class="status ${row.risk > 55 ? "bad" : "warn"}"><span class="mini-dot"></span>${row.risk}%</span></td>
           <td><strong>${escLabelText(row.parcel)}</strong></td>
           <td>${escLabelText(row.owner)}</td>
-          <td>${escLabelText(row.problem)}${row.proofPhoto?`<br><a href="${row.proofPhoto}" target="_blank" rel="noopener"><img src="${row.proofPhoto}" alt="proof" loading="lazy" style="margin-top:6px;width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line);vertical-align:middle"></a>`:""}${row.signature?` <a href="${row.signature}" target="_blank" rel="noopener" class="chip info" style="margin-left:6px">Signature</a>`:""}</td>
+          <td>${escLabelText(row.problem)}${nvSafeMediaUrl(row.proofPhoto)?`<br><a href="${nvSafeMediaUrl(row.proofPhoto)}" target="_blank" rel="noopener noreferrer"><img src="${nvSafeMediaUrl(row.proofPhoto)}" alt="proof" loading="lazy" style="margin-top:6px;width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line);vertical-align:middle"></a>`:""}${nvSafeMediaUrl(row.signature)?` <a href="${nvSafeMediaUrl(row.signature)}" target="_blank" rel="noopener noreferrer" class="chip info" style="margin-left:6px">Signature</a>`:""}</td>
           <td>
             <div class="meter ${meterClass(row.risk)}"><span style="width:${Math.min(100, row.risk)}%"></span></div>
             <div class="meter-caption"><span>escalation pressure</span><span>${row.risk}%</span></div>
