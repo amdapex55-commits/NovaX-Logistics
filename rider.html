@@ -608,9 +608,17 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         const path = (awb||"unknown") + "/" + label + "-" + Date.now() + "-" + Math.random().toString(36).slice(2,8) + "." + ext;
         sbc.storage.from("delivery-proofs").upload(path, fileOrBlob, { contentType: fileOrBlob.type || "image/jpeg", upsert:false }).then(function(res){
           if(res && res.error){ console.warn("NovaX proof upload failed, using local copy.", res.error.message); shrinkThenBase64(); return; }
-          const pub = sbc.storage.from("delivery-proofs").getPublicUrl(path);
-          const url = pub && pub.data && pub.data.publicUrl;
-          if(url) resolve(url); else shrinkThenBase64();
+          /* The bucket is private (proof photos show doorsteps, faces, sometimes
+             addresses). A signed URL is validated by the storage API, so it keeps
+             working for the client portal and the consignee tracking page without
+             the bucket being readable by anyone who guesses a path.
+             The stored value is permanent, so the signature must outlive the parcel. */
+          const TEN_YEARS = 315360000;
+          return sbc.storage.from("delivery-proofs").createSignedUrl(path, TEN_YEARS).then(function(sig){
+            const url = sig && sig.data && sig.data.signedUrl;
+            if(url) resolve(url);
+            else { console.warn("NovaX proof signing failed, using local copy.", sig && sig.error && sig.error.message); shrinkThenBase64(); }
+          });
         }).catch(function(){ shrinkThenBase64(); });
       });
     }

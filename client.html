@@ -2390,7 +2390,7 @@
                   <button class="ghost-btn" id="repClearBtn">Clear</button>
                 </div>
                 <div class="wide-scroll">
-                  <table>
+                  <table id="clientReportFullTable">
                     <thead><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th><th>Fee</th><th>Aging</th></tr></thead>
                     <tbody id="clientReportFullRows"></tbody>
                   </table>
@@ -2899,10 +2899,50 @@
   border-bottom:1px solid var(--nvu-line);flex:0 0 auto;}
 #nvdrawer .nvdr-title{flex:1;min-width:0;font-size:15px;font-weight:800;color:var(--nvu-ink);line-height:1.3;}
 #nvdrawer .nvdr-title small{display:block;font-size:11.5px;font-weight:600;color:var(--nvu-ink-2);margin-top:3px;}
-#nvdrawer .nvdr-x{width:32px;height:32px;border-radius:var(--r-lg);border:1px solid var(--nvu-line-2);
+#nvdrawer .nvdr-x{width:44px;height:44px;border-radius:var(--r-lg);border:1px solid var(--nvu-line-2);
   background:var(--nvu-bg);color:var(--nvu-ink-2);cursor:pointer;flex:0 0 auto;font-size:13px;line-height:1;}
 #nvdrawer .nvdr-x:hover{background:var(--nvu-bg-2);color:var(--nvu-ink);}
 #nvdrawer .nvdr-body{padding:16px 18px 28px;overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;}
+/* MOB-006 - Full Report was a 7-column table rendering ~575px wide inside a
+   390px viewport, so mobile sellers had to scan sideways. Under 900px each row
+   becomes a card: AWB reads as the heading, the rest as labelled lines. The
+   table markup is unchanged, so desktop and print are untouched. */
+@media (max-width:900px){
+  #clientReportFullTable, #clientReportFullTable thead, #clientReportFullTable tbody,
+  #clientReportFullTable tr, #clientReportFullTable td{ display:block; width:100%; }
+  #clientReportFullTable thead{ position:absolute; left:-9999px; }
+  #clientReportFullTable tr{
+    border:1px solid var(--nvu-line-2, #e3efe8); border-radius:14px;
+    padding:12px 14px; margin-bottom:10px; background:var(--nvu-bg, #fff);
+  }
+  #clientReportFullTable td{ border:0; padding:4px 0; display:flex; gap:12px;
+    align-items:baseline; justify-content:space-between; text-align:right; }
+  #clientReportFullTable td::before{
+    content:attr(data-label); flex:0 0 auto; text-align:left;
+    font-size:11.5px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--nvu-ink-2, #6d8478); font-weight:700;
+  }
+  #clientReportFullTable td[data-label="AWB"]{ display:block; text-align:left;
+    font-size:16px; padding-bottom:8px; }
+  #clientReportFullTable td[data-label="AWB"]::before{ display:none; }
+}
+/* MOB-007 - minimum comfortable touch target on phones.
+   Codex measured the demo banner CTA at ~28px, onboarding Skip at ~23px and
+   the drawer close at 32px. Rather than resize the painted controls (which
+   would shift several layouts), grow only the hit area with a centred
+   pseudo-element. Nothing moves; the finger just stops missing. */
+@media (max-width:900px){
+  .nv-demo-banner button, .nv-demo-banner a,
+  .nv-onb-skip, [data-nv-onb-skip], .nvcoach-btn,
+  #nvdrawer .nvdr-x{ position:relative; }
+  .nv-demo-banner button::after, .nv-demo-banner a::after,
+  .nv-onb-skip::after, [data-nv-onb-skip]::after, .nvcoach-btn::after,
+  #nvdrawer .nvdr-x::after{
+    content:""; position:absolute; left:50%; top:50%;
+    width:max(100%,44px); height:max(100%,44px);
+    transform:translate(-50%,-50%);
+  }
+}
 .nvdr-sec{margin-top:18px;}
 .nvdr-sec:first-child{margin-top:0;}
 .nvdr-sec>h4{margin:0 0 9px;font-size:10.5px;font-weight:800;letter-spacing:.1em;

@@ -98,7 +98,10 @@
        "disabled" -- see nvDemoPrompt(), attached in phase 3. */
     function nvDemoBlocked(what){
       try{ if(typeof window.nvDemoPrompt === "function") window.nvDemoPrompt(what); }catch(e){}
-      return { data:null, error:{ message:"__DEMO__", code:"DEMO_READONLY" } };
+      /* This string reaches the merchant: every caller toasts error.message and
+         logs it. "__DEMO__" read as a broken build to anyone trying the demo.
+         The code stays DEMO_READONLY for anything that branches on it. */
+      return { data:null, error:{ message:"Demo mode is read-only. Create a free account to book real parcels.", code:"DEMO_READONLY" } };
     }
 
     /* A thenable query builder covering exactly the chain this portal uses:
@@ -3853,7 +3856,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const from=document.getElementById("repFrom")?.value||"";
       const to=document.getElementById("repTo")?.value||"";
       const rows=state.parcels.filter(p=>p.clientId===state.client.id).filter(p=>{ const d=p.date||""; return (!from||d>=from)&&(!to||d<=to)&&(!status||p.status===status)&&`${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase().includes(search); });
-      tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}</td><td>${escLabelText(p.date||"-")}</td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td><span class="status ${statusClass(p)}">${escLabelText(p.status)}</span></td><td>${money(p.cod)}</td><td>${money(p.fee)}</td><td>${agingLabel(agingHours(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
+      /* data-label drives the mobile card layout in client.html: under 900px the
+         table stops being a table and each row stacks as AWB-first card, so the
+         report stops requiring horizontal scanning on a phone. */
+      tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><td data-label="AWB"><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}</td><td data-label="Date">${escLabelText(p.date||"-")}</td><td data-label="Consignee">${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td data-label="Status"><span class="status ${statusClass(p)}">${escLabelText(p.status)}</span></td><td data-label="COD">${money(p.cod)}</td><td data-label="Fee">${money(p.fee)}</td><td data-label="Age">${agingLabel(agingHours(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
     }
 
     /* renderLatestInvoice() removed 25 Aug 2026: #clientLatestInvoice does not
@@ -6110,7 +6116,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(loneNum && loneNum[1]!==out.phone) out.cod=loneNum[1];
       }
 
-      var nameLabel=text.match(/name\s*[:\-]\s*([A-Za-z ]{2,30})/i);
+      /* "Name: Hina Phone: 92321..." used to yield "Hina Phone" -- [A-Za-z ]
+         happily swallowed the next label. Stop at the following field word. */
+      var nameLabel=text.match(/name\s*[:\-]\s*([A-Za-z][A-Za-z ]{1,29}?)(?=\s*(?:phone|mobile|cell|city|cod|amount|rs\.?|price|address|product)\b|[,\n]|$)/i);
       if(nameLabel){ out.name=nameLabel[1].trim(); }
       else{
         var leadWords=text.match(/^([A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+){0,2})/);
@@ -6120,8 +6128,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var addrLabel=text.match(/address\s*[:\-]\s*([^,]{4,80})/i);
       if(addrLabel){ out.address=addrLabel[1].trim(); }
       else{
-        var addrClue=text.match(/([A-Za-z0-9 ]{0,20}(?:house|block|phase|street|sector|road|colony|town|society)[A-Za-z0-9 ]{0,25})/i);
-        if(addrClue) out.address=addrClue[1].trim();
+        /* The clue window used to run straight through the COD figure, so
+           "COD 2500 black hoodie DHA Phase 5" produced an address beginning
+           "00 black hoodie" -- the tail of the amount. Strip the values we have
+           already claimed before looking for the address, and never begin a
+           match in the middle of a number. */
+        var addrText=text;
+        if(out.cod)   addrText=addrText.replace(new RegExp("\\b"+out.cod+"\\b"), " ");
+        if(out.phone) addrText=addrText.replace(/(?:\+|00)?[\d][\d\s\-().]{7,22}\d/g, " ");
+        var addrClue=addrText.match(/(?:^|[^\d])((?:[A-Za-z][A-Za-z0-9 ]{0,19})?(?:house|block|phase|street|sector|road|colony|town|society)[A-Za-z0-9 ]{0,25})/i);
+        if(addrClue){
+          out.address=addrClue[1].replace(/\s+/g," ").trim()
+            /* drop label words and one-letter crumbs left by the stripping above */
+            .replace(/^(?:\b(?:cod|amount|rs\.?|price|name|phone|mobile|city|address|product)\b|\b[A-Za-z]\b|[\s,:;-]+)+/i,"")
+            .trim();
+        }
       }
 
       var prodLabel=text.match(/product\s*[:\-]\s*([^,]{2,60})/i);
@@ -8169,7 +8190,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       __nvRoleApplying=true;
       try{
         var allowed=nvRoleTabs();
-        document.querySelectorAll(".client-tab").forEach(function(b){
+        /* [data-client-tab] matters: #nvMoreBtn borrows the .client-tab class
+           for styling but is NOT a tab, so it has no dataset.clientTab.
+           Without the attribute filter, allowed.indexOf(undefined) === -1 and
+           this sweep set display:none + disabled on the More button itself,
+           which is what made API, Order Logs and Sub Accounts unreachable. */
+        document.querySelectorAll(".client-tab[data-client-tab]").forEach(function(b){
           var ok=allowed.indexOf(b.dataset.clientTab)>-1;
           b.style.display=ok?"":"none";
           b.disabled=!ok;
@@ -9792,6 +9818,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +".nv-more-wrap{position:relative;display:inline-block}"
           +".nv-more-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:60;background:var(--nvu-bg);border:1px solid #d7ede1;border-radius:var(--r-lg);box-shadow:var(--glow-1);padding:6px;display:none;min-width:190px}"
           +".nv-more-wrap.open .nv-more-menu{display:block}"
+          /* Inside the mobile drawer there is no room for a nested dropdown --
+             "More" inside "More" is how these three tabs became unreachable.
+             Flatten the group so they read as ordinary menu rows. */
+          +"@media (max-width:900px){"
+          +"#clientMenu.open .nv-more-wrap{display:block;width:100%}"
+          +"#clientMenu.open #nvMoreBtn{display:none!important}"
+          +"#clientMenu.open .nv-more-menu{position:static;display:block!important;border:0;box-shadow:none;padding:0;background:transparent;min-width:0}"
+          +"}"
           +".nv-more-menu .client-tab{display:block!important;width:100%;text-align:left;margin:2px 0}"
           +".nv-omni{position:fixed;z-index:99990;background:var(--nvu-bg);border:1px solid #d7ede1;border-radius:var(--r-xl);box-shadow:var(--glow-1);max-height:340px;overflow:auto;display:none;padding:6px}"
           +".nv-omni.open{display:block}"
@@ -13650,6 +13684,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(!sb) return Promise.reject(new Error("not connected"));
     return sb.auth.getSession().then(function(res){
       var token = res && res.data && res.data.session && res.data.session.access_token;
+      /* In the demo there is no session by design. Throwing "not signed in"
+         surfaced as a connection-interrupted state, so the strongest feature in
+         the product looked broken to exactly the people evaluating it. */
+      if(!token && window.__NOVAX_DEMO){
+        var demoErr = new Error("Ask AI works on a real account. It reads your own parcels, so it needs you signed in \u2014 create a free account to try it.");
+        demoErr.code = "DEMO_NO_AI";
+        throw demoErr;
+      }
       if(!token) throw new Error("not signed in");
       return fetch(endpoint(), {
         method: "POST",
