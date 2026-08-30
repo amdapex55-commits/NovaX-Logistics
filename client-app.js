@@ -8944,6 +8944,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                 // reload, not five.
                 var __rtTimer=null;
                 function rtReload(){
+                  /* Stamped on every event actually delivered, not just on
+                     connect -- that is what makes the quiet-channel check
+                     below a real heartbeat rather than a timer that fires on
+                     a perfectly healthy socket. */
+                  window.__nvRealtimeSeenAt = Date.now();
                   clearTimeout(__rtTimer);
                   __rtTimer=setTimeout(function(){ try{ loadAll(); }catch(e){} }, 350);
                 }
@@ -8957,7 +8962,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                   .on("postgres_changes",{event:"*",schema:"public",table:"clients",filter:"id=eq."+MY},rtReload)
                   .subscribe(function(status,err){
                     if(err) console.warn("NovaX client realtime",status,err.message||err);
-                    if(status==="SUBSCRIBED") window.__nvRealtimeLive=true;
+                    /* BUG: this only ever set the flag TRUE. Nothing anywhere
+                       set it back, so once a socket had connected the 3-minute
+                       fallback below was disabled for the life of the tab --
+                       and a socket that dies quietly (phone sleeps, network
+                       changes, tab backgrounded on mobile Safari) left the
+                       merchant looking at stale parcels and a stale balance
+                       indefinitely, with no error and no refresh.
+                       Every non-connected state now hands control back. */
+                    if(status==="SUBSCRIBED"){
+                      window.__nvRealtimeLive=true;
+                      window.__nvRealtimeSeenAt=Date.now();
+                    } else {
+                      window.__nvRealtimeLive=false;
+                      if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"||status==="CLOSED"){
+                        try{ nvQuietRefresh(); }catch(e){}   // catch up immediately
+                      }
+                    }
                   });
 
                 /* Realtime only delivers if the table is in the
@@ -8983,7 +9004,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                    runs only while realtime is NOT connected, and at 3 minutes. */
                 if(!window.__nvPollTimer){
                   window.__nvPollTimer=nvInterval(function(){
-                    if(window.__nvRealtimeLive) return;   // realtime has it covered
+                    /* Belt as well as braces. Even while the socket reports
+                       itself connected, a channel can go quiet without ever
+                       emitting an error -- so if nothing has arrived for ten
+                       minutes, refresh anyway rather than trust the flag. */
+                    /* A quiet channel is normal on an account with no
+                       activity, so this is not "no events = broken". It is a
+                       cheap re-check every 10 minutes at most: one query,
+                       against a socket we cannot otherwise prove is alive. */
+                    var quietMs = Date.now() - (window.__nvRealtimeSeenAt || 0);
+                    if(window.__nvRealtimeLive && quietMs < 600000) return;
+                    window.__nvRealtimeSeenAt = Date.now();   // don't re-fire every tick
                     nvQuietRefresh();
                   }, 180000);
                 }

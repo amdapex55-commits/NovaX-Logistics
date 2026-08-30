@@ -16738,54 +16738,94 @@ html,body{ background:var(--bg); color:var(--ink); }
       function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
       var _save=saveState; saveState=function(){ try{ if(typeof syncRidersFromUsers==="function") syncRidersFromUsers(); }catch(e){} try{ _save.apply(this,arguments); }catch(e){} try{ syncAll(); }catch(e){} };
       state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[]; state.signupLeads=[]; state.operationsIssues=[]; state.resolvedAlerts=[]; state.transit=[]; state.completedSacks=[]; state.users=[]; state.staffActivity=[]; state.walletLedger=[]; state.pickupRequests=[];
+      /* Every lead mutation below changes local state, re-renders, then fires
+         the write and reported failure only to console.warn. So a rejected
+         update left the operator looking at "Contacted" while the database
+         still said "New" -- and a refresh silently undid it. That is a
+         data-integrity bug the operator cannot see.
+
+         nvLeadWrite takes a snapshot before the optimistic change, and on
+         failure restores it, re-renders, and says so out loud. The operator
+         either sees the change stick or sees why it did not. */
+      function nvLeadWrite(promise, undo, what){
+        return promise.then(function(r){
+          if(r && r.error){
+            try{ undo(); }catch(e){}
+            try{ if(typeof render==="function") render(); }catch(e){}
+            console.warn("NovaX "+what+" failed", r.error.message);
+            try{ toast("Could not save: "+what+" -- "+r.error.message+". The change has been undone.","error"); }
+            catch(e){ try{ alert("Could not save: "+what+". The change has been undone."); }catch(e2){} }
+            return false;
+          }
+          return true;
+        }).catch(function(e){
+          try{ undo(); }catch(e2){}
+          try{ if(typeof render==="function") render(); }catch(e2){}
+          try{ toast("Could not reach the server -- "+what+" was undone.","error"); }catch(e2){}
+          return false;
+        });
+      }
+
       window.markSalesLeadContacted=function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
+        var __prev=lead.status;
         lead.status="Contacted";
         try{ if(typeof render==="function") render(); }catch(e){}
-        sb.from("sales_leads").update({ status:"Contacted" }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads update",r.error.message); });
+        nvLeadWrite(sb.from("sales_leads").update({ status:"Contacted" }).eq("id",id),
+          function(){ lead.status=__prev; }, "mark lead contacted");
       };
       window.deleteSalesLead=function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
         if(!window.confirm("Delete this sales lead ("+lead.name+")? This cannot be undone.")) return;
+        var __prevLeadList=(state.salesLeads||[]).slice();
         state.salesLeads=(state.salesLeads||[]).filter(function(l){return l.id!==id;});
         try{ if(typeof render==="function") render(); }catch(e){}
-        sb.from("sales_leads").delete().eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads delete",r.error.message); });
+        nvLeadWrite(sb.from("sales_leads").delete().eq("id",id),
+          function(){ state.salesLeads=__prevLeadList; }, "delete lead");
       };
       window.setSalesLeadStage=function(id,stage){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
+        var __prevStage=lead.status;
         lead.status=stage;
         try{ if(typeof render==="function") render(); }catch(e){}
-        sb.from("sales_leads").update({ status:stage }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads update",r.error.message); });
+        nvLeadWrite(sb.from("sales_leads").update({ status:stage }).eq("id",id),
+          function(){ lead.status=__prevStage; }, "change lead stage");
       };
       window.scheduleSalesLeadDemo=function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
         var when=window.prompt("Demo date/time for "+lead.name+" (e.g. 2026-07-20 15:00):", lead.demoAt||"");
         if(when===null) return;
+        var __prevDemo=lead.demoAt, __prevStatus=lead.status;
         lead.demoAt=when; lead.status="Demo Scheduled";
         try{ if(typeof render==="function") render(); }catch(e){}
-        sb.from("sales_leads").update({ demo_at:when||null, status:"Demo Scheduled" }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads update",r.error.message); });
+        nvLeadWrite(sb.from("sales_leads").update({ demo_at:when||null, status:"Demo Scheduled" }).eq("id",id),
+          function(){ lead.demoAt=__prevDemo; lead.status=__prevStatus; }, "schedule demo");
       };
       window.addSalesLeadNote=function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
         var note=window.prompt("Add note for "+lead.name+":", "");
         if(!note) return;
+        var __prevNotes=lead.notes;
         lead.notes=(lead.notes?lead.notes+" | ":"")+note;
         try{ if(typeof render==="function") render(); }catch(e){}
-        sb.from("sales_leads").update({ notes:lead.notes }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads update",r.error.message); });
+        nvLeadWrite(sb.from("sales_leads").update({ notes:lead.notes }).eq("id",id),
+          function(){ lead.notes=__prevNotes; }, "add note");
       };
       window.setSalesLeadFollowup=function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
         var when=window.prompt("Next follow-up date for "+lead.name+" (YYYY-MM-DD):", lead.nextFollowup||"");
         if(when===null) return;
+        var __prevFollow=lead.nextFollowup;
         lead.nextFollowup=when;
         try{ if(typeof render==="function") render(); }catch(e){}
-        sb.from("sales_leads").update({ next_followup:when||null }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads update",r.error.message); });
+        nvLeadWrite(sb.from("sales_leads").update({ next_followup:when||null }).eq("id",id),
+          function(){ lead.nextFollowup=__prevFollow; }, "set follow-up");
       };
       window.convertSalesLeadToClient=function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
@@ -16815,9 +16855,14 @@ html,body{ background:var(--bg); color:var(--ink); }
         var lead=(state.signupLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
         if(!window.confirm("Mark this stuck signup ("+lead.name+") as resolved? Only do this after you've manually created their workspace or contacted them.")) return;
+        /* The row is removed from the array, so a rollback has to put the
+           array back -- restoring a field on the detached object would have
+           left the operator with the lead still gone from the list. */
+        var __prevSignupList=(state.signupLeads||[]).slice();
         state.signupLeads=(state.signupLeads||[]).filter(function(l){return l.id!==id;});
         try{ if(typeof render==="function") render(); }catch(e){}
-        sb.from("signup_leads").update({ status:"workspace_created" }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX signup_leads update",r.error.message); });
+        nvLeadWrite(sb.from("signup_leads").update({ status:"workspace_created" }).eq("id",id),
+          function(){ state.signupLeads=__prevSignupList; }, "resolve signup lead");
       };
       window.nvListSellers=function(){ sb.from("profiles").select("email,role,status,client_id").eq("role","client").then(function(r){ if(r&&r.error){ console.warn(r.error.message); return; } console.table((r&&r.data)||[]); }); };
       window.nvLinkSeller=function(email, clientUuid){ if(!email||!clientUuid){ console.warn("usage: nvLinkSeller('seller@email.com','<client uuid>')"); return; } sb.from("profiles").update({ client_id:clientUuid }).eq("email",email).select("id").then(function(r){ if(r&&r.error){ console.warn("link failed",r.error.message); return; } if(!r||!r.data||r.data.length===0){ console.warn("No profile row found for",email,"- run novax_profile_autocreate_fix.sql, then retry."); try{ alert("No profile row exists yet for "+email+". Run the profile auto-create fix first."); }catch(e){} return; } try{ alert("Linked "+email+" to client "+clientUuid); }catch(e){} console.log("Linked",email,"->",clientUuid); }); };
