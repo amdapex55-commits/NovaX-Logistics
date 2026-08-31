@@ -6,12 +6,14 @@
    said so. Changing an Auth password requires the service-role key, which must
    never be shipped to a browser, so it has to happen here.
 
-   Two modes:
+   Three modes:
      mode:"email" — send Supabase's own reset link to the merchant. Safest, and
                     the right default: we never learn the password.
      mode:"set"   — an admin sets a password directly, for the common Pakistani
                     case where the merchant cannot get into their email but is
                     on WhatsApp with you right now.
+     mode:"update" — change the merchant's real Supabase Auth login email, and
+                     optionally set a new password in the same audited request.
 
    Guards, in order:
      1. caller must present a real JWT
@@ -19,7 +21,7 @@
      3. target must be a client account (profiles.client_id is not null)
      4. target must not be staff/admin/rider — you cannot pivot to another admin
      5. caller cannot target themselves (use the normal change-password flow)
-     6. password policy enforced server-side
+     6. email/password policy enforced server-side
      7. every attempt is written to admin_audit_log, allowed or refused
 */
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -86,11 +88,11 @@ Deno.serve(async (req) => {
     return json({ error: "Admins only." }, 403);
   }
 
-  let body: { client_id?: string; mode?: string; new_password?: string };
+  let body: { client_id?: string; mode?: string; new_password?: string; new_email?: string };
   try { body = await req.json(); } catch { return json({ error: "Bad request body." }, 400); }
 
   const clientId = String(body.client_id ?? "").trim();
-  const mode = body.mode === "set" ? "set" : "email";
+  const mode = body.mode === "set" ? "set" : (body.mode === "update" ? "update" : "email");
   if (!clientId) return json({ error: "client_id is required." }, 400);
 
   // Resolve the merchant's auth user. profiles is the real link between a
@@ -127,6 +129,14 @@ Deno.serve(async (req) => {
     return json({ error: "Refusing to reset an admin or staff password from here." }, 403);
   }
 
+  const cleanEmail = (v: unknown) => String(v ?? "").trim().toLowerCase();
+  const validEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  const validatePassword = (pw: string) => {
+    if (pw.length < 10) return "Password must be at least 10 characters.";
+    if (/^\s|\s$/.test(pw)) return "Password cannot start or end with a space — merchants mistype these constantly.";
+    return "";
+  };
+
   // ── mode: email — Supabase sends its own reset link ──────────────────
   if (mode === "email") {
     const email = target.email;
@@ -145,14 +155,72 @@ Deno.serve(async (req) => {
     return json({ ok: true, mode: "email", sent_to: email });
   }
 
+  // ── mode: update — admin changes the real Auth email and/or password ───
+  if (mode === "update") {
+    const nextEmail = cleanEmail(body.new_email);
+    const pw = String(body.new_password ?? "");
+    const attrs: { email?: string; email_confirm?: boolean; password?: string } = {};
+    const changed: string[] = [];
+
+    if (nextEmail) {
+      if (!validEmail(nextEmail)) {
+        await audit("update_login", clientId, false, "invalid email");
+        return json({ error: "Enter a valid login email address." }, 400);
+      }
+      if (nextEmail !== cleanEmail(target.email)) {
+        attrs.email = nextEmail;
+        attrs.email_confirm = true;
+        changed.push("email");
+      }
+    }
+
+    if (pw) {
+      const pwError = validatePassword(pw);
+      if (pwError) {
+        await audit("update_login", clientId, false, pwError);
+        return json({ error: pwError }, 400);
+      }
+      attrs.password = pw;
+      changed.push("password");
+    }
+
+    if (!changed.length) {
+      return json({ error: "No login email or password change was requested." }, 400);
+    }
+
+    const { error: authErr } = await asService.auth.admin.updateUserById(target.id, attrs);
+    if (authErr) {
+      await audit("update_login", clientId, false, authErr.message);
+      return json({ error: "Could not update the login: " + authErr.message }, 502);
+    }
+
+    if (attrs.email) {
+      try {
+        await asService.from("profiles").update({ email: attrs.email }).eq("id", target.id);
+      } catch { /* auth.users is the authority; profile sync failure is logged below */ }
+
+      try {
+        const { data: clientRow } = await asService.from("clients").select("meta").eq("id", clientId).single();
+        const existingMeta = clientRow && clientRow.meta && typeof clientRow.meta === "object" && !Array.isArray(clientRow.meta)
+          ? clientRow.meta
+          : {};
+        const meta = { ...existingMeta, email: attrs.email };
+        await asService.from("clients").update({ meta }).eq("id", clientId);
+      } catch { /* non-authoritative display sync only */ }
+
+      try {
+        await asService.from("staff_users").update({ email: attrs.email }).eq("client_id", clientId);
+      } catch { /* non-authoritative display sync only */ }
+    }
+
+    await audit("update_login", clientId, true, `updated ${changed.join("+")} for ${attrs.email ?? target.email ?? target.id}`);
+    return json({ ok: true, mode: "update", changed, email: attrs.email ?? target.email ?? null });
+  }
+
   // ── mode: set — admin sets the password directly ────────────────────
   const pw = String(body.new_password ?? "");
-  if (pw.length < 10) {
-    return json({ error: "Password must be at least 10 characters." }, 400);
-  }
-  if (/^\s|\s$/.test(pw)) {
-    return json({ error: "Password cannot start or end with a space — merchants mistype these constantly." }, 400);
-  }
+  const pwError = validatePassword(pw);
+  if (pwError) return json({ error: pwError }, 400);
 
   const { error: setErr } = await asService.auth.admin.updateUserById(target.id, { password: pw });
   if (setErr) {

@@ -13503,7 +13503,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       toast(riderId ? `${rider ? rider.name : riderId} will handle pickups for ${client.name}.` : `Pickup rider cleared for ${client.name}.`);
     }
 
-    function editClientLogin(clientId) {
+    async function editClientLogin(clientId) {
       const client = state.clients.find(c => c.id === clientId);
       if (!client) { toast("Client not found."); return; }
       let user = state.users.find(u => u.clientId === clientId && /client/i.test(`${u.accessSide || ""} ${u.role || ""}`));
@@ -13511,34 +13511,54 @@ html,body{ background:var(--bg); color:var(--ink); }
       const newLogin = (window.prompt(`Client login username / email for ${escLabelText(client.name)}:`, currentLogin) || "").trim();
       if (!newLogin) { toast("Login username is required."); return; }
       const newPass = (window.prompt(`New login password for ${escLabelText(client.name)} (leave blank to keep their current real password unchanged):`, "") || "").trim();
-      if (!user) {
-        user = {
-          id: nextId("USR", state.users),
-          name: client.owner || client.name,
-          role: "Client",
-          accessSide: "Client Web Portal",
-          branch: `${client.city || "Karachi"} Hub`,
-          clientId,
-          permissions: ["dashboard", "booking", "bulk booking", "reports", "payments"],
-          status: "Active"
-        };
-        state.users.unshift(user);
-      }
-      user.email = newLogin;
-      user.username = newLogin;
-      if (newPass) user.password = newPass;
-      user.status = "Active";
-      client.email = newLogin;
-      saveState();
-      render();
-      if (newPass) {
-        /* This used to stop here and tell the admin it had NOT worked, because
-           changing an Auth password needs the service-role key and that can
-           never ship to a browser. It now goes through the admin-reset-password
-           Edge Function, which re-checks is_admin() server-side. */
-        nvAdminResetPassword(clientId, "set", newPass);
-      } else {
-        toast(`${client.name} login username updated.`);
+      if (newPass && newPass.length < 10) { toast("Password must be at least 10 characters."); return; }
+      const loginChanged = String(newLogin || "").trim().toLowerCase() !== String(currentLogin || "").trim().toLowerCase();
+      if (!loginChanged && !newPass) { toast("Nothing changed."); return; }
+
+      const sb = window.__nvSb;
+      if (!sb || !sb.auth) { toast("Cloud connection not ready — login was not changed.", "error"); return; }
+      try {
+        const sess = await sb.auth.getSession();
+        const token = sess && sess.data && sess.data.session && sess.data.session.access_token;
+        if (!token) { toast("Your admin session expired. Sign in again and retry."); return; }
+
+        toast(`Updating ${client.name}'s real login...`);
+        const res = await fetch(SB_URL.replace(/\/$/, "") + "/functions/v1/admin-reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token, "apikey": SB_KEY },
+          body: JSON.stringify({ client_id: clientId, mode: "update", new_email: loginChanged ? newLogin : undefined, new_password: newPass || undefined })
+        });
+        const out = await res.json().catch(() => ({}));
+        if (res.status === 404) {
+          toast("Login update function is not deployed yet. No real login was changed.", "error");
+          return;
+        }
+        if (!res.ok) { toast(out.error || `Login update failed (HTTP ${res.status}).`, "error"); return; }
+
+        const confirmedEmail = out.email || newLogin;
+        if (!user) {
+          user = {
+            id: nextId("USR", state.users),
+            name: client.owner || client.name,
+            role: "Client",
+            accessSide: "Client Web Portal",
+            branch: `${client.city || "Karachi"} Hub`,
+            clientId,
+            permissions: ["dashboard", "booking", "bulk booking", "reports", "payments"],
+            status: "Active"
+          };
+          state.users.unshift(user);
+        }
+        user.email = confirmedEmail;
+        user.username = confirmedEmail;
+        delete user.password;
+        user.status = "Active";
+        client.email = confirmedEmail;
+        saveState();
+        render();
+        toast(`${client.name}'s real login is updated${newPass ? " and password is live" : ""}.`, "success");
+      } catch (e) {
+        toast("Login update failed: " + (e && e.message ? e.message : "network error"), "error");
       }
     }
 
@@ -13580,7 +13600,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast(`Setting a new password for ${label}...`);
         const res = await fetch(SB_URL.replace(/\/$/, "") + "/functions/v1/admin-reset-password", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token, "apikey": SB_KEY },
           body: JSON.stringify({ client_id: clientId, mode: mode, new_password: newPassword || undefined })
         });
         const out = await res.json().catch(() => ({}));
