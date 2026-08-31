@@ -10111,6 +10111,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <button class="ghost-btn" onclick="showAdminTab('clients-clients')">Edit Rates: Zone A ${money(rc.A.overnight)} | Zone B ${money(rc.B.overnight)}</button>
             <button class="ghost-btn" onclick="editClientDetails('${nvEscAttrJs(client.id)}')">Edit Details</button>
             <button class="ghost-btn" onclick="editClientLogin('${nvEscAttrJs(client.id)}')">Edit Login</button>
+            <button class="ghost-btn" onclick="nvClientPasswordMenu('${nvEscAttrJs(client.id)}')">Reset Password</button>
             <select class="ghost-btn client-rider-pick" onchange="setClientPickupCity('${client.id}', this.value)" title="Which city this merchant's parcels are collected from. Their booking form follows this.">
               ${["Karachi","Lahore","Islamabad","Rawalpindi"].map(c => `<option value="${c}" ${(client.pickupCity||"Karachi")===c ? "selected" : ""}>Pickup: ${c}</option>`).join("")}
             </select>
@@ -13531,10 +13532,81 @@ html,body{ background:var(--bg); color:var(--ink); }
       saveState();
       render();
       if (newPass) {
-        toast(`${client.name} login record updated. This does NOT change their real Supabase login password — that must be reset via Supabase Authentication (or have the client use "Forgot password").`);
+        /* This used to stop here and tell the admin it had NOT worked, because
+           changing an Auth password needs the service-role key and that can
+           never ship to a browser. It now goes through the admin-reset-password
+           Edge Function, which re-checks is_admin() server-side. */
+        nvAdminResetPassword(clientId, "set", newPass);
       } else {
         toast(`${client.name} login username updated.`);
       }
+    }
+
+    /* Real password control for a merchant who is locked out.
+       mode "email" sends Supabase's own reset link (we never see the password).
+       mode "set"   writes a new password directly, for the common case where
+                    the merchant cannot reach their inbox but is on WhatsApp. */
+    async function nvAdminResetPassword(clientId, mode, newPassword) {
+      const client = (state.clients || []).find(c => c.id === clientId);
+      const label = client ? client.name : "this client";
+      const sb = window.__nvSb;
+      if (!sb || !sb.auth) { toast("Not connected to the cloud — cannot reset a password offline."); return; }
+      try {
+        const sess = await sb.auth.getSession();
+        const token = sess && sess.data && sess.data.session && sess.data.session.access_token;
+        if (!token) { toast("Your admin session expired. Sign in again and retry."); return; }
+
+        /* Sending a reset link needs only the anon key, so it works straight
+           from here with no Edge Function deployed. Setting a password directly
+           needs the service-role key and therefore the function. Keeping the
+           email path local means a locked-out merchant can always be helped,
+           even if the function is down or not deployed yet. */
+        if (mode === "email") {
+          let email = "";
+          try {
+            const pr = await sb.from("profiles").select("email").eq("client_id", clientId).limit(2);
+            if (pr && !pr.error && pr.data && pr.data.length === 1) email = pr.data[0].email || "";
+            else if (pr && pr.data && pr.data.length > 1) { toast(`${label} has more than one login account — resolve that first.`); return; }
+          } catch (e) { /* fall through to the record on file */ }
+          if (!email && client) email = client.email || "";
+          if (!email) { toast(`No email on file for ${label}, so a reset link cannot be sent. Use "Set a password now" instead.`); return; }
+          toast(`Sending a reset link to ${email}...`);
+          const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: "https://novaxlogistics.com/client.html" });
+          if (error) { toast("Could not send the reset link: " + error.message); return; }
+          toast(`Reset link sent to ${email}. Tell them to check spam — it expires in 1 hour.`);
+          return;
+        }
+
+        toast(`Setting a new password for ${label}...`);
+        const res = await fetch(SB_URL.replace(/\/$/, "") + "/functions/v1/admin-reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+          body: JSON.stringify({ client_id: clientId, mode: mode, new_password: newPassword || undefined })
+        });
+        const out = await res.json().catch(() => ({}));
+        if (res.status === 404) {
+          toast("Direct password setting is not deployed yet. Use option 1 (email them a reset link) — that works now.");
+          return;
+        }
+        if (!res.ok) { toast(out.error || `Password reset failed (HTTP ${res.status}).`); return; }
+        if (out.mode === "email") toast(`Reset link sent to ${out.sent_to}. It expires in 1 hour.`);
+        else toast(`New password is live for ${label}${out.email ? " (" + out.email + ")" : ""}. Send it to them now — it is not stored anywhere you can read it again.`);
+      } catch (e) {
+        toast("Password reset failed: " + (e && e.message ? e.message : "network error"));
+      }
+    }
+
+    function nvClientPasswordMenu(clientId) {
+      const client = (state.clients || []).find(c => c.id === clientId);
+      const label = client ? client.name : "this client";
+      const choice = (window.prompt(
+        `Password for ${label}:\n\n1 = Email them a reset link (they choose their own)\n2 = Set a password now (you send it to them)\n\nType 1 or 2:`, "1") || "").trim();
+      if (choice === "1") { nvAdminResetPassword(clientId, "email"); return; }
+      if (choice !== "2") return;
+      const pw = (window.prompt(`New password for ${label} (minimum 10 characters):`, "") || "").trim();
+      if (!pw) return;
+      if (pw.length < 10) { toast("Password must be at least 10 characters."); return; }
+      nvAdminResetPassword(clientId, "set", pw);
     }
 
     function toggleSignupDetails(clientId) {
@@ -16191,6 +16263,8 @@ html,body{ background:var(--bg); color:var(--ink); }
     window.showAdminTab = showAdminTab;
     window.openTrackedParcel = openTrackedParcel;
     window.editClientLogin = editClientLogin;
+    window.nvAdminResetPassword = nvAdminResetPassword;
+    window.nvClientPasswordMenu = nvClientPasswordMenu;
     window.editClientDetails = editClientDetails;
     window.toggleSignupDetails = toggleSignupDetails;
     window.assignRiderToClient = assignRiderToClient;
