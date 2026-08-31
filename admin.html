@@ -6481,6 +6481,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     const time = () => now().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const STORAGE_KEY = "novaxLogisticsStateV10";
     const SB_URL = "https://rhzunbzbdzicajqtohwp.supabase.co"; // shared Supabase base URL (also used by adminConnectLiveStore, adminGenerateShopifyLink)
+    const SB_FUNCTION_KEY = window.__SB_KEY || "sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
     /* NovaX status rename: "Parcel returned to consignee" -> "Return to shipper".
        A return goes back to the SHIPPER (the merchant), never to the consignee
        -- the old label was simply wrong. The string is a STORED value in
@@ -13525,7 +13526,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast(`Updating ${client.name}'s real login...`);
         const res = await fetch(SB_URL.replace(/\/$/, "") + "/functions/v1/admin-reset-password", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token, "apikey": SB_KEY },
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token, "apikey": SB_FUNCTION_KEY },
           body: JSON.stringify({ client_id: clientId, mode: "update", new_email: loginChanged ? newLogin : undefined, new_password: newPass || undefined })
         });
         const out = await res.json().catch(() => ({}));
@@ -13600,7 +13601,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast(`Setting a new password for ${label}...`);
         const res = await fetch(SB_URL.replace(/\/$/, "") + "/functions/v1/admin-reset-password", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token, "apikey": SB_KEY },
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token, "apikey": SB_FUNCTION_KEY },
           body: JSON.stringify({ client_id: clientId, mode: mode, new_password: newPassword || undefined })
         });
         const out = await res.json().catch(() => ({}));
