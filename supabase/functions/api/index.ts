@@ -41,7 +41,7 @@ async function logCall(keyId: string | null, clientId: string | null,
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-headers": "authorization, content-type",
-  "access-control-allow-methods": "GET, POST, PUT, OPTIONS",
+  "access-control-allow-methods": "GET, POST, PUT, PATCH, OPTIONS",
 };
 
 function json(body: unknown, status = 200) {
@@ -92,6 +92,14 @@ function parcelOut(p: any) {
     cod_amount: Number(p.cod_amount || 0),
     delivery_fee: Number(p.fee || 0),
     exception: p.exception || null,
+    /* Echo back what the merchant sent. Hayat Scents could not tell whether
+       category/comments had been stored, because nothing came back. */
+    product_details: (p.meta && p.meta.category) || null,
+    comments: (p.meta && p.meta.comments) || null,
+    payment_mode: (p.meta && p.meta.paymentMode) || (Number(p.cod_amount || 0) > 0 ? "COD" : "Non COD"),
+    allow_open: (p.meta && p.meta.allowOpen) || "No",
+    order_id: (p.meta && p.meta.orderId) || null,
+    weight: (p.meta && p.meta.weight) || null,
     booked_at: p.booked_at,
     delivered_at: p.delivered_at || null,
     last_update: p.updated_at,
@@ -119,7 +127,7 @@ Deno.serve(async (req) => {
      down rather than read twice -- a second read yields an empty body and
      would break every real booking. */
   let body: any = null;
-  if (req.method === "POST" || req.method === "PUT") {
+  if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
     body = await req.json().catch(() => null);
   }
   /* Strict, and loud about anything ambiguous. `test: 1` used to fall through
@@ -237,6 +245,38 @@ Deno.serve(async (req) => {
       const cod = Number(b.cod_amount ?? 0);
       if (!isFinite(cod) || cod < 0) return fail(422, "invalid_cod_amount", "cod_amount must be 0 or more.");
 
+      /* payment_mode used to be ignored entirely and derived from cod_amount,
+         so a merchant who sent "payment_mode":"Prepaid" got no error and no
+         effect. It is now honoured, under one rule from Aisha: prepaid only
+         means anything when nothing is collected at the door. Sending prepaid
+         WITH a COD amount is a contradiction and is refused rather than
+         silently resolved one way or the other. */
+      const PREPAID = ["prepaid", "non cod", "noncod", "non-cod", "paid"];
+      const rawMode = String(b.payment_mode ?? "").trim();
+      if (rawMode) {
+        const isPrepaid = PREPAID.includes(rawMode.toLowerCase());
+        const isCod = rawMode.toLowerCase() === "cod";
+        if (!isPrepaid && !isCod) {
+          return fail(422, "invalid_payment_mode",
+            `payment_mode must be "COD" or "Prepaid". Received ${JSON.stringify(rawMode)}.`);
+        }
+        if (isPrepaid && cod > 0) {
+          return fail(422, "prepaid_with_cod",
+            `A prepaid order cannot have a cod_amount. Send "cod_amount": 0 for prepaid, ` +
+            `or leave payment_mode as "COD". Nothing was booked.`);
+        }
+        if (isCod && cod === 0) {
+          return fail(422, "cod_without_amount",
+            `"payment_mode": "COD" needs a cod_amount above 0. Send the amount to collect, ` +
+            `or use "payment_mode": "Prepaid" with "cod_amount": 0. Nothing was booked.`);
+        }
+      }
+
+      /* Optional extras. nv_book_parcel_core has no parameter for either, so
+         they are attached immediately after the booking below. */
+      const comments = String(b.comments ?? "").trim().slice(0, 180);
+      const allowOpen = String(b.allow_open ?? "").trim().toLowerCase() === "yes" ? "Yes" : "No";
+
       /* TEST MODE. "test": true runs every check above -- required fields, COD
          sanity, and the same fee quote a real booking uses -- then returns the
          shape a real booking returns, without writing a parcel.
@@ -272,6 +312,10 @@ Deno.serve(async (req) => {
             awb: "TEST-" + crypto.randomUUID().slice(0, 8).toUpperCase(),
             status: "New booked",
             consignee: String(b.consignee).trim(),
+            product_details: String(b.category ?? "").trim() || null,
+            comments: comments || null,
+            payment_mode: cod > 0 ? "COD" : "Non COD",
+            allow_open: allowOpen,
             phone: String(b.phone).trim(),
             city: String(b.city).trim(),
             address: String(b.address).trim(),
@@ -308,8 +352,113 @@ Deno.serve(async (req) => {
         return fail(400, "booking_failed",
           typeof booked.data?.message === "string" ? booked.data.message : "Could not book this parcel.");
       }
-      const p = Array.isArray(booked.data) ? booked.data[0] : booked.data;
-      return json({ ok: true, order: parcelOut(p) }, 201);
+      let p = Array.isArray(booked.data) ? booked.data[0] : booked.data;
+
+      /* Packing comments and allow-to-open. nv_book_parcel_core has no
+         parameter for either, so they are set immediately afterwards through a
+         function that touches meta only — it cannot trip the money-freeze or
+         contact-protection triggers, and it writes no edit-history entry
+         because this is still part of creating the parcel.
+
+         If this fails the parcel is already booked and a rider is already
+         coming, so the booking is NOT failed. The merchant is told plainly in
+         the response instead of finding out at the packing bench. */
+      let extrasWarning: string | null = null;
+      if (comments || b.allow_open !== undefined) {
+        const extras = await rpc("nv_set_parcel_extras_core", {
+          p_client_id: clientId,
+          p_awb: p?.awb,
+          p_comments: comments || null,
+          p_allow_open: b.allow_open !== undefined ? allowOpen : null,
+        });
+        if (!extras.ok) {
+          extrasWarning = "The parcel was booked, but the comments/allow_open could not be saved. " +
+                          "Re-send them with PATCH /orders/" + (p?.awb ?? "") + ".";
+        } else {
+          const meta = Object.assign({}, p?.meta || {});
+          if (comments) meta.comments = comments;
+          if (b.allow_open !== undefined) meta.allowOpen = allowOpen;
+          p = Object.assign({}, p, { meta });
+        }
+      }
+
+      const out: Record<string, unknown> = { ok: true, order: parcelOut(p) };
+      if (extrasWarning) out.warning = extrasWarning;
+      return json(out, 201);
+    }
+
+    /* PATCH /orders/:awb — edit a parcel that has not moved yet.
+       Merchants asked for this because an order can change between the customer
+       placing it and the rider arriving: a corrected phone number, a different
+       address, a packing note added late.
+
+       True PATCH semantics: send only what changes. Everything omitted is read
+       from the parcel and sent back unchanged, because the underlying function
+       takes a full row.
+
+       The guards live in nv_edit_parcel_core, not here — status must still be
+       "New booked", the parcel must not be invoiced, and no rider may be
+       assigned. Those are the same three conditions the portal's Edit button
+       enforces, so the API cannot do something the portal would refuse. */
+    if (path.startsWith("/orders/") && (req.method === "PATCH" || req.method === "PUT")) {
+      const awb = decodeURIComponent(path.slice("/orders/".length)).trim();
+      if (!awb) return fail(400, "missing_awb", "Use PATCH /orders/{awb}.");
+      const b = (body ?? {}) as any;
+      if (!body || typeof body !== "object") {
+        return fail(400, "invalid_json", "Body must be JSON with the fields you want to change.");
+      }
+
+      const cur = await table(`parcels?awb=eq.${encodeURIComponent(awb)}&client_id=eq.${clientId}&limit=1`);
+      const row = Array.isArray(cur.data) ? cur.data[0] : null;
+      if (!cur.ok || !row) {
+        return fail(404, "order_not_found", `No order ${awb} on your account.`);
+      }
+      const meta = row.meta || {};
+
+      const nextCod = b.cod_amount !== undefined ? Number(b.cod_amount) : Number(row.cod_amount || 0);
+      if (!isFinite(nextCod) || nextCod < 0) {
+        return fail(422, "invalid_cod_amount", "cod_amount must be 0 or more.");
+      }
+      const nextCity = String(b.city ?? row.city ?? "").trim();
+      const SERVED2 = ["karachi", "lahore", "islamabad", "rawalpindi"];
+      if (!SERVED2.includes(nextCity.toLowerCase())) {
+        return fail(422, "city_not_served",
+          `We do not deliver to "${nextCity}" yet. NovaX currently serves Karachi, Lahore, Islamabad and Rawalpindi.`);
+      }
+      const rawMode2 = String(b.payment_mode ?? "").trim().toLowerCase();
+      if (rawMode2 && ["prepaid", "non cod", "noncod", "non-cod", "paid"].includes(rawMode2) && nextCod > 0) {
+        return fail(422, "prepaid_with_cod",
+          `A prepaid order cannot have a cod_amount. Set "cod_amount": 0, or leave payment_mode as "COD". Nothing was changed.`);
+      }
+
+      const edited = await rpc("nv_edit_parcel_core", {
+        p_client_id: clientId,
+        p_awb: awb,
+        p_consignee: String(b.consignee ?? row.consignee ?? "").trim(),
+        p_phone: String(b.phone ?? row.phone ?? "").trim(),
+        p_address: String(b.address ?? row.address ?? "").trim(),
+        p_city: nextCity,
+        p_cod: nextCod,
+        p_weight: String(b.weight ?? meta.weight ?? "0.5 kg"),
+        p_category: String(b.category ?? b.product_details ?? meta.category ?? ""),
+        p_fragile: String(b.fragile ?? meta.fragile ?? "No"),
+        p_service: String(b.service ?? meta.service ?? "COD Standard"),
+        p_payment_mode: String(b.payment_mode ?? meta.paymentMode ?? ""),
+        p_allow_open: String(b.allow_open ?? meta.allowOpen ?? "No"),
+        p_order_id: String(b.order_id ?? meta.orderId ?? ""),
+        p_comments: b.comments !== undefined ? String(b.comments).slice(0, 180) : null,
+        p_actor: "api",
+      });
+      if (!edited.ok) {
+        const msg = typeof edited.data?.message === "string" ? edited.data.message : "Could not edit this order.";
+        /* The function's own refusals are the merchant's fault to fix, not a
+           server fault — surface them as 422 with the exact reason. */
+        return fail(422, "edit_refused", msg);
+      }
+
+      const after = await table(`parcels?awb=eq.${encodeURIComponent(awb)}&client_id=eq.${clientId}&limit=1`);
+      const arow = Array.isArray(after.data) ? after.data[0] : null;
+      return json({ ok: true, order: arow ? parcelOut(arow) : { awb } }, 200);
     }
 
     if (path === "/orders" && req.method === "GET") {
