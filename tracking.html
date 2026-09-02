@@ -258,7 +258,12 @@
     "New booked":              ["Booked","Aapka parcel book ho gaya hai."],
     "Collected by rider":      ["Picked up","Rider ne parcel utha liya hai."],
     "Arrived at warehouse":    ["At our hub","Parcel NovaX hub par pohnch gaya hai."],
-    "Parcel now in transit":   ["On the way","Parcel aapke shehar ki taraf aa raha hai."],
+    /* "On the way" is courier shorthand for "a rider is bringing it today", so
+       both the seller and the consignee read an inter-city transit scan as an
+       imminent delivery and waited in for it. This status means the parcel is
+       moving BETWEEN cities and has not reached the destination hub yet, so the
+       wording now says that and explicitly rules today out. */
+    "Parcel now in transit":   ["In transit","Parcel abhi doosray shehar se aapke shehar aa raha hai. Aaj delivery nahi hogi."],
     "Parcel received at destination":["In your city","Parcel aapke shehar pohnch gaya hai."],
     "Parcel out for delivery": ["Out for delivery","Aaj aapka parcel pohnch raha hai — cash tayyar rakhein."],
     "Delivered":               ["Delivered","Parcel deliver ho chuka hai. Shukriya!"],
@@ -268,7 +273,7 @@
     "Reassigned":              ["Reassigned to a rider","Naye rider ko assign kiya gaya hai."],
     "Out of service area":     ["Out of service area","Yeh ilaqa filhaal service area se bahar hai."],
     "Ready for return":        ["Being returned","Parcel wapas bhaija ja raha hai."],
-    "Return in transit":       ["Return on the way","Wapsi transit mein hai."],
+    "Return in transit":       ["Return in transit","Wapsi doosray shehar se wapas aa rahi hai. Aaj delivery nahi hogi."],
     "Return received at origin":["Return received","Wapsi origin par mosool ho gayi."],
     "Return out for delivery": ["Return out for delivery","Wapsi delivery ke liye nikli hai."],
     "Return to shipper":["Returned","Parcel wapas kar diya gaya hai."],
@@ -496,9 +501,19 @@
     }
   };
 
+  /* Statuses where the parcel is still moving between cities. Naming the
+     destination removes the last bit of ambiguity: "In transit to Lahore"
+     cannot be mistaken for a rider at the door. */
+  var TRANSIT_TO_CITY = { "Parcel now in transit": 1, "Return in transit": 1 };
+
   function render(row){
     var st=nvStatus(row.status)||"";
     var say=SAY[st]||[st||"Tracking",""];
+    say = [say[0], say[1]];
+    if (TRANSIT_TO_CITY[st]) {
+      var destCity = String(row.destination_city || row.city || "").trim();
+      if (destCity) say[0] = say[0] + " to " + destCity;
+    }
     var t=tone(st);
     var cod=Number(row.cod_amount||0);
     var showCod=cod>0 && st!=="Delivered" && st!=="Return to shipper";
