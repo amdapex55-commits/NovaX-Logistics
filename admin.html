@@ -1549,6 +1549,9 @@
       overflow-wrap: anywhere;
     }
 
+    .awb-packing{border:1px dashed #7a8f85;border-radius:6px;padding:4px 7px;margin-top:4px;background:#f6faf8;}
+    .awb-packing span{font-weight:800;}
+    .awb-packing strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:700;}
     .awb-address strong, .awb-item strong {
       display: -webkit-box;
       -webkit-line-clamp: 2;
@@ -4279,6 +4282,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     .awb-field.awb-cod span{font-size:8px !important;}
     .awb-field.awb-cod strong{font-size:17px !important;font-weight:900 !important;}
     .awb-address strong,.awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
+    .awb-packing strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
     .qr-img{width:20mm !important;height:20mm !important;padding:.8mm !important;object-fit:contain !important;flex:0 0 auto;}
     .barcode-img{width:auto !important;max-width:52mm !important;height:14mm !important;padding:.6mm !important;object-fit:contain !important;margin:0 2mm;}
     .awb-scan .chip{font-size:9px !important;font-weight:900 !important;padding:1.5px 4px !important;}
@@ -4333,6 +4337,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     .awb-field.awb-cod span{font-size:7px !important;color:#000 !important;}
     .awb-field.awb-cod strong{font-size:17px !important;font-weight:900 !important;line-height:1 !important;}
     .awb-address strong,.awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
+    .awb-packing strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
     .awb-scan{align-items:center !important;justify-content:center !important;gap:1.5mm !important;}
     .qr-img{width:30mm !important;height:30mm !important;padding:0 !important;object-fit:contain !important;}
     .barcode-img{width:100% !important;max-width:39mm !important;height:11mm !important;padding:0 !important;object-fit:contain !important;}
@@ -14521,7 +14526,15 @@ html,body{ background:var(--bg); color:var(--ink); }
          Defaults to No for parcels booked before the field existed. */
       const allowOpen = (p && p.allowOpen === "Yes") ? "Yes" : "No";
       const referenceNo = parcelReferenceNo(p);
-      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${escLabelText(origin)} &rarr; ${escLabelText(destination)}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${escLabelText(orderId)}</strong></div><div class="awb-field"><span>Reference No</span><strong>${escLabelText(referenceNo)}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${escLabelText(consignee)}</strong></div><div class="awb-field"><span>Phone</span><strong>${escLabelText(phone)}</strong></div><div class="awb-field awb-cod"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen === "Yes" ? "is-yes" : "is-no"}"><span>Allow to Open</span><strong>${allowOpen === "Yes" ? "YES &mdash; customer may open" : "NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${escLabelText(address)}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div></section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
+      /* Shipper's packing note, written on the booking form. Admin prints the
+         same label the warehouse packs from, so it has to appear here too.
+         Only rendered when the shipper wrote one -- every older parcel prints
+         exactly the label it printed before. */
+      const comments = String((p && p.comments) || "").trim();
+      const packingNote = comments
+        ? `<div class="awb-field awb-packing"><span>Packing note</span><strong>${escLabelText(comments)}</strong></div>`
+        : "";
+      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${escLabelText(origin)} &rarr; ${escLabelText(destination)}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${escLabelText(orderId)}</strong></div><div class="awb-field"><span>Reference No</span><strong>${escLabelText(referenceNo)}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${escLabelText(consignee)}</strong></div><div class="awb-field"><span>Phone</span><strong>${escLabelText(phone)}</strong></div><div class="awb-field awb-cod"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen === "Yes" ? "is-yes" : "is-no"}"><span>Allow to Open</span><strong>${allowOpen === "Yes" ? "YES &mdash; customer may open" : "NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${escLabelText(address)}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div>${packingNote}</section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
     }
 
     /* ===== NovaX (admin AWB parity with client portal) =====
@@ -16403,7 +16416,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         /* NovaX fix (admin AWB parity): allowOpen was never mapped here, so
            adminAwbLabelHtml() could not print it even once the field existed
            on the parcel. */
-        allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", steps:Array.isArray(m.steps)?m.steps:[], proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _exceptionResolved:!!m.exceptionResolved, _exceptionResolutionNote:m.exceptionResolutionNote||"", _exceptionResolvedAt:m.exceptionResolvedAt||"",
+        allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", steps:Array.isArray(m.steps)?m.steps:[], comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _exceptionResolved:!!m.exceptionResolved, _exceptionResolutionNote:m.exceptionResolutionNote||"", _exceptionResolvedAt:m.exceptionResolvedAt||"",
         processHistory:Array.isArray(m.processHistory)?m.processHistory:[], lastProcessedBy:m.lastProcessedBy||"", lastProcessedAt:m.lastProcessedAt||"", statusSince:m.statusSince||"", origin:m.origin||"", assignedRiderAt:m.assignedRiderAt||"", journeyStartedAt:m.journeyStartedAt||"",
         // NovaX fix (integration/audit field preservation): surface named
         // Shopify/external-order identity + import fields so admin screens

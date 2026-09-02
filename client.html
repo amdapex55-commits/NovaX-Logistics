@@ -276,6 +276,8 @@
     .field.nvfield-missing input,.field.nvfield-missing select,.field.nvfield-missing textarea{border-color:#e0a100;background:#fff8ec;}
     /* ── Issue 9: the single real service, shown as a fact rather than a choice.
        Reads as a settled value, not a disabled input the merchant should fight. */
+    .nv-span-2{grid-column:1/-1}
+    .field textarea{min-height:60px;padding:10px 12px;resize:vertical;line-height:1.45}
     .field input.nv-fixed-field{
       background:var(--nvu-bg-2,rgba(20,199,123,.06));
       border-color:rgba(20,199,123,.28);
@@ -381,6 +383,12 @@
      seen and grows the label by 35px, about 3%. */
   .awb-address strong{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;}
   .awb-item strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  /* Packing note: a shipper instruction for whoever packs the parcel. Clamped
+     like the two fields above so a long note can never grow the label past its
+     page. Rendered only when the shipper actually wrote one. */
+  .awb-packing{border:1px dashed #7a8f85;border-radius:6px;padding:4px 7px;margin-top:4px;background:#f6faf8;}
+  .awb-packing span{font-weight:800;}
+  .awb-packing strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:700;}
      .qr-img{width:112px;height:112px;border:1px solid #c8d2cc;border-radius:var(--r-sm);background:var(--nvu-bg);padding:6px;object-fit:contain;}
      .barcode-img{width:140px;height:46px;border:1px solid #c8d2cc;border-radius:var(--r-sm);background:var(--nvu-bg);padding:4px;object-fit:contain;}
     .review-panel{margin-top:12px;padding:12px;border:1px solid var(--amber);border-radius:var(--radius);background:rgba(242,169,59,.1);}
@@ -802,6 +810,7 @@
     .awb-field.awb-cod strong{font-size:17px !important;font-weight:900 !important;}
     .awb-address strong{display:-webkit-box !important;-webkit-line-clamp:4 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
   .awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
+  .awb-packing strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
     .qr-img{width:20mm !important;height:20mm !important;padding:.8mm !important;object-fit:contain !important;flex:0 0 auto;}
     .barcode-img{width:auto !important;max-width:52mm !important;height:14mm !important;padding:.6mm !important;object-fit:contain !important;margin:0 2mm;}
     .awb-scan .chip{font-size:9px !important;font-weight:900 !important;padding:1.5px 4px !important;}
@@ -877,6 +886,7 @@
     .awb-field.awb-cod strong{font-size:17px !important;font-weight:900 !important;line-height:1 !important;}
     .awb-address strong{display:-webkit-box !important;-webkit-line-clamp:4 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
   .awb-item strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
+  .awb-packing strong{display:-webkit-box !important;-webkit-line-clamp:2 !important;-webkit-box-orient:vertical !important;overflow:hidden !important;}
     .awb-scan{align-items:center !important;justify-content:center !important;gap:1.5mm !important;}
     .qr-img{width:30mm !important;height:30mm !important;padding:0 !important;object-fit:contain !important;}
     .barcode-img{width:100% !important;max-width:39mm !important;height:11mm !important;padding:0 !important;object-fit:contain !important;}
@@ -2005,7 +2015,7 @@
     .action-btn:active,.ghost-btn:active,.tab-btn:active,.client-tab:active{transform:none;}
   }
   </style>
-  <script src="client-app.js?v=b5a6df38" defer></script>
+  <script src="client-app.js?v=fe394b1d" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2207,7 +2217,7 @@
                     <select id="bookingDestArea" size="1"><option value="">Select the area...</option></select>
                     <div class="footer-note" id="nvAreaHint">Type to narrow the list, or just open it and choose.</div></div>
                   <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required oninput="nvSyncPaymentMode()"><div class="footer-note nv-paymode" id="nvPayModeNote" style="display:none"></div></div>
-                  <div class="field"><label>Service Type</label><input id="bookingService" class="nv-fixed-field" value="COD Standard" readonly tabindex="-1" aria-readonly="true"><span class="footer-note">Every NovaX parcel ships COD Standard today.</span></div>
+                  <div class="field"><label>Service Type</label><input id="bookingService" class="nv-fixed-field" value="COD Standard" readonly tabindex="-1" aria-readonly="true"><span class="footer-note">Every NovaX parcel ships COD Standard today.</span></div><div class="field nv-span-2"><label>Comments for packing <span class="footer-note" style="text-transform:none;letter-spacing:0;font-weight:600">optional</span></label><textarea id="bookingComments" rows="2" maxlength="180" placeholder="e.g. Fragile - double wrap. Include free sample."></textarea><span class="footer-note">Printed on the AWB for whoever packs this parcel. Leave blank if not needed.</span></div>
                   <div class="field"><label>Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" required></div>
                   <div class="field"><label>Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
                   <div class="field"><label>Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required oninput="updateZoneRateHint();nvRefreshQuote();nvSyncWeightChips()"><!-- One tap for the weights merchants actually use. The field still      accepts anything typed; the chips only fill it. --><div class="nv-wchips" id="nvWeightChips" role="group" aria-label="Common weights"></div></div>

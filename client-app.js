@@ -3724,7 +3724,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          before this field existed. */
       const allowOpen=(p&&p.allowOpen==="Yes")?"Yes":"No";
       const referenceNo=parcelReferenceNo(p);
-      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${escLabelText(origin)} &rarr; ${escLabelText(destination)}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${escLabelText(orderId)}</strong></div><div class="awb-field"><span>Reference No</span><strong>${escLabelText(referenceNo)}</strong></div>${nvAwbDistanceField(p)}</div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${escLabelText(consignee)}</strong></div><div class="awb-field"><span>Phone</span><strong>${escLabelText(phone)}</strong></div><div class="awb-field awb-cod"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen==="Yes"?"is-yes":"is-no"}"><span>Allow to Open</span><strong>${allowOpen==="Yes"?"YES &mdash; customer may open":"NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${escLabelText(address)}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div></section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
+      /* Shipper's packing note. Optional by design: parcels booked before this
+         field existed, and every booking where the shipper left it blank, must
+         print exactly the label they printed yesterday. */
+      const comments=String((p&&p.comments)||"").trim();
+      const packingNote = comments
+        ? `<div class="awb-field awb-packing"><span>Packing note</span><strong>${escLabelText(comments)}</strong></div>`
+        : "";
+      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${escLabelText(origin)} &rarr; ${escLabelText(destination)}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${escLabelText(orderId)}</strong></div><div class="awb-field"><span>Reference No</span><strong>${escLabelText(referenceNo)}</strong></div>${nvAwbDistanceField(p)}</div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${escLabelText(consignee)}</strong></div><div class="awb-field"><span>Phone</span><strong>${escLabelText(phone)}</strong></div><div class="awb-field awb-cod"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen==="Yes"?"is-yes":"is-no"}"><span>Allow to Open</span><strong>${allowOpen==="Yes"?"YES &mdash; customer may open":"NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${escLabelText(address)}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div>${packingNote}</section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
     }
     /* NovaX: AWB print mode -- "thermal" (real 4x6in courier label, one per
        page, portrait) or "a4" (3-up on a landscape office sheet). Thermal
@@ -5987,7 +5994,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(confirmLine){ confirmLine.textContent="Sending booking to NovaX server..."; confirmLine.style.display="block"; confirmLine.style.color=""; }
       try{
         if(!window.__novaxBookParcel){ throw new Error("Booking service is unavailable. Please refresh and try again."); }
-        const mapped=await window.__novaxBookParcel({ consignee, city:document.getElementById("bookingCity").value, cod, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address, orderId:(document.getElementById("bookingOrderId")||{}).value||"", allowOpen:((document.getElementById("bookingAllowOpen")||{}).value==="Yes"?"Yes":"No"),
+        const mapped=await window.__novaxBookParcel({ consignee, city:document.getElementById("bookingCity").value, cod, phone:phone, pickupCity:document.getElementById("bookingPickupCity").value, service:document.getElementById("bookingService").value, category:document.getElementById("bookingCategory").value, fragile:document.getElementById("bookingFragile").value, weight:document.getElementById("bookingWeight").value.trim(), paymentMode:document.getElementById("bookingPaymentMode").value, address, orderId:(document.getElementById("bookingOrderId")||{}).value||"", allowOpen:((document.getElementById("bookingAllowOpen")||{}).value==="Yes"?"Yes":"No"), comments:String((document.getElementById("bookingComments")||{}).value||"").trim().slice(0,180),
           /* Only ever send an area when distance pricing is genuinely active
              for this parcel. The select keeps its value when the field hides,
              so switching Karachi -> Lahore after choosing an area would
@@ -6077,7 +6084,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     function resetBookingForm(){
-      ["bookingName","bookingPhone","bookingCod","bookingCategory","bookingAddress"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
+      ["bookingName","bookingPhone","bookingCod","bookingCategory","bookingAddress","bookingComments"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
       // COD was just cleared, so the payment-mode note no longer describes
       // anything; hide it and re-sync the weight chips to the reset value.
       try{
@@ -8591,6 +8598,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             throw new Error("Server did not confirm this booking. Please try again.");
           }
           var mapped=mapParcel(row);
+          /* Packing note. client_book_parcel has no parameter for it and adding
+             one would mean a migration on a live booking path, so it is written
+             to parcels.meta straight after the booking instead. Deliberately
+             fire-and-forget: the parcel is already booked and confirmed by this
+             point, and a failed note must never turn a good booking into an
+             error the merchant sees. Worst case the note prints on this
+             device's label but is missing on a later reprint. */
+          if(o && o.comments){
+            mapped.comments = o.comments;
+            try{
+              var _meta = Object.assign({}, (row && row.meta) || {}, { comments: o.comments });
+              Promise.resolve(sb.from("parcels").update({ meta: _meta }).eq("id", row.id))
+                .then(function(res){ if(res && res.error) console.warn("NovaX: packing note not saved server-side:", res.error.message); },
+                      function(e){ console.warn("NovaX: packing note not saved server-side:", e && e.message); });
+            }catch(e){ console.warn("NovaX: packing note not saved server-side:", e && e.message); }
+          }
           state.parcels.unshift(mapped);
           state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:MY, type:"COD expected", amount:Number(row.cod_amount||0), status:"Awaiting delivery", ref:row.awb });
           state.selectedAwb=row.awb; state.lastGeneratedAwb=row.awb; saveState();
@@ -8642,7 +8665,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var k=nvKarachiParts(t);
         return k?(k.date+" "+k.time):String(t).replace("T"," ").slice(0,16);
       }
-      function pmeta(p){ return { service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, fragile:p.fragile, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", source:p.source, branch:p.branch, risk:p.risk, steps:p.steps, clientFeedback:p.clientFeedback, returnProof:p.returnProof, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"" }; }
+      function pmeta(p){ return { comments:p.comments||"", service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, fragile:p.fragile, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", source:p.source, branch:p.branch, risk:p.risk, steps:p.steps, clientFeedback:p.clientFeedback, returnProof:p.returnProof, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"" }; }
       // Admin used to fill blank consignee details with invented values --
       // address = "<consignee> delivery address, <city>", phone = 0311 + row
       // index -- and sync those to Supabase. That is why this drawer showed the
@@ -8728,7 +8751,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         });
       }
 
-      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", trackingToken:r.tracking_token||"",
+      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", trackingToken:r.tracking_token||"",
         // NovaX distance pricing. Null on every parcel booked before it existed,
         // which is exactly how the label and invoice detect "flat, show nothing".
         pricingMode:r.pricing_mode||"", distanceKm:(r.distance_km!=null?Number(r.distance_km):null),
