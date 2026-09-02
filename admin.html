@@ -15,7 +15,7 @@
 
   <script>
     (function () {
-      var APP_VERSION = "2026-08-31.2";
+      var APP_VERSION = "2026-09-02.1";
       try {
         var stored = localStorage.getItem("novaxAppVersion");
         if (stored !== APP_VERSION) {
@@ -10135,6 +10135,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <button class="ghost-btn" onclick="editClientDetails('${nvEscAttrJs(client.id)}')">Edit Details</button>
             <button class="ghost-btn" onclick="editClientLogin('${nvEscAttrJs(client.id)}')">Edit Login</button>
             <button class="ghost-btn" onclick="nvClientPasswordMenu('${nvEscAttrJs(client.id)}')">Reset Password</button>
+            <button class="ghost-btn" onclick="nvIssueApiKey('${nvEscAttrJs(client.id)}')" title="Issue a Merchant API key so this client can book from their own website">API Key</button>
             <select class="ghost-btn client-rider-pick" onchange="setClientPickupCity('${client.id}', this.value)" title="Which city this merchant's parcels are collected from. Their booking form follows this.">
               ${["Karachi","Lahore","Islamabad","Rawalpindi"].map(c => `<option value="${c}" ${(client.pickupCity||"Karachi")===c ? "selected" : ""}>Pickup: ${c}</option>`).join("")}
             </select>
@@ -13672,6 +13673,56 @@ html,body{ background:var(--bg); color:var(--ink); }
       }
     }
 
+    /* Issue a Merchant API key.
+
+       admin_api_key_issue() stores only a SHA-256 hash, so the raw key exists
+       for exactly one moment: the moment it is returned here. There is no way
+       to look it up again, and no "resend" — losing it means issuing a new one
+       and the old one keeps working until revoked. The UI has to be blunt
+       about that or a merchant will be told "check your email" for something
+       that was never sent anywhere.
+
+       Until today this was a manual database call; only one key had ever been
+       issued, by hand. */
+    async function nvIssueApiKey(clientId) {
+      const client = state.clients.find(c => c.id === clientId);
+      if (!client) { toast("Client not found.", "error"); return; }
+      if (!window.__nvSb) { toast("Not connected.", "error"); return; }
+
+      const label = (window.prompt(
+        `Issue a Merchant API key for ${client.name}?\n\n` +
+        `Label it so you can tell keys apart later (e.g. "WooCommerce site", "Shopify", "Dev sandbox").`,
+        "Website integration") || "").trim();
+      if (!label) return;
+
+      if (!window.confirm(
+        `Issue a new API key for ${client.name}?\n\n` +
+        `The key is shown ONCE and cannot be retrieved afterwards — we only store a hash. ` +
+        `Have somewhere ready to paste it.`)) return;
+
+      let r;
+      try {
+        r = await window.__nvSb.rpc("admin_api_key_issue", { p_client_id: clientId, p_label: label });
+      } catch (e) {
+        toast("Could not issue the key: " + (e && e.message ? e.message : "unknown error"), "error");
+        return;
+      }
+      if (r.error) { toast("Could not issue the key: " + r.error.message, "error"); return; }
+      const row = Array.isArray(r.data) ? r.data[0] : r.data;
+      if (!row || !row.api_key) { toast("The server did not return a key.", "error"); return; }
+
+      /* Shown in a prompt rather than a toast on purpose: a prompt is
+         selectable, survives until dismissed, and cannot be missed. */
+      window.prompt(
+        `API key for ${row.client_name || client.name} — copy it NOW.\n\n` +
+        `This is the only time it will ever be shown.\n` +
+        `Send it to the merchant over WhatsApp and tell them to keep it secret — ` +
+        `anyone holding it can book parcels on this account.\n\n` +
+        `Endpoint: https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/api/orders`,
+        row.api_key);
+      toast(`API key issued for ${client.name} (${row.key_prefix}…). It will not be shown again.`, "success");
+    }
+
     function nvClientPasswordMenu(clientId) {
       const client = (state.clients || []).find(c => c.id === clientId);
       const label = client ? client.name : "this client";
@@ -16354,6 +16405,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     window.editClientLogin = editClientLogin;
     window.nvAdminResetPassword = nvAdminResetPassword;
     window.nvClientPasswordMenu = nvClientPasswordMenu;
+    window.nvIssueApiKey = nvIssueApiKey;
     window.editClientDetails = editClientDetails;
     window.toggleSignupDetails = toggleSignupDetails;
     window.assignRiderToClient = assignRiderToClient;
