@@ -1549,7 +1549,8 @@
       overflow-wrap: anywhere;
     }
 
-    .awb-packing{border:1px dashed #7a8f85;border-radius:6px;padding:4px 7px;margin-top:4px;background:#f6faf8;}
+    .awb-field.awb-cod.is-conflict{border:2px solid #a1230e;background:#fff4f2}
+  .awb-packing{border:1px dashed #7a8f85;border-radius:6px;padding:4px 7px;margin-top:4px;background:#f6faf8;}
     .awb-packing span{font-weight:800;}
     .awb-packing strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:700;}
     .awb-address strong, .awb-item strong {
@@ -4635,6 +4636,7 @@ html,body{ background:var(--bg); color:var(--ink); }
      choice the merchant made. */
   select.nv-unset, select:invalid{ color:var(--muted) !important; opacity:.72; }
 </style>
+  <script src="nv-payment.js?v=a14f4c65"></script>
 </head>
 <!-- AUTH_GATE_VERSION: 2026-07-16-role-hard-stop-v2 -->
 <body>
@@ -8229,7 +8231,21 @@ html,body{ background:var(--bg); color:var(--ink); }
       return candidates.filter(parcel => selected.has(parcel.awb));
     }
 
+    /* The red conflict badge. Rendered wherever a human might act on a
+       parcel's money, so a prepaid-with-COD parcel can never be read as
+       settled. Aisha's wording: "COD Rs 5,900 but marked Prepaid". */
+    function nvPayConflictChip(p) {
+      if (!window.NovaXPayment) return "";
+      const c = window.NovaXPayment.classify(p);
+      if (!c.conflict) return "";
+      return '<span class="chip bad" title="' + escLabelText(c.detail) +
+             '" style="white-space:nowrap">&#9888; ' + escLabelText(c.label) + '</span>';
+    }
     function isNonCodParcel(parcel) {
+      /* One definition, in nv-payment.js. A parcel with a COD amount AND a
+         prepaid marking is a conflict, not prepaid — it keeps counting as
+         money here (invoiceTotals) instead of silently becoming Rs 0. */
+      if (window.NovaXPayment) return window.NovaXPayment.isPrepaid(parcel);
       return /non\s*cod|prepaid/i.test(String((parcel && (parcel.paymentMode || parcel.payment_mode)) || "").trim());
     }
 
@@ -8708,6 +8724,7 @@ html,body{ background:var(--bg); color:var(--ink); }
        produced the fee, because that is the number a merchant will query.
        ================================================================== */
     function nvIsPrepaidParcel(p) {
+      if (window.NovaXPayment) return window.NovaXPayment.isPrepaid(p);
       return /non\s*cod|prepaid/i.test(String((p && (p.paymentMode || p.payment_mode)) || ""));
     }
     function nvChargesCell(p) {
@@ -9880,7 +9897,7 @@ html,body{ background:var(--bg); color:var(--ink); }
               <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>
               <div class="footer-note">${alert.label}</div>
             </td>
-            <td class="nv-money-cell"><strong>${money(p.cod)}</strong>${nvPaidPill(p)}</td>
+            <td class="nv-money-cell"><strong>${money(p.cod)}</strong>${nvPaidPill(p)}${nvPayConflictChip(p)}</td>
             <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${p.status === "Parcel now in transit" ? "transit clock" : "status clock"}</span></td>
             <td>${escLabelText(client.name)}<br><span class="footer-note">${shortClientCode(client)}</span><br><span class="footer-note">${parcelOrigin(p)}</span></td>
             <td>
@@ -9974,7 +9991,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             const km = (/^distance/.test(String(p.pricingMode || "")) && p.distanceKm != null) ? ` &middot; ${p.distanceKm} km` : "";
             return `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:3px 0">
               <span><strong>${p.awb}</strong> | ${p.status} | ${p.branch} | ${p.updated}</span>
-              <span style="white-space:nowrap">${prepaid ? '<span class="chip info">Prepaid</span>' : `<strong>${money(p.cod)}</strong>`}
+              <span style="white-space:nowrap">${nvPayConflictChip(p) || (prepaid ? '<span class="chip info">Prepaid</span>' : `<strong>${money(p.cod)}</strong>`)}
                 <span class="footer-note">+ ${money(p.fee)} charges${km}</span></span>
             </div>`;
           }).join("");
@@ -11344,6 +11361,32 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast("Select a status to update.", "error");
         return;
       }
+      /* Payment conflicts stop the batch here.
+
+         A parcel marked prepaid that still carries a COD amount is money
+         nobody has decided about: the invoice does not bill it and the rider's
+         cash sheet does not expect it. Pushing it out for delivery or marking
+         it delivered locks that ambiguity into the ledger, and the shortfall
+         surfaces days later as an unexplained gap in a rider's cash.
+
+         Blocked rather than warned, because every downstream number is wrong
+         until a human picks a side. */
+      if (window.NovaXPayment) {
+        const block = window.NovaXPayment.batchBlock(batch);
+        if (block) {
+          const lines = block.awbs.slice(0, 6).join(", ")
+                      + (block.awbs.length > 6 ? " and " + (block.awbs.length - 6) + " more" : "");
+          toast(block.message, "error");
+          window.alert(
+            "Payment conflict — batch not processed\n\n" + block.message +
+            "\n\nAffected: " + lines +
+            "\n\nFix each one from its parcel row: either set the COD amount to 0 " +
+            "(it really was prepaid) or change the payment mode to COD (the rider does collect)."
+          );
+          return;
+        }
+      }
+
       const riderId = document.getElementById("processingRiderSelect")?.value || "";
       const riderPushStatuses = ["Parcel out for delivery", "Return out for delivery"];
       if (riderPushStatuses.includes(status) && !riderId) {
@@ -12258,6 +12301,13 @@ html,body{ background:var(--bg); color:var(--ink); }
         }
         const paymentMode = ["COD", "Non COD Prepaid"].includes(paymentModeRaw) ? paymentModeRaw : (paymentModeRaw ? paymentModeRaw : "COD");
         if (paymentModeRaw && !(["COD", "Non COD Prepaid"].includes(paymentModeRaw))) addProblem("payment_mode", `payment_mode "${paymentModeRaw}" is not recognized.`, "Use COD or Non COD Prepaid.");
+        /* Same rule as the client bulk upload: prepaid means nothing is
+           collected, so a COD amount above zero contradicts it. */
+        if (paymentMode === "Non COD Prepaid" && isFinite(cod) && cod > 0) {
+          addProblem("payment_conflict",
+            `Row is marked "Non COD Prepaid" but has COD ${cod}.`,
+            "A prepaid parcel collects nothing at the door. Set COD to 0, or change payment_mode to COD.");
+        }
         if (!orderId) addProblem("order_id", "Order ID is missing.", "Add a unique order_id for this row.");
         else {
           if (orderIdSeen.has(orderId)) addProblem("dup_order", `Duplicate order_id "${orderId}", also on row ${orderIdSeen.get(orderId)}.`, "Make sure every row has a unique order_id.");
@@ -14530,11 +14580,16 @@ html,body{ background:var(--bg); color:var(--ink); }
          same label the warehouse packs from, so it has to appear here too.
          Only rendered when the shipper wrote one -- every older parcel prints
          exactly the label it printed before. */
+      /* A parcel that says prepaid but carries a COD amount reaches the rider
+         as a decision nobody made. The label is the only thing they have at the
+         door, so the contradiction is printed on it rather than left to the
+         dashboard nobody opens. */
+      const payConflict = !!(window.NovaXPayment && window.NovaXPayment.classify(p).conflict);
       const comments = String((p && p.comments) || "").trim();
       const packingNote = comments
         ? `<div class="awb-field awb-packing"><span>Packing note</span><strong>${escLabelText(comments)}</strong></div>`
         : "";
-      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${escLabelText(origin)} &rarr; ${escLabelText(destination)}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${escLabelText(orderId)}</strong></div><div class="awb-field"><span>Reference No</span><strong>${escLabelText(referenceNo)}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${escLabelText(consignee)}</strong></div><div class="awb-field"><span>Phone</span><strong>${escLabelText(phone)}</strong></div><div class="awb-field awb-cod"><span>COD</span><strong>${cod}</strong></div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen === "Yes" ? "is-yes" : "is-no"}"><span>Allow to Open</span><strong>${allowOpen === "Yes" ? "YES &mdash; customer may open" : "NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${escLabelText(address)}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div>${packingNote}</section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
+      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${escLabelText(origin)} &rarr; ${escLabelText(destination)}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${escLabelText(orderId)}</strong></div><div class="awb-field"><span>Reference No</span><strong>${escLabelText(referenceNo)}</strong></div></div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${escLabelText(consignee)}</strong></div><div class="awb-field"><span>Phone</span><strong>${escLabelText(phone)}</strong></div><div class="awb-field awb-cod ${payConflict?"is-conflict":""}"><span>COD</span><strong>${cod}</strong>${payConflict?`<em style="display:block;font-style:normal;font-size:10px;font-weight:800;color:#a1230e;line-height:1.2;margin-top:2px">MARKED PREPAID &mdash; CONFIRM BEFORE COLLECTING</em>`:""}</div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen === "Yes" ? "is-yes" : "is-no"}"><span>Allow to Open</span><strong>${allowOpen === "Yes" ? "YES &mdash; customer may open" : "NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${escLabelText(address)}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div>${packingNote}</section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
     }
 
     /* ===== NovaX (admin AWB parity with client portal) =====
