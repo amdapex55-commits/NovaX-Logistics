@@ -38,6 +38,8 @@ async function logCall(keyId: string | null, clientId: string | null,
   } catch { /* never surfaces */ }
 }
 
+import { classify as classifyPayment, PREPAID_RE } from "../_shared/payment.ts";
+
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-headers": "authorization, content-type",
@@ -82,6 +84,7 @@ async function table(path: string) {
 /** Public shape of a parcel. Deliberately small and stable: internal columns
  *  are not exposed, so we can change them without breaking a merchant. */
 function parcelOut(p: any) {
+  const payClass = classifyPayment({ cod_amount: p.cod_amount, payment_mode: p.meta && p.meta.paymentMode });
   return {
     awb: p.awb,
     status: p.status,
@@ -97,6 +100,13 @@ function parcelOut(p: any) {
     product_details: (p.meta && p.meta.category) || null,
     comments: (p.meta && p.meta.comments) || null,
     payment_mode: (p.meta && p.meta.paymentMode) || (Number(p.cod_amount || 0) > 0 ? "COD" : "Non COD"),
+    /* A parcel booked before payment_mode was validated can still carry a COD
+       amount AND a prepaid marking. Returning only the contradictory pair left
+       the merchant to notice it themselves, which is how 3 parcels worth
+       Rs 11,099 reached the field. The conflict is now named in the response. */
+    payment_conflict: payClass.conflict || undefined,
+    payment_conflict_detail: payClass.conflict ? payClass.detail : undefined,
+    collectable_amount: payClass.collectable,
     allow_open: (p.meta && p.meta.allowOpen) || "No",
     order_id: (p.meta && p.meta.orderId) || null,
     weight: (p.meta && p.meta.weight) || null,
@@ -251,10 +261,11 @@ Deno.serve(async (req) => {
          means anything when nothing is collected at the door. Sending prepaid
          WITH a COD amount is a contradiction and is refused rather than
          silently resolved one way or the other. */
-      const PREPAID = ["prepaid", "non cod", "noncod", "non-cod", "paid"];
+      /* One pattern, shared with nv-payment.js via _shared/payment.ts, so the
+         API and the portal cannot disagree about what "prepaid" looks like. */
       const rawMode = String(b.payment_mode ?? "").trim();
       if (rawMode) {
-        const isPrepaid = PREPAID.includes(rawMode.toLowerCase());
+        const isPrepaid = PREPAID_RE.test(rawMode);
         const isCod = rawMode.toLowerCase() === "cod";
         if (!isPrepaid && !isCod) {
           return fail(422, "invalid_payment_mode",
@@ -426,7 +437,7 @@ Deno.serve(async (req) => {
           `We do not deliver to "${nextCity}" yet. NovaX currently serves Karachi, Lahore, Islamabad and Rawalpindi.`);
       }
       const rawMode2 = String(b.payment_mode ?? "").trim().toLowerCase();
-      if (rawMode2 && ["prepaid", "non cod", "noncod", "non-cod", "paid"].includes(rawMode2) && nextCod > 0) {
+      if (rawMode2 && PREPAID_RE.test(rawMode2) && nextCod > 0) {
         return fail(422, "prepaid_with_cod",
           `A prepaid order cannot have a cod_amount. Set "cod_amount": 0, or leave payment_mode as "COD". Nothing was changed.`);
       }

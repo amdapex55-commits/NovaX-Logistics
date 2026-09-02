@@ -158,6 +158,34 @@ try {
   notes.push(`asset version check skipped (${e.message})`);
 }
 
+/* ── payment rule parity ────────────────────────────────────────────────
+   The prepaid/COD conflict rule exists twice: nv-payment.js for the browser
+   (classic script) and supabase/functions/_shared/payment.ts for Deno. Neither
+   runtime can import the other's format. If they drift, the API and the portal
+   will disagree about whether a parcel is prepaid — which is the exact bug this
+   rule was written to kill. So they are compared here. */
+try {
+  const browser = readFileSync(join(root, "nv-payment.js"), "utf8");
+  const server  = readFileSync(join(root, "supabase/functions/_shared/payment.ts"), "utf8");
+  const grab = (src) => {
+    const m = src.match(/PREPAID_RE\s*=\s*(\/[^\n]+?\/[gimsuy]*)\s*;/);
+    return m ? m[1] : null;
+  };
+  const a = grab(browser), b = grab(server);
+  if (!a || !b) {
+    problems.push("Could not read PREPAID_RE from both payment rule files; the parity check cannot run.");
+  } else if (a !== b) {
+    problems.push(
+      `Payment rule drift: nv-payment.js has ${a} but _shared/payment.ts has ${b}. ` +
+      `The portal and the Merchant API would disagree about what counts as prepaid.`
+    );
+  } else {
+    notes.push(`payment rule identical in browser and server (${a})`);
+  }
+} catch (e) {
+  notes.push(`payment rule parity check skipped (${e.message})`);
+}
+
 for (const n of notes) console.log(`  ok  ${n}`);
 if (problems.length) {
   console.error(`\nFAILED -- ${problems.length} problem(s):\n`);
