@@ -3270,6 +3270,33 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       '<button type="button" data-nvbn="__more"><span class="nvbn-ico" aria-hidden="true">\u2261</span><span>More</span></button>';
     }
 
+    /* ── Issue 3: keyboard-aware bottom nav ──────────────────────────────
+       visualViewport is the only thing that reports the *visible* area once
+       the on-screen keyboard opens; window.innerHeight does not change on
+       most mobile browsers. When the gap exceeds a threshold the keyboard is
+       up, so we drop the nav out of the way rather than let it overlap the
+       field the merchant is typing into. focusout is debounced because iOS
+       fires it before the viewport has settled. */
+    (function(){
+      var vv = window.visualViewport;
+      if(!vv || !document.body) return;
+      var KEYBOARD_MIN = 140;   // smaller gaps are toolbars, not keyboards
+      var raf = 0;
+      function sync(){
+        if(raf) return;
+        raf = requestAnimationFrame(function(){
+          raf = 0;
+          var gap = window.innerHeight - vv.height;
+          document.body.classList.toggle("nv-keyboard-open", gap > KEYBOARD_MIN);
+        });
+      }
+      vv.addEventListener("resize", sync);
+      vv.addEventListener("scroll", sync);
+      document.addEventListener("focusout", function(){ setTimeout(sync, 80); });
+      document.addEventListener("focusin", sync);
+      sync();
+    })();
+
     (function(){
       function boot(){ try{ nvRenderBottomNav(); }catch(e){} }
       if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

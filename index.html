@@ -673,7 +673,14 @@ h1 .line{display:block}
 /* ═══════════════ AUTOPILOT ═══════════════ */
 .ap{display:grid;grid-template-columns:minmax(0,.94fr) minmax(300px,1.06fr);gap:40px;align-items:center}
 .ap-win{background:var(--bg-2);border:1px solid var(--line-2);border-radius:var(--r-xl);overflow:hidden;box-shadow:0 44px 120px rgba(0,0,0,.6);min-width:0}
-.ap-body{padding:15px;display:flex;flex-direction:column;gap:10px;min-height:330px;background:rgba(0,0,0,.26)}
+/* Issue 2 root cause: this was min-height. The Autopilot demo APPENDS a chat
+   message every 1-2s, so the box grew past 330px, pushed every section below
+   it down the page, then snapped back when the loop restarted -- read by a
+   visitor as the page twitching and creeping upward on its own. A fixed
+   height with overflow makes the messages scroll INSIDE the box, which is
+   what the existing box.scrollTop=box.scrollHeight always assumed.
+   contain:layout keeps any remaining reflow inside the panel. */
+.ap-body{padding:15px;display:flex;flex-direction:column;gap:10px;height:330px;min-height:330px;overflow:hidden;contain:layout paint;background:rgba(0,0,0,.26)}
 .msg{max-width:88%;padding:11px 14px;border-radius:16px;font-size:12.5px;line-height:1.52;font-weight:600;opacity:0;transform:translateY(16px) scale(.94);word-wrap:break-word}
 .msg.show{animation:msgIn .5s cubic-bezier(.2,.9,.3,1.3) forwards}
 @keyframes msgIn{to{opacity:1;transform:none}}
@@ -902,7 +909,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   .guar-list{grid-template-columns:1fr}
   .flow-nodes{grid-template-columns:repeat(2,1fr);gap:14px}
   .feed{height:132px}
-  .ap-body{min-height:290px}
+  .ap-body{height:290px;min-height:290px}
   .pm-body{min-height:230px}
   .cs-foot{font-size:10px;gap:4px}
   .mq-item{font-size:11px;padding:7px 13px}
@@ -1640,7 +1647,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   #autopilot .ai2-proof{margin-top:26px}
   #autopilot .ai2-p{padding:14px}
   #autopilot .ai2-demo{margin-top:30px;gap:14px}
-  #autopilot .ap-body{min-height:210px}
+  #autopilot .ap-body{height:210px;min-height:210px}
 
   /* The second half of the RLS explainer is the most technical copy on the
      page. It is collapsed behind a real <details> rather than display:none,
@@ -1672,8 +1679,16 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
      they are a comparison, and a comparison you have to scroll past is not
      one. 78% so the next tier peeks in and the swipe is discoverable. */
   #payouts .tiers{margin-top:14px}
-  #payouts .tiers > *{flex:0 0 78%;scroll-snap-align:center;min-width:0}
-  #payouts .tier{padding:14px}
+  /* Issue 5: 78% left too little room — the crown badge and the tier text were
+     clipping at 360px. 88% keeps a real peek (the swipe stays discoverable)
+     while the active card and its badge fit whole. */
+  #payouts .tiers > *{flex:0 0 88%;scroll-snap-align:center;min-width:0}
+  /* Issue 5: .tier-crown is absolutely positioned at top:-10px, i.e. OUTSIDE
+     the card. Inside a carousel with overflow-x:auto that badge is clipped by
+     the scroll container. On phones bring it inside the card and give the card
+     the headroom to hold it. */
+  #payouts .tier{padding:22px 14px 14px}
+  #payouts .tier-crown{top:8px}
   #payouts .wl-th,#payouts .wl-s{padding:12px}
 
   #payouts .pay-grid{gap:16px}
@@ -1690,6 +1705,75 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   #autopilot .ai2-lock h4{font-size:15px;margin-bottom:7px}
   #autopilot .ai2-lock p{font-size:13.5px;line-height:1.55}
   #autopilot .ai2-cta{margin-top:14px}
+}
+
+/* ── Issue 7: smoother demo/tour cards ───────────────────────────────────
+   The chat demo animates opacity+transform already, which is the cheap path.
+   What made it feel shaky was the panel resizing under it (fixed above) plus
+   will-change left on permanently. Scope will-change to the element that is
+   actually animating, and stand the whole thing down under reduced motion. */
+.msg{ will-change:opacity, transform; }
+.msg:not(.show){ will-change:auto; }
+.pd-sheet{ will-change:transform; }
+@media (prefers-reduced-motion:reduce){
+  .msg{ animation:none !important; opacity:1 !important; transform:none !important; }
+  .pd-sheet, .btn-primary::after{ animation:none !important; transition:none !important; }
+  .nvrev-lane{ animation:none !important; }
+}
+
+/* ── Issues 1 & 10: hero CTA readability and hierarchy ────────────────────
+   Measured on the live hero at 390px: the secondary CTAs sit on
+   var(--panel) = rgba(255,255,255,.035) with a var(--line-2) hairline. The
+   LABELS are bright (Track Your Order measured 17.8:1) but the button SURFACE
+   is almost invisible, so they read as flat text rather than something you can
+   tap — which is what "very light / dim" describes.
+
+   Fix: give the secondary CTAs a surface and a real edge so they read as
+   enabled, without letting them compete with the one green primary.
+   Separately, "Talk To Sales Today" carried a 44px pink glow — louder than the
+   signup button it sits beside. Self-serve signup is the page's job, so sales
+   keeps its colour but loses the halo. */
+.btn-ghost{
+  background:rgba(255,255,255,.075);
+  border-color:rgba(20,199,123,.42);
+  color:var(--ink);
+}
+.btn-ghost:hover,.btn-ghost:focus-visible{
+  background:rgba(255,255,255,.11);
+  border-color:var(--green);
+}
+.btn-demo{
+  background:rgba(20,199,123,.15);
+  border-color:rgba(20,199,123,.60);
+  color:#b7f7d8;
+}
+.btn-vivid{
+  box-shadow:0 8px 22px rgba(255,46,147,.16),inset 0 1px 0 rgba(255,255,255,.22);
+}
+.btn-vivid:hover{
+  transform:translateY(-2px);
+  box-shadow:0 12px 30px rgba(255,46,147,.24),inset 0 1px 0 rgba(255,255,255,.22);
+}
+/* Every hero CTA must read as tappable at a glance on a phone. */
+@media (max-width:760px){
+  .btn-lg{ min-height:52px; }
+  .btn-ghost,.btn-demo{ font-weight:800; }
+}
+/* Keyboard users need to see the target too. */
+.btn:focus-visible{ outline:2px solid var(--green); outline-offset:3px; }
+
+/* ── Issue 2: stop carousels from moving the page ─────────────────────────
+   Every horizontal strip here sets overscroll-behavior-x at most, which only
+   stops CHAINING SIDEWAYS. A diagonal swipe on a snap carousel still chains
+   VERTICALLY and drags the whole page — read by a visitor as the page
+   twitching or creeping upward on its own. Containing both axes keeps the
+   gesture inside the carousel it started in. */
+#spine.spine,
+#autopilot .ai2-demo, #autopilot .ai2-proof, #autopilot .ai2-vs,
+#payouts .wl, #payouts .tiers,
+.pd-side{
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
 }
 
 /* The disclosure is a phone-only affordance: on a wide screen the summary is
@@ -1755,6 +1839,28 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 @keyframes demoSheen{0%{transform:translateX(-130%)}100%{transform:translateX(240%)}}
 @media (prefers-reduced-motion:reduce){
   .btn-demo,.btn-demo .demo-dot,.btn-demo::after{animation:none!important;transition:none!important}}
+
+/* ── Issue 1 (continued): these two rules must sit AFTER the base .btn-demo /
+   .btn-quiet definitions above, or they lose on source order — which is what
+   happened on the first attempt. Measured on the live 360px hero:
+     .btn-quiet  background:transparent + border rgba(20,199,123,.14)
+     .btn-demo   background:rgba(20,199,123,.09)
+   Both read as disabled text rather than buttons. */
+.btn-demo{
+  background:rgba(20,199,123,.15);
+  border-color:rgba(20,199,123,.60);
+  color:#b7f7d8;
+}
+.btn-quiet{
+  background:rgba(255,255,255,.06);
+  border-color:rgba(20,199,123,.34);
+  color:var(--ink);
+}
+.btn-quiet:hover,.btn-quiet:focus-visible{
+  background:rgba(255,255,255,.10);
+  border-color:var(--green);
+  color:var(--ink);
+}
 </style>
 </head>
 <body>
@@ -1930,7 +2036,14 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   .nvrev-lane.b{ animation:nvrevFlowB var(--dur,58s) linear infinite; }
   @keyframes nvrevFlowA{ from{transform:translateX(0)}      to{transform:translateX(-50%)} }
   @keyframes nvrevFlowB{ from{transform:translateX(-50%)}   to{transform:translateX(0)} }
-  .nvrev-river:hover .nvrev-lane{ animation-play-state:paused; }
+  /* Issue 4: this was an unscoped :hover. On a touch screen a tap applies
+     :hover and it STICKS until you tap something else, so the river froze for
+     2-3 seconds after every tap. Pause on hover only where hover is real; on
+     touch, hold-to-pause and release-to-resume instead. */
+  @media (hover:hover) and (pointer:fine){
+    .nvrev-river:hover .nvrev-lane{ animation-play-state:paused; }
+  }
+  .nvrev-river.is-held .nvrev-lane{ animation-play-state:paused; }
 
   .nvrev-card{
     flex:0 0 auto; width:268px; box-sizing:border-box;
@@ -1975,6 +2088,16 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 <script>
 (function(){
   var host, river, scoreEl, starsEl, countEl;
+  /* Touch: pause only while the finger is actually down. pointercancel and
+     pointerup both matter — a swipe that turns into a scroll fires cancel. */
+  function nvrevBindHold(el){
+    if(!el) return;
+    var hold  = function(){ el.classList.add("is-held"); };
+    var free  = function(){ el.classList.remove("is-held"); };
+    el.addEventListener("pointerdown", function(e){ if(e.pointerType !== "mouse") hold(); }, {passive:true});
+    ["pointerup","pointercancel","pointerleave","touchend","touchcancel","blur"]
+      .forEach(function(ev){ el.addEventListener(ev, free, {passive:true}); });
+  }
 
   function esc(s){
     return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
@@ -2069,6 +2192,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   function boot(){
     host    = document.getElementById("nvrev");
     river   = document.getElementById("nvrevRiver");
+    nvrevBindHold(river);
     scoreEl = document.getElementById("nvrevScore");
     starsEl = document.getElementById("nvrevScoreStars");
     countEl = document.getElementById("nvrevCount");
@@ -3015,7 +3139,7 @@ function launchWorkspace(target,title,sub,info){
   info=info||{};
   var who=String(info.who||"Your workspace").slice(0,26),
       city=String(info.city||"Pakistan").slice(0,18),
-      plan=String(info.plan||"Free · 50 parcels").slice(0,20);
+      plan=String(info.plan||"Merchant Workspace").slice(0,20);
 
   var slot=$("lxSlot"), label=$("lxLabel"), whoEl=$("lxWho"), cityEl=$("lxCity"),
       planEl=$("lxPlan"), bars=$("lxBars"), num=$("lxNum"), stamp=$("lxStamp"),
@@ -3190,7 +3314,7 @@ $("fSignup").addEventListener("submit",function(e){
         renderDone("mdlSignup","g","Workspace Ready","NovaX Autopilot is preparing your first booking desk.",true);
         launchWorkspace("client.html?welcome=1&firstBooking=1",
           "Building your workspace","Welcome to NovaX, "+(name.split(" ")[0]||"there")+".",
-          { who:storeName, city:city, plan:"Free · 50 parcels", seed:email });
+          { who:storeName, city:city, plan:"Merchant Workspace", seed:email });
       }).catch(function(err){
         btn.disabled=false; btn.textContent=oldTxt;
         showMsg("mSignup",(err&&err.message)||"Workspace could not be prepared. Please sign in again.",false);
@@ -3273,7 +3397,7 @@ $("fSignin").addEventListener("submit",function(e){
           launchWorkspace("client.html?welcome=1&firstBooking=1",
             "Building your workspace","Finishing your first-time setup…",
             { who:(meta.business_name||meta.full_name||email.split("@")[0]),
-              city:(meta.city||"Pakistan"), plan:"Free · 50 parcels", seed:email });
+              city:(meta.city||"Pakistan"), plan:"Merchant Workspace", seed:email });
         }).catch(function(){
           try{ __nvSb.auth.signOut(); }catch(e){}
           clearNovaxSession(); btn.disabled=false; btn.textContent=oldTxt;
@@ -4040,7 +4164,14 @@ frame();
         var k = nav.getAttribute("data-nav");
         sheet.classList.toggle("up", k === "book");
       }
-      nav.scrollIntoView({block:"nearest", inline:"center", behavior:"smooth"});
+      /* scrollIntoView moves the nearest scrollable ANCESTOR chain, which
+         includes the document — tapping a demo tab could nudge the whole page.
+         Scroll the strip itself and nothing else. */
+      var strip = nav.parentElement;
+      if(strip && strip.scrollWidth > strip.clientWidth){
+        var left = nav.offsetLeft - (strip.clientWidth - nav.offsetWidth) / 2;
+        strip.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+      }
     });
   }
 })();

@@ -90,12 +90,12 @@
        creating a scroll container, so sticky keeps working.
        `hidden` is kept first as a fallback for Safari < 16, which ignores
        `clip`; those browsers get today's behaviour, nothing worse. */
-    body{margin:0;min-height:100vh;color:var(--ink);overflow-x:hidden;overflow-x:clip;background:linear-gradient(135deg,rgba(12,124,89,.08),transparent 28%),linear-gradient(315deg,rgba(29,111,159,.08),transparent 32%),var(--bg);}
+    body{margin:0;min-height:100dvh;color:var(--ink);overflow-x:hidden;overflow-x:clip;background:linear-gradient(135deg,rgba(12,124,89,.08),transparent 28%),linear-gradient(315deg,rgba(29,111,159,.08),transparent 32%),var(--bg);}
     button,input,select,textarea{font:inherit;}
     button{border:0;cursor:pointer;}
     /* Same reason as body above: this wrapper contains the sticky header, so
        `hidden` here would defeat it even with body fixed. */
-    .app-shell{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr;overflow-x:hidden;overflow-x:clip;}
+    .app-shell{min-height:100dvh;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr;overflow-x:hidden;overflow-x:clip;}
     .topbar{position:sticky;top:0;z-index:20;border-bottom:1px solid rgba(16,32,27,.08);background:rgba(244,248,245,.88);backdrop-filter:blur(18px);width:100%;max-width:100vw;}
     .topbar-inner{width:100%;max-width:1440px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;gap:14px;justify-content:space-between;}
     .brand{display:flex;align-items:center;gap:10px;min-width:0;max-width:100%;}
@@ -274,6 +274,30 @@
     .field label{font-size:12px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
     .field input,.field textarea,.field select{width:100%;min-height:42px;border:1px solid var(--line);border-radius:var(--radius);background:var(--nvu-bg);padding:0 12px;color:var(--ink);}
     .field.nvfield-missing input,.field.nvfield-missing select,.field.nvfield-missing textarea{border-color:#e0a100;background:#fff8ec;}
+    /* ── Issue 9: the single real service, shown as a fact rather than a choice.
+       Reads as a settled value, not a disabled input the merchant should fight. */
+    .field input.nv-fixed-field{
+      background:var(--nvu-bg-2,rgba(20,199,123,.06));
+      border-color:rgba(20,199,123,.28);
+      color:var(--ink); font-weight:700; cursor:default;
+      pointer-events:none; user-select:none;
+    }
+    /* ── Issue 8: native selects rendered as system controls next to NovaX
+       fields. Keep the native picker (mobile reliability) and restyle the
+       closed state: NovaX panel, green focus ring, and our own caret. */
+    .field select{
+      -webkit-appearance:none; -moz-appearance:none; appearance:none;
+      padding-right:38px; cursor:pointer;
+      background-image:url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2314C77B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat:no-repeat;
+      background-position:right 14px center;
+      background-size:12px 8px;
+    }
+    .field select:focus-visible,.field input:focus-visible,.field textarea:focus-visible{
+      outline:none; border-color:#14C77B; box-shadow:0 0 0 3px rgba(20,199,123,.18);
+    }
+    .field select:invalid,.field select[data-empty="1"]{ color:var(--muted); }
+    @media (max-width:900px){ .field select{ min-height:46px; font-size:15px; } }
     .nv-command-strip{background:linear-gradient(135deg,var(--nvu-accent),#13a36f 55%,#1d6f9f);border:1px solid #cdeee1;border-left:4px solid #0c4a34;border-radius:var(--r-xl);padding:16px 18px;margin:0 0 14px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;box-shadow:var(--glow-1)}
     .nv-command-strip .nv-cs-text{flex:1;min-width:220px}
     .nv-command-strip .nv-cs-greeting{font-size:12px;font-weight:800;color:rgba(255,255,255,.85);margin:0 0 4px;text-transform:uppercase;letter-spacing:.04em}
@@ -1139,6 +1163,17 @@
       -webkit-tap-highlight-color:transparent;
     }
     .nv-bottomnav button .nvbn-ico{ font-size:17px; line-height:1; }
+    /* ── Issue 3: the bottom nav and the mobile keyboard were fighting.
+       position:fixed;bottom:0 is measured against the LAYOUT viewport, which
+       most mobile browsers do not shrink when the keyboard opens — so the nav
+       sat behind the keyboard, or jittered on every scroll, and covered the
+       field being typed into. While the keyboard is up the nav has no job, so
+       it slides away and gives the form the full screen. */
+    /* Measured: transform on this element is ignored entirely — even an
+       !important inline translateY does not move it. Rather than fight that,
+       take it out of layout outright. When a keyboard slams up, an instant
+       hide is also honestly better than a slide. */
+    body.nv-keyboard-open .nv-bottomnav{ display:none !important; }
     .nv-bottomnav button.is-active{ color:var(--green-ink); }
     .nv-bottomnav button.is-active .nvbn-ico{ transform:translateY(-1px); }
     /* Clear the bar so the last row of any list is not trapped under it. */
@@ -1159,7 +1194,7 @@
     }
     .nvauto-panel{
       bottom:var(--nv-nav-h) !important;
-      max-height:calc(100vh - var(--nv-nav-h)) !important;
+      max-height:calc(100dvh - var(--nv-nav-h)) !important;
     }
     #nvStaleBanner{ bottom:calc(var(--nv-stack-2) + 10px) !important; }
     /* The sticky booking CTA sits at the bottom of the New Booking tab. */
@@ -1401,7 +1436,7 @@
     padding:26px 24px 20px; text-align:center;
     transform:translateY(20px) scale(.95); opacity:0;
     transition:transform .42s cubic-bezier(.22,1.2,.36,1), opacity .28s ease;
-    max-height:calc(100vh - 40px); overflow-y:auto;
+    max-height:calc(100dvh - 40px); overflow-y:auto;
   }
   html[data-theme="dark"] .nv-wd-card{ box-shadow:var(--sh-2); }
   #nvWdOverlay.in .nv-wd-card{ transform:none; opacity:1; }
@@ -2172,7 +2207,7 @@
                     <select id="bookingDestArea" size="1"><option value="">Select the area...</option></select>
                     <div class="footer-note" id="nvAreaHint">Type to narrow the list, or just open it and choose.</div></div>
                   <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required oninput="nvSyncPaymentMode()"><div class="footer-note nv-paymode" id="nvPayModeNote" style="display:none"></div></div>
-                  <div class="field"><label>Service Type <span class="required-star">*</span></label><select id="bookingService" required><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option><option>Prepaid Delivery</option></select></div>
+                  <div class="field"><label>Service Type</label><input id="bookingService" class="nv-fixed-field" value="COD Standard" readonly tabindex="-1" aria-readonly="true"><span class="footer-note">Every NovaX parcel ships COD Standard today.</span></div>
                   <div class="field"><label>Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" required></div>
                   <div class="field"><label>Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
                   <div class="field"><label>Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required oninput="updateZoneRateHint();nvRefreshQuote();nvSyncWeightChips()"><!-- One tap for the weights merchants actually use. The field still      accepts anything typed; the chips only fill it. --><div class="nv-wchips" id="nvWeightChips" role="group" aria-label="Common weights"></div></div>
@@ -2669,7 +2704,7 @@
         <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="nvEdCod" type="number" min="0" inputmode="numeric"></div>
         <div class="field"><label>Product Details <span class="required-star">*</span></label><input id="nvEdCategory" maxlength="140"></div>
         <div class="field"><label>Package Weight</label><input id="nvEdWeight" maxlength="20" placeholder="0.8 kg"></div>
-        <div class="field"><label>Service Type</label><select id="nvEdService"><option>COD Standard</option><option>COD Express</option><option>Return Exchange</option></select></div>
+        <div class="field"><label>Service Type</label><input id="nvEdService" class="nv-fixed-field" value="COD Standard" readonly tabindex="-1" aria-readonly="true"></div>
         <div class="field"><label>Payment Mode</label><select id="nvEdPaymentMode"><option>COD</option><option>Non COD Prepaid</option></select></div>
         <div class="field"><label>Fragile</label><select id="nvEdFragile"><option>No</option><option>Yes</option></select></div>
         <div class="field"><label>Allow to Open</label><select id="nvEdAllowOpen"><option value="No">No &mdash; do not allow</option><option value="Yes">Yes &mdash; customer may open before paying</option></select></div>
@@ -3361,7 +3396,7 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
     transform:translateY(22px) scale(.94);
     opacity:0;
     transition:transform .42s cubic-bezier(.22,1.2,.36,1), opacity .3s ease;
-    max-height:calc(100vh - 40px);
+    max-height:calc(100dvh - 40px);
     overflow-y:auto;
   }
   #nvrvOverlay.nvrv-in .nvrv-card{ transform:none; opacity:1; }
@@ -3723,7 +3758,7 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
     transform:translateY(22px) scale(.94);
     opacity:0;
     transition:transform .42s cubic-bezier(.22,1.2,.36,1), opacity .3s ease;
-    max-height:calc(100vh - 40px);
+    max-height:calc(100dvh - 40px);
     overflow-y:auto;
   }
   #nvpmOverlay.nvpm-in .nvpm-card{ transform:none; opacity:1; }
@@ -4376,6 +4411,19 @@ body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
    the way. */
 .nvauto-btn{transition:transform .24s cubic-bezier(.2,.9,.2,1),opacity .18s,visibility 0s linear .18s,box-shadow .22s,border-color .22s}
 .nvauto-btn[style*="visibility: hidden"]{transition-delay:0s,0s,.18s,0s,0s}
+
+/* Issue 8 (continued): the dark-theme rules above use the `background`
+   shorthand, which resets background-image and killed the select caret. Put it
+   back after them, and keep the panel colour they set. */
+.field select,
+[data-theme="dark"] .field select,
+html[data-theme="dark"] .field select{
+  background-image:url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2314C77B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 14px center;
+  background-size:12px 8px;
+  padding-right:38px;
+}
 </style>
 </body>
 </html>
