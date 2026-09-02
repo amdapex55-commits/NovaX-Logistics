@@ -8357,12 +8357,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         wrap.id="nvInviteModal";
         wrap.style.cssText="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(6,20,16,.55);padding:18px";
         wrap.innerHTML='<div class="ops-card" style="max-width:430px;width:100%;background:var(--card,var(--nvu-bg))">'
-          +'<div class="ops-card-head"><strong>Invite a user</strong><button class="ghost-btn" id="nvInviteClose">Close</button></div>'
+          +'<div class="ops-card-head"><strong>Create a team login</strong><button class="ghost-btn" id="nvInviteClose">Close</button></div>'
           +'<label class="footer-note" for="nvInviteName">Full name</label><input id="nvInviteName" type="text" placeholder="Ayesha Khan" style="width:100%;margin-bottom:8px">'
           +'<label class="footer-note" for="nvInviteEmail">Work email</label><input id="nvInviteEmail" type="email" placeholder="name@company.com" style="width:100%;margin-bottom:8px">'
           +'<label class="footer-note" for="nvInviteRole">Role</label><select id="nvInviteRole" style="width:100%;margin-bottom:8px">'+nvStaffRoleOptions("Support")+'</select>'
+          +'<label class="footer-note" for="nvInvitePass">Password <span style="text-transform:none;letter-spacing:0">(optional \u2014 leave blank and we will make one)</span></label>'
+          +'<input id="nvInvitePass" type="text" autocomplete="off" placeholder="At least 10 characters" style="width:100%;margin-bottom:8px">'
           +'<p class="footer-note" id="nvInviteHint"></p>'
-          +'<div class="inline-actions" style="margin-top:8px"><button class="action-btn" id="nvInviteSend">Send invite</button></div></div>';
+          +'<p class="footer-note">We do not email anything. You will get the login details on screen \u2014 send them to your team member yourself.</p>'
+          +'<div class="inline-actions" style="margin-top:8px"><button class="action-btn" id="nvInviteSend">Create login</button></div></div>';
         document.body.appendChild(wrap);
         document.getElementById("nvInviteClose").addEventListener("click",closeInviteUserModal);
         document.getElementById("nvInviteSend").addEventListener("click",submitInviteUser);
@@ -8384,21 +8387,57 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!name){ toast("Enter the person's full name."); return; }
       if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ toast("Enter a valid work email address."); return; }
       if(!NOVAX_ROLE_TABS[role]){ toast("Pick a valid role."); return; }
-      sendStaffInvite(name,email,role);
+      var pass=String((document.getElementById("nvInvitePass")||{}).value||"").trim();
+      if(pass && pass.length<10){ toast("Password must be at least 10 characters, or leave it blank."); return; }
+      sendStaffInvite(name,email,role,pass);
     }
-    // Single, clearly named seam for the server side of an invite. If the RPC
-    // is not deployed the user is told precisely what is missing -- this never
-    // fakes a success toast.
-    function sendStaffInvite(name,email,role){
+    /* Creates a real, usable login.
+
+       This used to call invite_staff_user(), which inserted a staff_users row
+       with status 'Pending' and nothing else — no auth user, no password, and
+       no email, because NovaX has no mail provider connected. The owner saw a
+       team member appear and handed out the address; that person could never
+       sign in, and there was nothing to explain why.
+
+       The Edge Function creates the auth user with email_confirm: true, links
+       it to this workspace, and returns the password once. The owner passes it
+       on over WhatsApp, which is how they already talk to their staff. */
+    function sendStaffInvite(name,email,role,password){
       var sb=window.__nvSb;
-      if(!sb||!sb.rpc){ toast("Invite not sent: no server connection right now."); return; }
-      toast("Sending invite…");
-      sb.rpc("invite_staff_user",{ p_name:name, p_email:email, p_role:role }).then(function(res){
-        if(res&&res.error){ toast("Invite not sent: "+(res.error.message||"invite_staff_user(p_name text, p_email text, p_role text) is not deployed yet.")); return; }
-        toast(email+" invited as "+role+".");
-        closeInviteUserModal();
-        loadSubAccounts();
-      }).catch(function(e){ toast("Invite not sent: "+String((e&&e.message)||e)); });
+      if(!sb||!sb.auth){ toast("Not created: no server connection right now."); return; }
+      var btn=document.getElementById("nvInviteSend");
+      if(btn){ btn.disabled=true; btn.textContent="Creating…"; }
+      var restore=function(){ if(btn){ btn.disabled=false; btn.textContent="Create login"; } };
+
+      sb.auth.getSession().then(function(sres){
+        var token=sres&&sres.data&&sres.data.session&&sres.data.session.access_token;
+        if(!token){ restore(); toast("Not created: your session has expired. Sign in again."); return; }
+        return fetch(SB_URL.replace(/\/$/,"")+"/functions/v1/client-create-subuser",{
+          method:"POST",
+          headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+token, "apikey":window.NOVAX_CONFIG.SB_KEY },
+          body:JSON.stringify({ name:name, email:email, role:role, password:password||undefined })
+        }).then(function(r){ return r.json().then(function(j){ return {status:r.status, body:j}; }); })
+          .then(function(res){
+            restore();
+            var b=res.body||{};
+            if(!res.status||res.status>=400||!b.ok){
+              toast("Not created: "+(b.error||("server returned "+res.status)),"error");
+              return;
+            }
+            closeInviteUserModal();
+            /* A prompt, not a toast: the password is shown once, and a toast
+               that fades after four seconds is how it gets lost. */
+            window.prompt(
+              "Login created for "+b.user.name+" ("+b.user.role+").\n\n"+
+              "Send these to them yourself — we do not email anything, and this "+
+              "password cannot be retrieved again.\n\n"+
+              "Portal: https://novaxlogistics.com/client.html\n"+
+              "Email: "+b.user.email,
+              b.password);
+            toast(b.user.email+" can sign in now as "+b.user.role+".","success");
+            loadSubAccounts();
+          });
+      }).catch(function(e){ restore(); toast("Not created: "+String((e&&e.message)||e),"error"); });
     }
     function revokeSubAccountUser(id){
       if(!id) return;
