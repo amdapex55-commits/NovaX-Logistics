@@ -131,6 +131,33 @@ for (const f of ["sw.js", "client-app.js"]) {
   try { checkJs(f); } catch { /* file may not exist; not a failure */ }
 }
 
+/* ── asset version guard ────────────────────────────────────────────────
+   sw.js serves client-app.js CACHE-FIRST, so the ?v= query string is the only
+   thing that busts a merchant's cached bundle. On 2026-09-02 a full set of JS
+   fixes shipped with a stale ?v= and reached nobody who had visited before.
+   Nothing caught it, so this does. */
+try {
+  const clientHtml = readFileSync(join(root, "client.html"), "utf8");
+  const ref = clientHtml.match(/client-app\.js\?v=([a-f0-9]+)/);
+  if (!ref) {
+    problems.push("client.html does not reference client-app.js?v=<hash>; the bundle would never cache-bust.");
+  } else {
+    const actual = execFileSync("git", ["hash-object", join(root, "client-app.js")])
+      .toString().trim().slice(0, 8);
+    if (ref[1] !== actual) {
+      problems.push(
+        `client-app.js?v=${ref[1]} but the file hashes to ${actual}. ` +
+        `Returning merchants would be served the OLD cached bundle. ` +
+        `Set ?v=${actual} in client.html and bump CACHE in sw.js.`
+      );
+    } else {
+      notes.push(`client-app.js?v=${actual} matches the file`);
+    }
+  }
+} catch (e) {
+  notes.push(`asset version check skipped (${e.message})`);
+}
+
 for (const n of notes) console.log(`  ok  ${n}`);
 if (problems.length) {
   console.error(`\nFAILED -- ${problems.length} problem(s):\n`);
