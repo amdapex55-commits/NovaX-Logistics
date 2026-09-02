@@ -8226,7 +8226,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            role text check (role in ('Owner','Finance','Warehouse','Support')),
            permissions jsonb, status text default 'active',
            last_active_at timestamptz, invited_at timestamptz)
-         rpc invite_staff_user(p_name text, p_email text, p_role text)
+         edge function client-create-subuser  (creates the auth user, links
+           profiles.client_id and adds the seat -- invite_staff_user is retired,
+           it only ever made a 'Pending' row that could never sign in)
          rpc revoke_staff_user(p_staff_id uuid)
        If a table/RPC is missing, the UI says exactly what is missing. */
     var NOVAX_ROLE_TABS = {
