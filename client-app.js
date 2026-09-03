@@ -6953,7 +6953,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
         p.clientFeedback = fb;
         saveState();
-        try{ if(typeof loadAll==="function") loadAll(); }catch(e2){}
+        try{ if(typeof window.__novaxReloadClientData==="function") window.__novaxReloadClientData(); }catch(e2){}
         toast(`${awb} sent to operations for redelivery.`,"success");
       }).catch(function(e){ toast(`Could not send the reattempt request: ${(e&&e.message)||e}`,"error"); throw e; })
         .finally(function(){ __done(); });
@@ -7174,7 +7174,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         toast(awb+" updated.","success");
         /* Re-read from the server rather than patching local state: the
            server is what decides what was actually stored. */
-        try{ if(typeof loadAll==="function") loadAll(); }catch(e){}
+        try{ if(typeof window.__novaxReloadClientData==="function") window.__novaxReloadClientData(); }catch(e){}
       });
     }
 
@@ -7248,7 +7248,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(state.lastGeneratedAwb===awb) state.lastGeneratedAwb="";
         try{ saveState(); }catch(e){}
         try{ render(); }catch(e){}
-        try{ if(typeof loadAll==="function") loadAll(); }catch(e){}
+        try{ if(typeof window.__novaxReloadClientData==="function") window.__novaxReloadClientData(); }catch(e){}
         toast(awb+" cancelled.","success");
       }).finally(function(){ __done(); });
     }
@@ -7753,7 +7753,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(out) out.innerHTML=escLabelText(msg)+(b.failed?('<br><span style="color:#b45309">'+escLabelText(String(b.failed))+" order(s) could not be imported.</span>"):"");
         toast(msg);
         shopifyLoadBulkState();
-        try{ if(typeof loadAll==="function") loadAll(); }catch(e){}
+        try{ if(typeof window.__novaxReloadClientData==="function") window.__novaxReloadClientData(); }catch(e){}
       }).catch(function(e){
         if(btn){ btn.disabled=false; btn.textContent=old; }
         var m=(e&&e.message)||String(e);
@@ -8009,7 +8009,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         saveState();
         toast(awb+" deleted.","success");
         try{ render(); }catch(e){}
-        try{ loadAll(); }catch(e){}
+        /* loadAll is declared inside the Supabase closure and is NOT visible
+           here, so `loadAll()` threw a ReferenceError straight into the
+           catch and the server re-read never happened. The closure exposes
+           it on window for exactly this reason. */
+        try{ if(typeof window.__novaxReloadClientData==="function") window.__novaxReloadClientData(); }catch(e){}
       }).catch(function(e){ toast("Could not delete: "+((e&&e.message)||e),"error"); });
     }
     function selectAllNewBooked(){ const boxes=document.querySelectorAll(".newbooked-check"); const allOn=Array.from(boxes).every(b=>b.checked); boxes.forEach(b=>{ b.checked=!allOn; }); }
@@ -11919,7 +11923,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(has(["cancel booking","cancel order","cancel parcel","cancel my order","booking cancel","order cancel","cancel kar","cancel karna","cancel karwana"])){
       if(!targetAwb) return { reply:"Share the tracking number and I'll check whether it can still be cancelled. Only parcels still showing \"New booked\" can be cancelled from the portal." };
       var cp=null;
-      try{ cp=(nvMyParcels()||[]).find(function(x){ return String(x.awb).toUpperCase()===String(targetAwb).toUpperCase(); }); }catch(e){}
+      /* nvMyParcels() is declared inside the Phase-3 closure and is NOT
+         visible here, so this threw a ReferenceError into the catch on
+         every single call: cp stayed null and the assistant answered
+         "I couldn't find that tracking number" for parcels the merchant
+         plainly owns. Same client-scoping as nvMyParcels: filter to the
+         active client, but fall back to the full list rather than
+         claiming the parcel does not exist. */
+      try{
+        var __all=(state&&state.parcels)||[];
+        var __cid=(typeof activeClientId==="function")?activeClientId():null;
+        var __mine=__cid?__all.filter(function(x){ return x&&x.clientId===__cid; }):null;
+        var __list=(__mine&&__mine.length)?__mine:__all;
+        cp=__list.find(function(x){ return String(x.awb).toUpperCase()===String(targetAwb).toUpperCase(); });
+      }catch(e){}
       if(!cp) return { reply:"I couldn't find "+targetAwb+" under this account. Please confirm the tracking ID." };
       if(typeof isCancellableBooking==="function" && !isCancellableBooking(cp)){
         return { reply:targetAwb+" is already \""+cp.status+"\", so it can't be cancelled from here any more. Open a support ticket and our team will look at it.",
