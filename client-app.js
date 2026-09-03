@@ -1485,7 +1485,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
             html='<span class="chip good" style="font-size:11.5px">&#10003; '+del+'/'+total+
                  ' delivered to this customer</span>';
           }
-          host.innerHTML=html;
+          nvSetHtml(host, html);
           host.style.display="block";
         }).catch(function(){});
       }catch(e){}
@@ -1508,6 +1508,24 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
        Both paths fail silent: if an RPC errors, the container stays hidden
        and the dashboard behaves exactly as it did before.
        ===================================================================== */
+    /* Several parts of this dashboard redraw on timers -- the welcome strip and
+       empty state every 15s, the command centre every 20s, the insight cards on
+       every data callback. Each rewrote innerHTML unconditionally, so identical
+       content was thrown away and rebuilt on a loop. That is a full teardown of
+       the subtree every time: focus is lost, any :hover resets, images and
+       animations restart, and on a mid-range phone it reads as the page
+       twitching.
+
+       Writing only when the HTML actually differs removes the whole class of
+       problem, and costs one string comparison. */
+    function nvSetHtml(el, html){
+      if(!el) return false;
+      if(el.__nvLastHtml === html) return false;
+      el.__nvLastHtml = html;
+      el.innerHTML = html;
+      return true;
+    }
+
     var NV_INSIGHTS={ list:null, digest:null, fetched:false };
     function nvLoadInsights(force){
       var sb=window.__nvSb;
@@ -1547,13 +1565,24 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     /* Re-render insights once parcels exist, so an insight held back for lack
        of data appears as soon as it can be checked. Bounded, so a client with
        genuinely no parcels does not spin. */
-    var __nvInsRetries=0, __nvInsTimer=null;
+    /* This used to poll: re-render every 800ms up to eight times, hoping the
+       parcels had arrived. That is eight full rewrites of the insight area in
+       six seconds on a slow connection -- visible flicker, and my own doing.
+       Now it waits for the data instead of guessing, and fires exactly once. */
+    var __nvInsWaiting=false;
     function nvInsightsRetry(){
-      if(__nvInsRetries>=8 || __nvInsTimer) return;
-      __nvInsTimer=setTimeout(function(){
-        __nvInsTimer=null; __nvInsRetries++;
-        try{ renderInsightCards(); }catch(e){}
-      }, 800);
+      if(__nvInsWaiting) return;
+      __nvInsWaiting=true;
+      var give_up_at=Date.now()+15000;
+      (function check(){
+        if((state.parcels||[]).length){
+          __nvInsWaiting=false;
+          try{ renderInsightCards(); }catch(e){}
+          return;
+        }
+        if(Date.now()>give_up_at){ __nvInsWaiting=false; return; }
+        setTimeout(check, 400);   /* polls a variable, never touches the DOM */
+      })();
     }
     /* An AWB you cannot tap is a number you have to copy out by hand. These
        alerts name the exact parcels that need looking at, so each one opens its
@@ -1672,7 +1701,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       });
 
       if(!html){ host.style.display="none"; host.innerHTML=""; return; }
-      host.innerHTML=html;
+      nvSetHtml(host, html);
       host.style.display="block";
     }
 
@@ -3335,13 +3364,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return (typeof nvCanUseTab !== "function") || nvCanUseTab(t.id);
       });
       var active = state.activeClientTab || "dashboard";
-      host.innerHTML = allowed.map(function(t){
+      /* boot() re-runs on a 700ms interval seven times while the role loads, so
+         this rebuilt the whole nav seven times even when nothing changed. */
+      nvSetHtml(host, allowed.map(function(t){
         return '<button type="button" data-nvbn="' + t.id + '"' +
                (t.id === active ? ' class="is-active" aria-current="page"' : '') + '>' +
                '<span class="nvbn-ico" aria-hidden="true">' + t.ico + '</span>' +
                '<span>' + t.label + '</span></button>';
       }).join("") +
-      '<button type="button" data-nvbn="__more"><span class="nvbn-ico" aria-hidden="true">\u2261</span><span>More</span></button>';
+      '<button type="button" data-nvbn="__more"><span class="nvbn-ico" aria-hidden="true">\u2261</span><span>More</span></button>');
     }
 
     /* ── Issue 3: keyboard-aware bottom nav ──────────────────────────────
@@ -10123,12 +10154,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(needsList.length) sub+=' \u00b7 '+needsList.length+' need'+(needsList.length===1?"s":"")+' you';
         sub+=' \u00b7 '+b.moving.length+' moving';
         if(b.delivered.length) sub+=' \u00b7 '+b.delivered.length+' delivered';
-        box.innerHTML='<div class="nv-cockpit-head"><b>Today</b><span class="nv-c-sub">'+sub+'</span></div>'
+        nvSetHtml(box, '<div class="nv-cockpit-head"><b>Today</b><span class="nv-c-sub">'+sub+'</span></div>'
           +'<div class="nv-cockpit-cols">'
           +'<div class="nv-c-col"><h4>Needs you now</h4>'+needsHtml+"</div>"
           +'<div class="nv-c-col"><h4>What\u2019s moving</h4>'+movingHtml+"</div>"
           +'<div class="nv-c-col"><h4>What\u2019s next</h4>'+nextHtml+"</div>"
-          +"</div>";
+          +"</div>");
       }
       document.addEventListener("click",function(ev){
         var t=ev.target.closest?ev.target.closest("[data-nv-cock]"):null;

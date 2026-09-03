@@ -231,18 +231,30 @@ a{color:inherit;text-decoration:none;touch-action:manipulation}
 
 /* ═══════════════ CSS BACKDROP (fallback + companion) ═══════════════ */
 #bgfx{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;transition:opacity 1.4s ease}
-.aur{position:absolute;border-radius:50%;filter:blur(105px);opacity:.4;will-change:transform}
+.aur{position:absolute;border-radius:50%;filter:blur(72px);opacity:.42;will-change:transform;
+  /* its own layer, and nothing inside it needs to be re-read for layout */
+  contain:paint;transform:translateZ(0)}
 .a1{width:62vmax;height:62vmax;background:radial-gradient(circle,rgba(20,199,123,.3),transparent 66%);top:-25vmax;left:-15vmax;animation:aurA 24s ease-in-out infinite alternate}
 .a2{width:54vmax;height:54vmax;background:radial-gradient(circle,rgba(75,184,232,.2),transparent 66%);bottom:-22vmax;right:-13vmax;animation:aurB 29s ease-in-out infinite alternate}
 .a3{width:42vmax;height:42vmax;background:radial-gradient(circle,rgba(157,123,240,.13),transparent 66%);top:42%;left:50%;animation:aurA 33s ease-in-out infinite alternate-reverse}
-@keyframes aurA{to{transform:translate(11vmax,8vmax) scale(1.2)}}
-@keyframes aurB{to{transform:translate(-9vmax,-7vmax) scale(.9)}}
+/* These three blobs are 62/54/42vmax across and carry filter:blur(105px).
+   They used to animate scale() as well as translate. Translating a
+   composited layer is free; SCALING one forces the browser to
+   re-rasterise the blur at a new size on every frame, three times over,
+   forever. That is what made the whole hero look like it was
+   continuously re-rendering. Translate only now, so the drift is
+   compositor-only and the blur is rasterised once. */
+@keyframes aurA{to{transform:translate(11vmax,8vmax)}}
+@keyframes aurB{to{transform:translate(-9vmax,-7vmax)}}
 #gridfx{position:absolute;left:-25%;right:-25%;bottom:-4%;height:44vh;
   background:repeating-linear-gradient(90deg,rgba(20,199,123,.07) 0 1px,transparent 1px 76px),
              repeating-linear-gradient(0deg,rgba(20,199,123,.07) 0 1px,transparent 1px 48px);
   transform:perspective(620px) rotateX(64deg);transform-origin:bottom;
   -webkit-mask-image:linear-gradient(to top,rgba(0,0,0,.7),transparent 84%);mask-image:linear-gradient(to top,rgba(0,0,0,.7),transparent 84%);
-  animation:gridRun 3.6s linear infinite}
+  /* gridRun was referenced here but no @keyframes gridRun exists anywhere in
+     this file, so this only ever declared an animation the browser could not
+     run. Removed rather than left as a puzzle for the next reader. */
+  }
 #noise{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.027;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
 #spot{position:fixed;width:600px;height:600px;border-radius:50%;pointer-events:none;z-index:1;
