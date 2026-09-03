@@ -7551,6 +7551,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         ["nvTkSubject","nvTkBody","nvTkAwb"].forEach(function(id){
           var el = document.getElementById(id); if (el) el.value = "";
         });
+        /* The form is empty again, so no reason is selected. */
+        NV_TK_OWNED_SUBJECT = null;
+        Array.prototype.forEach.call(document.querySelectorAll("[data-nv-tkreason]"), function(x){
+          x.setAttribute("aria-pressed", "false");
+        });
         NV_TK.filter = "open";
         toast("Ticket opened. We will reply here.", "success");
         nvTkLoad();
@@ -7637,6 +7642,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       { key:"pickup",  label:"Pickup not done",   subject:"Pickup was not collected",     priority:"normal" },
       { key:"other",   label:"Something else",    subject:"",                             priority:"normal" }
     ];
+    var NV_TK_OWNED_SUBJECT = null;
     function nvTkReasonsRender(){
       var host = document.getElementById("nvTkReasons");
       if (!host || host._nvBuilt) return;
@@ -7645,24 +7651,49 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return '<button type="button" data-nv-tkreason="' + r.key + '" aria-pressed="false">' +
                escLabelText(r.label) + "</button>";
       }).join("");
+      /* A reason owns the subject only while the merchant has not written their
+         own. Without tracking that, "don't overwrite typed text" meant picking
+         a second reason lit that chip up and changed the priority while the
+         subject still said the first one -- two half-applied reasons at once,
+         which is worse than either. Subject and priority now move together or
+         not at all. */
       host.addEventListener("click", function(ev){
         var b = ev.target.closest("[data-nv-tkreason]");
         if (!b) return;
         var key = b.getAttribute("data-nv-tkreason");
         var r = NV_TK_REASONS.filter(function(x){ return x.key === key; })[0];
         if (!r) return;
-        Array.prototype.forEach.call(host.querySelectorAll("[data-nv-tkreason]"), function(x){
-          x.setAttribute("aria-pressed", x === b ? "true" : "false");
-        });
         var subj = document.getElementById("nvTkSubject");
         var pri  = document.getElementById("nvTkPriority");
         var awb  = document.getElementById("nvTkAwb");
-        /* Never overwrite something already typed. */
-        if (subj && r.subject && !subj.value.trim()) subj.value = r.subject;
+        var current = subj ? subj.value.trim() : "";
+        var ours = (current === "") || (current === NV_TK_OWNED_SUBJECT);
+        if (!ours){
+          /* Their words win. Say so rather than silently ignoring the tap. */
+          try{ toast("Clear the subject line first to use a template."); }catch(e){}
+          return;
+        }
+        Array.prototype.forEach.call(host.querySelectorAll("[data-nv-tkreason]"), function(x){
+          x.setAttribute("aria-pressed", x === b ? "true" : "false");
+        });
+        if (subj){ subj.value = r.subject || ""; NV_TK_OWNED_SUBJECT = r.subject || ""; }
         if (pri && r.priority) pri.value = r.priority;
-        var focusEl = (awb && !awb.value.trim()) ? awb : (subj || null);
+        var focusEl = (r.subject && awb && !awb.value.trim()) ? awb : (subj || null);
         if (focusEl && focusEl.focus) focusEl.focus();
       });
+      /* The moment they edit the subject themselves, no reason is selected any
+         more -- a lit chip that no longer matches the form is a lie. */
+      var subjEl = document.getElementById("nvTkSubject");
+      if (subjEl && !subjEl._nvReasonWired){
+        subjEl._nvReasonWired = true;
+        subjEl.addEventListener("input", function(){
+          if (subjEl.value.trim() === NV_TK_OWNED_SUBJECT) return;
+          NV_TK_OWNED_SUBJECT = null;
+          Array.prototype.forEach.call(host.querySelectorAll("[data-nv-tkreason]"), function(x){
+            x.setAttribute("aria-pressed", "false");
+          });
+        });
+      }
     }
 
     /* ── parcel context on a ticket ─────────────────────────────────────
