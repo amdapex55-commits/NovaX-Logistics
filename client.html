@@ -790,6 +790,20 @@
        roll every cheap thermal printer (Xprinter/TSC/Zebra) takes, so this
        is naturally portrait already: no landscape-vs-mobile-portrait fight
        like the old A4 mode had. One label = one physical page, full bleed. */
+    /* The screen theme must never leak onto paper. This used to be done by
+       setting data-theme="light" on <html> just before window.print(), which
+       flipped the LIVE portal to light in front of the merchant and re-styled
+       the entire page again on restore. These sheets are media="print", so
+       redefining the tokens here reaches the printed output ONLY -- the screen
+       never sees it, nothing reflows, and nothing flashes. */
+    :root,html,html[data-theme="dark"],html[data-theme="light"]{
+      color-scheme:light !important;
+      --nvu-bg:#fff !important; --nvu-bg-2:#fff !important; --nvu-panel:#fff !important;
+      --nvu-ink:#000 !important; --nvu-ink-2:#333 !important; --nvu-ink-3:#444 !important;
+      --ink:#000 !important; --muted:#333 !important; --bg:#fff !important;
+      --line:#000 !important; --line-strong:#000 !important; --panel:#fff !important;
+    }
+    html,body{background:#fff !important;color:#000 !important;}
     @page{size:100mm 150mm;margin:0;}
     .print-page{width:100mm !important;height:150mm !important;min-height:0 !important;display:block !important;box-sizing:border-box !important;page-break-after:always;break-after:page;overflow:hidden !important;}
     .print-page:last-child{page-break-after:auto !important;break-after:auto !important;}
@@ -838,36 +852,58 @@
        - The rows were `1fr`, so printing ONE label stretched it to fill the
          whole page while printing three gave small ones -- the same parcel
          produced a different-sized label depending on how many you picked.
-         Rows are now a fixed 92mm, so one label and three labels are always
+         Rows are now a fixed 88mm, so one label and three labels are always
          identical in size and position.
        - Everything was too sparse and too light to read at arm's length on
          a warehouse shelf. Density and border weight are now closer to what
          the established couriers print. */
+    /* The screen theme must never leak onto paper. This used to be done by
+       setting data-theme="light" on <html> just before window.print(), which
+       flipped the LIVE portal to light in front of the merchant and re-styled
+       the entire page again on restore. These sheets are media="print", so
+       redefining the tokens here reaches the printed output ONLY -- the screen
+       never sees it, nothing reflows, and nothing flashes. */
+    :root,html,html[data-theme="dark"],html[data-theme="light"]{
+      color-scheme:light !important;
+      --nvu-bg:#fff !important; --nvu-bg-2:#fff !important; --nvu-panel:#fff !important;
+      --nvu-ink:#000 !important; --nvu-ink-2:#333 !important; --nvu-ink-3:#444 !important;
+      --ink:#000 !important; --muted:#333 !important; --bg:#fff !important;
+      --line:#000 !important; --line-strong:#000 !important; --panel:#fff !important;
+    }
+    html,body{background:#fff !important;color:#000 !important;}
     @page{size:A4 portrait;margin:6mm;}
 
     .print-page{
       width:100% !important;height:auto !important;min-height:0 !important;
       display:grid !important;
       grid-template-columns:1fr !important;
-      grid-template-rows:repeat(3,92mm) !important;   /* fixed, never 1fr */
+      grid-template-rows:repeat(3,88mm) !important;   /* fixed, never 1fr */
       align-content:start !important;
-      gap:4mm !important;box-sizing:border-box !important;
-      page-break-after:always;break-after:page;overflow:visible !important;
+      gap:3mm !important;box-sizing:border-box !important;
+      /* 3 x 88mm + 2 x 3mm = 270mm against 285mm of usable height on A4 at
+         margin:6mm. The old 3 x 92mm + 2 x 4mm came to 284mm -- ONE mm of
+         slack -- so sub-pixel rounding or a printer's own minimum margin
+         pushed each full sheet onto a second one, and 7 labels printed 5
+         pages (2+2+1) instead of 3. 15mm of slack now, and the page clips
+         rather than spilling if anything ever grows again. */
+      max-height:285mm !important;overflow:hidden !important;
+      page-break-after:always;break-after:page;
+      break-inside:avoid !important;page-break-inside:avoid !important;
     }
     .print-page:last-child{page-break-after:auto !important;break-after:auto !important;}
-    /* Every wrap is exactly 92mm. An earlier version added a dashed cut
+    /* Every wrap is exactly 88mm. An earlier version added a dashed cut
        guide with 2mm padding to labels 2 and 3, which pushed the sheet to
        288mm against 285mm of usable height -- the third label would have
        spilled onto a fourth page. The label's own 2px border IS the cut
        line, exactly as the established couriers print it. */
     .print-label-wrap{
-      width:100% !important;height:92mm !important;min-height:0 !important;
+      width:100% !important;height:88mm !important;min-height:0 !important;
       box-sizing:border-box !important;
       overflow:hidden !important;break-inside:avoid !important;page-break-inside:avoid !important;
     }
 
     .awb-label{
-      width:100% !important;height:92mm !important;min-height:0 !important;
+      width:100% !important;height:88mm !important;min-height:0 !important;
       display:grid !important;
       grid-template-columns:52mm minmax(0,1fr) 44mm !important;
       gap:2.5mm !important;padding:2.5mm !important;
@@ -2027,7 +2063,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=8a08aa9a" defer></script>
+  <script src="client-app.js?v=1717d7ef" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2171,7 +2207,7 @@
                   </div>
                   <div class="wide-scroll desktop-table">
                     <table>
-                      <thead><tr><th>AWB</th><th>Consignee</th><th>COD</th><th>Status</th><th>Journey</th><th>Actions</th></tr></thead>
+                      <thead><tr><th style="width:34px"><input type="checkbox" data-nv-selall="1" aria-label="Select all parcels"></th><th>AWB</th><th>Consignee</th><th>COD</th><th>Status</th><th>Journey</th><th>Actions</th></tr></thead>
                       <tbody id="clientParcelRows"></tbody>
                     </table>
                   </div>

@@ -2880,7 +2880,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
-      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="6">No parcels in range.</td></tr>`);
+      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">No parcels in range.</td></tr>`);
       if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${nvEtaHtml(p)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
       if(cardsOnScreen) nvMarkChanged("clientParcelCards",parcels,"cards");
       else nvMarkChanged("clientParcelRows",parcels,"rows");
@@ -3857,23 +3857,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
     })();
 
-    function nvPrintThemeLight(){
-      try{
-        if(NV_PRINT_THEME.active) return;
-        NV_PRINT_THEME.active=true;
-        NV_PRINT_THEME.prev=document.documentElement.getAttribute("data-theme");
-        document.documentElement.setAttribute("data-theme","light");
-      }catch(e){}
-    }
-    function nvPrintThemeRestore(){
-      try{
-        if(!NV_PRINT_THEME.active) return;
-        NV_PRINT_THEME.active=false;
-        var prev=NV_PRINT_THEME.prev; NV_PRINT_THEME.prev=null;
-        if(prev===null) document.documentElement.removeAttribute("data-theme");
-        else document.documentElement.setAttribute("data-theme",prev);
-      }catch(e){}
-    }
+    /* These used to swap data-theme on <html> to force a light label, then swap
+       it back after printing. That mutates the LIVE page: the merchant watched
+       the whole portal flash to light mode while the print dialog was open, and
+       the restore re-styled every element on the page at once, which is the
+       "everything rebuilds and resizes when it's done" they reported.
+
+       Printing is a media concern, so it belongs in the print stylesheet. The
+       #nvPrintA4 / #nvPrintThermal sheets are media="print" and now redefine
+       the palette tokens to light values themselves, which the screen never
+       sees. Nothing touches the DOM, so there is no reflow and no flash.
+
+       Kept as no-ops rather than deleted: they are called from the print path
+       and from Autopilot, and a missing function there would throw mid-print. */
+    function nvPrintThemeLight(){ /* print CSS handles this now */ }
+    function nvPrintThemeRestore(){ /* nothing to restore: the theme is never changed */ }
 
     function awbLabelHtml(p){
       const client=clientById(p.clientId);
@@ -10118,7 +10116,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +".nv-omni-i{padding:7px 9px;border-radius:var(--r-md);cursor:pointer;font-size:12.5px;color:var(--nvu-ink)}"
           +".nv-omni-i span{display:block;font-size:11px;color:var(--nvu-ink-2)}"
           +".nv-omni-i.active,.nv-omni-i:hover{background:#eafff5}"
-          +".nv-bulkbar{position:fixed;left:0;right:0;bottom:0;z-index:99991;background:var(--nvu-ink);color:#fff;padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom));display:none;gap:8px;align-items:center;flex-wrap:wrap;box-shadow:var(--sh-1)}"
+          +"/* #0f1f1a, not var(--nvu-ink): --nvu-ink INVERTS with the theme, so in"+" dark mode this bar painted #eafff5 -- near-white -- while color stayed"+" #fff. White text on a white bar, ~1.05:1 contrast: the broken bottom"+" strip. This is an overlay toolbar and stays dark in both themes, which"+" is also exactly how it already looked in light mode. */"+".nv-bulkbar{position:fixed;left:0;right:0;bottom:0;z-index:99991;background:#0f1f1a;color:#fff;border-top:1px solid rgba(255,255,255,.16);padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom));display:none;gap:8px;align-items:center;flex-wrap:wrap;box-shadow:var(--sh-1)}"
           +".nv-bulkbar.open{display:flex}"
           +".nv-bulkbar b{font-size:13px;margin-right:6px}"
           +".nv-bulkbar button{border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.1);color:#fff;border-radius:var(--r-lg);font-size:12px;font-weight:700;padding:8px 11px;min-height:38px;cursor:pointer}"
@@ -10355,7 +10353,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
 
       /* ---------- Task 16: bulk multi-select + sticky action bar ---------- */
+      /* Exposed on window because the parcel row template lives in the OUTER
+         scope and cannot see this -- the same closure boundary that produced
+         the dead cross-scope calls fixed in 8cf48d4. A row now renders its own
+         checked state instead of having a checkbox injected into it after the
+         table has already painted. Kept as one stable object for the life of
+         the page: "clear" empties it in place rather than reassigning, so the
+         window reference can never go stale. */
       var nvSel=Object.create(null);
+      window.__nvSel=nvSel;
+      function nvSelClear(){ Object.keys(nvSel).forEach(function(k){ delete nvSel[k]; }); }
       function nvSelList(){ return Object.keys(nvSel).filter(function(k){ return nvSel[k]; }); }
       function nvBar(){
         var bar=document.getElementById("nvBulkBar");
@@ -10382,6 +10389,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var tbody=document.getElementById("clientParcelRows");
         if(!tbody) return;
         var thead=tbody.parentNode?tbody.parentNode.querySelector("thead tr"):null;
+        /* The select column ships in the markup and in the row template now.
+           This function used to insert a whole extra column AFTER the table had
+           already painted -- a <th> plus a <td> in every row -- so the table
+           rendered at 6 columns and then reflowed to 7 on every single render.
+           That is the visible "rows compacting and resizing themselves" after a
+           refresh. Injecting layout after paint is the bug; the early return
+           keeps this here only for any surface that has not been migrated. */
+        if(thead && thead.querySelector("[data-nv-selall]")) return;
         if(thead && !thead.querySelector("[data-nv-selall]")){
           var th=document.createElement("th");
           th.style.width="34px";
@@ -10414,7 +10429,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(!b) return;
         var act=b.getAttribute("data-nv-bulk"), list=nvSelList();
         if(act==="clear"){
-          nvSel=Object.create(null);
+          nvSelClear();
           Array.prototype.forEach.call(document.querySelectorAll("[data-nv-sel],[data-nv-selall]"),function(x){ x.checked=false; });
           nvBarSync(); return;
         }
