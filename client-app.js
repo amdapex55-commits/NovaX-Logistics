@@ -2800,6 +2800,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         +'<div class="meter-caption"><span>'+escLabelText(nvProgressStep(p.status))+'</span><span>'+pr+'%</span></div>'
         +nvEtaHtml(p);
     }
+    /* The mobile card carries the same fact as the table's Journey column, so
+       it gets the same rule: a finished parcel shows when it finished, not a
+       100% bar. Fixing only the table left desktop and mobile disagreeing
+       about the same parcel, and mobile is where most merchants actually
+       look. The card has no step caption, so this is the bar or the date. */
+    function nvCardJourney(p,pr){
+      var st=String((p&&p.status)||"");
+      if(st==="Delivered"||st==="Return to shipper"||st==="Cancelled by client"){
+        var when=""; try{ when=nvPktLabel(p.statusSince)||""; }catch(e){ when=""; }
+        return '<div class="nv-done-date" style="margin-top:12px">'+escLabelText(st)+
+               (when?" \u00b7 "+escLabelText(when):"")+'</div>';
+      }
+      return '<div class="meter '+(statusClass(p)==="bad"?"red":"blue")+'" style="margin-top:12px">'+
+             '<span style="width:'+pr+'%"></span></div>'+nvEtaHtml(p);
+    }
     function nvPaidPill(p){ return nvIsPaidParcel(p) ? '<span class="nv-paid-tape" title="Invoiced &mdash; payment settled">PAID</span>' : ""; }
     function nvPaidRibbon(p){ return nvIsPaidParcel(p) ? '<span class="nv-paid-ribbon">PAID</span>' : ""; }
 
@@ -2885,7 +2900,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
       if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">No parcels in range.</td></tr>`);
-      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${nvEtaHtml(p)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
+      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
       if(cardsOnScreen) nvMarkChanged("clientParcelCards",parcels,"cards");
       else nvMarkChanged("clientParcelRows",parcels,"rows");
     }
@@ -3267,7 +3282,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        month name has no break point a browser will use, and it is also what a
        rider reads faster at arm's length. */
     var NV_MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    function labelDate(p){
+    /* labelDate stays ISO. It is NOT only a label helper: clientInvoiceLineItems
+       feeds it into the invoice CSV export and the invoice table, where
+       YYYY-MM-DD is what sorts correctly in a spreadsheet. Changing this in
+       place silently altered an export merchants already reconcile against.
+       The friendlier form is a separate function, used by the AWB label only. */
+    function labelDate(p){ var d=p&&(p.date||p.statusSince||p.updated); var out=d?String(d).slice(0,10):new Date().toISOString().slice(0,10); return escLabelText(out); }
+    function labelDatePretty(p){
       var d=p&&(p.date||p.statusSince||p.updated);
       var iso=d?String(d).slice(0,10):new Date().toISOString().slice(0,10);
       var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
@@ -3308,7 +3329,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        currently forcing". Re-entrancy is guarded because two print paths can
        overlap if a merchant hits print twice quickly -- the second call must
        not capture "light" as the value to restore. */
-    var NV_PRINT_THEME={ active:false, prev:null };
     /* ═══ Haptics ═════════════════════════════════════════════════════════
        A courier app is used one-handed, outdoors, often without looking
        closely at the screen. A confirmation the merchant can FEEL is worth
@@ -3905,7 +3925,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const weight=labelText(p.weight,"0.8 kg");
       const itemDetails=parcelItemDetails(p);
       const handling=p.fragile==="Yes"?"Fragile":"Standard";
-      const bookedDate=labelDate(p);
+      const bookedDate=labelDatePretty(p);
       const orderId=parcelOrderId(p);
       /* Allow to Open — a rider-facing instruction, so it must be unambiguous
          and present on EVERY label, not only when it is Yes. A missing line
