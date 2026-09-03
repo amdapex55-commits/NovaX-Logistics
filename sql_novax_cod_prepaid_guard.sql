@@ -517,3 +517,112 @@ end;
 $function$
 
 
+
+-- ── 4. the portal path: client_book_parcel is its OWN implementation ──────
+--    It does not delegate to nv_book_parcel_core, so guarding the core left
+--    the portal open. client_book_parcel_geo delegates here, so it is covered.
+CREATE OR REPLACE FUNCTION public.client_book_parcel(p_consignee text, p_phone text, p_pickup_city text, p_city text, p_address text, p_cod numeric, p_weight text, p_service text, p_category text, p_fragile text, p_payment_mode text, p_order_id text DEFAULT ''::text, p_reference_no text DEFAULT ''::text, p_allow_open text DEFAULT 'No'::text)
+ RETURNS parcels
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_client_id uuid;
+  v_code text; v_prefix text; v_max int; v_awb text;
+  v_now timestamptz := now();
+  v_rate numeric; v_rate_card jsonb; v_zone text;
+  v_base numeric; v_addl_rate numeric;
+  v_weight_kg numeric; v_extra_kg numeric; v_fee numeric;
+  v_meta jsonb; v_row public.parcels;
+  v_allow text;
+begin
+  v_client_id := public.my_client_id();
+  if v_client_id is null then
+    raise exception 'Your account is not linked to a client workspace yet. Refresh or sign in again.';
+  end if;
+  if coalesce(btrim(p_consignee), '') = '' then
+    raise exception 'Consignee name is required.';
+  end if;
+
+  -- Same guard as nv_book_parcel_core. This function does NOT delegate to the
+  -- core -- it is its own implementation -- so guarding only the core left the
+  -- portal path open. And the booking form deriving the payment mode from the
+  -- COD amount is not a guard: client_book_parcel is SECURITY DEFINER and any
+  -- authenticated merchant can call the RPC directly with whatever it likes.
+  -- client_book_parcel_geo delegates here, so it is covered by this.
+  if public.nv_is_payment_conflict(p_payment_mode, p_cod) then
+    raise exception
+      'This parcel is marked "%" but carries a COD amount of Rs %. A prepaid parcel collects nothing at the door. Set COD to 0, or change the payment mode to COD.',
+      btrim(p_payment_mode), trim(to_char(p_cod, 'FM999,999,999'))
+      using errcode = 'P0001';
+  end if;
+
+  -- Only ever 'Yes' or 'No' — never free text on a rider-facing instruction.
+  v_allow := case when lower(coalesce(btrim(p_allow_open), 'no')) in ('yes','true','y','1')
+                  then 'Yes' else 'No' end;
+
+  perform pg_advisory_xact_lock(hashtext('novax_awb_' || v_client_id::text));
+
+  v_code   := lpad(right(regexp_replace(v_client_id::text, '\D', '', 'g'), 3), 3, '0');
+  v_prefix := 'N' || v_code;
+  select coalesce(max(substring(pa.awb from length(v_prefix) + 1)::int), 0)
+    into v_max
+    from public.parcels pa
+   where pa.awb ~ ('^' || v_prefix || '[0-9]+$');
+  v_awb := v_prefix || lpad((v_max + 1)::text, 4, '0');
+
+  select c.rate, c.rate_card into v_rate, v_rate_card
+    from public.clients c where c.id = v_client_id;
+  v_rate := coalesce(v_rate, 250);
+
+  v_zone := case when lower(coalesce(p_city, '')) = 'karachi' then 'A' else 'B' end;
+  if v_rate_card is not null and jsonb_typeof(v_rate_card -> v_zone) = 'object' then
+    v_base      := coalesce((v_rate_card -> v_zone ->> 'overnight')::numeric, v_rate);
+    v_addl_rate := coalesce((v_rate_card -> v_zone ->> 'additionalKg')::numeric, 85);
+  elsif v_rate_card is not null and (v_rate_card ->> 'overnight') is not null then
+    v_base      := coalesce((v_rate_card ->> 'overnight')::numeric, v_rate);
+    v_addl_rate := coalesce((v_rate_card ->> 'additionalKg')::numeric, 85);
+  else
+    v_base      := v_rate;
+    v_addl_rate := 85;
+  end if;
+
+  v_weight_kg := coalesce(nullif(regexp_replace(coalesce(p_weight, ''), '[^0-9.]', '', 'g'), '')::numeric, 0.8);
+  if v_weight_kg <= 0 then v_weight_kg := 0.8; end if;
+  v_extra_kg := ceil(greatest(0, least(v_weight_kg, 5) - 1));
+  v_fee      := v_base + (v_extra_kg * v_addl_rate);
+
+  v_meta := jsonb_build_object(
+    'source',      'client_portal',
+    'pickupCity',  coalesce(p_pickup_city, ''),
+    'service',     coalesce(p_service, ''),
+    'category',    coalesce(p_category, ''),
+    'fragile',     coalesce(p_fragile, 'No'),
+    'weight',      coalesce(p_weight, '0.8 kg'),
+    'paymentMode', coalesce(p_payment_mode, 'COD'),
+    'orderId',     coalesce(p_order_id, ''),
+    'referenceNo', coalesce(p_reference_no, ''),
+    'allowOpen',   v_allow,                       -- NEW
+    'branch',      coalesce(nullif(btrim(p_pickup_city), ''), 'Karachi') || ' Hub',
+    'stage',       0,
+    'totalStages', 16,
+    'steps',       jsonb_build_array('New booked'),
+    'statusSince', to_char(v_now, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+  );
+
+  insert into public.parcels (
+    awb, client_id, consignee, phone, address, city, status,
+    cod_amount, fee, booked_at, updated_at, meta
+  ) values (
+    v_awb, v_client_id, btrim(p_consignee), coalesce(p_phone, ''),
+    coalesce(p_address, ''), coalesce(p_city, ''), 'New booked',
+    coalesce(p_cod, 0), v_fee, v_now, v_now, v_meta
+  )
+  returning * into v_row;
+
+  return v_row;
+end;
+$function$
+
+
