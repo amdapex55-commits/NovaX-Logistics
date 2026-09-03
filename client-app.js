@@ -10121,6 +10121,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +".nv-bulkbar b{font-size:13px;margin-right:6px}"
           +".nv-bulkbar button{border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.1);color:#fff;border-radius:var(--r-lg);font-size:12px;font-weight:700;padding:8px 11px;min-height:38px;cursor:pointer}"
           +".nv-bulkbar button.solid{background:#14c77b;border-color:#14c77b;color:#06231a}"
+          +".nv-bulkbar button:disabled{opacity:.38;cursor:not-allowed}"
+          +".nv-bulkbar button:disabled.solid{background:#14c77b}"
           +".nv-bell{position:relative;border:1px solid #bfe8d7;background:var(--nvu-bg);color:var(--nvu-accent);border-radius:var(--r-lg);min-height:38px;padding:0 11px;font-size:15px;cursor:pointer}"
           +".nv-bell-badge{position:absolute;top:-6px;right:-6px;min-width:17px;height:17px;padding:0 4px;border-radius:var(--r-lg);background:#b03a2e;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center}"
           +".nv-notif{position:fixed;z-index:99992;width:330px;max-width:calc(100vw - 24px);max-height:60vh;overflow:auto;background:var(--nvu-bg);border:1px solid #d7ede1;border-radius:var(--r-xl);box-shadow:var(--glow-1);display:none;padding:8px}"
@@ -10378,10 +10380,47 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
         return bar;
       }
+      /* Which of the selected parcels an action can actually apply to.
+         The bar used to render a fixed row of buttons and fire each one at
+         everything that was ticked, so selecting 4 "New booked" parcels
+         offered "Request re-attempt" -- a re-delivery for parcels no rider has
+         attempted even once. It would have raised four nonsense exceptions
+         against the merchant's own account. */
+      var NV_BULK_RULES={
+        /* A re-attempt only means something after a delivery has FAILED. */
+        reattempt:function(p){ return NEEDS_ME.indexOf(String(p.status||""))>=0; },
+        /* Never put a label on a parcel the merchant has cancelled. */
+        print:function(p){ return String(p.status||"")!=="Cancelled by client"; },
+        message:function(p){ return !!String(p.phone||"").trim(); },
+        export:function(){ return true; }
+      };
+      var NV_BULK_WHY={
+        reattempt:"Re-attempt only applies to parcels where a delivery already failed \u2014 refused, consignee unavailable, out of service area, or ready for return.",
+        print:"Cancelled parcels cannot be printed.",
+        message:"None of the selected parcels have a phone number saved."
+      };
+      function nvBulkEligible(act){
+        var rule=NV_BULK_RULES[act]; var list=nvSelList();
+        if(!rule) return list;
+        var by={}; nvMyParcels().forEach(function(p){ by[p.awb]=p; });
+        return list.filter(function(a){ return by[a] && rule(by[a]); });
+      }
       function nvBarSync(){
         var bar=nvBar(), n=nvSelList().length;
         bar.querySelector("#nvBulkCount").textContent=n+" selected";
         bar.classList.toggle("open",n>0);
+        /* Show what each action would actually touch, and switch off the ones
+           that would touch nothing, instead of letting the merchant fire them. */
+        Array.prototype.forEach.call(bar.querySelectorAll("[data-nv-bulk]"),function(b){
+          var act=b.getAttribute("data-nv-bulk");
+          if(act==="clear") return;
+          var k=nvBulkEligible(act).length;
+          var base=b.getAttribute("data-nv-label")||b.textContent;
+          if(!b.getAttribute("data-nv-label")) b.setAttribute("data-nv-label",base);
+          b.textContent = (k && k!==n) ? (base+" ("+k+")") : base;
+          b.disabled = n>0 && k===0;
+          b.title = b.disabled ? (NV_BULK_WHY[act]||"") : "";
+        });
         var ab=document.querySelector(".nvauto-btn");
         if(ab) ab.classList.toggle("nv-above-stickybar",n>0);
       }
@@ -10434,14 +10473,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           nvBarSync(); return;
         }
         if(!list.length){ nvSafeCall(function(){ toast("Select at least one parcel first."); }); return; }
-        if(act==="print") nvSafeCall(function(){ printLabels(list); });
+        /* Act on what the action can legitimately touch, never on the whole
+           selection. If some rows do not qualify, say so rather than silently
+           skipping them. */
+        var eligible=nvBulkEligible(act), skipped=list.length-eligible.length;
+        if(!eligible.length){ nvSafeCall(function(){ toast(NV_BULK_WHY[act]||"That action does not apply to the selected parcels.","error"); }); return; }
+        if(act==="print") nvSafeCall(function(){ printLabels(eligible); });
         else if(act==="reattempt"){
-          if(!window.confirm("Request a re-attempt for "+list.length+" parcel(s)?")) return;
-          list.forEach(function(a){ nvSafeCall(function(){ requestRedelivery(a); }); });
+          if(!window.confirm("Request a re-attempt for "+eligible.length+" parcel(s)?"+
+             (skipped?("\n\n"+skipped+" of the "+list.length+" selected will be skipped: a re-attempt only applies after a delivery has failed."):""))) return;
+          eligible.forEach(function(a){ nvSafeCall(function(){ requestRedelivery(a); }); });
         }
-        else if(act==="message") list.slice(0,5).forEach(function(a){ nvSafeCall(function(){ messageCustomer(a); }); });
+        else if(act==="message") eligible.slice(0,5).forEach(function(a){ nvSafeCall(function(){ messageCustomer(a); }); });
         else if(act==="export"){
-          var ps=nvMyParcels().filter(function(p){ return list.indexOf(p.awb)>=0; });
+          var ps=nvMyParcels().filter(function(p){ return eligible.indexOf(p.awb)>=0; });
           var cell=function(v){ return (typeof csvCell==="function")?csvCell(v):'"'+String(v==null?"":v).replace(/"/g,'""')+'"'; };
           var head=["AWB","Date","Consignee","Phone","City","Address","Status","COD","Order ID"].map(cell).join(",");
           var body=ps.map(function(p){ return [p.awb,p.date,p.consignee,p.phone,p.city,p.address,p.status,p.cod,p.orderId].map(cell).join(","); }).join("\n");
