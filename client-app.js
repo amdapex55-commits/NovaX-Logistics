@@ -1544,21 +1544,65 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       if(!sb||!sb.rpc||!id) return;
       try{ sb.rpc("mark_digest_read",{ p_digest_id:id }).then(function(){},function(){}); }catch(e){}
     }
+    /* Re-render insights once parcels exist, so an insight held back for lack
+       of data appears as soon as it can be checked. Bounded, so a client with
+       genuinely no parcels does not spin. */
+    var __nvInsRetries=0, __nvInsTimer=null;
+    function nvInsightsRetry(){
+      if(__nvInsRetries>=8 || __nvInsTimer) return;
+      __nvInsTimer=setTimeout(function(){
+        __nvInsTimer=null; __nvInsRetries++;
+        try{ renderInsightCards(); }catch(e){}
+      }, 800);
+    }
+    /* An AWB you cannot tap is a number you have to copy out by hand. These
+       alerts name the exact parcels that need looking at, so each one opens its
+       journey. Escaped FIRST, then linked, so nothing from the server can
+       inject markup. */
+    function nvLinkAwbs(text){
+      var safe=escLabelText(String(text||""));
+      return safe.replace(/\b(N\d{6,10})\b/g, function(m){
+        return '<button type="button" class="nv-ins-awb" data-nv-cock="journey" data-awb="'+m+'">'+m+'</button>';
+      });
+    }
     function renderInsightCards(){
       var host=document.getElementById("nvInsightCards");
       if(!host) return;
       var html="";
 
+      function nvDistinctParcelCities(){
+        try{
+          var seen={};
+          (state.parcels||[]).forEach(function(p){
+            var c=String((p&&p.city)||"").trim().toLowerCase();
+            if(c) seen[c]=1;
+          });
+          return Object.keys(seen).length;
+        }catch(e){ return 2; }   /* unknown -> show it, never hide real data */
+      }
       var dg=NV_INSIGHTS.digest;
       if(dg){
-        var wk="";
+        /* This showed "week of 23 Aug" on 3 Sep — eleven days old, presented as
+           if it were this week. It is whatever the last week WITH DATA was, so
+           a merchant who paused for a fortnight reads it as NovaX having lost
+           their parcels. Old weeks are now labelled as old, and a week that is
+           more than a fortnight behind is not shown at all: a stale summary is
+           worth less than the space it occupies. */
+        var wk="", wkAgeDays=0, wkStale=false;
         try{
           var d0=new Date(dg.week_start);
-          if(!isNaN(d0.getTime())) wk=d0.toLocaleDateString("en-PK",{day:"numeric",month:"short"});
+          if(!isNaN(d0.getTime())){
+            wk=d0.toLocaleDateString("en-PK",{day:"numeric",month:"short"});
+            wkAgeDays=Math.floor((Date.now()-d0.getTime())/86400000);
+            wkStale=wkAgeDays>13;
+          }
         }catch(e){}
-        html+='<div class="nv-ins digest">'+
+        var wkTitle = wkAgeDays>13 ? "Last active week"
+                    : (wkAgeDays>=8 ? "Your last full week" : "Your week in review");
+        if(!wkStale) html+='<div class="nv-ins digest">'+
           '<div class="nv-ins-top">'+
-            '<div class="nv-ins-title">Your week in review'+(wk?(' &middot; week of '+escLabelText(wk)):"")+'</div>'+
+            '<div class="nv-ins-title">'+escLabelText(wkTitle)+(wk?(' &middot; week of '+escLabelText(wk)):"")+
+              (wkAgeDays>=8?'<span class="nv-ins-age"> \u00b7 '+wkAgeDays+' days ago</span>':"")+'</div>'+
             '<button class="ghost-btn" style="padding:4px 9px;font-size:11.5px" onclick="nvDismissDigest(\''+escLabelText(dg.id)+'\')">Dismiss</button>'+
           '</div>'+
           (dg.headline?'<div class="nv-ins-body">'+escLabelText(dg.headline)+'</div>':"")+
@@ -1566,7 +1610,10 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
             '<div class="nv-ins-stat"><span>Delivered</span><strong>'+escLabelText(String(dg.delivered_count||0))+'</strong></div>'+
             '<div class="nv-ins-stat"><span>COD collected</span><strong>'+escLabelText(money(Number(dg.cod_collected||0)))+'</strong></div>'+
             '<div class="nv-ins-stat"><span>Fees paid</span><strong>'+escLabelText(money(Number(dg.fees_paid||0)))+'</strong></div>'+
-            (dg.best_city?'<div class="nv-ins-stat"><span>Best city</span><strong>'+escLabelText(dg.best_city)+'</strong></div>':"")+
+            /* A "best city" is only information when there is more than one to
+               choose between. With every parcel in Karachi it is a label that
+               says nothing, taking a quarter of the row. */
+            ((dg.best_city && nvDistinctParcelCities()>1)?'<div class="nv-ins-stat"><span>Best city</span><strong>'+escLabelText(dg.best_city)+'</strong></div>':"")+
             (dg.worst_city?'<div class="nv-ins-stat"><span>Most issues</span><strong>'+escLabelText(dg.worst_city)+'</strong></div>':"")+
           '</div>'+
         '</div>';
@@ -1592,6 +1639,14 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
           var awbs=String(it.body).match(/\b[A-Z0-9][A-Z0-9-]{4,23}\b/g);
           if(!awbs||!awbs.length) return it;
           var mine=(state.parcels||[]);
+          /* THE RACE. renderInsightCards() runs the moment the insights RPC
+             returns, which is usually BEFORE parcels have loaded. With no
+             parcels to check against, known.length was 0 and the insight was
+             passed through unfiltered — which is exactly how four "New booked"
+             parcels ended up reported as "not moved in 3 days" on a live
+             dashboard. If we cannot verify yet, we hold the AWB-listing
+             insight back and re-render once the parcels arrive. */
+          if(!mine.length){ nvInsightsRetry(); return null; }
           var known=awbs.filter(function(a){ return mine.some(function(p){ return p&&p.awb===a; }); });
           if(!known.length) return it;
           var stillStuck=known.filter(function(a){
@@ -1612,7 +1667,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         var sev=(it.severity==="high")?"high":(it.severity==="medium"?"medium":"");
         html+='<div class="nv-ins'+(sev?" "+sev:"")+'">'+
           '<div class="nv-ins-top"><div class="nv-ins-title">'+escLabelText(it.title)+'</div></div>'+
-          (it.body?'<div class="nv-ins-body">'+escLabelText(it.body)+'</div>':"")+
+          (it.body?'<div class="nv-ins-body">'+nvLinkAwbs(it.body)+'</div>':"")+
         '</div>';
       });
 
@@ -9974,9 +10029,46 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +".nv-bulkfix.bad{border-color:#e0857a;background:#fff6f4}"
           +".nv-bulkgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:8px}"
           +".nv-bulkgrid label{font-size:10.5px;font-weight:800;color:var(--nvu-ink-2);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px}"
-          +"@media (max-width:900px){.nv-cockpit-cols{grid-template-columns:1fr}}";
+          +".nv-ins-age{font-weight:600;color:var(--nvu-ink-2);font-size:11px}"
+          +".nv-ins-awb{border:1px solid #bfe8d7;background:var(--nvu-bg);color:var(--nvu-accent);border-radius:var(--r-sm);font:inherit;font-weight:800;font-size:inherit;padding:1px 7px;margin:0 2px;cursor:pointer;min-height:28px}"
+          +"@media (max-width:430px){.nv-ins-awb{display:inline-block;min-height:34px;padding:4px 10px;margin:3px 3px 0 0}}"
+          /* Phones: paired buttons like Chase pickup / Journey / Cancel get narrow
+             and easy to mis-tap at 360px. Give each its own full-width row, and
+             raise them to a comfortable target. */
+          +"@media (max-width:900px){.nv-cockpit-cols{grid-template-columns:1fr}}"
+          +"@media (max-width:430px){"
+          +".nv-c-item .nv-c-acts{flex-direction:column;gap:7px}"
+          +".nv-c-btn{width:100%;min-height:42px;font-size:12.5px}"
+          +".nv-cockpit{padding:12px}"
+          +"}";
         document.head.appendChild(s);
       }
+      /* THE actions a parcel can actually take, by status.
+
+         Every card in this cockpit used to render "Journey + Re-attempt"
+         regardless of status. Four parcels sitting at "New booked" — never
+         collected, never attempted — were each offered a Re-attempt, which is
+         meaningless: there has been no attempt to repeat. The merchant's real
+         question there is "why has nobody picked this up", so they get Chase
+         pickup instead. Offering a button that cannot apply teaches people the
+         buttons are decorative, and then they stop reading the ones that matter. */
+      function nvParcelActions(p){
+        var st=String((p&&p.status)||"");
+        var awb=nvEsc((p&&p.awb)||"");
+        var journey='<button class="nv-c-btn" data-nv-cock="journey" data-awb="'+awb+'">Journey</button>';
+        if(st==="New booked"){
+          var acts='<button class="nv-c-btn solid" data-nv-cock="pickup" data-awb="'+awb+'">Chase pickup</button>'+journey;
+          if(nvSafeCall(function(){ return isCancellableBooking(p); })) {
+            acts+='<button class="nv-c-btn" data-nv-cock="cancel" data-awb="'+awb+'">Cancel</button>';
+          }
+          return acts;
+        }
+        if(NEEDS_ME.indexOf(st)>=0){
+          return '<button class="nv-c-btn solid" data-nv-cock="reattempt" data-awb="'+awb+'">Re-attempt</button>'+journey;
+        }
+        return journey;
+      }
+
       function nvItem(p,acts){
         return '<div class="nv-c-item"><strong>'+nvEsc(p.awb)+'</strong><span>'+nvEsc(p.status||"")+(p.city?" \u00b7 "+nvEsc(p.city):"")+(p.consignee?" \u00b7 "+nvEsc(p.consignee):"")+'</span><div class="nv-c-acts">'+acts+"</div></div>";
       }
@@ -9997,30 +10089,43 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var attn=(typeof nvAttentionParcels==="function") ? nvAttentionParcels() : b.needs;
         var needsList=attn.concat(b.stuck.filter(function(p){ return attn.indexOf(p)<0; })).slice(0,4);
         var needsHtml=needsList.length?needsList.map(function(p){
-          return nvItem(p,'<button class="nv-c-btn" data-nv-cock="journey" data-awb="'+nvEsc(p.awb)+'">Journey</button>'
-            +'<button class="nv-c-btn" data-nv-cock="reattempt" data-awb="'+nvEsc(p.awb)+'">Re-attempt</button>');
+          return nvItem(p,nvParcelActions(p));
         }).join(""):'<p class="nv-c-empty">Nothing needs you right now. Exceptions and parcels stuck over 48 hours appear here.</p>';
         var movingCounts={};
         b.moving.forEach(function(p){ movingCounts[p.status]=(movingCounts[p.status]||0)+1; });
         var movingHtml=Object.keys(movingCounts).length?Object.keys(movingCounts).map(function(k){
-          return '<div class="nv-c-item"><strong>'+movingCounts[k]+" parcel(s)</strong><span>"+nvEsc(k)+"</span></div>";
+          return '<div class="nv-c-item"><strong>'+movingCounts[k]+" parcel"+(movingCounts[k]===1?"":"s")+"</strong><span>"+nvEsc(k)+"</span></div>";
         }).join("")+(b.stuck.length?'<p class="nv-c-empty">'+b.stuck.length+" moving parcel(s) have not changed status in over 48 hours.</p>":"")
-          :'<p class="nv-c-empty">No parcels in transit yet. Booked parcels show here once a rider collects them.</p>';
+          :(b.next.length
+              ? '<p class="nv-c-empty">Nothing moving yet \u2014 '+b.next.length+' parcel'+(b.next.length===1?" is":"s are")+' still waiting to be collected.</p>'
+              : '<p class="nv-c-empty">No parcels in transit yet. Booked parcels show here once a rider collects them.</p>');
         var nextHtml="";
-        if(b.next.length){
-          nextHtml+='<div class="nv-c-item"><strong>'+b.next.length+' new booked parcel(s)</strong><span>Labels not printed yet</span><div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="printnew">Print labels</button><button class="nv-c-btn" data-nv-cock="tab" data-tab="awbLabel">AWB tab</button></div></div>';
+        /* The same parcels used to appear three times on this screen: in the
+           stuck banner, in "What needs me", and again here as "N new booked,
+           labels not printed". Three framings of one problem makes a small
+           problem feel like chaos and a real one easy to miss. Anything already
+           shown as needing attention is not repeated here. */
+        var shownAwbs={};
+        needsList.forEach(function(p){ shownAwbs[p.awb]=1; });
+        var freshNew=b.next.filter(function(p){ return !shownAwbs[p.awb]; });
+        if(freshNew.length){
+          nextHtml+='<div class="nv-c-item"><strong>'+freshNew.length+' parcel'+(freshNew.length===1?"":"s")+' ready to hand over</strong><span>Print the labels, then a rider collects them</span><div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="printnew">Print labels</button><button class="nv-c-btn" data-nv-cock="tab" data-tab="awbLabel">AWB tab</button></div></div>';
         }
         if(b.missing.length){
-          nextHtml+='<div class="nv-c-item"><strong>'+b.missing.length+' parcel(s) missing address or phone</strong><span>Fix before the rider attempts delivery</span><div class="nv-c-acts"><button class="nv-c-btn" data-nv-cock="journey" data-awb="'+nvEsc(b.missing[0].awb)+'">Open first</button></div></div>';
+          nextHtml+='<div class="nv-c-item"><strong>'+b.missing.length+' parcel'+(b.missing.length===1?"":"s")+' missing address or phone</strong><span>A rider cannot deliver without these</span><div class="nv-c-acts"><button class="nv-c-btn" data-nv-cock="journey" data-awb="'+nvEsc(b.missing[0].awb)+'">Open first</button></div></div>';
         }
         nextHtml+='<div class="nv-c-item"><strong>Book more</strong><span>Single, pasted WhatsApp order, or bulk CSV</span><div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="tab" data-tab="newBooking">New booking</button><button class="nv-c-btn" data-nv-cock="tab" data-tab="bulkBooking">Bulk upload</button></div></div>';
         if(b.delivered.length){
-          nextHtml+='<div class="nv-c-item"><strong>'+b.delivered.length+' delivered parcel(s)</strong><span>Check payment status in Payments</span><div class="nv-c-acts"><button class="nv-c-btn" data-nv-cock="tab" data-tab="payments">Open Payments</button>'
+          nextHtml+='<div class="nv-c-item"><strong>'+b.delivered.length+' parcel'+(b.delivered.length===1?"":"s")+' delivered</strong><span>Check what you are owed in Payments</span><div class="nv-c-acts"><button class="nv-c-btn" data-nv-cock="tab" data-tab="payments">Open Payments</button>'
             +(nvIsOwner()?'<button class="nv-c-btn" data-nv-cock="tab" data-tab="wallet">Open Wallet</button>':"")+"</div></div>";
         }
-        box.innerHTML='<div class="nv-cockpit-head"><b>Today</b><span class="nv-c-sub">'+b.all.length+' parcel(s) \u00b7 '+attn.length+' need attention \u00b7 '+b.moving.length+' moving</span></div>'
+        var sub=b.all.length+' parcel'+(b.all.length===1?"":"s");
+        if(needsList.length) sub+=' \u00b7 '+needsList.length+' need'+(needsList.length===1?"s":"")+' you';
+        sub+=' \u00b7 '+b.moving.length+' moving';
+        if(b.delivered.length) sub+=' \u00b7 '+b.delivered.length+' delivered';
+        box.innerHTML='<div class="nv-cockpit-head"><b>Today</b><span class="nv-c-sub">'+sub+'</span></div>'
           +'<div class="nv-cockpit-cols">'
-          +'<div class="nv-c-col"><h4>What needs me</h4>'+needsHtml+"</div>"
+          +'<div class="nv-c-col"><h4>Needs you now</h4>'+needsHtml+"</div>"
           +'<div class="nv-c-col"><h4>What\u2019s moving</h4>'+movingHtml+"</div>"
           +'<div class="nv-c-col"><h4>What\u2019s next</h4>'+nextHtml+"</div>"
           +"</div>";
@@ -10031,6 +10136,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var kind=t.getAttribute("data-nv-cock"), awb=t.getAttribute("data-awb");
         if(kind==="journey") nvSafeCall(function(){ openClientParcelJourney(awb); });
         else if(kind==="reattempt") nvSafeCall(function(){ requestRedelivery(awb); });
+        else if(kind==="pickup") nvSafeCall(function(){ nvQuickPickup(awb); });
+        else if(kind==="cancel") nvSafeCall(function(){ cancelClientBooking(awb); });
         else if(kind==="tab") nvTab(t.getAttribute("data-tab"));
         else if(kind==="printnew"){
           var list=nvTodayBuckets().next.map(function(p){ return p.awb; });
