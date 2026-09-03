@@ -626,3 +626,45 @@ end;
 $function$
 
 
+
+-- ── 5. the admin invoiceable list called a conflict 'prepaid' ─────────────
+CREATE OR REPLACE FUNCTION public.admin_invoiceable_parcels(p_client_id uuid)
+ RETURNS TABLE(awb text, consignee text, city text, status text, cod_amount numeric, fee numeric, kind text, booked_at timestamp with time zone)
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if not public.is_admin() then
+    raise exception 'Admin access required.';
+  end if;
+
+  return query
+    select p.awb, coalesce(p.consignee,''), coalesce(p.city,''), p.status,
+           coalesce(p.cod_amount,0), coalesce(p.fee,0),
+           case
+             when public.is_return_chargeable(p.status) then 'return'
+             -- A parcel carrying a COD amount AND a prepaid marking was labelled
+             -- 'prepaid' here, so the admin pick-list described the exact
+             -- contradiction that loses money as if it were settled. It is now
+             -- named for what it is; admin_generate_invoice* refuse it anyway,
+             -- but the list should not tell the admin something untrue first.
+             -- Uses the canonical predicate, not a fourth copy of the regex.
+             when public.nv_is_payment_conflict(p.meta->>'paymentMode', p.cod_amount) then 'conflict'
+             when public.nv_is_prepaid_mode(p.meta->>'paymentMode') then 'prepaid'
+             else 'cod'
+           end,
+           p.booked_at
+      from public.parcels p
+     where p.client_id = p_client_id
+       and p.invoice_id is null
+       and (
+         p.status = 'Delivered'
+         or (p.meta->'steps') @> '"COD collected"'::jsonb
+         or public.is_return_chargeable(p.status)
+       )
+     order by p.booked_at desc;
+end;
+$function$
+
+

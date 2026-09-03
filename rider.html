@@ -529,6 +529,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
               ${moneyBox("Phone", rEsc(p.phone || "n/a"), "tap Call below")}
             </div>
             <p style="margin-top:8px"><strong>Address:</strong> ${rEsc(p.address || "Address pending")}</p>
+            ${rPayWarn(p)}
             ${p.proofPhoto ? `<img src="${p.proofPhoto}" alt="proof" loading="lazy" style="margin-top:8px;width:100%;max-height:190px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">` : ""}
             <div class="inline-actions" style="margin-top:10px">
               <a class="ghost-btn" href="tel:${tel}">📞 Call</a>
@@ -934,7 +935,24 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       function sigOf(row){ return JSON.stringify(row,function(k,v){ return k==="updated_at"?undefined:v; }); }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
       function rClient(r){ return { _uuid:r.id, id:r.id, name:r.name||"", city:r.city||"", address:r.address||"" }; }
-      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||16), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", deliveredBy:m.deliveredBy||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", riderInput:m.riderInput||null, steps:Array.isArray(m.steps)?m.steps:[], _meta:m }; }
+      /* rider.html has loaded nv-payment.js since the classifier shipped and
+         never once called it: NovaXPayment appeared zero times in this file.
+         rParcel also dropped paymentMode, so even a call would have seen no
+         declared mode and reported plain COD. A parcel marked prepaid that
+         carries a COD amount therefore reached the door looking ordinary --
+         and the rider is the person actually taking the cash. */
+      function rPayWarn(p){
+        try{
+          if(!window.NovaXPayment) return "";
+          var c = window.NovaXPayment.classify(p);
+          if(!c.conflict) return "";
+          return '<div class="ops-card" style="margin-top:8px;background:#fdecea;border:1px solid #e0604b;color:#7f1d1d">'
+               + '<strong style="display:block;font-size:13px">\u26a0 ' + rEsc(c.label) + '</strong>'
+               + '<span style="font-size:12px;display:block;margin-top:3px">This parcel says prepaid but carries a COD amount. '
+               + 'Confirm with the office before collecting or releasing it \u2014 do not assume either.</span></div>';
+        }catch(e){ return ""; }
+      }
+      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||16), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at), exception:r.exception||"", paymentMode:m.paymentMode||m.payment_mode||"", cashReceived:!!m.cashReceived, returnProof:m.returnProof||"", resolutionRemark:m.resolutionRemark||"", deliveredBy:m.deliveredBy||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", riderInput:m.riderInput||null, steps:Array.isArray(m.steps)?m.steps:[], _meta:m }; }
       function fParcel(p){
         // NovaX fix (metadata-loss guard): start from whatever raw backend
         // meta rParcel last attached to this parcel (p._meta) so fields the
