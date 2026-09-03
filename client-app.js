@@ -2500,7 +2500,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return ''+
       '<div class="nvdr-sec">'+
         '<div class="nvdr-money">'+(nvPayClass(p).conflict?nvPayConflictChip(p):(Number(p.cod)>0?escLabelText(money(p.cod)):"Prepaid"))+
-          '<small>'+(Number(p.cod)>0?"COD to collect":"no cash due")+'</small></div>'+
+          /* This said "COD to collect" for any parcel with a COD amount, including
+             ones already delivered AND settled. Past tense once the money has
+             actually moved. */
+          '<small>'+(Number(p.cod)>0
+            ? (String(p.status||"")==="Delivered" ? "COD collected" : "COD to collect")
+            : "no cash due")+'</small></div>'+
         '<div style="margin-top:8px">'+U.statusPill(p.status)+(paid?' <span class="nv-paid-tape">PAID</span>':'')+'</div>'+
         (p.exception?'<div class="nvdr-why"><span>'+
             (/return|refus|cancel/i.test(String(p.status||"")) ? "Why it came back" : "What happened")+
@@ -2518,10 +2523,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       '<div class="nvdr-sec"><h4>Journey</h4>'+nvJourneyHtml(p,rows)+'</div>'+
       '<div class="nvdr-actions">'+
         (tel?'<a href="tel:'+escLabelText(tel)+'">Call consignee</a>':'')+
-        '<button type="button" class="nvdr-primary" data-nv-drawer-act="print" data-awb="'+escLabelText(p.awb)+'">Print AWB</button>'+
-        '<button type="button" data-nv-drawer-act="track" data-awb="'+escLabelText(p.awb)+'">Open tracking</button>'+
+        /* The primary follows the status. Print AWB is exactly right while the
+           label still needs to go on the box, and close to useless once the
+           parcel has been delivered -- yet it was the one green button on every
+           parcel regardless. */
+        (function(){
+          var st=String(p.status||"");
+          var awb=escLabelText(p.awb);
+          var print='<button type="button" class="'+(st==="New booked"?"nvdr-primary":"")+'" data-nv-drawer-act="print" data-awb="'+awb+'">Print AWB</button>';
+          var track='<button type="button" class="'+(st!=="New booked"&&st!=="Delivered"?"nvdr-primary":"")+'" data-nv-drawer-act="track" data-awb="'+awb+'">Open tracking</button>';
+          var share='<button type="button" class="'+(st==="Delivered"?"nvdr-primary":"")+'" data-nv-drawer-act="sharetrack" data-awb="'+awb+'">Share proof</button>';
+          /* Delivered: the useful act is sending the customer proof. In flight:
+             tracking. Still on the bench: print the label. */
+          return st==="Delivered" ? (share+track+print) : (print+track);
+        })()+
         '<button type="button" data-nv-drawer-act="copytrack" data-awb="'+escLabelText(p.awb)+'">Copy link</button>'+
-        '<button type="button" data-nv-drawer-act="sharetrack" data-awb="'+escLabelText(p.awb)+'">Share</button>'+
+        (String(p.status||"")==="Delivered"?'':'<button type="button" data-nv-drawer-act="sharetrack" data-awb="'+escLabelText(p.awb)+'">Share</button>')+
         /* Desktop has no parcel card, so the drawer is the ONLY place these
            two reach a merchant on a laptop. Same gates as the mobile card. */
         (isEditableBooking(p)
@@ -2657,6 +2674,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        nothing about the look changes -- it just stops being silent about when. */
     function nvJourneyHtml(p, rows){
       var stamped=nvStampRows(p,rows);
+      /* Older parcels only have a booking timestamp, so six of seven completed
+         steps repeated "time not recorded" underneath each other. Read as a
+         line, that says "our tracking is broken" rather than "these scans
+         predate timestamping". Say it once, at the end, and let the steps
+         themselves stay clean. */
+      var doneRows=stamped.filter(function(r){ return r.state!=="todo"; });
+      var missing=doneRows.filter(function(r){ return !r.at; }).length;
+      var sayOnce = missing>=2 && missing===doneRows.length-(doneRows.some(function(r){return r.at;})?1:0)
+        ? missing : 0;
       return '<div class="nv-jt">'+stamped.map(function(r){
         var cls = r.state==="now" ? "is-now" : (r.state==="todo" ? "is-todo" : "is-done");
         return '<div class="nv-jt-row '+cls+'">'+
@@ -2666,11 +2692,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                      (r.gap?'<span class="nv-jt-gap">+'+escLabelText(r.gap)+'</span>':'')+
                    '</div>'+
                    (r.at?'<div class="nv-jt-at">'+escLabelText(r.at)+' PKT</div>':
-                         (r.state==="todo"?'':'<div class="nv-jt-at nv-jt-none">time not recorded</div>'))+
+                         ((r.state==="todo"||sayOnce)?'':'<div class="nv-jt-at nv-jt-none">time not recorded</div>'))+
                    (r.note?'<div class="nv-jt-note">'+escLabelText(r.note)+'</div>':'')+
                  '</div>'+
                '</div>';
-      }).join("")+'</div>';
+      }).join("")
+        +(sayOnce?'<div class="nv-jt-foot">These earlier scans were recorded before we started timestamping each step.</div>':'')
+        +'</div>';
     }
 
     function openClientParcelJourney(awb){
@@ -2744,6 +2772,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        refused parcel is only given an invoice_id once its delivery charge has
        been deducted on that invoice. */
     function nvIsPaidParcel(p){ return !!(p && p.invoiceId); }
+    /* A progress meter is only information while the parcel is still moving.
+       On a finished parcel it was always 7/7 and 100% on every row -- a full
+       blue bar repeated down the table, in the one colour the rest of the
+       palette never uses. Finished parcels show the date instead, which is the
+       thing a seller actually looks for. */
+    function nvJourneyCell(p,pr){
+      var st=String((p&&p.status)||"");
+      if(st==="Delivered"){
+        /* mapParcel does not carry a deliveredAt; statusSince is when the
+           parcel entered its current status, which for Delivered is delivery. */
+        /* Inlined on purpose: nvSafeCall lives in a later, separate scope and
+           is NOT visible here. Calling it threw a ReferenceError inside the
+           row .map(), which aborted the whole tbody assignment and left the
+           table empty. */
+        var when=""; try{ when=nvPktLabel(p.statusSince)||""; }catch(e){ when=""; }
+        return '<span class="nv-done-date">Delivered'+(when?" \u00b7 "+escLabelText(when):"")+'</span>';
+      }
+      if(st==="Return to shipper"||st==="Cancelled by client"){
+        return '<span class="nv-done-date">'+escLabelText(st)+'</span>';
+      }
+      return '<div class="meter '+(statusClass(p)==="bad"?"red":"blue")+'"><span style="width:'+pr+'%"></span></div>'
+        +'<div class="meter-caption"><span>'+escLabelText(nvProgressStep(p.status))+'</span><span>'+pr+'%</span></div>'
+        +nvEtaHtml(p);
+    }
     function nvPaidPill(p){ return nvIsPaidParcel(p) ? '<span class="nv-paid-tape" title="Invoiced &mdash; payment settled">PAID</span>' : ""; }
     function nvPaidRibbon(p){ return nvIsPaidParcel(p) ? '<span class="nv-paid-ribbon">PAID</span>' : ""; }
 
@@ -2828,7 +2880,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
-      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td><div class="meter ${statusClass(p)==="bad"?"red":"blue"}"><span style="width:${pr}%"></span></div><div class="meter-caption"><span>${nvProgressStep(p.status)}</span><span>${pr}%</span></div>${nvEtaHtml(p)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="6">No parcels in range.</td></tr>`);
+      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="6">No parcels in range.</td></tr>`);
       if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl><div class="meter ${statusClass(p)==="bad"?"red":"blue"}" style="margin-top:12px"><span style="width:${pr}%"></span></div>${nvEtaHtml(p)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
       if(cardsOnScreen) nvMarkChanged("clientParcelCards",parcels,"cards");
       else nvMarkChanged("clientParcelRows",parcels,"rows");
@@ -2846,7 +2898,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       parcels.forEach(p=>{ (groups[p.status]=groups[p.status]||[]).push(p); });
       const order=STATUS_TAGS.filter(s=>groups[s]);
       const open=!!state.statusBoardOpen;
-      const sum=document.getElementById("statusBoardSummary"); if(sum) sum.textContent=parcels.length?`${parcels.length} parcel(s) in ${order.length} status group(s) — tap to ${open?"collapse":"expand"}.`:"No parcels in the selected range.";
+      const sum=document.getElementById("statusBoardSummary"); if(sum) sum.textContent=parcels.length?`${parcels.length} parcel${parcels.length===1?"":"s"} \u00b7 ${order.map(k=>`${groups[k].length} ${k.toLowerCase()}`).join(", ")} \u2014 tap to ${open?"collapse":"expand"}.`:"No parcels in the selected range.";
       const chev=document.getElementById("statusBoardChevron"); if(chev) chev.textContent=open?"▾":"▸";
       el.style.display=open?"flex":"none";
       if(!open){ el.innerHTML=""; return; }
@@ -2972,8 +3024,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // NovaX fix (Medium #5): removed the `|| state.parcels[0]` fallback --
       // show the "No parcel selected" placeholder directly instead of
       // guessing the first parcel in the list.
-      const p=state.parcels.find(x=>x.awb===state.selectedAwb)||emptyParcel();
-      document.getElementById("selectedParcelText").textContent=`${p.awb} for ${p.consignee}. Current status: ${p.status}.`;
+      /* emptyParcel() carries status "New booked" and consignee "No parcel
+         selected", so with nothing chosen this panel read
+         " for No parcel selected. Current status: New booked." and drew a
+         green "current" marker on Booked. A merchant reads that as a real
+         parcel sitting unpicked. Nothing selected is now an empty state, and
+         the panel gets out of the way entirely. */
+      const selected=state.parcels.find(x=>x.awb===state.selectedAwb)||null;
+      const panelHost=document.getElementById("clientSelectedPanel");
+      const textEl=document.getElementById("selectedParcelText");
+      if(!selected){
+        if(panelHost) panelHost.style.display="none";
+        if(textEl) textEl.textContent="Pick a parcel to see its journey.";
+        const jEmpty=document.getElementById("clientJourney");
+        if(jEmpty) jEmpty.innerHTML="";
+        return;
+      }
+      if(panelHost) panelHost.style.display="";
+      const p=selected;
+      if(textEl) textEl.textContent=`${p.awb} \u00b7 ${p.consignee}. Current status: ${p.status}.`;
       // NovaX (Client Tracking Timeline Polish): friendly client-facing
       // sentence per status -- never a staff name, only status/branch/city/time.
       const FRIENDLY_STEP_NOTE={
@@ -8160,7 +8229,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     })();
     document.getElementById("clientSearch").addEventListener("input",renderClientParcels);
     document.getElementById("applyDateRangeBtn").addEventListener("click",applyClientDateRange);
-    document.getElementById("bookParcelBtn").addEventListener("click",()=>showClientTab("newBooking"));
+    /* Was unguarded: any markup change that removed this button threw a
+       TypeError here and took the whole bundle down with it. */
+    { const b=document.getElementById("bookParcelBtn"); if(b) b.addEventListener("click",()=>showClientTab("newBooking")); }
     document.getElementById("quickBookingBtn").addEventListener("click",quickBooking);
     /* BUG FIX: the desktop "+ Book Parcel" floating button (#nvDesktopQuickBook,
        visible at >=901px, bottom-right) had NO event listener at all. It is the

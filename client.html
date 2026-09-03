@@ -411,9 +411,13 @@
        invoice (parcels.invoice_id). Applies equally to delivered parcels and
        to returned/refused ones, because a return only gets an invoice_id once
        its delivery charge has been netted off. Display only. */
-    .nv-paid-tape{display:inline-flex;align-items:center;gap:4px;background:#c0392b;color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.8px;padding:2px 7px;border-radius:var(--r-xs);text-transform:uppercase;box-shadow:var(--sh-1);white-space:nowrap;vertical-align:middle;}
+    /* PAID was #c0392b, the same red as an error. Being paid is the best news
+       on the row; it should not look like a problem. */
+    .nv-jt-foot{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:11.5px;color:var(--nvu-ink-2,#6d8478);line-height:1.45}
+    .nv-done-date{font-size:12px;font-weight:700;color:var(--nvu-ink-2,#6d8478);white-space:nowrap}
+    .nv-paid-tape{display:inline-flex;align-items:center;gap:4px;background:#0f7a4f;color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.8px;padding:2px 7px;border-radius:var(--r-xs);text-transform:uppercase;box-shadow:var(--sh-1);white-space:nowrap;vertical-align:middle;}
     .parcel-card{position:relative;overflow:hidden;padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--nvu-bg);}
-    .parcel-card .nv-paid-ribbon{position:absolute;top:11px;right:-30px;transform:rotate(38deg);background:#c0392b;color:#fff;font-size:9px;font-weight:800;letter-spacing:1.2px;padding:3px 34px;box-shadow:var(--sh-1);pointer-events:none;z-index:2;}
+    .parcel-card .nv-paid-ribbon{position:absolute;top:11px;right:-30px;transform:rotate(38deg);background:#0f7a4f;color:#fff;font-size:9px;font-weight:800;letter-spacing:1.2px;padding:3px 34px;box-shadow:var(--sh-1);pointer-events:none;z-index:2;}
     /* ═══ Change-driven motion (NovaX motion pass) ═══════════════════════
        novaxRowIn used to be baked into .metric / .log-item / .parcel-card
        themselves, with nth-child stagger delays here. Because the portal
@@ -2017,7 +2021,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=7d3f9fbb" defer></script>
+  <script src="client-app.js?v=eea75307" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2150,12 +2154,12 @@
                 <div class="section-head" id="statusBoardHead" onclick="toggleStatusBoard()" style="cursor:pointer;user-select:none"><div><h3>Live Status Board <span id="statusBoardChevron" style="font-size:13px;color:var(--green)">▸</span></h3><p id="statusBoardSummary">Tap to expand your parcels grouped by status.</p></div></div>
                 <div class="status-board" id="clientStatusBoard" style="display:none"></div>
               </div>
-              <div class="grid two mt-14" id="clientDashboardMainGrid">
+              <div class="grid mt-14" id="clientDashboardMainGrid">
                 <div class="panel">
                   <div class="toolbar">
-                    <div class="search"><span>#</span><input id="clientSearch" placeholder="Track by AWB, city, status"></div>
+                    <div class="search"><span aria-hidden="true">⌕</span><input id="clientSearch" placeholder="Track by AWB, city, status"></div>
                     <div class="inline-actions">
-                      <button class="action-btn" id="bookParcelBtn">Book New Parcel</button>
+                      <button class="ghost-btn" id="bookParcelBtn">Book New Parcel</button>
                       <button class="ghost-btn" id="askAiBtn">Ask AI</button>
                     </div>
                   </div>
@@ -2167,10 +2171,10 @@
                   </div>
                   <div class="mobile-card-list" id="clientParcelCards"></div>
                 </div>
-                <aside class="grid">
+                <aside class="grid" id="clientSelectedPanel" style="display:none">
                   <div class="panel">
                     <div class="section-head">
-                      <div><h3>Selected Parcel Status</h3><p id="selectedParcelText">Only the important seller-facing movement is shown here.</p></div>
+                      <div><h3>Selected Parcel Status</h3><p id="selectedParcelText">Pick a parcel to see its journey.</p></div>
                       
                     </div>
                     <div class="journey" id="clientJourney"></div>
