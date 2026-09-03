@@ -182,6 +182,32 @@ try {
   } else {
     notes.push(`payment rule identical in browser and server (${a})`);
   }
+
+  /* Third copy, added 3 Sep 2026: the same rule now also lives in Postgres as
+     public.nv_is_prepaid_mode, because the invoice generators and every booking
+     path need it server-side where no JS runs. It was added precisely BECAUSE
+     the SQL had drifted: admin_generate_invoice* matched 'non\s*cod|prepaid',
+     which does not match "non-cod" or a bare "paid", so two spellings the
+     browser and API both treat as prepaid were being invoiced as COD.
+     Compared as a pattern string, since SQL writes it without / delimiters. */
+  const sql = readFileSync(join(root, "sql_novax_cod_prepaid_guard.sql"), "utf8");
+  const sm = sql.match(/~\*\s*'([^']+)'/);
+  if (!sm) {
+    problems.push("Could not read the prepaid pattern from sql_novax_cod_prepaid_guard.sql.");
+  } else {
+    /* JS source has doubled backslashes in the SQL literal; normalise both to
+       the same bare pattern before comparing. */
+    const jsPattern  = a.replace(/^\//, "").replace(/\/[gimsuy]*$/, "");
+    const sqlPattern = sm[1];
+    if (jsPattern !== sqlPattern) {
+      problems.push(
+        `Payment rule drift: JS has ${jsPattern} but the SQL guard has ${sqlPattern}. ` +
+        `Booking and invoicing would disagree with the portal about what counts as prepaid.`
+      );
+    } else {
+      notes.push(`payment rule identical in SQL too (${sqlPattern})`);
+    }
+  }
 } catch (e) {
   notes.push(`payment rule parity check skipped (${e.message})`);
 }
