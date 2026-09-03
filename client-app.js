@@ -3236,12 +3236,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           : "";
         return `<div class="invoice-card nv-inv-row" style="animation-delay:${Math.min(idx*70,560)}ms"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="footer-note" style="margin-left:auto">${escLabelText(inv.createdAt)}</span></div><p style="margin:6px 0 0">${sum}</p>${absorbLine}${nvInvoiceSteps(inv.status)}<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Statement PDF</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">CSV</button></div></div>`;
       }).join("")||`<div class="ops-card"><strong>No invoices yet</strong><p>Once a delivered parcel is invoiced it appears here with a full statement.</p></div>`;
-      // NovaX (Shopify Final Test Visibility): "View imported orders" sets
-      // state.orderLogSourceFilter="shopify" so this feed narrows to source=shopify.
-      const orderLogFilterBar=document.getElementById("orderLogFilterBar");
-      if(orderLogFilterBar) orderLogFilterBar.style.display=state.orderLogSourceFilter?"flex":"none";
-      const orderLogParcels=state.orderLogSourceFilter?cm.parcels.filter(p=>(p.source||"")===state.orderLogSourceFilter):cm.parcels;
-      document.getElementById("orderLogFeed").innerHTML=orderLogParcels.map(p=>{ const alert=alertForParcel(p); return `<div class="order-log-card clickable-row" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><div><strong>${escLabelText(p.awb)}</strong><div class="footer-note">${escLabelText(p.consignee)} | ${escLabelText(p.city)}</div></div><div><strong>${escLabelText(p.status)}</strong><div class="footer-note">Last update ${escLabelText(p.updated)} | ${escLabelText(alert.label)}</div>${waActionsHtml(p.awb, waKindForStatus(p.status))}</div></div>`; }).join("")||`<div class="ops-card"><strong>No order logs</strong></div>`;
+      /* Order Logs tab removed 3 Sep 2026. It rendered one card per PARCEL --
+         not per event -- showing the current status and "Last update", which
+         the dashboard already showed with more detail, and clicking it opened
+         the same drawer. It read nothing from nv_parcel_status_log, where the
+         1,025 real timestamped status changes actually live, so the one thing
+         its name promised was the one thing it did not do. It also rebuilt
+         every card on every render whether or not the tab was open. */
       // NovaX fix: the four hardcoded role cards that used to live here were
       // not real users. Sub accounts now come from public.staff_users.
       try{ renderSubAccounts(); }catch(e){}
@@ -7934,14 +7935,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
       }).catch(function(){});
     }
+    /* Used to jump to Order Logs with a source filter. That tab is gone, so
+       this goes to the dashboard, where imported parcels appear as normal
+       New booked rows, and says how many were found rather than silently
+       landing the merchant on an unfiltered list. */
     function viewShopifyImportedOrders(){
-      state.orderLogSourceFilter="shopify";
-      showClientTab("logs");
-      toast("Showing Shopify-imported orders in Order Logs.");
-    }
-    function clearOrderLogFilter(){
-      state.orderLogSourceFilter="";
-      renderClientReportFull();
+      showClientTab("dashboard");
+      var n=0;
+      try{ n=(state.parcels||[]).filter(function(p){
+        return p && p.clientId===activeClientId() && String(p.source||"")==="shopify"; }).length; }catch(e){}
+      toast(n ? (n+" Shopify order(s) are on your dashboard.")
+              : "No Shopify-imported orders yet.");
     }
     function shopifyCopySetupInstructions(){
       const url=(document.getElementById("shopifyIntakeUrlOut")?.value||"").trim();
@@ -8275,7 +8279,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        makes the call safe from any point in the file. */
     function normalizeClientTab(id){
       var TABS = ["dashboard","newBooking","awbLabel","bulkBooking","integrations",
-                  "reports","money","logs","subAccounts","tickets","support"];
+                  "reports","money","subAccounts","tickets","support"];
       var ALIASES = { wallet:"money", payments:"money", payment:"money", invoices:"money" };
       var v = String(id || "").trim();
       if(ALIASES[v]) v = ALIASES[v];
@@ -8528,10 +8532,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // the old split was quietly acting as the permission boundary, so
       // merging the tabs without this change would have handed every Finance
       // sub-account the ability to withdraw to any IBAN they typed.
-      Owner:     ["dashboard","newBooking","awbLabel","bulkBooking","integrations","reports","money","logs","subAccounts","tickets","support"],
-      Finance:   ["dashboard","reports","money","logs","tickets","support"],
+      Owner:     ["dashboard","newBooking","awbLabel","bulkBooking","integrations","reports","money","subAccounts","tickets","support"],
+      Finance:   ["dashboard","reports","money","tickets","support"],
       Warehouse: ["dashboard","newBooking","bulkBooking","awbLabel","support"],
-      Support:   ["dashboard","logs","tickets","support"]
+      Support:   ["dashboard","tickets","support"]
     };
     function nvClientRole(){ var r=window.__novaxClientRole; return NOVAX_ROLE_TABS[r]?r:"Owner"; }
     function nvRoleTabs(){ return NOVAX_ROLE_TABS[nvClientRole()]; }
@@ -10051,7 +10055,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           { tab:"reports", title:"Full Report", text:"See every parcel with filters and export it as CSV or PDF." },
           { tab:"payments", title:"Payments", text:"Delivered parcels turn into payable invoices here. Download them any time." },
           { tab:"wallet", title:"Wallet", text:"Track your balance and request a payout in a few taps whenever you are ready." },
-          { tab:"logs", title:"Order Logs", text:"A clean audit trail of every status change for every parcel you have booked." },
           { tab:"subAccounts", title:"Sub Accounts", text:"Invite your team, finance, warehouse, or support, with their own scoped logins." },
           { tab:"support", title:"Talk To Your AI", text:"Tap the Autopilot button in the corner anytime. I read your live data and answer instantly." }
         ];
@@ -10384,7 +10387,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
 
       /* Demote rarely used tabs behind a "More" menu (all 11 tabs stay available). */
-      var RARE_TABS=["integrations","logs","subAccounts","support"];
+      var RARE_TABS=["integrations","subAccounts","support"];
       function nvGroupRareTabs(){
         var tabs=document.querySelectorAll("[data-client-tab]");
         if(!tabs.length || document.getElementById("nvMoreWrap")) return;
@@ -12462,7 +12465,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(wallet>0) return { h:"Cashout available.", a:"You can withdraw Rs "+Math.round(wallet)+".", key:"wal_"+Math.round(wallet), go:"wallet" };
       return { h:"Your payout area.", a:"Choose amount, payout speed and confirm IBAN.", key:"wal_default", go:"wallet" };
     }
-    if(tab==="logs") return { h:"Every parcel has an audit trail.", a:"Review any order that looks wrong.", key:"logs_default", go:"logs" };
     if(tab==="subAccounts") return { h:"Give your team separate access.", a:"Invite finance, warehouse or support users.", key:"sub_default", go:"subAccounts" };
     if(tab==="support") return { h:"Ask in normal words.", a:"Try: \"mera parcel kahan hai?\" or \"COD kab milega?\"", key:"sup_default", go:"support" };
     return null;
@@ -13358,7 +13360,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ["reports","Full Report","Every parcel, filterable"],
       ["payments","Payments","Invoices and settlement"],
       ["wallet","Wallet","Balance, withdrawals, ledger"],
-      ["logs","Order Logs","Activity history"],
       ["integrations","Integrations","Shopify, WooCommerce, API"],
       ["tickets","Support Tickets","Raise and track issues"],
       ["subAccounts","Sub Accounts","Team access"]

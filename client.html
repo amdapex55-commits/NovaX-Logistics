@@ -552,8 +552,6 @@
     .seller-step.current{border-color:var(--green);background:#effdf6;}
     .seller-step.problem{border-color:var(--red);background:#fff2ef;}
     .seller-step .step-dot{width:34px;height:34px;}
-    .order-log-card{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr) auto;gap:12px;align-items:center;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--nvu-bg);}
-    .order-log-card strong{overflow-wrap:anywhere;}
     .count-up{animation:countPop .5s ease both;}
     @keyframes countPop{from{opacity:0;transform:translateY(6px) scale(.96);}to{opacity:1;transform:none;}}
     .done-check{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;margin:0 auto 14px;background:rgba(20,199,123,.14);border:2px solid var(--green);}
@@ -1816,7 +1814,9 @@
      shipper's. A rider cannot deliver from that. It also silently overrode
      the overflow-wrap:anywhere the label styles already set on these fields.
 
-     `.order-log-card strong` came out for the same reason: it holds the
+     (`.order-log-card strong` came out for the same reason. That class is gone
+     with the Order Logs tab, but the reasoning is kept because it is why
+     `.awb-field strong` must stay out of this list too: it held the
      parcel status, so "Parcel received at destination" rendered 225px wide
      in a 125px cell and ran 51px off the side of the phone, on 48 elements
      of the order-log tab at once.
@@ -1855,7 +1855,7 @@
   [data-theme="dark"] .money-box,[data-theme="dark"] .ops-card,[data-theme="dark"] .invoice-card,
   [data-theme="dark"] .parcel-card,[data-theme="dark"] .modal-card,[data-theme="dark"] .log-item,
   [data-theme="dark"] .journey-item,[data-theme="dark"] .sb-parcel,[data-theme="dark"] .tier-card,
-  [data-theme="dark"] .seller-step,[data-theme="dark"] .order-log-card,[data-theme="dark"] .nv-ins,
+  [data-theme="dark"] .seller-step,[data-theme="dark"] .nv-ins,
   [data-theme="dark"] .nv-onb,[data-theme="dark"] .nv-trend-panel,
   [data-theme="dark"] .client-menu,[data-theme="dark"] .search,[data-theme="dark"] .ghost-btn,
   [data-theme="dark"] .nv-theme-toggle,[data-theme="dark"] .meter,[data-theme="dark"] .nvcoach-bar{
@@ -2006,7 +2006,7 @@
      cover real content. */
   #clientParcelCards:empty::after,#newBookedList:empty::after,
   #clientInvoiceList:empty::after,#clientPaymentHistory:empty::after,
-  #paymentTimeline:empty::after,#orderLogFeed:empty::after,
+  #paymentTimeline:empty::after,
   #walletLedgerList:empty::after,#withdrawHistory:empty::after,
   #pickupEligibleList:empty::after,#pickupRequestList:empty::after,
   #subAccountList:empty::after,
@@ -2022,7 +2022,6 @@
   #clientInvoiceList:empty::after{content:"No invoices yet. They appear once your delivered parcels are settled.";}
   #clientPaymentHistory:empty::after{content:"No payments yet.";}
   #paymentTimeline:empty::after{content:"No invoice in progress right now.";}
-  #orderLogFeed:empty::after{content:"No activity recorded yet.";}
   #walletLedgerList:empty::after{content:"No wallet activity yet.";}
   #withdrawHistory:empty::after{content:"No withdrawals requested yet.";}
   #pickupEligibleList:empty::after{content:"No parcels ready for pickup.";}
@@ -2072,7 +2071,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=fb96b02e" defer></script>
+  <script src="client-app.js?v=495e2ea3" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2156,7 +2155,6 @@
               <button class="client-tab" data-client-tab="integrations">API</button>
               <button class="client-tab" data-client-tab="reports">Full Report</button>
               <button class="client-tab" data-client-tab="money">Money</button>
-              <button class="client-tab" data-client-tab="logs">Order Logs</button>
               <button class="client-tab" data-client-tab="subAccounts">Sub Accounts</button>
               <button class="client-tab" data-client-tab="tickets">Support Tickets</button>
             </nav>
@@ -2606,13 +2604,6 @@
                 <div class="ops-list" id="walletLedgerList"></div>
               </div>
             
-            </section>
-            <section class="client-module" id="client-logs">
-              <div class="panel">
-                <div class="section-head"><div><h3>Order Logs</h3><p>Clean parcel activity summary for every parcel you have booked.</p></div></div>
-                <div class="inline-actions" id="orderLogFilterBar" style="display:none;margin-bottom:10px"><span class="chip info">Filtered: Shopify orders</span><button class="ghost-btn" onclick="clearOrderLogFilter()">Clear filter</button></div>
-                <div class="log-feed" id="orderLogFeed"></div>
-              </div>
             </section>
             <!-- SUB ACCOUNTS -->
             <section class="client-module" id="client-subAccounts">
@@ -3133,7 +3124,6 @@ html[data-theme="dark"] .invoice-card,
 html[data-theme="dark"] .sb-parcel,
 html[data-theme="dark"] .modal-card,
 html[data-theme="dark"] .tier-card,
-html[data-theme="dark"] .order-log-card,
 html[data-theme="dark"] .nv-onboarding,
 html[data-theme="dark"] .nv-ins-stat,
 html[data-theme="dark"] .nv-cod-hero,
