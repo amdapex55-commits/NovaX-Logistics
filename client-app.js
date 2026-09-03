@@ -1953,9 +1953,13 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     function nvProgressPct(status){
       var st=(typeof nvStatus==="function"?nvStatus(status):status)||"";
       if(st==="Delivered") return 100;
+      /* Percentage is derived from the SAME fraction the step label shows.
+         It used to divide by (length-1), so "New booked" printed "1/7" beside
+         "0%" -- a parcel that is booked has completed a step, and 0% next to
+         1/7 reads as a contradiction. Step n of N is now n/N. */
       var d=NV_DELIVERY_PATH.indexOf(st);
-      if(d>-1) return Math.round((d/(NV_DELIVERY_PATH.length-1))*100);
-      if(NV_EXCEPTION_AT_DOOR.indexOf(st)>-1) return 83;   // reached the door
+      if(d>-1) return Math.round(((d+1)/NV_DELIVERY_PATH.length)*100);
+      if(NV_EXCEPTION_AT_DOOR.indexOf(st)>-1) return 86;   // reached the door: 6/7
       var r=NV_RETURN_PATH.indexOf(st);
       if(r>-1) return 85+Math.round((r/(NV_RETURN_PATH.length-1))*15);
       return 0;
@@ -3257,7 +3261,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        encoding the slashes would break every proof photo. */
     function escLabelText(v){ return String(v===undefined||v===null?"":v).replace(/[&<>"']/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
     function labelText(value,fallback){ var v=(value===undefined||value===null)?"":String(value).trim(); var out=v?v:((fallback!==undefined&&fallback!==null&&fallback!=="")?fallback:"-"); return escLabelText(out); }
-    function labelDate(p){ var d=p&&(p.date||p.statusSince||p.updated); var out=d?String(d).slice(0,10):new Date().toISOString().slice(0,10); return escLabelText(out); }
+    /* "11 Jul 2026", not "2026-07-11". The ISO form wrapped mid-value on the
+       printed label ("2026-07-" then "11" on the next line) because the left
+       zone is narrow, and a hyphenated string is a legal break point. A short
+       month name has no break point a browser will use, and it is also what a
+       rider reads faster at arm's length. */
+    var NV_MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    function labelDate(p){
+      var d=p&&(p.date||p.statusSince||p.updated);
+      var iso=d?String(d).slice(0,10):new Date().toISOString().slice(0,10);
+      var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+      if(!m) return escLabelText(iso);
+      var mon=NV_MONTHS[parseInt(m[2],10)-1];
+      if(!mon) return escLabelText(iso);
+      return escLabelText(parseInt(m[3],10)+" "+mon+" "+m[1]);
+    }
     function parcelItemDetails(p){ return labelText(p&&(p.category||p.itemDetails||p.product),"General merchandise"); }
     function parcelPaymentMode(p){ return labelText(p&&(p.paymentMode||p.payment_mode),"COD"); }
     function parcelOrderId(p){ return labelText(p&&(p.orderId||p.order_id||p.orderNo),"-"); }
@@ -3901,6 +3919,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          dashboard nobody opens. */
       const payConflict = !!(window.NovaXPayment && window.NovaXPayment.classify(p).conflict);
       const referenceNo=parcelReferenceNo(p);
+      /* An empty field printed as "-" is noise on an already dense label: it
+         occupies a row and tells the rider nothing. Print the row only when
+         there is a value. parcelOrderId/parcelReferenceNo fall back to "-",
+         so the raw values are re-read here rather than comparing to "-",
+         which a merchant could legitimately type. */
+      const rawOrderId=String((p&&(p.orderId||p.order_id||p.orderNo))||"").trim();
+      const rawReference=String((p&&(p.referenceNo||p.reference||p.ref||p.customerRef))||"").trim();
+      const orderIdField = rawOrderId
+        ? `<div class="awb-field"><span>Order ID</span><strong>${escLabelText(orderId)}</strong></div>` : "";
+      const referenceField = rawReference
+        ? `<div class="awb-field"><span>Reference No</span><strong>${escLabelText(referenceNo)}</strong></div>` : "";
       /* Shipper's packing note. Optional by design: parcels booked before this
          field existed, and every booking where the shipper left it blank, must
          print exactly the label they printed yesterday. */
@@ -3908,7 +3937,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const packingNote = comments
         ? `<div class="awb-field awb-packing"><span>Packing note</span><strong>${escLabelText(comments)}</strong></div>`
         : "";
-      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${escLabelText(origin)} &rarr; ${escLabelText(destination)}</div><div class="awb-mini-grid"><div class="awb-field"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div><div class="awb-field"><span>Order ID</span><strong>${escLabelText(orderId)}</strong></div><div class="awb-field"><span>Reference No</span><strong>${escLabelText(referenceNo)}</strong></div>${nvAwbDistanceField(p)}</div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${escLabelText(consignee)}</strong></div><div class="awb-field"><span>Phone</span><strong>${escLabelText(phone)}</strong></div><div class="awb-field awb-cod ${payConflict?"is-conflict":""}"><span>COD</span><strong>${cod}</strong>${payConflict?`<em style="display:block;font-style:normal;font-size:10px;font-weight:800;color:#a1230e;line-height:1.2;margin-top:2px">MARKED PREPAID &mdash; CONFIRM BEFORE COLLECTING</em>`:""}</div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen==="Yes"?"is-yes":"is-no"}"><span>Allow to Open</span><strong>${allowOpen==="Yes"?"YES &mdash; customer may open":"NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${escLabelText(address)}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div>${packingNote}</section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
+      return `<div class="awb-label"><section class="awb-zone awb-left"><div class="awb-zone-title">NovaX Logistics AWB</div><div class="awb-no">${p.awb}</div><div class="awb-route">${escLabelText(origin)} &rarr; ${escLabelText(destination)}</div><div class="awb-mini-grid"><div class="awb-field awb-date"><span>Booking Date</span><strong>${bookedDate}</strong></div><div class="awb-field"><span>Service / Payment</span><strong>${service} / ${paymentMode}</strong></div>${orderIdField}${referenceField}${nvAwbDistanceField(p)}</div></section><section class="awb-zone awb-center"><div class="awb-zone-title">Receiver / Parcel</div><div class="awb-mini-grid"><div class="awb-field"><span>Consignee</span><strong>${escLabelText(consignee)}</strong></div><div class="awb-field"><span>Phone</span><strong>${escLabelText(phone)}</strong></div><div class="awb-field awb-cod ${payConflict?"is-conflict":""}"><span>COD</span><strong>${cod}</strong>${payConflict?`<em style="display:block;font-style:normal;font-size:10px;font-weight:800;color:#a1230e;line-height:1.2;margin-top:2px">MARKED PREPAID &mdash; CONFIRM BEFORE COLLECTING</em>`:""}</div><div class="awb-field"><span>Weight</span><strong>${weight}</strong></div><div class="awb-field"><span>Handling</span><strong>${handling}</strong></div><div class="awb-field awb-openflag ${allowOpen==="Yes"?"is-yes":"is-no"}"><span>Allow to Open</span><strong>${allowOpen==="Yes"?"YES &mdash; customer may open":"NO &mdash; do not open"}</strong></div><div class="awb-field"><span>Client / Shipper</span><strong>${clientLabel}</strong></div></div><div class="awb-field awb-address"><span>Address</span><strong>${escLabelText(address)}</strong></div><div class="awb-field awb-item"><span>Item / Product Details</span><strong>${itemDetails}</strong></div>${packingNote}</section><section class="awb-zone awb-scan"><img class="qr-img" src="${qrUrl(p.awb)}" alt="QR ${p.awb}"><img class="barcode-img" src="${barcodeUrl(p.awb)}" alt="Barcode ${p.awb}"><span class="chip info">${p.awb}</span></section></div>`;
     }
     /* NovaX: AWB print mode -- "thermal" (real 4x6in courier label, one per
        page, portrait) or "a4" (3-up on a landscape office sheet). Thermal
@@ -4028,6 +4057,27 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return { ok:true, count:valid.length, awbs:valid.map(p=>p.awb), error:null };
     }
     function printAwb(){ printLabels([state.lastGeneratedAwb||state.selectedAwb]); }
+    /* Outer-scope twin of nvSafeCall, which lives in the Phase-3 closure and is
+       not reachable here -- see 8cf48d4. */
+    function nvSafeCallOuter(fn){ try{ return fn(); }catch(e){ return undefined; } }
+    /* The label itself cannot be attached to a wa.me link, so this sends the
+       details a person actually needs to identify and track the parcel. */
+    function whatsappAwbSummary(awb){
+      var p=(state.parcels||[]).find(function(x){ return x.awb===awb; });
+      if(!p){ toast("Parcel not found."); return; }
+      var lines=[
+        "NovaX AWB " + p.awb,
+        "To: " + String(p.consignee||"-") + " (" + String(p.city||"-") + ")",
+        "COD: " + money(p.cod),
+        String(p.weight||"") ? ("Weight: " + p.weight) : "",
+        "Booked: " + String((p.date||"")).slice(0,10)
+      ].filter(Boolean);
+      var link="";
+      try{ link=customerTrackMessage(p)||""; }catch(e){}
+      var msg=lines.join("\n") + (link?("\n\n"+link):"");
+      try{ window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank","noopener"); }
+      catch(e){ toast("Could not open WhatsApp."); }
+    }
     function openAwbModal(awb){ const p=state.parcels.find(x=>x.awb===awb)||selectedParcel(); state.lastGeneratedAwb=p.awb; saveState(); document.getElementById("awbModalBody").innerHTML=awbCompleteBadge(p)+awbLabelHtml(p); nvApplyPrintMode(); try{ renderAwbPrintModeToggle(); }catch(e){} try{ renderAwbShareActions(p); }catch(e){} document.getElementById("awbModal").classList.add("show"); }
     /* NovaX new (Smart Portal A): share the customer tracking link straight
        from the AWB modal, right where the merchant already is after booking. */
@@ -5590,8 +5640,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         longTxt = d + ' days past its expected delivery';
         shortTxt = d + 'd late';
       } else if (late) {
+        /* The short form said "due Sun 30 Aug" for a parcel that was already
+           six days overdue -- a date in the past, worded as though it were
+           still coming. Only the >7d branch ever admitted lateness. The long
+           form was always correct ("Was expected by"), so only this one lied,
+           and it is the one the table shows. */
+        var dl = Math.floor(overdueMs / 86400000);
         longTxt = 'Was expected by ' + e.text;
-        shortTxt = 'due ' + e.text;
+        shortTxt = dl >= 1 ? (dl + 'd late') : 'late';
       } else {
         longTxt = 'Expected by ' + e.text;
         shortTxt = 'by ' + e.text;
@@ -7985,8 +8041,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const list=document.getElementById("newBookedList"); if(!list) return;
       const items=newBookedParcels();
       if(!items.length){ list.innerHTML=`<div class="ops-card"><strong>No new booked parcels yet</strong><p class="footer-note">Printable AWB labels appear here the moment a parcel is booked.</p><div class="inline-actions" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="action-btn" data-nv-cock="tab" data-tab="newBooking">Book a parcel</button><button class="ghost-btn" data-nv-cock="tab" data-tab="bulkBooking">Upload bulk CSV</button><button class="ghost-btn" data-nv-cock="tab" data-tab="integrations">Sync your store</button></div></div>`; return; }
-      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}" checked><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${p.source?` &middot; <span class="chip info">${escLabelText(p.source)}</span>`:""}</span><button class="ghost-btn" onclick="printLabels(['${p.awb}'])">Print</button><button class="ghost-btn" title="Delete this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:#b91c1c;border-color:#f0b4ac">Delete</button></label>`).join("");
+      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}" checked><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${p.source?` &middot; <span class="chip info">${escLabelText(p.source)}</span>`:""}${nvPrintedMark(p)}</span><button class="ghost-btn" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn" title="Delete this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:#b91c1c;border-color:#f0b4ac">Delete</button></label>`).join("");
     }
+    /* The tab banner already knew whether every label was printed, but no row
+       said which. A merchant printing a batch had no way to see what they had
+       already done, so the safe move was always to reprint everything. */
+    function nvPrintedMark(p){
+      if(!p||!(p.awbPrinted||p.labelPrinted)) return "";
+      var t=p.awbPrintedAt||p.printedAt||"";
+      var when=String(t).trim();
+      /* Show a time when there is one; older parcels only carry the flag. */
+      return ' &middot; <span class="chip good" style="font-weight:700">printed'+
+             (when?(" "+escLabelText(when)):"")+"</span>";
+    }
+
     /* NovaX new: delete a parcel booked with wrong details (wrong COD,
        wrong number, wrong address). Server-side this is only permitted
        while the parcel is still "New booked" and un-invoiced -- once a
@@ -8033,8 +8101,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const active=activePickupAwbs();
       return newBookedParcels().filter(function(p){ return !active.has(p.awb); });
     }
+    /* The merchant's own warehouse address, retyped on every single pickup
+       request because the field was cleared on submit and never prefilled
+       except from the row-level "Request pickup" chip. Last address used wins,
+       then whatever is saved on the account. */
+    function nvPickupAddressDefault(){
+      try{
+        var last=String(state.lastPickupAddress||"").trim();
+        if(last) return last;
+        var prev=(state.pickupRequests||[]).find(function(r){
+          return r && r.clientId===activeClientId() && String(r.pickupAddress||"").trim();
+        });
+        if(prev) return String(prev.pickupAddress).trim();
+        return String((state.client&&state.client.address)||"").trim();
+      }catch(e){ return ""; }
+    }
+    function nvPrefillPickupAddress(){
+      var el=document.getElementById("pickupAddress");
+      if(!el || el.value.trim()) return;          // never overwrite typing
+      var v=nvPickupAddressDefault();
+      if(v) el.value=v;
+    }
     function renderPickupEligibleList(){
       const list=document.getElementById("pickupEligibleList"); if(!list) return;
+      nvPrefillPickupAddress();
       const items=pickupEligibleParcels();
       if(!items.length){ list.innerHTML=`<p class="footer-note">No New booked AWBs are available for pickup right now.</p>`; return; }
       list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="pickup-check" value="${escLabelText(p.awb)}"><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${labelText(p.consignee)} &middot; ${labelText(p.city)} &middot; ${money(p.cod)}</span></label>`).join("");
@@ -8066,9 +8156,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const note=(document.getElementById("pickupNote")?.value||"").trim();
       const id="PR-"+Date.now().toString(36).toUpperCase();
       state.pickupRequests=state.pickupRequests||[];
+      state.lastPickupAddress=address;
       state.pickupRequests.unshift({ id:id, clientId:activeClientId(), awbs:awbs, pickupAddress:address, requestedFor:requestedFor, note:note, status:"Requested", riderId:"", createdAt:new Date().toISOString() });
       saveState();
-      const addressEl=document.getElementById("pickupAddress"); if(addressEl) addressEl.value="";
+      /* The address is kept, not cleared: the next pickup is almost always
+         from the same warehouse. The note and the time are cleared, because
+         those are specific to the collection that was just requested. */
+      state.lastPickupAddress=address;
       const notedEl=document.getElementById("pickupNote"); if(notedEl) notedEl.value="";
       const forEl=document.getElementById("pickupRequestedFor"); if(forEl) forEl.value="";
       renderPickupEligibleList(); renderPickupRequestList();
@@ -8300,6 +8394,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     document.getElementById("newBookedSelectAllBtn")?.addEventListener("click",selectAllNewBooked);
     document.getElementById("newBookedPrintBtn")?.addEventListener("click",printNewBookedSelected);
     document.getElementById("requestPickupBtn")?.addEventListener("click",requestPickup);
+    /* Merchants forward labels far more often than they print them: the parcel
+       is packed at home and the label goes to whoever has the printer.
+       There is no bundler in this repo and so no PDF library, and a browser
+       cannot attach a generated file to a wa.me link. Rather than fake either,
+       both buttons do the real thing the platform allows and say so plainly. */
+    document.getElementById("savePdfAwbBtn")?.addEventListener("click",function(){
+      var awb=state.lastGeneratedAwb||state.selectedAwb;
+      if(!awb){ toast("Book or select a parcel first."); return; }
+      toast("In the print dialog, set Destination to \u201cSave as PDF\u201d.");
+      /* Let the toast paint before the dialog steals the thread. */
+      setTimeout(function(){ nvSafeCallOuter(function(){ printLabels([awb]); }); },450);
+    });
+    document.getElementById("waAwbBtn")?.addEventListener("click",function(){
+      var awb=state.lastGeneratedAwb||state.selectedAwb;
+      if(!awb){ toast("Book or select a parcel first."); return; }
+      nvSafeCallOuter(function(){ whatsappAwbSummary(awb); });
+    });
     document.getElementById("awbModalPrint").addEventListener("click",()=>printLabels([state.lastGeneratedAwb]));
     nvApplyPrintMode();
     document.getElementById("reportCsvBtn").addEventListener("click",exportReportCsv);

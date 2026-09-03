@@ -827,6 +827,7 @@
     .awb-mini-grid{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:1.3mm !important;}
     .awb-field{border:1px solid #c9c9c9 !important;border-radius:var(--r-xs) !important;padding:1.2mm !important;min-width:0 !important;background:var(--nvu-bg) !important;}
     .awb-field span{display:block !important;font-size:6.5px !important;line-height:1 !important;font-weight:900 !important;text-transform:uppercase !important;color:#555 !important;margin-bottom:.6mm !important;}
+    .awb-field.awb-date strong{white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important;}
     .awb-field strong{display:block !important;font-size:9.5px !important;line-height:1.15 !important;font-weight:800 !important;color:#111 !important;overflow-wrap:anywhere !important;}
     /* COD is the single most costly field to misread on a real courier
        label -- oversize it the way every traditional AWB does. */
@@ -926,6 +927,7 @@
     .awb-mini-grid{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:1.3mm !important;}
     .awb-field{border:1px solid #b0b0b0 !important;border-radius:var(--r-xs) !important;padding:1.3mm !important;min-width:0 !important;background:var(--nvu-bg) !important;}
     .awb-field span{display:block !important;font-size:6.5px !important;line-height:1 !important;font-weight:900 !important;text-transform:uppercase !important;letter-spacing:.05em !important;color:#444 !important;margin-bottom:.7mm !important;}
+    .awb-field.awb-date strong{white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important;}
     .awb-field strong{display:block !important;font-size:10px !important;line-height:1.15 !important;font-weight:800 !important;color:#000 !important;overflow-wrap:anywhere !important;}
     /* COD is the number nobody may misread -- boxed, full width, largest. */
     .awb-field.awb-cod{grid-column:1 / -1 !important;border:2px solid #000 !important;padding:1.6mm !important;background:var(--nvu-bg) !important;}
@@ -1821,8 +1823,15 @@
 
      The COD box keeps nowrap, because that one genuinely is a figure and
      must never break across lines. */
+  /* .awb-field.awb-date joins the COD box for the same reason and NOT the
+     rest of the label: a date is a short token, and "2026-07-11" was breaking
+     after the second hyphen so the printed label read "2026-07-" above "11".
+     Scoped to the date alone -- putting every .awb-field strong in this list
+     is what once cut 487px off a Karachi address and 258px off a consignee
+     name, per the note above. */
   .money-box strong,.metric strong,.nv-ins-stat strong,.nv-inc-amt,
   .nv-doc-box strong,.ops-card-head strong,.awb-field.awb-cod strong,
+  .awb-field.awb-date strong,
   .nv-awb-compact-top strong,.nv-inc-chip{
     overflow-wrap:normal;word-break:keep-all;white-space:nowrap;
     font-variant-numeric:tabular-nums;letter-spacing:-.01em;
@@ -2063,7 +2072,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=fd3f33ad" defer></script>
+  <script src="client-app.js?v=83eaf08f" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2288,7 +2297,7 @@
             <!-- AWB LABEL -->
             <section class="client-module" id="client-awbLabel">
               <div class="panel">
-                <div class="section-head"><div><h3>Generated Air Way Bill</h3><p>QR and barcode both carry the assigned tracking ID.</p></div><div class="inline-actions"><button class="action-btn" id="printAwbBtn">Print Now</button><button class="ghost-btn" data-client-tab="dashboard">View Journey</button></div></div>
+                <div class="section-head"><div><h3>Generated Air Way Bill</h3><p>QR and barcode both carry the assigned tracking ID.</p></div><div class="inline-actions"><button class="action-btn" id="printAwbBtn">Print Now</button><button class="ghost-btn" id="savePdfAwbBtn">Save as PDF</button><button class="ghost-btn" id="waAwbBtn">Send on WhatsApp</button><button class="ghost-btn" data-client-tab="dashboard">View Journey</button></div></div>
                 <div id="awbLabelPreview"></div>
               </div>
               <div class="panel mt-14">
