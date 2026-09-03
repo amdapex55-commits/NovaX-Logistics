@@ -2028,6 +2028,30 @@
   #pickupRequestList:empty::after{content:"No pickup requests yet.";}
   #subAccountList:empty::after{content:"No team members added yet.";}
   #clientStatusBoard:empty::after{content:"No parcels to group yet.";}
+  /* ── the bottom-nav "More" opened a menu nobody could see ──────────────
+     #clientMenu is a <nav> at the TOP of the document, while the bottom nav is
+     position:fixed. Tapping More toggled .open correctly, but if the merchant
+     had scrolled at all -- which they have, because More is at the bottom of
+     the screen -- the menu unfolded far above the viewport. Measured on the
+     tickets tab at scrollY 545: the menu's bottom edge sat 328px ABOVE the top
+     of the screen. Nothing appeared to happen, so "More" looked dead.
+     On mobile it is now a sheet anchored above the bottom nav, which is what a
+     bottom-nav More is expected to do. Desktop is untouched: the sidebar there
+     is always visible and never uses .open. */
+  @media (max-width:759px){
+    #clientMenu.open{
+      position:fixed;
+      left:10px; right:10px; top:auto;
+      bottom:calc(64px + env(safe-area-inset-bottom, 0px));
+      z-index:140;                    /* over the bottom nav (110) and the Autopilot button (131) */
+      max-height:min(62vh, 430px);
+      overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+      background:var(--nvu-bg); border:1px solid var(--line);
+      border-radius:var(--r-lg); box-shadow:0 18px 44px rgba(0,0,0,.34);
+      padding:8px; gap:4px;
+    }
+    #clientMenu.open .client-tab{min-height:46px;}
+  }
   #nvTkList:empty::after{content:"No tickets yet \2014 raise one above if you need a human.";}
   /* Support desk status: open/closed and the real median first-reply time. */
   .nv-tk-desk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;
@@ -2089,7 +2113,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=c93a2639" defer></script>
+  <script src="client-app.js?v=84ed186d" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --

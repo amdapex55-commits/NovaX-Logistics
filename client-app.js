@@ -3518,6 +3518,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var n=0, iv=setInterval(function(){ boot(); if(++n>6) clearInterval(iv); }, 700);
     })();
 
+    /* Tapping anywhere off the sheet closes it. Without this the only way out
+       was to hit More again, which on a phone reads as a stuck menu. */
+    document.addEventListener("click", function(e){
+      if(window.innerWidth >= 760) return;
+      var menu = document.getElementById("clientMenu");
+      if(!menu || !menu.classList.contains("open")) return;
+      if(e.target.closest && (e.target.closest("#clientMenu") || e.target.closest('[data-nvbn="__more"]'))) return;
+      menu.classList.remove("open");
+      var tgl = document.getElementById("clientMenuToggle");
+      if(tgl) tgl.setAttribute("aria-expanded","false");
+    });
     document.addEventListener("click", function(e){
       var b = e.target && e.target.closest ? e.target.closest("[data-nvbn]") : null;
       if(!b) return;
@@ -3528,6 +3539,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(menu){
           var open = menu.classList.toggle("open");
           if(tgl) tgl.setAttribute("aria-expanded", String(open));
+          /* Belt and braces alongside the fixed-sheet CSS: if a future layout
+             ever puts this back in the document flow, at least bring it into
+             view rather than opening it off-screen again. */
+          if(open && menu.getBoundingClientRect().bottom < 0 && menu.scrollIntoView){
+            try{ menu.scrollIntoView({ block:"center" }); }catch(err){}
+          }
         }
         return;
       }
