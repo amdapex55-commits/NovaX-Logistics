@@ -2029,6 +2029,24 @@
   #subAccountList:empty::after{content:"No team members added yet.";}
   #clientStatusBoard:empty::after{content:"No parcels to group yet.";}
   #nvTkList:empty::after{content:"No tickets yet \2014 raise one above if you need a human.";}
+  /* Support desk status: open/closed and the real median first-reply time. */
+  .nv-tk-desk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;
+    padding:9px 12px;border:1px solid var(--line);border-radius:var(--r-lg);
+    background:var(--nvu-bg-2,var(--nvu-bg));font-size:12.5px;color:var(--nvu-ink-2,#6d8478);}
+  .nv-tk-desk .nv-tk-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:#9aa8a2;}
+  .nv-tk-desk.is-open .nv-tk-dot{background:#14C77B;box-shadow:0 0 0 3px rgba(20,199,123,.18);}
+  .nv-tk-desk strong{color:var(--nvu-ink);font-weight:800;}
+  .nv-tk-reasons{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 12px;}
+  .nv-tk-reasons button{border:1px solid var(--line);background:var(--nvu-bg);
+    color:var(--nvu-ink);border-radius:var(--r-pill);padding:7px 12px;font-size:12.5px;
+    font-weight:650;cursor:pointer;min-height:44px;}
+  .nv-tk-reasons button:hover{border-color:#14C77B;}
+  .nv-tk-reasons button[aria-pressed="true"]{background:#14C77B;border-color:#14C77B;color:#06231a;}
+  /* Parcel context on a ticket: status, COD and last movement, so neither the
+     merchant nor the agent has to go and look it up. */
+  .nv-tk-parcel{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;padding-top:8px;
+    border-top:1px dashed var(--line);font-size:12px;color:var(--nvu-ink-2,#6d8478);}
+  .nv-tk-parcel b{color:var(--nvu-ink);font-weight:750;}
   /* ---- Support tickets v2 ---- */
   .nv-tk-card{margin-bottom:10px;}
   .nv-tk-card .ops-card-head strong{overflow-wrap:anywhere;}
@@ -2071,7 +2089,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=495e2ea3" defer></script>
+  <script src="client-app.js?v=5eea20a0" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2628,6 +2646,15 @@
                   <div><h3>Support Tickets</h3><p>Raise an issue with a human. Tickets are opened by you, never automatically.</p></div>
                   <span class="chip info" id="nvTkOpenCount">0 open</span>
                 </div>
+                <!-- Filled by nv_support_desk_meta(): real opening hours and the
+                     median time a ticket actually waited for its first reply.
+                     A merchant staring at a blank form has no idea whether
+                     anyone is there. -->
+                <div id="nvTkDesk" class="nv-tk-desk" style="display:none"></div>
+                <!-- The commonest ticket subject in the database is literally
+                     "Reattempt requested - <AWB>". Merchants are not looking for
+                     an empty textarea; they want to point at a problem. -->
+                <div class="nv-tk-reasons" id="nvTkReasons" aria-label="Common issues"></div>
                 <div class="form-grid">
                   <div class="field" style="grid-column:1/-1"><label>What is the issue?</label><input id="nvTkSubject" maxlength="120" placeholder="One line, e.g. COD not received for N5990018"></div>
                   <div class="field"><label>Tracking number (optional)</label><input id="nvTkAwb" placeholder="N5990018" autocapitalize="characters"></div>

@@ -208,8 +208,13 @@ async function loadClientContext(admin: ReturnType<typeof createClient>, clientI
       .eq("client_id", clientId)
       .order("created_at", { ascending: false })
       .limit(1),
+    /* novax_tickets, not tickets. The portal and the admin panel have written
+       to novax_tickets since 8 Aug; the legacy `tickets` table froze that day
+       with 67 rows. Reading it meant Autopilot answered every "what about my
+       ticket?" from data that stopped existing a month ago, and could not see
+       a single one of the merchant's real tickets. */
     admin
-      .from("tickets")
+      .from("novax_tickets")
       .select("id, subject, status, created_at")
       .eq("client_id", clientId)
       .order("created_at", { ascending: false })
@@ -246,7 +251,15 @@ async function loadClientContext(admin: ReturnType<typeof createClient>, clientI
       : "No active delivery issues right now.";
 
   const allTickets = tickets || [];
-  const openTickets = allTickets.filter((t) => t.status === "Open");
+  /* novax_tickets uses lowercase and its own vocabulary: open | pending_client
+     | resolved. This compared against "Open" with a capital O, which the live
+     table never contains -- so pointing this file at the right table without
+     fixing the comparison would still have reported zero open tickets. */
+  const isOpenTicket = (t: any) => {
+    const st = String(t?.status || "").toLowerCase();
+    return st !== "resolved" && st !== "closed" && st !== "";
+  };
+  const openTickets = allTickets.filter(isOpenTicket);
   const recentTickets = allTickets.slice(0, 3);
   const outForDelivery = active.filter((p) => p.status === "Parcel out for delivery").length;
   const refused = list.filter((p) => p.status === "Refused").length;
@@ -500,34 +513,40 @@ async function createTicket(
   // Priority: any detected handoff rule (angry/legal/lost/COD dispute/repeated
   // failure/damaged/payment mismatch) always escalates to High. Otherwise
   // Medium, matching the tier this app's admin ticket queue already expects.
-  const priority = opts.handoffReason ? "High" : "Medium";
+  /* novax_tickets has no meta column and a checked vocabulary:
+       status   open | pending_client | resolved
+       priority low | normal | high
+       opened_by client | admin
+     The routing detail that used to live in meta is folded into the body so
+     nothing is lost -- it is what an agent reads first anyway. Raising into
+     `tickets` meant an AI-escalated ticket was invisible to BOTH the admin
+     queue and the merchant's own portal: it went nowhere, silently. */
+  const priority = opts.handoffReason ? "high" : "normal";
   const tier = opts.handoffReason ? "emergency" : "medium";
+  const trail = [
+    opts.body,
+    "",
+    "-- raised by NovaX Autopilot --",
+    `code: ${code}`,
+    `department: ${department}`,
+    opts.intent ? `intent: ${opts.intent}` : "",
+    opts.handoffReason ? `handoff reason: ${opts.handoffReason}` : "",
+    opts.awb ? `AWB: ${opts.awb}` : "",
+    opts.phone ? `phone: ${opts.phone}` : "",
+    `from: ${opts.portal === "client" ? "Seller (Autopilot)" : "Public visitor (Autopilot)"}`,
+  ].filter(Boolean).join("\n");
   const { data, error } = await admin
-    .from("tickets")
+    .from("novax_tickets")
     .insert({
       client_id: opts.clientId || null,
+      code,
+      awb: opts.awb || null,
       subject: opts.subject,
-      body: opts.body,
-      status: "Open",
-      meta: {
-        source: "novax-autopilot",
-        code,
-        tier,
-        priority,
-        intent: opts.intent || null,
-        handoffReason: opts.handoffReason || null,
-        from: opts.portal === "client" ? "Seller (Autopilot)" : "Public visitor (Autopilot)",
-        to: "Admin Control",
-        branch: "Admin",
-        department,
-        suggestedTeam: department,
-        sourceKey: "autopilot:" + opts.portal + ":" + Date.now(),
-        replies: [],
-        awb: opts.awb || null,
-        phone: opts.phone || null,
-        portal: opts.portal,
-        sessionUser: opts.userId || null,
-      },
+      body: trail,
+      priority,
+      opened_by: "client",
+      opened_by_name: "NovaX Autopilot",
+      status: "open",
     })
     .select("id")
     .maybeSingle();

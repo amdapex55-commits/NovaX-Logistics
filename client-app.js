@@ -7472,6 +7472,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           '<span class="chip info">Opened ' + nvTkEsc(String(t.created_at || "").replace("T", " ").slice(0, 16)) + '</span>' +
         '</div>' +
         (t.body ? '<p style="font-size:13px;margin:6px 0">' + nvTkEsc(t.body) + '</p>' : "") +
+        nvTkParcelHtml(t) +
         thread +
       '</div>';
     }
@@ -7572,7 +7573,121 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         });
     }
 
+    /* ── support desk status ────────────────────────────────────────────
+       support_hours has existed since 27 Jul and nothing read it, so the form
+       said nothing about whether anyone was there or how long an answer takes.
+       Both numbers come from nv_support_desk_meta(): the hours as configured,
+       and the median first-reply time measured from real replies over the last
+       90 days. Measured, not promised -- a merchant told "about 10 minutes"
+       and answered in 10 minutes believes the next number too. */
+    var NV_TK_DESK = null;
+    function nvTkDeskRender(){
+      var host = document.getElementById("nvTkDesk");
+      if (!host) return;
+      var d = NV_TK_DESK;
+      if (!d){ host.style.display = "none"; return; }
+      var hrs = function(h){
+        var n = Number(h) % 24, ap = n >= 12 ? "pm" : "am", h12 = n % 12;
+        return (h12 === 0 ? 12 : h12) + ap;
+      };
+      var when = d.is_24_7 ? "any time, 24/7"
+               : (hrs(d.open_hour) + " to " + hrs(d.close_hour) + " PKT");
+      var bits = [];
+      bits.push('<span class="nv-tk-dot"></span>');
+      if (d.open_now){
+        bits.push("<strong>Support is open</strong>");
+        bits.push("\u00b7 " + escLabelText(when));
+      } else {
+        bits.push("<strong>Support is closed</strong>");
+        bits.push("\u00b7 open " + escLabelText(when) + ", we will reply when we open");
+      }
+      /* Only shown once enough tickets have actually been answered for the
+         median to mean something -- the RPC returns null below 5. */
+      if (d.median_minutes != null){
+        var m = Number(d.median_minutes);
+        var t = m < 60 ? ("about " + Math.max(1, Math.round(m)) + " min")
+                       : ("about " + (Math.round(m / 6) / 10) + " hr");
+        bits.push('\u00b7 replies usually in <strong>' + escLabelText(t) + "</strong>");
+      }
+      host.className = "nv-tk-desk" + (d.open_now ? " is-open" : "");
+      host.innerHTML = bits.join(" ");
+      host.style.display = "flex";
+    }
+    function nvTkDeskLoad(){
+      var sb = window.__nvSb;
+      if (!sb || !sb.rpc) return;
+      Promise.resolve(sb.rpc("nv_support_desk_meta"))
+        .then(function(r){
+          if (r && !r.error && r.data){ NV_TK_DESK = r.data; nvTkDeskRender(); }
+        })
+        .catch(function(){ /* the form still works without it */ });
+    }
+
+    /* ── one-tap reasons ────────────────────────────────────────────────
+       Every ticket in the table is one of a handful of things, and the single
+       commonest subject is "Reattempt requested - <AWB>". Picking a reason
+       fills the subject and the priority, so the merchant types the detail
+       rather than inventing the framing. */
+    var NV_TK_REASONS = [
+      { key:"cod",     label:"COD not received",  subject:"COD not received",             priority:"high"   },
+      { key:"stuck",   label:"Parcel stuck",      subject:"Parcel has not moved",         priority:"high"   },
+      { key:"status",  label:"Wrong status",      subject:"Status looks wrong",           priority:"normal" },
+      { key:"damaged", label:"Damaged parcel",    subject:"Parcel arrived damaged",       priority:"high"   },
+      { key:"rider",   label:"Rider issue",       subject:"Issue with the rider",         priority:"normal" },
+      { key:"pickup",  label:"Pickup not done",   subject:"Pickup was not collected",     priority:"normal" },
+      { key:"other",   label:"Something else",    subject:"",                             priority:"normal" }
+    ];
+    function nvTkReasonsRender(){
+      var host = document.getElementById("nvTkReasons");
+      if (!host || host._nvBuilt) return;
+      host._nvBuilt = true;
+      host.innerHTML = NV_TK_REASONS.map(function(r){
+        return '<button type="button" data-nv-tkreason="' + r.key + '" aria-pressed="false">' +
+               escLabelText(r.label) + "</button>";
+      }).join("");
+      host.addEventListener("click", function(ev){
+        var b = ev.target.closest("[data-nv-tkreason]");
+        if (!b) return;
+        var key = b.getAttribute("data-nv-tkreason");
+        var r = NV_TK_REASONS.filter(function(x){ return x.key === key; })[0];
+        if (!r) return;
+        Array.prototype.forEach.call(host.querySelectorAll("[data-nv-tkreason]"), function(x){
+          x.setAttribute("aria-pressed", x === b ? "true" : "false");
+        });
+        var subj = document.getElementById("nvTkSubject");
+        var pri  = document.getElementById("nvTkPriority");
+        var awb  = document.getElementById("nvTkAwb");
+        /* Never overwrite something already typed. */
+        if (subj && r.subject && !subj.value.trim()) subj.value = r.subject;
+        if (pri && r.priority) pri.value = r.priority;
+        var focusEl = (awb && !awb.value.trim()) ? awb : (subj || null);
+        if (focusEl && focusEl.focus) focusEl.focus();
+      });
+    }
+
+    /* ── parcel context on a ticket ─────────────────────────────────────
+       A ticket about an AWB should carry that parcel's live state, so neither
+       the merchant nor the agent has to go and look it up in another tab. */
+    function nvTkParcelHtml(t){
+      if (!t || !t.awb) return "";
+      var p = null;
+      try{
+        p = (state.parcels || []).filter(function(x){
+          return x && String(x.awb).toUpperCase() === String(t.awb).toUpperCase();
+        })[0];
+      }catch(e){ p = null; }
+      if (!p) return "";
+      var bits = [
+        "<span>Status <b>" + escLabelText(p.status || "-") + "</b></span>",
+        "<span>COD <b>" + money(p.cod) + "</b></span>",
+        "<span>To <b>" + escLabelText(p.consignee || "-") + "</b>, " + escLabelText(p.city || "-") + "</span>"
+      ];
+      if (p.updated) bits.push("<span>Last update <b>" + escLabelText(p.updated) + "</b></span>");
+      return '<div class="nv-tk-parcel">' + bits.join("") + "</div>";
+    }
+
     function nvTkWire(){
+      try{ nvTkReasonsRender(); }catch(e){}
       var sub = document.getElementById("nvTkSubmit");
       if (sub && !sub._nvWired){ sub._nvWired = true; sub.addEventListener("click", nvTkSubmit); }
       var pane = document.getElementById("client-tickets");
@@ -7606,7 +7721,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           try{ nvTkRender(); }catch(e){}
         }
       }
-      setTimeout(function(){ tick(); try{ nvTkLoad(); }catch(e){} }, 900);
+      setTimeout(function(){ tick(); try{ nvTkLoad(); }catch(e){} try{ nvTkDeskLoad(); }catch(e){} }, 900);
       nvInterval(tick, 3000);
       // Refresh from the server only while the merchant is actually looking
       // at the tickets tab, and only once a minute -- v1 polled constantly.

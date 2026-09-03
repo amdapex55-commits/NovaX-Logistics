@@ -167,7 +167,10 @@ async function runTool(admin: Admin, clientId: string, name: string, args: any):
         admin.from("parcels").select(COUNT_COLS).eq("client_id", clientId)
           .order("booked_at", { ascending: false }).limit(400),
         admin.from("clients").select("wallet_balance, name").eq("id", clientId).maybeSingle(),
-        admin.from("tickets").select("status").eq("client_id", clientId)
+        /* novax_tickets, not tickets: the legacy table froze on 7 Aug, so this
+           judged "does this merchant have open tickets?" from a month-old
+           snapshot for every single client. */
+        admin.from("novax_tickets").select("status").eq("client_id", clientId)
           .order("created_at", { ascending: false }).limit(20),
       ]);
       const list = parcels || [];
@@ -180,7 +183,13 @@ async function runTool(admin: Admin, clientId: string, name: string, args: any):
         return h !== null && h >= 24 &&
           !["Delivered", "Parcel returned to consignee"].includes(String(p.status || ""));
       });
-      const open = (tickets || []).filter((t: any) => String(t.status || "").toLowerCase() !== "closed");
+      /* novax_tickets closes a ticket as "resolved"; "closed" never appears in
+         it, so this counted every resolved ticket as still open and told the
+         merchant they had a pile of unanswered issues. */
+      const open = (tickets || []).filter((t: any) => {
+        const st = String(t?.status || "").toLowerCase();
+        return st !== "resolved" && st !== "closed" && st !== "";
+      });
       return {
         total_parcels: list.length, delivered, refused: by("Refused"),
         out_for_delivery: by("Out for delivery"), in_transit: by("In Transit"),
