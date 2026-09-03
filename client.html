@@ -299,7 +299,13 @@
       outline:none; border-color:#14C77B; box-shadow:0 0 0 3px rgba(20,199,123,.18);
     }
     .field select:invalid,.field select[data-empty="1"]{ color:var(--muted); }
-    @media (max-width:900px){ .field select{ min-height:46px; font-size:15px; } }
+    /* 16px, not 15px: under 16px iOS Safari zooms the page in on focus and
+       never zooms back out. The sheet further down already sets 16px on
+       every control for exactly this reason, but `.field select` (0,1,1)
+       outranks the bare `select` (0,0,1) there, so this rule was silently
+       cancelling that protection on the booking form -- City, Fragile and
+       Allow-open all zoomed the portal on tap. */
+    @media (max-width:900px){ .field select{ min-height:46px; font-size:16px; } }
     .nv-command-strip{background:linear-gradient(135deg,var(--nvu-accent),#13a36f 55%,#1d6f9f);border:1px solid #cdeee1;border-left:4px solid #0c4a34;border-radius:var(--r-xl);padding:16px 18px;margin:0 0 14px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;box-shadow:var(--glow-1)}
     .nv-command-strip .nv-cs-text{flex:1;min-width:220px}
     .nv-command-strip .nv-cs-greeting{font-size:12px;font-weight:800;color:rgba(255,255,255,.85);margin:0 0 4px;text-transform:uppercase;letter-spacing:.04em}
