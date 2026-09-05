@@ -7162,6 +7162,57 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvSetVal(id,v){ var el=document.getElementById(id); if(el) el.value=(v==null?"":String(v)); }
     function nvGetVal(id){ var el=document.getElementById(id); return el?String(el.value||"").trim():""; }
 
+    /* ── keeping the edit form honest about payment mode ──────────────────
+       Reported by Hayat Scents: "I set N7810059 to Prepaid, save, and it still
+       shows COD." Three things were wrong, and this handles the front half.
+
+       The server derives paymentMode from the COD amount on purpose -- prepaid
+       is only ever true when nothing is collected at the door -- so choosing
+       "Non COD Prepaid" while COD still reads 1200 could never take effect.
+       The form let it be chosen anyway and said nothing.
+
+       Their own suggestion, which is the right one: say what the change means,
+       then make it. Choosing a non-COD mode now offers to zero the COD in the
+       same step, and typing an amount back in returns the mode to COD, so the
+       two controls can never disagree on screen either. */
+    function nvEdIsPrepaidMode(v){
+      try{
+        if(window.NovaXPayment && window.NovaXPayment.PREPAID_RE){
+          return window.NovaXPayment.PREPAID_RE.test(String(v||""));
+        }
+      }catch(e){}
+      return /non\s*-?\s*cod|prepaid|^paid$/i.test(String(v||""));
+    }
+    function nvWireEditPaymentMode(){
+      var mode=document.getElementById("nvEdPaymentMode");
+      var cod=document.getElementById("nvEdCod");
+      if(!mode || !cod || mode._nvWired) return;
+      mode._nvWired=true;
+
+      mode.addEventListener("change", function(){
+        if(!nvEdIsPrepaidMode(mode.value)) return;
+        var amount=Number(cod.value||0);
+        if(!(amount > 0)) return;                 // already nothing to collect
+        var ok=window.confirm(
+          "Prepaid means the rider collects nothing at the door.\n\n" +
+          "This will set the COD amount from " + money(amount) + " to Rs 0.\n\n" +
+          "Continue?");
+        if(ok){
+          cod.value="0";
+          nvEditParcelError("");
+        } else {
+          /* They kept the amount, so the mode has to go back -- leaving
+             "Prepaid" selected next to a live COD amount is the exact lie
+             that started this. */
+          mode.value="COD";
+        }
+      });
+
+      cod.addEventListener("input", function(){
+        if(Number(cod.value||0) > 0 && nvEdIsPrepaidMode(mode.value)) mode.value="COD";
+      });
+    }
+
     function nvOpenEditParcel(awb, ev){
       try{ if(ev && ev.stopPropagation) ev.stopPropagation(); }catch(e){}
       var p=(state.parcels||[]).find(function(x){ return x && x.awb===awb; });
@@ -7188,6 +7239,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       nvSetVal("nvEdOrderId",p.orderId);
       nvSetVal("nvEdAddress",p.address);
       nvSetVal("nvEdFee",money(Number(p.fee||0)));
+      try{ nvWireEditPaymentMode(); }catch(e){}
       var m=document.getElementById("nvEditParcelModal");
       if(m) m.classList.add("show");
       setTimeout(function(){ var f=document.getElementById("nvEdName"); if(f){ try{ f.focus(); }catch(e){} } },0);
@@ -7225,6 +7277,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!cat){ nvEditParcelError("Product details cannot be empty."); return; }
       var cod=Number(codRaw);
       if(!Number.isFinite(cod) || cod<0){ nvEditParcelError("COD amount must be zero or more."); return; }
+      /* Answer here rather than making them wait for the server to say it. */
+      if(cod > 0 && nvEdIsPrepaidMode(nvGetVal("nvEdPaymentMode"))){
+        nvEditParcelError("A prepaid parcel collects nothing at the door, so its COD must be 0. Set the COD amount to 0, or change the payment mode back to COD.");
+        return;
+      }
 
       var sb=window.__nvSb;
       if(!sb || !sb.rpc){ nvEditParcelError("Cloud connection not ready yet, please try again in a moment."); return; }

@@ -668,3 +668,134 @@ end;
 $function$
 
 
+
+-- ── 6. the edit path: the guard missed the only value the UI can send ─────
+CREATE OR REPLACE FUNCTION public.nv_edit_parcel_core(p_client_id uuid, p_awb text, p_consignee text, p_phone text, p_address text, p_city text, p_cod numeric, p_weight text, p_category text, p_fragile text, p_service text, p_payment_mode text, p_allow_open text, p_order_id text, p_comments text DEFAULT NULL::text, p_actor text DEFAULT 'portal'::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_row  public.parcels%rowtype;
+  v_meta jsonb;
+  v_hist jsonb;
+  v_len  int;
+begin
+  if p_client_id is null then
+    raise exception 'You are not signed in as a merchant.' using errcode = '28000';
+  end if;
+
+  select * into v_row
+    from public.parcels
+   where awb = btrim(p_awb)
+     and client_id = p_client_id
+   for update;
+
+  if not found then
+    raise exception 'That parcel is not on your account.' using errcode = 'P0002';
+  end if;
+
+  if coalesce(v_row.status, '') <> 'New booked' then
+    raise exception
+      'This parcel is already "%", so it can no longer be edited. Open a support ticket and our team will change it for you.',
+      v_row.status using errcode = 'P0001';
+  end if;
+  if v_row.invoice_id is not null then
+    raise exception 'This parcel has already been invoiced, so it can no longer be edited.' using errcode = 'P0001';
+  end if;
+  if coalesce(v_row.rider_id::text, '') <> '' then
+    raise exception 'A rider is already assigned to collect this parcel, so it can no longer be edited.' using errcode = 'P0001';
+  end if;
+
+  if btrim(coalesce(p_consignee, '')) = '' then
+    raise exception 'Consignee name cannot be empty.' using errcode = 'P0001';
+  end if;
+  if btrim(coalesce(p_phone, '')) = '' then
+    raise exception 'Consignee phone cannot be empty.' using errcode = 'P0001';
+  end if;
+  if btrim(coalesce(p_address, '')) = '' then
+    raise exception 'Delivery address cannot be empty.' using errcode = 'P0001';
+  end if;
+  if btrim(coalesce(p_city, '')) = '' then
+    raise exception 'Destination city cannot be empty.' using errcode = 'P0001';
+  end if;
+  if p_cod is null or p_cod < 0 then
+    raise exception 'COD amount must be zero or more.' using errcode = 'P0001';
+  end if;
+
+  -- Prepaid is only ever a thing when nothing is being collected at the door.
+  -- This was a hand-written list: ('prepaid','non cod','noncod','non-cod').
+  -- The edit form's dropdown sends 'Non COD Prepaid', which is the one value
+  -- that list does NOT contain -- so the single option a merchant can actually
+  -- pick fell straight through the guard, raised nothing, and was then thrown
+  -- away by the paymentMode derivation below. Hayat Scents reported it as
+  -- "I set it to Prepaid, save, and it still shows COD."
+  -- Fifth copy of the rule, now the canonical one.
+  if p_cod > 0 and public.nv_is_prepaid_mode(p_payment_mode) then
+    raise exception
+      'A prepaid parcel cannot have a COD amount. Set cod to 0 for prepaid, or leave the payment mode as COD.'
+      using errcode = 'P0001';
+  end if;
+
+  v_meta := coalesce(v_row.meta, '{}'::jsonb);
+  v_hist := coalesce(v_meta -> 'editHistory', '[]'::jsonb);
+  v_hist := v_hist || jsonb_build_array(jsonb_build_object(
+    'at',   to_char(now() at time zone 'Asia/Karachi', 'YYYY-MM-DD HH24:MI'),
+    'by',   coalesce(auth.uid()::text, p_actor),
+    'via',  p_actor,
+    'from', jsonb_build_object('consignee', v_row.consignee, 'phone', v_row.phone,
+                               'address', v_row.address, 'city', v_row.city,
+                               'cod', v_row.cod_amount, 'weight', v_meta ->> 'weight'),
+    'to',   jsonb_build_object('consignee', btrim(p_consignee), 'phone', btrim(p_phone),
+                               'address', btrim(p_address), 'city', btrim(p_city),
+                               'cod', p_cod, 'weight', btrim(coalesce(p_weight, '')))
+  ));
+  v_len := jsonb_array_length(v_hist);
+  if v_len > 20 then
+    select coalesce(jsonb_agg(e order by i), '[]'::jsonb) into v_hist
+      from jsonb_array_elements(v_hist) with ordinality as t(e, i)
+     where i > v_len - 20;
+  end if;
+
+  v_meta := v_meta || jsonb_build_object(
+    'weight',       btrim(coalesce(p_weight, '')),
+    'category',     btrim(coalesce(p_category, '')),
+    'fragile',      case when btrim(coalesce(p_fragile, '')) = 'Yes' then 'Yes' else 'No' end,
+    'service',      nullif(btrim(coalesce(p_service, '')), ''),
+    -- Derived, not taken from the form, and deliberately so: prepaid is only
+    -- ever true when nothing is collected at the door. The guard above now
+    -- rejects the contradiction loudly instead of letting this line silently
+    -- overwrite what the merchant chose. Kept as a derivation so no caller,
+    -- present or future, can store a mode that disagrees with the amount.
+    'paymentMode',  case when p_cod > 0 then 'COD' else 'Non COD' end,
+    'allowOpen',    case when btrim(coalesce(p_allow_open, '')) = 'Yes' then 'Yes' else 'No' end,
+    'orderId',      btrim(coalesce(p_order_id, '')),
+    'editHistory',  v_hist,
+    'lastEditedAt', to_char(now() at time zone 'Asia/Karachi', 'YYYY-MM-DD HH24:MI')
+  );
+
+  -- p_comments null means "not supplied, leave whatever is there".
+  -- An empty string means "clear it", which is a thing a merchant may want.
+  if p_comments is not null then
+    v_meta := v_meta || jsonb_build_object('comments', btrim(p_comments));
+  end if;
+
+  perform set_config('novax.parcel_edit', '1', true);
+
+  update public.parcels
+     set consignee  = btrim(p_consignee),
+         phone      = btrim(p_phone),
+         address    = btrim(p_address),
+         city       = btrim(p_city),
+         cod_amount = p_cod,
+         meta       = v_meta,
+         updated_at = now()
+   where id = v_row.id;
+  -- fee is NOT in this list, and must never be added to it.
+
+  return jsonb_build_object('ok', true, 'awb', v_row.awb);
+end
+$function$
+
+
