@@ -94,10 +94,22 @@ Deno.serve(async (req) => {
 
   /* Refuse before creating anything. staff_users is checked across ALL
      workspaces on purpose — one email is one person on NovaX. */
-  const { data: taken } = await asService
-    .from("staff_users").select("id, client_id").eq("email", email).limit(1);
-  if (taken && taken.length) {
-    return json({ error: "That email already has a NovaX seat. Use a different address." }, 409);
+  /* A REVOKED seat must not block reuse. This originally matched ANY row for
+     the address, so revoking someone and then re-inviting them failed forever
+     with "That email already has a NovaX seat" — reported by Hayat Scents, who
+     revoked syedabdullah0420@gmail.com and could not reissue it. Revoking is
+     how you take access away; it cannot also be how you burn the address. */
+  const { data: seats } = await asService
+    .from("staff_users").select("id, client_id, status").eq("email", email);
+  const live = (seats ?? []).filter((r: any) => String(r.status ?? "Active") !== "Revoked");
+  if (live.length) {
+    return json({ error: "That email already has an active NovaX seat. Revoke it first, or use a different address." }, 409);
+  }
+  /* Only revoked rows remain. Clear them so the new seat is the only one and
+     nothing downstream has to work out which row is current. */
+  const staleIds = (seats ?? []).map((r: any) => r.id);
+  if (staleIds.length) {
+    await asService.from("staff_users").delete().in("id", staleIds);
   }
 
   const { data: created, error: createErr } = await asService.auth.admin.createUser({
@@ -107,18 +119,45 @@ Deno.serve(async (req) => {
     email_confirm: true,
     user_metadata: { full_name: name, novax_role: role, created_by_owner: caller.id },
   });
+  /* A revoked seat can leave its auth user behind, so re-inviting that person
+     hit the same dead end one layer down. With no live seat anywhere for this
+     address (checked above), that login is an orphan and the owner is entitled
+     to re-issue it — reset the password and reuse it, rather than telling them
+     to invent a new email address. */
+  let newId: string;
   if (createErr || !created?.user) {
     const msg = String(createErr?.message || "");
-    if (/already been registered|already exists/i.test(msg)) {
-      return json({ error: "That email already has a NovaX login. Use a different address." }, 409);
+    if (!/already been registered|already exists/i.test(msg)) {
+      return json({ error: "Could not create the login: " + (msg || "unknown error") }, 502);
     }
-    return json({ error: "Could not create the login: " + (msg || "unknown error") }, 502);
+    const { data: found } = await asService.auth.admin.listUsers({ page: 1, perPage: 200 });
+    const existing = (found?.users ?? []).find(
+      (u: any) => String(u.email ?? "").toLowerCase() === email,
+    );
+    if (!existing) {
+      return json({ error: "That email already has a NovaX login that could not be re-issued. Use a different address." }, 409);
+    }
+    const { error: resetErr } = await asService.auth.admin.updateUserById(existing.id, {
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: name, novax_role: role, reissued_by_owner: caller.id },
+    });
+    if (resetErr) {
+      return json({ error: "Could not re-issue that login: " + resetErr.message }, 502);
+    }
+    newId = existing.id;
+  } else {
+    newId = created.user.id;
   }
-  const newId = created.user.id;
 
   /* From here on, any failure must undo the auth user. */
+  const reusedExisting = !created?.user;
   const undo = async (why: string, status = 502) => {
-    try { await asService.auth.admin.deleteUser(newId); } catch { /* nothing better to do */ }
+    /* Only delete a login this request actually created. A reused orphan
+       predates us; deleting it would destroy an account we were borrowing. */
+    if (!reusedExisting) {
+      try { await asService.auth.admin.deleteUser(newId); } catch { /* nothing better to do */ }
+    }
     return json({ error: why }, status);
   };
 
