@@ -3761,10 +3761,33 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
        No beforeunload prompt: mobile browsers ignore it, and on desktop it is
        an irritation that does not prevent the loss it warns about. */
-    var NV_DRAFT_KEY   = "novaxBookingDraft";
+    /* Was a single "novaxBookingDraft" for the whole browser, with no identity
+       on it and no clearing on logout. On a shared warehouse machine the next
+       merchant to open Book Parcel could be handed the previous one's
+       recipient name, phone and address for up to 24 hours -- and book their
+       order under the wrong workspace. Per-workspace persistence needs a
+       per-workspace key. */
+    var NV_DRAFT_KEY_BASE = "novaxBookingDraft";
+    function nvDraftKey(){
+      var id = "";
+      try{ id = String((state && state.client && state.client.id) || ""); }catch(e){ id = ""; }
+      /* No confirmed workspace yet => a scratch key that is never restored
+         from, so a draft can never leak in before identity is established. */
+      return id ? (NV_DRAFT_KEY_BASE + ":" + id) : (NV_DRAFT_KEY_BASE + ":anon");
+    }
+    /* bookingComments was missing: a merchant who wrote "fragile, do not fold"
+       and then reloaded lost the packing note with no sign it had gone. */
     var NV_DRAFT_FIELDS = ["bookingName","bookingPhone","bookingCity","bookingCod",
                            "bookingService","bookingCategory","bookingFragile","bookingWeight",
-                           "bookingPaymentMode","bookingOrderId","bookingAllowOpen","bookingAddress"];
+                           "bookingPaymentMode","bookingOrderId","bookingAllowOpen","bookingAddress",
+                           "bookingComments"];
+    /* Selects and readonly inputs carry a value from markup, so "already has a
+       value" cannot mean "the merchant typed something". Restore used that test
+       and therefore never restored Fragile, Allow to Open, Weight or the mode.
+       These are the fields whose saved value must win over a markup default. */
+    var NV_DRAFT_DEFAULTED = ["bookingService","bookingFragile","bookingAllowOpen",
+                              "bookingPaymentMode","bookingWeight","bookingCity",
+                              "bookingPickupCity","bookingCategory"];
     var NV_DRAFT_T = null;
 
     function nvSaveBookingDraft(){
@@ -3778,21 +3801,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              content means the merchant actually started something. */
           if(String(el.value||"").trim() && el.tagName !== "SELECT") any = true;
         });
-        if(!any){ try{ localStorage.removeItem(NV_DRAFT_KEY); }catch(e){} return; }
+        if(!any){ try{ localStorage.removeItem(nvDraftKey()); }catch(e){} return; }
         d.__savedAt = Date.now();
-        localStorage.setItem(NV_DRAFT_KEY, JSON.stringify(d));
+        localStorage.setItem(nvDraftKey(), JSON.stringify(d));
       }catch(e){}
     }
 
     function nvClearBookingDraft(){
-      try{ localStorage.removeItem(NV_DRAFT_KEY); }catch(e){}
+      try{ localStorage.removeItem(nvDraftKey()); }catch(e){}
       var n = document.getElementById("nvDraftNote");
       if(n && n.remove) n.remove();
     }
 
     function nvRestoreBookingDraft(){
       try{
-        var raw = localStorage.getItem(NV_DRAFT_KEY);
+        var raw = localStorage.getItem(nvDraftKey());
         if(!raw) return;
         var d = JSON.parse(raw);
         if(!d || !d.__savedAt || (Date.now() - d.__savedAt) > 86400000){ nvClearBookingDraft(); return; }
@@ -3800,13 +3823,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         NV_DRAFT_FIELDS.forEach(function(id){
           var el = document.getElementById(id);
           if(!el || d[id] === undefined) return;
-          /* Never overwrite what the merchant has already typed this session.
-             The draft is a fallback, not an authority. */
-          if(String(el.value||"").trim()) return;
+          /* Never overwrite what the merchant has typed THIS session -- but a
+             markup default is not something they typed. The old test was
+             "does this field have any value", which is true from page load for
+             every select and for Weight, so a saved 3 kg fragile openable
+             parcel came back as 0.8 kg, not fragile and not openable while the
+             banner said it had been restored. Defaulted controls are restored
+             from the draft; free-text fields still yield to real input. */
+          var isDefaulted = NV_DRAFT_DEFAULTED.indexOf(id) >= 0;
+          if(!isDefaulted && String(el.value||"").trim()) return;
+          if(isDefaulted && el.dataset && el.dataset.nvTouched === "1") return;
           el.value = d[id];
           if(String(d[id]||"").trim()) restored++;
         });
         if(!restored) return;
+        /* A restored city or weight has to run the same follow-on work a typed
+           one does, or the rate hint and weight chips describe the parcel the
+           merchant had before the reload. */
+        try{ if(typeof updateZoneRateHint==="function") updateZoneRateHint(); }catch(e){}
+        try{ if(typeof nvSyncWeightChips==="function") nvSyncWeightChips(); }catch(e){}
+        try{ if(typeof nvGeoToggleAreaField==="function") nvGeoToggleAreaField(); }catch(e){}
         var host = document.getElementById("bookingName");
         host = host && host.closest(".form-grid");
         if(host && !document.getElementById("nvDraftNote")){
@@ -3825,17 +3861,36 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     function nvDiscardBookingDraft(){
-      NV_DRAFT_FIELDS.forEach(function(id){
-        var el = document.getElementById(id);
-        if(el && el.tagName !== "SELECT") el.value = "";
-      });
+      /* This blanked every non-SELECT field, and Service Type is an
+         <input readonly tabindex="-1"> holding "COD Standard". So "Start
+         fresh" emptied a REQUIRED field the merchant physically cannot type
+         into, and booking then failed with "All booking fields are mandatory"
+         until the page was reloaded. Weight lost its 0.8 kg default the same
+         way. resetBookingForm() already knows how to return every control to
+         its correct starting value, including the readonly ones -- use it
+         rather than keeping a second, wrong idea of what "empty" means. */
+      try{ resetBookingForm(); }
+      catch(e){
+        NV_DRAFT_FIELDS.forEach(function(id){
+          var el = document.getElementById(id);
+          if(el && el.tagName !== "SELECT" && !el.readOnly) el.value = "";
+        });
+      }
       nvClearBookingDraft();
+      var note = document.getElementById("nvDraftNote");
+      if(note && note.parentNode) note.parentNode.removeChild(note);
       try{ toast("Cleared. Starting fresh."); }catch(e){}
     }
     window.nvDiscardBookingDraft = nvDiscardBookingDraft;
 
+    /* So restore can tell a markup default from a real choice. */
+    document.addEventListener("change", function(e){
+      if(!e || !e.target || NV_DRAFT_FIELDS.indexOf(e.target.id) === -1) return;
+      try{ if(e.target.dataset) e.target.dataset.nvTouched = "1"; }catch(err){}
+    }, true);
     document.addEventListener("input", function(e){
       if(!e || !e.target || NV_DRAFT_FIELDS.indexOf(e.target.id) === -1) return;
+      try{ if(e.target.dataset) e.target.dataset.nvTouched = "1"; }catch(err){}
       clearTimeout(NV_DRAFT_T);
       NV_DRAFT_T = setTimeout(nvSaveBookingDraft, 400);
     });
@@ -4146,15 +4201,39 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     window.addEventListener("resize",function(){ try{ var nvPp=document.getElementById("bulkPreviewPanel"); if(nvPp && nvPp.style.display!=="none") renderBulkPreview(); }catch(e){} });
 
+    /* The table filtered by search, status and dates; both exports
+       independently took EVERY loaded parcel for the client and ignored all
+       four. A merchant looking at one week of refused parcels sent their
+       accountant the entire account. One selection now feeds the table and
+       both exports, so what you see is what you send.
+
+       Search is trimmed as well: a pasted "N9000001 " matched nothing, because
+       the trailing space was compared against the row text. */
+    function nvReportRows(){
+      const search=(document.getElementById("repSearch")?.value||"").trim().toLowerCase();
+      const status=document.getElementById("repStatus")?.value||"";
+      const from=document.getElementById("repFrom")?.value||"";
+      const to=document.getElementById("repTo")?.value||"";
+      return state.parcels
+        .filter(p=>p.clientId===state.client.id)
+        .filter(p=>{
+          const d=p.date||"";
+          return (!from||d>=from) && (!to||d<=to) && (!status||p.status===status)
+                 && `${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase().includes(search);
+        });
+    }
+    /* Says plainly whether the file matches the screen. */
+    function nvReportScopeNote(n){
+      const any=["repSearch","repStatus","repFrom","repTo"]
+        .some(id=>String(document.getElementById(id)?.value||"").trim());
+      return n + " row(s) exported" + (any ? " — the filters you have applied." : " — your full loaded history.");
+    }
+
     function renderClientReportFull(){
       const tbody=document.getElementById("clientReportFullRows"); if(!tbody) return;
       const sel=document.getElementById("repStatus");
       if(sel && !sel.dataset.filled){ sel.innerHTML=`<option value="">All statuses</option>`+STATUS_TAGS.map(s=>`<option value="${s}">${s}</option>`).join(""); sel.dataset.filled="1"; }
-      const search=(document.getElementById("repSearch")?.value||"").toLowerCase();
-      const status=document.getElementById("repStatus")?.value||"";
-      const from=document.getElementById("repFrom")?.value||"";
-      const to=document.getElementById("repTo")?.value||"";
-      const rows=state.parcels.filter(p=>p.clientId===state.client.id).filter(p=>{ const d=p.date||""; return (!from||d>=from)&&(!to||d<=to)&&(!status||p.status===status)&&`${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase().includes(search); });
+      const rows=nvReportRows();
       /* data-label drives the mobile card layout in client.html: under 900px the
          table stops being a table and each row stacks as AWB-first card, so the
          report stops requiring horizontal scanning on a phone. */
@@ -4789,13 +4868,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     function closeInvoiceModal(){ const modal=document.getElementById("invoiceViewModal"); if(modal) modal.classList.remove("show"); }
     function exportReportCsv(){
-      const rows=state.parcels.filter(p=>p.clientId===state.client.id);
+      const rows=nvReportRows();
       const head=["AWB","Date","Consignee","City","Status","COD","Fee","AgingHours"];
       const csv=[head.map(csvCell).join(",")].concat(rows.map(p=>[p.awb,p.date,p.consignee,p.city,p.status,p.cod,p.fee,Math.round(agingHours(p))].map(csvCell).join(","))).join("\n");
-      const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="novax-report.csv"; a.click(); toast("Report CSV downloaded.");
+      const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="novax-report.csv"; a.click(); toast(nvReportScopeNote(rows.length)); toast("Report CSV downloaded.");
     }
     function exportReportPdf(){
-      const rows=state.parcels.filter(p=>p.clientId===state.client.id);
+      const rows=nvReportRows();
       const stage=document.getElementById("printStage");
       stage.innerHTML=`<div style="font-family:sans-serif;color:#000;background:var(--nvu-bg);padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(p.status)}</td><td>${money(p.cod)}</td></tr>`).join("")}</table></div>`;
       nvPrintStageNow();
@@ -6355,7 +6434,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     function resetBookingForm(){
-      ["bookingName","bookingPhone","bookingCod","bookingCategory","bookingAddress","bookingComments"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
+      /* bookingOrderId was missing from this list, so a completed booking left
+         the previous customer's reference in the form -- the next parcel could
+         be sent out carrying it, and a unique order ID would be rejected by the
+         server instead of producing an AWB. */
+      ["bookingName","bookingPhone","bookingCod","bookingCategory","bookingAddress","bookingComments","bookingOrderId"].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=""; });
       // COD was just cleared, so the payment-mode note no longer describes
       // anything; hide it and re-sync the weight chips to the reset value.
       try{
@@ -6377,7 +6460,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(typeof nvGeoToggleAreaField==="function") nvGeoToggleAreaField();
       }catch(e){}
       const weightEl=document.getElementById("bookingWeight"); if(weightEl) weightEl.value="0.8 kg";
-      ["bookingPickupCity","bookingCity","bookingService","bookingCategory","bookingFragile","bookingPaymentMode"].forEach(id=>{ const el=document.getElementById(id); if(el&&el.tagName==="SELECT") el.selectedIndex=0; });
+      /* bookingAllowOpen was missing too. "Allow to Open: Yes" is a
+         rider-facing permission to let a stranger open the parcel before
+         paying; carrying it silently into the next customer's booking is the
+         kind of default nobody would choose on purpose. Its first option is
+         "No", so selectedIndex=0 restores the safe value. */
+      ["bookingPickupCity","bookingCity","bookingService","bookingCategory","bookingFragile","bookingPaymentMode","bookingAllowOpen"].forEach(id=>{ const el=document.getElementById(id); if(el&&el.tagName==="SELECT") el.selectedIndex=0; });
+      /* The form is genuinely fresh again, so nothing is "touched" and no draft
+         should survive to be restored over the next parcel. */
+      try{
+        NV_DRAFT_FIELDS.forEach(function(id){
+          var el=document.getElementById(id);
+          if(el && el.dataset) delete el.dataset.nvTouched;
+        });
+        nvClearBookingDraft();
+      }catch(e){}
       try{ applyPickupCity(); }catch(e){}   // keep the merchant's real pickup city after a reset
       document.querySelectorAll("#client-newBooking .field.nvfield-missing").forEach(f=>f.classList.remove("nvfield-missing"));
       try{ updateZoneRateHint(); }catch(e){}
@@ -9253,7 +9350,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var k=nvKarachiParts(t);
         return k?(k.date+" "+k.time):String(t).replace("T"," ").slice(0,16);
       }
-      function pmeta(p){ return { comments:p.comments||"", service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, fragile:p.fragile, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", source:p.source, branch:p.branch, risk:p.risk, steps:p.steps, clientFeedback:p.clientFeedback, returnProof:p.returnProof, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"" }; }
+      /* This rebuilt meta from the fields the client app happens to model, so
+         every key it does not model was deleted on write-back: allowOpen (a
+         rider-facing "do not open" instruction printed on the label),
+         processHistory, and the distance/quote metadata. Printing a label was
+         enough to trigger it. Start from the row's own meta and layer the
+         client's view on top, so an unknown key survives a round trip. */
+      function pmeta(p){ return Object.assign({}, (p && p._meta) || {}, {
+        allowOpen: (p && p.allowOpen === "Yes") ? "Yes" : "No", comments:p.comments||"", service:p.service, weight:p.weight, pickupCity:p.pickupCity, category:p.category, fragile:p.fragile, paymentMode:p.paymentMode, orderId:p.orderId, referenceNo:p.referenceNo||p.reference||p.ref||"", source:p.source, branch:p.branch, risk:p.risk, steps:p.steps, clientFeedback:p.clientFeedback, returnProof:p.returnProof, proofPhoto:p.proofPhoto, signature:p.signature, signedAt:p.signedAt, callRecord:p.callRecord, awbPrinted:!!p.awbPrinted, awbPrintedAt:p.awbPrintedAt||"" }); }
       // Admin used to fill blank consignee details with invented values --
       // address = "<consignee> delivery address, <city>", phone = 0311 + row
       // index -- and sync those to Supabase. That is why this drawer showed the
@@ -9339,7 +9443,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         });
       }
 
-      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", trackingToken:r.tracking_token||"",
+      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _meta:m, trackingToken:r.tracking_token||"",
         // NovaX distance pricing. Null on every parcel booked before it existed,
         // which is exactly how the label and invoice detect "flat, show nothing".
         pricingMode:r.pricing_mode||"", distanceKm:(r.distance_km!=null?Number(r.distance_km):null),
@@ -9479,6 +9583,28 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }
           state.identityVerified=true;
           state.clientRecordMissing=false;
+
+          /* Only res[0]'s error was ever checked. Every other read was consumed
+             as ((res[n]&&res[n].data)||[]), and Supabase resolves a 401, 429,
+             503 or a dropped connection as {data:null,error} -- so ONE failed
+             query silently emptied that dataset, and the loader then persisted
+             the empty state and called __novaxMarkDataFresh(). A merchant could
+             be shown "no parcels" and "no invoices" on a perfectly live account
+             and be told the view was current.
+
+             A failed read is not an empty result. Keep what is already cached,
+             say so once, and do not claim freshness. */
+          var nvStale=[];
+          function nvSlot(i,label,mapFn,current){
+            var r=res[i]||{};
+            if(r.error){
+              if(nvIsAuthError(r.error)){ throw { __nvAuth:true, at:"loadAll/"+label }; }
+              console.warn("NovaX: "+label+" read failed --", r.error.message||r.error);
+              nvStale.push(label);
+              return { ok:false, rows:(current||[]) };
+            }
+            return { ok:true, rows:(r.data||[]).map(mapFn) };
+          }
           // NovaX fix (wallet IBAN UX): pull previously-saved bank details
           // down from the client row if that column exists; best-effort
           // only, so a missing column never breaks the rest of the load.
@@ -9504,7 +9630,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              a moment later, and flashed on every refresh. Closed parcels
              already loaded are carried across; the active set is replaced. */
           (function(){
-            var freshActive=((res[1]&&res[1].data)||[]).map(mapParcel);
+            var slot=nvSlot(1,"parcels",mapParcel,null);
+            if(!slot.ok) return;                 // keep every cached parcel as-is
+            var freshActive=slot.rows;
             var activeAwbs={};
             freshActive.forEach(function(p){ if(p&&p.awb) activeAwbs[p.awb]=1; });
             var keptClosed=(state.parcels||[]).filter(function(p){
@@ -9513,7 +9641,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             });
             state.parcels=freshActive.concat(keptClosed);
           })();
-          state.invoices=((res[2]&&res[2].data)||[]).map(mapInvoice);
+          (function(){ var sl=nvSlot(2,"invoices",mapInvoice,state.invoices); if(sl.ok) state.invoices=sl.rows; })();
           /* Closed parcels are no longer in the main pull, but an invoice
              statement resolves every line by finding the parcel in
              state.parcels -- and every invoiced parcel is Delivered or Return
@@ -9522,17 +9650,49 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              loaded invoices reference: typically a few dozen rows, once,
              instead of the merchant's entire history on every load. */
           try{ nvLoadInvoicedParcels(); }catch(e){ console.warn("NovaX invoiced parcels", e); }
-          state.walletWithdrawals=((res[3]&&res[3].data)||[]).map(mapWd);
-          state.paymentLogs=((res[4]&&res[4].data)||[]).map(mapPl);
-          state.storeConnections=((res[5]&&res[5].data)||[]).map(mapSc);
-          state.walletLedger=((res[6]&&res[6].data)||[]).map(mapLedger);
+          (function(){ var sl=nvSlot(3,"withdrawals",mapWd,state.walletWithdrawals); if(sl.ok) state.walletWithdrawals=sl.rows; })();
+          (function(){ var sl=nvSlot(4,"payment logs",mapPl,state.paymentLogs); if(sl.ok) state.paymentLogs=sl.rows; })();
+          (function(){ var sl=nvSlot(5,"store connections",mapSc,state.storeConnections); if(sl.ok) state.storeConnections=sl.rows; })();
+          (function(){ var sl=nvSlot(6,"wallet ledger",mapLedger,state.walletLedger); if(sl.ok) state.walletLedger=sl.rows; })();
           shadow={}; state.parcels.forEach(function(p){ if(p._uuid) shadow[p._uuid]=(p.status||"")+"|"+(p.exception||"")+"|"+(p.awbPrinted?"1":"0")+"|"+(p.awbPrintedAt||""); });
+          /* res[7] -- pickup_requests -- was queried and then simply never
+             read. mapPickup() sat in the file with no caller at all, and
+             state.pickupRequests was emptied at cloud init, so a merchant's
+             existing pickup requests vanished on every reload and later
+             Assigned / Picked Up / Cancelled changes never arrived. The
+             duplicate guard then saw an empty set and happily offered a parcel
+             that already had a request against it.
+
+             Locally-queued requests that have not reached the server yet are
+             kept, so a request made seconds ago is not swallowed by a refresh. */
+          (function(){
+            var sl=nvSlot(7,"pickup requests",mapPickup,state.pickupRequests);
+            if(!sl.ok) return;
+            var serverIds={};
+            sl.rows.forEach(function(r){ if(r&&r.id) serverIds[r.id]=1; });
+            var pendingLocal=(state.pickupRequests||[]).filter(function(r){
+              return r && !r._uuid && !serverIds[r.id];
+            });
+            state.pickupRequests=sl.rows.concat(pendingLocal);
+          })();
+
           loaded=true;
           try{ localStorage.setItem(STORAGE_KEY,persistStateJson()); }catch(e){}
           try{ render(); }catch(e){ console.warn("NovaX render",e); }
           window.__novaxClientDataReady=true;
-          try{ window.__novaxMarkDataFresh(); }catch(e){}
-        }).catch(function(e){ console.warn("NovaX load failed",e); window.__novaxClientDataReady=true; });
+          /* Only claim the view is current when every read actually came back.
+             Marking fresh after a partial failure is what let an empty screen
+             look up to date. */
+          if(nvStale.length){
+            console.warn("NovaX: stale after partial load --", nvStale.join(", "));
+            try{ toast("Could not refresh " + nvStale[0] + " just now. Showing your last saved view.","error"); }catch(e){}
+          } else {
+            try{ window.__novaxMarkDataFresh(); }catch(e){}
+          }
+        }).catch(function(e){
+          if(e && e.__nvAuth){ try{ nvSessionExpired(e.at); }catch(err){} window.__novaxClientDataReady=true; return; }
+          console.warn("NovaX load failed",e); window.__novaxClientDataReady=true;
+        });
       }
       function syncNew(){
         if(!loaded||!MY) return;
@@ -9545,7 +9705,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // only logs a warning if it ever finds one (e.g. from an old cached
         // session), it never tries to insert it.
         (state.parcels||[]).forEach(function(p){ if(p._uuid||!p._syncPending) return; console.warn("NovaX: found a legacy local-only parcel with no _uuid; direct browser insert into parcels is disabled, it will not be sent to the server.", p.awb); });
-        (state.parcels||[]).forEach(function(p){ if(!p._uuid) return; var sig=(p.status||"")+"|"+(p.exception||"")+"|"+(p.awbPrinted?"1":"0")+"|"+(p.awbPrintedAt||""); if(shadow[p._uuid]===sig) return; var prevSig=shadow[p._uuid]; shadow[p._uuid]=sig; sb.from("parcels").update({ status:p.status||"", exception:p.exception||"", updated_at:new Date().toISOString(), meta:pmeta(p) }).eq("id",p._uuid).then(function(r){ if(r&&r.error){ console.warn("NovaX parcel update",r.error.message); if(shadow[p._uuid]===sig) shadow[p._uuid]=prevSig; } }); });
+        (state.parcels||[]).forEach(function(p){ if(!p._uuid) return; var sig=(p.status||"")+"|"+(p.exception||"")+"|"+(p.awbPrinted?"1":"0")+"|"+(p.awbPrintedAt||""); if(shadow[p._uuid]===sig) return; var prevSig=shadow[p._uuid]; shadow[p._uuid]=sig; (function(){ var prev=String(prevSig||"").split("|"); var statusSame = prev[0]===String(p.status||"") && prev[1]===String(p.exception||""); /* Only the print flags moved, so send meta alone. Including status    here meant printing a label could push this tab's cached status    over whatever operations had set since the page loaded. */ var payload = statusSame   ? { updated_at:new Date().toISOString(), meta:pmeta(p) }   : { status:p.status||"", exception:p.exception||"", updated_at:new Date().toISOString(), meta:pmeta(p) }; return sb.from("parcels").update(payload).eq("id",p._uuid); })().then(function(r){ if(r&&r.error){ console.warn("NovaX parcel update",r.error.message); if(shadow[p._uuid]===sig) shadow[p._uuid]=prevSig; } }); });
         // NovaX fix (medium risk #5): confirmWalletWithdraw() now always calls
         // request_wallet_withdrawal itself and only ever adds a withdrawal to
         // state with its server _uuid already attached. A withdrawal reaching
