@@ -11517,14 +11517,20 @@ html,body{ background:var(--bg); color:var(--ink); }
            Only for the two rider-push statuses; every other status update is
            untouched. Wrapped in try/catch so a run-sheet problem can never
            roll back or mask a status update that already succeeded. */
-        if (riderPushStatuses.includes(status)) {
+        /* Same idea for a linehaul push: the bag leaving Karachi needs a sheet
+           travelling with it so whoever opens it in Lahore or Islamabad can
+           check each parcel against a list and sign for the COD. Opened after
+           the backend confirms, for the same reason as the run sheet. */
+        const transitPushStatuses = ["Parcel now in transit"];
+        if (riderPushStatuses.includes(status) || transitPushStatuses.includes(status)) {
           try {
             const pushedAwbs = rows.map(row => String(row.awb || "").toUpperCase()).filter(Boolean);
             const riderName = (riderObj && riderObj.name) || riderId || "Unassigned";
-            openRiderRunSheet(pushedAwbs, riderName, status);
+            openRiderRunSheet(pushedAwbs, riderName, status,
+                              transitPushStatuses.includes(status) ? "transit" : "delivery");
           } catch (e) {
             console.warn("NovaX run sheet could not be opened", e);
-            toast("Parcels updated, but the run sheet could not be opened.", "error");
+            toast("Parcels updated, but the sheet could not be opened.", "error");
           }
         }
       } catch (e) {
@@ -14910,23 +14916,160 @@ html,body{ background:var(--bg); color:var(--ink); }
       </div>`;
     }
 
+    /* ===== Transfer Manifest (hub to hub) =====
+       The delivery run sheet answers "did the rider collect the cash?". A
+       linehaul bag answers a different question: the person receiving it in
+       Lahore or Islamabad has a sack of parcels and needs to tick each one
+       against a list, flag anything missing or damaged, and sign for what they
+       actually took in. So this is deliberately NOT the run sheet with a new
+       title: no cash reconciliation, no rider column, no per-stop address.
+       What it has instead is a destination breakdown, a received tick, a
+       remarks column for condition, and two signatures -- dispatched and
+       received -- because that is where responsibility changes hands.
+
+       It reuses the .nv-runsheet print classes so the A4 landscape sizing and
+       the print path stay identical; only the content differs. */
+    function transferManifestHtml(parcels, statusLabel) {
+      const list = (parcels || []).filter(Boolean);
+      const now = new Date();
+      const dateStr = now.toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" });
+      const timeStr = now.toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit" });
+      const originHub = labelText(
+        (list.find(p => p && p.branch) || {}).branch ||
+        (list.find(p => p && p.pickupCity) || {}).pickupCity, "Karachi Hub");
+
+      /* A bag can carry more than one destination, so the receiver gets a
+         count per city rather than one guessed label. */
+      const byCity = {};
+      list.forEach(p => {
+        const c = String((p && p.city) || "Unknown").trim() || "Unknown";
+        byCity[c] = (byCity[c] || 0) + 1;
+      });
+      const cities = Object.keys(byCity).sort((a, b) => byCity[b] - byCity[a]);
+      const destLabel = cities.length === 1 ? cities[0]
+                      : cities.length ? (cities.length + " destinations") : "-";
+      const destBreak = cities.map(c => escLabelText(c) + " <b>" + byCity[c] + "</b>").join(" &middot; ");
+
+      let totalCod = 0, codParcels = 0;
+      const bodyRows = list.map((p, i) => {
+        const cod = Number(p.cod || 0);
+        totalCod += cod;
+        if (cod > 0) codParcels++;
+        const client = clientById(p.clientId);
+        return `<tr>
+          <td class="num">${i + 1}</td>
+          <td class="awbcell">${escLabelText(p.awb)}</td>
+          <td>${labelText(p.consignee)}<div style="font-size:8px;color:#666;margin-top:.6mm">${labelText(client && client.name, "-")}</div></td>
+          <td>${labelText(p.city)}</td>
+          <td>${labelText(p.weight, "-")}</td>
+          <td class="codcell num">${cod > 0 ? money(cod) : "&mdash;"}</td>
+          <td><i class="nv-rs-tick"></i></td>
+          <td><i class="nv-rs-cashbox"></i></td>
+        </tr>`;
+      }).join("");
+
+      return `<div class="nv-runsheet">
+        <div class="nv-rs-head">
+          <div class="nv-rs-brand">
+            <div class="nv-rs-mark">NX</div>
+            <div class="nv-rs-brand-t"><b>NovaX Logistics</b><span>Cash on Delivery Courier</span></div>
+          </div>
+          <div class="nv-rs-title">
+            <h2>Transfer Manifest</h2>
+            <p>${escLabelText(statusLabel || "Parcel now in transit")}<br>Printed ${escLabelText(dateStr)} &middot; ${escLabelText(timeStr)}</p>
+          </div>
+        </div>
+        <div class="nv-rs-meta">
+          <div><span>From hub</span><strong>${originHub}</strong></div>
+          <div><span>To</span><strong>${escLabelText(destLabel)}</strong></div>
+          <div><span>Date</span><strong>${escLabelText(dateStr)}</strong></div>
+          <div><span>Parcels in this bag</span><strong>${list.length}</strong></div>
+        </div>
+        ${destBreak ? `<div class="nv-rs-totals"><span>Destinations: ${destBreak}</span></div>` : ""}
+        <table class="nv-rs-table">
+          <thead><tr>
+            <th style="width:7mm">#</th>
+            <th style="width:26mm">AWB</th>
+            <th>Consignee / Shipper</th>
+            <th style="width:30mm">Destination</th>
+            <th style="width:18mm">Weight</th>
+            <th style="width:24mm" class="num">COD value</th>
+            <th style="width:14mm">Received</th>
+            <th style="width:34mm">Condition / remarks</th>
+          </tr></thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+        <div class="nv-rs-totals">
+          <span>Parcels dispatched: <b>${list.length}</b></span>
+          <span>COD parcels: <b>${codParcels}</b></span>
+          <span>COD accountability transferred: <b>${money(totalCod)}</b></span>
+          <span>Parcels received: <b>________</b></span>
+          <span>Short / damaged: <b>________</b></span>
+        </div>
+        <div class="nv-rs-recon">
+          <h3>Handover &mdash; completed at the receiving hub</h3>
+          <div class="nv-rs-recon-grid">
+            <div><span>Vehicle / bag no.</span><i></i></div>
+            <div><span>Seal no.</span><i></i></div>
+            <div><span>Arrival date &amp; time</span><i></i></div>
+            <div><span>Discrepancy noted (AWBs)</span><i></i></div>
+          </div>
+          <h3 style="margin-top:5mm">COD reconciliation &mdash; ${money(totalCod)} across ${codParcels} parcel(s) becomes the destination hub's responsibility on signature</h3>
+          <div class="nv-rs-recon-grid">
+            <div><span>COD value checked in</span><i></i></div>
+            <div><span>COD value short / disputed</span><i></i></div>
+            <div><span>Cash collected &amp; remitted at destination</span><i></i></div>
+            <div><span>Balance still to collect</span><i></i></div>
+          </div>
+          <div class="nv-rs-sign">
+            <div>Dispatched by (${originHub}) &mdash; name &amp; signature</div>
+            <div>Received by (destination hub) &mdash; name &amp; signature</div>
+            <div>COD accountability accepted &mdash; name &amp; signature</div>
+          </div>
+        </div>
+        <div class="nv-rs-foot">
+          NovaX Logistics &middot; internal transfer document. No cash changes hands at dispatch: the COD figures above are the amounts the destination hub becomes responsible for collecting once these parcels are signed for. Tick each AWB as it is physically checked in; anything not ticked must be written under discrepancy BEFORE signing, because the COD total transfers with the signature.
+        </div>
+      </div>`;
+    }
+
     /* Fills the run-sheet modal. Kept separate from the print path so the
        manager can read it on screen first and re-print it later without
        re-running the status update. */
-    let nvRunSheetAwbs = [], nvRunSheetRider = "", nvRunSheetLabel = "";
+    let nvRunSheetAwbs = [], nvRunSheetRider = "", nvRunSheetLabel = "", nvRunSheetMode = "delivery";
+    /* One modal, two documents. The print and CSV paths both go through here so
+       they can never render a different sheet than the one on screen. */
+    function nvSheetHtml(list) {
+      return nvRunSheetMode === "transit"
+        ? transferManifestHtml(list, nvRunSheetLabel)
+        : riderRunSheetHtml(list, nvRunSheetRider, nvRunSheetLabel);
+    }
     function nvRunSheetParcels() {
       return (nvRunSheetAwbs || []).map(a => state.parcels.find(p => p.awb === a)).filter(Boolean);
     }
-    function openRiderRunSheet(awbs, riderName, statusLabel) {
+    function openRiderRunSheet(awbs, riderName, statusLabel, mode) {
       nvRunSheetAwbs = (awbs || []).slice();
       nvRunSheetRider = riderName || "";
-      nvRunSheetLabel = statusLabel || "Out for delivery";
+      nvRunSheetMode = mode === "transit" ? "transit" : "delivery";
+      nvRunSheetLabel = statusLabel || (nvRunSheetMode === "transit" ? "Parcel now in transit" : "Out for delivery");
       const list = nvRunSheetParcels();
       if (!list.length) { toast("No parcels available for a run sheet.", "error"); return; }
       const body = document.getElementById("riderRunSheetBody");
       const modal = document.getElementById("riderRunSheetModal");
       if (!body || !modal) return;
-      body.innerHTML = riderRunSheetHtml(list, nvRunSheetRider, nvRunSheetLabel);
+      body.innerHTML = nvSheetHtml(list);
+      /* The heading and the buttons have to describe the document actually on
+         screen, or a manager prints a "run sheet" and hands a driver a
+         manifest. */
+      const isTransit = nvRunSheetMode === "transit";
+      const h = document.getElementById("nvSheetTitle");
+      const sub = document.getElementById("nvSheetSub");
+      const pb = document.getElementById("nvSheetPrintBtn");
+      if (h) h.textContent = isTransit ? "Transfer Manifest" : "Rider Run Sheet";
+      if (sub) sub.textContent = isTransit
+        ? "These parcels are moving between hubs. Print this A4 sheet and send it with the bag so the receiving hub can check every parcel in and sign for the COD it becomes responsible for."
+        : "Parcels are now out for delivery. Print this A4 sheet and give it to the branch manager to reconcile cash at the end of the day.";
+      if (pb) pb.textContent = isTransit ? "Print Transfer Manifest (A4)" : "Print Run Sheet (A4)";
       modal.style.display = "flex";
     }
     function closeRiderRunSheet() {
@@ -14938,11 +15081,11 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!list.length) { toast("No parcels available for a run sheet.", "error"); return; }
       const stage = document.getElementById("adminPrintStage");
       if (!stage) return;
-      stage.innerHTML = riderRunSheetHtml(list, nvRunSheetRider, nvRunSheetLabel);
+      stage.innerHTML = nvSheetHtml(list);
       stage.classList.add("show");
       setTimeout(() => {
         nvAdminPrintDoc(() => { stage.classList.remove("show"); stage.innerHTML = ""; });
-        toast(`Run sheet for ${list.length} stop(s) sent to print.`, "success");
+        toast(`${nvRunSheetMode === "transit" ? "Transfer manifest" : "Run sheet"} for ${list.length} parcel(s) sent to print.`, "success");
       }, 200);
     }
     /* CSV of the same sheet, for a manager who reconciles in a spreadsheet
@@ -14950,7 +15093,14 @@ html,body{ background:var(--bg); color:var(--ink); }
     function downloadRiderRunSheetCsv() {
       const list = nvRunSheetParcels();
       if (!list.length) { toast("No parcels available for a run sheet.", "error"); return; }
-      const head = ["stop", "awb", "consignee", "client", "phone", "address", "city", "cod_amount", "cash_received", "delivered"];
+      /* The CSV has to describe the same document as the print. A transfer
+         manifest is checked in by destination and condition, not by address
+         and cash-at-door, so exporting delivery columns for it would hand the
+         receiving hub a spreadsheet that does not match the paper in the bag. */
+      const isTransit = nvRunSheetMode === "transit";
+      const head = isTransit
+        ? ["item", "awb", "consignee", "client", "destination_city", "weight", "cod_value", "received", "condition_remarks"]
+        : ["stop", "awb", "consignee", "client", "phone", "address", "city", "cod_amount", "cash_received", "delivered"];
       let total = 0;
       // adminBulkCsvEscape() is the escaper this file already uses everywhere
       // else -- admin.html has no csvCell()/csvEscape(); that pair lives in
@@ -14959,19 +15109,26 @@ html,body{ background:var(--bg); color:var(--ink); }
       const rows = list.map((p, i) => {
         total += Number(p.cod || 0);
         const client = clientById(p.clientId);
-        return [i + 1, p.awb, p.consignee || "", (client && client.name) || "", p.phone || "",
-                p.address || "", p.city || "", Number(p.cod || 0), "", ""].map(esc).join(",");
+        return isTransit
+          ? [i + 1, p.awb, p.consignee || "", (client && client.name) || "",
+             p.city || "", p.weight || "", Number(p.cod || 0), "", ""].map(esc).join(",")
+          : [i + 1, p.awb, p.consignee || "", (client && client.name) || "", p.phone || "",
+             p.address || "", p.city || "", Number(p.cod || 0), "", ""].map(esc).join(",");
       });
-      rows.push(["", "TOTAL", "", "", "", "", "", total, "", ""].map(esc).join(","));
+      rows.push((isTransit
+        ? ["", "TOTAL", "", "", "", "", total, "", ""]
+        : ["", "TOTAL", "", "", "", "", "", total, "", ""]).map(esc).join(","));
       const csv = head.join(",") + "\n" + rows.join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `novax-run-sheet-${(nvRunSheetRider || "rider").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = isTransit
+        ? `novax-transfer-manifest-${new Date().toISOString().slice(0, 10)}.csv`
+        : `novax-run-sheet-${(nvRunSheetRider || "rider").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      toast(`Run sheet CSV downloaded (${list.length} stop(s)).`, "success");
+      toast(`${isTransit ? "Transfer manifest" : "Run sheet"} CSV downloaded (${list.length} parcel(s)).`, "success");
     }
 
     function printPickupManifest(id) {
@@ -17884,13 +18041,13 @@ html,body{ background:var(--bg); color:var(--ink); }
   <div class="panel" style="max-width:940px;width:96%;max-height:90vh;overflow:auto;background:#fff">
     <div class="section-head">
       <div>
-        <h3>Rider Run Sheet</h3>
-        <p>Parcels are now out for delivery. Print this A4 sheet and give it to the branch manager to reconcile cash at the end of the day.</p>
+        <h3 id="nvSheetTitle">Rider Run Sheet</h3>
+        <p id="nvSheetSub">Parcels are now out for delivery. Print this A4 sheet and give it to the branch manager to reconcile cash at the end of the day.</p>
       </div>
     </div>
     <div id="riderRunSheetBody"></div>
     <div class="inline-actions" style="margin-top:14px;flex-wrap:wrap;gap:8px">
-      <button class="action-btn" type="button" onclick="printRiderRunSheet()">Print Run Sheet (A4)</button>
+      <button class="action-btn" type="button" id="nvSheetPrintBtn" onclick="printRiderRunSheet()">Print Run Sheet (A4)</button>
       <button class="ghost-btn" type="button" onclick="downloadRiderRunSheetCsv()">Download CSV</button>
       <button class="action-btn secondary" type="button" onclick="closeRiderRunSheet()">Close</button>
     </div>
