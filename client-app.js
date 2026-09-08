@@ -3249,6 +3249,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ nvApplyRolePermissions(); }catch(e){}
       try{ renderMoneyHero(); }catch(e){ console.warn("NovaX money hero", e); }
       try{ nvGuardWalletRender(); }catch(e){}
+      /* Runs from render so it appears as soon as the workspace is known, and
+         is a no-op until then. Wrapped like every other renderer here: an
+         announcement must never be able to take the portal down. */
+      try{ nvRateNotice(); }catch(e){ console.warn("NovaX rate notice", e); }
       /* Removed 25 Aug 2026: #supportEscalations does not exist in this file. */
     }
     /* renderAi() removed 25 Aug 2026: its host #clientAi and the composer it
@@ -7814,6 +7818,83 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       { key:"other",   label:"Something else",    subject:"",                             priority:"normal" }
     ];
     var NV_TK_OWNED_SUBJECT = null;
+    /* ── Rate change notice, Sept 2026 ───────────────────────────────────
+       Shown on the first three sign-ins for a workspace and then never again,
+       or immediately dismissed with the button. Counting is per WORKSPACE, not
+       per browser: a shared warehouse machine must not burn a merchant's three
+       views because a colleague signed in first -- the same lesson as the
+       booking draft key.
+
+       Counted once per browser session, so a refresh or moving between tabs is
+       not a new sign-in. If the count cannot be read or written (private mode,
+       blocked storage), the notice simply does not show -- an announcement is
+       never worth breaking a portal for. */
+    var NV_RATE_NOTICE_ID = "rate-2026-09-10";   // bump to run a future notice
+    function nvRateNoticeKey(){
+      var id = "";
+      try{ id = String((state && state.client && state.client.id) || ""); }catch(e){ id = ""; }
+      return id ? ("novaxNotice:" + NV_RATE_NOTICE_ID + ":" + id) : "";
+    }
+    function nvRateNoticeHtml(){
+      return '<h4>A small rate increase from Thursday 10 September</h4>' +
+        '<p>Petrol has risen twice recently \u2014 Rs 13, then Rs 6. We have absorbed it so far, ' +
+        'but our rates are already among the lowest in the market and we charge no hidden taxes, ' +
+        'so we cannot absorb this one.</p>' +
+        '<p>From <strong>Thursday 10 September</strong>, your delivery charge increases by:</p>' +
+        '<ul>' +
+          '<li><strong>Rs 20</strong> per parcel \u2014 within Karachi</li>' +
+          '<li><strong>Rs 25</strong> per parcel \u2014 Karachi to all other cities</li>' +
+        '</ul>' +
+        '<p>That is added to the rate you are on today, and it is all-inclusive \u2014 no fuel ' +
+        'surcharge, no separate line items. Everything else stays exactly as it is.</p>' +
+        '<p>Thank you for shipping with NovaX.</p>' +
+        '<div class="nv-rn-foot">' +
+          '<button type="button" class="nv-rn-x" id="nvRateNoticeDismiss">Got it</button>' +
+          '<span class="nv-rn-count" id="nvRateNoticeCount"></span>' +
+        '</div>';
+    }
+    function nvRateNotice(){
+      var host = document.getElementById("nvRateNotice");
+      if(!host) return;
+      var key = nvRateNoticeKey();
+      if(!key){ host.style.display = "none"; return; }   // no workspace yet
+      var raw;
+      try{ raw = localStorage.getItem(key) || "0"; }
+      catch(e){ host.style.display = "none"; return; }
+      /* "Got it" is final. Stored as its own value rather than as a count that
+         happens to have reached the cap, so raising the number of views later
+         can never bring a dismissed notice back for someone who already
+         closed it. */
+      if(raw === "dismissed"){ host.style.display = "none"; return; }
+      var seen = parseInt(raw, 10) || 0;
+      if(seen >= 3){ host.style.display = "none"; return; }
+
+      /* One increment per browser session, not per render. */
+      try{
+        var sk = "novaxNoticeSession:" + NV_RATE_NOTICE_ID;
+        if(sessionStorage.getItem(sk) !== "1"){
+          sessionStorage.setItem(sk, "1");
+          seen = seen + 1;
+          localStorage.setItem(key, String(seen));
+        }
+      }catch(e){ /* count stays where it is; the notice still shows */ }
+
+      if(!host.__nvBuilt){
+        host.__nvBuilt = true;
+        host.innerHTML = nvRateNoticeHtml();
+        var x = document.getElementById("nvRateNoticeDismiss");
+        if(x) x.addEventListener("click", function(){
+          try{ localStorage.setItem(key, "dismissed"); }catch(e){}
+          host.style.display = "none";
+        });
+      }
+      var c = document.getElementById("nvRateNoticeCount");
+      if(c) c.textContent = seen >= 3
+        ? "This is the last time you will see this."
+        : ("Got it closes this for good \u2014 otherwise you will see it " + (3 - seen) + " more time" + ((3 - seen) === 1 ? "" : "s") + ".");
+      host.style.display = "block";
+    }
+
     function nvTkReasonsRender(){
       var host = document.getElementById("nvTkReasons");
       if (!host || host._nvBuilt) return;

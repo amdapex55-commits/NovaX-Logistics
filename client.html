@@ -2052,6 +2052,23 @@
     }
     #clientMenu.open .client-tab{min-height:46px;}
   }
+  /* Rate change notice: important enough to stop on, not an error. Amber
+     rather than red -- a price rise is news, not a fault. */
+  .nv-rate-notice{border:1px solid #e0a100;background:linear-gradient(180deg,rgba(224,161,0,.10),rgba(224,161,0,.04));
+    border-radius:var(--r-lg);padding:14px 16px;margin:0 0 14px;color:var(--nvu-ink);}
+  .nv-rate-notice h4{margin:0 0 6px;font-size:14.5px;font-weight:850;letter-spacing:-.01em;}
+  .nv-rate-notice p{margin:0 0 8px;font-size:13px;line-height:1.5;color:var(--nvu-ink-2,#6d8478);}
+  .nv-rate-notice ul{margin:0 0 8px;padding-left:18px;font-size:13px;line-height:1.6;}
+  .nv-rate-notice li strong{color:var(--nvu-ink);font-weight:800;}
+  .nv-rate-notice .nv-rn-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;}
+  .nv-rate-notice .nv-rn-x{border:1px solid var(--line);background:var(--nvu-bg);color:var(--nvu-ink);
+    border-radius:var(--r-pill);padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;min-height:44px;}
+  .nv-rate-notice .nv-rn-x:hover{border-color:#e0a100;}
+  .nv-rate-notice .nv-rn-count{font-size:11.5px;color:var(--nvu-ink-2,#6d8478);}
+  @media (max-width:640px){
+    .nv-rate-notice{padding:13px 14px;}
+    .nv-rate-notice .nv-rn-x{width:100%;justify-content:center;}
+  }
   #nvTkList:empty::after{content:"No tickets yet \2014 raise one above if you need a human.";}
   /* Support desk status: open/closed and the real median first-reply time. */
   .nv-tk-desk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;
@@ -2113,7 +2130,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=fac4a360" defer></script>
+  <script src="client-app.js?v=3f4bf6cd" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2202,6 +2219,11 @@
             </nav>
           </aside>
           <div class="client-content">
+            <!-- Rate change notice. Rendered by nvRateNotice() in client-app.js
+                 on the first three sign-ins per workspace, then never again.
+                 Deliberately outside every .client-module so it is seen on
+                 whichever tab the merchant lands on. -->
+            <div id="nvRateNotice" class="nv-rate-notice" style="display:none"></div>
             <!-- DASHBOARD -->
             <section class="client-module active" id="client-dashboard">
               <!-- NovaX (COD front and centre): a merchant's first question on
