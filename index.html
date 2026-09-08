@@ -1136,7 +1136,11 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 .ai2-lock p{font-size:14px;line-height:1.62;color:var(--ink-2)}
 .ai2-lock code{font-family:var(--mono);font-size:12.5px;color:var(--green-2);
   background:rgba(20,199,123,.1);padding:2px 7px;border-radius:6px;white-space:nowrap}
-.ai2-note{font-size:12.5px;color:var(--ink-3);margin-top:14px;line-height:1.6;font-family:var(--mono)}
+.ai2-note{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.ai2-chip{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2);
+  border:1px solid var(--line);border-radius:999px;padding:7px 13px;background:var(--panel);line-height:1.3}
+.ai2-chip i{width:6px;height:6px;border-radius:50%;background:var(--green-2);flex:0 0 auto;
+  box-shadow:0 0 0 3px rgba(20,199,123,.16)}
 .ai2-cta{display:flex;gap:11px;flex-wrap:wrap;margin-top:22px}
 @media(max-width:900px){
   .ai2-vs{grid-template-columns:1fr}
@@ -1480,7 +1484,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   padding:20px 0;border-top:1px solid var(--line);position:relative}
 .sp-row:first-child{border-top:0}
 .sp-app{display:flex;flex-direction:column;gap:5px}
-.sp-app .n{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--ink-3)}
+.sp-app b{letter-spacing:-.01em}
 .sp-app b{font-size:14.5px;color:var(--ink);letter-spacing:-.01em}
 .sp-app .who{font-size:11.5px;color:var(--ink-3)}
 .sp-what{border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 16px;background:var(--panel);
@@ -1496,7 +1500,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 .sp-dot{position:absolute;left:-1px;top:26px;width:7px;height:7px;border-radius:50%;
   background:var(--ink-3);transform:scale(.8);transition:background .4s,transform .4s}
 .sp-row.lit .sp-dot{background:var(--green-2);transform:scale(1)}
-.spine-cap{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);margin-top:20px;line-height:1.7}
+.spine-cap{font-size:13.5px;color:var(--ink-3);margin-top:22px;line-height:1.7;max-width:52ch}
 
 /* ---------- 04: the sync inspector ---------- */
 .sync{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:36px;align-items:start}
@@ -1507,15 +1511,18 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 .sync-h b{font-size:12.5px;color:var(--ink)}
 .sync-h .tag{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--ink-3);
   border:1px solid var(--line);border-radius:999px;padding:3px 9px;letter-spacing:.08em}
-.sync-b{padding:14px 15px;font-family:var(--mono);font-size:11.5px;line-height:1.75;color:var(--ink-2);
+.sync-b{padding:6px 6px 8px;font-size:13.5px;line-height:1.5;color:var(--ink-2);
   min-height:190px}
-.sync-b .k{color:var(--ink-3)}
-.sync-b .s{color:var(--green-3)}
-.sync-b .n{color:var(--blue)}
-.sync-b .c{color:var(--ink-3);font-style:normal}
-.sync-step{opacity:0;transform:translateY(5px);
+.sync-step{display:flex;flex-direction:column;gap:2px;padding:11px 12px;border-radius:12px;
+  border:1px solid transparent;opacity:0;transform:translateY(5px);
   transition:opacity .4s cubic-bezier(.16,.84,.28,1),transform .4s cubic-bezier(.16,.84,.28,1)}
-.sync-step.in{opacity:1;transform:none}
+.sync-step.in{opacity:1;transform:none;border-color:var(--line);background:var(--panel)}
+.sync-step b{font-size:13.5px;font-weight:650;color:var(--ink);display:flex;align-items:center;gap:8px;letter-spacing:-.01em}
+.sync-step b::before{content:"";width:15px;height:15px;border-radius:50%;flex:0 0 auto;
+  border:1.5px solid var(--line-2);transition:background .3s ease,border-color .3s ease}
+.sync-step.in b::before{background:var(--green-2);border-color:var(--green-2);
+  box-shadow:inset 0 0 0 2px var(--panel)}
+.sync-step span{font-size:12.5px;color:var(--ink-3);padding-left:23px;line-height:1.45}
 .sync-arrow{display:flex;align-items:center;justify-content:center;gap:9px;margin:2px 0 0;
   font-family:var(--mono);font-size:10.5px;color:var(--green-2);letter-spacing:.1em}
 .sync-arrow i{display:block;width:26px;height:1px;background:linear-gradient(90deg,transparent,var(--green-2))}
@@ -2243,8 +2250,8 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
         <i>the same model class used by frontier AI labs</i>
       </div>
 
-      <h2>Everyone says&nbsp;&ldquo;AI&rdquo;.<br><span class="grad">Ask them which model.</span></h2>
-      <p class="lead">Most courier &ldquo;AI&rdquo; is a keyword matcher with a chat bubble drawn around it. Ours is Claude Opus&nbsp;5, wired directly into your live account through sixteen permissioned tools. It reads your real parcels, your real invoices, your real exceptions &mdash; and it can act on them.</p>
+      <h2>Ask it anything<br><span class="grad">about your own parcels.</span></h2>
+      <p class="lead">Ask it in plain words &mdash; &ldquo;how many parcels are stuck?&rdquo;, &ldquo;what am I owed this week?&rdquo; &mdash; and it answers from your live account, not from a script.</p>
     </div>
 
     <div class="ai2-vs rv rv-d1" data-rise="x">
@@ -2288,17 +2295,15 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 
       <div>
         <div class="ai2-lock">
-          <h4>The part nobody else will show you</h4>
-          <p>Every tool Autopilot can call is filtered by <code>client_id = auth.uid()</code> in the database itself &mdash; not asked for politely in a prompt. A prompt can be talked around. A row-level policy cannot. Another merchant&rsquo;s parcels are not hidden from your AI; they are unreachable by it.</p>
-          <details class="ai2-more" open>
-            <summary>Why that matters</summary>
-            <p>And when your data doesn&rsquo;t contain the answer, it tells you that instead of inventing one. That is the whole difference between a model with tools and a chatbot with confidence.</p>
-          </details>
+          <h4>It can only ever see your account</h4>
+          <p>Not &ldquo;shouldn&rsquo;t&rdquo; &mdash; <b>can&rsquo;t</b>. Another seller&rsquo;s parcels aren&rsquo;t hidden from your
+             assistant. As far as it is concerned, they do not exist.</p>
+          <p>And when the answer isn&rsquo;t in your data, it says so instead of
+             making one up.</p>
         </div>
-        <p class="ai2-note">// claude-opus-5 &middot; anthropic api &middot; 16 grounded tools<br>// no training on your data &middot; no shared context between merchants</p>
-        <div class="ai2-cta">
-          <button class="btn btn-primary" data-mdl="signup">Signup As NovaX Merchant</button>
-          <button class="btn btn-ghost" data-mdl="sales">Talk To Sales Today</button>
+        <div class="ai2-note">
+          <span class="ai2-chip"><i></i>Your data is never used to train it</span>
+          <span class="ai2-chip"><i></i>Never shared with another seller</span>
         </div>
       </div>
     </div>
@@ -2389,46 +2394,42 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   <div class="wrap">
     <div class="sec-head rv">
       <span class="sec-n">03 / THE PLATFORM</span>
-      <h2>One booking. <span class="grad">Four apps already know.</span></h2>
-      <p class="lead">Stitched-together couriers make you chase the same parcel through four systems that disagree. Here is a single booking landing in all four at once, and what each one sees the moment it does.</p>
+      <h2>Book it once. <span class="grad">Everyone knows.</span></h2>
+      <p class="lead">With most couriers you end up chasing the same parcel through four different people. Here, one booking reaches everyone at once &mdash; and they all see the same thing.</p>
     </div>
 
     <div class="spine rv rv-d1" id="spine">
       <div class="sp-row" data-i="0"><span class="sp-dot"></span>
-        <div class="sp-app"><div class="n">APP 01</div><b>Seller Suite</b><div class="who">the merchant</div></div>
+        <div class="sp-app"><b>You</b><div class="who">book it</div></div>
         <div class="sp-what">
-          <div class="h">AWB N3690112 exists, label queued</div>
-          <div class="d">Booked from a pasted WhatsApp order. Rate resolved, address validated, 4&times;6 label ready to print before the tab finishes loading.</div>
-          <div class="f">wrote parcels &middot; status &ldquo;New booked&rdquo;</div>
+          <div class="h">Two taps and it&rsquo;s booked</div>
+          <div class="d">Paste a WhatsApp order. The label prints itself &mdash; address checked, price worked out.</div>
         </div>
       </div>
       <div class="sp-row" data-i="1"><span class="sp-dot"></span>
-        <div class="sp-app"><div class="n">APP 02</div><b>Rider App</b><div class="who">whoever collects it</div></div>
+        <div class="sp-app"><b>The rider</b><div class="who">collects it</div></div>
         <div class="sp-what">
-          <div class="h">In a pickup run, before anyone was called</div>
-          <div class="d">Allocation reads destination zone, current load and cash-in-hand limit &mdash; so no rider is handed more COD than they are cleared to carry.</div>
-          <div class="f">read parcels &middot; wrote rider_assignments</div>
+          <div class="h">Picked up without a phone call</div>
+          <div class="d">We send the right rider for the area, already knowing how much cash they can carry.</div>
         </div>
       </div>
       <div class="sp-row" data-i="2"><span class="sp-dot"></span>
-        <div class="sp-app"><div class="n">APP 03</div><b>Ops Console</b><div class="who">the hub</div></div>
+        <div class="sp-app"><b>Our hub</b><div class="who">moves it</div></div>
         <div class="sp-what">
-          <div class="h">Counted, and on an SLA clock</div>
-          <div class="d">It joins the Karachi manifest. If it stops moving for 48 hours the exception engine escalates it without anyone noticing first.</div>
-          <div class="f">read parcels &middot; wrote manifest_logs</div>
+          <div class="h">Counted, and watched</div>
+          <div class="d">If your parcel stops moving, we chase it &mdash; usually before you notice.</div>
         </div>
       </div>
       <div class="sp-row" data-i="3"><span class="sp-dot"></span>
-        <div class="sp-app"><div class="n">APP 04</div><b>Public Tracking</b><div class="who">your customer</div></div>
+        <div class="sp-app"><b>Your customer</b><div class="who">follows it</div></div>
         <div class="sp-what">
-          <div class="h">A live link, no login, no call to you</div>
-          <div class="d">The consignee gets a WhatsApp with a tracking URL carrying a per-parcel token. They stop asking you where it is.</div>
-          <div class="f">read parcels &middot; token-scoped, one parcel only</div>
+          <div class="h">They stop asking you where it is</div>
+          <div class="d">A live link on WhatsApp. They can see it themselves, any time.</div>
         </div>
       </div>
     </div>
 
-    <p class="spine-cap">// one row in one table &middot; four apps reading the same truth<br>// nothing is synced between vendors, because there are no vendors</p>
+    <p class="spine-cap">One parcel. Four people who need to know where it is.<br>Everyone sees the same answer, at the same moment.</p>
   </div>
 </section>
 
@@ -2438,46 +2439,36 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
     <div class="sec-head rv">
       <span class="sec-n">04 / CONNECTED</span>
       <h2>Your store speaks. <span class="grad">NovaX already answered.</span></h2>
-      <p class="lead">Not a logo wall. This is the actual round trip &mdash; the order leaving your store, and the status going back into it, without you opening either one.</p>
+      <p class="lead">Your store and NovaX talk to each other. An order comes in, and the delivery, the tracking and your money all start moving &mdash; without you opening a second tab.</p>
     </div>
 
     <div class="sync rv rv-d1" id="sync">
       <div class="sync-lane">
-        <div class="sync-h"><b>Inbound</b><span class="tag">STORE &rarr; NOVAX</span></div>
+        <div class="sync-h"><b>When an order comes in</b><span class="tag">YOUR STORE &rarr; NOVAX</span></div>
         <div class="sync-b">
-          <div class="sync-step" data-s="0"><span class="c">// Shopify fires orders/create</span></div>
-          <div class="sync-step" data-s="1"><span class="k">signature</span> <span class="s">HMAC-SHA256 verified</span></div>
-          <div class="sync-step" data-s="2"><span class="k">consignee</span> <span class="s">"Ayesha Khan"</span></div>
-          <div class="sync-step" data-s="3"><span class="k">city</span> <span class="s">"Karachi"</span> <span class="c">&rarr; serviceable, Zone A</span></div>
-          <div class="sync-step" data-s="4"><span class="k">cod</span> <span class="n">2400</span> <span class="c">&rarr; fee </span><span class="n">200</span></div>
-          <div class="sync-step" data-s="5"><span class="k">awb</span> <span class="s">"N3690112"</span> <span class="c">&rarr; created</span></div>
+          <div class="sync-step" data-s="0"><b>A new order lands</b><span>from your Shopify or WooCommerce store</span></div>
+          <div class="sync-step" data-s="1"><b>We check the address</b><span>and confirm we deliver to that city</span></div>
+          <div class="sync-step" data-s="2"><b>The price is worked out</b><span>your rate, no surprises</span></div>
+          <div class="sync-step" data-s="3"><b>A tracking number is created</b><span>before you have opened anything</span></div>
         </div>
       </div>
-
       <div class="sync-lane">
-        <div class="sync-h"><b>Outbound</b><span class="tag">NOVAX &rarr; EVERYONE</span></div>
+        <div class="sync-h"><b>What happens next</b><span class="tag">NOVAX &rarr; EVERYONE</span></div>
         <div class="sync-b">
-          <div class="sync-step" data-s="6"><span class="c">// status changed: Out for delivery</span></div>
-          <div class="sync-step" data-s="7"><span class="k">store</span> <span class="s">fulfillment updated</span></div>
-          <div class="sync-step" data-s="8"><span class="k">whatsapp</span> <span class="s">consignee notified</span></div>
-          <div class="sync-step" data-s="9"><span class="k">tracking</span> <span class="s">public link live</span></div>
-          <div class="sync-step" data-s="10"><span class="k">ledger</span> <span class="c">awaiting delivery &rarr; </span><span class="n">+2400</span></div>
-          <div class="sync-step" data-s="11"><span class="k">sheet</span> <span class="s">accountant export queued</span></div>
+          <div class="sync-step" data-s="4"><b>Your store is marked fulfilled</b><span>you do not touch it</span></div>
+          <div class="sync-step" data-s="5"><b>Your customer gets a WhatsApp</b><span>with a live tracking link</span></div>
+          <div class="sync-step" data-s="6"><b>Your COD is added up</b><span>Rs 2,400 waiting on this one</span></div>
+          <div class="sync-step" data-s="7"><b>Your accountant&rsquo;s sheet updates</b><span>ready whenever they ask</span></div>
         </div>
       </div>
     </div>
 
     <div class="sync-pills rv rv-d2" data-rise>
-      <span class="sync-pill"><b>Shopify</b> &amp; WooCommerce webhooks</span>
-      <span class="sync-pill"><b>WhatsApp</b> to the consignee</span>
-      <span class="sync-pill"><b>Bank</b> payout reference on every transfer</span>
-      <span class="sync-pill"><b>CSV</b> for your accountant</span>
-      <span class="sync-pill"><b>Public tracking</b>, token-scoped</span>
-    </div>
-
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:26px">
-      <button class="btn btn-primary" data-mdl="signup">Signup As NovaX Merchant</button>
-      <button class="btn btn-ghost" data-mdl="sales">Talk To Sales Today</button>
+      <span class="sync-pill"><b>Shopify</b> &amp; WooCommerce</span>
+      <span class="sync-pill"><b>WhatsApp</b> to your customer</span>
+      <span class="sync-pill"><b>Bank</b> reference on every payout</span>
+      <span class="sync-pill"><b>A sheet</b> for your accountant</span>
+      <span class="sync-pill"><b>Live tracking</b> link</span>
     </div>
   </div>
 </section>
@@ -2908,7 +2899,7 @@ if(!TOUCH){
 (function(){
   var A=[["⚡","Same-day intra-city"],["🤖","24/7 AI ops monitoring"],["🔌","Shopify auto-sync"],["🧾","Append-only wallet ledger"],
     ["📥","300-row bulk import"],["🛵","Zone-aware dispatch"],["📸","Photo proof of delivery"],["🚨","Exception auto-escalation"]];
-  var B=[["🏷️","Auto AWB generation"],["💬","WhatsApp customer updates"],["🔐","HMAC-verified webhooks"],["📡","Public tracking, no login"],
+  var B=[["🏷️","Auto AWB generation"],["💬","WhatsApp customer updates"],["🔐","Secure store connection"],["📡","Public tracking, no login"],
     ["👥","Role-scoped team access"],["⚙️","WooCommerce auto-sync"],["📊","Zone performance analytics"],["🇵🇰","Roman Urdu AI support"]];
   function build(id,rows){
     var el=$(id); if(!el) return;
