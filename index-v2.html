@@ -1052,7 +1052,7 @@ $("fSignup").addEventListener("submit",function(e){
       if(leadRes&&leadRes.error) console.warn("NovaX signup_leads insert:",leadRes.error.message);
       var leadId=leadRes&&leadRes.data&&leadRes.data.id;
       if(!newSession){
-        if(leadId) __nvSb.from("signup_leads").update({status:"awaiting_verification"}).eq("id",leadId).then(function(){});
+        if(leadId) Promise.resolve(__nvSb.rpc("nv_signup_lead_mark",{p_lead_id:leadId,p_status:"awaiting_verification"})).catch(function(){});
         btn.disabled=false; btn.textContent=oldTxt;
         renderDone("mdlSignup","g","Check your email",
           "Account created. Verify your email address, then sign in — your workspace opens automatically.",false);
@@ -1064,12 +1064,12 @@ $("fSignup").addEventListener("submit",function(e){
       }).then(function(rpcRes){
         if(rpcRes&&rpcRes.error){
           console.warn("NovaX workspace:",rpcRes.error.message);
-          if(leadId) __nvSb.from("signup_leads").update({status:"failed",error_message:String(rpcRes.error.message||"").slice(0,300)}).eq("id",leadId).then(function(){});
+          if(leadId) Promise.resolve(__nvSb.rpc("nv_signup_lead_mark",{p_lead_id:leadId,p_status:"failed",p_error:String(rpcRes.error.message||"").slice(0,300)})).catch(function(){});
           btn.disabled=false; btn.textContent=oldTxt;
           showMsg("mSignup","Login created, workspace is being prepared. Please sign in again.",false);
           return;
         }
-        if(leadId) __nvSb.from("signup_leads").update({status:"workspace_created"}).eq("id",leadId).then(function(){});
+        if(leadId) Promise.resolve(__nvSb.rpc("nv_signup_lead_mark",{p_lead_id:leadId,p_status:"workspace_created"})).catch(function(){});
         try{ localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email,
           uid:(newUser&&newUser.id)||null,client_id:(rpcRes&&rpcRes.data)||null,rider_id:null,at:Date.now()})); }catch(e){}
         renderDone("mdlSignup","g","Workspace ready","Opening your booking desk.",true);

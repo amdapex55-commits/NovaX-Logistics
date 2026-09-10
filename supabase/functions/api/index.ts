@@ -183,6 +183,11 @@ Deno.serve(async (req) => {
         headers: { ...CORS, "content-type": "application/json", "retry-after": String(retry) },
       });
     }
+    if (e === "account_inactive") {
+      await logCall(null, null, path, req.method, 403, e, started);
+      return fail(403, "account_inactive",
+        "This NovaX account is deactivated, so its API keys are paused. Contact NovaX to reactivate it.");
+    }
     await logCall(null, null, path, req.method, 401, "invalid_api_key", started);
     return fail(401, "invalid_api_key",
       "That key is not recognised or has been revoked.");
@@ -341,8 +346,18 @@ Deno.serve(async (req) => {
         }, 200);
       }
 
-      const booked = await rpc("nv_book_parcel_core", {
+      /* A retry after a lost response used to book the parcel again and send a
+         second rider. An Idempotency-Key header -- or, without one, the
+         merchant's order_id -- identifies the order, and a repeat within 24
+         hours returns the parcel already booked. Send a distinct
+         Idempotency-Key to deliberately book two parcels for one order. */
+      const idemHeader = (req.headers.get("idempotency-key") || "").trim().slice(0, 150);
+      const orderRef = String(b.order_id ?? "").trim();
+      const idemKey = idemHeader ? `api:${idemHeader}` : (orderRef ? `order:${orderRef}` : "");
+      const bookStartedAt = Date.now();
+      const booked = await rpc("nv_book_parcel_api_idem", {
         p_client_id: clientId,
+        p_idem_key: idemKey,
         p_consignee: String(b.consignee).trim(),
         p_phone: String(b.phone).trim(),
         p_pickup_city: String(b.pickup_city ?? "Karachi").trim(),
@@ -364,6 +379,12 @@ Deno.serve(async (req) => {
           typeof booked.data?.message === "string" ? booked.data.message : "Could not book this parcel.");
       }
       let p = Array.isArray(booked.data) ? booked.data[0] : booked.data;
+      if (p?.booked_at && bookStartedAt - new Date(p.booked_at).getTime() > 5000) {
+        return json({
+          ok: true, idempotent_replay: true, order: parcelOut(p),
+          note: "This order was already booked, so no second parcel was created.",
+        }, 200);
+      }
 
       /* Packing comments and allow-to-open. nv_book_parcel_core has no
          parameter for either, so they are set immediately afterwards through a

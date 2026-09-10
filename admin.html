@@ -8779,6 +8779,8 @@ html,body{ background:var(--bg); color:var(--ink); }
        merchant's rate twice before (PROJECT_HISTORY 3.4). */
     function fmt(n) { return Number(n || 0).toLocaleString('en-US'); }
 
+    /* A balance the merchant owes reads as a negative number. */
+    function nvSignedMoney(v) { v = Number(v) || 0; return (v < 0 ? "\u2212" : "") + money(Math.abs(v)); }
     function money(value) {
       const n = Number(value);
       return PKR.format(Number.isFinite(n) ? n : 0).replace("PKR", "Rs");
@@ -10339,7 +10341,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           return `
             <div class="ops-card">
               <div class="ops-card-head"><strong>${invoice.id} | ${escLabelText(client.name)}</strong><span class="chip ${ui.chipClass}">${escLabelText(ui.chipLabel)}</span></div>
-              <p>${invType} \u00b7 ${(invoice.parcelRefs || []).join(", ")}<br>${due > 0 && invoice.payable <= 0 ? `Amount due to NovaX ${money(due)}` : `Payable ${money(invoice.payable)}`} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
+              <p>${invType} \u00b7 ${(invoice.parcelRefs || []).join(", ")}<br>${due > 0 && invoice.payable <= 0 ? `Net ${nvSignedMoney(-due)} · due to NovaX` : `Payable ${money(invoice.payable)}`} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
               ${ui.primaryAction === "push" ? `<p class="footer-note" style="color:#0c7c59">Push To Client Wallet credits client balance.</p>` : ""}
               ${ui.primaryAction === "paidNovax" ? `<p class="footer-note" style="color:#0c7c59">Mark Paid To NovaX records money received by NovaX.</p>` : ""}
               <div class="inline-actions" style="margin-top:8px">
@@ -10386,6 +10388,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         moneyBox("Selected parcels", selectedInvoiceParcels().length, "delivered only"),
         moneyBox("COD total", money(selectedTotals.cod), "gross collected value"),
         moneyBox("Delivery charges", money(selectedTotals.charges), "NovaX revenue"),
+        moneyBox("Net balance", nvSignedMoney(selectedTotals.finalBalance), selectedTotals.finalBalance < 0 ? "client owes NovaX" : "payable to client"),
         moneyBox("Client payable", money(selectedTotals.payable), "after charges")
       ].join("");
 
@@ -10945,7 +10948,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           const dueAmt = Number(invoice.dueToNovax || 0);
           return `<div class="ops-card ${inWallet ? "" : "alert-row"}">
             <div class="ops-card-head"><strong>${invoice.id} | ${escLabelText(client.name)}</strong><span class="chip ${inWallet ? "good" : "warn"}">${invoice.status}</span></div>
-            <p>${(invoice.parcelRefs || []).join(", ")} | Payable ${money(invoice.payable)} | Charges ${money(invoice.charges)}${dueAmt > 0 ? ` | Due to NovaX ${money(dueAmt)}` : ""}</p>
+            <p>${(invoice.parcelRefs || []).join(", ")} | Payable ${money(invoice.payable)} | Charges ${money(invoice.charges)}${dueAmt > 0 ? ` | Due to NovaX ${money(dueAmt)} | Net ${nvSignedMoney(Number(invoice.payable || 0) - dueAmt)}` : ""}</p>
             <div class="footer-note">${inWallet ? `Entered wallet at ${invoice.walletPushedAt || invoice.paidAt}` : (dueAmt > 0 ? "Delivery-charges invoice -- amount due to NovaX, never enters wallet." : "Visible invoice only. Not in wallet until pushed.")}</div>
           </div>`;
         }).join("") || `<div class="ops-card"><strong>No wallet invoices</strong><p>Push generated invoices into wallets to start payout flow.</p></div>`;
@@ -14393,9 +14396,23 @@ html,body{ background:var(--bg); color:var(--ink); }
       const target = state.parcels.find(p => p.awb === state.selectedAwb);
       if (!target) { toast("Select a parcel before running an admin action.", "error"); return; }
       if (action === "advance") {
-        const nextSteps = ["Collected by rider", "Arrived at warehouse", "Parcel now in transit", "Parcel received at destination", "Parcel out for delivery", "Delivered"];
-        const currentIndex = Math.max(-1, nextSteps.indexOf(target.status));
-        const step = nextSteps[Math.min(nextSteps.length - 1, currentIndex + 1)];
+        /* The next step comes from where the parcel actually is. This took
+           indexOf(status) on the delivery path, which is -1 for Cancelled,
+           Refused, Returns and every exception -- so "advance" silently sent
+           those parcels back to "Collected by rider", with no confirmation, and
+           the database lets admins through. Only the forward path advances. */
+        const NV_ADVANCE = {
+          "New booked": "Collected by rider", "Collected by rider": "Arrived at warehouse",
+          "Arrived at warehouse": "Parcel now in transit", "Parcel now in transit": "Parcel received at destination",
+          "Parcel received at destination": "Parcel out for delivery", "Parcel out for delivery": "Delivered",
+          "Reattempt": "Parcel out for delivery", "Reassigned": "Parcel out for delivery"
+        };
+        const step = NV_ADVANCE[target.status] || null;
+        if (!step) {
+          toast(`${target.awb} is "${target.status}" — there is no next delivery step to scan. Change its status deliberately from the parcel instead.`, "error");
+          return;
+        }
+        if (step === "Delivered" && !window.confirm(`Mark ${target.awb} as Delivered? This also records COD ${money(target.cod)} as collected.`)) return;
         if (step) {
           setParcelStatus(target, step);
           target.risk = Math.max(4, target.risk - 6);

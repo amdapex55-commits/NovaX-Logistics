@@ -3313,19 +3313,23 @@ $("fSignup").addEventListener("submit",function(e){
     }
 
     /* durable lead row BEFORE the workspace RPC — admin always sees the signup */
-    __nvSb.from("signup_leads").insert({
-      name:storeName, phone:phone, email:email, city:city, address:address,
-      business_type:product, website:website||"", auth_user_id:(newUser&&newUser.id)||null, status:"pending_workspace"
-    }).select("id").maybeSingle().catch(function(err){
+    /* Through nv_signup_lead_create: an anonymous visitor has no SELECT on
+       signup_leads, so insert-then-select returned nothing and no lead was
+       ever recorded; and the anon UPDATE policy that let this page move a
+       lead forward also let anyone rewrite every pending lead. */
+    Promise.resolve(__nvSb.rpc("nv_signup_lead_create",{
+      p_name:storeName, p_phone:phone, p_email:email, p_city:city, p_address:address,
+      p_business_type:product, p_website:website||"", p_auth_user_id:(newUser&&newUser.id)||null
+    })).catch(function(err){
       /* Never let bookkeeping strand a real signup. */
       console.warn("NovaX signup_leads insert threw:",err&&err.message);
       return null;
     }).then(function(leadRes){
       if(leadRes&&leadRes.error) console.warn("NovaX signup_leads insert:",leadRes.error.message);
-      var leadId=leadRes&&leadRes.data&&leadRes.data.id;
+      var leadId=leadRes&&leadRes.data;
 
       if(!newSession){
-        if(leadId) __nvSb.from("signup_leads").update({status:"awaiting_verification"}).eq("id",leadId).then(function(){});
+        if(leadId) Promise.resolve(__nvSb.rpc("nv_signup_lead_mark",{p_lead_id:leadId,p_status:"awaiting_verification"})).catch(function(){});
         btn.disabled=false; btn.textContent=oldTxt;
         renderDone("mdlSignup","g","Check your email",
           "Account created. Verify your email address, then sign in — your workspace opens automatically.",false);
@@ -3338,12 +3342,12 @@ $("fSignup").addEventListener("submit",function(e){
       }).then(function(rpcRes){
         if(rpcRes&&rpcRes.error){
           console.warn("NovaX workspace:",rpcRes.error.message);
-          if(leadId) __nvSb.from("signup_leads").update({status:"failed",error_message:String(rpcRes.error.message||"").slice(0,300)}).eq("id",leadId).then(function(){});
+          if(leadId) Promise.resolve(__nvSb.rpc("nv_signup_lead_mark",{p_lead_id:leadId,p_status:"failed",p_error:String(rpcRes.error.message||"").slice(0,300)})).catch(function(){});
           btn.disabled=false; btn.textContent=oldTxt;
           showMsg("mSignup","Login created, workspace is being prepared. Please sign in again.",false);
           return;
         }
-        if(leadId) __nvSb.from("signup_leads").update({status:"workspace_created"}).eq("id",leadId).then(function(){});
+        if(leadId) Promise.resolve(__nvSb.rpc("nv_signup_lead_mark",{p_lead_id:leadId,p_status:"workspace_created"})).catch(function(){});
         try{ localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email,
           uid:(newUser&&newUser.id)||null,client_id:(rpcRes&&rpcRes.data)||null,rider_id:null,at:Date.now()})); }catch(e){}
         renderDone("mdlSignup","g","Workspace Ready","NovaX Autopilot is preparing your first booking desk.",true);

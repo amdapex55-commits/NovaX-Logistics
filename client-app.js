@@ -1232,7 +1232,10 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
        "Parcel returned to consignee" is the legacy alias nvStatus() maps to
        "Return to shipper"; both are listed because the DB still holds rows
        written under the old name. */
-    const NV_CLOSED_STATUSES=["Delivered","Return to shipper","Parcel returned to consignee","Cancelled"];
+    /* "Cancelled by client" is the status the database actually writes; only
+       "Cancelled" was listed, so every cancelled booking stayed in the
+       unbounded active-parcels query forever. */
+    const NV_CLOSED_STATUSES=["Delivered","Return to shipper","Parcel returned to consignee","Cancelled","Cancelled by client"];
     const NV_INVOICE_CLOSED_STATUSES=["Paid","Pushed to wallet","Settled","Paid to NovaX"];
     function isInvoiceClosed(status){ return NV_INVOICE_CLOSED_STATUSES.indexOf(status)>-1; }
     function paidParcelRefs(){ return new Set(state.invoices.filter(i=>isInvoiceClosed(i.status)).flatMap(i=>i.parcelRefs||[])); }
@@ -2111,7 +2114,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       // outstanding even after the client had actually been paid.
       if(due>0){
         if(isInvoiceClosed(inv.status)) return moneyBox("Paid in full",money(due),"Settled - nothing owed");
-        return moneyBox("Amount due to NovaX",money(due),"you owe this to NovaX");
+        return moneyBox("Amount due to NovaX","\u2212"+money(due),"net balance \u2014 you owe this to NovaX");
       }
       if(inv.status==="Pushed to wallet") return moneyBox("In wallet",money(inv.payable),"Ready for you - withdraw anytime");
       if(isInvoiceClosed(inv.status)) return moneyBox("Paid in full",money(inv.payable),"Settled - nothing owed");
@@ -2785,7 +2788,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        invoice_id on it. Returns are covered by the same test: a returned or
        refused parcel is only given an invoice_id once its delivery charge has
        been deducted on that invoice. */
-    function nvIsPaidParcel(p){ return !!(p && p.invoiceId); }
+    /* On an invoice is not the same as paid. This returned true for any
+       invoice_id, so 80 parcels on invoices that were only Generated -- money
+       nobody had received -- wore a PAID tape. Paid now means the invoice
+       itself is settled, pushed to the wallet, or paid to NovaX. */
+    function nvIsPaidParcel(p){
+      if(!p || !p.invoiceId) return false;
+      var inv=(state.invoices||[]).find(function(i){ return i && (i._uuid===p.invoiceId || i.id===p.invoiceId); });
+      return !!inv && isInvoiceClosed(inv.status);
+    }
     /* A progress meter is only information while the parcel is still moving.
        On a finished parcel it was always 7/7 and 100% on every row -- a full
        blue bar repeated down the table, in the one colour the rest of the
@@ -2925,7 +2936,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const el=document.getElementById("clientStatusBoard"); if(!el) return;
       const parcels=clientScopedParcels(); const groups={};
       parcels.forEach(p=>{ (groups[p.status]=groups[p.status]||[]).push(p); });
-      const order=STATUS_TAGS.filter(s=>groups[s]);
+      /* Cancelled is not a pipeline stage, so it is not in STATUS_TAGS -- and
+         a board built only from STATUS_TAGS dropped cancelled parcels. */
+      const order=STATUS_TAGS.concat(["Cancelled by client"]).filter(s=>groups[s]);
       const open=!!state.statusBoardOpen;
       const sum=document.getElementById("statusBoardSummary"); if(sum) sum.textContent=parcels.length?`${parcels.length} parcel${parcels.length===1?"":"s"} \u00b7 ${order.map(k=>`${groups[k].length} ${k.toLowerCase()}`).join(", ")} \u2014 tap to ${open?"collapse":"expand"}.`:"No parcels in the selected range.";
       const chev=document.getElementById("statusBoardChevron"); if(chev) chev.textContent=open?"▾":"▸";
@@ -3440,12 +3453,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         el.id = "nvOfflineBanner";
         el.setAttribute("role","status");
         el.innerHTML = '<span class="nvoff-dot"></span>' +
-          '<span>No connection. You can still read what is already loaded \u2014 ' +
-          'anything you send will fail until it is back.</span>';
+          '<span class="nvoff-text"></span>';
         document.body.appendChild(el);
         return el;
       }
-      function show(){ if(offline) return; offline = true; ensure().classList.add("show"); }
+      var NV_OFF_TEXT = {
+        offline: "No connection. You can still read what is already loaded \u2014 anything you send will fail until it is back.",
+        unreachable: "Can\u2019t reach NovaX right now. What\u2019s on screen may be out of date \u2014 check your connection.",
+        server: "NovaX is having trouble right now. What\u2019s on screen may be out of date, and actions may fail until it recovers."
+      };
+      function show(kind){
+        var e = ensure(), t = e.querySelector(".nvoff-text");
+        if(t) t.textContent = NV_OFF_TEXT[kind] || NV_OFF_TEXT.offline;
+        if(offline) return; offline = true; e.classList.add("show");
+      }
       function hide(){ if(!offline) return; offline = false; if(el) el.classList.remove("show"); }
 
       window.addEventListener("offline", show);
@@ -3454,15 +3475,37 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         try{ if(typeof window.nvQuietRefresh === "function") window.nvQuietRefresh(); }catch(e){}
       });
 
-      /* A failed fetch is better evidence than navigator.onLine. */
+      /* What NovaX's servers actually answer is the evidence. This only counted
+         a rejected fetch, and only when navigator.onLine was already false, so
+         a 500/503 -- or a dead upstream with wifi still up -- showed nothing;
+         and any unrelated successful fetch cleared it. supabase-js also keeps
+         its own reference to fetch, created before this ran, so NovaX
+         requests are watched on the client itself as well. */
+      function nvOurs(u){ u = String((u && u.url) || u || ""); return /supabase\.co\/(rest|functions|auth)\/v1\//.test(u); }
+      function nvWatch(p, input){
+        if(!nvOurs(input)) return p;
+        return p.then(function(r){
+          if(r && r.status >= 500) show("server"); else if(r) hide();
+          return r;
+        }, function(e){ show(navigator.onLine ? "unreachable" : "offline"); throw e; });
+      }
       if(window.fetch){
         var orig = window.fetch;
-        window.fetch = function(){
-          return orig.apply(this, arguments).then(function(r){ hide(); return r; })
-                     .catch(function(e){ if(!navigator.onLine) show(); throw e; });
-        };
+        window.fetch = function(input){ return nvWatch(orig.apply(this, arguments), input); };
       }
-      if(!navigator.onLine) show();
+      (function nvHookClient(tries){
+        var c = window.__nvSb;
+        if(c && c.rest && typeof c.rest.fetch === "function"){
+          if(!c.rest.__nvWatched){
+            var rf = c.rest.fetch;
+            c.rest.fetch = function(input){ return nvWatch(rf.apply(this, arguments), input); };
+            c.rest.__nvWatched = true;
+          }
+          return;
+        }
+        if(tries < 40) setTimeout(function(){ nvHookClient(tries + 1); }, 500);
+      })(0);
+      if(!navigator.onLine) show("offline");
     })();
 
     /* ═══ Bottom navigation ════════════════════════════════════════════════
@@ -4246,7 +4289,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function renderClientReportFull(){
       const tbody=document.getElementById("clientReportFullRows"); if(!tbody) return;
       const sel=document.getElementById("repStatus");
-      if(sel && !sel.dataset.filled){ sel.innerHTML=`<option value="">All statuses</option>`+STATUS_TAGS.map(s=>`<option value="${s}">${s}</option>`).join(""); sel.dataset.filled="1"; }
+      if(sel && !sel.dataset.filled){ sel.innerHTML=`<option value="">All statuses</option>`+STATUS_TAGS.concat(["Cancelled by client"]).map(s=>`<option value="${s}">${s}</option>`).join(""); sel.dataset.filled="1"; }
       const rows=nvReportRows();
       /* data-label drives the mobile card layout in client.html: under 900px the
          table stops being a table and each row stacks as AWB-first card, so the
@@ -9007,7 +9050,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       Warehouse: ["dashboard","newBooking","bulkBooking","awbLabel","support"],
       Support:   ["dashboard","tickets","support"]
     };
-    function nvClientRole(){ var r=window.__novaxClientRole; return NOVAX_ROLE_TABS[r]?r:"Owner"; }
+    /* Until the seat lookup has actually answered, act as the most limited
+       role. This defaulted to Owner, so a failed staff_users read handed a
+       Support or Warehouse login every Owner tab and control. A login with no
+       seat row still resolves to Owner once the lookup succeeds. */
+    function nvClientRole(){ var r=window.__novaxClientRole; return NOVAX_ROLE_TABS[r]?r:"Support"; }
+    function nvRoleRetry(){
+      if(window.__novaxClientRole) return;
+      var n=(window.__nvRoleRetries=(window.__nvRoleRetries||0)+1);
+      if(n>6){ try{ toast("We couldn't confirm your team permissions, so some tabs are hidden. Refresh to try again.","error"); }catch(e){} return; }
+      setTimeout(function(){ try{ loadSubAccounts(); }catch(e){} }, Math.min(30000, 2000*n));
+    }
     function nvRoleTabs(){ return NOVAX_ROLE_TABS[nvClientRole()]; }
     function nvCanUseTab(id){ return nvRoleTabs().indexOf(id)>-1; }
     function nvIsOwnerSeat(){ return nvClientRole()==="Owner"; }
@@ -9097,7 +9150,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     function loadSubAccounts(){
       var sb=window.__nvSb;
-      if(!sb||!sb.from){ __nvStaffError="Not connected to the server yet — refresh once you are back online."; renderSubAccounts(); return; }
+      if(!sb||!sb.from){ __nvStaffError="Not connected to the server yet — refresh once you are back online."; renderSubAccounts(); nvRoleRetry(); return; }
       __nvStaffLoading=true; renderSubAccounts();
       try{
         if(sb.auth&&sb.auth.getUser){
@@ -9110,10 +9163,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // sent from the browser, exactly like the other per-seller reads.
       sb.from("staff_users").select("id,name,email,role,permissions,status,last_active_at").then(function(res){
         __nvStaffLoading=false;
-        if(res&&res.error){ __nvStaffError=res.error.message||"public.staff_users is not available."; __nvStaffRows=null; }
-        else { __nvStaffError=null; __nvStaffRows=(res&&res.data)||[]; nvResolveMyRole(); }
+        if(res&&res.error){ __nvStaffError=res.error.message||"public.staff_users is not available."; __nvStaffRows=null; nvRoleRetry(); }
+        else { __nvStaffError=null; __nvStaffRows=(res&&res.data)||[]; nvResolveMyRole(); if(!window.__novaxClientRole) nvRoleRetry(); }
         renderSubAccounts();
-      }).catch(function(e){ __nvStaffLoading=false; __nvStaffError=String((e&&e.message)||e); renderSubAccounts(); });
+      }).catch(function(e){ __nvStaffLoading=false; __nvStaffError=String((e&&e.message)||e); renderSubAccounts(); nvRoleRetry(); });
     }
     function openInviteUserModal(){
       if(!nvIsOwnerSeat()){ toast("Only the account Owner can invite users."); return; }
@@ -9712,7 +9765,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              statements stay complete. */
           sb.from("parcels").select("*").eq("client_id",MY)
             .not("status","in","("+NV_CLOSED_STATUSES.map(function(x){return '"'+x+'"';}).join(",")+")")
-            .order("booked_at",{ascending:false}),
+            .order("booked_at",{ascending:false}).limit(2000),
           /* These four were unbounded and are re-issued on every debounced
              realtime change, so a long-tenured merchant re-pulled their entire
              invoice/payout/payment history from scratch on every tick. Capped
