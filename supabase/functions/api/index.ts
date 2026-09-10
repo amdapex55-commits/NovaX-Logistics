@@ -442,7 +442,7 @@ Deno.serve(async (req) => {
           `A prepaid order cannot have a cod_amount. Set "cod_amount": 0, or leave payment_mode as "COD". Nothing was changed.`);
       }
 
-      const edited = await rpc("nv_edit_parcel_core", {
+      const edited = await rpc("nv_edit_parcel_core_v2", {
         p_client_id: clientId,
         p_awb: awb,
         p_consignee: String(b.consignee ?? row.consignee ?? "").trim(),
@@ -459,6 +459,13 @@ Deno.serve(async (req) => {
         p_order_id: String(b.order_id ?? meta.orderId ?? ""),
         p_comments: b.comments !== undefined ? String(b.comments).slice(0, 180) : null,
         p_actor: "api",
+        /* What this handler just read. If the parcel changed between that
+           read and this write, the edit is refused rather than restoring
+           fields the caller never meant to send. */
+        p_expected: {
+          consignee: row.consignee ?? "", phone: row.phone ?? "", address: row.address ?? "",
+          city: row.city ?? "", cod: Number(row.cod_amount || 0),
+        },
       });
       if (!edited.ok) {
         const msg = typeof edited.data?.message === "string" ? edited.data.message : "Could not edit this order.";
@@ -554,6 +561,19 @@ Deno.serve(async (req) => {
       const target = String(b?.url ?? "").trim();
       if (target && !/^https:\/\//i.test(target)) {
         return fail(422, "invalid_webhook_url", "Must start with https://");
+      }
+      /* Same rule the database enforces, answered here with a reason instead
+         of a bare webhook_not_saved. */
+      if (target) {
+        let u: URL | null = null;
+        try { u = new URL(target); } catch { u = null; }
+        const h = (u?.hostname ?? "").replace(/^\[|\]$/g, "").toLowerCase();
+        if (!u || u.username || u.password || (u.port && u.port !== "443") ||
+            h.includes(":") || /^[0-9.]+$/.test(h) || !h.includes(".") || h === "localhost" ||
+            /\.(localhost|local|internal|lan|home|corp|intranet)$/.test(h)) {
+          return fail(422, "invalid_webhook_url",
+            "Use a public https address on port 443. Private, local and IP-address destinations are not allowed.");
+        }
       }
       const res = await rpc("nv_api_set_webhook_v2", {
         p_key_id: acct.key_id, p_url: target, p_rotate: b?.rotate_secret === true,

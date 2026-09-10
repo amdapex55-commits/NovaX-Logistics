@@ -571,6 +571,22 @@
 
      It renders through render(), the same function the token path uses; the
      personal blocks simply do not appear because the columns are absent. */
+  /* Shown only while background refreshes are failing, and kept outside #out
+     so a re-render cannot wipe it. Says how old the status on screen is
+     instead of letting it pass for live. */
+  var NV_LAST_OK=Date.now();
+  function nvRefreshTrouble(on){
+    var el=document.getElementById("nvRefreshNote");
+    if(!on){ NV_LAST_OK=Date.now(); if(el) el.hidden=true; return; }
+    if(!el){
+      el=document.createElement("div"); el.id="nvRefreshNote"; el.setAttribute("role","status");
+      el.style.cssText="position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:max-content;max-width:calc(100% - 32px);padding:10px 14px;border-radius:10px;background:#3a2a06;color:#ffe3a3;font:600 13px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.35);z-index:50;text-align:center";
+      document.body.appendChild(el);
+    }
+    var mins=Math.max(1,Math.round((Date.now()-NV_LAST_OK)/60000));
+    el.textContent="Couldn\u2019t refresh just now \u2014 this status is from about "+mins+" min ago. We\u2019ll keep trying.";
+    el.hidden=false;
+  }
   function bootByAwb(sb, awb){
     sb.rpc("public_track_awb",{ p_awb: awb }).then(function(r){
       if(r&&r.error){ fail("Tracking is temporarily unavailable","Please try again in a moment."); return; }
@@ -580,11 +596,14 @@
       if(nvIsFinal(row.status)) return;
       nvStartRefresh(function(){
         sb.rpc("public_track_awb",{ p_awb: awb }).then(function(r2){
-          var n=(r2&&r2.data&&r2.data[0])||null;
-          if(!n) return;
+          var n=(r2&&!r2.error&&r2.data&&r2.data[0])||null;
+          /* A failed refresh used to do nothing at all, so a customer could
+             watch a status that had stopped updating and never know. */
+          if(!n){ nvRefreshTrouble(true); return; }
+          nvRefreshTrouble(false);
           if(n.updated_at!==row.updated_at){ row=n; render(n); }
           if(nvIsFinal(n.status)) nvStopRefresh();
-        }).catch(function(){});
+        }).catch(function(){ nvRefreshTrouble(true); });
       });
     }).catch(function(){
       fail("Cannot reach NovaX right now","Please check your internet connection and try again.");

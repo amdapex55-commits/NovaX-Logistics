@@ -1154,10 +1154,15 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       return { A:legacy, B:Object.assign({},legacy,{ overnight:NV_ZONE_B_BASE }) };
     }
     // NovaX (Booking Charge Accuracy): parse weight strings like "0.8 kg", "1kg", "2.5", "5 KG".
+    /* Mirrors nv_parse_weight_kg() on the server: the first number, divided by
+       1000 when the unit is grams. Stripping only "kg" turned "500 g" into
+       500 kg. */
     function parseWeightKg(w){
-      var s=String(w===undefined||w===null?"":w).trim().toLowerCase().replace(/kg/g,"").trim();
-      var n=parseFloat(s);
+      var s=String(w===undefined||w===null?"":w).trim().toLowerCase();
+      var m=s.match(/(\d+(?:\.\d+)?|\.\d+)/);
+      var n=m?parseFloat(m[1]):NaN;
       if(!s||isNaN(n)||n<=0) return 0.8;
+      if(/[\d.]\s*(g|gm|gms|gr|gram|grams)\s*$/.test(s)) n=n/1000;
       return n;
     }
     // charge = baseRate + ceil(max(0, weightKg-1)) * additionalKgRate, capped at the 5kg normal slab.
@@ -4885,7 +4890,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function exportReportPdf(){
       const rows=nvReportRows();
       const stage=document.getElementById("printStage");
-      stage.innerHTML=`<div style="font-family:sans-serif;color:#000;background:var(--nvu-bg);padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(p.status)}</td><td>${money(p.cod)}</td></tr>`).join("")}</table></div>`;
+      stage.innerHTML=`<div style="font-family:sans-serif;color:#000;background:var(--nvu-bg);padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th><th>Fee</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(p.status)}</td><td>${money(p.cod)}</td><td>${money(p.fee)}</td></tr>`).join("")}<tr><td colspan="4"><strong>Total &mdash; ${rows.length} parcel(s)</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.cod||0),0))}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.fee||0),0))}</strong></td></tr></table></div>`;
       nvPrintStageNow();
     }
 
@@ -6742,13 +6747,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(!product) addProblem("product","Product/item details are missing.","Add a short item description.");
         // COD to number.
         const cod=codRaw===""?NaN:Number(codRaw);
-        if(codRaw===""||Number.isNaN(cod)||cod<0) addProblem("cod",`COD "${codRaw}" is invalid.`,"Use a number 0 or higher (0 for prepaid).");
+        /* Number("Infinity") is a number -- just not a finite one -- so an
+           isNaN check let it through and the record then quietly stored Rs 0. */
+        if(codRaw===""||!Number.isFinite(cod)||cod<0) addProblem("cod",`COD "${codRaw}" is invalid.`,"Use a number 0 or higher (0 for prepaid).");
         // Weight to kg -- missing defaults to 0.8kg (matches booking-charge
         // default), only genuinely invalid text blocks the row.
         let weightKg=0.8;
         if(weightRaw){
-          const wnum=parseFloat(String(weightRaw).toLowerCase().replace(/kg/g,"").trim());
-          if(!isFinite(wnum)||wnum<=0) addProblem("weight",`Weight "${weightRaw}" is invalid.`,"Use a number like 0.8, 1kg, or 2.5 kg.");
+          /* Units matter. This stripped "kg" and ignored every other unit, so
+             "500 g" became 500 kg and was billed at the 5 kg ceiling. */
+          const wtxt=String(weightRaw).trim().toLowerCase();
+          let wnum=parseFloat(wtxt.replace(/[a-z\s]+$/,""));
+          if(/[\d.]\s*(g|gm|gms|gr|gram|grams)$/.test(wtxt)) wnum=wnum/1000;
+          if(!isFinite(wnum)||wnum<=0) addProblem("weight",`Weight "${weightRaw}" is invalid.`,"Use a number like 0.8, 1kg, 2.5 kg or 500 g.");
           else weightKg=wnum;
         }
         const paymentMode=["COD","Non COD Prepaid"].includes(paymentModeRaw)?paymentModeRaw:(paymentModeRaw?paymentModeRaw:"COD");
@@ -6972,6 +6983,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     async function uploadBulkCsv(){
+      if(NV_BULK_BUSY){ toast("An import is already running. Wait for it to finish.","error"); return; }
       const file=document.getElementById("bulkCsvInput")?.files?.[0];
       if(!file){ toast("Select a CSV file first."); return; }
       NV_BULK_RAW=parseCsv(await file.text());
@@ -6985,6 +6997,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       importBulkRows(parsed.results.map(r=>r.record), parsed.results.length);
     }
     function importValidBulkRowsOnly(){
+      if(NV_BULK_BUSY){ toast("An import is already running. Wait for it to finish.","error"); return; }
       const parsed=state.lastBulkValidation;
       if(!parsed||!parsed.results){ toast("Upload a CSV first."); return; }
       const validRecords=parsed.results.filter(r=>r.ok).map(r=>r.record);
@@ -6993,7 +7006,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!window.confirm(`Import ${validRecords.length} valid row(s) and skip ${rejected} rejected row(s)? Rejected rows will not get an AWB.`)) return;
       importBulkRows(validRecords, parsed.results.length);
     }
+    /* One import at a time. Upload, "Import N rows" and "Import valid rows
+       only" all land here, and nothing stopped a second click from starting a
+       second pass over the same rows while the first was still booking them. */
+    var NV_BULK_BUSY=false;
     async function importBulkRows(records, totalRowsSeen){
+      if(NV_BULK_BUSY){ toast("An import is already running. Wait for it to finish.","error"); return; }
+      NV_BULK_BUSY=true;
+      const lockBtns=Array.from(document.querySelectorAll('#importValidOnlyBtn,[onclick^="nvImportFixedBulk"],[onclick^="importValidBulkRowsOnly"],#bulkUploadBtn,#uploadBulkBtn'));
+      lockBtns.forEach(function(b){ b.disabled=true; });
+      try{ return await nvImportBulkRowsOnce(records, totalRowsSeen); }
+      finally{ NV_BULK_BUSY=false; lockBtns.forEach(function(b){ b.disabled=false; }); }
+    }
+    async function nvImportBulkRowsOnce(records, totalRowsSeen){
       // NovaX fix (URGENT order booking/processing spec): bulk import used
       // to call the same local-only bookParcel() as quick booking, with the
       // same risk of a parcel existing only in this browser if the later
@@ -7399,8 +7424,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
       /* supabase.rpc() is a thenable WITHOUT .catch(), so wrap before chaining
          -- the same pattern cancelClientBooking() uses. */
-      Promise.resolve(
-        sb.rpc("client_edit_new_booked_parcel",{
+      var edArgs={
           p_awb: awb,
           p_consignee: name,
           p_phone: phone.replace(/[^0-9]/g,""),
@@ -7414,7 +7438,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           p_payment_mode: nvGetVal("nvEdPaymentMode"),
           p_allow_open: nvGetVal("nvEdAllowOpen"),
           p_order_id: nvGetVal("nvEdOrderId")
-        })
+      };
+      /* Say what this form was opened against. If someone else saved a
+         correction meanwhile, the server refuses instead of this save quietly
+         putting the old phone or address back. */
+      var edParcel=(state.parcels||[]).find(function(x){ return x && x.awb===awb; });
+      var edExpected=(edParcel&&edParcel._raw)||null;
+      Promise.resolve(
+        edExpected
+          ? Promise.resolve(sb.rpc("client_edit_new_booked_parcel_v2", Object.assign({}, edArgs, { p_expected: edExpected }))).then(function(r){
+              var m=(r&&r.error&&r.error.message)||"";
+              return (m && /client_edit_new_booked_parcel_v2|schema cache|does not exist|no function matches/i.test(m)) ? sb.rpc("client_edit_new_booked_parcel", edArgs) : r;
+            })
+          : sb.rpc("client_edit_new_booked_parcel", edArgs)
       ).catch(function(e){
         return { error:{ message:String((e&&e.message)||e||"network error") } };
       }).then(function(r){
@@ -8587,19 +8623,44 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!address){ toast("Enter a pickup address before requesting pickup."); return; }
       const requestedFor=(document.getElementById("pickupRequestedFor")?.value||"").trim();
       const note=(document.getElementById("pickupNote")?.value||"").trim();
-      const id="PR-"+Date.now().toString(36).toUpperCase();
-      state.pickupRequests=state.pickupRequests||[];
-      state.lastPickupAddress=address;
-      state.pickupRequests.unshift({ id:id, clientId:activeClientId(), awbs:awbs, pickupAddress:address, requestedFor:requestedFor, note:note, status:"Requested", riderId:"", createdAt:new Date().toISOString() });
-      saveState();
-      /* The address is kept, not cleared: the next pickup is almost always
-         from the same warehouse. The note and the time are cleared, because
-         those are specific to the collection that was just requested. */
-      state.lastPickupAddress=address;
-      const notedEl=document.getElementById("pickupNote"); if(notedEl) notedEl.value="";
-      const forEl=document.getElementById("pickupRequestedFor"); if(forEl) forEl.value="";
-      renderPickupEligibleList(); renderPickupRequestList();
-      toast(`Pickup requested for ${awbs.length} AWB(s). We will confirm scheduling shortly.`);
+      const sb=window.__nvSb;
+      if(!sb||!sb.from){ toast("Cloud connection not ready yet, please try again in a moment.","error"); return; }
+      if(requestPickup._busy) return;
+      requestPickup._busy=true;
+      const btn=document.getElementById("requestPickupBtn");
+      const btnText=btn?btn.textContent:"";
+      if(btn){ btn.disabled=true; btn.textContent="Requesting pickup\u2026"; }
+      /* Nothing joins the list and nothing says "requested" until the server
+         has stored the request. This used to announce success first and save
+         in the background, so a rejected insert left a merchant waiting for a
+         rider nobody had been asked to send. */
+      Promise.resolve(
+        sb.from("pickup_requests").insert({ client_id:activeClientId(), awbs:awbs, pickup_address:address, requested_for:requestedFor, note:note, status:"Requested", meta:{} }).select("id,created_at").maybeSingle()
+      ).catch(function(e){ return { error:{ message:String((e&&e.message)||e||"network error") } }; })
+      .then(function(r){
+        requestPickup._busy=false;
+        if(btn){ btn.disabled=false; btn.textContent=btnText||"Request Pickup"; }
+        if(!r||r.error||!r.data){
+          const m=(r&&r.error&&r.error.message)||"";
+          toast(/fetch|network|timeout/i.test(m)
+            ? "We could not reach the server, so this pickup was NOT requested. Check your connection and try again."
+            : "Pickup was not requested: "+(m||"the server did not confirm it. Please try again."),"error");
+          return;
+        }
+        state.pickupRequests=state.pickupRequests||[];
+        /* _uuid marks it as already stored, so the background sync never
+           inserts it a second time. */
+        state.pickupRequests.unshift({ id:"PR-"+Date.now().toString(36).toUpperCase(), _uuid:r.data.id, clientId:activeClientId(), awbs:awbs, pickupAddress:address, requestedFor:requestedFor, note:note, status:"Requested", riderId:"", createdAt:r.data.created_at||new Date().toISOString() });
+        /* The address is kept, not cleared: the next pickup is almost always
+           from the same warehouse. The note and the time are cleared, because
+           those are specific to the collection that was just requested. */
+        state.lastPickupAddress=address;
+        saveState();
+        const notedEl=document.getElementById("pickupNote"); if(notedEl) notedEl.value="";
+        const forEl=document.getElementById("pickupRequestedFor"); if(forEl) forEl.value="";
+        renderPickupEligibleList(); renderPickupRequestList();
+        toast(`Pickup requested for ${awbs.length} AWB(s). We will confirm scheduling shortly.`,"success");
+      });
     }
     /* Runs each renderer in isolation. A thrown error is reported once per
        renderer per session -- repeating it on every render would flood the
@@ -9342,6 +9403,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           ));
         }
 
+        function nvLegacyBookCall(){
         if (o.destAreaId) {
           var geoArgs = Object.assign({}, argsWithOpen, {
             p_origin_area_id: null,            // server resolves the default pickup
@@ -9375,7 +9437,28 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             return sb.rpc("client_book_parcel", args);
           }
           return r0;
+        });
+        }
+        /* Lost-reply retries. When a booking reached the server but its reply
+           never reached this browser, pressing Book again made a second parcel.
+           Every attempt now carries a key -- the order ID when there is one,
+           otherwise these exact details plus a nonce that only moves on after a
+           confirmed booking -- and the server hands back the parcel it already
+           made for a key it has seen. If that function is not deployed the
+           booking goes through exactly as before. */
+        var NVI = window.__nvIdem || (window.__nvIdem = { nonce: Date.now().toString(36) + Math.random().toString(36).slice(2, 10) });
+        var nvOrderKey = String(o.orderId || "").trim();
+        var nvFp = JSON.stringify([args.p_consignee, args.p_phone, args.p_city, args.p_address, args.p_cod, args.p_weight, args.p_payment_mode, args.p_reference_no, argsWithOpen.p_allow_open, o.destAreaId || ""]);
+        var nvH = 0; for (var nvI = 0; nvI < nvFp.length; nvI++) { nvH = ((nvH << 5) - nvH + nvFp.charCodeAt(nvI)) | 0; }
+        var idemKey = nvOrderKey ? ("order:" + nvOrderKey) : ("form:" + NVI.nonce + ":" + (nvH >>> 0).toString(36) + ":" + nvFp.length);
+        return Promise.resolve(sb.rpc("client_book_parcel_idem", Object.assign({}, argsWithOpen, {
+          p_idem_key: idemKey, p_origin_area_id: null, p_dest_area_id: o.destAreaId || null
+        }))).then(function(ri){
+          var mi = (ri && ri.error && ri.error.message) || "";
+          if (mi && /client_book_parcel_idem|does not exist|not find|schema cache|no function matches/i.test(mi)) return nvLegacyBookCall();
+          return ri;
         }).then(function(r){
+          if(r && !r.error && r.data && r.data.id){ NVI.nonce = Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
           if(r&&r.error){
             console.error("NovaX client_book_parcel RPC failed:", r.error.message||r.error, r.error);
             throw new Error(nvBookingError(r.error));
@@ -9402,8 +9485,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                       function(e){ console.warn("NovaX: packing note not saved server-side:", e && e.message); });
             }catch(e){ console.warn("NovaX: packing note not saved server-side:", e && e.message); }
           }
-          state.parcels.unshift(mapped);
-          state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:MY, type:"COD expected", amount:Number(row.cod_amount||0), status:"Awaiting delivery", ref:row.awb });
+          /* A replayed key returns a parcel this tab may already hold. */
+          if(!(state.parcels||[]).some(function(x){ return x && x._uuid && x._uuid===mapped._uuid; })){
+            state.parcels.unshift(mapped);
+            state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:MY, type:"COD expected", amount:Number(row.cod_amount||0), status:"Awaiting delivery", ref:row.awb });
+          }
           state.selectedAwb=row.awb; state.lastGeneratedAwb=row.awb; saveState();
           if(mapped._uuid) shadow[mapped._uuid]=(mapped.status||"")+"|"+(mapped.exception||"")+"|"+(mapped.awbPrinted?"1":"0")+"|"+(mapped.awbPrintedAt||"");
           try{ render(); }catch(e){ console.error("Post-booking render failed", e); }
@@ -9546,7 +9632,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         });
       }
 
-      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _meta:m, trackingToken:r.tracking_token||"",
+      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _meta:m, trackingToken:r.tracking_token||"", _raw:{ consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0) },
         // NovaX distance pricing. Null on every parcel booked before it existed,
         // which is exactly how the label and invoice detect "flat, show nothing".
         pricingMode:r.pricing_mode||"", distanceKm:(r.distance_km!=null?Number(r.distance_km):null),

@@ -137,6 +137,22 @@ Deno.serve(async (req) => {
     if (!existing) {
       return json({ error: "That email already has a NovaX login that could not be re-issued. Use a different address." }, 409);
     }
+    /* Re-issuing resets that login's password and moves it into THIS
+       workspace, so it is only allowed for a login this workspace itself
+       revoked. "No active seat anywhere" was not enough: another merchant's
+       owner, a rider, an admin, or anyone who signed up and never got a seat
+       has no active staff_users row either -- and an owner who typed their
+       email would have taken over that account. */
+    const { data: prof } = await asService
+      .from("profiles").select("role, client_id").eq("id", existing.id).maybeSingle();
+    const revokedHere = (seats ?? []).some((r: any) => String(r.client_id ?? "") === String(clientId));
+    const profRole = String(prof?.role ?? "client").toLowerCase();
+    const profClient = prof?.client_id ? String(prof.client_id) : null;
+    if (!revokedHere || profRole !== "client" || (profClient !== null && profClient !== String(clientId))) {
+      return json({
+        error: "That email already belongs to a NovaX account that this workspace cannot re-issue. Use a different address, or contact NovaX support.",
+      }, 409);
+    }
     const { error: resetErr } = await asService.auth.admin.updateUserById(existing.id, {
       password,
       email_confirm: true,

@@ -8278,7 +8278,11 @@ html,body{ background:var(--bg); color:var(--ink); }
       const charges = codCharges + owedCharges;
 
       const payable = Math.max(0, cod - codCharges - owedCharges);
-      const dueToNovax = Math.max(0, owedCharges - Math.max(0, cod - codCharges));
+      /* Mirrors admin_generate_invoice_v2: everything charged minus everything
+         collected. Only return/prepaid charges used to count as owed, so a COD
+         parcel whose own charge beat its COD (Rs 100 against Rs 220) showed
+         Rs 0 due and the Rs 120 shortfall disappeared. */
+      const dueToNovax = Math.max(0, (codCharges + owedCharges) - cod);
       const finalBalance = payable - dueToNovax;
       const invoiceType = codParcels.length
         ? ((returnParcels.length || nonCodParcels.length) ? "Mixed" : "COD Settlement")
