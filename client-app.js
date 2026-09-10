@@ -9054,9 +9054,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        role. This defaulted to Owner, so a failed staff_users read handed a
        Support or Warehouse login every Owner tab and control. A login with no
        seat row still resolves to Owner once the lookup succeeds. */
-    function nvClientRole(){ var r=window.__novaxClientRole; return NOVAX_ROLE_TABS[r]?r:"Support"; }
+    /* The ?demo=1 portal has no real session -- its stub client returns no
+       user -- so the seat lookup never answers there. It only ever shows
+       sample data, so it keeps the full Owner view. */
+    function nvClientRole(){ var r=window.__novaxClientRole; if(NOVAX_ROLE_TABS[r]) return r; return window.__NOVAX_DEMO ? "Owner" : "Support"; }
     function nvRoleRetry(){
-      if(window.__novaxClientRole) return;
+      if(window.__novaxClientRole || window.__NOVAX_DEMO) return;
       var n=(window.__nvRoleRetries=(window.__nvRoleRetries||0)+1);
       if(n>6){ try{ toast("We couldn't confirm your team permissions, so some tabs are hidden. Refresh to try again.","error"); }catch(e){} return; }
       setTimeout(function(){ try{ loadSubAccounts(); }catch(e){} }, Math.min(30000, 2000*n));
