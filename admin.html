@@ -8998,7 +8998,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         return `
           <tr class="clickable-row ${p.awb === state.selectedAwb ? "selected" : ""}" onclick="openClientParcelJourney('${nvEscAttrJs(p.awb)}')">
             <td><strong>${p.awb}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.city)} | ${p.updated}</span></td>
-            <td>${escLabelText(p.consignee)}<br><span class="footer-note">${p.branch}</span></td>
+            <td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.branch)}</span></td>
             <td>${money(p.cod)}</td>
             <td>
               <span class="status ${statusClass(p)}"><span class="mini-dot"></span>${p.status}</span>
@@ -9059,7 +9059,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <div class="step-dot">OK</div>
             <div>
               <strong>Admin remarks</strong>
-              <span>${p.resolutionRemark}</span>
+              <span>${escLabelText(p.resolutionRemark)}</span>
             </div>
             <span class="chip good">resolved</span>
           </div>
@@ -9564,7 +9564,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         .map(log => `
           <div class="log-item">
             <strong>${log.id}</strong>
-            <div><strong>${log.type}</strong><div class="footer-note" style="margin-top:2px">${log.ref} | ${log.status}</div></div>
+            <div><strong>${escLabelText(log.type)}</strong><div class="footer-note" style="margin-top:2px">${escLabelText(log.ref)} | ${escLabelText(log.status)}</div></div>
             <span class="chip ${log.status.includes("Pending") || log.status.includes("Awaiting") ? "warn" : "good"}">${money(log.amount)}</span>
           </div>
         `).join("") || `<div class="ops-card"><strong>No payment history</strong><p>Payment history will appear after COD or payout activity.</p></div>`;
@@ -10001,7 +10001,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             const prepaid = nvIsPrepaidParcel(p);
             const km = (/^distance/.test(String(p.pricingMode || "")) && p.distanceKm != null) ? ` &middot; ${p.distanceKm} km` : "";
             return `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:3px 0">
-              <span><strong>${p.awb}</strong> | ${p.status} | ${p.branch} | ${p.updated}</span>
+              <span><strong>${p.awb}</strong> | ${p.status} | ${escLabelText(p.branch)} | ${p.updated}</span>
               <span style="white-space:nowrap">${nvPayConflictChip(p) || (prepaid ? '<span class="chip info">Prepaid</span>' : `<strong>${money(p.cod)}</strong>`)}
                 <span class="footer-note">+ ${money(p.fee)} charges${km}</span></span>
             </div>`;
@@ -10273,11 +10273,11 @@ html,body{ background:var(--bg); color:var(--ink); }
       }).map(issue => `
         <div class="ops-card ${issue.urgency === "super urgent" && !issue.resolved ? "alert-row critical" : issue.resolved ? "" : "alert-row"}">
           <div class="ops-card-head">
-            <strong>${issue.id} | ${issue.branch}</strong>
+            <strong>${issue.id} | ${escLabelText(issue.branch)}</strong>
             <span class="chip ${urgencyClass(issue.resolved ? "ok" : issue.urgency)}">${issue.resolved ? "resolved" : issue.urgency}</span>
           </div>
           ${!issue.resolved && issue.urgency === "super urgent" ? `<span class="siren-chip">Support + AI now</span>` : ""}
-          <p>${issue.problem}. ${issue.awb ? `Parcel ${issue.awb}.` : ""}</p>
+          <p>${escLabelText(issue.problem)}. ${issue.awb ? `Parcel ${issue.awb}.` : ""}</p>
           <div class="footer-note">Open for ${agingLabel(issue.openedHours)}${issue.resolved ? ` | solved in ${agingLabel(issue.resolvedHours || issue.openedHours)} by ${issue.resolvedBy || "admin"}` : " | SLA clock active"}</div>
           ${issue.resolutionReason ? `<div class="resolved-note"><strong>Reason:</strong> ${issue.resolutionReason}</div>` : ""}
           ${issue.resolved ? "" : `<div class="field" style="margin-top:10px"><label>Resolution reason</label><input id="issueReason-${issue.id}" value="${issue.problem} checked and assigned action completed"></div><button class="action-btn" data-resolve-issue="${issue.id}" onclick="resolveOperationIssue('${nvEscAttrJs(issue.id)}')">Resolve With Reason</button>`}
@@ -10299,8 +10299,8 @@ html,body{ background:var(--bg); color:var(--ink); }
         const blocked = exposureAmount > r.cashLimit;
         return `
           <tr>
-            <td><strong>${escLabelText(r.name)}</strong><br><span class="footer-note">${r.username || "no username set"}</span></td>
-            <td>${r.username || "pending"}<br><span class="footer-note">Pass: hidden | ${r.manager || "No manager"}</span></td>
+            <td><strong>${escLabelText(r.name)}</strong><br><span class="footer-note">${escLabelText(r.username || "no username set")}</span></td>
+            <td>${escLabelText(r.username || "pending")}<br><span class="footer-note">Pass: hidden | ${escLabelText(r.manager || "No manager")}</span></td>
             <td><strong>${money(receivable)}</strong><br><span class="footer-note">Delivered COD not collected by branch</span></td>
             <td>${money(r.cashHeld)}<br><span class="footer-note">Expenses deducted ${money(r.expenses || 0)}</span></td>
             <td>${money(r.cashLimit)}</td>
@@ -11998,10 +11998,10 @@ html,body{ background:var(--bg); color:var(--ink); }
             + `<div class="money-box"><span>Has link</span><strong>${row.intake_token?"Yes":"No"}</strong></div>`
             + `<div class="money-box"><span>Has secret</span><strong>${row.has_secret?"Yes":"No"}</strong></div>`
             + `<div class="money-box"><span>Imported count</span><strong>${row.imported_count||0}</strong></div>`
-            + `<div class="money-box"><span>Last AWB</span><strong>${row.last_order_awb||"none yet"}</strong></div>`
+            + `<div class="money-box"><span>Last AWB</span><strong>${escLabelText(row.last_order_awb||"none yet")}</strong></div>`
             + `</div>`
-            + `<p class="footer-note" style="margin-top:6px">Last event: ${row.last_event||"none"} &middot; Last order received: ${row.last_order_at ? new Date(row.last_order_at).toLocaleString() : "never yet"}</p>`
-            + `<p class="footer-note">Last error: ${row.last_error||"none"} &middot; Last signature fail: ${row.last_signature_fail_at ? new Date(row.last_signature_fail_at).toLocaleString() : "never"}</p>`
+            + `<p class="footer-note" style="margin-top:6px">Last event: ${escLabelText(row.last_event||"none")} &middot; Last order received: ${row.last_order_at ? new Date(row.last_order_at).toLocaleString() : "never yet"}</p>`
+            + `<p class="footer-note">Last error: ${escLabelText(row.last_error||"none")} &middot; Last signature fail: ${row.last_signature_fail_at ? new Date(row.last_signature_fail_at).toLocaleString() : "never"}</p>`
             + `<p class="footer-note" style="font-weight:600">Next action: ${shopifyAdminNextAction(row)}</p>`
             + `<div class="inline-actions" style="margin-top:8px;flex-wrap:wrap">`
             + (intakeUrl ? `<button class="ghost-btn" onclick="navigator.clipboard&&navigator.clipboard.writeText('${nvEscAttrJs(intakeUrl)}');toast('Intake URL copied.')">Copy URL</button>` : "")
@@ -15243,7 +15243,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           : (line.collected
               ? money(line.codAmount)
               : `${money(0)}<div style="font-size:9px;color:#8a8a8a;font-weight:600">not collected</div>`);
-        return `<tr><td>${escLabelText(line.awb)}</td><td>${line.bookingDate}</td><td>${line.destinationCity}</td><td>${escLabelText(line.consignee)}</td><td>${pill}</td><td>${line.paymentMode}</td><td>${codCell}</td><td>${money(line.deliveryCharge)}</td><td>${money(line.netLineAmount)}</td></tr>`;
+        return `<tr><td>${escLabelText(line.awb)}</td><td>${escLabelText(line.bookingDate)}</td><td>${escLabelText(line.destinationCity)}</td><td>${escLabelText(line.consignee)}</td><td>${pill}</td><td>${escLabelText(line.paymentMode)}</td><td>${codCell}</td><td>${money(line.deliveryCharge)}</td><td>${money(line.netLineAmount)}</td></tr>`;
       }).join("");
       const nDelivered = lines.filter(l => l.outcomeKey === "delivered").length;
       const nReturned = lines.filter(l => ["returned", "refused", "cancelled"].includes(l.outcomeKey)).length;
@@ -16046,7 +16046,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           <td><strong>${escLabelText(r.city)}</strong></td>
           <td>${r.parcels}</td>
           <td><strong>${money(r.cod)}</strong></td>
-          <td>${r.prepaid || "—"}</td>
+          <td>${escLabelText(r.prepaid || "—")}</td>
           <td>${total > 0 ? Math.round((r.cod / total) * 100) + "%" : "—"}</td>
         </tr>`).join("") || `<tr><td colspan="5">Nothing delivered since the last reset.</td></tr>`;
       }
@@ -16334,10 +16334,10 @@ html,body{ background:var(--bg); color:var(--ink); }
       result.innerHTML = `
         <div class="ops-card ${alert.level === "critical" ? "alert-row critical" : ""}">
           <div class="ops-card-head">
-            <strong>${parcel.awb}</strong>
-            <span class="chip ${statusClass(parcel)}">${parcel.status}</span>
+            <strong>${escLabelText(parcel.awb)}</strong>
+            <span class="chip ${statusClass(parcel)}">${escLabelText(parcel.status)}</span>
           </div>
-          <p>${parcel.consignee} | ${escLabelText(parcel.city)} | Updated ${parcel.updated}. Current clock: ${agingLabel(agingHours(parcel))}.</p>
+          <p>${escLabelText(parcel.consignee)} | ${escLabelText(parcel.city)} | Updated ${escLabelText(parcel.updated)}. Current clock: ${agingLabel(agingHours(parcel))}.</p>
           ${parcel.resolutionRemark ? `<div class="resolved-note"><strong>Admin remarks:</strong> ${parcel.resolutionRemark}</div>` : ""}
           <button class="ghost-btn" style="margin-top:10px" onclick="openTrackedParcel('${nvEscAttrJs(parcel.awb)}')">Open Full Journey</button>
         </div>
