@@ -8533,7 +8533,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!list) return;
       const clientSel = document.getElementById("reconClientFilter");
       if (clientSel && clientSel.options.length <= 1) {
-        clientSel.innerHTML = "<option value=\"\">All clients</option>" + (state.clients || []).map(c => "<option value=\"" + c.id + "\">" + c.name + "</option>").join("");
+        clientSel.innerHTML = "<option value=\"\">All clients</option>" + (state.clients || []).map(c => "<option value=\"" + escLabelText(c.id) + "\">" + escLabelText(c.name) + "</option>").join("");
       }
       const clientIds = (clientSel && clientSel.value) ? [clientSel.value] : (state.clients || []).map(c => c.id);
       const rows = clientIds.map(computeFullReconciliation);
@@ -8552,7 +8552,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           "<strong>Manual adjustments:</strong> " + row.manualAdjustments.length + " entry(s)"
         ];
         return `<div class="ops-card ${row.mismatch ? "alert-row" : ""}">
-          <div class="ops-card-head"><strong>${row.clientName}</strong><span class="chip ${badge.cls}">${badge.label}</span></div>
+          <div class="ops-card-head"><strong>${escLabelText(row.clientName)}</strong><span class="chip ${badge.cls}">${badge.label}</span></div>
           <div class="money-grid">
             ${moneyBox("Delivered COD", money(row.deliveredCod), "gross COD collected")}
             ${moneyBox("Delivery charges", money(row.deliveryCharges), "NovaX revenue")}
@@ -10122,21 +10122,21 @@ html,body{ background:var(--bg); color:var(--ink); }
           <div class="log-item">
             <strong>${shortClientCode(client)}<br>${escLabelText(client.name)}</strong>
             <div>
-              <strong>${client.displayBusinessType} | ${client.displayCity}</strong>
-              <div class="footer-note">${client.displayOwner} | ${client.displayEmail} | ${client.displayPhone} | ${client.displayAddress}</div>
+              <strong>${escLabelText(client.displayBusinessType)} | ${escLabelText(client.displayCity)}</strong>
+              <div class="footer-note">${escLabelText(client.displayOwner)} | ${escLabelText(client.displayEmail)} | ${escLabelText(client.displayPhone)} | ${escLabelText(client.displayAddress)}</div>
               <button class="ghost-btn" onclick="toggleSignupDetails('${nvEscAttrJs(client.id)}')" style="margin-top:4px">Signup Details</button>
               <div class="footer-note" id="signupDetails-${client.id}" style="display:none;margin-top:6px;padding:8px;background:#f7f8fa;border-radius:8px">
                 Store name: ${escLabelText(client.name)}<br>
-                Owner/contact: ${client.displayOwner}<br>
-                Email: ${client.displayEmail}<br>
-                Phone: ${client.displayPhone}<br>
-                City: ${client.displayCity}<br>
-                Pickup address: ${client.displayAddress}<br>
-                Product/business type: ${client.displayBusinessType}<br>
-                Website: ${client.displayWebsite || "Not provided"}<br>
-                Signup date: ${client.signupDate || "Unknown"}<br>
-                Signup status: ${client.signupStatus || "N/A"}<br>
-                Source: ${client.signupSource}
+                Owner/contact: ${escLabelText(client.displayOwner)}<br>
+                Email: ${escLabelText(client.displayEmail)}<br>
+                Phone: ${escLabelText(client.displayPhone)}<br>
+                City: ${escLabelText(client.displayCity)}<br>
+                Pickup address: ${escLabelText(client.displayAddress)}<br>
+                Product/business type: ${escLabelText(client.displayBusinessType)}<br>
+                Website: ${escLabelText(client.displayWebsite || "Not provided")}<br>
+                Signup date: ${escLabelText(client.signupDate || "Unknown")}<br>
+                Signup status: ${escLabelText(client.signupStatus || "N/A")}<br>
+                Source: ${escLabelText(client.signupSource)}
               </div>
             </div>
             <span class="chip ${client.status === "Active" ? "good" : "warn"}">${client.status}</span>
@@ -10183,9 +10183,9 @@ html,body{ background:var(--bg); color:var(--ink); }
         const rateOpen = state.activeRateClient === client.id;
         return `
           <tr>
-            <td><strong>${shortClientCode(client)}</strong><br><span class="footer-note">${client.status}</span></td>
-            <td>${escLabelText(client.name)}<br><span class="footer-note">${client.displayCity} | ${client.displayEmail}</span></td>
-            <td>${client.displayOwner}<br><span class="footer-note">${client.displayPhone}</span></td>
+            <td><strong>${shortClientCode(client)}</strong><br><span class="footer-note">${escLabelText(client.status)}</span></td>
+            <td>${escLabelText(client.name)}<br><span class="footer-note">${escLabelText(client.displayCity)} | ${escLabelText(client.displayEmail)}</span></td>
+            <td>${escLabelText(client.displayOwner)}<br><span class="footer-note">${escLabelText(client.displayPhone)}</span></td>
             <td>
               <button class="action-btn" onclick="toggleRateForm('${nvEscAttrJs(client.id)}')">${rateOpen ? "Close Rates" : "Add Rates"}</button>
               <div class="footer-note">Zone A (Karachi) ${money(rc.A.overnight)} | Zone B (Lahore/Islamabad/Rawalpindi) ${money(rc.B.overnight)}</div>
@@ -10322,7 +10322,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         return `
           <div class="ops-card">
             <div class="ops-card-head">
-              <strong>${b.name}</strong>
+              <strong>${escLabelText(b.name)}</strong>
               <span class="chip ${health > 88 ? "good" : "warn"}">${health}%</span>
             </div>
             <div class="meter ${health < 82 ? "amber" : ""}"><span style="width:${health}%"></span></div>
@@ -10533,7 +10533,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       document.getElementById("adminExpenseLogs").innerHTML = state.expenses.map(expense => `
         <div class="log-item">
           <strong>${expense.id || "EXP"}</strong>
-          <div><strong>${expense.name}</strong><div class="footer-note" style="margin-top:2px">${expense.owner || "Finance"} | ${expense.type || expense.name} | ${expense.reason || "No reason"} | logged by ${expense.loggedBy || "System"}</div></div>
+          <div><strong>${escLabelText(expense.name)}</strong><div class="footer-note" style="margin-top:2px">${escLabelText(expense.owner || "Finance")} | ${escLabelText(expense.type || expense.name)} | ${escLabelText(expense.reason || "No reason")} | logged by ${escLabelText(expense.loggedBy || "System")}</div></div>
           <span class="chip ${expense.status === "Pending" ? "warn" : "good"}">${money(expense.amount)} | ${expense.status || "Approved"}</span>
         </div>
       `).join("");
@@ -10542,9 +10542,9 @@ html,body{ background:var(--bg); color:var(--ink); }
 
       document.getElementById("adminUserList").innerHTML = state.users.map(user => `
         <div class="ops-card">
-          <div class="ops-card-head"><strong>${user.id} | ${user.name}</strong><span class="chip good">${user.status}</span></div>
-          <p>${user.role} assigned to ${user.branch}. Access: ${user.accessSide}. Client: ${clientById(user.clientId).id} ${clientById(user.clientId).name}.</p>
-          <div class="footer-note">Email: ${user.email}. Password: hidden for security — use password reset to issue a new one. Controls: ${(user.permissions || []).join(", ") || "default dashboard only"}.</div>
+          <div class="ops-card-head"><strong>${escLabelText(user.id)} | ${escLabelText(user.name)}</strong><span class="chip good">${escLabelText(user.status)}</span></div>
+          <p>${escLabelText(user.role)} assigned to ${escLabelText(user.branch)}. Access: ${escLabelText(user.accessSide)}. Client: ${escLabelText(clientById(user.clientId).id)} ${escLabelText(clientById(user.clientId).name)}.</p>
+          <div class="footer-note">Email: ${escLabelText(user.email)}. Password: hidden for security — use password reset to issue a new one. Controls: ${escLabelText((user.permissions || []).join(", ") || "default dashboard only")}.</div>
         </div>
       `).join("");
 
@@ -10560,8 +10560,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       const canDeleteUsers = /^admin$/i.test(String((typeof currentStaffUser === "function" ? (currentStaffUser() || {}).role : "Admin") || "").trim());
       document.getElementById("userAccessList").innerHTML = state.users.map(user => `
         <div class="ops-card">
-          <div class="ops-card-head"><strong>${user.id} | ${user.email}</strong><span class="chip ${user.accessSide.includes("Admin") ? "warn" : "info"}">${user.accessSide}</span></div>
-          <p>${user.name} can access ${user.accessSide}. Role: ${user.role}. Branch: ${user.branch}. Assigned client: ${clientById(user.clientId).name}.</p>
+          <div class="ops-card-head"><strong>${escLabelText(user.id)} | ${escLabelText(user.email)}</strong><span class="chip ${user.accessSide.includes("Admin") ? "warn" : "info"}">${escLabelText(user.accessSide)}</span></div>
+          <p>${escLabelText(user.name)} can access ${escLabelText(user.accessSide)}. Role: ${escLabelText(user.role)}. Branch: ${escLabelText(user.branch)}. Assigned client: ${escLabelText(clientById(user.clientId).name)}.</p>
           <div class="money-grid" style="margin-top:10px">
             ${moneyBox("Role", user.role, "permission group")}
             ${moneyBox("Password", "Hidden", "use password reset to issue a new one")}
@@ -10936,7 +10936,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         const pendingAlertCount = sortedAlerts.filter(a => a.status === "Pending admin payout").length;
         alertsList.innerHTML = sortedAlerts.length
           ? `<div class="footer-note" style="margin-bottom:10px">${sortedAlerts.length} signal(s) across all withdrawals ever made&nbsp;&mdash;&nbsp;<b>${pendingAlertCount}</b> relate to a payout that is still pending. The rest are already settled and are shown for history.</div>`
-            + sortedAlerts.map(alert => `<div class="ops-card ${alert.status === "Pending admin payout" ? "alert-row" : ""}"><div class="ops-card-head"><strong>${alert.clientName}</strong><span class="chip warn">${alert.label}</span></div><p>${alert.detail}</p><div class="inline-actions" style="flex-wrap:wrap;gap:6px;margin-top:6px">${alert.statusText ? `<span class="chip ${alert.chip || "info"}">${alert.statusText}</span>` : ""}${alert.when ? `<span class="chip info">${alert.when}</span>` : ""}</div></div>`).join("")
+            + sortedAlerts.map(alert => `<div class="ops-card ${alert.status === "Pending admin payout" ? "alert-row" : ""}"><div class="ops-card-head"><strong>${escLabelText(alert.clientName)}</strong><span class="chip warn">${escLabelText(alert.label)}</span></div><p>${escLabelText(alert.detail)}</p><div class="inline-actions" style="flex-wrap:wrap;gap:6px;margin-top:6px">${alert.statusText ? `<span class="chip ${alert.chip || "info"}">${alert.statusText}</span>` : ""}${alert.when ? `<span class="chip info">${alert.when}</span>` : ""}</div></div>`).join("")
           : `<div class="ops-card"><strong>No suspicious wallet signals</strong><p>Repeated instant withdrawals, full-balance payouts, changed IBANs, and same-day multiple withdrawals will show here.</p></div>`;
       }
 
@@ -10975,8 +10975,8 @@ html,body{ background:var(--bg); color:var(--ink); }
           // before bank-details snapshotting existed.
           return `<div class="ops-card ${lock.locked ? "alert-row" : ""}">
             <div class="ops-card-head"><strong>${item.code || item.id} | ${escLabelText(client.name)}</strong><span class="chip ${statusChipClass}">${statusLabel}</span></div>
-            <p>Pay ${money(item.net)} to IBAN ${item.iban}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed)}).</p>
-            <div class="footer-note">Account holder: <b>${item.holderName || "Not saved"}</b>${item.bankName ? (" &middot; " + item.bankName) : ""}</div>
+            <p>Pay ${money(item.net)} to IBAN ${escLabelText(item.iban)}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed)}).</p>
+            <div class="footer-note">Account holder: <b>${escLabelText(item.holderName || "Not saved")}</b>${item.bankName ? (" &middot; " + escLabelText(item.bankName)) : ""}</div>
             <div class="footer-note">Created ${item.createdAt}. Wallet reconciliation: ${recon.mismatch ? `mismatch of ${money(recon.difference)}` : "clean"}.</div>
             ${lock.reasons.length ? `<div class="footer-note" style="color:#b42318">Risk reasons: ${lock.reasons.join("; ")}${!hardBlocked ? " -- click Mark Paid to review and confirm" : ""}</div>` : ""}
             <div class="footer-note" style="margin-top:6px">Mark Paid closes payout after bank transfer -- it never reduces the wallet balance again (that already happened when this was requested).</div>
@@ -10994,8 +10994,8 @@ html,body{ background:var(--bg); color:var(--ink); }
           const client = clientById(item.clientId);
           return `<div class="ops-card">
             <div class="ops-card-head"><strong>${item.code || item.id} | ${escLabelText(client.name)}</strong><span class="chip good">Paid</span></div>
-            <p>Paid ${money(item.net)} to IBAN ${item.iban} (${walletSpeedLabel(item.speed)}, fee ${money(item.fee)}).</p>
-            <div class="footer-note">${item.paidTxnId ? `Paid with reference ${item.paidTxnId}` : "Paid"}${item.paidBy ? ` by ${item.paidBy}` : ""}${item.paidAt ? ` on ${item.paidAt}` : ""}.${item.paidProof ? ` Proof: ${item.paidProof}` : ""}</div>
+            <p>Paid ${money(item.net)} to IBAN ${escLabelText(item.iban)} (${walletSpeedLabel(item.speed)}, fee ${money(item.fee)}).</p>
+            <div class="footer-note">${item.paidTxnId ? `Paid with reference ${escLabelText(item.paidTxnId)}` : "Paid"}${item.paidBy ? ` by ${escLabelText(item.paidBy)}` : ""}${item.paidAt ? ` on ${escLabelText(item.paidAt)}` : ""}.${item.paidProof ? ` Proof: ${escLabelText(item.paidProof)}` : ""}</div>
           </div>`;
         }).join("") || `<div class="ops-card"><strong>No paid payouts yet</strong><p>Settled withdrawals will show their bank transaction reference and paid-by staff name here.</p></div>`;
       }
@@ -11020,7 +11020,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           return `<div class="ops-card"><strong>${group.label} (${group.rows.length})</strong>${items}</div>`;
         }).join("");
         ledgerDrilldown.innerHTML = `<div class="ops-card ${activeRecon.mismatch ? "alert-row" : ""}">
-            <div class="ops-card-head"><strong>${activeClient.name}</strong><span class="chip ${activeRecon.mismatch ? "bad" : "good"}">${computeClientFinanceStatus(activeClientId)}</span></div>
+            <div class="ops-card-head"><strong>${escLabelText(activeClient.name)}</strong><span class="chip ${activeRecon.mismatch ? "bad" : "good"}">${computeClientFinanceStatus(activeClientId)}</span></div>
             <p>Expected balance ${money(activeRecon.expected)} vs actual wallet balance ${money(activeRecon.actual)}${activeRecon.mismatch ? ` -- difference ${money(activeRecon.difference)}` : " -- matches"}.</p>
           </div>` + groupHtml;
       }
@@ -12414,7 +12414,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const sel = document.getElementById("adminBulkClientId");
       if (!sel) return;
       const current = sel.value;
-      sel.innerHTML = "<option value=\"\">Select a client...</option>" + (state.clients || []).map(c => "<option value=\"" + c.id + "\">" + c.name + " (" + c.id + ")</option>").join("");
+      sel.innerHTML = "<option value=\"\">Select a client...</option>" + (state.clients || []).map(c => "<option value=\"" + escLabelText(c.id) + "\">" + escLabelText(c.name) + " (" + escLabelText(c.id) + ")</option>").join("");
       if (current && (state.clients || []).some(c => c.id === current)) sel.value = current;
     }
 
