@@ -6752,7 +6752,8 @@ html,body{ background:var(--bg); color:var(--ink); }
    real Zone A rate in the database was 100, so a client with a missing
    rate card silently priced at a third number nobody chose. Kept in step
    with the DB rate (now 200) so the two cannot disagree. */
-    var NV_ZONE_A_BASE=200;
+    var NV_ZONE_A_BASE=220;
+    var NV_ZONE_B_BASE=225;
     function cleanStartState() {
       const blankClient = { id: "CL-0000", name: "New Merchant Workspace", owner: "", city: "", walletTopup: 0, shippingDue: 0, risk: 0, status: "Draft", rate: NV_ZONE_A_BASE, rateCard: defaultRateCard(NV_ZONE_A_BASE), problemsResolved: 0, health: 0, walletBalance: 0 };
       return {
@@ -7439,7 +7440,10 @@ html,body{ background:var(--bg); color:var(--ink); }
         return { A: { ...fallback, ...raw.A }, B: { ...fallback, ...raw.B } };
       }
       const legacy = (raw && typeof raw.overnight === "number" && !isNaN(raw.overnight)) ? raw : fallback;
-      return { A: legacy, B: { ...legacy } };
+      /* Zone B is a different price, not a copy of Zone A. A legacy flat card
+         carries one number, so B falls back to its own base rather than
+         inheriting A's -- otherwise an out-of-Karachi parcel is underpriced. */
+      return { A: legacy, B: { ...legacy, overnight: NV_ZONE_B_BASE } };
     }
 
     // NovaX (Booking Charge Accuracy): parse weight strings like "0.8 kg", "1kg", "2.5", "5 KG".
@@ -7452,8 +7456,9 @@ html,body{ background:var(--bg); color:var(--ink); }
     // charge = baseRate + ceil(max(0, weightKg-1)) * additionalKgRate, capped at the 5kg normal slab.
     function bookingChargeBreakdown(rateCard, zone, weightInput) {
       var z = zone === "A" ? "A" : "B";
-      var card = (rateCard && rateCard[z]) || (rateCard && typeof rateCard.overnight === "number" ? rateCard : defaultRateCard(NV_ZONE_A_BASE));
-      var base = Number(card.overnight) || NV_ZONE_A_BASE;
+      var zoneBase = z === "A" ? NV_ZONE_A_BASE : NV_ZONE_B_BASE;
+      var card = (rateCard && rateCard[z]) || (rateCard && typeof rateCard.overnight === "number" ? rateCard : defaultRateCard(zoneBase));
+      var base = Number(card.overnight) || zoneBase;
       var addlRate = Number(card.additionalKg) || 85;
       var weightKg = parseWeightKg(weightInput);
       var cappedKg = Math.min(weightKg, 5);
@@ -12429,7 +12434,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast("This login email already exists.");
         return;
       }
-      const rateCard = { A: defaultRateCard(NV_ZONE_A_BASE), B: defaultRateCard(NV_ZONE_A_BASE) };
+      const rateCard = { A: defaultRateCard(NV_ZONE_A_BASE), B: defaultRateCard(NV_ZONE_B_BASE) };
       state.clients = state.clients.filter(item => item.id !== "CL-0000");
       const id = nextId("CL", state.clients);
       const newClient = {
@@ -13513,7 +13518,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const nm = client.name || shortClientCode(client);
       const msg = want === "distance"
         ? ("Move " + nm + " to per-kilometre pricing?\n\nTheir Karachi parcels will be priced on road distance from their pickup point (Rs 120 min, Rs 20/km, Rs 320 cap). If their pickup point is not set, their Karachi bookings will be refused rather than quietly charged the flat rate.")
-        : ("Move " + nm + " to the flat rate?\n\nEvery parcel becomes Rs 200 regardless of distance. Use this if they are stuck on per-km and cannot book.");
+        : ("Move " + nm + " to the flat rate?\n\nEvery parcel is priced from their rate card (Rs " + NV_ZONE_A_BASE + " within Karachi, Rs " + NV_ZONE_B_BASE + " to other cities) regardless of distance. Use this if they are stuck on per-km and cannot book.");
       if (!window.confirm(msg)) { renderAdmin(); return; }
 
       const key = "pmode:" + client._uuid;
@@ -16258,7 +16263,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       host.innerHTML =
         '<div class="panel" style="padding:14px 16px">' +
           '<strong>Per-kilometre pricing has been retired.</strong>' +
-          '<p style="margin:6px 0 0">Every merchant is on flat Rs 200. There is no longer a distance rate to assign a client to, ' +
+          '<p style="margin:6px 0 0">Every merchant is on flat zone pricing &mdash; Rs ' + NV_ZONE_A_BASE + ' within Karachi, Rs ' + NV_ZONE_B_BASE + ' to other cities. There is no longer a distance rate to assign a client to, ' +
           'so this screen no longer has anything to set. Pickup addresses are managed per merchant in their own account.</p>' +
         '</div>';
     }

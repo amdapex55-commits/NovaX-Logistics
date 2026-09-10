@@ -1,0 +1,30 @@
+# Shopify CLI app configuration.
+# Fill client_id from the Partner Dashboard after creating the app.
+
+name = "NovaX Logistics"
+handle = "novax-logistics"
+client_id = ""
+application_url = "https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/shopify/app"
+embedded = true
+
+[access_scopes]
+# Minimum required. read_orders is Level 2 protected customer data (name,
+# address, phone). Do not widen: Shopify approves only the minimum, and
+# unapproved fields are silently redacted rather than erroring.
+scopes = "read_orders,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,write_fulfillments"
+
+[auth]
+redirect_urls = [
+  "https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/shopify/callback"
+]
+
+[webhooks]
+api_version = "2026-07"
+
+  [webhooks.privacy_compliance]
+  customer_data_request_url = "https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/shopify/webhooks/customers-data-request"
+  customer_deletion_url     = "https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/shopify/webhooks/customers-redact"
+  shop_deletion_url         = "https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/shopify/webhooks/shop-redact"
+
+[build]
+include_config_on_deploy = true

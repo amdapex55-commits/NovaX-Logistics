@@ -2555,10 +2555,10 @@ begin
     jsonb_build_object('email', coalesce(v_email, '')),
     coalesce(p_phone, ''), coalesce(p_business_type, ''), coalesce(p_address, ''), coalesce(p_city, ''), coalesce(p_website, ''),
     'Active', 0,
-    200,                                     -- was 250
+    220,                                     -- Zone A base; Zone B is 225
     jsonb_build_object(                      -- was absent, so v_base fell to rate
-      'A', jsonb_build_object('overnight', 200, 'additionalKg', 85),
-      'B', jsonb_build_object('overnight', 200, 'additionalKg', 85)
+      'A', jsonb_build_object('overnight', 220, 'additionalKg', 85, 'detainBase', 540, 'detainAdditionalKg', 125, 'overlandBase', 900, 'overlandAdditionalKg', 45),
+      'B', jsonb_build_object('overnight', 225, 'additionalKg', 85, 'detainBase', 540, 'detainAdditionalKg', 125, 'overlandBase', 900, 'overlandAdditionalKg', 45)
     ),
     'flat',                                  -- never ask, never per-km
     0

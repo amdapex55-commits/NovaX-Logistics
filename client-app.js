@@ -370,7 +370,7 @@
              m.rows([["Available","Rs 3,450","ok"],["In transit","Rs 5,849",""],["Pending payout","Rs 0",""]]) },
         { t:"How charges work", nav:"money",
           b:"COD collected, minus delivery charges, on one invoice. Nothing is taken twice.",
-          v: m.rows([["COD collected","Rs 3,450",""],["Delivery charge","− Rs 200",""],["Paid to you","Rs 3,250","ok"]]) },
+          v: m.rows([["COD collected","Rs 3,450",""],["Delivery charge","− Rs 220",""],["Paid to you","Rs 3,230","ok"]]) },
         { t:"Get paid out", nav:"money",
           b:"Request a withdrawal to your own bank account whenever the balance suits you.",
           v: m.form([["To","PK… · your bank"],["Amount","Rs 3,250"]]) +
@@ -1002,7 +1002,8 @@
        first load with no cached state. Declared further down the file it was
        still undefined at that point and the blank workspace seeded an
        undefined rate -- the same trap already fixed in admin.html. */
-    var NV_ZONE_A_BASE=200;
+    var NV_ZONE_A_BASE=220;
+    var NV_ZONE_B_BASE=225;
     function cleanStartState(){
       const blankClient={ id:"CL-0000", name:"New Merchant Workspace", owner:"", city:"", walletTopup:0, shippingDue:0, risk:0, status:"Draft", rate:NV_ZONE_A_BASE, rateCard:defaultRateCard(NV_ZONE_A_BASE), problemsResolved:0, health:0, walletBalance:0 };
       return {
@@ -1147,7 +1148,10 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         return { A:Object.assign({},fallback,raw.A), B:Object.assign({},fallback,raw.B) };
       }
       const legacy=(raw && typeof raw.overnight==="number" && !isNaN(raw.overnight))?raw:fallback;
-      return { A:legacy, B:Object.assign({},legacy) };
+      /* Zone B is a different price, not a copy of Zone A. A legacy flat card
+         carries one number, so B falls back to its own base rather than
+         inheriting A's -- otherwise an out-of-Karachi parcel is underpriced. */
+      return { A:legacy, B:Object.assign({},legacy,{ overnight:NV_ZONE_B_BASE }) };
     }
     // NovaX (Booking Charge Accuracy): parse weight strings like "0.8 kg", "1kg", "2.5", "5 KG".
     function parseWeightKg(w){
@@ -1159,8 +1163,9 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     // charge = baseRate + ceil(max(0, weightKg-1)) * additionalKgRate, capped at the 5kg normal slab.
     function bookingChargeBreakdown(rateCard, zone, weightInput){
       var z=zone==="A"?"A":"B";
-      var card=(rateCard&&rateCard[z])||(rateCard&&typeof rateCard.overnight==="number"?rateCard:defaultRateCard(NV_ZONE_A_BASE));
-      var base=Number(card.overnight)||NV_ZONE_A_BASE;
+      var zoneBase=z==="A"?NV_ZONE_A_BASE:NV_ZONE_B_BASE;
+      var card=(rateCard&&rateCard[z])||(rateCard&&typeof rateCard.overnight==="number"?rateCard:defaultRateCard(zoneBase));
+      var base=Number(card.overnight)||zoneBase;
       var addlRate=Number(card.additionalKg)||85;
       var weightKg=parseWeightKg(weightInput);
       var cappedKg=Math.min(weightKg,5);
@@ -5987,8 +5992,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     /* The picker only makes sense for Karachi with distance pricing on AND a
        pickup point mapped -- without an origin there is no distance to
        measure, so showing the field would just be a dead end. */
-    /* PER-KILOMETRE PRICING IS RETIRED (2026-08-24). Every parcel is flat
-       Rs 200, in every city, for every merchant.
+    /* PER-KILOMETRE PRICING IS RETIRED (2026-08-24). Every parcel is priced
+       from the merchant's zone rate card -- Zone A within Karachi, Zone B to
+       every other city -- with no distance component anywhere.
 
        These two gates are the chokepoint the whole distance feature hangs off:
        the delivery-area picker, the pickup-area block, the live quote, the
@@ -7853,9 +7859,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           '<span class="nv-rn-count" id="nvRateNoticeCount"></span>' +
         '</div>';
     }
+    /* The 10 September increase is now live in every rate card, so the notice
+       that announced it is retired. The machinery below stays for the next
+       announcement: set NV_RATE_NOTICE_ACTIVE to true and bump the notice id. */
+    var NV_RATE_NOTICE_ACTIVE = false;
     function nvRateNotice(){
       var host = document.getElementById("nvRateNotice");
       if(!host) return;
+      if(!NV_RATE_NOTICE_ACTIVE){ host.style.display = "none"; host.innerHTML = ""; return; }
       var key = nvRateNoticeKey();
       if(!key){ host.style.display = "none"; return; }   // no workspace yet
       var raw;
