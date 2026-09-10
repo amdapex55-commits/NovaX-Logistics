@@ -3316,7 +3316,11 @@ $("fSignup").addEventListener("submit",function(e){
     __nvSb.from("signup_leads").insert({
       name:storeName, phone:phone, email:email, city:city, address:address,
       business_type:product, website:website||"", auth_user_id:(newUser&&newUser.id)||null, status:"pending_workspace"
-    }).select("id").maybeSingle().then(function(leadRes){
+    }).select("id").maybeSingle().catch(function(err){
+      /* Never let bookkeeping strand a real signup. */
+      console.warn("NovaX signup_leads insert threw:",err&&err.message);
+      return null;
+    }).then(function(leadRes){
       if(leadRes&&leadRes.error) console.warn("NovaX signup_leads insert:",leadRes.error.message);
       var leadId=leadRes&&leadRes.data&&leadRes.data.id;
 
@@ -3350,6 +3354,14 @@ $("fSignup").addEventListener("submit",function(e){
         btn.disabled=false; btn.textContent=oldTxt;
         showMsg("mSignup",(err&&err.message)||"Workspace could not be prepared. Please sign in again.",false);
       });
+    }).catch(function(err){
+      /* Last line of defence: whatever fails after the account is created,
+         the form must come back to life and say something. A permanently
+         disabled "Creating your workspace…" button is the worst outcome --
+         the account exists and the merchant has no way to know. */
+      console.warn("NovaX signup post-account step:",err&&err.message);
+      btn.disabled=false; btn.textContent=oldTxt;
+      showMsg("mSignup","Your login was created, but we could not finish setting up the workspace. Please sign in and it will finish automatically.",false);
     });
   }).catch(function(err){
     btn.disabled=false; btn.textContent=oldTxt;

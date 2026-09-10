@@ -9198,6 +9198,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     function nvHideStaleBanner(){ var b=document.getElementById("nvStaleBanner"); if(b&&b.parentNode) b.parentNode.removeChild(b); }
     window.__novaxMarkDataFresh=function(){ window.__novaxRealDataArrived=true; nvHideStaleBanner(); };
+    /* __novaxRealDataArrived was a one-way latch: the first successful load set
+       it true and nvShowStaleBanner() then returned immediately forever. So a
+       merchant whose connection died AFTER that first load kept looking at
+       cached numbers with no warning at all -- exactly the silent-stale-data
+       failure the banner exists to prevent, reintroduced by its own guard.
+       A refresh that fails now flips the latch back. */
+    window.__novaxMarkDataStale=function(reason){
+      window.__novaxRealDataArrived=false;
+      try{ console.warn("NovaX: data marked stale --", reason||"refresh failed"); }catch(e){}
+      try{ nvShowStaleBanner(); }catch(e){}
+    };
     nvInterval(()=>{ const el=document.getElementById("clockB"); if(el) el.textContent=`Live ${time()}`; },1000);
 
     // NovaX fix (withdrawal UX v3): saveBankDetails/editBankDetails/
@@ -9778,12 +9789,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(nvStale.length){
             console.warn("NovaX: stale after partial load --", nvStale.join(", "));
             try{ toast("Could not refresh " + nvStale[0] + " just now. Showing your last saved view.","error"); }catch(e){}
+            try{ window.__novaxMarkDataStale(nvStale.join(", ")); }catch(e){}
           } else {
             try{ window.__novaxMarkDataFresh(); }catch(e){}
           }
         }).catch(function(e){
           if(e && e.__nvAuth){ try{ nvSessionExpired(e.at); }catch(err){} window.__novaxClientDataReady=true; return; }
           console.warn("NovaX load failed",e); window.__novaxClientDataReady=true;
+          try{ window.__novaxMarkDataStale("load failed"); }catch(err){}
         });
       }
       function syncNew(){
@@ -10034,8 +10047,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               p_business_type: meta.business_type||"",
               p_website: meta.website||""
             }).then(function(rpcRes){
-              if(!rpcRes||rpcRes.error||!rpcRes.data){
-                console.warn("NovaX workspace recovery failed:",rpcRes&&rpcRes.error&&rpcRes.error.message);
+              var err=rpcRes&&rpcRes.error;
+              if(err){
+                console.warn("NovaX workspace recovery failed:",err.message||err);
+                if(nvIsAuthError(err)){ nvSessionExpired("create_client_workspace"); return; }
+                /* Same class of bug the profiles read above already fixes: a
+                   401, a dropped connection or a 5xx put up the permanent
+                   "Workspace not linked -- contact support" wall, which a
+                   merchant reads as their account being broken. Only a real
+                   refusal from Postgres (which always carries a code) is a
+                   genuine answer; anything without one is the network, and
+                   gets a retry instead of a dead end. */
+                if(!String(err.code||"")){ nvTransientLoadFailure("We could not finish setting up your workspace just now."); return; }
+                showWorkspaceNotLinked();
+                return;
+              }
+              if(!rpcRes||!rpcRes.data){
+                console.warn("NovaX workspace recovery returned no workspace id.");
                 showWorkspaceNotLinked();
                 return;
               }
@@ -10044,8 +10072,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               loadAll();
               subscribeClientChannel();
             }).catch(function(e){
+              /* A thrown/rejected call never reached a decision, so it can
+                 never mean "this account cannot have a workspace". */
               console.warn("NovaX workspace recovery failed:",e);
-              showWorkspaceNotLinked();
+              nvTransientLoadFailure("We could not reach your workspace just now.");
             });
           }
           function recoverOrStop(){
@@ -11327,7 +11357,43 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   var __sb=window.__nvSb||window.__nvGuardSb||null;
   window.__nvGuardSb=__sb;
   function ses(){ try{ return JSON.parse(localStorage.getItem("novaxSession")||"null"); }catch(e){ return null; } }
-  function logout(e){ if(e&&e.preventDefault) e.preventDefault(); try{ localStorage.removeItem("novaxSession"); }catch(_){ } /* NovaX fix (PII): drop the cached portal state (customer names, cities, COD) on sign-out too. */ try{ localStorage.removeItem("novaxLogisticsStateV10"); }catch(_3){ } try{ if(__sb&&__sb.auth) __sb.auth.signOut(); }catch(_2){ } window.location.href="index.html"; }
+  /* NOVAX_LOGOUT_KEY is the cross-tab signal. Signing out in one tab used to
+     leave a second open tab sitting on a full dashboard -- customer names,
+     addresses, COD totals -- until someone happened to reload it. On a shared
+     warehouse machine that is the whole point of signing out, defeated.
+     Every portal tab listens for this key and clears itself immediately. */
+  var NOVAX_LOGOUT_KEY = "novaxLogoutAt";
+  function nvClearLocalSession(){
+    try{ localStorage.removeItem("novaxSession"); }catch(_){ }
+    /* NovaX fix (PII): drop the cached portal state (customer names, cities, COD) on sign-out too. */
+    try{ localStorage.removeItem("novaxLogisticsStateV10"); }catch(_3){ }
+  }
+  function logout(e){
+    if(e&&e.preventDefault) e.preventDefault();
+    nvClearLocalSession();
+    try{ localStorage.setItem(NOVAX_LOGOUT_KEY, String(Date.now())); }catch(_4){ }
+    /* The redirect used to fire in the same tick as signOut(), so the token
+       revocation was routinely abandoned mid-flight by the navigation and the
+       refresh token stayed valid. Wait for it -- but never longer than 2.5s,
+       because a hung network must not trap someone on a screen they are
+       trying to leave. The local session is already gone either way. */
+    var done=false;
+    function go(){ if(done) return; done=true; window.location.href="index.html"; }
+    setTimeout(go, 2500);
+    try{
+      var out=(__sb&&__sb.auth)?__sb.auth.signOut():null;
+      if(out&&typeof out.then==="function") out.then(go, go); else go();
+    }catch(_2){ go(); }
+  }
+  /* A tab that did not initiate the sign-out still has to stop showing the
+     account. Wipe what is on screen before navigating, so nothing is readable
+     during the redirect. */
+  window.addEventListener("storage", function(e){
+    if(!e || e.key !== NOVAX_LOGOUT_KEY || !e.newValue) return;
+    nvClearLocalSession();
+    try{ document.body.innerHTML = ""; }catch(_){ }
+    window.location.replace("index.html");
+  });
   window.nvLogout=logout;
   /* ===== NovaX fix (idle session timeout) =====
      One named duration constant, a non-blocking warning banner two minutes
@@ -14858,6 +14924,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
   /* Proactive nudge. One cheap RPC -- no model call, no quota spend --
      so the launcher can say "3 need you" before anyone opens anything. */
+  /* The badge used to take its number from the ai_context_digest RPC while
+     every other surface -- the dashboard, the Daily Command Center, the
+     "Review Issues" action -- counted with nvAttentionParcels() in the
+     browser. The two rules disagreed, so seven parcels needing attention
+     showed as "4 need you", and tapping through listed seven. One rule,
+     one place: the local list is authoritative because it is the same list
+     the merchant is about to be shown. The RPC is only a fallback for the
+     moment before parcels have loaded. */
+  function attentionCount(){
+    try{
+      if(typeof window.nvAttentionParcels === "function"){
+        var list = window.nvAttentionParcels();
+        if(Array.isArray(list)) return list.length;
+      }
+    }catch(e){}
+    return null;
+  }
   function attentionBadge(){
     var sb = client();
     if(!sb) { setTimeout(attentionBadge, 3000); return; }
@@ -14865,8 +14948,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       .catch(function(){ return null; })
       .then(function(r){
         var d = r && r.data;
-        if(!d || d.error) return;
-        var n = Number(d.needs_attention || 0);
+        var local = attentionCount();
+        if(local === null && (!d || d.error)) return;
+        var n = local === null ? Number(d.needs_attention || 0) : local;
         var btn = document.querySelector(".nvauto-btn");
         if(!btn) return;
         var old = btn.querySelector(".nvauto-badge");
@@ -14885,7 +14969,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
   }
 
-  function init(){ bind(); watchTab(); setTimeout(attentionBadge, 2600); }
+  function init(){
+    bind(); watchTab(); setTimeout(attentionBadge, 2600);
+    /* A count taken once at 2.6s goes wrong the moment a parcel changes.
+       Re-read the local list on the same cadence the portal refreshes on. */
+    setInterval(function(){
+      var n = attentionCount();
+      if(n === null) return;
+      var btn = document.querySelector(".nvauto-btn");
+      if(!btn) return;
+      var old = btn.querySelector(".nvauto-badge");
+      if(old) old.remove();
+      var sub = document.getElementById("nvAiSub");
+      if(n > 0){
+        var b = document.createElement("span");
+        b.className = "nvauto-badge";
+        b.textContent = n > 9 ? "9+" : String(n);
+        btn.appendChild(b);
+        btn.classList.add("nv-pulse");
+        if(sub) sub.textContent = n + " parcel" + (n === 1 ? "" : "s") + " need attention";
+      } else {
+        btn.classList.remove("nv-pulse");
+      }
+    }, 20000);
+  }
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 
