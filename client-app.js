@@ -204,8 +204,8 @@
           profiles: [{ id:"demo-user", client_id:CID, role:"client", status:"active" }],
           clients: [{ id:CID, name:"Sana's Closet", code:"SC", phone:"0300-0000000",
                       city:"Karachi", address:"Shop 14, Tariq Road, Karachi",
-                      wallet_balance:3450, rate:200, status:"Active",
-                      rate_card:{ A:{overnight:200, additionalKg:60}, B:{overnight:200, additionalKg:60} },
+                      wallet_balance:3450, rate:220, status:"Active",
+                      rate_card:{ A:{overnight:220, additionalKg:85}, B:{overnight:225, additionalKg:85} },
                       meta:{ pickupCity:"Karachi" } }],
           parcels: [
             parcel({ awb:"N9000001", status:"Delivered", consignee:"Hina Raza",
