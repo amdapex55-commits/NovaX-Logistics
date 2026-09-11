@@ -4630,7 +4630,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         b._nvWired=true;
         b.addEventListener("click",function(){
           var f=document.getElementById("withdrawAmount");
-          if(!f){ try{ toast("Withdrawals are Owner-only on this account."); }catch(e){} return; }
+          if(!f || !nvIsOwnerSeat()){ try{ toast("Withdrawals are Owner-only on this account."); }catch(e){} return; }
           try{
             var fig=nvMoneyFigures();
             if(!f.value) f.value=String(Math.round(fig.ready));
@@ -9108,23 +9108,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // itself is untouched.
     function nvGuardWalletRender(){
       try{
-        if(nvIsOwnerSeat()){
-          /* An earlier render may have locked the zone before this login's
-             role was known. Put the real withdraw form back. */
-          var z=document.getElementById("nvWithdrawZone");
-          if(z && !document.getElementById("withdrawAmount") && /Owner-only/.test(z.textContent||"") && !nvGuardWalletRender._restoring){
-            nvGuardWalletRender._restoring=true;
-            try{ if(typeof renderClientWallet==="function") renderClientWallet(); }catch(e){}
-            nvGuardWalletRender._restoring=false;
-          }
-          return;
+        var zone=document.getElementById("nvWithdrawZone");
+        if(!zone) return;
+        /* The payout controls are HIDDEN for a non-Owner seat, never replaced.
+           Replacing the zone's HTML deleted the withdraw form, its bank-details
+           section and their listeners: renderClientWallet() then crashed
+           reading elements that no longer existed, and an Owner whose role was
+           confirmed after a locked render never got the form back. The server
+           refuses withdrawals and bank changes for restricted seats
+           (nv_client_money_allowed), so hiding is the display, not the lock. */
+        var note=document.getElementById("nvWithdrawLocked");
+        if(!note){
+          note=document.createElement("div");
+          note.id="nvWithdrawLocked";
+          note.innerHTML='<div class="ops-card"><div class="ops-card-head"><strong>Wallet is Owner-only</strong><span class="chip warn">restricted</span></div><p>Withdrawal requests and bank details are managed by the account Owner.</p></div>';
+          zone.parentNode.insertBefore(note, zone);
         }
-        // Was #client-wallet -- i.e. the whole tab. Now only the payout
-        // controls are restricted, so a Finance seat can still read invoices,
-        // balances and the ledger inside Money while remaining unable to move
-        // money out. This is what makes the tab merge safe.
-        var el=document.getElementById("nvWithdrawZone");
-        if(el) el.innerHTML='<div class="ops-card"><div class="ops-card-head"><strong>Wallet is Owner-only</strong><span class="chip warn">restricted</span></div><p>Balances, withdrawal requests and bank details are visible only to the account Owner.</p></div>';
+        var owner=nvIsOwnerSeat();
+        zone.hidden=!owner; zone.style.display=owner?"":"none";
+        note.hidden=owner; note.style.display=owner?"none":"";
       }catch(e){}
     }
     var __nvStaffRows=null, __nvStaffError=null, __nvStaffLoading=false;
