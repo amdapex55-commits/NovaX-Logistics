@@ -8782,8 +8782,13 @@ html,body{ background:var(--bg); color:var(--ink); }
     /* A balance the merchant owes reads as a negative number. */
     function nvSignedMoney(v) { v = Number(v) || 0; return (v < 0 ? "\u2212" : "") + money(Math.abs(v)); }
     function money(value) {
+      /* Missing is not zero. A value that never arrived -- a failed load, a
+         field an older row does not have -- shows as a dash rather than
+         "Rs 0", which read as "nothing owed". */
+      if (value === null || value === undefined || value === "") return "\u2014";
       const n = Number(value);
-      return PKR.format(Number.isFinite(n) ? n : 0).replace("PKR", "Rs");
+      if (!Number.isFinite(n)) return "\u2014";
+      return PKR.format(n).replace("PKR", "Rs");
     }
 
     function statusClass(parcel) {
@@ -9118,8 +9123,8 @@ html,body{ background:var(--bg); color:var(--ink); }
 
       const rider = state.riders[1] || state.riders[0] || {};
       document.getElementById("riderWallet").innerHTML = [
-        moneyBox("Cash held", money(rider.cashHeld||0), "must submit before new route"),
-        moneyBox("Cash limit", money(rider.cashLimit||0), "auto block threshold"),
+        moneyBox("Cash held", money(rider.cashHeld), "must submit before new route"),
+        moneyBox("Cash limit", money(rider.cashLimit), "auto block threshold"),
         moneyBox("Scan count", rider.scans||0, "today verified actions"),
         moneyBox("Fake attempt risk", `${rider.fakeRisk||0}%`, "GPS and call proof")
       ].join("");
@@ -10302,7 +10307,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <td><strong>${escLabelText(r.name)}</strong><br><span class="footer-note">${escLabelText(r.username || "no username set")}</span></td>
             <td>${escLabelText(r.username || "pending")}<br><span class="footer-note">Pass: hidden | ${escLabelText(r.manager || "No manager")}</span></td>
             <td><strong>${money(receivable)}</strong><br><span class="footer-note">Delivered COD not collected by branch</span></td>
-            <td>${money(r.cashHeld)}<br><span class="footer-note">Expenses deducted ${money(r.expenses || 0)}</span></td>
+            <td>${money(r.cashHeld)}<br><span class="footer-note">Expenses deducted ${money(r.expenses)}</span></td>
             <td>${money(r.cashLimit)}</td>
             <td>${r.scans}</td>
             <td>
@@ -10614,7 +10619,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!el || !sel) return;
       const rider = riderById(sel.value);
       const amount = rider ? riderReceivable(rider.id) : 0;
-      el.textContent = rider ? `Collecting ${money(amount)} from ${rider.name} — delivered COD not yet collected. Wallet limit ${money(rider.cashLimit || 0)}.` : "Select a rider to collect cash.";
+      el.textContent = rider ? `Collecting ${money(amount)} from ${rider.name} — delivered COD not yet collected. Wallet limit ${money(rider.cashLimit)}.` : "Select a rider to collect cash.";
     }
 
     function riderReportStats(riderId) {
@@ -12574,18 +12579,13 @@ html,body{ background:var(--bg); color:var(--ink); }
       }
       client.rateCard = { A: cardA, B: cardB };
       client.rate = cardA.overnight;
-      const invoicedRefs = new Set(state.invoices.filter(inv => inv.status !== "Deleted").flatMap(inv => inv.parcelRefs || []));
-      const repriceRc = { A: cardA, B: cardB };
-      let repricedCount = 0;
-      state.parcels.filter(p => p.clientId === id && !isDeliveredLedgerParcel(p) && !invoicedRefs.has(p.awb)).forEach(p => {
-        const breakdown = bookingChargeBreakdown(repriceRc, zoneForCity(p.city), p.weight);
-        p.fee = breakdown.total;
-        repricedCount++;
-      });
+      /* Parcels are NOT re-priced. Every parcel keeps the fee it was booked at
+         (parcels.fee is stamped at booking); new rates apply to new bookings
+         only. This loop used to recalculate the fee on every open, uninvoiced
+         parcel -- including ones already in transit -- and save it. */
       state.activeRateClient = "";
-      saveState();
       render();
-      toast(`${id} rate cards saved. Zone A ${money(cardA.overnight)} | Zone B ${money(cardB.overnight)}. ${repricedCount} open, uninvoiced parcel(s) re-priced by destination zone and weight; delivered/invoiced parcels were left untouched.`);
+      nvSaveThenToast([["clients", client]], `${id} rate cards saved. Zone A ${money(cardA.overnight)} | Zone B ${money(cardB.overnight)}. New bookings use these rates; parcels already booked keep their fee.`, ["clients"]);
     }
 
     function selectInvoiceClient(clientId) {
@@ -13462,37 +13462,27 @@ html,body{ background:var(--bg); color:var(--ink); }
             "Type DELETE to confirm.", "");
           if (String(typed || "").trim().toUpperCase() !== "DELETE") { toast("Cancelled — nothing was deleted."); return; }
 
-          /* Sequential and checked. The old parallel version could delete the
-             parcels, fail on the invoices, and still drop the client row --
-             leaving invoices pointing at a merchant that no longer exists. */
-          const done = [];
-          const step = (label, run) => () => Promise.resolve(run())
-            .catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
-            .then(function(r){
-              if (r && r.error) throw new Error(label + " — " + r.error.message);
-              done.push(label);
-            });
-
+          /* One server transaction (admin_delete_client). The browser used to run
+             four separate deletes; staff_users has no cascade, so a client with
+             a team seat lost its parcels and invoices and then failed on the
+             last step, half-deleted. Now it all happens or none of it does, and
+             the server repeats the financial-history refusal. */
           const refresh = () => {
-            if (typeof nvRefresh === "function") nvRefresh(["clients","parcels","invoices"]);
+            if (typeof nvRefresh === "function") nvRefresh(["clients","parcels","invoices","staff_users"]);
             else if (typeof loadAll === "function") loadAll();
           };
-
-          step("parcels", () => sb.from("parcels").delete().eq("client_id", cid))()
-            .then(step("invoices", () => sb.from("invoices").delete().eq("client_id", cid)))
-            .then(step("login unlinked", () => sb.from("profiles").update({ status: "blocked", client_id: null }).eq("client_id", cid)))
-            .then(step("client record", () => sb.from("clients").delete().eq("id", cid)))
-            .then(function(){
+          toast("Deleting " + nm + "…");
+          Promise.resolve(sb.rpc("admin_delete_client", { p_client_id: cid }))
+            .catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
+            .then(function(r){
+              if (r && r.error) {
+                toast("Not deleted: " + (r.error.message || "the server refused") + " Nothing was removed.", "error");
+                refresh();
+                return;
+              }
+              const d = (r && r.data) || {};
               if (state.activeRateClient === clientId) state.activeRateClient = null;
-              toast(nm + " deleted.");
-              refresh();
-            })
-            .catch(function(err){
-              /* Say exactly how far it got. A half-finished delete that
-                 reports success is how orphaned rows appear months later. */
-              toast("Stopped at " + err.message +
-                    (done.length ? " — already removed: " + done.join(", ") + "." : " — nothing was removed."),
-                    "error");
+              toast(nm + " deleted: " + (d.parcels || 0) + " parcel(s), " + (d.invoices || 0) + " invoice(s), " + (d.seats || 0) + " team seat(s).");
               refresh();
             });
         });
@@ -13555,27 +13545,45 @@ html,body{ background:var(--bg); color:var(--ink); }
         });
     }
 
+    /* Save now, then say so. These actions used to toast success straight
+       after changing local state; the write went out later and a failure was
+       only logged to the console. */
+    function nvSaveThenToast(items, okMsg, reloadTables) {
+      if (typeof window.nvAdminSaveNow !== "function") { saveState(); toast(okMsg, "success"); return Promise.resolve(true); }
+      const pending = items.map(function(it){ return window.nvAdminSaveNow(it[0], it[1]); });
+      return Promise.all(pending).then(function(results){
+        const bad = results.filter(function(r){ return r && r.error; })[0];
+        saveState();
+        if (bad) {
+          toast("Not saved: " + ((bad.error && bad.error.message) || "the server refused the change") + ". Reloading the real values.", "error");
+          try { if (typeof nvRefresh === "function") nvRefresh(reloadTables); } catch(e){}
+          return false;
+        }
+        toast(okMsg, "success");
+        return true;
+      });
+    }
+
     function setClientPickupCity(clientId, city) {
       const client = clientById(clientId);
       if (!client || !client.id) { toast("Client not found.", "error"); return; }
       const next = ["Karachi","Lahore","Islamabad","Rawalpindi"].includes(city) ? city : "Karachi";
       client.pickupCity = next;
-      saveState();
       renderAdmin();
-      toast(`${client.name} now collects from ${next}. Their booking form will show it on next load.`, "success");
+      nvSaveThenToast([["clients", client]], `${client.name} now collects from ${next}. Their booking form will show it on next load.`, ["clients"]);
     }
 
     function assignRiderToClient(clientId, riderId) {
       const client = state.clients.find(c => c.id === clientId);
       if (!client) { toast("Client not found."); return; }
       client.assignedRider = riderId || "";
+      const touched = [];
       if (riderId) {
-        state.parcels.filter(p => p.clientId === clientId && p.status === "New booked" && !p.rider).forEach(p => { p.rider = riderId; });
+        state.parcels.filter(p => p.clientId === clientId && p.status === "New booked" && !p.rider).forEach(p => { p.rider = riderId; touched.push(["parcels", p]); });
       }
-      saveState();
       render();
       const rider = state.riders.find(r => r.id === riderId);
-      toast(riderId ? `${rider ? rider.name : riderId} will handle pickups for ${client.name}.` : `Pickup rider cleared for ${client.name}.`);
+      nvSaveThenToast(touched, riderId ? `${rider ? rider.name : riderId} will handle pickups for ${client.name}.` : `Pickup rider cleared for ${client.name}.`, ["parcels"]);
     }
 
     async function editClientLogin(clientId) {
@@ -13786,9 +13794,10 @@ html,body{ background:var(--bg); color:var(--ink); }
       // the rename shows up consistently across admin and the client portal.
       const user = state.users.find(u => u.clientId === clientId && /client/i.test(`${u.accessSide || ""} ${u.role || ""}`));
       if (user && (!user.name || user.name === oldName)) user.name = newOwner || newName;
-      saveState();
       render();
-      toast(`${newName} account details updated.`);
+      const saveItems = [["clients", client]];
+      if (user && user._uuid) saveItems.push(["users", user]);
+      nvSaveThenToast(saveItems, `${newName} account details updated.`, ["clients", "staff_users"]);
     }
 
     function applyClientDateRange() {
@@ -14315,7 +14324,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         } else {
           const row = rows[0];
           const rc = Number(row.return_count || 0);
-          let msg = `${row.invoice_code} generated. Payable ${money(row.net_payable || 0)}`;
+          let msg = `${row.invoice_code} generated. Payable ${money(row.net_payable)}`;
           if (rc) msg += ` — ${rc} return(s) charged and deducted`;
           if (Number(row.due_to_novax || 0) > 0) msg += `. ${money(row.due_to_novax)} still owed to NovaX`;
           toast(msg + ".", "success");
@@ -15258,9 +15267,9 @@ html,body{ background:var(--bg); color:var(--ink); }
       const lineCod = lines.reduce((s, l) => s + Number(l.codAmount || 0), 0);
       const lineFee = lines.reduce((s, l) => s + Number(l.deliveryCharge || 0), 0);
       const drift = (Math.abs(lineCod - Number(invoice.cod || 0)) > 1) || (Math.abs(lineFee - Number(invoice.charges || 0)) > 1);
-      const driftNote = drift ? `<div style="background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:11px;line-height:1.5"><b>Reconciliation:</b> rows sum to ${escLabelText(money(lineCod))} COD / ${escLabelText(money(lineFee))} charges, against invoice totals of ${escLabelText(money(invoice.cod || 0))} / ${escLabelText(money(invoice.charges || 0))}. The invoice totals are what settle. A gap normally means a parcel's status moved after the invoice was generated.</div>` : "";
+      const driftNote = drift ? `<div style="background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:11px;line-height:1.5"><b>Reconciliation:</b> rows sum to ${escLabelText(money(lineCod))} COD / ${escLabelText(money(lineFee))} charges, against invoice totals of ${escLabelText(money(invoice.cod))} / ${escLabelText(money(invoice.charges))}. The invoice totals are what settle. A gap normally means a parcel's status moved after the invoice was generated.</div>` : "";
       const balanceLabel = due > 0 ? "Amount Due to NovaX" : "Payable to Client";
-      const balanceValue = due > 0 ? money(due) : money(invoice.payable || 0);
+      const balanceValue = due > 0 ? money(due) : money(invoice.payable);
       return `<div class="manifest-page">
         <div class="manifest-head"><h2>NovaX Logistics</h2><p>Courier &amp; COD Operating Account</p></div>
         <div class="manifest-meta">
@@ -15285,9 +15294,9 @@ html,body{ background:var(--bg); color:var(--ink); }
         <table class="manifest-table"><thead><tr><th>Tracking ID / AWB</th><th>Booking Date</th><th>Destination City</th><th>Consignee</th><th>Outcome</th><th>Payment Mode</th><th>COD Amount</th><th>Delivery Charge</th><th>Net Line Amount</th></tr></thead><tbody>${rows}</tbody></table>
         <div class="manifest-totals">
           <span>Total Parcels: <strong>${lines.length}</strong></span>
-          <span>COD Subtotal: <strong>${money(invoice.cod || 0)}</strong></span>
-          <span>Delivery Charges Subtotal: <strong>${money(invoice.charges || 0)}</strong></span>
-          <span>Payable to Client: <strong>${money(invoice.payable || 0)}</strong></span>
+          <span>COD Subtotal: <strong>${money(invoice.cod)}</strong></span>
+          <span>Delivery Charges Subtotal: <strong>${money(invoice.charges)}</strong></span>
+          <span>Payable to Client: <strong>${money(invoice.payable)}</strong></span>
           <span>Amount Due to NovaX: <strong>${money(due)}</strong></span>
           <span>${balanceLabel}: <strong>${balanceValue}</strong></span>
         </div>
@@ -15861,9 +15870,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       const req = (state.pickupRequests || []).find(r => r.id === id);
       if (!req) return;
       req.riderId = riderId || "";
-      saveState();
       renderAdmin();
-      toast(riderId ? "Rider assigned to pickup request." : "Rider unassigned from pickup request.");
+      nvSaveThenToast([["pickupRequests", req]], riderId ? "Rider assigned to pickup request." : "Rider unassigned from pickup request.", ["pickup_requests"]);
     }
 
     function markPickupAssigned(id) {
@@ -15871,9 +15879,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!req) { toast("Pickup request not found."); return; }
       if (!req.riderId) { toast("Assign a rider before marking this request Assigned.", "error"); return; }
       req.status = "Assigned";
-      saveState();
       renderAdmin();
-      toast(`Pickup request ${req.id} marked Assigned.`);
+      nvSaveThenToast([["pickupRequests", req]], `Pickup request ${req.id} marked Assigned.`, ["pickup_requests"]);
     }
 
     function cancelPickupRequest(id) {
@@ -16555,6 +16562,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     });
 
     setInterval(() => {
+      if (document.hidden) return;
       ["clockA", "clockB", "clockC", "clockD"].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.textContent = `Live ${time()}`;
@@ -16614,7 +16622,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (typeof nvPricingLoad === "function") { try { nvPricingLoad(); } catch(e){ console.warn("NovaX: pricing config load failed", e); } }
       var sbSignup=null; try{ sbSignup=window.supabase.createClient(SB_URL,SB_KEY,{ auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:false, storageKey:"sb-nv-admin-signup-client" } }); }catch(e){ console.warn("NovaX: signup client init failed.",e); }
       window.__nvSignupClient=sbSignup;
-      var ADMIN_UID=null, loaded=false, shadow={}, resyncT=null, liveSubscribed=false, reloadT=null;
+      var ADMIN_UID=null, loaded=false, shadow={}, shadowRow={}, resyncT=null, liveSubscribed=false, reloadT=null;
       // NovaX fix (Mark Paid freeze): if a table doesn't exist yet in the
       // live database schema (e.g. operations_issues/resolved_alerts/
       // manifest_logs/ticket_notifications/pickup_requests before their
@@ -16643,8 +16651,14 @@ html,body{ background:var(--bg); color:var(--ink); }
       var NV_LIVE_KNOWN = { clients:1, invoices:1, wallet_ledger:1, payment_logs:1, withdrawals:1, parcels:1 };
       var nvLivePending = Object.create(null), nvLiveTimer = null, nvLastFullReload = 0;
 
+      /* A hidden admin tab refetched on every change anyone made. Changes wait
+         until the tab is looked at again, then refresh once. */
+      document.addEventListener("visibilitychange", function(){
+        if (!document.hidden && typeof nvLivePending === "object" && Object.keys(nvLivePending).length) { try { nvLiveChange(); } catch(e){} }
+      });
       function nvLiveChange(table){
         if (table) nvLivePending[table] = true;
+        if (document.hidden) return;
         if (nvLiveTimer) return;                       // already scheduled
         nvLiveTimer = setTimeout(function(){
           nvLiveTimer = null;
@@ -16674,7 +16688,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
       function sigOf(row){ return JSON.stringify(row,function(k,v){ return k==="updated_at"?undefined:v; }); }
       var DRC={ overnight:NV_ZONE_A_BASE, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 };
-      function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", pickupCity:m.pickupCity||"Karachi", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", pricingMode:(String(r.pricing_mode||"flat")==="distance"?"distance":"flat"), rate:Number(r.rate||NV_ZONE_A_BASE), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||NV_ZONE_A_BASE)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"" }; }
+      function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", pickupCity:m.pickupCity||"Karachi", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", pricingMode:(String(r.pricing_mode||"flat")==="distance"?"distance":"flat"), rate:Number(r.rate||NV_ZONE_A_BASE), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||NV_ZONE_A_BASE)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"", _meta:m }; }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
       function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0),
         /* NovaX fix (status rename): this was a raw `r.status` read, so any
@@ -16781,7 +16795,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       // That overwrite was the root cause of withdrawals staying "withdrawable"
       // after being marked Paid. wallet_balance is now read-only from this
       // sync path; it only ever changes inside the wallet RPCs.
-      function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||NV_ZONE_A_BASE), rate_card:normalizeRateCard(c.rateCard,Number(c.rate||NV_ZONE_A_BASE)), risk_score:Number(c.risk||0), meta:{ tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"", pickupCity:c.pickupCity||"Karachi" } }; }
+      function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||NV_ZONE_A_BASE), rate_card:normalizeRateCard(c.rateCard,Number(c.rate||NV_ZONE_A_BASE)), risk_score:Number(c.risk||0), /* Start from the stored meta so keys admin does not manage (the merchant's bank details) survive a save. */ meta:Object.assign({}, (c._meta && typeof c._meta==="object") ? c._meta : {}, { tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"", pickupCity:c.pickupCity||"Karachi" }) }; }
       function fRider(r){ return { name:r.name||"", phone:r.phone||"", branch:r.branch||r.manager||"", access:r.access||"Active", cash_limit:Number(r.cashLimit||0), meta:{ username:r.username, manager:r.manager, cashHeld:r.cashHeld, scans:r.scans, fakeRisk:r.fakeRisk, expenses:r.expenses } }; }
       // NovaX fix (address/phone loss backstop): syncEntity() sends a FULL-row
       // UPDATE. Any field that is blank in browser memory therefore erases the
@@ -16987,7 +17001,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           if(tables.indexOf(s[2])===-1) return;
           (state[s[0]]||[]).forEach(function(o){
             if(!o._uuid) return;
-            try{ var row=s[1](o); if(row) shadow[o._uuid]=sigOf(row); }catch(e){}
+            try{ var row=s[1](o); if(row){ shadow[o._uuid]=sigOf(row); shadowRow[o._uuid]=row; } }catch(e){}
           });
         });
       }
@@ -17109,7 +17123,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       }
       window.nvSaveStateSoon = nvSaveStateSoon;
 
-      function rebuildShadow(){ shadow={}; SETS.forEach(function(s){ (state[s[0]]||[]).forEach(function(o){ if(o._uuid){ try{ var row=s[1](o); if(row) shadow[o._uuid]=sigOf(row); }catch(e){} } }); }); }
+      function rebuildShadow(){ shadow={}; shadowRow={}; SETS.forEach(function(s){ (state[s[0]]||[]).forEach(function(o){ if(o._uuid){ try{ var row=s[1](o); if(row){ shadow[o._uuid]=sigOf(row); shadowRow[o._uuid]=row; } }catch(e){} } }); }); }
       function isMissingTableError(err){
         var msg=(err&&err.message)||"";
         return /could not find the table/i.test(msg) || (err&&err.code==="PGRST205");
@@ -17129,13 +17143,28 @@ html,body{ background:var(--bg); color:var(--ink); }
         sb.from(table).select("id").eq("meta->>sourceKey", key).limit(1).maybeSingle()
           .then(function(res){
             if(res && res.data && res.data.id){
-              o._uuid = res.data.id; shadow[o._uuid] = sig;
+              o._uuid = res.data.id; shadow[o._uuid] = sig; shadowRow[o._uuid] = row;
               console.info("NovaX "+table+": re-linked local row to existing "+res.data.id);
             } else {
               o._syncBlocked = true;
             }
           })
           .catch(function(){ o._syncBlocked = true; });
+      }
+      /* Only the columns this tab actually changed. Sending the whole row from
+         an in-memory copy let a stale admin tab undo a merchant's corrected
+         phone or address, or a rider's status, because admins pass every
+         guard. updated_at rides along with any real change. */
+      function nvRowPatch(before, row){
+        if(!before) return row;
+        var patch={}, n=0;
+        Object.keys(row).forEach(function(k){
+          if(k==="updated_at") return;
+          if(JSON.stringify(row[k])!==JSON.stringify(before[k])){ patch[k]=row[k]; n++; }
+        });
+        if(!n) return null;
+        if(row.updated_at!==undefined) patch.updated_at=row.updated_at;
+        return patch;
       }
       function syncEntity(arr, build, table){
         if(missingTables[table]) return;
@@ -17148,11 +17177,37 @@ html,body{ background:var(--bg); color:var(--ink); }
           var row; try{ row=build(o); }catch(e){ return; }
           if(!row) return;
           var sig=sigOf(row);
-          if(o._uuid){ if(shadow[o._uuid]===sig) return; shadow[o._uuid]=sig; sb.from(table).update(row).eq("id",o._uuid).then(function(r){ if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else { console.warn("NovaX "+table+" update",r.error.message); } } }); }
-          else { o._pending=true; sb.from(table).insert(row).select("id").maybeSingle().then(function(r){ o._pending=false; if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else if(isDuplicateKeyError(r.error)){ adoptExistingRow(o,row,table,sig); } else { console.warn("NovaX "+table+" insert",r.error.message); } return; } if(r&&r.data){ o._uuid=r.data.id; shadow[o._uuid]=sig; scheduleResync(); } }); }
+          if(o._uuid){ if(shadow[o._uuid]===sig) return; var patch=nvRowPatch(shadowRow[o._uuid], row); shadow[o._uuid]=sig; shadowRow[o._uuid]=row; if(!patch) return; sb.from(table).update(patch).eq("id",o._uuid).then(function(r){ if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else { console.warn("NovaX "+table+" update",r.error.message); } } }); }
+          else { o._pending=true; sb.from(table).insert(row).select("id").maybeSingle().then(function(r){ o._pending=false; if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else if(isDuplicateKeyError(r.error)){ adoptExistingRow(o,row,table,sig); } else { console.warn("NovaX "+table+" insert",r.error.message); } return; } if(r&&r.data){ o._uuid=r.data.id; shadow[o._uuid]=sig; shadowRow[o._uuid]=row; scheduleResync(); } }); }
         });
       }
       function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
+      /* Saves one object now and reports the real outcome, for admin actions
+         that must not say "saved" before the server agrees. The row is marked
+         synced first so the background loop does not send it again; if the
+         write fails the marks are rolled back and the caller is told why. */
+      window.nvAdminSaveNow=function(setKey, o){
+        return new Promise(function(resolve){
+          var set=SETS.filter(function(x){ return x[0]===setKey; })[0];
+          if(!set || !o) return resolve({ error:{ message:"Nothing to save." } });
+          if(!loaded) return resolve({ error:{ message:"Still loading from the server. Try again in a moment." } });
+          if(missingTables[set[2]]) return resolve({ error:{ message:set[2]+" is not available." } });
+          if(!o._uuid) return resolve({ error:{ message:"This record is not linked to the server yet." } });
+          var row; try{ row=set[1](o); }catch(e){ return resolve({ error:{ message:String((e&&e.message)||e) } }); }
+          if(!row) return resolve({ error:{ message:"This record is not linked to the server yet." } });
+          var prevSig=shadow[o._uuid], prevRow=shadowRow[o._uuid];
+          var patch=nvRowPatch(prevRow, row);
+          shadow[o._uuid]=sigOf(row); shadowRow[o._uuid]=row;
+          if(!patch) return resolve({ ok:true, unchanged:true });
+          Promise.resolve(sb.from(set[2]).update(patch).eq("id",o._uuid).select("id"))
+            .catch(function(e){ return { error:{ message:String((e&&e.message)||e) } }; })
+            .then(function(r){
+              if(r && !r.error && Array.isArray(r.data) && r.data.length===0) r={ error:{ message:"the server did not update the record" } };
+              if(r && r.error){ shadow[o._uuid]=prevSig; shadowRow[o._uuid]=prevRow; resolve({ error:r.error }); return; }
+              resolve({ ok:true });
+            });
+        });
+      };
       var _save=saveState; saveState=function(){ try{ if(typeof syncRidersFromUsers==="function") syncRidersFromUsers(); }catch(e){} try{ _save.apply(this,arguments); }catch(e){} try{ syncAll(); }catch(e){} };
       state.clients=[]; state.riders=[]; state.parcels=[]; state.invoices=[]; state.expenses=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.salesLeads=[]; state.signupLeads=[]; state.operationsIssues=[]; state.resolvedAlerts=[]; state.transit=[]; state.completedSacks=[]; state.users=[]; state.staffActivity=[]; state.walletLedger=[]; state.pickupRequests=[];
       /* Every lead mutation below changes local state, re-renders, then fires
@@ -17578,7 +17633,7 @@ html,body{ background:var(--bg); color:var(--ink); }
 
     (function nvAtkBoot(){
       setTimeout(function(){ try{ nvAtkWire(); nvAtkLoad(); }catch(e){} }, 1000);
-      setInterval(function(){ try{ nvAtkWire(); }catch(e){} }, 3000);
+      setInterval(function(){ if(document.hidden) return; try{ nvAtkWire(); }catch(e){} }, 3000);
       // Only poll while an admin is actually on the tickets tab.
       setInterval(function(){
         var pane = document.getElementById("admin-support-tickets");
@@ -17759,7 +17814,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       // Selects are populated by render(), which can run after this script, and
       // a client list can cross the threshold later. Cheap re-scan handles both.
       setTimeout(scan, 1200);
-      setInterval(scan, 4000);
+      setInterval(function(){ if(!document.hidden) scan(); }, 4000);
     })();
 
     render();
@@ -17804,7 +17859,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           return {text:'I can answer anything in the control room - try <i>where is [an AWB]</i>, <i>rider cash</i>, <i>total COD</i>, <i>a client wallet</i>, <i>exceptions</i>, or <i>list clients</i>.'};
         }
         var style=document.createElement('style');
-        style.textContent='.nvai-btn{position:fixed;right:18px;bottom:18px;z-index:99999;width:58px;height:58px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#14c77b);color:#fff;font-size:24px;box-shadow:0 12px 30px rgba(20,199,123,.45);display:grid;place-items:center;border:0;cursor:pointer}.nvai-dim{opacity:.7}.nvai-panel{position:fixed;right:18px;bottom:86px;z-index:99999;width:360px;max-width:calc(100vw - 36px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #cfe6dc;border-radius:18px;box-shadow:0 26px 70px rgba(13,91,64,.28);display:none;flex-direction:column;overflow:hidden}.nvai-panel.open{display:flex}.nvai-head{background:linear-gradient(135deg,#0b2a1f,#0c7c59);color:#eafff5;padding:13px 16px;display:flex;align-items:center;gap:10px}.nvai-head b{font-size:15px;line-height:1.1}.nvai-head small{font-size:11px;opacity:.8}.nvai-x{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:0;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px}.nvai-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f3fff9}.nvai-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}.nvai-m.u{align-self:flex-end;background:#dcffe9;color:#08311f;border-bottom-right-radius:4px}.nvai-m.b{align-self:flex-start;background:#fff;border:1px solid #e1f0e8;color:#0b2a1f;border-bottom-left-radius:4px}.nvai-bar{display:flex;gap:8px;padding:10px;border-top:1px solid #e1f0e8;background:#fff}.nvai-bar input{flex:1;min-width:0;height:42px;border-radius:12px;border:1px solid #cfe6dc;padding:0 12px;font:inherit;font-size:14px}.nvai-bar button{height:42px;padding:0 16px;border-radius:12px;background:#14c77b;color:#04130d;font-weight:800;border:0;cursor:pointer}@media (max-width:520px){.nvai-panel{right:10px;left:10px;width:auto;bottom:78px;height:72vh}.nvai-btn{right:14px;bottom:14px}}';
+        style.textContent='.nvai-btn{position:fixed;right:18px;bottom:18px;z-index:99999;width:58px;height:58px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#14c77b);color:#fff;font-size:24px;box-shadow:0 12px 30px rgba(20,199,123,.45);display:grid;place-items:center;border:0;cursor:pointer}.nvai-dim{opacity:.7}.nvai-panel{position:fixed;right:18px;bottom:86px;z-index:99999;width:360px;max-width:calc(100vw - 36px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #cfe6dc;border-radius:18px;box-shadow:0 26px 70px rgba(13,91,64,.28);display:none;flex-direction:column;overflow:hidden}.nvai-panel.open{display:flex}.nvai-head{background:linear-gradient(135deg,#0b2a1f,#0c7c59);color:#eafff5;padding:13px 16px;display:flex;align-items:center;gap:10px}.nvai-head b{font-size:15px;line-height:1.1}.nvai-head small{font-size:11px;opacity:.8}.nvai-x{margin-left:auto;background:rgba(255,255,255,.15);color:#fff;border:0;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px}.nvai-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#f3fff9}.nvai-m{max-width:85%;padding:10px 12px;border-radius:14px;font-size:13.5px;line-height:1.45}.nvai-m.u{align-self:flex-end;background:#dcffe9;color:#08311f;border-bottom-right-radius:4px}.nvai-m.b{align-self:flex-start;background:#fff;border:1px solid #e1f0e8;color:#0b2a1f;border-bottom-left-radius:4px}.nvai-bar{display:flex;gap:8px;padding:10px;border-top:1px solid #e1f0e8;background:#fff}.nvai-bar input{flex:1;min-width:0;height:42px;border-radius:12px;border:1px solid #cfe6dc;padding:0 12px;font:inherit;font-size:16px}.nvai-bar button{height:42px;padding:0 16px;border-radius:12px;background:#14c77b;color:#04130d;font-weight:800;border:0;cursor:pointer}@media (max-width:520px){.nvai-panel{right:10px;left:10px;width:auto;bottom:78px;height:72vh}.nvai-btn{right:14px;bottom:14px}}';
         document.head.appendChild(style);
         var btn=document.createElement('button'); btn.className='nvai-btn'; btn.title='NovaX Admin AI'; btn.innerHTML='✨';
         var panel=document.createElement('div'); panel.className='nvai-panel';
