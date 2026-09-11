@@ -9057,11 +9057,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     /* The ?demo=1 portal has no real session -- its stub client returns no
        user -- so the seat lookup never answers there. It only ever shows
        sample data, so it keeps the full Owner view. */
-    function nvClientRole(){ var r=window.__novaxClientRole; if(NOVAX_ROLE_TABS[r]) return r; return window.__NOVAX_DEMO ? "Owner" : "Support"; }
+    /* Every account is its workspace's Owner unless the seat lookup has
+       positively found a Finance, Warehouse or Support seat for this login.
+       This defaulted to the most limited role while the lookup was pending
+       (10 Sep), which replaced the withdraw form with "Wallet is Owner-only"
+       and never put it back -- real owners could not withdraw. The server is
+       the boundary: nv_client_money_allowed() refuses withdrawals and bank
+       changes for restricted seats, and is_client_owner_seat() refuses team
+       changes, whatever this function returns. */
+    function nvClientRole(){ var r=window.__novaxClientRole; return NOVAX_ROLE_TABS[r]?r:"Owner"; }
     function nvRoleRetry(){
       if(window.__novaxClientRole || window.__NOVAX_DEMO) return;
       var n=(window.__nvRoleRetries=(window.__nvRoleRetries||0)+1);
-      if(n>6){ try{ toast("We couldn't confirm your team permissions, so some tabs are hidden. Refresh to try again.","error"); }catch(e){} return; }
+      if(n>6) return;
       setTimeout(function(){ try{ loadSubAccounts(); }catch(e){} }, Math.min(30000, 2000*n));
     }
     function nvRoleTabs(){ return NOVAX_ROLE_TABS[nvClientRole()]; }
@@ -9100,7 +9108,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // itself is untouched.
     function nvGuardWalletRender(){
       try{
-        if(nvIsOwnerSeat()) return;
+        if(nvIsOwnerSeat()){
+          /* An earlier render may have locked the zone before this login's
+             role was known. Put the real withdraw form back. */
+          var z=document.getElementById("nvWithdrawZone");
+          if(z && !document.getElementById("withdrawAmount") && /Owner-only/.test(z.textContent||"") && !nvGuardWalletRender._restoring){
+            nvGuardWalletRender._restoring=true;
+            try{ if(typeof renderClientWallet==="function") renderClientWallet(); }catch(e){}
+            nvGuardWalletRender._restoring=false;
+          }
+          return;
+        }
         // Was #client-wallet -- i.e. the whole tab. Now only the payout
         // controls are restricted, so a Finance seat can still read invoices,
         // balances and the ledger inside Money while remaining unable to move
