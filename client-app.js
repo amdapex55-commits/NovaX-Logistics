@@ -2955,9 +2955,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const open=!!state.statusBoardOpen;
       const sum=document.getElementById("statusBoardSummary"); if(sum) sum.textContent=parcels.length?`${parcels.length} parcel${parcels.length===1?"":"s"} \u00b7 ${order.map(k=>`${groups[k].length} ${k.toLowerCase()}`).join(", ")} \u2014 tap to ${open?"collapse":"expand"}.`:"No parcels in the selected range.";
       const chev=document.getElementById("statusBoardChevron"); if(chev) chev.textContent=open?"▾":"▸";
+      const sbHead=document.getElementById("statusBoardHead"); if(sbHead) sbHead.setAttribute("aria-expanded",open?"true":"false");
       el.style.display=open?"flex":"none";
       if(!open){ el.innerHTML=""; return; }
-      el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${s}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].map(p=>`<div class="sb-parcel" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><span class="sb-awb">${escLabelText(p.awb)}</span><span class="sb-meta">${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)}</span><span class="sb-meta">${money(p.cod)} &middot; ${alertForParcel(p).label} &middot; ${agingLabel(agingHours(p))} old</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
+      el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${s}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].map(p=>`<div class="sb-parcel" role="button" tabindex="0" aria-label="Open ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><span class="sb-awb">${escLabelText(p.awb)}</span><span class="sb-meta">${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)}</span><span class="sb-meta">${money(p.cod)} &middot; ${alertForParcel(p).label} &middot; ${agingLabel(agingHours(p))} old</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
     }
     /* ===== AI Exception Resolution Center: deterministic problem/cause/action card ===== */
     function classifyParcelException(p){
@@ -4370,10 +4371,68 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         });
     }
     /* Says plainly whether the file matches the screen. */
-    function nvReportScopeNote(n){
+    function nvReportScopeNote(n, complete){
       const any=["repSearch","repStatus","repFrom","repTo"]
         .some(id=>String(document.getElementById(id)?.value||"").trim());
-      return n + " row(s) exported" + (any ? " — the filters you have applied." : " — your full loaded history.");
+      return n + " row(s) exported" + (any ? " — the filters you have applied." : " — your full history.")
+        + (complete===false ? " WARNING: only what this page had already loaded — the server could not be reached, so older parcels may be missing." : "");
+    }
+
+    /* The export was called "Full Report" but could only ever contain what the
+       portal had loaded, and the portal caps itself: active parcels at 2,000,
+       closed ones at the last 400 within 45 days, invoices at 500. A merchant
+       exporting last quarter for their accountant got a file that stopped
+       early with nothing saying so. The file now comes from the server, paged,
+       carrying the same filters the table is showing. If that fetch fails we
+       still export the loaded rows -- but the merchant is told the file is
+       partial instead of being handed a quiet half-export. */
+    function nvReportFilterValues(){
+      return {
+        search:(document.getElementById("repSearch")?.value||"").trim().toLowerCase(),
+        status:document.getElementById("repStatus")?.value||"",
+        from:document.getElementById("repFrom")?.value||"",
+        to:document.getElementById("repTo")?.value||""
+      };
+    }
+    function nvExportRowFromDb(r){
+      const t=Date.parse(r.updated_at||r.booked_at||"");
+      return { awb:r.awb||"", date:String(r.booked_at||"").slice(0,10), consignee:r.consignee||"",
+               city:r.city||"", status:r.status||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0),
+               _ageH:isFinite(t)?Math.max(0,(Date.now()-t)/3600000):0 };
+    }
+    async function nvFetchWholeReport(){
+      const sb=window.__nvSb, cid=state.client&&state.client.id;
+      if(!sb||!cid) return null;
+      const f=nvReportFilterValues(), SIZE=1000;
+      let out=[], page=0;
+      /* A supabase-js builder is single-use, so each page builds its own. */
+      while(page<60){
+        let q=sb.from("parcels")
+          .select("awb,consignee,city,status,cod_amount,fee,booked_at,updated_at")
+          .eq("client_id",cid);
+        if(f.status) q=q.eq("status",f.status);
+        if(f.from) q=q.gte("booked_at",f.from);
+        if(f.to) q=q.lte("booked_at",f.to+"T23:59:59.999Z");
+        const r=await q.order("booked_at",{ascending:false}).range(page*SIZE,page*SIZE+SIZE-1);
+        if(r.error) throw new Error(r.error.message);
+        const batch=r.data||[];
+        out=out.concat(batch);
+        if(batch.length<SIZE) break;
+        page++;
+      }
+      let rows=out.map(nvExportRowFromDb);
+      if(f.search) rows=rows.filter(function(p){
+        return (p.awb+" "+p.consignee+" "+p.city+" "+p.status).toLowerCase().includes(f.search); });
+      return rows;
+    }
+    async function nvReportExportRows(){
+      try{
+        const rows=await nvFetchWholeReport();
+        if(rows) return { rows:rows, complete:true };
+      }catch(e){
+        try{ logClientError("report_export", (e&&e.message)||e, "warning"); }catch(_e){}
+      }
+      return { rows:nvReportRows(), complete:false };
     }
 
     function renderClientReportFull(){
@@ -5018,16 +5077,34 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       modal.classList.add("show");
     }
     function closeInvoiceModal(){ const modal=document.getElementById("invoiceViewModal"); if(modal) modal.classList.remove("show"); }
-    function exportReportCsv(){
-      const rows=nvReportRows();
+    async function exportReportCsv(){
+      const btn=document.getElementById("reportCsvBtn");
+      if(btn) btn.disabled=true;
+      let res;
+      try{
+        toast("Preparing your export\u2026");
+        res=await nvReportExportRows();
+      } finally { if(btn) btn.disabled=false; }
+      const rows=res.rows;
       const head=["AWB","Date","Consignee","City","Status","COD","Fee","AgingHours"];
-      const csv=[head.map(csvCell).join(",")].concat(rows.map(p=>[p.awb,p.date,p.consignee,p.city,p.status,p.cod,p.fee,Math.round(agingHours(p))].map(csvCell).join(","))).join("\n");
-      const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="novax-report.csv"; a.click(); toast(nvReportScopeNote(rows.length)); toast("Report CSV downloaded.");
+      const csv=[head.map(csvCell).join(",")].concat(rows.map(p=>[p.awb,p.date,p.consignee,p.city,p.status,p.cod,p.fee,Math.round(p._ageH!=null?p._ageH:agingHours(p))].map(csvCell).join(","))).join("\n");
+      const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="novax-report.csv"; a.click();
+      /* One toast, not two: #toast is a single element, so the old pair meant
+         the scope note was overwritten before anyone could read it. */
+      toast(nvReportScopeNote(rows.length,res.complete), res.complete?"success":"error");
     }
-    function exportReportPdf(){
-      const rows=nvReportRows();
+    async function exportReportPdf(){
+      const btn=document.getElementById("reportPdfBtn");
+      if(btn) btn.disabled=true;
+      let res;
+      try{
+        toast("Preparing your report\u2026");
+        res=await nvReportExportRows();
+      } finally { if(btn) btn.disabled=false; }
+      const rows=res.rows;
       const stage=document.getElementById("printStage");
       stage.innerHTML=`<div style="font-family:sans-serif;color:#000;background:var(--nvu-bg);padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th><th>Fee</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(p.status)}</td><td>${money(p.cod)}</td><td>${money(p.fee)}</td></tr>`).join("")}<tr><td colspan="4"><strong>Total &mdash; ${rows.length} parcel(s)</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.cod||0),0))}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.fee||0),0))}</strong></td></tr></table></div>`;
+      toast(nvReportScopeNote(rows.length,res.complete), res.complete?"success":"error");
       nvPrintStageNow();
     }
 
@@ -8494,11 +8571,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!window.__nvSb) return;
       try{ shopifyLoadBulkState(); }catch(e){}
       if(NV_RPC_DEAD.client_shopify_status) return;
+      /* Anything other than a missing RPC used to hit a bare return: the old
+         status stayed on screen as though it had just been confirmed. */
+      function shopifyStatusFailed(msg){
+        const chip=document.getElementById("shopifyStatusChip");
+        const detail=document.getElementById("shopifyStatusDetail");
+        if(chip) chip.textContent="Couldn't check";
+        if(detail) detail.textContent="We could not check your Shopify connection just now ("+String(msg||"connection problem")+
+          "). This is a NovaX connection problem, not a Shopify one \u2014 nothing about your setup has changed. Press \u201CI created a test order \u2014 check again\u201D to retry.";
+      }
       window.__nvSb.rpc("client_shopify_status", {}).then(function(r){
         if(r && r.error){
           if(nvRpcMissing(r.error)){
             NV_RPC_DEAD.client_shopify_status = true;
             nvShopifyDisable(r.error.message);
+          } else {
+            shopifyStatusFailed(r.error.message);
           }
           return;
         }
@@ -8545,7 +8633,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           document.getElementById("shopifyStep2Box").style.display="block";
           document.getElementById("shopifyStep3Box").style.display="block";
         }
-      }).catch(function(){});
+      }).catch(function(e){ shopifyStatusFailed((e && e.message) || e); });
     }
     /* Used to jump to Order Logs with a source filter. That tab is gone, so
        this goes to the dashboard, where imported parcels appear as normal
@@ -8692,6 +8780,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const items=newBookedParcels();
       if(!items.length){ list.innerHTML=`<div class="ops-card"><strong>No new booked parcels yet</strong><p class="footer-note">Printable AWB labels appear here the moment a parcel is booked.</p><div class="inline-actions" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="action-btn" data-nv-cock="tab" data-tab="newBooking">Book a parcel</button><button class="ghost-btn" data-nv-cock="tab" data-tab="bulkBooking">Upload bulk CSV</button><button class="ghost-btn" data-nv-cock="tab" data-tab="integrations">Sync your store</button></div></div>`; return; }
       list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}" checked><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${p.source?` &middot; <span class="chip info">${escLabelText(p.source)}</span>`:""}${nvPrintedMark(p)}</span><button class="ghost-btn" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn" title="Delete this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:#b91c1c;border-color:#f0b4ac">Delete</button></label>`).join("");
+      nvSyncSelectAllNewBookedLabel();
     }
     /* The tab banner already knew whether every label was printed, but no row
        said which. A merchant printing a batch had no way to see what they had
@@ -8732,7 +8821,39 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         try{ if(typeof window.__novaxReloadClientData==="function") window.__novaxReloadClientData(); }catch(e){}
       }).catch(function(e){ toast("Could not delete: "+((e&&e.message)||e),"error"); });
     }
-    function selectAllNewBooked(){ const boxes=document.querySelectorAll(".newbooked-check"); const allOn=Array.from(boxes).every(b=>b.checked); boxes.forEach(b=>{ b.checked=!allOn; }); }
+    /* Every row renders pre-checked, so the button said "Select All" while its
+       only effect was to clear the lot. It now names the action it performs. */
+    function nvSyncSelectAllNewBookedLabel(){
+      const btn=document.getElementById("newBookedSelectAllBtn"); if(!btn) return;
+      const boxes=document.querySelectorAll(".newbooked-check");
+      const allOn=boxes.length>0 && Array.prototype.every.call(boxes,function(b){ return b.checked; });
+      btn.textContent=allOn?"Clear selection":"Select All";
+    }
+    function selectAllNewBooked(){
+      const boxes=document.querySelectorAll(".newbooked-check");
+      const allOn=boxes.length>0 && Array.from(boxes).every(b=>b.checked);
+      boxes.forEach(b=>{ b.checked=!allOn; });
+      nvSyncSelectAllNewBookedLabel();
+    }
+    /* Ticks the parcels the assistant named, through the same delegated
+       change handler the checkboxes already use, so the bulk bar counts them
+       exactly as if the merchant had ticked each one. */
+    window.nvPrepareCustomerMessages=function(awbs){
+      awbs=(awbs||[]).filter(Boolean);
+      if(!awbs.length){ toast("No parcels are out for delivery right now."); return; }
+      var hit=0;
+      awbs.forEach(function(awb){
+        var sel;
+        try{ sel='[data-nv-sel="'+(window.CSS&&CSS.escape?CSS.escape(awb):String(awb).replace(/"/g,'\\"'))+'"]'; }catch(e){ return; }
+        var box=document.querySelector(sel);
+        if(!box) return;
+        box.checked=true;
+        box.dispatchEvent(new Event("change",{bubbles:true}));
+        hit++;
+      });
+      if(!hit){ toast("Those parcels are not in the list on screen \u2014 clear your filters and try again.","error"); return; }
+      toast(hit+" parcel(s) selected \u2014 press \u201CMessage customers\u201D to open WhatsApp.","success");
+    };
     function printNewBookedSelected(){ const awbs=Array.from(document.querySelectorAll(".newbooked-check")).filter(b=>b.checked).map(b=>b.value); if(!awbs.length){ toast("Select at least one new booked AWB."); return; } printLabels(awbs); }
     // NovaX (Part 4, pickup request flow): an AWB has an "active" pickup
     // request if some prior request that still includes it has not reached
@@ -9067,6 +9188,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     document.getElementById("bulkPrintAllBtn").addEventListener("click",()=>printLabels(state.lastBulkAwbs||[]));
     document.getElementById("printAwbBtn").addEventListener("click",printAwb);
     document.getElementById("newBookedSelectAllBtn")?.addEventListener("click",selectAllNewBooked);
+    document.addEventListener("change",function(e){
+      if(e.target && e.target.classList && e.target.classList.contains("newbooked-check")) nvSyncSelectAllNewBookedLabel();
+    });
     document.getElementById("newBookedPrintBtn")?.addEventListener("click",printNewBookedSelected);
     document.getElementById("requestPickupBtn")?.addEventListener("click",requestPickup);
     /* Merchants forward labels far more often than they print them: the parcel
@@ -10686,7 +10810,27 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       catch(e){ /* never let error-logging break the page */ }
     }
 
+    /* Save used to be live from first paint, over an empty event grid and
+       three unchecked boxes. Clicking it before the prefs arrived -- or at all
+       after a failed load -- wrote "every channel off, no events" over the
+       merchant's real settings. Saving is now impossible until the current
+       settings are actually on screen. */
+    var NV_NOTIF_PREFS_LOADED=false;
+    function nvNotifPrefsUi(phase, msg){
+      var btn=document.getElementById("notifPrefSaveBtn");
+      var st=document.getElementById("notifPrefStatus");
+      if(btn) btn.disabled=(phase!=="ready");
+      if(!st) return;
+      if(phase==="ready"){ st.textContent=""; st.style.display="none"; return; }
+      st.style.display="";
+      if(phase==="error"){
+        st.innerHTML=escLabelText(msg||"Could not load your notification settings.")+
+          ' <button class="ghost-btn" type="button" onclick="loadClientNotificationPrefs()" style="margin-left:8px">Retry</button>';
+      } else { st.textContent=msg||""; }
+    }
     async function loadClientNotificationPrefs(){
+      NV_NOTIF_PREFS_LOADED=false;
+      nvNotifPrefsUi("loading","Loading your current settings\u2026");
       try{
         const r=await window.__nvSb.rpc("client_get_notification_prefs",{});
         if(r.error) throw new Error(r.error.message);
@@ -10697,7 +10841,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const events=Array.isArray(p.events)?p.events:Object.keys(NOTIF_EVENT_LABELS);
         const grid=document.getElementById("notifPrefEventsGrid");
         if(grid) grid.innerHTML=Object.keys(NOTIF_EVENT_LABELS).map(function(ev){ return `<label class="footer-note" style="display:flex;align-items:center;gap:8px"><input type="checkbox" class="notifPrefEventBox" value="${ev}" ${events.indexOf(ev)>-1?"checked":""}> ${NOTIF_EVENT_LABELS[ev]}</label>`; }).join("");
-      }catch(e){ logClientError("client_get_notification_prefs", e.message||e, "warning"); }
+        NV_NOTIF_PREFS_LOADED=true;
+        nvNotifPrefsUi("ready");
+      }catch(e){
+        nvNotifPrefsUi("error","Could not load your notification settings, so saving is switched off \u2014 otherwise a save here would wipe them.");
+        logClientError("client_get_notification_prefs", (e&&e.message)||e, "warning");
+      }
     }
 
     /* The business name prints under CLIENT / SHIPPER on every label. Until
@@ -10750,6 +10899,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     });
 
     async function saveClientNotificationPrefs(){
+      if(!NV_NOTIF_PREFS_LOADED){
+        toast("Your current settings haven't loaded yet \u2014 nothing was changed.","error");
+        return;
+      }
       try{
         const wa=document.getElementById("notifPrefWhatsapp")?.checked||false;
         const sms=document.getElementById("notifPrefSms")?.checked||false;
@@ -12117,6 +12270,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     try{
       if(a.type==="go_wallet"){ if(typeof showClientTab==="function") showClientTab("wallet"); panel.classList.add("open"); return; }
       if(a.type==="go_dashboard"){ if(typeof showClientTab==="function") showClientTab("dashboard"); panel.classList.add("open"); return; }
+      /* Was go_dashboard: it promised prepared messages and only switched tab.
+         Now it selects exactly those parcels so "Message customers" is one tap. */
+      if(a.type==="prepare_messages"){
+        if(typeof showClientTab==="function") showClientTab("dashboard");
+        panel.classList.add("open");
+        var _awbs=a.awbs||[];
+        setTimeout(function(){ try{ if(window.nvPrepareCustomerMessages) window.nvPrepareCustomerMessages(_awbs); }catch(e){} },220);
+        return;
+      }
       if(a.type==="go_awb_label"){ if(typeof showClientTab==="function") showClientTab("awbLabel"); panel.classList.add("open"); return; }
       if(a.type==="nv_review_issues"){ panel.classList.add("open"); if(typeof nvReviewIssues==="function") nvReviewIssues(); else if(typeof showClientTab==="function") showClientTab("dashboard"); return; }
       if(a.type==="attach_proof"){ addMsg("Please reply here with your proof (photo, screenshot, or details) and our team will review it.","b"); return; }
@@ -13855,7 +14017,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         text:t(ofd.length+" parcel(s) are out for delivery today. A short WhatsApp heads-up to those customers cuts refusals \u2014 I can prepare the messages for you to send.",
               ofd.length+" parcel aaj out for delivery hain. Customers ko WhatsApp par bata dena refusals kam karta hai \u2014 messages tayar kar dun?"),
         actions:[
-          { label:t("Prepare messages","Messages tayar karein"), kind:"local", type:"go_dashboard" },
+          { label:t("Prepare messages","Messages tayar karein"), kind:"local", type:"prepare_messages", awbs:ofd.map(function(p){ return p.awb; }) },
           { label:t("Open "+ofd[0].awb,ofd[0].awb+" kholein"), kind:"local", type:"show_journey_awb", awb:ofd[0].awb }
         ]
       });
@@ -14306,7 +14468,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               if(String(i.id||"").toLowerCase().indexOf(q)===-1) return;
               out.push({group:"Invoices",icon:"▤",title:i.id,
                 subtitle:(i.invoiceType||"Invoice")+" · "+(i.status||"")+" · Rs "+Number(i.payable||0).toLocaleString("en-PK"),
-                run:function(){ if(typeof showClientTab==="function") showClientTab("payments"); }});
+                run:function(){
+                  if(typeof showClientTab==="function") showClientTab("payments");
+                  /* Picking a named invoice used to land on the generic Money
+                     tab, leaving the merchant to find it again by hand. */
+                  if(typeof viewInvoice==="function") setTimeout(function(){ try{ viewInvoice(i.id); }catch(e){} },120);
+                }});
             });
           }catch(e){}
         }
@@ -15224,9 +15391,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(!sb || !REQBTN) return;
     REQBTN.disabled = true;
     REQBTN.textContent = "Sending…";
+    /* supabase-js RESOLVES with { error } rather than rejecting, so the old
+       .then() reported "Request sent - waiting for admin" for a request that
+       never reached admin, and disabled the button so it could not be retried. */
+    function reqFailed(msg){
+      REQBTN.disabled = false;
+      REQBTN.textContent = "Couldn't send \u2014 tap to retry";
+      try{ if(typeof toast === "function") toast("Could not send the request: " + msg, "error"); }catch(e){}
+    }
     Promise.resolve(sb.rpc("ai_quota_request_reset", { p_reason: "Requested from NovaX AI console" }))
-      .then(function(){ setCapped(true, true); })
-      .catch(function(){ REQBTN.disabled = false; REQBTN.textContent = "Request more from admin"; });
+      .then(function(r){
+        if(r && r.error){ reqFailed(r.error.message || "unknown error"); return; }
+        setCapped(true, true);
+      })
+      .catch(function(e){ reqFailed((e && e.message) || e); });
   }
 
   /* An EMPTY textarea does not measure as empty.
