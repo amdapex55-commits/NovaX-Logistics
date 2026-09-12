@@ -163,9 +163,37 @@ const safeParcel = (p: any) => ({
 async function runTool(admin: Admin, clientId: string, name: string, args: any): Promise<any> {
   switch (name) {
     case "get_account_overview": {
+      /* Counts come from the server, not from a page of rows. These were
+         computed over the newest 400 parcels only, and matched on status names
+         that do not exist -- "Out for delivery", "In Transit", "New Booked",
+         "Parcel returned to consignee" -- so those three counts were always 0
+         and the totals were capped. The real values are: "Parcel out for
+         delivery", "Parcel now in transit", "New booked", "Return to shipper".
+         stuck_awbs still needs rows, so that stays a bounded fetch. */
+      const FINAL = ["Delivered", "Return to shipper", "Cancelled by client"];
+      const cutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      const countOf = async (fn: (q: any) => any): Promise<number> => {
+        const { count } = await fn(
+          admin.from("parcels").select("id", { count: "exact", head: true }).eq("client_id", clientId),
+        );
+        return Number(count || 0);
+      };
+      const [totalCount, deliveredCount, refusedCount, oofdCount, transitCount, newCount, closedCount, stuckCount] =
+        await Promise.all([
+          countOf((q) => q),
+          countOf((q) => q.eq("status", "Delivered")),
+          countOf((q) => q.eq("status", "Refused")),
+          countOf((q) => q.eq("status", "Parcel out for delivery")),
+          countOf((q) => q.eq("status", "Parcel now in transit")),
+          countOf((q) => q.eq("status", "New booked")),
+          countOf((q) => q.in("status", ["Delivered", "Refused", "Return to shipper"])),
+          countOf((q) => q.not("status", "in", `(${FINAL.map((s) => `"${s}"`).join(",")})`).lt("updated_at", cutoff)),
+        ]);
       const [{ data: parcels }, { data: clientRow }, { data: tickets }] = await Promise.all([
         admin.from("parcels").select(COUNT_COLS).eq("client_id", clientId)
-          .order("booked_at", { ascending: false }).limit(400),
+          .not("status", "in", `(${FINAL.map((s) => `"${s}"`).join(",")})`)
+          .lt("updated_at", cutoff)
+          .order("updated_at", { ascending: true }).limit(10),
         admin.from("clients").select("wallet_balance, name").eq("id", clientId).maybeSingle(),
         /* novax_tickets, not tickets: the legacy table froze on 7 Aug, so this
            judged "does this merchant have open tickets?" from a month-old
@@ -173,16 +201,7 @@ async function runTool(admin: Admin, clientId: string, name: string, args: any):
         admin.from("novax_tickets").select("status").eq("client_id", clientId)
           .order("created_at", { ascending: false }).limit(20),
       ]);
-      const list = parcels || [];
-      const by = (s: string) => list.filter((p: any) => String(p.status || "") === s).length;
-      const delivered = by("Delivered");
-      const closed = list.filter((p: any) =>
-        ["Delivered", "Refused", "Parcel returned to consignee"].includes(String(p.status || ""))).length;
-      const stale = list.filter((p: any) => {
-        const h = hoursSince(p.updated_at);
-        return h !== null && h >= 24 &&
-          !["Delivered", "Parcel returned to consignee"].includes(String(p.status || ""));
-      });
+      const stale = parcels || [];
       /* novax_tickets closes a ticket as "resolved"; "closed" never appears in
          it, so this counted every resolved ticket as still open and told the
          merchant they had a pile of unanswered issues. */
@@ -191,11 +210,11 @@ async function runTool(admin: Admin, clientId: string, name: string, args: any):
         return st !== "resolved" && st !== "closed" && st !== "";
       });
       return {
-        total_parcels: list.length, delivered, refused: by("Refused"),
-        out_for_delivery: by("Out for delivery"), in_transit: by("In Transit"),
-        new_booked: by("New Booked"),
-        stuck_24h_plus: stale.length, stuck_awbs: stale.slice(0, 10).map((p: any) => p.awb),
-        success_rate_pct: closed ? Math.round((delivered / closed) * 100) : null,
+        total_parcels: totalCount, delivered: deliveredCount, refused: refusedCount,
+        out_for_delivery: oofdCount, in_transit: transitCount,
+        new_booked: newCount,
+        stuck_24h_plus: stuckCount, stuck_awbs: stale.slice(0, 10).map((p: any) => p.awb),
+        success_rate_pct: closedCount ? Math.round((deliveredCount / closedCount) * 100) : null,
         wallet_balance_pkr: Number(clientRow?.wallet_balance || 0),
         open_tickets: open.length,
       };

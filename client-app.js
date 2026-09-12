@@ -1128,7 +1128,17 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     // "No parcel selected" state directly instead of guessing the first
     // parcel in the list.
     function selectedParcel(){ return state.parcels.find(p=>p.awb===state.selectedAwb) || emptyParcel(); }
-    function inClientDateRange(p){ const d=p.date||"2026-06-24"; const f=state.clientDateFrom||"2026-06-01"; const t=state.clientDateTo||"2026-06-24"; return d>=f && d<=t; }
+    /* An empty bound is no bound. These used to fall back to fixed 2026 dates,
+       so clearing a filter hid everything outside that window. */
+    function inClientDateRange(p){
+      const d=String(p.date||"").slice(0,10);
+      const f=String(state.clientDateFrom||"").trim();
+      const t=String(state.clientDateTo||"").trim();
+      if(!d) return true;
+      if(f && d<f) return false;
+      if(t && d>t) return false;
+      return true;
+    }
     // NovaX fix (High #2): clientScopedParcels() must never fall back to the
     // demo/default placeholder client id. With no confirmed client identity, the
     // correct answer is an empty list, not another client's parcels.
@@ -2211,7 +2221,8 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     }
     function whatsappMessageText(p, kind){
       const step=WA_NEXT_STEP[kind]||"Please check the latest status using the tracking link below.";
-      return `Hello ${escLabelText(p.consignee||"")}, this is NovaX Logistics.
+      /* A WhatsApp message is plain text: HTML-escaping it sent "A&amp;B". */
+      return `Hello ${String(p.consignee||"").trim()}, this is NovaX Logistics.
 AWB: ${p.awb}
 Status: ${kind}
 ${step}
@@ -2921,9 +2932,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
       if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">No parcels in range.</td></tr>`);
-      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
+      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><label style="display:inline-flex;align-items:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -6px;padding:10px 6px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
       if(cardsOnScreen) nvMarkChanged("clientParcelCards",parcels,"cards");
       else nvMarkChanged("clientParcelRows",parcels,"rows");
+      /* Drop anything selected that this render filtered away. */
+      try{ if(typeof window.__nvSelPrune==="function") window.__nvSelPrune(); }catch(e){}
     }
     try{
       var nvSwapParcelLists=function(){ try{ renderClientParcels(); }catch(e){} };
@@ -3098,7 +3111,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         "Refused":"Delivery attempt was refused.",
         "Consignee not available":"The consignee was not available for delivery.",
         "Reattempt":"A redelivery attempt is scheduled.",
-        "Ready for return":"Return is being sent back to origin.",
+        "Ready for return":"This parcel is being prepared to return to you.",
+        "Return in transit":"Your return is on its way back to you.",
+        "Return received at origin":"Your return has arrived back at our origin hub.",
+        "Return out for delivery":"Your return is out for delivery back to you.",
         "Return to shipper":"Your return was completed at origin."
       };
       const important=[
@@ -3111,8 +3127,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         ["Refused","Refused"],
         ["Consignee not available","Consignee not available"],
         ["Reattempt","Reattempt"],
-        ["Ready for return","Returned"],
-        ["Return to shipper","Returned"]
+        ["Ready for return","Return started"],
+        ["Return in transit","Return in transit"],
+        ["Return received at origin","Return at origin hub"],
+        ["Return out for delivery","Return out for delivery"],
+        ["Return to shipper","Returned to you"]
       ];
       const rows=important
         .filter(([status])=>(p.steps||[]).includes(status)||p.status===status||(["Refused","Consignee not available","Reattempt"].includes(status)&&isRefusalReview(p)))
@@ -3746,17 +3765,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     var NV_POPPING = false;
 
     function nvOverlayIsOpen(el){
-      return el.classList.contains("show") || el.classList.contains("open");
+      /* The parcel drawer is #nvdrawer and opens with class "on" -- it was
+         neither tracked nor recognised, so Android Back left the portal
+         instead of closing it. */
+      return el.classList.contains("show") || el.classList.contains("open") || el.classList.contains("on");
     }
 
     function nvCloseTopOverlay(){
       var top = NV_OVERLAY_STACK[NV_OVERLAY_STACK.length - 1];
       if(!top) return false;
       try{
-        if(top.el.id === "nvDrawer" && window.NovaXUI && window.NovaXUI.closeDrawer){
+        if((top.el.id === "nvdrawer" || top.el.id === "nvDrawer") && window.NovaXUI && window.NovaXUI.closeDrawer){
           window.NovaXUI.closeDrawer();
         } else {
-          top.el.classList.remove("show","open");
+          top.el.classList.remove("show","open","on");
         }
       }catch(e){}
       return true;
@@ -3771,10 +3793,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     });
 
     (function nvWatchOverlays(){
-      function track(el){
+      function track(el, lateAdded){
         if(el.__nvTracked) return;
         el.__nvTracked = true;
         var wasOpen = nvOverlayIsOpen(el);
+        /* An overlay that is created and opened in the same tick is ALREADY
+           open by the time the observer hands it over -- its class never
+           changes again, so waiting for a change pushed no history entry and
+           Back still left the portal. For a late-added overlay, "already open
+           when first seen" IS the open event. Only late additions, because an
+           overlay present at load must not push an entry for simply existing.
+           NOTE: both call sites wrap this in an explicit function -- passing
+           it straight to forEach would hand the array INDEX in as lateAdded. */
+        if(lateAdded && wasOpen){
+          NV_OVERLAY_STACK.push({ el: el });
+          try{ history.pushState({ nvOverlay: el.id || true }, ""); }catch(e){}
+        }
         new MutationObserver(function(){
           var isOpen = nvOverlayIsOpen(el);
           if(isOpen === wasOpen) return;
@@ -3792,12 +3826,32 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
 
       function scan(){
-        document.querySelectorAll(".modal-overlay, #nvDrawer, .nvdr-wrap").forEach(track);
+        document.querySelectorAll(".modal-overlay, #nvdrawer, #nvDrawer, .nvdr-wrap").forEach(function(el){ track(el); });
       }
       if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", scan);
       else scan();
       /* the drawer is created lazily by the UI module, so re-scan a few times */
       var n = 0, iv = setInterval(function(){ scan(); if(++n > 10) clearInterval(iv); }, 500);
+      /* Those 11 timed re-scans only cover the first 5.5 seconds. The parcel
+         drawer is built the first time a merchant opens a journey, which is
+         almost always later than that -- so it was never tracked, never
+         pushed a history entry, and Back left the portal instead of closing
+         it. Watch for overlays added at any time instead of gambling on a
+         window that has usually closed by the time one appears. */
+      var NV_OVERLAY_SEL = ".modal-overlay, #nvdrawer, #nvDrawer, .nvdr-wrap";
+      try{
+        new MutationObserver(function(muts){
+          for(var i=0;i<muts.length;i++){
+            var added = muts[i].addedNodes || [];
+            for(var j=0;j<added.length;j++){
+              var el = added[j];
+              if(!el || el.nodeType !== 1) continue;
+              try{ if(el.matches && el.matches(NV_OVERLAY_SEL)) track(el, true); }catch(e){}
+              try{ if(el.querySelectorAll) Array.prototype.forEach.call(el.querySelectorAll(NV_OVERLAY_SEL), function(x){ track(x, true); }); }catch(e){}
+            }
+          }
+        }).observe(document.documentElement, { childList:true, subtree:true });
+      }catch(e){}
 
       /* Escape was handled on only 2 of the 12. Now all of them. */
       document.addEventListener("keydown", function(e){
@@ -4198,13 +4252,49 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
         window.onafterprint=cleanupPrintStage;
         setTimeout(cleanupPrintStage,1500);
+        /* "Printed" used to be stamped the instant window.print() returned, so
+           pressing Cancel still marked every label printed. A browser never
+           tells a page whether the user printed or cancelled, so the flag is
+           set when the dialog closes and the merchant is given a way to say it
+           did not print. */
+        const nvPrintedNow=valid.map(p=>p.awb);
         valid.forEach(p=>{ p.awbPrinted=true; p.awbPrintedAt=time(); });
         saveState();
+        try{ nvOfferPrintUndo(nvPrintedNow); }catch(e){}
         try{ if(document.getElementById("awbLabelPreview")) renderAwbLabel(); }catch(e){}
         try{ if(valid.length===1 && document.getElementById("awbModal").classList.contains("show")) document.getElementById("awbModalBody").innerHTML=awbCompleteBadge(valid[0])+awbLabelHtml(valid[0]); }catch(e){}
         try{ renderNewBookedList(); }catch(e){}
       });
       return { ok:true, count:valid.length, awbs:valid.map(p=>p.awb), error:null };
+    }
+    /* Shown after the print dialog closes: one tap to undo the "printed" mark
+       for the labels just sent, for anyone who pressed Cancel. */
+    function nvOfferPrintUndo(awbs){
+      if(!awbs||!awbs.length) return;
+      var host=document.getElementById("nvPrintUndo");
+      if(!host){
+        host=document.createElement("div");
+        host.id="nvPrintUndo";
+        host.setAttribute("role","status");
+        host.style.cssText="position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:calc(100% - 28px);z-index:99999;display:none;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;background:#10241c;color:#eafff5;font:600 13px/1.35 system-ui,-apple-system,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.4)";
+        host.innerHTML='<span id="nvPrintUndoText"></span><button type="button" id="nvPrintUndoBtn" style="min-height:38px;padding:8px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.25);background:transparent;color:inherit;font:inherit;cursor:pointer">Not printed</button>';
+        document.body.appendChild(host);
+      }
+      var txt=document.getElementById("nvPrintUndoText");
+      if(txt) txt.textContent=awbs.length===1 ? (awbs[0]+" marked printed.") : (awbs.length+" labels marked printed.");
+      host.style.display="flex";
+      if(nvOfferPrintUndo._t) clearTimeout(nvOfferPrintUndo._t);
+      nvOfferPrintUndo._t=setTimeout(function(){ host.style.display="none"; },12000);
+      var btn=document.getElementById("nvPrintUndoBtn");
+      if(btn) btn.onclick=function(){
+        (state.parcels||[]).forEach(function(p){ if(awbs.indexOf(p.awb)>=0){ p.awbPrinted=false; p.awbPrintedAt=""; } });
+        saveState();
+        host.style.display="none";
+        try{ if(document.getElementById("awbLabelPreview")) renderAwbLabel(); }catch(e){}
+        try{ renderNewBookedList(); }catch(e){}
+        try{ render(); }catch(e){}
+        toast(awbs.length===1?(awbs[0]+" is not marked printed."):(awbs.length+" labels are not marked printed."));
+      };
     }
     function printAwb(){ printLabels([state.lastGeneratedAwb||state.selectedAwb]); }
     /* Outer-scope twin of nvSafeCall, which lives in the Phase-3 closure and is
@@ -4345,7 +4435,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const codAmount=(nonCod||!oc.collected)?0:Number(p.cod||0);
         const deliveryCharge=Number(p.fee||0);
         const netLineAmount=codAmount-deliveryCharge;
-        return { awb:p.awb, bookingDate:labelDate(p), destinationCity:labelText(p.city), consignee:labelText(p.consignee), paymentMode:parcelPaymentMode(p), codAmount, deliveryCharge, netLineAmount,
+        /* Plain text, not HTML. These values are escaped again by every HTML
+           renderer and written verbatim into the CSV, so escaping them here
+           printed "A&amp;B" on the invoice and put entities in the export. */
+        const plain=(v,fb)=>{ const t=(v===undefined||v===null)?"":String(v).trim(); return t||fb; };
+        return { awb:p.awb, bookingDate:labelDate(p), destinationCity:plain(p.city,"-"), consignee:plain(p.consignee,"-"), paymentMode:plain(p.paymentMode||p.payment_mode,"COD"), codAmount, deliveryCharge, netLineAmount,
                  outcome:oc.label, outcomeKey:oc.key, outcomeTone:oc.tone, collected:oc.collected, prepaid:nonCod,
                  distanceKm:(p.pricingMode==="distance" ? p.distanceKm : null) };
       });
@@ -7715,7 +7809,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           (t.status !== "resolved"
             ? '<div class="inline-actions" style="margin-top:10px;gap:6px">' +
               '<input class="nv-tk-reply" id="nvTkReply-' + nvTkEsc(t.id) + '" placeholder="Write a reply...">' +
-              '<button class="action-btn" data-nv-tkreply="' + nvTkEsc(t.id) + '">Send</button></div>'
+              '<button class="action-btn" id="nvTkReplyBtn-' + nvTkEsc(t.id) + '" data-nv-tkreply="' + nvTkEsc(t.id) + '">Send</button></div>'
             : '') +
           '</div>';
       }
@@ -7822,17 +7916,35 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
     }
 
+    /* One reply per press. The button stayed live while the request was in
+       flight, so a double-click inserted the same reply twice. */
+    var NV_TK_REPLYING = Object.create(null);
     function nvTkSendReply(id){
       var sb = window.__nvSb;
       var el = document.getElementById("nvTkReply-" + id);
       var body = el ? el.value : "";
       if (!body.trim()) return;
       if (!sb){ toast("Cloud connection not ready yet.", "error"); return; }
+      if (NV_TK_REPLYING[id]) return;
+      NV_TK_REPLYING[id] = true;
+      var btn = document.getElementById("nvTkReplyBtn-" + id);
+      var btnText = btn ? btn.textContent : "";
+      if (btn){ btn.disabled = true; btn.textContent = "Sending\u2026"; }
+      if (el) el.disabled = true;
+      function done(){
+        NV_TK_REPLYING[id] = false;
+        var b = document.getElementById("nvTkReplyBtn-" + id);
+        if (b){ b.disabled = false; b.textContent = btnText || "Send"; }
+        var e2 = document.getElementById("nvTkReply-" + id);
+        if (e2) e2.disabled = false;
+      }
       Promise.resolve(sb.rpc("novax_ticket_client_reply", { p_ticket_id: id, p_body: body.trim() }))
         .catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
         .then(function(r){
+          done();
           if (r && r.error){ toast("Could not send the reply: " + r.error.message, "error"); return; }
-          if (el) el.value = "";
+          var e3 = document.getElementById("nvTkReply-" + id);
+          if (e3) e3.value = "";
           nvTkLoadReplies(id);
           nvTkLoad();
         });
@@ -8110,7 +8222,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }, 60000);
     })();
 
-    function applyClientDateRange(){ state.clientDateFrom=document.getElementById("clientDateFrom").value||state.clientDateFrom; state.clientDateTo=document.getElementById("clientDateTo").value||state.clientDateTo; saveState(); render(); toast(`History filtered ${state.clientDateFrom} to ${state.clientDateTo}.`); }
+    /* An empty box means "no bound" -- it used to restore the previous value,
+       so a filter could never be cleared. A From later than To is refused
+       instead of silently showing an empty history. */
+    function applyClientDateRange(){
+      const from=String((document.getElementById("clientDateFrom")||{}).value||"").trim();
+      const to=String((document.getElementById("clientDateTo")||{}).value||"").trim();
+      if(from && to && from>to){ toast("The From date is after the To date. Swap them, or clear one.","error"); return; }
+      state.clientDateFrom=from; state.clientDateTo=to;
+      saveState(); render();
+      toast(!from&&!to ? "History filter cleared — showing everything."
+            : from&&to ? `History filtered ${from} to ${to}.`
+            : from ? `History filtered from ${from}.` : `History filtered up to ${to}.`);
+    }
     // NovaX fix: this used to create a fake "Payout requested" payment-log
     // entry entirely in the browser, with no Supabase call at all -- it
     // could show a "success" toast without ever creating a real withdrawal,
@@ -8451,9 +8575,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         +"- URL must match the NovaX webhook URL exactly\n"
         +"- Signing secret must be copied exactly from Shopify\n"
         +"- JWT verification must be OFF on the Supabase Edge Function";
-      let ok=false;
-      try{ if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(msg); ok=true; } }catch(e){}
-      toast(ok?"Setup instructions copied -- paste them into WhatsApp/email.":"Copy failed -- select and copy manually.");
+      /* Wait for the clipboard to actually accept it: the promise was ignored,
+         so a denied permission still said "copied". */
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(msg).then(
+          function(){ toast("Setup instructions copied -- paste them into WhatsApp/email.","success"); },
+          function(){ toast("Copy was blocked by the browser -- select the text and copy manually.","error"); });
+      } else {
+        toast("Copy is not available in this browser -- select the text and copy manually.","error");
+      }
     }
 
     function connectStore(platform){
@@ -8520,10 +8650,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function copyFieldValue(elId){
       const el=document.getElementById(elId); if(!el) return;
       el.removeAttribute("readonly"); el.select(); el.setSelectionRange(0,99999); el.setAttribute("readonly","readonly");
-      let ok=false;
-      try{ if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(el.value); ok=true; } }catch(e){}
-      if(!ok){ try{ document.execCommand("copy"); ok=true; }catch(e){} }
-      toast(ok?"Copied.":"Select the text and copy manually.");
+      /* Same fix: report what the clipboard actually did, and only fall back
+         to execCommand when the modern API is unavailable or refuses. */
+      function nvCopyFallback(){
+        var ok=false;
+        try{ ok=document.execCommand("copy"); }catch(e){ ok=false; }
+        toast(ok?"Copied.":"Copy was blocked -- select the text and copy manually.", ok?"success":"error");
+      }
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(el.value).then(function(){ toast("Copied.","success"); }, nvCopyFallback);
+      } else {
+        nvCopyFallback();
+      }
     }
     function syncStoreOrders(platform){
       // NovaX fix (item 6): this used to create 2-4 fake random orders with
@@ -9198,6 +9336,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         wrap=document.createElement("div");
         wrap.id="nvInviteModal";
         wrap.style.cssText="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(6,20,16,.55);padding:18px";
+        wrap.setAttribute("role","dialog");
+        wrap.setAttribute("aria-modal","true");
+        wrap.setAttribute("aria-label","Create a team login");
         wrap.innerHTML='<div class="ops-card" style="max-width:430px;width:100%;background:var(--card,var(--nvu-bg))">'
           +'<div class="ops-card-head"><strong>Create a team login</strong><button class="ghost-btn" id="nvInviteClose">Close</button></div>'
           +'<label class="footer-note" for="nvInviteName">Full name</label><input id="nvInviteName" type="text" placeholder="Ayesha Khan" style="width:100%;margin-bottom:8px">'
@@ -9210,18 +9351,41 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +'<div class="inline-actions" style="margin-top:8px"><button class="action-btn" id="nvInviteSend">Create login</button></div></div>';
         document.body.appendChild(wrap);
         document.getElementById("nvInviteClose").addEventListener("click",closeInviteUserModal);
+        /* Keyboard: Escape closes, Tab cycles inside the dialog, and focus goes
+           back to whatever opened it. aria-modal alone promises this without
+           doing any of it. */
+        wrap.addEventListener("keydown",function(e){
+          if(e.key==="Escape"){ e.preventDefault(); closeInviteUserModal(); return; }
+          if(e.key!=="Tab") return;
+          var items=[].slice.call(wrap.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])'))
+                      .filter(function(el){ return el.offsetParent!==null; });
+          if(!items.length){ e.preventDefault(); return; }
+          var first=items[0], last=items[items.length-1], a=document.activeElement;
+          if(!wrap.contains(a)){ e.preventDefault(); (e.shiftKey?last:first).focus(); return; }
+          if(e.shiftKey && a===first){ e.preventDefault(); last.focus(); }
+          else if(!e.shiftKey && a===last){ e.preventDefault(); first.focus(); }
+        });
+        wrap.addEventListener("mousedown",function(e){ if(e.target===wrap) closeInviteUserModal(); });
         document.getElementById("nvInviteSend").addEventListener("click",submitInviteUser);
         document.getElementById("nvInviteRole").addEventListener("change",function(){
           var h=document.getElementById("nvInviteHint"); if(h) h.textContent=nvRolePermissionSummary(this.value);
         });
         wrap.addEventListener("click",function(e){ if(e.target===wrap) closeInviteUserModal(); });
       }
+      /* Remember what opened the dialog, so closing puts focus back there
+         instead of dropping the keyboard user at the top of the page. */
+      try{ window.__nvInviteOpener=document.activeElement; }catch(e){ window.__nvInviteOpener=null; }
       wrap.style.display="flex";
       var sel=document.getElementById("nvInviteRole"), h2=document.getElementById("nvInviteHint");
       if(sel&&h2) h2.textContent=nvRolePermissionSummary(sel.value);
       var n=document.getElementById("nvInviteName"); if(n) n.focus();
     }
-    function closeInviteUserModal(){ var w=document.getElementById("nvInviteModal"); if(w) w.style.display="none"; }
+    function closeInviteUserModal(){
+      var w=document.getElementById("nvInviteModal"); if(w) w.style.display="none";
+      var back=window.__nvInviteOpener;
+      window.__nvInviteOpener=null;
+      try{ if(back && back.focus && document.contains(back)) back.focus(); }catch(e){}
+    }
     function submitInviteUser(){
       var name=String((document.getElementById("nvInviteName")||{}).value||"").trim();
       var email=String((document.getElementById("nvInviteEmail")||{}).value||"").trim();
@@ -11203,6 +11367,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var by={}; nvMyParcels().forEach(function(p){ by[p.awb]=p; });
         return list.filter(function(a){ return by[a] && rule(by[a]); });
       }
+      /* A selection that is no longer on screen must not ride along with a
+         bulk action. Anything filtered or searched away is dropped, and the
+         merchant is told. */
+      function nvSelPrune(){
+        var visible=Object.create(null), seen=0;
+        Array.prototype.forEach.call(document.querySelectorAll("#clientParcelRows [data-awb], #clientParcelCards [data-awb]"),function(el){
+          var a=el.getAttribute("data-awb"); if(a){ visible[a]=true; seen++; }
+        });
+        if(!seen) return 0;
+        var dropped=0;
+        Object.keys(nvSel).forEach(function(a){ if(nvSel[a] && !visible[a]){ delete nvSel[a]; dropped++; } });
+        if(dropped){
+          nvSafeCall(function(){ toast(dropped+" selected parcel(s) are no longer in this view, so they were unselected.","error"); });
+          nvBarSync();
+        }
+        return dropped;
+      }
+      window.__nvSelPrune=nvSelPrune;
       function nvBarSync(){
         var bar=nvBar(), n=nvSelList().length;
         bar.querySelector("#nvBulkCount").textContent=n+" selected";
@@ -11282,7 +11464,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              (skipped?("\n\n"+skipped+" of the "+list.length+" selected will be skipped: a re-attempt only applies after a delivery has failed."):""))) return;
           eligible.forEach(function(a){ nvSafeCall(function(){ requestRedelivery(a); }); });
         }
-        else if(act==="message") eligible.slice(0,5).forEach(function(a){ nvSafeCall(function(){ messageCustomer(a); }); });
+        else if(act==="message"){
+          /* Browsers block a burst of window.open calls, so this opens the
+             first five. It used to drop the rest silently. */
+          var MSG_MAX=5, batch=eligible.slice(0,MSG_MAX), rest=eligible.length-batch.length;
+          if(rest>0 && !window.confirm("WhatsApp can only be opened for "+MSG_MAX+" customers at a time.\n\nOpen the first "+MSG_MAX+" now? The remaining "+rest+" stay selected so you can press Message customers again.")) return;
+          batch.forEach(function(a){ nvSafeCall(function(){ messageCustomer(a); }); });
+          if(rest>0){
+            batch.forEach(function(a){ delete nvSel[a]; });
+            nvSafeCall(function(){ nvBarSync(); });
+            nvSafeCall(function(){ toast(batch.length+" opened. "+rest+" still selected.","success"); });
+          }
+        }
         else if(act==="export"){
           var ps=nvMyParcels().filter(function(p){ return eligible.indexOf(p.awb)>=0; });
           var cell=function(v){ return (typeof csvCell==="function")?csvCell(v):'"'+String(v==null?"":v).replace(/"/g,'""')+'"'; };
@@ -11414,12 +11607,33 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       function nvNotifEvents(){
         var out=[];
+        /* The id carries WHEN the parcel entered this status. It used to be
+           awb+status alone, so a second "Consignee not available" after a
+           reattempt reused the id already marked read and never alerted. */
+        var stamp=function(p){ return String(p.statusSince||p.updated||"").slice(0,19); };
         nvMyParcels().forEach(function(p){
           var st=String(p.status||"");
-          if(st==="Delivered") out.push({ id:p.awb+"|delivered", awb:p.awb, title:p.awb+" delivered", sub:[p.consignee,p.city].filter(Boolean).join(" \u00b7 ") });
-          else if(NEEDS_ME.indexOf(st)>=0) out.push({ id:p.awb+"|"+st, awb:p.awb, title:p.awb+" \u2013 "+st, sub:(p.exception||[p.consignee,p.city].filter(Boolean).join(" \u00b7 ")) });
-          else if(st==="Collected by rider") out.push({ id:p.awb+"|pickup", awb:p.awb, title:p.awb+" picked up", sub:"Rider collected this parcel" });
+          if(st==="Delivered") out.push({ id:p.awb+"|delivered|"+stamp(p), awb:p.awb, title:p.awb+" delivered", sub:[p.consignee,p.city].filter(Boolean).join(" \u00b7 ") });
+          else if(NEEDS_ME.indexOf(st)>=0) out.push({ id:p.awb+"|"+st+"|"+stamp(p), awb:p.awb, title:p.awb+" \u2013 "+st, sub:(p.exception||[p.consignee,p.city].filter(Boolean).join(" \u00b7 ")) });
+          else if(st==="Collected by rider") out.push({ id:p.awb+"|pickup|"+stamp(p), awb:p.awb, title:p.awb+" picked up", sub:"Rider collected this parcel" });
         });
+        /* Support replies. The empty state promised these and nothing produced
+           them: only parcel statuses were ever read. */
+        try{
+          var tk=(typeof NV_TK!=="undefined" && NV_TK) ? NV_TK : null;
+          if(tk){
+            (tk.list||[]).forEach(function(t){
+              var reps=(tk.replies&&tk.replies[t.id])||[];
+              var last=null;
+              reps.forEach(function(r){ if(String(r.by_side||"")!=="client") last=r; });
+              if(last){
+                out.push({ id:"tk|"+t.id+"|"+String(last.id||last.created_at||""), awb:"",
+                           title:"NovaX replied \u2013 "+String(t.code||t.subject||"your ticket"),
+                           sub:String(last.body||"").slice(0,90) });
+              }
+            });
+          }
+        }catch(e){}
         return out.slice(0,60);
       }
       function nvNotifWire(){
