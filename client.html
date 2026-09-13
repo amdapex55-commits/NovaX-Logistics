@@ -527,7 +527,19 @@
     .modal-card{width:min(720px,100%);background:var(--nvu-bg);border:1px solid var(--line-strong);border-radius:14px;box-shadow:var(--shadow);padding:18px;animation:fadeUp .3s ease both;margin:auto;}
     .modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;}
     .modal-head h3{margin:0;}
-    .modal-close{width:36px;height:36px;border-radius:var(--r-md);background:var(--panel-soft);color:var(--ink);font-size:20px;line-height:1;}
+    /* 36px is below the 44px minimum tap target, and every one of these was
+       announced only as "x". */
+    .modal-close{width:44px;height:44px;min-width:44px;min-height:44px;border-radius:var(--r-md);background:var(--panel-soft);color:var(--ink);font-size:20px;line-height:1;}
+    /* The invoice breakdown is ~737px wide; at 390px it was cut off with no way
+       to reach the missing columns. Scroll it instead of hiding it. */
+    #invoiceViewBody{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+    #invoiceViewBody table{min-width:640px;}
+    /* Bulk AWB rows: at 390px "Re-print" broke across three lines. */
+    .nv-nb-act{white-space:nowrap;flex:none;}
+    @media (max-width:480px){
+      #newBookedList .ops-card{flex-wrap:wrap;}
+      #newBookedList .ops-card > span{flex:1 1 100%;min-width:0;}
+    }
     .tier-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px;}
     .tier-card{border:1px solid var(--line);border-radius:var(--radius);background:var(--nvu-bg);padding:16px;cursor:pointer;text-align:center;transition:transform var(--speed),border-color var(--speed),box-shadow var(--speed);}
     .tier-card:hover{transform:translateY(-3px);border-color:var(--green);}
@@ -2130,7 +2142,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=c56cfba6" defer></script>
+  <script src="client-app.js?v=6637a46f" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2255,8 +2267,8 @@
               <div class="panel" id="clientAccountHistoryPanel">
                 <div class="section-head" id="accountHistoryHead" role="button" tabindex="0" aria-expanded="false" aria-controls="accountHistoryBody" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="toggleAccountHistoryFilters()" style="cursor:pointer;user-select:none"><div><h3>Account History <span id="accountHistoryChevron" style="font-size:13px;color:var(--green)">▸</span></h3><p>Tap to change the date range.</p></div></div>
                 <div class="date-range" id="accountHistoryBody" style="display:none">
-                  <div class="field"><label>From</label><input type="date" id="clientDateFrom"></div>
-                  <div class="field"><label>To</label><input type="date" id="clientDateTo"></div>
+                  <div class="field"><label for="clientDateFrom">From</label><input type="date" id="clientDateFrom"></div>
+                  <div class="field"><label for="clientDateTo">To</label><input type="date" id="clientDateTo"></div>
                   <button class="action-btn" id="applyDateRangeBtn">Apply Range</button>
                 </div>
               </div>
@@ -2310,10 +2322,10 @@
                 </div>
                 <div id="nvRiskWarning" class="footer-note" style="display:none;margin-bottom:10px;font-weight:700;color:#a15c00;background:#fff6e6;border:1px solid #f0d6a0;border-radius:8px;padding:8px 10px"></div>
                 <div class="form-grid">
-                  <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
-                  <div class="field"><label>Phone <span class="required-star">*</span></label><input type="tel" inputmode="numeric" autocomplete="tel" id="bookingPhone" placeholder="03113323923" required><div id="consigneeHistoryBadge" style="display:none;margin-top:6px"></div></div>
+                  <div class="field"><label for="bookingName">Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
+                  <div class="field"><label for="bookingPhone">Phone <span class="required-star">*</span></label><input type="tel" inputmode="numeric" autocomplete="tel" id="bookingPhone" placeholder="03113323923" required><div id="consigneeHistoryBadge" style="display:none;margin-top:6px"></div></div>
                   <div id="nvPickupBanner" style="grid-column:1/-1"></div>
-                  <div class="field"><label>Pickup City</label>
+                  <div class="field"><label for="bookingPickupCity">Pickup City</label>
                     <!-- NovaX: pickup is Karachi-only today, so this is a fixed
                          display rather than a choice. It stays an <input> with the
                          same id so every reader (quickBooking, bulk import, the
@@ -2321,25 +2333,25 @@
                          disabled -- disabled inputs are omitted from form data. -->
                     <input id="bookingPickupCity" class="nv-locked" value="Karachi" readonly tabindex="-1" aria-readonly="true">
                     <div class="footer-note" id="bookingPickupNote">All pickups run from our Karachi hub.</div></div>
-                  <div class="field"><label>Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote();try{nvAutoAreaFromAddress()}catch(e){};try{nvCheckBookingCity()}catch(e){}"><option value="">Select destination city…</option><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
+                  <div class="field"><label for="bookingCity">Destination City <span class="required-star">*</span></label><select id="bookingCity" required onchange="updateZoneRateHint();nvRefreshQuote();try{nvAutoAreaFromAddress()}catch(e){};try{nvCheckBookingCity()}catch(e){}"><option value="">Select destination city…</option><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select><div class="footer-note" id="bookingZoneHint"></div></div>
                   <!-- NovaX (distance pricing): shown only for Karachi, and only
                        once the areas exist server-side. Hidden entirely otherwise,
                        so a merchant on flat pricing sees no change at all. -->
                   <div id="nvAreaAutoChip" class="nv-areachip" style="display:none;grid-column:1/-1"></div>
-                  <div class="field" id="bookingDestAreaField" style="display:none"><label>Delivery Area <span class="required-star">*</span></label>
+                  <div class="field" id="bookingDestAreaField" style="display:none"><label for="bookingDestArea">Delivery Area <span class="required-star">*</span></label>
                     <!-- Search box FILTERS the select below; the select is the real
                          control and is always visible, so the merchant can always
                          just open it and pick. An earlier version used a custom
                          absolutely-positioned dropdown and the input collided with
                          a same-named JS function (element ids become globals). -->
-                    <input type="text" id="nvAreaFilter" class="nv-area-filter" placeholder="Search area, e.g. DHA 5, Gulshan, Korangi" autocomplete="off">
+                    <input type="text" id="nvAreaFilter" class="nv-area-filter" placeholder="Search area, e.g. DHA 5, Gulshan, Korangi" autocomplete="off" aria-label="Search delivery areas">
                     <select id="bookingDestArea" size="1"><option value="">Select the area...</option></select>
                     <div class="footer-note" id="nvAreaHint">Type to narrow the list, or just open it and choose.</div></div>
-                  <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required oninput="nvSyncPaymentMode()"><div class="footer-note nv-paymode" id="nvPayModeNote" style="display:none"></div></div>
-                  <div class="field"><label>Service Type</label><input id="bookingService" class="nv-fixed-field" value="COD Standard" readonly tabindex="-1" aria-readonly="true"><span class="footer-note">Every NovaX parcel ships COD Standard today.</span></div><div class="field nv-span-2"><label>Comments for packing <span class="footer-note" style="text-transform:none;letter-spacing:0;font-weight:600">optional</span></label><textarea id="bookingComments" rows="2" maxlength="180" placeholder="e.g. Fragile - double wrap. Include free sample."></textarea><span class="footer-note">Printed on the AWB for whoever packs this parcel. Leave blank if not needed.</span></div>
-                  <div class="field"><label>Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" required></div>
-                  <div class="field"><label>Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
-                  <div class="field"><label>Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required oninput="updateZoneRateHint();nvRefreshQuote();nvSyncWeightChips()"><!-- One tap for the weights merchants actually use. The field still      accepts anything typed; the chips only fill it. --><div class="nv-wchips" id="nvWeightChips" role="group" aria-label="Common weights"></div></div>
+                  <div class="field"><label for="bookingCod">COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required oninput="nvSyncPaymentMode()"><div class="footer-note nv-paymode" id="nvPayModeNote" style="display:none"></div></div>
+                  <div class="field"><label for="bookingService">Service Type</label><input id="bookingService" class="nv-fixed-field" value="COD Standard" readonly tabindex="-1" aria-readonly="true"><span class="footer-note">Every NovaX parcel ships COD Standard today.</span></div><div class="field nv-span-2"><label for="bookingComments">Comments for packing <span class="footer-note" style="text-transform:none;letter-spacing:0;font-weight:600">optional</span></label><textarea id="bookingComments" rows="2" maxlength="180" placeholder="e.g. Fragile - double wrap. Include free sample."></textarea><span class="footer-note">Printed on the AWB for whoever packs this parcel. Leave blank if not needed.</span></div>
+                  <div class="field"><label for="bookingCategory">Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" required></div>
+                  <div class="field"><label for="bookingFragile">Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
+                  <div class="field"><label for="bookingWeight">Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required oninput="updateZoneRateHint();nvRefreshQuote();nvSyncWeightChips()"><!-- One tap for the weights merchants actually use. The field still      accepts anything typed; the chips only fill it. --><div class="nv-wchips" id="nvWeightChips" role="group" aria-label="Common weights"></div></div>
                   <!-- Payment Mode was a required question the merchant had already
                        answered by typing the COD amount: above 0 is COD, 0 is
                        prepaid. Asking twice invites the two to disagree, and a
@@ -2348,9 +2360,9 @@
                        and the select is kept (hidden) so every existing reader of
                        #bookingPaymentMode keeps working. -->
                   <div class="field"><label>Payment</label><div id="bookingPayMode" class="nv-derived">Cash on delivery</div><div class="footer-note mt-4">Set from the COD amount above. Enter 0 for a prepaid parcel.</div><select id="bookingPaymentMode" hidden aria-hidden="true" tabindex="-1"><option>COD</option><option>Non COD Prepaid</option></select></div>
-                  <div class="field"><label>Your Order ID</label><input id="bookingOrderId" placeholder="e.g. #1042 (from your website)" maxlength="40" autocomplete="off"><div class="footer-note mt-4">Optional. Printed on the AWB so you can match the parcel to your own order.</div></div>
-                  <div class="field"><label>Allow to Open</label><select id="bookingAllowOpen"><option value="No" selected>No &mdash; do not allow</option><option value="Yes">Yes &mdash; customer may open before paying</option></select><div class="footer-note mt-4">Off by default. If Yes, it is printed on the AWB for the rider.</div></div>
-                  <div class="field" style="grid-column:1/-1"><label>Delivery Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full delivery address where the parcel is going" required></textarea></div>
+                  <div class="field"><label for="bookingOrderId">Your Order ID</label><input id="bookingOrderId" placeholder="e.g. #1042 (from your website)" maxlength="40" autocomplete="off"><div class="footer-note mt-4">Optional. Printed on the AWB so you can match the parcel to your own order.</div></div>
+                  <div class="field"><label for="bookingAllowOpen">Allow to Open</label><select id="bookingAllowOpen"><option value="No" selected>No &mdash; do not allow</option><option value="Yes">Yes &mdash; customer may open before paying</option></select><div class="footer-note mt-4">Off by default. If Yes, it is printed on the AWB for the rider.</div></div>
+                  <div class="field" style="grid-column:1/-1"><label for="bookingAddress">Delivery Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full delivery address where the parcel is going" required></textarea></div>
                   <div id="bookingCityWarn" style="grid-column:1/-1;display:none;background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.5"></div>
                 </div>
                 <div class="footer-note" id="bookingConfirmLine" style="display:none;margin-top:12px;font-weight:700;color:var(--green)"></div>
@@ -2370,9 +2382,9 @@
                 <div class="section-head"><div><h3>Request Pickup</h3><p>Select unpicked New booked AWBs and ask a rider to collect them.</p></div></div>
                 <div id="pickupEligibleList" style="margin-bottom:12px"></div>
                 <div class="form-grid">
-                  <div class="field" style="grid-column:1/-1"><label>Pickup Address</label><textarea id="pickupAddress" placeholder="Where should the rider collect these parcels from?"></textarea></div>
-                  <div class="field"><label>Preferred Pickup Time / Date</label><input id="pickupRequestedFor" placeholder="e.g. Today 4-6 PM, or 2026-07-14 morning"></div>
-                  <div class="field"><label>Note / Instructions</label><input id="pickupNote" placeholder="Optional instructions for the rider"></div>
+                  <div class="field" style="grid-column:1/-1"><label for="pickupAddress">Pickup Address</label><textarea id="pickupAddress" placeholder="Where should the rider collect these parcels from?"></textarea></div>
+                  <div class="field"><label for="pickupRequestedFor">Preferred Pickup Time / Date</label><input id="pickupRequestedFor" placeholder="e.g. Today 4-6 PM, or 2026-07-14 morning"></div>
+                  <div class="field"><label for="pickupNote">Note / Instructions</label><input id="pickupNote" placeholder="Optional instructions for the rider"></div>
                 </div>
                 <div class="inline-actions mt-10"><button class="action-btn" id="requestPickupBtn">Request Pickup</button></div>
                 <div class="mt-16"><h4 style="margin:0 0 8px">Your Pickup Requests</h4><div id="pickupRequestList"></div></div>
@@ -2420,7 +2432,7 @@
                     <div class="inline-actions"><button class="action-btn" id="shopifyGenerateLinkBtn" onclick="shopifyGenerateLink()">Generate Shopify Link</button></div>
                   </div>
                   <div class="field" id="shopifyLinkBox" style="display:none;margin-top:10px">
-                    <label>Your NovaX Webhook URL</label>
+                    <label for="shopifyIntakeUrlOut">Your NovaX Webhook URL</label>
                     <textarea id="shopifyIntakeUrlOut" readonly rows="2" onclick="this.select()" style="width:100%;box-sizing:border-box;display:block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-all;overflow-wrap:anywhere;overflow-x:auto;resize:none;padding:10px 12px;border-radius:8px"></textarea>
                     <div class="inline-actions" style="margin-top:8px;flex-wrap:wrap"><button class="ghost-btn" onclick="copyFieldValue('shopifyIntakeUrlOut')">Copy URL</button><button class="ghost-btn" onclick="shopifyCopySetupInstructions()">Copy setup instructions</button></div>
                   </div>
@@ -2507,9 +2519,9 @@
                 </div>
                 <div class="panel">
                   <div class="section-head"><div><h3>WooCommerce</h3><p>Connect with your site URL and REST consumer key/secret.</p></div><span class="chip" id="wooStatusChip">Not connected</span></div>
-                  <div class="field"><label>Store URL</label><input id="wooStoreUrl" placeholder="https://yourstore.com"></div>
-                  <div class="field"><label>Consumer Key</label><input id="wooKey" placeholder="ck_..."></div>
-                  <div class="field"><label>Consumer Secret</label><input id="wooSecret" placeholder="cs_..."></div>
+                  <div class="field"><label for="wooStoreUrl">Store URL</label><input id="wooStoreUrl" placeholder="https://yourstore.com"></div>
+                  <div class="field"><label for="wooKey">Consumer Key</label><input id="wooKey" placeholder="ck_..."></div>
+                  <div class="field"><label for="wooSecret">Consumer Secret</label><input id="wooSecret" placeholder="cs_..."></div>
                   <div class="inline-actions mt-10"><button class="action-btn" onclick="connectStore('woocommerce')">Save Connection</button></div>
                   <div class="field" id="wooWebhookResult" style="display:none;margin-top:10px">
                     <label>Your WooCommerce Webhook Setup</label>
@@ -2524,8 +2536,8 @@
               <div class="panel mt-14">
                 <div class="section-head"><div><h3>Custom Web / API</h3><p>For your own custom-built store (not Shopify/WooCommerce). Your site pushes orders to us, and we push status updates back to your site.</p></div><span class="chip" id="webStatusChip">Not connected</span></div>
                 <div class="grid two">
-                  <div class="field"><label>Status Update URL (we POST status changes here)</label><input id="webEndpoint" placeholder="https://yourstore.com/api/novax-status"></div>
-                  <div class="field"><label>API Key (optional, sent as Bearer token)</label><input id="webKey" placeholder="api key or bearer token"></div>
+                  <div class="field"><label for="webEndpoint">Status Update URL (we POST status changes here)</label><input id="webEndpoint" placeholder="https://yourstore.com/api/novax-status"></div>
+                  <div class="field"><label for="webKey">API Key (optional, sent as Bearer token)</label><input id="webKey" placeholder="api key or bearer token"></div>
                 </div>
                 <div class="inline-actions mt-10"><button class="action-btn" onclick="connectStore('web')">Save Connection</button></div>
                 <div class="field" id="webWebhookResult" style="display:none;margin-top:10px">
@@ -2547,10 +2559,10 @@
               <div class="panel mt-14">
                 <div class="section-head"><div><h3>All Parcels</h3><p>Filter the full parcel list by search, status, and date range.</p></div></div>
                 <div class="filter-bar">
-                  <div class="field"><label>Search</label><input id="repSearch" placeholder="AWB, consignee, city, status"></div>
-                  <div class="field"><label>Status</label><select id="repStatus"></select></div>
-                  <div class="field"><label>From</label><input type="date" id="repFrom"></div>
-                  <div class="field"><label>To</label><input type="date" id="repTo"></div>
+                  <div class="field"><label for="repSearch">Search</label><input id="repSearch" placeholder="AWB, consignee, city, status"></div>
+                  <div class="field"><label for="repStatus">Status</label><select id="repStatus"></select></div>
+                  <div class="field"><label for="repFrom">From</label><input type="date" id="repFrom"></div>
+                  <div class="field"><label for="repTo">To</label><input type="date" id="repTo"></div>
                   <button class="ghost-btn" id="repClearBtn">Clear</button>
                 </div>
                 <div class="wide-scroll">
@@ -2649,8 +2661,8 @@
               </div>
               <div class="panel mt-14">
                 <div class="section-head"><div><h3>Withdraw Funds</h3><p>Choose an amount, payout speed, and destination IBAN. Your saved bank details are prefilled as a default, but you can withdraw to any IBAN you type or paste here.</p></div></div>
-                <div class="field" style="max-width:280px"><label>Amount to withdraw</label><input id="withdrawAmount" type="number" min="1"></div>
-                <div class="field" style="max-width:380px;margin-top:10px"><label>Payout IBAN</label><input id="withdrawIbanInput" placeholder="PK00 BANK 0000 0000 0000 0000"></div>
+                <div class="field" style="max-width:280px"><label for="withdrawAmount">Amount to withdraw</label><input id="withdrawAmount" type="number" min="1"></div>
+                <div class="field" style="max-width:380px;margin-top:10px"><label for="withdrawIbanInput">Payout IBAN</label><input id="withdrawIbanInput" placeholder="PK00 BANK 0000 0000 0000 0000"></div>
                 <div class="tier-grid">
                   <div class="tier-card" data-speed="24h"><strong>0.1%</strong><span>24 hour payout</span></div>
                   <div class="tier-card" data-speed="12h"><strong>0.3%</strong><span>12 hour payout</span></div>
@@ -2702,10 +2714,10 @@
                      an empty textarea; they want to point at a problem. -->
                 <div class="nv-tk-reasons" id="nvTkReasons" aria-label="Common issues"></div>
                 <div class="form-grid">
-                  <div class="field" style="grid-column:1/-1"><label>What is the issue?</label><input id="nvTkSubject" maxlength="120" placeholder="One line, e.g. COD not received for N5990018"></div>
-                  <div class="field"><label>Tracking number (optional)</label><input id="nvTkAwb" placeholder="N5990018" autocapitalize="characters"></div>
-                  <div class="field"><label>Priority</label><select id="nvTkPriority"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></div>
-                  <div class="field" style="grid-column:1/-1"><label>Details</label><textarea id="nvTkBody" rows="3" placeholder="What happened, what you need, and any reference numbers."></textarea></div>
+                  <div class="field" style="grid-column:1/-1"><label for="nvTkSubject">What is the issue?</label><input id="nvTkSubject" maxlength="120" placeholder="One line, e.g. COD not received for N5990018"></div>
+                  <div class="field"><label for="nvTkAwb">Tracking number (optional)</label><input id="nvTkAwb" placeholder="N5990018" autocapitalize="characters"></div>
+                  <div class="field"><label for="nvTkPriority">Priority</label><select id="nvTkPriority"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></div>
+                  <div class="field" style="grid-column:1/-1"><label for="nvTkBody">Details</label><textarea id="nvTkBody" rows="3" placeholder="What happened, what you need, and any reference numbers."></textarea></div>
                 </div>
                 <div class="inline-actions mt-12"><button class="action-btn" id="nvTkSubmit">Open Ticket</button></div>
               </div>
@@ -2802,7 +2814,7 @@
   <!-- Receipt / statement preview -->
   <div class="modal-overlay" id="nvDocModal">
     <div class="modal-card" style="max-width:820px">
-      <div class="modal-head"><h3 id="nvDocTitle">Receipt</h3><button class="modal-close" onclick="nvCloseDoc()">&times;</button></div>
+      <div class="modal-head"><h3 id="nvDocTitle">Receipt</h3><button class="modal-close" aria-label="Close" onclick="nvCloseDoc()">&times;</button></div>
       <div id="nvDocBody" style="max-height:62vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px"></div>
       <div class="inline-actions" style="margin-top:14px;flex-wrap:wrap;gap:8px">
         <button class="action-btn" id="nvDocPrintBtn">Print / Save as PDF</button>
@@ -2829,22 +2841,22 @@
         <button class="modal-close" type="button" onclick="nvCloseEditParcel()" aria-label="Close">&times;</button>
       </div>
       <div class="form-grid">
-        <div class="field"><label>Consignee Name <span class="required-star">*</span></label><input id="nvEdName" maxlength="120"></div>
-        <div class="field"><label>Phone <span class="required-star">*</span></label><input type="tel" inputmode="numeric" autocomplete="tel" id="nvEdPhone"></div>
-        <div class="field"><label>Destination City <span class="required-star">*</span></label>
+        <div class="field"><label for="nvEdName">Consignee Name <span class="required-star">*</span></label><input id="nvEdName" maxlength="120"></div>
+        <div class="field"><label for="nvEdPhone">Phone <span class="required-star">*</span></label><input type="tel" inputmode="numeric" autocomplete="tel" id="nvEdPhone"></div>
+        <div class="field"><label for="nvEdCity">Destination City <span class="required-star">*</span></label>
           <select id="nvEdCity"><option value="">Select destination city…</option><option>Lahore</option><option>Karachi</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
-        <div class="field"><label>COD Amount <span class="required-star">*</span></label><input id="nvEdCod" type="number" min="0" inputmode="numeric"></div>
-        <div class="field"><label>Product Details <span class="required-star">*</span></label><input id="nvEdCategory" maxlength="140"></div>
-        <div class="field"><label>Package Weight</label><input id="nvEdWeight" maxlength="20" placeholder="0.8 kg"></div>
-        <div class="field"><label>Service Type</label><input id="nvEdService" class="nv-fixed-field" value="COD Standard" readonly tabindex="-1" aria-readonly="true"></div>
-        <div class="field"><label>Payment Mode</label><select id="nvEdPaymentMode"><option>COD</option><option>Non COD Prepaid</option></select></div>
-        <div class="field"><label>Fragile</label><select id="nvEdFragile"><option>No</option><option>Yes</option></select></div>
-        <div class="field"><label>Allow to Open</label><select id="nvEdAllowOpen"><option value="No">No &mdash; do not allow</option><option value="Yes">Yes &mdash; customer may open before paying</option></select></div>
-        <div class="field"><label>Your Order ID</label><input id="nvEdOrderId" maxlength="40"></div>
-        <div class="field"><label>Delivery Charge</label>
+        <div class="field"><label for="nvEdCod">COD Amount <span class="required-star">*</span></label><input id="nvEdCod" type="number" min="0" inputmode="numeric"></div>
+        <div class="field"><label for="nvEdCategory">Product Details <span class="required-star">*</span></label><input id="nvEdCategory" maxlength="140"></div>
+        <div class="field"><label for="nvEdWeight">Package Weight</label><input id="nvEdWeight" maxlength="20" placeholder="0.8 kg"></div>
+        <div class="field"><label for="nvEdService">Service Type</label><input id="nvEdService" class="nv-fixed-field" value="COD Standard" readonly tabindex="-1" aria-readonly="true"></div>
+        <div class="field"><label for="nvEdPaymentMode">Payment Mode</label><select id="nvEdPaymentMode"><option>COD</option><option>Non COD Prepaid</option></select></div>
+        <div class="field"><label for="nvEdFragile">Fragile</label><select id="nvEdFragile"><option>No</option><option>Yes</option></select></div>
+        <div class="field"><label for="nvEdAllowOpen">Allow to Open</label><select id="nvEdAllowOpen"><option value="No">No &mdash; do not allow</option><option value="Yes">Yes &mdash; customer may open before paying</option></select></div>
+        <div class="field"><label for="nvEdOrderId">Your Order ID</label><input id="nvEdOrderId" maxlength="40"></div>
+        <div class="field"><label for="nvEdFee">Delivery Charge</label>
           <input id="nvEdFee" class="nv-locked" readonly tabindex="-1" aria-readonly="true">
           <div class="footer-note mt-4">Fixed at booking. If this looks wrong, open a support ticket and we will correct it.</div></div>
-        <div class="field" style="grid-column:1/-1"><label>Delivery Address <span class="required-star">*</span></label><textarea id="nvEdAddress" rows="3" maxlength="400"></textarea></div>
+        <div class="field" style="grid-column:1/-1"><label for="nvEdAddress">Delivery Address <span class="required-star">*</span></label><textarea id="nvEdAddress" rows="3" maxlength="400"></textarea></div>
       </div>
       <div class="footer-note nv-notice-warm" id="nvEditParcelError" style="display:none;border-radius:10px;padding:10px 12px;margin-top:12px"></div>
       <div class="inline-actions mt-14" style="flex-wrap:wrap;gap:8px">
@@ -2855,7 +2867,7 @@
   </div>
   <div class="modal-overlay" id="awbModal">
     <div class="modal-card">
-      <div class="modal-head"><h3>AWB Created</h3><button class="modal-close" onclick="closeAwbModal()">&times;</button></div>
+      <div class="modal-head"><h3>AWB Created</h3><button class="modal-close" aria-label="Close" onclick="closeAwbModal()">&times;</button></div>
       <div id="awbModalBody"></div>
       <div id="awbPrintModeToggle" class="inline-actions mt-12"></div>
       <div id="awbShareActions" class="inline-actions" style="margin-top:10px;flex-wrap:wrap;gap:6px"></div>
@@ -2866,7 +2878,7 @@
   <!-- Invoice view modal -->
   <div class="modal-overlay" id="invoiceViewModal">
     <div class="modal-card" style="max-width:820px">
-      <div class="modal-head"><h3>Invoice</h3><button class="modal-close" onclick="closeInvoiceModal()">&times;</button></div>
+      <div class="modal-head"><h3>Invoice</h3><button class="modal-close" aria-label="Close" onclick="closeInvoiceModal()">&times;</button></div>
       <div id="invoiceViewBody"></div>
       <div class="inline-actions mt-14"><button class="action-btn" id="invoiceViewPrintBtn">Download PDF</button><button class="ghost-btn" id="invoiceViewCsvBtn">Download CSV</button><button class="ghost-btn" onclick="closeInvoiceModal()">Close</button></div>
     </div>
@@ -2875,11 +2887,11 @@
   <!-- NovaX distance pricing: one-time pickup point setup -->
   <div class="modal-overlay" id="nvPickupModal">
     <div class="modal-card" style="max-width:520px">
-      <div class="modal-head"><h3>Your pickup point</h3><button class="modal-close" onclick="nvClosePickupSetup()">&times;</button></div>
+      <div class="modal-head"><h3>Your pickup point</h3><button class="modal-close" aria-label="Close" onclick="nvClosePickupSetup()">&times;</button></div>
       <p class="footer-note" style="margin-bottom:12px">We measure the distance from here to each customer, so you only pay for the kilometres actually covered. You can change it any time.</p>
-      <div class="field" style="margin-bottom:10px"><label>Label</label><input id="nvPickupLabel" placeholder="Main pickup"></div>
-      <div class="field" style="margin-bottom:10px"><label>Pickup area <span class="required-star">*</span></label><select id="nvPickupArea"></select></div>
-      <div class="field" style="margin-bottom:10px"><label>Street address (optional)</label><input id="nvPickupAddress" placeholder="Shop 4, Main Boulevard"></div>
+      <div class="field" style="margin-bottom:10px"><label for="nvPickupLabel">Label</label><input id="nvPickupLabel" placeholder="Main pickup"></div>
+      <div class="field" style="margin-bottom:10px"><label for="nvPickupArea">Pickup area <span class="required-star">*</span></label><select id="nvPickupArea"></select></div>
+      <div class="field" style="margin-bottom:10px"><label for="nvPickupAddress">Street address (optional)</label><input id="nvPickupAddress" placeholder="Shop 4, Main Boulevard"></div>
       <div class="inline-actions mt-14">
         <button class="action-btn" id="nvPickupSaveBtn" onclick="nvSavePickupSetup()">Save pickup point</button>
         <button class="ghost-btn" onclick="nvClosePickupSetup()">Cancel</button>

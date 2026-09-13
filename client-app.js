@@ -1578,12 +1578,22 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
           },function(){});
       }catch(e){}
     }
+    /* The card used to disappear before the write, and the RPC's error was
+       swallowed -- so a failed dismissal looked successful and the digest came
+       back on the next reload. Persist first; hide only once the server agrees. */
     function nvDismissDigest(id){
       var sb=window.__nvSb;
-      NV_INSIGHTS.digest=null;
-      try{ renderInsightCards(); }catch(e){}
-      if(!sb||!sb.rpc||!id) return;
-      try{ sb.rpc("mark_digest_read",{ p_digest_id:id }).then(function(){},function(){}); }catch(e){}
+      function hide(){ NV_INSIGHTS.digest=null; try{ renderInsightCards(); }catch(e){} }
+      if(!sb||!sb.rpc||!id){ hide(); return; }   /* nothing to persist against */
+      Promise.resolve(sb.rpc("mark_digest_read",{ p_digest_id:id }))
+        .catch(function(e){ return { error:{ message:String((e&&e.message)||e) } }; })
+        .then(function(r){
+          if(r && r.error){
+            try{ toast("Could not dismiss that just now \u2014 it will still be here.","error"); }catch(e){}
+            return;
+          }
+          hide();
+        });
     }
     /* Re-render insights once parcels exist, so an insight held back for lack
        of data appears as soon as it can be checked. Bounded, so a client with
@@ -3601,7 +3611,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(window.innerWidth >= 760) return;
       var menu = document.getElementById("clientMenu");
       if(!menu || !menu.classList.contains("open")) return;
-      if(e.target.closest && (e.target.closest("#clientMenu") || e.target.closest('[data-nvbn="__more"]'))) return;
+      /* The toggle's own listener is bound ON the element, so it fires first and
+         opens the menu; the click then reaches this document handler with the
+         menu already open. Without exempting the toggle, opening the menu closed
+         it again in the same click. */
+      if(e.target.closest && (e.target.closest("#clientMenu") || e.target.closest("#clientMenuToggle") || e.target.closest('[data-nvbn="__more"]'))) return;
       menu.classList.remove("open");
       var tgl = document.getElementById("clientMenuToggle");
       if(tgl) tgl.setAttribute("aria-expanded","false");
@@ -4395,7 +4409,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       };
     }
     function nvExportRowFromDb(r){
-      const t=Date.parse(r.updated_at||r.booked_at||"");
+      /* status_since, not updated_at: the export must age parcels by the same
+         clock the screen does, or the CSV contradicts the portal. */
+      const t=Date.parse(r.status_since||r.booked_at||"");
       return { awb:r.awb||"", date:String(r.booked_at||"").slice(0,10), consignee:r.consignee||"",
                city:r.city||"", status:r.status||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0),
                _ageH:isFinite(t)?Math.max(0,(Date.now()-t)/3600000):0 };
@@ -4408,7 +4424,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       /* A supabase-js builder is single-use, so each page builds its own. */
       while(page<60){
         let q=sb.from("parcels")
-          .select("awb,consignee,city,status,cod_amount,fee,booked_at,updated_at")
+          .select("awb,consignee,city,status,cod_amount,fee,booked_at,status_since")
           .eq("client_id",cid);
         if(f.status) q=q.eq("status",f.status);
         if(f.from) q=q.gte("booked_at",f.from);
@@ -8779,8 +8795,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const list=document.getElementById("newBookedList"); if(!list) return;
       const items=newBookedParcels();
       if(!items.length){ list.innerHTML=`<div class="ops-card"><strong>No new booked parcels yet</strong><p class="footer-note">Printable AWB labels appear here the moment a parcel is booked.</p><div class="inline-actions" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="action-btn" data-nv-cock="tab" data-tab="newBooking">Book a parcel</button><button class="ghost-btn" data-nv-cock="tab" data-tab="bulkBooking">Upload bulk CSV</button><button class="ghost-btn" data-nv-cock="tab" data-tab="integrations">Sync your store</button></div></div>`; return; }
-      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}" checked><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${p.source?` &middot; <span class="chip info">${escLabelText(p.source)}</span>`:""}${nvPrintedMark(p)}</span><button class="ghost-btn" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn" title="Delete this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:#b91c1c;border-color:#f0b4ac">Delete</button></label>`).join("");
+      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}" checked><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${nvSourceChip(p.source)}${nvPrintedMark(p)}</span><button class="ghost-btn nv-nb-act" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn nv-nb-act" title="Delete this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:#b91c1c;border-color:#f0b4ac">Delete</button></label>`).join("");
       nvSyncSelectAllNewBookedLabel();
+    }
+    /* Merchants were shown the raw internal value -- "client_portal",
+       "merchant_api". Say where the booking came from in their language, and
+       say nothing when it is just the portal they are already looking at. */
+    function nvSourceChip(src){
+      var v=String(src||"").trim();
+      if(!v || v==="client_portal") return "";
+      var LABEL={ merchant_api:"via API", admin_portal:"added by NovaX",
+                  shopify:"Shopify", woocommerce:"WooCommerce", web:"Website" };
+      var text=LABEL[v] || v.replace(/_/g," ");
+      return ' &middot; <span class="chip info">'+escLabelText(text)+'</span>';
     }
     /* The tab banner already knew whether every label was printed, but no row
        said which. A merchant printing a batch had no way to see what they had
@@ -9062,8 +9089,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function toast(msg,type){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.remove("success","error"); const kind=type||(/reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(msg)?"error":/success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach/i.test(msg)?"success":""); if(kind) el.classList.add(kind); el.classList.add("show"); /* One hook here rather than at 21 call sites: every existing success and error toast now carries a haptic, and any future one does automatically. */ try{ nvHaptic(kind==="error"?"error":(kind==="success"?"success":null)); }catch(e){} clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
     /* Events */
-    document.querySelectorAll(".client-tab").forEach(b=>b.addEventListener("click",()=>showClientTab(b.dataset.clientTab)));
-    document.querySelectorAll("[data-client-tab]:not(.client-tab)").forEach(b=>b.addEventListener("click",()=>showClientTab(b.dataset.clientTab)));
+    /* These were bound once at startup, so anything rendered later never got a
+       listener -- the dashboard "Withdraw" button lives inside the COD hero's
+       innerHTML and was simply dead. One delegated listener covers every
+       [data-client-tab], whenever it appears. Replacing the two bindings rather
+       than adding a third: two listeners on the same button would fire
+       showClientTab twice and re-render the portal for nothing. */
+    document.addEventListener("click", function(e){
+      var b = e.target && e.target.closest ? e.target.closest("[data-client-tab]") : null;
+      if(!b) return;
+      var tab = b.getAttribute("data-client-tab");
+      if(tab) showClientTab(tab);
+    });
     document.getElementById("clientMenuToggle").addEventListener("click",()=>{ const m=document.getElementById("clientMenu"); const o=m.classList.toggle("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded",String(o)); });
 
     /* ═══ Value-change motion ═══════════════════════════════════════════
@@ -9996,7 +10033,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         });
       }
 
-      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), statusSince:r.updated_at||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.updated_at||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _meta:m, trackingToken:r.tracking_token||"", _raw:{ consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0) },
+      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), /* status_since is stamped server-side only when the status actually changes.
+           updated_at moves on ANY write, so printing a label used to reset a
+           parcel's age and clear its SLA warning (measured drift: avg 117h). */
+        statusSince:r.status_since||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.status_since||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _meta:m, trackingToken:r.tracking_token||"", _raw:{ consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0) },
         // NovaX distance pricing. Null on every parcel booked before it existed,
         // which is exactly how the label and invoice detect "flat, show nothing".
         pricingMode:r.pricing_mode||"", distanceKm:(r.distance_km!=null?Number(r.distance_km):null),
@@ -11034,8 +11074,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           { tab:"bulkBooking", title:"Bulk Booking", text:"Shipping many orders at once? Download the CSV format, fill it in, and upload it here to create AWBs in bulk." },
           { tab:"integrations", title:"Store Integrations", text:"Connect Shopify, WooCommerce, or your own website here so new orders import automatically." },
           { tab:"reports", title:"Full Report", text:"See every parcel with filters and export it as CSV or PDF." },
-          { tab:"payments", title:"Payments", text:"Delivered parcels turn into payable invoices here. Download them any time." },
-          { tab:"wallet", title:"Wallet", text:"Track your balance and request a payout in a few taps whenever you are ready." },
+          /* Payments and Wallet were separate steps; both now alias to Money,
+             so the tour showed the same tab twice and neither step highlighted
+             anything. One step for the one tab that exists. */
+          { tab:"money", title:"Money", text:"Delivered parcels become payable invoices here, alongside your balance \u2014 and you can request a payout in a few taps." },
           { tab:"subAccounts", title:"Sub Accounts", text:"Invite your team, finance, warehouse, or support, with their own scoped logins." },
           { tab:"support", title:"Talk To Your AI", text:"Tap the Autopilot button in the corner anytime. I read your live data and answer instantly." }
         ];
@@ -13490,6 +13532,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     ids.forEach(function(id){ var el=document.getElementById(id); if(el && String(el.value||"").trim()) filled++; });
     return Math.round(filled/ids.length*100);
   }
+  /* Published because the mobile booking bar lives in a different IIFE. Its
+     `typeof bookingFormPercent==="function"` test read an out-of-scope name,
+     always got "undefined", and left the CTA stuck on "Create Booking" -- the
+     empty and pasted-order states were unreachable. */
+  window.nvBookingFormPercent = bookingFormPercent;
   function todayStr(){ return new Date().toISOString().slice(0,10); }
   function getAckMap(){ try{ return JSON.parse(localStorage.getItem(ACK_KEY)||"{}"); }catch(e){ return {}; } }
   function ackTip(key){ try{ var m=getAckMap(); m[key]=todayStr(); localStorage.setItem(ACK_KEY,JSON.stringify(m)); }catch(e){} }
@@ -13756,7 +13803,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     try{
       var real=realBtn(); var sticky=document.getElementById("nvStickyBookBtn");
       if(!real||!sticky) return;
-      var pct=(typeof bookingFormPercent==="function")?bookingFormPercent():null;
+      var pct=(typeof window.nvBookingFormPercent==="function")?window.nvBookingFormPercent():null;
       var pasteEl=document.getElementById("nvPasteInput");
       var pasteHasContent=!!(pasteEl && pasteEl.value && pasteEl.value.trim().length>0);
       if(pct===0 && pasteHasContent){
