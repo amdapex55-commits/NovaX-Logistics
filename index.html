@@ -4255,13 +4255,18 @@ frame();
 #nvai-pill b{color:var(--green-2)}
 #nvai-pillx{position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;
   background:var(--bg-3);border:1px solid var(--line);color:var(--ink-2);font-size:14px;line-height:1;cursor:pointer}
+body.nvai-locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 #nvai-panel{position:fixed;right:max(18px,var(--sa-r));bottom:calc(18px + var(--sa-b));z-index:931;
+  overscroll-behavior:contain;touch-action:pan-y;
   width:min(392px,calc(100vw - 32px));height:min(600px,calc(100vh - 120px));
   background:var(--bg-2);border:1px solid var(--line-2);border-radius:var(--r-xl);overflow:hidden;
   box-shadow:0 44px 120px rgba(0,0,0,.72);display:none;flex-direction:column;
   opacity:0;transform:translateY(22px) scale(.97);transition:opacity .3s ease,transform .34s cubic-bezier(.2,.9,.3,1.15)}
 #nvai-panel.open{display:flex}
 #nvai-panel.shown{opacity:1;transform:none}
+/* .open only reveals it; .shown drives the motion. Separating the two means
+   the transition never has to start from a layout the browser has not
+   committed yet -- which is what made the FIRST open slide in half-finished. */
 #nvai-head{display:flex;align-items:center;gap:11px;padding:15px 15px 13px;border-bottom:1px solid var(--line);flex:0 0 auto}
 #nvai-av{width:38px;height:38px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
   background:linear-gradient(145deg,#0d6b4d,#18c77a);color:#04130d;font-weight:800;font-size:15px}
@@ -4271,7 +4276,8 @@ frame();
 #nvai-x{margin-left:auto;width:36px;height:36px;min-width:36px;border-radius:11px;background:var(--panel);
   border:1px solid var(--line);color:var(--ink-2);font-size:19px;line-height:1;cursor:pointer}
 #nvai-x:hover{background:var(--panel-2);color:var(--ink)}
-#nvai-log{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:15px;display:flex;flex-direction:column;gap:11px}
+#nvai-log{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+  padding:15px;display:flex;flex-direction:column;gap:11px;contain:layout paint;overflow-anchor:none}
 .nvai-m{max-width:86%;padding:10px 13px;border-radius:15px;font-size:13.4px;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;animation:nvaiIn .3s ease both}
 @keyframes nvaiIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
 .nvai-b{align-self:flex-start;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-bottom-left-radius:5px}
@@ -4307,9 +4313,22 @@ frame();
 .nvai-wa-n:hover{background:var(--panel-2)}
 .nvai-wa-n em{font-style:normal;font-size:11.5px;font-weight:700;color:var(--green-2)}
 @media (max-width:560px){
-  #nvai-panel{right:0;left:0;bottom:0;width:100%;height:min(86vh,640px);border-radius:var(--r-xl) var(--r-xl) 0 0;border-bottom:0}
+  /* dvh, not vh: vh is the tallest viewport, so the sheet was cropped behind
+     the browser chrome and the composer sat under the fold. */
+  #nvai-panel{right:0;left:0;bottom:0;width:100%;height:86vh;height:min(86dvh,660px);
+    max-height:none;border-radius:20px 20px 0 0;border-bottom:0;
+    transform:translateY(100%);transition:transform .34s cubic-bezier(.2,.9,.3,1.1),opacity .2s ease}
+  #nvai-panel.shown{transform:translateY(0)}
   #nvai-pill{display:none}
+  #nvai-head{padding-top:20px;position:relative;cursor:grab;touch-action:none}
+  #nvai-head::before{content:'';position:absolute;top:7px;left:50%;transform:translateX(-50%);
+    width:38px;height:4px;border-radius:4px;background:var(--line-2)}
+  #nvai-fab{width:56px;height:56px}
+  .nvai-m{max-width:90%;font-size:14px}
+  .nvai-chip{padding:9px 14px;font-size:12.6px}
 }
+#nvai-panel.shown{will-change:transform,opacity}
+.nvai-m{contain:content}
 @media (prefers-reduced-motion:reduce){
   #nvai-fab::before{animation:none}
   .nvai-m,#nvai-panel,#nvai-pill{animation:none!important;transition:none!important}
@@ -4365,7 +4384,44 @@ frame();
       closeBtn=document.getElementById("nvai-x"), waBox=document.getElementById("nvai-wa"),
       foot=document.getElementById("nvai-foot");
 
-  var history=[], asked=0, busy=false, opened=false;
+  var history=[], asked=0, busy=false, opened=false, convId=null, lockY=0, locked=false;
+
+  function isSheet(){ return window.innerWidth <= 560; }
+  /* body{overflow:hidden} does NOT stop scrolling in iOS Safari, and the page's
+     own closeM() clears that inline style unconditionally -- so sharing it would
+     unlock the page behind an open chat. This owns its lock instead. */
+  function lockPage(){
+    if(locked || !isSheet()) return;
+    lockY = window.scrollY || window.pageYOffset || 0;
+    document.body.style.top = (-lockY) + "px";
+    document.body.classList.add("nvai-locked");
+    locked = true;
+  }
+  function unlockPage(){
+    if(!locked) return;
+    document.body.classList.remove("nvai-locked");
+    document.body.style.top = "";
+    window.scrollTo(0, lockY);
+    locked = false;
+  }
+  /* The on-screen keyboard shrinks the visual viewport, not the layout one,
+     so without this the composer hides behind it. */
+  function fitKeyboard(){
+    if(!opened || !isSheet() || !window.visualViewport) return;
+    /* Only when the visual viewport is genuinely shorter than the layout one,
+       i.e. the keyboard is up. Running this unconditionally stamped an inline
+       height on every open and overrode the CSS sheet height entirely. */
+    var vh = window.visualViewport.height;
+    if (vh < window.innerHeight - 120) {
+      panel.style.height = Math.max(300, Math.round(vh - 8)) + "px";
+    } else {
+      panel.style.height = "";        /* keyboard gone: hand it back to CSS */
+    }
+  }
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize", fitKeyboard);
+    window.visualViewport.addEventListener("scroll", fitKeyboard);
+  }
   var STARTERS=["What are your rates?","How fast do I get my COD?","Which cities do you deliver to?","How do I open an account?"];
 
   function esc(t){ return String(t==null?"":t).replace(/[&<>"']/g,function(c){
@@ -4376,7 +4432,13 @@ frame();
       .replace(/(https?:\/\/[^\s<]+)/g, function(u){ return '<a href="'+u+'" target="_blank" rel="noopener">'+u+'</a>'; })
       .replace(/(^|[\s(])(novaxlogistics\.com(?:\/[^\s<)]*)?)/g, function(m,p,d){ return p+'<a href="https://'+d+'" target="_blank" rel="noopener">'+d+'</a>'; });
   }
-  function scroll(){ try{ log.scrollTop = log.scrollHeight; }catch(e){} }
+  function nearBottom(){
+    try{ return log.scrollHeight - log.scrollTop - log.clientHeight < 90; }catch(e){ return true; }
+  }
+  /* Never yank the view if they have scrolled up to re-read something. */
+  function scroll(force){
+    try{ if(force || nearBottom()) log.scrollTop = log.scrollHeight; }catch(e){}
+  }
   function bubble(text, who){
     var d=document.createElement("div");
     d.className="nvai-m "+(who==="u"?"nvai-u":"nvai-b");
@@ -4386,14 +4448,19 @@ frame();
   /* Typewriter reveal. setTimeout, not requestAnimationFrame: rAF does not
      fire in a background tab and the reply would never appear. */
   function typeOut(el, text){
-    if(RM){ el.innerHTML=rich(text); scroll(); return; }
-    var i=0, step=Math.max(6, Math.min(18, Math.round(900/Math.max(text.length,1))));
+    if(RM){ el.innerHTML=rich(text); scroll(true); return; }
+    var i=0, n=text.length, stick=nearBottom(),
+        step=Math.max(8, Math.min(20, Math.round(1100/Math.max(n,1)))),
+        per=Math.max(2, Math.ceil(n/90));      // long answers reveal in ~90 frames
+    /* textContent while animating: the old version ran escape+linkify over the
+       whole string on every tick, which is O(n^2) parsing and the main source
+       of jank on a phone. The rich HTML is written once, at the end. */
     (function tick(){
-      i += 2;
-      el.innerHTML = rich(text.slice(0,i)) + (i<text.length?'<span style="opacity:.5">&#9613;</span>':"");
-      scroll();
-      if(i<text.length) setTimeout(tick, step);
-      else el.innerHTML = rich(text);
+      i += per;
+      el.textContent = text.slice(0, i);
+      if(stick) scroll(true);
+      if(i < n) setTimeout(tick, step);
+      else { el.innerHTML = rich(text); if(stick) scroll(true); }
     })();
   }
   function chips(list){
@@ -4437,7 +4504,7 @@ frame();
       var res = await fetch(ENDPOINT, {
         method:"POST",
         headers:{ "Content-Type":"application/json", apikey: CFG.SB_KEY||"", Authorization:"Bearer "+(CFG.SB_KEY||"") },
-        body: JSON.stringify({ messages: history })
+        body: JSON.stringify({ messages: history, conv_id: convId })
       });
       data = await res.json();
     }catch(e){ data = null; }
@@ -4447,6 +4514,7 @@ frame();
       typeOut(f, "I could not reach the team's system just then. WhatsApp is fastest: "+WA.join(", ")+".");
       return;
     }
+    if(data.conv_id) convId = data.conv_id;   /* one thread per visitor, so admin reads it whole */
     history.push({role:"assistant",content:String(data.answer)});
     var el=bubble("","b");
     typeOut(el, String(data.answer));
@@ -4457,10 +4525,16 @@ frame();
     }
   }
 
+  var animT=null;   /* the one timer both paths own, so they cannot race */
   function open(){
     if(opened) return; opened=true;
+    clearTimeout(animT);
+    lockPage();
     pill.className=""; panel.className="open";
-    setTimeout(function(){ panel.className="open shown"; },10);
+    void panel.offsetHeight;          /* commit layout before the class flip */
+    panel.className="open shown";
+    fitKeyboard();
+    animT=null;
     fab.setAttribute("aria-expanded","true");
     if(!log.children.length){
       var el=bubble("","b");
@@ -4471,10 +4545,33 @@ frame();
     setTimeout(function(){ try{ if(window.innerWidth>560) input.focus(); }catch(e){} }, 340);
   }
   function close(){
-    opened=false; panel.className="open";
-    setTimeout(function(){ panel.className=""; },220);
+    opened=false;
+    clearTimeout(animT);
+    panel.style.height="";            /* immediately: a timer here raced a reopen */
+    panel.className="open";           /* drop .shown -> it slides back down */
+    animT=setTimeout(function(){ if(!opened) panel.className=""; },300);
+    unlockPage();
     fab.setAttribute("aria-expanded","false");
   }
+  /* Swipe the sheet down to dismiss, the way a native sheet behaves. */
+  (function dragToClose(){
+    var head=document.getElementById("nvai-head"), y0=null, dy=0;
+    head.addEventListener("touchstart", function(e){
+      if(!isSheet()||!opened) return;
+      y0=e.touches[0].clientY; dy=0; panel.style.transition="none";
+    }, {passive:true});
+    head.addEventListener("touchmove", function(e){
+      if(y0===null) return;
+      dy=Math.max(0, e.touches[0].clientY - y0);
+      panel.style.transform="translateY("+dy+"px)";
+    }, {passive:true});
+    head.addEventListener("touchend", function(){
+      if(y0===null) return;
+      panel.style.transition=""; panel.style.transform="";
+      if(dy>110) close();
+      y0=null; dy=0;
+    });
+  })();
 
   fab.addEventListener("click", function(){ opened?close():open(); });
   closeBtn.addEventListener("click", close);
@@ -4489,6 +4586,25 @@ frame();
   /* The invitation, once, a few seconds in -- not on top of the hero. */
   var pillSeen=false; try{ pillSeen = sessionStorage.getItem("nvaiPill")==="0"; }catch(e){}
   if(!pillSeen) setTimeout(function(){ if(!opened) pill.className="on"; }, 5200);
+
+  /* closeM() on this page clears body overflow unconditionally. If a visitor
+     opens and closes the signup modal while the chat is up, re-assert ours. */
+  document.addEventListener("click", function(){
+    if(opened && isSheet() && !document.body.classList.contains("nvai-locked")){
+      locked = false; lockPage();
+    }
+  }, true);
+  window.addEventListener("orientationchange", function(){
+    if(opened){ panel.style.height=""; setTimeout(fitKeyboard, 260); }
+  });
+  /* Rotating or resizing past 560px while the chat is open used to leave the
+     body pinned at position:fixed, stranding the whole page. The lock has to
+     follow the breakpoint, not just the open/close pair. */
+  window.addEventListener("resize", function(){
+    if(!opened){ if(locked) unlockPage(); return; }
+    if(isSheet()){ if(!locked) lockPage(); }
+    else if(locked){ unlockPage(); panel.style.height=""; }
+  });
 
   window.__nvaiOpen = open;   /* so other CTAs can open it */
 })();

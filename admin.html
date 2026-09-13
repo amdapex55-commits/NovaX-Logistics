@@ -5865,7 +5865,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <button class="ghost-btn" type="button" style="white-space:nowrap;flex:0 0 auto" onclick="nvAicLoad()">Refresh</button>
                 </div>
                 <div class="inline-actions" style="flex-wrap:wrap;gap:8px;margin:4px 0 12px">
-                  <input id="nvAicSearch" class="search" placeholder="Search merchant, question or answer" style="flex:1 1 260px;min-width:0">
+                  <input id="nvAicSearch" class="search" placeholder="Search merchant, visitor, question or answer" style="flex:1 1 260px;min-width:0">
                   <select id="nvAicDays" onchange="nvAicLoad()" style="flex:0 0 auto">
                     <option value="7">Last 7 days</option>
                     <option value="30" selected>Last 30 days</option>
@@ -15664,7 +15664,12 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (h < 24) return h + "h ago";
       return Math.floor(h / 24) + "d ago";
     }
+    /* A NULL client_id is a website visitor from the landing-page agent, not a
+       merchant we failed to find. Saying "Unknown merchant" for every prospect
+       would be actively misleading. */
+    function nvAicIsVisitor(c){ return !c || !c.client_id; }
     function nvAicClientName(id){
+      if (!id) return "Website visitor";
       var c = (state.clients || []).filter(function(x){ return x.id === id; })[0];
       return (c && c.name) || "Unknown merchant";
     }
@@ -15717,12 +15722,15 @@ html,body{ background:var(--bg); color:var(--ink); }
        .then(function(r){
         var rows = (r && r.data) || [];
         var asked = rows.filter(function(m){ return m.role === "user"; }).length;
-        var merchants = {}; rows.forEach(function(m){ merchants[m.client_id] = 1; });
+        var merchants = {}, visitorMsgs = 0;
+        rows.forEach(function(m){ if (m.client_id) merchants[m.client_id] = 1; else visitorMsgs++; });
+        var visitorConvs = (NV_AIC.convs || []).filter(nvAicIsVisitor).length;
         var label = NV_AIC.days > 0 ? ("last " + NV_AIC.days + " days") : "all time";
         host.innerHTML =
           '<div class="metric"><label>Conversations</label><strong>' + fmt(NV_AIC.convs.length) + '</strong><div class="meter-caption">' + label + '</div></div>' +
           '<div class="metric"><label>Questions asked</label><strong>' + fmt(asked) + '</strong><div class="meter-caption">merchant messages</div></div>' +
-          '<div class="metric"><label>Merchants using it</label><strong>' + fmt(Object.keys(merchants).length) + '</strong><div class="meter-caption">' + label + '</div></div>';
+          '<div class="metric"><label>Merchants using it</label><strong>' + fmt(Object.keys(merchants).length) + '</strong><div class="meter-caption">' + label + '</div></div>' +
+          '<div class="metric"><label>Website visitors</label><strong>' + fmt(visitorConvs) + '</strong><div class="meter-caption">' + fmt(visitorMsgs) + ' messages &middot; from the landing page</div></div>';
       });
     }
 
@@ -15766,6 +15774,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       return '<div class="ops-card nv-atk-card">' +
         '<div class="ops-card-head" style="cursor:pointer" onclick="nvAicOpenThread(\'' + nvEscAdmin(c.id) + '\')">' +
           '<strong>' + nvEscAdmin(name) + '</strong>' +
+          (nvAicIsVisitor(c) ? '<span class="chip warn">from the website</span>' : "") +
           '<span class="chip ' + (c.resolved ? "good" : "info") + '">' + (c.resolved ? "resolved" : "open") + '</span>' +
         '</div>' +
         '<div class="inline-actions" style="flex-wrap:wrap;gap:6px;margin:6px 0">' +
@@ -15791,7 +15800,8 @@ html,body{ background:var(--bg); color:var(--ink); }
            expanded -- the rest match on merchant and title. Say so rather than
            letting an admin conclude a question was never asked. */
         rows = rows.filter(function(c){
-          var hay = [nvAicClientName(c.client_id), c.title || ""].join(" ").toLowerCase();
+          var hay = [nvAicClientName(c.client_id), c.title || "",
+                     nvAicIsVisitor(c) ? "website visitor prospect" : ""].join(" ").toLowerCase();
           if (hay.indexOf(q) !== -1) return true;
           var m = NV_AIC.msgs[c.id];
           return !!(m && m.some(function(x){ return String(x.content || "").toLowerCase().indexOf(q) !== -1; }));
@@ -15801,7 +15811,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         ? (q ? '<p class="footer-note" style="margin-bottom:8px">Searching merchant names and titles. Message text is only searched in conversations you have already opened.</p>' : "")
           + rows.map(nvAicCard).join("")
         : '<div class="ops-card"><strong>Nothing here</strong><p class="footer-note">' +
-            (NV_AIC.convs.length ? "No conversation matches that search." : "No merchant has used NovaX AI in this period yet.") +
+            (NV_AIC.convs.length ? "No conversation matches that search." : "No merchant or website visitor has used NovaX AI in this period yet.") +
           '</p></div>';
     }
 

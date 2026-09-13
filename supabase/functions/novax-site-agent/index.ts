@@ -154,11 +154,66 @@ async function rateOk(ip: string): Promise<boolean> {
   } catch { return true; }
 }
 
+// ---- record the conversation where admin already reads them ----------
+// Written directly with the service role, NOT through ai_conv_start /
+// ai_msg_log: both resolve nv_ai_my_client() and refuse when it is NULL,
+// which is exactly what a website visitor is. client_id stays NULL, which
+// nvai_conv_own (client_id = nv_ai_my_client()) can never match, so no
+// merchant can ever see a visitor thread.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function logTurn(convId: string | null, question: string, answer: string): Promise<string | null> {
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key) return convId;
+  const h = {
+    "Content-Type": "application/json",
+    apikey: key,
+    Authorization: `Bearer ${key}`,
+  };
+  const now = new Date().toISOString();
+  try {
+    let id = convId && UUID_RE.test(convId) ? convId : null;
+    if (!id) {
+      const r = await fetch(`${url}/rest/v1/nv_ai_conversations`, {
+        method: "POST",
+        headers: { ...h, Prefer: "return=representation" },
+        body: JSON.stringify({
+          client_id: null,
+          title: question.slice(0, 80),
+          started_at: now, last_at: now, resolved: false,
+        }),
+      });
+      if (!r.ok) return null;
+      const rows = await r.json();
+      id = Array.isArray(rows) && rows[0] ? String(rows[0].id) : null;
+      if (!id) return null;
+    }
+    await fetch(`${url}/rest/v1/nv_ai_messages`, {
+      method: "POST",
+      headers: { ...h, Prefer: "return=minimal" },
+      body: JSON.stringify([
+        { conv_id: id, client_id: null, role: "user", content: question },
+        { conv_id: id, client_id: null, role: "assistant", content: answer },
+      ]),
+    });
+    await fetch(`${url}/rest/v1/nv_ai_conversations?id=eq.${id}`, {
+      method: "PATCH",
+      headers: { ...h, Prefer: "return=minimal" },
+      body: JSON.stringify({ last_at: now }),
+    });
+    return id;
+  } catch (e) {
+    console.error("novax-site-agent: conversation log failed:", e);
+    return convId;   // logging must never cost the visitor an answer
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors(req) });
   if (req.method !== "POST") return json(req, { error: "POST only." }, 405);
 
-  let body: { messages?: Array<{ role?: string; content?: string }> };
+  let body: { messages?: Array<{ role?: string; content?: string }>; conv_id?: string };
   try { body = await req.json(); } catch { return json(req, { error: "Bad request body." }, 400); }
 
   // ---- validate the transcript the browser sent -----------------------
@@ -231,7 +286,17 @@ Deno.serve(async (req: Request) => {
       ? (tool!.input!.suggestions as unknown[]).map((s) => String(s).slice(0, 80)).filter(Boolean).slice(0, 3)
       : [];
 
-    return json(req, { answer, suggestions, turnsUsed, turnsLeft: Math.max(0, MAX_TURNS - turnsUsed) });
+    const question = messages[messages.length - 1].content;
+    const convId = await logTurn(
+      typeof body.conv_id === "string" ? body.conv_id : null,
+      question,
+      answer,
+    );
+
+    return json(req, {
+      answer, suggestions, conv_id: convId,
+      turnsUsed, turnsLeft: Math.max(0, MAX_TURNS - turnsUsed),
+    });
   } catch (e) {
     console.error("novax-site-agent failed:", e);
     return json(req, {
