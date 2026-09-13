@@ -4226,5 +4226,273 @@ frame();
   }
 })();
 </script>
+<!-- ═══════════ NovaX AI — public site agent ═══════════
+     The Anthropic key is NOT here. This calls the novax-site-agent edge
+     function, which holds the key as a Supabase secret. -->
+<style>
+#nvai-fab,#nvai-pill,#nvai-panel{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;box-sizing:border-box}
+#nvai-fab *,#nvai-panel *{box-sizing:border-box}
+#nvai-fab{position:fixed;right:max(18px,var(--sa-r));bottom:calc(18px + var(--sa-b));z-index:930;
+  width:60px;height:60px;border-radius:50%;border:0;cursor:pointer;display:grid;place-items:center;
+  background:linear-gradient(145deg,#17d986,#0fa866);color:#02130c;
+  box-shadow:0 16px 44px rgba(20,199,123,.42),inset 0 1px 0 rgba(255,255,255,.35);
+  transition:transform .2s cubic-bezier(.2,.9,.3,1.15),box-shadow .2s}
+#nvai-fab:hover{transform:translateY(-3px) scale(1.05);box-shadow:0 24px 64px rgba(20,199,123,.6),inset 0 1px 0 rgba(255,255,255,.35)}
+#nvai-fab:active{transform:scale(.95)}
+#nvai-fab svg{width:27px;height:27px}
+#nvai-fab::before{content:'';position:absolute;inset:-6px;border-radius:50%;border:2px solid rgba(20,199,123,.55);
+  animation:nvaiPulse 2.6s ease-out infinite;pointer-events:none}
+@keyframes nvaiPulse{0%{transform:scale(.92);opacity:.85}70%{transform:scale(1.22);opacity:0}100%{opacity:0}}
+#nvai-dot{position:absolute;top:2px;right:2px;width:13px;height:13px;border-radius:50%;
+  background:var(--green-2);border:2px solid var(--bg)}
+#nvai-pill{position:fixed;right:max(88px,calc(var(--sa-r) + 88px));bottom:calc(34px + var(--sa-b));z-index:930;
+  max-width:min(250px,calc(100vw - 110px));background:var(--bg-2);border:1px solid var(--line-2);
+  border-radius:var(--r-lg);padding:11px 14px;color:var(--ink);font-size:13px;font-weight:700;line-height:1.45;
+  box-shadow:0 22px 60px rgba(0,0,0,.6);cursor:pointer;opacity:0;transform:translateY(8px);
+  transition:opacity .45s ease,transform .45s cubic-bezier(.2,.9,.3,1.15);pointer-events:none}
+#nvai-pill.on{opacity:1;transform:none;pointer-events:auto}
+#nvai-pill span{display:block;font-weight:600;font-size:11.5px;color:var(--ink-2);margin-top:2px}
+#nvai-pill b{color:var(--green-2)}
+#nvai-pillx{position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;
+  background:var(--bg-3);border:1px solid var(--line);color:var(--ink-2);font-size:14px;line-height:1;cursor:pointer}
+#nvai-panel{position:fixed;right:max(18px,var(--sa-r));bottom:calc(18px + var(--sa-b));z-index:931;
+  width:min(392px,calc(100vw - 32px));height:min(600px,calc(100vh - 120px));
+  background:var(--bg-2);border:1px solid var(--line-2);border-radius:var(--r-xl);overflow:hidden;
+  box-shadow:0 44px 120px rgba(0,0,0,.72);display:none;flex-direction:column;
+  opacity:0;transform:translateY(22px) scale(.97);transition:opacity .3s ease,transform .34s cubic-bezier(.2,.9,.3,1.15)}
+#nvai-panel.open{display:flex}
+#nvai-panel.shown{opacity:1;transform:none}
+#nvai-head{display:flex;align-items:center;gap:11px;padding:15px 15px 13px;border-bottom:1px solid var(--line);flex:0 0 auto}
+#nvai-av{width:38px;height:38px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
+  background:linear-gradient(145deg,#0d6b4d,#18c77a);color:#04130d;font-weight:800;font-size:15px}
+#nvai-head h4{margin:0;font-size:14.5px;color:var(--ink);font-weight:800}
+#nvai-head p{margin:2px 0 0;font-size:11.5px;color:var(--ink-2);display:flex;align-items:center;gap:5px}
+#nvai-head p i{width:6px;height:6px;border-radius:50%;background:var(--green-2);display:inline-block;font-style:normal}
+#nvai-x{margin-left:auto;width:36px;height:36px;min-width:36px;border-radius:11px;background:var(--panel);
+  border:1px solid var(--line);color:var(--ink-2);font-size:19px;line-height:1;cursor:pointer}
+#nvai-x:hover{background:var(--panel-2);color:var(--ink)}
+#nvai-log{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:15px;display:flex;flex-direction:column;gap:11px}
+.nvai-m{max-width:86%;padding:10px 13px;border-radius:15px;font-size:13.4px;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;animation:nvaiIn .3s ease both}
+@keyframes nvaiIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+.nvai-b{align-self:flex-start;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-bottom-left-radius:5px}
+.nvai-u{align-self:flex-end;background:linear-gradient(145deg,#17d986,#0fa866);color:#02130c;font-weight:600;border-bottom-right-radius:5px}
+.nvai-m a{color:var(--green-2);font-weight:700;text-decoration:underline}
+.nvai-u a{color:#02130c}
+#nvai-type{align-self:flex-start;display:none;gap:4px;padding:12px 14px;background:var(--panel-2);border:1px solid var(--line);border-radius:15px;border-bottom-left-radius:5px;margin:0 15px}
+#nvai-type.on{display:flex}
+#nvai-type i{width:6px;height:6px;border-radius:50%;background:var(--ink-2);animation:nvaiBob 1.3s ease-in-out infinite}
+#nvai-type i:nth-child(2){animation-delay:.16s}#nvai-type i:nth-child(3){animation-delay:.32s}
+@keyframes nvaiBob{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-5px);opacity:1}}
+#nvai-sugg{display:flex;flex-wrap:wrap;gap:7px;padding:0 15px 11px;flex:0 0 auto}
+.nvai-chip{background:var(--panel);border:1px solid var(--line-2);color:var(--ink);border-radius:999px;
+  padding:8px 13px;font-size:12.2px;font-weight:600;cursor:pointer;transition:background .18s,transform .18s;text-align:left}
+.nvai-chip:hover{background:var(--panel-2);transform:translateY(-1px)}
+#nvai-foot{flex:0 0 auto;border-top:1px solid var(--line);padding:11px 12px calc(11px + var(--sa-b))}
+#nvai-row{display:flex;gap:8px;align-items:flex-end}
+#nvai-in{flex:1;background:var(--panel);border:1px solid var(--line-2);border-radius:13px;color:var(--ink);
+  font-size:16px;font-family:inherit;padding:11px 12px;resize:none;max-height:96px;line-height:1.45}
+#nvai-in::placeholder{color:var(--ink-3)}
+#nvai-in:focus{outline:2px solid var(--line-2);outline-offset:1px}
+#nvai-send{width:46px;height:46px;min-width:46px;border-radius:13px;border:0;cursor:pointer;display:grid;place-items:center;
+  background:linear-gradient(145deg,#17d986,#0fa866);color:#02130c}
+#nvai-send:disabled{opacity:.5;cursor:default}
+#nvai-send svg{width:19px;height:19px}
+#nvai-meta{font-size:10.8px;color:var(--ink-3);text-align:center;margin-top:8px;font-weight:600}
+#nvai-wa{padding:13px 15px calc(15px + var(--sa-b));border-top:1px solid var(--line);display:none}
+#nvai-wa.on{display:block}
+#nvai-wa p{margin:0 0 10px;font-size:12.5px;color:var(--ink-2);line-height:1.55}
+.nvai-wa-n{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--panel);
+  border:1px solid var(--line-2);border-radius:12px;padding:11px 13px;margin-bottom:7px;
+  color:var(--ink);font-weight:800;font-size:14px;text-decoration:none}
+.nvai-wa-n:hover{background:var(--panel-2)}
+.nvai-wa-n em{font-style:normal;font-size:11.5px;font-weight:700;color:var(--green-2)}
+@media (max-width:560px){
+  #nvai-panel{right:0;left:0;bottom:0;width:100%;height:min(86vh,640px);border-radius:var(--r-xl) var(--r-xl) 0 0;border-bottom:0}
+  #nvai-pill{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  #nvai-fab::before{animation:none}
+  .nvai-m,#nvai-panel,#nvai-pill{animation:none!important;transition:none!important}
+  #nvai-type i{animation:none}
+}
+</style>
+
+<button id="nvai-fab" type="button" aria-label="Talk to NovaX AI" aria-expanded="false">
+  <span id="nvai-dot"></span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.3-.6L3 21l1.8-4.8A8.3 8.3 0 0 1 3.6 11.5a8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 8.4 8.4z"/>
+  </svg>
+</button>
+<div id="nvai-pill" role="button" tabindex="0">Talk to NovaX AI<span>Rates, delivery times, COD payouts &mdash; ask <b>anything</b></span>
+  <button id="nvai-pillx" type="button" aria-label="Dismiss">&times;</button>
+</div>
+
+<div id="nvai-panel" role="dialog" aria-modal="false" aria-label="NovaX AI assistant">
+  <div id="nvai-head">
+    <div id="nvai-av">N</div>
+    <div><h4>NovaX AI</h4><p><i></i>Answers instantly &middot; 24/7</p></div>
+    <button id="nvai-x" type="button" aria-label="Close">&times;</button>
+  </div>
+  <div id="nvai-log" role="log" aria-live="polite"></div>
+  <div id="nvai-type" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div id="nvai-sugg"></div>
+  <div id="nvai-foot">
+    <div id="nvai-row">
+      <textarea id="nvai-in" rows="1" placeholder="Ask about rates, COD, delivery time&hellip;" aria-label="Ask NovaX AI"></textarea>
+      <button id="nvai-send" type="button" aria-label="Send">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      </button>
+    </div>
+    <div id="nvai-meta"></div>
+  </div>
+  <div id="nvai-wa"></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var CFG = window.NOVAX_CONFIG || { SB_URL:"https://rhzunbzbdzicajqtohwp.supabase.co", SB_KEY:"" };
+  var ENDPOINT = CFG.SB_URL.replace(/\/$/,"") + "/functions/v1/novax-site-agent";
+  var MAX_Q = 10;
+  var WA = ["0312 3922558","0325 8743409","0321 1551245"];
+  var RM = false; try{ RM = matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+
+  var fab=document.getElementById("nvai-fab"), pill=document.getElementById("nvai-pill"),
+      pillx=document.getElementById("nvai-pillx"), panel=document.getElementById("nvai-panel"),
+      log=document.getElementById("nvai-log"), typing=document.getElementById("nvai-type"),
+      sugg=document.getElementById("nvai-sugg"), input=document.getElementById("nvai-in"),
+      send=document.getElementById("nvai-send"), meta=document.getElementById("nvai-meta"),
+      closeBtn=document.getElementById("nvai-x"), waBox=document.getElementById("nvai-wa"),
+      foot=document.getElementById("nvai-foot");
+
+  var history=[], asked=0, busy=false, opened=false;
+  var STARTERS=["What are your rates?","How fast do I get my COD?","Which cities do you deliver to?","How do I open an account?"];
+
+  function esc(t){ return String(t==null?"":t).replace(/[&<>"']/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  /* Escape FIRST, then linkify -- never the other way round. */
+  function rich(t){
+    return esc(t)
+      .replace(/(https?:\/\/[^\s<]+)/g, function(u){ return '<a href="'+u+'" target="_blank" rel="noopener">'+u+'</a>'; })
+      .replace(/(^|[\s(])(novaxlogistics\.com(?:\/[^\s<)]*)?)/g, function(m,p,d){ return p+'<a href="https://'+d+'" target="_blank" rel="noopener">'+d+'</a>'; });
+  }
+  function scroll(){ try{ log.scrollTop = log.scrollHeight; }catch(e){} }
+  function bubble(text, who){
+    var d=document.createElement("div");
+    d.className="nvai-m "+(who==="u"?"nvai-u":"nvai-b");
+    d.innerHTML = rich(text);
+    log.appendChild(d); scroll(); return d;
+  }
+  /* Typewriter reveal. setTimeout, not requestAnimationFrame: rAF does not
+     fire in a background tab and the reply would never appear. */
+  function typeOut(el, text){
+    if(RM){ el.innerHTML=rich(text); scroll(); return; }
+    var i=0, step=Math.max(6, Math.min(18, Math.round(900/Math.max(text.length,1))));
+    (function tick(){
+      i += 2;
+      el.innerHTML = rich(text.slice(0,i)) + (i<text.length?'<span style="opacity:.5">&#9613;</span>':"");
+      scroll();
+      if(i<text.length) setTimeout(tick, step);
+      else el.innerHTML = rich(text);
+    })();
+  }
+  function chips(list){
+    sugg.innerHTML="";
+    (list||[]).slice(0,3).forEach(function(q){
+      var b=document.createElement("button");
+      b.type="button"; b.className="nvai-chip"; b.textContent=q;
+      b.addEventListener("click", function(){ ask(q); });
+      sugg.appendChild(b);
+    });
+  }
+  function updateMeta(){
+    var left=Math.max(0, MAX_Q-asked);
+    meta.textContent = left>0 ? (left+" free question"+(left===1?"":"s")+" left · then WhatsApp the team")
+                              : "Question limit reached";
+  }
+  function showWhatsApp(intro){
+    sugg.innerHTML=""; foot.style.display="none";
+    waBox.className="on";
+    waBox.innerHTML = '<p>'+esc(intro||"That is my limit here. The team picks up WhatsApp straight away:")+'</p>' +
+      WA.map(function(n){
+        return '<a class="nvai-wa-n" target="_blank" rel="noopener" href="https://wa.me/92'+n.replace(/\D/g,"").slice(1)+'">'+
+               esc(n)+'<em>WhatsApp &rarr;</em></a>'; }).join("");
+    scroll();
+  }
+  function setBusy(b){
+    busy=b; send.disabled=b; typing.className=b?"on":"";
+    if(b) scroll();
+  }
+
+  async function ask(q){
+    q=String(q||"").trim();
+    if(!q || busy) return;
+    if(asked>=MAX_Q){ showWhatsApp(); return; }
+    input.value=""; input.style.height="";
+    bubble(q,"u");
+    history.push({role:"user",content:q});
+    asked++; updateMeta(); chips([]); setBusy(true);
+    var data=null;
+    try{
+      var res = await fetch(ENDPOINT, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", apikey: CFG.SB_KEY||"", Authorization:"Bearer "+(CFG.SB_KEY||"") },
+        body: JSON.stringify({ messages: history })
+      });
+      data = await res.json();
+    }catch(e){ data = null; }
+    setBusy(false);
+    if(!data || !data.answer){
+      var f=bubble("","b");
+      typeOut(f, "I could not reach the team's system just then. WhatsApp is fastest: "+WA.join(", ")+".");
+      return;
+    }
+    history.push({role:"assistant",content:String(data.answer)});
+    var el=bubble("","b");
+    typeOut(el, String(data.answer));
+    if(data.limitReached || asked>=MAX_Q){
+      setTimeout(function(){ showWhatsApp(data.limitReached?null:undefined); }, 700);
+    } else {
+      chips(Array.isArray(data.suggestions)&&data.suggestions.length ? data.suggestions : []);
+    }
+  }
+
+  function open(){
+    if(opened) return; opened=true;
+    pill.className=""; panel.className="open";
+    setTimeout(function(){ panel.className="open shown"; },10);
+    fab.setAttribute("aria-expanded","true");
+    if(!log.children.length){
+      var el=bubble("","b");
+      typeOut(el, "Hi — I am NovaX AI. I can tell you our rates, how fast your COD reaches you, which cities we cover, and how to open an account. What would you like to know?");
+      chips(STARTERS);
+      updateMeta();
+    }
+    setTimeout(function(){ try{ if(window.innerWidth>560) input.focus(); }catch(e){} }, 340);
+  }
+  function close(){
+    opened=false; panel.className="open";
+    setTimeout(function(){ panel.className=""; },220);
+    fab.setAttribute("aria-expanded","false");
+  }
+
+  fab.addEventListener("click", function(){ opened?close():open(); });
+  closeBtn.addEventListener("click", close);
+  pill.addEventListener("click", function(e){ if(e.target!==pillx) open(); });
+  pill.addEventListener("keydown", function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); open(); } });
+  pillx.addEventListener("click", function(e){ e.stopPropagation(); pill.className=""; try{ sessionStorage.setItem("nvaiPill","0"); }catch(err){} });
+  send.addEventListener("click", function(){ ask(input.value); });
+  input.addEventListener("keydown", function(e){ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); ask(input.value); } });
+  input.addEventListener("input", function(){ input.style.height="auto"; input.style.height=Math.min(96,input.scrollHeight)+"px"; });
+  document.addEventListener("keydown", function(e){ if(e.key==="Escape" && opened) close(); });
+
+  /* The invitation, once, a few seconds in -- not on top of the hero. */
+  var pillSeen=false; try{ pillSeen = sessionStorage.getItem("nvaiPill")==="0"; }catch(e){}
+  if(!pillSeen) setTimeout(function(){ if(!opened) pill.className="on"; }, 5200);
+
+  window.__nvaiOpen = open;   /* so other CTAs can open it */
+})();
+</script>
+
 </body>
 </html>

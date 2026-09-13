@@ -10,7 +10,7 @@
 // never sent to the browser.
 //
 // Deploy:
-//   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+//   supabase secrets set ANTHROPIC_API_KEY=<your Anthropic key>
 //   supabase functions deploy novax-ai
 // =====================================================================
 
