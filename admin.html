@@ -5809,24 +5809,25 @@ html,body{ background:var(--bg); color:var(--ink); }
             </section>
 
             <section class="admin-module" id="admin-expenses">
-              <div class="grid two">
-                <div class="panel">
-                  <div class="section-head">
-                    <div><h3>Expenses</h3><p>Rent, fuel, payroll, supplies, vendor payments, and approvals.</p></div>
-                    <button class="action-btn" id="addExpenseBtn">Add Expense</button>
-                  </div>
-                  <div class="form-grid">
-                    <div class="field"><label>Expense Type</label><select id="expenseType"><option>Fuel</option><option>Branch rent</option><option>Rider payroll</option><option>Labels and sacks</option><option>Vendor payment</option></select></div>
-                    <div class="field"><label>Reason</label><input id="expenseReason" placeholder="Fuel for Lahore riders, branch rent, vendor bill"></div>
-                    <div class="field"><label>Logged By</label><input id="expenseLoggedBy" value="Admin Control"></div>
-                    <div class="field"><label>Owner / Branch</label><select id="expenseOwner"><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option><option>Rawalpindi Hub</option><option>Finance</option><option>Admin Store</option></select></div>
-                    <div class="field"><label>Amount</label><input id="expenseAmount" type="number" value="12500" min="1" required></div>
-                  </div>
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>Record an expense</h3><p>Petrol, rent, payroll, supplies &mdash; logged against a branch.</p></div>
+                  <button class="action-btn" id="addExpenseBtn">Add Expense</button>
                 </div>
-                <div class="panel">
-                  <div class="section-head"><div><h3>Expense Logs</h3><p>Admin expense entries affect profit dashboards immediately.</p></div></div>
-                  <div class="log-feed" id="adminExpenseLogs"></div>
+                <div class="form-grid">
+                  <div class="field"><label>Date</label><input id="expenseDate" type="date"></div>
+                  <div class="field"><label>Branch</label><select id="expenseOwner"><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option><option>Rawalpindi Hub</option><option>Finance</option><option>Admin Store</option></select></div>
+                  <div class="field"><label>Category</label><select id="expenseType"><option>Fuel / Petrol</option><option>Branch rent</option><option>Rider payroll</option><option>Labels and sacks</option><option>Vendor payment</option><option>Utilities</option><option>Maintenance</option><option>Other</option></select></div>
+                  <div class="field"><label>Amount (Rs)</label><input id="expenseAmount" type="number" min="1" step="1" placeholder="0"></div>
+                  <div class="field"><label>Note (optional)</label><input id="expenseReason" placeholder="e.g. petrol for Lahore riders"></div>
                 </div>
+              </div>
+              <div class="panel mt-14">
+                <div class="section-head">
+                  <div><h3>Recorded expenses</h3><p id="expenseScopeNote">Everything logged, by branch and category.</p></div>
+                  <input id="expenseMonth" type="month" style="max-width:180px">
+                </div>
+                <div id="adminExpenseSummary"></div>
               </div>
             </section>
 
@@ -10535,13 +10536,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         </details>
       `).join("") || `<div class="ops-card"><strong>No invoices</strong><p>Create invoices after rider cash is collected for delivered parcels.</p></div>`;
 
-      document.getElementById("adminExpenseLogs").innerHTML = state.expenses.map(expense => `
-        <div class="log-item">
-          <strong>${expense.id || "EXP"}</strong>
-          <div><strong>${escLabelText(expense.name)}</strong><div class="footer-note" style="margin-top:2px">${escLabelText(expense.owner || "Finance")} | ${escLabelText(expense.type || expense.name)} | ${escLabelText(expense.reason || "No reason")} | logged by ${escLabelText(expense.loggedBy || "System")}</div></div>
-          <span class="chip ${expense.status === "Pending" ? "warn" : "good"}">${money(expense.amount)} | ${expense.status || "Approved"}</span>
-        </div>
-      `).join("");
+      renderExpenseTab();
 
       renderFinanceWallets();
 
@@ -10833,6 +10828,90 @@ html,body{ background:var(--bg); color:var(--ink); }
     }
 
 
+
+    /* Pakistan time: an expense typed at 1am must belong to the right day. */
+    function nvKarachiToday(){
+      try{ return new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Karachi"}); }
+      catch(e){ return new Date().toISOString().slice(0,10); }
+    }
+    function nvIsFuel(cat){ return /fuel|petrol/i.test(String(cat||"")); }
+    /* One renderer for the whole tab: the month's total, the split by branch
+       with petrol called out (that split is the reason this tab exists), the
+       split by category, and the entries themselves. */
+    function renderExpenseTab(){
+      var host=document.getElementById("adminExpenseSummary"); if(!host) return;
+      var today=nvKarachiToday();
+      var dateEl=document.getElementById("expenseDate");
+      if(dateEl && !dateEl.value) dateEl.value=today;
+      var monthEl=document.getElementById("expenseMonth");
+      if(monthEl && !monthEl.value) monthEl.value=today.slice(0,7);
+      var month=(monthEl && monthEl.value) || today.slice(0,7);
+
+      var all=(state.expenses||[]).map(function(e){
+        return { uuid:e._uuid||"", date:String(e.date||"").slice(0,10),
+                 branch:e.owner||"Unassigned", category:e.type||"Other",
+                 amount:Number(e.amount||0), note:e.note||"" };
+      });
+      var inMonth=all.filter(function(e){ return e.date.slice(0,7)===month; });
+      var sum=function(a){ return a.reduce(function(t,e){ return t+e.amount; },0); };
+      var monthTotal=sum(inMonth), todayTotal=sum(all.filter(function(e){ return e.date===today; })), allTotal=sum(all);
+
+      var note=document.getElementById("expenseScopeNote");
+      if(note) note.textContent=inMonth.length+" entr"+(inMonth.length===1?"y":"ies")+" in "+month+" \u00b7 "+money(monthTotal);
+
+      var card=function(label,value,sub){
+        return '<div class="ops-card" style="flex:1;min-width:150px"><div class="footer-note" style="letter-spacing:.6px">'+label+
+               '</div><div style="font-size:22px;font-weight:700;margin-top:4px">'+value+
+               '</div><div class="footer-note" style="margin-top:2px">'+sub+'</div></div>';
+      };
+      var group=function(rows,key){
+        var m={}; rows.forEach(function(e){ var k=e[key]||"Other";
+          if(!m[k]) m[k]={ total:0, fuel:0, n:0 };
+          m[k].total+=e.amount; m[k].n++; if(nvIsFuel(e.category)) m[k].fuel+=e.amount; });
+        return Object.keys(m).map(function(k){ return { k:k, total:m[k].total, fuel:m[k].fuel, n:m[k].n }; })
+                     .sort(function(a,b){ return b.total-a.total; });
+      };
+      var byBranch=group(inMonth,"branch"), byCat=group(inMonth,"category");
+
+      var branchRows=byBranch.map(function(r){
+        return '<tr><td><strong>'+escLabelText(r.k)+'</strong></td><td style="text-align:right">'+
+               (r.fuel?money(r.fuel):'<span class="footer-note">&mdash;</span>')+
+               '</td><td style="text-align:right">'+money(r.total-r.fuel)+
+               '</td><td style="text-align:right"><strong>'+money(r.total)+'</strong></td></tr>'; }).join("")
+        || '<tr><td colspan="4" class="footer-note">Nothing recorded for this month yet.</td></tr>';
+
+      var catRows=byCat.map(function(r){
+        return '<tr><td>'+escLabelText(r.k)+'</td><td style="text-align:right" class="footer-note">'+r.n+
+               '</td><td style="text-align:right"><strong>'+money(r.total)+'</strong></td></tr>'; }).join("")
+        || '<tr><td colspan="3" class="footer-note">Nothing recorded for this month yet.</td></tr>';
+
+      var entryRows=inMonth.slice().sort(function(a,b){ return a.date<b.date?1:a.date>b.date?-1:0; })
+        .map(function(e){
+          return '<tr><td>'+escLabelText(e.date||"&mdash;")+'</td><td>'+escLabelText(e.branch)+
+                 '</td><td>'+escLabelText(e.category)+'</td><td class="footer-note">'+escLabelText(e.note||"")+
+                 '</td><td style="text-align:right"><strong>'+money(e.amount)+'</strong></td>'+
+                 '<td style="text-align:right">'+(e.uuid
+                   ? '<button class="ghost-btn" data-exp-del="'+escLabelText(e.uuid)+'" style="color:#b91c1c;border-color:#f0b4ac;min-height:32px;padding:4px 10px">Delete</button>'
+                   : '<span class="footer-note">saving\u2026</span>')+'</td></tr>'; }).join("")
+        || '<tr><td colspan="6" class="footer-note">No expenses recorded for this month.</td></tr>';
+
+      host.innerHTML =
+        '<div style="display:flex;gap:12px;flex-wrap:wrap">'+
+          card("TODAY", money(todayTotal), today)+
+          card("THIS MONTH", money(monthTotal), month)+
+          card("ALL TIME", money(allTotal), all.length+" entries")+
+        '</div>'+
+        '<h4 style="margin:18px 0 6px">By branch</h4>'+
+        '<div class="wide-scroll"><table style="width:100%"><thead><tr><th>Branch</th>'+
+          '<th style="text-align:right">Petrol</th><th style="text-align:right">Other</th>'+
+          '<th style="text-align:right">Total</th></tr></thead><tbody>'+branchRows+'</tbody></table></div>'+
+        '<h4 style="margin:18px 0 6px">By category</h4>'+
+        '<div class="wide-scroll"><table style="width:100%"><thead><tr><th>Category</th>'+
+          '<th style="text-align:right">Entries</th><th style="text-align:right">Total</th></tr></thead><tbody>'+catRows+'</tbody></table></div>'+
+        '<h4 style="margin:18px 0 6px">Entries</h4>'+
+        '<div class="wide-scroll"><table style="width:100%"><thead><tr><th>Date</th><th>Branch</th><th>Category</th>'+
+          '<th>Note</th><th style="text-align:right">Amount</th><th></th></tr></thead><tbody>'+entryRows+'</tbody></table></div>';
+    }
 
     function renderFinanceWallets() {
       // NovaX fix (Medium #8): never default the active wallet client to the
@@ -13158,46 +13237,44 @@ html,body{ background:var(--bg); color:var(--ink); }
        lives in nvSubmitWalletTopup() on the Add to Wallet tab, with its own
        client selector, a balance preview and a confirm step. */
 
+    /* Writes straight to the server and reports what it actually said.
+       amount is NOT NULL DEFAULT 0 in the database, so a blank box would
+       silently record Rs 0 -- it is refused here instead. */
     function addExpense() {
-      const type = document.getElementById("expenseType").value;
+      const dateEl = document.getElementById("expenseDate");
+      const date   = (dateEl && dateEl.value) || nvKarachiToday();
+      const type   = document.getElementById("expenseType").value;
+      const owner  = document.getElementById("expenseOwner").value;
+      const note   = (document.getElementById("expenseReason").value || "").trim();
       const amount = Number(document.getElementById("expenseAmount").value);
-      const reason = document.getElementById("expenseReason").value.trim();
-      const loggedBy = document.getElementById("expenseLoggedBy").value.trim();
-      const owner = document.getElementById("expenseOwner").value;
-      if (!amount || amount < 1) {
-        toast("Expense amount is mandatory.");
-        return;
-      }
-      if (!reason || !loggedBy) {
-        toast("Expense reason and logged by are mandatory.");
-        return;
-      }
-      state.expenses.unshift({
-        id: nextId("EXP", state.expenses),
-        name: `${type} - ${reason}`,
-        type,
-        amount,
-        owner,
-        reason,
-        loggedBy,
-        status: "Pending"
+      if (!(amount > 0)) { toast("Enter the amount before saving.", "error"); return; }
+      if (!date)         { toast("Pick the date of the expense.", "error"); return; }
+      const btn = document.getElementById("addExpenseBtn");
+      const restore = function(){ if (btn) { btn.disabled = false; btn.textContent = "Add Expense"; } };
+      if (btn) { btn.disabled = true; btn.textContent = "Saving\u2026"; }
+      if (!window.nvExpenseAdd) { restore(); toast("Still connecting to the server \u2014 try again in a moment.", "error"); return; }
+      window.nvExpenseAdd({ branch: owner, category: type, amount: amount, note: note, expense_date: date })
+        .then(function(r){
+          restore();
+          if (r && r.error) { toast("Not saved: " + r.error.message, "error"); return; }
+          document.getElementById("expenseAmount").value = "";
+          document.getElementById("expenseReason").value = "";
+          saveState(); render();
+          toast(money(amount) + " " + type + " recorded for " + owner + ".", "success");
+        });
+    }
+
+    function deleteExpense(uuid) {
+      if (!uuid) { toast("This entry has not reached the server yet.", "error"); return; }
+      const row = (state.expenses || []).filter(function(x){ return x._uuid === uuid; })[0];
+      const label = row ? (money(row.amount) + " " + (row.type || "expense")) : "this expense";
+      if (!confirm("Delete " + label + "?\n\nThis cannot be undone.")) return;
+      if (!window.nvExpenseDelete) { toast("Still connecting \u2014 try again in a moment.", "error"); return; }
+      window.nvExpenseDelete(uuid).then(function(r){
+        if (r && r.error) { toast("Could not delete: " + r.error.message, "error"); return; }
+        saveState(); render();
+        toast("Expense deleted.", "success");
       });
-      // NovaX fix (Medium #8): operating expenses are branch/company-level,
-      // not client-level, so they must never be tagged with a guessed client
-      // id. Only attach a clientId when a client is genuinely active;
-      // otherwise leave it unset rather than defaulting to a placeholder client id.
-      state.paymentLogs.unshift({
-        id: nextId("PAY", state.paymentLogs),
-        clientId: (state.client && state.client.id) || null,
-        type: "Operating expense logged",
-        amount,
-        status: "Pending approval",
-        ref: `${type} | ${owner}`
-      });
-      saveState();
-      render();
-      showAdminTab("finance-expense");
-      toast(`${money(amount)} expense added for approval.`);
     }
 
     function createUser() {
@@ -14213,6 +14290,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         amount,
         owner: rider.manager || rider.name,
         status: "Pending cash deduction",
+        date: nvKarachiToday(),
         riderId: rider.id
       });
       saveState();
@@ -16504,6 +16582,13 @@ html,body{ background:var(--bg); color:var(--ink); }
     document.getElementById("invoiceSelectAllBtn").addEventListener("click", selectAllInvoiceParcels);
     document.getElementById("invoiceClearBtn").addEventListener("click", clearInvoiceSelection);
     document.getElementById("addExpenseBtn").addEventListener("click", addExpense);
+    document.addEventListener("change", function(e){
+      if(e.target && e.target.id==="expenseMonth"){ try{ renderExpenseTab(); }catch(err){} }
+    });
+    document.addEventListener("click", function(e){
+      var b=e.target && e.target.closest ? e.target.closest("[data-exp-del]") : null;
+      if(b) deleteExpense(b.getAttribute("data-exp-del"));
+    });
     document.getElementById("invoiceClientSelect").addEventListener("change", event => {
       state.activeInvoiceClient = event.target.value;
       state.invoiceDraftRefs = clientInvoiceParcels(state.activeInvoiceClient).map(parcel => parcel.awb);
@@ -16756,7 +16841,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         var summary=m.summary||invoiceSummaryFallback(invoiceType,cod,charges,payable,dueToNovax);
         return { _uuid:r.id, id:r.code||r.id, clientId:r.client_id, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:cod, charges:charges, payable:payable, status:r.status||"Pending", createdAt:dtpart(r.created_at), paidAt:paidAt, walletPushedAt:walletPushedAt, summary:summary, invoiceType:invoiceType, dueToNovax:dueToNovax, finalBalance:Number(m.finalBalance!=null?m.finalBalance:payable) };
       }
-      function rExpense(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:m.name||r.note||r.category||"Expense", amount:Number(r.amount||0), type:r.category||"", owner:r.branch||"", status:m.status||"Pending", note:r.note||"" }; }
+      function rExpense(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:m.name||r.note||r.category||"Expense", amount:Number(r.amount||0), type:r.category||"", owner:r.branch||"", status:m.status||"", note:r.note||"", date:r.expense_date||String(r.created_at||"").slice(0,10), riderId:m.riderId||"" }; }
       // NovaX fix (withdrawal UX v2): surface the holder_name/bank_name
       // snapshot columns (added alongside save_client_bank_details) so the
       // admin payout queue can show account holder + bank name per request.
@@ -16832,7 +16917,18 @@ html,body{ background:var(--bg); color:var(--ink); }
       // invoice object can never overwrite real columns (due_to_novax,
       // invoice_type, wallet_pushed_at, settled_at, status) with old/blank
       // data through the generic saveState -> syncAll() loop.
-      function fExpense(e){ return { branch:e.owner||"", category:e.type||"", amount:Number(e.amount||0), note:e.note||e.name||"", created_by:ADMIN_UID, meta:{ name:e.name, status:e.status } }; }
+      /* expense_date is NOT NULL in the database: send it only when we have
+         one, so the column default fills in for rows created without a date
+         (rider expenses) instead of failing on an explicit null.
+         riderId is carried in meta -- it used to be dropped here, which is why
+         the rider fuel-cost card always read zero once data round-tripped. */
+      function fExpense(e){
+        var row={ branch:e.owner||"", category:e.type||"", amount:Number(e.amount||0),
+                  note:e.note||e.name||"", created_by:ADMIN_UID,
+                  meta:{ name:e.name, status:e.status, riderId:e.riderId||"" } };
+        if(e.date) row.expense_date=e.date;
+        return row;
+      }
       function fWd(w){
         var cid=cuid(w.clientId); if(!cid) return null;
         // NovaX fix (item 4): paidAt was read back from paid_at via rWd()
@@ -17186,6 +17282,41 @@ html,body{ background:var(--bg); color:var(--ink); }
          that must not say "saved" before the server agrees. The row is marked
          synced first so the background loop does not send it again; if the
          write fails the marks are rolled back and the caller is told why. */
+      /* Expenses are typed by a human who needs to know it landed, so they
+         are written here and the caller is told the server's real answer --
+         never the background sync's silent console.warn. */
+      window.nvExpenseAdd=function(row){
+        return new Promise(function(resolve){
+          if(!loaded) return resolve({ error:{ message:"Still loading from the server. Try again in a moment." } });
+          if(missingTables["expenses"]) return resolve({ error:{ message:"The expenses table is not available." } });
+          var payload={ branch:row.branch||"", category:row.category||"", amount:Number(row.amount||0),
+                        note:row.note||"", expense_date:row.expense_date, created_by:ADMIN_UID, meta:{} };
+          Promise.resolve(sb.from("expenses").insert(payload).select("*").maybeSingle())
+            .catch(function(e){ return { error:{ message:String((e&&e.message)||e) } }; })
+            .then(function(r){
+              if(r&&r.error) return resolve({ error:r.error });
+              if(!r||!r.data) return resolve({ error:{ message:"the server did not return the saved row" } });
+              var o=rExpense(r.data);
+              state.expenses.unshift(o);
+              try{ var built=fExpense(o); shadow[o._uuid]=sigOf(built); shadowRow[o._uuid]=built; }catch(e){}
+              resolve({ ok:true, row:o });
+            });
+        });
+      };
+      window.nvExpenseDelete=function(uuid){
+        return new Promise(function(resolve){
+          if(!uuid) return resolve({ error:{ message:"This entry is not linked to the server yet." } });
+          Promise.resolve(sb.from("expenses").delete().eq("id",uuid).select("id"))
+            .catch(function(e){ return { error:{ message:String((e&&e.message)||e) } }; })
+            .then(function(r){
+              if(r&&r.error) return resolve({ error:r.error });
+              if(r && Array.isArray(r.data) && r.data.length===0) return resolve({ error:{ message:"the server did not delete the entry" } });
+              state.expenses=(state.expenses||[]).filter(function(x){ return x._uuid!==uuid; });
+              delete shadow[uuid]; delete shadowRow[uuid];
+              resolve({ ok:true });
+            });
+        });
+      };
       window.nvAdminSaveNow=function(setKey, o){
         return new Promise(function(resolve){
           var set=SETS.filter(function(x){ return x[0]===setKey; })[0];
