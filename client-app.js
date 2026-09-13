@@ -1002,8 +1002,8 @@
        first load with no cached state. Declared further down the file it was
        still undefined at that point and the blank workspace seeded an
        undefined rate -- the same trap already fixed in admin.html. */
-    var NV_ZONE_A_BASE=220;
-    var NV_ZONE_B_BASE=225;
+    var NV_ZONE_A_BASE=225;
+    var NV_ZONE_B_BASE=250;
     function cleanStartState(){
       const blankClient={ id:"CL-0000", name:"New Merchant Workspace", owner:"", city:"", walletTopup:0, shippingDue:0, risk:0, status:"Draft", rate:NV_ZONE_A_BASE, rateCard:defaultRateCard(NV_ZONE_A_BASE), problemsResolved:0, health:0, walletBalance:0 };
       return {
