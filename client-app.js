@@ -5720,6 +5720,67 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return `<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(w.id)}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${escLabelText(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${paidRef}</div><div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" style="padding:5px 11px;font-size:12px" onclick="nvWithdrawalReceipt('${escLabelText(w.id)}')">Receipt</button></div></div>`;
       }).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Pick a payout speed above to withdraw.</p></div>`;
     }
+    /* Durable, privacy-safe request identities shared by booking and payout.
+       The browser stores only a SHA-256 signature plus an opaque random key;
+       consignee details and IBANs never enter this idempotency store. Pending
+       keys survive reloads for lost-reply recovery and are cleared only after
+       the server gives a definite answer. */
+    window.__novaxIdemKeys = window.__novaxIdemKeys || (function(){
+      var memory={};
+      var maxAge=30*24*60*60*1000;
+      function storageName(clientId){ return "novax:pending-idem:v2:"+String(clientId||"unknown"); }
+      function fallbackDigest(text){
+        var h1=2166136261, h2=5381;
+        for(var i=0;i<text.length;i++){
+          h1=Math.imul(h1^text.charCodeAt(i),16777619);
+          h2=((h2<<5)+h2)^text.charCodeAt(i);
+        }
+        return "fallback-"+(h1>>>0).toString(16)+(h2>>>0).toString(16)+"-"+text.length;
+      }
+      function digest(text){
+        if(window.crypto&&window.crypto.subtle&&window.TextEncoder){
+          return window.crypto.subtle.digest("SHA-256",new TextEncoder().encode(text)).then(function(buf){
+            return Array.prototype.map.call(new Uint8Array(buf),function(b){ return b.toString(16).padStart(2,"0"); }).join("");
+          }).catch(function(){ return fallbackDigest(text); });
+        }
+        return Promise.resolve(fallbackDigest(text));
+      }
+      function randomKey(kind){
+        var id="";
+        if(window.crypto&&typeof window.crypto.randomUUID==="function") id=window.crypto.randomUUID();
+        else if(window.crypto&&typeof window.crypto.getRandomValues==="function"){
+          var bytes=new Uint8Array(16); window.crypto.getRandomValues(bytes);
+          id=Array.prototype.map.call(bytes,function(b){ return b.toString(16).padStart(2,"0"); }).join("");
+        } else id=Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);
+        return kind+":"+id;
+      }
+      function read(clientId){
+        var name=storageName(clientId), data={};
+        try{ data=JSON.parse(localStorage.getItem(name)||"{}"); }catch(e){ data=memory[name]||{}; }
+        if(!data||typeof data!=="object") data={};
+        var now=Date.now();
+        Object.keys(data).forEach(function(k){ if(!data[k]||now-Number(data[k].at||0)>maxAge) delete data[k]; });
+        return data;
+      }
+      function write(clientId,data){
+        var name=storageName(clientId); memory[name]=data;
+        try{ localStorage.setItem(name,JSON.stringify(data)); }catch(e){}
+      }
+      function acquire(kind,clientId,payload){
+        return digest(String(payload||"")).then(function(signature){
+          var data=read(clientId), slot=kind+":"+signature, entry=data[slot];
+          if(!entry||!entry.key){ entry={key:randomKey(kind),at:Date.now()}; data[slot]=entry; write(clientId,data); }
+          return {key:entry.key,slot:slot};
+        });
+      }
+      function release(clientId,slot,key){
+        if(!slot) return;
+        var data=read(clientId);
+        if(data[slot]&&data[slot].key===key){ delete data[slot]; write(clientId,data); }
+      }
+      return {acquire:acquire,release:release};
+    })();
+
     let __withdrawInFlight=false;
     // NovaX fix (withdrawal UX v2): renamed from confirmWalletWithdraw to
     // requestWalletWithdrawal to match the button label and the required
@@ -5763,17 +5824,33 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!sbClient){ toast("Cloud connection not ready yet, please try again in a moment.","error"); return; }
       __withdrawInFlight=true; state.__withdrawInFlight=true;
       if(btn){ btn.disabled=true; btn.textContent="Submitting..."; }
-      // Calls the server first and only shows success (and only
-      // records/refreshes locally) once the server has actually accepted and
-      // created the withdrawal row -- never a false local-only "success".
-      sbClient.rpc("request_wallet_withdrawal",{ p_amount:amt, p_iban:iban, p_speed:speed }).then(function(r){
+      // A refresh, timeout or lost reply reuses this request key. The server
+      // returns the original withdrawal and never reserves the balance twice.
+      let payoutPendingKey=null;
+      const payoutFingerprint=JSON.stringify([amt,iban,speed]);
+      window.__novaxIdemKeys.acquire("payout",String(c.id),payoutFingerprint).then(function(pending){
+        payoutPendingKey=pending;
+        return sbClient.rpc("request_wallet_withdrawal_idem",{
+          p_amount:amt, p_iban:iban, p_speed:speed, p_request_key:pending.key
+        });
+      }).then(function(r){
         __withdrawInFlight=false; state.__withdrawInFlight=false;
         if(btn){ btn.disabled=false; btn.textContent="Request Withdrawal"; }
         if(r&&r.error){
-          toast("Withdrawal request rejected: "+(r.error.message||"Server declined the request."),"error");
+          const serverMessage=String(r.error.message||"Server declined the request.");
+          // A definite RPC rejection means no transaction committed. Network
+          // uncertainty keeps the key so the next attempt remains a replay.
+          if(!/timeout|fetch|network|Failed to fetch/i.test(serverMessage) && payoutPendingKey){
+            window.__novaxIdemKeys.release(String(c.id),payoutPendingKey.slot,payoutPendingKey.key);
+          }
+          const unavailable=/request_wallet_withdrawal_idem|does not exist|not find|schema cache|no function matches/i.test(serverMessage);
+          toast(unavailable
+            ? "Protected payout submission is temporarily unavailable. No withdrawal was created. Please try again shortly."
+            : "Withdrawal request rejected: "+serverMessage,"error");
           renderClientWallet();
           return;
         }
+        if(payoutPendingKey) window.__novaxIdemKeys.release(String(c.id),payoutPendingKey.slot,payoutPendingKey.key);
         // Animations 5 + 6: the hand-off plays only here, after the server
         // has actually created the withdrawal row. It is a receipt for money
         // that has moved, never an optimistic flourish.
@@ -5802,8 +5879,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // re-read from the server truth immediately below (and again via
         // client_wallet_summary on next render), so a stale/duplicate local
         // subtraction can never happen.
-        state.walletWithdrawals.unshift({ id:nextId("WDR",state.walletWithdrawals), _uuid:d&&d.id, clientId:c.id, amount:amt, fee, net, iban, speed, status:(d&&d.status)||"Pending admin payout", createdAt:`${new Date().toISOString().slice(0,10)} ${time()}` });
-        state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:c.id, type:"Wallet withdrawal requested", amount:amt, status:`${money(net)} net after ${money(fee)} fee`, ref:walletSpeedLabel(speed) });
+        const alreadyKnown=!!(d&&d.id&&(state.walletWithdrawals||[]).some(function(w){ return w&&w._uuid===d.id; }));
+        if(!alreadyKnown){
+          state.walletWithdrawals.unshift({ id:nextId("WDR",state.walletWithdrawals), _uuid:d&&d.id, clientId:c.id, amount:amt, fee, net, iban, speed, status:(d&&d.status)||"Pending admin payout", createdAt:`${new Date().toISOString().slice(0,10)} ${time()}` });
+          state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:c.id, type:"Wallet withdrawal requested", amount:amt, status:`${money(net)} net after ${money(fee)} fee`, ref:walletSpeedLabel(speed) });
+        }
         // NovaX fix (withdrawal UX v2): clear the amount instead of leaving the
         // old (now stale) value in the box -- the next render refills it from
         // the fresh, reduced server balance once that arrives.
@@ -10009,8 +10089,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                  "or the weight. Please check those two fields and try again.";
         }
         if (/timeout|fetch|network|Failed to fetch/i.test(msg)) {
-          return "We could not reach the server. Your parcel has NOT been booked — " +
-                 "check your connection and try again.";
+          return "We could not confirm the server reply. Keep these parcel details unchanged, " +
+                 "reconnect, and press Book again — the protected retry will recover the same AWB " +
+                 "if the first request reached us.";
         }
         return msg || "Server rejected this booking.";
       }
@@ -10063,63 +10144,40 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           ));
         }
 
-        function nvLegacyBookCall(){
-        if (o.destAreaId) {
-          var geoArgs = Object.assign({}, argsWithOpen, {
-            p_origin_area_id: null,            // server resolves the default pickup
-            p_dest_area_id:  o.destAreaId
-          });
-          return Promise.resolve(sb.rpc("client_book_parcel_geo", geoArgs)).then(function(rg){
-            var mg = (rg && rg.error && rg.error.message) || "";
-            if (mg && /client_book_parcel_geo|does not exist|not find|schema cache|no function matches/i.test(mg)) {
-              if (wantsDistance) {
-                // Flat-pricing them here would be the silent substitution again.
-                throw new Error("Per-kilometre pricing is not available on the server right now. Your parcel has not been booked, because we will not charge you the flat rate instead without asking. Please try again shortly or contact support.");
-              }
-              console.warn("NovaX: client_book_parcel_geo not deployed - booking on flat pricing.");
-              return sb.rpc("client_book_parcel", argsWithOpen);
-            }
-            return rg;
-          }).then(function(r){ return r; });
-        }
-
-        return Promise.resolve(sb.rpc("client_book_parcel", argsWithOpen)).then(function(r0){
-          var m0 = (r0 && r0.error && r0.error.message) || "";
-          /* Retrying without p_allow_open only helps when the 14-argument
-             function is MISSING. If the database holds both overloads the
-             13-argument call is ambiguous too, so retrying would just produce
-             the same failure twice -- check for that first. */
-          if (m0 && /could not choose the best candidate|is not unique/i.test(m0)) {
-            return r0;
-          }
-          if (m0 && /p_allow_open|does not exist|not find|schema cache|without function|no function matches/i.test(m0)) {
-            console.warn("NovaX: p_allow_open not deployed yet — booking without it. Run sql/novax_allow_open_v1.sql to enable the toggle.");
-            return sb.rpc("client_book_parcel", args);
-          }
-          return r0;
-        });
-        }
         /* Lost-reply retries. When a booking reached the server but its reply
            never reached this browser, pressing Book again made a second parcel.
-           Every attempt now carries a key -- the order ID when there is one,
-           otherwise these exact details plus a nonce that only moves on after a
-           confirmed booking -- and the server hands back the parcel it already
-           made for a key it has seen. If that function is not deployed the
-           booking goes through exactly as before. */
-        var NVI = window.__nvIdem || (window.__nvIdem = { nonce: Date.now().toString(36) + Math.random().toString(36).slice(2, 10) });
+           Every attempt carries a durable key. For forms without an order ID,
+           only a SHA-256 signature and an opaque request UUID are kept in local
+           storage, so a refresh or browser restart reuses the key without
+           storing customer details. The key is removed only after a confirmed
+           response. If the protected RPC is unavailable, booking stops safely. */
         var nvOrderKey = String(o.orderId || "").trim();
         var nvFp = JSON.stringify([args.p_consignee, args.p_phone, args.p_city, args.p_address, args.p_cod, args.p_weight, args.p_payment_mode, args.p_reference_no, argsWithOpen.p_allow_open, o.destAreaId || ""]);
-        var nvH = 0; for (var nvI = 0; nvI < nvFp.length; nvI++) { nvH = ((nvH << 5) - nvH + nvFp.charCodeAt(nvI)) | 0; }
-        var idemKey = nvOrderKey ? ("order:" + nvOrderKey) : ("form:" + NVI.nonce + ":" + (nvH >>> 0).toString(36) + ":" + nvFp.length);
-        return Promise.resolve(sb.rpc("client_book_parcel_idem", Object.assign({}, argsWithOpen, {
-          p_idem_key: idemKey, p_origin_area_id: null, p_dest_area_id: o.destAreaId || null
-        }))).then(function(ri){
+        var nvPendingKey = null;
+        var nvKeyReady = nvOrderKey
+          ? Promise.resolve({ key: "order:" + nvOrderKey, slot: null })
+          : window.__novaxIdemKeys.acquire("form", String(MY), nvFp);
+        return nvKeyReady.then(function(pending){
+          nvPendingKey = pending;
+          return sb.rpc("client_book_parcel_idem", Object.assign({}, argsWithOpen, {
+            p_idem_key: pending.key,
+            p_origin_area_id: null,
+            p_dest_area_id: o.destAreaId || null
+          }));
+        }).then(function(ri){
           var mi = (ri && ri.error && ri.error.message) || "";
-          if (mi && /client_book_parcel_idem|does not exist|not find|schema cache|no function matches/i.test(mi)) return nvLegacyBookCall();
+          if (mi && /client_book_parcel_idem|does not exist|not find|schema cache|no function matches/i.test(mi)) {
+            if (nvPendingKey && nvPendingKey.slot) window.__novaxIdemKeys.release(String(MY), nvPendingKey.slot, nvPendingKey.key);
+            console.error("NovaX protected booking RPC unavailable:", mi);
+            throw new Error("Protected booking is temporarily unavailable. No parcel was created and nothing was charged. Please try again shortly.");
+          }
           return ri;
         }).then(function(r){
-          if(r && !r.error && r.data && r.data.id){ NVI.nonce = Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
           if(r&&r.error){
+            var nvServerMessage = String(r.error.message || "");
+            if (!/timeout|fetch|network|Failed to fetch/i.test(nvServerMessage) && nvPendingKey && nvPendingKey.slot) {
+              window.__novaxIdemKeys.release(String(MY), nvPendingKey.slot, nvPendingKey.key);
+            }
             console.error("NovaX client_book_parcel RPC failed:", r.error.message||r.error, r.error);
             throw new Error(nvBookingError(r.error));
           }
@@ -10128,6 +10186,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             console.error("NovaX client_book_parcel returned no row", r);
             throw new Error("Server did not confirm this booking. Please try again.");
           }
+          if (nvPendingKey && nvPendingKey.slot) window.__novaxIdemKeys.release(String(MY), nvPendingKey.slot, nvPendingKey.key);
           var mapped=mapParcel(row);
           /* Packing note. client_book_parcel has no parameter for it and adding
              one would mean a migration on a live booking path, so it is written
@@ -16196,4 +16255,3 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
   window.novaxPricingChooser = function(){ CHOSEN = null; boot(true); };
 })();
-
