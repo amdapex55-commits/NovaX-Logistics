@@ -1274,6 +1274,36 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       if(st==="Cancelled by client") return false;
       return true;
     }
+    /* A CONCLUDED parcel is one whose journey has finished, either way. This is
+       the honest denominator for a delivery rate: a parcel still in transit has
+       not succeeded or failed yet, and counting it as a non-delivery pinned the
+       reported rate near 50% for any merchant shipping continuously. */
+    var NV_CONCLUDED_STATUSES=["Delivered","Refused","Consignee not available",
+      "Out of service area","Ready for return","Return in transit",
+      "Return received at origin","Return out for delivery","Return to shipper"];
+    function nvIsConcludedParcel(p){
+      if(!p) return false;
+      var st=String(p.status||"").trim();
+      if(!st) return false;
+      if(st.indexOf("Delivered")>-1) return true;
+      return NV_CONCLUDED_STATUSES.indexOf(st)>-1;
+    }
+    /* Money actually received, and money actually sitting there. Kept next to
+       each other so the report cannot show one without the other. */
+    function nvPaidOutTotal(){
+      try{
+        var id=state.client&&state.client.id; if(!id) return 0;
+        return (state.walletWithdrawals||[])
+          .filter(function(w){ return w && w.clientId===id && String(w.status||"")==="Paid"; })
+          .reduce(function(s,w){ return s+Number(w.net||0); },0);
+      }catch(e){ return 0; }
+    }
+    function nvLiveWalletBalance(){
+      try{
+        var id=state.client&&state.client.id; if(!id) return 0;
+        return Number((typeof walletBalance==="function") ? walletBalance(id) : (state.client.walletBalance||0));
+      }catch(e){ return 0; }
+    }
     function clientMetrics(){
       const parcels=clientScopedParcels();
       const delivered=parcels.filter(p=>p.status.includes("Delivered")).length;
@@ -3166,7 +3196,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // figures are now rendered by walletSummaryCards (Wallet tab) and
     // paymentSummary (Payments tab), so this dead duplicate was removed
     // rather than left as a silent no-op DOM lookup.
-    function renderAwbLabel(){ const p=state.parcels.find(x=>x.awb===(state.lastGeneratedAwb||state.selectedAwb))||selectedParcel(); document.getElementById("awbLabelPreview").innerHTML=awbCompleteBadge(p)+awbLabelHtml(p); }
+    /* With no parcel selected this rendered emptyParcel() through the real label
+       template, so the screen showed a finished-looking air waybill addressed to
+       "No parcel selected" with "phone pending" on it, and Print / Save as PDF /
+       Send on WhatsApp all live beside it. A merchant could print that. An empty
+       state says so instead, and the three controls are disabled with it. */
+    function renderAwbLabel(){
+      const p=state.parcels.find(x=>x.awb===(state.lastGeneratedAwb||state.selectedAwb))||selectedParcel();
+      const host=document.getElementById("awbLabelPreview");
+      if(!host) return;
+      const real=!!(p && p.awb);
+      if(real){ host.innerHTML=awbCompleteBadge(p)+awbLabelHtml(p); }
+      else{
+        host.innerHTML='<div class="nv-c-empty" style="padding:22px 16px;text-align:center">'
+          +'<div style="font-weight:800;margin-bottom:4px">No air waybill to show yet</div>'
+          +'<div class="footer-note">Book a parcel, or open one from your parcel list, and its label appears here ready to print.</div>'
+          +'</div>';
+      }
+      ["printAwbBtn","savePdfAwbBtn","waAwbBtn"].forEach(function(id){
+        const b=document.getElementById(id);
+        if(!b) return;
+        b.disabled=!real;
+        b.setAttribute("aria-disabled", real?"false":"true");
+      });
+    }
     function renderClientTabs(){
       document.querySelectorAll(".client-tab").forEach(b=>b.classList.toggle("active",b.dataset.clientTab===state.activeClientTab));
       document.querySelectorAll(".client-module").forEach(m=>m.classList.toggle("active",m.id===`client-${state.activeClientTab}`));
@@ -3210,6 +3263,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const rated=cm.ratedTotal;
       const rateKnown=rated>0;
       const rate=rateKnown?percent(cm.delivered,rated):0;
+      /* A parcel counts toward the delivery rate only once its journey has
+         ENDED -- delivered, or back with the shipper for a stated reason.
+         Anything still in transit is not an outcome yet. */
+      const concluded=cm.parcels.filter(nvIsConcludedParcel).length;
+      const concludedKnown=concluded>0;
+      const concludedRate=concludedKnown?percent(cm.delivered,concluded):0;
       const open=Math.max(0,cm.total-cm.delivered);
       const fromI=document.getElementById("clientDateFrom"), toI=document.getElementById("clientDateTo");
       if(fromI && fromI.value!==state.clientDateFrom) fromI.value=state.clientDateFrom||"";
@@ -3233,13 +3292,46 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           : `<div class="ops-card"><strong>No file checked yet</strong><p>Upload a CSV to see per-row validation.</p></div>`;
       }
       document.getElementById("clientReportMetrics").innerHTML=[
+        /* Delivery rate now divides by CONCLUDED parcels only.
+           It used to divide by ratedTotal, which keeps everything in transit in
+           the denominator -- so a merchant shipping steadily always sat near
+           50%, not because deliveries were failing but because half the book
+           was still moving. A parcel that has not been attempted yet is not
+           evidence either way; only a finished outcome is. Denominator is
+           therefore delivered + refused + consignee not available + the return
+           statuses, and the caption states the rule so the number cannot be
+           read as something else. */
         metricCard("Delivery Rate",
-          rateKnown?`${rate}%`:"\u2014",
-          rate,
-          rateKnown?`${cm.delivered} of ${rated} picked up`:"nothing picked up yet",
-          (rateKnown&&rate<45)?"amber":"","","",!rateKnown),
+          concludedKnown?`${concludedRate}%`:"\u2014",
+          concludedRate,
+          concludedKnown
+            ? `${cm.delivered} delivered of ${concluded} completed &middot; ${Math.max(0,cm.total-concluded)} still moving, not counted`
+            : "no parcel has finished its journey yet",
+          (concludedKnown&&concludedRate<45)?"amber":"","","",true),
         metricCard("Delivered COD",money(deliveredCod),percent(deliveredCod,deliveredCod+pendingCod),"cash collected","good"),
         metricCard("Pending COD",money(pendingCod),percent(pendingCod,deliveredCod+pendingCod),"picked up, not delivered yet","amber"),
+        /* The three figures a merchant actually reconciles against their bank.
+           paidOut sums NET, not amount: net is what left NovaX after the payout
+           fee, i.e. what reached their account. Summing amount would overstate
+           every payout by its fee. */
+        /* hidePct on all three: metricCard puts the fill value in the caption
+           row as a percentage, and a percentage beside a rupee total is
+           meaningless -- "Rs 109,480 ... 100%" reads as a broken figure. */
+        /* The meter bar is drawn from `fill` whether or not the percentage is
+           shown, so passing 100 painted a completely full bar beside "Rs 0" --
+           it read as "all paid out" on an account that had never been paid.
+           Each bar now carries a real proportion: how the money splits between
+           taken out and still sitting there, and charges as a share of the COD
+           actually collected. */
+        metricCard("Paid Out To You",money(nvPaidOutTotal()),
+          percent(nvPaidOutTotal(),Math.max(1,nvPaidOutTotal()+nvLiveWalletBalance())),
+          "withdrawals marked paid","good","","",true),
+        metricCard("Wallet Balance",money(nvLiveWalletBalance()),
+          percent(nvLiveWalletBalance(),Math.max(1,nvPaidOutTotal()+nvLiveWalletBalance())),
+          "available to withdraw right now",nvLiveWalletBalance()>0?"good":"","","",true),
+        metricCard("Delivery Charges",money(cm.deliveryCharges),
+          percent(cm.deliveryCharges,Math.max(1,deliveredCod)),
+          "deducted by NovaX on delivered parcels","amber","","",true),
         metricCard("Awaiting Pickup",awaitingPickup,percent(awaitingPickup,Math.max(1,cm.total)),"no COD due until collected",awaitingPickup?"blue":"good"),
         metricCard("Open Parcels",open,percent(open,Math.max(1,cm.total)),"not delivered yet",open?"blue":"good")
       ].join("");
@@ -3276,8 +3368,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // charged, what is left for the merchant. The subtraction is shown
         // rather than left for them to do across separate tiles.
         const sum = owed>0
-          ? `${n} prepaid parcel(s) &middot; <strong>${money(inv.charges)}</strong> delivery charges &rarr; <strong>${money(owed)}</strong> to pay NovaX`
-          : `${n} parcel(s) &middot; ${money(inv.cod)} collected &minus; ${money(inv.charges)} charges = <strong>${money(inv.payable)}</strong> to you`;
+          ? `${n} prepaid parcel${n===1?"":"s"} &middot; <strong>${money(inv.charges)}</strong> delivery charges &rarr; <strong>${money(owed)}</strong> to pay NovaX`
+          : `${n} parcel${n===1?"":"s"} &middot; ${money(inv.cod)} collected &minus; ${money(inv.charges)} charges = <strong>${money(inv.payable)}</strong> to you`;
         // Only on an invoice that has not reached the wallet yet, and only
         // while a shortfall actually exists.
         const notYetInWallet = !isInvoiceClosed(inv.status) && inv.status!=="Cancelled" && inv.status!=="Pushed to wallet";
@@ -3559,6 +3651,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return (typeof nvCanUseTab !== "function") || nvCanUseTab(t.id);
       });
       var active = state.activeClientTab || "dashboard";
+      /* AWB Label, Bulk Booking, Full Report, API and Sub Accounts all live
+         behind More, so none of the four slots matched and nothing in the bar
+         was marked -- the merchant had no indication of where they were. More
+         carries the state for every tab it hides. */
+      var inBar = allowed.some(function(t){ return t.id === active; });
       /* boot() re-runs on a 700ms interval seven times while the role loads, so
          this rebuilt the whole nav seven times even when nothing changed. */
       nvSetHtml(host, allowed.map(function(t){
@@ -3567,7 +3664,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                '<span class="nvbn-ico" aria-hidden="true">' + t.ico + '</span>' +
                '<span>' + t.label + '</span></button>';
       }).join("") +
-      '<button type="button" data-nvbn="__more"><span class="nvbn-ico" aria-hidden="true">\u2261</span><span>More</span></button>');
+      '<button type="button" data-nvbn="__more"' + (inBar ? '' : ' class="is-active" aria-current="page"') +
+      '><span class="nvbn-ico" aria-hidden="true">\u2261</span><span>More</span></button>');
     }
 
     /* ── Issue 3: keyboard-aware bottom nav ──────────────────────────────
@@ -3873,6 +3971,96 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(e.key !== "Escape" || !NV_OVERLAY_STACK.length) return;
         nvCloseTopOverlay();
       });
+    })();
+
+    /* ═══ The modal dialogs announce themselves and keep the keyboard ═════
+       Six .modal-overlay dialogs -- Receipt, Edit booking, AWB Created,
+       Invoice, Your pickup point and Withdrawal Requested -- were plain
+       divs. Three hand-built overlays (#nvrvOverlay, #nvWdOverlay,
+       #nvpmOverlay) already carry role/aria-modal; these six were left
+       behind. A screen reader read them as ordinary page content with the
+       page still "behind" them, and Tab walked straight out of the dialog
+       into the page underneath while the overlay was still up.
+
+       Escape is deliberately NOT handled here. nvCloseTopOverlay() above
+       already closes the top overlay on Escape for every one of them; a
+       second handler would close two dialogs on one keypress. And because
+       that function only strips classes and unwinds history -- it never
+       touches focus -- restoring focus here cannot fight it. */
+    (function nvDialogA11y(){
+      var OPENER = new WeakMap();
+      function focusables(el){
+        return [].slice.call(el.querySelectorAll(
+          'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),' +
+          'textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+        )).filter(function(n){ return n.offsetParent !== null; });
+      }
+      function prepare(el){
+        if(!el || el.__nvDlg) return;
+        el.__nvDlg = true;
+        el.setAttribute("role", "dialog");
+        el.setAttribute("aria-modal", "true");
+        /* Name it from its own heading rather than a hardcoded string, so a
+           renamed dialog cannot end up announced under its old name. */
+        var h = el.querySelector("h3,h2,h4");
+        if(h){
+          if(!h.id) h.id = "nvdlg-" + Math.random().toString(36).slice(2, 9);
+          el.setAttribute("aria-labelledby", h.id);
+        }
+        el.addEventListener("keydown", function(e){
+          if(e.key !== "Tab") return;
+          var items = focusables(el);
+          if(!items.length){ e.preventDefault(); return; }
+          var first = items[0], last = items[items.length - 1], a = document.activeElement;
+          if(!el.contains(a)){ e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }
+          if(e.shiftKey && a === first){ e.preventDefault(); last.focus(); }
+          else if(!e.shiftKey && a === last){ e.preventDefault(); first.focus(); }
+        });
+        var wasOpen = el.classList.contains("show");
+        new MutationObserver(function(){
+          var isOpen = el.classList.contains("show");
+          if(isOpen === wasOpen) return;
+          wasOpen = isOpen;
+          if(isOpen){
+            try{ OPENER.set(el, document.activeElement); }catch(e){}
+            /* The body is filled in the same tick the class is added, so the
+               first focusable does not exist yet when this observer runs. */
+            setTimeout(function(){
+              var items = focusables(el);
+              if(items.length){ try{ items[0].focus(); }catch(e){} }
+            }, 30);
+          } else {
+            var back = null;
+            try{ back = OPENER.get(el); OPENER["delete"](el); }catch(e){}
+            try{ if(back && back.focus && document.contains(back)) back.focus(); }catch(e){}
+          }
+        }).observe(el, { attributes:true, attributeFilter:["class"] });
+      }
+      function scan(){
+        try{ document.querySelectorAll(".modal-overlay").forEach(function(m){ prepare(m); }); }catch(e){}
+      }
+      if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", scan);
+      else scan();
+      /* Same reason the overlay watcher above stopped relying on timed
+         re-scans: a modal built by the UI module at minute three has to get
+         the same treatment as one present at load. */
+      try{
+        new MutationObserver(function(muts){
+          for(var i = 0; i < muts.length; i++){
+            var added = muts[i].addedNodes || [];
+            for(var j = 0; j < added.length; j++){
+              var el = added[j];
+              if(!el || el.nodeType !== 1) continue;
+              try{ if(el.matches && el.matches(".modal-overlay")) prepare(el); }catch(e){}
+              try{
+                if(el.querySelectorAll){
+                  Array.prototype.forEach.call(el.querySelectorAll(".modal-overlay"), function(x){ prepare(x); });
+                }
+              }catch(e){}
+            }
+          }
+        }).observe(document.documentElement, { childList:true, subtree:true });
+      }catch(e){}
     })();
 
     /* ═══ The booking form survives an app switch ═════════════════════════
@@ -4858,7 +5046,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             return '<div class="log-item"><strong>' + escLabelText(i.id) + '</strong>' +
                    '<div><strong>' + money(i.dueToNovax) + '</strong>' +
                    '<div class="footer-note" style="margin-top:2px">' + escLabelText(i.createdAt) +
-                   ' &middot; ' + ((i.parcelRefs||[]).length) + ' parcel(s)</div></div>' +
+                   ' &middot; ' + ((i.parcelRefs||[]).length) + ' parcel' + ((i.parcelRefs||[]).length===1?'':'s') + '</div></div>' +
                    '<button class="ghost-btn" onclick="printInvoice(&quot;' + i.id + '&quot;)">Statement PDF</button></div>';
           }).join("");
         }
@@ -5034,8 +5222,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           <tr><td colspan="2" style="padding:12px 8px 4px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--nvu-accent)">What we collected</td></tr>
           <tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">COD collected on your behalf</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">${money(inv.cod||0)}</td></tr>
           <tr><td colspan="2" style="padding:12px 8px 4px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--nvu-bad-fg)">What we deducted</td></tr>
-          <tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">Delivery charges &mdash; ${lines.filter(l=>l.outcomeKey==="delivered").length} delivered parcel(s)</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">&minus; ${money(lines.filter(l=>l.outcomeKey==="delivered").reduce((a,l)=>a+Number(l.deliveryCharge||0),0))}</td></tr>
-          ${(function(){ const rl=lines.filter(l=>l.outcomeKey==="returned"||l.outcomeKey==="refused"||l.outcomeKey==="cancelled"); const rc=rl.reduce((a,l)=>a+Number(l.deliveryCharge||0),0); return rc>0?`<tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">Return charges &mdash; ${rl.length} returned / refused parcel(s), no COD collected</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">&minus; ${money(rc)}</td></tr>`:""; })()}
+          <tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">Delivery charges &mdash; ${lines.filter(l=>l.outcomeKey==="delivered").length} delivered parcel${lines.filter(l=>l.outcomeKey==="delivered").length===1?"":"s"}</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">&minus; ${money(lines.filter(l=>l.outcomeKey==="delivered").reduce((a,l)=>a+Number(l.deliveryCharge||0),0))}</td></tr>
+          ${(function(){ const rl=lines.filter(l=>l.outcomeKey==="returned"||l.outcomeKey==="refused"||l.outcomeKey==="cancelled"); const rc=rl.reduce((a,l)=>a+Number(l.deliveryCharge||0),0); return rc>0?`<tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">Return charges &mdash; ${rl.length} returned / refused parcel${rl.length===1?"":"s"}, no COD collected</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">&minus; ${money(rc)}</td></tr>`:""; })()}
           <tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">Total Parcels</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">${lines.length}</td></tr>
           <tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">COD Subtotal</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">${money(inv.cod||0)}</td></tr>
           <tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">Delivery Charges Subtotal</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">${money(inv.charges||0)}</td></tr>
@@ -5119,7 +5307,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       } finally { if(btn) btn.disabled=false; }
       const rows=res.rows;
       const stage=document.getElementById("printStage");
-      stage.innerHTML=`<div style="font-family:sans-serif;color:#000;background:var(--nvu-bg);padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th><th>Fee</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(p.status)}</td><td>${money(p.cod)}</td><td>${money(p.fee)}</td></tr>`).join("")}<tr><td colspan="4"><strong>Total &mdash; ${rows.length} parcel(s)</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.cod||0),0))}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.fee||0),0))}</strong></td></tr></table></div>`;
+      stage.innerHTML=`<div style="font-family:sans-serif;color:#000;background:var(--nvu-bg);padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th><th>Fee</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(p.status)}</td><td>${money(p.cod)}</td><td>${money(p.fee)}</td></tr>`).join("")}<tr><td colspan="4"><strong>Total &mdash; ${rows.length} parcel${rows.length===1?"":"s"}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.cod||0),0))}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.fee||0),0))}</strong></td></tr></table></div>`;
       toast(nvReportScopeNote(rows.length,res.complete), res.complete?"success":"error");
       nvPrintStageNow();
     }
@@ -7935,8 +8123,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         badge.textContent = openOnes.length + " open" + (breached ? " · " + breached + " overdue" : "");
         badge.className = "chip " + (breached ? "bad" : openOnes.length ? "warn" : "good");
       }
+      /* The three filters gave no idea what was behind them, so "Resolved"
+         looked like an empty tab rather than a history. Each carries its own
+         count now. */
+      var tkCounts = {
+        open: openOnes.length,
+        resolved: all.filter(function(t){ return t.status === "resolved"; }).length,
+        all: all.length
+      };
+      var tkLabels = { open:"Open", resolved:"Resolved", all:"All" };
       Array.prototype.forEach.call(document.querySelectorAll("[data-nv-tkf]"), function(b){
-        b.className = "ghost-btn nv-tkf" + (b.getAttribute("data-nv-tkf") === NV_TK.filter ? " action-btn" : "");
+        var k = b.getAttribute("data-nv-tkf");
+        b.className = "ghost-btn nv-tkf" + (k === NV_TK.filter ? " action-btn" : "");
+        if(tkLabels[k]) b.textContent = tkLabels[k] + " (" + (tkCounts[k] || 0) + ")";
       });
       var rows = NV_TK.filter === "open" ? openOnes
                : NV_TK.filter === "resolved" ? all.filter(function(t){ return t.status === "resolved"; })
@@ -7955,7 +8154,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
       });
 
-      host.innerHTML = rows.map(nvTkCard).join("");
+      /* This ran raw on a 3-second tick, so every ticket card was destroyed and
+         rebuilt 20 times a minute whether anything had changed or not -- the
+         visible "it keeps re-rendering", and the reason the draft-preservation
+         dance above had to exist at all. nvSetHtml() writes only when the HTML
+         actually differs, so an idle tickets tab now does nothing. */
+      nvSetHtml(host, rows.map(nvTkCard).join(""));
 
       Object.keys(drafts).forEach(function(id){
         var el = document.getElementById(id);
@@ -8879,7 +9083,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         hit++;
       });
       if(!hit){ toast("Those parcels are not in the list on screen \u2014 clear your filters and try again.","error"); return; }
-      toast(hit+" parcel(s) selected \u2014 press \u201CMessage customers\u201D to open WhatsApp.","success");
+      toast(hit+" parcel"+(hit===1?"":"s")+" selected \u2014 press \u201CMessage customers\u201D to open WhatsApp.","success");
     };
     function printNewBookedSelected(){ const awbs=Array.from(document.querySelectorAll(".newbooked-check")).filter(b=>b.checked).map(b=>b.value); if(!awbs.length){ toast("Select at least one new booked AWB."); return; } printLabels(awbs); }
     // NovaX (Part 4, pickup request flow): an AWB has an "active" pickup
@@ -9085,7 +9289,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return TABS.indexOf(v) > -1 ? v : "dashboard";
     }
 
-    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } try{ nvRenderBottomNav(); }catch(e){} renderClientReportFull();  renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } }
+    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } try{ nvRenderBottomNav(); }catch(e){} renderClientReportFull();  renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } /* Switching tabs kept the previous screen's scroll: leaving Money at scrollY 2443 and tapping Home landed the merchant deep inside the parcel list, past the balance, the alerts and the whole dashboard summary. A new screen starts at its top. Deferred once as well, because a later async render can call nvKeepPlace(), which restores the page offset it captured on entry. */ try{ window.scrollTo(0,0); }catch(e){} setTimeout(function(){ try{ window.scrollTo(0,0); }catch(e){} },0); }
     function toast(msg,type){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.remove("success","error"); const kind=type||(/reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(msg)?"error":/success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach/i.test(msg)?"success":""); if(kind) el.classList.add(kind); el.classList.add("show"); /* One hook here rather than at 21 call sites: every existing success and error toast now carries a haptic, and any future one does automatically. */ try{ nvHaptic(kind==="error"?"error":(kind==="success"?"success":null)); }catch(e){} clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
     /* Events */
@@ -10626,7 +10830,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var myParcels=function(){ return (state.parcels||[]).filter(function(p){return p.clientId===cid();}); };
         var myInvoices=function(){ return (state.invoices||[]).filter(function(i){return i.clientId===cid()&&i.status!=='Deleted';}); };
         var myWithdrawals=function(){ return (state.walletWithdrawals||[]).filter(function(w){return w.clientId===cid();}); };
-        function invLine(iv){ return 'Invoice <b>'+esc(iv.id)+'</b> - status <b>'+esc(iv.status)+'</b><br>Payable <b>Rs '+fmt(iv.payable)+'</b> (COD Rs '+fmt(iv.cod)+' - charges Rs '+fmt(iv.charges)+') · '+((iv.parcelRefs||[]).length)+' parcel(s)'; }
+        function invLine(iv){ return 'Invoice <b>'+esc(iv.id)+'</b> - status <b>'+esc(iv.status)+'</b><br>Payable <b>Rs '+fmt(iv.payable)+'</b> (COD Rs '+fmt(iv.cod)+' - charges Rs '+fmt(iv.charges)+') · '+((iv.parcelRefs||[]).length)+' parcel'+((iv.parcelRefs||[]).length===1?'':'s'); }
         function pLine(p){ return '<b>'+esc(p.awb)+'</b> - <b>'+esc(p.status)+'</b><br>'+esc(p.consignee||'')+(p.city?' · '+esc(p.city):'')+(p.updated?' · updated '+esc(p.updated):'')+(p.exception?'<br>⚠️ '+esc(p.exception):''); }
         function engine(raw){
           var q=String(raw||'').trim(); if(!q) return {text:'Ask me about a parcel (e.g. <b>SAMPLE-AWB-1</b>), your invoice, wallet balance, or any delivery issue.'};
@@ -10639,7 +10843,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(invId){ var iv=myInvoices().find(function(i){return String(i.id||'').toUpperCase()===invId.toUpperCase();}); if(iv) return {text:invLine(iv)}; return {text:'I could not find invoice <b>'+esc(invId.toUpperCase())+'</b> on your account.'}; }
           if(/wallet|balance|payout|withdraw|cash ?out|money|payment/.test(low)){ var bal=walletBalance(cid()); var w=myWithdrawals(); var pend=w.filter(function(x){return /pending|process/i.test(x.status||'');}); if(/last|recent|history|withdraw/.test(low)&&w.length){ var lw=w[0]; return {text:'Your wallet balance is <b>Rs '+fmt(bal)+'</b>.<br>Last withdrawal <b>'+esc(lw.id||'')+'</b>: Rs '+fmt(lw.net||lw.amount)+' - <b>'+esc(lw.status||'')+'</b>.'+(pend.length?'<br>'+pend.length+' still in progress.':'')}; } return {text:'Your wallet balance is <b>Rs '+fmt(bal)+'</b>.'+(pend.length?' '+pend.length+' withdrawal(s) in progress.':' No withdrawals in progress.')}; }
           if(/invoice|payable|bill|statement/.test(low)){ var ivs=myInvoices(); if(!ivs.length) return {text:'You have no invoices yet. Invoices are generated once parcels are delivered.'}; return {text:invLine(ivs[0])+(ivs.length>1?'<br><span class=nvai-dim>'+(ivs.length-1)+' older invoice(s) on file.</span>':'')}; }
-          if(/exception|refus|delay|stuck|problem|fail|issue|return/.test(low)){ var ex=myParcels().filter(function(p){return p.exception||/refus|return|not available|reattempt/i.test(p.status||'');}); if(!ex.length) return {text:'Good news - no parcels with exceptions right now. ✅'}; return {text:'You have <b>'+ex.length+'</b> parcel(s) needing attention:<br>'+ex.slice(0,5).map(pLine).join('<br><br>')}; }
+          if(/exception|refus|delay|stuck|problem|fail|issue|return/.test(low)){ var ex=myParcels().filter(function(p){return p.exception||/refus|return|not available|reattempt/i.test(p.status||'');}); if(!ex.length) return {text:'Good news - no parcels with exceptions right now. ✅'}; return {text:'You have <b>'+ex.length+'</b> parcel'+(ex.length===1?'':'s')+' needing attention:<br>'+ex.slice(0,5).map(pLine).join('<br><br>')}; }
           if(/how many|count|summary|overview|total|delivered|status of my/.test(low)){ var ps=myParcels(); var del=ps.filter(function(p){return /delivered/i.test(p.status);}).length; var exn=ps.filter(function(p){return p.exception;}).length; var tr=ps.length-del-exn; return {text:'You have <b>'+ps.length+'</b> parcels - <b>'+del+'</b> delivered, <b>'+tr+'</b> in progress, <b>'+exn+'</b> with issues.'}; }
           if(/list|show|recent|latest|all my|my parcels|my orders/.test(low)){ var ps3=myParcels(); if(!ps3.length) return {text:'You have no parcels yet.'}; return {text:'Your recent parcels:<br>'+ps3.slice(0,8).map(pLine).join('<br><br>')+(ps3.length>8?'<br><span class=nvai-dim>+'+(ps3.length-8)+' more.</span>':'')}; }
           if(/rate|price|pricing|cost|tariff|fee|per parcel|per shipment|how much/.test(low)){ var c=clientById(cid()); var rc=normalizeRateCard(c&&c.rateCard, c&&c.rate); return {text:'Your delivery rate depends on destination: <b>Zone A (Karachi) Rs '+fmt(rc.A.overnight)+'</b> and <b>Zone B (Lahore / Islamabad / Rawalpindi) Rs '+fmt(rc.B.overnight)+'</b> per shipment (COD standard). Charges are deducted from COD before your wallet payout.'}; }
@@ -11284,10 +11488,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +".nv-bell-badge{position:absolute;top:-6px;right:-6px;min-width:17px;height:17px;padding:0 4px;border-radius:var(--r-lg);background:#b03a2e;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center}"
           +".nv-notif{position:fixed;z-index:99992;width:330px;max-width:calc(100vw - 24px);max-height:60vh;overflow:auto;background:var(--nvu-bg);border:1px solid #d7ede1;border-radius:var(--r-xl);box-shadow:var(--glow-1);display:none;padding:8px}"
           +".nv-notif.open{display:block}"
-          +".nv-notif-i{border-bottom:1px solid var(--nvu-neutral-bg);padding:8px 8px;font-size:12.5px;color:var(--nvu-ink);cursor:pointer}"
+          /* Was a flat stack of same-weight lines with a faint tint for unread,
+             so "N8530081 - Refused" and "N8530097 delivered" looked identical
+             and nothing said which mattered. Each row now carries a coloured
+             status rail and dot, the AWB is the heading, and unread is a real
+             accent rather than a 2% background shift. */
+          +".nv-notif-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px 8px;border-bottom:1px solid var(--nvu-line);position:sticky;top:0;background:var(--nvu-bg);z-index:1}"
+          +".nv-notif-hd b{font-size:12.5px;color:var(--nvu-ink);letter-spacing:-.01em}"
+          +".nv-notif-hd span{font-size:11px;color:var(--nvu-ink-2);font-weight:700}"
+          +".nv-notif-i{position:relative;display:flex;gap:9px;align-items:flex-start;border-bottom:1px solid var(--nvu-line);padding:10px 12px 10px 13px;font-size:12.5px;color:var(--nvu-ink);cursor:pointer;transition:background .15s}"
+          +".nv-notif-i:hover{background:var(--nvu-bg-2)}"
           +".nv-notif-i:last-child{border-bottom:0}"
-          +".nv-notif-i.unread{background:var(--nvu-bg-2)}"
-          +".nv-notif-i span{display:block;font-size:11px;color:var(--nvu-ink-2);margin-top:2px}"
+          +".nv-notif-i::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent}"
+          +".nv-notif-i.k-good::before{background:var(--nvu-good-fg)}"
+          +".nv-notif-i.k-bad::before{background:var(--nvu-bad-fg)}"
+          +".nv-notif-i.k-info::before{background:var(--nvu-info-fg)}"
+          +".nv-notif-dot{flex:none;width:8px;height:8px;border-radius:50%;margin-top:5px;background:var(--nvu-ink-3)}"
+          +".nv-notif-i.k-good .nv-notif-dot{background:var(--nvu-good-fg)}"
+          +".nv-notif-i.k-bad .nv-notif-dot{background:var(--nvu-bad-fg)}"
+          +".nv-notif-i.k-info .nv-notif-dot{background:var(--nvu-info-fg)}"
+          +".nv-notif-tx{min-width:0;flex:1}"
+          +".nv-notif-i b{display:block;font-size:12.5px;font-weight:750;color:var(--nvu-ink);letter-spacing:-.01em;overflow-wrap:anywhere}"
+          +".nv-notif-i.unread b::after{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--nvu-accent);margin-left:6px;vertical-align:1px}"
+          +".nv-notif-i span{display:block;font-size:11px;color:var(--nvu-ink-2);margin-top:2px;overflow-wrap:anywhere}"
+          +".nv-notif-empty{padding:22px 14px;text-align:center;font-size:12px;color:var(--nvu-ink-2)}"
           +".nv-bulkfix{width:100%;box-sizing:border-box;border:1px solid #cfe3d9;border-radius:var(--r-sm);padding:6px 8px;font:inherit;font-size:12px;min-height:34px}"
           +".nv-bulkfix.bad{border-color:#e0857a;background:#fff6f4}"
           +".nv-bulkgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:8px}"
@@ -11358,7 +11582,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         b.moving.forEach(function(p){ movingCounts[p.status]=(movingCounts[p.status]||0)+1; });
         var movingHtml=Object.keys(movingCounts).length?Object.keys(movingCounts).map(function(k){
           return '<div class="nv-c-item"><strong>'+movingCounts[k]+" parcel"+(movingCounts[k]===1?"":"s")+"</strong><span>"+nvEsc(k)+"</span></div>";
-        }).join("")+(b.stuck.length?'<p class="nv-c-empty">'+b.stuck.length+" moving parcel(s) have not changed status in over 48 hours.</p>":"")
+        }).join("")+(b.stuck.length?'<p class="nv-c-empty">'+b.stuck.length+" moving parcel"+(b.stuck.length===1?" has":"s have")+" not changed status in over 48 hours.</p>":"")
           :(b.next.length
               ? '<p class="nv-c-empty">Nothing moving yet \u2014 '+b.next.length+' parcel'+(b.next.length===1?" is":"s are")+' still waiting to be collected.</p>'
               : '<p class="nv-c-empty">No parcels in transit yet. Booked parcels show here once a rider collects them.</p>');
@@ -11574,7 +11798,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var dropped=0;
         Object.keys(nvSel).forEach(function(a){ if(nvSel[a] && !visible[a]){ delete nvSel[a]; dropped++; } });
         if(dropped){
-          nvSafeCall(function(){ toast(dropped+" selected parcel(s) are no longer in this view, so they were unselected.","error"); });
+          nvSafeCall(function(){ toast(dropped+" selected parcel"+(dropped===1?" is":"s are")+" no longer in this view, so "+(dropped===1?"it was":"they were")+" unselected.","error"); });
           nvBarSync();
         }
         return dropped;
@@ -11655,7 +11879,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(!eligible.length){ nvSafeCall(function(){ toast(NV_BULK_WHY[act]||"That action does not apply to the selected parcels.","error"); }); return; }
         if(act==="print") nvSafeCall(function(){ printLabels(eligible); });
         else if(act==="reattempt"){
-          if(!window.confirm("Request a re-attempt for "+eligible.length+" parcel(s)?"+
+          if(!window.confirm("Request a re-attempt for "+eligible.length+" parcel"+(eligible.length===1?"":"s")+"?"+
              (skipped?("\n\n"+skipped+" of the "+list.length+" selected will be skipped: a re-attempt only applies after a delivery has failed."):""))) return;
           eligible.forEach(function(a){ nvSafeCall(function(){ requestRedelivery(a); }); });
         }
@@ -11679,7 +11903,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           var blob=new Blob([head+"\n"+body],{type:"text/csv;charset=utf-8;"});
           var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="novax-selected-parcels.csv";
           document.body.appendChild(a); a.click(); a.remove();
-          nvSafeCall(function(){ toast(list.length+" parcel(s) exported.","success"); });
+          nvSafeCall(function(){ toast(list.length+" parcel"+(list.length===1?"":"s")+" exported.","success"); });
         }
       });
 
@@ -11808,9 +12032,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var stamp=function(p){ return String(p.statusSince||p.updated||"").slice(0,19); };
         nvMyParcels().forEach(function(p){
           var st=String(p.status||"");
-          if(st==="Delivered") out.push({ id:p.awb+"|delivered|"+stamp(p), awb:p.awb, title:p.awb+" delivered", sub:[p.consignee,p.city].filter(Boolean).join(" \u00b7 ") });
-          else if(NEEDS_ME.indexOf(st)>=0) out.push({ id:p.awb+"|"+st+"|"+stamp(p), awb:p.awb, title:p.awb+" \u2013 "+st, sub:(p.exception||[p.consignee,p.city].filter(Boolean).join(" \u00b7 ")) });
-          else if(st==="Collected by rider") out.push({ id:p.awb+"|pickup|"+stamp(p), awb:p.awb, title:p.awb+" picked up", sub:"Rider collected this parcel" });
+          /* kind drives the rail and dot colour in nvNotifRender(). Without it
+             every row rendered identically and a refused parcel looked exactly
+             like a delivered one. */
+          if(st==="Delivered") out.push({ kind:"good", id:p.awb+"|delivered|"+stamp(p), awb:p.awb, title:p.awb+" delivered", sub:[p.consignee,p.city].filter(Boolean).join(" \u00b7 ") });
+          else if(NEEDS_ME.indexOf(st)>=0) out.push({ kind:"bad", id:p.awb+"|"+st+"|"+stamp(p), awb:p.awb, title:p.awb+" \u2013 "+st, sub:(p.exception||[p.consignee,p.city].filter(Boolean).join(" \u00b7 ")) });
+          else if(st==="Collected by rider") out.push({ kind:"info", id:p.awb+"|pickup|"+stamp(p), awb:p.awb, title:p.awb+" picked up", sub:"Rider collected this parcel" });
         });
         /* Support replies. The empty state promised these and nothing produced
            them: only parcel statuses were ever read. */
@@ -11874,9 +12101,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         badge.textContent=unread.length>9?"9+":String(unread.length);
         badge.style.display=unread.length?"flex":"none";
         if(!notifOpen && !force) return;
-        panel.innerHTML=events.length?events.map(function(n){
-          return '<div class="nv-notif-i'+(read.indexOf(n.id)<0?" unread":"")+'" data-nv-notif-awb="'+nvEsc(n.awb||"")+'">'+nvEsc(n.title)+"<span>"+nvEsc(n.sub||"")+"</span></div>";
-        }).join(""):'<div class="nv-notif-i">No notifications yet. Delivery, exception, pickup and support-reply updates appear here.</div>';
+        /* Every row used to be the same weight in the same colour, so a refused
+           parcel and a delivered one were indistinguishable at a glance and the
+           only signal was a 2% background tint for unread. Severity is now
+           carried by a coloured rail and dot, the AWB is a heading, and the
+           panel says how many need attention. */
+        var head='<div class="nv-notif-hd"><b>Notifications</b><span>'+
+          (unread.length?unread.length+" new":"all read")+"</span></div>";
+        panel.innerHTML=head+(events.length?events.map(function(n){
+          var kind=n.kind==="bad"?"k-bad":(n.kind==="good"?"k-good":"k-info");
+          return '<div class="nv-notif-i '+kind+(read.indexOf(n.id)<0?" unread":"")+
+            '" data-nv-notif-awb="'+nvEsc(n.awb||"")+'">'+
+            '<span class="nv-notif-dot" aria-hidden="true"></span>'+
+            '<span class="nv-notif-tx"><b>'+nvEsc(n.title)+"</b>"+
+            (n.sub?"<span>"+nvEsc(n.sub)+"</span>":"")+"</span></div>";
+        }).join(""):'<div class="nv-notif-empty">Nothing yet.<br>Deliveries, exceptions, pickups and support replies land here.</div>');
       }
 
       /* Clear notification read-state on logout (no financial data is stored). */
@@ -12916,10 +13155,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     if(has(["how many parcel","kitne parcel","kitny parcel","total parcel","parcel count"])){
-      if(ctx) return { reply:"You have "+ctx.totalAllTime+" parcel(s) total \u2014 "+ctx.totalInRange+" in your current range, "+ctx.deliveredCount+" delivered.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
+      if(ctx) return { reply:"You have "+ctx.totalAllTime+" parcel"+(ctx.totalAllTime===1?"":"s")+" total \u2014 "+ctx.totalInRange+" in your current range, "+ctx.deliveredCount+" delivered.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
     }
     if(has(["any issue","koi issue","masla hai","issues today","problem today","which parcels need my attention","parcels need my attention","need my attention","need attention","show action needed","action needed","action center"])){
-      if(ctx && ctx.issueCount>0) return { reply:"You have "+ctx.issueCount+" parcel(s) needing attention. First one: "+ctx.firstIssueAwb+".", actions:[
+      if(ctx && ctx.issueCount>0) return { reply:"You have "+ctx.issueCount+" parcel"+(ctx.issueCount===1?"":"s")+" needing attention. First one: "+ctx.firstIssueAwb+".", actions:[
         { label:"Review Issues", kind:"local", type:"nv_review_issues" },
         { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:ctx.firstIssueAwb }
       ] };
@@ -12930,7 +13169,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var delayedList=pool2.filter(function(x){ try{ return typeof isDelayed==="function" && isDelayed(x) && x.status!=="Delivered"; }catch(e){ return false; } });
       if(!delayedList.length) return { reply:"No delayed parcels right now \u2014 everything is moving on time.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
       var names=delayedList.slice(0,5).map(function(x){ return x.awb; }).join(", ");
-      return { reply:"You have "+delayedList.length+" delayed parcel(s): "+names+(delayedList.length>5?" and more":"")+".", actions:[
+      return { reply:"You have "+delayedList.length+" delayed parcel"+(delayedList.length===1?"":"s")+": "+names+(delayedList.length>5?" and more":"")+".", actions:[
         { label:"Review Issues", kind:"local", type:"nv_review_issues" },
         { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:delayedList[0].awb }
       ] };
@@ -13284,7 +13523,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     if(has(["delayed parcel","problem parcel","issues today","show delayed","koi issue","masla hai","any issue"])){
       var issueCount=ctx?ctx.issueCount:0;
-      if(issueCount>0) return { reply:"I found "+issueCount+" parcel(s) needing attention. Opening the first one.", actions:[{ label:"Review Issues", kind:"local", type:"nv_review_issues" }] };
+      if(issueCount>0) return { reply:"I found "+issueCount+" parcel"+(issueCount===1?"":"s")+" needing attention. Opening the first one.", actions:[{ label:"Review Issues", kind:"local", type:"nv_review_issues" }] };
       return { reply:"No delayed or problem parcels right now \u2014 everything looks on track.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
     }
 
@@ -14023,7 +14262,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var a=stuck[0];
       out.push({
         id:"stuck|"+stuck.map(function(p){ return p.awb; }).join(","),
-        text:t(stuck.length+" parcel(s) have not changed status in over 48 hours, starting with "+a.awb+" ("+(a.status||"")+", "+(a.city||"")+"). Do you want me to open it or ask the hub for a re-attempt?",
+        text:t(stuck.length+" parcel"+(stuck.length===1?" has":"s have")+" not changed status in over 48 hours, starting with "+a.awb+" ("+(a.status||"")+", "+(a.city||"")+"). Do you want me to open it or ask the hub for a re-attempt?",
               stuck.length+" parcel 48 ghante se aage nahi barhay, pehla "+a.awb+" ("+(a.status||"")+", "+(a.city||"")+"). Journey kholun ya re-attempt request karun?"),
         actions:[
           { label:t("Open "+a.awb,a.awb+" kholein"), kind:"local", type:"show_journey_awb", awb:a.awb },
@@ -14037,7 +14276,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var n=needs[0];
       out.push({
         id:"needs|"+needs.map(function(p){ return p.awb+":"+p.status; }).join(","),
-        text:t(needs.length+" parcel(s) need a decision from you. "+n.awb+" is marked \u201c"+(n.status||"")+"\u201d. I can request a re-attempt or open the journey so you can see the rider proof.",
+        text:t(needs.length+" parcel"+(needs.length===1?" needs":"s need")+" a decision from you. "+n.awb+" is marked \u201c"+(n.status||"")+"\u201d. I can request a re-attempt or open the journey so you can see the rider proof.",
               needs.length+" parcel par aap ka faisla chahiye. "+n.awb+" ka status \u201c"+(n.status||"")+"\u201d hai. Re-attempt request karun ya journey kholun?"),
         actions:[
           { label:t("Request re-attempt","Re-attempt request"), kind:"local", type:"confirm_action", awb:n.awb },
@@ -14049,7 +14288,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(miss.length){
       out.push({
         id:"addr|"+miss.map(function(p){ return p.awb; }).join(","),
-        text:t(miss.length+" parcel(s) are missing a house number or phone, starting with "+miss[0].awb+". Riders usually fail these on the first attempt \u2014 want to open it and fix the address now?",
+        text:t(miss.length+" parcel"+(miss.length===1?" is":"s are")+" missing a house number or phone, starting with "+miss[0].awb+". Riders usually fail these on the first attempt \u2014 want to open it and fix the address now?",
               miss.length+" parcel mein ghar ka number ya phone missing hai, pehla "+miss[0].awb+". Aise parcel pehli koshish mein fail hotay hain \u2014 abhi address theek karein?"),
         actions:[
           { label:t("Open "+miss[0].awb,miss[0].awb+" kholein"), kind:"local", type:"show_journey_awb", awb:miss[0].awb },
@@ -14061,7 +14300,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(ofd.length){
       out.push({
         id:"ofd|"+ofd.length+"|"+new Date().toISOString().slice(0,10),
-        text:t(ofd.length+" parcel(s) are out for delivery today. A short WhatsApp heads-up to those customers cuts refusals \u2014 I can prepare the messages for you to send.",
+        text:t(ofd.length+" parcel"+(ofd.length===1?" is":"s are")+" out for delivery today. A short WhatsApp heads-up to those customers cuts refusals \u2014 I can prepare the messages for you to send.",
               ofd.length+" parcel aaj out for delivery hain. Customers ko WhatsApp par bata dena refusals kam karta hai \u2014 messages tayar kar dun?"),
         actions:[
           { label:t("Prepare messages","Messages tayar karein"), kind:"local", type:"prepare_messages", awbs:ofd.map(function(p){ return p.awb; }) },
@@ -14073,7 +14312,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(nb.length){
       out.push({
         id:"labels|"+nb.length+"|"+new Date().toISOString().slice(0,10),
-        text:t(nb.length+" newly booked parcel(s) still need printed labels before pickup.",
+        text:t(nb.length+" newly booked parcel"+(nb.length===1?" still needs":"s still need")+" printed labels before pickup.",
               nb.length+" naye booked parcel ke labels pickup se pehle print karne hain."),
         actions:[ { label:t("Open AWB labels","AWB labels kholein"), kind:"local", type:"go_awb_label" } ]
       });

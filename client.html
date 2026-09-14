@@ -99,7 +99,12 @@
     .topbar{position:sticky;top:0;z-index:20;border-bottom:1px solid rgba(16,32,27,.08);background:rgba(244,248,245,.88);backdrop-filter:blur(18px);width:100%;max-width:100vw;}
     .topbar-inner{width:100%;max-width:1440px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;gap:14px;justify-content:space-between;}
     .brand{display:flex;align-items:center;gap:10px;min-width:0;max-width:100%;}
-    .mark{width:38px;height:38px;border-radius:var(--r-md);display:grid;place-items:center;color:white;font-weight:900;background:linear-gradient(145deg,#0d6b4d,#19a171);box-shadow:var(--glow-1);}
+    /* The portal header carried the placeholder "NX" letters on a gradient
+       long after the real mark shipped everywhere else -- index, tracking and
+       index-v2 were all updated and this was missed, because the portal calls
+       it .mark while those pages call it .logo-mk. */
+    .mark{width:38px;height:38px;border-radius:var(--r-md);flex:none;
+      background:url(/assets/icon-192.png) center/contain no-repeat;box-shadow:var(--glow-1);}
     .brand-text strong{display:block;font-size:15px;line-height:1.05;color:#071d17;}
     .brand-text span{display:block;color:#60786e;font-size:12px;margin-top:2px;white-space:nowrap;}
     .nav-tabs{display:flex;gap:8px;align-items:center;overflow-x:auto;scrollbar-width:none;max-width:100%;min-width:0;}
@@ -1318,18 +1323,44 @@
      notice, so it commits to light and carries its own ink, rather than being
      converted to theme tokens. Both colours are checked against #fffaf0
      (roughly 10:1 for the heading, 6.5:1 for body copy). */
-  .nv-notice-warm{ background:#fffaf0 !important; border:1px solid #f0d6a0 !important; color:#5a4212 !important; }
+  /* REVERSED 2026-09-14 on Aisha's call. The "commit to paper" decision above
+     made the Action needed card a cream rectangle sitting in a dark portal --
+     it read as a rendering fault, not as a notice. It now uses the theme's own
+     surface in both themes and signals "needs attention" the way every other
+     status in the portal does: an amber rail and an amber heading, not a
+     different kind of paper. */
+  .nv-notice-warm{
+    background:var(--panel) !important;
+    border:1px solid var(--line) !important;
+    border-left:3px solid var(--amber) !important;
+    color:var(--ink) !important;
+  }
   .nv-notice-warm h3,
-  .nv-notice-warm strong{ color:#5a4212 !important; }
+  .nv-notice-warm strong{ color:var(--amber) !important; }
   .nv-notice-warm p,
   .nv-notice-warm .footer-note,
-  .nv-notice-warm .section-head p{ color:#7a5f22 !important; }
+  .nv-notice-warm .section-head p{ color:var(--muted) !important; }
   /* The cards INSIDE the notice have to come with it. html[data-theme="dark"]
      .ops-card paints them near-black, and the ink rules above would then be
      dark-brown text on a near-black card -- worse than what was there before.
      If the surface is paper, all of it is paper. */
-  .nv-notice-warm .ops-card{ background:#fffdf7 !important; border-color:#eadcc0 !important; color:#5a4212 !important; }
-  .nv-notice-warm .ops-card .chip.warn{ background:#fdf0d5 !important; border-color:#e6cf9c !important; color:#7a5406 !important; }
+  /* These two came WITH the paper decision and had to be reversed with it.
+     Converting only the wrapper left every card inside the Action needed panel
+     painted #fffdf7 with dark-brown text, sitting in a now-dark panel -- which
+     is the cream block that was actually visible on screen. The original note
+     put it well in the other direction: if the surface is paper, all of it is
+     paper. The same holds now that it is not. */
+  .nv-notice-warm .ops-card{ background:var(--panel-soft) !important; border-color:var(--line) !important; color:var(--ink) !important; }
+  .nv-notice-warm .ops-card strong{ color:var(--ink) !important; }
+  .nv-notice-warm .ops-card .footer-note{ color:var(--muted) !important; }
+  /* NOT var(--amber-soft): that token is only defined on the light :root and is
+     never redefined for dark, so it resolves to #fff0d7 in both themes -- a pale
+     cream chip sitting on a dark card, i.e. the same defect this block was
+     written to remove, reintroduced through a token instead of a literal.
+     A translucent tint is theme-independent by construction: it darkens over the
+     light card and lightens over the dark one. Same approach as the inline-cream
+     correction further down. */
+  .nv-notice-warm .ops-card .chip.warn{ background:rgba(199,121,19,.16) !important; border-color:rgba(199,121,19,.34) !important; color:var(--amber) !important; }
 
   /* ═══ Toast + change-highlight: never white ═══════════════════════════
      .toast used background:var(--ink) with color:white. In the dark theme
@@ -2142,7 +2173,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=2b3b4c4e" defer></script>
+  <script src="client-app.js?v=2727e980" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2175,7 +2206,7 @@
     <header class="topbar">
       <div class="topbar-inner">
         <div class="brand">
-          <div class="mark">NX</div>
+          <div class="mark" role="img" aria-label="NovaX Logistics"></div>
           <div class="brand-text">
             <strong>NovaX Logistics</strong>
             <span>E-commerce logistics, COD, and seller payouts</span>
@@ -2228,6 +2259,15 @@
               <button class="client-tab" data-client-tab="money">Money</button>
               <button class="client-tab" data-client-tab="subAccounts">Sub Accounts</button>
               <button class="client-tab" data-client-tab="tickets">Support Tickets</button>
+              <!-- The "support" tab is where the Autopilot console lives, and it
+                   had no entry in this menu at all: the only ways in were the
+                   floating launcher and #nvAiEntry, and #nvAiEntry is
+                   display:none below 760px. So once the launcher steps aside on
+                   the New Booking tab, a merchant on a phone had no route to
+                   Autopilot from that screen. "support" is already in
+                   NOVAX_ROLE_TABS for Owner and Finance, so nvApplyRolePermissions
+                   filters this button correctly with no permission change. -->
+              <button class="client-tab" data-client-tab="support">NovaX AI</button>
             </nav>
           </aside>
           <div class="client-content">
@@ -2282,7 +2322,12 @@
               <div class="grid mt-14" id="clientDashboardMainGrid">
                 <div class="panel">
                   <div class="toolbar">
-                    <div class="search"><span aria-hidden="true">⌕</span><input id="clientSearch" placeholder="Track by AWB, city, status"></div>
+                    <!-- type/name/autocomplete are all load-bearing here. With none of
+                         them, Chrome treated this as a generic text field and autofilled
+                         the saved email into it on open. filteredParcels() then matched
+                         nothing, so a merchant with 126 parcels opened the portal to an
+                         empty list and no visible reason why. -->
+                    <div class="search"><span aria-hidden="true">⌕</span><input id="clientSearch" type="search" name="nv-parcel-search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore aria-label="Search your parcels" placeholder="Track by AWB, city, status"></div>
                     <div class="inline-actions">
                       <button class="ghost-btn" id="bookParcelBtn">Book New Parcel</button>
                       <button class="ghost-btn" id="askAiBtn">Ask AI</button>
@@ -3549,9 +3594,7 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
   .nvrv-mark{
     width:46px; height:46px; margin:0 auto 14px;
     border-radius:14px;
-    display:grid; place-items:center;
-    background:linear-gradient(140deg,#14c77b,var(--nvu-accent));
-    color:#fff; font-weight:900; font-size:19px; letter-spacing:-.02em;
+    background:url(/assets/icon-192.png) center/contain no-repeat;
     box-shadow:var(--glow-1);
   }
   .nvrv-card h3{ margin:0 0 6px; font-size:20px; font-weight:800; letter-spacing:-.02em; color:var(--rv-ink); }
@@ -3696,7 +3739,7 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
 <div id="nvrvOverlay" role="dialog" aria-modal="true" aria-labelledby="nvrvTitle">
   <div class="nvrv-card">
     <div id="nvrvForm">
-      <div class="nvrv-mark">NX</div>
+      <div class="nvrv-mark" role="img" aria-label="NovaX Logistics"></div>
       <h3 id="nvrvTitle">How are we doing?</h3>
       <p class="nvrv-sub">You've shipped with NovaX. Before you carry on &mdash; how has it been?</p>
 
@@ -4164,6 +4207,29 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
      were 113px apart. The sticky bar wins on a phone -- but only while it
      is actually on screen, hence the body class rather than a blanket rule. */
   body.nv-has-book-bar #quickBookingBtn{ display:none; }
+
+  /* --- The assistant must not sit on top of the booking fields ------
+     The launcher is fixed at right:14px, 56x56. On the New Booking tab
+     --nv-stack-2 grows by 68px to clear the sticky bar, which lifts the
+     launcher off the bottom edge and straight into the form. Measured at
+     375px: #bookingName spans x22-353 and the launcher x305-361, so the
+     right ~48px of Consignee Name is covered -- elementFromPoint at
+     (336,637) returns .nvauto-btn-icon, i.e. tapping the field opens
+     Autopilot instead of focusing it.
+
+     display:none, not visibility:hidden -- see the note further down: a
+     hidden control that still takes taps is worse than a visible one in
+     the way.
+
+     An earlier version of this comment claimed the bottom nav and #nvAiEntry
+     were two other doors to Autopilot. Both were wrong. The bottom nav's
+     fourth slot is "tickets" (the ticket form), which is a different tab from
+     "support" (the Autopilot console) -- normalizeClientTab lists them
+     separately with no alias. And #nvAiEntry is display:none below 760px. So
+     hiding this launcher left no way into Autopilot from this screen on a
+     phone. A "NovaX AI" entry was added to the side menu to be that door. */
+  body.nv-has-book-bar .nvauto-btn,
+  body.nv-has-book-bar .nvauto-nudge{ display:none; }
 
   /* --- The connection banner ---------------------------------------
      158px, 19% of the viewport, for a one-sentence message. */
