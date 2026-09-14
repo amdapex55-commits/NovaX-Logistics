@@ -1283,7 +1283,12 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   box-shadow:0 30px 70px -20px rgba(0,0,0,.9);
   opacity:0;transform:translateY(-14px) scale(.98);pointer-events:none;
   transition:opacity .4s cubic-bezier(.16,.84,.28,1),transform .4s cubic-bezier(.16,.84,.28,1)}
-.pd-sheet.up{opacity:1;transform:none}
+/* pointer-events must come back with the sheet. It is set to none above so the
+   sheet cannot swallow clicks while it is invisible -- but .up only restored
+   opacity and transform, so after "Book one yourself" the form was visible and
+   still click-through: taps passed to the dashboard mock behind it. Programmatic
+   F[0].focus() hid this, because focus() ignores pointer-events. */
+.pd-sheet.up{opacity:1;transform:none;pointer-events:auto}
 .pd-sheet h4{font-size:12.5px;margin-bottom:11px;color:var(--ink)}
 .pd-f{margin-bottom:9px}
 .pd-f label{display:block;font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;
@@ -2124,10 +2129,14 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
     });
   }
 
+  /* The "off" stars are only muted with colour and opacity, so a screen reader
+     read all five and announced every review as five stars. The whole row is
+     one labelled image instead: the glyphs are decorative, the rating is text. */
   function stars(n){
     n = Math.max(0, Math.min(5, Number(n) || 0));
-    return '<div class="st">' + "★".repeat(n) +
-           '<span class="off">' + "★".repeat(5 - n) + "</span></div>";
+    return '<div class="st" role="img" aria-label="' + n + ' out of 5 stars">' +
+           '<span aria-hidden="true">' + "★".repeat(n) +
+           '<span class="off">' + "★".repeat(5 - n) + "</span></span></div>";
   }
 
   function monthYear(iso){
@@ -2141,13 +2150,13 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
     return ((parts[0] || "N")[0] + (parts.length > 1 ? parts[parts.length-1][0] : "")).toUpperCase();
   }
 
-  function card(r){
+  function card(r, dup){
     var body = r.comment && r.comment.trim()
       ? "&ldquo;" + esc(r.comment.trim()) + "&rdquo;"
       : "Rated " + (Number(r.rating) || 0) + " out of 5.";
     var who = r.display_name || "NovaX merchant";
     var when = monthYear(r.created_at);
-    return '<article class="nvrev-card">' + stars(r.rating) +
+    return '<article class="nvrev-card"' + (dup ? ' aria-hidden="true"' : '') + ">" + stars(r.rating) +
            "<p>" + body + "</p>" +
            '<div class="who"><span class="nvrev-av">' + esc(initials(who)) + "</span>" +
            "<span>" + esc(who) + "</span>" +
@@ -2157,10 +2166,14 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 
   function lane(rows, cls, seconds){
     // The row is duplicated so the -50% keyframe lands exactly on a seam and
-    // the loop is invisible.
-    var html = rows.map(card).join("");
+    // the loop is invisible. The copy is decorative: without aria-hidden a
+    // screen reader read every merchant twice. (On phones .nvrev-lane.b is
+    // display:none, which already removes lane B from the a11y tree -- so the
+    // duplicate was the only thing making the same reviews repeat.)
+    var html = rows.map(function(r){ return card(r, false); }).join("");
+    var dup  = rows.map(function(r){ return card(r, true); }).join("");
     return '<div class="nvrev-lane ' + cls + '" style="--dur:' + seconds + 's">' +
-           html + html + "</div>";
+           html + dup + "</div>";
   }
 
   function paint(rows){
@@ -2357,9 +2370,21 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 
             <div class="pd-sheet" id="pdSheet">
               <h4>New Booking</h4>
-              <div class="pd-f"><label>Consignee</label><div class="pd-inp" id="pdF1"></div></div>
-              <div class="pd-f"><label>Destination city</label><div class="pd-inp" id="pdF2"></div></div>
-              <div class="pd-f"><label>COD amount</label><div class="pd-inp" id="pdF3"></div></div>
+              <!-- These are contenteditable divs, not inputs, so a <label> can
+                   never point at them with for= -- that only works on real form
+                   controls, hence aria-labelledby.
+
+                   role="textbox" is NOT set here on purpose. These divs are only
+                   editable between "Book one yourself" and Create Booking; the
+                   rest of the time they are a scripted typing animation with no
+                   contenteditable and no tabindex. Declaring them textboxes in
+                   the markup announced three editable fields that could not be
+                   focused or typed into -- a promise the page does not keep. The
+                   role and tabindex are added and removed with contenteditable
+                   instead, so they are only claimed while they are true. -->
+              <div class="pd-f"><label id="pdL1">Consignee</label><div class="pd-inp" id="pdF1" aria-labelledby="pdL1"></div></div>
+              <div class="pd-f"><label id="pdL2">Destination city</label><div class="pd-inp" id="pdF2" aria-labelledby="pdL2"></div></div>
+              <div class="pd-f"><label id="pdL3">COD amount</label><div class="pd-inp" id="pdF3" aria-labelledby="pdL3"></div></div>
               <button class="pd-go" id="pdGo" type="button">Create Booking</button>
             </div>
 
@@ -3014,10 +3039,27 @@ document.querySelectorAll(".bar-fl").forEach(function(b){
        Delivery promise is fixed too: Karachi same day / next day, Lahore,
        Islamabad and Rawalpindi 2-3 working days. */
     var ZONE_A=225, ZONE_B=250, ADDL_KG=85;
-    var price=(intra?ZONE_A:ZONE_B)+Math.max(0,Math.ceil(kg-1))*ADDL_KG;
-    var eta=intra?"same day / next day":"in 2–3 working days";
     var kgTxt=(kg%1===0?kg:kg.toFixed(1));
     wv.textContent=kgTxt+" kg";
+
+    /* NovaX collects in Karachi and nowhere else -- 213 of 214 merchants with a
+       pickup city are Karachi. "intra" only ever meant Karachi -> Karachi, but
+       it is computed as from===to, so Lahore -> Lahore fell into Zone A and was
+       quoted Rs 225 "same day / next day": a price and a promise for a route
+       with no pickup leg at all. Quoting the intercity rate instead would be no
+       better -- it would still imply we collect there. */
+    var bookBtn=document.querySelector('[data-carry-quote="1"]');
+    if(f.value!=="karachi"){
+      pr.textContent="Not available";
+      nt.textContent="We collect from Karachi only — pickup from "+CITY[f.value]+" is not available yet.";
+      window.NV_LAST_QUOTE=null;
+      if(bookBtn){ bookBtn.setAttribute("disabled",""); bookBtn.setAttribute("aria-disabled","true"); }
+      return;
+    }
+    if(bookBtn){ bookBtn.removeAttribute("disabled"); bookBtn.removeAttribute("aria-disabled"); }
+
+    var price=(intra?ZONE_A:ZONE_B)+Math.max(0,Math.ceil(kg-1))*ADDL_KG;
+    var eta=intra?"same day / next day":"in 2–3 working days";
     pr.textContent="Rs "+comma(price);
     nt.textContent=CITY[f.value]+" → "+CITY[t.value]+" · "+kgTxt+" kg · delivered "+eta;
     /* The quote the visitor is looking at, so "Book at this rate" can carry it
@@ -3852,7 +3894,11 @@ frame();
     root.classList.add("on");
     sheet.classList.add("up");
     cur.classList.remove("show");
-    F.forEach(function(f){ f.textContent = ""; f.setAttribute("contenteditable","true"); f.classList.add("live"); });
+    /* role + tabindex go on WITH contenteditable, never before it -- see the
+       note on the markup. Only now is "textbox" actually true. */
+    F.forEach(function(f){ f.textContent = ""; f.setAttribute("contenteditable","true");
+      f.setAttribute("role","textbox"); f.setAttribute("aria-multiline","false"); f.setAttribute("tabindex","0");
+      f.classList.add("live"); });
     F[0].focus();
     document.getElementById("pdHint").textContent = "// type anything, then Create Booking";
   });
@@ -3862,7 +3908,8 @@ frame();
     var who  = (F[0].textContent || "Your customer").trim().slice(0,28);
     var city = (F[1].textContent || "Karachi").trim().slice(0,18);
     var cod  = parseInt((F[2].textContent||"").replace(/[^0-9]/g,""), 10) || 2500;
-    F.forEach(function(f){ f.removeAttribute("contenteditable"); f.classList.remove("live"); });
+    F.forEach(function(f){ f.removeAttribute("contenteditable"); f.removeAttribute("role");
+      f.removeAttribute("aria-multiline"); f.removeAttribute("tabindex"); f.classList.remove("live"); });
     sheet.classList.remove("up");
     awbNo.textContent = newAwb();
     awb.classList.add("up");
@@ -3875,7 +3922,8 @@ frame();
   });
 
   document.getElementById("pdReplay").addEventListener("click", function(){
-    F.forEach(function(f){ f.removeAttribute("contenteditable"); f.textContent=""; });
+    F.forEach(function(f){ f.removeAttribute("contenteditable"); f.removeAttribute("role");
+      f.removeAttribute("aria-multiline"); f.removeAttribute("tabindex"); f.textContent=""; });
     document.getElementById("pdHint").innerHTML = "// nothing is sent anywhere — this runs entirely in your browser";
     run();
   });
@@ -3930,18 +3978,18 @@ frame();
   /* One settlement day, in the order a real ledger would write it. */
   var ROWS = [
     ["cr","COD collected",              "N3690112 · Bilal Ahmed · Lahore",      2400],
-    ["db","Delivery charge",            "N3690112 · flat Karachi rate",         -200],
+    ["db","Delivery charge",            "N3690112 · Lahore rate",               -250],
     ["cr","COD collected",              "N3690109 · Fatima Noor · Karachi",     1500],
-    ["db","Delivery charge",            "N3690109 · flat Karachi rate",         -200],
+    ["db","Delivery charge",            "N3690109 · Karachi rate",              -225],
     ["cr","COD collected",              "N3690104 · Hamza Ali · Islamabad",     3600],
-    ["db","Delivery charge",            "N3690104 · flat Karachi rate",         -200],
+    ["db","Delivery charge",            "N3690104 · Islamabad rate",            -250],
     ["cr","COD collected",              "N3690101 · Ayesha Khan · Karachi",    12400],
-    ["db","Delivery charge",            "N3690101 · flat Karachi rate",         -200],
+    ["db","Delivery charge",            "N3690101 · Karachi rate",              -225],
     ["db","Payout · instant",           "ref TXN-88214 · 0.7% fee",           -18677],
     ["cr","Return to shipper · no COD", "N3690098 · consignee refused",            0],
-    ["db","Delivery charge",            "N3690098 · return leg",                -200],
+    ["db","Delivery charge",            "N3690098 · return leg",                -225],
     ["cr","COD collected",              "N3690095 · Usman Tariq · Lahore",       999],
-    ["db","Delivery charge",            "N3690095 · flat Karachi rate",         -200],
+    ["db","Delivery charge",            "N3690095 · Lahore rate",               -250],
     ["cr","COD collected",              "N3690091 · Zainab Iqbal · Karachi",    2400],
     ["db","Payout · 24 hour",           "ref TXN-88190 · 0.1% fee",            -9400]
   ];
@@ -4239,6 +4287,14 @@ frame();
   transition:transform .2s cubic-bezier(.2,.9,.3,1.15),box-shadow .2s}
 #nvai-fab:hover{transform:translateY(-3px) scale(1.05);box-shadow:0 24px 64px rgba(20,199,123,.6),inset 0 1px 0 rgba(255,255,255,.35)}
 #nvai-fab:active{transform:scale(.95)}
+/* The launcher is fixed bottom-right with nothing reserved beneath it, so on a
+   390px screen it sits on the right edge of the full-width CTAs as they scroll
+   past: measured, "Book at this rate" spans x36-354 and the launcher x316-372,
+   and elementFromPoint over the overlap returned the launcher's own svg -- the
+   tap opened the chat instead of the button. It steps aside while a primary
+   call to action is level with it. */
+#nvai-fab.nvai-stand-back{opacity:0;pointer-events:none;transform:scale(.86)}
+#nvai-fab.nvai-stand-back::before{animation:none}
 #nvai-fab svg{width:27px;height:27px}
 #nvai-fab::before{content:'';position:absolute;inset:-6px;border-radius:50%;border:2px solid rgba(20,199,123,.55);
   animation:nvaiPulse 2.6s ease-out infinite;pointer-events:none}
@@ -4387,6 +4443,47 @@ body.nvai-locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
   var history=[], asked=0, busy=false, opened=false, convId=null, lockY=0, locked=false;
 
   function isSheet(){ return window.innerWidth <= 560; }
+
+  /* Keep the launcher off the primary CTAs.
+     The panel's open class is "open" -- it is set with panel.className="open"
+     further down, not classList.add. An earlier version of this checked for
+     "on", which nothing ever sets, so the guard never fired.
+     Cost matters here: this runs on scroll, and the audience is 360px Tecno /
+     Infinix hardware. The CTA list and the launcher's own rect are cached (the
+     launcher is position:fixed, so its rect only moves on resize) and the work
+     is throttled to ~8x a second -- the fade takes 200ms, so a tighter loop
+     would buy nothing but dropped frames. */
+  (function nvaiStandBack(){
+    if(!fab) return;
+    var pending=false, last=0, ctas=null, fabBox=null;
+    function refresh(){ ctas=null; fabBox=null; }
+    function check(){
+      pending=false; last=Date.now();
+      if(panel && panel.classList.contains("open")){ fab.classList.remove("nvai-stand-back"); return; }
+      if(!ctas) ctas=document.querySelectorAll(".btn-primary,[data-carry-quote]");
+      if(!fabBox){
+        fab.classList.remove("nvai-stand-back");      /* measure it where it really sits */
+        fabBox=fab.getBoundingClientRect();
+      }
+      var f=fabBox, vh=window.innerHeight, clash=false;
+      for(var i=0;i<ctas.length;i++){
+        var r=ctas[i].getBoundingClientRect();
+        if(r.width===0 || r.height===0) continue;
+        if(r.bottom < 0 || r.top > vh) continue;
+        if(!(r.right < f.left || r.left > f.right || r.bottom < f.top || r.top > f.bottom)){ clash=true; break; }
+      }
+      fab.classList.toggle("nvai-stand-back", clash);
+    }
+    function ping(){
+      if(pending) return;
+      pending=true;
+      var wait=Math.max(0, 120-(Date.now()-last));
+      setTimeout(function(){ requestAnimationFrame(check); }, wait);
+    }
+    addEventListener("scroll", ping, { passive:true });
+    addEventListener("resize", function(){ refresh(); ping(); });
+    setTimeout(check, 400);
+  })();
   /* body{overflow:hidden} does NOT stop scrolling in iOS Safari, and the page's
      own closeM() clears that inline style unconditionally -- so sharing it would
      unlock the page behind an open chat. This owns its lock instead. */
@@ -4510,6 +4607,14 @@ body.nvai-locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
     }catch(e){ data = null; }
     setBusy(false);
     if(!data || !data.answer){
+      /* The question was counted before the request went out, so a network
+         failure or a 500 silently cost the visitor one of their ten. Give it
+         back, and drop the dangling user turn from history -- otherwise the
+         next request resends it and the SERVER counts it too, so the refund
+         would only ever be cosmetic. The bubble stays on screen; they can see
+         what they asked and retry it. */
+      asked = Math.max(0, asked - 1); updateMeta();
+      if(history.length && history[history.length-1].role === "user") history.pop();
       var f=bubble("","b");
       typeOut(f, "I could not reach the team's system just then. WhatsApp is fastest: "+WA.join(", ")+".");
       return;
