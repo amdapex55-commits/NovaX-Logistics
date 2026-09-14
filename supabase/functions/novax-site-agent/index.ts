@@ -265,20 +265,39 @@ Deno.serve(async (req: Request) => {
     const timer = setTimeout(() => ctrl.abort(), 25000);
     let r: Response;
     try {
-      r = await fetch(ANTHROPIC_URL, {
+      /* SYSTEM is ~9,900 characters of fixed knowledge base, identical on every
+         request, and it was re-processed from scratch each time -- paid for and
+         waited for on every visitor question. A cache breakpoint processes it
+         once and reuses it, which is the largest latency win available without
+         touching the answer itself. It has to be sent as a block array because
+         cache_control cannot attach to a plain string system prompt.
+
+         The retry is the important half. This function throws on any non-ok
+         response and the caller degrades to the WhatsApp handoff, so if this
+         account or API version ever refuses cache_control the agent would stop
+         answering ENTIRELY and nothing would report it -- a silent outage on the
+         page the ads point at. One retry without the cache field costs a single
+         wasted call in that case instead. */
+      const callAnthropic = (system: unknown) => fetch(ANTHROPIC_URL, {
         method: "POST",
         headers: { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json" },
         body: JSON.stringify({
           model: MODEL,
           max_tokens: MAX_TOKENS,
           output_config: { effort: EFFORT },
-          system: SYSTEM,
+          system,
           tools: [TOOL],
           tool_choice: { type: "tool", name: "present" },
           messages,
         }),
         signal: ctrl.signal,
       });
+
+      r = await callAnthropic([{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }]);
+      if (!r.ok && r.status === 400) {
+        console.warn("site-agent: cache_control refused, retrying without it");
+        r = await callAnthropic(SYSTEM);
+      }
     } finally { clearTimeout(timer); }
 
     if (!r.ok) throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);

@@ -293,7 +293,7 @@ function buildBriefing(ctx: ClientContext, cname: string | null): string {
   if (ctx.refused) line += `, ${ctx.refused} refused`;
   parts.push(line + ".");
   parts.push(`Wallet balance: Rs ${ctx.walletBalance.toLocaleString()}.`);
-  if (ctx.delayed.length) parts.push(`${ctx.delayed.length} parcel(s) have gone 24h+ without an update.`);
+  if (ctx.delayed.length) parts.push(`${ctx.delayed.length} parcel${ctx.delayed.length === 1 ? " has" : "s have"} gone 24h+ without an update.`);
   if (ctx.openTickets.length) parts.push(`You have ${ctx.openTickets.length} open support ticket(s).`);
   return parts.join(" ");
 }
@@ -302,15 +302,15 @@ function buildAttention(ctx: ClientContext): string {
   const parts: string[] = [];
   if (ctx.delayed.length) {
     parts.push(
-      `${ctx.delayed.length} parcel(s) aging over 24h without an update${ctx.delayed[0] ? ` (e.g. ${ctx.delayed[0].awb})` : ""}`,
+      `${ctx.delayed.length} parcel${ctx.delayed.length === 1 ? "" : "s"} aging over 24h without an update${ctx.delayed[0] ? ` (e.g. ${ctx.delayed[0].awb})` : ""}`,
     );
   }
   const refusedList = ctx.parcels.filter((p) => p.status === "Refused");
   if (refusedList.length) {
-    parts.push(`${refusedList.length} refused parcel(s) needing review${refusedList[0] ? ` (e.g. ${refusedList[0].awb})` : ""}`);
+    parts.push(`${refusedList.length} refused parcel${refusedList.length === 1 ? "" : "s"} needing review${refusedList[0] ? ` (e.g. ${refusedList[0].awb})` : ""}`);
   }
   const otherReturns = ctx.returned.filter((p) => p.status !== "Refused");
-  if (otherReturns.length) parts.push(`${otherReturns.length} parcel(s) in the return flow`);
+  if (otherReturns.length) parts.push(`${otherReturns.length} parcel${otherReturns.length === 1 ? "" : "s"} in the return flow`);
   if (ctx.newBooked > 0) parts.push(`${ctx.newBooked} AWB(s) not printed yet`);
   if (ctx.openTickets.length) parts.push(`${ctx.openTickets.length} open support ticket(s) awaiting a reply`);
   if (ctx.walletBalance > 0) parts.push(`Rs ${ctx.walletBalance.toLocaleString()} ready to withdraw from your wallet`);
