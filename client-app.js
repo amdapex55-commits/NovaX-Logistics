@@ -2110,7 +2110,9 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         if(action.indexOf("filter:")===0){
           const term=action.slice(7);
           if(typeof showClientTab==="function") showClientTab("dashboard");
-          const el=document.getElementById("clientSearch"); if(el){ el.value=term; if(typeof renderClientParcels==="function") renderClientParcels(); }
+          /* Mark it owned: this is a deliberate filter, not browser autofill, so
+             the search-box guard must leave it alone. */
+          const el=document.getElementById("clientSearch"); if(el){ el.value=term; window.__nvSearchOwned=true; if(typeof renderClientParcels==="function") renderClientParcels(); }
           const t=document.getElementById("clientDashboardMainGrid"); if(t) t.scrollIntoView({behavior:"smooth",block:"start"});
           return;
         }
@@ -9361,6 +9363,59 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }catch(e){ /* cosmetic only — never surface */ }
     })();
     document.getElementById("clientSearch").addEventListener("input",renderClientParcels);
+    /* The search box arrives pre-filled with the merchant's saved email, so
+       filteredParcels() matches nothing and an account with 144 parcels opens
+       on "No parcels in range" with no visible reason why.
+
+       type/name/autocomplete/data-lpignore were added first and were NOT
+       enough: Chrome ignores autocomplete="off" on fields it decides are
+       identity fields, and the lpignore/1p-ignore hints bind password managers,
+       not Chrome itself. So this no longer asks the browser to behave.
+
+       Nothing in this file ever writes an email here -- the only two writers
+       are the metric-card "clear" and "filter:<status>" shortcuts, which set a
+       value and re-render in the same breath. So any value present before the
+       merchant has typed anything came from outside the app and is junk.
+
+       Cleared on both entry paths because autofill and back/forward-cache
+       restore are different mechanisms and I could not reproduce which one is
+       at work here: DOMContentLoaded covers a fresh load, pageshow covers a
+       restore. Neither of them fires `input` when it sets .value, which is why
+       the list never re-rendered and the empty state stuck. */
+    (function nvGuardSearchBox(){
+      /* "Owned" = a human typed it, or the app deliberately set it (the
+         metric-card filter shortcut). Anything else is the browser talking.
+         It lives on window because the filter shortcut is in another closure. */
+      window.__nvSearchOwned = false;
+      function el(){ return document.getElementById("clientSearch"); }
+      var box = el();
+      if(box) box.addEventListener("input", function(){ window.__nvSearchOwned = true; });
+      function clearIfNotTyped(){
+        var e = el();
+        if(!e || window.__nvSearchOwned) return;   // never wipe a real search
+        if(!e.value) return;
+        e.value = "";
+        try{ renderClientParcels(); }catch(err){}
+      }
+      if(document.readyState === "loading"){
+        document.addEventListener("DOMContentLoaded", clearIfNotTyped);
+      } else {
+        clearIfNotTyped();
+      }
+      /* One more tick: Chrome fills some fields just after DOMContentLoaded. */
+      setTimeout(clearIfNotTyped, 0);
+      setTimeout(clearIfNotTyped, 400);
+      window.addEventListener("pageshow", function(ev){
+        /* `typed` was this variable's name in the first draft; it was renamed to
+           window.__nvSearchOwned and this line was missed, leaving an undeclared
+           identifier here -- so the reset silently did nothing and a restored
+           page kept whatever the browser had put in the box. Nothing catches
+           that: check-build only parses, and the assignment is legal in
+           non-strict code. */
+        if(ev && ev.persisted) window.__nvSearchOwned = false;   // a restored page is a fresh visit
+        clearIfNotTyped();
+      });
+    })();
     document.getElementById("applyDateRangeBtn").addEventListener("click",applyClientDateRange);
     /* Was unguarded: any markup change that removed this button threw a
        TypeError here and took the whole bundle down with it. */
