@@ -11215,6 +11215,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     function renderClientActionNeeded(){
       const host=document.getElementById("clientActionNeededCard"); if(!host) return;
+      /* NOTE: pool must stay the FULL scoped parcel list, not the attention
+         list. missingInfoItems below looks for a missing address or phone on
+         any undelivered parcel -- narrowing this to attention parcels only
+         would silently stop most of those being found. */
       let pool=[]; try{ pool=(typeof clientScopedParcels==="function")?clientScopedParcels():((state.parcels)||[]); }catch(e){ pool=state.parcels||[]; }
       const parcelItems=pool.filter(function(p){ return ["Refused","Consignee not available","Ready for return"].indexOf(p.status)>-1 || (typeof isDelayed==="function" && isDelayed(p) && p.status!=="Delivered"); });
       const missingInfoItems=pool.filter(function(p){ return p.status!=="Delivered" && p.status!=="Return to shipper" && p.status!=="Cancelled by client" && (!p.address || !p.phone); });
@@ -11233,7 +11237,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">Missing address or phone</span></div><p class="footer-note">${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button></div></div>`;
       });
       const walletCard=payable>0 ? [`<div class="ops-card"><div class="ops-card-head"><strong>Wallet</strong><span class="chip warn">Payable balance ready</span></div><p class="footer-note">You have a payable balance waiting -- review it in your wallet.</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="typeof showClientTab==='function'&&showClientTab('wallet')">View wallet</button></div></div>`] : [];
-      host.innerHTML=`<div class="panel nv-notice-warm"><div class="section-head"><div><h3>Action needed</h3><p>${totalItems} item(s) are waiting on a quick decision from you -- nothing urgent, just pick an option below.</p></div></div><div class="ops-list">`+parcelCards.concat(missingInfoCards).concat(walletCard).join("")+`</div></div>`;
+      /* THE 9-vs-6 BUG. The heading counts every item (parcelItems +
+         missingInfoItems + wallet) but the cards were capped at 6 and 4, so a
+         merchant was told "9 item(s) are waiting on a quick decision" and shown
+         six cards with nothing explaining where the rest went. It reads as the
+         portal losing parcels.
+
+         The caps themselves are reasonable -- an Action needed panel listing
+         forty cards is not an action list -- so the count is now honest about
+         them instead: what is hidden is stated, and Review Issues opens the
+         full set. */
+      const shownCount=parcelCards.length+missingInfoCards.length+walletCard.length;
+      const hiddenCount=Math.max(0, totalItems-shownCount);
+      const moreNote=hiddenCount>0
+        ? `<p class="footer-note" style="margin-top:8px">Showing ${shownCount} of ${totalItems}. <button class="action-btn ghost" onclick="typeof nvReviewIssues==='function'&&nvReviewIssues()">See all ${totalItems}</button></p>`
+        : "";
+      host.innerHTML=`<div class="panel nv-notice-warm"><div class="section-head"><div><h3>Action needed</h3><p>${totalItems} item${totalItems===1?"":"s"} waiting on a quick decision from you -- nothing urgent, just pick an option below.</p></div></div><div class="ops-list">`+parcelCards.concat(missingInfoCards).concat(walletCard).join("")+`</div>${moreNote}</div>`;
     }
 
     function clientActionNeededReattempt(awb){
@@ -11261,11 +11280,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvReviewIssues(){
       try{
         if(typeof showClientTab==="function") showClientTab("dashboard");
-        var ctx=typeof getClientContext==="function"?getClientContext():null;
-        var firstIssueAwb=ctx&&ctx.firstIssueAwb;
-        if(firstIssueAwb && typeof openClientParcelJourney==="function"){
-          openClientParcelJourney(firstIssueAwb);
+        /* "Review Issues" said "17 parcels need attention" and then opened ONE
+           parcel's journey drawer -- ctx.firstIssueAwb -- and returned before it
+           could ever reach the list below. Worse, firstIssueAwb is whichever
+           parcel sorts first, so clicking again reopened the same card instead
+           of walking the queue. The label promises the set, so land on the set.
+           A single issue still goes straight to that parcel, because a list of
+           one is a worse answer than the thing itself. */
+        var attn=(typeof nvAttentionParcels==="function") ? nvAttentionParcels() : [];
+        if(attn.length===1 && typeof openClientParcelJourney==="function"){
+          openClientParcelJourney(attn[0].awb);
           return;
+        }
+        if(!attn.length){
+          var ctx=typeof getClientContext==="function"?getClientContext():null;
+          var firstIssueAwb=ctx&&ctx.firstIssueAwb;
+          if(firstIssueAwb && typeof openClientParcelJourney==="function"){
+            openClientParcelJourney(firstIssueAwb);
+            return;
+          }
         }
         var board=document.getElementById("clientStatusBoard");
         if(board && board.style.display==="none" && typeof toggleStatusBoard==="function") toggleStatusBoard();
