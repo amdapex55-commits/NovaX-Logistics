@@ -550,7 +550,13 @@
         '<span class="pill'+(t?" "+t:"")+'">'+esc(row.awb||"")+'</span>'+
         (row.consignee_first?'<span class="pill">For '+esc(row.consignee_first)+'</span>':"")+
         (row.rider_first?'<span class="pill">Rider: '+esc(row.rider_first)+'</span>':"")+
-        (when(row.updated_at)?'<span>Updated '+esc(when(row.updated_at))+'</span>':"")+
+        /* REMOVED: "Updated <updated_at>". updated_at is when the ROW was last
+           written, not when anything happened to the parcel -- the same reason
+           the journey above refuses to stamp steps with it. A parcel delivered
+           on 11 July whose row was touched by a backend job on 15 September
+           told the customer it was "Updated 15 September", with no September
+           event anywhere on the page to explain it. Delivered time is already
+           shown above from delivered_at, which is a real event. */
       '</div>'+
       (row.exception_note?'<p class="status-urdu" style="margin-top:10px">'+esc(row.exception_note)+'</p>':"")+
     '</div>';

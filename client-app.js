@@ -910,7 +910,10 @@
 
     const PKR = new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 });
     const now = () => new Date();
-    const time = () => now().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    /* Pinned to Asia/Karachi. Parcel dates come back from the server already
+       converted to PKT (see mapParcel), so a clock running in the viewer's own
+       zone put a different day on screen from the dates beside it. */
+    const time = () => now().toLocaleTimeString([], { timeZone: "Asia/Karachi", hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const STORAGE_KEY = "novaxLogisticsStateV10";
     const SB_URL = window.NOVAX_CONFIG.SB_URL; // shared Supabase base URL (also used by connectStore, shopifyGenerateLink)
     /* NovaX status rename: "Parcel returned to consignee" -> "Return to shipper".
@@ -1009,7 +1012,12 @@
       return {
         _cleanStartV2:true,
         selectedAwb:"", activeStatusQueue:STATUS_TAGS[0], activeRateClient:"", activeSackMode:"create",
-        clientDateFrom:new Date().toISOString().slice(0,10), clientDateTo:new Date().toISOString().slice(0,10), lastGeneratedAwb:"",
+        /* PKT, not UTC. Parcels are dated in Asia/Karachi, so between 19:00 and
+           midnight UTC a parcel booked "today" in Pakistan already carries
+           tomorrow's date and fell OUTSIDE a date range computed from
+           toISOString() -- the merchant booked a parcel and it was simply not
+           in the list. Both ends of the comparison now speak the same zone. */
+        clientDateFrom:new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" }), clientDateTo:new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" }), lastGeneratedAwb:"",
         walletWithdrawals:[], pickupRequests:[], lastBulkAwbs:[], walletWithdrawSpeed:"", clientBankDetails:null, bankDetailsEditing:false,
         client:{ id:"CL-0000", name:"New Merchant Workspace", walletTopup:0, shippingDue:0, subAccounts:0, walletBalance:0 },
         clients:[blankClient], pendingClients:[], users:[], branches:[], riders:[], parcels:[], expenses:[], paymentLogs:[], invoices:[], transit:[], completedSacks:[], operationsIssues:[], resolvedAlerts:[],
@@ -1175,6 +1183,34 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       if(/[\d.]\s*(g|gm|gms|gr|gram|grams)\s*$/.test(s)) n=n/1000;
       return n;
     }
+    /* CRITICAL (14 Sep): "0 kg" was accepted and billed. parseWeightKg() above
+       deliberately returns 0.8 for anything missing, unparseable or <= 0,
+       because it mirrors the server's nv_parse_weight_kg(). So a zero weight
+       never failed -- it was silently rewritten to 0.8 kg and charged Rs 225,
+       while parcels.weight kept the string "0 kg". That is why the row looked
+       self-contradictory.
+
+       Validation therefore has to happen BEFORE the parser, on the raw text.
+       The booking form only checked that the field was non-empty, the pasted-
+       order path only tested /\d/ (so "0", "-1" and "0 kg" all passed), and the
+       edit screen passed the value straight through with no check at all.
+
+       NOTE: the server still defaults <= 0 to 0.8 in its own booking functions.
+       That is deliberately left alone here -- changing shared billing SQL needs
+       a rehearsal against production, not a client patch. */
+    function nvWeightProblem(raw){
+      var s=String(raw==null?"":raw).trim();
+      if(!s) return "Enter the parcel weight, for example 0.8 kg.";
+      if(/^-|[^\d.]-/.test(s)) return "Weight cannot be negative. Enter a weight like 0.8 kg.";
+      var m=s.match(/(\d+(?:\.\d+)?|\.\d+)/);
+      if(!m) return "Weight must include a number, for example 0.8 kg.";
+      var n=parseFloat(m[1]);
+      if(!isFinite(n) || n<=0) return "Weight must be more than zero. Enter a weight like 0.8 kg.";
+      if(/[\d.]\s*(g|gm|gms|gr|gram|grams)\s*$/.test(s.toLowerCase())) n=n/1000;
+      if(n>70) return "That weight looks wrong. Enter it in kg, for example 2 kg.";
+      return null;
+    }
+    window.nvWeightProblem=nvWeightProblem;
     // charge = baseRate + ceil(max(0, weightKg-1)) * additionalKgRate, capped at the 5kg normal slab.
     function bookingChargeBreakdown(rateCard, zone, weightInput){
       var z=zone==="A"?"A":"B";
@@ -1304,8 +1340,11 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         return Number((typeof walletBalance==="function") ? walletBalance(id) : (state.client.walletBalance||0));
       }catch(e){ return 0; }
     }
-    function clientMetrics(){
-      const parcels=clientScopedParcels();
+    /* poolOverride lets a caller ask "these metrics, but for THIS set of
+       parcels" -- the Full Report needs them for its own filtered rows, not the
+       dashboard's date range. Omitted, behaviour is exactly as before. */
+    function clientMetrics(poolOverride){
+      const parcels=Array.isArray(poolOverride)?poolOverride:clientScopedParcels();
       const delivered=parcels.filter(p=>p.status.includes("Delivered")).length;
       const ratedTotal=parcels.filter(nvIsRatedParcel).length;
       const deliveredParcels=parcels.filter(isDeliveredLedgerParcel);
@@ -1387,7 +1426,11 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       } else if(!issues.length && !unprinted.length && payable<=0){
         briefingText="Everything looks clear. Book today's orders when ready.";
       } else {
-        briefingText="Today: "+active.length+" active parcel"+(active.length===1?"":"s")+", "+issues.length+" need"+(issues.length===1?"s":"")+" attention, "+money(payable)+" payable, "+unprinted.length+" label"+(unprinted.length===1?"":"s")+" not printed.";
+        /* Said "Today:" but counts the whole account, and counts ACTIVE
+           parcels while the cockpit below counts ALL of them -- so the two
+           strips showed different totals under the same word. "Right now"
+           describes what this actually is: a live snapshot, not a day. */
+        briefingText="Right now: "+active.length+" active parcel"+(active.length===1?"":"s")+", "+issues.length+" need"+(issues.length===1?"s":"")+" attention, "+money(payable)+" payable, "+unprinted.length+" label"+(unprinted.length===1?"":"s")+" not printed.";
       }
       var nextAction;
       if(issues.length){ nextAction={ text:"Next best action: Review "+issues.length+" parcel"+(issues.length===1?"":"s")+" needing attention.", type:"issues" }; }
@@ -2095,7 +2138,15 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       // data attribute picked up by one delegated listener, so nothing
       // user-derived is ever concatenated into executable onclick JavaScript.
       const clickAttrs = action ? ` data-metric-action="${escLabelText(action)}" role="button" tabindex="0" style="cursor:pointer"` : "";
-      return `<article class="metric"${clickAttrs}>${iconHtml}<label>${label}</label><strong>${value}</strong><div class="meter ${kind}"><span style="width:${fill}%"></span></div><div class="meter-caption"><span>${caption}</span><span>${hidePct?"":`${fill}%`}</span></div></article>`;
+      /* fill===null means "this number has no denominator". Some cards show a
+         rupee total that is not a proportion of anything; they used to be given
+         an invented denominator so the bar had something to fill, which made a
+         meaningless percentage sit next to real money. Such a card now renders
+         with no meter and no percentage at all. */
+      const noMeter = (fill===null || fill===undefined);
+      const meterHtml = noMeter ? "" : `<div class="meter ${kind}"><span style="width:${fill}%"></span></div>`;
+      const pctHtml = (hidePct || noMeter) ? "" : `${fill}%`;
+      return `<article class="metric${noMeter?" no-meter":""}"${clickAttrs}>${iconHtml}<label>${label}</label><strong>${value}</strong>${meterHtml}<div class="meter-caption"><span>${caption}</span><span>${pctHtml}</span></div></article>`;
     }
     // NovaX dashboard refresh: metric cards are clickable shortcuts into the
     // matching filtered view -- purely additive UI sugar, no data logic changes.
@@ -2532,12 +2583,42 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           rate,
           rateKnown?`of ${rated} picked up`:"nothing picked up yet",
           (rateKnown&&rate<40)?"amber":"","✅","filter:Delivered",!rateKnown),
-        metricCard("Delivery Charges",money(cm.deliveryCharges),percent(cm.deliveryCharges,3000),"courier charges","amber","💳","filter:Delivered"),
-        metricCard("Invoice Payable Pending",money(cm.payable),percent(cm.payable,60000),"delivered, not yet in wallet","good","🧾","tab:payments"),
-        metricCard("Wallet Balance",money(Number((state.client&&state.client.walletBalance)||0)),percent(Number((state.client&&state.client.walletBalance)||0),60000),"ready to withdraw","blue","💰","tab:wallet"),
+        /* These bars divided by 3000 and 60000 -- numbers that correspond to
+           nothing. A merchant saw "13%", "15%", "2%" sitting next to real money
+           and read them as progress toward something. There is no denominator
+           that makes a delivery-charge total a percentage, so the bar is gone
+           rather than invented. */
+        metricCard("Delivery Charges",money(cm.deliveryCharges),null,"courier charges on delivered parcels","amber","💳","filter:Delivered"),
+        metricCard("Invoice Payable Pending",money(cm.payable),null,"delivered, not yet in wallet","good","🧾","tab:payments"),
+        metricCard("Wallet Balance",money(Number((state.client&&state.client.walletBalance)||0)),null,"ready to withdraw","blue","💰","tab:wallet"),
         '<button type="button" id="nvMetricsToggle" class="ghost-btn nv-metrics-toggle" style="display:none" onclick="var g=document.getElementById(&quot;clientMetrics&quot;); g.classList.toggle(&quot;nv-show-all&quot;); this.textContent=g.classList.contains(&quot;nv-show-all&quot;)?&quot;Show fewer metrics&quot;:&quot;Show all metrics&quot;;">Show all metrics</button>'
       ].join("");
       if(wasExpanded){ document.getElementById("clientMetrics").classList.add("nv-show-all"); var nvT=document.getElementById("nvMetricsToggle"); if(nvT) nvT.textContent="Show fewer metrics"; }
+    }
+    /* "No parcels in range." was shown whether the account was genuinely empty,
+       the date range excluded everything, or -- the case that actually hurt --
+       a search term the merchant could not see was hiding every parcel they
+       have. On a phone the search box sits far below this table, and the
+       browser restores its value on reload, so the dashboard totals kept
+       saying 10 parcels while the table underneath said there were none, with
+       nothing on screen explaining why and nothing to clear.
+
+       Name the filter that is responsible and put the control to clear it in
+       the empty result itself, where the merchant is already looking. */
+    function nvParcelEmptyStateHtml(){
+      var term="";
+      try{ term=(document.getElementById("clientSearch")||{}).value||""; }catch(e){}
+      term=String(term).trim();
+      if(term){
+        return "No parcels match “"+escLabelText(term)+"”. "+
+          '<button class="action-btn ghost" onclick="nvClearParcelSearch()">Clear search</button>';
+      }
+      return "No parcels in this date range.";
+    }
+    function nvClearParcelSearch(){
+      var el=document.getElementById("clientSearch");
+      if(el){ el.value=""; window.__nvSearchOwned=false; }
+      try{ renderClientParcels(); }catch(e){}
     }
     function filteredParcels(){ const t=(document.getElementById("clientSearch")?.value||"").trim().toLowerCase(); return clientScopedParcels().filter(p=>`${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase().includes(t)); }
     /* NovaX (detail drawer): clicking a parcel used to force a tab change back
@@ -2858,13 +2939,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvJourneyCell(p,pr){
       var st=String((p&&p.status)||"");
       if(st==="Delivered"){
-        /* mapParcel does not carry a deliveredAt; statusSince is when the
-           parcel entered its current status, which for Delivered is delivery. */
+        /* mapParcel now DOES carry deliveredAt -- the same delivered_at column
+           the public tracking page reads. statusSince is only the fallback: it
+           is when the parcel entered its current status, which is usually but
+           not always the delivery moment, and that gap is what showed the
+           merchant one delivery time and their customer another. */
         /* Inlined on purpose: nvSafeCall lives in a later, separate scope and
            is NOT visible here. Calling it threw a ReferenceError inside the
            row .map(), which aborted the whole tbody assignment and left the
            table empty. */
-        var when=""; try{ when=nvPktLabel(p.statusSince)||""; }catch(e){ when=""; }
+        var when=""; try{ when=nvPktLabel(p.deliveredAt||p.statusSince)||""; }catch(e){ when=""; }
         return '<span class="nv-done-date">Delivered'+(when?" \u00b7 "+escLabelText(when):"")+'</span>';
       }
       if(st==="Return to shipper"||st==="Cancelled by client"){
@@ -2882,7 +2966,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvCardJourney(p,pr){
       var st=String((p&&p.status)||"");
       if(st==="Delivered"||st==="Return to shipper"||st==="Cancelled by client"){
-        var when=""; try{ when=nvPktLabel(p.statusSince)||""; }catch(e){ when=""; }
+        var when=""; try{ when=nvPktLabel(p.deliveredAt||p.statusSince)||""; }catch(e){ when=""; }
         return '<div class="nv-done-date" style="margin-top:12px">'+escLabelText(st)+
                (when?" \u00b7 "+escLabelText(when):"")+'</div>';
       }
@@ -2973,7 +3057,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
-      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">No parcels in range.</td></tr>`);
+      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
       if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><label style="display:inline-flex;align-items:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -6px;padding:10px 6px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
       if(cardsOnScreen) nvMarkChanged("clientParcelCards",parcels,"cards");
       else nvMarkChanged("clientParcelRows",parcels,"rows");
@@ -3186,7 +3270,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           const whenNote=[place,when].filter(Boolean).join(" | ");
           const friendly=FRIENDLY_STEP_NOTE[status]||label;
           const note=problem?(p.exception||"Needs client review"):`${friendly}${whenNote?(" — "+whenNote):""}`;
-          return `<div class="seller-step ${current?"current":""} ${problem?"problem":""}"><div class="step-dot">${i+1}</div><div><strong>${escLabelText(label)}</strong><span>${escLabelText(note)}</span></div><span class="chip ${problem?"bad":current?"info":"good"}">${problem?"review":current?"current":"done"}</span></div>`;
+          return `<div class="seller-step ${current?"current":""} ${problem?"problem":""}"><div class="step-dot">${i+1}</div><div><strong>${escLabelText(label)}</strong> <span>${escLabelText(note)}</span></div><span class="chip ${problem?"bad":current?"info":"good"}">${problem?"review":current?"current":"done"}</span></div>`;
         });
       document.getElementById("clientJourney").innerHTML=`<div class="seller-journey-card">${rows.join("")}${p.resolutionRemark?`<div class="seller-step"><div class="step-dot">OK</div><div><strong>Admin remarks</strong><span>${escLabelText(p.resolutionRemark)}</span></div><span class="chip good">resolved</span></div>`:""}${p.proofPhoto?`<div class="seller-step problem"><div class="step-dot">📷</div><div><strong>Rider remark + proof</strong><span>${escLabelText(p.exception||p.returnProof||"Photo proof attached by rider")}</span></div><span class="chip bad">live</span></div><div style="padding:0 14px 14px"><img src="${escLabelText(p.proofPhoto)}" alt="rider proof" loading="lazy" style="width:100%;max-height:240px;object-fit:cover;border-radius:12px;border:1px solid var(--line)"></div>`:""}</div>`;
       const review=document.getElementById("refusalReview"); if(!review) return;
@@ -3239,39 +3323,104 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!state.identityVerified) return { label:"Verifying account...", showWorkspaceSuffix:false };
       return { label:(state.client&&state.client.name)||"Client", showWorkspaceSuffix:true };
     }
+    /* THE REPORT FILTER SPLIT.
+
+       The Full Report's summaries -- the metric cards and the City Summary
+       table -- were computed from clientScopedParcels(), which is the
+       DASHBOARD's date range. The table directly beneath them came from
+       nvReportRows(), which applies the report's OWN search, status and date
+       filters. Searching a single AWB therefore cut the table to one row while
+       City Summary carried on reporting 10 parcels and Rs 16,599, and nothing
+       on the page admitted the two were answering different questions.
+
+       One pool now feeds the cards, the table and the city breakdown, and when
+       a filter is narrowing them it says so with a control to clear it. */
+    function nvReportPool(){
+      try{
+        const f=nvReportFilterValues();
+        const active=!!(f.search||f.status||f.from||f.to);
+        return { rows:active?nvReportRows():clientScopedParcels(), filtered:active, f:f };
+      }catch(e){
+        return { rows:(typeof clientScopedParcels==="function")?clientScopedParcels():[], filtered:false, f:{} };
+      }
+    }
+    function nvReportFilterNote(pool){
+      if(!pool||!pool.filtered) return "";
+      const bits=[];
+      if(pool.f.search) bits.push("matching “"+escLabelText(pool.f.search)+"”");
+      if(pool.f.status) bits.push("status "+escLabelText(pool.f.status));
+      if(pool.f.from||pool.f.to) bits.push("dated "+escLabelText(pool.f.from||"any")+" to "+escLabelText(pool.f.to||"any"));
+      return '<p class="footer-note" style="margin-top:8px">These totals cover only the '+pool.rows.length+
+             " parcel"+(pool.rows.length===1?"":"s")+" "+bits.join(", ")+
+             '. <button class="action-btn ghost" onclick="nvClearReportFilters()">Clear filters</button></p>';
+    }
+    function nvClearReportFilters(){
+      ["repSearch","repFrom","repTo"].forEach(function(i){ const e=document.getElementById(i); if(e) e.value=""; });
+      const s=document.getElementById("repStatus"); if(s) s.value="";
+      try{ renderClientReportFull(); }catch(e){}
+      try{ renderReportSummaries(); }catch(e){}
+    }
+    function renderReportSummaries(){
+      const host=document.getElementById("clientReportMetrics");
+      const rowsHost=document.getElementById("clientReportRows");
+      if(!host && !rowsHost) return;
+      const pool=nvReportPool();
+      const cm=clientMetrics(pool.rows);
+      const deliveredCod=cm.parcels.filter(isDeliveredLedgerParcel).reduce((s,p)=>s+p.cod,0);
+      /* Nothing is owed on a parcel nobody has collected yet, so "pending" is
+         money genuinely in flight and the parcels still waiting for a rider are
+         a plain count beside it. */
+      const inFlight=cm.parcels.filter(p=>!isDeliveredLedgerParcel(p) && nvIsRatedParcel(p));
+      const pendingCod=inFlight.reduce((s,p)=>s+p.cod,0);
+      const awaitingPickup=cm.parcels.filter(p=>String(p.status||"").trim()==="New booked").length;
+      /* A parcel counts toward the delivery rate only once its journey has
+         ENDED. Anything still in transit is not an outcome yet. */
+      const concluded=cm.parcels.filter(nvIsConcludedParcel).length;
+      const concludedKnown=concluded>0;
+      const concludedRate=concludedKnown?percent(cm.delivered,concluded):0;
+      const open=Math.max(0,cm.total-cm.delivered);
+      if(host){
+        host.innerHTML=[
+          metricCard("Delivery Rate",
+            concludedKnown?`${concludedRate}%`:"—",
+            concludedRate,
+            concludedKnown
+              ? `${cm.delivered} delivered of ${concluded} completed &middot; ${Math.max(0,cm.total-concluded)} still moving, not counted`
+              : "no parcel has finished its journey yet",
+            (concludedKnown&&concludedRate<45)?"amber":"","","",true),
+          metricCard("Delivered COD",money(deliveredCod),percent(deliveredCod,deliveredCod+pendingCod),"cash collected","good"),
+          metricCard("Pending COD",money(pendingCod),percent(pendingCod,deliveredCod+pendingCod),"picked up, not delivered yet","amber"),
+          /* These two are ACCOUNT-level money -- a payout and a wallet balance
+             do not belong to a subset of parcels, so they cannot honour a
+             parcel filter. Rather than let them sit unchanged and unexplained
+             beside filtered figures, they say which scope they are. */
+          metricCard("Paid Out To You",money(nvPaidOutTotal()),
+            percent(nvPaidOutTotal(),Math.max(1,nvPaidOutTotal()+nvLiveWalletBalance())),
+            "withdrawals marked paid — whole account","good","","",true),
+          metricCard("Wallet Balance",money(nvLiveWalletBalance()),
+            percent(nvLiveWalletBalance(),Math.max(1,nvPaidOutTotal()+nvLiveWalletBalance())),
+            "available to withdraw right now — whole account",nvLiveWalletBalance()>0?"good":"","","",true),
+          metricCard("Delivery Charges",money(cm.deliveryCharges),
+            percent(cm.deliveryCharges,Math.max(1,deliveredCod)),
+            "deducted by NovaX on delivered parcels","amber","","",true),
+          metricCard("Awaiting Pickup",awaitingPickup,percent(awaitingPickup,Math.max(1,cm.total)),"no COD due until collected",awaitingPickup?"blue":"good"),
+          metricCard("Open Parcels",open,percent(open,Math.max(1,cm.total)),"not delivered yet",open?"blue":"good")
+        ].join("")+nvReportFilterNote(pool);
+      }
+      if(rowsHost){
+        rowsHost.innerHTML=cityReport(cm.parcels).map(r=>`<tr><td><strong>${escLabelText(r.city)}</strong></td><td>${r.parcels}</td><td>${money(r.cod)}</td><td>${money(r.revenue)}</td><td><span class="chip ${r.delivered?"good":"info"}">${r.delivered}/${r.parcels}</span></td></tr>`).join("")
+          || `<tr><td colspan="5" class="footer-note" style="padding:14px 8px">${pool.filtered?"No parcels match these filters.":"No parcels in this date range yet. Book your first parcel and this breaks down by city as they move."}</td></tr>`;
+      }
+    }
     function renderClientModules(){
       renderClientTabs(); renderAwbLabel();
       // NovaX fix (client identity leak): always read the header account name
       // from clientDisplayState(), the same source used by the sidebar/wallet/
       // reports, so it can never show a stale/demo/first-client name.
       const _acc=document.getElementById("topAccountName"); if(_acc) _acc.textContent=clientDisplayState().label;
-      const cm=clientMetrics();
-      const deliveredCod=cm.parcels.filter(isDeliveredLedgerParcel).reduce((s,p)=>s+p.cod,0);
-      /* "Pending COD" used to be every parcel that was not delivered, which
-         swept in bookings a rider had not even collected yet and presented
-         their face value as money the merchant was owed. Nothing is owed on a
-         parcel nobody has picked up -- there is no cash anywhere in the system
-         for it. Split into money that is genuinely in flight, and a plain
-         COUNT of what is still sitting waiting for a rider.
-
-         The second figure is deliberately a count, not a rupee amount: the
-         whole complaint about this screen was rupee amounts that do not
-         correspond to any real cash. */
-      const inFlight=cm.parcels.filter(p=>!isDeliveredLedgerParcel(p) && nvIsRatedParcel(p));
-      const pendingCod=inFlight.reduce((s,p)=>s+p.cod,0);
-      const awaitingPickup=cm.parcels.filter(p=>String(p.status||"").trim()==="New booked").length;
-      /* Same denominator as the dashboard card -- these two screens used to
-         compute the rate independently and would have drifted apart. */
-      const rated=cm.ratedTotal;
-      const rateKnown=rated>0;
-      const rate=rateKnown?percent(cm.delivered,rated):0;
-      /* A parcel counts toward the delivery rate only once its journey has
-         ENDED -- delivered, or back with the shipper for a stated reason.
-         Anything still in transit is not an outcome yet. */
-      const concluded=cm.parcels.filter(nvIsConcludedParcel).length;
-      const concludedKnown=concluded>0;
-      const concludedRate=concludedKnown?percent(cm.delivered,concluded):0;
-      const open=Math.max(0,cm.total-cm.delivered);
+      /* The report figures that used to be computed here now live in
+         renderReportSummaries(), because they have to be recomputed whenever a
+         report filter changes and this function is not called then. */
       const fromI=document.getElementById("clientDateFrom"), toI=document.getElementById("clientDateTo");
       if(fromI && fromI.value!==state.clientDateFrom) fromI.value=state.clientDateFrom||"";
       if(toI && toI.value!==state.clientDateTo) toI.value=state.clientDateTo||"";
@@ -3293,56 +3442,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               actionLabel:"Go to Bulk Booking",action:"bulkBooking"})
           : `<div class="ops-card"><strong>No file checked yet</strong><p>Upload a CSV to see per-row validation.</p></div>`;
       }
-      document.getElementById("clientReportMetrics").innerHTML=[
-        /* Delivery rate now divides by CONCLUDED parcels only.
-           It used to divide by ratedTotal, which keeps everything in transit in
-           the denominator -- so a merchant shipping steadily always sat near
-           50%, not because deliveries were failing but because half the book
-           was still moving. A parcel that has not been attempted yet is not
-           evidence either way; only a finished outcome is. Denominator is
-           therefore delivered + refused + consignee not available + the return
-           statuses, and the caption states the rule so the number cannot be
-           read as something else. */
-        metricCard("Delivery Rate",
-          concludedKnown?`${concludedRate}%`:"\u2014",
-          concludedRate,
-          concludedKnown
-            ? `${cm.delivered} delivered of ${concluded} completed &middot; ${Math.max(0,cm.total-concluded)} still moving, not counted`
-            : "no parcel has finished its journey yet",
-          (concludedKnown&&concludedRate<45)?"amber":"","","",true),
-        metricCard("Delivered COD",money(deliveredCod),percent(deliveredCod,deliveredCod+pendingCod),"cash collected","good"),
-        metricCard("Pending COD",money(pendingCod),percent(pendingCod,deliveredCod+pendingCod),"picked up, not delivered yet","amber"),
-        /* The three figures a merchant actually reconciles against their bank.
-           paidOut sums NET, not amount: net is what left NovaX after the payout
-           fee, i.e. what reached their account. Summing amount would overstate
-           every payout by its fee. */
-        /* hidePct on all three: metricCard puts the fill value in the caption
-           row as a percentage, and a percentage beside a rupee total is
-           meaningless -- "Rs 109,480 ... 100%" reads as a broken figure. */
-        /* The meter bar is drawn from `fill` whether or not the percentage is
-           shown, so passing 100 painted a completely full bar beside "Rs 0" --
-           it read as "all paid out" on an account that had never been paid.
-           Each bar now carries a real proportion: how the money splits between
-           taken out and still sitting there, and charges as a share of the COD
-           actually collected. */
-        metricCard("Paid Out To You",money(nvPaidOutTotal()),
-          percent(nvPaidOutTotal(),Math.max(1,nvPaidOutTotal()+nvLiveWalletBalance())),
-          "withdrawals marked paid","good","","",true),
-        metricCard("Wallet Balance",money(nvLiveWalletBalance()),
-          percent(nvLiveWalletBalance(),Math.max(1,nvPaidOutTotal()+nvLiveWalletBalance())),
-          "available to withdraw right now",nvLiveWalletBalance()>0?"good":"","","",true),
-        metricCard("Delivery Charges",money(cm.deliveryCharges),
-          percent(cm.deliveryCharges,Math.max(1,deliveredCod)),
-          "deducted by NovaX on delivered parcels","amber","","",true),
-        metricCard("Awaiting Pickup",awaitingPickup,percent(awaitingPickup,Math.max(1,cm.total)),"no COD due until collected",awaitingPickup?"blue":"good"),
-        metricCard("Open Parcels",open,percent(open,Math.max(1,cm.total)),"not delivered yet",open?"blue":"good")
-      ].join("");
-      /* BUG: with no rows this emitted "", so a brand-new account saw five
-         bare column headers over nothing at all -- height 0, no explanation.
-         The parcel cards next to it already handle their empty day one; this
-         table did not. */
-      document.getElementById("clientReportRows").innerHTML=cityReport(cm.parcels).map(r=>`<tr><td><strong>${escLabelText(r.city)}</strong></td><td>${r.parcels}</td><td>${money(r.cod)}</td><td>${money(r.revenue)}</td><td><span class="chip ${r.delivered?"good":"info"}">${r.delivered}/${r.parcels}</span></td></tr>`).join("")
-        || '<tr><td colspan="5" class="footer-note" style="padding:14px 8px">No parcels in this date range yet. Book your first parcel and this breaks down by city as they move.</td></tr>';
+      /* Both the metric cards and the City Summary are written by
+         renderReportSummaries(), which the report filter inputs also call, so
+         the cards, the city breakdown and the table below can no longer be
+         showing three different pools of parcels. */
+      renderReportSummaries();
       // NovaX fix (High #2): never fall back to the demo/default placeholder client id
       // id -- with no confirmed client identity, show zero invoices instead
       // of another client's invoices.
@@ -3439,10 +3543,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        YYYY-MM-DD is what sorts correctly in a spreadsheet. Changing this in
        place silently altered an export merchants already reconcile against.
        The friendlier form is a separate function, used by the AWB label only. */
-    function labelDate(p){ var d=p&&(p.date||p.statusSince||p.updated); var out=d?String(d).slice(0,10):new Date().toISOString().slice(0,10); return escLabelText(out); }
+    function labelDate(p){ var d=p&&(p.date||p.statusSince||p.updated); var out=d?String(d).slice(0,10):new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" }); return escLabelText(out); }
     function labelDatePretty(p){
       var d=p&&(p.date||p.statusSince||p.updated);
-      var iso=d?String(d).slice(0,10):new Date().toISOString().slice(0,10);
+      var iso=d?String(d).slice(0,10):new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" });
       var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
       if(!m) return escLabelText(iso);
       var mon=NV_MONTHS[parseInt(m[2],10)-1];
@@ -4455,17 +4559,44 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           stage.style.display="none"; stage.innerHTML=""; stage.classList.remove("bulk-print");
           if(window.onafterprint===cleanupPrintStage) window.onafterprint=null;
         }
-        window.onafterprint=cleanupPrintStage;
-        setTimeout(cleanupPrintStage,1500);
-        /* "Printed" used to be stamped the instant window.print() returned, so
-           pressing Cancel still marked every label printed. A browser never
-           tells a page whether the user printed or cancelled, so the flag is
-           set when the dialog closes and the merchant is given a way to say it
-           did not print. */
+        /* CRITICAL (14 Sep): this stamped every label "printed" the moment the
+           print() call returned -- even when no dialog ever opened. On a phone
+           where the browser silently refuses to show one, operations were told
+           a physical label existed when nothing was produced. The undo toast
+           did not fix that: it asked the merchant to notice and retract a
+           claim the portal should never have made.
+
+           A browser still will not say whether the user printed or cancelled,
+           but it DOES say whether a print dialog opened and closed, via
+           afterprint. So the flag is set only when that fires. When it never
+           fires -- no dialog, blocked popup, unsupported webview -- the portal
+           asks instead of asserting, and the parcel stays "not printed" until
+           the merchant says otherwise. */
         const nvPrintedNow=valid.map(p=>p.awb);
-        valid.forEach(p=>{ p.awbPrinted=true; p.awbPrintedAt=time(); });
-        saveState();
-        try{ nvOfferPrintUndo(nvPrintedNow); }catch(e){}
+        var nvMarked=false;
+        function nvMarkPrinted(){
+          if(nvMarked) return; nvMarked=true;
+          valid.forEach(p=>{ p.awbPrinted=true; p.awbPrintedAt=time(); });
+          saveState();
+          try{ nvOfferPrintUndo(nvPrintedNow); }catch(e){}
+          try{ if(document.getElementById("awbLabelPreview")) renderAwbLabel(); }catch(e){}
+          try{ renderNewBookedList(); }catch(e){}
+        }
+        var nvPrintDialogSeen=false;
+        /* Detached as soon as it fires. Left attached, this closure survives the
+           print it was created for -- and a later, unrelated Ctrl+P anywhere on
+           the page would re-enter it and stamp THESE parcels printed, which is
+           the very thing this block exists to prevent. */
+        window.onafterprint=function(){ window.onafterprint=null; nvPrintDialogSeen=true; cleanupPrintStage(); nvMarkPrinted(); };
+        setTimeout(function(){
+          cleanupPrintStage();
+          if(!nvPrintDialogSeen && !nvMarked){
+            /* No dialog was ever detected, so this print is concluded. Drop the
+               handler before asking, so a later print cannot land on it. */
+            window.onafterprint=null;
+            try{ nvConfirmPrinted(nvPrintedNow, nvMarkPrinted); }catch(e){}
+          }
+        },1500);
         try{ if(document.getElementById("awbLabelPreview")) renderAwbLabel(); }catch(e){}
         try{ if(valid.length===1 && document.getElementById("awbModal").classList.contains("show")) document.getElementById("awbModalBody").innerHTML=awbCompleteBadge(valid[0])+awbLabelHtml(valid[0]); }catch(e){}
         try{ renderNewBookedList(); }catch(e){}
@@ -4474,6 +4605,35 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     /* Shown after the print dialog closes: one tap to undo the "printed" mark
        for the labels just sent, for anyone who pressed Cancel. */
+    /* Shown when no print dialog was ever detected. The parcel stays NOT
+       printed unless the merchant confirms, which is the opposite of the old
+       behaviour -- the portal no longer claims a label exists on the strength
+       of a print() call that may have done nothing. */
+    function nvConfirmPrinted(awbs, onYes){
+      if(!awbs||!awbs.length) return;
+      var host=document.getElementById("nvPrintConfirm");
+      if(!host){
+        host=document.createElement("div");
+        host.id="nvPrintConfirm";
+        host.setAttribute("role","status");
+        host.style.cssText="position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:calc(100% - 28px);z-index:99999;display:none;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;background:var(--nvu-bg);border:1px solid var(--nvu-line-2);box-shadow:var(--sh-2);font-size:13px;color:var(--nvu-ink)";
+        host.innerHTML='<span id="nvPrintConfirmText"></span>'+
+          '<button type="button" id="nvPrintConfirmYes" style="min-height:38px;padding:8px 12px;border-radius:9px;border:1px solid var(--nvu-line-2);background:var(--nvu-accent);color:var(--nvu-accent-ink);font-weight:700;cursor:pointer">Yes, it printed</button>'+
+          '<button type="button" id="nvPrintConfirmNo" style="min-height:38px;padding:8px 12px;border-radius:9px;border:1px solid var(--nvu-line-2);background:transparent;color:var(--nvu-ink);font-weight:600;cursor:pointer">No</button>';
+        document.body.appendChild(host);
+      }
+      var txt=document.getElementById("nvPrintConfirmText");
+      if(txt) txt.textContent=awbs.length===1
+        ? ("Did "+awbs[0]+" print? It is still marked not printed.")
+        : ("Did all "+awbs.length+" labels print? They are still marked not printed.");
+      host.style.display="flex";
+      if(nvConfirmPrinted._t) clearTimeout(nvConfirmPrinted._t);
+      nvConfirmPrinted._t=setTimeout(function(){ host.style.display="none"; },20000);
+      var yes=document.getElementById("nvPrintConfirmYes");
+      var no=document.getElementById("nvPrintConfirmNo");
+      if(yes) yes.onclick=function(){ host.style.display="none"; try{ onYes&&onYes(); }catch(e){} };
+      if(no) no.onclick=function(){ host.style.display="none"; toast("Left as not printed.","success"); };
+    }
     function nvOfferPrintUndo(awbs){
       if(!awbs||!awbs.length) return;
       var host=document.getElementById("nvPrintUndo");
@@ -5025,7 +5185,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var note = document.getElementById("nvMhNote");
       if(note){
         note.textContent = live
-          ? "Paid to your IBAN, usually within 15 minutes."
+          /* This promised 15 minutes while every selectable payout tier is
+             24 hours, 12 hours or 2-3 hours. The 15 minutes is how fast COD
+             reaches the NovaX WALLET after delivery -- it is not a bank
+             payout time, and conflating the two sets a financial expectation
+             none of the options can meet. */
+          ? "Paid to your IBAN at the speed you pick below."
           : (f.shortfall > 0
               ? "Your wallet is " + money(f.shortfall) + " short. New COD clears that first, then the rest is yours to withdraw."
               : (f.counting > 0
@@ -5591,8 +5756,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // NovaX fix (wallet IBAN UX): bank details render independently of
       // balance/speed/amount so they're always available to add or edit.
       renderBankDetailsSection();
-      const push=state.lastWalletPush;
-      document.getElementById("walletPushNote").textContent=push?`Last credited ${money(push.amount)} from admin (${push.invoice}) at ${push.at}`:"No admin credit yet";
       // NovaX new (Finance Control Room v2): the client never sees
       // "mismatch"/"locked" language. If their own ledger math doesn't add
       // up to their wallet balance, we just say finance is reviewing their
@@ -5608,7 +5771,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const walletUnderReview=Math.abs(Math.round((balance-expected)*100)/100)>=1;
       const reviewNote=document.getElementById("walletReviewNote");
       if(reviewNote) reviewNote.style.display=walletUnderReview?"block":"none";
-      const monthKey=new Date().toISOString().slice(0,7);
+      /* PKT, like every other date on this screen. In UTC terms "this month"
+         flips over five hours late, so a payout settled on the 1st in Karachi
+         counted against the previous month here. */
+      const monthKey=new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" }).slice(0,7);
       const sv=state.serverWalletSummary;
       const pendingPayout=sv?Number(sv.pending_payout||0):myWds.filter(w=>w.status==="Pending admin payout").reduce((s,w)=>s+Number(w.net||0),0);
       const paidThisMonth=sv?Number(sv.paid_this_month||0):myWds.filter(w=>w.status==="Paid"&&String(w.paidAt||w.createdAt).slice(0,7)===monthKey).reduce((s,w)=>s+Number(w.net||0),0);
@@ -5639,9 +5805,57 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }).catch(function(e){ console.warn("NovaX wallet summary fetch error:",e&&e.message); });
       }
       const entryLabels={ invoice_credit:"Invoice credited", withdrawal_requested:"Withdrawal requested", payout_fee:"Payout fee deducted", payout_paid:"Payout paid", admin_adjustment:"Admin adjustment", delivery_charge_due:"Delivery charge collected" };
+      /* walletPushNote read state.lastWalletPush, which is NEVER ASSIGNED
+         anywhere in the codebase -- so the note permanently said "No admin
+         credit yet" while the ledger directly below it listed admin credits of
+         Rs 1,000 and Rs 100. Derive it from the ledger instead, which is the
+         thing the merchant can already see and reconcile against.
+
+         This must stay BELOW the myLedger and entryLabels declarations: both
+         are `const`, so reading them from higher up in the function throws a
+         ReferenceError and takes the whole wallet render down with it. */
+      (function(){
+        const el=document.getElementById("walletPushNote"); if(!el) return;
+        const last=(myLedger||[]).filter(l=>
+          l && l.affectsBalance && Number(l.amount)>0 &&
+          (l.entryType==="admin_adjustment" || l.entryType==="invoice_credit"))[0];
+        el.textContent = last
+          ? `Last credit ${money(Number(last.amount))} · ${entryLabels[last.entryType]||last.entryType}${last.createdAt?` · ${nvNiceDate(last.createdAt)}`:""}`
+          : "No credits to your wallet yet.";
+      })();
       const ledgerList=document.getElementById("walletLedgerList");
       if(ledgerList){
-        ledgerList.innerHTML=myLedger.slice(0,50).map(l=>`<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${l.amount>=0?"good":"warn"}">${money(l.amount)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(nvNiceDate(l.createdAt))}</div></div>`).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
+        /* Rows with affects_balance=false are informational: the server has
+           already netted them into another entry. They were rendered
+           identically to real movements, so a merchant adding the column up by
+           hand could not reconcile it against their own balance. Mark them
+           instead of hiding them -- they still explain what happened. */
+        /* RECONCILIATION. The ledger listed up to 50 rows and nothing else --
+           no count, no opening balance, no hint that anything was missing. A
+           merchant adding the visible column by hand reached about -Rs 730
+           against a displayed balance of Rs 1,100 and had no way to account for
+           the other Rs 1,830. It was never missing: it is earlier activity this
+           page does not load.
+
+           balance minus the sum of every loaded row that moves the balance IS
+           that carried-in figure, so it can simply be stated. Carried in + all
+           entries = balance, with all three numbers on screen together, and the
+           row count says plainly how many of them are listed below. */
+        const reconHtml=(function(){
+          if(!myLedger.length) return "";
+          const shownN=Math.min(50,myLedger.length);
+          const carriedIn=Math.round((balance-expectedRaw)*100)/100;
+          const parts=[];
+          if(Math.abs(carriedIn)>=1) parts.push("carried in from earlier activity "+money(carriedIn));
+          parts.push("these "+myLedger.length+" entr"+(myLedger.length===1?"y":"ies")+" total "+money(Math.round(expectedRaw*100)/100));
+          parts.push("balance "+money(balance));
+          return '<div class="ops-card nv-ledger-recon"><div class="ops-card-head"><strong>How this adds up</strong>'+
+            '<span class="chip">'+(shownN<myLedger.length?("Showing "+shownN+" of "+myLedger.length):(myLedger.length+" entr"+(myLedger.length===1?"y":"ies")))+'</span></div>'+
+            '<p class="footer-note">'+escLabelText(parts.join(" · "))+"."+
+            (shownN<myLedger.length?" The rest are in your downloadable wallet statement.":"")+
+            '</p></div>';
+        })();
+        ledgerList.innerHTML=reconHtml+myLedger.slice(0,50).map(l=>`<div class="ops-card${l.affectsBalance?"":" nv-ledger-info"}"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${l.affectsBalance?(l.amount>=0?"good":"warn"):""}">${money(l.amount)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(nvNiceDate(l.createdAt))}${l.affectsBalance?"":" · already netted — not deducted again"}</div></div>`).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
         /* NovaX motion: when the balance actually moved this render, flag the
            newest ledger row so the merchant can see what caused it, rather
            than just noticing a different total. Same .nv-changed sweep the
@@ -5881,7 +6095,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // subtraction can never happen.
         const alreadyKnown=!!(d&&d.id&&(state.walletWithdrawals||[]).some(function(w){ return w&&w._uuid===d.id; }));
         if(!alreadyKnown){
-          state.walletWithdrawals.unshift({ id:nextId("WDR",state.walletWithdrawals), _uuid:d&&d.id, clientId:c.id, amount:amt, fee, net, iban, speed, status:(d&&d.status)||"Pending admin payout", createdAt:`${new Date().toISOString().slice(0,10)} ${time()}` });
+          state.walletWithdrawals.unshift({ id:nextId("WDR",state.walletWithdrawals), _uuid:d&&d.id, clientId:c.id, amount:amt, fee, net, iban, speed, status:(d&&d.status)||"Pending admin payout", /* Date and time must come from the SAME zone. time() is Asia/Karachi, so a
+             UTC date here glued a 14 Sep date onto a 15 Sep PKT time for five
+             hours every night -- on a withdrawal record. */
+          createdAt:`${new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" })} ${time()}` });
           state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:c.id, type:"Wallet withdrawal requested", amount:amt, status:`${money(net)} net after ${money(fee)} fee`, ref:walletSpeedLabel(speed) });
         }
         // NovaX fix (withdrawal UX v2): clear the amount instead of leaving the
@@ -6803,7 +7020,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const bookedWeight=o.weight||"0.8 kg";
       const bookedCharge=bookingChargeBreakdown(bookedRc, bookedZone, bookedWeight);
       const bookedFee=(o.fee!==undefined&&o.fee!==null&&o.fee!=="")?Number(o.fee):bookedCharge.total;
-      state.parcels.unshift({ awb, clientId, date:o.date||new Date().toISOString().slice(0,10), consignee:o.consignee||"New COD Order", city:bookedCity, cod, fee:bookedFee, phone:o.phone||"", pickupCity:o.pickupCity||"Karachi", service:o.service||"COD Standard", category:o.category||"", fragile:o.fragile||"No", weight:bookedWeight, paymentMode:o.paymentMode||"COD", orderId:o.orderId||"", referenceNo:o.referenceNo||o.reference||o.ref||"", address:o.address||"Address pending", status:"New booked", statusAgeHours:0, statusSince:new Date().toISOString(), stage:0, totalStages:STATUS_TAGS.length-1, rider:o.rider||"", branch:"Karachi Hub", risk:8, updated:time(), exception:"", source:o.source||"", steps:["New booked"], _syncPending:true, _syncFailed:false });
+      /* PKT, to match the date mapParcel puts on every server-returned parcel. */
+      state.parcels.unshift({ awb, clientId, date:o.date||new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" }), consignee:o.consignee||"New COD Order", city:bookedCity, cod, fee:bookedFee, phone:o.phone||"", pickupCity:o.pickupCity||"Karachi", service:o.service||"COD Standard", category:o.category||"", fragile:o.fragile||"No", weight:bookedWeight, paymentMode:o.paymentMode||"COD", orderId:o.orderId||"", referenceNo:o.referenceNo||o.reference||o.ref||"", address:o.address||"Address pending", status:"New booked", statusAgeHours:0, statusSince:new Date().toISOString(), stage:0, totalStages:STATUS_TAGS.length-1, rider:o.rider||"", branch:"Karachi Hub", risk:8, updated:time(), exception:"", source:o.source||"", steps:["New booked"], _syncPending:true, _syncFailed:false });
       state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId, type:"COD expected", amount:cod, status:"Awaiting delivery", ref:awb });
       state.selectedAwb=awb; state.lastGeneratedAwb=awb; saveState();
       try{ render(); }catch(e){ console.error("Post-booking render failed", e); }
@@ -6823,6 +7041,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          with it. */
       const required=["bookingName","bookingPhone","bookingPickupCity","bookingCity","bookingCod","bookingService","bookingCategory","bookingFragile","bookingWeight","bookingAddress"];
       if(required.some(id=>!String(document.getElementById(id).value||"").trim())){ toast("All booking fields are mandatory before AWB creation.","error"); return; }
+      /* Presence was the only check, so "0 kg" passed here and was billed as
+         0.8 kg further down. Validate the number, not just that a field is
+         filled in. */
+      const nvWProblem=nvWeightProblem(document.getElementById("bookingWeight").value);
+      if(nvWProblem){
+        toast(nvWProblem,"error");
+        try{ document.getElementById("bookingWeight").focus(); }catch(e){}
+        return;
+      }
       let phone=document.getElementById("bookingPhone").value.replace(/\D/g,"");
       if(phone.length===10&&phone.startsWith("3")) phone="0"+phone;
       const consignee=document.getElementById("bookingName").value.trim();
@@ -6843,8 +7070,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const riskInput={ phone:phone, address, cod:document.getElementById("bookingCod").value, city:document.getElementById("bookingCity").value, product:document.getElementById("bookingCategory").value.trim(), weight:document.getElementById("bookingWeight").value.trim(), recentDuplicate:false };
       const risk=checkBookingRisk(riskInput);
       if(risk.serious.length){
-        if(riskWarnEl){ riskWarnEl.style.display="block"; riskWarnEl.style.color="#a1230e"; riskWarnEl.style.background="var(--nvu-bad-bg)"; riskWarnEl.style.borderColor="#f0b4ac"; riskWarnEl.textContent=risk.serious[0]; }
-        toast(risk.serious[0],"error");
+        /* The same sentence was shown twice simultaneously: in the inline
+           banner above the form AND as a toast over it. Two copies of one
+           problem reads as two problems. The banner is the one anchored to the
+           form that caused it, so it wins; the toast is now only the fallback
+           for when the banner element is not on the page. */
+        if(riskWarnEl){
+          riskWarnEl.style.display="block"; riskWarnEl.style.color="#a1230e"; riskWarnEl.style.background="var(--nvu-bad-bg)"; riskWarnEl.style.borderColor="#f0b4ac"; riskWarnEl.textContent=risk.serious[0];
+          try{ riskWarnEl.scrollIntoView({behavior:"smooth",block:"center"}); }catch(e){}
+        } else {
+          toast(risk.serious[0],"error");
+        }
         return;
       }
       if(risk.minor.length){
@@ -6878,7 +7114,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const revealCity=document.getElementById("bookingCity").value;
         resetBookingForm();
         if(riskWarnEl){ riskWarnEl.style.display="none"; }
-        if(confirmLine){ confirmLine.textContent=`Synced to NovaX. AWB ${awb} is ready to print.`; confirmLine.style.color=""; confirmLine.style.display="block"; }
+        /* The reveal animation ends on "Ready to print" and then nothing
+           happened: a returning merchant on desktop was left looking at an
+           empty booking form with no way to reach the label they were just
+           told was ready. This gives them the door without yanking them off
+           the form mid-batch -- data-client-tab is the existing delegated
+           navigation used elsewhere on this page. */
+        if(confirmLine){ confirmLine.innerHTML=`Synced to NovaX. AWB ${escLabelText(awb)} is ready to print. <button type="button" class="ghost-btn" data-client-tab="awbLabel" style="margin-left:8px">Open AWB label</button>`; confirmLine.style.color=""; confirmLine.style.display="block"; }
         // NovaX fix (confidence messaging): explicit "synced" + "ready to
         // print" pairing matches the two things the client actually needs to
         // know once the server has confirmed the booking.
@@ -7152,7 +7394,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!String(o.product||"").trim()){ serious.push("Product details are missing. Add what is being shipped."); }
 
       var weight=String(o.weight||"").trim();
-      if(!weight || !/\d/.test(weight)){ serious.push("Package weight looks invalid. Enter a weight like 0.8 kg."); }
+      /* /\d/ only asked whether a digit was present, so "0", "0 kg" and "-1 kg"
+         all passed and were then silently rebilled at 0.8 kg. */
+      var nvWp=(typeof nvWeightProblem==="function") ? nvWeightProblem(weight) : null;
+      if(nvWp){ serious.push(nvWp); }
 
       if(o.recentDuplicate){ minor.push("This looks similar to a booking made in the last few minutes. Please confirm it is not a duplicate."); }
 
@@ -7924,6 +8169,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
       /* supabase.rpc() is a thenable WITHOUT .catch(), so wrap before chaining
          -- the same pattern cancelClientBooking() uses. */
+      /* The edit screen accepted and re-displayed "0 kg" with no warning, so a
+         zero-weight parcel survived correction and stayed billable. Same
+         validator the booking form uses. */
+      var edWProblem=(typeof nvWeightProblem==="function") ? nvWeightProblem(nvGetVal("nvEdWeight")) : null;
+      if(edWProblem){
+        if(btn){ btn.disabled=false; btn.textContent="Save changes"; }
+        nvEditParcelError(edWProblem);
+        return;
+      }
       var edArgs={
           p_awb: awb,
           p_consignee: name,
@@ -9081,7 +9335,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const list=document.getElementById("newBookedList"); if(!list) return;
       const items=newBookedParcels();
       if(!items.length){ list.innerHTML=`<div class="ops-card"><strong>No new booked parcels yet</strong><p class="footer-note">Printable AWB labels appear here the moment a parcel is booked.</p><div class="inline-actions" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="action-btn" data-nv-cock="tab" data-tab="newBooking">Book a parcel</button><button class="ghost-btn" data-nv-cock="tab" data-tab="bulkBooking">Upload bulk CSV</button><button class="ghost-btn" data-nv-cock="tab" data-tab="integrations">Sync your store</button></div></div>`; return; }
-      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}" checked><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${nvSourceChip(p.source)}${nvPrintedMark(p)}</span><button class="ghost-btn nv-nb-act" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn nv-nb-act" title="Delete this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:#b91c1c;border-color:#f0b4ac">Delete</button></label>`).join("");
+      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}"><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${nvSourceChip(p.source)}${nvPrintedMark(p)}</span><button class="ghost-btn nv-nb-act" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn nv-nb-act" title="Delete this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:#b91c1c;border-color:#f0b4ac">Delete</button></label>`).join("");
       nvSyncSelectAllNewBookedLabel();
     }
     /* Merchants were shown the raw internal value -- "client_portal",
@@ -9590,8 +9844,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     nvApplyPrintMode();
     document.getElementById("reportCsvBtn").addEventListener("click",exportReportCsv);
     document.getElementById("reportPdfBtn").addEventListener("click",exportReportPdf);
-    document.getElementById("repClearBtn").addEventListener("click",()=>{ ["repSearch","repFrom","repTo"].forEach(i=>{const e=document.getElementById(i);if(e)e.value="";}); const s=document.getElementById("repStatus"); if(s)s.value=""; renderClientReportFull(); });
-    ["repSearch","repStatus","repFrom","repTo"].forEach(id=>{ const e=document.getElementById(id); if(e) e.addEventListener(e.tagName==="SELECT"?"change":"input",renderClientReportFull); });
+    /* Both paths now refresh the SUMMARIES as well as the table. Previously
+       only the table was wired to these inputs, so the metric cards and City
+       Summary above it kept showing account-wide totals while the rows beneath
+       narrowed to a single parcel. */
+    document.getElementById("repClearBtn").addEventListener("click",()=>{ ["repSearch","repFrom","repTo"].forEach(i=>{const e=document.getElementById(i);if(e)e.value="";}); const s=document.getElementById("repStatus"); if(s)s.value=""; renderClientReportFull(); try{ renderReportSummaries(); }catch(e){} });
+    ["repSearch","repStatus","repFrom","repTo"].forEach(id=>{ const e=document.getElementById(id); if(e) e.addEventListener(e.tagName==="SELECT"?"change":"input",function(){ renderClientReportFull(); try{ renderReportSummaries(); }catch(err){} }); });
     document.querySelectorAll(".tier-card").forEach(t=>t.addEventListener("click",()=>{ t.classList.remove("just-picked"); void t.offsetWidth; t.classList.add("just-picked"); selectWalletSpeed(t.dataset.speed); }));
     document.getElementById("withdrawAmount").addEventListener("input",renderClientWallet);
     // NovaX fix (withdrawal UX v3): mark the IBAN field "touched" the moment
@@ -10246,7 +10504,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function dpart(t){
         var k=nvKarachiParts(t);
         if(k) return k.date;
-        return t?String(t).slice(0,10):new Date().toISOString().slice(0,10);
+        return t?String(t).slice(0,10):new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" });
       }
       function tpart(t){
         if(!t) return "";
@@ -10354,6 +10612,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), /* status_since is stamped server-side only when the status actually changes.
            updated_at moves on ANY write, so printing a label used to reset a
            parcel's age and clear its SLA warning (measured drift: avg 117h). */
+        /* delivered_at is the real delivery event time and the public tracking
+           page has always used it. The portal never carried it, so it fell back
+           to status_since -- and the same AWB showed one delivery time to the
+           merchant and a different one to their customer. Same field, both
+           screens, from here on. */
+        deliveredAt:r.delivered_at||null,
         statusSince:r.status_since||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.status_since||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _meta:m, trackingToken:r.tracking_token||"", _raw:{ consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0) },
         // NovaX distance pricing. Null on every parcel booked before it existed,
         // which is exactly how the label and invoice detect "flat, show nothing".
@@ -11285,13 +11549,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const totalItems=parcelItems.length+missingInfoItems.length+(payable>0?1:0);
       if(!totalItems){ host.innerHTML=""; host.style.display="none"; return; }
       host.style.display="block";
-      const parcelCards=parcelItems.slice(0,6).map(function(p){
+      /* Set by Review Issues, which promises the whole set. The caps below are
+         right for a landing view and wrong for "see all". */
+      const showAll=!!window.__nvActionNeededShowAll;
+      const parcelCards=parcelItems.slice(0,showAll?parcelItems.length:6).map(function(p){
         const isRefused=p.status==="Refused"; const isReturn=p.status==="Ready for return";
         const label=isRefused?"We need your decision":isReturn?"Return to shipper -- confirm":p.status==="Consignee not available"?"Approve reattempt":"Delayed -- update available";
         const eAwb=escLabelText(p.awb);
         return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">${escLabelText(label)}</span></div><p class="footer-note">${escLabelText(p.consignee||"")} &middot; ${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="clientActionNeededReattempt('${eAwb}')">Approve reattempt</button><button class="action-btn ghost" onclick="clientActionNeededReturn('${eAwb}')">Return to shipper</button><button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button><button class="action-btn ghost" onclick="clientActionNeededAskAi('${eAwb}')">Ask AI</button>${nvCanRaiseTicket(p)&&(typeof nvCanUseTab!=="function"||nvCanUseTab("tickets"))?`<button class="action-btn ghost" onclick="nvRaiseTicketFor('${eAwb}',event)">Report an issue</button>`:""}</div></div>`;
       });
-      const missingInfoCards=missingInfoItems.slice(0,4).map(function(p){
+      const missingInfoCards=missingInfoItems.slice(0,showAll?missingInfoItems.length:4).map(function(p){
         const eAwb=escLabelText(p.awb);
         return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">Missing address or phone</span></div><p class="footer-note">${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button></div></div>`;
       });
@@ -11310,7 +11577,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const hiddenCount=Math.max(0, totalItems-shownCount);
       const moreNote=hiddenCount>0
         ? `<p class="footer-note" style="margin-top:8px">Showing ${shownCount} of ${totalItems}. <button class="action-btn ghost" onclick="typeof nvReviewIssues==='function'&&nvReviewIssues()">See all ${totalItems}</button></p>`
-        : "";
+        : (showAll && totalItems>6
+            ? `<p class="footer-note" style="margin-top:8px">Showing all ${totalItems}. <button class="action-btn ghost" onclick="typeof nvActionNeededShowFewer==='function'&&nvActionNeededShowFewer()">Show fewer</button></p>`
+            : "");
       host.innerHTML=`<div class="panel nv-notice-warm"><div class="section-head"><div><h3>Action needed</h3><p>${totalItems} item${totalItems===1?"":"s"} waiting on a quick decision from you -- nothing urgent, just pick an option below.</p></div></div><div class="ops-list">`+parcelCards.concat(missingInfoCards).concat(walletCard).join("")+`</div>${moreNote}</div>`;
     }
 
@@ -11359,10 +11628,36 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             return;
           }
         }
-        var board=document.getElementById("clientStatusBoard");
-        if(board && board.style.display==="none" && typeof toggleStatusBoard==="function") toggleStatusBoard();
-        setTimeout(function(){ var el=document.getElementById("clientStatusBoard"); if(el) el.scrollIntoView({behavior:"smooth",block:"start"}); },150);
+        /* This used to toggle #clientStatusBoard -- the FULL status board:
+           every parcel the merchant has, Delivered ones included, grouped into
+           columns with the issues marked nowhere. A button labelled "Review
+           Issues" handed back the entire book and left them to find 5 parcels
+           in it.
+
+           The Action needed card directly below the strip already IS that set,
+           card per parcel with the actions attached. So land there, and lift
+           its 6+4 display caps first, because "see all" has to mean all. */
+        window.__nvActionNeededShowAll=true;
+        try{ if(typeof renderClientActionNeeded==="function") renderClientActionNeeded(); }catch(e){}
+        setTimeout(function(){
+          var card=document.getElementById("clientActionNeededCard");
+          if(card && card.style.display!=="none"){
+            card.scrollIntoView({behavior:"smooth",block:"start"});
+            return;
+          }
+          /* Only if that card is not on screen -- fall back to the old board
+             rather than leaving the button doing nothing. */
+          var board=document.getElementById("clientStatusBoard");
+          if(board && board.style.display==="none" && typeof toggleStatusBoard==="function") toggleStatusBoard();
+          if(board) board.scrollIntoView({behavior:"smooth",block:"start"});
+        },150);
       }catch(e){}
+    }
+    function nvActionNeededShowFewer(){
+      window.__nvActionNeededShowAll=false;
+      try{ if(typeof renderClientActionNeeded==="function") renderClientActionNeeded(); }catch(e){}
+      var card=document.getElementById("clientActionNeededCard");
+      if(card) try{ card.scrollIntoView({behavior:"smooth",block:"start"}); }catch(e){}
     }
     function wireCommandStripButtons(){
       try{
@@ -11551,11 +11846,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function nvSafeCall(fn){ try{ return fn(); }catch(e){ return undefined; } }
       function nvMyParcels(){
         var list=nvSafeCall(function(){ return (state&&state.parcels)||[]; })||[];
-        var mine=nvSafeCall(function(){
-          if(typeof myClientId!=="undefined" && myClientId) return list.filter(function(p){ return p&&p.clientId===myClientId; });
-          return null;
-        });
-        return mine&&mine.length?mine:list;
+        /* myClientId is a const declared inside a DIFFERENT function, so it was
+           never in scope here: the typeof test always read "undefined" and this
+           fell through to the UNFILTERED list. Harmless only because the portal
+           loads just the signed-in merchant's own rows today -- one query
+           change away from putting another merchant's parcels on this screen.
+           Read the id from state, the way every other function here does. */
+        var id=nvSafeCall(function(){ return state&&state.client&&state.client.id; });
+        if(!id) return list;
+        return list.filter(function(p){ return p&&p.clientId===id; });
       }
       function nvAging(p){ var h=nvSafeCall(function(){ return agingHours(p); }); return typeof h==="number"?h:0; }
       function nvIsOwner(){ var r=nvSafeCall(function(){ return nvIsOwnerSeat(); }); return r===undefined?true:!!r; }
@@ -11576,8 +11875,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             if(nvAging(p)>48) stuck.push(p);
           }
           else if(st==="New booked") next.push(p);
+          /* A finished parcel cannot be helped by fixing its address. This said
+             "1 parcel missing address or phone -- a rider cannot deliver
+             without these" and opened a parcel that was already Delivered and
+             Paid. Only parcels still waiting on a delivery belong here. */
           var addr=String(p.address||"").trim();
-          if(!addr || /^address pending$/i.test(addr) || !String(p.phone||"").replace(/\D/g,"").length) missing.push(p);
+          var concluded=(typeof nvIsConcludedParcel==="function") && nvIsConcludedParcel(p);
+          if(!concluded && (!addr || /^address pending$/i.test(addr) || !String(p.phone||"").replace(/\D/g,"").length)) missing.push(p);
         });
         return { all:ps, needs:needs, moving:moving, next:next, stuck:stuck, missing:missing,
           delivered:ps.filter(function(p){ return String(p.status||"")==="Delivered"; }) };
@@ -11585,7 +11889,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       window.__novaxTodayContext=function(){
         var b=nvTodayBuckets();
         function slim(p){ return { awb:p.awb, status:p.status, city:p.city, consignee:p.consignee, address:p.address, phone:p.phone, ageHours:Math.round(nvAging(p)) }; }
-        return { needsMe:b.needs.map(slim), stuck:b.stuck.map(slim), missingAddress:b.missing.map(slim),
+        /* needsMe fed the AI from the NARROW status list while the cockpit on
+           screen counted nvAttentionParcels(). Verified live: the dashboard
+           said "3 need you" and this handed the assistant 1. A merchant asking
+           NovaX AI what needs them got a different answer from the screen they
+           were looking at. Same predicate as the UI, so they cannot disagree. */
+        var attnCtx=(typeof nvAttentionParcels==="function")?nvAttentionParcels():b.needs;
+        return { needsMe:attnCtx.map(slim), stuck:b.stuck.map(slim), missingAddress:b.missing.map(slim),
           outForDelivery:b.moving.filter(function(p){ return p.status==="Parcel out for delivery"; }).map(slim),
           newBooked:b.next.map(slim), delivered:b.delivered.map(slim), total:b.all.length };
       };
@@ -11721,10 +12031,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            Falls back to the old bucket if the helper is somehow out of scope,
            which keeps a stale cached page rendering rather than blank. */
         var attn=(typeof nvAttentionParcels==="function") ? nvAttentionParcels() : b.needs;
-        var needsList=attn.concat(b.stuck.filter(function(p){ return attn.indexOf(p)<0; })).slice(0,4);
+        /* needsAll is the true count; needsList is only what fits on screen.
+           The subtitle below used to be built from the SLICED list, so a
+           merchant with 9 parcels needing them was told "4 need you" here while
+           the Action Needed card said 9. Count the real set, show the first
+           four, and say plainly that the rest exist. */
+        var needsAll=attn.concat(b.stuck.filter(function(p){ return attn.indexOf(p)<0; }));
+        var needsList=needsAll.slice(0,4);
         var needsHtml=needsList.length?needsList.map(function(p){
           return nvItem(p,nvParcelActions(p));
-        }).join(""):'<p class="nv-c-empty">Nothing needs you right now. Exceptions and parcels stuck over 48 hours appear here.</p>';
+        }).join("")+(needsAll.length>needsList.length
+          ? '<p class="nv-c-empty">Showing '+needsList.length+' of '+needsAll.length+' — the rest are in Action needed, below.</p>'
+          : "")
+          :'<p class="nv-c-empty">Nothing needs you right now. Exceptions and parcels stuck over 48 hours appear here.</p>';
         var movingCounts={};
         b.moving.forEach(function(p){ movingCounts[p.status]=(movingCounts[p.status]||0)+1; });
         var movingHtml=Object.keys(movingCounts).length?Object.keys(movingCounts).map(function(k){
@@ -11743,7 +12062,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         needsList.forEach(function(p){ shownAwbs[p.awb]=1; });
         var freshNew=b.next.filter(function(p){ return !shownAwbs[p.awb]; });
         if(freshNew.length){
-          nextHtml+='<div class="nv-c-item"><strong>'+freshNew.length+' parcel'+(freshNew.length===1?"":"s")+' ready to hand over</strong><span>Print the labels, then a rider collects them</span><div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="printnew">Print labels</button><button class="nv-c-btn" data-nv-cock="tab" data-tab="awbLabel">AWB tab</button></div></div>';
+          nextHtml+='<div class="nv-c-item"><strong>'+freshNew.length+' of '+b.next.length+' new booking'+(b.next.length===1?"":"s")+' ready to hand over</strong><span>'+(b.next.length>freshNew.length?'The other '+(b.next.length-freshNew.length)+' need you first — see Needs you now':'Print the labels, then a rider collects them')+'</span><div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="printnew">Print labels</button><button class="nv-c-btn" data-nv-cock="tab" data-tab="awbLabel">AWB tab</button></div></div>';
         }
         if(b.missing.length){
           nextHtml+='<div class="nv-c-item"><strong>'+b.missing.length+' parcel'+(b.missing.length===1?"":"s")+' missing address or phone</strong><span>A rider cannot deliver without these</span><div class="nv-c-acts"><button class="nv-c-btn" data-nv-cock="journey" data-awb="'+nvEsc(b.missing[0].awb)+'">Open first</button></div></div>';
@@ -11753,11 +12072,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           nextHtml+='<div class="nv-c-item"><strong>'+b.delivered.length+' parcel'+(b.delivered.length===1?"":"s")+' delivered</strong><span>Check what you are owed in Payments</span><div class="nv-c-acts"><button class="nv-c-btn" data-nv-cock="tab" data-tab="payments">Open Payments</button>'
             +(nvIsOwner()?'<button class="nv-c-btn" data-nv-cock="tab" data-tab="wallet">Open Wallet</button>':"")+"</div></div>";
         }
-        var sub=b.all.length+' parcel'+(b.all.length===1?"":"s");
-        if(needsList.length) sub+=' \u00b7 '+needsList.length+' need'+(needsList.length===1?"s":"")+' you';
+        /* This panel counts the merchant's WHOLE book -- July, August and
+           September bookings alike -- under a heading that said "Today". It is
+           an all-time snapshot, so it now says so. */
+        var sub='All time · '+b.all.length+' parcel'+(b.all.length===1?"":"s");
+        if(needsAll.length) sub+=' \u00b7 '+needsAll.length+' need'+(needsAll.length===1?"s":"")+' you';
         sub+=' \u00b7 '+b.moving.length+' moving';
         if(b.delivered.length) sub+=' \u00b7 '+b.delivered.length+' delivered';
-        nvSetHtml(box, '<div class="nv-cockpit-head"><b>Today</b><span class="nv-c-sub">'+sub+'</span></div>'
+        nvSetHtml(box, '<div class="nv-cockpit-head"><b>Your parcels</b><span class="nv-c-sub">'+sub+'</span></div>'
           +'<div class="nv-cockpit-cols">'
           +'<div class="nv-c-col"><h4>Needs you now</h4>'+needsHtml+"</div>"
           +'<div class="nv-c-col"><h4>What\u2019s moving</h4>'+movingHtml+"</div>"
@@ -12918,7 +13240,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   (function(){
     try{
       function briefingKey(){
-        var today=new Date().toISOString().slice(0,10);
+        var today=new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" });
         var cId=(typeof cid==="function"&&cid())||(typeof state!=="undefined"&&state.client&&state.client.id)||"CL-0000";
         return "novaxDailyBriefingShown:"+cId+":"+today;
       }
@@ -13923,7 +14245,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
      always got "undefined", and left the CTA stuck on "Create Booking" -- the
      empty and pasted-order states were unreachable. */
   window.nvBookingFormPercent = bookingFormPercent;
-  function todayStr(){ return new Date().toISOString().slice(0,10); }
+  /* toISOString() is UTC. Parcel dates are stamped in PKT (UTC+5), so after
+     19:00 UTC a parcel booked "today" in Karachi carried tomorrow's date
+     relative to this function -- which is how newly booked parcels showed up
+     future-dated in reports and on AWBs. Both sides now speak PKT. */
+  function todayStr(){ return new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" }); }
   function getAckMap(){ try{ return JSON.parse(localStorage.getItem(ACK_KEY)||"{}"); }catch(e){ return {}; } }
   function ackTip(key){ try{ var m=getAckMap(); m[key]=todayStr(); localStorage.setItem(ACK_KEY,JSON.stringify(m)); }catch(e){} }
   function isAcked(key){ return getAckMap()[key]===todayStr(); }

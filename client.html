@@ -238,6 +238,15 @@
     .money-box strong{display:block;font-size:19px;}
     .ops-list{display:grid;gap:10px;}
     .ops-card{padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--nvu-bg);}
+    /* Wallet ledger rows the server has already netted into another entry.
+       They are reference, not movement, so they read quieter than real money --
+       dashed edge, muted text, outlined chip instead of a green/amber one.
+       Only --muted and --line are used here: both are redefined for dark. A
+       literal or a light-only token would look correct in one theme and wrong
+       in the other. */
+    .nv-ledger-info{border-style:dashed;background:transparent;}
+    .nv-ledger-info .ops-card-head strong,.nv-ledger-info .footer-note{color:var(--muted);}
+    .nv-ledger-info .chip{background:transparent;border:1px solid var(--line);color:var(--muted);}
     /* NovaX new (Smart Portal E): Autopilot insight + digest cards. */
     .nv-ins{border:1px solid var(--line);border-left:4px solid var(--muted);border-radius:var(--radius);
       background:var(--nvu-bg);padding:12px 14px;margin-bottom:10px;min-width:0;}
@@ -1271,6 +1280,15 @@
       max-height:calc(100dvh - var(--nv-nav-h)) !important;
     }
     #nvStaleBanner{ bottom:calc(var(--nv-stack-2) + 10px) !important; }
+    /* Both are built in JS with an inline bottom:18px, which on a phone put
+       them UNDERNEATH the bottom nav (57px + safe area) where nobody ever saw
+       them. That mattered most for #nvPrintConfirm: it only appears when no
+       print dialog was detected, which is exactly the mobile case it exists to
+       catch -- the merchant was asked "did it print?" off-screen and the parcel
+       silently stayed unprinted. Cleared above the nav AND the 56px assistant
+       launcher, since both carry buttons that have to be tappable.
+       !important because the inline style would otherwise win. */
+    #nvPrintUndo,#nvPrintConfirm{ bottom:calc(var(--nv-stack-2) + 76px) !important; }
     /* The sticky booking CTA sits at the bottom of the New Booking tab. */
     #nvMobileBookBar{ bottom:var(--nv-nav-h) !important; }
   }
@@ -2173,7 +2191,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=4964202a" defer></script>
+  <script src="client-app.js?v=dcbc716f" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2416,7 +2434,7 @@
             <!-- AWB LABEL -->
             <section class="client-module" id="client-awbLabel">
               <div class="panel">
-                <div class="section-head"><div><h3>Generated Air Way Bill</h3><p>QR and barcode both carry the assigned tracking ID.</p></div><div class="inline-actions"><button class="action-btn" id="printAwbBtn">Print Now</button><button class="ghost-btn" id="savePdfAwbBtn">Save as PDF</button><button class="ghost-btn" id="waAwbBtn">Send on WhatsApp</button><button class="ghost-btn" data-client-tab="dashboard">View Journey</button></div></div>
+                <div class="section-head"><div><h3>Generated Air Way Bill</h3><p>QR and barcode both carry the assigned tracking ID.</p></div><div class="inline-actions"><button class="action-btn" id="printAwbBtn">Print Now</button><button class="ghost-btn" id="savePdfAwbBtn">Save as PDF…</button><button class="ghost-btn" id="waAwbBtn">Send details on WhatsApp</button><button class="ghost-btn" data-client-tab="dashboard">View Journey</button></div></div>
                 <div id="awbLabelPreview"></div>
               </div>
               <div class="panel mt-14">
@@ -2721,7 +2739,7 @@
                 <div class="ops-list" id="withdrawHistory"></div>
               </div>
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>Wallet Ledger</h3><p>Every credit and deduction that moved your wallet balance.</p></div><button class="ghost-btn" onclick="nvWalletStatement()">Download statement</button></div>
+                <div class="section-head"><div><h3>Wallet Ledger</h3><p>Every credit and deduction on your wallet. Rows marked “already netted” are shown for reference and were not deducted again.</p></div><button class="ghost-btn" onclick="nvWalletStatement()">Download statement</button></div>
                 <div class="ops-list" id="walletLedgerList"></div>
               </div>
             
