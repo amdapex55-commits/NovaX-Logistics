@@ -1435,7 +1435,8 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       var nextAction;
       if(issues.length){ nextAction={ text:"Next best action: Review "+issues.length+" parcel"+(issues.length===1?"":"s")+" needing attention.", type:"issues" }; }
       else if(unprinted.length){ nextAction={ text:"Next best action: Print "+unprinted.length+" AWB label"+(unprinted.length===1?"":"s")+" before pickup.", type:"print" }; }
-      else if(payable>0){ nextAction={ text:"Next best action: Withdraw "+money(payable)+" from your wallet.", type:"wallet" }; }
+      else if(nvLiveWalletBalance()>0){ nextAction={ text:"Next best action: Withdraw "+money(nvLiveWalletBalance())+" from your wallet.", type:"wallet" }; }
+      else if(payable>0){ nextAction={ text:"Next best action: Review "+money(payable)+" awaiting invoice credit.", type:"wallet" }; }
       else { nextAction={ text:"Next best action: Book today's orders.", type:"book" }; }
       return { all:all, active:active, issues:issues, delayed:delayed, refused:refused, returned:returned, withException:withException, cashHolding:cashHolding, unprinted:unprinted, payable:payable, briefingText:briefingText, nextAction:nextAction };
     }
@@ -1797,7 +1798,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
           return Object.assign({},it,{ title:title, body:body });
         }catch(e){ return it; }
       }).filter(Boolean);
-      list.slice(0,4).forEach(function(it){
+      list.forEach(function(it){
         if(!it||!it.title) return;
         var sev=(it.severity==="high")?"high":(it.severity==="medium"?"medium":"");
         html+='<div class="nv-ins'+(sev?" "+sev:"")+'">'+
@@ -2337,12 +2338,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     function messageCustomer(awb, kind){
       const p=state.parcels.find(x=>x.awb===awb);
-      if(!p){ toast("Parcel not found.","error"); return; }
-      if(!p.phone){ toast("No consignee phone saved for this parcel. Add a phone number before messaging.","error"); return; }
+      if(!p){ toast("Parcel not found.","error"); return false; }
+      if(!p.phone){ toast("No consignee phone saved for this parcel. Add a phone number before messaging.","error"); return false; }
       const digits=waPhoneDigits(p.phone);
-      if(!digits){ toast(`Consignee phone "${p.phone}" doesn't look like a valid Pakistani number.`,"error"); return; }
+      if(!digits){ toast(`Consignee phone "${p.phone}" doesn't look like a valid Pakistani number.`,"error"); return false; }
       const text=whatsappMessageText(p, kind||waKindForStatus(p.status));
-      window.open("https://wa.me/"+digits+"?text="+encodeURIComponent(text), "_blank");
+      const opened=window.open("https://wa.me/"+digits+"?text="+encodeURIComponent(text), "_blank");
+      if(opened) try{ opened.opener=null; }catch(e){}
+      if(!opened) toast("WhatsApp may have been blocked. Allow pop-ups and try again.","error");
+      return !!opened;
     }
     /* ===== NovaX fix (offline QR + Code128 generation) =====
        Every AWB used to be sent to api.qrserver.com and barcode.tec-it.com
@@ -2904,7 +2908,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(act==="sharetrack"){
           const msg=(typeof customerTrackMessage==="function" && customerTrackMessage(p)) || url;
           if(navigator.share){
-            navigator.share({ title:"NovaX tracking "+awb, text:msg, url:url }).catch(function(){});
+            navigator.share({ title:"NovaX tracking "+awb, text:msg, url:url }).catch(function(e){
+              if(e&&e.name==="AbortError") return;
+              if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function(){toast("Share failed; tracking link copied.","error");},function(){toast("Could not share. Open tracking and copy its address.","error");});
+              else toast("Could not share. Open tracking and copy its address.","error");
+            });
             return;
           }
           try{ window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank","noopener"); }
@@ -3143,7 +3151,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            changing the destination city changes the zone and therefore the
            price, so it goes to ops as a request rather than a direct edit. */
         btns+=`<button class="ghost-btn" type="button" onclick="requestAddressFix('${p.awb}')">Wrong address / city</button>`;
-        return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>AI Exception Resolution</h3><p>Deterministic read of this parcel's issue and the fastest next step.</p></div><span class="chip warn">review needed</span></div><div class="money-grid">${moneyBox("Problem",cls.problem,"")}${moneyBox("Likely cause",cls.cause,"")}${moneyBox("Recommended action",cls.action,"")}</div><div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
+        return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>AI Exception Resolution</h3><p>Deterministic read of this parcel's issue and the fastest next step.</p></div><span class="chip warn">review needed</span></div><div class="money-grid">${moneyBox("Problem",cls.problem,"")}${moneyBox("Likely cause",cls.cause,"")}${moneyBox("Recommended action",cls.action,"")}</div>${hideDeliveryActions?"":'<label for="redeliveryFeedback" class="footer-note">Reattempt instructions for operations</label><input id="redeliveryFeedback" maxlength="400" placeholder="Optional customer feedback or delivery instructions" style="width:100%;box-sizing:border-box;margin-top:6px" />'}<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
       }catch(e){ return ""; }
     }
     function copyExceptionMessage(awb){
@@ -3197,10 +3205,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{
         var p=state.parcels.find(function(x){ return x.awb===awb; }); if(!p){ toast("Parcel not found."); return; }
         var msg=exceptionMessageText(p);
-        var digits=String(p.phone||"").replace(/[^0-9]/g,"");
-        if(digits){ window.open("https://wa.me/"+digits+"?text="+encodeURIComponent(msg),"_blank"); }
-        else { toast("No phone number on file for this consignee."); }
-      }catch(e){}
+        var digits=waPhoneDigits(p.phone);
+        if(digits){ var opened=window.open("https://wa.me/"+digits+"?text="+encodeURIComponent(msg),"_blank"); if(opened) try{opened.opener=null;}catch(e){} if(!opened) toast("WhatsApp may have been blocked. Allow pop-ups and try again.","error"); }
+        else { toast("No valid Pakistani phone number on file for this consignee.","error"); }
+      }catch(e){ toast("Could not open WhatsApp.","error"); }
     }
     function renderJourney(){
       // NovaX fix (Medium #5): removed the `|| state.parcels[0]` fallback --
@@ -4762,7 +4770,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       /* status_since, not updated_at: the export must age parcels by the same
          clock the screen does, or the CSV contradicts the portal. */
       const t=Date.parse(r.status_since||r.booked_at||"");
-      return { awb:r.awb||"", date:String(r.booked_at||"").slice(0,10), consignee:r.consignee||"",
+      return { awb:r.awb||"", date:r.booked_at?new Date(r.booked_at).toLocaleDateString("en-CA",{timeZone:"Asia/Karachi"}):"", consignee:r.consignee||"",
                city:r.city||"", status:r.status||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0),
                _ageH:isFinite(t)?Math.max(0,(Date.now()-t)/3600000):0 };
     }
@@ -4772,14 +4780,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const f=nvReportFilterValues(), SIZE=1000;
       let out=[], page=0;
       /* A supabase-js builder is single-use, so each page builds its own. */
-      while(page<60){
+      while(true){
         let q=sb.from("parcels")
-          .select("awb,consignee,city,status,cod_amount,fee,booked_at,status_since")
+          .select("id,awb,consignee,city,status,cod_amount,fee,booked_at,status_since")
           .eq("client_id",cid);
         if(f.status) q=q.eq("status",f.status);
-        if(f.from) q=q.gte("booked_at",f.from);
-        if(f.to) q=q.lte("booked_at",f.to+"T23:59:59.999Z");
-        const r=await q.order("booked_at",{ascending:false}).range(page*SIZE,page*SIZE+SIZE-1);
+        if(f.from) q=q.gte("booked_at",new Date(f.from+"T00:00:00+05:00").toISOString());
+        if(f.to) q=q.lt("booked_at",new Date(new Date(f.to+"T00:00:00+05:00").getTime()+86400000).toISOString());
+        const r=await q.order("booked_at",{ascending:false}).order("id",{ascending:false}).range(page*SIZE,page*SIZE+SIZE-1);
         if(r.error) throw new Error(r.error.message);
         const batch=r.data||[];
         out=out.concat(batch);
@@ -4983,7 +4991,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var labels={ invoice_credit:"COD settlement credited", withdrawal_requested:"Withdrawal requested",
                    payout_fee:"Payout fee", payout_paid:"Payout paid", payout_rejected:"Payout rejected/refunded",
                    admin_adjustment:"Adjustment by NovaX", delivery_charge_due:"Delivery charge" };
-      var rows=led.slice(0,300);
+      var rows=led;
       var credits=rows.reduce(function(n,l){ return n+(Number(l.amount)>0?Number(l.amount):0); },0);
       var debits =rows.reduce(function(n,l){ return n+(Number(l.amount)<0?Math.abs(Number(l.amount)):0); },0);
       var bal=Number((state.serverWalletSummary&&state.serverWalletSummary.available_balance)!=null
@@ -5134,7 +5142,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               .filter(function(w){ return w.clientId === myId && w.status === "Paid"; })
               .reduce(function(s,w){ return s + Number(w.net || 0); }, 0);
       }catch(e){ paid = 0; }
-      var owed  = invoices.filter(function(i){ return i.status !== "Paid to NovaX" && i.status !== "Cancelled"; })
+      var owed  = invoices.filter(function(i){ return !isInvoiceClosed(i.status) && i.status !== "Cancelled"; })
                           .reduce(function(s,i){ return s + Number(i.dueToNovax||0); }, 0);
       return { invoices:invoices, counting:counting, ready:ready, paid:paid,
                owed:owed, shortfall:shortfall, rawBalance:rawBalance };
@@ -5709,7 +5717,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                 '<i>'+(inflight>0?nvInFlightCount()+' delivered, awaiting invoice \u2014 tap':'nothing waiting')+'</i></div>'+
             '</div>'+
             '<div class="nv-cod-act">'+
-              '<button type="button" class="nv-cod-cta" data-client-tab="wallet">Withdraw</button>'+
+              '<button type="button" class="nv-cod-cta" data-client-tab="wallet">'+(available>0?'Withdraw':'View wallet')+'</button>'+
               (paidRows.length?'<div class="nv-cod-recent"><span>Recent settlements</span>'+
                 paidRows.map(w=>'<div class="nv-cod-r"><b>'+escLabelText(money(w.net))+'</b>'+
                   '<em>'+escLabelText(String(w.paidAt||w.createdAt||"").slice(0,10))+'</em>'+
@@ -5768,7 +5776,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // so "expected" must not be clamped to 0 -- doing so would falsely
       // flag every client who legitimately owes money as "under review".
       const expected=Math.round(expectedRaw*100)/100;
-      const walletUnderReview=Math.abs(Math.round((balance-expected)*100)/100)>=1;
+      // A capped or legacy ledger has an unknown opening balance; its partial
+      // sum cannot prove a discrepancy against the lifetime wallet balance.
+      const walletUnderReview=false;
       const reviewNote=document.getElementById("walletReviewNote");
       if(reviewNote) reviewNote.style.display=walletUnderReview?"block":"none";
       /* PKT, like every other date on this screen. In UTC terms "this month"
@@ -7054,7 +7064,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(phone.length===10&&phone.startsWith("3")) phone="0"+phone;
       const consignee=document.getElementById("bookingName").value.trim();
       const cod=Number(document.getElementById("bookingCod").value || 0);
+      if(!Number.isFinite(cod) || cod<0){ toast("COD amount must be zero or more.","error"); document.getElementById("bookingCod").focus(); return; }
       const address=document.getElementById("bookingAddress").value.trim();
+      if(consignee.length>120 || address.length>400 || document.getElementById("bookingCategory").value.trim().length>140){
+        toast("Booking text is too long. Keep the name within 120, product within 140 and address within 400 characters.","error"); return;
+      }
       // NovaX fix (High #2): never fall back to the demo/default placeholder client id
       // id. If the account isn't linked/verified yet, stop and surface an
       // error instead of silently booking against the demo client.
@@ -7386,7 +7400,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          simply no longer judged on length, wording or content. */
 
       var cod=Number(o.cod);
-      if(o.cod===""||o.cod===null||o.cod===undefined||isNaN(cod)){ serious.push("COD amount is missing. Enter the amount to collect (or 0 for prepaid)."); }
+      if(o.cod===""||o.cod===null||o.cod===undefined||!Number.isFinite(cod)||cod<0){ serious.push("COD amount must be zero or more (0 for prepaid)."); }
       else if(cod>100000){ minor.push("COD amount looks unusually high. Please confirm this is correct."); }
 
       if(!nvFindCity(String(o.city||""))){ minor.push("City is not one of the recognized service cities. Please confirm delivery is available there."); }
@@ -7474,6 +7488,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const referenceNo=get(row,"reference")||get(row,"reference_no")||get(row,"customer_ref");
         const fragileRaw=get(row,"fragile");
         if(!consignee) addProblem("consignee","Consignee name is missing.","Add the receiver's full name.");
+        if(consignee.length>120) addProblem("consignee","Consignee name is too long.","Keep the name within 120 characters.");
         // Normalize phone to 03xxxxxxxxx.
         let phone=phoneRaw.replace(/\D/g,"");
         if(phone.length===10&&phone.startsWith("3")) phone="0"+phone;
@@ -7489,22 +7504,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(!cityRaw) addProblem("city","City is missing.","Add one of: Karachi, Lahore, Islamabad, Rawalpindi.");
         else if(!cityValid) addProblem("city",`City "${cityRaw}" is not serviceable yet.`,"Use Karachi, Lahore, Islamabad, or Rawalpindi.");
         if(!address) addProblem("address","Delivery address is missing.","Add the full delivery address where the parcel is going.");
+        if(address.length>400) addProblem("address","Delivery address is too long.","Keep the address within 400 characters.");
         if(!product) addProblem("product","Product/item details are missing.","Add a short item description.");
+        if(product.length>140) addProblem("product","Product details are too long.","Keep the description within 140 characters.");
+        if(orderId.length>40) addProblem("order_id","Order ID is too long.","Keep the order ID within 40 characters.");
+        if(referenceNo.length>40) addProblem("reference","Reference is too long.","Keep the reference within 40 characters.");
         // COD to number.
         const cod=codRaw===""?NaN:Number(codRaw);
         /* Number("Infinity") is a number -- just not a finite one -- so an
            isNaN check let it through and the record then quietly stored Rs 0. */
         if(codRaw===""||!Number.isFinite(cod)||cod<0) addProblem("cod",`COD "${codRaw}" is invalid.`,"Use a number 0 or higher (0 for prepaid).");
-        // Weight to kg -- missing defaults to 0.8kg (matches booking-charge
-        // default), only genuinely invalid text blocks the row.
+        // Bulk and single booking share the same required 0-70 kg policy.
         let weightKg=0.8;
-        if(weightRaw){
+        if(!weightRaw) addProblem("weight","Weight is missing.","Enter the package weight, e.g. 0.8 kg.");
+        else {
           /* Units matter. This stripped "kg" and ignored every other unit, so
              "500 g" became 500 kg and was billed at the 5 kg ceiling. */
           const wtxt=String(weightRaw).trim().toLowerCase();
           let wnum=parseFloat(wtxt.replace(/[a-z\s]+$/,""));
           if(/[\d.]\s*(g|gm|gms|gr|gram|grams)$/.test(wtxt)) wnum=wnum/1000;
-          if(!isFinite(wnum)||wnum<=0) addProblem("weight",`Weight "${weightRaw}" is invalid.`,"Use a number like 0.8, 1kg, 2.5 kg or 500 g.");
+          if(!Number.isFinite(wnum)||wnum<=0||wnum>70) addProblem("weight",`Weight "${weightRaw}" is invalid.`,"Use a weight above 0 and no more than 70 kg.");
           else weightKg=wnum;
         }
         const paymentMode=["COD","Non COD Prepaid"].includes(paymentModeRaw)?paymentModeRaw:(paymentModeRaw?paymentModeRaw:"COD");
@@ -7756,6 +7775,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        second pass over the same rows while the first was still booking them. */
     var NV_BULK_BUSY=false;
     async function importBulkRows(records, totalRowsSeen){
+      if(state.parcelHistoryComplete!==true){ toast("Your parcel history is still loading. Refresh or retry before importing, so duplicate orders can be checked.","error"); return; }
       if(NV_BULK_BUSY){ toast("An import is already running. Wait for it to finish.","error"); return; }
       NV_BULK_BUSY=true;
       const lockBtns=Array.from(document.querySelectorAll('#importValidOnlyBtn,[onclick^="nvImportFixedBulk"],[onclick^="importValidBulkRowsOnly"],#bulkUploadBtn,#uploadBulkBtn'));
@@ -8344,12 +8364,27 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         text: nvTkHrs((limitMs - age) / 3600e3) + " left for first reply" };
     }
 
+    async function nvTkReadAll(sb){
+      var cid=state.client&&state.client.id, all=[], size=1000, page=0;
+      if(!cid) return {data:null,error:{message:"Account is not ready"}};
+      try{
+        while(true){
+          var r=await sb.from("novax_tickets").select("*").eq("client_id",cid)
+            .order("created_at",{ascending:false}).order("id",{ascending:false}).range(page*size,page*size+size-1);
+          if(!r||r.error) return {data:null,error:(r&&r.error)||{message:"No server response"}};
+          var batch=r.data||[];
+          all.push.apply(all,batch);
+          if(batch.length<size) return {data:all,error:null};
+          page++;
+        }
+      }catch(e){return {data:null,error:{message:String((e&&e.message)||e)}};}
+    }
     function nvTkLoad(){
       var sb = window.__nvSb;
       if (!sb || NV_TK.loading) return Promise.resolve();
       NV_TK.loading = true;
       return Promise.resolve(
-        sb.from("novax_tickets").select("*").order("created_at", { ascending: false }).limit(200)
+        nvTkReadAll(sb)
       ).catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
        .then(function(r){
         NV_TK.loading = false;
@@ -8357,7 +8392,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if (/does not exist|schema cache|relation/i.test(String(r.error.message || ""))){
             var host = document.getElementById("nvTkList");
             if (host) host.innerHTML = '<div class="ops-card"><strong>Ticketing is not enabled yet</strong>' +
-              '<p class="footer-note">Ask NovaX to run novax_tickets_v2.sql.</p></div>';
+              '<p class="footer-note">Please contact NovaX support and try again later.</p></div>';
             return;
           }
           /* BUG: every non-missing-table error fell through to a bare
@@ -8377,6 +8412,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         NV_TK.loadError = null;
         NV_TK.list = (r && r.data) || [];
         nvTkRender();
+        // Populate support notifications without requiring the merchant to
+        // open every ticket first. Each batch stays below URL size limits.
+        var ids=NV_TK.list.map(function(t){return t.id;}).filter(Boolean);
+        Promise.all(Array.from({length:Math.ceil(ids.length/40)},async function(_,i){
+          var group=ids.slice(i*40,i*40+40), all=[], page=0, size=1000;
+          while(true){
+            var result=await sb.from("novax_ticket_replies").select("*").in("ticket_id",group)
+              .order("created_at",{ascending:true}).range(page*size,page*size+size-1);
+            if(!result||result.error) return {data:null,error:(result&&result.error)||{message:"No reply response"}};
+            var part=result.data||[]; all.push.apply(all,part);
+            if(part.length<size) return {data:all,error:null};
+            page++;
+          }
+        })).then(function(batches){
+          batches.forEach(function(batch){ if(!batch||batch.error) return; (batch.data||[]).forEach(function(reply){
+            var list=NV_TK.replies[reply.ticket_id]||(NV_TK.replies[reply.ticket_id]=[]);
+            if(!list.some(function(old){return old.id===reply.id;})) list.push(reply);
+          }); });
+          try{ if(typeof window.__nvNotifRefresh==="function") window.__nvNotifRefresh(); }catch(e){}
+        }).catch(function(e){console.warn("NovaX support notification read",e);});
       });
     }
 
@@ -8531,7 +8586,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if (r && r.error){
           var m = String(r.error.message || "");
           toast(/does not exist|schema cache/i.test(m)
-            ? "Ticketing is not enabled on the server yet (run novax_tickets_v2.sql)."
+            ? "Ticketing is temporarily unavailable. Please contact NovaX support."
             : "Could not open the ticket: " + m, "error");
           return;
         }
@@ -9059,7 +9114,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }).then(function(r){
         if(btn){ btn.disabled=false; btn.textContent=old; }
         if(r.status===401 && /missing authorization header/i.test(r.raw||"")){
-          if(out) out.innerHTML='<span style="color:#b91c1c">The bulk import function was deployed without --no-verify-jwt. Ask NovaX support to redeploy it.</span>';
+          if(out) out.innerHTML='<span style="color:#b91c1c">Bulk import is temporarily unavailable. Please contact NovaX support.</span>';
           return;
         }
         if(!r.ok || (r.body&&r.body.error)){
@@ -9754,7 +9809,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     /* Was unguarded: any markup change that removed this button threw a
        TypeError here and took the whole bundle down with it. */
     { const b=document.getElementById("bookParcelBtn"); if(b) b.addEventListener("click",()=>showClientTab("newBooking")); }
-    document.getElementById("quickBookingBtn").addEventListener("click",quickBooking);
+    document.getElementById("nvBookingForm").addEventListener("submit",function(e){ e.preventDefault(); quickBooking(); });
     /* BUG FIX: the desktop "+ Book Parcel" floating button (#nvDesktopQuickBook,
        visible at >=901px, bottom-right) had NO event listener at all. It is the
        largest, greenest, most prominent control on the page, so merchants who
@@ -10032,7 +10087,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!host) return;
       if(__nvStaffLoading && !__nvStaffRows){ host.innerHTML='<div class="ops-card"><strong>Loading your team…</strong></div>'; return; }
       if(__nvStaffError){
-        host.innerHTML='<div class="ops-card"><div class="ops-card-head"><strong>Could not load your team</strong><span class="chip bad">not available</span></div><p>'+escLabelText(__nvStaffError)+'</p><p class="footer-note">Needs table public.staff_users (client_id, name, email, role, permissions, status, last_active_at) with RLS scoped to your client id.</p></div>';
+        host.innerHTML='<div class="ops-card"><div class="ops-card-head"><strong>Could not load your team</strong><span class="chip bad">not available</span></div><p>Please try again shortly or contact NovaX support.</p></div>';
         return;
       }
       var rows=__nvStaffRows||[];
@@ -10679,7 +10734,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }catch(e){}
       }
 
+      async function nvReadAll(table, orderColumn){
+        var all=[], page=0, size=1000;
+        try{
+          while(true){
+            var r=await sb.from(table).select("*").eq("client_id",MY)
+              .order(orderColumn,{ascending:false}).order("id",{ascending:false}).range(page*size,page*size+size-1);
+            if(!r || r.error) return { data:null, error:(r&&r.error)||{message:"No server response"} };
+            var batch=r.data||[];
+            all.push.apply(all,batch);
+            if(batch.length<size) return { data:all, error:null };
+            page++;
+          }
+        }catch(e){ return { data:null, error:{message:String((e&&e.message)||e)} }; }
+      }
+
+      var __nvLoadSeq=0;
       function loadAll(){
+        var thisLoad=++__nvLoadSeq;
         nvShowSkeletons();
         // NovaX fix (high risk #3, defense in depth): these used to rely
         // entirely on RLS to scope rows to this seller. If any RLS policy
@@ -10690,28 +10762,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // alone.
         return Promise.all([
           sb.from("clients").select("*").eq("id",MY).maybeSingle(),
-          /* Only parcels that are still MOVING. Delivered and Return to
-             shipper are terminal -- nothing about them can change again, so
-             re-pulling a merchant's entire history on every load was pure
-             waste that grew forever. The closed parcels an invoice actually
-             references are fetched separately below, by AWB, so invoice
-             statements stay complete. */
-          sb.from("parcels").select("*").eq("client_id",MY)
-            .not("status","in","("+NV_CLOSED_STATUSES.map(function(x){return '"'+x+'"';}).join(",")+")")
-            .order("booked_at",{ascending:false}).limit(2000),
-          /* These four were unbounded and are re-issued on every debounced
-             realtime change, so a long-tenured merchant re-pulled their entire
-             invoice/payout/payment history from scratch on every tick. Capped
-             to match wallet_ledger, which was already sensibly limited. Newest
-             first, so the cap only ever drops old history the dashboard does
-             not surface anyway. */
-          sb.from("invoices").select("*").eq("client_id",MY).order("created_at",{ascending:false}).limit(500),
-          sb.from("withdrawals").select("*").eq("client_id",MY).order("created_at",{ascending:false}).limit(500),
-          sb.from("payment_logs").select("*").eq("client_id",MY).order("created_at",{ascending:false}).limit(500),
+          nvReadAll("parcels","booked_at"),
+          nvReadAll("invoices","created_at"),
+          nvReadAll("withdrawals","created_at"),
+          nvReadAll("payment_logs","created_at"),
           sb.from("store_connections").select("*").eq("client_id",MY),
-          sb.from("wallet_ledger").select("*").eq("client_id",MY).order("created_at",{ascending:false}).limit(500),
-          sb.from("pickup_requests").select("*").eq("client_id",MY).order("created_at",{ascending:false}).limit(500)
+          nvReadAll("wallet_ledger","created_at"),
+          nvReadAll("pickup_requests","created_at")
         ]).then(function(res){
+          if(thisLoad!==__nvLoadSeq) return;
           /* BUG: this read only .data. res[0] is {data:null,error} on a 401 or
              any transport failure, so `!c` below fired and the account was
              blanked, persisted, and marked ready. Check the error FIRST. */
@@ -10798,23 +10857,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              deck must never appear for an existing one. */
           try{ if(typeof window.nvOnboardMaybeShow==="function") window.nvOnboardMaybeShow(state.client.createdAt); }catch(e){}
           state.clients=[{ id:MY, name:name, owner:(c&&c.owner)||"", city:(c&&c.city)||"", status:(c&&c.status)||"Active", tier:(c&&c.status)||"", rate:rate, rateCard:rc, walletBalance:bal, risk:Number((c&&c.risk_score)||0), health:90, problemsResolved:0 }];
-          /* MERGE, do not replace. res[1] is the ACTIVE-only query, so
-             assigning it straight to state.parcels wiped every Delivered /
-             Return-to-shipper parcel that was already in memory -- which is
-             why the dashboard showed data on first paint and then blanked it
-             a moment later, and flashed on every refresh. Closed parcels
-             already loaded are carried across; the active set is replaced. */
+          /* The account-scoped paginated query includes active and terminal
+             parcels, so every screen and duplicate check reads one complete set. */
           (function(){
-            var slot=nvSlot(1,"parcels",mapParcel,null);
-            if(!slot.ok) return;                 // keep every cached parcel as-is
-            var freshActive=slot.rows;
-            var activeAwbs={};
-            freshActive.forEach(function(p){ if(p&&p.awb) activeAwbs[p.awb]=1; });
-            var keptClosed=(state.parcels||[]).filter(function(p){
-              return p && p.awb && !activeAwbs[p.awb]
-                     && NV_CLOSED_STATUSES.indexOf(p.status)>-1;
-            });
-            state.parcels=freshActive.concat(keptClosed);
+            var slot=nvSlot(1,"parcels",mapParcel,state.parcels);
+            state.parcelHistoryComplete=slot.ok;
+            if(slot.ok) state.parcels=slot.rows;
           })();
           (function(){ var sl=nvSlot(2,"invoices",mapInvoice,state.invoices); if(sl.ok) state.invoices=sl.rows; })();
           /* Closed parcels are no longer in the main pull, but an invoice
@@ -10824,7 +10872,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              "Not on this account" with Rs 0 lines. Fetch exactly the AWBs the
              loaded invoices reference: typically a few dozen rows, once,
              instead of the merchant's entire history on every load. */
-          try{ nvLoadInvoicedParcels(); }catch(e){ console.warn("NovaX invoiced parcels", e); }
+          // Invoiced parcels are already present in the complete parcel read.
           (function(){ var sl=nvSlot(3,"withdrawals",mapWd,state.walletWithdrawals); if(sl.ok) state.walletWithdrawals=sl.rows; })();
           (function(){ var sl=nvSlot(4,"payment logs",mapPl,state.paymentLogs); if(sl.ok) state.paymentLogs=sl.rows; })();
           (function(){ var sl=nvSlot(5,"store connections",mapSc,state.storeConnections); if(sl.ok) state.storeConnections=sl.rows; })();
@@ -10902,6 +10950,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       var _save=saveState; saveState=function(){ try{ _save.apply(this,arguments); }catch(e){} try{ syncNew(); }catch(e){} };
       state.parcels=[]; state.invoices=[]; state.walletWithdrawals=[]; state.paymentLogs=[]; state.storeConnections=[]; state.pickupRequests=[];
+      state.parcelHistoryComplete=false;
       state.client={ id:null, name:"Verifying account...", walletBalance:0, rate:NV_ZONE_A_BASE, rateCard:{}, subAccounts:0 };
       state.clients=[state.client];
       // NovaX fix (client identity leak): accountNotLinked/clientRecordMissing
@@ -11221,8 +11270,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(invId){ var iv=myInvoices().find(function(i){return String(i.id||'').toUpperCase()===invId.toUpperCase();}); if(iv) return {text:invLine(iv)}; return {text:'I could not find invoice <b>'+esc(invId.toUpperCase())+'</b> on your account.'}; }
           if(/wallet|balance|payout|withdraw|cash ?out|money|payment/.test(low)){ var bal=walletBalance(cid()); var w=myWithdrawals(); var pend=w.filter(function(x){return /pending|process/i.test(x.status||'');}); if(/last|recent|history|withdraw/.test(low)&&w.length){ var lw=w[0]; return {text:'Your wallet balance is <b>Rs '+fmt(bal)+'</b>.<br>Last withdrawal <b>'+esc(lw.id||'')+'</b>: Rs '+fmt(lw.net||lw.amount)+' - <b>'+esc(lw.status||'')+'</b>.'+(pend.length?'<br>'+pend.length+' still in progress.':'')}; } return {text:'Your wallet balance is <b>Rs '+fmt(bal)+'</b>.'+(pend.length?' '+pend.length+' withdrawal(s) in progress.':' No withdrawals in progress.')}; }
           if(/invoice|payable|bill|statement/.test(low)){ var ivs=myInvoices(); if(!ivs.length) return {text:'You have no invoices yet. Invoices are generated once parcels are delivered.'}; return {text:invLine(ivs[0])+(ivs.length>1?'<br><span class=nvai-dim>'+(ivs.length-1)+' older invoice(s) on file.</span>':'')}; }
-          if(/exception|refus|delay|stuck|problem|fail|issue|return/.test(low)){ var ex=myParcels().filter(function(p){return p.exception||/refus|return|not available|reattempt/i.test(p.status||'');}); if(!ex.length) return {text:'Good news - no parcels with exceptions right now. ✅'}; return {text:'You have <b>'+ex.length+'</b> parcel'+(ex.length===1?'':'s')+' needing attention:<br>'+ex.slice(0,5).map(pLine).join('<br><br>')}; }
-          if(/how many|count|summary|overview|total|delivered|status of my/.test(low)){ var ps=myParcels(); var del=ps.filter(function(p){return /delivered/i.test(p.status);}).length; var exn=ps.filter(function(p){return p.exception;}).length; var tr=ps.length-del-exn; return {text:'You have <b>'+ps.length+'</b> parcels - <b>'+del+'</b> delivered, <b>'+tr+'</b> in progress, <b>'+exn+'</b> with issues.'}; }
+          if(/exception|refus|delay|stuck|problem|fail|issue|return/.test(low)){ var ex=myParcels().filter(function(p){return p.exception||/refus|return|not available|reattempt/i.test(p.status||'')||(typeof isDelayed==='function'&&isDelayed(p));}); if(!ex.length) return {text:'Good news - no parcels with exceptions right now. ✅'}; return {text:'You have <b>'+ex.length+'</b> parcel'+(ex.length===1?'':'s')+' needing attention:<br>'+ex.slice(0,5).map(pLine).join('<br><br>')}; }
+          if(/how many|count|summary|overview|total|delivered|status of my/.test(low)){ var ps=myParcels(); var del=ps.filter(function(p){return p.status==='Delivered';}).length; var exn=ps.filter(function(p){return p.status!=='Delivered'&&(p.exception||/refus|return|not available|reattempt/i.test(p.status||'')||(typeof isDelayed==='function'&&isDelayed(p)));}).length; var tr=Math.max(0,ps.length-del-exn); return {text:'You have <b>'+ps.length+'</b> parcels - <b>'+del+'</b> delivered, <b>'+tr+'</b> in progress, <b>'+exn+'</b> with issues.'}; }
           if(/list|show|recent|latest|all my|my parcels|my orders/.test(low)){ var ps3=myParcels(); if(!ps3.length) return {text:'You have no parcels yet.'}; return {text:'Your recent parcels:<br>'+ps3.slice(0,8).map(pLine).join('<br><br>')+(ps3.length>8?'<br><span class=nvai-dim>+'+(ps3.length-8)+' more.</span>':'')}; }
           if(/rate|price|pricing|cost|tariff|fee|per parcel|per shipment|how much/.test(low)){ var c=clientById(cid()); var rc=normalizeRateCard(c&&c.rateCard, c&&c.rate); return {text:'Your delivery rate depends on destination: <b>Zone A (Karachi) Rs '+fmt(rc.A.overnight)+'</b> and <b>Zone B (Lahore / Islamabad / Rawalpindi) Rs '+fmt(rc.B.overnight)+'</b> per shipment (COD standard). Charges are deducted from COD before your wallet payout.'}; }
           if(/book|create|new parcel|new order|how.*(book|ship|send)|pickup|schedule/.test(low)) return {text:'To book a parcel, tap <b>Book New Parcel</b> on your dashboard, then add the consignee, city, COD and weight. Once a rider collects it I can track it live - just give me the AWB.'};
@@ -11532,7 +11581,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const events=Array.from(document.querySelectorAll(".notifPrefEventBox:checked")).map(function(el){ return el.value; });
         const r=await window.__nvSb.rpc("client_set_notification_prefs",{ p_whatsapp:wa, p_sms:sms, p_email:em, p_events:events });
         if(r.error) throw new Error(r.error.message);
-        toast("Notification preferences saved");
+        toast("Preferences saved for future messaging. WhatsApp, SMS and email updates are not active yet.","success");
       }catch(e){ toast("Could not save preferences: "+(e.message||e), "error"); logClientError("client_set_notification_prefs", e.message||e, "warning"); }
     }
 
@@ -11542,10 +11591,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          list. missingInfoItems below looks for a missing address or phone on
          any undelivered parcel -- narrowing this to attention parcels only
          would silently stop most of those being found. */
-      let pool=[]; try{ pool=(typeof clientScopedParcels==="function")?clientScopedParcels():((state.parcels)||[]); }catch(e){ pool=state.parcels||[]; }
+      let pool=[]; try{ pool=(state.parcels||[]).filter(function(p){return p&&state.client&&p.clientId===state.client.id;}); }catch(e){ pool=[]; }
       const parcelItems=pool.filter(function(p){ return ["Refused","Consignee not available","Ready for return"].indexOf(p.status)>-1 || (typeof isDelayed==="function" && isDelayed(p) && p.status!=="Delivered"); });
-      const missingInfoItems=pool.filter(function(p){ return p.status!=="Delivered" && p.status!=="Return to shipper" && p.status!=="Cancelled by client" && (!p.address || !p.phone); });
-      let payable=0; try{ payable=(typeof clientMetrics==="function")?clientMetrics().payable:0; }catch(e){}
+      const issueAwbs=new Set(parcelItems.map(function(p){return p.awb;}));
+      const missingInfoItems=pool.filter(function(p){ return !issueAwbs.has(p.awb) && p.status!=="Delivered" && p.status!=="Return to shipper" && p.status!=="Cancelled by client" && (!p.address || !p.phone); });
+      let payable=0; try{ payable=Math.max(0,nvLiveWalletBalance()); }catch(e){}
       const totalItems=parcelItems.length+missingInfoItems.length+(payable>0?1:0);
       if(!totalItems){ host.innerHTML=""; host.style.display="none"; return; }
       host.style.display="block";
@@ -11556,7 +11606,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const isRefused=p.status==="Refused"; const isReturn=p.status==="Ready for return";
         const label=isRefused?"We need your decision":isReturn?"Return to shipper -- confirm":p.status==="Consignee not available"?"Approve reattempt":"Delayed -- update available";
         const eAwb=escLabelText(p.awb);
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">${escLabelText(label)}</span></div><p class="footer-note">${escLabelText(p.consignee||"")} &middot; ${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="action-btn ghost" onclick="clientActionNeededReattempt('${eAwb}')">Approve reattempt</button><button class="action-btn ghost" onclick="clientActionNeededReturn('${eAwb}')">Return to shipper</button><button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button><button class="action-btn ghost" onclick="clientActionNeededAskAi('${eAwb}')">Ask AI</button>${nvCanRaiseTicket(p)&&(typeof nvCanUseTab!=="function"||nvCanUseTab("tickets"))?`<button class="action-btn ghost" onclick="nvRaiseTicketFor('${eAwb}',event)">Report an issue</button>`:""}</div></div>`;
+        const canDecide=["Refused","Consignee not available","Ready for return"].indexOf(p.status)>-1;
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${eAwb}</strong><span class="chip warn">${escLabelText(label)}</span></div><p class="footer-note">${escLabelText(p.consignee||"")} &middot; ${escLabelText(p.city||"")}</p><div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px">${canDecide?`<button class="action-btn ghost" onclick="clientActionNeededReattempt('${eAwb}')">Approve reattempt</button><button class="action-btn ghost" onclick="clientActionNeededReturn('${eAwb}')">Return to shipper</button>`:""}<button class="action-btn ghost" onclick="openClientParcelJourney('${eAwb}')">View journey</button><button class="action-btn ghost" onclick="clientActionNeededAskAi('${eAwb}')">Ask AI</button>${nvCanRaiseTicket(p)&&(typeof nvCanUseTab!=="function"||nvCanUseTab("tickets"))?`<button class="action-btn ghost" onclick="nvRaiseTicketFor('${eAwb}',event)">Report an issue</button>`:""}</div></div>`;
       });
       const missingInfoCards=missingInfoItems.slice(0,showAll?missingInfoItems.length:4).map(function(p){
         const eAwb=escLabelText(p.awb);
@@ -12350,18 +12401,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         else if(act==="reattempt"){
           if(!window.confirm("Request a re-attempt for "+eligible.length+" parcel"+(eligible.length===1?"":"s")+"?"+
              (skipped?("\n\n"+skipped+" of the "+list.length+" selected will be skipped: a re-attempt only applies after a delivery has failed."):""))) return;
-          eligible.forEach(function(a){ nvSafeCall(function(){ requestRedelivery(a); }); });
+          Promise.allSettled(eligible.map(function(a){ return Promise.resolve().then(function(){return requestRedelivery(a);}); }))
+            .then(function(results){ var ok=results.filter(function(r){return r.status==="fulfilled";}).length; toast(ok+" reattempt request(s) sent; "+(results.length-ok)+" failed.",ok===results.length?"success":"error"); });
         }
         else if(act==="message"){
           /* Browsers block a burst of window.open calls, so this opens the
              first five. It used to drop the rest silently. */
           var MSG_MAX=5, batch=eligible.slice(0,MSG_MAX), rest=eligible.length-batch.length;
           if(rest>0 && !window.confirm("WhatsApp can only be opened for "+MSG_MAX+" customers at a time.\n\nOpen the first "+MSG_MAX+" now? The remaining "+rest+" stay selected so you can press Message customers again.")) return;
-          batch.forEach(function(a){ nvSafeCall(function(){ messageCustomer(a); }); });
+          var openedAwbs=batch.filter(function(a){ return !!nvSafeCall(function(){return messageCustomer(a);}); });
+          var opened=openedAwbs.length;
           if(rest>0){
-            batch.forEach(function(a){ delete nvSel[a]; });
+            openedAwbs.forEach(function(a){ delete nvSel[a]; });
             nvSafeCall(function(){ nvBarSync(); });
-            nvSafeCall(function(){ toast(batch.length+" opened. "+rest+" still selected.","success"); });
+            nvSafeCall(function(){ toast(opened+" WhatsApp draft(s) opened. "+rest+" still selected.",opened===batch.length?"success":"error"); });
+          } else {
+            toast(opened+" of "+batch.length+" WhatsApp draft(s) opened.",opened===batch.length?"success":"error");
           }
         }
         else if(act==="export"){
@@ -12372,7 +12427,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           var blob=new Blob([head+"\n"+body],{type:"text/csv;charset=utf-8;"});
           var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="novax-selected-parcels.csv";
           document.body.appendChild(a); a.click(); a.remove();
-          nvSafeCall(function(){ toast(list.length+" parcel"+(list.length===1?"":"s")+" exported.","success"); });
+          nvSafeCall(function(){ toast(eligible.length+" parcel"+(eligible.length===1?"":"s")+" exported.","success"); });
         }
       });
 
@@ -12485,13 +12540,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       /* ---------- Task 19: notification centre ----------
          Parcel events only. Wallet, payout, fee and invoice events
          are deliberately excluded. */
-      var NOTIF_READ_KEY="novaxClientNotifReadV1";
+      function nvNotifReadKey(){return "novaxClientNotifReadV2:"+String((state.client&&state.client.id)||"unknown");}
       var notifOpen=false;
       function nvReadSet(){
-        try{ return JSON.parse(localStorage.getItem(NOTIF_READ_KEY)||"[]"); }catch(e){ return []; }
+        try{ return JSON.parse(localStorage.getItem(nvNotifReadKey())||"[]"); }catch(e){ return []; }
       }
       function nvMarkAllRead(){
-        try{ localStorage.setItem(NOTIF_READ_KEY,JSON.stringify(nvNotifEvents().map(function(n){ return n.id; }).slice(0,200))); }catch(e){}
+        try{ localStorage.setItem(nvNotifReadKey(),JSON.stringify(nvNotifEvents().map(function(n){ return n.id; }).slice(0,200))); }catch(e){}
       }
       function nvNotifEvents(){
         var out=[];
@@ -12504,9 +12559,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           /* kind drives the rail and dot colour in nvNotifRender(). Without it
              every row rendered identically and a refused parcel looked exactly
              like a delivered one. */
-          if(st==="Delivered") out.push({ kind:"good", id:p.awb+"|delivered|"+stamp(p), awb:p.awb, title:p.awb+" delivered", sub:[p.consignee,p.city].filter(Boolean).join(" \u00b7 ") });
-          else if(NEEDS_ME.indexOf(st)>=0) out.push({ kind:"bad", id:p.awb+"|"+st+"|"+stamp(p), awb:p.awb, title:p.awb+" \u2013 "+st, sub:(p.exception||[p.consignee,p.city].filter(Boolean).join(" \u00b7 ")) });
-          else if(st==="Collected by rider") out.push({ kind:"info", id:p.awb+"|pickup|"+stamp(p), awb:p.awb, title:p.awb+" picked up", sub:"Rider collected this parcel" });
+          if(st==="Delivered") out.push({ kind:"good", at:stamp(p), id:p.awb+"|delivered|"+stamp(p), awb:p.awb, title:p.awb+" delivered", sub:[p.consignee,p.city].filter(Boolean).join(" \u00b7 ") });
+          else if(NEEDS_ME.indexOf(st)>=0) out.push({ kind:"bad", at:stamp(p), id:p.awb+"|"+st+"|"+stamp(p), awb:p.awb, title:p.awb+" \u2013 "+st, sub:(p.exception||[p.consignee,p.city].filter(Boolean).join(" \u00b7 ")) });
+          else if(st==="Collected by rider") out.push({ kind:"info", at:stamp(p), id:p.awb+"|pickup|"+stamp(p), awb:p.awb, title:p.awb+" picked up", sub:"Rider collected this parcel" });
         });
         /* Support replies. The empty state promised these and nothing produced
            them: only parcel statuses were ever read. */
@@ -12518,14 +12573,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               var last=null;
               reps.forEach(function(r){ if(String(r.by_side||"")!=="client") last=r; });
               if(last){
-                out.push({ id:"tk|"+t.id+"|"+String(last.id||last.created_at||""), awb:"",
+                out.push({ at:String(last.created_at||""), id:"tk|"+t.id+"|"+String(last.id||last.created_at||""), awb:"",
                            title:"NovaX replied \u2013 "+String(t.code||t.subject||"your ticket"),
                            sub:String(last.body||"").slice(0,90) });
               }
             });
           }
         }catch(e){}
-        return out.slice(0,60);
+        return out.sort(function(a,b){return String(b.at||"").localeCompare(String(a.at||""));}).slice(0,60);
       }
       function nvNotifWire(){
         var input=document.getElementById("clientSearch");
@@ -12586,15 +12641,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             (n.sub?"<span>"+nvEsc(n.sub)+"</span>":"")+"</span></div>";
         }).join(""):'<div class="nv-notif-empty">Nothing yet.<br>Deliveries, exceptions, pickups and support replies land here.</div>');
       }
+      window.__nvNotifRefresh=function(){ nvNotifRender(true); };
 
-      /* Clear notification read-state on logout (no financial data is stored). */
-      try{
-        if(typeof logout==="function"){
-          var __nvOrigLogout=logout;
-          logout=function(){ try{ localStorage.removeItem(NOTIF_READ_KEY); }catch(e){} return __nvOrigLogout.apply(this,arguments); };
-          window.logout=logout;
-        }
-      }catch(e){}
+      // Read state is per client and must survive logout; otherwise every old
+      // status is falsely presented as a new notification on the next login.
 
       /* ---------- boot ---------- */
       function nvP3Tick(){
@@ -12931,6 +12981,29 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
   document.body.appendChild(btn);
   document.body.appendChild(panel);
+  btn.id="nvautoLauncher";
+  btn.setAttribute("aria-controls","nvautoDialog");
+  btn.setAttribute("aria-expanded","false");
+  panel.id="nvautoDialog";
+  panel.setAttribute("role","dialog");
+  panel.setAttribute("aria-modal","true");
+  panel.setAttribute("aria-label","NovaX Autopilot assistant");
+  new MutationObserver(function(){
+    var open=panel.classList.contains("open");
+    btn.setAttribute("aria-expanded",String(open));
+    if(open) setTimeout(function(){try{panel.querySelector("#nvautoInput").focus();}catch(e){}},0);
+    else if(panel.contains(document.activeElement)) try{btn.focus();}catch(e){}
+  }).observe(panel,{attributes:true,attributeFilter:["class"]});
+  panel.addEventListener("keydown",function(e){
+    if(e.key==="Escape"){panel.classList.remove("open");e.preventDefault();return;}
+    if(e.key!=="Tab") return;
+    var items=Array.from(panel.querySelectorAll("button,input,[tabindex]:not([tabindex='-1'])"))
+      .filter(function(el){return !el.disabled&&el.getClientRects().length;});
+    if(!items.length) return;
+    var first=items[0], last=items[items.length-1];
+    if(e.shiftKey&&document.activeElement===first){last.focus();e.preventDefault();}
+    else if(!e.shiftKey&&document.activeElement===last){first.focus();e.preventDefault();}
+  });
 
   function refreshLauncherBadge(){
     try{
@@ -13015,6 +13088,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
   function handleAction(a){
     if(!a) return;
+    if(a.interventionId && typeof window.nvDismissIntervention==="function") window.nvDismissIntervention(a.interventionId);
+    if(a.type==="nv_dismiss_intervention"){ if(typeof window.nvDismissIntervention==="function") window.nvDismissIntervention(a.id); return; }
     if(a.kind==="send"){ send(a.message||""); return; }
     if(a.kind!=="local") return;
     try{
@@ -13248,7 +13323,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var actions=[];
         if(data.issues.length) actions.push({ label:"Review Issues", kind:"local", type:"nv_review_issues" });
         if(data.unprinted.length) actions.push({ label:"Print Pending AWBs", kind:"local", type:"go_awb_label" });
-        if(data.payable>0) actions.push({ label:"Withdraw Wallet", kind:"local", type:"go_wallet" });
+        if(nvLiveWalletBalance()>0) actions.push({ label:"Withdraw Wallet", kind:"local", type:"go_wallet" });
         actions.push({ label:"Book Orders", kind:"local", type:"go_booking" });
         return actions;
       }
@@ -13885,7 +13960,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return;
       }
       if(action.type==="message_customer_awb"){
-        if(typeof messageCustomer==="function"){ messageCustomer(action.awb); addMsg(action.resultMsg||("Opened a WhatsApp draft for "+action.awb+"."),"b"); }
+        if(typeof messageCustomer==="function"){ var opened=messageCustomer(action.awb); addMsg(opened?(action.resultMsg||("Opened a WhatsApp draft for "+action.awb+".")):("Could not open WhatsApp for "+action.awb+". Check the phone number or allow pop-ups."),"b"); }
         else addMsg("I couldn't open WhatsApp locally \u2014 use Message Customer on the parcel journey.","b");
         return;
       }
@@ -14646,11 +14721,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   if(window.__novaxPhase4Loaded) return; window.__novaxPhase4Loaded=true;
   var DISMISS_KEY="novaxAutopilotDismissedV1";
   var LANG_KEY="novaxAutopilotLangV1";
-  var MAX_PER_SESSION=3;
-  var shown=0;
+  var surfaced=new Set();
   function safe(fn){ try{ return fn(); }catch(e){ return undefined; } }
   function dismissed(){ try{ return JSON.parse(localStorage.getItem(DISMISS_KEY)||"[]"); }catch(e){ return []; } }
   function dismiss(id){ try{ var d=dismissed(); if(d.indexOf(id)<0){ d.push(id); localStorage.setItem(DISMISS_KEY,JSON.stringify(d.slice(-200))); } }catch(e){} }
+  window.nvDismissIntervention=dismiss;
+  function day(){ return new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Karachi"}); }
 
   /* ---------- Task 22: Roman Urdu detection + persisting toggle ---------- */
   var RU=/(\bkya\b|\bkyu\b|\bkahan\b|\bkab\b|\bkitna\b|\bkitne\b|\bmera\b|\bmeri\b|\bmujhe\b|\bnahi\b|\bnahin\b|\bhai\b|\bhain\b|\bkaro\b|\bkardo\b|\bkarna\b|\bbhej\b|\bbhejo\b|\bwapis\b|\bpaisay\b|\bpaise\b|\bparcel kahan\b|\baap\b|\bapna\b|\bthek\b|\bacha\b|\bkyun\b|\bdobara\b|\bjaldi\b)/i;
@@ -14734,7 +14810,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(stuck.length){
       var a=stuck[0];
       out.push({
-        id:"stuck|"+stuck.map(function(p){ return p.awb; }).join(","),
+        id:"stuck|"+day()+"|"+stuck.map(function(p){ return p.awb; }).join(","),
         text:t(stuck.length+" parcel"+(stuck.length===1?" has":"s have")+" not changed status in over 48 hours, starting with "+a.awb+" ("+(a.status||"")+", "+(a.city||"")+"). Do you want me to open it or ask the hub for a re-attempt?",
               stuck.length+" parcel 48 ghante se aage nahi barhay, pehla "+a.awb+" ("+(a.status||"")+", "+(a.city||"")+"). Journey kholun ya re-attempt request karun?"),
         actions:[
@@ -14748,7 +14824,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(needs.length){
       var n=needs[0];
       out.push({
-        id:"needs|"+needs.map(function(p){ return p.awb+":"+p.status; }).join(","),
+        id:"needs|"+day()+"|"+needs.map(function(p){ return p.awb+":"+p.status; }).join(","),
         text:t(needs.length+" parcel"+(needs.length===1?" needs":"s need")+" a decision from you. "+n.awb+" is marked \u201c"+(n.status||"")+"\u201d. I can request a re-attempt or open the journey so you can see the rider proof.",
               needs.length+" parcel par aap ka faisla chahiye. "+n.awb+" ka status \u201c"+(n.status||"")+"\u201d hai. Re-attempt request karun ya journey kholun?"),
         actions:[
@@ -14760,7 +14836,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     var miss=(c.missingAddress||[]).slice(0,3);
     if(miss.length){
       out.push({
-        id:"addr|"+miss.map(function(p){ return p.awb; }).join(","),
+        id:"addr|"+day()+"|"+miss.map(function(p){ return p.awb; }).join(","),
         text:t(miss.length+" parcel"+(miss.length===1?" is":"s are")+" missing a house number or phone, starting with "+miss[0].awb+". Riders usually fail these on the first attempt \u2014 want to open it and fix the address now?",
               miss.length+" parcel mein ghar ka number ya phone missing hai, pehla "+miss[0].awb+". Aise parcel pehli koshish mein fail hotay hain \u2014 abhi address theek karein?"),
         actions:[
@@ -14795,15 +14871,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   }
 
   function surface(){
-    if(shown>=MAX_PER_SESSION) return;
     if(typeof window.novaxAutopilotSay!=="function") return;
     var list=buildInterventions();
-    for(var i=0;i<list.length && shown<MAX_PER_SESSION;i++){
+    for(var i=0;i<list.length;i++){
       var it=list[i];
-      var acts=it.actions.concat([{ label:t("Not now","Abhi nahi"), kind:"local", type:"nv_dismiss_intervention", id:it.id }]);
+      if(surfaced.has(it.id)) continue;
+      var acts=it.actions.map(function(a){return Object.assign({},a,{interventionId:it.id});})
+        .concat([{ label:t("Not now","Abhi nahi"), kind:"local", type:"nv_dismiss_intervention", id:it.id }]);
       window.novaxAutopilotSay(it.text,acts);
-      dismiss(it.id);
-      shown++;
+      surfaced.add(it.id);
     }
   }
 

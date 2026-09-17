@@ -2191,7 +2191,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=dcbc716f" defer></script>
+  <script src="client-app.js?v=9f27f094" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2374,7 +2374,8 @@
             <!-- NEW BOOKING -->
             <section class="client-module" id="client-newBooking">
               <div class="panel">
-                <div class="section-head"><div><h3>New Booking</h3><p>Create one AWB with COD, consignee, address, service type, and pickup instructions. Submitting writes to the same parcel ledger and opens the printable AWB.</p></div><button class="action-btn" id="quickBookingBtn">Create Booking</button></div>
+                <div class="section-head"><div><h3>New Booking</h3><p>Create one AWB with COD, consignee, address, service type, and pickup instructions. Submitting writes to the same parcel ledger and opens the printable AWB.</p></div><button class="action-btn" id="quickBookingBtn" type="submit" form="nvBookingForm">Create Booking</button></div>
+                <form id="nvBookingForm">
                 <div id="nvPasteBox" style="background:var(--panel-soft);border:1px solid #d8ece3;border-radius:var(--radius);padding:12px 14px;margin-bottom:14px">
                   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
                     <div><strong style="font-size:13.5px;color:var(--green)">Paste Order To Book</strong><div class="footer-note mt-2">Paste a WhatsApp or Instagram order and I'll fill the form for you.</div></div>
@@ -2383,9 +2384,9 @@
                   <div class="mt-8"><button class="ghost-btn" id="nvPasteFillBtn" type="button">Fill Form From Paste</button></div>
                   <div class="footer-note" id="nvPasteSummary" style="display:none;margin-top:8px;font-weight:700;color:var(--green)"></div>
                 </div>
-                <div id="nvRiskWarning" class="footer-note" style="display:none;margin-bottom:10px;font-weight:700;color:#a15c00;background:#fff6e6;border:1px solid #f0d6a0;border-radius:8px;padding:8px 10px"></div>
+                <div id="nvRiskWarning" class="footer-note" role="alert" aria-live="assertive" style="display:none;margin-bottom:10px;font-weight:700;color:#a15c00;background:#fff6e6;border:1px solid #f0d6a0;border-radius:8px;padding:8px 10px"></div>
                 <div class="form-grid">
-                  <div class="field"><label for="bookingName">Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" required></div>
+                  <div class="field"><label for="bookingName">Consignee Name <span class="required-star">*</span></label><input id="bookingName" placeholder="Consignee full name" maxlength="120" required></div>
                   <div class="field"><label for="bookingPhone">Phone <span class="required-star">*</span></label><input type="tel" inputmode="numeric" autocomplete="tel" id="bookingPhone" placeholder="03113323923" required><div id="consigneeHistoryBadge" style="display:none;margin-top:6px"></div></div>
                   <div id="nvPickupBanner" style="grid-column:1/-1"></div>
                   <div class="field"><label for="bookingPickupCity">Pickup City</label>
@@ -2412,7 +2413,7 @@
                     <div class="footer-note" id="nvAreaHint">Type to narrow the list, or just open it and choose.</div></div>
                   <div class="field"><label for="bookingCod">COD Amount <span class="required-star">*</span></label><input id="bookingCod" type="number" placeholder="e.g. 2500" min="0" required oninput="nvSyncPaymentMode()"><div class="footer-note nv-paymode" id="nvPayModeNote" style="display:none"></div></div>
                   <div class="field"><label for="bookingService">Service Type</label><input id="bookingService" class="nv-fixed-field" value="COD Standard" readonly tabindex="-1" aria-readonly="true"><span class="footer-note">Every NovaX parcel ships COD Standard today.</span></div><div class="field nv-span-2"><label for="bookingComments">Comments for packing <span class="footer-note" style="text-transform:none;letter-spacing:0;font-weight:600">optional</span></label><textarea id="bookingComments" rows="2" maxlength="180" placeholder="e.g. Fragile - double wrap. Include free sample."></textarea><span class="footer-note">Printed on the AWB for whoever packs this parcel. Leave blank if not needed.</span></div>
-                  <div class="field"><label for="bookingCategory">Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" required></div>
+                  <div class="field"><label for="bookingCategory">Product Details <span class="required-star">*</span></label><input id="bookingCategory" placeholder="Write exact product details" maxlength="140" required></div>
                   <div class="field"><label for="bookingFragile">Fragile <span class="required-star">*</span></label><select id="bookingFragile" required><option>No</option><option>Yes</option></select></div>
                   <div class="field"><label for="bookingWeight">Package Weight <span class="required-star">*</span></label><input id="bookingWeight" value="0.8 kg" required oninput="updateZoneRateHint();nvRefreshQuote();nvSyncWeightChips()"><!-- One tap for the weights merchants actually use. The field still      accepts anything typed; the chips only fill it. --><div class="nv-wchips" id="nvWeightChips" role="group" aria-label="Common weights"></div></div>
                   <!-- Payment Mode was a required question the merchant had already
@@ -2425,10 +2426,11 @@
                   <div class="field"><label>Payment</label><div id="bookingPayMode" class="nv-derived">Cash on delivery</div><div class="footer-note mt-4">Set from the COD amount above. Enter 0 for a prepaid parcel.</div><select id="bookingPaymentMode" hidden aria-hidden="true" tabindex="-1"><option>COD</option><option>Non COD Prepaid</option></select></div>
                   <div class="field"><label for="bookingOrderId">Your Order ID</label><input id="bookingOrderId" placeholder="e.g. #1042 (from your website)" maxlength="40" autocomplete="off"><div class="footer-note mt-4">Optional. Printed on the AWB so you can match the parcel to your own order.</div></div>
                   <div class="field"><label for="bookingAllowOpen">Allow to Open</label><select id="bookingAllowOpen"><option value="No" selected>No &mdash; do not allow</option><option value="Yes">Yes &mdash; customer may open before paying</option></select><div class="footer-note mt-4">Off by default. If Yes, it is printed on the AWB for the rider.</div></div>
-                  <div class="field" style="grid-column:1/-1"><label for="bookingAddress">Delivery Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full delivery address where the parcel is going" required></textarea></div>
+                  <div class="field" style="grid-column:1/-1"><label for="bookingAddress">Delivery Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full delivery address where the parcel is going" maxlength="400" required></textarea></div>
                   <div id="bookingCityWarn" style="grid-column:1/-1;display:none;background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.5"></div>
                 </div>
                 <div class="footer-note" id="bookingConfirmLine" style="display:none;margin-top:12px;font-weight:700;color:var(--green)"></div>
+                </form>
               </div>
             </section>
             <!-- AWB LABEL -->
@@ -2624,8 +2626,8 @@
                 <div class="filter-bar">
                   <div class="field"><label for="repSearch">Search</label><input id="repSearch" placeholder="AWB, consignee, city, status"></div>
                   <div class="field"><label for="repStatus">Status</label><select id="repStatus"></select></div>
-                  <div class="field"><label for="repFrom">From</label><input type="date" id="repFrom"></div>
-                  <div class="field"><label for="repTo">To</label><input type="date" id="repTo"></div>
+                  <div class="field"><label for="repFrom">Booking date from</label><input type="date" id="repFrom"></div>
+                  <div class="field"><label for="repTo">Booking date to</label><input type="date" id="repTo"></div>
                   <button class="ghost-btn" id="repClearBtn">Clear</button>
                 </div>
                 <div class="wide-scroll">
@@ -2852,7 +2854,7 @@
               </div>
               <div class="panel mt-14">
                 <div class="section-head"><div><h3>Notification preferences</h3><p>Choose how you want to hear about your parcels. WhatsApp/SMS/Email sending is coming soon -- your choices are saved now so nothing needs to change later.</p></div></div>
-                <p class="footer-note">NovaX will notify you when your parcel or payout changes.</p>
+                <p class="footer-note">These preferences are saved for future messaging. WhatsApp, SMS and email updates are not active yet; check your portal for live status.</p>
                 <div class="grid three">
                   <label class="footer-note" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="notifPrefWhatsapp"> WhatsApp updates</label>
                   <label class="footer-note" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="notifPrefSms"> SMS updates</label>
@@ -2869,7 +2871,7 @@
     </main>
   </div>
 
-  <div class="toast" id="toast"></div>
+    <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="printStage"></div>
   <!-- NovaX new: separate stage for A4 documents (receipts, statements) so
        AWB label @page sizing can never apply to them. -->

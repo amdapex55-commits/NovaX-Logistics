@@ -499,12 +499,15 @@
        hand the tokenised URL, and everything behind it, to whoever it is
        forwarded to. */
     var url=SITE+"/tracking.html?awb="+encodeURIComponent(v);
-    if(navigator.share){ navigator.share({title:"NovaX parcel "+v, text:"Track NovaX parcel "+v, url:url}).catch(function(){}); return; }
-    if(navigator.clipboard&&navigator.clipboard.writeText){
-      navigator.clipboard.writeText(url).then(function(){
-        var t=btn.textContent; btn.textContent="Link copied"; setTimeout(function(){btn.textContent=t;},1400);
-      },function(){});
+    function copyLink(){
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(url).then(function(){
+          var t=btn.textContent; btn.textContent="Link copied"; setTimeout(function(){btn.textContent=t;},1400);
+        },function(){btn.textContent="Could not copy link";});
+      }else btn.textContent="Sharing unavailable";
     }
+    if(navigator.share){ navigator.share({title:"NovaX parcel "+v, text:"Track NovaX parcel "+v, url:url}).catch(function(e){if(!e||e.name!=="AbortError") copyLink();}); return; }
+    copyLink();
   };
 
   /* Statuses where the parcel is still moving between cities. Naming the
