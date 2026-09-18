@@ -3084,6 +3084,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var nvSwapParcelLists=function(){ try{ renderClientParcels(); }catch(e){} };
       if(NV_CARDS_MQ.addEventListener) NV_CARDS_MQ.addEventListener("change", nvSwapParcelLists);
       else if(NV_CARDS_MQ.addListener) NV_CARDS_MQ.addListener(nvSwapParcelLists);
+      /* Keep the mobile list consistent if a later UI redraw clears its host.
+         A genuinely empty search/date range has no filtered rows and stays empty. */
+      var nvCardsHost=document.getElementById("clientParcelCards");
+      if(nvCardsHost) new MutationObserver(function(){
+        if(NV_CARDS_MQ.matches && !nvCardsHost.children.length && filteredParcels().length){
+          renderClientParcels();
+        }
+      }).observe(nvCardsHost,{childList:true});
     }catch(e){}
 
     function toggleStatusBoard(){ state.statusBoardOpen=!state.statusBoardOpen; renderClientStatusBoard(); }
@@ -12629,13 +12637,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             panel.style.left=Math.max(8,Math.min(r.right-330,window.innerWidth-338))+"px";
             nvNotifRender(true); panel.classList.add("open");
           } else panel.classList.remove("open");
-          /* A notification redraw can leave the mobile parcel host empty even
-             though its source rows are still loaded. Restore the visible list
-             before an empty-state message can misrepresent the account. */
-          var cards=document.getElementById("clientParcelCards");
-          if(NV_CARDS_MQ.matches && cards && !cards.children.length && filteredParcels().length){
-            renderClientParcels();
-          }
         });
         document.addEventListener("click",function(e){
           if(notifOpen && !panel.contains(e.target) && e.target!==bell){ notifOpen=false; panel.classList.remove("open"); }
