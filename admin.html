@@ -5368,6 +5368,17 @@ html,body{ background:var(--bg); color:var(--ink); }
             <section class="admin-module active" id="admin-dashboard">
               <div class="grid metrics" id="adminMetrics"></div>
 
+              <div class="panel mt-14" id="adminPeriodPanel">
+                <div class="section-head"><div><h3>Revenue by Collection Date</h3><p>Delivery fees from parcels collected by a rider in the selected dates. COD belongs to merchants and is excluded.</p></div></div>
+                <div class="filter-bar">
+                  <div class="field"><label for="adminPeriodFrom">From</label><input id="adminPeriodFrom" type="date"></div>
+                  <div class="field"><label for="adminPeriodTo">To</label><input id="adminPeriodTo" type="date"></div>
+                  <button class="ghost-btn" id="adminPeriodToday" type="button">Today</button>
+                </div>
+                <p class="footer-note" id="adminPeriodNote" role="status"></p>
+                <div class="grid metrics mt-14" id="adminPeriodMetrics"></div>
+              </div>
+
               <!-- NovaX new: daily COD collection board. Reset each morning;
                    fills up as destination hubs mark parcels delivered. -->
               <div class="panel mt-14" id="codBoardPanel">
@@ -8717,6 +8728,58 @@ html,body{ background:var(--bg); color:var(--ink); }
       return { delivered, total: parcels.length, codCollected, revenue, expenses, payable, avgProgress, risk, cashHeld, cashLimit, exceptions };
     }
 
+    function nvLocalDate(iso) {
+      const d = new Date(nvTs(iso));
+      if (!Number.isFinite(d.getTime())) return "";
+      return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+    }
+
+    function nvCollectedAt(parcel) {
+      const history = Array.isArray(parcel && parcel.processHistory) ? parcel.processHistory : [];
+      const hit = history.find(row => row && nvStatus(row.status) === "Collected by rider" && row.at);
+      return hit ? hit.at : "";
+    }
+
+    function initPeriodInputs(todayOnly) {
+      const fromEl = document.getElementById("adminPeriodFrom");
+      const toEl = document.getElementById("adminPeriodTo");
+      if (!fromEl || !toEl) return;
+      const today = nvLocalDate(new Date().toISOString());
+      if (todayOnly || !toEl.value) toEl.value = today;
+      if (todayOnly) fromEl.value = today;
+      else if (!fromEl.value) fromEl.value = today.slice(0, 8) + "01";
+    }
+
+    function renderPeriodMetrics() {
+      const root = document.getElementById("adminPeriodMetrics");
+      const note = document.getElementById("adminPeriodNote");
+      const fromEl = document.getElementById("adminPeriodFrom");
+      const toEl = document.getElementById("adminPeriodTo");
+      if (!root || !fromEl || !toEl) return;
+      const from = fromEl.value;
+      const to = toEl.value;
+      if (!from || !to || from > to) {
+        root.innerHTML = "";
+        if (note) note.textContent = from > to ? "From date must be before or equal to To date." : "Choose both dates.";
+        return;
+      }
+      const eligible = (state.parcels || []).filter(isPickedUpParcel);
+      const rows = eligible.filter(p => {
+        const date = nvLocalDate(nvCollectedAt(p));
+        return date && date >= from && date <= to;
+      });
+      const fees = rows.reduce((sum, p) => sum + Number(p.fee || 0), 0);
+      const expenses = (state.expenses || []).filter(e => e.date && e.date >= from && e.date <= to).reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      const missingTimestamp = eligible.filter(p => !nvCollectedAt(p)).length;
+      root.innerHTML = [
+        metricCard("Parcels Collected", rows.length, percent(rows.length, Math.max(1, eligible.length)), "unique AWBs", "blue"),
+        metricCard("Delivery-fee Revenue", money(fees), percent(fees, 100000), "earned fees only", "good"),
+        metricCard("Expenses", money(expenses), percent(expenses, 100000), "expense dates in range", "amber"),
+        metricCard("Net Revenue", money(fees - expenses), percent(Math.max(0, fees - expenses), 100000), "fees minus expenses", fees - expenses < 0 ? "red" : "good")
+      ].join("");
+      if (note) note.textContent = `${from} to ${to}, Pakistan time.${missingTimestamp ? ` ${missingTimestamp} picked-up parcel(s) are excluded because their collection timestamp is missing.` : ""}`;
+    }
+
     function percent(value, max) {
       if (!max) return 0;
       return Math.max(0, Math.min(100, Math.round((value / max) * 100)));
@@ -8882,6 +8945,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         metricCard("Expenses", money(m.expenses), percent(m.expenses, 450000), "operating burn", "amber"),
         metricCard("Cash Exposure", `${cashExposure}%`, Math.min(100, cashExposure), "blocked over limit", cashExposure > 100 ? "red" : "amber")
       ].join("");
+      renderPeriodMetrics();
       if (typeof renderDailyOps === "function") { try { renderDailyOps(); } catch(e){} }
     }
 
@@ -16500,6 +16564,9 @@ html,body{ background:var(--bg); color:var(--ink); }
 
     document.getElementById("clientSearch").addEventListener("input", renderClientParcels);
     document.getElementById("applyDateRangeBtn").addEventListener("click", applyClientDateRange);
+    document.getElementById("adminPeriodFrom").addEventListener("change", renderPeriodMetrics);
+    document.getElementById("adminPeriodTo").addEventListener("change", renderPeriodMetrics);
+    document.getElementById("adminPeriodToday").addEventListener("click", () => { initPeriodInputs(true); renderPeriodMetrics(); });
     document.getElementById("adminOrderSearch").addEventListener("input", renderAdmin);
     document.getElementById("adminOrderClientFilter").addEventListener("change", renderAdmin);
     document.getElementById("adminOrderStatusFilter").addEventListener("change", renderAdmin);
@@ -17958,6 +18025,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       setInterval(function(){ if(!document.hidden) scan(); }, 4000);
     })();
 
+    initPeriodInputs(false);
     render();
     renderLandingTrack();
     window.scrollTo({ top: 0, left: 0 });
