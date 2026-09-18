@@ -9830,18 +9830,28 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       window.__nvSearchOwned = false;
       function el(){ return document.getElementById("clientSearch"); }
       var box = el();
-      if(box) box.addEventListener("input", function(){ window.__nvSearchOwned = true; });
+      if(box) box.addEventListener("input", function(){
+        /* Browser autofill can emit input without the merchant focusing this
+           field. That is not a deliberate parcel search. */
+        if(document.activeElement===box) window.__nvSearchOwned = true;
+        else if(!window.__nvSearchOwned) setTimeout(clearIfNotTyped,0);
+      });
       function clearIfNotTyped(){
         var e = el();
-        if(!e || window.__nvSearchOwned) return;   // never wipe a real search
+        if(!e) return;
+        /* Email is not a supported parcel search term. Even if Chrome fired
+           input and marked it owned, an email here is autofill, not a parcel. */
+        var autofilledEmail=/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.value.trim());
+        var cards=document.getElementById("clientParcelCards");
+        var missing=!e.value && NV_CARDS_MQ.matches && cards && !cards.children.length &&
+          state.identityVerified && clientScopedParcels().length>0;
+        if(window.__nvSearchOwned && !autofilledEmail && !missing) return;
+        if(autofilledEmail) window.__nvSearchOwned=false;
         var cleared=!!e.value;
         if(cleared) e.value = "";
         /* Chrome can restore an identity value after the initial 400ms check.
            Its later clear does not emit input, leaving mobile cards blank even
            after the field looks empty. Reconcile that visible list as well. */
-        var cards=document.getElementById("clientParcelCards");
-        var missing=NV_CARDS_MQ.matches && cards && !cards.children.length &&
-          state.identityVerified && clientScopedParcels().length>0;
         if(cleared || missing) try{ renderClientParcels(); }catch(err){}
       }
       if(document.readyState === "loading"){
@@ -13265,7 +13275,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(typeof showClientTab==="function") showClientTab("dashboard");
         setTimeout(function(){
           var el=document.getElementById("clientSearch");
-          if(el && a.query){ el.value=a.query; el.dispatchEvent(new Event("input")); }
+          if(el && a.query){ window.__nvSearchOwned=true; el.value=a.query; el.dispatchEvent(new Event("input")); }
         },150);
         return;
       }
