@@ -3432,6 +3432,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     function renderClientModules(){
       renderClientTabs(); renderAwbLabel();
+      if(state.activeClientTab==="dashboard" && NV_CARDS_MQ.matches &&
+         !document.getElementById("clientParcelCards")?.children.length && filteredParcels().length){
+        renderClientParcels();
+      }
       // NovaX fix (client identity leak): always read the header account name
       // from clientDisplayState(), the same source used by the sidebar/wallet/
       // reports, so it can never show a stale/demo/first-client name.
@@ -12625,6 +12629,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             panel.style.left=Math.max(8,Math.min(r.right-330,window.innerWidth-338))+"px";
             nvNotifRender(true); panel.classList.add("open");
           } else panel.classList.remove("open");
+          /* A notification redraw can leave the mobile parcel host empty even
+             though its source rows are still loaded. Restore the visible list
+             before an empty-state message can misrepresent the account. */
+          var cards=document.getElementById("clientParcelCards");
+          if(NV_CARDS_MQ.matches && cards && !cards.children.length && filteredParcels().length){
+            renderClientParcels();
+          }
         });
         document.addEventListener("click",function(e){
           if(notifOpen && !panel.contains(e.target) && e.target!==bell){ notifOpen=false; panel.classList.remove("open"); }
