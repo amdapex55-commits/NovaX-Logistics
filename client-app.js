@@ -9834,9 +9834,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function clearIfNotTyped(){
         var e = el();
         if(!e || window.__nvSearchOwned) return;   // never wipe a real search
-        if(!e.value) return;
-        e.value = "";
-        try{ renderClientParcels(); }catch(err){}
+        var cleared=!!e.value;
+        if(cleared) e.value = "";
+        /* Chrome can restore an identity value after the initial 400ms check.
+           Its later clear does not emit input, leaving mobile cards blank even
+           after the field looks empty. Reconcile that visible list as well. */
+        var cards=document.getElementById("clientParcelCards");
+        var missing=NV_CARDS_MQ.matches && cards && !cards.children.length &&
+          state.identityVerified && clientScopedParcels().length>0;
+        if(cleared || missing) try{ renderClientParcels(); }catch(err){}
       }
       if(document.readyState === "loading"){
         document.addEventListener("DOMContentLoaded", clearIfNotTyped);
@@ -9846,6 +9852,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       /* One more tick: Chrome fills some fields just after DOMContentLoaded. */
       setTimeout(clearIfNotTyped, 0);
       setTimeout(clearIfNotTyped, 400);
+      setInterval(clearIfNotTyped, 1000);
       window.addEventListener("pageshow", function(ev){
         /* `typed` was this variable's name in the first draft; it was renamed to
            window.__nvSearchOwned and this line was missed, leaving an undeclared
