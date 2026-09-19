@@ -334,28 +334,29 @@ begin
      set meta = t.meta || jsonb_build_object('ageHours', public.sla_elapsed_hours(t.created_at, now()))
    where t.status <> 'Resolved';
 
-  -- 5c. Parcel transit breach: same rule as alertForParcel()=='critical'.
-  -- NovaX fix (deploy blocker): parcels has no top-level `branch` column --
-  -- the real value lives in meta->>'branch' (confirmed against admin.html's
-  -- own row mapper). Referencing p.branch directly threw undefined_column
-  -- and rolled back the whole function call, every 5 minutes, forever.
+  -- 5c. Operational parcel SLA. status_since is the only clock: unrelated
+  -- parcel writes must never postpone a breach. No clock runs before warehouse
+  -- arrival; warehouse/destination/OFD get 24h and intercity transit gets 72h.
   for r in
     select p.id, p.awb, p.client_id, p.status, p.city,
            coalesce(p.meta->>'branch','') as branch, p.consignee,
-           public.sla_elapsed_hours(coalesce(p.updated_at, p.created_at), now()) as age
+           public.sla_elapsed_hours(coalesce(p.status_since, p.booked_at), now()) as age,
+           case when p.status = 'Parcel now in transit' then 72 else 24 end as stage_limit
       from public.parcels p
-     where coalesce(p.status,'') not in ('Delivered','Parcel returned to consignee','Cancelled')
-       and public.sla_elapsed_hours(coalesce(p.updated_at, p.created_at), now()) >= 72
+     where p.status in ('Arrived at warehouse','Parcel now in transit',
+                        'Parcel received at destination','Parcel out for delivery')
+       and public.sla_elapsed_hours(coalesce(p.status_since, p.booked_at), now()) >=
+           case when p.status = 'Parcel now in transit' then 72 else 24 end
   loop
     v_new := public.ensure_ticket_from_issue(
-      'parcel:' || r.awb || ':critical', r.client_id,
-      'Parcel stuck in transit past SLA',
-      r.awb || ' is breaching SLA. Current status: ' || coalesce(r.status,'unknown')
-        || '. No movement for ' || round(r.age)::text || 'h.',
+      'parcel:' || r.awb || ':operational-sla', r.client_id,
+      'Parcel stage SLA breached',
+      r.awb || ' is breaching the ' || r.stage_limit::text || 'h SLA in '
+        || coalesce(r.status,'unknown') || '. Current stage age: ' || round(r.age)::text || 'h.',
       'emergency', 'AI Status Clock',
       coalesce(nullif(r.branch,''), coalesce(r.city,'Destination') || ' Hub') || ' Manager',
       coalesce(nullif(r.branch,''), coalesce(r.city,'Destination') || ' Hub'),
-      r.awb, r.age, r.age >= v_limit
+      r.awb, r.age, true
     );
     if v_new is not null then v_created := v_created + 1; end if;
   end loop;
@@ -369,7 +370,7 @@ begin
     select p.id, p.awb, p.client_id, p.status, p.city,
            coalesce(p.meta->>'branch','') as branch, p.consignee,
            coalesce(p.exception, p.meta->>'exception', '') as exc,
-           public.sla_elapsed_hours(coalesce(p.updated_at, p.created_at), now()) as age
+           public.sla_elapsed_hours(coalesce(p.status_since, p.booked_at), now()) as age
       from public.parcels p
      where coalesce(p.status,'') || ' ' || coalesce(p.exception, p.meta->>'exception', '')
            ~* '(refus|fake|denies|return proof|proof pending|dispute)'

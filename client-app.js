@@ -997,7 +997,7 @@
       ],
       completedSacks:[],
       operationsIssues:[
-        { id:"OPS-001", branch:"Lahore Hub", urgency:"super urgent", problem:"Transit aging over 3 days", awb:"SAMPLE-AWB-4", openedHours:6, resolved:false }
+        { id:"OPS-001", branch:"Lahore Hub", urgency:"super urgent", problem:"Sample operations issue", awb:"SAMPLE-AWB-4", openedHours:6, resolved:false }
       ],
       resolvedAlerts:[]
     };
@@ -1388,11 +1388,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       var phone=String(p.phone||"").replace(/\D/g,"");
       return !address || /^address pending$/i.test(address) || !phone;
     }
-    function nvParcelDelayed(p){
-      if(!p || nvIsConcludedParcel(p)) return false;
-      var age=p.statusSince?(Date.now()-new Date(p.statusSince).getTime())/3600000:Number(p.statusAgeHours);
-      return Number.isFinite(age) && age>24;
-    }
+    function nvParcelDelayed(p){ return false; }
     window.nvParcelDelayed=nvParcelDelayed;
     function nvAttentionParcels(){
       var myId=(state.client&&state.client.id)||null;
@@ -2039,16 +2035,20 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     }
 
     function nextId(prefix, items){ const max=(items||[]).reduce((v,it)=>{ const n=Number(String(it.id||"").replace(prefix+"-","")); return Number.isFinite(n)?Math.max(v,n):v; },0); return `${prefix}-${String(max+1).padStart(4,"0")}`; }
-    function agingHours(p){ if(p&&p.statusSince){ const ms=Date.now()-new Date(p.statusSince).getTime(); if(Number.isFinite(ms)) return Math.max(0,ms/3600000); } return Number((p&&p.statusAgeHours)||0); }
-    function agingLabel(h=0){ if(h<1) return "just now"; if(h<24) return `${Math.max(0,Math.round(h))}h`; const d=Math.floor(h/24); const r=Math.round(h%24); return r?`${d}d ${r}h`:`${d}d`; }
-    function alertForParcel(p){
-      const h=agingHours(p);
-      if(p.status==="Parcel now in transit"){ if(h>=72) return {level:"critical",label:"Red alert: transit over 3 days",due:"AI + support must act now"}; if(h>=48) return {level:"warning",label:"Transit aging",due:"Escalate before 3 days"}; return {level:"ok",label:"In transit",due:"Transit clock running"}; }
-      if(p.status==="Cancelled by client") return {level:"ok",label:"Cancelled",due:"You cancelled this booking"};
-      if(["Delivered","Return to shipper"].includes(p.status)) return {level:"ok",label:"Closed",due:"No open alert"};
-      if(h>=24) return {level:"critical",label:"24h status breach",due:"AI + support must act now"};
-      return {level:"ok",label:"Within SLA",due:`${24-Math.round(h)}h left`};
+    function destinationArrivalAt(p){
+      if(!p) return "";
+      const meta=p._meta||{};
+      if(meta.destinationArrivedAt) return meta.destinationArrivedAt;
+      const history=Array.isArray(p.processHistory)?p.processHistory:[];
+      const hits=history.filter(x=>x&&x.status==="Parcel received at destination"&&x.at);
+      if(hits.length) return hits[hits.length-1].at;
+      if(p.status==="Parcel received at destination") return p.statusSince||"";
+      return "";
     }
+    function agingHours(p){ const at=destinationArrivalAt(p); if(!at) return null; const ms=Date.now()-new Date(at).getTime(); return Number.isFinite(ms)?Math.max(0,ms/3600000):null; }
+    function agingLabel(h){ if(h==null||!Number.isFinite(Number(h))) return "Starts at destination"; h=Number(h); if(h<1) return "just now"; if(h<24) return `${Math.max(0,Math.round(h))}h`; const d=Math.floor(h/24); const r=Math.round(h%24); return r?`${d}d ${r}h`:`${d}d`; }
+    /* Merchant view exposes destination aging only; SLA urgency remains internal. */
+    function alertForParcel(p){ return {level:"ok",label:"Destination age",due:agingLabel(agingHours(p))}; }
     function urgencyClass(l){ if(l==="critical"||l==="super urgent") return "bad"; if(l==="warning"||l==="urgent") return "warn"; return "good"; }
     function setParcelStatus(p,status){ p.status=status; p.statusAgeHours=0; p.statusSince=new Date().toISOString(); p.updated=time(); p.stage=Math.max(0,STATUS_TAGS.indexOf(status)); if(!Array.isArray(p.steps)) p.steps=[]; if(!p.steps.includes(status)) p.steps.push(status); }
     /* ═══ Parcel progress ══════════════════════════════════════════════════
@@ -3108,7 +3108,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const sbHead=document.getElementById("statusBoardHead"); if(sbHead) sbHead.setAttribute("aria-expanded",open?"true":"false");
       el.style.display=open?"flex":"none";
       if(!open){ el.innerHTML=""; return; }
-      el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${s}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].map(p=>`<div class="sb-parcel" role="button" tabindex="0" aria-label="Open ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><span class="sb-awb">${escLabelText(p.awb)}</span><span class="sb-meta">${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)}</span><span class="sb-meta">${money(p.cod)} &middot; ${alertForParcel(p).label} &middot; ${agingLabel(agingHours(p))} old</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
+      el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${s}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].map(p=>`<div class="sb-parcel" role="button" tabindex="0" aria-label="Open ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><span class="sb-awb">${escLabelText(p.awb)}</span><span class="sb-meta">${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)}</span><span class="sb-meta">${money(p.cod)} &middot; ${agingLabel(agingHours(p))}</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
     }
     /* ===== AI Exception Resolution Center: deterministic problem/cause/action card ===== */
     function classifyParcelException(p){
@@ -4789,12 +4789,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       };
     }
     function nvExportRowFromDb(r){
-      /* status_since, not updated_at: the export must age parcels by the same
-         clock the screen does, or the CSV contradicts the portal. */
-      const t=Date.parse(r.status_since||r.booked_at||"");
+      const m=r.meta||{}, history=Array.isArray(m.processHistory)?m.processHistory:[];
+      const hits=history.filter(function(x){return x&&x.status==="Parcel received at destination"&&x.at;});
+      const arrived=m.destinationArrivedAt||(hits.length?hits[hits.length-1].at:(r.status==="Parcel received at destination"?r.status_since:""));
+      const t=Date.parse(arrived||"");
       return { awb:r.awb||"", date:r.booked_at?new Date(r.booked_at).toLocaleDateString("en-CA",{timeZone:"Asia/Karachi"}):"", consignee:r.consignee||"",
                city:r.city||"", status:r.status||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0),
-               _ageH:isFinite(t)?Math.max(0,(Date.now()-t)/3600000):0 };
+               _ageH:isFinite(t)?Math.max(0,(Date.now()-t)/3600000):null };
     }
     async function nvFetchWholeReport(){
       const sb=window.__nvSb, cid=state.client&&state.client.id;
@@ -4804,7 +4805,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       /* A supabase-js builder is single-use, so each page builds its own. */
       while(true){
         let q=sb.from("parcels")
-          .select("id,awb,consignee,city,status,cod_amount,fee,booked_at,status_since")
+          .select("id,awb,consignee,city,status,cod_amount,fee,booked_at,status_since,meta")
           .eq("client_id",cid);
         if(f.status) q=q.eq("status",f.status);
         if(f.from) q=q.gte("booked_at",new Date(f.from+"T00:00:00+05:00").toISOString());
@@ -4839,7 +4840,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       /* data-label drives the mobile card layout in client.html: under 900px the
          table stops being a table and each row stacks as AWB-first card, so the
          report stops requiring horizontal scanning on a phone. */
-      tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><td data-label="AWB"><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}</td><td data-label="Date">${escLabelText(p.date||"-")}</td><td data-label="Consignee">${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td data-label="Status"><span class="status ${statusClass(p)}">${escLabelText(p.status)}</span></td><td data-label="COD">${money(p.cod)}</td><td data-label="Fee">${money(p.fee)}</td><td data-label="Age">${agingLabel(agingHours(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
+      tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><td data-label="AWB"><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}</td><td data-label="Date">${escLabelText(p.date||"-")}</td><td data-label="Consignee">${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td data-label="Status"><span class="status ${statusClass(p)}">${escLabelText(p.status)}</span></td><td data-label="COD">${money(p.cod)}</td><td data-label="Fee">${money(p.fee)}</td><td data-label="Destination age">${agingLabel(agingHours(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
     }
 
     /* renderLatestInvoice() removed 25 Aug 2026: #clientLatestInvoice does not
@@ -5487,8 +5488,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         res=await nvReportExportRows();
       } finally { if(btn) btn.disabled=false; }
       const rows=res.rows;
-      const head=["AWB","Date","Consignee","City","Status","COD","Fee","AgingHours"];
-      const csv=[head.map(csvCell).join(",")].concat(rows.map(p=>[p.awb,p.date,p.consignee,p.city,p.status,p.cod,p.fee,Math.round(p._ageH!=null?p._ageH:agingHours(p))].map(csvCell).join(","))).join("\n");
+      const head=["AWB","Date","Consignee","City","Status","COD","Fee","DestinationAgingHours"];
+      const csv=[head.map(csvCell).join(",")].concat(rows.map(p=>[p.awb,p.date,p.consignee,p.city,p.status,p.cod,p.fee,(p._ageH!=null?Math.round(p._ageH):(agingHours(p)!=null?Math.round(agingHours(p)):""))].map(csvCell).join(","))).join("\n");
       const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="novax-report.csv"; a.click();
       /* One toast, not two: #toast is a single element, so the old pair meant
          the scope note was overwritten before anyone could read it. */

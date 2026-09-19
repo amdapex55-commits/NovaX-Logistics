@@ -4251,6 +4251,9 @@ html,body{ background:var(--bg); color:var(--ink); }
   background:var(--nvu-bg);color:#11150f;
 }
 .awb-field span{ color:#5c6157; }
+
+    /* Operational SLA breach: visible to staff only. */
+    .parcel-card:has(.chip.bad), .parcel-card:has(.status.bad), .ops-card:has(.chip.bad), tr:has(.chip.bad), tr:has(.status.bad) { background:#ffe4e1 !important; border-color:#e7a19a !important; box-shadow:inset 4px 0 0 #c9473d; }
 </style>
   <!-- NovaX (admin AWB parity): AWB print modes, identical to client.html.
        Exactly one of these two is left enabled at a time -- JS toggles
@@ -6750,7 +6753,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         { id: "SACK-LHE-ISB-19", from: "Lahore Hub", to: "Islamabad Hub", expected: 640, scanned: 640, demanifested: 640, completedAt: "2026-06-24 09:20" }
       ],
       operationsIssues: [
-        { id: "OPS-001", branch: "Lahore Hub", urgency: "super urgent", problem: "Transit aging over 3 days", awb: "SAMPLE-AWB-4", openedHours: 6, resolved: false },
+        { id: "OPS-001", branch: "Lahore Hub", urgency: "super urgent", problem: "Sample operations issue", awb: "SAMPLE-AWB-4", openedHours: 6, resolved: false },
         { id: "OPS-002", branch: "Karachi Hub", urgency: "urgent", problem: "Rider cash above threshold", awb: "SAMPLE-AWB-2", openedHours: 3, resolved: false },
         { id: "OPS-003", branch: "Lahore Hub", urgency: "medium", problem: "Refused delivery needs client decision", awb: "SAMPLE-AWB-3", openedHours: 11, resolved: false },
         { id: "OPS-004", branch: "Islamabad Hub", urgency: "medium", problem: "Address correction resolved", awb: "SAMPLE-AWB-1", openedHours: 2, resolved: true, resolvedHours: 1.4, resolvedBy: "Ali Ops", resolutionReason: "Consignee shared corrected landmark and rider route was updated.", resolvedAt: "2026-06-24 09:52" }
@@ -8628,18 +8631,21 @@ html,body{ background:var(--bg); color:var(--ink); }
       return Number((parcel && parcel.statusAgeHours) || 0);
     }
 
+    function parcelSlaLimit(parcel) {
+      const status = String((parcel && parcel.status) || "");
+      if (status === "Arrived at warehouse") return 24;
+      if (status === "Parcel now in transit") return 72;
+      if (status === "Parcel received at destination") return 24;
+      if (status === "Parcel out for delivery") return 24;
+      return null;
+    }
+
     function alertForParcel(parcel) {
+      const limit = parcelSlaLimit(parcel);
+      if (limit == null) return { level: "ok", label: "No active SLA", due: "Clock starts at warehouse arrival" };
       const hours = agingHours(parcel);
-      if (parcel.status === "Parcel now in transit") {
-        if (hours >= 72) return { level: "critical", label: "Red alert: transit over 3 days", due: "AI + support must act now" };
-        if (hours >= 48) return { level: "warning", label: "Transit aging", due: "Escalate before 3 days" };
-        return { level: "ok", label: "In transit", due: "Transit clock running" };
-      }
-      if (["Delivered", "Return to shipper", "Cancelled by client"].includes(parcel.status)) {
-        return { level: "ok", label: "Closed", due: "No open alert" };
-      }
-      if (hours >= 24) return { level: "critical", label: "24h status breach", due: "AI + support must act now" };
-      return { level: "ok", label: "Within SLA", due: `${24 - Math.round(hours)}h left` };
+      if (hours >= limit) return { level: "critical", label: `${limit}h SLA breached`, due: `${agingLabel(hours - limit)} overdue` };
+      return { level: "ok", label: "Within SLA", due: `${Math.max(0, Math.ceil(limit - hours))}h left` };
     }
 
     function urgencyClass(level) {
@@ -9015,7 +9021,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const delivered = parcels.filter(p => p.status === "Delivered").length;
       const refused = parcels.filter(p => p.status === "Refused").length;
       const returns = parcels.filter(p => ["Ready for return", "Return in transit", "Return received at origin", "Return out for delivery", "Return to shipper"].includes(p.status)).length;
-      const delayedOverSla = parcels.filter(p => agingHours(p) >= 48 && !"Delivered,Return to shipper,Cancelled by client".includes(p.status)).length;
+      const delayedOverSla = parcels.filter(p => alertForParcel(p).level === "critical").length;
       const withdrawals = state.walletWithdrawals || [];
       const payoutsPending = withdrawals.filter(w => w.status === "Pending admin payout").length;
       const shopifyRows = state.shopifyConnectionRows || [];
@@ -9062,7 +9068,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         metricCard("Delivered", d.delivered, Math.min(100, d.delivered * 8), "completed", "good"),
         metricCard("Refused", d.refused, Math.min(100, d.refused * 15), "needs decision", d.refused ? "red" : ""),
         metricCard("Returns", d.returns, Math.min(100, d.returns * 12), "RTO pipeline", d.returns ? "amber" : ""),
-        metricCard("Delayed Over SLA", d.delayedOverSla, Math.min(100, d.delayedOverSla * 15), "48h+", d.delayedOverSla ? "red" : ""),
+        metricCard("Delayed Over SLA", d.delayedOverSla, Math.min(100, d.delayedOverSla * 15), "stage clock", d.delayedOverSla ? "red" : ""),
         metricCard("Payouts Pending", d.payoutsPending, Math.min(100, d.payoutsPending * 15), "wallet queue", d.payoutsPending ? "amber" : ""),
         metricCard("Failed Shopify Imports", d.failedShopify, Math.min(100, d.failedShopify * 20), "integration health", d.failedShopify ? "red" : ""),
         metricCard("Failed RPCs / Errors", d.failedRpcs, Math.min(100, d.failedRpcs * 10), "open error log", d.failedRpcs ? "red" : ""),
@@ -11506,7 +11512,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         _exceptionResolutionNote: m.exceptionResolutionNote || "", _exceptionResolvedAt: m.exceptionResolvedAt || "",
         processHistory: Array.isArray(m.processHistory) ? m.processHistory : [],
         lastProcessedBy: m.lastProcessedBy || "", lastProcessedAt: m.lastProcessedAt || "",
-        statusSince: m.statusSince || "", origin: m.origin || "", assignedRiderAt: m.assignedRiderAt || "",
+        statusSince: r.status_since || m.statusSince || r.booked_at || "", origin: m.origin || "", assignedRiderAt: m.assignedRiderAt || "",
         journeyStartedAt: m.journeyStartedAt || "",
         source: m.source || "", shopifyOrderId: m.shopifyOrderId || "", shopifyOrderNumber: m.shopifyOrderNumber || "",
         shopifyOrderName: m.shopifyOrderName || "", shopifyStoreUrl: m.shopifyStoreUrl || "", trackingUrl: m.trackingUrl || "",
@@ -14224,7 +14230,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         const client = clientById(p.clientId);
         const aging = agingHours(p);
         const cats = [];
-        if (aging > 72 && p.status !== "Delivered" && !/return/i.test(p.status)) cats.push("Delayed over SLA");
+        if (alertForParcel(p).level === "critical") cats.push("Delayed over SLA");
         if (p.status === "Refused") cats.push("Refused");
         if (p.status === "Consignee not available") cats.push("Consignee not available");
         if (p.status === "Reattempt") cats.push("Reattempt needed");
@@ -14235,7 +14241,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         if (p.status === "Delivered" && !p.proofPhoto && !p.signature) cats.push("Proof missing");
         if (p._clientDecisionRequestedAt) cats.push("Client decision needed");
         cats.forEach(issueType => {
-          rows.push({ awb: p.awb, clientId: p.clientId, clientName: client ? client.name : "Unknown", consignee: p.consignee || "", phone: p.phone || "", city: p.city, branch: p.branch, status: p.status, agingHours: aging, issueType, exception: p.exception || "", lastNote: p.resolutionRemark || p.returnProof || (p.proofPhoto ? "Proof photo on file" : "") || (p.signature ? "Signature on file" : ""), urgency: aging > 72 ? "critical" : (aging > 24 ? "warning" : "normal") });
+          rows.push({ awb: p.awb, clientId: p.clientId, clientName: client ? client.name : "Unknown", consignee: p.consignee || "", phone: p.phone || "", city: p.city, branch: p.branch, status: p.status, agingHours: aging, issueType, exception: p.exception || "", lastNote: p.resolutionRemark || p.returnProof || (p.proofPhoto ? "Proof photo on file" : "") || (p.signature ? "Signature on file" : ""), urgency: alertForParcel(p).level === "critical" ? "critical" : "normal" });
         });
       });
       syncExceptionIssuesToOps(rows);
@@ -17021,7 +17027,7 @@ html,body{ background:var(--bg); color:var(--ink); }
            adminAwbLabelHtml() could not print it even once the field existed
            on the parcel. */
         allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", steps:Array.isArray(m.steps)?m.steps:[], comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _exceptionResolved:!!m.exceptionResolved, _exceptionResolutionNote:m.exceptionResolutionNote||"", _exceptionResolvedAt:m.exceptionResolvedAt||"",
-        processHistory:Array.isArray(m.processHistory)?m.processHistory:[], lastProcessedBy:m.lastProcessedBy||"", lastProcessedAt:m.lastProcessedAt||"", statusSince:m.statusSince||"", origin:m.origin||"", assignedRiderAt:m.assignedRiderAt||"", journeyStartedAt:m.journeyStartedAt||"",
+        processHistory:Array.isArray(m.processHistory)?m.processHistory:[], lastProcessedBy:m.lastProcessedBy||"", lastProcessedAt:m.lastProcessedAt||"", statusSince:r.status_since||m.statusSince||r.booked_at||"", origin:m.origin||"", assignedRiderAt:m.assignedRiderAt||"", journeyStartedAt:m.journeyStartedAt||"",
         // NovaX fix (integration/audit field preservation): surface named
         // Shopify/external-order identity + import fields so admin screens
         // can read/display them directly.
@@ -18221,7 +18227,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           if(/rider|cash held|cash limit|cash in hand/.test(low)){ var rs=(state.riders||[]); if(!rs.length) return {text:'No riders on file.'}; var over=rs.filter(function(r){return Number(r.cashHeld||0)>Number(r.cashLimit||0);}); var top=rs.slice().sort(function(a,b){return Number(b.cashHeld||0)-Number(a.cashHeld||0);}).slice(0,5); return {text:'Rider cash (top holders):<br>'+top.map(function(r){return '• '+esc(r.name)+': Rs '+fmt(r.cashHeld)+' / limit Rs '+fmt(r.cashLimit)+(Number(r.cashHeld||0)>Number(r.cashLimit||0)?' ⚠️ over':'');}).join('<br>')+(over.length?'<br><b>'+over.length+'</b> rider(s) over limit.':'')}; }
           if(/wallet|balance/.test(low)){ var clid=(q.match(/CL-\d+/i)||[])[0]; if(clid){ var bal=walletBalance(clid.toUpperCase()); return {text:'Wallet balance for <b>'+esc(clid.toUpperCase())+'</b>: <b>Rs '+fmt(bal)+'</b>.'}; } return {text:'Tell me which client (e.g. their client id) and I will show their wallet balance.'}; }
           if(/cod|finance|revenue|payable|collected|total/.test(low)){ var ps=state.parcels||[]; var delivered=ps.filter(function(p){return /delivered/i.test(p.status);}); var cod=delivered.reduce(function(s,p){return s+Number(p.cod||0);},0); var invs=state.invoices||[]; var payable=invs.filter(function(i){return i.status!=='Paid'&&i.status!=='Deleted';}).reduce(function(s,i){return s+Number(i.payable||0);},0); var pend=(state.walletWithdrawals||[]).filter(function(w){return /pending|process/i.test(w.status||'');}).reduce(function(s,w){return s+Number(w.net||w.amount||0);},0); return {text:'Finance snapshot:<br>• Delivered COD: <b>Rs '+fmt(cod)+'</b><br>• Unpaid invoices payable: <b>Rs '+fmt(payable)+'</b><br>• Withdrawals in progress: <b>Rs '+fmt(pend)+'</b>'}; }
-          if(/exception|refus|delay|stuck|fail|breach|sla/.test(low)){ var ex=(state.parcels||[]).filter(function(p){return p.exception||/refus|return|not available|reattempt/i.test(p.status||'')||Number(p.statusAgeHours||0)>=24;}); if(!ex.length) return {text:'No exceptions or SLA breaches right now. ✅'}; return {text:'<b>'+ex.length+'</b> parcel(s) need attention:<br>'+ex.slice(0,5).map(pLine).join('<br><br>')}; }
+          if(/exception|refus|delay|stuck|fail|breach|sla/.test(low)){ var ex=(state.parcels||[]).filter(function(p){return p.exception||/refus|return|not available|reattempt/i.test(p.status||'')||alertForParcel(p).level==='critical';}); if(!ex.length) return {text:'No exceptions or SLA breaches right now. ✅'}; return {text:'<b>'+ex.length+'</b> parcel(s) need attention:<br>'+ex.slice(0,5).map(pLine).join('<br><br>')}; }
           if(/how many|count|summary|overview|today|deliver/.test(low)){ var ps2=state.parcels||[]; var del=ps2.filter(function(p){return /delivered/i.test(p.status);}).length; var exn=ps2.filter(function(p){return p.exception;}).length; return {text:'Network: <b>'+ps2.length+'</b> parcels - <b>'+del+'</b> delivered, <b>'+exn+'</b> with issues. Clients: <b>'+((state.clients||[]).length)+'</b>, riders: <b>'+((state.riders||[]).length)+'</b>.'}; }
           if(/list|show|recent|all parcels|all orders/.test(low)&&/parcel|order|shipment/.test(low)){ var ap=(state.parcels||[]); if(!ap.length) return {text:'No parcels in the system yet.'}; return {text:'Recent parcels:<br>'+ap.slice(0,8).map(pLine).join('<br><br>')+(ap.length>8?'<br><span class=nvai-dim>+'+(ap.length-8)+' more.</span>':'')}; }
           if(/client|seller|merchant/.test(low)){ var cs=(state.clients||[]); if(!cs.length) return {text:'No clients on file.'}; var clid2=(q.match(/CL-\d+/i)||[])[0]; if(clid2){ var cc=cs.find(function(c){return String(c.id||'').toUpperCase()===clid2.toUpperCase();}); if(cc) return {text:'<b>'+esc(cc.name)+'</b> ('+esc(cc.id)+')<br>'+esc(cc.city||'')+(cc.email?' · '+esc(cc.email):'')+'<br>Wallet: <b>Rs '+fmt(walletBalance(cc.id))+'</b> · status '+esc(cc.status||'Active')}; return {text:'No client <b>'+esc(clid2.toUpperCase())+'</b> found.'}; } return {text:'<b>'+cs.length+'</b> client(s):<br>'+cs.slice(0,8).map(function(c){return '• '+esc(c.name)+' ('+esc(c.id)+') - '+esc(c.city||'')+' · wallet Rs '+fmt(walletBalance(c.id));}).join('<br>')+(cs.length>8?'<br><span class=nvai-dim>+'+(cs.length-8)+' more.</span>':'')}; }
