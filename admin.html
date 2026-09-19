@@ -5742,7 +5742,10 @@ html,body{ background:var(--bg); color:var(--ink); }
                     <h3>Riders & Cash</h3>
                     <p>Cash exposure, fake-attempt risk, scan count, and assignment block controls.</p>
                   </div>
-                  <button class="action-btn" id="addRiderBtn">Add Rider</button>
+                  <div class="inline-actions">
+                    <button class="ghost-btn" id="syncDestinationRoutesBtn">Sync Destination Routes</button>
+                    <button class="action-btn" id="addRiderBtn">Add Rider</button>
+                  </div>
                 </div>
                 <div class="rider-form">
                   <div class="mini-form rider-mini">
@@ -8646,11 +8649,46 @@ html,body{ background:var(--bg); color:var(--ink); }
     function nvDestinationRider(city) {
       const target = String(city || "").trim().toLowerCase();
       return (state.riders || []).find(rd => {
+        if (String(rd.access || "Active").toLowerCase() !== "active") return false;
         const label = `${rd.branch || ""} ${rd.manager || ""} ${rd.name || ""}`.toLowerCase();
         if (target === "lahore") return label.includes("lahore");
         if (target === "islamabad" || target === "rawalpindi") return label.includes("islamabad") || label.includes("rawalpindi");
         return false;
       }) || null;
+    }
+
+    async function syncDestinationRoutes() {
+      const btn = document.getElementById("syncDestinationRoutesBtn");
+      if (!window.__nvSb) { toast("Cloud connection is not ready yet.", "error"); return; }
+      const lahore = nvDestinationRider("Lahore");
+      const north = nvDestinationRider("Islamabad");
+      if (!lahore || !north || !lahore._uuid || !north._uuid) {
+        toast("Create active Lahore and Islamabad rider rosters before syncing routes.", "error");
+        return;
+      }
+      const statuses = ["Parcel now in transit", "Parcel received at destination", "Parcel out for delivery", "Refused", "Consignee not available"];
+      if (btn) { btn.disabled = true; btn.textContent = "Syncing routes..."; }
+      try {
+        const jobs = [
+          { cities: ["Lahore"], rider: lahore },
+          { cities: ["Islamabad", "Rawalpindi"], rider: north }
+        ];
+        let changed = 0;
+        for (const job of jobs) {
+          const result = await window.__nvSb.from("parcels")
+            .update({ rider_id: job.rider._uuid })
+            .in("city", job.cities).in("status", statuses)
+            .select("id,awb,status,city");
+          if (result.error) throw result.error;
+          changed += (result.data || []).length;
+        }
+        if (typeof nvRefresh === "function") nvRefresh(["parcels"]);
+        toast(`${changed} active destination parcels routed to Khalid and Naveed.`, "success");
+      } catch (error) {
+        toast(`Route sync failed: ${error.message || error}`, "error");
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "Sync Destination Routes"; }
+      }
     }
 
     function setParcelStatus(parcel, status, processor = {}) {
@@ -16690,6 +16728,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     document.getElementById("createSackBtn").addEventListener("click", createSack);
     document.getElementById("demanifestSackBtn").addEventListener("click", demanifestSack);
     document.getElementById("addRiderBtn").addEventListener("click", addRider);
+    document.getElementById("syncDestinationRoutesBtn").addEventListener("click", syncDestinationRoutes);
     document.getElementById("riderExpenseBtn").addEventListener("click", addRiderExpense);
     document.getElementById("collectRiderCashBtn").addEventListener("click", collectRiderCash);
     document.getElementById("riderCashSelect").addEventListener("change", updateRiderCashPreview);
