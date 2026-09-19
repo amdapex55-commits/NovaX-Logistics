@@ -10734,6 +10734,24 @@ html,body{ background:var(--bg); color:var(--ink); }
       el.textContent = rider ? `Collecting ${money(amount)} from ${rider.name} — delivered COD not yet collected. Wallet limit ${money(rider.cashLimit)}.` : "Select a rider to collect cash.";
     }
 
+    function nvRiderGpsToday(riderId) {
+      const pkDay = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
+      const points = state.parcels.filter(p => p.rider === riderId && p.status === "Delivered").map(p => {
+        const loc = p._meta && p._meta.deliveryLocation;
+        if (!loc || !Number.isFinite(Number(loc.lat)) || !Number.isFinite(Number(loc.lng)) || !loc.at) return null;
+        const locDay = new Date(loc.at).toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
+        return locDay === pkDay ? { lat:Number(loc.lat), lng:Number(loc.lng), at:loc.at, awb:p.awb, address:p.address } : null;
+      }).filter(Boolean).sort((a,b) => new Date(a.at) - new Date(b.at));
+      let km = 0;
+      for (let i=1; i<points.length; i++) {
+        const a=points[i-1], b=points[i], R=6371;
+        const dLat=(b.lat-a.lat)*Math.PI/180, dLng=(b.lng-a.lng)*Math.PI/180;
+        const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
+        km += 2*R*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+      }
+      return { stops:points.length, km, liters:km/40 };
+    }
+
     function riderReportStats(riderId) {
       const delivered = state.parcels.filter(p => p.rider === riderId && p.status === "Delivered");
       const returned = state.parcels.filter(p => p.rider === riderId && ["Return to shipper", "Refused", "Consignee not available"].includes(p.status));
@@ -10744,7 +10762,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       const routeMins = stops * 24;
       const routeTime = routeMins ? `${Math.floor(routeMins / 60)}h ${routeMins % 60}m` : "0h";
       const success = stops ? Math.round((delivered.length / stops) * 100) : 0;
-      return { delivered: delivered.length, returned: returned.length, cashHandled, fuel, allExp, routeTime, success, stops };
+      const gps = nvRiderGpsToday(riderId);
+      return { delivered: delivered.length, returned: returned.length, cashHandled, fuel, allExp, routeTime, success, stops, gpsStops:gps.stops, routeKm:gps.km, fuelLiters:gps.liters };
     }
 
     function renderRiderReport() {
@@ -10756,12 +10775,14 @@ html,body{ background:var(--bg); color:var(--ink); }
       const totalReturned = stats.reduce((a, x) => a + Number(x.s.returned || 0), 0);
       const totalCash = stats.reduce((a, x) => a + Number(x.s.cashHandled || 0), 0);
       const totalFuel = stats.reduce((a, x) => a + Number(x.s.fuel || 0), 0);
+      const totalRouteKm = stats.reduce((a, x) => a + Number(x.s.routeKm || 0), 0);
+      const totalFuelLiters = stats.reduce((a, x) => a + Number(x.s.fuelLiters || 0), 0);
       if (metricsEl) {
         metricsEl.innerHTML = [
           metricCard("Total Delivered", totalDelivered, Math.min(100, totalDelivered * 4), "all riders", "good"),
           metricCard("Total Returned", totalReturned, Math.min(100, totalReturned * 8), "refused / returned / no-response", totalReturned ? "amber" : "good"),
           metricCard("Cash Handled", money(totalCash), Math.min(100, percent(totalCash, 500000)), "delivered COD", "blue"),
-          metricCard("Fuel Cost", money(totalFuel), Math.min(100, percent(totalFuel, 50000)), "fuel expenses logged", "amber")
+          metricCard("Distance Today", `${totalRouteKm.toFixed(1)} km`, Math.min(100, totalRouteKm), `${totalFuelLiters.toFixed(2)} L estimated at 40 km/L`, "amber")
         ].join("");
       }
       const maxDelivered = Math.max(1, ...stats.map(x => x.s.delivered));
@@ -10771,14 +10792,16 @@ html,body{ background:var(--bg); color:var(--ink); }
         <div class="panel soft-panel" style="margin-bottom:14px">
           <div class="section-head"><div><h3>${branch}</h3><p>${rows.length} rider(s) \u00b7 compare delivered, returned, cash and fuel.</p></div></div>
           <div class="table-wrap"><div class="wide-scroll"><table>
-            <thead><tr><th>Rider</th><th>Delivered</th><th>Returned</th><th>Success</th><th>Route Time</th><th>Cash Handled</th><th>Fuel Cost</th><th>Vs Others</th></tr></thead>
+            <thead><tr><th>Rider</th><th>Delivered</th><th>Returned</th><th>Success</th><th>GPS Stops Today</th><th>Distance Today</th><th>Est. Fuel</th><th>Cash Handled</th><th>Fuel Cost</th><th>Vs Others</th></tr></thead>
             <tbody>
             ${rows.map(({ r, s }) => `<tr>
               <td><strong>${escLabelText(r.name)}</strong><br><span class="footer-note">${r.username || "no username set"}</span></td>
               <td><strong>${s.delivered}</strong></td>
               <td>${s.returned}</td>
               <td><span class="chip ${s.success >= 80 ? "good" : s.success >= 50 ? "warn" : "bad"}">${s.success}%</span></td>
-              <td>${s.routeTime}</td>
+              <td>${s.gpsStops}</td>
+              <td><strong>${s.routeKm.toFixed(1)} km</strong></td>
+              <td>${s.fuelLiters.toFixed(2)} L<br><span class="footer-note">at 40 km/L</span></td>
               <td>${money(s.cashHandled)}</td>
               <td>${money(s.fuel)}</td>
               <td><div class="meter ${s.delivered >= maxDelivered ? "" : "blue"}"><span style="width:${percent(s.delivered, maxDelivered)}%"></span></div></td>
