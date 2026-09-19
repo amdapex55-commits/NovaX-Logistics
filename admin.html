@@ -10733,7 +10733,15 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!el || !sel) return;
       const rider = riderById(sel.value);
       const amount = rider ? riderReceivable(rider.id) : 0;
-      el.textContent = rider ? `Collecting ${money(amount)} from ${rider.name} — delivered COD not yet collected. Wallet limit ${money(rider.cashLimit)}.` : "Select a rider to collect cash.";
+      const pending = rider ? state.parcels.filter(p => p.rider === rider.id && isDeliveredLedgerParcel(p) && !p.cashReceived && p._meta && p._meta.cashDepositStatus === "pending_confirmation") : [];
+      const batches = [...new Set(pending.map(p => p._meta.cashDepositBatchId).filter(Boolean))];
+      const pendingNet = batches.reduce((sum, id) => {
+        const parcel = pending.find(p => p._meta.cashDepositBatchId === id);
+        return sum + Number(parcel && parcel._meta.cashDepositNet || 0);
+      }, 0);
+      el.textContent = rider ? (pending.length
+        ? `${rider.name} reported ${money(pendingNet)} deposited to Karachi (${pending.length} parcels, ${batches.length} batch${batches.length === 1 ? "" : "es"}). Confirm only after cash is physically received.`
+        : `No rider-declared deposit is awaiting confirmation. Total uncollected delivered COD: ${money(amount)}. Wallet limit ${money(rider.cashLimit)}.`) : "Select a rider to collect cash.";
       const avg = document.getElementById("riderFuelAverage");
       if (avg && rider) avg.value = Number(rider.fuelEfficiencyKmL || 40);
     }
@@ -14479,14 +14487,27 @@ html,body{ background:var(--bg); color:var(--ink); }
 
     function collectRiderCash() {
       const rider = riderById(document.getElementById("riderCashSelect").value);
-      const parcels = state.parcels.filter(p => p.rider === rider.id && isDeliveredLedgerParcel(p) && !p.cashReceived);
-      const amount = parcels.reduce((sum, p) => sum + Number(p.cod || 0), 0);
+      if (!rider) { toast("Select a rider first.", "error"); return; }
+      const allPending = state.parcels.filter(p => p.rider === rider.id && isDeliveredLedgerParcel(p) && !p.cashReceived);
+      const declared = allPending.filter(p => p._meta && p._meta.cashDepositStatus === "pending_confirmation");
+      const parcels = declared.length ? declared : allPending;
+      const batches = [...new Set(parcels.map(p => p._meta && p._meta.cashDepositBatchId).filter(Boolean))];
+      const amount = declared.length && batches.length ? batches.reduce((sum, id) => {
+        const parcel = parcels.find(p => p._meta && p._meta.cashDepositBatchId === id);
+        return sum + Number(parcel && parcel._meta.cashDepositNet || 0);
+      }, 0) : parcels.reduce((sum, p) => sum + Number(p.cod || 0), 0);
       if (!parcels.length) {
         toast("No delivered COD parcels are pending cash collection for this rider.");
         return;
       }
       parcels.forEach(parcel => {
         parcel.cashReceived = true;
+        parcel._meta = Object.assign({}, parcel._meta || {}, {
+          cashReceived: true,
+          cashDepositStatus: "confirmed",
+          cashConfirmedAt: new Date().toISOString(),
+          cashConfirmedBy: "Karachi head office"
+        });
         parcel.exception = parcel.exception.replace("Cash above rider limit", "");
         if (!parcel.steps.includes("Branch cash received")) parcel.steps.push("Branch cash received");
       });
@@ -14502,7 +14523,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       syncRiderAccess();
       saveState();
       render();
-      toast(`${money(amount)} cash collected from ${rider.name}. Delivered parcels are invoice-ready.`);
+      toast(`${money(amount)} cash confirmed from ${rider.name}. The rider is no longer liable for ${parcels.length} parcel(s).`);
     }
 
 
@@ -17117,6 +17138,7 @@ html,body{ background:var(--bg); color:var(--ink); }
          riderId is carried in meta -- it used to be dropped here, which is why
          the rider fuel-cost card always read zero once data round-tripped. */
       function fExpense(e){
+        if(e && e._riderScan) return null;
         var row={ branch:e.owner||"", category:e.type||"", amount:Number(e.amount||0),
                   note:e.note||e.name||"", created_by:ADMIN_UID,
                   meta:{ name:e.name, status:e.status, riderId:e.riderId||"" } };
@@ -17191,6 +17213,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           sb.from("staff_activity").select("*").order("created_at",{ascending:false}).limit(100),
           sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}).limit(5000),
           sb.from("pickup_requests").select("*").order("created_at",{ascending:false}).limit(3000),
+          sb.from("scans").select("*").eq("type","rider_expense").order("created_at",{ascending:false}).limit(3000),
           sb.from("profiles").select("id,email,client_id").not("client_id","is",null).limit(5000)
         ]).then(function(res){
           function D(i){ return (res[i]&&res[i].data)||[]; }
@@ -17198,7 +17221,10 @@ html,body{ background:var(--bg); color:var(--ink); }
           state.riders=D(1).map(rRider);
           state.parcels=D(2).map(rParcel);
           state.invoices=D(3).map(rInvoice);
-          state.expenses=D(4).map(rExpense);
+          state.expenses=D(4).map(rExpense).concat(D(16).map(function(row){
+            var m=row.meta||{}, rider=state.riders.find(function(r){ return r._uuid===row.rider_id || r.id===row.rider_id; });
+            return { _uuid:row.id, _riderScan:true, id:row.id, name:m.name||m.category||"Rider expense", amount:Number(m.amount||0), type:m.category||"Other", owner:m.branch||(rider&&rider.name)||"Rider", status:row.status||"Rider submitted", note:row.note||"", date:m.expenseDate||String(row.created_at||"").slice(0,10), riderId:(rider&&rider.id)||m.riderId||row.rider_id };
+          }));
           state.walletWithdrawals=D(5).map(rWd);
           state.paymentLogs=D(6).map(rPl);
           state.salesLeads=D(7).map(rSalesLead);
@@ -17213,7 +17239,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           state.staffActivity=D(13).map(rStaffActivity);
           state.walletLedger=D(14).map(rLedger);
           state.pickupRequests=D(15).map(rPickup);
-          state.clientProfiles=D(16).map(function(r){ return { id:r.id, email:r.email||"", clientId:r.client_id||null }; });
+          state.clientProfiles=D(17).map(function(r){ return { id:r.id, email:r.email||"", clientId:r.client_id||null }; });
           // NovaX fix (Best Fix Rule): the embedded Client Portal preview must
           // never silently default to the first client in the list -- leave
           // it unset ("No client selected") until admin explicitly picks one
