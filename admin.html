@@ -10100,7 +10100,6 @@ html,body{ background:var(--bg); color:var(--ink); }
       const preview = document.getElementById("processingPreview");
       const currentStatus = document.getElementById("processingCurrentStatus");
       const processingInput = document.getElementById("processingAwbInput");
-      if (processingInput && !processingInput.value) processingInput.value = (state.processingBatchAwbs?.length ? state.processingBatchAwbs : [state.activeProcessingAwb]).filter(Boolean).join("\n");
       if (preview && currentStatus) {
         if (processBatch.length) {
           const client = clientById(processParcel.clientId);
@@ -11519,7 +11518,6 @@ html,body{ background:var(--bg); color:var(--ink); }
     async function lookupProcessingParcel() {
       const input = document.getElementById("processingAwbInput");
       const awbs = parseAwbList(input?.value || "");
-      if (awbs.length && input) input.value = `${awbs.join(", ")}, `;
       if (!awbs.length) {
         toast("Scan or paste at least one tracking ID.", "error");
         return;
@@ -11558,7 +11556,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           state.activeProcessingAwb = "";
           state.processingBatchAwbs = [];
           state.pendingProcessingStatus = "";
-          saveState();
+          nvSaveStateSoon();
           renderAdmin();
           toast(`Could not load parcels: ${r.error.message}`, "error");
           return;
@@ -11574,7 +11572,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         if (!found.length) {
           state.activeProcessingAwb = "";
           state.processingBatchAwbs = [];
-          saveState();
+          nvSaveStateSoon();
           renderAdmin();
           toast("No valid parcels found in this scan batch.", "error");
           return;
@@ -11582,8 +11580,10 @@ html,body{ background:var(--bg); color:var(--ink); }
         state.processingBatchAwbs = found.map(p => p.awb);
         state.activeProcessingAwb = found[0].awb;
         state.pendingProcessingStatus = found[0].status;
-        saveState();
+        if (input) input.value = "";
+        nvSaveStateSoon();
         renderAdmin();
+        if (input) { input.value = ""; input.focus(); }
         toast(`${found.length} parcel(s) loaded for processing.`, "success");
       } catch (e) {
         console.error("NovaX processing lookup failed", e);
@@ -11592,7 +11592,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         state.activeProcessingAwb = "";
         state.processingBatchAwbs = [];
         state.pendingProcessingStatus = "";
-        saveState();
+        nvSaveStateSoon();
         renderAdmin();
         toast(`Could not load parcels: ${e && e.message ? e.message : "unknown error"}`, "error");
       } finally {
@@ -11780,7 +11780,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         state.activeProcessingAwb = state.selectedAwb;
         state.pendingProcessingStatus = "";
         state.pendingProcessingRider = "";
-        saveState();
+        nvSaveStateSoon();
         renderAdmin();
         toast(`${rows.length} parcel(s) updated to ${status}.`, "success");
 
@@ -17138,7 +17138,7 @@ html,body{ background:var(--bg); color:var(--ink); }
          riderId is carried in meta -- it used to be dropped here, which is why
          the rider fuel-cost card always read zero once data round-tripped. */
       function fExpense(e){
-        if(e && e._riderScan) return null;
+        if(e && e._riderEmbedded) return null;
         var row={ branch:e.owner||"", category:e.type||"", amount:Number(e.amount||0),
                   note:e.note||e.name||"", created_by:ADMIN_UID,
                   meta:{ name:e.name, status:e.status, riderId:e.riderId||"" } };
@@ -17213,7 +17213,6 @@ html,body{ background:var(--bg); color:var(--ink); }
           sb.from("staff_activity").select("*").order("created_at",{ascending:false}).limit(100),
           sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}).limit(5000),
           sb.from("pickup_requests").select("*").order("created_at",{ascending:false}).limit(3000),
-          sb.from("scans").select("*").eq("type","rider_expense").order("created_at",{ascending:false}).limit(3000),
           sb.from("profiles").select("id,email,client_id").not("client_id","is",null).limit(5000)
         ]).then(function(res){
           function D(i){ return (res[i]&&res[i].data)||[]; }
@@ -17221,10 +17220,15 @@ html,body{ background:var(--bg); color:var(--ink); }
           state.riders=D(1).map(rRider);
           state.parcels=D(2).map(rParcel);
           state.invoices=D(3).map(rInvoice);
-          state.expenses=D(4).map(rExpense).concat(D(16).map(function(row){
-            var m=row.meta||{}, rider=state.riders.find(function(r){ return r._uuid===row.rider_id || r.id===row.rider_id; });
-            return { _uuid:row.id, _riderScan:true, id:row.id, name:m.name||m.category||"Rider expense", amount:Number(m.amount||0), type:m.category||"Other", owner:m.branch||(rider&&rider.name)||"Rider", status:row.status||"Rider submitted", note:row.note||"", date:m.expenseDate||String(row.created_at||"").slice(0,10), riderId:(rider&&rider.id)||m.riderId||row.rider_id };
-          }));
+          var riderExpenseSeen={};
+          var riderExpenses=state.parcels.flatMap(function(parcel){
+            var rows=Array.isArray(parcel._meta&&parcel._meta.riderExpenses)?parcel._meta.riderExpenses:[];
+            return rows.map(function(e){
+              if(!e||!e.id||riderExpenseSeen[e.id])return null;riderExpenseSeen[e.id]=1;
+              return { _uuid:e.id, _riderEmbedded:true, id:e.id, name:e.name||e.category||"Rider expense", amount:Number(e.amount||0), type:e.category||"Other", owner:e.branch||"Rider", status:e.status||"Rider submitted", note:e.note||"", date:e.expenseDate||String(e.createdAt||"").slice(0,10), riderId:e.riderId||parcel.rider };
+            }).filter(Boolean);
+          });
+          state.expenses=D(4).map(rExpense).concat(riderExpenses);
           state.walletWithdrawals=D(5).map(rWd);
           state.paymentLogs=D(6).map(rPl);
           state.salesLeads=D(7).map(rSalesLead);
@@ -17239,7 +17243,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           state.staffActivity=D(13).map(rStaffActivity);
           state.walletLedger=D(14).map(rLedger);
           state.pickupRequests=D(15).map(rPickup);
-          state.clientProfiles=D(17).map(function(r){ return { id:r.id, email:r.email||"", clientId:r.client_id||null }; });
+          state.clientProfiles=D(16).map(function(r){ return { id:r.id, email:r.email||"", clientId:r.client_id||null }; });
           // NovaX fix (Best Fix Rule): the embedded Client Portal preview must
           // never silently default to the first client in the list -- leave
           // it unset ("No client selected") until admin explicitly picks one
