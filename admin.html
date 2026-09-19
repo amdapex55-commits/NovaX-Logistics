@@ -8643,7 +8643,22 @@ html,body{ background:var(--bg); color:var(--ink); }
       return "good";
     }
 
+    function nvDestinationRider(city) {
+      const target = String(city || "").trim().toLowerCase();
+      return (state.riders || []).find(rd => {
+        const label = `${rd.branch || ""} ${rd.manager || ""} ${rd.name || ""}`.toLowerCase();
+        if (target === "lahore") return label.includes("lahore");
+        if (target === "islamabad" || target === "rawalpindi") return label.includes("islamabad") || label.includes("rawalpindi");
+        return false;
+      }) || null;
+    }
+
     function setParcelStatus(parcel, status, processor = {}) {
+      if (status === "Parcel now in transit" && !parcel.rider) {
+        const destinationRider = nvDestinationRider(parcel.city);
+        if (!destinationRider) throw new Error(`No active destination rider is configured for ${parcel.city}.`);
+        parcel.rider = destinationRider.id;
+      }
       const exactTime = time();
       const stamp = `${new Date().toISOString().slice(0, 10)} ${exactTime}`;
       parcel.status = status;
@@ -11548,7 +11563,24 @@ html,body{ background:var(--bg); color:var(--ink); }
         }
       }
 
-      const riderId = document.getElementById("processingRiderSelect")?.value || "";
+      let riderId = document.getElementById("processingRiderSelect")?.value || "";
+      /* Destination operation: once Karachi marks a load in transit, assign
+         the destination rider automatically. Riders do not choose branches
+         and an unassigned transit parcel would be invisible on their phone. */
+      if (status === "Parcel now in transit") {
+        const cities = [...new Set(batch.map(p => String(p.city || "").trim().toLowerCase()).filter(Boolean))];
+        if (cities.length !== 1) {
+          toast("Transit batches must contain one destination city so the correct rider can be assigned.", "error");
+          return;
+        }
+        const city = cities[0];
+        const destinationRider = nvDestinationRider(city);
+        if (!destinationRider) {
+          toast(`No active destination rider is configured for ${batch[0].city}.`, "error");
+          return;
+        }
+        riderId = destinationRider.id;
+      }
       const riderPushStatuses = ["Parcel out for delivery", "Return out for delivery"];
       if (riderPushStatuses.includes(status) && !riderId) {
         toast("Select a rider before pushing parcels out for delivery.", "error");
@@ -11738,6 +11770,11 @@ html,body{ background:var(--bg); color:var(--ink); }
       const offRoute = parcels.filter(p => manifestRouteMismatch(p, to));
       if (offRoute.length) {
         toast(`${offRoute.length} off-route parcel(s) (${offRoute.map(p => p.awb).join(", ")}) are not going to ${hubCity(to)}. Remove them before creating this manifest.`);
+        return;
+      }
+      const missingDestinationRider = parcels.find(p => !p.rider && !nvDestinationRider(p.city));
+      if (missingDestinationRider) {
+        toast(`No active destination rider is configured for ${missingDestinationRider.city}.`, "error");
         return;
       }
       const id = `MAN-${from.slice(0,3).toUpperCase()}-${to.slice(0,3).toUpperCase()}-${String(state.transit.length + state.completedSacks.length + 1).padStart(3, "0")}`.replace(/\s/g, "");
