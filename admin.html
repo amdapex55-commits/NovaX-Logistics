@@ -17225,7 +17225,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             var rows=Array.isArray(parcel._meta&&parcel._meta.riderExpenses)?parcel._meta.riderExpenses:[];
             return rows.map(function(e){
               if(!e||!e.id||riderExpenseSeen[e.id])return null;riderExpenseSeen[e.id]=1;
-              return { _uuid:e.id, _riderEmbedded:true, id:e.id, name:e.name||e.category||"Rider expense", amount:Number(e.amount||0), type:e.category||"Other", owner:e.branch||"Rider", status:e.status||"Rider submitted", note:e.note||"", date:e.expenseDate||String(e.createdAt||"").slice(0,10), riderId:e.riderId||parcel.rider };
+              return { _uuid:e.id, _riderEmbedded:true, _parcelUuid:parcel._uuid, id:e.id, name:e.name||e.category||"Rider expense", amount:Number(e.amount||0), type:e.category||"Other", owner:e.branch||"Rider", status:e.status||"Rider submitted", note:e.note||"", date:e.expenseDate||String(e.createdAt||"").slice(0,10), riderId:e.riderId||parcel.rider };
             }).filter(Boolean);
           });
           state.expenses=D(4).map(rExpense).concat(riderExpenses);
@@ -17530,6 +17530,22 @@ html,body{ background:var(--bg); color:var(--ink); }
       window.nvExpenseDelete=function(uuid){
         return new Promise(function(resolve){
           if(!uuid) return resolve({ error:{ message:"This entry is not linked to the server yet." } });
+          var embedded=(state.expenses||[]).find(function(e){return e._uuid===uuid&&e._riderEmbedded;});
+          if(embedded){
+            var parcel=(state.parcels||[]).find(function(p){return p._uuid===embedded._parcelUuid;});
+            if(!parcel) return resolve({error:{message:"The parcel carrying this rider expense is outside the current admin window."}});
+            var meta=Object.assign({},parcel._meta||{});
+            meta.riderExpenses=(Array.isArray(meta.riderExpenses)?meta.riderExpenses:[]).filter(function(e){return e&&e.id!==uuid;});
+            return Promise.resolve(sb.from("parcels").update({meta:meta}).eq("id",parcel._uuid).select("id"))
+              .catch(function(e){return{error:{message:String((e&&e.message)||e)}};})
+              .then(function(r){
+                if(r&&r.error)return resolve({error:r.error});
+                if(!r||!Array.isArray(r.data)||!r.data.length)return resolve({error:{message:"the server did not remove the rider expense"}});
+                parcel._meta=meta;
+                state.expenses=(state.expenses||[]).filter(function(e){return e._uuid!==uuid;});
+                resolve({ok:true});
+              });
+          }
           Promise.resolve(sb.from("expenses").delete().eq("id",uuid).select("id"))
             .catch(function(e){ return { error:{ message:String((e&&e.message)||e) } }; })
             .then(function(r){
