@@ -5760,7 +5760,9 @@ html,body{ background:var(--bg); color:var(--ink); }
                     <div class="field"><label>Active Rider</label><select id="riderCashSelect"></select></div>
                     <div class="field"><label>Expense Type</label><select id="riderExpenseType"><option>Fuel</option><option>Bike repair</option><option>Mobile load</option><option>Route toll</option></select></div>
                     <div class="field"><label>Expense Amount</label><input id="riderExpenseAmount" type="number" value="1500"></div>
+                    <div class="field"><label>Bike Average (km/L)</label><input id="riderFuelAverage" type="number" min="10" max="100" value="40"></div>
                     <div class="inline-actions">
+                      <button class="ghost-btn" id="saveRiderFuelAverageBtn">Save Bike Average</button>
                       <button class="ghost-btn" id="riderExpenseBtn">Deduct Expense First</button>
                       <button class="action-btn" id="collectRiderCashBtn">Collect Cash</button>
                     </div>
@@ -10732,6 +10734,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       const rider = riderById(sel.value);
       const amount = rider ? riderReceivable(rider.id) : 0;
       el.textContent = rider ? `Collecting ${money(amount)} from ${rider.name} — delivered COD not yet collected. Wallet limit ${money(rider.cashLimit)}.` : "Select a rider to collect cash.";
+      const avg = document.getElementById("riderFuelAverage");
+      if (avg && rider) avg.value = Number(rider.fuelEfficiencyKmL || 40);
     }
 
     function nvRiderGpsToday(riderId) {
@@ -10752,6 +10756,16 @@ html,body{ background:var(--bg); color:var(--ink); }
       return { stops:points.length, km, liters:km/40 };
     }
 
+    function saveRiderFuelAverage() {
+      const rider = riderById((document.getElementById("riderCashSelect") || {}).value);
+      const value = Number((document.getElementById("riderFuelAverage") || {}).value);
+      if (!rider || !Number.isFinite(value) || value < 10 || value > 100) { toast("Enter a bike average between 10 and 100 km/L.", "error"); return; }
+      rider.fuelEfficiencyKmL = value;
+      saveState();
+      renderRiderReport();
+      toast(`${rider.name} bike average saved at ${value} km/L.`, "success");
+    }
+
     function riderReportStats(riderId) {
       const delivered = state.parcels.filter(p => p.rider === riderId && p.status === "Delivered");
       const returned = state.parcels.filter(p => p.rider === riderId && ["Return to shipper", "Refused", "Consignee not available"].includes(p.status));
@@ -10763,7 +10777,10 @@ html,body{ background:var(--bg); color:var(--ink); }
       const routeTime = routeMins ? `${Math.floor(routeMins / 60)}h ${routeMins % 60}m` : "0h";
       const success = stops ? Math.round((delivered.length / stops) * 100) : 0;
       const gps = nvRiderGpsToday(riderId);
-      return { delivered: delivered.length, returned: returned.length, cashHandled, fuel, allExp, routeTime, success, stops, gpsStops:gps.stops, routeKm:gps.km, fuelLiters:gps.liters };
+      const rider = riderById(riderId);
+      const fuelAverage = Number((rider && rider.fuelEfficiencyKmL) || 40);
+      gps.liters = gps.km / fuelAverage;
+      return { delivered: delivered.length, returned: returned.length, cashHandled, fuel, allExp, routeTime, success, stops, gpsStops:gps.stops, routeKm:gps.km, fuelLiters:gps.liters, fuelAverage };
     }
 
     function renderRiderReport() {
@@ -10801,7 +10818,7 @@ html,body{ background:var(--bg); color:var(--ink); }
               <td><span class="chip ${s.success >= 80 ? "good" : s.success >= 50 ? "warn" : "bad"}">${s.success}%</span></td>
               <td>${s.gpsStops}</td>
               <td><strong>${s.routeKm.toFixed(1)} km</strong></td>
-              <td>${s.fuelLiters.toFixed(2)} L<br><span class="footer-note">at 40 km/L</span></td>
+              <td>${s.fuelLiters.toFixed(2)} L<br><span class="footer-note">at ${s.fuelAverage} km/L</span></td>
               <td>${money(s.cashHandled)}</td>
               <td>${money(s.fuel)}</td>
               <td><div class="meter ${s.delivered >= maxDelivered ? "" : "blue"}"><span style="width:${percent(s.delivered, maxDelivered)}%"></span></div></td>
@@ -16755,6 +16772,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     document.getElementById("riderExpenseBtn").addEventListener("click", addRiderExpense);
     document.getElementById("collectRiderCashBtn").addEventListener("click", collectRiderCash);
     document.getElementById("riderCashSelect").addEventListener("change", updateRiderCashPreview);
+    document.getElementById("saveRiderFuelAverageBtn").addEventListener("click", saveRiderFuelAverage);
     document.getElementById("invoiceSelectAllBtn").addEventListener("click", selectAllInvoiceParcels);
     document.getElementById("invoiceClearBtn").addEventListener("click", clearInvoiceSelection);
     document.getElementById("addExpenseBtn").addEventListener("click", addExpense);
@@ -16950,7 +16968,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       function sigOf(row){ return JSON.stringify(row,function(k,v){ return k==="updated_at"?undefined:v; }); }
       var DRC={ overnight:NV_ZONE_A_BASE, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 };
       function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", pickupCity:m.pickupCity||"Karachi", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", pricingMode:(String(r.pricing_mode||"flat")==="distance"?"distance":"flat"), rate:Number(r.rate||NV_ZONE_A_BASE), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||NV_ZONE_A_BASE)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"", _meta:m }; }
-      function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0) }; }
+      function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0), fuelEfficiencyKmL:Number(m.fuelEfficiencyKmL||40) }; }
       function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0),
         /* NovaX fix (status rename): this was a raw `r.status` read, so any
            row still carrying the pre-migration "Parcel returned to consignee"
@@ -17057,7 +17075,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       // after being marked Paid. wallet_balance is now read-only from this
       // sync path; it only ever changes inside the wallet RPCs.
       function fClient(c){ return { name:c.name||"", owner:c.owner||"", phone:c.phone||"", city:c.city||"", address:c.address||"", business_type:c.businessType||"", website:c.website||"", status:c.status||"Active", rate:Number(c.rate||NV_ZONE_A_BASE), rate_card:normalizeRateCard(c.rateCard,Number(c.rate||NV_ZONE_A_BASE)), risk_score:Number(c.risk||0), /* Start from the stored meta so keys admin does not manage (the merchant's bank details) survive a save. */ meta:Object.assign({}, (c._meta && typeof c._meta==="object") ? c._meta : {}, { tier:c.tier, walletTopup:c.walletTopup, shippingDue:c.shippingDue, problemsResolved:c.problemsResolved, health:c.health, email:c.email||"", source:c.leadSource||"", verified:!!c.leadVerified, appliedAt:c.appliedAt||"", pickupCity:c.pickupCity||"Karachi" }) }; }
-      function fRider(r){ return { name:r.name||"", phone:r.phone||"", branch:r.branch||r.manager||"", access:r.access||"Active", cash_limit:Number(r.cashLimit||0), meta:{ username:r.username, manager:r.manager, cashHeld:r.cashHeld, scans:r.scans, fakeRisk:r.fakeRisk, expenses:r.expenses } }; }
+      function fRider(r){ return { name:r.name||"", phone:r.phone||"", branch:r.branch||r.manager||"", access:r.access||"Active", cash_limit:Number(r.cashLimit||0), meta:{ username:r.username, manager:r.manager, cashHeld:r.cashHeld, scans:r.scans, fakeRisk:r.fakeRisk, expenses:r.expenses, fuelEfficiencyKmL:Number(r.fuelEfficiencyKmL||40) } }; }
       // NovaX fix (address/phone loss backstop): syncEntity() sends a FULL-row
       // UPDATE. Any field that is blank in browser memory therefore erases the
       // stored value. Contact fields are booked by the client and must never be
