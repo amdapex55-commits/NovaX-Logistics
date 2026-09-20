@@ -1388,7 +1388,35 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       var phone=String(p.phone||"").replace(/\D/g,"");
       return !address || /^address pending$/i.test(address) || !phone;
     }
-    function nvParcelDelayed(p){ return false; }
+    /* WAS `return false` -- a stub that shipped. Every caller silently dropped
+       every aging parcel: nvAttentionParcels directly below, and through it the
+       command strip, Action needed, the dashboard counts and the AI context. A
+       merchant whose parcels had sat untouched for days was told nothing needed
+       them, and no count on the page ever disagreed, because they all asked
+       this same function.
+
+       Age comes from statusSince -- the live stage clock -- NOT from the cached
+       statusAgeHours, which is stamped once when the row is mapped and then
+       goes stale: a row cached at 0h keeps reading 0h however long it actually
+       sits there. statusAgeHours survives only as a fallback for rows that have
+       no statusSince at all.
+
+       A concluded parcel is never "delayed" -- it has finished. Returns and
+       refusals still reach the attention set through their own branches. */
+    function nvParcelDelayed(p){
+      if(!p) return false;
+      if(typeof nvIsConcludedParcel==="function" && nvIsConcludedParcel(p)) return false;
+      var hrs=NaN;
+      if(p.statusSince){
+        var t=Date.parse(p.statusSince);
+        if(Number.isFinite(t)) hrs=(Date.now()-t)/3600000;
+      }
+      if(!Number.isFinite(hrs)){
+        var cached=Number(p.statusAgeHours);
+        if(Number.isFinite(cached)) hrs=cached;
+      }
+      return Number.isFinite(hrs) && hrs>24;
+    }
     window.nvParcelDelayed=nvParcelDelayed;
     function nvAttentionParcels(){
       var myId=(state.client&&state.client.id)||null;
@@ -10697,19 +10725,50 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var __now=Date.now();
         if(__now - __nvClosedWindowAt > 60000){
           __nvClosedWindowAt=__now;
+          /* THE QUESTION THIS ASKS is "which parcels closed since I last
+             looked". It filtered on booked_at, which asks something else --
+             "which parcels were booked recently AND are now closed" -- so a
+             parcel booked 60 days ago and delivered today never matched, and
+             kept its stale in-transit status until the next full reload.
+
+             updated_at is the right column: it moves on any write, so a status
+             transition always lands in the window whatever the booking date,
+             and it is always populated. It is deliberately NOT used as a stage
+             clock for aging/SLA (see mapParcel) -- but "did this row change"
+             is exactly what it answers. status_since would be wrong to depend
+             on here: it is null on older rows and its server-side stamping
+             belongs to a migration not confirmed applied.
+
+             This is a REFRESH WINDOW, not a history cap. Complete parcel
+             history is already paged in by nvReadAll("parcels") at load; this
+             bound only limits how many recent transitions one poll reconciles. */
           var since=new Date(Date.now()-45*24*3600*1000).toISOString();
           sb.from("parcels").select("*").eq("client_id",MY)
             .in("status",NV_CLOSED_STATUSES)
-            .gte("booked_at",since)
-            .order("booked_at",{ascending:false}).limit(400)
+            .gte("updated_at",since)
+            .order("updated_at",{ascending:false}).limit(1000)
             .then(function(r){
               if(!r||r.error||!r.data||!r.data.length) return;
-              var seen={};
-              (state.parcels||[]).forEach(function(p){ if(p&&p.awb) seen[p.awb]=1; });
-              var add=r.data.map(mapParcel).filter(function(p){ return p&&p.awb&&!seen[p.awb]; });
-              if(!add.length) return;
-              state.parcels=(state.parcels||[]).concat(add);
-              nvRenderSoon();
+              var idxByAwb={};
+              (state.parcels||[]).forEach(function(p,i){ if(p&&p.awb) idxByAwb[p.awb]=i; });
+              var add=[], refreshed=0;
+              r.data.map(mapParcel).forEach(function(p){
+                if(!p||!p.awb) return;
+                var i=idxByAwb[p.awb];
+                if(i===undefined){ add.push(p); return; }
+                /* The merge was add-only, so a row already cached with its OLD
+                   active status was filtered straight out and never corrected --
+                   the exact case this refetch exists for. Only rows whose
+                   status actually moved are replaced, and local-only sync flags
+                   are carried across; everything else is server truth. */
+                var cur=state.parcels[i];
+                if(cur && (cur.status!==p.status || cur.exception!==p.exception)){
+                  p._syncPending=cur._syncPending; p._syncFailed=cur._syncFailed;
+                  state.parcels[i]=p; refreshed++;
+                }
+              });
+              if(add.length) state.parcels=(state.parcels||[]).concat(add);
+              if(add.length || refreshed) nvRenderSoon();
             });
         }
         var need=Object.keys(want).filter(function(a){ return !have[a] && !__nvInvoicedFetched[a]; });
