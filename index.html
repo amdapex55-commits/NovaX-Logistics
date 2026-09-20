@@ -3407,7 +3407,15 @@ $("fSignup").addEventListener("submit",function(e){
         return;
       }
 
-      __nvSb.rpc("create_client_workspace",{
+      /* nv_signup_provision replaces create_client_workspace here. Both DB
+         steps -- the workspace and the admin-visible lead -- now happen inside
+         ONE transaction, so a failure can no longer leave a merchant able to
+         log in with no workspace. Three accounts reached that state in
+         production before this. It is idempotent: the lead-first insert above
+         is found and not duplicated, and an existing workspace is returned
+         rather than recreated, so retries and the sign-in recovery path below
+         are both safe. Same 7 arguments. */
+      __nvSb.rpc("nv_signup_provision",{
         p_name:storeName, p_owner:name, p_phone:phone, p_city:city,
         p_address:address, p_business_type:product, p_website:website||""
       }).then(function(rpcRes){
@@ -3503,7 +3511,11 @@ $("fSignin").addEventListener("submit",function(e){
            printed on every parcel they shipped. 48 merchants ended up that
            way. full_name is a PERSON and must never be written here; it
            belongs in p_owner, which is exactly where it now goes alone. */
-        __nvSb.rpc("create_client_workspace",{
+        /* Recovery path: an email-confirmation signup has no session at
+           signup time, so the workspace is created on first sign-in. Using the
+           atomic RPC here means a merchant who verified by email also gets
+           their lead recorded, in the same transaction. */
+        __nvSb.rpc("nv_signup_provision",{
           p_name: meta.business_name||meta.store_name||meta.brand_name||"",
           p_owner: meta.owner_name||meta.full_name||"",
           p_phone: meta.phone||"", p_city: meta.city||"", p_address: meta.address||"",
