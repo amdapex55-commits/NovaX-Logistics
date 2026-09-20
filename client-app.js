@@ -14903,10 +14903,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           body.languageInstruction=useUrdu
             ? "Reply in Roman Urdu (Urdu written in Latin script), simple and friendly. Keep AWB numbers, amounts, currency values and NovaX status names exactly as they are, in English."
             : "Reply in English.";
-          if(useUrdu && typeof body.message==="string" && body.message.trim()){
-            body.message = body.message +
-              "\n\n(Reply in Roman Urdu \u2014 Urdu written in Latin script. Keep AWB numbers, amounts and NovaX status names exactly as they are, in English.)";
-          }
+          /* REMOVED: this appended the language instruction onto the MERCHANT'S
+             OWN MESSAGE. It was then stored verbatim in nv_ai_messages, so the
+             saved history reads "mera parcel kahan hai? (Reply in Roman Urdu —
+             ...)" — the merchant appears to have typed an instruction to
+             itself, the model re-reads it as user text on every later turn,
+             and anyone reading the conversation log sees plumbing instead of
+             what the merchant said. body.languageInstruction already carries
+             this to the server, and the system prompt already handles it. */
           init=Object.assign({},init,{ body:JSON.stringify(body) });
         }
       }catch(e){}
