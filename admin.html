@@ -2102,10 +2102,18 @@
       white-space: nowrap;
     }
 
-    .status.good, .chip.good { color: #075f43; background: var(--mint); }
-    .status.warn, .chip.warn { color: #8b4d09; background: var(--amber-soft); }
-    .status.bad, .chip.bad { color: #8c271f; background: var(--red-soft); }
-    .status.info, .chip.info { color: var(--nvu-info-fg); background: var(--blue-soft); }
+    /* The background and the text on it must come from the SAME themed set.
+       These paired a tokenised background (--mint / --amber-soft / --red-soft,
+       which DO flip for dark) with a HARDCODED light-theme text colour, so on
+       the dark admin every status chip painted dark ink on its own dark fill --
+       #8c271f on #351714 for "bad". .info was the only one done properly, and
+       it shows the pattern: the --nvu-* trio is defined for light,
+       [data-theme="dark"] and prefers-color-scheme:dark, so both halves of the
+       pair move together in all three states. */
+    .status.good, .chip.good { color: var(--nvu-good-fg); background: var(--nvu-good-bg); }
+    .status.warn, .chip.warn { color: var(--nvu-warn-fg); background: var(--nvu-warn-bg); }
+    .status.bad, .chip.bad { color: var(--nvu-bad-fg); background: var(--nvu-bad-bg); }
+    .status.info, .chip.info { color: var(--nvu-info-fg); background: var(--nvu-info-bg); }
 
     .mini-dot {
       width: 7px;
@@ -4252,8 +4260,15 @@ html,body{ background:var(--bg); color:var(--ink); }
 }
 .awb-field span{ color:#5c6157; }
 
-    /* Operational SLA breach: visible to staff only. */
-    .parcel-card:has(.chip.bad), .parcel-card:has(.status.bad), .ops-card:has(.chip.bad), tr:has(.chip.bad), tr:has(.status.bad) { background:#ffe4e1 !important; border-color:#e7a19a !important; box-shadow:inset 4px 0 0 #c9473d; }
+    /* Operational SLA breach: visible to staff only.
+       WAS background:#ffe4e1 / border #e7a19a / bar #c9473d -- light-theme
+       literals forced onto the row with !important in EVERY theme, which also
+       overrode .alert-row.critical's correct dark gradient. On the dark admin
+       the row's text is near-white, so a breached parcel's AWB, client name and
+       COD amount washed out to unreadable on pink: the single row on the screen
+       that most needs to be legible. Tokens flip with the theme; the inset bar
+       uses --red, which is defined for both. */
+    .parcel-card:has(.chip.bad), .parcel-card:has(.status.bad), .ops-card:has(.chip.bad), tr:has(.chip.bad), tr:has(.status.bad) { background:var(--nvu-bad-bg) !important; border-color:var(--nvu-bad-ln) !important; box-shadow:inset 4px 0 0 var(--red); }
 </style>
   <!-- NovaX (admin AWB parity): AWB print modes, identical to client.html.
        Exactly one of these two is left enabled at a time -- JS toggles
@@ -10924,7 +10939,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           <div class="ops-card ${offRoute.length ? "alert-row critical" : ""}">
             <div class="ops-card-head"><strong>${draftParcels.length} valid scans</strong><span class="chip ${(missing.length || offRoute.length) ? "bad" : "good"}">${missing.length} missing | ${offRoute.length} off-route</span></div>
             <p>${draftParcels.map(p => p.awb).join(", ") || "Scan AWBs to prepare a manifest."}</p>
-            ${offRoute.length ? `<div class="footer-note" style="color:#8c271f;font-weight:800">Remove ${offRoute.length} off-route parcel(s) before this manifest to ${hubCity(manifestToVal) || "destination"} can be created.</div>` : ""}
+            ${offRoute.length ? `<div class="footer-note" style="color:var(--nvu-bad-fg);font-weight:800">Remove ${offRoute.length} off-route parcel(s) before this manifest to ${hubCity(manifestToVal) || "destination"} can be created.</div>` : ""}
           </div>
           ${offRoute.map(p => `<div class="ops-card alert-row critical"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip bad">WRONG ROUTE</span></div><p>Destined for ${escLabelText(p.city)}, not ${hubCity(manifestToVal) || "this route"}. Remove before creating manifest.</p></div>`).join("")}
           ${onRoute.map(p => `<div class="ops-card"><div class="ops-card-head"><strong>${p.awb}</strong><span class="chip ${statusClass(p)}">${p.status}</span></div><p>${escLabelText(p.consignee)} | ${escLabelText(p.city)} | ${p.branch}</p></div>`).join("")}
