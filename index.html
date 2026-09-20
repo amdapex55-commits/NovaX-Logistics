@@ -2674,7 +2674,8 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
     <div class="fld"><label for="merchantAddress">Your address</label><textarea id="merchantAddress" placeholder="Pickup address" autocomplete="street-address"></textarea></div>
     <div class="fld"><label for="merchantProduct">What product do you sell?</label><input id="merchantProduct" placeholder="Fashion, cosmetics, electronics, etc."></div>
     <div class="fld"><label for="merchantEmail">Login email</label><input id="merchantEmail" type="email" placeholder="you@store.com" autocomplete="email" inputmode="email"></div>
-    <div class="fld"><label for="merchantPassword">Create password</label><input id="merchantPassword" type="password" placeholder="Choose a password" autocomplete="new-password"></div>
+    <div class="fld"><label for="merchantPassword">Create password</label><input id="merchantPassword" type="password" placeholder="At least 8 characters" autocomplete="new-password" minlength="8" aria-describedby="merchantPasswordHint"><div class="form-msg" id="merchantPasswordHint" style="min-height:0"></div></div>
+    <div class="fld"><label for="merchantPasswordConfirm">Confirm password</label><input id="merchantPasswordConfirm" type="password" placeholder="Type it again" autocomplete="new-password" minlength="8"></div>
     <div class="fld"><label for="merchantWebsite">Website link if any</label><input id="merchantWebsite" placeholder="https://yourstore.com" inputmode="url"></div>
     <button class="btn btn-primary" type="submit" id="merchantSubmit">Create My Workspace</button>
     <div class="form-msg" id="mSignup" role="alert"></div>
@@ -3196,6 +3197,23 @@ function showMsg(id,txt,ok){ var el=$(id); if(!el) return; el.className="form-ms
 function clearMsg(id){ var el=$(id); if(el) el.className="form-msg"; }
 function val(id){ var el=$(id); return el?String(el.value||"").trim():""; }
 var PHONE_RE=/^03\d{9}$/;
+/* Signup rejected every valid Pakistani number not already typed as exactly
+   03xxxxxxxxx: "+92 300 1234567", "0092...", "0300-1234567" and any pasted
+   number carrying spaces all failed with "Phone must be 11 digits and start
+   with 03." Merchants who enter their number the way their SIM or WhatsApp
+   shows it were turned away at the door. Normalise first, validate the
+   canonical form, and store that canonical form. */
+function nvNormalizePkPhone(raw){
+  var d=String(raw==null?"":raw).replace(/\D/g,"");
+  if(!d) return "";
+  if(d.indexOf("0092")===0) d=d.slice(4);
+  else if(d.indexOf("92")===0 && d.length>=12) d=d.slice(2);
+  else if(d.charAt(0)==="0") d=d.slice(1);
+  return /^3\d{9}$/.test(d) ? ("0"+d) : "";
+}
+/* Rejected outright rather than scored. A strength meter that still lets
+   "password1" through is decoration. */
+var NV_WEAK_PASSWORDS=["password","password1","password123","12345678","123456789","1234567890","qwerty123","abc12345","11111111","00000000","iloveyou","novax123","pakistan1","welcome1","admin123"];
 var EMAIL_RE=/^\S+@\S+\.\S+$/;
 function clearNovaxSession(){ try{ localStorage.removeItem("novaxSession"); }catch(e){} }
 /* ═════ WORKSPACE LAUNCH TRANSITION ═════
@@ -3334,9 +3352,17 @@ $("fSignup").addEventListener("submit",function(e){
 
   if(!city||!storeName||!name||!phone||!address||!product||!email||!password){
     showMsg("mSignup","Store name, owner name, city, phone, address, product, email, and password are all required.",false); return; }
-  if(!PHONE_RE.test(phone)){ showMsg("mSignup","Phone must be 11 digits and start with 03. Example: 03001234567.",false); return; }
+  var phoneNorm=nvNormalizePkPhone(phone);
+  if(!phoneNorm){ showMsg("mSignup","Enter a Pakistani mobile number. 03001234567, 0300-1234567 and +92 300 1234567 all work.",false); return; }
+  phone=phoneNorm;
   if(!EMAIL_RE.test(email)){ showMsg("mSignup","Please enter a valid email address.",false); return; }
-  if(password.length<6){ showMsg("mSignup","Password must be at least 6 characters.",false); return; }
+  /* Was six characters with no confirmation and no weak-password check, so a
+     merchant could protect a live COD wallet with "123456" and a typo in the
+     only password field locked them out of the account they just created. */
+  var passConfirm=val("merchantPasswordConfirm");
+  if(password.length<8){ showMsg("mSignup","Password must be at least 8 characters.",false); return; }
+  if(NV_WEAK_PASSWORDS.indexOf(password.toLowerCase())>-1){ showMsg("mSignup","That password is too common to protect a COD wallet. Pick something only you would know.",false); return; }
+  if(passConfirm!==password){ showMsg("mSignup","The two passwords do not match.",false); return; }
   if(!__nvSb||!__nvSb.auth){ showMsg("mSignup","Signup service is unavailable. Please refresh and try again.",false); return; }
 
   clearMsg("mSignup");
@@ -3423,7 +3449,11 @@ $("fSales").addEventListener("submit",function(e){
   e.preventDefault();
   var name=val("salesLeadName"), phone=val("salesLeadPhone"), parcels=val("salesLeadParcels");
   if(!name||!phone){ showMsg("mSales","Name and phone number are required.",false); return; }
-  if(!PHONE_RE.test(phone)){ showMsg("mSales","Phone must be 11 digits and start with 03. Example: 03001234567.",false); return; }
+  /* Same normalisation as signup: a sales lead typed as +92 300 1234567 was
+     rejected outright, losing the enquiry. */
+  var salesPhone=nvNormalizePkPhone(phone);
+  if(!salesPhone){ showMsg("mSales","Enter a Pakistani mobile number. 03001234567, 0300-1234567 and +92 300 1234567 all work.",false); return; }
+  phone=salesPhone;
   if(!__nvSb){ showMsg("mSales","Sales request service is unavailable. Please refresh and try again.",false); return; }
   clearMsg("mSales");
   var btn=$("salesLeadSubmit"), oldTxt=btn.textContent;

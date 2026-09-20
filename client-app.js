@@ -11127,7 +11127,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                      a perfectly healthy socket. */
                   window.__nvRealtimeSeenAt = Date.now();
                   clearTimeout(__rtTimer);
-                  __rtTimer=setTimeout(function(){ try{ loadAll(); }catch(e){} }, 350);
+                  /* One realtime event reloads ALL EIGHT account datasets --
+                     parcels, invoices, withdrawals, payment logs, store
+                     connections, wallet ledger, pickups and the client row --
+                     each paged to completion. At 350ms a burst of row updates
+                     (an admin pushing an invoice, a rider clearing a batch)
+                     barely coalesced, so a handful of writes became several
+                     full account reloads back to back.
+
+                     1200ms collapses a burst into one reload and is still well
+                     under the time it takes a merchant to look up from the
+                     event that caused it. Narrowing this to a per-table
+                     refresh is the real fix, but that touches the money
+                     mapping and is not worth risking in the same pass. */
+                  __rtTimer=setTimeout(function(){ try{ loadAll(); }catch(e){} }, 1200);
                 }
                 sb.channel("novax_client_"+MY)
                   .on("postgres_changes",{event:"*",schema:"public",table:"parcels",filter:"client_id=eq."+MY},rtReload)
