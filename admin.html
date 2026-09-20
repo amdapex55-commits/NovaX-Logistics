@@ -17737,7 +17737,21 @@ html,body{ background:var(--bg); color:var(--ink); }
           liveSubscribed=true;
           try{
             var liveChannel=sb.channel("novax_admin_live");
-            ["clients","riders","parcels","invoices","expenses","withdrawals","payment_logs","sales_leads","signup_leads","operations_issues","resolved_alerts","manifest_logs","staff_users","staff_activity","pickup_requests"].forEach(function(t){
+            /* WAS 15 unfiltered event:"*" subscriptions. Realtime evaluates
+               every WAL record against every subscription, and pg_stat_statements
+               showed that evaluation query at 238,189 calls / 1,510,510ms -- more
+               DB time than everything else on the project combined.
+
+               Only the tables in NV_LIVE_KNOWN have a targeted refresh; the other
+               nine had no handler at all and merely triggered the full 23-query
+               loadAll(), throttled to once a minute. So they cost WAL evaluation
+               AND caused refresh storms, to do something the 180s poll and the
+               focus handler already cover.
+
+               Subscribed now: the six NV_LIVE_KNOWN tables (wallet_ledger was
+               targeted but never actually subscribed -- a real gap) plus
+               pickup_requests, which is ops-critical enough to stay live. */
+            ["clients","parcels","invoices","withdrawals","payment_logs","wallet_ledger","pickup_requests"].forEach(function(t){
               liveChannel.on("postgres_changes",{event:"*",schema:"public",table:t},function(){ nvLiveChange(t); });
             });
             liveChannel.subscribe(function(status,err){
@@ -17759,7 +17773,20 @@ html,body{ background:var(--bg); color:var(--ink); }
                 if(window.__nvAdminRealtimeLive) return;
                 try{ loadAll(); }catch(e){}
               }, 180000);
-              var back=function(){ if(!document.hidden){ try{ loadAll(); }catch(e){} } };
+              /* WAS unthrottled: every focus, every tab-show and every reconnect
+                 fired loadAll() -- 23 queries -- even while realtime was healthy.
+                 Alt-tabbing back and forth re-ran the entire admin boot each
+                 time, and every open admin tab did it independently. Kept as the
+                 repair path for a slept laptop or dead socket, but at most once
+                 a minute. */
+              var nvLastBack=0;
+              var back=function(){
+                if(document.hidden) return;
+                var n=Date.now();
+                if(n-nvLastBack < 60000) return;
+                nvLastBack=n;
+                try{ loadAll(); }catch(e){}
+              };
               document.addEventListener("visibilitychange", back);
               window.addEventListener("focus", back);
               window.addEventListener("online", back);
