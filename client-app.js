@@ -10616,7 +10616,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           /* A replayed key returns a parcel this tab may already hold. */
           if(!(state.parcels||[]).some(function(x){ return x && x._uuid && x._uuid===mapped._uuid; })){
             state.parcels.unshift(mapped);
-            state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:MY, type:"COD expected", amount:Number(row.cod_amount||0), status:"Awaiting delivery", ref:row.awb });
+            /* REMOVED: the browser used to invent this money row and a
+               background loop pushed it up later. A closed tab meant the
+               booking had no COD-expected record at all (195 parcels) and a
+               repeat meant two (27 extra rows). A trigger on parcels now
+               writes it inside the booking transaction, and it arrives here
+               on the next load -- which this very booking triggers. */
           }
           state.selectedAwb=row.awb; state.lastGeneratedAwb=row.awb; saveState();
           if(mapped._uuid) shadow[mapped._uuid]=(mapped.status||"")+"|"+(mapped.exception||"")+"|"+(mapped.awbPrinted?"1":"0")+"|"+(mapped.awbPrintedAt||"");
@@ -11067,7 +11072,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // replaying it.
         (state.walletWithdrawals||[]).forEach(function(w){ if(w._uuid||w._pending) return; console.warn("NovaX: dropping stale local withdrawal with no server id (not replayed):",w.id); });
         state.walletWithdrawals=(state.walletWithdrawals||[]).filter(function(w){ return !!w._uuid; });
-        (state.paymentLogs||[]).forEach(function(pl){ if(pl._uuid||pl._pending) return; pl._pending=true; sb.from("payment_logs").insert({ client_id:MY, type:pl.type||"", amount:Number(pl.amount||0), status:pl.status||"", reference:pl.ref||"" }).select("id").maybeSingle().then(function(r){ pl._pending=false; if(r&&r.data) pl._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX paylog insert",r.error.message); }); });
+        (state.paymentLogs||[]).forEach(function(pl){ if(pl._uuid||pl._pending) return; if(pl.type==="COD expected") return;   /* server-owned: written by trg_nv_log_cod_expected inside the booking transaction */ pl._pending=true; sb.from("payment_logs").insert({ client_id:MY, type:pl.type||"", amount:Number(pl.amount||0), status:pl.status||"", reference:pl.ref||"" }).select("id").maybeSingle().then(function(r){ pl._pending=false; if(r&&r.data) pl._uuid=r.data.id; else if(r&&r.error) console.warn("NovaX paylog insert",r.error.message); }); });
         (state.storeConnections||[]).forEach(function(c){ if(c._pending) return; var row={ client_id:MY, platform:c.platform, store_url:c.storeUrl||"", connected:!!c.connected, imported_count:Number(c.importedCount||0), meta:{ hasCreds:!!c.hasCreds, connectedAt:c.connectedAt||"", lastSync:c.lastSync||"" }, updated_at:new Date().toISOString() }; var sig=JSON.stringify(row); if(c._sig===sig) return; var prevSig=c._sig; c._sig=sig; if(c._uuid){ sb.from("store_connections").update(row).eq("id",c._uuid).then(function(r){ if(r&&r.error){ console.warn("NovaX store update",r.error.message); if(c._sig===sig) c._sig=prevSig; } }); } else { c._pending=true; sb.from("store_connections").insert(row).select("id").maybeSingle().then(function(r){ c._pending=false; if(r&&r.data) c._uuid=r.data.id; else if(r&&r.error){ console.warn("NovaX store insert",r.error.message); if(c._sig===sig) c._sig=prevSig; } }); } });
         // NovaX fix (Part 4, pickup request flow): a pickup request created
         // locally only ever needs an insert once -- admins own status/rider
