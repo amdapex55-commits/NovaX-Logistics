@@ -7824,6 +7824,53 @@ html,body{ background:var(--bg); color:var(--ink); }
       });
     }
 
+    /* ── Re-weigh at the processing desk ────────────────────────────────
+       A merchant books "1 kg"; the warehouse scale says 1.3. The full parcel
+       edit modal could already change the weight, but the delivery charge was
+       a separate field there -- so unless the operator worked the new rate out
+       by hand and typed it in, the parcel stayed billed at the 1 kg rate.
+       Every re-weighed parcel was under-billed by default.
+
+       admin_reprice_parcel_weight() prices the new weight with
+       novax_quote_fee -- the same function booking and the merchant API use,
+       against this client's own negotiated rate card and zone -- and applies
+       it through admin_update_parcel_details, so the admin check, the
+       "already invoiced" refusal and the before/after audit all still apply.
+       The operator types a weight; the charge follows by itself. */
+    function nvProcReweigh(awb){
+      var sb = window.__nvSb;
+      if (!sb || !sb.rpc) { toast("Cloud connection not ready."); return; }
+      var input = document.getElementById("nvRw_" + awb);
+      var btn   = document.getElementById("nvRwBtn_" + awb);
+      if (!input) return;
+      var val = String(input.value || "").trim();
+      if (!val) { toast("Enter the weighed value, like 1.3 kg.", "error"); return; }
+      var old = btn ? btn.textContent : "";
+      if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+      sb.rpc("admin_reprice_parcel_weight", { p_awb: awb, p_weight: val, p_note: "" })
+        .then(function(r){
+          if (btn) { btn.disabled = false; btn.textContent = old; }
+          if (r && r.error) { toast("Could not re-weigh " + awb + ": " + r.error.message, "error"); return; }
+          var d = (r && r.data) || {};
+          var delta = Number(d.delta || 0);
+          /* Say what actually changed, including when it did not: an operator
+             re-weighing 1.0 -> 1.2 gets the same rate, and silence there looks
+             like the save failed. */
+          toast(
+            awb + " re-weighed to " + (d.weight || val) + " · " +
+            (delta > 0 ? "charge up " + money(delta) + " to " + money(d.new_fee)
+             : delta < 0 ? "charge down " + money(Math.abs(delta)) + " to " + money(d.new_fee)
+             : "charge unchanged at " + money(d.new_fee)),
+            delta < 0 ? "error" : "ok"
+          );
+          try { if (typeof nvRefresh === "function") nvRefresh(["parcels"]); else if (typeof loadAll === "function") loadAll(); else renderAdmin(); } catch(e){}
+        })
+        .catch(function(e){
+          if (btn) { btn.disabled = false; btn.textContent = old; }
+          toast("Could not re-weigh " + awb + ": " + ((e && e.message) || e), "error");
+        });
+    }
+
     var NV_ABK_T = null;
     function nvAdminClientSearch(){
       if (NV_ABK_T) clearTimeout(NV_ABK_T);
@@ -10145,10 +10192,33 @@ html,body{ background:var(--bg); color:var(--ink); }
           currentStatus.innerHTML = processBatch.map(p => {
             const prepaid = nvIsPrepaidParcel(p);
             const km = (/^distance/.test(String(p.pricingMode || "")) && p.distanceKm != null) ? ` &middot; ${p.distanceKm} km` : "";
-            return `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:3px 0">
-              <span><strong>${p.awb}</strong> | ${p.status} | ${escLabelText(p.branch)} | ${p.updated}</span>
-              <span style="white-space:nowrap">${nvPayConflictChip(p) || (prepaid ? '<span class="chip info">Prepaid</span>' : `<strong>${money(p.cod)}</strong>`)}
-                <span class="footer-note">+ ${money(p.fee)} charges${km}</span></span>
+            /* Re-weigh inline, per scanned parcel. The scale is next to the
+               operator, so this is a field and a button rather than a trip
+               through the full edit modal. An invoiced parcel shows why it
+               cannot move instead of offering a control that would be
+               refused. */
+            const invoiced = !!p.invoiceId;
+            const wNow = escLabelText(p.weight || "");
+            return `<div style="padding:5px 0;border-bottom:1px solid var(--nvu-line-2)">
+              <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+                <span><strong>${p.awb}</strong> | ${p.status} | ${escLabelText(p.branch)} | ${p.updated}</span>
+                <span style="white-space:nowrap">${nvPayConflictChip(p) || (prepaid ? '<span class="chip info">Prepaid</span>' : `<strong>${money(p.cod)}</strong>`)}
+                  <span class="footer-note">+ ${money(p.fee)} charges${km}</span></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px">
+                <label class="footer-note" for="nvRw_${p.awb}">Weighed</label>
+                <input id="nvRw_${p.awb}" value="${wNow}" placeholder="1.3 kg" inputmode="decimal"
+                       ${invoiced ? "disabled" : ""} autocomplete="off"
+                       style="width:96px;padding:5px 8px;border-radius:8px;border:1px solid var(--nvu-line-2);background:var(--nvu-bg);color:var(--nvu-ink);font:inherit;font-size:12px${invoiced ? ";opacity:.45;cursor:not-allowed" : ""}"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();nvProcReweigh('${p.awb}');}">
+                <button type="button" class="ghost-btn" id="nvRwBtn_${p.awb}"
+                        ${invoiced ? "disabled" : ""}
+                        style="padding:5px 10px;font-size:12px${invoiced ? ";opacity:.45;cursor:not-allowed" : ""}"
+                        onclick="nvProcReweigh('${p.awb}')">Save weight</button>
+                <span class="footer-note">${invoiced
+                  ? "On an invoice — correct the invoice to change the charge."
+                  : "Charge re-rates automatically from this weight."}</span>
+              </div>
             </div>`;
           }).join("");
         } else {
@@ -17062,7 +17132,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       var DRC={ overnight:NV_ZONE_A_BASE, additionalKg:85, detainBase:540, detainAdditionalKg:125, overlandBase:900, overlandAdditionalKg:45 };
       function rClient(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", owner:r.owner||"", pickupCity:m.pickupCity||"Karachi", tier:m.tier||"Starter", city:r.city||"", address:r.address||"", phone:r.phone||"", email:m.email||"", businessType:r.business_type||"", website:r.website||"", walletTopup:Number(m.walletTopup||0), shippingDue:Number(m.shippingDue||0), risk:Number(r.risk_score||0), status:r.status||"Active", pricingMode:(String(r.pricing_mode||"flat")==="distance"?"distance":"flat"), rate:Number(r.rate||NV_ZONE_A_BASE), rateCard:normalizeRateCard(r.rate_card,Number(r.rate||NV_ZONE_A_BASE)), problemsResolved:Number(m.problemsResolved||0), health:Number(m.health||0), walletBalance:Number(r.wallet_balance||0), leadSource:m.source||"", leadVerified:!!m.verified, appliedAt:m.appliedAt||"", _meta:m }; }
       function rRider(r){ var m=r.meta||{}; return { _uuid:r.id, id:r.id, name:r.name||"", username:m.username||"", manager:m.manager||r.branch||"", branch:r.branch||"", phone:r.phone||"", cashHeld:Number(m.cashHeld||0), cashLimit:Number(r.cash_limit||0), scans:Number(m.scans||0), fakeRisk:Number(m.fakeRisk||0), access:r.access||"Active", expenses:Number(m.expenses||0), fuelEfficiencyKmL:Number(m.fuelEfficiencyKmL||40) }; }
-      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0),
+      function rParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, weight:m.weight||"", category:m.category||"", invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:r.client_id, date:dpart(r.booked_at), consignee:r.consignee||"", city:r.city||"", address:r.address||"", phone:r.phone||"", cod:Number(r.cod_amount||0), fee:Number(r.fee||0),
         /* NovaX fix (status rename): this was a raw `r.status` read, so any
            row still carrying the pre-migration "Parcel returned to consignee"
            showed that old wrong text throughout the admin portal while the
