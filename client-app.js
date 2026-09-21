@@ -1076,7 +1076,14 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
        merchant's entire parcel history of them to localStorage made every
        token readable by any XSS anywhere on this origin. They are re-read
        from the server on load, so nothing is lost by not storing them. */
-    const NOVAX_PARCEL_PII_KEYS = ["phone","address","trackingToken"];
+    /* _raw is on this list because it is a NESTED copy of consignee, phone,
+       address, city and cod kept for the edit concurrency check. The strip
+       below only removes top-level keys, so _raw was quietly carrying every
+       consignee's phone and address into localStorage -- defeating the whole
+       point of the three keys beside it. Nothing is lost by dropping it:
+       Edit now re-reads the authoritative row (which rebuilds _raw) before it
+       will let anyone save. */
+    const NOVAX_PARCEL_PII_KEYS = ["phone","address","trackingToken","_raw"];
     function persistableState(){
       try{
         const copy = {};
@@ -8390,11 +8397,74 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     var NV_EDIT_AWB="";
 
-    function nvEditParcelError(msg){
+    /* onRetry turns the message into a dead end with a way out. A merchant who
+       cannot load a booking needs an action, not just an explanation. */
+    function nvEditParcelError(msg, onRetry){
       var el=document.getElementById("nvEditParcelError");
       if(!el) return;
-      if(!msg){ el.style.display="none"; el.textContent=""; return; }
-      el.textContent=msg; el.style.display="block";
+      if(!msg){ el.style.display="none"; el.textContent=""; el.__nvRetry=null; return; }
+      el.textContent="";
+      var line=document.createElement("div");
+      line.textContent=msg;
+      el.appendChild(line);
+      if(typeof onRetry==="function"){
+        var b=document.createElement("button");
+        b.type="button"; b.className="ghost-btn"; b.textContent="Retry";
+        b.style.marginTop="8px";
+        b.addEventListener("click",function(){ nvEditParcelError(""); onRetry(); });
+        el.appendChild(b);
+      }
+      el.style.display="block";
+    }
+
+    /* ── "we could not confirm this" banner ───────────────────────────────
+       Shown when the portal is displaying a saved view it could not verify.
+       It must be visibly different from normal operation, must not block the
+       screen, and must offer Retry -- a merchant seeing stale figures needs
+       to know they are stale and be able to do something about it. */
+    function nvAccountUnconfirmed(msg){
+      try{
+        var id="nvAccountUnconfirmedBar";
+        var bar=document.getElementById(id);
+        if(!bar){
+          bar=document.createElement("div");
+          bar.id=id;
+          bar.setAttribute("role","status");
+          /* Normal flow, as the first child of <body>, NOT position:fixed.
+             .topbar is position:sticky;top:0;z-index:20, so a fixed bar simply
+             covered the brand and the Log out button. In flow it pushes the
+             header down instead of hiding it, and when the merchant scrolls
+             the notice leaves and the header pins to the top as usual. */
+          bar.style.cssText="display:flex;align-items:center;justify-content:center;gap:12px;"+
+            "flex-wrap:wrap;padding:10px 16px;font-size:13px;font-weight:700;"+
+            "width:100%;box-sizing:border-box;text-align:center;"+
+            "background:var(--nvu-warn-bg);color:var(--nvu-warn-fg);"+
+            "border-bottom:1px solid var(--nvu-warn-ln);";
+          document.body.insertBefore(bar, document.body.firstChild);
+        }
+        bar.textContent="";
+        var t=document.createElement("span"); t.textContent=msg; bar.appendChild(t);
+        var b=document.createElement("button");
+        b.type="button"; b.textContent="Retry";
+        b.style.cssText="font:inherit;cursor:pointer;padding:4px 12px;border-radius:999px;"+
+          "border:1px solid currentColor;background:transparent;color:inherit;min-height:32px;";
+        b.addEventListener("click",function(){
+          b.disabled=true; b.textContent="Retrying…";
+          try{
+            Promise.resolve(window.__novaxRetryLoad && window.__novaxRetryLoad())
+              .then(function(){ nvAccountUnconfirmedClear(); })
+              .catch(function(){ b.disabled=false; b.textContent="Retry"; });
+          }catch(e){ b.disabled=false; b.textContent="Retry"; }
+        });
+        bar.appendChild(b);
+        bar.style.display="flex";
+      }catch(e){}
+    }
+    function nvAccountUnconfirmedClear(){
+      try{
+        var bar=document.getElementById("nvAccountUnconfirmedBar");
+        if(bar) bar.style.display="none";
+      }catch(e){}
     }
 
     function nvSetVal(id,v){ var el=document.getElementById(id); if(el) el.value=(v==null?"":String(v)); }
@@ -8451,19 +8521,49 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
     }
 
-    function nvOpenEditParcel(awb, ev){
-      try{ if(ev && ev.stopPropagation) ev.stopPropagation(); }catch(e){}
-      var p=(state.parcels||[]).find(function(x){ return x && x.awb===awb; });
-      if(!p){ toast("That booking is no longer on your account.","error"); return; }
-      if(!isEditableBooking(p)){
-        toast("This parcel has already moved, so it can no longer be edited.","error");
-        return;
+    /* \u2500\u2500 Edit must never show an editable blank form \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+       "Edit Booking opens blank" and the earlier "phone and address lost" are
+       the same defect. state.parcels can legitimately hold parcels restored
+       from the localStorage cache, and that cache is stripped of phone and
+       address on purpose (NOVAX_PARCEL_PII_KEYS). Populating this form from
+       such a parcel produced empty required fields -- and pressing Save on
+       that form wrote the blanks straight back over good data.
+
+       So Edit now always re-reads the row from the server. The form opens
+       locked showing whatever is known, unlocks only once the authoritative
+       row is in hand, and on failure shows the reason with a Retry rather
+       than an editable empty form. Save stays disabled until then, which is
+       what actually prevents the overwrite. */
+    function nvEditFormEnabled(on){
+      ["nvEdName","nvEdPhone","nvEdCity","nvEdCod","nvEdCategory","nvEdWeight",
+       "nvEdPaymentMode","nvEdFragile","nvEdAllowOpen","nvEdOrderId",
+       "nvEdAddress"].forEach(function(id){
+        var el=document.getElementById(id);
+        if(el) el.disabled=!on;
+      });
+      var save=document.getElementById("nvEditParcelSave");
+      if(save){
+        save.disabled=!on;
+        save.setAttribute("aria-disabled",on?"false":"true");
+        save.style.opacity=on?"":"0.55";
+        save.style.pointerEvents=on?"":"none";
       }
-      try{ if(window.NovaXUI && window.NovaXUI.closeDrawer) window.NovaXUI.closeDrawer(); }catch(e){}
-      NV_EDIT_AWB=awb;
-      nvEditParcelError("");
-      var sub=document.getElementById("nvEditParcelSub");
-      if(sub) sub.textContent=awb+" \u00b7 still New booked, so everything except the delivery charge can be changed.";
+    }
+
+    /* Fields persist in the DOM between opens, so a booking that fails to load
+       sat there showing the PREVIOUS parcel's consignee and address under the
+       new AWB. Locked, so nothing could be saved -- but still one merchant's
+       details labelled as another parcel. Always clear before filling. */
+    function nvEditClear(){
+      ["nvEdName","nvEdPhone","nvEdCity","nvEdCod","nvEdCategory","nvEdWeight",
+       "nvEdOrderId","nvEdAddress","nvEdFee"].forEach(function(id){ nvSetVal(id,""); });
+      nvSetVal("nvEdService","COD Standard");
+      nvSetVal("nvEdPaymentMode","COD");
+      nvSetVal("nvEdFragile","No");
+      nvSetVal("nvEdAllowOpen","No");
+    }
+
+    function nvEditFill(p){
       nvSetVal("nvEdName",p.consignee);
       nvSetVal("nvEdPhone",p.phone);
       nvSetVal("nvEdCity",p.city);
@@ -8477,10 +8577,68 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       nvSetVal("nvEdOrderId",p.orderId);
       nvSetVal("nvEdAddress",p.address);
       nvSetVal("nvEdFee",money(Number(p.fee||0)));
+    }
+
+    function nvOpenEditParcel(awb, ev){
+      try{ if(ev && ev.stopPropagation) ev.stopPropagation(); }catch(e){}
+      var p=(state.parcels||[]).find(function(x){ return x && x.awb===awb; });
+      /* A parcel missing from state is NOT proof it is gone -- it may simply
+         not be in this partial/cached view. Only the server read decides. */
+      if(p && !isEditableBooking(p)){
+        toast("This parcel has already moved, so it can no longer be edited.","error");
+        return;
+      }
+      try{ if(window.NovaXUI && window.NovaXUI.closeDrawer) window.NovaXUI.closeDrawer(); }catch(e){}
+      NV_EDIT_AWB=awb;
+      nvEditParcelError("");
+      var sub=document.getElementById("nvEditParcelSub");
+      if(sub) sub.textContent=awb+" \u00b7 loading this booking\u2026";
+      nvEditClear();
+      if(p) nvEditFill(p);
       try{ nvWireEditPaymentMode(); }catch(e){}
+      nvEditFormEnabled(false);
       var m=document.getElementById("nvEditParcelModal");
       if(m) m.classList.add("show");
-      setTimeout(function(){ var f=document.getElementById("nvEdName"); if(f){ try{ f.focus(); }catch(e){} } },0);
+      nvEditLoadAuthoritative(awb);
+    }
+
+    function nvEditLoadAuthoritative(awb){
+      var sub=document.getElementById("nvEditParcelSub");
+      var ready=awb+" \u00b7 still New booked, so everything except the delivery charge can be changed.";
+      function fail(msg){
+        if(NV_EDIT_AWB!==awb) return;
+        nvEditFormEnabled(false);
+        nvEditClear();          // never leave another parcel's details on screen
+        if(sub) sub.textContent=awb;
+        nvEditParcelError(msg, function(){ nvEditLoadAuthoritative(awb); });
+      }
+      if(typeof window.nvFetchParcelForEdit!=="function"){
+        /* Offline/demo build with no server behind it. Only safe to unlock if
+           what we already hold is complete; a partial copy must stay locked. */
+        var local=(state.parcels||[]).find(function(x){ return x && x.awb===awb; });
+        if(local && !local._partial && local.phone && local.address){
+          nvEditFill(local); nvEditFormEnabled(true);
+          if(sub) sub.textContent=ready;
+          return;
+        }
+        fail("This booking could not be loaded. Reconnect and try again.");
+        return;
+      }
+      Promise.resolve(window.nvFetchParcelForEdit(awb)).then(function(fresh){
+        if(NV_EDIT_AWB!==awb) return;                 // merchant moved on
+        if(!fresh){ fail("That booking is no longer on your account."); return; }
+        if(!isEditableBooking(fresh)){
+          fail("This parcel has already moved, so it can no longer be edited.");
+          return;
+        }
+        nvEditFill(fresh);
+        nvEditFormEnabled(true);
+        nvEditParcelError("");
+        if(sub) sub.textContent=ready;
+        setTimeout(function(){ var f=document.getElementById("nvEdName"); if(f){ try{ f.focus(); }catch(e){} } },0);
+      }).catch(function(e){
+        fail("Could not load this booking: "+((e&&e.message)||"connection problem")+".");
+      });
     }
 
     function nvCloseEditParcel(){
@@ -11149,6 +11307,121 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         pricingMode:r.pricing_mode||"", distanceKm:(r.distance_km!=null?Number(r.distance_km):null),
         rateVersion:r.rate_version||"", quotedFee:(r.quoted_fee!=null?Number(r.quoted_fee):null),
         quote:(m.quote||null) }; }
+
+      /* ── keeping a loaded account loaded ──────────────────────────────────
+         Three helpers behind the !c guard in loadAll(), plus the single-parcel
+         read that Edit uses.
+
+         Why a cached workspace is safe to show but NOT safe to trust: the
+         persisted copy is deliberately stripped of phone, address and
+         tracking token (NOVAX_PARCEL_PII_KEYS), so every parcel that comes
+         back from it is INCOMPLETE. That is precisely why "Edit opens blank"
+         and "phone/address lost" were the same bug -- the form was populated
+         from a cache that never contained those fields. Anything restored
+         here is therefore tagged _partial:true, and any screen that needs the
+         real values must re-read the row from the server. */
+
+      /* ── auth-error helpers, hoisted ──────────────────────────────────────
+         These were declared inside a nested .then(), while loadAll() -- a
+         SIBLING scope -- called them in three places: the clients-error
+         branch, nvSlot()'s per-read guard, and the __nvAuth catch. None of
+         those references could ever resolve, so every failed read threw
+         "nvIsAuthError is not defined" instead of running the keep-what-is-
+         cached path it was written to run. That is why a transient read
+         failure still managed to degrade the workspace. Declared here, in the
+         scope that actually needs them; the deeper call sites still see them. */
+      function nvIsAuthError(err){
+        if(!err) return false;
+        var code=String(err.code||"");
+        var msg=String(err.message||"").toLowerCase();
+        var st=Number(err.status||err.statusCode||0);
+        return st===401 || st===403 ||
+               code==="PGRST301" || code==="PGRST302" || code==="401" ||
+               /jwt|token|expired|not authenticated|invalid claim|unauthorized/.test(msg);
+      }
+      function nvSessionExpired(where){
+        if(window.__nvSessionExpiredShown) return;
+        window.__nvSessionExpiredShown=true;
+        console.warn("NovaX: auth error at "+(where||"unknown")+" -- session expired.");
+        /* Deliberately does NOT touch state or localStorage. The cached
+           account stays exactly as it was; the merchant signs in and finds
+           it intact. */
+        var gateEl=document.getElementById("nvAuthGate");
+        if(gateEl){
+          gateEl.innerHTML='<div style="max-width:400px;text-align:center;font-size:15px;font-weight:700;line-height:1.6;">Your session expired.<br><span style="font-weight:500;opacity:.85">Your account and parcels are safe &mdash; please sign in again.</span></div>'+
+            '<a href="index.html#login" style="margin-top:14px;display:inline-block;background:var(--nvu-accent,#14c77b);color:#04140d;padding:11px 20px;border-radius:12px;font-weight:700;text-decoration:none;font-size:14px;">Sign in again</a>';
+          gateEl.style.display="flex";
+        }
+        try{ if(window.__nvSb&&window.__nvSb.auth) window.__nvSb.auth.signOut(); }catch(e){}
+      }
+
+      function nvCachedWorkspaceFor(clientId){
+        try{
+          if(!clientId) return null;
+          var raw=localStorage.getItem(STORAGE_KEY); if(!raw) return null;
+          var snap=JSON.parse(raw);
+          var cid=snap && snap.client && snap.client.id;
+          /* Same account only. This comparison is the entire defence against
+             one merchant seeing another's cached workspace on a shared
+             browser, so it stays strict and never falls back. */
+          if(!cid || String(cid)!==String(clientId)) return null;
+          if(!Array.isArray(snap.parcels)) return null;
+          return snap;
+        }catch(e){ return null; }
+      }
+
+      function nvRestoreCachedWorkspace(snap){
+        try{
+          function arr(v){ return Array.isArray(v)?v:[]; }
+          state.parcels=arr(snap.parcels).map(function(p){
+            if(!p || typeof p!=="object") return p;
+            p._partial=true;                 // phone/address were never cached
+            return p;
+          });
+          state.invoices=arr(snap.invoices);
+          state.walletWithdrawals=arr(snap.walletWithdrawals);
+          state.paymentLogs=arr(snap.paymentLogs);
+          state.storeConnections=arr(snap.storeConnections);
+          state.walletLedger=arr(snap.walletLedger);
+          state.pickupRequests=arr(snap.pickupRequests);
+          if(snap.client){ state.client=snap.client; state.clients=[snap.client]; }
+          /* The history is whatever the cache happened to hold, which is not a
+             complete server read. Saying otherwise would let duplicate checks
+             and "you have no parcels" empty states draw false conclusions. */
+          state.parcelHistoryComplete=false;
+          state.workspaceFromCache=true;
+        }catch(e){ console.warn("NovaX: workspace restore failed",e); }
+      }
+
+      /* Edit, and anything else that needs true values, reads the row straight
+         from the server rather than trusting whatever is in state. Returns a
+         mapped parcel, or null when the row is genuinely not this client's. */
+      async function nvFetchParcelForEdit(awb){
+        if(!awb) return null;
+        var r=await sb.from("parcels").select("*").eq("client_id",MY).eq("awb",String(awb)).maybeSingle();
+        if(r && r.error){
+          if(nvIsAuthError(r.error)){ try{ nvSessionExpired("editFetch"); }catch(e){} }
+          throw new Error((r.error.message)||"Could not reach the server");
+        }
+        var row=r && r.data;
+        if(!row) return null;
+        var mapped=mapParcel(row);
+        /* Fold the authoritative row back into state so Save -- which re-finds
+           the parcel by AWB -- validates against real data, and so the rest of
+           the portal stops showing the partial cached copy. */
+        try{
+          var list=state.parcels||(state.parcels=[]);
+          var i=-1;
+          for(var k=0;k<list.length;k++){ if(list[k] && list[k].awb===mapped.awb){ i=k; break; } }
+          if(i>=0) list[i]=mapped; else list.push(mapped);
+        }catch(e){}
+        return mapped;
+      }
+
+      try{
+        window.nvFetchParcelForEdit=nvFetchParcelForEdit;
+        window.__novaxRetryLoad=function(){ try{ return loadAll(); }catch(e){ return null; } };
+      }catch(e){}
       function invoiceSummaryFallback(invoiceType, cod, charges, payable, due){
         if(invoiceType==="Delivery Charges") return `Delivery charges due to NovaX ${money(due)}`;
         if(invoiceType==="Mixed") return `COD ${money(cod)} \u00b7 Charges ${money(charges)} \u00b7 Payable ${money(payable)}`;
@@ -11255,9 +11528,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             state.identityVerified=true;
             loaded=true;
             __nvFirstLoadDone=true;
+            /* This branch promised "your last saved view" while showing none of
+               it: state.parcels/invoices/etc are emptied on every load before
+               loadAll() runs, so there was nothing left to fall back to and the
+               merchant got a confident zero-parcel account. Put the saved view
+               back before claiming to show it. */
+            var nvCachedErr=nvCachedWorkspaceFor(MY);
+            if(nvCachedErr) nvRestoreCachedWorkspace(nvCachedErr);
             try{ render(); }catch(e){ console.warn("NovaX render",e); }
             window.__novaxClientDataReady=true;
-            toast("Could not refresh your account just now. Showing your last saved view.","error");
+            nvAccountUnconfirmed(nvCachedErr
+              ? "We could not refresh your account just now, so this is your last saved view."
+              : "We could not reach your account just now.");
             return;
           }
           var c=res[0]&&res[0].data;
@@ -11269,6 +11551,35 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           // it never guesses a name and never loads parcel/invoice/wallet data
           // for an account that has no confirmed client record.
           if(!c){
+            /* A successful query that returns NO ROW is not proof the account
+               is gone. maybeSingle() resolves {data:null,error:null} whenever
+               RLS filters the row out, and that is exactly what a token
+               refresh landing mid-flight produces. The old code treated it as
+               truth: it blanked the workspace, PERSISTED the blank over the
+               last good cache, and then called __novaxMarkDataFresh() -- so a
+               merchant with 800 parcels was shown a confident empty account,
+               and because the cache had been overwritten, reloading did not
+               bring it back.
+
+               If we have a cached workspace for THIS client id, that is the
+               better answer than zero. Restore it, say plainly that it could
+               not be confirmed, and offer Retry. Deliberately do NOT persist
+               and do NOT mark the view fresh. The id comparison is what keeps
+               two accounts sharing a browser from ever seeing each other. */
+            var nvCached=nvCachedWorkspaceFor(MY);
+            if(nvCached){
+              console.warn("NovaX: clients row not visible for "+MY+" -- keeping last confirmed workspace instead of blanking.");
+              nvRestoreCachedWorkspace(nvCached);
+              state.identityVerified=true;
+              state.clientRecordMissing=false;
+              state.accountNotLinked=false;
+              loaded=true;
+              __nvFirstLoadDone=true;
+              try{ render(); }catch(e){ console.warn("NovaX render",e); }
+              window.__novaxClientDataReady=true;
+              nvAccountUnconfirmed("We could not confirm your account just now, so this is your last saved view.");
+              return;
+            }
             console.warn("NovaX: profile.client_id "+MY+" has no matching row in clients.");
             state.identityVerified=true;
             state.clientRecordMissing=true;
@@ -11287,6 +11598,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }
           state.identityVerified=true;
           state.clientRecordMissing=false;
+          /* A confirmed read supersedes any "we could not confirm this" view. */
+          state.workspaceFromCache=false;
+          try{ nvAccountUnconfirmedClear(); }catch(e){}
 
           /* Only res[0]'s error was ever checked. Every other read was consumed
              as ((res[n]&&res[n].data)||[]), and Supabase resolves a 401, 429,
@@ -11579,15 +11893,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
              These two helpers are the difference between "your session ended"
              and "your business has no parcels". */
-          function nvIsAuthError(err){
-            if(!err) return false;
-            var code=String(err.code||"");
-            var msg=String(err.message||"").toLowerCase();
-            var st=Number(err.status||err.statusCode||0);
-            return st===401 || st===403 ||
-                   code==="PGRST301" || code==="PGRST302" || code==="401" ||
-                   /jwt|token|expired|not authenticated|invalid claim|unauthorized/.test(msg);
-          }
           /* A reachable-but-failing backend is not an unlinked workspace, and
              not a signed-out session. Offer a retry instead of a dead end. */
           function nvTransientLoadFailure(msg){
@@ -11601,21 +11906,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             }
           }
 
-          function nvSessionExpired(where){
-            if(window.__nvSessionExpiredShown) return;
-            window.__nvSessionExpiredShown=true;
-            console.warn("NovaX: auth error at "+(where||"unknown")+" -- session expired.");
-            /* Deliberately does NOT touch state or localStorage. The cached
-               account stays exactly as it was; the merchant signs in and finds
-               it intact. */
-            var gateEl=document.getElementById("nvAuthGate");
-            if(gateEl){
-              gateEl.innerHTML='<div style="max-width:400px;text-align:center;font-size:15px;font-weight:700;line-height:1.6;">Your session expired.<br><span style="font-weight:500;opacity:.85">Your account and parcels are safe &mdash; please sign in again.</span></div>'+
-                '<a href="index.html#login" style="margin-top:14px;display:inline-block;background:var(--nvu-accent,#14c77b);color:#04140d;padding:11px 20px;border-radius:12px;font-weight:700;text-decoration:none;font-size:14px;">Sign in again</a>';
-              gateEl.style.display="flex";
-            }
-            try{ if(window.__nvSb&&window.__nvSb.auth) window.__nvSb.auth.signOut(); }catch(e){}
-          }
 
           function showWorkspaceNotLinked(){
             state.accountNotLinked=true;
