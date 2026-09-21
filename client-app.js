@@ -1198,6 +1198,21 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
        NOTE: the server still defaults <= 0 to 0.8 in its own booking functions.
        That is deliberately left alone here -- changing shared billing SQL needs
        a rehearsal against production, not a client patch. */
+    /* The error was announced in a toast at the top while the offending field
+       sat untouched further down -- on a phone the merchant could not see which
+       one to fix. Shake THAT field, mark it invalid, and bring it into view.
+       aria-invalid goes with it so it is not a purely visual cue. */
+    function nvFlagField(id){
+      try{
+        var el=document.getElementById(id); if(!el) return;
+        el.classList.remove("nv-invalid"); void el.offsetWidth; el.classList.add("nv-invalid");
+        el.setAttribute("aria-invalid","true");
+        el.addEventListener("input",function h(){ el.classList.remove("nv-invalid"); el.removeAttribute("aria-invalid"); el.removeEventListener("input",h); });
+        try{ el.scrollIntoView({behavior:"smooth",block:"center"}); }catch(e){}
+        try{ el.focus({preventScroll:true}); }catch(e){ try{ el.focus(); }catch(_){} }
+      }catch(e){}
+    }
+    window.nvFlagField=nvFlagField;
     function nvWeightProblem(raw){
       var s=String(raw==null?"":raw).trim();
       if(!s) return "Enter the parcel weight, for example 0.8 kg.";
@@ -3833,6 +3848,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
       window.addEventListener("offline", show);
       window.addEventListener("online", function(){
+        /* Coming back was silent: the offline banner simply vanished, so a
+           merchant who had been waiting had no confirmation it was safe to
+           retry. One green "Back online", then it clears itself. */
+        try{
+          if(el && offline){
+            el.textContent="Back online";
+            el.classList.add("nv-money-glow");
+            setTimeout(function(){ try{ el.classList.remove("nv-money-glow","show"); el.textContent=""; }catch(e){} },1800);
+          }
+        }catch(e){}
         hide();
         try{ if(typeof window.nvQuietRefresh === "function") window.nvQuietRefresh(); }catch(e){}
       });
@@ -7199,14 +7224,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const nvWProblem=nvWeightProblem(document.getElementById("bookingWeight").value);
       if(nvWProblem){
         toast(nvWProblem,"error");
-        try{ document.getElementById("bookingWeight").focus(); }catch(e){}
+        nvFlagField("bookingWeight");
         return;
       }
       let phone=document.getElementById("bookingPhone").value.replace(/\D/g,"");
       if(phone.length===10&&phone.startsWith("3")) phone="0"+phone;
       const consignee=document.getElementById("bookingName").value.trim();
       const cod=Number(document.getElementById("bookingCod").value || 0);
-      if(!Number.isFinite(cod) || cod<0){ toast("COD amount must be zero or more.","error"); document.getElementById("bookingCod").focus(); return; }
+      if(!Number.isFinite(cod) || cod<0){ toast("COD amount must be zero or more.","error"); nvFlagField("bookingCod"); return; }
       const address=document.getElementById("bookingAddress").value.trim();
       if(consignee.length>120 || address.length>400 || document.getElementById("bookingCategory").value.trim().length>140){
         toast("Booking text is too long. Keep the name within 120, product within 140 and address within 400 characters.","error"); return;
@@ -12912,6 +12937,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         /* Capped at "9+" while the panel behind it reported 154 new. One digit
            cannot stand for a hundred and fifty: the merchant has no idea whether
            to open it. 99+ is the honest ceiling. */
+        /* One shake, and only when something genuinely NEW arrived -- not on
+           every re-render, and never on a count that went down because the
+           merchant just read something. */
+        var prevUnread=(typeof window.__nvPrevUnread==="number")?window.__nvPrevUnread:null;
+        window.__nvPrevUnread=unread.length;
+        if(prevUnread!==null && unread.length>prevUnread &&
+           !matchMedia("(prefers-reduced-motion: reduce)").matches){
+          var bell=badge.parentNode||badge;
+          bell.classList.remove("nv-bell-shake"); void bell.offsetWidth; bell.classList.add("nv-bell-shake");
+          setTimeout(function(){ try{ bell.classList.remove("nv-bell-shake"); }catch(e){} },700);
+        }
         badge.textContent=unread.length>99?"99+":String(unread.length);
         badge.style.display=unread.length?"flex":"none";
         if(!notifOpen && !force) return;

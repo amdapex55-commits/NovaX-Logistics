@@ -2191,7 +2191,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=2c9f0dd2" defer></script>
+  <script src="client-app.js?v=0aac7133" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -4652,6 +4652,70 @@ html[data-theme="dark"] .field select{
   background-position:right 14px center;
   background-size:12px 8px;
   padding-right:38px;
+}
+
+/* ═══ Micro-interactions ════════════════════════════════════════════════
+   Added to the existing motion vocabulary, not on top of it: the portal
+   already owns countPop, nvRowChanged, nvShimmer/nvSkel, nvOffPulse and the
+   AWB reveal, so these fill the gaps rather than restating them.
+
+   Every rule here is presentational. None gates content on an animation --
+   if a transition never runs the element is already in its final state --
+   and every one is switched off under prefers-reduced-motion at the bottom. */
+
+/* Bell: ONE shake when a genuinely new notification arrives. */
+@keyframes nvBellShake{
+  0%,100%{transform:rotate(0)}
+  15%{transform:rotate(-13deg)} 30%{transform:rotate(10deg)}
+  45%{transform:rotate(-7deg)}  60%{transform:rotate(5deg)}
+  75%{transform:rotate(-2deg)}
+}
+.nv-bell-shake{animation:nvBellShake .6s ease both;transform-origin:50% 12%}
+
+/* Invalid field: a short shake on the FIELD only, never the whole form. */
+@keyframes nvFieldShake{
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-5px)} 40%{transform:translateX(5px)}
+  60%{transform:translateX(-3px)} 80%{transform:translateX(3px)}
+}
+.nv-invalid{animation:nvFieldShake .34s ease both;border-color:var(--nvu-bad-ln)!important}
+
+/* Expandable cards: rotate the chevron instead of swapping a glyph. */
+.nv-chev{display:inline-block;transition:transform .18s ease}
+[aria-expanded="true"] .nv-chev{transform:rotate(180deg)}
+
+/* Bottom navigation: slide the active state instead of hard-switching. */
+nav .navbtn,.bottom-nav button,.bottom-nav a{transition:color .18s ease,background-color .18s ease}
+
+/* Status board: height + fade rather than an instant jump. */
+.nv-collapsible{overflow:hidden;transition:max-height .18s ease,opacity .16s ease}
+.nv-collapsible[hidden]{display:block!important;max-height:0;opacity:0;pointer-events:none}
+
+/* Money: one soft green glow when cleared COD lands. Never loops. */
+@keyframes nvMoneyGlow{
+  0%{box-shadow:0 0 0 0 rgba(20,199,123,.44)}
+  100%{box-shadow:0 0 0 16px rgba(20,199,123,0)}
+}
+.nv-money-glow{animation:nvMoneyGlow .9s ease-out 1}
+
+/* Chips and small toggles: press feedback at the spec's .98. */
+.chip[role="button"],.nv-chip,.weight-chip,.tier-card,.seg-btn{transition:transform .12s ease,border-color .18s ease,background-color .18s ease}
+.chip[role="button"]:active,.nv-chip:active,.weight-chip:active,.tier-card:active,.seg-btn:active{transform:scale(.98)}
+
+/* Section changes: crossfade in place; the page must not jump. */
+@keyframes nvViewFade{from{opacity:.001}to{opacity:1}}
+.nv-view-fade{animation:nvViewFade .15s ease both}
+
+/* Search results: fade matches in rather than replacing the list abruptly. */
+@keyframes nvResultIn{from{opacity:.001;transform:translateY(3px)}to{opacity:1;transform:none}}
+.nv-result-in{animation:nvResultIn .14s ease both}
+
+/* Copy confirmation. */
+.nv-copied{color:var(--nvu-good-fg)!important}
+
+@media (prefers-reduced-motion: reduce){
+  .nv-bell-shake,.nv-invalid,.nv-money-glow,.nv-view-fade,.nv-result-in{animation:none!important}
+  .nv-chev,.nv-collapsible,.chip[role="button"],.nv-chip,.weight-chip,.tier-card,.seg-btn{transition:none!important}
 }
 </style>
 </body>
