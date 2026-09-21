@@ -2107,7 +2107,12 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
          outcome was recorded -- i.e. the END -- so using it as the start
          fallback made every refused/delivered duration compute as zero.
          Booking date is the honest start when there is no destination scan. */
-      var at=destinationArrivalAt(p) || (p.date ? p.date+"T00:00:00" : "") || p.statusSince;
+      /* THE NINE-HOUR GAP. The table's pickup timer measures from the real
+         bookedAt timestamp, while this fell back to p.date + "T00:00:00" --
+         midnight, parsed as LOCAL time. Same parcel, two clocks: "35h waiting"
+         in the table beside "1d 19h" on the status board. Both now start from
+         the same instant. */
+      var at=destinationArrivalAt(p) || p.bookedAt || (p.date ? p.date+"T00:00:00" : "") || p.statusSince;
       if(!at) return null;
       var start=new Date(at).getTime();
       if(!Number.isFinite(start)) return null;
@@ -2663,7 +2668,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const nvMetricsEl0=document.getElementById("clientMetrics");
       const wasExpanded=nvMetricsEl0 && nvMetricsEl0.classList.contains("nv-show-all");
       document.getElementById("clientMetrics").innerHTML=[
-        metricCard("My Parcels",cm.total,ops,"in selected range","blue","📦","clear"),
+        metricCard("My Parcels",cm.total,ops,"in selected range \u00b7 bar = average journey progress","blue","📦","clear"),
         metricCard("Delivered",
           rateKnown?`${cm.delivered}/${rated}`:"\u2014",
           rate,
@@ -3178,6 +3183,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }).observe(nvCardsHost,{childList:true});
     }catch(e){}
 
+    /* The board rendered all 189 parcels on top of the 189 already in the list
+       below it -- a ~29,460px page and hundreds of interactive nodes on a phone.
+       It now starts CLOSED on small screens; desktop keeps whatever the merchant
+       last chose. Opening it is one tap and the choice still persists. */
+    (function(){
+      try{
+        if(window.matchMedia && window.matchMedia("(max-width:760px)").matches && !state.__sbMobileInit){
+          state.__sbMobileInit=true; state.statusBoardOpen=false;
+        }
+      }catch(e){}
+    })();
     function toggleStatusBoard(){ state.statusBoardOpen=!state.statusBoardOpen; renderClientStatusBoard(); }
     function renderClientStatusBoard(){
       const el=document.getElementById("clientStatusBoard"); if(!el) return;
@@ -8829,9 +8845,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       host.innerHTML = bits.join(" ");
       host.style.display = "flex";
     }
+    /* Fetched ONCE per page load. A merchant who opened the portal before noon
+       and left the tab open still read "Support is closed" at 6:36pm, because
+       nothing ever re-asked. The hours themselves are computed correctly
+       server-side in Asia/Karachi -- it was the answer going stale, not the
+       timezone. Re-checked every 10 minutes and whenever Support is opened. */
     function nvTkDeskLoad(){
       var sb = window.__nvSb;
       if (!sb || !sb.rpc) return;
+      if(!window.__nvDeskTimer){
+        window.__nvDeskTimer = setInterval(function(){
+          if(!document.hidden) nvTkDeskLoad();
+        }, 600000);
+      }
       Promise.resolve(sb.rpc("nv_support_desk_meta"))
         .then(function(r){
           if (r && !r.error && r.data){ NV_TK_DESK = r.data; nvTkDeskRender(); }
@@ -14625,13 +14651,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(total===0){
         if(!ready) return { h:"Loading your workspace...", a:"Hang tight while we sync your account.", key:"nb_loading", go:"newBooking" };
         if(pct===0) return { h:"Create your first parcel.", a:"Fill name, phone, city, COD, product and full address, or paste an order above to fill it for you.", key:"nb_first_0", go:"newBooking" };
-        if(pct<100) return { h:"Almost there.", a:"Fill the remaining booking fields, then submit your first booking.", key:"nb_first_"+pct, go:"newBooking" };
+        if(pct<100) return { h:(pct<10?"Enter the shipment details.":"Almost there."), a:"Fill the remaining booking fields, then submit your first booking.", key:"nb_first_"+pct, go:"newBooking" };
         return { h:"Looks complete.", a:"Review the details, then submit your first booking.", key:"nb_first_100", go:"newBooking" };
       }
       if(total===1) return { h:"Booking your second parcel?", a:"Paste the WhatsApp order text above and I\u2019ll fill the form for you.", key:"nb_second_paste", go:"newBooking" };
       if(total===2) return { h:"Booking often?", a:"Bulk upload a CSV or connect your store so orders come in automatically.", key:"nb_third_bulk", go:"bulkBooking" };
       if(pct===0) return { h:"Create one clean AWB.", a:"Fill name, phone, city, COD, product and full address.", key:"nb_0", go:"newBooking" };
-      if(pct<100) return { h:"Almost there.", a:"Fill the remaining booking fields, then submit.", key:"nb_"+pct, go:"newBooking" };
+      /* "Almost there" greeted a COMPLETELY EMPTY form, implying progress
+         that had not happened. */
+      if(pct<100) return { h:(pct<10?"Enter the shipment details.":"Almost there."), a:"Fill the remaining booking fields, then submit.", key:"nb_"+pct, go:"newBooking" };
       return { h:"Looks complete.", a:"Review the details, then submit the booking.", key:"nb_100", go:"newBooking" };
     }
     if(tab==="awbLabel"){
