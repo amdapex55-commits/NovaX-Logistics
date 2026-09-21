@@ -11595,7 +11595,58 @@ html,body{ background:var(--bg); color:var(--ink); }
           state.processingBatchAwbs = [];
           nvSaveStateSoon();
           renderAdmin();
-          toast("No valid parcels found in this scan batch.", "error");
+          /* "No valid parcels found in this scan batch" named nothing, so an
+             operator at the desk could not tell WHICH id failed, whether the
+             parcel simply does not exist, or that they had fumbled a digit --
+             which at a scan desk is the likeliest cause by far. A one-character
+             transposition (N8350115 for N8530195) produced the same blank
+             refusal as a genuinely unknown parcel.
+
+             Name the ids, and offer the nearest real AWB when one is within a
+             character or two. The full parcel list is already in memory, so
+             this costs nothing. */
+          var nvNear = (function () {
+            try {
+              var pool = (state.parcels || []).map(function (p) { return p && p.awb; }).filter(Boolean);
+              /* DAMERAU, not plain Levenshtein. A swapped pair of digits is the
+                 typo people actually make at a scan desk -- N8350115 for
+                 N8530195 -- and plain Levenshtein charges 2 for it, pushing the
+                 real parcel past the threshold and suggesting nothing. A
+                 transposition costs 1 here, which is what it is. */
+              function dist(a, b) {
+                if (Math.abs(a.length - b.length) > 1) return 99;
+                var m = a.length, n = b.length, d = [], i, j;
+                for (i = 0; i <= m; i++) { d[i] = [i]; }
+                for (j = 0; j <= n; j++) { d[0][j] = j; }
+                for (i = 1; i <= m; i++) {
+                  for (j = 1; j <= n; j++) {
+                    var cost = a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1;
+                    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+                    if (i > 1 && j > 1 &&
+                        a.charAt(i - 1) === b.charAt(j - 2) &&
+                        a.charAt(i - 2) === b.charAt(j - 1)) {
+                      d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+                    }
+                  }
+                }
+                return d[m][n];
+              }
+              var best = null, bestD = 99;
+              awbs.forEach(function (want) {
+                pool.forEach(function (have) {
+                  var d = dist(String(want).toUpperCase(), String(have).toUpperCase());
+                  if (d < bestD) { bestD = d; best = have; }
+                });
+              });
+              return bestD <= 2 ? best : null;
+            } catch (e) { return null; }
+          })();
+          var nvList = awbs.slice(0, 3).join(", ") + (awbs.length > 3 ? " +" + (awbs.length - 3) + " more" : "");
+          toast(
+            (awbs.length === 1 ? nvList + " — no parcel with this tracking ID."
+                               : "None of these tracking IDs exist: " + nvList)
+            + (nvNear ? " Did you mean " + nvNear + "?" : ""),
+            "error");
           return;
         }
         state.processingBatchAwbs = found.map(p => p.awb);
