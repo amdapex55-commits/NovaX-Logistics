@@ -2191,7 +2191,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=de1376ac" defer></script>
+  <script src="client-app.js?v=b8ea954e" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -4757,6 +4757,27 @@ nav .navbtn,.bottom-nav button,.bottom-nav a{transition:color .18s ease,backgrou
 @media (prefers-reduced-motion: reduce){
   .nv-bell-shake,.nv-invalid,.nv-money-glow,.nv-view-fade,.nv-result-in{animation:none!important}
   .nv-chev,.nv-collapsible,.chip[role="button"],.nv-chip,.weight-chip,.tier-card,.seg-btn{transition:none!important}
+}
+
+/* ═══ Mobile keyboard: one action, not three ══════════════════════════════
+   Booking on a phone stacked THREE fixed bars above the keyboard -- the
+   sticky "Create Booking" bar, the bottom navigation, and the assistant
+   launcher -- leaving a sliver of form between them. The merchant is filling
+   one form; navigating away is not what they are about to do.
+
+   While a booking field has focus, the bottom nav and launcher step out and
+   the submit bar drops to sit directly on the keyboard. Nothing is removed
+   from the page, so blurring the field brings it all straight back. */
+@media (max-width:760px){
+  body.nv-kb-open .nv-bottomnav{ transform:translateY(110%); pointer-events:none; }
+  body.nv-kb-open .nvauto-btn,
+  body.nv-kb-open .nvauto-nudge,
+  body.nv-kb-open #nvAiLauncher,
+  body.nv-kb-open .nvai-launcher{ display:none !important; }
+  body.nv-kb-open #nvMobileBookBar{ bottom:0 !important; box-shadow:0 -8px 24px rgba(4,16,11,.22); }
+  body.nv-kb-open{ --nv-stack-2: 0px; }
+  .nv-bottomnav{ transition:transform .18s ease; }
+  @media (prefers-reduced-motion:reduce){ .nv-bottomnav{ transition:none; } }
 }
 </style>
 </body>

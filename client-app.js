@@ -3205,6 +3205,32 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ renderClientParcels(); }catch(e){}
     };
     window.nvResetParcelPaging=function(){ nvShownCount=NV_PAGE_STEP; };
+    /* Drives body.nv-kb-open. focusin/focusout is more reliable across Android
+       browsers than visualViewport, which several do not fire consistently, and
+       it cannot misfire on a rotate or a toolbar collapse the way a height
+       heuristic does. Only text-entry controls count -- a select opens a native
+       picker, not the keyboard. */
+    (function(){
+      try{
+        var KB="nv-kb-open", t=null;
+        function isTyping(el){
+          if(!el || !el.tagName) return false;
+          var tag=el.tagName.toLowerCase();
+          if(tag==="textarea") return true;
+          if(tag!=="input") return !!el.isContentEditable;
+          return ["text","tel","number","email","search","url","password"].indexOf((el.type||"text").toLowerCase())>-1;
+        }
+        function set(on){
+          clearTimeout(t);
+          t=setTimeout(function(){
+            try{ document.body.classList.toggle(KB, !!on); }catch(e){}
+          }, on?0:120);   /* small delay out, so tabbing between fields does not flicker */
+        }
+        document.addEventListener("focusin", function(e){ if(isTyping(e.target)) set(true); });
+        document.addEventListener("focusout", function(){ set(false); });
+        window.addEventListener("pagehide", function(){ try{ document.body.classList.remove(KB); }catch(e){} });
+      }catch(e){}
+    })();
     function renderClientParcels(){ return nvKeepPlace(function(){ return __renderClientParcels(); }); }
     function __renderClientParcels(){
       const nvAllFiltered=filteredParcels();
@@ -7567,8 +7593,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(leadWords) out.name=leadWords[1].trim();
       }
 
-      var addrLabel=text.match(/address\s*[:\-]\s*([^,\n]{4,80})/i);   /* [^,] matched newlines, so "Address: ..." swallowed the COD and Product lines under it */
-      if(addrLabel){ out.address=addrLabel[1].trim(); }
+      /* Addresses CONTAIN commas -- "House 5, DHA Phase 5" arrived as "House 5",
+         because the pattern stopped at the first one. Take the rest of the LINE,
+         then cut at the next field label so a single-line paste
+         ("... Address: X, COD: 900") still stops in the right place. */
+      var addrLabel=text.match(/address\s*[:\-]\s*([^\n]{4,160})/i);
+      if(addrLabel){
+        out.address=addrLabel[1]
+          .split(/,?\s*(?:phone|mobile|cell|city|cod|amount|rs\.?|price|product|name|order\s*id)\s*[:\-]/i)[0]
+          .trim().replace(/[,;\s]+$/,"");
+      }
       else{
         /* The clue window used to run straight through the COD figure, so
            "COD 2500 black hoodie DHA Phase 5" produced an address beginning
@@ -14901,6 +14935,32 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   var FSTYLE_ID="nvfsStyle";
   function injectFirstBookingStyles(){
     if(document.getElementById(FSTYLE_ID)) return;
+    /* Lifted from "a dialog that says it worked" to a moment worth the first
+       booking. The card rises rather than fades, the tick DRAWS instead of
+       appearing, the tracking ID is a perforated ticket the merchant can copy
+       in one tap, and the three facts stagger in underneath so the eye lands
+       on the AWB first. Everything below is presentational and every animation
+       is dropped under prefers-reduced-motion -- the card is fully readable
+       with no motion at all. */
+    var cssExtra=
+      "@keyframes nvfsRise{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}"
+      +"@keyframes nvfsDraw{to{stroke-dashoffset:0}}"
+      +"@keyframes nvfsRing{0%{box-shadow:0 0 0 0 rgba(20,199,123,.45)}100%{box-shadow:0 0 0 22px rgba(20,199,123,0)}}"
+      +"@keyframes nvfsUp{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}"
+      +".nvfs-card{animation:nvfsRise .34s cubic-bezier(.22,1,.36,1) both;overflow:hidden}"
+      +".nvfs-card::before{content:'';position:absolute;inset:0 0 auto 0;height:5px;background:linear-gradient(90deg,var(--nvu-accent),#14c77b,#5fe0a8)}"
+      +".nvfs-check{animation:nvfsRing 1.1s ease-out .18s 1;position:relative}"
+      +".nvfs-check svg{width:32px;height:32px}"
+      +".nvfs-check path{stroke:#fff;stroke-width:3.4;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:34;stroke-dashoffset:34;animation:nvfsDraw .42s ease-out .22s forwards}"
+      +".nvfs-awb{position:relative;display:inline-flex;align-items:center;gap:9px;background:var(--nvu-bg-2);border:1px dashed var(--nvu-line-2);border-radius:12px;padding:10px 14px;font-weight:900;letter-spacing:.04em}"
+      +".nvfs-copy{border:0;background:transparent;color:var(--nvu-accent);font-weight:800;font-size:12px;cursor:pointer;padding:4px 6px;border-radius:7px}"
+      +".nvfs-copy:active{transform:scale(.96)}"
+      +".nvfs-facts li{animation:nvfsUp .3s ease both}"
+      +".nvfs-facts li:nth-child(1){animation-delay:.30s}"
+      +".nvfs-facts li:nth-child(2){animation-delay:.38s}"
+      +".nvfs-facts li:nth-child(3){animation-delay:.46s}"
+      +"@media (prefers-reduced-motion:reduce){.nvfs-card,.nvfs-check,.nvfs-facts li{animation:none!important}"
+      +".nvfs-check path{stroke-dashoffset:0;animation:none!important}}";
     var css=".nvfs-overlay{position:fixed;inset:0;z-index:999998;background:rgba(4,20,14,.55);display:flex;align-items:center;justify-content:center;padding:16px;animation:nvfsFade .2s ease}"
       +"@keyframes nvfsFade{from{opacity:0}to{opacity:1}}"
       +".nvfs-card{position:relative;background:var(--nvu-bg);border-radius:var(--r-2xl);max-width:420px;width:100%;padding:32px 26px 26px;text-align:center;box-shadow:var(--sh-1)}"
@@ -14919,6 +14979,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       +".nvfs-btn.ghost{background:#eafff5;color:var(--nvu-accent);border:1px solid #bfe8d7}"
       +"@media(max-width:760px){.nvfs-overlay{align-items:flex-end;padding:0;}.nvfs-card{border-radius:var(--r-2xl) 16px 0 0;max-width:100%;width:100%;max-height:82vh;overflow:auto;-webkit-overflow-scrolling:touch;padding:22px 18px 18px;}.nvfs-actions{flex-direction:column;}}"
       +"@media(max-width:480px){.nvfs-btn{min-width:100%;}}";
+    css+=cssExtra;
     var st=document.createElement("style"); st.id=FSTYLE_ID; st.textContent=css; document.head.appendChild(st);
   }
 
@@ -14946,9 +15007,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ov.id="nvfsOverlay"; ov.className="nvfs-overlay";
       ov.innerHTML='<div class="nvfs-card">'
         +'<button class="nvfs-x" id="nvfsClose" aria-label="Close">\u00d7</button>'
-        +'<div class="nvfs-check">\u2713</div>'
+        +'<div class="nvfs-check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.6l5.2 5.2L20 7"/></svg></div>'
         +'<h3>Your first AWB is ready.</h3>'
-        +'<div class="nvfs-awb">Tracking ID: '+awb+'</div>'
+        +'<div class="nvfs-awb"><span>'+awb+'</span><button type="button" class="nvfs-copy" onclick="(function(b){try{navigator.clipboard.writeText(\''+awb+'\');b.textContent=\'Copied\';setTimeout(function(){b.textContent=\'Copy\'},1400)}catch(e){}})(this)">Copy</button></div>'
         +'<p>Next: print this label and attach it to the parcel before pickup.</p>'
         /* The card told a first-time merchant what to do and showed the
            journey, but not the three things they actually ask next: when do
