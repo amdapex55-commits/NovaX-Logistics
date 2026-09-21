@@ -22,7 +22,7 @@
  *   way. That is the kill switch, and it is the reason it is safe to ship
  *   this at all.
  */
-var CACHE = "novax-v43";
+var CACHE = "novax-v44";
 var PRECACHE = ["/client.html", "/assets/favicon.svg"];
 
 self.addEventListener("install", function (event) {
@@ -32,7 +32,28 @@ self.addEventListener("install", function (event) {
       /* Individually, so one 404 cannot fail the whole install. */
       return Promise.all(PRECACHE.map(function (u) {
         return c.add(u).catch(function () {});
-      }));
+      })).then(function () {
+        /* Precaching the HTML alone was a trap. That HTML hardcodes ONE bundle
+           URL (client-app.js?v=<hash>); assets are cache-first and activate
+           deletes older caches, so the offline fallback could serve a shell
+           whose bundle was in no cache. Offline, that shell can never boot --
+           every function it needs is simply absent, and the merchant sees
+           "one file did not arrive" with a Reload that changes nothing.
+           Read the scripts the shell actually asks for and cache them with it,
+           so the pair is always coherent. */
+        return c.match("/client.html").then(function (res) {
+          if (!res) return;
+          return res.clone().text().then(function (html) {
+            var urls = [], re = /<script[^>]+src="([^"]+)"/g, m;
+            while ((m = re.exec(html))) {
+              if (m[1].indexOf("//") === -1) urls.push(m[1]);   /* same-origin only */
+            }
+            return Promise.all(urls.map(function (u) {
+              return c.add(u).catch(function () {});
+            }));
+          });
+        }).catch(function () {});
+      });
     })
   );
 });

@@ -2204,16 +2204,57 @@
    so if the app still has not defined itself by then, say so plainly and give
    them a button rather than an infinite spinner. */
 (function(){
+  /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
+     The service worker precaches /client.html, and that HTML hardcodes one
+     bundle URL (client-app.js?v=<hash>). Assets are cache-first and activate
+     DELETES older caches, so a merchant can end up holding a cached shell
+     whose bundle is in no cache and, on a dropped connection, cannot be
+     fetched either. Pressing Reload served the same dead shell again -- the
+     merchant was stuck in a loop with an unusable portal.
+
+     So before showing anything, take ONE automatic recovery pass: drop every
+     cache, unregister the worker, reload clean. That is exactly what ?nosw=1
+     does by hand, done for them. The attempt is recorded in sessionStorage so
+     a genuinely broken deploy cannot loop -- the second failure shows the
+     message and stops. */
+  function nvShellRecover(){
+    var KEY = "nvShellRecoveryTried";
+    var tried = false;
+    try { tried = sessionStorage.getItem(KEY) === "1"; } catch (e) {}
+    if (tried) return false;
+    try { sessionStorage.setItem(KEY, "1"); } catch (e) {}
+    var fired = false;
+    var done = function(){
+      if (fired) return; fired = true;
+      var q = location.search ? (location.search + "&") : "?";
+      location.replace(location.pathname + q + "nvfix=" + Date.now());
+    };
+    var jobs = [];
+    try { if (window.caches && caches.keys) jobs.push(caches.keys().then(function(k){
+      return Promise.all(k.map(function(x){ return caches.delete(x); })); })); } catch (e) {}
+    try { if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations)
+      jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){
+        return Promise.all(rs.map(function(r){ return r.unregister(); })); })); } catch (e) {}
+    if (!jobs.length) { done(); return true; }
+    Promise.all(jobs).then(done, done);
+    setTimeout(done, 2500);
+    return true;
+  }
   setTimeout(function(){
-    if (typeof window.showClientTab === "function") return;   // booted fine
+    if (typeof window.showClientTab === "function") {
+      try { sessionStorage.removeItem("nvShellRecoveryTried"); } catch (e) {}
+      return;
+    }
+    if (nvShellRecover()) return;
     var g = document.getElementById("nvAuthGate");
     if (!g) return;
     g.innerHTML =
       '<div style="max-width:320px;text-align:center;padding:24px">' +
         '<div style="font-size:15px;font-weight:700;margin-bottom:8px">Could not finish loading</div>' +
         '<div style="font-size:13px;line-height:1.55;color:#5f8272;margin-bottom:16px">' +
-          'The portal downloaded but one file did not arrive. This is almost always ' +
-          'a connection drop &mdash; your parcels and money are untouched.</div>' +
+          'One file did not arrive. We already cleared this device&rsquo;s cache and ' +
+          'tried again, so this is the connection rather than your account &mdash; ' +
+          'your parcels and money are untouched.</div>' +
         '<button onclick="location.reload()" style="border:0;border-radius:10px;padding:11px 18px;' +
           'font-size:14px;font-weight:800;background:#14c77b;color:#04140c;cursor:pointer">Reload</button>' +
       '</div>';
