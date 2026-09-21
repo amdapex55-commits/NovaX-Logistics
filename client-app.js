@@ -3107,7 +3107,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var delivered=(typeof isDeliveredLedgerParcel==="function") ? isDeliveredLedgerParcel(p) : String(p&&p.status||"").indexOf("Delivered")>-1;
       return delivered
         ? '<span class="nv-paid-tape" title="COD settled to you">PAID</span>'
-        : '<span class="nv-paid-tape" title="No COD was collected on this parcel. Its delivery charge was settled on an invoice." style="background:#6b7d74">CHARGE SETTLED</span>';
+        : '<span class="nv-paid-tape" title="No COD was collected on this parcel. Its delivery charge was settled on an invoice." style="background:#55635c">CHARGE SETTLED</span>';
     }
     function nvPaidRibbon(p){ return nvIsPaidParcel(p) ? '<span class="nv-paid-ribbon">PAID</span>' : ""; }
 
@@ -3307,7 +3307,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const sbHead=document.getElementById("statusBoardHead"); if(sbHead) sbHead.setAttribute("aria-expanded",open?"true":"false");
       el.style.display=open?"flex":"none";
       if(!open){ el.innerHTML=""; return; }
-      el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${s}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].map(p=>`<div class="sb-parcel" role="button" tabindex="0" aria-label="Open ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><span class="sb-awb">${escLabelText(p.awb)}</span><span class="sb-meta">${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)}</span><span class="sb-meta">${money(p.cod)} &middot; ${agingLabel(agingHours(p))}</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
+      el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${escLabelText(nvStatusLabel(s))}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].map(p=>`<div class="sb-parcel" role="button" tabindex="0" aria-label="Open ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><span class="sb-awb">${escLabelText(p.awb)}</span><span class="sb-meta">${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)}</span><span class="sb-meta">${money(p.cod)} &middot; ${agingLabel(agingHours(p))}</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
     }
     /* ===== AI Exception Resolution Center: deterministic problem/cause/action card ===== */
     function classifyParcelException(p){

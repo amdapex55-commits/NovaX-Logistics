@@ -220,9 +220,14 @@
     tbody tr{transition:background var(--speed);}
     tbody tr:hover{background:rgba(12,124,89,.04);}
     .status,.chip{display:inline-flex;align-items:center;gap:6px;padding:6px 8px;border-radius:var(--r-pill);font-size:12px;font-weight:800;white-space:nowrap;}
-    .status.good,.chip.good{color:#075f43;background:var(--mint);}
-    .status.warn,.chip.warn{color:#8b4d09;background:var(--amber-soft);}
-    .status.bad,.chip.bad{color:#8c271f;background:var(--red-soft);}
+    /* Measured 1.8:1 in dark mode: #075f43 sat on --mint, which flips to a dark
+       green in dark theme. That is the DELIVERED chip, the one a merchant sees
+       most often, and it was effectively invisible. Same defect already fixed in
+       admin.html: tokenised background paired with a hardcoded light-theme text
+       colour. .info below was always correct and shows the pattern. */
+    .status.good,.chip.good{color:var(--nvu-good-fg);background:var(--nvu-good-bg);}
+    .status.warn,.chip.warn{color:var(--nvu-warn-fg);background:var(--nvu-warn-bg);}
+    .status.bad,.chip.bad{color:var(--nvu-bad-fg);background:var(--nvu-bad-bg);}
     .status.info,.chip.info{color:var(--nvu-info-fg);background:var(--nvu-info-bg);}
     .mini-dot{width:7px;height:7px;border-radius:50%;background:currentColor;}
     .journey{display:grid;gap:10px;}
@@ -2191,7 +2196,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=e112e85e" defer></script>
+  <script src="client-app.js?v=caea2c1a" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -4728,9 +4733,10 @@ html[data-theme="dark"] .field select{
 /* Bottom navigation: slide the active state instead of hard-switching. */
 nav .navbtn,.bottom-nav button,.bottom-nav a{transition:color .18s ease,background-color .18s ease}
 
-/* Status board: height + fade rather than an instant jump. */
-.nv-collapsible{overflow:hidden;transition:max-height .18s ease,opacity .16s ease}
-.nv-collapsible[hidden]{display:block!important;max-height:0;opacity:0;pointer-events:none}
+/* REMOVED .nv-collapsible: nothing ever used it, and it carried
+   [hidden]{display:block!important}, which would have defeated the document's
+   own [hidden]{display:none!important} for any element that later picked the
+   class up. Dead CSS holding a live trap. */
 
 /* Money: one soft green glow when cleared COD lands. Never loops. */
 @keyframes nvMoneyGlow{
@@ -4756,7 +4762,7 @@ nav .navbtn,.bottom-nav button,.bottom-nav a{transition:color .18s ease,backgrou
 
 @media (prefers-reduced-motion: reduce){
   .nv-bell-shake,.nv-invalid,.nv-money-glow,.nv-view-fade,.nv-result-in{animation:none!important}
-  .nv-chev,.nv-collapsible,.chip[role="button"],.nv-chip,.weight-chip,.tier-card,.seg-btn{transition:none!important}
+  .nv-chev,.chip[role="button"],.nv-chip,.weight-chip,.tier-card,.seg-btn{transition:none!important}
 }
 
 /* ═══ Mobile keyboard: one action, not three ══════════════════════════════
