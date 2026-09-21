@@ -1440,7 +1440,9 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       var myId=(state.client&&state.client.id)||null;
       var all=(state.parcels||[]).filter(function(p){ return p.clientId===myId; });
       var closedStatuses=["Delivered","Return to shipper","Refused","Cancelled by client"];
-      var active=all.filter(function(p){ return closedStatuses.indexOf(p.status)===-1; });
+      /* Same predicate the Full Report's "Open Parcels" uses, so "31 active" and
+         "44 open" can no longer describe one account with two numbers. */
+      var active=all.filter(function(p){ return !nvOutcomeSettled(p); });
       var delayed=all.filter(function(p){ return typeof isDelayed==="function"?isDelayed(p):(p.status!=="Delivered"&&agingHours(p)>24); });
       var refused=all.filter(function(p){ return p.status==="Refused"; });
       var returned=all.filter(function(p){ return /return/i.test(p.status||""); });
@@ -1908,7 +1910,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       try{ outFlow=Array.isArray(d.outflow_4w)?d.outflow_4w:JSON.parse(d.outflow_4w||"[]"); }catch(e){ outFlow=[]; }
 
       var chips='<span class="nv-inc-chip">In transit <b>'+escLabelText(money(transit))+'</b>'+(transitN?(' &middot; '+transitN+' parcel'+(transitN===1?"":"s")):"")+'</span>'+
-                '<span class="nv-inc-chip">Delivered, clearing <b>'+escLabelText(money(clearing))+'</b>'+(clearingN?(' &middot; '+clearingN+' parcel'+(clearingN===1?"":"s")):"")+'</span>'+
+                '<span class="nv-inc-chip">Delivered, clearing <b>'+escLabelText(money(clearing))+'</b> gross COD'+(clearingN?(' &middot; '+clearingN+' parcel'+(clearingN===1?"":"s")):"")+'</span>'+
                 '<span class="nv-inc-chip">Available now <b>'+escLabelText(money(avail))+'</b></span>';
 
       host.style.display="block";
@@ -2673,7 +2675,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            that makes a delivery-charge total a percentage, so the bar is gone
            rather than invented. */
         metricCard("Delivery Charges",money(cm.deliveryCharges),null,"courier charges on delivered parcels","amber","💳","filter:Delivered"),
-        metricCard("Invoice Payable Pending",money(cm.payable),null,"delivered, not yet in wallet","good","🧾","tab:payments"),
+        metricCard("Invoice Payable Pending",money(cm.payable),null,"net to you \u2014 COD minus delivery charges","good","🧾","tab:payments"),
         metricCard("Wallet Balance",money(Number((state.client&&state.client.walletBalance)||0)),null,"ready to withdraw","blue","💰","tab:wallet"),
         '<button type="button" id="nvMetricsToggle" class="ghost-btn nv-metrics-toggle" style="display:none" onclick="var g=document.getElementById(&quot;clientMetrics&quot;); g.classList.toggle(&quot;nv-show-all&quot;); this.textContent=g.classList.contains(&quot;nv-show-all&quot;)?&quot;Show fewer metrics&quot;:&quot;Show all metrics&quot;;">Show all metrics</button>'
       ].join("");
@@ -3485,7 +3487,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const concluded=cm.parcels.filter(p=>nvIsConcludedParcel(p) && nvIsRatedParcel(p)).length;
       const concludedKnown=concluded>0;
       const concludedRate=concludedKnown?percent(cm.delivered,concluded):0;
-      const open=cm.parcels.filter(p=>!nvIsConcludedParcel(p)).length;
+      /* "Open" used nvIsConcludedParcel, which does NOT contain "Refused", so
+         refused parcels counted as open: the report said 44 open while the
+         dashboard said 31 active -- same account, two numbers, no explanation.
+         Both now ask nvOutcomeSettled: has this delivery attempt finished. */
+      const open=cm.parcels.filter(p=>!nvOutcomeSettled(p)).length;
       const awaitingOutcome=cm.parcels.filter(p=>nvIsRatedParcel(p) && !nvIsConcludedParcel(p)).length;
       if(host){
         host.innerHTML=[
@@ -3512,7 +3518,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             percent(cm.deliveryCharges,Math.max(1,deliveredCod)),
             "deducted by NovaX on delivered parcels","amber","","",true),
           metricCard("Awaiting Pickup",awaitingPickup,percent(awaitingPickup,Math.max(1,cm.total)),"no COD due until collected",awaitingPickup?"blue":"good"),
-          metricCard("Open Parcels",open,percent(open,Math.max(1,cm.total)),"not closed yet",open?"blue":"good")
+          metricCard("Open Parcels",open,percent(open,Math.max(1,cm.total)),"still moving \u2014 same count as Active on your dashboard",open?"blue":"good")
         ].join("")+nvReportFilterNote(pool);
       }
       if(rowsHost){
@@ -5169,10 +5175,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        relabelled at the display boundary. */
     function nvMoneyLabel(status){
       var m = {
+        /* "Paid to you" was used for BOTH wallet credit and bank payment, so a
+           merchant whose money was still sitting in their NovaX wallet -- and
+           still counted inside the wallet balance -- was told it had been paid
+           to them. Those are different places and the merchant must be able to
+           tell them apart: credited to wallet, then withdrawn to bank. */
         "Generated":"Being counted",
-        "Pushed to wallet":"Ready to withdraw",
-        "Settled":"Paid to you",
-        "Paid":"Paid to you",
+        "Pushed to wallet":"Credited to your wallet",
+        "Settled":"Paid to your bank",
+        "Paid":"Paid to your bank",
         "Paid to NovaX":"You've paid this",
         "Cancelled":"Cancelled"
       };
@@ -8639,9 +8650,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var openOnes = all.filter(function(t){ return t.status !== "resolved"; });
       var badge = document.getElementById("nvTkOpenCount");
       if (badge){
-        var breached = openOnes.filter(function(t){ return nvTkSla(t).state === "breached"; }).length;
-        badge.textContent = openOnes.length + " open" + (breached ? " · " + breached + " overdue" : "");
-        badge.className = "chip " + (breached ? "bad" : openOnes.length ? "warn" : "good");
+        /* A FAILED QUERY WAS BEING PRESENTED AS A CONFIRMED ZERO. When the load
+           errored, NV_TK.list stayed empty and this cheerfully rendered
+           "0 open" in calm green -- so a merchant chasing a lost parcel read
+           "you have no tickets" and opened a duplicate. The list beneath
+           already says the load failed; the count must not contradict it with
+           a number it does not have. */
+        if (NV_TK.loadError){
+          badge.textContent = "not loaded";
+          badge.className = "chip warn";
+        } else {
+          var breached = openOnes.filter(function(t){ return nvTkSla(t).state === "breached"; }).length;
+          badge.textContent = openOnes.length + " open" + (breached ? " · " + breached + " overdue" : "");
+          badge.className = "chip " + (breached ? "bad" : openOnes.length ? "warn" : "good");
+        }
       }
       /* The three filters gave no idea what was behind them, so "Resolved"
          looked like an empty tab rather than a history. Each carries its own
@@ -11824,7 +11846,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         : (showAll && totalItems>6
             ? `<p class="footer-note" style="margin-top:8px">Showing all ${totalItems}. <button class="action-btn ghost" onclick="typeof nvActionNeededShowFewer==='function'&&nvActionNeededShowFewer()">Show fewer</button></p>`
             : "");
-      host.innerHTML=`<div class="panel nv-notice-warm"><div class="section-head"><div><h3>Action needed</h3><p>${totalItems} item${totalItems===1?"":"s"} to review. Open each parcel to see its latest update and available actions.</p></div></div><div class="ops-list">`+parcelCards.concat(walletCard).join("")+`</div>${moreNote}</div>`;
+      host.innerHTML=`<div class="panel nv-notice-warm"><div class="section-head"><div><h3>Action needed</h3><p>${parcelItems.length} parcel${parcelItems.length===1?"":"s"}${walletItems?" and 1 wallet item":""} to review. Open each parcel to see its latest update and available actions.</p></div></div><div class="ops-list">`+parcelCards.concat(walletCard).join("")+`</div>${moreNote}</div>`;
     }
 
     function clientActionNeededReattempt(awb){
@@ -12736,6 +12758,37 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function nvReadSet(){
         try{ return JSON.parse(localStorage.getItem(nvNotifReadKey())||"[]"); }catch(e){ return []; }
       }
+      /* The raw `exception` column was printed straight into the notification:
+         merchants saw "cancel" and "CANCEL" -- internal shorthand, inconsistent
+         casing, and genuinely ambiguous about whether the CUSTOMER refused, the
+         booking was cancelled, or a return was started. */
+      function nvHumanException(raw){
+        var t=String(raw==null?"":raw).trim();
+        if(!t) return "";
+        var map={
+          "cancel":"Order cancelled before delivery",
+          "cancelled":"Order cancelled before delivery",
+          "refuse":"Customer refused the parcel",
+          "refused":"Customer refused the parcel",
+          "na":"Consignee was not available",
+          "n/a":"Consignee was not available",
+          "no response":"Consignee did not respond",
+          "wrong address":"Address could not be found",
+          "damaged":"Parcel reported damaged"
+        };
+        var hit=map[t.toLowerCase()];
+        if(hit) return hit;
+        return t.charAt(0).toUpperCase()+t.slice(1);
+      }
+      /* 154 unread and no way to clear them but tapping each one. */
+      function nvMarkAllRead(){
+        try{
+          var ids=nvNotifEvents().map(function(e){ return e.id; }).filter(Boolean);
+          localStorage.setItem(nvNotifReadKey(), JSON.stringify(ids));
+        }catch(e){}
+        try{ nvNotifRender(true); }catch(e){}   // nvNotifRender paints the badge too
+      }
+      window.nvMarkAllRead=nvMarkAllRead;
       function nvMarkRead(id){
         if(!id) return;
         try{
@@ -12755,7 +12808,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              every row rendered identically and a refused parcel looked exactly
              like a delivered one. */
           if(st==="Delivered") out.push({ kind:"good", at:stamp(p), id:p.awb+"|delivered|"+stamp(p), awb:p.awb, title:p.awb+" delivered", sub:[p.consignee,p.city].filter(Boolean).join(" \u00b7 ") });
-          else if(NEEDS_ME.indexOf(st)>=0) out.push({ kind:"bad", at:stamp(p), id:p.awb+"|"+st+"|"+stamp(p), awb:p.awb, title:p.awb+" \u2013 "+st, sub:(p.exception||[p.consignee,p.city].filter(Boolean).join(" \u00b7 ")) });
+          else if(NEEDS_ME.indexOf(st)>=0) out.push({ kind:"bad", at:stamp(p), id:p.awb+"|"+st+"|"+stamp(p), awb:p.awb, title:p.awb+" \u2013 "+st, sub:(nvHumanException(p.exception)||[p.consignee,p.city].filter(Boolean).join(" \u00b7 ")) });
           else if(st==="Collected by rider") out.push({ kind:"info", at:stamp(p), id:p.awb+"|pickup|"+stamp(p), awb:p.awb, title:p.awb+" picked up", sub:"Rider collected this parcel" });
         });
         /* Support replies. The empty state promised these and nothing produced
@@ -12827,7 +12880,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(!badge||!panel) return;
         var events=nvNotifEvents(), read=nvReadSet();
         var unread=events.filter(function(n){ return read.indexOf(n.id)<0; });
-        badge.textContent=unread.length>9?"9+":String(unread.length);
+        /* Capped at "9+" while the panel behind it reported 154 new. One digit
+           cannot stand for a hundred and fifty: the merchant has no idea whether
+           to open it. 99+ is the honest ceiling. */
+        badge.textContent=unread.length>99?"99+":String(unread.length);
         badge.style.display=unread.length?"flex":"none";
         if(!notifOpen && !force) return;
         /* Every row used to be the same weight in the same colour, so a refused
@@ -12835,8 +12891,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            only signal was a 2% background tint for unread. Severity is now
            carried by a coloured rail and dot, the AWB is a heading, and the
            panel says how many need attention. */
+        /* 154 unread with no way to clear them except tapping each one. */
         var head='<div class="nv-notif-hd"><b>Notifications</b><span>'+
-          (unread.length?unread.length+" new":"all read")+"</span></div>";
+          (unread.length?unread.length+" new":"all read")+"</span>"+
+          (unread.length?'<button type="button" class="ghost-btn" style="margin-left:auto;min-height:34px;padding:4px 10px;font-size:12px" onclick="event.stopPropagation();nvMarkAllRead()">Mark all read</button>':"")+
+          "</div>";
         panel.innerHTML=head+(events.length?events.slice(0,notifVisibleCount).map(function(n){
           var kind=n.kind==="bad"?"k-bad":(n.kind==="good"?"k-good":"k-info");
           return '<div class="nv-notif-i '+kind+(read.indexOf(n.id)<0?" unread":"")+
@@ -13219,7 +13278,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var badgeEl=btn.querySelector(".nvauto-badge");
       if(hasIssue && !isOpen){
         if(!badgeEl){ badgeEl=document.createElement("span"); badgeEl.className="nvauto-badge"; btn.appendChild(badgeEl); }
-        badgeEl.textContent=ctx.issueCount>9?"9+":String(ctx.issueCount);
+        badgeEl.textContent=ctx.issueCount>99?"99+":String(ctx.issueCount);
       } else if(badgeEl){ badgeEl.remove(); }
     }catch(e){}
   }
@@ -14551,7 +14610,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(!ready) return { h:"Loading your workspace...", a:"Hang tight while we sync your account.", key:"dash_loading", go:"dashboard" };
         return { h:"Start with your first booking.", a:"Tap New Booking and create your first AWB.", key:"dash_empty", go:"go_booking" };
       }
-      if(delayed>0||refused>0) return { h:"Some parcels need attention.", a:delayed+" aging, "+refused+" refused \u2014 review them first.", key:"dash_attn_"+delayed+"_"+refused, go:"dashboard" };
+      /* WAS delayed+refused -- two SUBSETS of the attention set -- so the coach
+         said "20 aging, 13 refused" (33) beside a dashboard reporting 50 need
+         attention, with no account of the other 17. One predicate, one number. */
+      var attnN=(typeof nvAttentionParcels==="function") ? nvAttentionParcels().length : (delayed+refused);
+      if(attnN>0) return { h:"Some parcels need attention.", a:attnN+" parcel"+(attnN===1?"":"s")+" \u2014 aging, refused, exceptions or missing details. Review them first.", key:"dash_attn_"+attnN, go:"dashboard" };
       return { h:"Today's focus: check parcels needing attention.", a:"Tap any AWB to see full journey.", key:"dash_default", go:"dashboard" };
     }
     if(tab==="newBooking"){
@@ -16556,7 +16619,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(n > 0){
           var b = document.createElement("span");
           b.className = "nvauto-badge";
-          b.textContent = n > 9 ? "9+" : String(n);
+          b.textContent = n > 99 ? "99+" : String(n);
           btn.appendChild(b);
           btn.classList.add("nv-pulse");
           var sub = document.getElementById("nvAiSub");
@@ -16582,7 +16645,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(n > 0){
         var b = document.createElement("span");
         b.className = "nvauto-badge";
-        b.textContent = n > 9 ? "9+" : String(n);
+        b.textContent = n > 99 ? "99+" : String(n);
         btn.appendChild(b);
         btn.classList.add("nv-pulse");
         if(sub) sub.textContent = n + " parcel" + (n === 1 ? "" : "s") + " need attention";
