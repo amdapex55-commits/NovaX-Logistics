@@ -3524,9 +3524,32 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const real=!!(p && p.awb);
       if(real){ host.innerHTML=awbCompleteBadge(p)+awbLabelHtml(p); }
       else{
+        /* Ticket TKT-000076: the merchant landed here, saw an empty label and
+           three bright buttons that did nothing, and concluded there was no
+           download option. Telling them to "open one from your parcel list"
+           sends them to another tab to do something they came here to do.
+           Offer the parcels right here instead -- one tap fills the label and
+           makes Print / Save as PDF live. */
+        var pickable=(typeof nvMyParcels==="function"?nvMyParcels():(state.parcels||[]))
+          .filter(function(x){ return x && x.awb; })
+          .sort(function(a,b){ return String(b.bookedAt||b.date||"").localeCompare(String(a.bookedAt||a.date||"")); })
+          .slice(0,6);
+        var picker=pickable.length
+          ? '<div class="footer-note" style="margin:10px 0 6px">Pick a parcel to load its label:</div>'
+            +'<div style="display:grid;gap:6px;text-align:left">'
+            +pickable.map(function(x){
+                return '<button type="button" class="ghost-btn" style="width:100%;justify-content:flex-start;padding:10px 12px;min-height:44px"'
+                  +' onclick="selectParcel(\''+escLabelText(x.awb)+'\')">'
+                  +'<strong>'+escLabelText(x.awb)+'</strong>'
+                  +'<span class="footer-note" style="margin-left:8px">'
+                  +escLabelText([x.consignee,x.city].filter(Boolean).join(" \u00b7 "))+'</span>'
+                  +'</button>';
+              }).join("")
+            +'</div>'
+          : '<div class="footer-note">Book a parcel and its label appears here, ready to print.</div>';
         host.innerHTML='<div class="nv-c-empty" style="padding:22px 16px;text-align:center">'
           +'<div style="font-weight:800;margin-bottom:4px">No air waybill to show yet</div>'
-          +'<div class="footer-note">Book a parcel, or open one from your parcel list, and its label appears here ready to print.</div>'
+          +picker
           +'</div>';
       }
       ["printAwbBtn","savePdfAwbBtn","waAwbBtn"].forEach(function(id){

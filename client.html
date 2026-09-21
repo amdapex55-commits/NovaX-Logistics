@@ -121,7 +121,18 @@
     .ghost-btn{border:1px solid #cfe6dc;background:var(--nvu-bg);color:#071d17;}
     a.tab-btn,a.action-btn,a.ghost-btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;}
     main{max-width:1440px;width:100%;margin:0 auto;padding:18px;min-width:0;max-width:min(1440px,100vw);}
-    .view{display:none;animation:fadeUp .32s ease both;min-width:0;max-width:100%;}
+    /* fill-mode is "backwards", NOT "both". fadeUp ends on
+       transform:translateY(0) -- still a transform -- and "both" keeps that
+       final keyframe applied forever after the animation finishes. A
+       transformed element becomes the containing block for every
+       position:fixed DESCENDANT, so #clientMenu (fixed, bottom:64px) was
+       measured from the bottom of this ~4000px-tall section instead of the
+       screen: computed top 3615px, far below the viewport, and fixed means
+       scrolling can never reveal it. That is the dead bottom-nav "More".
+       "backwards" still holds the from-state before the animation starts,
+       so nothing flashes, and the element returns to transform:none once it
+       ends -- which is identical to the to-keyframe, so nothing moves. */
+    .view{display:none;animation:fadeUp .32s ease backwards;min-width:0;max-width:100%;}
     .view.active{display:block;}
     @keyframes fadeUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
     /* NovaX fix (client portal animation pass v1): shared entrance keyframes
@@ -182,7 +193,9 @@
     .client-tab{width:100%;min-height:32px;border-radius:var(--radius);background:transparent;color:var(--muted);text-align:left;padding:0 10px;font-weight:650;font-size:13px;transition:background var(--speed),color var(--speed),transform var(--speed);}
     .client-tab:hover{background:rgba(12,124,89,.08);transform:translateX(2px);}
     .client-tab.active{background:var(--green);color:#fff;}/* was background:var(--ink);color:white -- an INK token used as a SURFACE. --ink correctly inverts to #eaf3ee in dark, so the active tab became white text on near-white: 1.13:1, invisible. The accent pair is semantically right for a selected nav item and passes in both themes (5.19:1 light, 8.59:1 dark). */
-    .client-module{display:none;animation:fadeUp .28s ease both;}
+    /* Same trap as .view above: a retained transform here would capture any
+       position:fixed element inside a module. */
+    .client-module{display:none;animation:fadeUp .28s ease backwards;}
     .client-module.active{display:block;}
     .grid{display:grid;gap:14px;min-width:0;max-width:100%;}
     .grid.metrics{grid-template-columns:repeat(4,minmax(0,1fr));}
@@ -1058,6 +1071,20 @@
   }
   .nv-mh-btn:hover:not(:disabled){ transform:translateY(-1px); }
   .nv-mh-btn:disabled{ opacity:.4; cursor:not-allowed; box-shadow:none; }
+
+/* ── a disabled button must LOOK disabled ─────────────────────────────────
+   Support ticket TKT-000076, "no download option is available": on the AWB
+   Label tab with no parcel selected, renderAwbLabel() correctly sets
+   disabled=true on Print Now / Save as PDF / WhatsApp -- but nothing styled
+   that state, so they rendered at full opacity in brand green with
+   cursor:pointer. The merchant tapped a bright, confident "Save as PDF..."
+   and nothing happened, which reads as the feature being missing rather
+   than as "pick a parcel first". */
+.action-btn:disabled,.ghost-btn:disabled,.nvfs-btn:disabled,
+button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
+  opacity:.45;cursor:not-allowed;box-shadow:none;filter:saturate(.6);
+}
+.action-btn:disabled:hover,.ghost-btn:disabled:hover{transform:none;}
   /* 4 — shimmer only while there is something to withdraw */
   .nv-mh-btn.nv-live::after{
     content:""; position:absolute; top:0; bottom:0; width:38%;
@@ -2196,7 +2223,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=79ae4c87" defer></script>
+  <script src="client-app.js?v=43d68b4e" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
