@@ -2073,8 +2073,52 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       if(p.status==="Parcel received at destination") return p.statusSince||"";
       return "";
     }
-    function agingHours(p){ const at=destinationArrivalAt(p); if(!at) return null; const ms=Date.now()-new Date(at).getTime(); return Number.isFinite(ms)?Math.max(0,ms/3600000):null; }
-    function agingLabel(h){ if(h==null||!Number.isFinite(Number(h))) return "Starts at destination"; h=Number(h); if(h<1) return "just now"; if(h<24) return `${Math.max(0,Math.round(h))}h`; const d=Math.floor(h/24); const r=Math.round(h%24); return r?`${d}d ${r}h`:`${d}d`; }
+    /* TWO defects lived in this one line.
+       1. It only ever measured from "Parcel received at destination". A Karachi
+          parcel never has that step, so `at` was empty, this returned null and
+          the merchant saw the placeholder "Starts at destination" on parcels
+          that had ALREADY BEEN DELIVERED back in August.
+       2. The clock never stopped. A delivered or refused parcel kept counting
+          to now, forever -- which is why refused parcels read "2d late",
+          "7d late", "16d late": lateness accruing on an outcome settled weeks
+          ago.
+       Now: fall back to the booking date so there is always a real number, and
+       freeze the clock at the moment the parcel finished. A concluded parcel
+       shows how long it TOOK, not how long ago it happened. */
+    /* DELIBERATELY separate from NV_CONCLUDED_STATUSES. That list is the
+       delivery-RATE denominator, and it no longer contains "Refused" -- so
+       reusing it here left refused parcels ageing forever, which is the bug.
+       Widening it instead would have silently moved the delivery rate on every
+       report. This list answers a different question: has this parcel's
+       outbound delivery attempt finished, whatever the outcome? */
+    var NV_OUTCOME_SETTLED=["Delivered","Refused","Consignee not available","Out of service area",
+      "Return to shipper","Parcel returned to consignee","Cancelled","Cancelled by client"];
+    function nvOutcomeSettled(p){
+      if(!p) return false;
+      var st=String(p.status||"").trim();
+      if(st.indexOf("Delivered")>-1) return true;
+      return NV_OUTCOME_SETTLED.indexOf(st)>-1;
+    }
+    function agingHours(p){
+      if(!p) return null;
+      /* Order matters. On a SETTLED parcel statusSince is the moment the
+         outcome was recorded -- i.e. the END -- so using it as the start
+         fallback made every refused/delivered duration compute as zero.
+         Booking date is the honest start when there is no destination scan. */
+      var at=destinationArrivalAt(p) || (p.date ? p.date+"T00:00:00" : "") || p.statusSince;
+      if(!at) return null;
+      var start=new Date(at).getTime();
+      if(!Number.isFinite(start)) return null;
+      var end=Date.now();
+      if(nvOutcomeSettled(p)){
+        var fin=p.deliveredAt||p.statusSince||null;
+        var f=fin?new Date(fin).getTime():NaN;
+        if(Number.isFinite(f)&&f>=start) end=f;
+      }
+      var ms=end-start;
+      return Number.isFinite(ms)?Math.max(0,ms/3600000):null;
+    }
+    function agingLabel(h){ if(h==null||!Number.isFinite(Number(h))) return "\u2014"; h=Number(h); if(h<1) return "just now"; if(h<24) return `${Math.max(0,Math.round(h))}h`; const d=Math.floor(h/24); const r=Math.round(h%24); return r?`${d}d ${r}h`:`${d}d`; }
     /* Merchant view exposes destination aging only; SLA urgency remains internal. */
     function alertForParcel(p){ return {level:"ok",label:"Destination age",due:agingLabel(agingHours(p))}; }
     function urgencyClass(l){ if(l==="critical"||l==="super urgent") return "bad"; if(l==="warning"||l==="urgent") return "warn"; return "good"; }
@@ -3017,7 +3061,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return '<div class="meter '+(statusClass(p)==="bad"?"red":"blue")+'" style="margin-top:12px">'+
              '<span style="width:'+pr+'%"></span></div>'+nvEtaHtml(p);
     }
-    function nvPaidPill(p){ return nvIsPaidParcel(p) ? '<span class="nv-paid-tape" title="Invoiced &mdash; payment settled">PAID</span>' : ""; }
+    /* "PAID" on a REFUSED or RETURNED parcel read to merchants as "the COD
+       from this order reached me". It never did -- no cash was collected on a
+       parcel that did not deliver. What was settled is the delivery CHARGE on
+       an invoice, which is the opposite cash direction. Same fact, honest word. */
+    function nvPaidPill(p){
+      if(!nvIsPaidParcel(p)) return "";
+      var delivered=(typeof isDeliveredLedgerParcel==="function") ? isDeliveredLedgerParcel(p) : String(p&&p.status||"").indexOf("Delivered")>-1;
+      return delivered
+        ? '<span class="nv-paid-tape" title="COD settled to you">PAID</span>'
+        : '<span class="nv-paid-tape" title="No COD was collected on this parcel. Its delivery charge was settled on an invoice." style="background:#6b7d74">CHARGE SETTLED</span>';
+    }
     function nvPaidRibbon(p){ return nvIsPaidParcel(p) ? '<span class="nv-paid-ribbon">PAID</span>' : ""; }
 
     /* ═══ Change-driven motion ══════════════════════════════════════════
@@ -6537,7 +6591,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvEtaHtml(p){
       if(!p) return "";
       var st = String(p.status || "");
+      /* Refused and "Consignee not available" were missing here, so a settled
+         refusal kept accruing lateness: merchants saw "16d late" on a parcel
+         whose outcome was recorded a fortnight ago. A concluded parcel has no
+         ETA left to miss. */
       if(st === "Delivered" || st === "Return to shipper" || st === "Cancelled by client") return "";
+      if(nvOutcomeSettled(p)) return "";
       var e = nvExpectedBy(p);
       if(!e) return "";
       var overdueMs = Date.now() - e.date.getTime();
@@ -10796,7 +10855,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         });
       }
 
-      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at), updated:tpart(r.updated_at)||tpart(r.booked_at), /* status_since is stamped server-side only when the status actually changes.
+      function mapParcel(r){ var m=r.meta||{}; return { _uuid:r.id, awb:r.awb, invoiceId:r.invoice_id||null, invoicedAt:r.invoiced_at||null, clientId:MY, consignee:r.consignee||"", city:r.city||"", address:nvRealAddress(r.address,r.consignee,r.city), phone:nvRealPhone(r.phone), cod:Number(r.cod_amount||0), fee:Number(r.fee||0), status:nvStatus(r.status)||"New booked", exception:r.exception||"", date:dpart(r.booked_at),
+        /* THE 45-HOUR TIMER. Only the DATE part of booked_at survived mapping,
+           so everything measuring "time since booking" started from MIDNIGHT:
+           a parcel booked at 20:57 yesterday read as ~45h waiting instead of
+           ~24h, and its journey showed "booked 12:00 am". Keep the real
+           timestamp; `date` stays for the day-grouping that depends on it. */
+        bookedAt:r.booked_at||null,
+        updated:tpart(r.updated_at)||tpart(r.booked_at), /* status_since is stamped server-side only when the status actually changes.
            updated_at moves on ANY write, so printing a label used to reset a
            parcel's age and clear its SLA warning (measured drift: avg 117h). */
         /* delivered_at is the real delivery event time and the public tracking
