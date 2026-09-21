@@ -3171,14 +3171,57 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return '<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap;gap:6px">'+btns.join("")+'</div>';
     }
 
+    /* PAGINATION. The dashboard rendered every parcel the account had ever
+       booked -- 189 for one live merchant -- into the table AND again into the
+       Live Status Board: a ~29,460px page and hundreds of interactive nodes on
+       a phone that has to lay all of it out on every redraw.
+
+       Deliberately client-side over the already-loaded set, NOT a new query:
+       nvReadAll() pages the full history in for counts, money and search, and
+       making the list fetch separately would put those back out of step. This
+       only limits how much is PAINTED.
+
+       Paging resets whenever the filtered set changes size, so a search never
+       lands the merchant on page 3 of a result they just narrowed. */
+    var NV_PAGE_STEP=25;
+    var nvShownCount=NV_PAGE_STEP, nvLastFilterSig="";
+    window.nvShowMoreParcels=function(){
+      nvShownCount+=NV_PAGE_STEP;
+      try{ renderClientParcels(); }catch(e){}
+    };
+    window.nvResetParcelPaging=function(){ nvShownCount=NV_PAGE_STEP; };
     function renderClientParcels(){ return nvKeepPlace(function(){ return __renderClientParcels(); }); }
     function __renderClientParcels(){
-      const parcels=filteredParcels();
+      const nvAllFiltered=filteredParcels();
+      /* Signature, not just length: swapping one status for another keeps the
+         count identical but is still a different result set. */
+      var nvSig=nvAllFiltered.length+"|"+(nvAllFiltered[0]&&nvAllFiltered[0].awb||"");
+      if(nvSig!==nvLastFilterSig){ nvLastFilterSig=nvSig; nvShownCount=NV_PAGE_STEP; }
+      const parcels=nvAllFiltered.slice(0,nvShownCount);
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
       if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
       if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><label style="display:inline-flex;align-items:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -6px;padding:10px 6px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
+      /* "Showing 25 of 189" with one control to load more. Without this the
+         merchant cannot tell whether the list ended or was truncated. */
+      (function(){
+        var hidden=nvAllFiltered.length-parcels.length;
+        if(hidden<=0) return;
+        var moreTxt="Showing "+parcels.length+" of "+nvAllFiltered.length;
+        if(rowsHost && !cardsOnScreen){
+          rowsHost.insertAdjacentHTML("beforeend",
+            '<tr class="nv-more-row"><td colspan="7" style="text-align:center;padding:14px">'
+            +'<span class="footer-note">'+moreTxt+'</span> '
+            +'<button class="ghost-btn" type="button" onclick="nvShowMoreParcels()" style="margin-left:8px">Show '+Math.min(NV_PAGE_STEP,hidden)+' more</button></td></tr>');
+        }
+        if(cardsHost && cardsOnScreen){
+          cardsHost.insertAdjacentHTML("beforeend",
+            '<div class="ops-card" style="text-align:center">'
+            +'<p class="footer-note" style="margin:0 0 8px">'+moreTxt+'</p>'
+            +'<button class="ghost-btn" type="button" onclick="nvShowMoreParcels()">Show '+Math.min(NV_PAGE_STEP,hidden)+' more</button></div>');
+        }
+      })();
       if(cardsOnScreen) nvMarkChanged("clientParcelCards",parcels,"cards");
       else nvMarkChanged("clientParcelRows",parcels,"rows");
       /* Drop anything selected that this render filtered away. */
