@@ -2191,7 +2191,7 @@
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=b8ea954e" defer></script>
+  <script src="client-app.js?v=e112e85e" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -4778,6 +4778,58 @@ nav .navbtn,.bottom-nav button,.bottom-nav a{transition:color .18s ease,backgrou
   body.nv-kb-open{ --nv-stack-2: 0px; }
   .nv-bottomnav{ transition:transform .18s ease; }
   @media (prefers-reduced-motion:reduce){ .nv-bottomnav{ transition:none; } }
+}
+
+/* ═══ Rhythm, weight and numerals ═════════════════════════════════════════
+   A pass over spacing, type and surface noise. Nothing here changes layout
+   structure or behaviour -- it only settles the existing design onto one
+   scale so the eye stops re-measuring every card. */
+
+/* One spacing scale: 8 / 16 / 24 / 32. More air BETWEEN sections, slightly
+   less inside small cards, which is where it was reversed before. */
+.view > .panel + .panel,
+.view > section + section{ margin-top:24px; }
+.panel{ padding:20px; }
+@media (max-width:760px){ .panel{ padding:16px; } .view > .panel + .panel{ margin-top:16px; } }
+.ops-card{ padding:12px 14px; }
+.ops-card + .ops-card{ margin-top:8px; }
+.section-head{ margin-bottom:16px; }
+
+/* Numbers that line up. Money, counts, balances and AWBs are read in columns
+   and compared down the page; proportional digits make that harder than it
+   needs to be. */
+.money, .moneyline, .stat strong, .metric strong, .nv-c-sub, .awb, .nv-inc-chip,
+td[data-label="COD"], td[data-label="Fee"], td[data-label="AWB"],
+.nvfs-awb, .chip, .badge{ font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; }
+
+/* Three levels, not five. Section titles stop competing with the page title. */
+.panel h2{ font-size:19px; line-height:1.25; }
+.panel h3{ font-size:16px; line-height:1.3; }
+.sub, .footer-note{ font-size:12.5px; line-height:1.5; }
+
+/* Uppercase is a shout. Keep it for the smallest eyebrow labels only, where it
+   genuinely reads as a category, and let the rest sit in sentence case. */
+.panel h2, .panel h3, .section-head h3, .nv-c-item strong{ text-transform:none; letter-spacing:0; }
+
+/* Quieter cards: one surface, gentler edge, less shadow. Decorative gradients
+   are reserved for the success moment, which is the one place a flourish is
+   earned. */
+.panel, .ops-card, .metric, .table-wrap{ box-shadow:0 1px 2px rgba(16,32,27,.05); }
+.ops-card{ border-color:var(--nvu-line); }
+.metric::after{ opacity:.55; }
+
+/* Restrained motion: 150-220ms, and nothing that loops. */
+.view{ animation-duration:.16s; }
+.panel, .ops-card, .parcel-card{ transition:border-color .18s ease, box-shadow .18s ease; }
+
+/* Tap targets stay thumb-sized on a phone. */
+@media (max-width:760px){
+  .ghost-btn, .action-btn, .chip[role="button"], .navbtn{ min-height:44px; }
+}
+
+@media (prefers-reduced-motion:reduce){
+  .view{ animation:none; }
+  .panel, .ops-card, .parcel-card{ transition:none; }
 }
 </style>
 </body>

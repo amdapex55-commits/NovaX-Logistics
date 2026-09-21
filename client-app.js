@@ -3242,8 +3242,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
-      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
-      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><label style="display:inline-flex;align-items:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -6px;padding:10px 6px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(p.status)}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
+      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
+      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><label style="display:inline-flex;align-items:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -6px;padding:10px 6px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
       /* "Showing 25 of 189" with one control to load more. Without this the
          merchant cannot tell whether the list ended or was truncated. */
       (function(){
@@ -5053,12 +5053,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function renderClientReportFull(){
       const tbody=document.getElementById("clientReportFullRows"); if(!tbody) return;
       const sel=document.getElementById("repStatus");
-      if(sel && !sel.dataset.filled){ sel.innerHTML=`<option value="">All statuses</option>`+STATUS_TAGS.concat(["Cancelled by client"]).map(s=>`<option value="${s}">${s}</option>`).join(""); sel.dataset.filled="1"; }
+      if(sel && !sel.dataset.filled){ sel.innerHTML=`<option value="">All statuses</option>`+STATUS_TAGS.concat(["Cancelled by client"]).map(s=>`<option value="${s}">${escLabelText(nvStatusLabel(s))}</option>`)   /* value stays the STORED status; only the text a human reads is relabelled */.join(""); sel.dataset.filled="1"; }
       const rows=nvReportRows();
       /* data-label drives the mobile card layout in client.html: under 900px the
          table stops being a table and each row stacks as AWB-first card, so the
          report stops requiring horizontal scanning on a phone. */
-      tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><td data-label="AWB"><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}</td><td data-label="Date">${escLabelText(p.date||"-")}</td><td data-label="Consignee">${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td data-label="Status"><span class="status ${statusClass(p)}">${escLabelText(p.status)}</span></td><td data-label="COD">${money(p.cod)}</td><td data-label="Fee">${money(p.fee)}</td><td data-label="Destination age">${agingLabel(agingHours(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
+      tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><td data-label="AWB"><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}</td><td data-label="Date">${escLabelText(p.date||"-")}</td><td data-label="Consignee">${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td data-label="Status"><span class="status ${statusClass(p)}">${escLabelText(nvStatusLabel(p.status))}</span></td><td data-label="COD">${money(p.cod)}</td><td data-label="Fee">${money(p.fee)}</td><td data-label="Destination age">${agingLabel(agingHours(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
     }
 
     /* renderLatestInvoice() removed 25 Aug 2026: #clientLatestInvoice does not
@@ -5303,6 +5303,39 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        and shared with admin.html and the RPCs (isInvoiceClosed,
        admin_push_invoice_to_wallet), so they are never rewritten -- only
        relabelled at the display boundary. */
+    /* Merchant-facing status wording. The STORED strings are operational and
+       shared with admin.html, rider.html and the booking//status RPCs, so they
+       are never rewritten -- only relabelled here, at the display boundary,
+       exactly as nvMoneyLabel does for invoices.
+
+       "Parcel now in transit" and "Parcel out for delivery" are warehouse
+       phrasing that leaked onto the merchant's screen, and they appeared in
+       one wording in a table, another in a chip and another in the journey.
+       One label, used everywhere a human reads it. */
+    var NV_STATUS_LABELS={
+      "New booked":"Booked",
+      "Collected by rider":"Picked up",
+      "Arrived at warehouse":"At warehouse",
+      "Parcel now in transit":"In transit",
+      "Parcel received at destination":"At destination",
+      "Parcel out for delivery":"Out for delivery",
+      "Delivered":"Delivered",
+      "Refused":"Refused",
+      "Consignee not available":"Nobody available",
+      "Out of service area":"Outside service area",
+      "Ready for return":"Ready for return",
+      "Return in transit":"Returning",
+      "Return received at origin":"Returned to hub",
+      "Return out for delivery":"Return out for delivery",
+      "Return to shipper":"Returned to you",
+      "Parcel returned to consignee":"Returned to you",
+      "Cancelled by client":"Cancelled"
+    };
+    function nvStatusLabel(status){
+      var st=(typeof nvStatus==="function") ? nvStatus(status) : String(status||"");
+      return NV_STATUS_LABELS[st] || st || "";
+    }
+    try{ window.nvStatusLabel=nvStatusLabel; }catch(e){}
     function nvMoneyLabel(status){
       var m = {
         /* "Paid to you" was used for BOTH wallet credit and bank payment, so a
@@ -5728,7 +5761,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       } finally { if(btn) btn.disabled=false; }
       const rows=res.rows;
       const stage=document.getElementById("printStage");
-      stage.innerHTML=`<div style="font-family:sans-serif;color:#000;background:var(--nvu-bg);padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th><th>Fee</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(p.status)}</td><td>${money(p.cod)}</td><td>${money(p.fee)}</td></tr>`).join("")}<tr><td colspan="4"><strong>Total &mdash; ${rows.length} parcel${rows.length===1?"":"s"}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.cod||0),0))}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.fee||0),0))}</strong></td></tr></table></div>`;
+      stage.innerHTML=`<div style="font-family:sans-serif;color:#000;background:var(--nvu-bg);padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th><th>Fee</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(nvStatusLabel(p.status))}</td><td>${money(p.cod)}</td><td>${money(p.fee)}</td></tr>`).join("")}<tr><td colspan="4"><strong>Total &mdash; ${rows.length} parcel${rows.length===1?"":"s"}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.cod||0),0))}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.fee||0),0))}</strong></td></tr></table></div>`;
       toast(nvReportScopeNote(rows.length,res.complete), res.complete?"success":"error");
       nvPrintStageNow();
     }
