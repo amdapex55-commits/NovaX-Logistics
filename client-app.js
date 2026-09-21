@@ -7499,11 +7499,31 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          Now: pull every plausible run of digits and separators out of the
          message and hand each to nvNormalizePkPhone, which is the one place
          in this file that knows what a Pakistani mobile looks like. */
-      var phoneCandidates=text.match(/(?:\+|00)?[\d][\d\s\-().]{7,22}\d/g)||[];
-      for(var pi=0;pi<phoneCandidates.length;pi++){
-        var norm=nvNormalizePkPhone(phoneCandidates[pi]);
-        if(norm){ out.phone=norm; break; }
-      }
+      /* THE DROPPED PHONE. [\d\s\-().]{7,22} is greedy ACROSS SPACES, so in
+         "Ali Raza 03113323923 844 f2 Johar Town" it swallowed the house number
+         too -- 14 digits, which is not a Pakistani mobile, so normalisation
+         returned nothing and the field came back empty while every other field
+         filled in. Labelled pastes worked; free-text pastes, which is how
+         merchants actually forward a WhatsApp order, did not.
+
+         Greedy candidates are still tried first (they handle "Phone: 0311 332
+         3923"), and when they normalise to nothing we slide a real-length
+         window over each digit run instead of giving up. */
+      out.phone=(function(){
+        var cands=text.match(/(?:\+|00)?[\d][\d\s\-().]{7,22}\d/g)||[];
+        for(var pi=0;pi<cands.length;pi++){ var n1=nvNormalizePkPhone(cands[pi]); if(n1) return n1; }
+        var runs=text.match(/[\d][\d\s\-().]*\d/g)||[];
+        for(var ri=0;ri<runs.length;ri++){
+          var d=runs[ri].replace(/\D/g,"");
+          for(var len=13;len>=10;len--){
+            for(var st=0;st+len<=d.length;st++){
+              var n2=nvNormalizePkPhone(d.substr(st,len));
+              if(n2) return n2;
+            }
+          }
+        }
+        return "";
+      })();
 
       out.city=nvFindCity(text);
 
@@ -7523,7 +7543,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(leadWords) out.name=leadWords[1].trim();
       }
 
-      var addrLabel=text.match(/address\s*[:\-]\s*([^,]{4,80})/i);
+      var addrLabel=text.match(/address\s*[:\-]\s*([^,\n]{4,80})/i);   /* [^,] matched newlines, so "Address: ..." swallowed the COD and Product lines under it */
       if(addrLabel){ out.address=addrLabel[1].trim(); }
       else{
         /* The clue window used to run straight through the COD figure, so
@@ -7543,11 +7563,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
       }
 
-      var prodLabel=text.match(/product\s*[:\-]\s*([^,]{2,60})/i);
+      var prodLabel=text.match(/product\s*[:\-]\s*([^,\n]{2,60})/i);
       if(prodLabel){ out.product=prodLabel[1].trim(); }
       else{
         var leftover=text;
-        [out.name,out.phone,out.city,out.cod,out.address].forEach(function(v){ if(v) leftover=leftover.replace(v," "); });
+        /* out.phone is the NORMALISED number (03113323923) but the paste says
+           "0311 332 3923", so this replace never matched and the phone stayed
+           inside the product description. Strip the digit runs themselves. */
+        if(out.phone) leftover=leftover.replace(/(?:\+|00)?[\d][\d\s\-().]{7,22}\d/g," ");
+        [out.name,out.city,out.cod,out.address].forEach(function(v){ if(v) leftover=leftover.replace(v," "); });
+        leftover=leftover.replace(/\b\d{3,}\b/g," ");
         leftover=leftover.replace(/\b(cod|amount|rs\.?|price|name|phone|city|address|product)\b/gi," ").replace(/[:,]/g," ").replace(/\s+/g," ").trim();
         if(leftover.length>2 && leftover.length<60) out.product=leftover;
       }
