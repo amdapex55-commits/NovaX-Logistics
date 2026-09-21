@@ -10594,7 +10594,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var args={
           p_consignee:o.consignee||"",
           p_phone:o.phone||"",
-          p_pickup_city:o.pickupCity||"Karachi",
+          /* WAS a bare "Karachi" fallback, which is how a Lahore merchant's
+             parcel ended up booked for Karachi pickup. Fall back to the city
+             this merchant actually registered, and only then to Karachi. */
+          p_pickup_city:o.pickupCity||(state.client&&state.client.pickupCity)||"Karachi",
           p_city:o.city||"",
           p_address:o.address||"",
           p_cod:Number(o.cod||0),

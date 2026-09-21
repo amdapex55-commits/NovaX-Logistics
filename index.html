@@ -2668,7 +2668,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   <div class="form-msg ok" id="signupQuote" style="display:none"></div>
   <form id="fSignup" novalidate>
     <div class="fld"><label for="merchantStoreName">Store / business name</label><input id="merchantStoreName" placeholder="Your store or business name" autocomplete="organization"></div>
-    <div class="fld"><label for="merchantCity">What city are you based in?</label><select id="merchantCity"><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option><option>Faisalabad</option><option>Multan</option><option>Other</option></select></div>
+    <div class="fld"><label for="merchantCity">Which city do we collect your parcels from?</label><select id="merchantCity"><option value="">Select your pickup city…</option><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select><p class="form-msg" style="min-height:0;color:#5c6157;font-size:12px;margin-top:4px">This becomes your pickup city on every booking. NovaX collects from Karachi, Lahore, Islamabad and Rawalpindi.</p></div>
     <div class="fld"><label for="merchantName">Owner / contact name</label><input id="merchantName" placeholder="Your full name" autocomplete="name"></div>
     <div class="fld"><label for="merchantPhone">Your phone number</label><input id="merchantPhone" placeholder="03001234567" maxlength="11" inputmode="numeric" autocomplete="tel"></div>
     <div class="fld"><label for="merchantAddress">Your address</label><textarea id="merchantAddress" placeholder="Pickup address" autocomplete="street-address"></textarea></div>
@@ -3350,6 +3350,13 @@ $("fSignup").addEventListener("submit",function(e){
       phone=val("merchantPhone"), address=val("merchantAddress"), product=val("merchantProduct"),
       website=val("merchantWebsite"), email=val("merchantEmail").toLowerCase(), password=val("merchantPassword");
 
+  /* Faisalabad, Multan and "Other" were offered but NovaX does not collect
+     from them -- a merchant could sign up from a city no rider serves. The list
+     is now the four cities actually served, and the placeholder is rejected so
+     the pickup city is a deliberate choice rather than whatever sat first. */
+  var NV_PICKUP_CITIES=["Karachi","Lahore","Islamabad","Rawalpindi"];
+  if(city && NV_PICKUP_CITIES.indexOf(city)<0){
+    showMsg("mSignup","We collect from Karachi, Lahore, Islamabad and Rawalpindi. Please pick one of those.",false); return; }
   if(!city||!storeName||!name||!phone||!address||!product||!email||!password){
     showMsg("mSignup","Store name, owner name, city, phone, address, product, email, and password are all required.",false); return; }
   var phoneNorm=nvNormalizePkPhone(phone);
