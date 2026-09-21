@@ -64,7 +64,7 @@ async function qFlush(){
   try{
     while(v.length){
       var job=v[0];
-      var r=await update(job.list,job.to,job.reason,"notice");
+      var r=await update(job.list,job.to,job.reason,"notice",job.key);
       if(r&&r.queued)break;                 // still offline; stop and keep it
       v=qRead().slice(1);qWrite(v);          // sent (or permanently rejected)
     }
@@ -158,35 +158,99 @@ var due=await sb.from("parcels").select(COLS).eq("rider_id",riderId)
 .order("updated_at",{ascending:false}).limit(2000);if(due.error)throw due.error;
 var byId={};((act.data||[]).concat(fin.data||[],due.data||[])).forEach(function(row){byId[row.id]=row});
 data.parcels=Object.keys(byId).map(function(k){return mapParcel(byId[k])});var seenExpense={};data.expenses=[];data.parcels.forEach(function(parcel){var rows=Array.isArray(parcel.meta&&parcel.meta.riderExpenses)?parcel.meta.riderExpenses:[];rows.forEach(function(e){if(!e||!e.id||seenExpense[e.id]||e.expenseDate!==today())return;seenExpense[e.id]=1;data.expenses.push({id:e.id,category:e.category||"Expense",amount:Number(e.amount||0),note:e.note||""})})});data.expenses.sort(function(a,b){return String(b.id).localeCompare(String(a.id))});render();applySearch();updateReceiveCount();lastSyncAt=Date.now();paintSync();paintQueue();qFlush();q("gate").classList.add("hidden");if(!silent)msg("Route refreshed successfully.","ok");subscribe()}catch(e){var text=String(e&&e.message||e);q("gateText").textContent=text;msg("Could not load route: "+text,"error")}finally{loading=false;q("refreshBtn").disabled=false}}
-async function update(list,to,reason,id){if(!navigator.onLine){
-  qPush({list:list,to:to,reason:reason||"",at:Date.now()});
+async function update(list,to,reason,id,batchKeyIn){if(!navigator.onLine){
+  qPush({list:list,to:to,reason:reason||"",at:Date.now(),key:"rb-"+riderId+"-q"+Date.now()+"-"+Math.random().toString(36).slice(2,8)});
   msg(list.length+" update"+(list.length===1?"":"s")+" saved on this phone. It will send by itself when you have signal.","info",id||"notice");
   return{count:0,moved:[],failed:[],errors:[],queued:true}}if(busy)return{count:0,moved:[],failed:list,errors:["Another update is still running."]};busy=true;document.querySelectorAll(".btn").forEach(function(btn){btn.disabled=true});var moved=[],errors=[],failed=[],deliveryLoc=null,gpsWarning="";try{if(to==="Delivered"){msg("Getting current GPS location…","info",id);try{deliveryLoc=await currentLocation()}catch(gpsError){gpsWarning=String(gpsError&&gpsError.message||gpsError);deliveryLoc={unavailable:true,error:gpsWarning,at:new Date().toISOString()}}}var allowed={"Parcel now in transit":["Parcel received at destination"],"Parcel received at destination":["Parcel out for delivery"],"Parcel out for delivery":["Delivered","Refused","Consignee not available"]},jobs=[];list.forEach(function(raw){var code=String(raw).trim().toUpperCase(),parcel=data.parcels.find(function(x){return String(x.awb).toUpperCase()===code});if(!parcel){errors.push(code+": not found on your route");failed.push(code);return}if(!(allowed[parcel.status]||[]).includes(to)){errors.push(code+": cannot move from "+parcel.status+" to "+to);failed.push(code);return}var meta=Object.assign({},parcel.meta||{}),history=Array.isArray(meta.processHistory)?meta.processHistory.slice():[],steps=Array.isArray(meta.steps)?meta.steps.slice():[],at=new Date().toISOString();history.push({status:to,at:at,processor:data.rider.name,username:"rider",branch:(data.rider.cities||[]).join(" / "),reason:reason||""});
 /* Every transition appended to this array forever, inside the parcel's own
    JSON, so the row -- and every route response carrying it -- grew without
    limit. The last 30 steps are more than a phone needs; the authoritative
    trail is nv_parcel_status_log server-side. */
-if(history.length>30)history=history.slice(-30);if(steps.indexOf(to)<0)steps.push(to);meta.processHistory=history;meta.steps=steps;if(to==="Parcel received at destination"&&!meta.destinationArrivedAt)meta.destinationArrivedAt=at;if(to==="Delivered"){meta.deliveredBy=riderId;meta.cashReceived=false;meta.cashDepositStatus="not_deposited";meta.deliveryLocation=deliveryLoc}jobs.push({parcel:parcel,code:code,meta:meta,at:at})});for(var offset=0;offset<jobs.length;offset+=12){var chunk=jobs.slice(offset,offset+12),results=await Promise.all(chunk.map(function(job){return sb.from("parcels").update({status:to,exception:(to==="Refused"||to==="Consignee not available")?reason:"",meta:job.meta,updated_at:job.at}).eq("id",job.parcel.id).eq("rider_id",riderId).select("id")}));results.forEach(function(result,index){var job=chunk[index];if(result.error||!result.data||!result.data.length){errors.push(job.code+": "+String(result.error&&result.error.message||"server rejected update"));failed.push(job.code);return}job.parcel.status=to;job.parcel.meta=job.meta;job.parcel.statusSince=job.at;job.parcel.updatedAt=job.at;moved.push(job.parcel)})}render();if(moved.length){var scans=moved.map(function(parcel){return{parcel_id:parcel.id,rider_id:riderId,type:to==="Delivered"?"delivery":"status",status:to,note:reason||"",photo_url:"",meta:{awb:parcel.awb,source:"destination-rider",deliveryLocation:deliveryLoc}}});/* WAS fire-and-forget into console.warn: the rider saw success while the
-   audit trail silently did not exist, and nobody was told. */
-try{var scanRes=await sb.from("scans").insert(scans);
-  if(scanRes&&scanRes.error)errors.push("Saved, but the audit scan did not record. Tell the office.");
-}catch(scanErr){errors.push("Saved, but the audit scan did not record. Tell the office.");}if(to==="Delivered"){var codRows=moved.filter(function(parcel){return Number(parcel.cod)>0});if(codRows.length){var ids=codRows.map(function(parcel){return parcel.id});/* WAS asynchronous and silent: a delivery could succeed while the COD
-   accounting behind it failed, and `if(existing.error)return` swallowed even
-   the lookup failure. Money must never fail quietly. */
-await (async function(){try{
-  var existing=await sb.from("cod_ledger").select("parcel_id").in("parcel_id",ids).eq("direction","in");
-  if(existing&&existing.error){errors.push("Delivered, but COD accounting could not be checked. Tell the office.");return}
-  var have={};(existing.data||[]).forEach(function(row){have[row.parcel_id]=1});
-  var inserts=codRows.filter(function(parcel){return!have[parcel.id]}).map(function(parcel){return{parcel_id:parcel.id,client_id:parcel.clientId,rider_id:riderId,direction:"in",amount:Number(parcel.cod),reference:parcel.awb}});
-  if(inserts.length){var ins=await sb.from("cod_ledger").insert(inserts);
-    if(ins&&ins.error)errors.push("Delivered, but COD accounting did not record. Tell the office.");}
-}catch(e){errors.push("Delivered, but COD accounting did not record. Tell the office.");}})()}}}var label=to==="Parcel received at destination"?"moved from Transit to Received":to==="Parcel out for delivery"?"moved from Received to Out for delivery":to==="Delivered"?"marked Delivered successfully":to==="Refused"?"marked Refused":"marked Consignee not available";if(moved.length)msg(moved.length+" parcel"+(moved.length===1?"":"s")+" "+label+": "+moved.map(function(parcel){return parcel.awb}).join(", ")+(gpsWarning?". GPS unavailable; delivery still saved.":""),gpsWarning?"error":"ok",id);if(errors.length)msg((moved.length?moved.length+" saved. ":"")+errors.join(" · "),"error",id||"notice");return{count:moved.length,moved:moved.map(function(parcel){return parcel.awb}),failed:failed,errors:errors}}catch(e){msg("Update failed: "+String(e&&e.message||e),"error",id||"notice");return{count:moved.length,moved:moved.map(function(parcel){return parcel.awb}),failed:failed,errors:errors}}finally{busy=false;document.querySelectorAll(".btn").forEach(function(btn){btn.disabled=false});load(true)}}
+if(history.length>30)history=history.slice(-30);if(steps.indexOf(to)<0)steps.push(to);meta.processHistory=history;meta.steps=steps;if(to==="Parcel received at destination"&&!meta.destinationArrivedAt)meta.destinationArrivedAt=at;if(to==="Delivered"){meta.deliveredBy=riderId;meta.cashReceived=false;meta.cashDepositStatus="not_deposited";meta.deliveryLocation=deliveryLoc}jobs.push({parcel:parcel,code:code,meta:meta,at:at})});/* ONE call, ONE transaction (sql_novax_rider_batch_atomic_20260921).
+   This used to be chunks of 12 independent parcel UPDATEs, then a separate
+   scans INSERT, then a separate cod_ledger SELECT + INSERT. Each could fail
+   on its own, so a parcel could be marked Delivered while its audit scan and
+   its COD accounting never recorded -- which is exactly what the two "Saved,
+   but ..." messages below used to report. Those states are no longer
+   reachable: the server does all three together or none of them.
+
+   Every AWB is validated before anything is written, so one mistyped or
+   wrongly-assigned scan can no longer half-apply a batch of twenty; the rider
+   gets told which AWB to fix and nothing has moved.
+
+   batchKey makes a retry safe. A phone losing signal after the server
+   committed is the normal case out on a route, not the exception -- replaying
+   the same key returns the original result instead of applying it twice. */
+var batchKey=batchKeyIn||(function(){
+  try{ if(window.crypto&&crypto.randomUUID) return "rb-"+riderId+"-"+crypto.randomUUID(); }catch(e){}
+  return "rb-"+riderId+"-"+Date.now()+"-"+Math.random().toString(36).slice(2,10);
+})();
+var rpc=null;
+try{
+  rpc=await sb.rpc("rider_batch_update_status",{
+    p_awbs:jobs.map(function(job){return job.parcel.awb}),
+    p_to:to,
+    p_reason:reason||"",
+    p_batch_key:batchKey,
+    p_delivery_loc:deliveryLoc||null
+  });
+}catch(rpcErr){ rpc={error:{message:String((rpcErr&&rpcErr.message)||rpcErr)}}; }
+
+if(rpc&&rpc.error){
+  /* Nothing was written -- the whole batch rolled back -- so every AWB is
+     still exactly where it was. Say so, rather than leaving the rider to
+     wonder which ones went through. */
+  errors.push(String(rpc.error.message||"The update was rejected. Nothing was changed."));
+  failed=jobs.map(function(job){return job.code});
+}else{
+  var movedAwbs=(rpc&&rpc.data&&rpc.data.moved)||[];
+  var movedSet={};
+  movedAwbs.forEach(function(a){ movedSet[String(a).toUpperCase()]=1 });
+  jobs.forEach(function(job){
+    if(!movedSet[String(job.parcel.awb).toUpperCase()])return;
+    /* Local echo so the list updates instantly. The server built the real
+       meta (history, steps, delivery location); the next load replaces this. */
+    job.parcel.status=to;job.parcel.meta=job.meta;job.parcel.statusSince=job.at;job.parcel.updatedAt=job.at;
+    moved.push(job.parcel)
+  })
+}
+render();var label=to==="Parcel received at destination"?"moved from Transit to Received":to==="Parcel out for delivery"?"moved from Received to Out for delivery":to==="Delivered"?"marked Delivered successfully":to==="Refused"?"marked Refused":"marked Consignee not available";if(moved.length)msg(moved.length+" parcel"+(moved.length===1?"":"s")+" "+label+": "+moved.map(function(parcel){return parcel.awb}).join(", ")+(gpsWarning?". GPS unavailable; delivery still saved.":""),gpsWarning?"error":"ok",id);if(errors.length)msg((moved.length?moved.length+" saved. ":"")+errors.join(" · "),"error",id||"notice");return{count:moved.length,moved:moved.map(function(parcel){return parcel.awb}),failed:failed,errors:errors}}catch(e){msg("Update failed: "+String(e&&e.message||e),"error",id||"notice");return{count:moved.length,moved:moved.map(function(parcel){return parcel.awb}),failed:failed,errors:errors}}finally{busy=false;document.querySelectorAll(".btn").forEach(function(btn){btn.disabled=false});load(true)}}
 function updateReceiveCount(){var list=awbs(q("receiveAwbs").value),valid=list.filter(function(code){var p=data.parcels.find(function(x){return String(x.awb).toUpperCase()===code});return p&&p.status==="Parcel now in transit"});q("receiveLoadCount").textContent=list.length+" AWB"+(list.length===1?"":"s")+" loaded";q("receiveMoveCount").textContent=valid.length+" will be received"}
 async function addExpense(){if(!navigator.onLine){msg("You are offline. Reconnect before saving an expense.","error","expenseResult");return}if(busy)return;var category=q("expenseCategory").value,amount=Number(q("expenseAmount").value),note=q("expenseNote").value.trim();if(!isFinite(amount)||amount<=0){msg("Enter a valid expense amount above Rs 0.","error","expenseResult");return}busy=true;q("expenseBtn").disabled=true;try{var anchor=data.parcels.find(function(parcel){return parcel.status==="Delivered"})||data.parcels[0];if(!anchor)throw new Error("No assigned parcel is available to link this route expense.");var fresh=await sb.from("parcels").select("meta").eq("id",anchor.id).eq("rider_id",riderId).single();if(fresh.error)throw fresh.error;var meta=Object.assign({},fresh.data&&fresh.data.meta||{}),rows=Array.isArray(meta.riderExpenses)?meta.riderExpenses.slice():[],id="REXP-"+Date.now()+"-"+Math.random().toString(36).slice(2,7).toUpperCase(),noteText=note||category+" rider expense",entry={id:id,expenseDate:today(),createdAt:new Date().toISOString(),category:category,amount:amount,note:noteText,branch:(data.rider.cities||[]).join(" / "),name:category+" - "+data.rider.name,riderId:riderId,status:"Rider submitted"};rows.push(entry);meta.riderExpenses=rows;var result=await sb.from("parcels").update({meta:meta}).eq("id",anchor.id).eq("rider_id",riderId).select("id");if(result.error||!result.data||!result.data.length)throw(result.error||new Error("Server rejected expense"));anchor.meta=meta;data.expenses.unshift({id:id,category:category,amount:amount,note:noteText});q("expenseAmount").value="";q("expenseNote").value="";render();msg(category+" expense of "+money(amount)+" saved and sent to Admin Expenses.","ok","expenseResult")}catch(e){msg("Expense was not saved: "+String(e&&e.message||e),"error","expenseResult")}finally{busy=false;q("expenseBtn").disabled=false}}
 async function depositCash(){if(!navigator.onLine){msg("You are offline. Reconnect before recording a cash deposit.","error","cashResult");return}if(busy)return;/* WAS restricted to todayStatus(p,"Delivered"), so yesterday's cash became
    unreachable: still owed, still a liability, and no way to hand it over from
    the app. Every undeposited delivery is depositable now, whatever its date. */
-var rows=data.parcels.filter(function(p){return p.status==="Delivered"&&!(p.meta&&p.meta.cashReceived)&&!(p.meta&&p.meta.cashDepositStatus==="pending_confirmation")}),gross=rows.reduce(function(s,p){return s+Number(p.cod||0)},0),expenses=data.expenses.reduce(function(s,e){return s+Number(e.amount||0)},0),net=Math.max(0,gross-expenses),button=q("depositCashBtn");if(!rows.length){msg("No undeposited deliveries are waiting.","error","cashResult");return}if(Date.now()>depositConfirmUntil){depositConfirmUntil=Date.now()+8000;button.textContent="Tap again to confirm "+money(net);msg("Confirm that "+money(net)+" was physically deposited to Karachi. Tap the button again within 8 seconds.","info","cashResult");setTimeout(function(){if(Date.now()>depositConfirmUntil){depositConfirmUntil=0;button.textContent="Amount deposited to Karachi"}},8100);return}depositConfirmUntil=0;busy=true;button.disabled=true;button.textContent="Saving deposit…";var batch="RIDER-"+riderId.slice(0,8)+"-"+Date.now(),jobs=rows.map(function(p){var oldMeta=Object.assign({},p.meta||{}),meta=Object.assign({},oldMeta);meta.cashDepositStatus="pending_confirmation";meta.cashDepositedAt=new Date().toISOString();meta.cashDepositBatchId=batch;meta.cashDepositGross=gross;meta.cashDepositExpenses=expenses;meta.cashDepositNet=net;return{parcel:p,oldMeta:oldMeta,meta:meta}}),saved=[],errors=[];try{for(var offset=0;offset<jobs.length;offset+=12){var chunk=jobs.slice(offset,offset+12),results=await Promise.all(chunk.map(function(job){return sb.from("parcels").update({meta:job.meta}).eq("id",job.parcel.id).eq("rider_id",riderId).select("id")}));results.forEach(function(result,index){if(result.error||!result.data||!result.data.length)errors.push(chunk[index].parcel.awb);else saved.push(chunk[index])})}if(errors.length){await Promise.all(saved.map(function(job){return sb.from("parcels").update({meta:job.oldMeta}).eq("id",job.parcel.id).eq("rider_id",riderId)}));msg("Deposit was not recorded because some parcels failed: "+errors.join(", ")+". Nothing was submitted; reconnect and retry.","error","cashResult");return}saved.forEach(function(job){job.parcel.meta=job.meta});render();msg(money(net)+" deposited for "+saved.length+" parcel(s). Karachi must now confirm receipt. Reference "+batch+".","ok","cashResult")}catch(e){if(saved.length)await Promise.all(saved.map(function(job){return sb.from("parcels").update({meta:job.oldMeta}).eq("id",job.parcel.id).eq("rider_id",riderId)}));msg("Deposit could not be recorded: "+String(e&&e.message||e)+". No cash handover was submitted.","error","cashResult")}finally{busy=false;button.disabled=false;button.textContent="Amount deposited to Karachi";load(true)}}
+var rows=data.parcels.filter(function(p){return p.status==="Delivered"&&!(p.meta&&p.meta.cashReceived)&&!(p.meta&&p.meta.cashDepositStatus==="pending_confirmation")}),gross=rows.reduce(function(s,p){return s+Number(p.cod||0)},0),expenses=data.expenses.reduce(function(s,e){return s+Number(e.amount||0)},0),net=Math.max(0,gross-expenses),button=q("depositCashBtn");if(!rows.length){msg("No undeposited deliveries are waiting.","error","cashResult");return}if(Date.now()>depositConfirmUntil){depositConfirmUntil=Date.now()+8000;button.textContent="Tap again to confirm "+money(net);msg("Confirm that "+money(net)+" was physically deposited to Karachi. Tap the button again within 8 seconds.","info","cashResult");setTimeout(function(){if(Date.now()>depositConfirmUntil){depositConfirmUntil=0;button.textContent="Amount deposited to Karachi"}},8100);return}depositConfirmUntil=0;busy=true;button.disabled=true;button.textContent="Saving deposit…";
+/* ONE call, ONE transaction (sql_novax_rider_deposit_atomic_20260921).
+   This used to stamp each parcel's meta in chunks of 12 and, on failure, try
+   to put the old meta back with a SECOND round of writes. That compensation
+   is not a rollback -- it is itself a network call that can fail, and when it
+   did the rider was left with parcels stuck in pending_confirmation and no
+   way to finish the handover.
+
+   The retry was worse than the failure: the eligible list excludes anything
+   already pending_confirmation, so retrying after a partial success deposited
+   only the remainder under a NEW batch id. One physical handover of cash
+   became two batches in the books, neither matching what was handed over.
+   The deposit reference is now the idempotency key, so a retry returns the
+   original figures instead of creating a second batch.
+
+   gross/expenses/net are computed on the server now. The phone used to work
+   them out and write its own numbers into the parcel rows. */
+var depositKey="RIDER-"+riderId.slice(0,8)+"-"+Date.now();
+try{
+  var dep=await sb.rpc("rider_deposit_cash",{p_batch_key:depositKey});
+  if(dep&&dep.error)throw new Error(dep.error.message||"Deposit was rejected");
+  var d=dep&&dep.data||{};
+  /* Server figures win -- they are what was actually recorded. */
+  msg(money(Number(d.net||0))+" deposited for "+Number(d.count||0)+" parcel(s). "+
+      "Karachi must now confirm receipt. Reference "+(d.batch||depositKey)+
+      (d.replayed?" (already recorded \u2014 not submitted twice).":"."),"ok","cashResult");
+}catch(e){
+  /* Nothing was written: the whole deposit rolled back on the server, so
+     every parcel is still exactly where it was and the cash is still owed. */
+  msg("Deposit could not be recorded: "+String(e&&e.message||e)+". No cash handover was submitted and nothing changed.","error","cashResult");
+}finally{busy=false;button.disabled=false;button.textContent="Amount deposited to Karachi";load(true)}}
 /* Unfiltered on purpose: a destination rider must see parcels that are not assigned to them yet (incoming transit), so narrowing by rider_id would hide their own inbound load. What WAS wrong is that every parcel change anywhere reloaded the whole route, so one batch action of N parcels fired N full reloads. Collapsed to at most one reload per 15s. */
 /* Three problems lived here.
    * An event arriving while a load was already running was DROPPED, with
