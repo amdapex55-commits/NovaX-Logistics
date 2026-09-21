@@ -1433,6 +1433,20 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       return Number.isFinite(hrs) && hrs>24;
     }
     window.nvParcelDelayed=nvParcelDelayed;
+    /* A parcel booked sixty seconds ago is the next STEP, not a problem. It
+       appeared under "Needs you now" the instant it was created, which buries
+       the genuinely stuck parcels underneath routine new work. Grace period
+       only -- a new booking that is genuinely missing a phone or address still
+       surfaces immediately, because that one cannot be delivered. */
+    var NV_NEW_GRACE_MS=2*60*60*1000;
+    function nvWithinNewGrace(p){
+      try{
+        if(!p || String(p.status||"")!=="New booked") return false;
+        if(typeof nvMissingDeliveryInfo==="function" && nvMissingDeliveryInfo(p)) return false;
+        var t=Date.parse(p.bookedAt||p.statusSince||"");
+        return Number.isFinite(t) && (Date.now()-t) < NV_NEW_GRACE_MS;
+      }catch(e){ return false; }
+    }
     function nvAttentionParcels(){
       var myId=(state.client&&state.client.id)||null;
       var all=(state.parcels||[]).filter(function(p){ return p.clientId===myId; });
@@ -1442,6 +1456,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         var st=String(p.status||"");
         var late=nvParcelDelayed(p);
         var cash=(typeof isRiderCashHolding==="function") && isRiderCashHolding(p);
+        if(nvWithinNewGrace(p)) return;
         if(late || ["Refused","Consignee not available","Out of service area"].indexOf(st)>=0 || /return/i.test(st) ||
            (p.exception && String(p.exception).trim()) || cash || nvMissingDeliveryInfo(p)){
           set[p.awb]=p;
@@ -4612,8 +4627,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const destination=labelText(p.city);
       const clientLabel=labelText(client&&client.name,"NovaX Client");
       const consignee=labelText(p.consignee);
-      const phone=labelText(p.phone,"phone pending");
-      const address=labelText(p.address,"Address attached in portal");
+      /* A placeholder parcel rendered "phone pending" and "Address attached in
+         portal" on what looks like a finished label, so a merchant who landed
+         on the AWB tab before picking a parcel believed THEIR booking had lost
+         its contact details. Say plainly that nothing is selected. */
+      var nvIsPlaceholder = !p || !p._uuid;
+      const phone=labelText(p.phone, nvIsPlaceholder ? "\u2014" : "phone pending");
+      const address=labelText(p.address, nvIsPlaceholder ? "\u2014" : "MISSING \u2014 fix before dispatch");
       const cod=money(p.cod);
       const paymentMode=parcelPaymentMode(p);
       const service=labelText(p.service,"COD Standard");
@@ -7527,7 +7547,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
       out.city=nvFindCity(text);
 
-      var codMatch=text.match(/(?:cod|amount|rs\.?|price)\D{0,4}(\d{2,6})/i);
+      /* "COD: 0" means PREPAID -- an explicit answer -- but \d{2,6} needs two
+         digits, so a single "0" matched nothing and the summary told the
+         merchant to "confirm COD amount" on an order that had already stated
+         it. Accept one digit, and keep "0" as a real value. */
+      var codMatch=text.match(/(?:cod|amount|rs\.?|price)\D{0,4}(\d{1,6})/i);
       if(codMatch){ out.cod=codMatch[1]; }
       else{
         var loneNum=text.match(/\b(\d{3,6})\b/);
@@ -10826,6 +10850,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }
           if (nvPendingKey && nvPendingKey.slot) window.__novaxIdemKeys.release(String(MY), nvPendingKey.slot, nvPendingKey.key);
           var mapped=mapParcel(row);
+          /* The booking is only real if what came BACK carries the details a
+             rider needs. A parcel saved without a phone or an address cannot be
+             delivered, and finding that out at the doorstep is the expensive
+             way. Checked against the server's own row, not the form. */
+          try{
+            var _missing=[];
+            if(!String(mapped.phone||"").trim()) _missing.push("phone");
+            if(!String(mapped.address||"").trim()) _missing.push("address");
+            if(_missing.length){
+              console.warn("NovaX booking saved without "+_missing.join(" and "), row && row.awb);
+              try{ toast("Booked as "+(row&&row.awb||"")+", but the "+_missing.join(" and ")+" did not save. Open Edit and add it before printing.","error"); }catch(e){}
+            }
+          }catch(e){}
           /* Booking is already committed. Verify the separate packing-note
              write before presenting that note as part of the saved AWB. A
              failure must never invite a second booking attempt. */
