@@ -7274,6 +7274,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(phone.length===10&&phone.startsWith("3")) phone="0"+phone;
       const consignee=document.getElementById("bookingName").value.trim();
       const cod=Number(document.getElementById("bookingCod").value || 0);
+      /* Rs 0 COD IS a prepaid parcel, but the form never said so -- the merchant
+         only found out from the label. Several live records carry Rs 0. */
+      try{
+        var pmSel=document.getElementById("bookingPaymentMode");
+        if(pmSel && cod===0 && !/prepaid|non\s*-?\s*cod/i.test(String(pmSel.value||""))){
+          for(var pi=0;pi<pmSel.options.length;pi++){
+            if(/prepaid|non\s*-?\s*cod/i.test(pmSel.options[pi].value)){ pmSel.value=pmSel.options[pi].value; break; }
+          }
+        }
+      }catch(e){}
       if(!Number.isFinite(cod) || cod<0){ toast("COD amount must be zero or more.","error"); nvFlagField("bookingCod"); return; }
       const address=document.getElementById("bookingAddress").value.trim();
       if(consignee.length>120 || address.length>400 || document.getElementById("bookingCategory").value.trim().length>140){
@@ -9636,7 +9646,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const selected=new Set(Array.from(list.querySelectorAll(".newbooked-check:checked")).map(b=>b.value));
       const items=newBookedParcels();
       if(!items.length){ list.innerHTML=`<div class="ops-card"><strong>No new booked parcels yet</strong><p class="footer-note">Printable AWB labels appear here the moment a parcel is booked.</p><div class="inline-actions" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="action-btn" data-nv-cock="tab" data-tab="newBooking">Book a parcel</button><button class="ghost-btn" data-nv-cock="tab" data-tab="bulkBooking">Upload bulk CSV</button><button class="ghost-btn" data-nv-cock="tab" data-tab="integrations">Sync your store</button></div></div>`; return; }
-      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}"${selected.has(p.awb)?" checked":""}><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${nvSourceChip(p.source)}${nvPrintedMark(p)}</span><button class="ghost-btn nv-nb-act" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn nv-nb-act" title="Delete this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:#b91c1c;border-color:#f0b4ac">Delete</button></label>`).join("");
+      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}"${selected.has(p.awb)?" checked":""}><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${nvSourceChip(p.source)}${nvPrintedMark(p)}</span><button class="ghost-btn nv-nb-act" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn nv-nb-act" title="Cancel this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:#b91c1c;border-color:#f0b4ac">Cancel booking</button></label>`).join("");
       nvSyncSelectAllNewBookedLabel();
     }
     /* Merchants were shown the raw internal value -- "client_portal",
@@ -9696,6 +9706,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const boxes=document.querySelectorAll(".newbooked-check");
       const allOn=boxes.length>0 && Array.prototype.every.call(boxes,function(b){ return b.checked; });
       btn.textContent=allOn?"Clear selection":"Select All";
+      /* "Print Selected AWBs" looked actionable with nothing selected -- the
+         merchant pressed it and got a toast telling them off. A control that
+         cannot do anything should not invite the tap. */
+      try{
+        var anyOn=Array.prototype.some.call(boxes,function(b){ return b.checked; });
+        var pb=document.getElementById("newBookedPrintBtn");
+        if(pb){
+          pb.disabled=!anyOn;
+          pb.title=anyOn?"":"Select at least one AWB";
+          if(!pb.dataset.nvLabel) pb.dataset.nvLabel=pb.textContent;
+          var nOn=Array.prototype.filter.call(boxes,function(b){ return b.checked; }).length;
+          pb.textContent=anyOn?(pb.dataset.nvLabel+" ("+nOn+")"):pb.dataset.nvLabel;
+        }
+      }catch(e){}
     }
     function selectAllNewBooked(){
       const boxes=document.querySelectorAll(".newbooked-check");
