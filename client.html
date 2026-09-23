@@ -2233,7 +2233,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=5dfb96eb" defer></script>
+  <script src="client-app.js?v=942fd1b5" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2588,8 +2588,15 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                   <div class="field" id="shopifyStep2Box" style="display:none;margin-top:14px">
                     <label>Step 2 &middot; Add the webhook in Shopify</label>
                     <p class="footer-note">Shopify Admin &rarr; Settings &rarr; Notifications &rarr; Webhooks &rarr; Create webhook<br>Event: <b>Order creation</b><br>Format: <b>JSON</b><br>URL: use the NovaX webhook URL above (must match exactly)<br>Shopify will then show you a "Signing secret" -- paste it below.</p>
-                    <label class="mt-8">Step 3 &middot; Paste Shopify Webhook Signing Secret</label>
-                    <div class="inline-actions"><input id="shopifySecretInput" placeholder="shpss_... or whsec_..." style="flex:1"><button class="action-btn" onclick="shopifySaveSecret()">Save Secret</button></div>
+                    <!-- Signing secrets are masked like every other credential on this page.
+     shopifySecretInput was the odd one out in plain text while
+     shopifyAdminTokenInput and wooSecret were already type=password, so a
+     webhook secret sat readable on a warehouse screen during entry. The
+     generated wooSecretOut/webSecretOut outputs are masked too -- both
+     already have a Copy button, so nothing needs to be read off the
+     screen to be used. -->
+              <label class="mt-8">Step 3 &middot; Paste Shopify Webhook Signing Secret</label>
+                    <div class="inline-actions"><input id="shopifySecretInput" type="password" autocomplete="off" spellcheck="false" placeholder="shpss_... or whsec_..." style="flex:1"><button class="action-btn" onclick="shopifySaveSecret()">Save Secret</button></div>
                     <p class="footer-note">Saved securely on the server only -- never stored in this browser.</p>
                   </div>
 
@@ -2677,7 +2684,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                     <label class="mt-8">Delivery URL</label>
                     <div class="inline-actions"><input id="wooIntakeUrlOut" readonly style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('wooIntakeUrlOut')">Copy</button></div>
                     <label class="mt-8">Secret</label>
-                    <div class="inline-actions"><input id="wooSecretOut" readonly style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('wooSecretOut')">Copy</button></div>
+                    <div class="inline-actions"><input id="wooSecretOut" type="password" readonly autocomplete="off" style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('wooSecretOut')">Copy</button></div>
                   </div>
                 </div>
               </div>
@@ -2694,7 +2701,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                   <label class="mt-8">Order Push URL</label>
                   <div class="inline-actions"><input id="webIntakeUrlOut" readonly style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('webIntakeUrlOut')">Copy</button></div>
                   <label class="mt-8">Signing Secret</label>
-                  <div class="inline-actions"><input id="webSecretOut" readonly style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('webSecretOut')">Copy</button></div>
+                  <div class="inline-actions"><input id="webSecretOut" type="password" readonly autocomplete="off" style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('webSecretOut')">Copy</button></div>
                 </div>
               </div>
             </section>
@@ -2960,7 +2967,12 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
        AWB label @page sizing can never apply to them. -->
   <div id="docPrintStage" style="display:none"></div>
   <!-- Receipt / statement preview -->
-  <div class="modal-overlay" id="nvDocModal">
+  <!-- All six overlays carry role="dialog" + aria-modal="true". Without
+     them a screen reader treats an open modal as ordinary page content:
+     it keeps announcing the dashboard behind it, and the user has no
+     signal that the rest of the page is inert. Labelled from each
+     modal's own heading so the announcement names what opened. -->
+            <div class="modal-overlay" id="nvDocModal" role="dialog" aria-modal="true" aria-labelledby="nvDocTitle">
     <div class="modal-card" style="max-width:820px">
       <div class="modal-head"><h3 id="nvDocTitle">Receipt</h3><button class="modal-close" aria-label="Close" onclick="nvCloseDoc()">&times;</button></div>
       <div id="nvDocBody" style="max-height:62vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px"></div>
@@ -2982,7 +2994,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
        above 760px, where the side menu is already reachable. -->
   <nav class="nv-bottomnav" id="nvBottomNav" aria-label="Main sections"></nav>
 
-  <div class="modal-overlay" id="nvEditParcelModal">
+  <div class="modal-overlay" id="nvEditParcelModal" role="dialog" aria-modal="true" aria-label="Edit booking">
     <div class="modal-card">
       <div class="modal-head">
         <div><h3>Edit booking</h3><p class="footer-note" id="nvEditParcelSub"></p></div>
@@ -3013,7 +3025,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
       </div>
     </div>
   </div>
-  <div class="modal-overlay" id="awbModal">
+  <div class="modal-overlay" id="awbModal" role="dialog" aria-modal="true" aria-label="AWB created">
     <div class="modal-card">
       <div class="modal-head"><h3>AWB Created</h3><button class="modal-close" aria-label="Close" onclick="closeAwbModal()">&times;</button></div>
       <div id="awbModalBody"></div>
@@ -3024,7 +3036,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   </div>
 
   <!-- Invoice view modal -->
-  <div class="modal-overlay" id="invoiceViewModal">
+  <div class="modal-overlay" id="invoiceViewModal" role="dialog" aria-modal="true" aria-label="Invoice">
     <div class="modal-card" style="max-width:820px">
       <div class="modal-head"><h3>Invoice</h3><button class="modal-close" aria-label="Close" onclick="closeInvoiceModal()">&times;</button></div>
       <div id="invoiceViewBody"></div>
@@ -3033,7 +3045,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   </div>
 
   <!-- NovaX distance pricing: one-time pickup point setup -->
-  <div class="modal-overlay" id="nvPickupModal">
+  <div class="modal-overlay" id="nvPickupModal" role="dialog" aria-modal="true" aria-label="Your pickup point">
     <div class="modal-card" style="max-width:520px">
       <div class="modal-head"><h3>Your pickup point</h3><button class="modal-close" aria-label="Close" onclick="nvClosePickupSetup()">&times;</button></div>
       <p class="footer-note" style="margin-bottom:12px">We measure the distance from here to each customer, so you only pay for the kilometres actually covered. You can change it any time.</p>
@@ -3048,7 +3060,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   </div>
 
   <!-- Wallet done modal -->
-  <div class="modal-overlay" id="walletDoneModal">
+  <div class="modal-overlay" id="walletDoneModal" role="dialog" aria-modal="true" aria-label="Withdrawal requested">
     <div class="modal-card" style="text-align:center;max-width:460px">
       <div class="done-check"><svg viewBox="0 0 64 64"><path class="tick" d="M18 33 L28 43 L46 22"/></svg></div>
       <h3>Withdrawal Requested</h3>

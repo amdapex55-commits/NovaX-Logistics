@@ -6037,7 +6037,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         host.innerHTML=
           '<div class="nv-cod-hero"'+(sameFigure?' data-same="1"':'')+'>'+
             '<div class="nv-cod-main">'+
-              '<span class="nv-cod-l">COD balance</span>'+
+              /* Was "COD balance", which this number is not. Verified against
+                 KKM SWEETS & NIMCO's live wallet: Rs 21,660 is invoice credits
+                 (+203,933) plus an admin_adjustment (+600), less delivery
+                 charges due (-520) and withdrawals already taken (-182,353).
+                 It reconciles to the paisa -- it is simply not "COD". Calling
+                 it that invites a merchant to read it as cash collected on
+                 their parcels and to chase the difference. It is what they can
+                 withdraw right now, so it says that. */
+              '<span class="nv-cod-l">Wallet balance</span>'+
               '<div class="nv-cod-v">'+escLabelText(money(balance))+'</div>'+
               (spark.length>1?'<div class="nv-cod-spark">'+U.sparkline(spark,{w:220,h:30})+'</div>':'')+
             '</div>'+
