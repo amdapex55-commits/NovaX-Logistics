@@ -2295,7 +2295,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=def0c0fb" defer></script>
+  <script src="client-app.js?v=2692935e" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2810,33 +2810,43 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
             <!-- MONEY (Payments + Wallet merged) -->
             <section class="client-module" id="client-money">
 
-              <!-- One answer, at the top: what is coming, what is ready, what
-                   has already been paid. These three partition every rupee. -->
-              <div class="panel nv-money-hero" id="nvMoneyHero">
-                <div class="nv-mh-grid">
-                  <div class="nv-mh-cell" data-k="counting">
-                    <span class="nv-mh-lab">Being counted</span>
-                    <strong class="nv-mh-val" id="nvMhCounting">Rs 0</strong>
-                    <span class="nv-mh-sub">delivered, not released yet</span>
+              <!-- ONE balance, stated once. It used to appear eight times on
+                   this page: a three-cell strip, the Withdraw button, a hero
+                   card and "Wallet Summary -> Available", four of them inside
+                   600px. When one figure repeats that often people stop
+                   believing they are the same figure and start hunting for the
+                   difference. The number lives here and nowhere else; the rail
+                   below shows what is on either side of it. -->
+              <div class="panel nv-w2" id="nvMoneyHero">
+                <div class="nv-w2-top">
+                  <div class="nv-w2-main">
+                    <label>Available to withdraw</label>
+                    <div class="wallet-balance count-up" id="walletBalanceText">Rs 0</div>
+                    <span class="wallet-pulse"><span class="pulse"></span><span id="walletPushNote">No admin credit yet</span></span>
                   </div>
-                  <span class="nv-mh-arrow" aria-hidden="true"></span>
-                  <div class="nv-mh-cell is-ready" data-k="ready">
-                    <span class="nv-mh-lab">Ready to withdraw</span>
-                    <strong class="nv-mh-val" id="nvMhReady">Rs 0</strong>
-                    <span class="nv-mh-sub">yours right now</span>
-                  </div>
-                  <span class="nv-mh-arrow" aria-hidden="true"></span>
-                  <div class="nv-mh-cell" data-k="paid">
-                    <span class="nv-mh-lab">Paid to you</span>
-                    <strong class="nv-mh-val" id="nvMhPaid">Rs 0</strong>
-                    <span class="nv-mh-sub">lifetime, into your bank</span>
+                  <div class="nv-w2-acts">
+                    <button type="button" class="nv-mh-btn" id="nvMhWithdrawBtn">Withdraw</button>
+                    <button type="button" class="ghost-btn" id="nvWalletBankBtn">Bank details</button>
+                    <button type="button" class="ghost-btn" onclick="nvWalletStatement()">Statement</button>
                   </div>
                 </div>
-                <div class="nv-mh-act">
-                  <button type="button" class="nv-mh-btn" id="nvMhWithdrawBtn">Withdraw</button>
-                  <span class="nv-mh-note" id="nvMhNote"></span>
-                </div>
+                <span class="nv-mh-note" id="nvMhNote"></span>
+
+                <!-- The settlement timeline, replacing a paragraph that
+                     described this state machine in prose. Money flows in from
+                     the left and out to the right; the balance above is the
+                     middle, so the "Available" step carries no figure of its
+                     own rather than repeating it. -->
+                <ol class="nv-w2-rail" id="nvWalletRail" aria-label="Where your money is">
+                  <li data-stage="transit"><span>In transit</span><strong id="nvRailTransit">Rs 0</strong><em>rider still collecting</em></li>
+                  <li data-stage="clearing"><span>Clearing</span><strong id="nvMhCounting">Rs 0</strong><em>delivered, being invoiced</em></li>
+                  <li data-stage="available" class="is-now"><span>Available</span><strong class="nv-w2-here">&#8593;</strong><em>the figure above</em></li>
+                  <li data-stage="requested"><span>Requested</span><strong id="nvRailReq">Rs 0</strong><em>on its way to your bank</em></li>
+                  <li data-stage="paid"><span>Paid</span><strong id="nvMhPaid">Rs 0</strong><em id="nvRailPaidSub">lifetime, into your bank</em></li>
+                </ol>
               </div>
+
+              <div class="footer-note nv-notice-warm" id="walletReviewNote" style="display:none;border-radius:10px;padding:10px 12px;margin-top:10px">The entries shown do not fully explain this balance. Ask NovaX for a full statement before reconciling it.</div>
 
               <!-- Money the merchant OWES NovaX is a different direction of
                    travel and never shares a list with money they are owed. -->
@@ -2846,45 +2856,20 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 <div class="ops-list" id="nvOwedList"></div>
               </div>
 
-              <div class="panel mt-14" id="nvInvoicePanel">
-                <div class="section-head"><div><h3>Your Invoices</h3><p>Every invoice NovaX has issued you. Open one to see exactly what was collected, what we charged, and what was deducted.</p></div></div>
-                <div class="ops-list" id="clientInvoiceList"></div>
-              </div>
-
-
-              <!-- NovaX new (Smart Portal B): forward-looking money. Every
-                   figure here is server-computed by client_wallet_incoming();
-                   the browser never does financial arithmetic. Hidden until
-                   the RPC returns real data. -->
               <div id="walletIncomingPanel" style="display:none"></div>
-              <div class="wallet-hero">
-                <label>Wallet Balance</label>
-                <div class="wallet-balance count-up" id="walletBalanceText">Rs 0</div>
-                <span class="wallet-pulse"><span class="pulse"></span><span id="walletPushNote">No admin credit yet</span></span>
-              </div>
-              <div class="footer-note" style="background:#eafff5;border:1px solid #bfe8d7;border-radius:10px;padding:10px 12px;margin-top:12px"><strong style="color:#0c7c59">Wallet Balance</strong> is available to withdraw right now. Once you request a payout it moves to <strong>Pending admin payout</strong> (admin still needs to send it) until it shows <strong>Paid</strong>, which means the money has actually reached your IBAN.</div>
-              <div class="footer-note nv-notice-warm" id="walletReviewNote" style="display:none;border-radius:10px;padding:10px 12px;margin-top:10px">The entries shown do not fully explain this balance. Ask NovaX for a full statement before reconciling it.</div>
-              <div class="panel mt-14">
-                <div class="section-head"><div><h3>Wallet Summary</h3><p>Available balance, pending payout, and what you've been paid.</p></div></div>
-                <div class="money-grid" id="walletSummaryCards"></div>
-              </div>
-              <!-- NovaX new (Smart Portal D): fee intelligence, server-computed. -->
               <div id="walletFeeInsights" style="display:none"></div>
-              <!-- NovaX fix (wallet IBAN UX): bank details are now their own
-                   section, always visible, so a client can add/edit their
-                   IBAN anytime -- even at Rs 0 balance -- instead of only
-                   ever seeing an IBAN input after they already have money
-                   to withdraw. -->
-              <!-- Payout controls. nvGuardWalletRender() replaces the contents
-                   of this zone for any non-Owner seat, so Finance can read the
-                   money but never move it. -->
-              <div id="nvWithdrawZone">
+
+              <!-- Both forms were permanently open and together ran 1,359px on
+                   a phone: 35% of the page, for something most visits never
+                   touch. They open on demand now. -->
+              <div id="nvWalletForms" class="nv-w2-forms" hidden>
+<div id="nvWithdrawZone">
               <div class="panel mt-14">
                 <div class="section-head"><div><h3>Bank Account / IBAN</h3><p>Add your payout bank details anytime, even before you have any wallet balance.</p></div></div>
                 <div id="bankDetailsSection"></div>
               </div>
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>Withdraw Funds</h3><p>Choose an amount, payout speed, and destination IBAN. Your saved bank details are prefilled as a default, but you can withdraw to any IBAN you type or paste here.</p></div></div>
+                <div class="section-head"><div><h3>Withdraw Funds</h3><p>Choose an amount, payout speed and destination IBAN. Your saved bank details are prefilled.</p></div></div>
                 <div class="field" style="max-width:280px"><label for="withdrawAmount">Amount to withdraw</label><input id="withdrawAmount" type="number" min="1"></div>
                 <div class="field" style="max-width:380px;margin-top:10px"><label for="withdrawIbanInput">Payout IBAN</label><input id="withdrawIbanInput" placeholder="PK00 BANK 0000 0000 0000 0000"></div>
                 <div class="tier-grid">
@@ -2895,17 +2880,26 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 <div id="withdrawSummary" style="display:none;margin-top:14px"></div>
               </div>
               </div>
-              <div class="panel mt-14">
-                <div class="section-head"><div><h3>Withdrawal History</h3><p>Your payout requests and their status.</p></div></div>
-                <div class="ops-list" id="withdrawHistory"></div>
               </div>
+
+              <!-- Activity: one feed. A withdrawal already writes its own
+                   ledger rows (withdrawal_requested / payout_fee /
+                   payout_paid), so a separate Withdrawal History panel was the
+                   same events printed twice. The receipt now hangs off the
+                   ledger row itself. #withdrawHistory is kept, hidden, because
+                   its renderer writes into it unconditionally. -->
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>Wallet Ledger</h3><p>Every credit and deduction on your wallet. Rows marked “already netted” are shown for reference and were not deducted again.</p></div><button class="ghost-btn" onclick="nvWalletStatement()">Download statement</button></div>
+                <div class="section-head"><div><h3>Wallet activity</h3><p>Every credit, deduction and payout. Rows marked &ldquo;already netted&rdquo; are shown for reference and are not deducted again.</p></div><div class="inline-actions"><button class="ghost-btn" onclick="nvWalletStatement()">Download statement</button></div></div>
                 <div class="ops-list" id="walletLedgerList"></div>
               </div>
-            
+              <div id="withdrawHistory" hidden></div>
+
+              <div class="panel mt-14" id="nvInvoicePanel">
+                <div class="section-head"><div><h3>Your Invoices</h3><p>Every invoice NovaX has issued you. Open one to see exactly what was collected, what we charged, and what was deducted.</p></div></div>
+                <div class="ops-list" id="clientInvoiceList"></div>
+              </div>
+
             </section>
-            <!-- SUB ACCOUNTS -->
             <section class="client-module" id="client-subAccounts">
               <div class="grid two">
                 <div class="panel">
@@ -3680,6 +3674,49 @@ html[data-theme="dark"] .barcode-img{ background:#fff!important; }
    reason spelled out beside it so no one has to infer it from the status. */
 .nv-cod-prepaid{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.02em;
   padding:1px 7px;border-radius:999px;background:var(--nvu-good-bg,#e7f5ee);color:#0c7c59;white-space:nowrap}
+/* ── Wallet v2 ───────────────────────────────────────────────────────
+   One balance, one place, with the settlement timeline underneath it.
+   Replaces a layout that printed the same figure eight times across 2,845px
+   (3,909px on a phone) and kept two forms permanently open. */
+.nv-w2{padding:18px 20px}
+.nv-w2-top{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.nv-w2-main{min-width:0}
+.nv-w2-main label{display:block;font-size:10.5px;font-weight:800;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--nvu-ink-2);margin-bottom:4px}
+.nv-w2 .wallet-balance{font-size:clamp(30px,5.2vw,44px);font-weight:900;letter-spacing:-.03em;line-height:1.05}
+.nv-w2-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.nv-w2 .nv-mh-note{display:block;margin-top:8px;font-size:12.5px;color:var(--nvu-ink-2)}
+
+/* The settlement rail. Money enters from the left and leaves to the right;
+   the balance above is the middle, so the Available step carries no figure of
+   its own rather than repeating it a second time. */
+.nv-w2-rail{list-style:none;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:8px;margin:16px 0 0;padding:14px 0 0;border-top:1px solid var(--line)}
+.nv-w2-rail li{position:relative;min-width:0;padding:0 4px}
+.nv-w2-rail li+li::before{content:"";position:absolute;left:-6px;top:20px;width:8px;height:2px;
+  background:var(--line);border-radius:2px}
+.nv-w2-rail span{display:block;font-size:9.5px;font-weight:800;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--nvu-ink-2)}
+.nv-w2-rail strong{display:block;font-size:15px;font-weight:900;margin-top:3px;
+  overflow-wrap:anywhere;color:var(--nvu-ink)}
+.nv-w2-rail em{display:block;font-style:normal;font-size:10.5px;line-height:1.3;
+  color:var(--nvu-ink-2);margin-top:2px}
+.nv-w2-rail li.is-empty strong,.nv-w2-rail li.is-empty em{opacity:.42}
+.nv-w2-rail li.is-now{background:var(--nvu-good-bg);border-radius:12px;padding:8px 8px 9px;margin-top:-8px}
+.nv-w2-rail li.is-now span{color:var(--green-ink,#0c7c59)}
+.nv-w2-here{font-size:18px!important;line-height:1;color:var(--green,#13a36f)!important}
+
+/* Forms open on demand. */
+.nv-w2-forms[hidden]{display:none}
+.nv-w2-forms.is-open{animation:fadeUp .26s ease backwards}
+
+@media (max-width:760px){
+  .nv-w2-rail{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .nv-w2-rail li+li::before{display:none}
+  .nv-w2-rail li.is-now{grid-column:1/-1;margin-top:0}
+  .nv-w2-acts{width:100%}
+  .nv-w2-acts button{flex:1 1 auto;min-width:0}
+}
 .nv-cod-void{text-decoration:line-through;text-decoration-thickness:1.5px;opacity:.6}
 .nv-cod-void-t{display:block;font-size:10.5px;font-weight:700;letter-spacing:.02em;
   color:var(--muted,#6b7280);white-space:nowrap}

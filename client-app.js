@@ -5979,11 +5979,35 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                owed:owed, shortfall:shortfall, rawBalance:rawBalance };
     }
 
-    /* Hero Withdraw scrolls to the payout form rather than opening another
-       screen -- everything now lives on one surface. */
+    /* The two payout forms sat permanently open and ran 1,359px on a phone --
+       35% of the page -- for something most visits never touch. They are now
+       revealed on demand by the two hero buttons. Revealing rather than moving
+       the nodes: every handler bound to #withdrawAmount, the tier cards and
+       #bankDetailsSection keeps its element, so nothing has to be rebound. */
+    function nvOpenWalletForms(focusId){
+      var box=document.getElementById("nvWalletForms");
+      if(!box) return null;
+      box.hidden=false;
+      box.classList.add("is-open");
+      var el=focusId?document.getElementById(focusId):null;
+      var target=el||box;
+      try{ target.scrollIntoView({behavior:"smooth",block:"center"}); }catch(e){}
+      if(el) setTimeout(function(){ try{ el.focus({preventScroll:true}); }catch(e){} },320);
+      return box;
+    }
+    window.nvOpenWalletForms=nvOpenWalletForms;
+
     (function nvWireHeroWithdraw(){
       function bind(){
         var b=document.getElementById("nvMhWithdrawBtn");
+        var bank=document.getElementById("nvWalletBankBtn");
+        if(bank&&!bank._nvWired){
+          bank._nvWired=true;
+          bank.addEventListener("click",function(){
+            if(!nvIsOwnerSeat()){ try{ toast("Bank details are Owner-only on this account."); }catch(e){} return; }
+            nvOpenWalletForms("bankHolderName");
+          });
+        }
         if(!b||b._nvWired) return;
         b._nvWired=true;
         b.addEventListener("click",function(){
@@ -5993,18 +6017,57 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             var fig=nvMoneyFigures();
             if(!f.value) f.value=String(Math.round(fig.ready));
           }catch(e){}
-          f.scrollIntoView({behavior:"smooth",block:"center"});
-          setTimeout(function(){ try{ f.focus(); }catch(e){} },320);
+          nvOpenWalletForms("withdrawAmount");
         });
       }
       if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",bind);
       else bind();
     })();
 
+    /* The settlement rail. Clearing and Paid are filled by renderMoneyHero's
+       own counters; these are the two stages it never had a figure for, plus
+       the "paid this month" line rescued from the deleted Wallet Summary. */
+    function nvRenderWalletRail(){
+      var rail = document.getElementById("nvWalletRail");
+      if(!rail) return;
+      var myId = (state.client && state.client.id) || null;
+
+      var transit = 0;
+      try{
+        var inc = NV_WALLET_INTEL && NV_WALLET_INTEL.incoming;
+        if(inc && inc.transit != null) transit = Number(inc.transit) || 0;
+      }catch(e){}
+
+      var wds = (state.walletWithdrawals || []).filter(function(w){ return w && w.clientId === myId; });
+      var requested = wds.filter(function(w){ return String(w.status||"") !== "Paid" && !/reject|cancel/i.test(String(w.status||"")); })
+                         .reduce(function(t,w){ return t + Number(w.net||0); }, 0);
+
+      var now = new Date();
+      var monthPaid = wds.filter(function(w){
+        if(String(w.status||"") !== "Paid" || !w.paidAt) return false;
+        var d = new Date(String(w.paidAt).replace(" ","T"));
+        return !isNaN(d) && d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+      }).reduce(function(t,w){ return t + Number(w.net||0); }, 0);
+
+      var t = document.getElementById("nvRailTransit"); if(t) t.textContent = money(transit);
+      var r = document.getElementById("nvRailReq");     if(r) r.textContent = money(requested);
+      var sub = document.getElementById("nvRailPaidSub");
+      if(sub) sub.textContent = monthPaid > 0 ? (money(monthPaid) + " this month") : "lifetime, into your bank";
+
+      /* A stage with nothing in it is not a step the merchant is on. */
+      rail.querySelectorAll("li[data-stage]").forEach(function(li){
+        var st = li.getAttribute("data-stage");
+        var v = st==="transit" ? transit : st==="requested" ? requested : null;
+        if(v !== null) li.classList.toggle("is-empty", !(v > 0));
+      });
+    }
+    window.nvRenderWalletRail = nvRenderWalletRail;
+
     function renderMoneyHero(){
       var hero = document.getElementById("nvMoneyHero");
       if(!hero) return;
       var f = nvMoneyFigures();
+      try{ nvRenderWalletRail(); }catch(e){}
 
       nvCountTo(document.getElementById("nvMhCounting"), f.counting, "counting");
       nvCountTo(document.getElementById("nvMhReady"),    f.ready,    "ready");
@@ -6019,7 +6082,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(btn){
         btn.disabled = !live;
         btn.classList.toggle("nv-live", live);
-        btn.textContent = live ? ("Withdraw " + money(f.ready)) : "Nothing to withdraw yet";
+        /* The amount sits directly above this button. Printing it here too
+           was one of the eight places the same figure appeared. */
+        btn.textContent = live ? "Withdraw" : "Nothing to withdraw yet";
       }
       var note = document.getElementById("nvMhNote");
       if(note){
@@ -6029,7 +6094,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              reaches the NovaX WALLET after delivery -- it is not a bank
              payout time, and conflating the two sets a financial expectation
              none of the options can meet. */
-          ? "Paid to your IBAN at the speed you pick below."
+          ? "Tap Withdraw to choose an amount, a payout speed and the IBAN."
           : (f.shortfall > 0
               ? "Your wallet is " + money(f.shortfall) + " short. New COD clears that first, then the rest is yours to withdraw."
               : (f.counting > 0
@@ -6792,7 +6857,29 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(amt===0) return { cls:"", txt:"completed" };
         return { cls:"", txt:"includes "+moneyExact(Math.abs(amt)) };
       }
-      ledgerList.innerHTML=reconHtml+myLedger.slice(0,shownN).map(l=>{ const ch=nvLedgerChip(l); return `<div class="ops-card${l.affectsBalance?"":" nv-ledger-info"}"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${ch.cls}">${escLabelText(ch.txt)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(nvNiceDate(l.createdAt))}${l.affectsBalance?"":" · already netted — not deducted again"}</div></div>`; }).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
+      /* Every payout ledger row carries reference_type='withdrawal' plus the
+         withdrawal's own id -- verified across all 114 payout rows -- so the
+         receipt hangs off the entry the merchant is already looking at, rather
+         than living in a second panel that reprinted the same events.
+         nvWithdrawalReceipt() already builds the whole document (amount, masked
+         IBAN, fee, net, both timestamps, bank reference, CSV export); it was
+         simply four screens down where nobody found it. */
+      function nvLedgerReceiptBtn(l){
+        try{
+          /* One withdrawal writes three rows -- withdrawal_requested,
+             payout_fee and payout_paid -- so keying off reference_type alone
+             printed the same receipt three times. The request is the primary
+             event; the other two are its consequences. */
+          if(String(l.entryType||"")!=="withdrawal_requested") return "";
+          if(String(l.referenceType||"")!=="withdrawal" || !l.referenceId) return "";
+          var w=(state.walletWithdrawals||[]).find(function(x){
+            return x && (String(x._uuid)===String(l.referenceId) || String(x.id)===String(l.referenceCode));
+          });
+          if(!w) return "";
+          return '<div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" style="padding:5px 11px;font-size:12px" onclick="nvWithdrawalReceipt(\''+escLabelText(w.id)+'\')">Receipt</button></div>';
+        }catch(e){ return ""; }
+      }
+      ledgerList.innerHTML=reconHtml+myLedger.slice(0,shownN).map(l=>{ const ch=nvLedgerChip(l); return `<div class="ops-card${l.affectsBalance?"":" nv-ledger-info"}"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${ch.cls}">${escLabelText(ch.txt)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(nvNiceDate(l.createdAt))}${l.affectsBalance?"":" · already netted — not deducted again"}</div></div>${nvLedgerReceiptBtn(l)}`; }).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
         /* NovaX motion: when the balance actually moved this render, flag the
            newest ledger row so the merchant can see what caused it, rather
            than just noticing a different total. Same .nv-changed sweep the
@@ -6861,7 +6948,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div>`+
         `<div class="footer-note" style="margin-top:12px">${(!typedIbanErr&&typedIban)?("Payout goes to <b>"+escLabelText(maskIban(typedIban))+"</b>"+(bd&&bd.holderName?(" for "+escLabelText(bd.holderName)):"")+". "):""}${canConfirm?"":("<b>"+escLabelText(blockReason)+"</b>")}</div>`+
         `<button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="requestWalletWithdrawal()" ${canConfirm?"":"disabled"} title="${canConfirm?"Request Withdrawal":escLabelText(blockReason)}">${state.__withdrawInFlight?"Submitting...":"Request Withdrawal"}</button>`;
-      document.getElementById("withdrawHistory").innerHTML=myWds.map(w=>{
+      /* Kept hidden rather than deleted: this writer is unconditional, and the
+         receipts it builds now hang off the ledger rows instead. */
+      const __wdHost=document.getElementById("withdrawHistory");
+      if(__wdHost) __wdHost.innerHTML=myWds.map(w=>{
         // NovaX new (Finance Control Room v2): friendly status wording only --
         // no mention of admin review queues, locks, or risk.
         const friendlyStatus=w.status==="Paid"?"Paid":"Being verified by finance";
@@ -6869,7 +6959,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // NovaX fix (wallet IBAN UX, item #10): history now shows a masked
         // IBAN (e.g. PK24****3344) instead of the full account number.
         return `<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(w.id)}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${escLabelText(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${paidRef}</div><div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" style="padding:5px 11px;font-size:12px" onclick="nvWithdrawalReceipt('${escLabelText(w.id)}')">Receipt</button></div></div>`;
-      }).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Pick a payout speed above to withdraw.</p></div>`;
+      }).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Tap Withdraw to request your first payout.</p></div>`;
     }
     /* Durable, privacy-safe request identities shared by booking and payout.
        The browser stores only a SHA-256 signature plus an opaque random key;
