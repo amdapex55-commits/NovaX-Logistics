@@ -653,6 +653,21 @@
       :root{color-scheme:light !important;}
       body{margin:0 !important;background:var(--nvu-bg) !important;}
       body *{visibility:hidden !important;}
+      /* THE BLANK PAGES. `visibility:hidden` hides the pixels and keeps the
+         LAYOUT, so the entire portal behind the label was still occupying its
+         full height and the printer dutifully paginated it as empty sheets.
+         Measured on a merchant printing 4 labels: document 11,104px -> 10
+         pages, of which 2 carried labels and 8 were blank. It scales with how
+         long the page behind happens to be, which is why the same action gave
+         5 pages from one screen and 10 from another, and why it never showed
+         up on a short demo account.
+
+         Removing the layout as well as the paint makes the document exactly as
+         tall as the print stage: 2,041px, 2 pages, nothing blank. The
+         visibility rules above stay -- they still cover anything nested inside
+         a stage's ancestors -- and the stage keeps position:absolute, which is
+         what already paginates correctly today. */
+      body > *:not(#printStage):not(#adminPrintStage):not(#docPrintStage){ display:none !important; }
       #printStage,#printStage *,#adminPrintStage,#adminPrintStage *{visibility:visible !important;}
       #printStage,#adminPrintStage{display:block !important;position:absolute !important;left:0 !important;top:0 !important;width:100% !important;height:auto !important;padding:0 !important;margin:0 !important;}
       /* NovaX new (wallet receipts & statements): documents print on plain
