@@ -5460,7 +5460,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            tell them apart: credited to wallet, then withdrawn to bank. */
         "Generated":"Being counted",
         "Pushed to wallet":"Credited to your wallet",
-        "Settled":"Paid to your bank",
+        /* "Settled" was still mapped to "Paid to your bank" even though the
+           comment above had already identified exactly this confusion for
+           "Pushed to wallet". The data is unambiguous: KKM's newest invoice
+           INV-260923bcac3 is Settled, has wallet_pushed_at set, and its
+           net_payable of Rs 21,660 IS their current wallet balance -- it has
+           never been withdrawn. All 18 of their invoices produced an
+           invoice_credit ledger row; money only reaches a bank through the 9
+           withdrawals. A merchant told "Paid to your bank" checks their bank,
+           finds nothing, and concludes NovaX has not paid them, while the
+           money is sitting in their wallet waiting to be withdrawn. */
+        "Settled":"Credited to your wallet",
         "Paid":"Paid to your bank",
         "Paid to NovaX":"You've paid this",
         "Cancelled":"Cancelled"
@@ -6293,7 +6303,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               : '')+
             '</div>';
         })();
-        ledgerList.innerHTML=reconHtml+myLedger.slice(0,shownN).map(l=>`<div class="ops-card${l.affectsBalance?"":" nv-ledger-info"}"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${l.affectsBalance?(l.amount>=0?"good":"warn"):""}">${money(l.amount)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(nvNiceDate(l.createdAt))}${l.affectsBalance?"":" · already netted — not deducted again"}</div></div>`).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
+        /* payout_paid rows are MARKERS: the money already left the balance on the
+   matching withdrawal_requested row, so they carry amount 0 and
+   affects_balance=false by design. Rendering that as "Rs 0" made a
+   completed bank transfer look like a zero-value payout -- KKM has nine
+   of them. A marker row now says "completed" and lets its own note
+   explain, instead of showing an amount that is not a quantity. */
+      ledgerList.innerHTML=reconHtml+myLedger.slice(0,shownN).map(l=>`<div class="ops-card${l.affectsBalance?"":" nv-ledger-info"}"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${l.affectsBalance?(l.amount>=0?"good":"warn"):""}">${(!l.affectsBalance&&Number(l.amount||0)===0)?"completed":money(l.amount)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(nvNiceDate(l.createdAt))}${l.affectsBalance?"":" · already netted — not deducted again"}</div></div>`).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
         /* NovaX motion: when the balance actually moved this render, flag the
            newest ledger row so the merchant can see what caused it, rather
            than just noticing a different total. Same .nv-changed sweep the
