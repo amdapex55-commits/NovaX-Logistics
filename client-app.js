@@ -3287,7 +3287,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
-      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
+      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
       if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><label style="display:inline-flex;align-items:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -6px;padding:10px 6px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
       /* "Showing 25 of 189" with one control to load more. Without this the
          merchant cannot tell whether the list ended or was truncated. */
@@ -5169,7 +5169,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       /* data-label drives the mobile card layout in client.html: under 900px the
          table stops being a table and each row stacks as AWB-first card, so the
          report stops requiring horizontal scanning on a phone. */
-      tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><td data-label="AWB"><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}</td><td data-label="Date">${escLabelText(p.date||"-")}</td><td data-label="Consignee">${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td data-label="Status"><span class="status ${statusClass(p)}">${escLabelText(nvStatusLabel(p.status))}</span></td><td data-label="COD">${money(p.cod)}</td><td data-label="Fee">${money(p.fee)}</td><td data-label="Destination age">${agingLabel(agingHours(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
+      /* Was onclick alone on a <tr>: reachable with a mouse and with nothing
+         else. Same keyboard contract the status board already uses. */
+      tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><td data-label="AWB"><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}</td><td data-label="Date">${escLabelText(p.date||"-")}</td><td data-label="Consignee">${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td data-label="Status"><span class="status ${statusClass(p)}">${escLabelText(nvStatusLabel(p.status))}</span></td><td data-label="COD">${money(p.cod)}</td><td data-label="Fee">${money(p.fee)}</td><td data-label="Destination age">${agingLabel(agingHours(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
     }
 
     /* renderLatestInvoice() removed 25 Aug 2026: #clientLatestInvoice does not
@@ -11981,8 +11983,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                    backgrounded -- the merchant simply never sees new data and
                    has to reload by hand. These three fallbacks make the portal
                    keep itself current either way, and cost one query each. */
+                /* visibilitychange (when the tab becomes visible) and focus BOTH
+                   fire when a merchant returns to the tab, milliseconds apart,
+                   and each one ran a complete eight-dataset reload -- parcels,
+                   invoices, withdrawals, payment logs, store connections,
+                   wallet ledger, pickups and the client row, every one paged to
+                   completion. Coming back to the tab cost that twice.
+
+                   A short cooldown collapses the pair into one without changing
+                   what any single trigger does: a genuine refresh a second and
+                   a half later still runs. online/ and pull-to-refresh share
+                   this path, so they are covered too. */
+                var __nvLastQuiet=0;
                 function nvQuietRefresh(){
                   if(document.hidden) return;
+                  var now=Date.now();
+                  if(now-__nvLastQuiet < 1500) return;
+                  __nvLastQuiet=now;
                   try{ loadAll(); }catch(e){}
                 }
                 /* Exposed so pull-to-refresh can reach it: loadAll() and this
