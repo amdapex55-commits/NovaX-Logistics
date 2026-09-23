@@ -5875,7 +5875,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       } finally { if(btn) btn.disabled=false; }
       const rows=res.rows;
       const stage=document.getElementById("printStage");
-      stage.innerHTML=`<div style="font-family:sans-serif;color:#000;background:var(--nvu-bg);padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th><th>Fee</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(nvStatusLabel(p.status))}</td><td>${money(p.cod)}</td><td>${money(p.fee)}</td></tr>`).join("")}<tr><td colspan="4"><strong>Total &mdash; ${rows.length} parcel${rows.length===1?"":"s"}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.cod||0),0))}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.fee||0),0))}</strong></td></tr></table></div>`;
+      /* A 201-parcel report prints across many sheets and the column header
+         was shown once, on page one -- every page after it is unlabelled
+         columns of numbers. table-header-group repeats it, and avoiding a
+         break inside a row stops a parcel being split across two sheets. */
+      stage.innerHTML=`<style>
+        #printStage thead{display:table-header-group}
+        #printStage tfoot{display:table-footer-group}
+        #printStage tr{break-inside:avoid;page-break-inside:avoid}
+      </style><div style="font-family:sans-serif;color:#000;background:var(--nvu-bg);padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th><th>Fee</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(nvStatusLabel(p.status))}</td><td>${money(p.cod)}</td><td>${money(p.fee)}</td></tr>`).join("")}<tr><td colspan="4"><strong>Total &mdash; ${rows.length} parcel${rows.length===1?"":"s"}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.cod||0),0))}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.fee||0),0))}</strong></td></tr></table></div>`;
       toast(nvReportScopeNote(rows.length,res.complete), res.complete?"success":"error");
       nvPrintStageNow();
     }
