@@ -3347,7 +3347,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          a board built only from STATUS_TAGS dropped cancelled parcels. */
       const order=STATUS_TAGS.concat(["Cancelled by client"]).filter(s=>groups[s]);
       const open=!!state.statusBoardOpen;
-      const sum=document.getElementById("statusBoardSummary"); if(sum) sum.textContent=parcels.length?`${parcels.length} parcel${parcels.length===1?"":"s"} \u00b7 ${order.map(k=>`${groups[k].length} ${k.toLowerCase()}`).join(", ")} \u2014 tap to ${open?"collapse":"expand"}.`:"No parcels in the selected range.";
+      const sum=document.getElementById("statusBoardSummary"); if(sum) sum.textContent=parcels.length?`${parcels.length} parcel${parcels.length===1?"":"s"} \u00b7 ${order.map(k=>`${groups[k].length} ${nvStatusLabel(k).toLowerCase()}`).join(", ")} \u2014 tap to ${open?"collapse":"expand"}.`:"No parcels in the selected range.";
       const chev=document.getElementById("statusBoardChevron"); if(chev) chev.textContent=open?"▾":"▸";
       const sbHead=document.getElementById("statusBoardHead"); if(sbHead) sbHead.setAttribute("aria-expanded",open?"true":"false");
       el.style.display=open?"flex":"none";
@@ -3738,9 +3738,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(bvl){
         const U=window.NovaXUI;
         bvl.innerHTML=(U&&U.emptyState)
+          /* This panel lives ON the Bulk Booking tab, so "Go to Bulk Booking"
+             offered the merchant a trip to where they already were. */
           ? U.emptyState({icon:"\u21E7",title:"NO FILE CHECKED YET",
-              body:"Upload a CSV and every row is checked for city, phone, COD, weight and duplicate order IDs before anything is booked.",
-              actionLabel:"Go to Bulk Booking",action:"bulkBooking"})
+              body:"Upload a CSV above and every row is checked for city, phone, COD, weight and duplicate order IDs before anything is booked."})
           : `<div class="ops-card"><strong>No file checked yet</strong><p>Upload a CSV to see per-row validation.</p></div>`;
       }
       /* Both the metric cards and the City Summary are written by
@@ -9025,9 +9026,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
       }catch(e){return {data:null,error:{message:String((e&&e.message)||e)}};}
     }
+    /* Tickets are read with state.client.id, which loadAll() fills in. Opening
+       Support before that lands made nvTkReadAll() return "Account is not
+       ready", and the merchant was shown "We could not load your tickets" --
+       a connection error for something that was only early. Nothing retried
+       when the account arrived, so it stayed wrong until they found the Try
+       again button. Wait for the account instead of reporting a failure. */
+    var __nvTkWaitTries=0;
     function nvTkLoad(){
       var sb = window.__nvSb;
       if (!sb || NV_TK.loading) return Promise.resolve();
+      var cid = state.client && state.client.id;
+      if (!cid){
+        if (__nvTkWaitTries < 20){
+          __nvTkWaitTries++;
+          var host = document.getElementById("nvTkList");
+          if (host && !host.children.length){
+            host.innerHTML = '<div class="ops-card"><strong>Loading your tickets\u2026</strong>'
+              + '<p class="footer-note">Waiting for your account to finish loading.</p></div>';
+          }
+          setTimeout(nvTkLoad, 500);
+        }
+        return Promise.resolve();
+      }
+      __nvTkWaitTries = 0;
       NV_TK.loading = true;
       return Promise.resolve(
         nvTkReadAll(sb)
@@ -13478,24 +13500,57 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          merchants saw "cancel" and "CANCEL" -- internal shorthand, inconsistent
          casing, and genuinely ambiguous about whether the CUSTOMER refused, the
          booking was cancelled, or a return was started. */
-      function nvHumanException(raw){
+      /* THE STATUS IS THE OUTCOME. THE NOTE IS A HINT.
+         This used to read the free-text note and report whatever it said as
+         the reason, which is wrong twice over on real data:
+
+           * KKM SWEETS & NIMCO has FIVE parcels whose status is "Refused" and
+             whose note is the single word "cancel". The old exact-match map
+             turned that into "Order cancelled before delivery" -- a customer
+             refusing at the door reported to the merchant as an order that was
+             cancelled. Different event, different money, different follow-up.
+           * Anything the map did not recognise fell through to
+             charAt(0).toUpperCase(), so the note "out of hain" was presented
+             to the merchant as the official reason "Out of hain". "servies
+             nahi hain" and the typo "cancal" behave the same way.
+
+         These notes are typed by riders and ops in a hurry, in mixed English
+         and Urdu. The parcel's STATUS is the authoritative outcome, so the
+         headline now comes from the status, and the note is only appended when
+         it actually adds something a merchant can act on. */
+      var NV_EXC_BY_STATUS={
+        "Refused":"Customer refused the parcel",
+        "Out of service area":"Address is outside our delivery area",
+        "Consignee not available":"Consignee was not available",
+        "Return to shipper":"On its way back to you",
+        "Parcel returned to consignee":"Returned to the consignee",
+        "Cancelled":"Order cancelled before delivery",
+        "Cancelled by client":"You cancelled this booking",
+        "Reattempt":"Delivery will be attempted again"
+      };
+      var NV_EXC_NOTE={
+        "cancel":"","cancelled":"","cancal":"",        /* say nothing rather than contradict the status */
+        "refuse":"","refused":"",
+        "na":"","n/a":"",
+        "no response":"Consignee did not respond",
+        "wrong address":"Address could not be found",
+        "damaged":"Parcel reported damaged"
+      };
+      function nvHumanException(raw, status){
         var t=String(raw==null?"":raw).trim();
-        if(!t) return "";
-        var map={
-          "cancel":"Order cancelled before delivery",
-          "cancelled":"Order cancelled before delivery",
-          "refuse":"Customer refused the parcel",
-          "refused":"Customer refused the parcel",
-          "na":"Consignee was not available",
-          "n/a":"Consignee was not available",
-          "no response":"Consignee did not respond",
-          "wrong address":"Address could not be found",
-          "damaged":"Parcel reported damaged"
-        };
-        var hit=map[t.toLowerCase()];
-        if(hit) return hit;
-        return t.charAt(0).toUpperCase()+t.slice(1);
+        var head=NV_EXC_BY_STATUS[String(status==null?"":status).trim()]||"";
+        if(!t) return head;
+        var key=t.toLowerCase();
+        if(Object.prototype.hasOwnProperty.call(NV_EXC_NOTE,key)){
+          var mapped=NV_EXC_NOTE[key];
+          return head || mapped || "";
+        }
+        /* An unrecognised note is shown as a quoted staff note, never as the
+           official reason, so gibberish can never masquerade as an outcome. */
+        var quoted='\u201c'+t+'\u201d';
+        return head ? (head+" \u00b7 note: "+quoted) : quoted;
       }
+      window.nvHumanException=nvHumanException;
       /* 154 unread and no way to clear them but tapping each one. */
       function nvMarkAllRead(){
         try{
@@ -13524,7 +13579,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              every row rendered identically and a refused parcel looked exactly
              like a delivered one. */
           if(st==="Delivered") out.push({ kind:"good", at:stamp(p), id:p.awb+"|delivered|"+stamp(p), awb:p.awb, title:p.awb+" delivered", sub:[p.consignee,p.city].filter(Boolean).join(" \u00b7 ") });
-          else if(NEEDS_ME.indexOf(st)>=0) out.push({ kind:"bad", at:stamp(p), id:p.awb+"|"+st+"|"+stamp(p), awb:p.awb, title:p.awb+" \u2013 "+st, sub:(nvHumanException(p.exception)||[p.consignee,p.city].filter(Boolean).join(" \u00b7 ")) });
+          else if(NEEDS_ME.indexOf(st)>=0) out.push({ kind:"bad", at:stamp(p), id:p.awb+"|"+st+"|"+stamp(p), awb:p.awb, title:p.awb+" \u2013 "+st, sub:(nvHumanException(p.exception,st)||[p.consignee,p.city].filter(Boolean).join(" \u00b7 ")) });
           else if(st==="Collected by rider") out.push({ kind:"info", at:stamp(p), id:p.awb+"|pickup|"+stamp(p), awb:p.awb, title:p.awb+" picked up", sub:"Rider collected this parcel" });
         });
         /* Support replies. The empty state promised these and nothing produced
