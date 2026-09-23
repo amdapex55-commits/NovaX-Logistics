@@ -1534,6 +1534,37 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       if(p&&p.exception&&String(p.exception).trim()) return 4;
       return 5;
     }
+    /* #12 + #8. "38 need you" with no breakdown is a number a merchant cannot
+       act on: it folds refusals they must decide, returns already on their way
+       back, parcels sitting at the destination depot, and missing addresses into
+       one lump. Measured on the live account the 38 is actually 14 returns, 11
+       sitting at destination past 24 hours, 5 refusals, 4 not moved, 2
+       exceptions, 1 reattempt and 1 outside the service area -- seven different
+       problems with seven different answers.
+
+       "At destination over 24h" is called out by name (#8) because it is the
+       largest single group after returns and the one with a real SLA behind it:
+       the parcel has reached its destination city and simply has not been taken
+       out for delivery. */
+    function nvAttentionReason(p){
+      var st=String((p&&p.status)||"");
+      if(nvMissingDeliveryInfo(p)) return "Missing address or phone";
+      if(st==="Refused") return "Refused \u2014 your decision";
+      if(st==="Out of service area") return "Outside service area";
+      if(st==="Consignee not available") return "Nobody available";
+      if(/return/i.test(st)) return "Return to shipper";
+      if(st==="Reattempt") return "Reattempt pending";
+      if((typeof isRiderCashHolding==="function") && isRiderCashHolding(p)) return "Rider holding cash";
+      if(st==="Parcel received at destination") return "At destination over 24h";
+      if(p&&p.exception&&String(p.exception).trim()) return "Exception raised";
+      return "Not moved in 24h+";
+    }
+    function nvAttentionBreakdown(list){
+      var m={};
+      (list||[]).forEach(function(p){ var r=nvAttentionReason(p); m[r]=(m[r]||0)+1; });
+      return Object.keys(m).map(function(k){ return { reason:k, n:m[k] }; })
+                   .sort(function(a,b){ return b.n-a.n; });
+    }
     function nvAttentionSorted(list){
       return (list||[]).slice().sort(function(a,b){
         var d=nvAttentionRank(a)-nvAttentionRank(b);
@@ -2279,11 +2310,42 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
        tell that those are durations, not freshness -- a merchant reasonably
        read "10d" on a delivered parcel as ten days of nothing happening. The
        number was right; the noun was missing. Each row now carries its own. */
+    /* #14 + #15. Every live row said "<time> waiting" and every finished one
+       said "took <time>", which names neither what is being waited FOR nor what
+       the duration measures. A merchant reading "took 6d" on a refused parcel
+       cannot tell whether that is time-to-refusal, time-to-return, or the whole
+       life of the order; reading "2d waiting" at destination cannot tell whether
+       a rider is assigned. Each stage now says its own thing. */
+    var NV_WAITING_FOR={
+      "New booked":"waiting for pickup",
+      "Collected by rider":"with the rider",
+      "Arrived at warehouse":"at our warehouse",
+      "Parcel now in transit":"in transit",
+      "Parcel received at destination":"at destination, awaiting delivery",
+      "Parcel out for delivery":"out for delivery",
+      "Reattempt":"awaiting re-delivery",
+      "Reassigned":"being reassigned"
+    };
+    var NV_SETTLED_VERB={
+      "Refused":"refused after",
+      "Consignee not available":"unanswered after",
+      "Out of service area":"returned undeliverable after",
+      "Return to shipper":"returned after",
+      "Parcel returned to consignee":"returned after",
+      "Cancelled by client":"cancelled after",
+      "Cancelled":"cancelled after"
+    };
     function nvAgeTerm(p){ return nvOutcomeSettled(p) ? "took" : "waiting"; }
     function nvAgeText(p){
       var v=agingLabel(agingHours(p));
       if(v==="\u2014") return v;
-      return nvOutcomeSettled(p) ? ("took "+v) : (v+" waiting");
+      var st=String((p&&p.status)||"");
+      if(nvOutcomeSettled(p)){
+        if(st.indexOf("Delivered")>-1) return "delivered in "+v;
+        return (NV_SETTLED_VERB[st]||"closed after")+" "+v;
+      }
+      var w=NV_WAITING_FOR[st];
+      return w ? (v+" "+w) : (v+" waiting");
     }
     function alertForParcel(p){ return {level:"ok",label:nvOutcomeSettled(p)?"Time to deliver":"Waiting",due:agingLabel(agingHours(p))}; }
     function urgencyClass(l){ if(l==="critical"||l==="super urgent") return "bad"; if(l==="warning"||l==="urgent") return "warn"; return "good"; }
@@ -2465,7 +2527,18 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       if(!nvOutcomeSettled(p)) return false;
       return String(p.status||"").indexOf("Delivered")<0;
     }
+    /* #16. A row reading "Rs 0" is either a legitimate prepaid order or a
+       booking where the COD was never filled in, and the merchant could not
+       tell which -- the two need opposite actions. paymentMode already records
+       the answer at booking time. */
     function nvCodCell(p){
+      if(Number((p&&p.cod)||0)===0){
+        var mode=String(parcelPaymentMode(p)||"");
+        var prepaid=/prepaid|non\s*-?\s*cod|^paid$/i.test(mode);
+        return prepaid
+          ? '<span class="nv-cod-prepaid" title="Booked as a prepaid order \u2014 the rider collects nothing.">Prepaid</span>'
+          : '<span class="nv-cod-void-t" style="color:#a1230e" title="This parcel was booked with no COD amount and is not marked prepaid. If money is due, edit the booking.">Rs 0 \u2014 no COD set</span>';
+      }
       var m=money(p&&p.cod);
       if(!nvCodNotCollected(p)) return m;
       return '<span class="nv-cod-void" title="This parcel was not delivered, so no COD was collected.">'+m+'</span>'+
@@ -3337,6 +3410,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       if(isCancellableBooking(p)){
         btns.push('<button class="ghost-btn nv-cancel-booking" type="button" onclick="cancelClientBooking(\''+a+'\',event)">Cancel booking</button>');
+      }
+      /* #10. N8530083 has sat at Reattempt for 8d18h and this row offered one
+         button: "Report an issue". The parcel is waiting on a re-delivery the
+         merchant can confirm, and on an address they may need to correct --
+         neither was reachable from the list they actually look at. */
+      var __st=String((p&&p.status)||"");
+      if(__st==="Reattempt" || __st==="Consignee not available"){
+        btns.push('<button class="action-btn" type="button" onclick="event.stopPropagation();requestRedelivery(\''+a+'\')">Confirm re-delivery</button>');
+      }
+      if(__st==="Out of service area" && typeof nvOpenEditParcel==="function"){
+        btns.push('<button class="action-btn" type="button" onclick="nvOpenEditParcel(\''+a+'\',event)">Change address</button>');
       }
       if(nvCanRaiseTicket(p) && (typeof nvCanUseTab!=="function" || nvCanUseTab("tickets"))){
         btns.push('<button class="ghost-btn" type="button" onclick="nvRaiseTicketFor(\''+a+'\',event)">Report an issue</button>');
@@ -5966,12 +6050,43 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     /* Raw Postgres timestamps were being printed straight onto merchant-facing
        documents -- "Settled on 2026-07-20T07:19:51.373934+00:00". */
+    /* THE TWELVE-HOUR GAP. Reported as: the newest invoice reads 23 Sept 06:15
+       while its own wallet credit reads 23 Sept 18:15, and withdrawal 8733af
+       reads 21 Sept 14:32 against a ledger row saying 22 Sept 02:32. Same
+       events -- the invoice settles and the credit lands 55 seconds apart in
+       the database.
+
+       The cause is a DOUBLE conversion. dtpart() has already converted the
+       server's UTC timestamp to Karachi wall-clock and handed on a bare
+       "2026-09-23 06:15" with no zone marker. new Date() then reads that as
+       the BROWSER'S local time, and toLocaleString converts it to Karachi a
+       second time. On a device set to UTC-7 that is 06:15 -> 18:15 and
+       14:32 -> 02:32 next day: exactly the two reports. A merchant in Karachi
+       never sees it, because there the double conversion is a no-op -- which is
+       why it survived every previous pass.
+
+       A value that is already wall-clock is now formatted as TEXT and never
+       reparsed. Only a value carrying a real zone (Z or +05:00) is converted,
+       because for that one conversion is the correct thing to do.
+
+       And every financial timestamp now names its zone (#20): the portal
+       reports Pakistan time whatever the device is set to, and said so nowhere. */
     function nvNiceDate(v){
       if(!v) return "";
-      var d=new Date(v);
-      if(isNaN(d)) return String(v).slice(0,16).replace("T"," ");
+      var raw=String(v).trim();
+      var hasZone=/([Zz]|[+-]\d{2}:?\d{2})$/.test(raw);
+      var m=raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+      if(m && !hasZone){
+        var utc=new Date(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5]));
+        if(!isNaN(utc)){
+          return utc.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"}) +
+                 ", " + m[4] + ":" + m[5] + " PKT";
+        }
+      }
+      var d=new Date(raw);
+      if(isNaN(d)) return raw.slice(0,16).replace("T"," ");
       return d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric",timeZone:"Asia/Karachi"}) +
-             ", " + d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Karachi"});
+             ", " + d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Karachi"}) + " PKT";
     }
 
     function clientInvoiceHtml(inv){
@@ -7204,6 +7319,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          ETA left to miss. */
       if(st === "Delivered" || st === "Return to shipper" || st === "Cancelled by client") return "";
       if(nvOutcomeSettled(p)) return "";
+      /* #9. Once a parcel has reached its destination city the booking-date
+         promise is the wrong clock: it kept reporting "late - was due Mon 22"
+         for a parcel that arrived on time and is simply sitting at the depot
+         waiting for a rider. What the merchant needs there is how long it has
+         been sitting, and the 24-hour delivery SLA that starts on arrival. */
+      if(st === "Parcel received at destination"){
+        var dh = Number(agingHours(p));
+        if(!Number.isFinite(dh)) return "";
+        var over = dh > 24;
+        var dtxt = agingLabel(dh) + " at destination";
+        return '<div class="nv-eta' + (over ? ' late' : '') + '" title="' +
+               escLabelText(over ? "Past the 24-hour window for delivery after arrival." : "Normally delivered within 24 hours of arriving.") + '">' +
+               '<span class="nv-eta-long">' + escLabelText(dtxt + (over ? " \u2014 past the 24h window" : "")) + '</span>' +
+               '<span class="nv-eta-short">' + escLabelText(dtxt) + '</span></div>';
+      }
       var e = nvExpectedBy(p);
       if(!e) return "";
       var overdueMs = Date.now() - e.date.getTime();
@@ -11636,6 +11766,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var k=nvKarachiParts(t);
         return k?(k.date+" "+k.time):String(t).replace("T"," ").slice(0,16);
       }
+      /* #17. The parcel rows printed p.updated as a bare clock time -- "21:16"
+         -- so a parcel last touched nine days ago was indistinguishable from
+         one touched this evening, and the compact row is exactly where a
+         merchant scans for what is recent. Today stays a plain time, because
+         that is the common case and the date would be noise; anything older
+         carries the day it actually happened. */
+      function updstamp(t){
+        var k=nvKarachiParts(t);
+        if(!k) return "";
+        var today=new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" });
+        if(k.date===today) return k.time;
+        var d=new Date(k.date+"T00:00:00Z");
+        var nice=isNaN(d)?k.date:d.toLocaleDateString("en-GB",{ day:"numeric", month:"short", timeZone:"UTC" });
+        return nice+" "+k.time;
+      }
       /* This rebuilt meta from the fields the client app happens to model, so
          every key it does not model was deleted on write-back: allowOpen (a
          rider-facing "do not open" instruction printed on the label),
@@ -11767,7 +11912,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            ~24h, and its journey showed "booked 12:00 am". Keep the real
            timestamp; `date` stays for the day-grouping that depends on it. */
         bookedAt:r.booked_at||null,
-        updated:tpart(r.updated_at)||tpart(r.booked_at), /* status_since is stamped server-side only when the status actually changes.
+        updated:updstamp(r.updated_at)||updstamp(r.booked_at), /* status_since is stamped server-side only when the status actually changes.
            updated_at moves on ANY write, so printing a label used to reset a
            parcel's age and clear its SLA warning (measured drift: avg 117h). */
         /* delivered_at is the real delivery event time and the public tracking
@@ -13334,8 +13479,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }
           return acts;
         }
+        /* #11. "Out of service area" was offered Re-attempt along with the
+           refusals. Re-sending a parcel to an address NovaX does not cover
+           produces the same result the second time; the address has to change
+           or the parcel has to come back. Offering the button that cannot work
+           teaches merchants the buttons are decorative. */
+        if(st==="Out of service area"){
+          return '<button class="nv-c-btn solid" data-nv-cock="editaddr" data-awb="'+awb+'">Change address</button>'+
+                 '<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+awb+'">Ask for return</button>'+journey;
+        }
         if(NEEDS_ME.indexOf(st)>=0){
           return '<button class="nv-c-btn solid" data-nv-cock="reattempt" data-awb="'+awb+'">Re-attempt</button>'+journey;
+        }
+        /* #10. A parcel sitting at Reattempt for over a week offered nothing but
+           "Report an issue". Re-delivery is the action it is waiting for. */
+        if(st==="Reattempt"){
+          return '<button class="nv-c-btn solid" data-nv-cock="reattempt" data-awb="'+awb+'">Confirm re-delivery</button>'+
+                 '<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+awb+'">Chase it</button>'+journey;
         }
         return journey;
       }
@@ -13376,7 +13536,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           /* #23: "Showing 4 of 38" named the other 34 and then offered no way
              to reach them, leaving the merchant to go and find a list they had
              not been told the name of. */
-          ? '<p class="nv-c-empty">Showing the 4 most urgent of '+needsAll.length+'.</p>'
+          ? '<p class="nv-c-empty">'+nvAttentionBreakdown(needsAll).map(function(b){ return b.n+" "+nvEsc(b.reason).toLowerCase(); }).join(" \u00b7 ")+'</p>'
+            +'<p class="nv-c-empty">Showing the 4 most urgent of '+needsAll.length+'.</p>'
             +'<div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="allissues">See all '+needsAll.length+'</button></div>'
           : "")
           :'<p class="nv-c-empty">Nothing needs you right now. Exceptions and parcels stuck over 48 hours appear here.</p>';
@@ -13402,7 +13563,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         needsList.forEach(function(p){ shownAwbs[p.awb]=1; });
         var freshNew=b.next.filter(function(p){ return !shownAwbs[p.awb]; });
         if(freshNew.length){
-          nextHtml+='<div class="nv-c-item"><strong>'+freshNew.length+' of '+b.next.length+' new booking'+(b.next.length===1?"":"s")+' ready to hand over</strong><span>'+(b.next.length>freshNew.length?'The other '+(b.next.length-freshNew.length)+' need you first — see Needs you now':'Print the labels, then a rider collects them')+'</span><div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="printnew">Print labels</button><button class="nv-c-btn" data-nv-cock="tab" data-tab="awbLabel">AWB tab</button></div></div>';
+          /* #13. Every uncollected booking got one identical line, so N8530168 --
+             booked 6d17h ago and never picked up -- read exactly like the three
+             booked last night. Age is the whole story for an uncollected parcel,
+             so the stale ones are pulled out and named. */
+          var staleNew=freshNew.filter(function(x){ return (nvSafeCall(function(){ return nvHoursSinceBooked(x); })||0)>72; })
+                               .sort(function(a,x){ return (nvSafeCall(function(){ return nvHoursSinceBooked(x); })||0)-(nvSafeCall(function(){ return nvHoursSinceBooked(a); })||0); });
+          if(staleNew.length){
+            nextHtml+='<div class="nv-c-item"><strong>'+staleNew.length+' booking'+(staleNew.length===1?"":"s")+' never collected</strong><span>'
+              +nvEsc(staleNew.slice(0,3).map(function(x){ return x.awb+" \u00b7 booked "+agingLabel(nvSafeCall(function(){ return nvHoursSinceBooked(x); })||0)+" ago"; }).join(", "))
+              +(staleNew.length>3?", and "+(staleNew.length-3)+" more":"")
+              +'</span><div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="pickup" data-awb="'+nvEsc(staleNew[0].awb)+'">Chase pickup</button></div></div>';
+          }
+          var recentNew=freshNew.length-staleNew.length;
+          if(recentNew>0){
+            nextHtml+='<div class="nv-c-item"><strong>'+recentNew+' of '+b.next.length+' new booking'+(b.next.length===1?"":"s")+' ready to hand over</strong><span>'+(b.next.length>freshNew.length?'The other '+(b.next.length-freshNew.length)+' need you first \u2014 see Needs you now':'Print the labels, then a rider collects them')+'</span><div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="printnew">Print labels</button><button class="nv-c-btn" data-nv-cock="tab" data-tab="awbLabel">AWB tab</button></div></div>';
+          }
         }
         if(b.missing.length){
           nextHtml+='<div class="nv-c-item"><strong>'+b.missing.length+' parcel'+(b.missing.length===1?"":"s")+' missing address or phone</strong><span>A rider cannot deliver without these</span><div class="nv-c-acts"><button class="nv-c-btn" data-nv-cock="journey" data-awb="'+nvEsc(b.missing[0].awb)+'">Open first</button></div></div>';
@@ -13465,6 +13641,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         else if(kind==="reattempt") nvSafeCall(function(){ requestRedelivery(awb); });
         else if(kind==="pickup") nvSafeCall(function(){ nvQuickPickup(awb); });
         else if(kind==="cancel") nvSafeCall(function(){ cancelClientBooking(awb); });
+        else if(kind==="editaddr") nvSafeCall(function(){ if(typeof nvOpenEditParcel==="function") nvOpenEditParcel(awb,ev); else openClientParcelJourney(awb); });
+        else if(kind==="ticket") nvSafeCall(function(){ if(typeof nvRaiseTicketFor==="function") nvRaiseTicketFor(awb,ev); else nvTab("tickets"); });
         else if(kind==="allissues") nvSafeCall(function(){ if(typeof nvReviewIssues==="function") nvReviewIssues(); else nvTab("dashboard"); });
         else if(kind==="tab") nvTab(t.getAttribute("data-tab"));
         else if(kind==="printnew"){
