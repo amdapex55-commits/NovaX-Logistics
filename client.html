@@ -1302,7 +1302,18 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
     .nv-bottomnav button.is-active{ color:var(--green-ink); }
     .nv-bottomnav button.is-active .nvbn-ico{ transform:translateY(-1px); }
     /* Clear the bar so the last row of any list is not trapped under it. */
-    body{ padding-bottom:calc(58px + env(safe-area-inset-bottom)); }
+    /* #50. This cleared the 57px bottom nav and nothing else, but the floating
+       assistant button -- 56px plus its attention badge -- is pinned 10px above
+       that nav and floats over whatever the page ends with. On the dashboard
+       that is the wallet card, so the merchant's balance and its Withdraw
+       button sat underneath a circle they could not move. The launcher is part
+       of the furniture at the bottom of the screen, so the page reserves room
+       for it the same way it does for the nav. 76px = 56px button + 10px gap +
+       10px breathing room. */
+    body{ padding-bottom:calc(58px + 76px + env(safe-area-inset-bottom)); }
+    /* When the sticky booking CTA is up the launcher is hidden (see
+       .nv-has-book-bar below), so that 76px would be dead space. */
+    body.nv-has-book-bar{ padding-bottom:calc(58px + 68px + env(safe-area-inset-bottom)); }
     /* Everything else that is fixed to the bottom has to clear the bar.
        Found by measuring, not by reading: these sit at z-index 99998, so they
        would have covered it rather than the other way round. The AI PANEL is
@@ -2237,7 +2248,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=dae73262" defer></script>
+  <script src="client-app.js?v=8594a6e8" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2523,7 +2534,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
             <!-- AWB LABEL -->
             <section class="client-module" id="client-awbLabel">
               <div class="panel">
-                <div class="section-head"><div><h3>Generated Air Way Bill</h3><p>QR and barcode both carry the assigned tracking ID.</p></div><div class="inline-actions"><button class="action-btn" id="printAwbBtn">Print Now</button><button class="ghost-btn" id="savePdfAwbBtn">Save as PDF…</button><button class="ghost-btn" id="waAwbBtn">Send details on WhatsApp</button><button class="ghost-btn" data-client-tab="dashboard">View Journey</button></div></div>
+                <div class="section-head"><div><h3>Generated Air Way Bill</h3><p>QR and barcode both carry the assigned tracking ID.</p></div><div class="inline-actions"><button class="action-btn" id="printAwbBtn">Print Now</button><button class="ghost-btn" id="savePdfAwbBtn">Save as PDF…</button><button class="ghost-btn" id="waAwbBtn">Send details on WhatsApp</button><button class="ghost-btn" id="awbJourneyBtn" onclick="nvAwbOpenJourney()">View Journey</button></div></div>
                 <div id="awbLabelPreview"></div>
               </div>
               <div class="panel mt-14">
@@ -2674,7 +2685,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                        both bulk import and status push-back. Keeping a second
                        input with the same id here produced a duplicate DOM id
                        and a shadowed handler. -->
-                  <p class="footer-note mt-14">Two-way status sync (NovaX pushing delivery updates back into Shopify) uses the same Admin API token as bulk import &mdash; add it once above and both work.</p>
+                  <p class="footer-note mt-14" id="shopifySyncNote">Two-way status sync (NovaX pushing delivery updates back into Shopify) uses the same Admin API token as bulk import &mdash; add it once in "Import orders you already have" above and both work.</p>
                 </div>
                 <div class="panel">
                   <div class="section-head"><div><h3>WooCommerce</h3><p>Connect with your site URL and REST consumer key/secret.</p></div><span class="chip" id="wooStatusChip">Not connected</span></div>
@@ -2726,7 +2737,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 </div>
                 <div class="wide-scroll">
                   <table id="clientReportFullTable">
-                    <thead><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th><th>Fee</th><th>Aging</th></tr></thead>
+                    <thead><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th><th>Fee</th><th>Time<br><span class="footer-note" style="font-weight:600">waiting, or time taken</span></th></tr></thead>
                     <tbody id="clientReportFullRows"></tbody>
                   </table>
                 </div>
@@ -3576,6 +3587,12 @@ html[data-theme="dark"] .barcode-img{ background:#fff!important; }
   gap:16px;align-items:start;background:var(--nvu-bg,var(--nvu-bg));border:1px solid var(--nvu-line,var(--nvu-line));
   border-radius:var(--r-2xl);padding:16px 18px;margin-bottom:14px;
   box-shadow:var(--sh-1);}
+/* #12: a COD amount that was never collected. Struck through rather than
+   removed -- the order value still matters for the return charge -- with the
+   reason spelled out beside it so no one has to infer it from the status. */
+.nv-cod-void{text-decoration:line-through;text-decoration-thickness:1.5px;opacity:.6}
+.nv-cod-void-t{display:block;font-size:10.5px;font-weight:700;letter-spacing:.02em;
+  color:var(--muted,#6b7280);white-space:nowrap}
 .nv-cod-l{display:block;font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
   color:var(--nvu-ink-3,var(--nvu-ink-3));}
 .nv-cod-v{font-size:clamp(26px,4vw,36px);font-weight:900;letter-spacing:-.03em;line-height:1.05;
@@ -3592,6 +3609,10 @@ html[data-theme="dark"] .barcode-img{ background:#fff!important; }
 .nv-cod-cta{min-height:42px;border:0;border-radius:var(--r-xl);background:var(--nvu-accent,var(--nvu-accent));
   color:var(--nvu-accent-ink,#fff);font-weight:800;font-size:13.5px;cursor:pointer;width:100%;}
 .nv-cod-cta:hover{filter:brightness(.94);}
+.nv-cod-all{display:block;width:100%;margin-top:8px;min-height:38px;padding:8px 10px;
+  border:1px solid var(--line,#dfe6e2);border-radius:10px;background:transparent;cursor:pointer;
+  font:inherit;font-size:12px;font-weight:800;color:inherit}
+.nv-cod-all:hover{background:rgba(0,0,0,.04)}
 .nv-cod-recent>span{display:block;font-size:10px;font-weight:800;letter-spacing:.08em;
   text-transform:uppercase;color:var(--nvu-ink-3,var(--nvu-ink-3));margin-bottom:5px;}
 .nv-cod-r{display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 0;flex-wrap:wrap;}

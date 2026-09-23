@@ -723,11 +723,14 @@
           /* The long sentence ellipsises at 375px and reads as broken. Swap
              in a short version rather than letting it trail off. */
           ".nvd-txt-long{display:none}.nvd-txt-short{display:inline}",
-          /* Body already clears the bottom nav (58px) but not the Autopilot
-             FAB above it, so the FAB sits on top of card actions -- audit
-             finding 18. Scoped to the demo: this is the surface prospects
-             judge, and widening it to every merchant is a separate change. */
-          "body.nvd-on{padding-bottom:calc(126px + env(safe-area-inset-bottom))}}",
+          /* The demo used to carry its own body padding here, to clear the
+             Autopilot FAB that sits above the bottom nav -- scoped to the demo
+             because widening it to every merchant was "a separate change".
+             #50 is that change: real merchants hit the same overlap, on the
+             wallet card. client.html now reserves the room for everyone, so
+             this override is gone rather than left to shadow it with a second,
+             slightly different number. */
+          "}",
         "@media (prefers-reduced-motion:reduce){.nvd-bar,.nvd-card,.nvd-list li,.nvd-card .nvd-b{animation:none!important}",
           ".nvd-dot,.nvd-cta::after,.nvd-go::after{animation:none!important}",
           ".nvd-cta,.nvd-go{transition:none!important}}"
@@ -1472,6 +1475,12 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         return Number.isFinite(t) && (Date.now()-t) < NV_NEW_GRACE_MS;
       }catch(e){ return false; }
     }
+    /* The stages a parcel passes through while NovaX has it. Reattempt and
+       Reassigned were missing (#17): a parcel being re-delivered is moving, but
+       it matched no bucket at all, so the dashboard could say "28 active" and
+       "23 moving" with five parcels unaccounted for and nowhere on screen. */
+    var NV_MOVING_STAGES=["Collected by rider","Arrived at warehouse","Parcel now in transit",
+      "Parcel received at destination","Parcel out for delivery","Reattempt","Reassigned"];
     function nvAttentionParcels(){
       var myId=(state.client&&state.client.id)||null;
       var all=(state.parcels||[]).filter(function(p){ return p.clientId===myId; });
@@ -1482,12 +1491,48 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         var late=nvParcelDelayed(p);
         var cash=(typeof isRiderCashHolding==="function") && isRiderCashHolding(p);
         if(nvWithinNewGrace(p)) return;
-        if(late || ["Refused","Consignee not available","Out of service area"].indexOf(st)>=0 || /return/i.test(st) ||
+        /* #16. The cockpit added a SECOND set on top of this one -- parcels
+           sitting at a moving stage for over 48 hours -- so the command strip
+           said "35 need attention" and "Your parcels" said "38 need you" on the
+           same screen, three parcels apart, with nothing explaining the gap.
+           Two predicates for one question. The 48-hour stall belongs in the
+           attention set, so it lives here, and every count on the page is again
+           reading the same function.
+
+           Deliberately a different clock from nvParcelDelayed: that one measures
+           time in the CURRENT status, this one measures total time since the
+           parcel reached its destination city. A parcel rescanned daily at the
+           same depot keeps resetting the first and never the second. */
+        var stalled = NV_MOVING_STAGES.indexOf(st)>=0 && Number(agingHours(p))>48;
+        if(late || stalled || ["Refused","Consignee not available","Out of service area"].indexOf(st)>=0 || /return/i.test(st) ||
            (p.exception && String(p.exception).trim()) || cash || nvMissingDeliveryInfo(p)){
           set[p.awb]=p;
         }
       });
       return Object.keys(set).map(function(k){ return set[k]; });
+    }
+    /* #22. The cockpit showed the first four of this set in whatever order the
+       parcel list happened to arrive in, which on KKM's account meant four
+       parcels sitting at destination while a six-day-old uncollected booking
+       and a refusal awaiting a decision were below the fold. Rank by what the
+       merchant can actually DO about it -- a refusal is a decision only they
+       can make, a missing address blocks delivery outright -- and break ties by
+       age, oldest first. */
+    function nvAttentionRank(p){
+      var st=String((p&&p.status)||"");
+      if(nvMissingDeliveryInfo(p)) return 0;
+      if(["Refused","Consignee not available","Out of service area"].indexOf(st)>=0) return 1;
+      if((typeof isRiderCashHolding==="function") && isRiderCashHolding(p)) return 2;
+      if(/return/i.test(st)) return 3;
+      if(p&&p.exception&&String(p.exception).trim()) return 4;
+      return 5;
+    }
+    function nvAttentionSorted(list){
+      return (list||[]).slice().sort(function(a,b){
+        var d=nvAttentionRank(a)-nvAttentionRank(b);
+        if(d) return d;
+        return (Number(agingHours(b))||0)-(Number(agingHours(a))||0);
+      });
     }
     window.nvAttentionParcels=nvAttentionParcels;
 
@@ -1813,11 +1858,20 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
            their parcels. Old weeks are now labelled as old, and a week that is
            more than a fortnight behind is not shown at all: a stale summary is
            worth less than the space it occupies. */
-        var wk="", wkAgeDays=0, wkStale=false;
+        /* #28. "Your last full week · week of 13 Sept · 9 days ago" looks
+           like a card that failed to refresh. It has not: a digest covers a
+           COMPLETED Monday-to-Sunday week, so on a Tuesday the most recent one
+           always ends 9 days back. The age was shown without the one fact that
+           explains it -- the period it covers -- so the card gave the merchant
+           a reason to distrust it and no way to check. State the range, and say
+           plainly that the current week is still running. */
+        var wk="", wkRange="", wkAgeDays=0, wkStale=false;
         try{
           var d0=new Date(dg.week_start);
           if(!isNaN(d0.getTime())){
             wk=d0.toLocaleDateString("en-PK",{day:"numeric",month:"short"});
+            var d1=new Date(d0.getTime()+6*86400000);
+            wkRange=wk+" – "+d1.toLocaleDateString("en-PK",{day:"numeric",month:"short"});
             wkAgeDays=Math.floor((Date.now()-d0.getTime())/86400000);
             wkStale=wkAgeDays>13;
           }
@@ -1826,8 +1880,8 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
                     : (wkAgeDays>=8 ? "Your last full week" : "Your week in review");
         if(!wkStale) html+='<div class="nv-ins digest">'+
           '<div class="nv-ins-top">'+
-            '<div class="nv-ins-title">'+escLabelText(wkTitle)+(wk?(' &middot; week of '+escLabelText(wk)):"")+
-              (wkAgeDays>=8?'<span class="nv-ins-age"> \u00b7 '+wkAgeDays+' days ago</span>':"")+'</div>'+
+            '<div class="nv-ins-title">'+escLabelText(wkTitle)+(wkRange?(' &middot; '+escLabelText(wkRange)):"")+
+              (wkAgeDays>=8?'<span class="nv-ins-age"> \u00b7 a completed week; this week is still running</span>':"")+'</div>'+
             '<button class="ghost-btn" style="padding:4px 9px;font-size:11.5px" onclick="nvDismissDigest(\''+escLabelText(dg.id)+'\')">Dismiss</button>'+
           '</div>'+
           (dg.headline?'<div class="nv-ins-body">'+escLabelText(dg.headline)+'</div>':"")+
@@ -1858,9 +1912,19 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
          that is still "New booked" is dropped from that insight, and an
          insight left with no qualifying parcels is suppressed entirely.
          Purely subtractive -- it can hide a false alarm, never invent one. */
+      /* SUPERSEDED 2026-09-22 by sql_novax_stagnant_insight_20260922.sql.
+         The server no longer puts uncollected bookings in the stuck alert --
+         they have their own "still waiting for pickup" insight, because that
+         is a real problem with a different fix. So this filter must now touch
+         ONLY the stuck alert: left as it was, it stripped every AWB out of the
+         new pickup insight and then suppressed the empty card, which is how
+         N8530168 managed to sit uncollected for six days and appear nowhere.
+         Kept as a belt-and-braces guard for any cached page still talking to
+         the old function. */
       var list=(NV_INSIGHTS.list||[]).map(function(it){
         try{
           if(!it||!it.body) return it;
+          if(String(it.kind||"")!=="stuck_parcels") return it;
           var awbs=String(it.body).match(/\b[A-Z0-9][A-Z0-9-]{4,23}\b/g);
           if(!awbs||!awbs.length) return it;
           var mine=(state.parcels||[]);
@@ -1974,7 +2038,14 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       try{ inFlow=Array.isArray(d.inflow_4w)?d.inflow_4w:JSON.parse(d.inflow_4w||"[]"); }catch(e){ inFlow=[]; }
       try{ outFlow=Array.isArray(d.outflow_4w)?d.outflow_4w:JSON.parse(d.outflow_4w||"[]"); }catch(e){ outFlow=[]; }
 
-      var chips='<span class="nv-inc-chip">In transit <b>'+escLabelText(money(transit))+'</b>'+(transitN?(' &middot; '+transitN+' parcel'+(transitN===1?"":"s")):"")+'</span>'+
+      /* #14. "In transit: Rs X - 21 parcels" under a money heading merges
+         five operational stages -- collected, at the warehouse, in transit, at
+         destination, out for delivery -- under the name of just one of them.
+         A merchant matching this against a status board that lists those stages
+         separately can never make 21 come out of any single row. The money
+         question is simply whether NovaX has the cash yet, so the chip answers
+         that and names the stages it covers. */
+      var chips='<span class="nv-inc-chip" title="Collected by rider, at the warehouse, in transit, at destination or out for delivery.">Not delivered yet <b>'+escLabelText(money(transit))+'</b>'+(transitN?(' &middot; '+transitN+' parcel'+(transitN===1?"":"s")):"")+'</span>'+
                 '<span class="nv-inc-chip">Delivered, clearing <b>'+escLabelText(money(clearing))+'</b> gross COD'+(clearingN?(' &middot; '+clearingN+' parcel'+(clearingN===1?"":"s")):"")+'</span>'+
                 '<span class="nv-inc-chip">Available now <b>'+escLabelText(money(avail))+'</b></span>';
 
@@ -2192,7 +2263,22 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     }
     function agingLabel(h){ if(h==null||!Number.isFinite(Number(h))) return "\u2014"; h=Number(h); if(h<1) return "just now"; if(h<24) return `${Math.max(0,Math.round(h))}h`; const d=Math.floor(h/24); const r=Math.round(h%24); return r?`${d}d ${r}h`:`${d}d`; }
     /* Merchant view exposes destination aging only; SLA urgency remains internal. */
-    function alertForParcel(p){ return {level:"ok",label:"Destination age",due:agingLabel(agingHours(p))}; }
+    /* #26 + #27. agingHours() measures two DIFFERENT things depending on the
+       parcel, and both were printed under one word, "Destination age":
+         - a live parcel  -> how long it has been waiting (clock still running)
+         - a settled one  -> how long the delivery TOOK (clock frozen at the
+                             outcome)
+       So a delivered row could read "just now", "4d" or "10d" with no way to
+       tell that those are durations, not freshness -- a merchant reasonably
+       read "10d" on a delivered parcel as ten days of nothing happening. The
+       number was right; the noun was missing. Each row now carries its own. */
+    function nvAgeTerm(p){ return nvOutcomeSettled(p) ? "took" : "waiting"; }
+    function nvAgeText(p){
+      var v=agingLabel(agingHours(p));
+      if(v==="\u2014") return v;
+      return nvOutcomeSettled(p) ? ("took "+v) : (v+" waiting");
+    }
+    function alertForParcel(p){ return {level:"ok",label:nvOutcomeSettled(p)?"Time to deliver":"Waiting",due:agingLabel(agingHours(p))}; }
     function urgencyClass(l){ if(l==="critical"||l==="super urgent") return "bad"; if(l==="warning"||l==="urgent") return "warn"; return "good"; }
     function setParcelStatus(p,status){ p.status=status; p.statusAgeHours=0; p.statusSince=new Date().toISOString(); p.updated=time(); p.stage=Math.max(0,STATUS_TAGS.indexOf(status)); if(!Array.isArray(p.steps)) p.steps=[]; if(!p.steps.includes(status)) p.steps.push(status); }
     /* ═══ Parcel progress ══════════════════════════════════════════════════
@@ -2269,6 +2355,19 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       var n = typeof v === "number" ? v : Number(v);
       if (!isFinite(n)) n = 0;
       return PKR.format(n).replace("PKR","Rs");
+    }
+    /* #9. money() is maximumFractionDigits:0, which is right for a COD amount
+       and wrong for a payout. KKM's settlement of 17 Sep is Rs 54,785.00 less a
+       Rs 383.50 fee = Rs 54,401.50. Rounded independently those print as
+       "Rs 54,785", "Rs 384" and "Rs 54,402" -- 54,785 - 384 = 54,401, so the
+       three numbers on screen contradict each other by a rupee and the merchant
+       cannot tie the settlement to the ledger. Wherever a figure can carry
+       paisa -- payout fees, net settlements -- it is shown with them. */
+    function moneyExact(v){
+      var n = typeof v === "number" ? v : Number(v);
+      if(!isFinite(n)) n = 0;
+      if(Math.abs(n - Math.round(n)) < 0.005) return money(Math.round(n));
+      return "Rs " + n.toLocaleString("en-PK",{ minimumFractionDigits:2, maximumFractionDigits:2 });
     }
     function fmt(v){ return nvFormatNumber(v); }
     /* Kept deliberately in step with admin.html's statusClass(). The
@@ -2347,6 +2446,24 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     }
     /* Red conflict badge for the merchant's own screens. They are the ones
        who will be short the money, so they see it before we do. */
+    /* #12. A refused or returned parcel keeps its COD figure in every list,
+       identical in weight to a delivered one, and nothing on the row says the
+       money was never handed over. KKM has 20 such parcels carrying Rs 95,290
+       of COD that will never arrive; read down the column and it looks like
+       money owed. The figure has to stay -- it is the order value, and the
+       return charge is calculated from it -- so the row says what happened to
+       it instead of hiding it. */
+    function nvCodNotCollected(p){
+      if(!p) return false;
+      if(!nvOutcomeSettled(p)) return false;
+      return String(p.status||"").indexOf("Delivered")<0;
+    }
+    function nvCodCell(p){
+      var m=money(p&&p.cod);
+      if(!nvCodNotCollected(p)) return m;
+      return '<span class="nv-cod-void" title="This parcel was not delivered, so no COD was collected.">'+m+'</span>'+
+             '<span class="nv-cod-void-t">not collected</span>';
+    }
     function nvPayConflictChip(p){
       var c = nvPayClass(p);
       if(!c.conflict) return "";
@@ -3287,8 +3404,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
-      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${money(p.cod)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
-      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><label style="display:inline-flex;align-items:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -6px;padding:10px 6px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${money(p.cod)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
+      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${nvCodCell(p)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
+      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><label style="display:inline-flex;align-items:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -6px;padding:10px 6px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${nvCodCell(p)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
       /* "Showing 25 of 189" with one control to load more. Without this the
          merchant cannot tell whether the list ended or was truncated. */
       (function(){
@@ -3352,7 +3469,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const sbHead=document.getElementById("statusBoardHead"); if(sbHead) sbHead.setAttribute("aria-expanded",open?"true":"false");
       el.style.display=open?"flex":"none";
       if(!open){ el.innerHTML=""; return; }
-      el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${escLabelText(nvStatusLabel(s))}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].map(p=>`<div class="sb-parcel" role="button" tabindex="0" aria-label="Open ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><span class="sb-awb">${escLabelText(p.awb)}</span><span class="sb-meta">${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)}</span><span class="sb-meta">${money(p.cod)} &middot; ${agingLabel(agingHours(p))}</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
+      el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${escLabelText(nvStatusLabel(s))}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].map(p=>`<div class="sb-parcel" role="button" tabindex="0" aria-label="Open ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><span class="sb-awb">${escLabelText(p.awb)}</span><span class="sb-meta">${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)}</span><span class="sb-meta">${nvCodCell(p)} &middot; ${escLabelText(nvAgeText(p))}</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
     }
     /* ===== AI Exception Resolution Center: deterministic problem/cause/action card ===== */
     function classifyParcelException(p){
@@ -3568,35 +3685,98 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            sends them to another tab to do something they came here to do.
            Offer the parcels right here instead -- one tap fills the label and
            makes Print / Save as PDF live. */
-        var pickable=(typeof nvMyParcels==="function"?nvMyParcels():(state.parcels||[]))
-          .filter(function(x){ return x && x.awb; })
-          .sort(function(a,b){ return String(b.bookedAt||b.date||"").localeCompare(String(a.bookedAt||a.date||"")); })
+        /* #41 + #42. This took the six most RECENTLY BOOKED parcels of any
+           status. On KKM's account that meant six delivered parcels -- whose
+           labels were printed weeks ago -- while N8530168, booked on 16 Sept
+           and still uncollected, was seventh and therefore invisible, even
+           though the bulk-print list and the pickup list on this same tab both
+           showed it. A tab whose whole job is "labels awaiting pickup" was
+           offering everything except the labels awaiting pickup.
+
+           Parcels that still need a label come first, oldest first, because an
+           uncollected booking gets more urgent with age, not less. Recently
+           booked parcels of any status follow, so reprinting a label the
+           merchant has mislaid still works, and they are labelled as such. */
+        var __all=(typeof nvMyParcels==="function"?nvMyParcels():(state.parcels||[]))
+          .filter(function(x){ return x && x.awb; });
+        var __byNewest=function(a,b){ return String(b.bookedAt||b.date||"").localeCompare(String(a.bookedAt||a.date||"")); };
+        var waiting=__all.filter(function(x){ return String(x.status||"")==="New booked"; })
+          .sort(function(a,b){ return String(a.bookedAt||a.date||"").localeCompare(String(b.bookedAt||b.date||"")); })
           .slice(0,6);
-        var picker=pickable.length
-          ? '<div class="footer-note" style="margin:10px 0 6px">Pick a parcel to load its label:</div>'
-            +'<div style="display:grid;gap:6px;text-align:left">'
-            +pickable.map(function(x){
-                return '<button type="button" class="ghost-btn" style="width:100%;justify-content:flex-start;padding:10px 12px;min-height:44px"'
-                  +' onclick="selectParcel(\''+escLabelText(x.awb)+'\')">'
-                  +'<strong>'+escLabelText(x.awb)+'</strong>'
-                  +'<span class="footer-note" style="margin-left:8px">'
-                  +escLabelText([x.consignee,x.city].filter(Boolean).join(" \u00b7 "))+'</span>'
-                  +'</button>';
-              }).join("")
-            +'</div>'
+        var waitAwbs={}; waiting.forEach(function(x){ waitAwbs[x.awb]=1; });
+        var recent=__all.filter(function(x){ return !waitAwbs[x.awb]; }).sort(__byNewest).slice(0,4);
+        function pickBtn(x){
+          return '<button type="button" class="ghost-btn" style="width:100%;justify-content:flex-start;padding:10px 12px;min-height:44px"'
+            +' onclick="selectParcel(\''+escLabelText(x.awb)+'\')">'
+            +'<strong>'+escLabelText(x.awb)+'</strong>'
+            +'<span class="footer-note" style="margin-left:8px">'
+            +escLabelText([nvStatusLabel(x.status),x.consignee,x.city].filter(Boolean).join(" \u00b7 "))+'</span>'
+            +'</button>';
+        }
+        function pickGroup(title,list){
+          if(!list.length) return "";
+          return '<div class="footer-note" style="margin:10px 0 6px">'+title+'</div>'
+            +'<div style="display:grid;gap:6px;text-align:left">'+list.map(pickBtn).join("")+'</div>';
+        }
+        /* #41 again: with 201 parcels no shortlist can hold them all, so there
+           is also a way to name one directly instead of hoping it made the cut. */
+        var findBox='<div class="footer-note" style="margin:12px 0 6px">Or open any AWB:</div>'
+          +'<div class="inline-actions" style="justify-content:center">'
+          +'<input id="awbFindInput" aria-label="Air waybill number" placeholder="e.g. '+escLabelText((__all[0]&&__all[0].awb)||"N8530168")+'" style="flex:1;max-width:220px"'
+          +' onkeydown="if(event.key===\'Enter\'){event.preventDefault();nvAwbFindOpen();}">'
+          +'<button type="button" class="ghost-btn" onclick="nvAwbFindOpen()">Load label</button></div>'
+          +'<div class="footer-note" id="awbFindMsg" style="margin-top:6px"></div>';
+        var picker=__all.length
+          ? pickGroup("Waiting for pickup \u2014 these still need a label:",waiting)
+            +pickGroup(waiting.length?"Recently booked:":"Pick a parcel to load its label:",recent)
+            +findBox
           : '<div class="footer-note">Book a parcel and its label appears here, ready to print.</div>';
         host.innerHTML='<div class="nv-c-empty" style="padding:22px 16px;text-align:center">'
           +'<div style="font-weight:800;margin-bottom:4px">No air waybill to show yet</div>'
           +picker
           +'</div>';
       }
-      ["printAwbBtn","savePdfAwbBtn","waAwbBtn"].forEach(function(id){
+      /* #43. "View Journey" carried data-client-tab="dashboard" and nothing
+         else -- it was never wired to a parcel. With no label loaded it was
+         still fully enabled, and pressing it silently dumped the merchant on
+         the Dashboard with no explanation, which reads as the portal losing
+         their place. It now opens the journey of the parcel whose label is on
+         screen, and is disabled with the other three when there is none. */
+      ["printAwbBtn","savePdfAwbBtn","waAwbBtn","awbJourneyBtn"].forEach(function(id){
         const b=document.getElementById(id);
         if(!b) return;
         b.disabled=!real;
         b.setAttribute("aria-disabled", real?"false":"true");
+        if(id==="awbJourneyBtn") b.title=real?("Open the journey for "+p.awb):"Load a label first";
       });
     }
+    /* #41: open a label by typing its AWB, for the parcels no shortlist can
+       reach. Only ever matches the merchant's own parcels -- a stranger's AWB
+       is simply "not found", never loaded. */
+    function nvAwbFindOpen(){
+      var el=document.getElementById("awbFindInput");
+      var msg=document.getElementById("awbFindMsg");
+      var want=String((el&&el.value)||"").trim().toUpperCase();
+      if(!want){ if(msg) msg.textContent="Type an AWB number first."; if(el) el.focus(); return; }
+      var mine=(typeof nvMyParcels==="function"?nvMyParcels():(state.parcels||[]));
+      var hit=mine.find(function(x){ return x && String(x.awb||"").toUpperCase()===want; });
+      if(!hit){
+        if(msg) msg.textContent=want+" is not one of your parcels. Check the number, or find it in My Parcels.";
+        return;
+      }
+      if(msg) msg.textContent="";
+      selectParcel(hit.awb);
+    }
+    window.nvAwbFindOpen=nvAwbFindOpen;
+    /* #43: the AWB tab's own "View Journey", opening the parcel whose label is
+       actually displayed rather than navigating away from it. */
+    function nvAwbOpenJourney(){
+      var awb=state.lastGeneratedAwb||state.selectedAwb;
+      var p=(state.parcels||[]).find(function(x){ return x && x.awb===awb; });
+      if(!p){ toast("Load a label first, then open its journey."); return; }
+      openClientParcelJourney(p.awb);
+    }
+    window.nvAwbOpenJourney=nvAwbOpenJourney;
     function renderClientTabs(){
       document.querySelectorAll(".client-tab").forEach(b=>b.classList.toggle("active",b.dataset.clientTab===state.activeClientTab));
       document.querySelectorAll(".client-module").forEach(m=>m.classList.toggle("active",m.id===`client-${state.activeClientTab}`));
@@ -3667,7 +3847,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const awaitingPickup=cm.parcels.filter(p=>String(p.status||"").trim()==="New booked").length;
       /* A parcel counts toward the delivery rate only once its journey has
          ENDED. Anything still in transit is not an outcome yet. */
-      const concluded=cm.parcels.filter(p=>nvIsConcludedParcel(p) && nvIsRatedParcel(p)).length;
+      /* #7: this asked nvIsConcludedParcel, whose list stops at "Return to
+         shipper" -- it has no Refused, no "Consignee not available", no "Out of
+         service area". KKM SWEETS & NIMCO has 153 delivered, 14 returned, 5
+         refused and 1 outside-area: the card read "153 of 167 = 92%" and the
+         six failed attempts were simply not in the denominator, while the
+         status board on the same screen listed them. A refusal IS an outcome --
+         NovaX attempted the delivery and it did not happen. nvOutcomeSettled is
+         the predicate that already means exactly that, and it is what the
+         "active parcels" count uses, so the two now agree: 153 of 173 = 88%. */
+      const concluded=cm.parcels.filter(p=>nvOutcomeSettled(p) && nvIsRatedParcel(p)).length;
       const concludedKnown=concluded>0;
       const concludedRate=concludedKnown?percent(cm.delivered,concluded):0;
       /* "Open" used nvIsConcludedParcel, which does NOT contain "Refused", so
@@ -3675,14 +3864,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          dashboard said 31 active -- same account, two numbers, no explanation.
          Both now ask nvOutcomeSettled: has this delivery attempt finished. */
       const open=cm.parcels.filter(p=>!nvOutcomeSettled(p)).length;
-      const awaitingOutcome=cm.parcels.filter(p=>nvIsRatedParcel(p) && !nvIsConcludedParcel(p)).length;
+      /* #8: "30 awaiting outcome" counted the 6 parcels that HAVE an outcome
+         (refused / outside area) as still pending, so the merchant was told 30
+         were actionable when 24 were. Same predicate as the denominator above,
+         so the two halves add up to the rated total by construction. */
+      const awaitingOutcome=cm.parcels.filter(p=>nvIsRatedParcel(p) && !nvOutcomeSettled(p)).length;
       if(host){
         host.innerHTML=[
           metricCard("Delivery Rate",
             concludedKnown?`${concludedRate}%`:"—",
             concludedRate,
             concludedKnown
-              ? `${cm.delivered} delivered of ${concluded} completed &middot; ${awaitingOutcome} awaiting outcome, not counted`
+              ? `${cm.delivered} delivered of ${concluded} finished &middot; ${awaitingOutcome} still moving, not counted yet`
               : "no parcel has finished its journey yet",
             (concludedKnown&&concludedRate<45)?"amber":"","","",true),
           metricCard("Delivered COD",money(deliveredCod),percent(deliveredCod,deliveredCod+pendingCod),"cash collected","good"),
@@ -5172,7 +5365,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          report stops requiring horizontal scanning on a phone. */
       /* Was onclick alone on a <tr>: reachable with a mouse and with nothing
          else. Same keyboard contract the status board already uses. */
-      tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><td data-label="AWB"><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}</td><td data-label="Date">${escLabelText(p.date||"-")}</td><td data-label="Consignee">${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td data-label="Status"><span class="status ${statusClass(p)}">${escLabelText(nvStatusLabel(p.status))}</span></td><td data-label="COD">${money(p.cod)}</td><td data-label="Fee">${money(p.fee)}</td><td data-label="Destination age">${agingLabel(agingHours(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
+      tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><td data-label="AWB"><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}</td><td data-label="Date">${escLabelText(p.date||"-")}</td><td data-label="Consignee">${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td data-label="Status"><span class="status ${statusClass(p)}">${escLabelText(nvStatusLabel(p.status))}</span></td><td data-label="COD">${nvCodCell(p)}</td><td data-label="Fee">${money(p.fee)}</td><td data-label="Time">${escLabelText(nvAgeText(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
     }
 
     /* renderLatestInvoice() removed 25 Aug 2026: #clientLatestInvoice does not
@@ -6154,17 +6347,28 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                  and no way to find out what it meant. It is the merchant's own
                  money, so it should say which parcels it is waiting on and let
                  them look. */
+              /* #13. Every parcel behind this number has ALREADY been delivered
+                 and the cash ALREADY collected -- isUnpaidDeliveredParcel is
+                 literally "delivered, not yet on a closed invoice". Nothing
+                 about it is in flight. A merchant chasing a late parcel reads
+                 "COD in flight" as money still out with riders and cannot
+                 reconcile it against a status board showing those parcels
+                 delivered. It is money waiting on an invoice, so it says so. */
               '<div class="nv-cod-b nv-cod-flight'+(inflight>0?' tap':'')+'"'+
                 (inflight>0?' role="button" tabindex="0" onclick="nvShowInFlight()" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();nvShowInFlight();}"':'')+
-                '><span>COD in flight</span><strong>'+escLabelText(money(inflight))+'</strong>'+
-                '<i>'+(inflight>0?nvInFlightCount()+' delivered, awaiting invoice \u2014 tap':'nothing waiting')+'</i></div>'+
+                '><span>Collected, awaiting invoice</span><strong>'+escLabelText(money(inflight))+'</strong>'+
+                '<i>'+(inflight>0?nvInFlightCount()+' delivered, not yet invoiced \u2014 tap':'nothing waiting')+'</i></div>'+
             '</div>'+
             '<div class="nv-cod-act">'+
               '<button type="button" class="nv-cod-cta" data-client-tab="wallet">'+(available>0?'Withdraw':'View wallet')+'</button>'+
+              /* #29: three rows and no way to reach the rest. The merchant had
+                 to guess that the full history lives in Wallet. #9: net amounts
+                 print to the paisa so they tie back to the ledger. */
               (paidRows.length?'<div class="nv-cod-recent"><span>Recent settlements</span>'+
-                paidRows.map(w=>'<div class="nv-cod-r"><b>'+escLabelText(money(w.net))+'</b>'+
+                paidRows.map(w=>'<div class="nv-cod-r"><b>'+escLabelText(moneyExact(w.net))+'</b>'+
                   '<em>'+escLabelText(String(w.paidAt||w.createdAt||"").slice(0,10))+'</em>'+
                   '<span class="nvst nvst-good"><i>\u2713</i>Paid</span></div>').join("")+
+                '<button type="button" class="nv-cod-all" data-client-tab="wallet">View all settlements</button>'+
               '</div>':'')+
             '</div>'+
           '</div>';
@@ -6332,7 +6536,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
    completed bank transfer look like a zero-value payout -- KKM has nine
    of them. A marker row now says "completed" and lets its own note
    explain, instead of showing an amount that is not a quantity. */
-      ledgerList.innerHTML=reconHtml+myLedger.slice(0,shownN).map(l=>`<div class="ops-card${l.affectsBalance?"":" nv-ledger-info"}"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${l.affectsBalance?(l.amount>=0?"good":"warn"):""}">${(!l.affectsBalance&&Number(l.amount||0)===0)?"completed":money(l.amount)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(nvNiceDate(l.createdAt))}${l.affectsBalance?"":" · already netted — not deducted again"}</div></div>`).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
+      /* #11. A payout_fee row carried a MINUS sign and a red-ish chip -- the
+         same visual language as a real deduction -- and only the small print
+         underneath said it had already been netted into the withdrawal above.
+         Read down the column and KKM's Rs 383.50 fee looks like a second bite
+         out of the balance. The chip now names it as included rather than
+         showing a signed amount it never subtracted, and the amount is printed
+         to the paisa (#9) so the withdrawal, the fee and the settlement line
+         actually reconcile: 54,785.00 - 383.50 = 54,401.50. */
+      function nvLedgerChip(l){
+        var amt=Number(l.amount||0);
+        if(l.affectsBalance) return { cls:(amt>=0?"good":"warn"), txt:moneyExact(amt) };
+        if(amt===0) return { cls:"", txt:"completed" };
+        return { cls:"", txt:"includes "+moneyExact(Math.abs(amt)) };
+      }
+      ledgerList.innerHTML=reconHtml+myLedger.slice(0,shownN).map(l=>{ const ch=nvLedgerChip(l); return `<div class="ops-card${l.affectsBalance?"":" nv-ledger-info"}"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${ch.cls}">${escLabelText(ch.txt)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(nvNiceDate(l.createdAt))}${l.affectsBalance?"":" · already netted — not deducted again"}</div></div>`; }).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
         /* NovaX motion: when the balance actually moved this render, flag the
            newest ledger row so the merchant can see what caused it, rather
            than just noticing a different total. Same .nv-changed sweep the
@@ -6977,14 +7195,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            still coming. Only the >7d branch ever admitted lateness. The long
            form was always correct ("Was expected by"), so only this one lied,
            and it is the one the table shows. */
+        /* #25. Under 24 hours overdue this said the single word "late" --
+           which is the form the DESKTOP parcel table shows -- while the mobile
+           card gave the date it missed. Same parcel, two screens, one of them
+           refusing to say when. The date is the thing a merchant repeats to
+           their customer, so the short form carries it too. */
         var dl = Math.floor(overdueMs / 86400000);
         longTxt = 'Was expected by ' + e.text;
-        shortTxt = dl >= 1 ? (dl + 'd late') : 'late';
+        shortTxt = dl >= 1 ? (dl + 'd late \u00b7 ' + e.text) : ('late \u00b7 was due ' + e.text);
       } else {
         longTxt = 'Expected by ' + e.text;
         shortTxt = 'by ' + e.text;
       }
-      return '<div class="nv-eta' + (late ? ' late' : '') + '">' +
+      return '<div class="nv-eta' + (late ? ' late' : '') + '" title="' + escLabelText(longTxt) + '">' +
              '<span class="nv-eta-long">' + escLabelText(longTxt) + '</span>' +
              '<span class="nv-eta-short">' + escLabelText(shortTxt) + '</span></div>';
     }
@@ -7014,7 +7237,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                '<td style="text-align:right">'+escLabelText(money(p.cod))+'</td>'+
                '<td style="text-align:right" class="footer-note">&minus;'+escLabelText(money(p.fee))+'</td></tr>';
       }).join("");
-      nvOpenSheet("COD in flight",
+      nvOpenSheet("Collected, awaiting invoice",
         '<p class="footer-note" style="margin-top:0">These delivered parcels match the dashboard date range and are awaiting invoice settlement. '+
         'Their net amount reaches your wallet when the invoice closes.</p>'+
         '<div class="wide-scroll"><table class="nv-sheet-tbl"><thead><tr><th>Parcel</th>'+
@@ -9390,8 +9613,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         bits.push("<strong>Support is open</strong>");
         bits.push("\u00b7 " + escLabelText(when));
       } else {
+        /* #40. Closed hours and a broken ticket list arrived together, and
+           the merchant read one as the cause of the other: "support is closed"
+           beside "we could not load your tickets" says the desk is shut and so
+           is the record of it. The loading failure was separate and is fixed
+           (it was reading the account before it existed), but the banner should
+           never have implied the history goes away out of hours. */
         bits.push("<strong>Support is closed</strong>");
-        bits.push("\u00b7 open " + escLabelText(when) + ", we will reply when we open");
+        bits.push("\u00b7 open " + escLabelText(when) + " \u2014 you can still raise a ticket and read your existing ones; we reply when we open");
       }
       /* Only shown once enough tickets have actually been answered for the
          median to mean something -- the RPC returns null below 5. */
@@ -9789,6 +10018,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(head) head.style.display = "";
         if(out) out.style.display = "";
       }
+      /* #39. Collapsing the box hid the Admin API token field, but the note
+         BELOW it -- "add it once above and both work" -- stayed on the page,
+         pointing at a control that is no longer there. A merchant following
+         that sentence scrolls up, finds nothing, and reasonably concludes the
+         portal is broken rather than that the feature is switched off. The
+         sentence belongs to the same feature, so it goes with it. */
+      var syncNote = document.getElementById("shopifySyncNote");
+      if(syncNote) syncNote.style.display = "none";
       if(reason) console.warn("NovaX: Shopify RPCs are not deployed (" + reason + "). Polling stopped.");
     }
 
@@ -12605,7 +12842,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function renderClientActionNeeded(){
       const host=document.getElementById("clientActionNeededCard"); if(!host) return;
       /* The command count and this list share one parcel predicate. */
-      const parcelItems=nvAttentionParcels();
+      /* #22: same ranking as the cockpit, so the two lists cannot put a
+         different parcel first for the same account. */
+      const parcelItems=(typeof nvAttentionSorted==="function")?nvAttentionSorted(nvAttentionParcels()):nvAttentionParcels();
       let payable=0; try{ payable=Math.max(0,nvLiveWalletBalance()); }catch(e){}
       const totalItems=parcelItems.length+(payable>0?1:0);
       if(!totalItems){ host.innerHTML=""; host.style.display="none"; return; }
@@ -12910,7 +13149,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function nvIsOwner(){ var r=nvSafeCall(function(){ return nvIsOwnerSeat(); }); return r===undefined?true:!!r; }
       function nvTab(id){ nvSafeCall(function(){ showClientTab(id); }); }
       var NEEDS_ME=["Refused","Consignee not available","Out of service area","Ready for return"];
-      var MOVING=["Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery"];
+      /* #17: was missing Reattempt and Reassigned, so a parcel being
+         re-delivered fell out of every bucket on this panel. Shared with
+         nvAttentionParcels so the two cannot drift apart again. */
+      var MOVING=(typeof NV_MOVING_STAGES!=="undefined" && NV_MOVING_STAGES)
+        ? NV_MOVING_STAGES
+        : ["Collected by rider","Arrived at warehouse","Parcel now in transit","Parcel received at destination","Parcel out for delivery","Reattempt","Reassigned"];
 
       /* ---------- Task 13: "Today" cockpit (dashboard landing view) ---------- */
       function nvTodayBuckets(){
@@ -13001,6 +13245,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +".nv-notif-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px 8px;border-bottom:1px solid var(--nvu-line);position:sticky;top:0;background:var(--nvu-bg);z-index:1}"
           +".nv-notif-hd b{font-size:12.5px;color:var(--nvu-ink);letter-spacing:-.01em}"
           +".nv-notif-hd span{font-size:11px;color:var(--nvu-ink-2);font-weight:700}"
+          /* #49: an explicit close control, 34px so it is a real touch target. */
+          +".nv-notif-x{margin-left:6px;flex:0 0 auto;width:34px;height:34px;border:1px solid var(--nvu-line);border-radius:9px;background:transparent;color:var(--nvu-ink-2);font-size:18px;line-height:1;cursor:pointer;font-weight:700}"
+          +".nv-notif-x:hover{background:var(--nvu-bg-2);color:var(--nvu-ink)}"
+          /* #48: the time sits under the text, quieter than the AWB. */
+          +".nv-notif-at{display:block;margin-top:3px;font-size:10.5px;font-weight:700;color:var(--nvu-ink-2);letter-spacing:.01em}"
           +".nv-notif-i{position:relative;display:flex;gap:9px;align-items:flex-start;border-bottom:1px solid var(--nvu-line);padding:10px 12px 10px 13px;font-size:12.5px;color:var(--nvu-ink);cursor:pointer;transition:background .15s}"
           +".nv-notif-i:hover{background:var(--nvu-bg-2)}"
           +".nv-notif-i:last-child{border-bottom:0}"
@@ -13084,12 +13333,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            merchant with 9 parcels needing them was told "4 need you" here while
            the Action Needed card said 9. Count the real set, show the first
            four, and say plainly that the rest exist. */
-        var needsAll=attn.concat(b.stuck.filter(function(p){ return attn.indexOf(p)<0; }));
+        /* #16. This used to be attn PLUS the 48-hour stall set, while the
+           command strip and the AI badge counted attn alone -- "35 need
+           attention" up there, "38 need you" here, on the same screen, with
+           nothing explaining the three. The stall now lives inside
+           nvAttentionParcels, so this is simply that one set, ranked (#22). */
+        var needsAll=(typeof nvAttentionSorted==="function")?nvAttentionSorted(attn):attn;
         var needsList=needsAll.slice(0,4);
         var needsHtml=needsList.length?needsList.map(function(p){
           return nvItem(p,nvParcelActions(p));
         }).join("")+(needsAll.length>needsList.length
-          ? '<p class="nv-c-empty">Showing '+needsList.length+' of '+needsAll.length+' — the rest are in Action needed, below.</p>'
+          /* #23: "Showing 4 of 38" named the other 34 and then offered no way
+             to reach them, leaving the merchant to go and find a list they had
+             not been told the name of. */
+          ? '<p class="nv-c-empty">Showing the 4 most urgent of '+needsAll.length+'.</p>'
+            +'<div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="allissues">See all '+needsAll.length+'</button></div>'
           : "")
           :'<p class="nv-c-empty">Nothing needs you right now. Exceptions and parcels stuck over 48 hours appear here.</p>';
         var movingCounts={};
@@ -13123,10 +13381,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         /* This panel counts the merchant's WHOLE book -- July, August and
            September bookings alike -- under a heading that said "Today". It is
            an all-time snapshot, so it now says so. */
+        /* #17. The old subtitle printed "28 active · 23 moving" with no account
+           of the other five, because the two numbers came from overlapping sets
+           counted independently. These buckets are now walked in priority order
+           with a seen-set, so every parcel is counted exactly once and the parts
+           add up to the total by construction. Anything left over is stated as
+           "other" rather than silently dropped. */
+        var __seen={};
+        function __take(list){
+          var n=0;
+          (list||[]).forEach(function(p){ if(p&&p.awb&&!__seen[p.awb]){ __seen[p.awb]=1; n++; } });
+          return n;
+        }
+        var nNeed=__take(needsAll), nMoving=__take(b.moving), nNext=__take(b.next), nDone=__take(b.delivered);
+        var nOther=Math.max(0,b.all.length-(nNeed+nMoving+nNext+nDone));
         var sub='All time · '+b.all.length+' parcel'+(b.all.length===1?"":"s");
-        if(needsAll.length) sub+=' \u00b7 '+needsAll.length+' need'+(needsAll.length===1?"s":"")+' you';
-        sub+=' \u00b7 '+b.moving.length+' moving';
-        if(b.delivered.length) sub+=' \u00b7 '+b.delivered.length+' delivered';
+        if(nNeed) sub+=' \u00b7 '+nNeed+' need'+(nNeed===1?"s":"")+' you';
+        if(nMoving) sub+=' \u00b7 '+nMoving+' moving';
+        if(nNext) sub+=' \u00b7 '+nNext+' awaiting pickup';
+        if(nDone) sub+=' \u00b7 '+nDone+' delivered';
+        if(nOther) sub+=' \u00b7 '+nOther+' other';
         nvSetHtml(box, '<div class="nv-cockpit-head"><b>Your parcels</b><span class="nv-c-sub">'+sub+'</span></div>'
           +'<div class="nv-cockpit-cols">'
           +'<div class="nv-c-col"><h4>Needs you now</h4>'+needsHtml+"</div>"
@@ -13142,6 +13416,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         else if(kind==="reattempt") nvSafeCall(function(){ requestRedelivery(awb); });
         else if(kind==="pickup") nvSafeCall(function(){ nvQuickPickup(awb); });
         else if(kind==="cancel") nvSafeCall(function(){ cancelClientBooking(awb); });
+        else if(kind==="allissues") nvSafeCall(function(){ if(typeof nvReviewIssues==="function") nvReviewIssues(); else nvTab("dashboard"); });
         else if(kind==="tab") nvTab(t.getAttribute("data-tab"));
         else if(kind==="printnew"){
           var list=nvTodayBuckets().next.map(function(p){ return p.awb; });
@@ -13617,6 +13892,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(read.indexOf(id)<0){ read.push(id); localStorage.setItem(nvNotifReadKey(),JSON.stringify(read)); }
         }catch(e){}
       }
+      /* #48. Relative for anything inside a week -- which is what a merchant
+         scanning a drawer actually wants -- and a real date beyond that, so a
+         three-week-old refusal is never described as "21d" and left ambiguous. */
+      function nvNotifWhen(at){
+        try{
+          var t=Date.parse(at);
+          if(!Number.isFinite(t)) return "";
+          var mins=Math.floor((Date.now()-t)/60000);
+          if(mins<1) return "just now";
+          if(mins<60) return mins+"m ago";
+          var hrs=Math.floor(mins/60);
+          if(hrs<24) return hrs+"h ago";
+          var days=Math.floor(hrs/24);
+          if(days<7) return days+"d ago";
+          return new Date(t).toLocaleDateString("en-PK",{day:"numeric",month:"short",year:"numeric"});
+        }catch(e){ return ""; }
+      }
       function nvNotifEvents(){
         var out=[];
         /* The id carries WHEN the parcel entered this status. It used to be
@@ -13676,7 +13968,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         document.addEventListener("click",function(e){
           if(notifOpen && !panel.contains(e.target) && e.target!==bell){ notifOpen=false; panel.classList.remove("open"); }
         });
+        document.addEventListener("keydown",function(e){
+          if(notifOpen && e.key==="Escape"){ notifOpen=false; panel.classList.remove("open"); try{ bell.focus(); }catch(_){} }
+        });
         panel.addEventListener("click",function(e){
+          if(e.target.closest && e.target.closest("[data-nv-notif-close]")){
+            e.stopPropagation();
+            notifOpen=false; panel.classList.remove("open");
+            try{ bell.focus(); }catch(_){}
+            return;
+          }
           if(e.target.closest && e.target.closest("[data-nv-notif-more]")){
             notifVisibleCount+=60; nvNotifRender(true); return;
           }
@@ -13715,7 +14016,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           bell.classList.remove("nv-bell-shake"); void bell.offsetWidth; bell.classList.add("nv-bell-shake");
           setTimeout(function(){ try{ bell.classList.remove("nv-bell-shake"); }catch(e){} },700);
         }
+        /* #30. The badge caps at "99+" -- it has room for three characters --
+           but nothing else on the page carried the real figure, so a merchant
+           had to open the drawer to discover it was 159. The cap stays; the
+           exact count now travels with it, for hover and for screen readers. */
         badge.textContent=unread.length>99?"99+":String(unread.length);
+        var exactTxt=unread.length+" unread notification"+(unread.length===1?"":"s");
+        badge.title=exactTxt;
+        badge.setAttribute("aria-label",exactTxt);
+        try{
+          var bellEl=document.getElementById("nvBell");
+          if(bellEl){
+            bellEl.title=unread.length?("Notifications \u2014 "+exactTxt):"Notifications";
+            bellEl.setAttribute("aria-label",bellEl.title);
+          }
+        }catch(e){}
         badge.style.display=unread.length?"flex":"none";
         if(!notifOpen && !force) return;
         /* Every row used to be the same weight in the same colour, so a refused
@@ -13724,17 +14039,29 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            carried by a coloured rail and dot, the AWB is a heading, and the
            panel says how many need attention. */
         /* 154 unread with no way to clear them except tapping each one. */
+        /* #49. The drawer closed on a backdrop click or a second tap on the
+           bell, and nothing said so. Keyboard and screen-reader users had no
+           control at all, and on a phone the backdrop is most of the screen
+           behind an overlay -- tapping it is a guess. */
         var head='<div class="nv-notif-hd"><b>Notifications</b><span>'+
           (unread.length?unread.length+" new":"all read")+"</span>"+
           (unread.length?'<button type="button" class="ghost-btn" style="margin-left:auto;min-height:34px;padding:4px 10px;font-size:12px" onclick="event.stopPropagation();nvMarkAllRead()">Mark all read</button>':"")+
+          '<button type="button" class="nv-notif-x" aria-label="Close notifications" title="Close"'+
+          (unread.length?"":' style="margin-left:auto"')+' data-nv-notif-close>\u00d7</button>'+
           "</div>";
         panel.innerHTML=head+(events.length?events.slice(0,notifVisibleCount).map(function(n){
           var kind=n.kind==="bad"?"k-bad":(n.kind==="good"?"k-good":"k-info");
           return '<div class="nv-notif-i '+kind+(read.indexOf(n.id)<0?" unread":"")+
             '" data-nv-notif-awb="'+nvEsc(n.awb||"")+'" data-nv-notif-ticket="'+nvEsc(n.ticketId||"")+'" data-nv-notif-id="'+nvEsc(n.id)+'">'+
             '<span class="nv-notif-dot" aria-hidden="true"></span>'+
+            /* #48. 159 entries with no times on them cannot be read in order,
+               and the merchant cannot tell a refusal from this morning from one
+               three weeks old. The timestamp is already on every event -- it is
+               what the list is sorted by -- it was simply never printed. */
             '<span class="nv-notif-tx"><b>'+nvEsc(n.title)+"</b>"+
-            (n.sub?"<span>"+nvEsc(n.sub)+"</span>":"")+"</span></div>";
+            (n.sub?"<span>"+nvEsc(n.sub)+"</span>":"")+
+            (n.at?'<time class="nv-notif-at" datetime="'+nvEsc(String(n.at))+'">'+nvEsc(nvNotifWhen(n.at))+"</time>":"")+
+            "</span></div>";
         }).join("")+(events.length>notifVisibleCount?'<button type="button" class="ghost-btn" data-nv-notif-more style="width:100%;min-height:44px">Show older notifications ('+(events.length-notifVisibleCount)+' remaining)</button>':''):'<div class="nv-notif-empty">Nothing yet.<br>Deliveries, exceptions, pickups and support replies land here.</div>');
       }
       window.__nvNotifRefresh=function(){ nvNotifRender(true); };
@@ -17237,7 +17564,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   }
 
   function quota(q){
-    if(!q || !QFILL) return;
+    if(!q) return;
+    if(q.cap == null){ if(QTXT) QTXT.textContent = "no limit"; setCapped(false, false); return; }
+    if(!QFILL){ if(QTXT) QTXT.textContent = Number(q.used||0) + " / " + Number(q.cap); return; }
     var used = Number(q.used || 0), cap = Number(q.cap || 50);
     var pct = cap > 0 ? Math.min(100, (used / cap) * 100) : 0;
     QFILL.style.width = pct + "%";
@@ -17315,9 +17644,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   }
 
   function fail(e){
-    turn("ai", "I couldn't reach my service just now. Your data is fine — try again in a moment.");
-    chips(["Try again"]);
-    if(SUB) SUB.textContent = "Connection interrupted";
+    turn("ai", "I couldn't reach my service just now. Your data is fine — tap Try again below.");
+    /* #35. The old chip called send("Try again"), which spends a message asking
+       the assistant a question rather than retrying the opener that just failed.
+       And it could only appear if the failure was caught at all -- see boot(). */
+    chips([]);
+    if(CHIPS){
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "nvai-chip"; b.textContent = "Try again";
+      b.addEventListener("click", function(){ booted = false; boot(); });
+      CHIPS.appendChild(b);
+    }
+    if(SUB) SUB.textContent = "Connection interrupted — tap Try again";
+    lock(false);
     console.warn("NovaX AI:", e && e.message ? e.message : e);
   }
 
@@ -17335,23 +17674,70 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     chips([], true);   /* keep the strip's height until the reply lands */
     lock(true);
     var t = thinking();
-    call({ conv_id: convId, message: text, mode: "chat" })
-      .then(function(res){ if(t) t.remove(); receive(res); })
-      .catch(function(e){ if(t) t.remove(); fail(e); })
-      .then(function(){ lock(false); if(INPUT) INPUT.focus(); });
+    /* Same trap as boot(): a synchronous throw out of call() would leave the
+       composer locked with no error and no way to retry. */
+    var done = function(){ lock(false); if(INPUT) INPUT.focus(); };
+    try{
+      Promise.resolve(call({ conv_id: convId, message: text, mode: "chat" }))
+        .then(function(res){ if(t) t.remove(); receive(res); })
+        .catch(function(e){ if(t) t.remove(); fail(e); })
+        .then(done, done);
+    }catch(e){ if(t) t.remove(); fail(e); done(); }
   }
 
   /* ---- the proactive opener ---- */
+  /* #34 + #35. lock(false) lived only at the end of a promise chain that call()
+     had to return. call() reaches straight into sb.auth.getSession() -- if the
+     Supabase client is not fully constructed yet that is a TypeError thrown
+     SYNCHRONOUSLY, so no chain was ever built, nothing caught it, and lock(false)
+     never ran. The console then sat exactly as reported: the opener line frozen
+     at "Checking what needs your attention...", the input and Send button
+     disabled, no error and no way back. The failure was invisible because an
+     exception inside the setTimeout that calls boot() goes nowhere.
+
+     Nothing here can now throw past the unlock, and a failure leaves a control
+     that starts it again instead of a dead panel. */
   function boot(){
     if(booted || !cache()) return;
     booted = true;
     lock(true);
     var t = thinking();
     if(SUB) SUB.textContent = "Checking what needs your attention…";
-    call({ mode: "open" })
-      .then(function(res){ if(t) t.remove(); receive(res); })
-      .catch(function(e){ if(t) t.remove(); fail(e); })
-      .then(function(){ lock(false); });
+    var done = function(){ lock(false); };
+    try{
+      Promise.resolve(call({ mode: "open" }))
+        .then(function(res){ if(t) t.remove(); receive(res); })
+        .catch(function(e){ if(t) t.remove(); booted = false; fail(e); })
+        .then(done, done);
+    }catch(e){
+      if(t) t.remove();
+      booted = false;
+      fail(e);
+      done();
+    }
+    /* #36: the counter must not depend on the opener succeeding. */
+    loadQuota();
+  }
+  /* #36. The usage bar read an em dash and stayed there, because quota() was
+     only ever called from receive() -- so "still loading", "no limit" and "the
+     AI call failed" all looked identical, and the merchant could not tell
+     whether they had messages left. The count has its own RPC (ai_quota_status,
+     which returns 3 of 50 for this account), and it answers whether or not the
+     assistant itself is reachable. */
+  function loadQuota(){
+    var sb = client();
+    if(!sb || !sb.rpc){ if(QTXT) QTXT.textContent = "not connected"; return; }
+    if(QTXT && (!QTXT.textContent.trim() || QTXT.textContent.trim() === "—")) QTXT.textContent = "checking…";
+    try{
+      Promise.resolve(sb.rpc("ai_quota_status"))
+        .then(function(r){
+          if(!r || r.error || !r.data){ if(QTXT) QTXT.textContent = "usage unavailable"; return; }
+          var d = Array.isArray(r.data) ? r.data[0] : r.data;
+          if(!d){ if(QTXT) QTXT.textContent = "usage unavailable"; return; }
+          quota(d);
+        })
+        .catch(function(){ if(QTXT) QTXT.textContent = "usage unavailable"; });
+    }catch(e){ if(QTXT) QTXT.textContent = "usage unavailable"; }
   }
 
   function requestMore(){

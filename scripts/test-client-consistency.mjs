@@ -89,15 +89,29 @@ const parcels=[
   {awb:"DELIVERED",clientId:"merchant-1",status:"Delivered",statusSince:old},
   {awb:"CANCELLED",clientId:"merchant-1",status:"Cancelled by client",statusSince:old},
   {awb:"RETURNED",clientId:"merchant-1",status:"Return to shipper",statusSince:old},
-  {awb:"LATE",clientId:"merchant-1",status:"Parcel now in transit",statusSince:old,statusAgeHours:0},
+  {awb:"LATE",clientId:"merchant-1",status:"Parcel now in transit",statusSince:old,statusAgeHours:0,address:"123 Main Rd",phone:"03001234567"},
   {awb:"ADDRESS",clientId:"merchant-1",status:"New booked",address:"Address pending",phone:"03001234567"},
   {awb:"PHONE",clientId:"merchant-1",status:"New booked",address:"123 Main Rd",phone:"---"},
+  /* Rescanned an hour ago -- so NOT late by the status clock -- but sitting in
+     the destination city for three days. The cockpit used to carry this case in
+     a second set of its own, which is how "35 need attention" and "38 need you"
+     ended up on one screen. One predicate now, so it has to come out here. */
+  {awb:"STALLED",clientId:"merchant-1",status:"Parcel received at destination",
+   statusSince:new Date(now-1*3600e3).toISOString(),bookedAt:new Date(now-72*3600e3).toISOString(),
+   address:"123 Main Rd",phone:"03001234567"},
 ];
-const scope={state:{client:{id:"merchant-1"},parcels},window:{},isRiderCashHolding:()=>false,Date,Number,String,Set,Object};
+const scope={state:{client:{id:"merchant-1"},parcels},window:{},isRiderCashHolding:()=>false,
+  destinationArrivalAt:()=>null,Date,Number,String,Set,Object,Math,isFinite};
 vm.createContext(scope);
 vm.runInContext(section("    var NV_CONCLUDED_STATUSES=", "    /* Money actually received"),scope);
+/* agingHours/nvOutcomeSettled live between the two sections below and are
+   called by nvAttentionParcels, so the sandbox has to hold the real ones. */
+vm.runInContext(section("    var NV_OUTCOME_SETTLED=", "    /* Merchant view exposes destination aging only"),scope);
 vm.runInContext(section("    function nvMissingDeliveryInfo(p){", "    function dailyCommandData(){"),scope);
 assert.equal(scope.nvParcelDelayed(parcels[3]),true,"delay advances from the status timestamp, not cached age");
 assert.equal(scope.nvParcelDelayed(parcels[1]),false,"cancelled parcels are not delayed");
-assert.deepEqual(Array.from(scope.nvAttentionParcels(),p=>p.awb).sort(),["ADDRESS","LATE","PHONE","RETURNED"],"one consistent attention set includes missing details and returns, without terminal delays");
+assert.equal(scope.nvParcelDelayed(parcels[6]),false,"a parcel rescanned an hour ago is not late by the status clock");
+assert.deepEqual(Array.from(scope.nvAttentionParcels(),p=>p.awb).sort(),["ADDRESS","LATE","PHONE","RETURNED","STALLED"],"one consistent attention set includes missing details, returns and 48h stalls, without terminal delays");
+/* #22: the order the cockpit and the Action needed card both show. */
+assert.deepEqual(Array.from(scope.nvAttentionSorted(scope.nvAttentionParcels()),p=>p.awb).slice(0,2),["ADDRESS","PHONE"],"parcels the merchant must fix first are ranked first");
 console.log("ok - attention set, terminal states, and live delay age remain consistent");
