@@ -5513,6 +5513,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var counting = invoices.filter(function(i){
         return !isInvoiceClosed(i.status) && i.status !== "Cancelled" && i.status !== "Pushed to wallet";
       }).reduce(function(s,i){ return s + Number(i.payable||0); }, 0);
+      /* These three tiles claim to partition every rupee, and they did not.
+         Money that is DELIVERED but not yet on any invoice belonged to none of
+         them: KKM SWEETS & NIMCO have 9 delivered parcels carrying Rs 24,510 of
+         COD with no invoice, so Money reported "Being counted Rs 0" while the
+         dashboard two screens away listed those same 9 parcels as awaiting
+         invoice. That is exactly the money a merchant means by "being counted".
+
+         Cannot double-count: a parcel with no invoice_id contributes nothing to
+         the invoice sum above. Net of the delivery charge, which is what the
+         invoice would deduct anyway. */
+      try{
+        counting += (typeof nvInFlightParcels === "function" ? nvInFlightParcels() : [])
+          .reduce(function(t,p){ return t + (Number(p.cod||0) - Number(p.fee||0)); }, 0);
+      }catch(e){}
       // A wallet can legitimately go negative when delivery charges on prepaid
       // parcels exceed COD collected. "Ready to withdraw -Rs 1,760 / yours
       // right now" is nonsense and looks broken to a merchant, so a negative
