@@ -1956,7 +1956,17 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         host.style.display="block";
         host.innerHTML='<div class="nv-inc"><div class="nv-inc-lbl">Incoming money</div>'+
           '<div class="nv-inc-amt">'+escLabelText(money(0))+'</div>'+
-          '<div class="nv-inc-sub">Your incoming COD will appear here after your first booking.</div></div>';
+          /* "after your first booking" is only true for a brand-new merchant.
+             This branch fires whenever nothing is in flight AND nothing is
+             available -- which is also every established merchant who has
+             delivered and withdrawn everything. KKM has 201 parcels; telling
+             them to make their first booking reads as the portal having lost
+             their account. Ask the data, not the balance. */
+          '<div class="nv-inc-sub">'+escLabelText(
+              ((state.parcels||[]).length>0)
+                ? "Nothing is on the way right now. New COD appears here as parcels move."
+                : "Your incoming COD will appear here after your first booking."
+            )+'</div></div>';
         return;
       }
 
@@ -3776,7 +3786,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const absorbLine = clears>0
           ? `<p class="nv-inv-absorb">${money(clears)} of this clears the charges already on your account &mdash; <strong>${money(Math.max(0, Number(inv.payable||0)-clears))}</strong> reaches your wallet.</p>`
           : "";
-        return `<div class="invoice-card nv-inv-row" style="animation-delay:${Math.min(idx*70,560)}ms"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="footer-note" style="margin-left:auto">${escLabelText(inv.createdAt)}</span></div><p style="margin:6px 0 0">${sum}</p>${absorbLine}${nvInvoiceSteps(inv.status)}<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Statement PDF</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">CSV</button></div></div>`;
+        return `<div class="invoice-card nv-inv-row" style="animation-delay:${Math.min(idx*70,560)}ms"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="footer-note" style="margin-left:auto">${escLabelText(inv.createdAt)}</span></div><p style="margin:6px 0 0">${sum}</p>${absorbLine}${nvInvoiceSteps(inv.status)}<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Print statement</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">CSV</button></div></div>`;
       }).join("")||`<div class="ops-card"><strong>No invoices yet</strong><p>Once a delivered parcel is invoiced it appears here with a full statement.</p></div>`;
       /* Order Logs tab removed 3 Sep 2026. It rendered one card per PARCEL --
          not per event -- showing the current status and "Last update", which
@@ -4705,6 +4715,39 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvPrintThemeLight(){ /* print CSS handles this now */ }
     function nvPrintThemeRestore(){ /* nothing to restore: the theme is never changed */ }
 
+    /* ── shrink-to-fit for printed labels ────────────────────────────────
+       The address, product and packing blocks are -webkit-line-clamp'd (4, 2
+       and 2 lines) inside a label that is a fixed 100mm x 150mm with
+       overflow:hidden. Anything longer was cut on the PAPER with nothing on
+       screen to say so -- and this is not rare: production currently holds 30
+       addresses over 120 characters (longest 185, and KKM's contain embedded
+       newlines that burn clamp lines fast) and 116 product descriptions over
+       60 characters (longest 215). A rider cannot deliver to half an address.
+
+       So instead of clipping, step the type down until it fits. If it still
+       does not fit at the floor, the block is marked and the caller can say so
+       out loud rather than letting a short label leave the building. */
+    function nvFitLabelText(root){
+      var clipped=[];
+      try{
+        var blocks=(root||document).querySelectorAll(".awb-address strong,.awb-item strong,.awb-packing strong");
+        [].slice.call(blocks).forEach(function(el){
+          var start=parseFloat(getComputedStyle(el).fontSize)||12;
+          var size=start, floor=Math.max(6.5, start*0.7), guard=0;
+          while(el.scrollHeight>el.clientHeight+1 && size>floor && guard++<24){
+            size-=0.5;
+            el.style.fontSize=size+"px";
+            el.style.lineHeight="1.25";
+          }
+          if(el.scrollHeight>el.clientHeight+1){
+            el.setAttribute("data-nv-clipped","1");
+            clipped.push((el.closest(".awb-address")?"address":el.closest(".awb-item")?"product":"packing note"));
+          }
+        });
+      }catch(e){}
+      return clipped;
+    }
+    window.nvFitLabelText=nvFitLabelText;
     function awbLabelHtml(p){
       const client=clientById(p.clientId);
       const origin=labelText(p.pickupCity||p.origin,"Karachi");
@@ -4824,6 +4867,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         html+=`<div class="print-page">`+page.map(p=>`<div class="print-label-wrap">${awbLabelHtml(p)}</div>`).join("")+`</div>`;
       }
       stage.innerHTML=html;
+      /* If a block still does not fit after shrinking, say so. A label that
+         leaves the building with half an address on it is worse than a warning
+         nobody expected. */
+      try{
+        var nvClipped=nvFitLabelText(stage);
+        if(nvClipped && nvClipped.length){
+          var uniq=nvClipped.filter(function(v,i,a){ return a.indexOf(v)===i; });
+          toast("Heads up: the "+uniq.join(" and ")+" is too long to fit this label and has been shortened on the print. Check it before dispatch.","error");
+        }
+      }catch(e){}
       // NovaX fix (Autopilot AWB printing v1): never call window.print() on
       // an empty/blank stage -- this is what caused the occasional blank
       // print screen when a race condition left printStage without any
@@ -5203,6 +5256,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(th) th.disabled=true;
       if(a4) a4.disabled=true;
       stage.innerHTML=html;
+      try{ nvFitLabelText(stage); }catch(e){}
       stage.style.display="block";
       function restore(){
         nvPrintThemeRestore();
@@ -5559,7 +5613,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                    '<div><strong>' + money(i.dueToNovax) + '</strong>' +
                    '<div class="footer-note" style="margin-top:2px">' + escLabelText(i.createdAt) +
                    ' &middot; ' + ((i.parcelRefs||[]).length) + ' parcel' + ((i.parcelRefs||[]).length===1?'':'s') + '</div></div>' +
-                   '<button class="ghost-btn" onclick="printInvoice(&quot;' + i.id + '&quot;)">Statement PDF</button></div>';
+                   '<button class="ghost-btn" onclick="printInvoice(&quot;' + i.id + '&quot;)">Print statement</button></div>';
           }).join("");
         }
       }
@@ -13008,6 +13062,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var wrap=document.createElement("div"); wrap.className="nv-more-wrap"; wrap.id="nvMoreWrap";
         var btn=document.createElement("button");
         btn.type="button"; btn.className="client-tab"; btn.id="nvMoreBtn"; btn.setAttribute("aria-expanded","false");
+        /* The arrow was set once and never changed, so an OPEN menu still
+           advertised "More v". aria-expanded was already correct; this just
+           makes the visible control agree with it. */
         btn.textContent="More \u25be";
         var menu=document.createElement("div"); menu.className="nv-more-menu"; menu.id="nvMoreMenu";
         wrap.appendChild(btn); wrap.appendChild(menu); bar.appendChild(wrap);
@@ -13019,9 +13076,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           e.stopPropagation();
           var open=wrap.classList.toggle("open");
           btn.setAttribute("aria-expanded",open?"true":"false");
+          btn.textContent=open?"More \u25b4":"More \u25be";
         });
-        document.addEventListener("click",function(e){ if(!wrap.contains(e.target)){ wrap.classList.remove("open"); btn.setAttribute("aria-expanded","false"); } });
-        menu.addEventListener("click",function(){ wrap.classList.remove("open"); });
+        document.addEventListener("click",function(e){ if(!wrap.contains(e.target)){ wrap.classList.remove("open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; } });
+        menu.addEventListener("click",function(){ wrap.classList.remove("open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; });
       }
 
       /* ---------- Task 15: header omni-search ---------- */

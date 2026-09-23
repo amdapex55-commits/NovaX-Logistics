@@ -2172,7 +2172,11 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
     .nv-rate-notice{padding:13px 14px;}
     .nv-rate-notice .nv-rn-x{width:100%;justify-content:center;}
   }
-  #nvTkList:empty::after{content:"No tickets yet \2014 raise one above if you need a human.";}
+  /* Was "No tickets yet", which contradicted the counters sitting right
+     above it: Open (0), Resolved (1), All (1) then "no tickets yet". A
+     :empty rule cannot know which filter is active, so the JS sets an
+     accurate message per filter and this is only the fallback. */
+  #nvTkList:empty::after{content:"Nothing to show for this filter.";}
   /* Support desk status: open/closed and the real median first-reply time. */
   .nv-tk-desk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;
     padding:9px 12px;border:1px solid var(--line);border-radius:var(--r-lg);
@@ -2233,7 +2237,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=942fd1b5" defer></script>
+  <script src="client-app.js?v=3c074869" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2463,7 +2467,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
                     <div><strong style="font-size:13.5px;color:var(--green)">Paste Order To Book</strong><div class="footer-note mt-2">Paste a WhatsApp or Instagram order and I'll fill the form for you.</div></div>
                   </div>
-                  <textarea id="nvPasteInput" placeholder="e.g. Ali Khan 03123456789 Lahore COD 2500 black hoodie DHA Phase 5 house 22" style="width:100%;margin-top:10px;min-height:58px;border-radius:8px;border:1px solid #d8ece3;padding:8px 10px;font-size:13px;font-family:inherit;box-sizing:border-box"></textarea>
+                  <textarea id="nvPasteInput" aria-label="Paste a WhatsApp or SMS order to fill the booking form" placeholder="e.g. Ali Khan 03123456789 Lahore COD 2500 black hoodie DHA Phase 5 house 22" style="width:100%;margin-top:10px;min-height:58px;border-radius:8px;border:1px solid #d8ece3;padding:8px 10px;font-size:13px;font-family:inherit;box-sizing:border-box"></textarea>
                   <div class="mt-8"><button class="ghost-btn" id="nvPasteFillBtn" type="button">Fill Form From Paste</button></div>
                   <div class="footer-note" id="nvPasteSummary" style="display:none;margin-top:8px;font-weight:700;color:var(--green)"></div>
                 </div>
@@ -2708,7 +2712,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
             <!-- FULL REPORT -->
             <section class="client-module" id="client-reports">
               <div class="panel">
-                <div class="section-head"><div><h3>Full Report</h3><p>Full account parcel history. The filters below apply to this report and its downloads.</p></div><div class="inline-actions"><button class="ghost-btn" id="reportCsvBtn">Export CSV</button><button class="ghost-btn" id="reportPdfBtn">Download PDF</button></div></div>
+                <div class="section-head"><div><h3>Full Report</h3><p>Full account parcel history. The filters below apply to this report and its downloads.</p></div><div class="inline-actions"><button class="ghost-btn" id="reportCsvBtn">Export CSV</button><button class="ghost-btn" id="reportPdfBtn">Print / Save as PDF</button></div></div>
                 <div class="grid metrics" id="clientReportMetrics"></div>
               </div>
               <div class="panel mt-14">
@@ -2856,7 +2860,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
             <section class="client-module" id="client-tickets">
               <div class="panel">
                 <div class="section-head">
-                  <div><h3>Support Tickets</h3><p>Raise an issue with a human. Tickets are opened by you, never automatically.</p></div>
+                  <div><h3>Support Tickets</h3><p>Raise an issue with a human. You can open one here, and NovaX AI can open one for you when it cannot resolve something itself.</p></div>
                   <span class="chip info" id="nvTkOpenCount">0 open</span>
                 </div>
                 <!-- Filled by nv_support_desk_meta(): real opening hours and the
@@ -3040,7 +3044,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
     <div class="modal-card" style="max-width:820px">
       <div class="modal-head"><h3>Invoice</h3><button class="modal-close" aria-label="Close" onclick="closeInvoiceModal()">&times;</button></div>
       <div id="invoiceViewBody"></div>
-      <div class="inline-actions mt-14"><button class="action-btn" id="invoiceViewPrintBtn">Download PDF</button><button class="ghost-btn" id="invoiceViewCsvBtn">Download CSV</button><button class="ghost-btn" onclick="closeInvoiceModal()">Close</button></div>
+      <div class="inline-actions mt-14"><button class="action-btn" id="invoiceViewPrintBtn">Print / Save as PDF</button><button class="ghost-btn" id="invoiceViewCsvBtn">Download CSV</button><button class="ghost-btn" onclick="closeInvoiceModal()">Close</button></div>
     </div>
   </div>
 
