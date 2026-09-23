@@ -1182,8 +1182,23 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     /* Mirrors nv_parse_weight_kg() on the server: the first number, divided by
        1000 when the unit is grams. Stripping only "kg" turned "500 g" into
        500 kg. */
+    /* ── comma decimals ──────────────────────────────────────────────────
+       "1,5" is how a lot of people write 1.5, and every weight regex here
+       stops at the comma: it matched "1", the parcel was billed as 1 kg
+       instead of 1.5 kg, and NOBODY saw an error -- not the merchant, not us.
+       On a Zone B parcel that is Rs 250 charged where Rs 335 was owed.
+
+       A comma followed by ONE OR TWO digits is unambiguously a decimal point,
+       so it is rewritten. Three or more digits (1,500) is ambiguous -- it
+       could be a thousands separator -- and money must not be decided by a
+       guess, so that is left alone and nvWeightProblem() below rejects it
+       with an instruction instead. Mirrors nv_parse_weight_kg() on the
+       server, which normalises identically. */
+    function nvNormalizeWeightCommas(s){
+      return String(s==null?"":s).replace(/(\d),(\d{1,2})(?!\d)/g, "$1.$2");
+    }
     function parseWeightKg(w){
-      var s=String(w===undefined||w===null?"":w).trim().toLowerCase();
+      var s=nvNormalizeWeightCommas(String(w===undefined||w===null?"":w).trim().toLowerCase());
       var m=s.match(/(\d+(?:\.\d+)?|\.\d+)/);
       var n=m?parseFloat(m[1]):NaN;
       if(!s||isNaN(n)||n<=0) return 0.8;
@@ -1221,9 +1236,12 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     }
     window.nvFlagField=nvFlagField;
     function nvWeightProblem(raw){
-      var s=String(raw==null?"":raw).trim();
+      var s=nvNormalizeWeightCommas(String(raw==null?"":raw).trim());
       if(!s) return "Enter the parcel weight, for example 0.8 kg.";
       if(/^-|[^\d.]-/.test(s)) return "Weight cannot be negative. Enter a weight like 0.8 kg.";
+      /* Any comma still here was NOT a plain decimal (1,500), so it is
+         ambiguous. Ask rather than guess -- guessing changes the bill. */
+      if(s.indexOf(",")>=0) return "Use a dot for decimals, like 1.5 kg.";
       var m=s.match(/(\d+(?:\.\d+)?|\.\d+)/);
       if(!m) return "Weight must include a number, for example 0.8 kg.";
       var n=parseFloat(m[1]);

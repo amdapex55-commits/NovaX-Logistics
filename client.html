@@ -387,6 +387,16 @@
     .field textarea{min-height:94px;padding-top:10px;resize:vertical;}
     .inline-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
     .bulk-drop{min-height:160px;display:grid;place-items:center;text-align:center;padding:20px;border:1px dashed var(--line-strong);border-radius:var(--radius);background:linear-gradient(135deg,rgba(12,124,89,.08),transparent 42%),var(--nvu-bg);}
+    /* place-items:center sizes grid items to max-content, and <input type=file>
+       has a wide intrinsic size (the chooser button plus the filename) that
+       will not shrink. At 360px -- the width most of these merchants are on --
+       the CSV input and the Upload button rendered 333px wide inside a 320px
+       content box, so their right edge landed ~19px off-screen. The page does
+       not scroll sideways, so that part of the Upload button was simply
+       unreachable. Let the children shrink and cap them at the container. */
+    .bulk-drop>*{min-width:0;max-width:100%;}
+    .bulk-drop input[type=file]{display:block;width:100%;max-width:100%;box-sizing:border-box;}
+    .bulk-drop button{max-width:100%;}
     .log-feed{display:grid;gap:10px;}
     .log-item{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:start;padding:11px 12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--nvu-bg);}
     #clientPaymentHistory .log-item:nth-child(1){animation-delay:0s;}
@@ -2223,7 +2233,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=43d68b4e" defer></script>
+  <script src="client-app.js?v=9daf418c" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
