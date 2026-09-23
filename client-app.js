@@ -1388,13 +1388,20 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       const parcels=Array.isArray(poolOverride)?poolOverride:clientScopedParcels();
       const delivered=parcels.filter(p=>p.status.includes("Delivered")).length;
       const ratedTotal=parcels.filter(nvIsRatedParcel).length;
+      /* #1. The dashboard divided by ratedTotal -- every parcel NovaX has taken
+         responsibility for, INCLUDING the 24 still moving -- while the Full
+         Report divided by parcels whose attempt had finished. Same account, same
+         screen-to-screen: 153/197 = 78% against 153/173 = 88%. A parcel still in
+         transit has not failed; counting it as one punishes the merchant for
+         having work in flight. Both now use this. */
+      const settledTotal=parcels.filter(p=>nvOutcomeSettled(p)&&nvIsRatedParcel(p)).length;
       const deliveredParcels=parcels.filter(isDeliveredLedgerParcel);
       const unpaid=parcels.filter(isUnpaidDeliveredParcel);
       const codCollected=deliveredParcels.reduce((s,p)=>s+p.cod,0);
       const deliveryCharges=deliveredParcels.reduce((s,p)=>s+p.fee,0);
       const payable=Math.max(0,unpaid.reduce((s,p)=>s+p.cod-p.fee,0));
       const avgProgress=parcels.length?parcels.reduce((s,p)=>s+(p.stage/p.totalStages),0)/parcels.length:0;
-      return { parcels, delivered, total:parcels.length, ratedTotal, codCollected, deliveryCharges, payable, avgProgress };
+      return { parcels, delivered, total:parcels.length, ratedTotal, settledTotal, codCollected, deliveryCharges, payable, avgProgress };
     }
     function isRiderCashHolding(p){
       if(!p) return false;
@@ -2843,7 +2850,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          nothing picked up yet the rate is UNDEFINED, not 0%: percent(x,0)
          returns 0, which would show a brand-new merchant "0/0, 0%" in amber
          on their first morning. Show an em dash and stay neutral instead. */
-      const rated=cm.ratedTotal;
+      const rated=cm.settledTotal;
       const rate=rated?percent(cm.delivered,rated):0;
       const rateKnown=rated>0;
       const ops=Math.round(cm.avgProgress*100);
@@ -2854,7 +2861,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         metricCard("Delivered",
           rateKnown?`${cm.delivered}/${rated}`:"\u2014",
           rate,
-          rateKnown?`of ${rated} picked up`:"nothing picked up yet",
+          rateKnown?`of ${rated} finished \u00b7 ${cm.ratedTotal-rated} still moving`:"nothing picked up yet",
           (rateKnown&&rate<40)?"amber":"","✅","filter:Delivered",!rateKnown),
         /* These bars divided by 3000 and 60000 -- numbers that correspond to
            nothing. A merchant saw "13%", "15%", "2%" sitting next to real money
@@ -13375,8 +13382,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           :'<p class="nv-c-empty">Nothing needs you right now. Exceptions and parcels stuck over 48 hours appear here.</p>';
         var movingCounts={};
         b.moving.forEach(function(p){ movingCounts[p.status]=(movingCounts[p.status]||0)+1; });
-        var movingHtml=Object.keys(movingCounts).length?Object.keys(movingCounts).map(function(k){
-          return '<div class="nv-c-item"><strong>'+movingCounts[k]+" parcel"+(movingCounts[k]===1?"":"s")+"</strong><span>"+nvEsc(k)+"</span></div>";
+        /* #4. Each row named one status and its count, so the column read as
+           "12 parcels" at a glance while 24 were actually in movement. The
+           column now states its own total first, and every row says which stage
+           it is, so the number here and the status board agree by construction. */
+        var movingHtml=Object.keys(movingCounts).length?('<p class="nv-c-empty">'+b.moving.length+' parcel'+(b.moving.length===1?"":"s")+' in movement, by stage:</p>')+Object.keys(movingCounts).map(function(k){
+          return '<div class="nv-c-item"><strong>'+movingCounts[k]+" parcel"+(movingCounts[k]===1?"":"s")+"</strong><span>"+nvEsc(nvStatusLabel(k))+"</span></div>";
         }).join("")+(b.stuck.length?'<p class="nv-c-empty">'+b.stuck.length+" moving parcel"+(b.stuck.length===1?" has":"s have")+" not changed status in over 48 hours.</p>":"")
           :(b.next.length
               ? '<p class="nv-c-empty">Nothing moving yet \u2014 '+b.next.length+' parcel'+(b.next.length===1?" is":"s are")+' still waiting to be collected.</p>'
@@ -13404,26 +13415,41 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         /* This panel counts the merchant's WHOLE book -- July, August and
            September bookings alike -- under a heading that said "Today". It is
            an all-time snapshot, so it now says so. */
-        /* #17. The old subtitle printed "28 active · 23 moving" with no account
-           of the other five, because the two numbers came from overlapping sets
-           counted independently. These buckets are now walked in priority order
-           with a seen-set, so every parcel is counted exactly once and the parts
-           add up to the total by construction. Anything left over is stated as
-           "other" rather than silently dropped. */
-        var __seen={};
-        function __take(list){
-          var n=0;
-          (list||[]).forEach(function(p){ if(p&&p.awb&&!__seen[p.awb]){ __seen[p.awb]=1; n++; } });
-          return n;
-        }
-        var nNeed=__take(needsAll), nMoving=__take(b.moving), nNext=__take(b.next), nDone=__take(b.delivered);
-        var nOther=Math.max(0,b.all.length-(nNeed+nMoving+nNext+nDone));
-        var sub='All time · '+b.all.length+' parcel'+(b.all.length===1?"":"s");
-        if(nNeed) sub+=' \u00b7 '+nNeed+' need'+(nNeed===1?"s":"")+' you';
+        /* #2-#6. My own regression from the previous round, and worth naming.
+           Trying to make the parts sum to the total, I walked the buckets in
+           priority order with a seen-set, so a parcel counted in "need you" was
+           removed from every later group. The arithmetic closed -- and every
+           component became wrong. On KKM's live account it printed:
+
+             201 parcels - 38 need you - 9 moving - 3 awaiting pickup - 151 delivered
+
+           while the status board on the same screen showed 153 delivered, 23 in
+           movement and 4 awaiting pickup. Two delivered parcels carried an
+           exception, so they were filed under "need you" and vanished from
+           "delivered"; fifteen moving parcels did the same. A total that adds up
+           is worth nothing if no individual number survives a glance.
+
+           The real partition is by STATUS -- those groups are mutually exclusive
+           by construction, no seen-set required, and each one matches the status
+           board exactly. "Needs you" is not a fourth group, it is an OVERLAY
+           that cuts across all of them, so it is stated separately and says so
+           rather than being quietly subtracted from its neighbours. */
+        var stOf=function(p){ return String((p&&p.status)||""); };
+        var nDone=b.all.filter(function(p){ return stOf(p).indexOf("Delivered")>-1; }).length;
+        var nMoving=b.all.filter(function(p){ return MOVING.indexOf(stOf(p))>=0; }).length;
+        var nNext=b.all.filter(function(p){ return stOf(p)==="New booked"; }).length;
+        var nClosed=b.all.filter(function(p){
+          return stOf(p).indexOf("Delivered")<0 && MOVING.indexOf(stOf(p))<0 && stOf(p)!=="New booked"
+                 && (typeof nvOutcomeSettled==="function" && nvOutcomeSettled(p));
+        }).length;
+        var nOther=Math.max(0,b.all.length-(nDone+nMoving+nNext+nClosed));
+        var sub='All time \u00b7 '+b.all.length+' parcel'+(b.all.length===1?"":"s");
+        if(nDone) sub+=' \u00b7 '+nDone+' delivered';
         if(nMoving) sub+=' \u00b7 '+nMoving+' moving';
         if(nNext) sub+=' \u00b7 '+nNext+' awaiting pickup';
-        if(nDone) sub+=' \u00b7 '+nDone+' delivered';
+        if(nClosed) sub+=' \u00b7 '+nClosed+' closed without delivery';
         if(nOther) sub+=' \u00b7 '+nOther+' other';
+        if(needsAll.length) sub+=' \u2014 '+needsAll.length+' of these need you';
         nvSetHtml(box, '<div class="nv-cockpit-head"><b>Your parcels</b><span class="nv-c-sub">'+sub+'</span></div>'
           +'<div class="nv-cockpit-cols">'
           +'<div class="nv-c-col"><h4>Needs you now</h4>'+needsHtml+"</div>"
