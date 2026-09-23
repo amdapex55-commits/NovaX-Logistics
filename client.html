@@ -414,6 +414,22 @@
      .awb-left,.awb-center{justify-content:space-between;}
      .awb-scan{justify-content:center;align-items:center;text-align:center;}
      .awb-zone-title{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;border-bottom:1.5px solid #111;padding-bottom:6px;}
+     /* The brand mark rides in the title line rather than on a row of its own.
+        flex, not an inline image: an inline image sits on the text baseline and
+        drags its descender space into the line box, which would grow the row.
+
+        Sized from measurement, not guesswork. The mark is taller than the 13px
+        text line, so this row does grow -- by ~9px -- and that is spent out of
+        slack that already existed in the LEFT zone: 383px of box against 145px
+        of content here, 309.7 against 130.9 on the A4 sheet. In thermal the
+        left zone is content-sized and the growth comes off the centre zone
+        instead, which carries 68.6px of spare height. Every outer dimension is
+        unchanged and nothing clips -- re-measured in all three layouts.
+
+        Change any of these heights and re-measure before shipping it. */
+     .awb-zone-title.awb-brand{display:flex;align-items:center;gap:7px;}
+     .awb-zone-title.awb-brand>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+     .awb-brandmark{height:22px;width:22px;flex:0 0 auto;object-fit:contain;display:block;}
      .awb-no{font-size:26px;line-height:1.1;font-weight:900;letter-spacing:.02em;}
      .awb-route{font-size:16px;font-weight:900;}
      .awb-mini-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
@@ -874,6 +890,11 @@
     .awb-center{order:-1 !important;flex:1 1 auto !important;}
     .awb-left{order:0 !important;}
     .awb-zone-title{font-size:7px !important;font-weight:900 !important;text-transform:uppercase !important;letter-spacing:.04em !important;border-bottom:1px solid #111 !important;padding-bottom:.8mm !important;}
+    /* ~4mm on paper. The row grows ~6.6px over the 8.4px text line and the
+       centre zone absorbs it out of its 68.6px of spare height -- measured, and
+       re-measured after: label still 100x150mm, zones still unclipped. */
+    .awb-zone-title.awb-brand{display:flex !important;align-items:center !important;gap:1.2mm !important;}
+    .awb-brandmark{height:15px !important;width:15px !important;flex:0 0 auto !important;object-fit:contain !important;display:block !important;}
     .awb-no{font-size:20px !important;line-height:1 !important;font-weight:900 !important;letter-spacing:.02em !important;}
     .awb-route{font-size:11px !important;font-weight:900 !important;}
     .awb-mini-grid{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:1.3mm !important;}
@@ -974,6 +995,10 @@
       letter-spacing:.08em !important;border-bottom:1.5px solid #000 !important;
       padding-bottom:1mm !important;margin-bottom:1mm !important;color:#000 !important;
     }
+    /* The A4 left zone runs 309.7px of box against 130.9px of content, so this
+       costs nothing anyone can see. */
+    .awb-zone-title.awb-brand{display:flex !important;align-items:center !important;gap:1.2mm !important;}
+    .awb-brandmark{height:15px !important;width:15px !important;flex:0 0 auto !important;object-fit:contain !important;display:block !important;}
     .awb-no{font-size:20px !important;line-height:1 !important;font-weight:900 !important;letter-spacing:.01em !important;color:#000 !important;}
     .awb-route{font-size:11px !important;font-weight:900 !important;margin-top:.6mm !important;color:#000 !important;}
     .awb-mini-grid{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:1.3mm !important;}
@@ -2248,7 +2273,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=8594a6e8" defer></script>
+  <script src="client-app.js?v=167ea008" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
