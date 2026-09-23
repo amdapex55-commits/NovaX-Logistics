@@ -3230,6 +3230,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ renderClientParcels(); }catch(e){}
     };
     window.nvResetParcelPaging=function(){ nvShownCount=NV_PAGE_STEP; };
+    /* Wallet history used a hard 50. The count and the "rest are in your
+       statement" note were always rendered, so nothing was hidden silently --
+       but a merchant who simply wanted to LOOK at entry 51 had to download a
+       statement to do it. U Pack (58 rows) and RONAQ (56) are already past it. */
+    window.nvShowMoreLedger=function(){
+      try{
+        state.nvLedgerShown=(Number(state.nvLedgerShown)||50)+50;
+        renderClientWallet();
+      }catch(e){ try{ render(); }catch(_e){} }
+    };
     /* Drives body.nv-kb-open. focusin/focusout is more reliable across Android
        browsers than visualViewport, which several do not fire consistently, and
        it cannot misfire on a rotate or a toolbar collapse the way a height
@@ -6181,9 +6191,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            that carried-in figure, so it can simply be stated. Carried in + all
            entries = balance, with all three numbers on screen together, and the
            row count says plainly how many of them are listed below. */
+        /* Was a hard 50. Two merchants already hold more than that (U Pack 58,
+           RONAQ 56), so their oldest entries were only reachable by downloading
+           the statement. The count and the "rest are in your statement" line
+           were always shown -- this was disclosed, never silent -- but there
+           was no way to simply look at them here.
+
+           Declared out here, NOT inside the reconciliation IIFE below: the row
+           list is rendered outside that closure and needs the same number. */
+        const NV_LEDGER_STEP=50;
+        if(!Number.isFinite(state.nvLedgerShown)) state.nvLedgerShown=NV_LEDGER_STEP;
+        const shownN=Math.min(state.nvLedgerShown,myLedger.length);
         const reconHtml=(function(){
           if(!myLedger.length) return "";
-          const shownN=Math.min(50,myLedger.length);
           const difference=Math.round((balance-expectedRaw)*100)/100;
           const parts=[];
           if(Math.abs(difference)>=1) parts.push("difference not explained by these entries "+money(difference));
@@ -6193,9 +6213,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             '<span class="chip">'+(shownN<myLedger.length?("Showing "+shownN+" of "+myLedger.length):(myLedger.length+" entr"+(myLedger.length===1?"y":"ies")))+'</span></div>'+
             '<p class="footer-note">'+escLabelText(parts.join(" · "))+"."+
             (shownN<myLedger.length?" The rest are in your downloadable wallet statement.":"")+
-            '</p></div>';
+            '</p>'+
+            (shownN<myLedger.length
+              ? '<button type="button" class="ghost-btn" style="min-height:44px" onclick="nvShowMoreLedger()">Show '+
+                Math.min(NV_LEDGER_STEP, myLedger.length-shownN)+' more</button>'
+              : '')+
+            '</div>';
         })();
-        ledgerList.innerHTML=reconHtml+myLedger.slice(0,50).map(l=>`<div class="ops-card${l.affectsBalance?"":" nv-ledger-info"}"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${l.affectsBalance?(l.amount>=0?"good":"warn"):""}">${money(l.amount)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(nvNiceDate(l.createdAt))}${l.affectsBalance?"":" · already netted — not deducted again"}</div></div>`).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
+        ledgerList.innerHTML=reconHtml+myLedger.slice(0,shownN).map(l=>`<div class="ops-card${l.affectsBalance?"":" nv-ledger-info"}"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${l.affectsBalance?(l.amount>=0?"good":"warn"):""}">${money(l.amount)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(nvNiceDate(l.createdAt))}${l.affectsBalance?"":" · already netted — not deducted again"}</div></div>`).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
         /* NovaX motion: when the balance actually moved this render, flag the
            newest ledger row so the merchant can see what caused it, rather
            than just noticing a different total. Same .nv-changed sweep the
@@ -7515,6 +7540,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const msg=(e&&e.message)?e.message:"Booking could not be completed. Please try again.";
         toast(msg,"error");
         if(confirmLine){ confirmLine.textContent=msg; confirmLine.style.color="#c0392b"; confirmLine.style.display="block"; }
+        /* client_book_parcel now refuses a parcel with no phone or address
+           (sql_novax_booking_requires_contact_20260922) instead of creating an
+           undeliverable one and apologising afterwards. A refusal is only
+           useful if the merchant can see WHICH field to fix, so point at it
+           rather than leaving them to re-read a toast. */
+        try{
+          if(/contact phone is required/i.test(msg)) nvFlagField("bookingPhone");
+          else if(/delivery address is required/i.test(msg)) nvFlagField("bookingAddress");
+        }catch(_e){}
       }finally{
         __bookingInFlight=false; if(btn){ btn.disabled=false; btn.textContent=oldBtnText||"Create Booking"; }
       }
