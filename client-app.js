@@ -5210,6 +5210,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if (st === "Return to shipper")  return { key:"returned",  label:"Returned",   collected:false, tone:"bad"  };
       if (st === "Refused")            return { key:"refused",   label:"Refused",    collected:false, tone:"bad"  };
       if (st === "Cancelled by client")return { key:"cancelled", label:"Cancelled",  collected:false, tone:"bad"  };
+      /* These two are concluded failed deliveries that still carry a delivery
+         charge, and they had no case here -- they fell through to "open / In
+         progress". On INV-260923bcac3 that put one Out of service area parcel
+         in the "still in progress" pill while its Rs 335 sat inside the
+         Rs 1,420 return deduction, so the strip said four parcels explained a
+         charge covering five. The server already had this right: its stored
+         returnCount is 5 and returnCharges 1420. */
+      if (st === "Out of service area")return { key:"refused",   label:"Outside area", collected:false, tone:"bad" };
+      if (st === "Consignee not available") return { key:"refused", label:"Nobody available", collected:false, tone:"bad" };
       if (/^Return /.test(st))         return { key:"returning", label:"In return",  collected:false, tone:"warn" };
       return { key:"open", label:st || "In progress", collected:false, tone:"warn" };
     }
@@ -11642,7 +11651,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var charges=Number(r.fee_total||0);
         var payable=Number(r.net_payable||0);
         var summary=m.summary||invoiceSummaryFallback(invoiceType,cod,charges,payable,dueToNovax);
-        return { _uuid:r.id, id:r.code||r.id, clientId:MY, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:cod, charges:charges, payable:payable, status:r.status||"", createdAt:dtpart(r.created_at), paidAt:paidAt, walletPushedAt:walletPushedAt, summary:summary, invoiceType:invoiceType, dueToNovax:dueToNovax, finalBalance:Number(m.finalBalance!=null?m.finalBalance:payable) };
+        /* The generator already works out how many parcels on this invoice
+           failed to deliver and what they were charged, and stores it -- for
+           INV-260923bcac3 that is returnCount 5 / returnCharges 1420, which is
+           correct: 4 Refused plus 1 Out of service area. The portal ignored
+           these and recomputed from parcel status with a predicate matching
+           only "Refused" and /return/i, so "Out of service area" fell out of
+           the count while its Rs 335 stayed in the deduction. The merchant was
+           shown four parcels explaining a Rs 1,420 charge that covers five.
+           Read the server's own numbers instead of re-deriving them. */
+        return { _uuid:r.id, id:r.code||r.id, clientId:MY, parcelRefs:Array.isArray(r.parcel_refs)?r.parcel_refs:[], cod:cod, charges:charges, payable:payable, status:r.status||"", createdAt:dtpart(r.created_at), paidAt:paidAt, walletPushedAt:walletPushedAt, summary:summary, invoiceType:invoiceType, dueToNovax:dueToNovax, finalBalance:Number(m.finalBalance!=null?m.finalBalance:payable),
+                 returnCount:Number(m.returnCount||0), returnCharges:Number(m.returnCharges||0),
+                 nettedReturns:!!m.nettedReturns, prepaidCharges:Number(m.prepaidCharges||0) };
       }
       function mapWd(r){
         // NovaX fix (mobile UX audit, raw-UUID leak): withdrawals has no
