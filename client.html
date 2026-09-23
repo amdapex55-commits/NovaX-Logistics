@@ -2209,6 +2209,9 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
       padding:8px; gap:4px;
     }
     #clientMenu.open .client-tab{min-height:46px;}
+    /* #42: the backdrop is a real element (.nv-more-scrim, toggled by
+       body.nv-more-open). A ::before here was clipped away by this rule's own
+       overflow-y:auto. */
   }
   /* Rate change notice: important enough to stop on, not an error. Amber
      rather than red -- a price rise is news, not a fault. */
@@ -2292,7 +2295,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=5cd384de" defer></script>
+  <script src="client-app.js?v=96daf282" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2789,7 +2792,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
               <div class="panel mt-14">
                 <div class="section-head"><div><h3>City Summary</h3></div></div>
                 <div class="wide-scroll">
-                  <table>
+                  <table id="clientReportTable">
                     <!-- These two money columns are computed on DIFFERENT pools and used to
      sit side by side with no qualifier. COD sums every parcel whatever
      its status -- booked, moving, refused, delivered -- while Delivery
@@ -3330,6 +3333,47 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   #clientReportFullTable td[data-label="AWB"]{ display:block; text-align:left;
     font-size:16px; padding-bottom:8px; }
   #clientReportFullTable td[data-label="AWB"]::before{ display:none; }
+}
+/* #46. The parcel select boxes measured 20x20px. A checkbox cannot be
+   restyled into a bigger hit area without changing how it looks, so the BOX
+   stays 20px and an invisible 44px pad is added around it -- the WCAG target
+   size with no visual change. The table cell already stops propagation, so a
+   miss no longer opens the journey by accident either. */
+@media (max-width:900px){
+  #clientParcelRows input[type=checkbox][data-nv-sel],
+  #clientParcelCards input[type=checkbox][data-nv-sel]{
+    width:20px; height:20px; position:relative;
+  }
+  #clientParcelRows input[type=checkbox][data-nv-sel]::after,
+  #clientParcelCards input[type=checkbox][data-nv-sel]::after{
+    content:""; position:absolute; left:50%; top:50%;
+    width:44px; height:44px; transform:translate(-50%,-50%);
+  }
+}
+/* #47. Every other table on Full Report collapses to cards under 900px, but
+   the City Summary kept a 5-column layout and measured 400px inside a 340px
+   column, so the one report a merchant reads on a phone scrolled sideways.
+   Same card treatment, driven by the headers it already has. */
+@media (max-width:900px){
+  #clientReportTable, #clientReportTable thead, #clientReportTable tbody,
+  #clientReportTable tr, #clientReportTable td{ display:block; width:100%; }
+  #clientReportTable thead{ position:absolute; left:-9999px; }
+  #clientReportTable tr{
+    border:1px solid var(--nvu-line-2, #e3efe8); border-radius:14px;
+    padding:12px 14px; margin-bottom:10px; background:var(--nvu-bg, #fff);
+  }
+  #clientReportTable td{ border:0; padding:4px 0; display:flex; gap:12px;
+    align-items:baseline; justify-content:space-between; text-align:right; }
+  #clientReportTable td::before{
+    content:attr(data-label); flex:0 0 auto; text-align:left;
+    font-size:11.5px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--nvu-ink-2, #6d8478); font-weight:700;
+  }
+  #clientReportTable td[data-label="City"]{ display:block; text-align:left;
+    font-size:16px; font-weight:800; padding-bottom:8px; }
+  #clientReportTable td[data-label="City"]::before{ display:none; }
+  /* #16's "not collected" note must never be the thing that widens a row. */
+  .nv-cod-void-t{ white-space:normal; }
 }
 /* MOB-007 - minimum comfortable touch target on phones.
    Codex measured the demo banner CTA at ~28px, onboarding Skip at ~23px and

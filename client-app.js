@@ -3560,7 +3560,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const sbHead=document.getElementById("statusBoardHead"); if(sbHead) sbHead.setAttribute("aria-expanded",open?"true":"false");
       el.style.display=open?"flex":"none";
       if(!open){ el.innerHTML=""; return; }
-      el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${escLabelText(nvStatusLabel(s))}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].map(p=>`<div class="sb-parcel" role="button" tabindex="0" aria-label="Open ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><span class="sb-awb">${escLabelText(p.awb)}</span><span class="sb-meta">${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)}</span><span class="sb-meta">${nvCodCell(p)} &middot; ${escLabelText(nvAgeText(p))}</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
+      /* #49. Every column painted every parcel it held -- 153 nodes in the
+         Delivered column alone on this account -- and the board sits ABOVE the
+         25-row paginated table, so paging the table below saved nothing: the
+         expensive render had already happened. Each column now paints a window
+         and says what it is holding back. */
+      const SB_COL_MAX=20;
+      el.innerHTML=order.map(s=>`<div class="status-col"><div class="status-col-head"><strong>${escLabelText(nvStatusLabel(s))}</strong><span class="chip info">${groups[s].length}</span></div>${groups[s].length>SB_COL_MAX?`<p class="footer-note" style="margin:0 0 6px">Showing ${SB_COL_MAX} of ${groups[s].length} \u2014 use My Parcels for the full list.</p>`:""}${groups[s].slice(0,SB_COL_MAX).map(p=>`<div class="sb-parcel" role="button" tabindex="0" aria-label="Open ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><span class="sb-awb">${escLabelText(p.awb)}</span><span class="sb-meta">${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)}</span><span class="sb-meta">${nvCodCell(p)} &middot; ${escLabelText(nvAgeText(p))}</span></div>`).join("")}</div>`).join("") || `<div class="ops-card"><strong>No parcels in range</strong><p>Adjust the date range or book a parcel to populate the board.</p></div>`;
     }
     /* ===== AI Exception Resolution Center: deterministic problem/cause/action card ===== */
     function classifyParcelException(p){
@@ -3870,7 +3876,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     window.nvAwbOpenJourney=nvAwbOpenJourney;
     function renderClientTabs(){
       document.querySelectorAll(".client-tab").forEach(b=>b.classList.toggle("active",b.dataset.clientTab===state.activeClientTab));
-      document.querySelectorAll(".client-module").forEach(m=>m.classList.toggle("active",m.id===`client-${state.activeClientTab}`));
+      /* #48. Inactive panes are display:none, which a conforming browser
+         already drops from the accessibility tree -- I could not reproduce the
+         reported "Date, Consignee, Status, COD, Fee, Time" repeating while on
+         Bulk Booking. But tooling that walks the raw DOM does see them, and the
+         guarantee costs one attribute, so it is stated rather than inferred. */
+      document.querySelectorAll(".client-module").forEach(m=>{
+        const on = m.id===`client-${state.activeClientTab}`;
+        m.classList.toggle("active",on);
+        if(on) m.removeAttribute("aria-hidden"); else m.setAttribute("aria-hidden","true");
+      });
     }
     function cityReport(parcels){ const g={}; parcels.forEach(p=>{ g[p.city]=g[p.city]||{city:p.city,parcels:0,cod:0,revenue:0,delivered:0}; g[p.city].parcels++; g[p.city].cod+=p.cod; if(isDeliveredLedgerParcel(p)){ g[p.city].revenue+=p.fee; g[p.city].delivered++; } }); return Object.values(g); }
     // NovaX fix (client identity leak, findings #1 and #3): a single source
@@ -3989,7 +4004,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         ].join("")+nvReportFilterNote(pool);
       }
       if(rowsHost){
-        rowsHost.innerHTML=cityReport(cm.parcels).map(r=>`<tr><td><strong>${escLabelText(r.city)}</strong></td><td>${r.parcels}</td><td>${money(r.cod)}</td><td>${money(r.revenue)}</td><td><span class="chip ${r.delivered?"good":"info"}">${r.delivered}/${r.parcels}</span></td></tr>`).join("")
+        /* #47: data-label drives the mobile card layout in client.html -- the
+           same pattern the Full Report table already uses. */
+        rowsHost.innerHTML=cityReport(cm.parcels).map(r=>`<tr><td data-label="City"><strong>${escLabelText(r.city)}</strong></td><td data-label="Parcels">${r.parcels}</td><td data-label="COD booked">${money(r.cod)}</td><td data-label="Delivery charges">${money(r.revenue)}</td><td data-label="Delivered"><span class="chip ${r.delivered?"good":"info"}">${r.delivered}/${r.parcels}</span></td></tr>`).join("")
           || `<tr><td colspan="5" class="footer-note" style="padding:14px 8px">${pool.filtered?"No parcels match these filters.":"No parcels in your account yet. Book your first parcel and this breaks down by city as they move."}</td></tr>`;
       }
     }
@@ -4419,6 +4436,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       menu.classList.remove("open");
       var tgl = document.getElementById("clientMenuToggle");
       if(tgl) tgl.setAttribute("aria-expanded","false");
+      try{ window.nvSyncMenuScrim(); }catch(err){}
     });
     document.addEventListener("click", function(e){
       var b = e.target && e.target.closest ? e.target.closest("[data-nvbn]") : null;
@@ -4436,6 +4454,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(open && menu.getBoundingClientRect().bottom < 0 && menu.scrollIntoView){
             try{ menu.scrollIntoView({ block:"center" }); }catch(err){}
           }
+          try{ window.nvSyncMenuScrim(); }catch(err){}
         }
         return;
       }
@@ -9463,11 +9482,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if (__nvTkWaitTries < 20){
           __nvTkWaitTries++;
           var host = document.getElementById("nvTkList");
-          if (host && !host.children.length){
+          /* Only ever paint this BEFORE a first successful load. Once NV_TK.list
+             has been populated, re-entering this branch during a refresh must
+             not throw a loading card over tickets that are already on screen. */
+          if (host && !host.children.length && !NV_TK.loadedOnce){
             host.innerHTML = '<div class="ops-card"><strong>Loading your tickets\u2026</strong>'
-              + '<p class="footer-note">Waiting for your account to finish loading.</p></div>';
+              + '<p class="footer-note">Connecting to your workspace.</p></div>';
           }
           setTimeout(nvTkLoad, 500);
+          return Promise.resolve();
+        }
+        /* #32: the retries ran out silently and left the loading card sitting
+           there for good. Say what happened and offer the retry. */
+        if (__nvTkWaitTries >= 20){
+          var tHost = document.getElementById("nvTkList");
+          if (tHost && !NV_TK.loadedOnce){
+            tHost.innerHTML = '<div class="ops-card"><strong>We could not reach your ticket list</strong>'
+              + '<p class="footer-note">Your workspace loaded but the ticket service did not answer. Your existing tickets are safe.</p>'
+              + '<button class="ghost-btn" type="button" style="margin-top:8px" onclick="__nvTkWaitTries=0;nvTkLoad()">Try again</button></div>';
+          }
         }
         return Promise.resolve();
       }
@@ -9500,6 +9533,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           return;
         }
         NV_TK.loadError = null;
+        NV_TK.loadedOnce = true;
         NV_TK.list = (r && r.data) || [];
         nvTkRender();
         // Populate support notifications without requiring the merchant to
@@ -9585,18 +9619,52 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           '</div>';
       }
 
+      /* #38. A subject is frozen at the moment the ticket was opened:
+         "Issue with N8530080 - Parcel now in transit" is still on screen for a
+         parcel delivered days ago. The title is the merchant's own words and is
+         not rewritten -- the stale STATUS fragment is lifted out of it and the
+         live status shown beside it. Two tickets on this account were
+         advertising a status three stages out of date. */
+      var subj = String(t.subject || "");
+      var liveP = null;
+      try{ liveP = (state.parcels||[]).filter(function(x){ return x && String(x.awb).toUpperCase()===String(t.awb||"").toUpperCase(); })[0]; }catch(e){}
+      var staleStatus = "";
+      if (liveP){
+        var mm = subj.match(/\s[—\-]\s(.+)$/);
+        if (mm && String(liveP.status||"").trim() !== mm[1].trim()){
+          staleStatus = mm[1].trim();
+          subj = subj.slice(0, mm.index).trim();
+        }
+      }
+      /* #40. A resolved card showed only "resolved" until it was expanded, so
+         checking what NovaX actually did meant opening each of the 18 in turn.
+         The closing reply IS the outcome; it belongs in the collapsed view. */
+      var outcome = "";
+      if (t.status === "resolved" && !open){
+        var rr = (NV_TK.replies[t.id] || []).filter(function(x){ return String(x.by_side||"") !== "client"; });
+        var lastR = rr.length ? rr[rr.length-1] : null;
+        if (lastR && lastR.body){
+          outcome = '<p class="footer-note nv-tk-outcome"><b>How it was closed:</b> ' +
+                    nvTkEsc(String(lastR.body).slice(0,140)) + (String(lastR.body).length>140?"…":"") + '</p>';
+        } else if (t.resolved_at){
+          outcome = '<p class="footer-note nv-tk-outcome">Closed ' + nvTkEsc(nvNiceDate(t.resolved_at)) + ' — open it to read the reply.</p>';
+        }
+      }
       return '<div class="ops-card nv-tk-card' + (sla.state === "breached" ? " nv-tk-breach" : "") + '">' +
         '<div class="ops-card-head" data-nv-tkopen="' + nvTkEsc(t.id) + '" style="cursor:pointer">' +
-          '<strong>' + nvTkEsc(t.code || "Ticket") + ' · ' + nvTkEsc(t.subject) + '</strong>' +
+          '<strong>' + nvTkEsc(t.code || "Ticket") + ' · ' + nvTkEsc(subj) + '</strong>' +
           '<span class="chip ' + stChip + '">' + stText + '</span>' +
         '</div>' +
         '<div class="inline-actions" style="flex-wrap:wrap;gap:6px;margin:6px 0">' +
           '<span class="chip ' + prChip + '">' + nvTkEsc(t.priority) + '</span>' +
           (t.awb ? '<span class="chip info">' + nvTkEsc(t.awb) + '</span>' : "") +
+          (staleStatus ? '<span class="chip" title="Was this status when you opened the ticket.">was: ' + nvTkEsc(staleStatus) + '</span>' : "") +
+          (liveP ? '<span class="chip ' + (String(liveP.status||"").indexOf("Delivered")>-1?"good":"info") + '">now: ' + nvTkEsc(nvStatusLabel(liveP.status)) + '</span>' : "") +
           (sla.text ? '<span class="chip ' + slaChip + '">' + nvTkEsc(sla.text) + '</span>' : "") +
           '<span class="chip info">Opened ' + nvTkEsc(nvNiceDate(t.created_at)) + '</span>' +
         '</div>' +
         (t.body ? '<p style="font-size:13px;margin:6px 0">' + nvTkEsc(t.body) + '</p>' : "") +
+        outcome +
         nvTkParcelHtml(t) +
         thread +
       '</div>';
@@ -9660,7 +9728,33 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          visible "it keeps re-rendering", and the reason the draft-preservation
          dance above had to exist at all. nvSetHtml() writes only when the HTML
          actually differs, so an idle tickets tab now does nothing. */
-      nvSetHtml(host, rows.map(nvTkCard).join(""));
+      /* #31 + #32. With no OPEN tickets -- which is this account's normal
+         state, 0 open and 18 resolved -- rows is empty and this wrote an empty
+         string, leaving whatever was on screen before. What was on screen was
+         the "Loading your tickets..." card, so the default tab sat on a loading
+         message forever while the counts beside it had already rendered
+         "0 open / 18 resolved". Nothing was loading; there was simply nothing
+         to draw and no empty state to draw instead.
+
+         The copy lied in the other direction too (#32): it said the ACCOUNT was
+         still loading while the workspace name and the ticket counts were both
+         on screen. An empty filter is not a loading state and no longer claims
+         to be one. */
+      var emptyHtml="";
+      if(!rows.length){
+        var eTitle = NV_TK.filter==="open" ? "No open tickets"
+                   : NV_TK.filter==="resolved" ? "No resolved tickets yet"
+                   : "No tickets yet";
+        var eNote  = NV_TK.filter==="open" && tkCounts.resolved
+                   ? "Nothing needs NovaX right now. Your "+tkCounts.resolved+" resolved ticket"+(tkCounts.resolved===1?" is":"s are")+" under Resolved."
+                   : NV_TK.filter==="open" ? "Nothing needs NovaX right now."
+                   : "Tickets you open about a parcel appear here.";
+        emptyHtml='<div class="ops-card"><strong>'+nvTkEsc(eTitle)+'</strong>'
+          +'<p class="footer-note">'+nvTkEsc(eNote)+'</p>'
+          +(NV_TK.filter==="open"&&tkCounts.resolved?'<button class="ghost-btn" type="button" style="margin-top:8px" data-nv-tkgo="resolved">See resolved ('+tkCounts.resolved+')</button>':"")
+          +'</div>';
+      }
+      nvSetHtml(host, rows.length ? rows.map(nvTkCard).join("") : emptyHtml);
 
       Object.keys(drafts).forEach(function(id){
         var el = document.getElementById(id);
@@ -9684,6 +9778,38 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var awb  = (document.getElementById("nvTkAwb") || {}).value || "";
       var pri  = (document.getElementById("nvTkPriority") || {}).value || "normal";
       if (!subj.trim()){ toast("Please describe the issue in one line.", "error"); return; }
+      /* #34-#37. This account carries three tickets for N8530014, three for
+         N8530019 and two each for N8530030, N8530027, N8530041 and N8530052 --
+         every one of them "Reattempt requested", opened days apart because
+         nothing on the way in said a ticket already existed. Duplicates split
+         the thread, so a reply lands on one and the merchant is watching
+         another, and each one restarts the SLA clock on work already queued.
+
+         A warning, not a block: a genuinely new problem with the same parcel is
+         legitimate, and the merchant is the one who knows. */
+      var __dupAwb = awb.trim().toUpperCase();
+      if (__dupAwb && !nvTkSubmit.__confirmedDup){
+        var prior = (NV_TK.list || []).filter(function(t){
+          return String(t.awb || "").toUpperCase() === __dupAwb;
+        });
+        var openPrior = prior.filter(function(t){ return t.status !== "resolved"; });
+        if (prior.length){
+          var latest = prior[0];
+          var msg = openPrior.length
+            ? "You already have an OPEN ticket for " + __dupAwb + " (" + (openPrior[0].code || "") + "). Replying there keeps it with the same agent. Open another anyway?"
+            : "You have raised " + prior.length + " ticket" + (prior.length===1?"":"s") + " for " + __dupAwb + " before, most recently " + (latest.code || "") + ". Open another?";
+          if (!confirm(msg)) {
+            if (openPrior.length){
+              NV_TK.filter = "all"; NV_TK.openId = openPrior[0].id;
+              try{ nvTkRender(); nvTkLoadReplies(openPrior[0].id); }catch(e){}
+              var card = document.querySelector('[data-nv-tkopen="' + openPrior[0].id + '"]');
+              if (card) card.scrollIntoView({ behavior:"smooth", block:"center" });
+            }
+            return;
+          }
+          nvTkSubmit.__confirmedDup = true;
+        }
+      }
       if (!sb){ toast("Cloud connection not ready yet, please try again in a moment.", "error"); return; }
       var btn = document.getElementById("nvTkSubmit");
       if (btn){ btn.disabled = true; btn.textContent = "Opening..."; }
@@ -9693,6 +9819,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ).catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
        .then(function(r){
         if (btn){ btn.disabled = false; btn.textContent = "Open Ticket"; }
+        nvTkSubmit.__confirmedDup = false;
         if (r && r.error){
           var m = String(r.error.message || "");
           toast(/does not exist|schema cache/i.test(m)
@@ -9784,11 +9911,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       /* Only shown once enough tickets have actually been answered for the
          median to mean something -- the RPC returns null below 5. */
+      /* #33. This is the median across every NovaX merchant, and it was worded
+         as a promise to the one reading it: "replies usually in about 1.8 hr"
+         sat above this account's own history of first replies at 1h07, 4h24,
+         18h20 and 19h44. Saying whose number it is costs nothing and stops the
+         banner contradicting the tickets directly beneath it. */
       if (d.median_minutes != null){
         var m = Number(d.median_minutes);
         var t = m < 60 ? ("about " + Math.max(1, Math.round(m)) + " min")
                        : ("about " + (Math.round(m / 6) / 10) + " hr");
-        bits.push('\u00b7 replies usually in <strong>' + escLabelText(t) + "</strong>");
+        bits.push('\u00b7 median first reply across NovaX <strong>' + escLabelText(t) + "</strong>");
       }
       host.className = "nv-tk-desk" + (d.open_now ? " is-open" : "");
       host.innerHTML = bits.join(" ");
@@ -9981,7 +10113,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         "<span>COD <b>" + money(p.cod) + "</b></span>",
         "<span>To <b>" + escLabelText(p.consignee || "-") + "</b>, " + escLabelText(p.city || "-") + "</span>"
       ];
-      if (p.updated) bits.push("<span>Last update <b>" + escLabelText(p.updated) + "</b></span>");
+      /* #39. This said "Last update" and sat inside the ticket card, so it read
+         as the most recent SUPPORT reply when it is the parcel's last scan. A
+         merchant waiting on an answer read a courier scan as a response. */
+      if (p.updated) bits.push("<span>Parcel last scanned <b>" + escLabelText(p.updated) + "</b></span>");
       return '<div class="nv-tk-parcel">' + bits.join("") + "</div>";
     }
 
@@ -9993,8 +10128,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if (pane && !pane._nvWired){
         pane._nvWired = true;
         pane.addEventListener("click", function(ev){
-          var f = ev.target.closest("[data-nv-tkf]");
-          if (f){ NV_TK.filter = f.getAttribute("data-nv-tkf"); nvTkRender(); return; }
+          var f = ev.target.closest("[data-nv-tkf]") || ev.target.closest("[data-nv-tkgo]");
+          if (f){ NV_TK.filter = f.getAttribute("data-nv-tkf") || f.getAttribute("data-nv-tkgo"); nvTkRender(); return; }
           var o = ev.target.closest("[data-nv-tkopen]");
           if (o){
             var id = o.getAttribute("data-nv-tkopen");
@@ -10839,7 +10974,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return TABS.indexOf(v) > -1 ? v : "dashboard";
     }
 
-    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } try{ nvRenderBottomNav(); }catch(e){} renderClientReportFull();  renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); } /* Switching tabs kept the previous screen's scroll: leaving Money at scrollY 2443 and tapping Home landed the merchant deep inside the parcel list, past the balance, the alerts and the whole dashboard summary. A new screen starts at its top. Deferred once as well, because a later async render can call nvKeepPlace(), which restores the page offset it captured on entry. */ try{ window.scrollTo(0,0); }catch(e){} setTimeout(function(){ try{ window.scrollTo(0,0); }catch(e){} },0); }
+    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } try{ nvRenderBottomNav(); }catch(e){} renderClientReportFull();  renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); try{ window.nvSyncMenuScrim(); }catch(e){} } /* Switching tabs kept the previous screen's scroll: leaving Money at scrollY 2443 and tapping Home landed the merchant deep inside the parcel list, past the balance, the alerts and the whole dashboard summary. A new screen starts at its top. Deferred once as well, because a later async render can call nvKeepPlace(), which restores the page offset it captured on entry. */ try{ window.scrollTo(0,0); }catch(e){} setTimeout(function(){ try{ window.scrollTo(0,0); }catch(e){} },0); }
     function toast(msg,type){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.remove("success","error"); const kind=type||(/reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(msg)?"error":/success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach/i.test(msg)?"success":""); if(kind) el.classList.add(kind); el.classList.add("show"); /* One hook here rather than at 21 call sites: every existing success and error toast now carries a haptic, and any future one does automatically. */ try{ nvHaptic(kind==="error"?"error":(kind==="success"?"success":null)); }catch(e){} clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
     /* Events */
@@ -10855,7 +10990,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var tab = b.getAttribute("data-client-tab");
       if(tab) showClientTab(tab);
     });
-    document.getElementById("clientMenuToggle").addEventListener("click",()=>{ const m=document.getElementById("clientMenu"); const o=m.classList.toggle("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded",String(o)); });
+    /* #42. One place decides whether the drawer is open, so the backdrop can
+       never be left behind by a path that closes the menu without it. The
+       earlier ::before attempt was invisible: #clientMenu.open sets
+       overflow-y:auto, and a pseudo-element inside it is clipped to that box. */
+    window.nvSyncMenuScrim=function(){
+      var m=document.getElementById("clientMenu");
+      var on=!!(m && m.classList.contains("open") && window.innerWidth<760);
+      document.body.classList.toggle("nv-more-open", on);
+    };
+    /* The drawer is opened and closed from four places -- the header toggle,
+       the bottom-nav More, showClientTab() and an outside-click handler -- and
+       a backdrop that each of them has to remember to update is a backdrop that
+       will eventually be left on screen over a closed menu, or missing over an
+       open one. Watch the class instead of trusting the callers: whatever opens
+       it, the backdrop follows. */
+    try{
+      var __menuEl=document.getElementById("clientMenu");
+      if(__menuEl && window.MutationObserver){
+        new MutationObserver(function(){ try{ window.nvSyncMenuScrim(); }catch(e){} })
+          .observe(__menuEl,{ attributes:true, attributeFilter:["class"] });
+      }
+      window.addEventListener("resize",function(){ try{ window.nvSyncMenuScrim(); }catch(e){} });
+    }catch(e){}
+    document.getElementById("clientMenuToggle").addEventListener("click",()=>{ const m=document.getElementById("clientMenu"); const o=m.classList.toggle("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded",String(o)); try{ window.nvSyncMenuScrim(); }catch(e){} });
 
     /* ═══ Value-change motion ═══════════════════════════════════════════
        When a figure changes, pulse it and tint it green (up) or amber
@@ -13390,11 +13548,32 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              "More" inside "More" is how these three tabs became unreachable.
              Flatten the group so they read as ordinary menu rows. */
           +"@media (max-width:900px){"
-          +"#clientMenu.open .nv-more-wrap{display:block;width:100%}"
+          /* #43. #clientMenu is a two-column grid and .nv-more-wrap was ONE of
+             its items, so the whole group stacked inside a single cell -- and
+             the tile beside it stretched to match. Measured live: "Support
+             Tickets" rendered 340px tall next to 46px neighbours, and adding
+             "Log out" to the group made it worse. display:contents dissolves
+             both the wrapper and the menu box so their rows become direct grid
+             items of the same two-column grid, every tile the same size.
+             align-items:start stops any remaining row from stretching. */
+          +"#clientMenu.open{align-items:start}"
+          +"#clientMenu.open .nv-more-wrap{display:contents}"
           +"#clientMenu.open #nvMoreBtn{display:none!important}"
-          +"#clientMenu.open .nv-more-menu{position:static;display:block!important;border:0;box-shadow:none;padding:0;background:transparent;min-width:0}"
+          +"#clientMenu.open .nv-more-menu{display:contents!important}"
+          +"#clientMenu.open .nv-more-menu .client-tab{width:auto;margin:0}"
           +"}"
           +".nv-more-menu .client-tab{display:block!important;width:100%;text-align:left;margin:2px 0}"
+          /* #43. A tile whose label wrapped grew to 146px beside 46px
+             neighbours, because nothing constrained the height and the grid
+             let it push. Every row is the same height and a long label
+             ellipsises rather than reflowing the menu. */
+          +".nv-more-menu .client-tab{min-height:46px;height:46px;line-height:1.2;padding:0 12px;"
+            +"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-sizing:border-box}"
+          +".nv-more-logout{color:#b3261e;font-weight:800}"
+          /* #42: the backdrop. Below the menu, above everything else. */
+          +".nv-more-scrim{position:fixed;inset:0;z-index:135;background:rgba(6,20,15,.42);display:none}"
+          +"body.nv-more-open .nv-more-scrim{display:block}"
+          +"body.nv-more-open .nv-more-menu{z-index:60}"
           +".nv-omni{position:fixed;z-index:99990;background:var(--nvu-bg);border:1px solid #d7ede1;border-radius:var(--r-xl);box-shadow:var(--glow-1);max-height:340px;overflow:auto;display:none;padding:6px}"
           +".nv-omni.open{display:block}"
           +".nv-omni-g{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#7fa596;padding:6px 8px 2px;font-weight:800}"
@@ -13670,15 +13849,74 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         RARE_TABS.forEach(function(id){
           var el=bar.querySelector('[data-client-tab="'+id+'"]');
           if(el) menu.appendChild(el);
+          /* #50. The Support module opens on "Your business name" -- the
+             settings block -- so the item labelled "NovaX AI" delivered the
+             merchant to account settings. Same tab, wrong place on it; the
+             console is further down. Bring it into view and focus it. */
+          if(el && id==="support"){
+            el.addEventListener("click",function(){
+              setTimeout(function(){
+                var box=document.getElementById("nvAiStream")||document.getElementById("nvAiConsole")||document.getElementById("nvAiInput");
+                var card=box&&box.closest?box.closest(".panel,.ops-card,section"):null;
+                if(card&&card.scrollIntoView) card.scrollIntoView({behavior:"smooth",block:"start"});
+                else if(box&&box.scrollIntoView) box.scrollIntoView({behavior:"smooth",block:"center"});
+                var inp=document.getElementById("nvAiInput");
+                if(inp&&!inp.disabled&&window.matchMedia("(min-width:760px)").matches){ try{ inp.focus({preventScroll:true}); }catch(e){} }
+              },260);
+            });
+          }
+        });
+        /* #41. The desktop header carries "Log out"; the mobile layout hides
+           that header and nothing replaced it, so on a phone there was no way
+           to sign out at all -- on a shared warehouse device that is the one
+           control that matters. Appended here rather than to the bottom nav so
+           it cannot be hit by accident. */
+        (function(){
+          if(menu.querySelector("#nvMoreLogout")) return;
+          var out=document.createElement("button");
+          out.type="button"; out.className="client-tab nv-more-logout"; out.id="nvMoreLogout";
+          out.textContent="Log out";
+          out.addEventListener("click",function(ev){
+            ev.stopPropagation();
+            var real=document.querySelector("#logoutBtn,[data-nv-logout],a[href*='logout']") ||
+                     Array.prototype.filter.call(document.querySelectorAll("button,a"),function(b){
+                       return /^\s*(log|sign)\s*out\s*$/i.test(b.textContent||"") && b.id!=="nvMoreLogout";
+                     })[0];
+            if(real){ real.click(); return; }
+            if(typeof window.novaxLogout==="function"){ window.novaxLogout(ev); return; }
+            try{ localStorage.removeItem("novaxSession"); localStorage.setItem("novaxLogoutAt",String(Date.now())); }catch(e){}
+            location.href="index.html";
+          });
+          menu.appendChild(out);
+        })();
+        /* #42. The menu opened over the page with no backdrop, so the support
+           controls behind it stayed lit and looked tappable -- a tap there
+           closed the menu instead of doing what it appeared to do. */
+        var scrim=document.getElementById("nvMoreScrim");
+        if(!scrim){
+          scrim=document.createElement("div");
+          scrim.className="nv-more-scrim"; scrim.id="nvMoreScrim"; scrim.setAttribute("aria-hidden","true");
+          document.body.appendChild(scrim);
+        }
+        scrim.addEventListener("click",function(){
+          wrap.classList.remove("open");
+          var cm=document.getElementById("clientMenu");
+          if(cm) cm.classList.remove("open");
+          var tg=document.getElementById("clientMenuToggle");
+          if(tg) tg.setAttribute("aria-expanded","false");
+          document.body.classList.remove("nv-more-open");
+          btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be";
         });
         btn.addEventListener("click",function(e){
           e.stopPropagation();
           var open=wrap.classList.toggle("open");
+          document.body.classList.toggle("nv-more-open",open);
           btn.setAttribute("aria-expanded",open?"true":"false");
           btn.textContent=open?"More \u25b4":"More \u25be";
         });
-        document.addEventListener("click",function(e){ if(!wrap.contains(e.target)){ wrap.classList.remove("open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; } });
-        menu.addEventListener("click",function(){ wrap.classList.remove("open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; });
+        document.addEventListener("click",function(e){ if(!wrap.contains(e.target)){ wrap.classList.remove("open"); document.body.classList.remove("nv-more-open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; } });
+        document.addEventListener("keydown",function(e){ if(e.key==="Escape" && wrap.classList.contains("open")){ wrap.classList.remove("open"); document.body.classList.remove("nv-more-open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; btn.focus(); } });
+        menu.addEventListener("click",function(){ wrap.classList.remove("open"); document.body.classList.remove("nv-more-open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; });
       }
 
       /* ---------- Task 15: header omni-search ---------- */
@@ -18094,6 +18332,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           var b = document.createElement("span");
           b.className = "nvauto-badge";
           b.textContent = n > 99 ? "99+" : String(n);
+          /* #45. An unlabelled red 38 on an AI button reads as 38 unread AI
+             messages. It is the count of parcels needing attention, which is
+             the same number the dashboard shows -- it just never said so. */
+          b.setAttribute("aria-hidden","true");
+          var lbl = n + " parcel" + (n===1?"":"s") + " need attention";
+          btn.setAttribute("aria-label", "NovaX AI \u2014 " + lbl);
+          btn.setAttribute("title", lbl);
           btn.appendChild(b);
           btn.classList.add("nv-pulse");
           var sub = document.getElementById("nvAiSub");
