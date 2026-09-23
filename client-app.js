@@ -2973,7 +2973,83 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(el){ el.value=""; window.__nvSearchOwned=false; }
       try{ renderClientParcels(); }catch(e){}
     }
-    function filteredParcels(){ const t=(document.getElementById("clientSearch")?.value||"").trim().toLowerCase(); return clientScopedParcels().filter(p=>`${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase().includes(t)); }
+    /* #8 + #12, second pass. Naming the seven groups inside "40 need you" told
+       the merchant WHAT was wrong and still left them to go and find the
+       parcels. "11 at destination over 24h" is the clearest case: it is the
+       group with a real SLA behind it, and reading it in a sentence is not the
+       same as being able to look at it. Each group is now a filter.
+
+       Deliberately a REASON filter rather than a status filter: two of the
+       seven -- "at destination over 24h" and "not moved in 24h+" -- are not
+       statuses at all, they are a status plus a clock, so the existing text
+       search could never express them. */
+    function nvAttnFilterActive(){ try{ return String(state.nvAttnFilter||""); }catch(e){ return ""; } }
+    window.nvSetAttnFilter=function(reason){
+      try{
+        state.nvAttnFilter = (nvAttnFilterActive()===reason) ? "" : String(reason||"");
+        saveState();
+        if(state.activeClientTab!=="dashboard" && typeof showClientTab==="function") showClientTab("dashboard");
+        try{ renderClientParcels(); }catch(e){}
+        /* nvRenderCockpit() bails out while focus sits inside it, to avoid
+           destroying a control under the merchant's finger -- and the chip they
+           just pressed IS inside it, so the panel never redrew and the selected
+           chip never lit up. Drop focus, redraw, then put focus back on the
+           equivalent chip so keyboard use survives the rebuild. */
+        var __wasFocused = document.activeElement && document.activeElement.closest
+          ? document.activeElement.closest("[data-nv-attn]") : null;
+        var __refocus = __wasFocused ? __wasFocused.getAttribute("data-nv-attn") : null;
+        if(__wasFocused && __wasFocused.blur) { try{ __wasFocused.blur(); }catch(e){} }
+        try{ if(window.__novaxPhase3 && window.__novaxPhase3.cockpit) window.__novaxPhase3.cockpit(); }catch(e){}
+        if(__refocus){
+          var back=document.querySelector('[data-nv-attn="'+__refocus.replace(/"/g,'\\"')+'"]');
+          if(back && back.focus){ try{ back.focus({preventScroll:true}); }catch(e){} }
+        }
+        try{ nvRenderAttnFilterBar(); }catch(e){}
+        var host=document.getElementById("clientParcelCards")||document.getElementById("clientParcelRows");
+        var box=host&&host.closest?host.closest(".panel,.ops-card"):host;
+        if(box&&box.scrollIntoView) box.scrollIntoView({behavior:"smooth",block:"start"});
+      }catch(e){}
+    };
+    window.nvClearAttnFilter=function(){ try{ state.nvAttnFilter=""; saveState(); renderClientParcels(); if(window.__novaxPhase3&&window.__novaxPhase3.cockpit) window.__novaxPhase3.cockpit(); nvRenderAttnFilterBar(); }catch(e){} };
+    function filteredParcels(){
+      const t=(document.getElementById("clientSearch")?.value||"").trim().toLowerCase();
+      const reason=nvAttnFilterActive();
+      /* nvAttentionReason() ends in a catch-all -- anything it cannot name is
+         "Not moved in 24h+" -- which is correct INSIDE the attention set and
+         wrong outside it. Filtering on the reason alone therefore pulled in
+         healthy parcels: the chip said 2 and the list showed 4. The attention
+         set is the gate; the reason only sorts within it. Built once per call,
+         not once per parcel. */
+      let attnSet=null;
+      if(reason && typeof nvAttentionParcels==="function"){
+        attnSet=new Set(nvAttentionParcels().map(x=>x&&x.awb));
+      }
+      return clientScopedParcels().filter(p=>{
+        if(!`${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase().includes(t)) return false;
+        if(reason){
+          if(!attnSet || !attnSet.has(p.awb)) return false;
+          if(typeof nvAttentionReason!=="function" || nvAttentionReason(p)!==reason) return false;
+        }
+        return true;
+      });
+    }
+    /* A filter the merchant cannot see is a list that looks broken. */
+    function nvRenderAttnFilterBar(){
+      var host=document.getElementById("clientParcelRows")||document.getElementById("clientParcelCards");
+      var anchor=host&&host.closest?host.closest(".panel,.ops-card"):null;
+      if(!anchor) return;
+      var bar=document.getElementById("nvAttnFilterBar");
+      var reason=nvAttnFilterActive();
+      if(!reason){ if(bar) bar.remove(); return; }
+      if(!bar){
+        bar=document.createElement("div"); bar.id="nvAttnFilterBar"; bar.className="nv-attn-bar";
+        anchor.insertBefore(bar, anchor.firstChild);
+      }
+      var n=filteredParcels().length;
+      bar.innerHTML='<span>Showing <b>'+n+'</b> parcel'+(n===1?"":"s")+' \u2014 '+escLabelText(reason)+'</span>'+
+                    '<button type="button" class="ghost-btn" onclick="nvClearAttnFilter()">Show all parcels</button>';
+    }
+    window.nvRenderAttnFilterBar=nvRenderAttnFilterBar;
     /* NovaX (detail drawer): clicking a parcel used to force a tab change back
        to Dashboard, a full render() and a scroll -- losing the merchant's place
        in whatever list they were reading. It now opens a right-hand drawer over
@@ -3520,6 +3596,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       else nvMarkChanged("clientParcelRows",parcels,"rows");
       /* Drop anything selected that this render filtered away. */
       try{ if(typeof window.__nvSelPrune==="function") window.__nvSelPrune(); }catch(e){}
+      /* Keep the filter bar's own count honest across realtime redraws. */
+      try{ nvRenderAttnFilterBar(); }catch(e){}
     }
     try{
       var nvSwapParcelLists=function(){ try{ renderClientParcels(); }catch(e){} };
@@ -13541,6 +13619,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +".nv-c-btn{border:1px solid #bfe8d7;background:var(--nvu-bg);color:var(--nvu-accent);border-radius:var(--r-md);font-size:11px;font-weight:700;padding:5px 9px;cursor:pointer;min-height:30px}"
           +".nv-c-btn.solid{background:var(--nvu-accent);color:var(--nvu-accent-ink);border-color:var(--nvu-accent)}"
           +".nv-c-empty{font-size:11.5px;color:var(--nvu-ink-2)}"
+          /* #8/#12: the breakdown as tappable groups rather than a run-on line. */
+          +".nv-attn-chips{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}"
+          +".nv-attn-chip{display:inline-flex;align-items:center;gap:5px;min-height:30px;padding:4px 10px;"
+            +"border:1px solid #bfe8d7;border-radius:999px;background:var(--nvu-bg);color:var(--nvu-ink);"
+            +"font:inherit;font-size:11.5px;font-weight:650;cursor:pointer;white-space:nowrap}"
+          +".nv-attn-chip b{font-weight:900;color:var(--nvu-accent)}"
+          +".nv-attn-chip:hover{background:var(--nvu-bg-2);border-color:var(--nvu-accent)}"
+          +".nv-attn-chip.on{background:var(--nvu-accent);border-color:var(--nvu-accent);color:var(--nvu-accent-ink)}"
+          +".nv-attn-chip.on b{color:inherit}"
+          +".nv-attn-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:8px 12px;"
+            +"border:1px solid var(--nvu-accent);border-radius:var(--r-lg);background:var(--nvu-bg-2);font-size:12.5px}"
+          +".nv-attn-bar span{flex:1;min-width:0}"
           +".nv-more-wrap{position:relative;display:inline-block}"
           +".nv-more-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:60;background:var(--nvu-bg);border:1px solid #d7ede1;border-radius:var(--r-lg);box-shadow:var(--glow-1);padding:6px;display:none;min-width:190px}"
           +".nv-more-wrap.open .nv-more-menu{display:block}"
@@ -13709,17 +13799,27 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            nvAttentionParcels, so this is simply that one set, ranked (#22). */
         var needsAll=(typeof nvAttentionSorted==="function")?nvAttentionSorted(attn):attn;
         var needsList=needsAll.slice(0,4);
-        var needsHtml=needsList.length?needsList.map(function(p){
-          return nvItem(p,nvParcelActions(p));
-        }).join("")+(needsAll.length>needsList.length
-          /* #23: "Showing 4 of 38" named the other 34 and then offered no way
-             to reach them, leaving the merchant to go and find a list they had
-             not been told the name of. */
-          ? '<p class="nv-c-empty">'+nvAttentionBreakdown(needsAll).map(function(b){ return b.n+" "+nvEsc(b.reason).toLowerCase(); }).join(" \u00b7 ")+'</p>'
-            +'<p class="nv-c-empty">Showing the 4 most urgent of '+needsAll.length+'.</p>'
-            +'<div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="allissues">See all '+needsAll.length+'</button></div>'
-          : "")
-          :'<p class="nv-c-empty">Nothing needs you right now. Exceptions and parcels stuck over 48 hours appear here.</p>';
+        /* The breakdown is the merchant's map of what is wrong, so it shows
+           whenever there is more than one KIND of problem -- not only when the
+           list happens to overflow four rows. Three parcels in three different
+           groups is exactly when knowing the split matters most. */
+        var needBreak=nvAttentionBreakdown(needsAll);
+        var breakHtml=(needsAll.length && needBreak.length>1)
+          ? '<div class="nv-attn-chips">'+needBreak.map(function(b){
+              return '<button type="button" class="nv-attn-chip'+(nvAttnFilterActive()===b.reason?" on":"")+'" data-nv-attn="'+nvEsc(b.reason)+'"><b>'+b.n+'</b> '+nvEsc(b.reason)+'</button>';
+            }).join("")+'</div>'
+            +'<p class="nv-c-empty">Tap a group to see only those parcels.</p>'
+          : "";
+        var needsHtml=needsList.length
+          ? breakHtml+needsList.map(function(p){ return nvItem(p,nvParcelActions(p)); }).join("")
+            +(needsAll.length>needsList.length
+              /* #23: "Showing 4 of 38" named the other 34 and then offered no
+                 way to reach them, leaving the merchant to go and find a list
+                 they had not been told the name of. */
+              ? '<p class="nv-c-empty">Showing the 4 most urgent of '+needsAll.length+'.</p>'
+                +'<div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="allissues">See all '+needsAll.length+'</button></div>'
+              : "")
+          : '<p class="nv-c-empty">Nothing needs you right now. Exceptions and parcels stuck over 48 hours appear here.</p>';
         var movingCounts={};
         b.moving.forEach(function(p){ movingCounts[p.status]=(movingCounts[p.status]||0)+1; });
         /* #4. Each row named one status and its count, so the column read as
@@ -13813,6 +13913,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +"</div>");
       }
       document.addEventListener("click",function(ev){
+        var chip=ev.target.closest?ev.target.closest("[data-nv-attn]"):null;
+        if(chip){ ev.preventDefault(); nvSafeCall(function(){ window.nvSetAttnFilter(chip.getAttribute("data-nv-attn")); }); return; }
         var t=ev.target.closest?ev.target.closest("[data-nv-cock]"):null;
         if(!t) return;
         var kind=t.getAttribute("data-nv-cock"), awb=t.getAttribute("data-awb");
