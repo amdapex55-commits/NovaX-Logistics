@@ -2446,7 +2446,15 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
        neutral in admin -- the same parcel, two different colours, depending
        on who was looking at it. */
     function statusClass(p){ const a=alertForParcel(p); if(a.level==="critical"||p.risk>=65||p.exception) return "bad"; if(a.level==="warning") return "warn"; if(p.status==="Cancelled by client") return ""; if(["Delivered","Return to shipper"].includes(p.status)) return "good"; if(p.stage<5) return "info"; if(p.stage<8) return "warn"; return "good"; }
-    function isRefusalReview(p){ return /refus|attempt disputed|consignee denies|not available/i.test(`${p.status} ${p.exception||""} ${(p.steps||[]).join(" ")}`); }
+    /* Judged on where the parcel IS, not where it has been. This used to test
+       the whole step history, so a parcel refused once and then delivered --
+       or returned -- kept offering "Reattempt / Return" and a customer message
+       about a problem that was over: 36 delivered and 117 returned parcels. */
+    function isRefusalReview(p){
+      var st=String((p&&p.status)||"");
+      if(st==="Delivered"||st==="Return to shipper"||st==="Cancelled by client") return false;
+      return /refus|attempt disputed|consignee denies|not available/i.test(st+" "+((p&&p.exception)||""));
+    }
     function meterClass(v){ if(v>=75) return "red"; if(v>=45) return "amber"; return "blue"; }
     /* hidePct: an eighth, optional argument, defaulted so every existing
        caller is untouched. It exists for the "nothing picked up yet" state of
