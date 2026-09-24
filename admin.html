@@ -6387,7 +6387,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                 </div>
               </div>
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>Shopify Integration Health</h3><p>Real backend status per client -- never shows "Live" until a real signed webhook order has actually been received.</p></div><button class="ghost-btn" onclick="renderAdminShopifyHealth()">Refresh</button></div>
+                <div class="section-head"><div><h3>Shopify Integration Health</h3><p>Real backend status per client -- never shows "Live" until a real signed webhook order has actually been received.</p></div><button class="ghost-btn" onclick="renderAdminShopifyHealth(true)">Refresh</button></div>
                 <div id="shopifyConnList"></div>
               </div>
             </section>
@@ -12379,7 +12379,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         const urlEl=document.getElementById("adminShopifyIntakeUrlOut"); if(urlEl) urlEl.value=intakeUrl;
         const box=document.getElementById("adminShopifyLinkBox"); if(box) box.style.display="block";
         toast(client.name+"'s Shopify link is ready. Send them the URL, or they can generate it themselves from their Store Integrations tab.");
-        renderAdminShopifyHealth();
+        renderAdminShopifyHealth(true);
       }).catch(function(e){ toast("Failed to generate link: "+e); });
     }
     // Real backend status per client -- a store only ever shows "Live" once a
@@ -12418,9 +12418,22 @@ html,body{ background:var(--bg); color:var(--ink); }
       try{ if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(msg); ok=true; } }catch(e){}
       toast(ok?"Setup instructions copied -- paste them to the client.":"Copy failed -- select and copy manually.");
     }
-    function renderAdminShopifyHealth(){
+    /* renderAdmin() -> renderAdminIntegrations() called this on EVERY admin
+       render, and each call was an RPC: 4,668 calls in six days. A render now
+       reuses a result under a minute old; the actions that change a
+       connection pass force=true and always refetch. */
+    var nvShopifyHealthCache=null, nvShopifyHealthAt=0, nvShopifyHealthInflight=null;
+    function renderAdminShopifyHealth(force){
       const el=document.getElementById("shopifyConnList"); if(!el || !window.__nvSb) return;
-      window.__nvSb.rpc("admin_list_shopify_connections", {}).then(function(r){
+      var fresh = !force && nvShopifyHealthCache && (Date.now()-nvShopifyHealthAt) < 60000;
+      var src = fresh ? Promise.resolve(nvShopifyHealthCache)
+        : (!force && nvShopifyHealthInflight) ? nvShopifyHealthInflight
+        : (nvShopifyHealthInflight = Promise.resolve(window.__nvSb.rpc("admin_list_shopify_connections", {})).then(function(r){
+            nvShopifyHealthInflight=null;
+            if(r && !r.error){ nvShopifyHealthCache=r; nvShopifyHealthAt=Date.now(); }
+            return r;
+          }, function(e){ nvShopifyHealthInflight=null; throw e; }));
+      src.then(function(r){
         if(r && r.error){ el.innerHTML=`<p class="footer-note">Failed to load Shopify integrations: ${escLabelText(r.error.message)}</p>`; return; }
         const rows = (r && r.data) || [];
         state.shopifyConnectionRows = rows;
@@ -12471,7 +12484,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       window.__nvSb.rpc("admin_regenerate_shopify_intake", { p_client_id: clientId }).then(function(r){
         if(r && r.error){ toast("Failed to regenerate: "+r.error.message); return; }
         toast("Intake URL regenerated. Send the client the new URL.");
-        renderAdminShopifyHealth();
+        renderAdminShopifyHealth(true);
       }).catch(function(e){ toast("Failed to regenerate: "+e); });
     }
     function adminResetShopifySecret(clientId){
@@ -12480,7 +12493,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       window.__nvSb.rpc("admin_reset_shopify_secret", { p_client_id: clientId }).then(function(r){
         if(r && r.error){ toast("Failed to reset secret: "+r.error.message); return; }
         toast("Signing secret reset.");
-        renderAdminShopifyHealth();
+        renderAdminShopifyHealth(true);
       }).catch(function(e){ toast("Failed to reset secret: "+e); });
     }
     function adminSetShopifyDisabled(clientId, disabled){
@@ -12488,7 +12501,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       window.__nvSb.rpc("admin_set_shopify_disabled", { p_client_id: clientId, p_disabled: disabled }).then(function(r){
         if(r && r.error){ toast("Failed to update: "+r.error.message); return; }
         toast(disabled ? "Shopify integration disabled for this client." : "Shopify integration re-enabled.");
-        renderAdminShopifyHealth();
+        renderAdminShopifyHealth(true);
       }).catch(function(e){ toast("Failed to update: "+e); });
     }
 
@@ -17397,6 +17410,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           sb.from("profiles").select("id,email,client_id").not("client_id","is",null).limit(5000)
         ]).then(function(res){
           function D(i){ return (res[i]&&res[i].data)||[]; }
+          window.__nvAdminLastLoad=Date.now();
           state.clients=D(0).map(rClient);
           state.riders=D(1).map(rRider);
           state.parcels=D(2).map(rParcel);
@@ -17944,6 +17958,13 @@ html,body{ background:var(--bg); color:var(--ink); }
                 if(document.hidden) return;
                 var n=Date.now();
                 if(n-nvLastBack < 60000) return;
+                /* Realtime already delivered every change while this tab was
+                   in the background (nvLiveChange queues them and refreshes on
+                   return). A full 17-query reload on top of that, on every
+                   alt-tab, was ~1,300 reloads and ~1 GB of egress in six days.
+                   Still reloads when the socket is not live, or the last full
+                   load is over five minutes old -- the slept-laptop case. */
+                if(window.__nvAdminRealtimeLive && window.__nvAdminLastLoad && n-window.__nvAdminLastLoad < 300000) return;
                 nvLastBack=n;
                 try{ loadAll(); }catch(e){}
               };
