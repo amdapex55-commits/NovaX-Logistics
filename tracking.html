@@ -386,9 +386,13 @@
          top, not to scroll to the bottom of a long history to find it. */
       for(i=real.length-1;i>=0;i--){
         var e=real[i], isNow=(i===real.length-1);
+        /* A Delivered step followed by anything else was reversed by NovaX
+           (the log only records changes). Say so, rather than showing
+           "Delivered. Thank you." beneath a refusal. */
+        var reversed=(e.status==="Delivered" && !isNow);
         html+='<li class="'+(isNow?"now":"done")+'">'+
-              '<div class="s">'+esc((SAY[e.status]&&SAY[e.status][0])||e.status)+'</div>'+
-              (e.note?'<div class="m">'+esc(e.note)+'</div>':"")+
+              '<div class="s">'+esc(reversed?"Delivery update corrected":((SAY[e.status]&&SAY[e.status][0])||e.status))+'</div>'+
+              (reversed?'<div class="m">This was recorded as delivered, then corrected by NovaX.</div>':(e.note?'<div class="m">'+esc(e.note)+'</div>':""))+
               (e.at?'<div class="d">'+esc(when(e.at))+'</div>':"")+
               '</li>';
       }
@@ -458,7 +462,9 @@
       var real=journeyRows(row);
       for(i=0;i<real.length;i++)
         for(j=0;j<PROGRESS.length;j++)
-          if(PROGRESS[j].at.indexOf(real[i].status)>-1 && j>reached) reached=j;
+          /* A failed parcel never reached Delivered, even if the log holds a
+             Delivered step that was later reversed; stop at Out. */
+          if(PROGRESS[j].at.indexOf(real[i].status)>-1 && j>reached && !(isTrouble && PROGRESS[j].k==="Delivered")) reached=j;
     }
     var cls=isTrouble?"trouble":isReturn?"returning":"";
     var out='<div class="prog '+cls+'">';
@@ -535,7 +541,10 @@
            fact -- when. Everything else gets no promise: we do not have a
            committed SLA per parcel, and inventing "arrives Tuesday" is how a
            tracking page loses trust the first time it is wrong. */
-        var d=row.delivered_at||(nvStatus(row.status)==="Delivered"?row.updated_at:null);
+        /* Only a parcel that IS delivered has a delivery time. N7810135 was
+           marked Delivered in error, put back to Refused, and still printed
+           "Delivered 22 Sept" under "Delivery refused". */
+        var d=(nvStatus(row.status)==="Delivered")?(row.delivered_at||row.updated_at):null;
         return d?'<p class="eta">Delivered '+esc(when(d))+'</p>':"";
       })()+
       '<div class="route">'+
