@@ -18370,7 +18370,53 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
   function client(){ return window.__nvSb || null; }
 
+  /* ---- the demo's own answers ----
+     The demo has no signed-in session, so every request to the live
+     assistant failed and a prospect's first look at NovaX AI was
+     "Connection interrupted -- tap Try again". In the demo it now answers
+     from the demo workspace's own sample parcels and wallet, and says that
+     is what it is reading. Nothing is sent anywhere. */
+  function nvDemoAiAnswer(payload){
+    var D = window.__nvDemoData || {}, T = D.tables || {}, R = D.rpcs || {};
+    var parcels = T.parcels || [];
+    var w = (R.client_wallet_summary && R.client_wallet_summary[0]) || {};
+    function rs(n){ return "Rs " + Number(n || 0).toLocaleString("en-PK"); }
+    var SAY = { "New booked":"waiting for pickup", "Parcel now in transit":"in transit", "Parcel out for delivery":"out for delivery today",
+                "Delivered":"delivered", "Refused":"refused at the door" };
+    function line(p){
+      return p.awb + " (" + (p.consignee || "") + ", " + (p.city || "") + ") is " + (SAY[p.status] || p.status) +
+             (Number(p.cod_amount) > 0 ? " · COD " + rs(p.cod_amount) : "") +
+             (p.exception ? " — " + p.exception : "") + ".";
+    }
+    var sugg = ["Where is N9000002?", "What am I owed?", "Which parcels need me?"];
+    var msg = String((payload && payload.message) || "").toLowerCase();
+    var answer;
+    if(!payload || payload.mode === "open"){
+      var by = {}; parcels.forEach(function(p){ var k = SAY[p.status] || p.status; by[k] = (by[k] || 0) + 1; });
+      var parts = Object.keys(by).map(function(k){ return by[k] + " " + k; });
+      var refused = parcels.filter(function(p){ return p.status === "Refused"; });
+      answer = "This is the demo workspace, so I'm reading its sample parcels. " + parcels.length + " parcels: " + parts.join(", ") + ". " +
+               (refused.length ? line(refused[0]) + " " : "") +
+               rs(w.available_balance) + " is available in your wallet.";
+    } else {
+      var m = msg.match(/n\s?9\d{6}/i), hit = m ? parcels.find(function(p){ return p.awb.toLowerCase() === m[0].replace(/\s/g,"").toLowerCase(); }) : null;
+      if(m && hit) answer = line(hit);
+      else if(m) answer = "I can't find " + m[0].toUpperCase() + " in this demo workspace. The sample parcels are N9000001 to N9000005.";
+      else if(/owe|owed|wallet|balance|paisa|paise|payout|withdraw|money|cod/.test(msg))
+      { var moving = parcels.filter(function(p){ return /transit|out for delivery|received at destination|collected|warehouse/i.test(p.status); });
+        var movingCod = moving.reduce(function(t,p){ return t + Number(p.cod_amount || 0); }, 0);
+        answer = rs(w.available_balance) + " is available to withdraw now. " + rs(movingCod) + " of COD is on " + moving.length + " parcel" + (moving.length === 1 ? "" : "s") + " still moving to customers. Instant payout reaches your bank in 2–3 hours for 0.7%."; }
+      else if(/need|attention|problem|issue|refus|stuck|late/.test(msg)){
+        var bad = parcels.filter(function(p){ return p.status === "Refused" || p.exception; });
+        answer = bad.length ? bad.map(line).join(" ") : "Nothing needs you right now.";
+      } else
+        answer = "In this demo I can only read the sample parcels. On your own account I read your live parcels and wallet, raise returns and reattempts, and answer in Roman Urdu, Urdu or English — create a free account to try it on your orders.";
+    }
+    return { status: 200, body: { answer: answer, suggestions: sugg, tools_used: ["demo sample data"] } };
+  }
+
   function call(payload){
+    if(window.__NOVAX_DEMO) return Promise.resolve(nvDemoAiAnswer(payload));
     var sb = client();
     if(!sb) return Promise.reject(new Error("not connected"));
     return sb.auth.getSession().then(function(res){
@@ -18415,7 +18461,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   }
 
   function fail(e){
-    turn("ai", "I couldn't reach my service just now. Your data is fine — tap Try again below.");
+    /* The demo-only error carries its own explanation; say that, not
+       "couldn't reach my service". */
+    turn("ai", (e && e.code === "DEMO_NO_AI" && e.message) ? e.message : "I couldn't reach my service just now. Your data is fine — tap Try again below.");
     /* #35. The old chip called send("Try again"), which spends a message asking
        the assistant a question rather than retrying the opener that just failed.
        And it could only appear if the failure was caught at all -- see boot(). */
