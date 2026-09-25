@@ -4086,7 +4086,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             percent(cm.deliveryCharges,Math.max(1,deliveredCod)),
             "deducted by NovaX on delivered parcels","amber","","",true),
           metricCard("Awaiting Pickup",awaitingPickup,percent(awaitingPickup,Math.max(1,cm.total)),"no COD due until collected",awaitingPickup?"blue":"good"),
-          metricCard("Open Parcels",open,percent(open,Math.max(1,cm.total)),"still moving \u2014 same count as Active on your dashboard",open?"blue":"good")
+          /* "Same count as Active on your dashboard" is only true unfiltered.
+             Filtered to Delivered it showed 0 open beside a dashboard still
+             counting every active parcel, and claimed the two matched. */
+          metricCard("Open Parcels",open,percent(open,Math.max(1,cm.total)),
+            pool.filtered ? "still moving \u2014 among the filtered parcels only"
+                          : "still moving \u2014 same count as Active on your dashboard",
+            open?"blue":"good")
         ].join("")+nvReportFilterNote(pool);
       }
       if(rowsHost){
