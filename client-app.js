@@ -5271,6 +5271,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const th=document.getElementById("nvPrintThermal"), a4=document.getElementById("nvPrintA4");
       if(th) th.disabled = mode!=="thermal";
       if(a4) a4.disabled = mode!=="a4";
+      /* Label printing states ALL THREE sheets rather than trusting the load
+         sheet to have restored itself. nvPrintDoc restores on afterprint with
+         an 8s fallback, but a browser that fires neither -- or a tab throttled
+         while hidden -- would leave @page{size:A4 portrait} enabled, and the
+         next 4x6 thermal label would silently print onto A4. */
+      const ls=document.getElementById("nvPrintLoadSheet");
+      if(ls) ls.disabled = true;
     }
     function renderAwbPrintModeToggle(){
       const host=document.getElementById("awbPrintModeToggle");
@@ -5385,6 +5392,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           try{ nvOfferPrintUndo(nvPrintedNow); }catch(e){}
           try{ if(document.getElementById("awbLabelPreview")) renderAwbLabel(); }catch(e){}
           try{ renderNewBookedList(); }catch(e){}
+          /* Offer the load sheet for exactly the AWBs that were just printed --
+             not for whatever happens to be ticked, which the merchant may have
+             changed since. Hangs off nvMarkPrinted so it only appears when a
+             print dialog really opened. */
+          try{ nvOfferLoadSheet(nvPrintedNow); }catch(e){}
         }
         var nvPrintDialogSeen=false;
         /* Detached as soon as it fires. Left attached, this closure survives the
@@ -5704,21 +5716,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        ===================================================================== */
     var NV_DOC={ csv:null, name:"" };
 
-    function nvPrintDoc(html){
+    /* extraSheetId enables one more print stylesheet for the duration of this
+       print (the load sheet needs its own @page geometry) and restores its
+       previous disabled state alongside the two label sheets. */
+    function nvPrintDoc(html,extraSheetId){
       var stage=document.getElementById("docPrintStage");
       if(!stage){ toast("Print area not ready."); return; }
       var th=document.getElementById("nvPrintThermal"), a4=document.getElementById("nvPrintA4");
-      var prevTh=th?th.disabled:null, prevA4=a4?a4.disabled:null;
+      var ex=extraSheetId?document.getElementById(extraSheetId):null;
+      var prevTh=th?th.disabled:null, prevA4=a4?a4.disabled:null, prevEx=ex?ex.disabled:null;
       if(th) th.disabled=true;
       if(a4) a4.disabled=true;
+      if(ex) ex.disabled=false;
       stage.innerHTML=html;
-      try{ nvFitLabelText(stage); }catch(e){}
+      /* nvFitLabelText shrinks overflowing AWB-label blocks. A load sheet is a
+         flowing table -- it has no fixed-height boxes to shrink -- and running
+         the fitter over 50 rows only costs layout passes. */
+      if(!extraSheetId){ try{ nvFitLabelText(stage); }catch(e){} }
       stage.style.display="block";
       function restore(){
         nvPrintThemeRestore();
         stage.style.display="none"; stage.innerHTML="";
         if(th&&prevTh!==null) th.disabled=prevTh;
         if(a4&&prevA4!==null) a4.disabled=prevA4;
+        if(ex&&prevEx!==null) ex.disabled=prevEx;
         window.removeEventListener("afterprint",restore);
       }
       window.addEventListener("afterprint",restore);
@@ -5751,14 +5772,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         toast(name+" downloaded.","success");
       }catch(e){ toast("Could not download: "+((e&&e.message)||e),"error"); }
     }
-    function nvOpenDoc(title,html,csvRows,csvName){
+    /* printHtml lets a document render differently on screen and on paper. The
+       load sheet needs it: the preview carries its own padding so it looks like
+       a sheet of paper in the modal, but on paper that padding sits ON TOP of
+       the @page margin -- 16mm + 12mm -- which costs about six rows a page and
+       pushes the last row off the sheet. Without this the print button printed
+       whatever the modal was showing, screen padding included. */
+    function nvOpenDoc(title,html,csvRows,csvName,extraSheetId,printHtml){
       var m=document.getElementById("nvDocModal");
       if(!m) return;
       document.getElementById("nvDocTitle").textContent=title;
       document.getElementById("nvDocBody").innerHTML=html;
       NV_DOC.csv=csvRows||null; NV_DOC.name=csvName||"novax.csv";
       var pb=document.getElementById("nvDocPrintBtn");
-      if(pb) pb.onclick=function(){ nvPrintDoc(html); };
+      if(pb) pb.onclick=function(){ nvPrintDoc(printHtml||html,extraSheetId); };
       var cb=document.getElementById("nvDocCsvBtn");
       if(cb){
         cb.style.display=csvRows?"":"none";
@@ -5767,6 +5794,164 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       m.classList.add("show");
     }
     function nvCloseDoc(){ var m=document.getElementById("nvDocModal"); if(m) m.classList.remove("show"); }
+
+    /* =====================================================================
+       LOAD SHEET -- the document a merchant hands to the rider at pickup.
+
+       The portal could already print AWB labels, but a merchant handing over
+       40 parcels had nothing that said "40 parcels, Rs 92,000 of COD, handed
+       to this rider, at this time, signed by both of us". A stack of labels
+       is not a receipt: if two parcels never reach the warehouse there is
+       nothing to point at.
+
+       WHAT IS PRINTED vs WHAT IS A RULED LINE. Parcel rows, counts and COD
+       totals are printed, because the portal knows them. The rider's name and
+       CNIC are ruled lines, because it does not -- the portal cannot know
+       which rider will turn up, and printing a guess onto a document that
+       gets signed is worse than leaving a line to fill in.
+       ===================================================================== */
+    function nvLoadSheetNo(d){
+      function z(n){ return (n<10?"0":"")+n; }
+      return "LS-"+String(d.getFullYear()).slice(2)+z(d.getMonth()+1)+z(d.getDate())
+             +"-"+z(d.getHours())+z(d.getMinutes());
+    }
+    /* Resolve AWBs to parcels, de-duplicated. The same AWB can be ticked in
+       the bulk list and arrive again from the just-printed set, and a parcel
+       listed twice on a handover document is a dispute waiting to happen. */
+    function nvLoadSheetRows(awbs){
+      var seen={}, out=[];
+      (awbs||[]).forEach(function(a){
+        var k=String(a||"");
+        if(!k || seen[k]) return;
+        seen[k]=1;
+        var p=(state.parcels||[]).find(function(x){ return x.awb===k; });
+        if(p) out.push(p);
+      });
+      return out;
+    }
+    function nvLoadSheetPickup(){
+      var el=document.getElementById("pickupAddress");
+      var typed=el && el.value ? el.value.trim() : "";
+      if(typed) return typed;
+      var c=state.client||{};
+      return c.pickupCity ? String(c.pickupCity) : "";
+    }
+    function nvLoadSheetHtml(list,no,when){
+      var codTotal=0, codCount=0, prepaidCount=0;
+      var rows=list.map(function(p,i){
+        var prepaid=(typeof isNonCodParcel==="function") && isNonCodParcel(p);
+        var cod=Number(p.cod||0), cell;
+        /* A prepaid parcel says so in words. Printing "Rs 0" next to a real
+           parcel invites a rider to collect nothing on a COD parcel whose
+           amount failed to load, and reads identically to a genuine zero. */
+        if(prepaid){ cell="Prepaid"; prepaidCount++; }
+        else if(cod>0){ cell=money(cod); codTotal+=cod; codCount++; }
+        else { cell="No COD"; }
+        return '<tr><td class="idx">'+(i+1)+'</td>'+
+               '<td class="awb">'+escLabelText(p.awb)+'</td>'+
+               '<td>'+escLabelText(p.consignee||"")+'</td>'+
+               '<td>'+escLabelText(p.city||"")+'</td>'+
+               '<td class="num">'+escLabelText(cell)+'</td></tr>';
+      }).join("");
+
+      var pickup=nvLoadSheetPickup();
+      var acct=(state.client&&state.client.name)||"Merchant";
+      var n=list.length;
+
+      return '<div class="nv-ls">'+
+        '<div class="nv-ls-head">'+
+          '<div class="nv-ls-brand">NovaX Logistics<small>KARACHI &middot; PAKISTAN</small></div>'+
+          '<div class="nv-ls-no"><b>'+escLabelText(no)+'</b>'+escLabelText(when)+'</div>'+
+        '</div>'+
+        '<h2>Load Sheet</h2>'+
+        '<div class="nv-ls-sub">Parcel handover to NovaX rider &middot; Account: <strong>'+escLabelText(acct)+'</strong></div>'+
+        '<div class="nv-ls-meta">'+
+          '<div><span>Collected from</span>'+
+            (pickup?('<strong>'+escLabelText(pickup)+'</strong>'):'<i class="nv-ls-fill"></i>')+'</div>'+
+          '<div><span>Rider name</span><i class="nv-ls-fill"></i></div>'+
+          '<div><span>Parcels</span><strong>'+n+'</strong></div>'+
+          '<div><span>COD to collect</span><strong>'+escLabelText(money(codTotal))+'</strong></div>'+
+        '</div>'+
+        '<table><thead><tr>'+
+          '<th class="idx">#</th><th>AWB</th><th>Consignee</th><th>City</th><th class="num">COD</th>'+
+        '</tr></thead><tbody>'+rows+'</tbody>'+
+        /* The totals row is the anti-truncation check: if a sheet goes missing
+           in the printer the count on the last page will not match the parcels
+           in the bag, and both parties can see it before anyone signs. */
+        '<tfoot><tr><td colspan="4">TOTAL &mdash; '+n+' parcel'+(n===1?"":"s")+
+          (prepaidCount?(' ('+prepaidCount+' prepaid, '+codCount+' to collect)'):'')+
+          '</td><td class="num">'+escLabelText(money(codTotal))+'</td></tr></tfoot></table>'+
+        '<div class="nv-ls-close">'+
+        '<div class="nv-ls-confirm"><span>'+escLabelText(no)+' &middot; '+escLabelText(acct)+'</span>'+
+          '<span>'+n+' parcel'+(n===1?"":"s")+' &middot; '+escLabelText(money(codTotal))+' COD to collect</span></div>'+
+        '<div class="nv-ls-sign">'+
+          '<div><h4>Handed over by &mdash; Merchant</h4>'+
+            '<div class="nv-ls-line"><i></i><em>Name</em></div>'+
+            '<div class="nv-ls-line"><i></i><em>Signature</em></div></div>'+
+          '<div><h4>Received by &mdash; NovaX rider</h4>'+
+            '<div class="nv-ls-line"><i></i><em>Name</em></div>'+
+            '<div class="nv-ls-line"><i></i><em>Signature</em></div></div>'+
+        '</div>'+
+        /* Handover time is written by hand, not printed: the sheet number in
+           the header records when the PAPER was made, which can be an hour
+           before the rider arrives. One shared row for both parties. */
+        '<div class="nv-ls-when">'+
+          '<div><div class="nv-ls-line" style="margin-top:0"><i></i><em>Date &amp; time of handover</em></div></div>'+
+          '<div><div class="nv-ls-line" style="margin-top:0"><i></i><em>Rider CNIC / ID</em></div></div>'+
+        '</div>'+
+        '<div class="nv-ls-note">The rider&rsquo;s signature confirms receipt of the '+n+
+          ' parcel'+(n===1?"":"s")+' listed above, by count and by AWB. COD is collected at '+
+          'delivery, not at pickup. Keep one copy each. &middot; novaxlogistics.com</div>'+
+        '</div>'+
+      '</div>';
+    }
+    /* awbs may be omitted -- then it uses whatever is ticked in the bulk list. */
+    function nvPrintLoadSheet(awbs){
+      var picked=(awbs&&awbs.length)?awbs:Array.from(document.querySelectorAll(".newbooked-check"))
+        .filter(function(b){ return b.checked; }).map(function(b){ return b.value; });
+      var list=nvLoadSheetRows(picked);
+      if(!list.length){
+        toast(picked.length
+          ? "Those parcels are no longer in your workspace. Refresh and try again."
+          : "Tick the parcels you are handing over, then print the load sheet.","error");
+        return;
+      }
+      var d=new Date();
+      var no=nvLoadSheetNo(d);
+      var when=nvNiceDate(d.toISOString());
+      var html=nvLoadSheetHtml(list,no,when);
+      var csv=[["load_sheet","generated","account","awb","consignee","city","cod","payment_mode"]].concat(
+        list.map(function(p){
+          return [no,when,(state.client&&state.client.name)||"",p.awb,p.consignee||"",p.city||"",
+                  Number(p.cod||0),p.paymentMode||"COD"];
+        }));
+      /* .nv-ls-screen goes ONLY to the modal; the printer gets the bare
+         document and takes its margin from @page. */
+      nvOpenDoc("Load sheet "+no,
+                html.replace('class="nv-ls"','class="nv-ls nv-ls-screen"'),
+                csv,"NovaX-loadsheet-"+no+".csv","nvPrintLoadSheet",html);
+    }
+    window.nvPrintLoadSheet=nvPrintLoadSheet;
+
+    /* Shown after a real print. Keeps its own copy of the AWBs so that ticking
+       a different parcel afterwards cannot silently change what the sheet
+       covers -- the document has to describe the boxes that were labelled. */
+    function nvOfferLoadSheet(awbs){
+      var cta=document.getElementById("nvLoadSheetCta");
+      if(!cta) return;
+      var list=nvLoadSheetRows(awbs);
+      if(!list.length){ cta.hidden=true; return; }
+      var n=list.length;
+      var ttl=document.getElementById("nvLoadSheetCtaTitle");
+      if(ttl) ttl.textContent=n+" label"+(n===1?"":"s")+" printed.";
+      var btn=document.getElementById("nvLoadSheetCtaBtn");
+      if(btn){
+        btn.textContent="Print load sheet for "+(n===1?"this parcel":("these "+n));
+        btn.onclick=function(){ nvPrintLoadSheet(list.map(function(p){ return p.awb; })); };
+      }
+      cta.hidden=false;
+    }
+    window.nvOfferLoadSheet=nvOfferLoadSheet;
 
     /* ---- payout receipt for one withdrawal ---- */
     function nvWithdrawalReceipt(wdId){
@@ -10968,6 +11153,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const list=document.getElementById("newBookedList"); if(!list) return;
       const selected=new Set(Array.from(list.querySelectorAll(".newbooked-check:checked")).map(b=>b.value));
       const items=newBookedParcels();
+      /* The load sheet only makes sense once labels exist on the boxes, so the
+         button follows awbPrinted rather than appearing on an unprinted list.
+         Driven from the parcel flag, not from "did we print in this session",
+         so it is still there tomorrow morning. Set BEFORE the empty-list early
+         return below, or an emptied list would keep yesterday's button. */
+      try{
+        var lsBtn=document.getElementById("newBookedLoadSheetBtn");
+        if(lsBtn) lsBtn.hidden = !items.some(function(p){ return p.awbPrinted||p.labelPrinted; });
+      }catch(e){}
       if(!items.length){ list.innerHTML=`<div class="ops-card"><strong>No new booked parcels yet</strong><p class="footer-note">Printable AWB labels appear here the moment a parcel is booked.</p><div class="inline-actions" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="action-btn" data-nv-cock="tab" data-tab="newBooking">Book a parcel</button><button class="ghost-btn" data-nv-cock="tab" data-tab="bulkBooking">Upload bulk CSV</button><button class="ghost-btn" data-nv-cock="tab" data-tab="integrations">Sync your store</button></div></div>`; return; }
       list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}"${selected.has(p.awb)?" checked":""}><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${nvSourceChip(p.source)}${nvPrintedMark(p)}</span><button class="ghost-btn nv-nb-act" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn nv-nb-act" title="Cancel this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:var(--nvu-bad-fg);border-color:var(--nvu-bad-ln)">Cancel booking</button></label>`).join("");
       nvSyncSelectAllNewBookedLabel();

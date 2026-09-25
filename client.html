@@ -721,6 +721,111 @@
     .nv-doc-total{margin-top:14px;border-top:2px solid #111;padding-top:10px;display:flex;justify-content:space-between;font-size:14px;font-weight:900;}
     .nv-doc-foot{margin-top:22px;border-top:1px solid #ccc;padding-top:10px;font-size:9.5px;color:#666;line-height:1.6;}
     @media (max-width:760px){ .nv-doc{padding:14px;} .nv-doc-grid{grid-template-columns:1fr;} }
+
+    /* ===== LOAD SHEET DOCUMENT ==========================================
+       Shares .nv-doc's typography but not its padding: on paper the margin
+       comes from @page (see #nvPrintLoadSheet), and setting both would cost
+       about six rows a page. On screen .nv-ls-screen puts the padding back so
+       the preview still looks like a sheet of paper. */
+    /* The post-print prompt. Indigo, matching "money/parcels in motion" in the
+       status palette -- this is a handover about to happen, not a warning. */
+    /* [hidden] is only display:none in the UA sheet, so ANY class here that
+       sets a display wins on specificity and the element stays on screen. Both
+       of these are toggled by the hidden attribute, so both need it honoured
+       explicitly -- without this the load sheet button sat in the toolbar
+       before a single label had been printed. */
+    .nv-ls-cta[hidden],#newBookedLoadSheetBtn[hidden]{display:none !important;}
+    .nv-ls-cta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px;
+      padding:12px 14px;border-radius:var(--r-xl);
+      background:var(--nvu-out-bg);box-shadow:inset 0 0 0 1px var(--nvu-out-ln);}
+    .nv-ls-cta > div{flex:1 1 220px;min-width:0;}
+    .nv-ls-cta strong{display:block;font-size:13.5px;font-weight:800;color:var(--nvu-out-fg);}
+    .nv-ls-cta .footer-note{display:block;margin-top:2px;}
+    .nv-ls-cta button{flex:0 0 auto;}
+    @media (max-width:520px){ .nv-ls-cta button{width:100%;} }
+    .nv-ls{font-family:inherit;color:#111;background:#fff;box-sizing:border-box;max-width:210mm;margin:0 auto;}
+    .nv-ls-screen{padding:16mm 14mm;}
+    .nv-ls-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
+      border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:9px;}
+    .nv-ls-brand{font-size:19px;font-weight:900;letter-spacing:-.01em;line-height:1.1;}
+    .nv-ls-brand small{display:block;font-size:9px;font-weight:700;letter-spacing:.18em;color:#555;margin-top:3px;}
+    .nv-ls-no{text-align:right;font-size:10.5px;color:#444;line-height:1.7;white-space:nowrap;}
+    .nv-ls-no b{display:block;font-size:13px;color:#111;letter-spacing:.04em;}
+    .nv-ls h2{font-size:14px;margin:0 0 2px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;}
+    .nv-ls-sub{font-size:11px;color:#555;margin-bottom:9px;}
+
+    /* Handover header: what the two parties are agreeing to, before the list.
+       Rider name and CNIC are RULED LINES, not printed values -- the portal
+       does not know which rider will turn up, and printing a guess is worse
+       than leaving a line. */
+    .nv-ls-meta{display:grid;grid-template-columns:1.5fr 1.5fr .8fr 1fr;gap:0;
+      border:1px solid #999;margin-bottom:9px;}
+    .nv-ls-meta > div{padding:5px 8px;border-right:1px solid #ccc;min-width:0;}
+    .nv-ls-meta > div:last-child{border-right:0;}
+    .nv-ls-meta span{display:block;font-size:8px;font-weight:800;text-transform:uppercase;
+      letter-spacing:.08em;color:#555;margin-bottom:3px;}
+    .nv-ls-meta strong{display:block;font-size:11.5px;font-weight:800;overflow-wrap:anywhere;line-height:1.35;}
+    .nv-ls-meta .nv-ls-fill{display:block;border-bottom:1px solid #111;height:13px;margin-top:2px;}
+
+    .nv-ls table{width:100%;border-collapse:collapse;font-size:10.5px;}
+    /* table-header-group is what repeats the column header onto page 2, 3, 4.
+       Without it every page after the first is unlabelled columns of numbers. */
+    .nv-ls thead{display:table-header-group;}
+    /* NOT table-footer-group: that repeats the row on every page, turning a
+       grand total into what looks like a per-page subtotal. */
+    .nv-ls tfoot{display:table-row-group;}
+    .nv-ls tfoot tr{break-inside:avoid;page-break-inside:avoid;}
+    .nv-ls th{text-align:left;background:#eee;border:1px solid #999;padding:4px 6px;
+      font-size:8.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:800;}
+    .nv-ls td{border:1px solid #ccc;padding:3.5px 6px;overflow-wrap:anywhere;vertical-align:top;}
+    .nv-ls tbody tr{break-inside:avoid;page-break-inside:avoid;}
+    .nv-ls td.num,.nv-ls th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
+    .nv-ls td.idx,.nv-ls th.idx{text-align:right;width:26px;color:#666;}
+    .nv-ls td.awb{font-weight:800;white-space:nowrap;}
+    .nv-ls tfoot td{border:1px solid #999;background:#eee;font-weight:900;font-size:11px;padding:6px 7px;}
+
+    /* The signature block must not split across a fold, and must not drag a
+       trailing margin onto a fresh sheet. break-inside:avoid moves it whole;
+       margin-bottom:0 stops it creating an empty page after itself. */
+    /* Signature and the note that qualifies it are one unbreakable unit. */
+    .nv-ls-close{break-inside:avoid;page-break-inside:avoid;margin-bottom:0;}
+    /* The signature panel restates what is being signed for. A block this
+       tall cannot always be kept on the same page as the list -- at 20
+       parcels page one is 87% full and it legitimately moves -- and a
+       signature on a sheet carrying no parcel data is worth nothing, and
+       is trivially detachable from the list it supposedly covers. So the
+       panel carries the sheet number, the count and the COD total itself,
+       and stays a valid document wherever the break falls. */
+    .nv-ls-confirm{margin-top:14px;border:1px solid #111;border-bottom:0;padding:7px 10px;
+      font-size:10.5px;font-weight:800;display:flex;justify-content:space-between;gap:12px;
+      flex-wrap:wrap;background:#eee;}
+    .nv-ls-confirm span{font-weight:700;color:#333;}
+    .nv-ls-sign{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:0;margin-bottom:0;
+      break-inside:avoid;page-break-inside:avoid;}
+    .nv-ls-sign > div{border:1px solid #999;border-top:0;padding:7px 10px 8px;}
+    .nv-ls-when{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+    .nv-ls-when > div{border:1px solid #999;border-top:0;padding:6px 10px 7px;}
+    .nv-ls-sign h4{margin:0 0 6px;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#333;}
+    .nv-ls-line{margin-top:9px;}
+    .nv-ls-line i{display:block;border-bottom:1px solid #111;height:12px;}
+    .nv-ls-line em{display:block;font-style:normal;font-size:8px;font-weight:700;text-transform:uppercase;
+      letter-spacing:.07em;color:#666;margin-top:3px;}
+    .nv-ls-note{margin-top:7px;margin-bottom:0;padding-top:0;
+      font-size:8px;color:#666;line-height:1.55;break-inside:avoid;}
+
+    @media (max-width:760px){
+      .nv-ls-screen{padding:14px;}
+      .nv-ls-meta{grid-template-columns:1fr 1fr;}
+      .nv-ls-meta > div{border-right:0;border-bottom:1px solid #ccc;}
+      .nv-ls-sign{grid-template-columns:1fr;}
+      .nv-ls-when{grid-template-columns:1fr;}
+      /* Scoped to .nv-ls-screen, so this touches the PREVIEW only and the
+         printed sheet keeps its full A4 width. Without a floor the city column
+         collapses to about 55px and overflow-wrap:anywhere splits "Karachi"
+         into "Kar/achi" -- the merchant swipes the preview instead. */
+      .nv-ls-screen{overflow-x:auto;}
+      .nv-ls-screen table{min-width:440px;}
+    }
     /* minmax(0,1fr), never a bare 1fr. A 1fr track is minmax(auto,1fr), whose
        floor is the min-content width of .client-content -- so a single wide
        child (the NovaX AI suggestion chips, a long reply, a table) widened the
@@ -1062,6 +1167,38 @@
     .awb-scan .chip{font-size:9px !important;font-weight:900 !important;letter-spacing:.04em !important;padding:1px 4px !important;border:1px solid #000 !important;background:var(--nvu-bg) !important;color:#000 !important;border-radius:var(--r-xs) !important;}
   
 </style>
+
+<style id="nvPrintLoadSheet" media="print" disabled>
+  /* ===== LOAD SHEET =====================================================
+     A third independently toggleable print sheet, alongside #nvPrintThermal
+     and #nvPrintA4. It exists because the load sheet is neither: the thermal
+     tag sets @page{size:100mm 150mm} and the A4 tag lays the page out as a
+     3-up grid of 88mm label rows. Enabling either one would paginate a
+     50-row table into label slots.
+
+     nvPrintDoc(html,"nvPrintLoadSheet") disables the other two and enables
+     this, then restores all three in afterprint.
+
+     PAGINATION. Deliberately NOT manual. The AWB printer slices parcels into
+     fixed-height .print-page blocks because a 4x6 label IS a page; a table is
+     not, and a fixed row-per-page count is exactly what produces a blank
+     trailing sheet when the real row height is a pixel off. The browser
+     paginates the table instead, and four rules make that safe:
+       - thead as table-header-group, so the column header repeats on page 2+
+         instead of leaving unlabelled columns of numbers
+       - break-inside:avoid on every row, so no parcel is cut in half
+       - break-inside:avoid on the signature block, so a signature never
+         splits across a fold
+       - NO bottom margin on the last element. A trailing margin is what
+         pushes an otherwise-fitting document onto one extra empty page. */
+  @page{ size:A4 portrait; margin:12mm 11mm; }
+
+  /* The container carries no padding of its own -- @page owns the margin.
+     Setting both is how a document silently loses ~6 rows a page and starts
+     overflowing. */
+  #docPrintStage .nv-ls{ padding:0 !important; max-width:none !important; margin:0 !important; }
+</style>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   <script>
     // NovaX fix (config consolidation): single source of truth for the
@@ -2319,7 +2456,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=bcf295aa" defer></script>
+  <script src="client-app.js?v=28fdbfc8" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2334,7 +2471,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=bcf295aa<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=28fdbfc8<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -2610,7 +2747,15 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 <div id="awbLabelPreview"></div>
               </div>
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>New Booked AWBs &mdash; Bulk Print</h3><p>Freshly booked parcels awaiting rider pickup. Select and print labels together.</p></div><div class="inline-actions"><button class="ghost-btn" id="newBookedSelectAllBtn">Select All</button><button class="action-btn" id="newBookedPrintBtn">Print Selected AWBs</button></div></div>
+                <div class="section-head"><div><h3>New Booked AWBs &mdash; Bulk Print</h3><p>Freshly booked parcels awaiting rider pickup. Select and print labels together.</p></div><div class="inline-actions"><button class="ghost-btn" id="newBookedSelectAllBtn">Select All</button><button class="action-btn" id="newBookedPrintBtn">Print Selected AWBs</button><!-- Hidden until at least one label in this list has actually been printed:
+                     a load sheet for parcels with no labels on them is a document
+                     nobody can reconcile at the warehouse. renderNewBookedList()
+                     reveals it, so it survives a reload the day after. --><button class="ghost-btn" id="newBookedLoadSheetBtn" hidden onclick="nvPrintLoadSheet()">Print Load Sheet</button></div></div>
+                <div id="nvLoadSheetCta" class="nv-ls-cta" hidden>
+                  <div><strong id="nvLoadSheetCtaTitle">Labels printed.</strong>
+                  <span class="footer-note">Print the load sheet the rider signs when collecting them.</span></div>
+                  <button class="action-btn" id="nvLoadSheetCtaBtn">Print load sheet</button>
+                </div>
                 <div id="newBookedList"></div>
               </div>
               <div class="panel mt-14">
@@ -3695,6 +3840,47 @@ html[data-theme="dark"] .nv-doc *{
 }
 html[data-theme="dark"] .qr-img,
 html[data-theme="dark"] .barcode-img{ background:#fff!important; }
+
+/* The load sheet is PAPER, so it must look identical in either theme. Printing
+   is safe on its own -- nvPrintThemeLight() stamps data-theme="light" before
+   window.print() -- but the merchant reads the preview on screen first, and in
+   dark mode the portal's generic table rules were winning on specificity:
+   html[data-theme="dark"] table{color:var(--ink)} beat the colour .nv-ls sets,
+   so the header row rendered near-black and the TOTAL row came out as white
+   text on light grey, i.e. invisible, on the one line that states how many
+   parcels are being handed over.
+
+   Deliberately NOT the blanket .nv-doc treatment (background-color:#fff on
+   every descendant): that would also flatten the grey header, totals and
+   confirmation bars, which are what separate the structure of this document.
+   Colours are restated instead, matching the light-theme values exactly. */
+html[data-theme="dark"] .nv-ls,
+html[data-theme="dark"] .nv-ls *{
+  color:#111 !important; background-color:transparent !important; border-color:#ccc !important;
+}
+html[data-theme="dark"] .nv-ls{ background-color:#fff !important; }
+html[data-theme="dark"] .nv-ls th,
+html[data-theme="dark"] .nv-ls tfoot td,
+html[data-theme="dark"] .nv-ls-confirm{ background-color:#eee !important; }
+html[data-theme="dark"] .nv-ls th,
+html[data-theme="dark"] .nv-ls tfoot td,
+html[data-theme="dark"] .nv-ls-meta,
+html[data-theme="dark"] .nv-ls-meta > div,
+html[data-theme="dark"] .nv-ls-sign > div,
+html[data-theme="dark"] .nv-ls-when > div,
+html[data-theme="dark"] .nv-ls-confirm{ border-color:#999 !important; }
+html[data-theme="dark"] .nv-ls-head{ border-bottom-color:#111 !important; }
+html[data-theme="dark"] .nv-ls-line i{ border-bottom-color:#111 !important; }
+html[data-theme="dark"] .nv-ls-meta .nv-ls-fill{ border-bottom-color:#111 !important; }
+html[data-theme="dark"] .nv-ls-brand small,
+html[data-theme="dark"] .nv-ls-no,
+html[data-theme="dark"] .nv-ls-sub,
+html[data-theme="dark"] .nv-ls-meta span,
+html[data-theme="dark"] .nv-ls-sign h4,
+html[data-theme="dark"] .nv-ls-line em,
+html[data-theme="dark"] .nv-ls-confirm span{ color:#444 !important; }
+html[data-theme="dark"] .nv-ls-note{ color:#666 !important; }
+html[data-theme="dark"] .nv-ls td.idx{ color:#666 !important; }
 
 /* ═══ COD hero (client dashboard) ══════════════════════════════════════════ */
 .nv-cod-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1.35fr) minmax(0,1fr);
