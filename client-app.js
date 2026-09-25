@@ -8335,6 +8335,65 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       for(var i=0;i<NV_CITY_LIST.length;i++){ if(low.indexOf(NV_CITY_LIST[i])>-1) return NV_CITY_LIST[i][0].toUpperCase()+NV_CITY_LIST[i].slice(1); }
       return "";
     }
+    function prodLabelEarly(text){ return /product\s*[:\-]/i.test(text); }
+    /* Words that can only START an address. Localities are the ones merchants
+       actually ship to; a bare number (a house number) also starts one. */
+    var NV_ADDR_START=/^(?:house|h#?|h\.?no\.?|flat|plot|shop|apartment|apt|office|suite|street|st\.?|lane|block|blk|phase|sector|road|rd|mohalla|muhalla|village|colony|society|dha|defence|defense|gulshan|gulistan|gulberg|clifton|bahria|johar|jauhar|model|askari|cantt|cantonment|pechs|nazimabad|saddar|township|malir|korangi|federal|north|faisal|garden|satellite|wapda|valencia|iqbal|allama|shadman|samanabad|township|near|opp\.?|opposite|behind|[a-z]{1,2}-\d+[a-z0-9\/-]*|\d+[a-z]?(?:[\/-]\d+[a-z]?)*)$/i;
+    function nvAddrStartTok(tok,next){
+      var w=String(tok||"").replace(/[.,:;]+$/,"");
+      if(!w) return false;
+      /* A bare number is a house number only when what follows it is not an
+         ordinary word -- "22", "844 f2", "14 Block" -- so "2 lawn suits" stays
+         a quantity in the product. */
+      if(/^\d+[a-z]?$/i.test(w)) return !next || /\d/.test(next) || /^[A-Z]/.test(next) || NV_ADDR_START.test(next);
+      return NV_ADDR_START.test(w) || NV_ADDR_START.test(w.split("-")[0]);
+    }
+    function nvPasteRemainder(text,out,codMatch){
+      var rest=text.replace(/[ \t]+/g," ");
+      /* Remove the phone by its own digits. The broad digit-run pattern also
+         swallowed a house number written after it ("03113323923 844 f2"). */
+      if(out.phone){
+        var core=out.phone.replace(/^0/,"");
+        var pr=new RegExp("(?:\\+?\\s*92|0092|0)?[\\s\\-().]*"+core.split("").join("[\\s\\-().]*"));
+        rest=rest.replace(pr," ");
+      }
+      if(codMatch) rest=rest.replace(codMatch[0]," ");
+      else if(out.cod) rest=rest.replace(new RegExp("\\b"+out.cod+"\\b")," ");
+      if(out.name && rest.trim().indexOf(out.name)===0) rest=rest.replace(out.name," ");
+      if(out.city) rest=rest.replace(new RegExp("\\b"+out.city+"\\b","i")," ");
+      rest=rest.replace(/\b(?:name|phone|mobile|city|cod|amount|price)\s*[:\-]/gi," ");
+      var segs=rest.split(/[,\n;]+/).map(function(x){ return x.replace(/\s+/g," ").trim(); }).filter(Boolean);
+      var product=[], address=[], started=false;
+      segs.forEach(function(seg,si){
+        if(started){
+          /* The last line of a multi-line paste is often the product
+             ("...Model Town\nRed kurta"). Only when nothing earlier was the
+             product, and the line has no number or address word. */
+          var looksAddr=/\d/.test(seg) || seg.split(" ").some(function(tk,ix,a){ return nvAddrStartTok(tk,a[ix+1]); }) || /(?:town|abad|pura|nagar|colony|city|park|garden|society)\b/i.test(seg);
+          if(si===segs.length-1 && !product.length && !looksAddr) product.push(seg);
+          else address.push(seg);
+          return;
+        }
+        var toks=seg.split(" "), k=-1;
+        for(var t=0;t<toks.length;t++){ if(nvAddrStartTok(toks[t],toks[t+1])){ k=t; break; } }
+        if(k<0){ product.push(seg); return; }
+        if(k>0) product.push(toks.slice(0,k).join(" "));
+        address.push(toks.slice(k).join(" "));
+        started=true;
+      });
+      var addr=address.join(", ").replace(/^[\s,:;-]+|[\s,:;-]+$/g,"");
+      var prod=product.join(", ").replace(/^[\s,:;-]+|[\s,:;-]+$/g,"");
+      /* A product written AFTER the address on the same line ("... house 9
+         perfume") would ride along in it. Trailing lowercase words after the
+         last number or address word move to the product, only when no product
+         was found before the address. */
+      if(addr && !prod){
+        var at=addr.split(" "), last=-1;
+        for(var q=0;q<at.length;q++){ if(/\d/.test(at[q]) || NV_ADDR_START.test(at[q].replace(/[.,:;]+$/,"")) || /^[A-Z]/.test(at[q]) || /(?:town|abad|pura|nagar|colony|city|park)[,]?$/i.test(at[q])) last=q; }
+        if(last>=0 && last<at.length-1){ prod=at.slice(last+1).join(" "); addr=at.slice(0,last+1).join(" ").replace(/[\s,]+$/,""); }
+      }
+      return { address: addr.length>=4 ? addr : "", product: (prod.length>1 && prod.length<60) ? prod : "" };
+    }
     function parsePastedOrder(raw){
       var text=String(raw||"").replace(/\r/g," ").trim();
       var out={ name:"", phone:"", city:"", cod:"", product:"", address:"" };
@@ -8408,27 +8467,29 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           .split(/,?\s*(?:phone|mobile|cell|city|cod|amount|rs\.?|price|product|name|order\s*id)\s*[:\-]/i)[0]
           .trim().replace(/[,;\s]+$/,"");
       }
-      else{
-        /* The clue window used to run straight through the COD figure, so
-           "COD 2500 black hoodie DHA Phase 5" produced an address beginning
-           "00 black hoodie" -- the tail of the amount. Strip the values we have
-           already claimed before looking for the address, and never begin a
-           match in the middle of a number. */
-        var addrText=text;
-        if(out.cod)   addrText=addrText.replace(new RegExp("\\b"+out.cod+"\\b"), " ");
-        if(out.phone) addrText=addrText.replace(/(?:\+|00)?[\d][\d\s\-().]{7,22}\d/g, " ");
-        var addrClue=addrText.match(/(?:^|[^\d])((?:[A-Za-z][A-Za-z0-9 ]{0,19})?(?:house|block|phase|street|sector|road|colony|town|society)[A-Za-z0-9 ]{0,25})/i);
-        if(addrClue){
-          out.address=addrClue[1].replace(/\s+/g," ").trim()
-            /* drop label words and one-letter crumbs left by the stripping above */
-            .replace(/^(?:\b(?:cod|amount|rs\.?|price|name|phone|mobile|city|address|product)\b|\b[A-Za-z]\b|[\s,:;-]+)+/i,"")
-            .trim();
-        }
+      /* THE PRODUCT IN THE ADDRESS. For an unlabelled paste the address was
+         found by a keyword window that reached up to 20 characters BACKWARDS
+         from "house/block/phase", so the form's own example -- "Ali Khan
+         03123456789 Lahore COD 2500 black hoodie DHA Phase 5 house 22" --
+         booked "black hoodie DHA Phase 5 house 22" as the delivery address and
+         left the product blank. A hyphen also ended the match, cutting
+         "Gulshan-e-Iqbal" to "Gulshan".
+
+         Now: take away what is already claimed (name, phone, city, COD), and
+         read what is left as "product, then address". The address starts at
+         the first word that can only begin an address -- a house/flat/plot
+         word, a locality (DHA, Gulshan, Clifton...), a sector like G-11/2, or
+         a house number -- and everything before it is the product. Commas
+         keep a multi-part address together once it has started. */
+      if(!addrLabel){
+        var free=nvPasteRemainder(text,out,codMatch);
+        if(free.address) out.address=free.address;
+        if(!prodLabelEarly(text) && free.product) out.product=free.product;
       }
 
       var prodLabel=text.match(/product\s*[:\-]\s*([^,\n]{2,60})/i);
       if(prodLabel){ out.product=prodLabel[1].trim(); }
-      else{
+      else if(!out.product && addrLabel){
         var leftover=text;
         /* out.phone is the NORMALISED number (03113323923) but the paste says
            "0311 332 3923", so this replace never matched and the phone stayed
