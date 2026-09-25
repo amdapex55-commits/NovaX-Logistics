@@ -17982,7 +17982,27 @@ html,body{ background:var(--bg); color:var(--ink); }
                Subscribed now: the six NV_LIVE_KNOWN tables (wallet_ledger was
                targeted but never actually subscribed -- a real gap) plus
                pickup_requests, which is ops-critical enough to stay live. */
-            ["clients","parcels","invoices","withdrawals","payment_logs","wallet_ledger","pickup_requests"].forEach(function(t){
+            /* 25 Sep: seven down to three. Every one of these is an UNFILTERED
+               event:"*" subscription -- admin needs all clients, so there is no
+               client_id filter to narrow it with -- and Realtime evaluates each
+               WAL record against each one.
+
+               Honest about the size of this: it does NOT touch the 811,443-call
+               WAL reader, which polls at a constant 1.33/second with the slot
+               fully caught up whether or not anyone subscribes. What it removes
+               is the per-change RLS evaluation and the refresh work that follows
+               each delivered event.
+
+               Kept live: parcels (ops watch this all day), pickup_requests
+               (a merchant is waiting on a rider), withdrawals (money leaving,
+               and admin acts on it within minutes).
+
+               Dropped to the existing 180s poll + focus refresh: clients,
+               invoices, payment_logs, wallet_ledger. All four change as a
+               RESULT of an admin action, so the tab that caused the change
+               already refreshes itself -- the subscription was telling this tab
+               about work it had just done. */
+            ["parcels","pickup_requests","withdrawals"].forEach(function(t){
               liveChannel.on("postgres_changes",{event:"*",schema:"public",table:t},function(){ nvLiveChange(t); });
             });
             liveChannel.subscribe(function(status,err){
