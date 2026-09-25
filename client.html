@@ -727,22 +727,26 @@
        comes from @page (see #nvPrintLoadSheet), and setting both would cost
        about six rows a page. On screen .nv-ls-screen puts the padding back so
        the preview still looks like a sheet of paper. */
-    /* The post-print prompt. Indigo, matching "money/parcels in motion" in the
-       status palette -- this is a handover about to happen, not a warning. */
-    /* [hidden] is only display:none in the UA sheet, so ANY class here that
-       sets a display wins on specificity and the element stays on screen. Both
-       of these are toggled by the hidden attribute, so both need it honoured
-       explicitly -- without this the load sheet button sat in the toolbar
-       before a single label had been printed. */
-    .nv-ls-cta[hidden],#newBookedLoadSheetBtn[hidden]{display:none !important;}
-    .nv-ls-cta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px;
-      padding:12px 14px;border-radius:var(--r-xl);
+    /* The selection tally on the Load Sheet tab. Indigo, matching "in motion"
+       in the status palette -- a handover about to happen, not a warning. */
+    .nv-lsel-bar{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px;
+      padding:10px 13px;border-radius:var(--r-xl);
       background:var(--nvu-out-bg);box-shadow:inset 0 0 0 1px var(--nvu-out-ln);}
-    .nv-ls-cta > div{flex:1 1 220px;min-width:0;}
-    .nv-ls-cta strong{display:block;font-size:13.5px;font-weight:800;color:var(--nvu-out-fg);}
-    .nv-ls-cta .footer-note{display:block;margin-top:2px;}
-    .nv-ls-cta button{flex:0 0 auto;}
-    @media (max-width:520px){ .nv-ls-cta button{width:100%;} }
+    .nv-lsel-bar strong{font-size:13.5px;font-weight:800;color:var(--nvu-out-fg);}
+    .nv-lsel-bar span{font-size:12.5px;font-weight:700;color:var(--nvu-ink-2);
+      font-variant-numeric:tabular-nums;}
+    /* The row is a label wrapping its checkbox, so the whole card is the hit
+       target -- a merchant ticking 30 boxes on a phone should not be aiming at
+       a 16px square. */
+    #loadSheetList .ops-card{display:flex;align-items:center;gap:11px;margin-bottom:8px;
+      cursor:pointer;min-width:0;}
+    #loadSheetList .ops-card > span{flex:1;min-width:0;}
+    #loadSheetList input[type=checkbox]{flex:0 0 auto;width:18px;height:18px;}
+    #loadSheetList .nv-lsel-cod{font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;}
+    @media (max-width:620px){
+      #loadSheetList .ops-card{flex-wrap:wrap;}
+      #loadSheetList .ops-card > span{flex:1 1 100%;}
+    }
     .nv-ls{font-family:inherit;color:#111;background:#fff;box-sizing:border-box;max-width:210mm;margin:0 auto;}
     .nv-ls-screen{padding:16mm 14mm;}
     .nv-ls-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
@@ -2456,7 +2460,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=28fdbfc8" defer></script>
+  <script src="client-app.js?v=892fe739" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2471,7 +2475,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=28fdbfc8<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=892fe739<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -2577,6 +2581,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
               <button class="client-tab active" data-client-tab="dashboard">Dashboard</button>
               <button class="client-tab" data-client-tab="newBooking">New Booking</button>
               <button class="client-tab" data-client-tab="awbLabel">AWB Label</button>
+              <button class="client-tab" data-client-tab="loadSheet">Load Sheet</button>
               <button class="client-tab" data-client-tab="bulkBooking">Bulk Booking</button>
               <button class="client-tab" data-client-tab="integrations">API</button>
               <button class="client-tab" data-client-tab="reports">Full Report</button>
@@ -2747,15 +2752,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 <div id="awbLabelPreview"></div>
               </div>
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>New Booked AWBs &mdash; Bulk Print</h3><p>Freshly booked parcels awaiting rider pickup. Select and print labels together.</p></div><div class="inline-actions"><button class="ghost-btn" id="newBookedSelectAllBtn">Select All</button><button class="action-btn" id="newBookedPrintBtn">Print Selected AWBs</button><!-- Hidden until at least one label in this list has actually been printed:
-                     a load sheet for parcels with no labels on them is a document
-                     nobody can reconcile at the warehouse. renderNewBookedList()
-                     reveals it, so it survives a reload the day after. --><button class="ghost-btn" id="newBookedLoadSheetBtn" hidden onclick="nvPrintLoadSheet()">Print Load Sheet</button></div></div>
-                <div id="nvLoadSheetCta" class="nv-ls-cta" hidden>
-                  <div><strong id="nvLoadSheetCtaTitle">Labels printed.</strong>
-                  <span class="footer-note">Print the load sheet the rider signs when collecting them.</span></div>
-                  <button class="action-btn" id="nvLoadSheetCtaBtn">Print load sheet</button>
-                </div>
+                <div class="section-head"><div><h3>New Booked AWBs &mdash; Bulk Print</h3><p>Freshly booked parcels awaiting rider pickup. Select and print labels together.</p></div><div class="inline-actions"><button class="ghost-btn" id="newBookedSelectAllBtn">Select All</button><button class="action-btn" id="newBookedPrintBtn">Print Selected AWBs</button></div></div>
                 <div id="newBookedList"></div>
               </div>
               <div class="panel mt-14">
@@ -2768,6 +2765,26 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 </div>
                 <div class="inline-actions mt-10"><button class="action-btn" id="requestPickupBtn">Request Pickup</button></div>
                 <div class="mt-16"><h4 style="margin:0 0 8px">Your Pickup Requests</h4><div id="pickupRequestList"></div></div>
+              </div>
+            </section>
+            <!-- LOAD SHEET -->
+            <section class="client-module" id="client-loadSheet">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>Load Sheet</h3><p>Tick the parcels you are handing to the rider, then print one sheet you both sign.</p></div>
+                  <div class="inline-actions">
+                    <button class="ghost-btn" id="loadSheetSelectAllBtn">Select All</button>
+                    <button class="action-btn" id="loadSheetPrintBtn">Print Load Sheet</button>
+                  </div>
+                </div>
+                <!-- Live tally of what is about to be printed. A merchant counting
+                     boxes against a sheet needs the count BEFORE the printer, not
+                     after it. aria-live so it is announced as boxes are ticked. -->
+                <div class="nv-lsel-bar" id="nvLoadSheetBar" aria-live="polite">
+                  <strong id="nvLoadSheetCount">No parcels selected</strong>
+                  <span id="nvLoadSheetCod"></span>
+                </div>
+                <div id="loadSheetList"></div>
               </div>
             </section>
             <!-- BULK BOOKING -->

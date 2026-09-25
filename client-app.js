@@ -5392,11 +5392,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           try{ nvOfferPrintUndo(nvPrintedNow); }catch(e){}
           try{ if(document.getElementById("awbLabelPreview")) renderAwbLabel(); }catch(e){}
           try{ renderNewBookedList(); }catch(e){}
-          /* Offer the load sheet for exactly the AWBs that were just printed --
-             not for whatever happens to be ticked, which the merchant may have
-             changed since. Hangs off nvMarkPrinted so it only appears when a
-             print dialog really opened. */
-          try{ nvOfferLoadSheet(nvPrintedNow); }catch(e){}
         }
         var nvPrintDialogSeen=false;
         /* Detached as soon as it fires. Left attached, this closure survives the
@@ -5933,25 +5928,88 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     window.nvPrintLoadSheet=nvPrintLoadSheet;
 
-    /* Shown after a real print. Keeps its own copy of the AWBs so that ticking
-       a different parcel afterwards cannot silently change what the sheet
-       covers -- the document has to describe the boxes that were labelled. */
-    function nvOfferLoadSheet(awbs){
-      var cta=document.getElementById("nvLoadSheetCta");
-      if(!cta) return;
-      var list=nvLoadSheetRows(awbs);
-      if(!list.length){ cta.hidden=true; return; }
-      var n=list.length;
-      var ttl=document.getElementById("nvLoadSheetCtaTitle");
-      if(ttl) ttl.textContent=n+" label"+(n===1?"":"s")+" printed.";
-      var btn=document.getElementById("nvLoadSheetCtaBtn");
-      if(btn){
-        btn.textContent="Print load sheet for "+(n===1?"this parcel":("these "+n));
-        btn.onclick=function(){ nvPrintLoadSheet(list.map(function(p){ return p.awb; })); };
-      }
-      cta.hidden=false;
+    /* ---- Load Sheet tab ----------------------------------------------------
+       Same parcels as the AWB bulk list -- everything still sitting at "New
+       booked", i.e. awaiting rider pickup -- but its own selection, so ticking
+       boxes here never changes what the AWB tab is about to print. */
+    function nvLoadSheetSelected(){
+      return Array.from(document.querySelectorAll(".loadsheet-check"))
+        .filter(function(b){ return b.checked; }).map(function(b){ return b.value; });
     }
-    window.nvOfferLoadSheet=nvOfferLoadSheet;
+    function nvSyncLoadSheetBar(){
+      var picked=nvLoadSheetSelected();
+      var list=nvLoadSheetRows(picked);
+      var cnt=document.getElementById("nvLoadSheetCount");
+      var cod=document.getElementById("nvLoadSheetCod");
+      var n=list.length;
+      if(cnt) cnt.textContent = n ? (n+" parcel"+(n===1?"":"s")+" selected") : "No parcels selected";
+      if(cod){
+        /* Prepaid parcels are counted but contribute nothing to collect, which
+           is exactly the distinction that matters at the door. */
+        var total=0, pre=0;
+        list.forEach(function(p){
+          if((typeof isNonCodParcel==="function") && isNonCodParcel(p)) pre++;
+          else total+=Number(p.cod||0);
+        });
+        cod.textContent = n ? (money(total)+" to collect"+(pre?(" \u00b7 "+pre+" prepaid"):"")) : "";
+      }
+      var btn=document.getElementById("loadSheetPrintBtn");
+      if(btn) btn.disabled = !n;
+      nvSyncSelectAllLoadSheetLabel();
+    }
+    function nvSyncSelectAllLoadSheetLabel(){
+      var b=document.getElementById("loadSheetSelectAllBtn");
+      if(!b) return;
+      var boxes=document.querySelectorAll(".loadsheet-check");
+      var all=boxes.length>0 && Array.from(boxes).every(function(x){ return x.checked; });
+      b.textContent = all ? "Clear All" : "Select All";
+      b.disabled = boxes.length===0;
+    }
+    function toggleSelectAllLoadSheet(){
+      var boxes=document.querySelectorAll(".loadsheet-check");
+      var all=boxes.length>0 && Array.from(boxes).every(function(x){ return x.checked; });
+      boxes.forEach(function(x){ x.checked=!all; });
+      nvSyncLoadSheetBar();
+    }
+    function renderLoadSheetList(){
+      var host=document.getElementById("loadSheetList");
+      if(!host) return;
+      /* Preserve the ticks across a re-render -- realtime pushes re-render this
+         list, and a merchant halfway through ticking 30 boxes must not lose
+         them because one parcel's status changed. */
+      var keep=new Set(nvLoadSheetSelected());
+      var items=newBookedParcels();
+      if(!items.length){
+        host.innerHTML='<div class="ops-card"><strong>Nothing waiting for pickup</strong>'+
+          '<p class="footer-note">Parcels appear here as soon as they are booked. '+
+          'Print their labels first, then hand them over with a load sheet.</p>'+
+          '<div class="inline-actions" style="margin-top:8px;flex-wrap:wrap;gap:6px">'+
+          '<button class="action-btn" data-client-tab="newBooking">Book a parcel</button>'+
+          '<button class="ghost-btn" data-client-tab="awbLabel">Print AWB labels</button></div></div>';
+        nvSyncLoadSheetBar();
+        return;
+      }
+      host.innerHTML=items.map(function(p){
+        var prepaid=(typeof isNonCodParcel==="function") && isNonCodParcel(p);
+        return '<label class="ops-card">'+
+          '<input type="checkbox" class="loadsheet-check" value="'+escLabelText(p.awb)+'"'+
+            (keep.has(p.awb)?" checked":"")+' onchange="nvSyncLoadSheetBar()" '+
+            'aria-label="Include '+escLabelText(p.awb)+' on the load sheet">'+
+          '<span><strong>'+escLabelText(p.awb)+'</strong> &middot; '+escLabelText(p.consignee||"")+
+            ' &middot; '+escLabelText(p.city||"")+(typeof nvPrintedMark==="function"?nvPrintedMark(p):"")+'</span>'+
+          '<span class="nv-lsel-cod" style="flex:0 0 auto">'+
+            (prepaid?"Prepaid":(Number(p.cod||0)>0?escLabelText(money(p.cod)):"No COD"))+'</span>'+
+        '</label>';
+      }).join("");
+      nvSyncLoadSheetBar();
+    }
+    function printLoadSheetSelected(){
+      var picked=nvLoadSheetSelected();
+      if(!picked.length){ toast("Tick the parcels you are handing over first."); return; }
+      nvPrintLoadSheet(picked);
+    }
+    window.nvSyncLoadSheetBar=nvSyncLoadSheetBar;
+    window.renderLoadSheetList=renderLoadSheetList;
 
     /* ---- payout receipt for one withdrawal ---- */
     function nvWithdrawalReceipt(wdId){
@@ -11153,15 +11211,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const list=document.getElementById("newBookedList"); if(!list) return;
       const selected=new Set(Array.from(list.querySelectorAll(".newbooked-check:checked")).map(b=>b.value));
       const items=newBookedParcels();
-      /* The load sheet only makes sense once labels exist on the boxes, so the
-         button follows awbPrinted rather than appearing on an unprinted list.
-         Driven from the parcel flag, not from "did we print in this session",
-         so it is still there tomorrow morning. Set BEFORE the empty-list early
-         return below, or an emptied list would keep yesterday's button. */
-      try{
-        var lsBtn=document.getElementById("newBookedLoadSheetBtn");
-        if(lsBtn) lsBtn.hidden = !items.some(function(p){ return p.awbPrinted||p.labelPrinted; });
-      }catch(e){}
       if(!items.length){ list.innerHTML=`<div class="ops-card"><strong>No new booked parcels yet</strong><p class="footer-note">Printable AWB labels appear here the moment a parcel is booked.</p><div class="inline-actions" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="action-btn" data-nv-cock="tab" data-tab="newBooking">Book a parcel</button><button class="ghost-btn" data-nv-cock="tab" data-tab="bulkBooking">Upload bulk CSV</button><button class="ghost-btn" data-nv-cock="tab" data-tab="integrations">Sync your store</button></div></div>`; return; }
       list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}"${selected.has(p.awb)?" checked":""}><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${nvSourceChip(p.source)}${nvPrintedMark(p)}</span><button class="ghost-btn nv-nb-act" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn nv-nb-act" title="Cancel this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:var(--nvu-bad-fg);border-color:var(--nvu-bad-ln)">Cancel booking</button></label>`).join("");
       nvSyncSelectAllNewBookedLabel();
@@ -11469,7 +11518,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        A function declaration is fully hoisted, so keeping the data inside it
        makes the call safe from any point in the file. */
     function normalizeClientTab(id){
-      var TABS = ["dashboard","newBooking","awbLabel","bulkBooking","integrations",
+      var TABS = ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","integrations",
                   "reports","money","subAccounts","tickets","support"];
       var ALIASES = { wallet:"money", payments:"money", payment:"money", invoices:"money" };
       var v = String(id || "").trim();
@@ -11477,7 +11526,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return TABS.indexOf(v) > -1 ? v : "dashboard";
     }
 
-    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } try{ nvRenderBottomNav(); }catch(e){} renderClientReportFull();  renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); try{ window.nvSyncMenuScrim(); }catch(e){} } /* Switching tabs kept the previous screen's scroll: leaving Money at scrollY 2443 and tapping Home landed the merchant deep inside the parcel list, past the balance, the alerts and the whole dashboard summary. A new screen starts at its top. Deferred once as well, because a later async render can call nvKeepPlace(), which restores the page offset it captured on entry. */ try{ window.scrollTo(0,0); }catch(e){} setTimeout(function(){ try{ window.scrollTo(0,0); }catch(e){} },0); }
+    function showClientTab(id){ id=(typeof normalizeClientTab==="function")?normalizeClientTab(id):id; if(typeof nvCanUseTab==="function" && !nvCanUseTab(id)){ try{ toast("Your role does not have access to that section."); }catch(e){} id="dashboard"; } state.activeClientTab=id; saveState(); renderClientModules(); if(id==="newBooking"){ try{ nvRestoreBookingDraft(); }catch(e){} } try{ nvRenderBottomNav(); }catch(e){} renderClientReportFull();  renderClientWallet(); renderBulkPreview(); renderIntegrations(); renderNewBookedList(); try{ renderLoadSheetList(); }catch(e){} renderPickupEligibleList(); renderPickupRequestList(); tickMeters(); try{ renderClientActionNeeded(); }catch(e){} if(id==="support"){ try{ loadClientNotificationPrefs(); }catch(e){} } if(window.innerWidth<760){ document.getElementById("clientMenu").classList.remove("open"); document.getElementById("clientMenuToggle").setAttribute("aria-expanded","false"); try{ window.nvSyncMenuScrim(); }catch(e){} } /* Switching tabs kept the previous screen's scroll: leaving Money at scrollY 2443 and tapping Home landed the merchant deep inside the parcel list, past the balance, the alerts and the whole dashboard summary. A new screen starts at its top. Deferred once as well, because a later async render can call nvKeepPlace(), which restores the page offset it captured on entry. */ try{ window.scrollTo(0,0); }catch(e){} setTimeout(function(){ try{ window.scrollTo(0,0); }catch(e){} },0); }
     function toast(msg,type){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.remove("success","error"); const kind=type||(/reject|error|fail|invalid|required|not found|denied|declined|unable to|cannot|exceeds|locked|missing|expired|wrong|incorrect/i.test(msg)?"error":/success|updated|saved|added|created|removed|deleted|sent|completed|confirmed|assigned|cleared|credited|approved|connected|synced|scheduled|logged|generated|marked|reset|unlocked|linked|merged|archived|restored|paid|printed|exported|imported|will reach/i.test(msg)?"success":""); if(kind) el.classList.add(kind); el.classList.add("show"); /* One hook here rather than at 21 call sites: every existing success and error toast now carries a haptic, and any future one does automatically. */ try{ nvHaptic(kind==="error"?"error":(kind==="success"?"success":null)); }catch(e){} clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.classList.remove("show"),2800); }
 
     /* Events */
@@ -11714,6 +11763,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(e.target && e.target.classList && e.target.classList.contains("newbooked-check")) nvSyncSelectAllNewBookedLabel();
     });
     document.getElementById("newBookedPrintBtn")?.addEventListener("click",printNewBookedSelected);
+    document.getElementById("loadSheetSelectAllBtn")?.addEventListener("click",toggleSelectAllLoadSheet);
+    document.getElementById("loadSheetPrintBtn")?.addEventListener("click",printLoadSheetSelected);
     document.getElementById("requestPickupBtn")?.addEventListener("click",requestPickup);
     /* Merchants forward labels far more often than they print them: the parcel
        is packed at home and the label goes to whoever has the printer.
@@ -11833,9 +11884,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // the old split was quietly acting as the permission boundary, so
       // merging the tabs without this change would have handed every Finance
       // sub-account the ability to withdraw to any IBAN they typed.
-      Owner:     ["dashboard","newBooking","awbLabel","bulkBooking","integrations","reports","money","subAccounts","tickets","support"],
+      Owner:     ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","integrations","reports","money","subAccounts","tickets","support"],
       Finance:   ["dashboard","reports","money","tickets","support"],
-      Warehouse: ["dashboard","newBooking","bulkBooking","awbLabel","support"],
+      Warehouse: ["dashboard","newBooking","bulkBooking","awbLabel","loadSheet","support"],
       Support:   ["dashboard","tickets","support"]
     };
     /* Until the seat lookup has actually answered, act as the most limited
