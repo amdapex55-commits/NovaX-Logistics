@@ -18919,3 +18919,64 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
   window.novaxPricingChooser = function(){ CHOSEN = null; boot(true); };
 })();
+
+/* ── The AI button steps aside for form fields on a phone ────────────────
+   The launcher is fixed bottom-right, 56x56. At 375px the Support Tickets
+   "Tracking number" field sits exactly under it on first load (field
+   y698-742, launcher y689-745): a tap on the right of the field opened AI
+   instead of focusing it, and a little further down the nudge bubble took
+   the tap. The earlier fix hid the launcher on New Booking only, so every
+   other form had the same trap.
+
+   Now, below 760px, whenever the launcher or its nudge overlaps a visible
+   input, select or textarea, both are made invisible AND untappable
+   (visibility, not display, so their position can still be measured to
+   know when to come back). They reappear as soon as the field scrolls
+   clear. The side menu's NovaX AI entry is always there. */
+(function(){
+  "use strict";
+  var raf = 0, PAD = 6;
+  function rectOf(el){
+    if(!el) return null;
+    var r = el.getBoundingClientRect();
+    return (r.width && r.height) ? r : null;
+  }
+  function hits(a, b){
+    return a && b && b.bottom > a.top - PAD && b.top < a.bottom + PAD &&
+           b.right > a.left - PAD && b.left < a.right + PAD;
+  }
+  function check(){
+    raf = 0;
+    var yield_ = false;
+    try{
+      if(window.innerWidth < 760){
+        var zones = [rectOf(document.querySelector(".nvauto-btn")),
+                     rectOf(document.querySelector(".nvauto-nudge.show"))].filter(Boolean);
+        if(zones.length){
+          var fields = document.querySelectorAll('input:not([type="hidden"]),select,textarea');
+          for(var i = 0; i < fields.length && !yield_; i++){
+            var f = fields[i];
+            if(!f.offsetParent || f.closest(".nvauto-panel,.nvauto-btn,.nvauto-nudge")) continue;
+            var fr = f.getBoundingClientRect();
+            if(fr.bottom < 0 || fr.top > window.innerHeight) continue;
+            for(var z = 0; z < zones.length; z++){ if(hits(zones[z], fr)){ yield_ = true; break; } }
+          }
+        }
+      }
+    }catch(e){}
+    document.body.classList.toggle("nv-fab-yield", yield_);
+  }
+  function soon(){ if(!raf) raf = requestAnimationFrame(check); }
+  window.nvFabYieldCheck = soon;
+  var st = document.createElement("style");
+  st.textContent = "body.nv-fab-yield .nvauto-btn,body.nv-fab-yield .nvauto-nudge{visibility:hidden!important;pointer-events:none!important}";
+  (document.head || document.documentElement).appendChild(st);
+  addEventListener("scroll", soon, { passive: true });
+  addEventListener("resize", soon);
+  document.addEventListener("focusin", soon);
+  document.addEventListener("click", function(){ setTimeout(soon, 60); }, true);
+  /* Tab switches, late renders and the nudge appearing all move things
+     without a scroll event. Cheap: one rect per field, only on a phone. */
+  setInterval(function(){ if(window.innerWidth < 760 && !document.hidden) soon(); }, 800);
+  soon();
+})();
