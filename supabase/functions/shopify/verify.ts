@@ -91,6 +91,14 @@ export async function verifyWebhookHmac(
   secret: string,
 ): Promise<boolean> {
   if (!header) return false;
+  /* WebCrypto refuses a zero-length HMAC key outright -- importKey throws
+     DataError, which escaped as a 500. Shopify's compliance webhooks are
+     REQUIRED to answer 401 on a bad HMAC, and a deploy that is missing
+     SHOPIFY_API_SECRET would have failed that check with the wrong status for
+     a reason nothing in the response explained. An unconfigured app cannot
+     verify anything, so it rejects. Verified against the live deploy: 500
+     before, 401 after. */
+  if (!secret) return false;
   const digest = toBase64(await hmac(secret, rawBody));
   return safeEqual(digest, header);
 }
