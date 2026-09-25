@@ -2295,7 +2295,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=6f101c7c" defer></script>
+  <script src="client-app.js?v=fa85607c" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2523,7 +2523,8 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 <form id="nvBookingForm">
                 <div id="nvPasteBox" style="background:var(--panel-soft);border:1px solid #d8ece3;border-radius:var(--radius);padding:12px 14px;margin-bottom:14px">
                   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
-                    <div><strong style="font-size:13.5px;color:var(--green)">Paste Order To Book</strong><div class="footer-note mt-2">Paste a WhatsApp or Instagram order and I'll fill the form for you.</div></div>
+                    <div><strong style="font-size:13.5px;color:var(--green)">Paste Order To Book</strong><div class="footer-note mt-2 nv-paste-sub">Paste a WhatsApp or Instagram order and I'll fill the form for you.</div></div>
+                    <button type="button" class="ghost-btn nv-paste-toggle" id="nvPasteToggle" aria-controls="nvPasteInput" aria-expanded="false">Paste order</button>
                   </div>
                   <textarea id="nvPasteInput" aria-label="Paste a WhatsApp or SMS order to fill the booking form" placeholder="e.g. Ali Khan 03123456789 Lahore COD 2500 black hoodie DHA Phase 5 house 22" style="width:100%;margin-top:10px;min-height:58px;border-radius:8px;border:1px solid #d8ece3;padding:8px 10px;font-size:13px;font-family:inherit;box-sizing:border-box"></textarea>
                   <div class="mt-8"><button class="ghost-btn" id="nvPasteFillBtn" type="button">Fill Form From Paste</button></div>
@@ -4442,6 +4443,7 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
   --nv-stack-2:  0px;
 }
 
+ .nv-paste-toggle{ display:none; }
 @media (max-width:760px){
   :root{
     --nv-nav-h:   calc(57px + env(safe-area-inset-bottom));
@@ -4481,6 +4483,22 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
      were 113px apart. The sticky bar wins on a phone -- but only while it
      is actually on screen, hence the body class rather than a blanket rule. */
   body.nv-has-book-bar #quickBookingBtn{ display:none; }
+
+  /* --- Booking starts at the form ------------------------------------
+     At 320x700 the first field began at 791px, under a tips bar, a
+     four-line intro and the full paste box. On a phone: no intro paragraph,
+     no tips bar (the fixed button now says how many fields are left), and
+     the paste box is one line until tapped. */
+  #client-newBooking .section-head p{ display:none; }
+  body.nv-has-book-bar .nvcoach-bar{ display:none; }
+  #nvPasteBox{ padding:10px 12px !important; }
+  #nvPasteBox:not(.nv-open) .nv-paste-sub,
+  #nvPasteBox:not(.nv-open) #nvPasteInput,
+  #nvPasteBox:not(.nv-open) #nvPasteFillBtn,
+  #nvPasteBox:not(.nv-open) .mt-8{ display:none; }
+  #nvPasteBox > div:first-child{ align-items:center !important; flex-wrap:nowrap !important; }
+  .nv-paste-toggle{ display:inline-flex !important; width:auto !important; flex:0 0 auto; min-height:40px; padding:8px 14px !important; white-space:nowrap; }
+  #nvPasteBox > div:first-child > div{ min-width:0; flex:1 1 auto; }
 
   /* --- The assistant must not sit on top of the booking fields ------
      The launcher is fixed at right:14px, 56x56. On the New Booking tab

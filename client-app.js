@@ -16468,12 +16468,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   function cid(){ try{ return (state.client&&state.client.id)||null; }catch(e){ return null; } }
   function myParcels(){ try{ var id=cid(); return state.parcels.filter(function(p){ return p.clientId===id; }); }catch(e){ return []; } }
   function isDelayed(p){ try{ return typeof window.nvParcelDelayed==="function" && window.nvParcelDelayed(p); }catch(e){ return false; } }
-  function bookingFormPercent(){
-    var ids=["bookingName","bookingPhone","bookingPickupCity","bookingCity","bookingCod","bookingAddress"];
-    var filled=0;
-    ids.forEach(function(id){ var el=document.getElementById(id); if(el && String(el.value||"").trim()) filled++; });
-    return Math.round(filled/ids.length*100);
+  /* Pickup City was one of the six, and the portal fills it in itself from
+     the merchant's account -- so an untouched form read as 17% done: the
+     coach said "Almost there." and the phone's fixed button offered
+     "Create Booking" over an empty form. Only fields the merchant types
+     count, and Product Details (required) now does. */
+  var NV_BOOK_REQUIRED=["bookingName","bookingPhone","bookingCity","bookingCod","bookingCategory","bookingAddress"];
+  function nvBookingMissing(){
+    return NV_BOOK_REQUIRED.filter(function(id){ var el=document.getElementById(id); return el && !String(el.value||"").trim(); });
   }
+  function bookingFormPercent(){
+    var present=NV_BOOK_REQUIRED.filter(function(id){ return !!document.getElementById(id); });
+    if(!present.length) return 0;
+    return Math.round((present.length-nvBookingMissing().length)/present.length*100);
+  }
+  window.nvBookingMissing = nvBookingMissing;
   /* Published because the mobile booking bar lives in a different IIFE. Its
      `typeof bookingFormPercent==="function"` test read an out-of-scope name,
      always got "undefined", and left the CTA stuck on "Create Booking" -- the
@@ -16797,6 +16806,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         sticky.dataset.nvMode="empty";
         return;
       }
+      /* Partly filled: say how much is left instead of offering a submit
+         that will only bounce. Tapping takes the merchant to the next
+         empty field. */
+      var missing=(typeof window.nvBookingMissing==="function")?window.nvBookingMissing():[];
+      if(pct!==null && pct<100 && missing.length){
+        sticky.textContent=missing.length+" required field"+(missing.length===1?"":"s")+" left";
+        sticky.disabled=false;
+        sticky.dataset.nvMode="incomplete";
+        return;
+      }
       sticky.dataset.nvMode="";
       sticky.textContent=real.textContent||"Create Booking";
       sticky.disabled=!!real.disabled;
@@ -16841,6 +16860,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     if(sticky && sticky.dataset.nvMode==="paste"){
       if(typeof applyPastedOrder==="function") applyPastedOrder();
       var pasteEl=document.getElementById("nvPasteInput"); if(pasteEl) pasteEl.scrollIntoView({behavior:"smooth",block:"center"});
+      return;
+    }
+    if(sticky && sticky.dataset.nvMode==="incomplete"){
+      var miss=(typeof window.nvBookingMissing==="function")?window.nvBookingMissing():[];
+      var first=miss.length?document.getElementById(miss[0]):null;
+      if(first){
+        var fld=first.closest(".field"); if(fld) fld.classList.add("nvfield-missing");
+        first.scrollIntoView({behavior:"smooth",block:"center"});
+        setTimeout(function(){ try{ first.focus({preventScroll:true}); }catch(e){ first.focus(); } },250);
+      }
       return;
     }
     var real=realBtn(); if(real && !real.disabled) real.click();
@@ -18979,4 +19008,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
      without a scroll event. Cheap: one rect per field, only on a phone. */
   setInterval(function(){ if(window.innerWidth < 760 && !document.hidden) soon(); }, 800);
   soon();
+})();
+
+/* ── Booking on a phone starts at the form ───────────────────────────────
+   At 320x700 the first booking field began below the fold: the tips bar, a
+   four-line intro and a 250px paste box came first. On a phone the paste
+   box now starts as one line that opens when tapped (it opens by itself if
+   it already holds text). */
+(function(){
+  "use strict";
+  function wire(){
+    var box=document.getElementById("nvPasteBox"), btn=document.getElementById("nvPasteToggle"), input=document.getElementById("nvPasteInput");
+    if(!box||!btn||btn.dataset.nvWired) return;
+    btn.dataset.nvWired="1";
+    function set(open){ box.classList.toggle("nv-open",open); btn.setAttribute("aria-expanded",open?"true":"false"); btn.textContent=open?"Hide":"Paste order"; }
+    set(!!(input && input.value.trim()));
+    btn.addEventListener("click",function(){ var open=!box.classList.contains("nv-open"); set(open); if(open&&input){ try{ input.focus(); }catch(e){} } });
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",wire); else wire();
 })();
