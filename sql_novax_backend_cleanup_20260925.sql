@@ -1,4 +1,13 @@
--- NovaX backend cleanup, 25 Sep 2026.
+-- NovaX backend cleanup, 25 Sep 2026.  APPLIED TO PRODUCTION 25 Sep 2026.
+--
+-- Result: database 177 MB -> 86 MB. hooks 97,059 -> 8,328 rows (13 MB -> 1 MB
+-- after vacuum full). Store-push webhooks 3 per status change -> 0 for every
+-- merchant without a store connection, verified end to end in a rollback.
+--
+-- The backup was downloaded and row-count verified (413,182) BEFORE the drop.
+-- pg_stat_user_tables reported n_live_tup = 0 for it because it had never been
+-- analyzed; trusting that would have destroyed 413,182 rows while reporting an
+-- empty table. count(*) before any drop.
 --
 -- Triggered by a 45.9% success rate and "exceeding usage limits" on a t4g.nano
 -- holding 967 parcels. Audit found 144 MB of a 177 MB database was a dead
