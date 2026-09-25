@@ -191,7 +191,7 @@
       function parcel(o){
         return { id:"demo-p-"+o.awb, awb:o.awb, client_id:CID, status:o.status,
           consignee:o.consignee, phone:o.phone, city:"Karachi", address:o.address,
-          cod_amount:o.cod, fee:200, exception:o.exception||null,
+          cod_amount:o.cod, fee:225, exception:o.exception||null,
           booked_at:iso(now-o.age), updated_at:iso(now-o.upd),
           invoice_id:o.invoice||null, invoiced_at:o.invoice?iso(now-6*H):null,
           rider_id:o.rider||null, pricing_mode:null, distance_km:null,
@@ -204,8 +204,8 @@
           profiles: [{ id:"demo-user", client_id:CID, role:"client", status:"active" }],
           clients: [{ id:CID, name:"Sana's Closet", code:"SC", phone:"0300-0000000",
                       city:"Karachi", address:"Shop 14, Tariq Road, Karachi",
-                      wallet_balance:3450, rate:220, status:"Active",
-                      rate_card:{ A:{overnight:220, additionalKg:85}, B:{overnight:225, additionalKg:85} },
+                      wallet_balance:3425, rate:225, status:"Active",
+                      rate_card:{ A:{overnight:225, additionalKg:85}, B:{overnight:250, additionalKg:85} },
                       meta:{ pickupCity:"Karachi" } }],
           parcels: [
             parcel({ awb:"N9000001", status:"Delivered", consignee:"Hina Raza",
@@ -226,14 +226,14 @@
                      cod:4300, age:3*H, upd:3*H, kg:"1.5 kg" })
           ],
           invoices: [{ id:"demo-inv-1", code:"INV-DEMO001", client_id:CID,
-            parcel_refs:["N9000001"], cod_total:3450, fee_total:200, net_payable:3250,
+            parcel_refs:["N9000001"], cod_total:3450, fee_total:225, net_payable:3225,
             due_to_novax:0, invoice_type:"COD Settlement", status:"Pushed to wallet",
             created_at:iso(now-6*H), wallet_pushed_at:iso(now-5*H), meta:{} }],
           wallet_ledger: [
-            { id:"demo-l-1", client_id:CID, entry_type:"invoice_credit", amount:3250,
+            { id:"demo-l-1", client_id:CID, entry_type:"invoice_credit", amount:3225,
               affects_balance:true, status:"Credited", reference_type:"invoice",
               reference_code:"INV-DEMO001", created_at:iso(now-5*H),
-              note:"Invoice INV-DEMO001 credited to wallet. Rs 3,250 now available to withdraw." },
+              note:"Invoice INV-DEMO001 credited to wallet. Rs 3,225 now available to withdraw." },
             { id:"demo-l-2", client_id:CID, entry_type:"admin_adjustment", amount:200,
               affects_balance:true, status:"Credited", created_at:iso(now-4*D),
               note:"Welcome credit" }
@@ -255,7 +255,7 @@
         /* Read RPCs the portal calls to render. Writes are refused by the
            shim's pattern match, so only the read side needs answers. */
         rpcs: {
-          client_wallet_summary: [{ available_balance:3450, pending_payout:0,
+          client_wallet_summary: [{ available_balance:3425, pending_payout:0,
             paid_this_month:0, lifetime_withdrawn:0 }],
           client_wallet_incoming: [{ delivered_uninvoiced:5849, parcels:2 }],
           client_bank_details: [],
@@ -366,14 +366,14 @@
              '<div class="nvob-btns">'+m.chip("Re-attempt","go")+m.chip("Open journey")+'</div>' },
         { t:"Your COD wallet", nav:"money",
           b:"Every rupee collected on your behalf, and exactly what it is doing right now.",
-          v: m.big("COD balance","Rs 3,450") +
-             m.rows([["Available","Rs 3,450","ok"],["In transit","Rs 5,849",""],["Pending payout","Rs 0",""]]) },
+          v: m.big("COD balance","Rs 3,425") +
+             m.rows([["Available","Rs 3,425","ok"],["In transit","Rs 5,849",""],["Pending payout","Rs 0",""]]) },
         { t:"How charges work", nav:"money",
           b:"COD collected, minus delivery charges, on one invoice. Nothing is taken twice.",
-          v: m.rows([["COD collected","Rs 3,450",""],["Delivery charge","− Rs 220",""],["Paid to you","Rs 3,230","ok"]]) },
+          v: m.rows([["COD collected","Rs 3,450",""],["Delivery charge","− Rs 225",""],["Paid to you","Rs 3,225","ok"]]) },
         { t:"Get paid out", nav:"money",
           b:"Request a withdrawal to your own bank account whenever the balance suits you.",
-          v: m.form([["To","PK… · your bank"],["Amount","Rs 3,250"]]) +
+          v: m.form([["To","PK… · your bank"],["Amount","Rs 3,425"]]) +
              '<div class="nvob-btns">'+m.chip("Request withdrawal","go")+'</div>' },
         { t:"Ask Autopilot anything", nav:"fab",
           b:"“Where is N9000002?” — it answers from your own parcels, in your own words.",
@@ -12060,7 +12060,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var MY=null, loaded=false, shadow={}, subscribed=false;
       var TAGS=(typeof STATUS_TAGS!=="undefined"&&STATUS_TAGS&&STATUS_TAGS.length)?STATUS_TAGS:["New booked"];
       function stageOf(s){ var i=TAGS.indexOf(s); return i<0?0:i; }
-      function stepsOf(s){ var i=stageOf(s); return i<=0?[TAGS[0]]:TAGS.slice(0,i+1); }
+      /* A fallback journey for a parcel with no recorded steps. TAGS lists
+         Delivered BEFORE the failure and return statuses, so slicing up to a
+         Refused parcel's index drew "Delivered" as a completed step above
+         "Refused" -- the same contradiction as N7810135, in the public demo.
+         Off-path statuses get the forward path up to Out for delivery, then
+         themselves. */
+      function stepsOf(s){
+        var i=stageOf(s); if(i<=0) return [TAGS[0]];
+        var d=TAGS.indexOf("Delivered");
+        return (d>0 && i>d) ? TAGS.slice(0,d).concat([s]) : TAGS.slice(0,i+1);
+      }
       function hrs(t){ if(!t) return 0; var ms=Date.now()-new Date(t).getTime(); return Number.isFinite(ms)?Math.max(0,ms/3600000):0; }
       /* BUG: these three were raw string slices of a timestamptz, so they
          printed the UTC clock -- five hours behind Karachi, and a full day out
