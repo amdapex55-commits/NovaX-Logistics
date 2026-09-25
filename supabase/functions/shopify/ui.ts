@@ -28,6 +28,9 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     --bg:#f6f6f7; --card:#fff; --ink:#1a1a1a; --muted:#616161;
     --line:#e3e3e3; --brand:#0b7c4d; --warn:#8a6116; --warnbg:#fff6e0;
     --bad:#8e1f0b; --badbg:#fdf0ed; --good:#0b7c4d; --goodbg:#eaf4ee;
+    /* The button is an inversion PAIR, not --ink used as a surface. --ink
+       flips to near-white in dark mode, and white-on-white measured 1.28:1. */
+    --btn-bg:#1a1a1a; --btn-fg:#fff; --neutralbg:#eee; --neutral:#555;
   }
   *{box-sizing:border-box}
   body{margin:0;padding:20px;background:var(--bg);color:var(--ink);
@@ -54,18 +57,25 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   tr:last-child td{border-bottom:0}
   .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
   .pill.booked{background:var(--goodbg);color:var(--good)}
-  .pill.skipped{background:#eee;color:#555}
+  .pill.skipped{background:var(--neutralbg);color:var(--neutral)}
   .pill.failed{background:var(--badbg);color:var(--bad)}
   .pill.pending_link,.pill.received{background:var(--warnbg);color:var(--warn)}
   .awb{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   .why{color:var(--muted);font-size:12px;margin-top:3px;max-width:46ch}
-  a.btn{display:inline-block;background:var(--ink);color:#fff;text-decoration:none;
+  a.btn{display:inline-block;background:var(--btn-bg);color:var(--btn-fg);text-decoration:none;
         padding:9px 14px;border-radius:8px;font-weight:600;font-size:13px}
   .empty{color:var(--muted);padding:22px 8px;text-align:center}
   .scroll{overflow-x:auto}
   @media (prefers-color-scheme:dark){
+    /* Shopify admin has a dark mode, so this runs for real merchants. The
+       background tokens were flipped here and the FOREGROUND ones were not:
+       --good/--warn/--bad kept their light-theme values and sat on the new
+       dark fills at 1.88-2.73:1, and the button reached 1.28:1. Every colour
+       used as text now flips with the surface it sits on. */
     :root{--bg:#1a1a1a;--card:#242424;--ink:#e3e3e3;--muted:#a0a0a0;--line:#3a3a3a;
-          --goodbg:#12301f;--warnbg:#302713;--badbg:#301613}
+          --goodbg:#12301f;--warnbg:#302713;--badbg:#301613;
+          --good:#5fe0a8;--warn:#e8b64c;--bad:#f0a396;--brand:#5fe0a8;
+          --btn-bg:#e3e3e3;--btn-fg:#1a1a1a;--neutralbg:#32363a;--neutral:#c2c8ce}
   }
 </style>
 </head>
