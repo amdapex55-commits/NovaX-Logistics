@@ -2139,6 +2139,20 @@
     .status.bad, .chip.bad { color: var(--nvu-bad-fg); background: var(--nvu-bad-bg); }
     .status.info, .chip.info { color: var(--nvu-info-fg); background: var(--nvu-info-bg); }
 
+    /* The two new hues. Indigo = out for delivery, slate = parked. */
+    .status.out,.chip.out{color:var(--nvu-out-fg);background:var(--nvu-out-bg);}
+    .status.hold,.chip.hold{color:var(--nvu-neutral-fg);background:var(--nvu-neutral-bg);}
+    /* An inset ring, never a border: a 1px border would add 2px to every pill
+       and reflow the status column. Each ring is drawn from its own hue's -ln
+       token, so the pills separate from the card in dark mode, where the soft
+       backgrounds are deliberately low-contrast translucent tints. */
+    .status.good,.chip.good{box-shadow:inset 0 0 0 1px var(--nvu-good-ln);}
+    .status.warn,.chip.warn{box-shadow:inset 0 0 0 1px var(--nvu-warn-ln);}
+    .status.bad,.chip.bad{box-shadow:inset 0 0 0 1px var(--nvu-bad-ln);}
+    .status.info,.chip.info{box-shadow:inset 0 0 0 1px var(--nvu-info-ln);}
+    .status.out,.chip.out{box-shadow:inset 0 0 0 1px var(--nvu-out-ln);}
+    .status.hold,.chip.hold{box-shadow:inset 0 0 0 1px var(--nvu-neutral-ln);}
+
     .mini-dot {
       width: 7px;
       height: 7px;
@@ -9006,12 +9020,38 @@ html,body{ background:var(--bg); color:var(--ink); }
       return PKR.format(n).replace("PKR", "Rs");
     }
 
+    /* Colour is the status system. Six hues, each meaning exactly one thing:
+       slate = parked (nothing is happening and nothing is wrong), blue = moving
+       through the network, indigo = on the doorstep run, green = DELIVERED and
+       nothing else, amber = needs a decision, red = failed.
+
+       This replaces a stage-number range that painted "out for delivery" the
+       same amber as "reattempt" -- saying "problem" about the best moment in
+       the journey -- and painted "return to shipper" the same green as
+       "delivered", which is how one hue ended up meaning five things. Unknown
+       statuses still fall through to the old stage ranges below. */
+    var NV_STATUS_HUE={
+      "New booked":"hold",
+      "Collected by rider":"info","Arrived at warehouse":"info",
+      "Parcel now in transit":"info","Parcel received at destination":"info",
+      "Parcel out for delivery":"out",
+      "Delivered":"good",
+      "Refused":"bad","Out of service area":"bad",
+      "Consignee not available":"warn","Reattempt":"warn","Reassigned":"warn",
+      "Ready for return":"warn","Return in transit":"warn",
+      "Return received at origin":"warn","Return out for delivery":"out",
+      "Return to shipper":"hold","Cancelled by client":"hold"
+    };
+    function nvStatusHue(st){
+      var s=(typeof nvStatus==="function")?nvStatus(st):String(st||"");
+      return NV_STATUS_HUE[s]||"";
+    }
     function statusClass(parcel) {
       const alert = alertForParcel(parcel);
       if (alert.level === "critical" || parcel.risk >= 65 || parcel.exception) return "bad";
       if (alert.level === "warning") return "warn";
-      if (parcel.status === "Cancelled by client") return "";
-      if (["Delivered", "Return to shipper"].includes(parcel.status)) return "good";
+      var hue = nvStatusHue(parcel.status);
+      if (hue) return hue;
       if (parcel.stage < 5) return "info";
       if (parcel.stage < 8) return "warn";
       return "good";
@@ -19264,7 +19304,8 @@ html,body{ background:var(--bg); color:var(--ink); }
   --nvu-warn-bg:#fff6e5; --nvu-warn-fg:#8a5a00; --nvu-warn-ln:#f0d9a8;
   --nvu-bad-bg:#fdecea;  --nvu-bad-fg:#b3261e;  --nvu-bad-ln:#f3c4bf;
   --nvu-info-bg:#eaf3fb; --nvu-info-fg:#155a82; --nvu-info-ln:#c9e0f2;
-  --nvu-neutral-bg:#eef3f0; --nvu-neutral-fg:#41564e;
+  --nvu-neutral-bg:#eef1f5; --nvu-neutral-fg:#4a5560; --nvu-neutral-ln:#d4dae1;
+  --nvu-out-bg:#eeecfb; --nvu-out-fg:#4a3fa0; --nvu-out-ln:#d5cff2;
   --nvu-track:rgba(0,0,0,.06); --nvu-sheen:rgba(255,255,255,.9);
   --nvu-shadow:rgba(6,20,14,.28); --nvu-scrim:rgba(8,20,16,.42);
 }
@@ -19285,7 +19326,8 @@ html,body{ background:var(--bg); color:var(--ink); }
   --nvu-warn-bg:rgba(232,182,76,.14); --nvu-warn-fg:#e8b64c; --nvu-warn-ln:rgba(232,182,76,.3);
   --nvu-bad-bg:rgba(224,96,75,.15);   --nvu-bad-fg:#f0a396;  --nvu-bad-ln:rgba(224,96,75,.32);
   --nvu-info-bg:rgba(75,184,232,.14); --nvu-info-fg:#7fc9f0; --nvu-info-ln:rgba(75,184,232,.3);
-  --nvu-neutral-bg:#16201c; --nvu-neutral-fg:#9dbdae;
+  --nvu-neutral-bg:#161b21; --nvu-neutral-fg:#9aa7b4; --nvu-neutral-ln:#28303a;
+  --nvu-out-bg:rgba(139,124,246,.16); --nvu-out-fg:#b4a8fc; --nvu-out-ln:rgba(139,124,246,.34);
   --nvu-track:rgba(255,255,255,.09); --nvu-sheen:rgba(255,255,255,.07);
   --nvu-shadow:rgba(0,0,0,.6); --nvu-scrim:rgba(2,8,5,.66);
 }
@@ -19298,7 +19340,8 @@ html,body{ background:var(--bg); color:var(--ink); }
     --nvu-warn-bg:rgba(232,182,76,.14); --nvu-warn-fg:#e8b64c; --nvu-warn-ln:rgba(232,182,76,.3);
     --nvu-bad-bg:rgba(224,96,75,.15);   --nvu-bad-fg:#f0a396;  --nvu-bad-ln:rgba(224,96,75,.32);
     --nvu-info-bg:rgba(75,184,232,.14); --nvu-info-fg:#7fc9f0; --nvu-info-ln:rgba(75,184,232,.3);
-    --nvu-neutral-bg:#16201c; --nvu-neutral-fg:#9dbdae;
+    --nvu-neutral-bg:#161b21; --nvu-neutral-fg:#9aa7b4; --nvu-neutral-ln:#28303a;
+  --nvu-out-bg:rgba(139,124,246,.16); --nvu-out-fg:#b4a8fc; --nvu-out-ln:rgba(139,124,246,.34);
     --nvu-track:rgba(255,255,255,.09); --nvu-sheen:rgba(255,255,255,.07);
     --nvu-shadow:rgba(0,0,0,.6); --nvu-scrim:rgba(2,8,5,.66);
   }

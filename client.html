@@ -76,9 +76,9 @@
   <style>
     :root{
       color-scheme: light;
-      --ink:#10201b;--muted:#60726b;--line:#d9e4df;--line-strong:#b6c9c0;--bg:#f4f8f5;
-      --panel:#ffffff;--panel-soft:#edf5f1;--green:#0c7c59;--green-ink:#0c7c59;/* --green was doing two incompatible jobs. As TEXT on a light surface it must be dark to read; as a SURFACE under a white label it must also stay dark. In DARK MODE those diverge: text has to brighten against the dark ground, a button surface must not, or its white label falls to 2.21:1. Aliasing --green to the bright accent would fix the 10 text uses and break 29 buttons. Split instead: --green = surface, --green-ink = text/icon on a light surface. */--green-2:#13a36f;--mint:#dff6ea;
-      --amber:#c77913;--amber-soft:#fff0d7;--red:#b03a2e;--red-soft:#ffe3df;--blue:#1d6f9f;--blue-soft:#dff1fb;
+      --ink:#121821;--muted:#5b6875;--line:#dde2e8;--line-strong:#bcc4cd;--bg:#f5f7fa;
+      --panel:#ffffff;--panel-soft:#eef1f5;--green:#0c7c59;--green-ink:#0c7c59;/* --green was doing two incompatible jobs. As TEXT on a light surface it must be dark to read; as a SURFACE under a white label it must also stay dark. In DARK MODE those diverge: text has to brighten against the dark ground, a button surface must not, or its white label falls to 2.21:1. Aliasing --green to the bright accent would fix the 10 text uses and break 29 buttons. Split instead: --green = surface, --green-ink = text/icon on a light surface. */--green-2:#13a36f;--mint:#dff6ea;
+      --amber:#c77913;--amber-soft:#fff0d7;--red:#b03a2e;--red-soft:#ffe3df;--blue:#1d6f9f;--blue-soft:#dff1fb;--indigo:#4a3fa0;--indigo-soft:#eeecfb;
       --shadow:0 18px 50px rgba(21,45,36,.12);--radius:8px;--speed:260ms;
       font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     }
@@ -90,7 +90,7 @@
        creating a scroll container, so sticky keeps working.
        `hidden` is kept first as a fallback for Safari < 16, which ignores
        `clip`; those browsers get today's behaviour, nothing worse. */
-    body{margin:0;min-height:100dvh;color:var(--ink);overflow-x:hidden;overflow-x:clip;background:linear-gradient(135deg,rgba(12,124,89,.08),transparent 28%),linear-gradient(315deg,rgba(29,111,159,.08),transparent 32%),var(--bg);}
+    body{margin:0;min-height:100dvh;color:var(--ink);overflow-x:hidden;overflow-x:clip;background:linear-gradient(135deg,rgba(139,124,246,.07),transparent 28%),linear-gradient(315deg,rgba(29,111,159,.08),transparent 32%),var(--bg);}
     button,input,select,textarea{font:inherit;}
     button{border:0;cursor:pointer;}
     /* Same reason as body above: this wrapper contains the sticky header, so
@@ -191,8 +191,8 @@
     .hamburger-btn span:not(.hamburger-label){display:block;width:18px;height:2px;border-radius:var(--r-pill);background:white;}
     .client-menu{display:grid;gap:8px;padding:10px;border:1px solid rgba(16,32,27,.08);border-radius:var(--radius);background:var(--nvu-bg);box-shadow:var(--sh-1);}
     .client-tab{width:100%;min-height:32px;border-radius:var(--radius);background:transparent;color:var(--muted);text-align:left;padding:0 10px;font-weight:650;font-size:13px;transition:background var(--speed),color var(--speed),transform var(--speed);}
-    .client-tab:hover{background:rgba(12,124,89,.08);transform:translateX(2px);}
-    .client-tab.active{background:var(--green);color:#fff;}/* was background:var(--ink);color:white -- an INK token used as a SURFACE. --ink correctly inverts to #eaf3ee in dark, so the active tab became white text on near-white: 1.13:1, invisible. The accent pair is semantically right for a selected nav item and passes in both themes (5.19:1 light, 8.59:1 dark). */
+    .client-tab:hover{background:var(--nvu-track);transform:translateX(2px);}
+    .client-tab.active{background:var(--nvu-ink);color:var(--nvu-bg);}/* was background:var(--ink);color:white -- an INK token used as a SURFACE. --ink correctly inverts to #eaf3ee in dark, so the active tab became white text on near-white: 1.13:1, invisible. The accent pair is semantically right for a selected nav item and passes in both themes (5.19:1 light, 8.59:1 dark). */
     /* Same trap as .view above: a retained transform here would capture any
        position:fixed element inside a module. */
     .client-module{display:none;animation:fadeUp .28s ease backwards;}
@@ -213,7 +213,7 @@
     .grid.metrics .metric:nth-child(2){animation-delay:.05s;}
     .grid.metrics .metric:nth-child(3){animation-delay:.1s;}
     .grid.metrics .metric:nth-child(4){animation-delay:.15s;}
-    .metric::after{content:"";position:absolute;inset:auto -24px -38px auto;width:96px;height:96px;border-radius:50%;background:rgba(12,124,89,.08);}
+    .metric::after{content:"";position:absolute;inset:auto -24px -38px auto;width:96px;height:96px;border-radius:50%;background:var(--nvu-track);}
     .metric label{display:block;color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;}
     .metric strong{display:block;font-size:clamp(24px,3vw,34px);margin:8px 0 10px;line-height:1;overflow-wrap:anywhere;animation:countPop .45s ease both;}
     .meter{width:100%;height:9px;border-radius:var(--r-pill);background:var(--nvu-line);overflow:hidden;position:relative;}
@@ -231,7 +231,7 @@
     th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;background:rgba(237,245,241,.75);}
     tr:last-child td{border-bottom:0;}
     tbody tr{transition:background var(--speed);}
-    tbody tr:hover{background:rgba(12,124,89,.04);}
+    tbody tr:hover{background:var(--nvu-track);}
     .status,.chip{display:inline-flex;align-items:center;gap:6px;padding:6px 8px;border-radius:var(--r-pill);font-size:12px;font-weight:800;white-space:nowrap;}
     /* Measured 1.8:1 in dark mode: #075f43 sat on --mint, which flips to a dark
        green in dark theme. That is the DELIVERED chip, the one a merchant sees
@@ -242,6 +242,20 @@
     .status.warn,.chip.warn{color:var(--nvu-warn-fg);background:var(--nvu-warn-bg);}
     .status.bad,.chip.bad{color:var(--nvu-bad-fg);background:var(--nvu-bad-bg);}
     .status.info,.chip.info{color:var(--nvu-info-fg);background:var(--nvu-info-bg);}
+
+    /* The two new hues. Indigo = out for delivery, slate = parked. */
+    .status.out,.chip.out{color:var(--nvu-out-fg);background:var(--nvu-out-bg);}
+    .status.hold,.chip.hold{color:var(--nvu-neutral-fg);background:var(--nvu-neutral-bg);}
+    /* An inset ring, never a border: a 1px border would add 2px to every pill
+       and reflow the status column. Each ring is drawn from its own hue's -ln
+       token, so the pills separate from the card in dark mode, where the soft
+       backgrounds are deliberately low-contrast translucent tints. */
+    .status.good,.chip.good{box-shadow:inset 0 0 0 1px var(--nvu-good-ln);}
+    .status.warn,.chip.warn{box-shadow:inset 0 0 0 1px var(--nvu-warn-ln);}
+    .status.bad,.chip.bad{box-shadow:inset 0 0 0 1px var(--nvu-bad-ln);}
+    .status.info,.chip.info{box-shadow:inset 0 0 0 1px var(--nvu-info-ln);}
+    .status.out,.chip.out{box-shadow:inset 0 0 0 1px var(--nvu-out-ln);}
+    .status.hold,.chip.hold{box-shadow:inset 0 0 0 1px var(--nvu-neutral-ln);}
     .mini-dot{width:7px;height:7px;border-radius:50%;background:currentColor;}
     .journey{display:grid;gap:10px;}
     .journey-item{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:start;padding:10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--nvu-bg);}
@@ -372,7 +386,17 @@
     .nv-trend-labels span{flex:1;text-align:center;font-size:10px;color:var(--muted)}
 
     /* NovaX dashboard refresh: optional dark mode (gated behind data-theme attr, zero effect unless toggled) */
-    html[data-theme="dark"]{--green-ink:#3ddc97;color-scheme:dark;--ink:#eaf3ee;--muted:#9db3ac;--line:#274038;--line-strong:#345449;--bg:#0b1512;--panel:#101d18;--panel-soft:#132420;--mint:#123227;}
+    html[data-theme="dark"]{--green-ink:#3ddc97;color-scheme:dark;--ink:#e8eef4;--muted:#9aa7b4;--line:#1d232a;--line-strong:#28303a;--bg:#0b0e12;--panel:#11151a;--panel-soft:#161b21;--mint:#123227;
+      /* The whole accent set, redefined for dark. Previously only --green-ink
+         and --mint were, so --amber-soft/--red-soft/--blue-soft kept their
+         light values and painted cream, pink and ice-blue chips onto dark
+         cards. Soft fills are rgba of the ink on purpose: a translucent tint
+         darkens over a light surface and lightens over a dark one, so it can
+         never be wrong in one theme the way a second pale hex always is. */
+      --amber:#e8b64c;--amber-soft:rgba(232,182,76,.15);
+      --red:#f0a396;--red-soft:rgba(224,96,75,.16);
+      --blue:#7fc9f0;--blue-soft:rgba(75,184,232,.15);
+      --indigo:#b4a8fc;--indigo-soft:rgba(139,124,246,.16);}
     html[data-theme="dark"] body{background:var(--bg);color:var(--ink)}
     html[data-theme="dark"] .panel,html[data-theme="dark"] .ops-card,html[data-theme="dark"] .metric,html[data-theme="dark"] .nv-onboarding,html[data-theme="dark"] .nv-trend-panel,html[data-theme="dark"] .seller-step,html[data-theme="dark"] .client-menu-head,html[data-theme="dark"] .client-side{background:var(--panel);border-color:var(--line);color:var(--ink)}
     html[data-theme="dark"] table{color:var(--ink)}
@@ -570,7 +594,7 @@
     .parcel-card dd{margin:3px 0 0;font-weight:750;font-size:13px;overflow-wrap:anywhere;word-break:break-word;}
     .wide-scroll{overflow-x:auto;}
     .wide-scroll table{min-width:760px;}
-    .required-star{color:var(--green-2);font-weight:900;}
+    .required-star{color:var(--green-ink);font-weight:900;}
     /* ===== Added feature styling ===== */
     .status-board{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;}
     .status-col{flex:1 1 268px;min-width:248px;max-width:340px;border:1px solid var(--line);border-radius:14px;background:var(--panel-soft);padding:14px;display:flex;flex-direction:column;gap:10px;}
@@ -616,7 +640,7 @@
     @keyframes sheen{45%,100%{transform:translateX(120%);}}
     .wallet-hero label{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#9fe9c8;font-weight:800;}
     .wallet-balance{font-size:clamp(32px,7vw,54px);font-weight:900;margin:8px 0 6px;line-height:1;}
-    .wallet-pulse{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:#bff3da;}
+    .wallet-pulse{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--nvu-good-fg);}
     .seller-journey-card{display:grid;gap:10px;}
     .seller-step{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:var(--r-xl);background:var(--nvu-bg);}
     .seller-step.current{border-color:var(--green);background:#effdf6;}
@@ -2295,7 +2319,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=06d577bd" defer></script>
+  <script src="client-app.js?v=bcf295aa" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2310,7 +2334,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=bcf295aa<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -2468,7 +2492,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
               <div id="nvInsightCards" style="display:none"></div>
               <div class="nv-onboarding" id="nvOnboardingChecklist" style="display:none"></div>
               <div class="panel" id="clientAccountHistoryPanel">
-                <div class="section-head" id="accountHistoryHead" role="button" tabindex="0" aria-expanded="false" aria-controls="accountHistoryBody" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="toggleAccountHistoryFilters()" style="cursor:pointer;user-select:none"><div><h3>Account History <span id="accountHistoryChevron" style="font-size:13px;color:var(--green)">▸</span></h3><p>Tap to change the date range.</p></div></div>
+                <div class="section-head" id="accountHistoryHead" role="button" tabindex="0" aria-expanded="false" aria-controls="accountHistoryBody" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="toggleAccountHistoryFilters()" style="cursor:pointer;user-select:none"><div><h3>Account History <span id="accountHistoryChevron" style="font-size:13px;color:var(--green-ink)">▸</span></h3><p>Tap to change the date range.</p></div></div>
                 <div class="date-range" id="accountHistoryBody" style="display:none">
                   <div class="field"><label for="clientDateFrom">From</label><input type="date" id="clientDateFrom"></div>
                   <div class="field"><label for="clientDateTo">To</label><input type="date" id="clientDateTo"></div>
@@ -2479,7 +2503,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
               <div class="grid metrics mt-14" id="clientMetrics"></div>
               <div class="nv-trend-panel mt-14" id="nvTrendPanel"></div>
               <div class="panel mt-14" id="clientLiveStatusPanel">
-                <div class="section-head" id="statusBoardHead" role="button" tabindex="0" aria-expanded="false" aria-controls="clientStatusBoard" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="toggleStatusBoard()" style="cursor:pointer;user-select:none"><div><h3>Live Status Board <span id="statusBoardChevron" style="font-size:13px;color:var(--green)">▸</span></h3><p id="statusBoardSummary">Tap to expand your parcels grouped by status.</p></div></div>
+                <div class="section-head" id="statusBoardHead" role="button" tabindex="0" aria-expanded="false" aria-controls="clientStatusBoard" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="toggleStatusBoard()" style="cursor:pointer;user-select:none"><div><h3>Live Status Board <span id="statusBoardChevron" style="font-size:13px;color:var(--green-ink)">▸</span></h3><p id="statusBoardSummary">Tap to expand your parcels grouped by status.</p></div></div>
                 <div class="status-board" id="clientStatusBoard" style="display:none"></div>
               </div>
               <div class="grid mt-14" id="clientDashboardMainGrid">
@@ -2523,7 +2547,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 <form id="nvBookingForm">
                 <div id="nvPasteBox" style="background:var(--panel-soft);border:1px solid #d8ece3;border-radius:var(--radius);padding:12px 14px;margin-bottom:14px">
                   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
-                    <div><strong style="font-size:13.5px;color:var(--green)">Paste Order To Book</strong><div class="footer-note mt-2 nv-paste-sub">Paste a WhatsApp or Instagram order and I'll fill the form for you.</div></div>
+                    <div><strong style="font-size:13.5px;color:var(--green-ink)">Paste Order To Book</strong><div class="footer-note mt-2 nv-paste-sub">Paste a WhatsApp or Instagram order and I'll fill the form for you.</div></div>
                     <button type="button" class="ghost-btn nv-paste-toggle" id="nvPasteToggle" aria-controls="nvPasteInput" aria-expanded="false">Paste order</button>
                   </div>
                   <textarea id="nvPasteInput" aria-label="Paste a WhatsApp or SMS order to fill the booking form" placeholder="e.g. Ali Khan 03123456789 Lahore COD 2500 black hoodie DHA Phase 5 house 22" style="width:100%;margin-top:10px;min-height:58px;border-radius:8px;border:1px solid #d8ece3;padding:8px 10px;font-size:13px;font-family:inherit;box-sizing:border-box"></textarea>
@@ -3212,14 +3236,19 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   --ring:0 0 0 3px rgba(19,163,111,.28);
   --r-xs:2px; --r-sm:6px; --r-md:8px; --r-lg:10px;
   --r-xl:12px; --r-2xl:16px; --r-pill:999px;
-  --nvu-bg:#ffffff; --nvu-bg-2:#fafdfb; --nvu-line:#e7efeb; --nvu-line-2:#d8e6e0;
-  --nvu-ink:#10201b; --nvu-ink-2:#60726b; --nvu-ink-3:#687972;
+  --nvu-bg:#ffffff; --nvu-bg-2:#f7f9fb; --nvu-line:#e5e9ee; --nvu-line-2:#d4dae1;
+  --nvu-ink:#121821; --nvu-ink-2:#5b6875; --nvu-ink-3:#667380;
   --nvu-accent:#0c7c59; --nvu-accent-ink:#ffffff;
   --nvu-good-bg:#e6f6ee; --nvu-good-fg:#0c7c59; --nvu-good-ln:#b7e3ce;
   --nvu-warn-bg:#fff6e5; --nvu-warn-fg:#8a5a00; --nvu-warn-ln:#f0d9a8;
   --nvu-bad-bg:#fdecea;  --nvu-bad-fg:#b3261e;  --nvu-bad-ln:#f3c4bf;
   --nvu-info-bg:#eaf3fb; --nvu-info-fg:#155a82; --nvu-info-ln:#c9e0f2;
-  --nvu-neutral-bg:#eef3f0; --nvu-neutral-fg:#41564e;
+  --nvu-neutral-bg:#eef1f5; --nvu-neutral-fg:#4a5560; --nvu-neutral-ln:#d4dae1;
+  /* Indigo is the one hue added to this family. It carries "out for delivery":
+     the parcel is on the doorstep run, which is neither in-transit blue nor
+     delivered green, and painting it warn-amber said "problem" when there
+     is none. Three slots in every theme block, like every other hue here. */
+  --nvu-out-bg:#eeecfb; --nvu-out-fg:#4a3fa0; --nvu-out-ln:#d5cff2;
   --nvu-track:rgba(0,0,0,.06); --nvu-sheen:rgba(255,255,255,.9);
   --nvu-shadow:rgba(6,20,14,.28); --nvu-scrim:rgba(8,20,16,.42);
 }
@@ -3233,27 +3262,29 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   --glow-2:0 10px 26px -8px rgba(20,199,123,.5);
   --glow-3:0 18px 44px -12px rgba(20,199,123,.55);
   --ring:0 0 0 3px rgba(20,199,123,.35);
-  --nvu-bg:#0B0F0D; --nvu-bg-2:#101512; --nvu-line:#1c2723; --nvu-line-2:#26332e;
-  --nvu-ink:#eafff5; --nvu-ink-2:#9dbdae; --nvu-ink-3:#6f8a7e;
+  --nvu-bg:#0b0e12; --nvu-bg-2:#11151a; --nvu-line:#1d232a; --nvu-line-2:#28303a;
+  --nvu-ink:#e8eef4; --nvu-ink-2:#9aa7b4; --nvu-ink-3:#75828f;
   --nvu-accent:#14c77b; --nvu-accent-ink:#04130d;
   --nvu-good-bg:rgba(20,199,123,.14); --nvu-good-fg:#5fe0a8; --nvu-good-ln:rgba(20,199,123,.32);
   --nvu-warn-bg:rgba(232,182,76,.14); --nvu-warn-fg:#e8b64c; --nvu-warn-ln:rgba(232,182,76,.3);
   --nvu-bad-bg:rgba(224,96,75,.15);   --nvu-bad-fg:#f0a396;  --nvu-bad-ln:rgba(224,96,75,.32);
   --nvu-info-bg:rgba(75,184,232,.14); --nvu-info-fg:#7fc9f0; --nvu-info-ln:rgba(75,184,232,.3);
-  --nvu-neutral-bg:#16201c; --nvu-neutral-fg:#9dbdae;
+  --nvu-neutral-bg:#161b21; --nvu-neutral-fg:#9aa7b4; --nvu-neutral-ln:#28303a;
+  --nvu-out-bg:rgba(139,124,246,.16); --nvu-out-fg:#b4a8fc; --nvu-out-ln:rgba(139,124,246,.34);
   --nvu-track:rgba(255,255,255,.09); --nvu-sheen:rgba(255,255,255,.07);
   --nvu-shadow:rgba(0,0,0,.6); --nvu-scrim:rgba(2,8,5,.66);
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --nvu-bg:#0B0F0D; --nvu-bg-2:#101512; --nvu-line:#1c2723; --nvu-line-2:#26332e;
-    --nvu-ink:#eafff5; --nvu-ink-2:#9dbdae; --nvu-ink-3:#6f8a7e;
+    --nvu-bg:#0b0e12; --nvu-bg-2:#11151a; --nvu-line:#1d232a; --nvu-line-2:#28303a;
+    --nvu-ink:#e8eef4; --nvu-ink-2:#9aa7b4; --nvu-ink-3:#75828f;
     --nvu-accent:#14c77b; --nvu-accent-ink:#04130d;
     --nvu-good-bg:rgba(20,199,123,.14); --nvu-good-fg:#5fe0a8; --nvu-good-ln:rgba(20,199,123,.32);
     --nvu-warn-bg:rgba(232,182,76,.14); --nvu-warn-fg:#e8b64c; --nvu-warn-ln:rgba(232,182,76,.3);
     --nvu-bad-bg:rgba(224,96,75,.15);   --nvu-bad-fg:#f0a396;  --nvu-bad-ln:rgba(224,96,75,.32);
     --nvu-info-bg:rgba(75,184,232,.14); --nvu-info-fg:#7fc9f0; --nvu-info-ln:rgba(75,184,232,.3);
-    --nvu-neutral-bg:#16201c; --nvu-neutral-fg:#9dbdae;
+    --nvu-neutral-bg:#161b21; --nvu-neutral-fg:#9aa7b4; --nvu-neutral-ln:#28303a;
+  --nvu-out-bg:rgba(139,124,246,.16); --nvu-out-fg:#b4a8fc; --nvu-out-ln:rgba(139,124,246,.34);
     --nvu-track:rgba(255,255,255,.09); --nvu-sheen:rgba(255,255,255,.07);
     --nvu-shadow:rgba(0,0,0,.6); --nvu-scrim:rgba(2,8,5,.66);
   }
@@ -3521,7 +3552,7 @@ html[data-theme="dark"] .nv-command-strip .nv-cs-ghost:hover{ background:var(--m
 html[data-theme="dark"] .hamburger-btn span:not(.hamburger-label){ background:var(--ink); }
 html[data-theme="dark"] .nv-inc-chip{ background:var(--panel-soft);color:var(--ink); }
 html[data-theme="dark"] th{ background:var(--panel-soft);color:var(--muted); }
-html[data-theme="dark"] tbody tr:hover{ background:rgba(19,163,111,.08); }
+html[data-theme="dark"] tbody tr:hover{ background:var(--nvu-track); }
 
 /* Page chrome. The topbar kept a light tint with dark brand text, and the
    inactive client tabs stayed light -- so the header read as a white band
@@ -3530,7 +3561,7 @@ html[data-theme="dark"] .topbar{ background:rgba(11,21,18,.92); border-bottom-co
 html[data-theme="dark"] .brand-text strong{ color:var(--ink); }
 html[data-theme="dark"] .brand-text span{ color:var(--muted); }
 html[data-theme="dark"] .client-tab{ background:var(--panel-soft); color:var(--ink); }
-html[data-theme="dark"] .client-tab.active{ background:var(--green); color:#04130d; }
+html[data-theme="dark"] .client-tab.active{ background:var(--nvu-ink); color:var(--nvu-bg); }
 html[data-theme="dark"] .client-menu-head{ background:var(--panel); color:var(--ink); }
 html[data-theme="dark"] .nv-command-strip{ border-color:var(--line); }
 
@@ -3571,7 +3602,7 @@ html[data-theme="dark"] .topbar{
    with white text on top -- "Dashboard", "New Booking", "Wallet" etc. all
    rendered as a blank light bar. */
 html[data-theme="dark"] .client-tab{ background:var(--panel-soft); color:var(--ink); }
-html[data-theme="dark"] .client-tab.active{ background:var(--green)!important; color:#04130d!important; }
+html[data-theme="dark"] .client-tab.active{ background:var(--nvu-ink)!important; color:var(--nvu-bg)!important; }
 html[data-theme="dark"] .client-tab:hover{ background:rgba(19,163,111,.16); }
 
 /* 3. "Client Portal" page heading was #071d17 -- near-black on near-black. */
@@ -3703,9 +3734,84 @@ html[data-theme="dark"] .barcode-img{ background:#fff!important; }
 .nv-w2-rail em{display:block;font-style:normal;font-size:10.5px;line-height:1.3;
   color:var(--nvu-ink-2);margin-top:2px}
 .nv-w2-rail li.is-empty strong,.nv-w2-rail li.is-empty em{opacity:.42}
-.nv-w2-rail li.is-now{background:var(--nvu-good-bg);border-radius:12px;padding:8px 8px 9px;margin-top:-8px}
-.nv-w2-rail li.is-now span{color:var(--green-ink,#0c7c59)}
-.nv-w2-here{font-size:18px!important;line-height:1;color:var(--green,#13a36f)!important}
+
+/* The rail is the one place in the portal where colour shows PROGRESS rather
+   than state, so it runs as a ramp: slate (not your money yet) -> blue (being
+   processed) -> green (yours, and the only green on this screen) -> indigo (in
+   flight to your bank) -> slate again (settled, nothing to do). Neutral
+   bookends mean the two stages that need nothing from you recede, and the eye
+   lands on Available. Every colour is a --nvu-* token, so all five stages are
+   defined in both themes by construction. */
+.nv-w2-rail li[data-stage] span{color:var(--nv-rail-fg,var(--nvu-ink-2))}
+.nv-w2-rail li[data-stage="transit"]{--nv-rail-fg:var(--nvu-neutral-fg);--nv-rail-ln:var(--nvu-neutral-ln)}
+.nv-w2-rail li[data-stage="clearing"]{--nv-rail-fg:var(--nvu-info-fg);--nv-rail-ln:var(--nvu-info-ln)}
+.nv-w2-rail li[data-stage="available"]{--nv-rail-fg:var(--nvu-good-fg);--nv-rail-ln:var(--nvu-good-ln)}
+.nv-w2-rail li[data-stage="requested"]{--nv-rail-fg:var(--nvu-out-fg);--nv-rail-ln:var(--nvu-out-ln)}
+.nv-w2-rail li[data-stage="paid"]{--nv-rail-fg:var(--nvu-neutral-fg);--nv-rail-ln:var(--nvu-neutral-ln)}
+/* The connector takes the hue of the stage it arrives at, so the ramp reads as
+   one continuous line instead of five separate labels. */
+.nv-w2-rail li+li::before{background:var(--nv-rail-ln,var(--line))}
+/* A stage holding no money does not earn its colour. */
+.nv-w2-rail li.is-empty{--nv-rail-fg:var(--nvu-ink-3);--nv-rail-ln:var(--line)}
+
+.nv-w2-rail li.is-now{background:var(--nvu-good-bg);border-radius:12px;padding:8px 8px 9px;margin-top:-8px;
+  box-shadow:inset 0 0 0 1px var(--nvu-good-ln)}
+.nv-w2-rail li.is-now span{color:var(--nvu-good-fg)}
+.nv-w2-here{font-size:18px!important;line-height:1;color:var(--nvu-good-fg)!important}
+
+/* ---------------------------------------------------------------------------
+   Motion that carries state. The portal already had 53 keyframes and nearly all
+   of them were entrances: they fire once on mount and then never say anything
+   again. These four animate a CHANGE instead, which is the only thing motion is
+   actually good at communicating. Every one is switched off under
+   prefers-reduced-motion at the foot of this block, and none of them gates
+   content -- nothing here starts at opacity:0 waiting on a class or a script,
+   so if the animation never runs the page still reads correctly.
+   --------------------------------------------------------------------------- */
+
+/* 1. The rail draws itself left to right, so the ramp reads as one line being
+      traced rather than five labels appearing at once. transform-origin is the
+      whole point: without it the segment grows from its centre outwards. */
+@keyframes nvRailDraw{ from{ transform:scaleX(0) } to{ transform:scaleX(1) } }
+.nv-w2-rail li+li::before{ transform-origin:left center; animation:nvRailDraw 420ms cubic-bezier(.4,0,.2,1) both }
+.nv-w2-rail li:nth-child(2)::before{ animation-delay:60ms }
+.nv-w2-rail li:nth-child(3)::before{ animation-delay:140ms }
+.nv-w2-rail li:nth-child(4)::before{ animation-delay:220ms }
+.nv-w2-rail li:nth-child(5)::before{ animation-delay:300ms }
+
+/* 2. "Out for delivery" is the only status where something is happening to the
+      parcel THIS MINUTE, so it is the only one that breathes. Confined to that
+      one hue on purpose: a table of 200 rows each running an infinite animation
+      is a battery bill, and a page where everything pulses says nothing. Opacity
+      only, so it stays on the compositor. */
+/* Named for its owner: client-app.js injects a DIFFERENT nvLiveDot at
+   runtime and keyframe names are global, so a generic name here loses. */
+@keyframes nvStatusLiveDot{ 0%,100%{ opacity:1 } 50%{ opacity:.35 } }
+.status.out .mini-dot{ animation:nvStatusLiveDot 2.2s ease-in-out infinite }
+
+/* 3. A figure that CHANGED is not the same as a figure that was redrawn. This
+      tints the number in its own hue for a beat and lets it fall back to ink,
+      so a balance that moved is distinguishable from one that merely
+      re-rendered. Applied by nvFlashValue(). */
+@keyframes nvValueFlash{ 0%{ color:var(--nv-flash,var(--nvu-good-fg)); transform:translateY(-1px) }
+                         100%{ color:inherit; transform:none } }
+.nv-flash{ animation:nvValueFlash 900ms cubic-bezier(.2,.7,.3,1) both }
+
+/* 4. The light/dark flip used to snap. Transitions never fire on first paint --
+      there is no previous value to interpolate from -- so this costs nothing on
+      load and only runs when the tokens are actually swapped. Kept to the three
+      properties that carry the theme; transitioning `all` here would drag every
+      layout property into the flip. */
+body,.panel,.ops-card,.metric,.client-side,.client-menu-head,.status,.chip,
+.nv-w2-rail li,.client-tab{
+  transition:background-color 220ms ease, color 220ms ease, box-shadow 220ms ease;
+}
+
+@media (prefers-reduced-motion:reduce){
+  .nv-w2-rail li+li::before,.status.out .mini-dot,.nv-flash{ animation:none !important; }
+  body,.panel,.ops-card,.metric,.client-side,.client-menu-head,.status,.chip,
+  .nv-w2-rail li,.client-tab{ transition:none !important; }
+}
 
 /* Forms open on demand. */
 .nv-w2-forms[hidden]{display:none}
@@ -4760,8 +4866,8 @@ body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
   display:flex;align-items:center;gap:6px}
 .nv-eta::before{content:"";width:6px;height:6px;border-radius:50%;
   background:var(--nvu-accent,#14c77b);flex:0 0 auto}
-.nv-eta.late{color:#f0b429}
-.nv-eta.late::before{background:#f0b429}
+.nv-eta.late{color:var(--nvu-warn-fg)}
+.nv-eta.late::before{background:var(--nvu-warn-fg)}
 
 .nv-age{margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   padding:9px 11px;border-radius:12px;border-left:3px solid transparent;
