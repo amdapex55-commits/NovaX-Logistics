@@ -1,4 +1,21 @@
 -- ============================================================================
+-- SUPERSEDED — DO NOT RUN. Verified against production 25 Sep 2026.
+--
+-- This refactor is ALREADY LIVE. admin_book_parcel_for_client() is now the
+-- thin guarded caller it describes, nv_book_parcel_core() exists with 16
+-- arguments, and nvsh_book_parcel() (from sql_novax_shopify_app.sql) calls
+-- the core with source 'shopify_app'. Booked end to end in a rollback on
+-- 25 Sep: AWB issued, fee Rs 335 on a 1.2 kg Lahore parcel, source correct.
+--
+-- Its own pre-flight now FAILS, and that is the pre-flight working, not a
+-- problem: it looks for the OLD monolithic body in
+-- admin_book_parcel_for_client(), and those lines have since moved into
+-- nv_book_parcel_core(). Running this file would replace a live money
+-- function with a body written on 26 Aug.
+--
+-- Kept for the reasoning below, which is still the right reasoning.
+-- ============================================================================
+--
 -- Shared booking core, so the Shopify app can book without duplicating money
 -- logic.
 --
