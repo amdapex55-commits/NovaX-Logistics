@@ -12,6 +12,12 @@ embedded = true
 # address, phone). Do not widen: Shopify approves only the minimum, and
 # unapproved fields are silently redacted rather than erroring.
 scopes = "read_orders,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,write_fulfillments"
+# The code implements the classic OAuth dance (/install -> authorize ->
+# /callback -> access_token). Managed install (this false) never calls
+# /callback at all: Shopify grants the scopes itself and expects a token
+# exchange, which this function does not implement. Left false, every shop
+# installs and then sits with no access token, forever unlinked.
+use_legacy_install_flow = true
 
 [auth]
 redirect_urls = [
@@ -27,4 +33,3 @@ api_version = "2026-07"
   shop_deletion_url         = "https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/shopify/webhooks/shop-redact"
 
 [build]
-include_config_on_deploy = true
