@@ -11859,37 +11859,22 @@ html,body{ background:var(--bg); color:var(--ink); }
         }
       }
 
-      /* A forward step must not silently sweep up a parcel that already
-         failed, finished or was invoiced. On 22 Sep N7810135 -- Refused since
-         19 Sep and already billed as a return -- was in an 8-parcel batch that
-         went Out for delivery and then Delivered, and the merchant's tracking
-         page showed both "Delivered" and "Refused". A mixed batch now drops
-         these unless the admin says otherwise; a batch of ONLY such parcels
-         (a deliberate reattempt) asks once and proceeds. */
-      const NV_FORWARD_STEPS = ["Collected by rider","Arrived at warehouse","Parcel now in transit",
-                                "Parcel received at destination","Parcel out for delivery","Delivered"];
-      const NV_OFF_PATH = ["Delivered","Refused","Consignee not available","Out of service area",
-                           "Ready for return","Return in transit","Return received at origin",
-                           "Return out for delivery","Return to shipper","Cancelled by client"];
-      if (NV_FORWARD_STEPS.includes(status)) {
-        const offPath = batch.filter(p => p.status !== status && (NV_OFF_PATH.includes(p.status) || p.invoiceId));
-        if (offPath.length) {
-          const lines = offPath.slice(0, 8).map(p => p.awb + " \u2014 " + (p.status || "unknown")
-                        + (p.invoiceId ? ", already invoiced" : "")).join("\n")
-                      + (offPath.length > 8 ? "\n\u2026and " + (offPath.length - 8) + " more" : "");
-          if (offPath.length === batch.length) {
-            if (!window.confirm("These parcels are not on the normal delivery path:\n\n" + lines +
-                "\n\nMove them to \"" + status + "\" anyway?")) return;
-          } else {
-            if (!window.confirm(offPath.length + " of " + batch.length + " parcels in this batch are not on the normal delivery path:\n\n" + lines +
-                "\n\nOK = leave them out and update the other " + (batch.length - offPath.length) + ".\nCancel = stop, change nothing.")) return;
-            const skip = new Set(offPath.map(p => p.awb));
-            batch = batch.filter(p => !skip.has(p.awb));
-            batchAwbs = batch.map(p => p.awb);
-            toast("Left out " + offPath.length + ": " + offPath.slice(0, 4).map(p => p.awb).join(", ") + (offPath.length > 4 ? "\u2026" : ""), "info");
-          }
-        }
-      }
+      /* NO TRANSITION RULES FOR ADMIN. This used to stop a forward step from
+         sweeping up a parcel that had already failed, finished or been
+         invoiced -- a mixed batch dropped them, a whole batch asked once.
+         Removed 25 Sep on the owner's instruction: an admin correcting a
+         status is the authority, and a dialog that offers only "skip it" or
+         "cancel" cannot express the one thing they actually want, which is
+         "yes, that one too". A reattempt on a refused parcel is normal ops.
+
+         The rules live on the RIDER, which is where they belong. rider.html
+         holds a strict whitelist -- transit -> received -> out for delivery ->
+         delivered/refused/unavailable -- and "Refused" is not a key in it, so
+         a rider still cannot move a refused parcel anywhere.
+
+         Nothing is lost silently: admin_processing_update_status writes every
+         step to nv_parcel_status_log with the processor and the time, and the
+         Recent Processing Log on this screen shows it. */
 
       let riderId = document.getElementById("processingRiderSelect")?.value || "";
       /* Destination operation: once Karachi marks a load in transit, assign
