@@ -11348,7 +11348,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!want) return;
       try{ sessionStorage.removeItem(NV_SHOPIFY_CONNECT_FLAG); }catch(e){}
       if(typeof showClientTab==="function"){ try{ showClientTab("integrations"); }catch(e){} }
-      nvShopifyConnectPopup(false);
+      /* Always a fresh code. It is single use anyway, and rotating on every
+         arrival means the one on screen is always the one that works. */
+      nvShopifyConnectPopup(true);
     }
     window.nvShopifyMaybePopup=nvShopifyMaybePopup;
     /* Which stores are actually connected. Without this the portal showed a
@@ -14306,7 +14308,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             +"border:1px solid var(--nvu-accent);border-radius:var(--r-lg);background:var(--nvu-bg-2);font-size:12.5px}"
           +".nv-attn-bar span{flex:1;min-width:0}"
           +".nv-more-wrap{position:relative;display:inline-block}"
-          +".nv-more-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:60;background:var(--nvu-bg);border:1px solid #d7ede1;border-radius:var(--r-lg);box-shadow:var(--glow-1);padding:6px;display:none;min-width:190px}"
+          +".nv-more-wrap{position:relative}"
+          +".nv-more-wrap.open{z-index:140}"
+          /* The scrim is z-index 135 and this was 60, so the scrim covered the
+             menu: every tap on API, Sub Accounts or Log out landed on the
+             scrim and closed the menu instead, and the scrim's translucent
+             fill was the "faded" look. Above the scrim now. */
+          +".nv-more-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:141;background:var(--nvu-bg);border:1px solid #d7ede1;border-radius:var(--r-lg);box-shadow:var(--glow-1);padding:6px;display:none;min-width:190px}"
           +".nv-more-wrap.open .nv-more-menu{display:block}"
           /* Inside the mobile drawer there is no room for a nested dropdown --
              "More" inside "More" is how these three tabs became unreachable.
@@ -14337,7 +14345,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           /* #42: the backdrop. Below the menu, above everything else. */
           +".nv-more-scrim{position:fixed;inset:0;z-index:135;background:rgba(6,20,15,.42);display:none}"
           +"body.nv-more-open .nv-more-scrim{display:block}"
-          +"body.nv-more-open .nv-more-menu{z-index:60}"
+          +"body.nv-more-open .nv-more-menu{z-index:141}"
           +".nv-omni{position:fixed;z-index:99990;background:var(--nvu-bg);border:1px solid #d7ede1;border-radius:var(--r-xl);box-shadow:var(--glow-1);max-height:340px;overflow:auto;display:none;padding:6px}"
           +".nv-omni.open{display:block}"
           +".nv-omni-g{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#7fa596;padding:6px 8px 2px;font-weight:800}"
