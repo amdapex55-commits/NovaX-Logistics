@@ -16,7 +16,7 @@ import { cleanShop, verifyOAuthHmac, verifySessionToken, verifyWebhookHmac } fro
 import { pushTracking, registerWebhooks } from "./shopify-api.ts";
 import { mapOrderToBooking, type ShopifyOrder } from "./orders.ts";
 import {
-  claimWebhook, getShop, insert, logEvent, logProtectedAccess, rpc, selectOne, update,
+  claimWebhook, getShop, insert, logEvent, logProtectedAccess, rpc, selectMany, selectOne, update,
 } from "./db.ts";
 import { embeddedApp, frameAncestors } from "./ui.ts";
 
@@ -305,19 +305,16 @@ async function processOrder(shop: string, orderId: string, order: ShopifyOrder):
       last_order_at: now, orders_booked: (shopRow.orders_booked ?? 0) + 1, updated_at: now,
     });
 
-    // Push the AWB back as tracking. A failure here does NOT undo the booking:
-    // the parcel is real and the rider is coming. It is recorded so the
-    // merchant is told their customer has not been notified yet.
-    if (shopRow.access_token) {
-      const pushed = await pushTracking(shop, shopRow.access_token, orderId, awb, trackingUrl(awb));
-      if (!pushed.ok) {
-        await update("nvsh_order", where, {
-          error: `booked as ${awb}, but Shopify was not marked fulfilled: ${pushed.detail}`,
-          updated_at: new Date().toISOString(),
-        });
-        await logEvent(shop, "fulfillment", null, false, `${orderId}: ${pushed.detail}`);
-      }
-    }
+    // Shopify is NOT told the order shipped here. An AWB is a booking
+    // reference -- it means a merchant asked for a pickup, not that a parcel
+    // exists in NovaX's hands. fulfillmentCreate emails the buyer a tracking
+    // number, so fulfilling at booking tells a buyer their parcel is on its way
+    // before anything has moved, and a cancelled-before-pickup booking makes
+    // that a lie we cannot take back.
+    //
+    // The nvsh_fulfill_on_handover trigger flips fulfill_state to 'ready' the
+    // first time the parcel leaves 'New booked' into a NovaX-held status.
+    // /fulfill drains that queue.
   } catch (err) {
     const msg = String((err as Error).message ?? err).slice(0, 400);
     await update("nvsh_order", where, { status: "failed", error: msg, updated_at: new Date().toISOString() });
@@ -387,6 +384,74 @@ async function handleShopRedact(v: Verified): Promise<Response> {
   return text("ok");
 }
 
+// ----------------------------------------------------------- fulfilment -----
+// Runs a minute after handover, not at booking. Separated so that a Shopify
+// outage delays a tracking email and nothing else: the parcel is already
+// moving, and the row stays 'ready' until it succeeds or gives up.
+
+interface FulfillRow {
+  shop_domain: string;
+  shopify_order_id: string;
+  awb: string | null;
+  fulfill_attempts: number;
+}
+
+async function handleFulfill(req: Request): Promise<Response> {
+  if (!DRAIN_SECRET || req.headers.get("X-NovaX-Drain") !== DRAIN_SECRET) {
+    return json({ error: "unauthorized" }, 401);
+  }
+
+  const rows = await selectMany<FulfillRow>(
+    "nvsh_order",
+    "fulfill_state=eq.ready&fulfill_attempts=lt.6&awb=not.is.null" +
+      "&select=shop_domain,shopify_order_id,awb,fulfill_attempts&order=updated_at.asc&limit=25",
+  );
+
+  let done = 0, failed = 0;
+  for (const r of rows) {
+    const where = `shop_domain=eq.${encodeURIComponent(r.shop_domain)}` +
+      `&shopify_order_id=eq.${encodeURIComponent(r.shopify_order_id)}`;
+    const now = new Date().toISOString();
+
+    const shopRow = await getShop(r.shop_domain);
+    if (!shopRow?.access_token) {
+      // Uninstalled between handover and here. There is nothing to fulfil and
+      // no token to do it with, so stop retrying rather than burn attempts.
+      await update("nvsh_order", where, {
+        fulfill_state: "failed", fulfill_error: "store uninstalled", updated_at: now,
+      });
+      failed++;
+      continue;
+    }
+
+    const pushed = await pushTracking(
+      r.shop_domain, shopRow.access_token, r.shopify_order_id, r.awb!, trackingUrl(r.awb!),
+    );
+
+    if (pushed.ok) {
+      await update("nvsh_order", where, {
+        fulfill_state: "done", fulfilled_at: now, fulfill_error: null, updated_at: now,
+      });
+      done++;
+    } else {
+      const attempts = (r.fulfill_attempts ?? 0) + 1;
+      await update("nvsh_order", where, {
+        // Six tries is about five minutes. After that a human should look,
+        // and the merchant sees it as a sync failure rather than a silent gap.
+        fulfill_state: attempts >= 6 ? "failed" : "ready",
+        fulfill_attempts: attempts,
+        fulfill_error: pushed.detail ?? "unknown",
+        updated_at: now,
+      });
+      await logEvent(r.shop_domain, "fulfillment", null, false,
+        `${r.shopify_order_id}: ${pushed.detail} (attempt ${attempts})`);
+      failed++;
+    }
+  }
+
+  return json({ scanned: rows.length, fulfilled: done, failed });
+}
+
 // --------------------------------------------------------------- drain ------
 // Retries orders left in received/failed - a stuck order is a parcel that never
 // went out, so it needs a way back that does not involve the merchant noticing.
@@ -443,6 +508,7 @@ Deno.serve(async (req: Request) => {
     if (path === "/app") return handleApp(url);
     if (path === "/api/state" || path === "/state") return await handleState(req);
     if (path === "/drain") return await handleDrain(req);
+    if (path === "/fulfill") return await handleFulfill(req);
 
     if (path === "/webhooks/compliance") {
       if (req.method !== "POST") return text("method not allowed", 405);

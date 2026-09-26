@@ -40,7 +40,9 @@ globalThis.fetch = async (input, init = {}) => {
   }
   // ---- Shopify GraphQL
   if (url.pathname.endsWith("/graphql.json")) {
-    calls.graphql.push(body.query.trim().split("\n")[0].trim());
+    // Record the WHOLE query. Recording only the first line made any assertion
+    // about an identifier in the body silently pass whatever the code did.
+    calls.graphql.push(body.query.trim());
     if (/webhookSubscriptionCreate/.test(body.query))
       return J({ data: { webhookSubscriptionCreate: { userErrors: [], webhookSubscription: { id: "gid://x/1" } } } });
     if (/fulfillmentOrders/.test(body.query))
@@ -234,10 +236,45 @@ db.nvsh_order[0].status = "received";           // what nvsh_admin_link() does
   t("held order is now booked", db.nvsh_order[0].status === "booked", db.nvsh_order[0].status);
   t("held order has an AWB", /^N3690\d+$/.test(db.nvsh_order[0].awb ?? ""), db.nvsh_order[0].awb);
   t("held order recorded the COD", db.nvsh_order[0].cod_amount === 1400);
-  t("tracking pushed to shopify", calls.graphql.some(q => /fulfill/.test(q)));
+  // Booking must NOT fulfil. An AWB says a pickup was requested, not that a
+  // parcel moved, and fulfillmentCreate emails the buyer a tracking number.
+  // The nvsh_fulfill_on_handover trigger marks the row ready when the parcel
+  // actually leaves 'New booked'; /fulfill is what talks to Shopify.
+  t("booking did NOT fulfil in Shopify", !calls.graphql.some(q => /fulfillmentCreate/.test(q)));
+  t("booking left fulfilment pending", (db.nvsh_order[0].fulfill_state ?? "none") === "none",
+    db.nvsh_order[0].fulfill_state);
   t("protected-data access was logged", db.nvsh_access_log.length === 1, JSON.stringify(db.nvsh_access_log));
   t("access log names the fields read",
     (db.nvsh_access_log[0]?.fields ?? []).includes("shipping_address.address1"));
+}
+
+console.log("-- fulfilment happens at handover, not at booking --");
+{
+  t("fulfil requires the secret", (await call("/fulfill")).status === 401);
+
+  // Nothing is ready yet: the parcel is still 'New booked'.
+  let r = await call("/fulfill", { headers: { "X-NovaX-Drain": "drain_me" } });
+  let b = await r.json();
+  t("nothing to fulfil before handover", b.fulfilled === 0 && b.scanned === 0, JSON.stringify(b));
+  t("still no fulfillmentCreate", !calls.graphql.some(q => /fulfillmentCreate/.test(q)));
+
+  // What the DB trigger does when the rider takes the parcel.
+  db.nvsh_order[0].fulfill_state = "ready";
+
+  r = await call("/fulfill", { headers: { "X-NovaX-Drain": "drain_me" } });
+  await settle();
+  b = await r.json();
+  t("handover fulfilled the order", b.fulfilled === 1, JSON.stringify(b));
+  t("fulfillmentCreate was called", calls.graphql.some(q => /fulfillmentCreate/.test(q)));
+  t("row marked done", db.nvsh_order[0].fulfill_state === "done", db.nvsh_order[0].fulfill_state);
+  t("fulfilled_at recorded", Boolean(db.nvsh_order[0].fulfilled_at));
+
+  // A retry must not book a second parcel.
+  const bookedBefore = calls.rpc.filter(c => c === "nvsh_book_parcel").length;
+  r = await call("/fulfill", { headers: { "X-NovaX-Drain": "drain_me" } });
+  b = await r.json();
+  t("a fulfil retry books nothing", calls.rpc.filter(c => c === "nvsh_book_parcel").length === bookedBefore);
+  t("nothing left ready", b.scanned === 0, JSON.stringify(b));
 }
 
 console.log("-- a fresh order on a linked store --");

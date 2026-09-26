@@ -56,6 +56,11 @@ export async function selectOne<T>(
   return rows?.[0] ?? null;
 }
 
+/** Rows, not one row. The caller supplies its own limit and ordering. */
+export async function selectMany<T>(table: string, query: string): Promise<T[]> {
+  return (await pg(`${table}?${query}`) as T[]) ?? [];
+}
+
 export async function insert<T>(
   table: string,
   row: Record<string, unknown>,
