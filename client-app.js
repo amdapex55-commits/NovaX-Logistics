@@ -822,7 +822,35 @@
 
 
     function clearLocalSession(){ try{ localStorage.removeItem("novaxSession"); }catch(e){} }
-    function redirectAway(url){ clearLocalSession(); window.location.replace(url); }
+    function redirectAway(url){
+      /* A NovaX admin who followed "Get my code" from the Shopify app lands
+         here and gets bounced to admin.html with no explanation -- they cannot
+         tell whether the app is broken or they did something wrong. The connect
+         code belongs to the MERCHANT'S account, so an admin session genuinely
+         cannot produce one; say that instead of vanishing. */
+      try{
+        if(url==="admin.html" && new URLSearchParams(location.search).get("shopifyConnect")==="1"){
+          document.documentElement.innerHTML =
+            '<body style="margin:0;min-height:100vh;display:grid;place-items:center;'+
+            'background:#04100b;color:#eafff5;font:15px/1.6 -apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif">'+
+            '<div style="max-width:520px;padding:32px 26px;text-align:left">'+
+            '<h1 style="font-size:20px;margin:0 0 10px">You are signed in as a NovaX admin</h1>'+
+            '<p style="color:#9dbdae;margin:0 0 14px">The Shopify connect code belongs to the <b>merchant\'s</b> NovaX account, '+
+            'not to an admin account, so this session cannot produce one.</p>'+
+            '<p style="color:#9dbdae;margin:0 0 18px">Sign out, sign in as the merchant who owns the store, and press '+
+            '<b>Get my code</b> in the Shopify app again. Their code appears here automatically.</p>'+
+            '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+            '<a href="client.html?shopifyConnect=1" style="background:#14c77b;color:#04130d;text-decoration:none;'+
+            'padding:11px 18px;border-radius:10px;font-weight:700">Sign in as the merchant</a>'+
+            '<a href="admin.html" style="border:1px solid rgba(20,199,123,.34);color:#eafff5;text-decoration:none;'+
+            'padding:11px 18px;border-radius:10px;font-weight:700">Go to NovaX admin</a>'+
+            '</div></div></body>';
+          clearLocalSession();
+          return;
+        }
+      }catch(e){}
+      clearLocalSession(); window.location.replace(url);
+    }
     var __gsb=null;
     try{ __gsb=window.__nvSb||null; if(!__gsb&&window.supabase&&window.supabase.createClient){ __gsb=window.supabase.createClient(__SB_URL,__SB_KEY); } }catch(__e){}
     // NovaX fix: publish the gate's client so the data layer below reuses this
