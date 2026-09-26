@@ -1,9 +1,18 @@
-# Shopify CLI app configuration.
-# Fill client_id from the Partner Dashboard after creating the app.
+# Public-distribution app. Same backend, its own client ID and configuration.
+#
+# The custom app (0d3255e0..., shopify.app.toml) stays in the repo as the
+# record of how the first install was proven. It is NOT the app merchants get:
+# a custom app can only ever be installed on stores the org picks one at a
+# time, and its distribution cannot be changed after the fact -- hence a second
+# app rather than an edit to the first.
+#
+# One backend, one app at a time: the edge function reads a single
+# SHOPIFY_API_KEY / SHOPIFY_API_SECRET pair, so whichever app those secrets
+# belong to is the live one. They point at this app.
 
-name = "NovaX Logistics"
-handle = "novax-logistics"
-client_id = "0d3255e029ea1740bbd005176721d32c"
+name = "NovaX Logistics Courier"
+handle = "novax-logistics-courier"
+client_id = "60d19a709046b43b5be916ef33fb0e09"
 application_url = "https://novaxlogistics.com/shopify/app"
 embedded = true
 
@@ -12,7 +21,7 @@ embedded = true
 # address, phone). Do not widen: Shopify approves only the minimum, and
 # unapproved fields are silently redacted rather than erroring.
 scopes = "read_orders,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,write_fulfillments"
-# The code implements the classic OAuth dance (/install -> authorize ->
+# The function implements the classic OAuth dance (/install -> authorize ->
 # /callback -> access_token). Managed install (this false) never calls
 # /callback at all: Shopify grants the scopes itself and expects a token
 # exchange, which this function does not implement. Left false, every shop

@@ -165,7 +165,12 @@ console.log("-- oauth callback --");
   t("callback exchanged the code once", calls.tokenExchange === 1);
   t("shop row created", db.nvsh_shop.length === 1 && db.nvsh_shop[0].access_token === "shpat_live_token");
   t("shop starts pending_link", db.nvsh_shop[0].status === "pending_link");
-  t("registered all 6 webhooks", calls.graphql.filter(q => /register/.test(q)).length === 6,
+  /* Three, not six. The privacy/compliance topics are not members of
+     WebhookSubscriptionTopic and cannot be subscribed to per shop -- Shopify
+     rejected them on the first real install (25 Sep 2026) and the whole
+     registration call reported failure. They are delivered from the app config
+     instead. This asserted 6 and so agreed with the bug. */
+  t("subscribes to exactly the 3 business webhooks", calls.graphql.filter(q => /register/.test(q)).length === 3,
     String(calls.graphql.length));
 
   const replay = await call(oauthUrl(p));

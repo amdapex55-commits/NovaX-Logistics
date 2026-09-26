@@ -419,6 +419,17 @@ const WEBHOOKS: Record<string, (v: Verified) => Promise<Response>> = {
   "/webhooks/shop-redact": handleShopRedact,
 };
 
+/** Shopify's documented compliance configuration is a single `uri` covering all
+ *  three `compliance_topics`, dispatched on the X-Shopify-Topic header rather
+ *  than on the path. The three per-topic paths above stay: they are already
+ *  registered on installed shops, and removing a webhook endpoint that Shopify
+ *  still holds a URL for turns a compliance delivery into a 404. */
+const COMPLIANCE_HANDLERS: Record<string, (v: Verified) => Promise<Response>> = {
+  "customers/data_request": handleCustomersDataRequest,
+  "customers/redact": handleCustomersRedact,
+  "shop/redact": handleShopRedact,
+};
+
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
   const path = route(url.pathname);
@@ -432,6 +443,22 @@ Deno.serve(async (req: Request) => {
     if (path === "/app") return handleApp(url);
     if (path === "/api/state" || path === "/state") return await handleState(req);
     if (path === "/drain") return await handleDrain(req);
+
+    if (path === "/webhooks/compliance") {
+      if (req.method !== "POST") return text("method not allowed", 405);
+      const topic = (req.headers.get("X-Shopify-Topic") ?? "").trim().toLowerCase();
+
+      // Verify the signature BEFORE looking at the topic. Shopify requires 401
+      // for a bad HMAC, and checking the topic first would answer an unsigned
+      // request with a 400 that reveals which topics we accept.
+      const v = await verifiedWebhook(req, topic);
+      if (v instanceof Response) return v;
+
+      const complianceHandler = COMPLIANCE_HANDLERS[topic];
+      if (!complianceHandler) return text("unsupported compliance topic", 400);
+      if (!await claimWebhook(v.shop, v.topic, v.webhookId)) return text("ok (duplicate)");
+      return await complianceHandler(v);
+    }
 
     const handler = WEBHOOKS[path];
     if (handler) {

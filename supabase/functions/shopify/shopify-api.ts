@@ -90,16 +90,22 @@ function sleep(ms: number) {
 
 // ------------------------------------------------------- webhook registry ---
 
-// Every webhook the app needs. The three compliance topics are mandatory for
-// any App Store app; app/uninstalled is how we learn we have been removed,
-// because Shopify will not tell us any other way.
+// The webhooks this app SUBSCRIBES to per shop. app/uninstalled is how we learn
+// we have been removed, because Shopify will not tell us any other way.
+//
+// The three privacy/compliance topics are NOT here, and must not be. They are
+// not members of the WebhookSubscriptionTopic enum, so webhookSubscriptionCreate
+// rejects them outright -- on the first real install, 25 Sep 2026:
+//   CUSTOMERS_DATA_REQUEST(Variable $topic of type WebhookSubscriptionTopic!
+//   was provided invalid value), and the same for CUSTOMERS_REDACT and
+//   SHOP_REDACT.
+// Shopify delivers those three from the APP CONFIG instead -- the
+// [webhooks.privacy_compliance] URLs in shopify.app.toml, which are already set
+// and already answer 401 to a bad HMAC. Nothing is lost by dropping them here.
 export const WEBHOOK_TOPICS = [
   "ORDERS_CREATE",
   "ORDERS_CANCELLED",
   "APP_UNINSTALLED",
-  "CUSTOMERS_DATA_REQUEST",
-  "CUSTOMERS_REDACT",
-  "SHOP_REDACT",
 ] as const;
 
 const REGISTER = `
