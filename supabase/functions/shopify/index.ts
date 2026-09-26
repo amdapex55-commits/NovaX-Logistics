@@ -348,6 +348,24 @@ async function handleCancel(req: Request): Promise<Response> {
   return json(r ?? { ok: false, message: "No result." }, 200, { "Cache-Control": "no-store" });
 }
 
+/** "Another delivery fee" was too vague to decide from. This is the number. */
+async function handleQuote(req: Request): Promise<Response> {
+  const bad = requirePost(req);
+  if (bad) return bad;
+  const shop = await sessionShop(req);
+  if (!shop) return json({ error: "unauthorized" }, 401);
+  const b = await jsonBody(req);
+  if (!b) return json({ ok: false }, 400);
+  try {
+    const fee = await rpc<number | null>("nvsh_quote", {
+      p_shop: shop, p_city: String(b.city ?? ""), p_weight: String(b.weight ?? "0.5 kg"),
+    });
+    return json({ ok: true, fee }, 200, { "Cache-Control": "no-store" });
+  } catch {
+    return json({ ok: true, fee: null }, 200, { "Cache-Control": "no-store" });
+  }
+}
+
 async function handlePickup(req: Request): Promise<Response> {
   const bad = requirePost(req);
   if (bad) return bad;
@@ -668,7 +686,7 @@ async function handleState(req: Request): Promise<Response> {
     rpc<Array<Record<string, unknown>>>("nvsh_shop_state", { p_shop: session }),
     rpc<Array<Record<string, unknown>>>("nvsh_recent_orders", {
       p_shop: session,
-      p_limit: Math.min(Math.max(Number(new URL(req.url).searchParams.get("limit") ?? 50), 1), 100),
+      p_limit: Math.min(Math.max(Number(new URL(req.url).searchParams.get("limit") ?? 25), 1), 100),
       p_offset: Math.max(Number(new URL(req.url).searchParams.get("offset") ?? 0), 0),
       p_filter: new URL(req.url).searchParams.get("filter") ?? "all",
       p_search: new URL(req.url).searchParams.get("q") ?? null,
@@ -1184,6 +1202,7 @@ Deno.serve(async (req: Request) => {
     if (path === "/api/order/resync") return await handleResync(req);
     if (path === "/api/order/recheck") return await handleRecheck(req);
     if (path === "/api/approve-all") return await handleApproveAll(req);
+    if (path === "/api/quote") return await handleQuote(req);
     if (path === "/api/pickup") return await handlePickup(req);
     if (path === "/api/ticket") return await handleTicket(req);
     if (path === "/api/reconcile" || path === "/reconcile") return await handleReconcile(req);
