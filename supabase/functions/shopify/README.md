@@ -7,102 +7,76 @@ paste. That is the whole reason this exists.
 Built from scratch; it shares nothing with `shopify_connections` /
 `shopify-order-intake`, which keep working until every merchant has moved.
 
-## What it does
+> [!warning] A75 — the old deploy sequence in this file was wrong
+> It pointed at `sql_novax_shopify_booking_core.sql`, which is marked
+> **SUPERSEDED — DO NOT RUN**, and predates the proxy, the public app, and eight
+> later migrations. A fresh deployment could not be reproduced from it.
 
-1. Merchant installs → OAuth → we store an access token and register webhooks.
-2. Store lands in `pending_link`. An admin links it to a NovaX merchant.
-   Orders arriving before that are **held, not dropped**.
-3. `orders/create` → booked with NovaX → AWB pushed back to Shopify as the
-   tracking number, customer notified.
-4. Embedded page inside Shopify admin shows connection health, recent orders
-   with a plain-English reason for anything not booked, and the COD wallet.
+## Deploying from scratch
 
-## Files
+Run the migrations in this order. Every one is idempotent.
 
-| file | what it holds |
-|---|---|
-| `index.ts` | router, OAuth, webhook handlers, order processing |
-| `verify.ts` | **every trust decision** — OAuth HMAC, webhook HMAC, session tokens, shop-domain validation |
-| `orders.ts` | Shopify order → NovaX booking. Pure functions. |
-| `shopify-api.ts` | GraphQL Admin API client, webhook registration, fulfillment |
-| `db.ts` | PostgREST access with the service role |
-| `ui.ts` | the embedded admin page |
-| `tests/` | 155 assertions across 3 suites |
+| # | File | What it does |
+|---|---|---|
+| 1 | `sql_novax_shopify_app.sql` | tables, base RPCs |
+| 2 | `sql_novax_shopify_fulfillment_timing.sql` | fulfil at handover, drain token, cron |
+| 3 | `sql_novax_shopify_parcel_link.sql` | parcel ↔ order link, unique index |
+| 4 | `sql_novax_shopify_merchant_control.sql` | connect codes, booking rules, cancel/recall |
+| 5 | `sql_novax_shopify_state_reads.sql` | read RPCs for the embedded page |
+| 6 | `sql_novax_shopify_everyday_actions.sql` | pickups, tickets, bulk approve, packages |
+| 7 | `sql_novax_shopify_a01_revoke_public.sql` | **revokes PUBLIC EXECUTE — do not skip** |
+| 8 | `sql_novax_shopify_audit_a02_a10.sql` | cancellation tombstone, reconcile + drain cron |
+| 9 | `sql_novax_shopify_audit_a11_a30.sql` | compare-and-set cancel, privacy queue |
+| 10 | `sql_novax_shopify_audit_a31_a77.sql` | atomic nonce, link race, pickup amend, GC |
 
-## Tests
+**Never run** `sql_novax_shopify_booking_core.sql`. It is superseded and its
+money functions are already live in a different form.
 
-```
-node scripts/test-shopify.mjs
-```
-
-No dependencies. `verify.test.mjs` cross-checks the crypto against
-`node:crypto` as an independent implementation; `e2e.test.mjs` boots the real
-router against a fake Shopify and a fake Postgres and drives a full install →
-link → book → uninstall cycle.
-
-## Deploy
-
-Run the SQL first, in this order:
-
-1. `sql_novax_shopify_app.sql` — tables and functions
-2. `sql_novax_shopify_booking_core.sql` — shared booking core.
-   **Replaces a live money function.** It aborts by itself if production has
-   drifted from `backend/admin.sql`.
-
-Then set the secrets:
+### Secrets
 
 ```
-supabase secrets set \
-  SHOPIFY_API_KEY=... \
-  SHOPIFY_API_SECRET=... \
-  SHOPIFY_APP_URL=https://<project>.supabase.co/functions/v1/shopify \
-  NOVAX_DRAIN_SECRET=$(openssl rand -hex 24)
+SHOPIFY_API_KEY          from `shopify app env show -c novax-public`
+SHOPIFY_API_SECRET       same
+SHOPIFY_APP_URL          https://novaxlogistics.com/shopify
+SHOPIFY_SCOPES           must equal [access_scopes] in shopify.app.novax-public.toml
+NOVAX_DRAIN_SECRET       must equal  select public.nvsh_drain_token();
 ```
 
-Then deploy — **`--no-verify-jwt` is mandatory**:
+The last two are the ones that fail silently. A scope mismatch surfaces only as
+a permission error on the first fulfillment; a drain-secret mismatch makes every
+scheduled job 401 while cron reports success.
 
+Check both without printing them:
+
+```bash
+# scopes agree
+curl -sSD- -o /dev/null "https://novaxlogistics.com/shopify/install?shop=<shop>" | grep -i location
+# drain secret agrees (expect 200, not 401)
+psql "$NOVAX_DB" -At -c "select public.nvsh_drain_token();" \
+  | xargs -I{} curl -sS -o /dev/null -w '%{http_code}\n' \
+      -X POST https://novaxlogistics.com/shopify/fulfill -H "x-novax-drain: {}"
 ```
-supabase functions deploy shopify --no-verify-jwt
+
+### Deploy
+
+```bash
+supabase functions deploy shopify --no-verify-jwt --project-ref rhzunbzbdzicajqtohwp
+cd workers/shopify-proxy && npx wrangler deploy
+shopify app deploy -c novax-public --allow-updates --no-build
 ```
 
-Without that flag Supabase demands an anon key on every request. Shopify does
-not send one, so OAuth and all six webhooks get a 401 before reaching any of
-this code.
+The Cloudflare Worker is **not optional**. Without it the embedded page is served
+as `text/plain` under `default-src 'none'` and App Bridge cannot boot.
 
-`SHOPIFY_SCOPES` defaults to the four we need and should not be widened:
-Shopify grants protected customer data only when it is the minimum required,
-and unapproved fields come back **silently redacted** rather than erroring.
+### Scheduled jobs
 
-## Partner Dashboard settings
+`novax-shopify-book-drain` (1m) · `novax-shopify-fulfill` (1m) ·
+`novax-shopify-reconcile` (15m) · `novax-shopify-privacy-due` (daily) ·
+`novax-shopify-gc` (daily). Verify with
+`select jobname, schedule from cron.job where jobname like 'novax-shopify%';`
 
-- **App URL**: `https://<project>.supabase.co/functions/v1/shopify/app`
-- **Allowed redirection URL**: `https://<project>.supabase.co/functions/v1/shopify/callback`
-- **Embedded**: yes
-- Start on **custom distribution** — no review, and protected customer data
-  levels 1–2 are granted automatically.
+### Rollback boundary
 
-## Routes
-
-| route | auth |
-|---|---|
-| `GET /install?shop=` | none (starts OAuth) |
-| `GET /callback` | OAuth HMAC + single-use state nonce |
-| `GET /app?shop=` | none (page holds no data; sets per-shop CSP) |
-| `GET /api/state` | session token |
-| `POST /webhooks/*` | webhook HMAC, 401 on failure |
-| `POST /drain` | `X-NovaX-Drain` secret |
-| `GET /health` | none |
-
-## Known unverified detail
-
-`fulfillmentCreate` is called with the argument named `fulfillment:`. Shopify's
-reference page shows `input:` in its example while the schema names it
-`fulfillment:`. **Confirm on the first dev-store fulfillment.** A wrong name
-fails loudly with "unknown argument" — it cannot fail silently or mis-book.
-
-## API version
-
-`2026-07`, accessible until 16 July 2027. An app cannot be submitted while its
-API version is within 90 days of removal. Bump it and re-run the tests each
-quarter — letting this lapse is exactly what left the official TCS app at 2.4
-stars with merchants reporting it stopped fulfilling orders.
+Migrations 1–10 only add columns, indexes and functions — none drops data. The
+one-way steps are outside SQL: selecting Public distribution, and changing
+scopes (which forces every merchant to re-authorise).

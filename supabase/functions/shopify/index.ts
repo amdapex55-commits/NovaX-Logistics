@@ -98,18 +98,19 @@ async function handleCallback(url: URL): Promise<Response> {
   // anyone can send a merchant a crafted callback and bind their store to a
   // different account.
   const state = url.searchParams.get("state") ?? "";
-  const row = await selectOne<{ state: string; shop_domain: string; used_at: string | null }>(
-    "nvsh_oauth_state",
-    `state=eq.${encodeURIComponent(state)}&select=state,shop_domain,used_at`,
-  );
-  if (!row || row.used_at || row.shop_domain !== shop) {
-    await logEvent(shop, "oauth", null, false, "bad or reused state");
-    return text("invalid state", 401);
-  }
-  await update("nvsh_oauth_state", `state=eq.${encodeURIComponent(state)}`, { used_at: new Date().toISOString() });
-
   const code = url.searchParams.get("code");
+  // A35: check everything that can fail cheaply BEFORE burning the nonce, so a
+  // missing code does not force the merchant to restart the whole install.
   if (!code) return text("missing code", 400);
+
+  // A36: this was select, check, update -- three statements, so two callbacks
+  // could both see the nonce unused, and its age was never checked at all. One
+  // conditional UPDATE with a 15-minute TTL is the whole check.
+  const consumed = await rpc<boolean>("nvsh_consume_oauth_state", { p_state: state, p_shop: shop });
+  if (consumed !== true) {
+    await logEvent(shop, "oauth", null, false, "bad, expired or reused state");
+    return text("invalid state — start the install again from Shopify", 401);
+  }
 
   const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
     method: "POST",
@@ -128,7 +129,11 @@ async function handleCallback(url: URL): Promise<Response> {
     await update("nvsh_shop", `shop_domain=eq.${encodeURIComponent(shop)}`, {
       access_token: tok.access_token,
       scopes: tok.scope,
-      status: existing.client_id ? "active" : "pending_link",
+      // A37: reinstalling reactivated an administratively blocked shop. A block
+      // is a decision someone made; only an admin undoes it.
+      status: existing.status === "blocked"
+        ? "blocked"
+        : (existing.client_id ? "active" : "pending_link"),
       uninstalled_at: null,
       updated_at: new Date().toISOString(),
     });
@@ -189,8 +194,25 @@ async function sessionShop(req: Request): Promise<string | null> {
   return session?.shop ?? null;
 }
 
-async function jsonBody(req: Request): Promise<Record<string, unknown>> {
-  try { return await req.json() as Record<string, unknown>; } catch { return {}; }
+/** A32: this returned {} on a parse failure, and the settings handler read {}
+ *  as "auto booking, no filters" -- so malformed JSON silently deleted every
+ *  safeguard a merchant had set and answered "Saved." A parse failure is an
+ *  error, not an instruction. */
+async function jsonBody(req: Request): Promise<Record<string, unknown> | null> {
+  if (req.method !== "POST") return null;
+  try {
+    const b = await req.json();
+    return b && typeof b === "object" && !Array.isArray(b) ? b as Record<string, unknown> : null;
+  } catch { return null; }
+}
+
+/** A33: an authenticated GET to /api/settings reset the merchant's rules,
+ *  because the router never checked the method and the body parser answered
+ *  with defaults. Read methods must not write. */
+function requirePost(req: Request): Response | null {
+  return req.method === "POST"
+    ? null
+    : json({ error: "method not allowed" }, 405, { Allow: "POST" });
 }
 
 /** Connect this store to a NovaX merchant with a code the merchant generated
@@ -198,10 +220,13 @@ async function jsonBody(req: Request): Promise<Record<string, unknown>> {
  *  by matching an email address -- an email match would let anyone who knows a
  *  merchant's address attach their store to that merchant's wallet. */
 async function handleLink(req: Request): Promise<Response> {
+  const bad = requirePost(req);
+  if (bad) return bad;
   const shop = await sessionShop(req);
   if (!shop) return json({ error: "unauthorized" }, 401);
 
   const body = await jsonBody(req);
+  if (!body) return json({ ok: false, message: "Could not read that request." }, 400);
   const code = String(body.code ?? "").trim().toUpperCase();
   if (!/^[A-Z0-9]{6,12}$/.test(code)) {
     return json({ ok: false, message: "Enter the 8-character code from your NovaX portal." });
@@ -222,10 +247,20 @@ async function handleLink(req: Request): Promise<Response> {
 }
 
 async function handleSettings(req: Request): Promise<Response> {
+  const bad = requirePost(req);
+  if (bad) return bad;
   const shop = await sessionShop(req);
   if (!shop) return json({ error: "unauthorized" }, 401);
 
   const b = await jsonBody(req);
+  // A32: without this, a truncated or malformed save wiped the rules and said
+  // "Saved." Nothing is written unless the whole body parsed.
+  if (!b) {
+    return json({ ok: false, message: "Your settings were not saved — the request could not be read. Nothing was changed." }, 400);
+  }
+  if (typeof b.booking_mode !== "string") {
+    return json({ ok: false, message: "Your settings were not saved — booking mode was missing. Nothing was changed." }, 400);
+  }
   const arr = (v: unknown): string[] =>
     Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : [];
   const mode = String(b.booking_mode ?? "auto");
@@ -246,9 +281,12 @@ async function handleSettings(req: Request): Promise<Response> {
 }
 
 async function handleDecide(req: Request): Promise<Response> {
+  const bad = requirePost(req);
+  if (bad) return bad;
   const shop = await sessionShop(req);
   if (!shop) return json({ error: "unauthorized" }, 401);
   const b = await jsonBody(req);
+  if (!b) return json({ ok: false, message: "Could not read that request." }, 400);
   const res = await rpc<Array<{ ok: boolean; message: string }>>("nvsh_order_decide", {
     p_shop: shop,
     p_order_id: String(b.order_id ?? ""),
@@ -294,9 +332,12 @@ async function handleDecide(req: Request): Promise<Response> {
 }
 
 async function handleCancel(req: Request): Promise<Response> {
+  const bad = requirePost(req);
+  if (bad) return bad;
   const shop = await sessionShop(req);
   if (!shop) return json({ error: "unauthorized" }, 401);
   const b = await jsonBody(req);
+  if (!b) return json({ ok: false, message: "Could not read that request." }, 400);
   const res = await rpc<Array<{ ok: boolean; outcome: string; message: string }>>(
     "nvsh_cancel_or_recall", { p_shop: shop, p_order_id: String(b.order_id ?? "") },
   );
@@ -305,9 +346,12 @@ async function handleCancel(req: Request): Promise<Response> {
 }
 
 async function handlePickup(req: Request): Promise<Response> {
+  const bad = requirePost(req);
+  if (bad) return bad;
   const shop = await sessionShop(req);
   if (!shop) return json({ error: "unauthorized" }, 401);
   const b = await jsonBody(req);
+  if (!b) return json({ ok: false, message: "Could not read that request." }, 400);
   const res = await rpc<Array<{ ok: boolean; message: string; awb_count: number }>>(
     "nvsh_pickup_request", { p_shop: shop, p_note: String(b.note ?? "") },
   );
@@ -316,9 +360,12 @@ async function handlePickup(req: Request): Promise<Response> {
 }
 
 async function handleTicket(req: Request): Promise<Response> {
+  const bad = requirePost(req);
+  if (bad) return bad;
   const shop = await sessionShop(req);
   if (!shop) return json({ error: "unauthorized" }, 401);
   const b = await jsonBody(req);
+  if (!b) return json({ ok: false, message: "Could not read that request." }, 400);
   const res = await rpc<Array<{ ok: boolean; message: string }>>("nvsh_ticket_open", {
     p_shop: shop, p_order_id: String(b.order_id ?? ""), p_body: String(b.body ?? ""),
   });
@@ -327,6 +374,8 @@ async function handleTicket(req: Request): Promise<Response> {
 }
 
 async function handleApproveAll(req: Request): Promise<Response> {
+  const bad = requirePost(req);
+  if (bad) return bad;
   const shop = await sessionShop(req);
   if (!shop) return json({ error: "unauthorized" }, 401);
   const res = await rpc<Array<{ ok: boolean; message: string; approved: number }>>(
@@ -341,9 +390,12 @@ async function handleApproveAll(req: Request): Promise<Response> {
  *  package number is what separates a deliberate second box from an accidental
  *  replay -- the unique index keys on it. */
 async function handleSplit(req: Request): Promise<Response> {
+  const bad = requirePost(req);
+  if (bad) return bad;
   const shop = await sessionShop(req);
   if (!shop) return json({ error: "unauthorized" }, 401);
   const b = await jsonBody(req);
+  if (!b) return json({ ok: false, message: "Could not read that request." }, 400);
   const orderId = String(b.order_id ?? "");
 
   const row = await selectOne<{
@@ -411,7 +463,11 @@ async function handleSplit(req: Request): Promise<Response> {
       // The COD is collected once, on the first parcel. A second box that also
       // asks for the money would double-charge the buyer at the door.
       p_cod: 0,
-      p_weight: bk.weight, p_service: bk.service, p_category: bk.category,
+      // A49: this passed the original order's total weight, so a 2 kg order
+      // made every additional box 2 kg and charged for it. An extra box is a
+      // separate package whose weight we do not know; the base rate is the
+      // honest default until the merchant can tell us.
+      p_weight: "0.5 kg", p_service: bk.service, p_category: bk.category,
       p_fragile: bk.fragile, p_payment_mode: bk.paymentMode,
       p_order_id: bk.orderId, p_reference_no: orderId, p_package_no: packageNo,
     });
@@ -512,20 +568,91 @@ async function handleReconcile(req: Request): Promise<Response> {
   }
 }
 
+/** A65: a tracking sync that gave up after twelve attempts had no way back.
+ *  This clears the failure and puts it at the front of the queue. */
+async function handleResync(req: Request): Promise<Response> {
+  const bad = requirePost(req);
+  if (bad) return bad;
+  const shop = await sessionShop(req);
+  if (!shop) return json({ error: "unauthorized" }, 401);
+  const b = await jsonBody(req);
+  if (!b) return json({ ok: false, message: "Could not read that request." }, 400);
+
+  const where = `shop_domain=eq.${encodeURIComponent(shop)}` +
+    `&shopify_order_id=eq.${encodeURIComponent(String(b.order_id ?? ""))}`;
+  const rows = await update("nvsh_order", `${where}&fulfill_state=eq.failed`, {
+    fulfill_state: "ready", fulfill_attempts: 0, fulfill_leased_until: null,
+    fulfill_error: null, updated_at: new Date().toISOString(),
+  });
+  if (!rows.length) return json({ ok: false, message: "That order has no failed sync to retry." });
+  return json({ ok: true, message: "Retrying. Shopify is usually updated within a minute." });
+}
+
+/** A65: a skipped order could not be reconsidered after the merchant fixed
+ *  whatever caused the skip. This refetches from Shopify and runs it again. */
+async function handleRecheck(req: Request): Promise<Response> {
+  const bad = requirePost(req);
+  if (bad) return bad;
+  const shop = await sessionShop(req);
+  if (!shop) return json({ error: "unauthorized" }, 401);
+  const b = await jsonBody(req);
+  if (!b) return json({ ok: false, message: "Could not read that request." }, 400);
+  const orderId = String(b.order_id ?? "");
+
+  const row = await selectOne<{ status: string }>(
+    "nvsh_order",
+    `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}&select=status`,
+  );
+  if (!row) return json({ ok: false, message: "No such order." });
+  if (row.status !== "skipped" && row.status !== "failed") {
+    return json({ ok: false, message: `That order is ${row.status}; there is nothing to retry.` });
+  }
+
+  const shopRow = await getShop(shop);
+  if (!shopRow?.access_token) return json({ ok: false, message: "This store is not connected." });
+
+  try {
+    const fresh = await fetchOrder(shop, shopRow.access_token, orderId);
+    if (!fresh) return json({ ok: false, message: "Shopify no longer has that order." });
+    await update("nvsh_order",
+      `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}`,
+      { payload: fresh, status: "received", skip_reason: null, error: null,
+        attempts: 0, next_attempt_at: null, updated_at: new Date().toISOString() });
+    background(processOrder(shop, orderId, fresh as unknown as ShopifyOrder));
+    return json({ ok: true, message: "Refetched from Shopify and trying again." });
+  } catch (e) {
+    return json({ ok: false, message: "Could not reach Shopify: " + String((e as Error).message).slice(0, 160) });
+  }
+}
+
 async function handleState(req: Request): Promise<Response> {
   const session = await sessionShop(req);
   if (!session) return json({ error: "unauthorized" }, 401);
 
-  const [shopRows, orders, wallet] = await Promise.all([
+  // A64: Promise.all meant a broken wallet read returned NOTHING -- a merchant
+  // could not dispatch a parcel because an unrelated money query was down.
+  // Each section reports its own health and the rest still works.
+  const [shopRows, orders, wallet] = await Promise.allSettled([
     rpc<Array<Record<string, unknown>>>("nvsh_shop_state", { p_shop: session }),
-    rpc<Array<Record<string, unknown>>>("nvsh_recent_orders", { p_shop: session, p_limit: 50 }),
+    rpc<Array<Record<string, unknown>>>("nvsh_recent_orders", { p_shop: session, p_limit: 100 }),
     rpc<Array<Record<string, unknown>>>("nvsh_wallet_summary", { p_shop: session }),
   ]);
+  const val = <T>(r: PromiseSettledResult<T>): T | null => r.status === "fulfilled" ? r.value : null;
+
+  if (shopRows.status === "rejected") {
+    // Without the shop row there is no usable screen at all.
+    return json({ error: "state unavailable" }, 503, { "Cache-Control": "no-store" });
+  }
 
   return json({
-    shop: shopRows?.[0] ?? null,
-    orders: orders ?? [],
-    wallet: wallet?.[0] ?? null,
+    shop: val(shopRows)?.[0] ?? null,
+    orders: val(orders) ?? [],
+    wallet: val(wallet)?.[0] ?? null,
+    degraded: {
+      orders: orders.status === "rejected",
+      wallet: wallet.status === "rejected",
+    },
+    fetched_at: new Date().toISOString(),
   }, 200, { "Cache-Control": "no-store" });
 }
 
@@ -661,8 +788,12 @@ async function processOrder(shop: string, orderId: string, order: ShopifyOrder):
     );
     const hold = decided?.approved_at ? null : holdReason(order, shopRow);
     if (hold) {
+      // A31: held rows showed a dash where the COD should be, so the merchant
+      // pressed "Book it" without seeing the amount they were committing to.
+      // The mapped booking is priced by now; persist what it says.
       await update("nvsh_order", where, {
         status: "awaiting_approval", hold_reason: hold,
+        cod_amount: mapped.booking.cod,
         client_id: shopRow.client_id, updated_at: now,
       });
       return;
@@ -866,6 +997,7 @@ interface FulfillRow {
   shop_domain: string;
   shopify_order_id: string;
   awb: string | null;
+  extra_awbs: string[] | null;
   fulfill_attempts: number;
 }
 
@@ -876,8 +1008,13 @@ async function handleFulfill(req: Request): Promise<Response> {
 
   const rows = await selectMany<FulfillRow>(
     "nvsh_order",
-    "fulfill_state=eq.ready&fulfill_attempts=lt.6&awb=not.is.null" +
-      "&select=shop_domain,shopify_order_id,awb,fulfill_attempts&order=updated_at.asc&limit=25",
+    // A41: six tries was about five minutes, so a brief Shopify outage left
+    // tracking permanently unsent. 12 attempts with backoff spans hours.
+    // A43: rows are leased before work starts, so an overlapping cron run and a
+    // manual retry cannot both process the same row.
+    "fulfill_state=eq.ready&fulfill_attempts=lt.12&awb=not.is.null" +
+      `&or=(fulfill_leased_until.is.null,fulfill_leased_until.lt.${encodeURIComponent(new Date().toISOString())})` +
+      "&select=shop_domain,shopify_order_id,awb,extra_awbs,fulfill_attempts&order=updated_at.asc&limit=25",
   );
 
   let done = 0, failed = 0;
@@ -885,6 +1022,12 @@ async function handleFulfill(req: Request): Promise<Response> {
     const where = `shop_domain=eq.${encodeURIComponent(r.shop_domain)}` +
       `&shopify_order_id=eq.${encodeURIComponent(r.shopify_order_id)}`;
     const now = new Date().toISOString();
+
+    // Take the lease first. A row we fail to lease is one another worker holds.
+    const leased = await update("nvsh_order", `${where}&fulfill_state=eq.ready`, {
+      fulfill_leased_until: new Date(Date.now() + 120_000).toISOString(),
+    });
+    if (!leased.length) continue;
 
     const shopRow = await getShop(r.shop_domain);
     if (!shopRow?.access_token) {
@@ -903,8 +1046,11 @@ async function handleFulfill(req: Request): Promise<Response> {
     // starved everybody else, forever, because the poison row was always first.
     let pushed: { ok: boolean; detail?: string };
     try {
+      // A44: every box on the order, not just the first.
+      const allAwbs = [r.awb!, ...(r.extra_awbs ?? [])].filter(Boolean);
       pushed = await pushTracking(
-        r.shop_domain, shopRow.access_token, r.shopify_order_id, r.awb!, trackingUrl(r.awb!),
+        r.shop_domain, shopRow.access_token, r.shopify_order_id,
+        allAwbs, allAwbs.map(trackingUrl),
       );
     } catch (err) {
       const status = (err as { status?: number }).status;
@@ -928,15 +1074,18 @@ async function handleFulfill(req: Request): Promise<Response> {
 
     if (pushed.ok) {
       await update("nvsh_order", where, {
-        fulfill_state: "done", fulfilled_at: now, fulfill_error: null, updated_at: now,
+        fulfill_state: "done", fulfilled_at: now, fulfill_error: null,
+        fulfill_leased_until: null,
+        shopify_fulfillment_ids: pushed.fulfillmentIds ?? null,
+        updated_at: now,
       });
       done++;
     } else {
       const attempts = (r.fulfill_attempts ?? 0) + 1;
       await update("nvsh_order", where, {
-        // Six tries is about five minutes. After that a human should look,
-        // and the merchant sees it as a sync failure rather than a silent gap.
-        fulfill_state: attempts >= 6 ? "failed" : "ready",
+        // After twelve tries a human should look, and the merchant sees it as
+        // a sync failure rather than a silent gap. Retry is offered in the app.
+        fulfill_state: attempts >= 12 ? "failed" : "ready",
         fulfill_attempts: attempts,
         fulfill_error: pushed.detail ?? "unknown",
         updated_at: now,
@@ -1029,6 +1178,8 @@ Deno.serve(async (req: Request) => {
     if (path === "/api/order/decide") return await handleDecide(req);
     if (path === "/api/order/cancel") return await handleCancel(req);
     if (path === "/api/order/split") return await handleSplit(req);
+    if (path === "/api/order/resync") return await handleResync(req);
+    if (path === "/api/order/recheck") return await handleRecheck(req);
     if (path === "/api/approve-all") return await handleApproveAll(req);
     if (path === "/api/pickup") return await handlePickup(req);
     if (path === "/api/ticket") return await handleTicket(req);

@@ -82,6 +82,20 @@ globalThis.fetch = async (input, init = {}) => {
       if (fn === "nvsh_recent_orders")
         return J(db.nvsh_order.map(o => ({ order_name: o.order_name, awb: o.awb, status: o.status, cod_amount: o.cod_amount, received_at: o.received_at ?? new Date().toISOString(), error: o.error })));
       if (fn === "nvsh_wallet_summary") return J([{ available_balance: 12400, pending_payout: 3200, paid_this_month: 8000, lifetime_withdrawn: 91000 }]);
+      // A36: the nonce is consumed by one conditional UPDATE with a TTL, so the
+      // stub has to enforce the same single-shot semantics the SQL does.
+      if (fn === "nvsh_consume_oauth_state") {
+        const row = db.nvsh_oauth_state.find(
+          r => r.state === body.p_state && r.shop_domain === body.p_shop && !r.used_at);
+        if (!row) return J(false);
+        row.used_at = new Date().toISOString();
+        return J(true);
+      }
+      if (fn === "nvsh_count_booked") {
+        const sh = db.nvsh_shop.find(x => x.shop_domain === body.p_shop);
+        if (sh) sh.orders_booked = (sh.orders_booked ?? 0) + 1;
+        return J(null);
+      }
       return J([]);
     }
     const table = rest, qs = url.searchParams, store = db[table];

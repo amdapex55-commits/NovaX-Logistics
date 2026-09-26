@@ -27,7 +27,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
 <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js" data-api-key="${esc(apiKey)}"></script>
 <style>
   :root{
-    --bg:#f6f6f7; --card:#fff; --ink:#1a1a1a; --muted:#616161; --faint:#8a8a8a;
+    --bg:#f6f6f7; --card:#fff; --ink:#1a1a1a; --muted:#5a5a5a; --faint:#6b6b6b;
     --line:#e3e3e3; --warn:#8a6116; --warnbg:#fff6e0;
     --bad:#8e1f0b; --badbg:#fdf0ed; --good:#0b7c4d; --goodbg:#eaf4ee;
     --info:#1f4f8a; --infobg:#eaf1fa;
@@ -43,8 +43,16 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   body{margin:0;padding:var(--s5) var(--s4) 40px;background:var(--bg);color:var(--ink);
     font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     -webkit-font-smoothing:antialiased}
-  .wrap{max-width:940px;margin:0 auto;display:grid;gap:var(--s3)}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:var(--s4) var(--s5)}
+  /* A55: grid and flex items default to min-width:auto, so the 840px table
+     expanded every ancestor and the document measured 955px on a 390px phone --
+     the .scroll container never got the chance to scroll because nothing was
+     ever narrower than its content. min-width:0 at each ownership boundary is
+     what lets the overflow land where it was designed to. */
+  .wrap{max-width:940px;margin:0 auto;display:grid;gap:var(--s3);min-width:0}
+  .wrap > *{min-width:0}
+  .card{min-width:0}
+  .scroll{min-width:0;max-width:100%}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:var(--s4) var(--s5);min-width:0}
   .hdr{display:flex;align-items:center;gap:var(--s2)}
   .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#0b7c4d,#14c77b);
     display:grid;place-items:center;color:#fff;font-weight:800;font-size:12px;letter-spacing:.02em;flex:none}
@@ -59,7 +67,8 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   .banner.info{background:var(--infobg);border-color:var(--infoln);color:var(--info)}
   .banner strong{display:block;margin-bottom:3px;font-size:14px}
   .banner span{display:block;max-width:74ch}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:var(--s2)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr));gap:var(--s2);min-width:0}
+  .grid > *{min-width:0}
   .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r1);padding:var(--s3) var(--s4)}
   .stat .n{font-size:21px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
   .stat .l{color:var(--muted);font-size:12px;margin-top:1px}
@@ -85,7 +94,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   .btn{display:inline-block;background:var(--btn-bg);color:var(--btn-fg);text-decoration:none;
        padding:9px 15px;border-radius:var(--r1);font-weight:650;font-size:13px;border:1px solid transparent;
        cursor:pointer;font-family:inherit;line-height:1.2}
-  .btn.small{padding:5px 10px;font-size:12px;border-radius:7px}
+  .btn.small{padding:7px 11px;font-size:12px;border-radius:7px;min-height:32px}
   .btn.ghost{background:transparent;color:var(--ink);border-color:var(--fieldline)}
   .btn.ghost:hover{background:var(--neutralbg)}
   .btn[disabled]{opacity:.5;cursor:default}
@@ -102,7 +111,8 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   .check input{width:16px;height:16px;margin:2px 0 0;flex:none}
   .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.18em;
         text-transform:uppercase;font-size:18px;font-weight:700;text-align:center}
-  .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:var(--s3)}
+  .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(215px,100%),1fr));gap:var(--s3);min-width:0}
+  .fields > *{min-width:0}
   .empty{color:var(--muted);padding:26px var(--s2);text-align:center}
   .empty strong{display:block;color:var(--ink);margin-bottom:3px}
   /* .scroll had overflow-x:auto and nothing to overflow: the table shrank to
@@ -119,6 +129,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
      differently, which reads as misalignment rather than as a list. */
   .actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
   .actions .btn{white-space:nowrap}
+  .actions .danger{border-color:var(--badln);color:var(--bad)}
   th:last-child,td:last-child{width:236px;min-width:236px}
   .msg{font-size:13px;line-height:1.45}
   .msg:empty{display:none}
@@ -127,6 +138,10 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   .bar{display:flex;gap:var(--s2);flex-wrap:wrap;align-items:center;margin-bottom:var(--s3)}
   @media (max-width:640px){
     body{padding:var(--s3) var(--s2) 32px}
+    /* A71: 26px targets with 5px gaps, destructive ones among them. */
+    .btn.small{min-height:40px;padding:10px 13px;font-size:13px}
+    .actions{gap:8px}
+    .actions .danger{margin-left:auto}
     .card{padding:var(--s3) var(--s3)}
     .scroll{margin:0 calc(var(--s3) * -1);padding:0 var(--s3)}
   }
@@ -153,7 +168,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     <p class="sub" id="lede">Cash-on-delivery courier for Pakistan. Orders from this store become NovaX parcels, and the AWB goes back to Shopify as the tracking number.</p>
   </div>
 
-  <div id="status"></div>
+  <div id="status" role="status" aria-live="polite"></div>
 
   <!-- Connect ------------------------------------------------------------ -->
   <div class="card hide" id="connect">
@@ -168,7 +183,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
         <button class="btn" id="linkBtn" type="button">Connect this store</button>
       </div>
     </div>
-    <div class="msg" id="linkMsg" style="margin-top:var(--s3)"></div>
+    <div class="msg" id="linkMsg" role="status" aria-live="polite" style="margin-top:var(--s3)"></div>
     <div class="row" style="margin-top:var(--s4)">
       <a class="btn ghost" id="getCode" href="#" target="_blank" rel="noopener">Get my code</a>
       <a class="btn ghost" id="signup" href="#" target="_blank" rel="noopener">I don't have a NovaX account</a>
@@ -213,20 +228,20 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     </div>
     <div class="row" style="margin-top:var(--s4)">
       <button class="btn" id="saveBtn" type="button">Save</button>
-      <span class="msg" id="setMsg"></span>
+      <span class="msg" id="setMsg" role="status" aria-live="polite"></span>
     </div>
   </div>
 
   <!-- Orders -------------------------------------------------------------- -->
   <div class="card hide" id="ordersCard">
-    <h2>Orders</h2>
+    <h2>Orders <span id="freshness" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
     <div class="bar" id="bulkBar">
       <button class="btn small hide" id="approveAll" type="button">Approve all held orders</button>
       <button class="btn small ghost" id="pickupBtn" type="button">Request a pickup</button>
       <button class="btn small ghost" id="syncBtn" type="button">Check for missing orders</button>
-      <span class="msg" id="bulkMsg"></span>
+      <span class="msg" id="bulkMsg" role="status" aria-live="polite"></span>
     </div>
-    <div class="msg" id="rowMsg" style="margin-bottom:var(--s2)"></div>
+    <div class="msg" id="rowMsg" role="status" aria-live="polite" style="margin-bottom:var(--s2)"></div>
     <div class="card hide" id="ticketPanel" style="margin-bottom:var(--s3);background:var(--bg)">
       <label for="ticketBody">Tell NovaX what is wrong with <span id="ticketWhich"></span></label>
       <input type="text" id="ticketBody" maxlength="500" placeholder="The buyer says the address is wrong" autocomplete="off">
@@ -235,7 +250,13 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
         <button class="btn small ghost" id="ticketCancel" type="button">Cancel</button>
       </div>
     </div>
+    <p class="note" id="ordersCap"></p>
     <div class="scroll"><div id="orders"><p class="empty">Loading…</p></div></div>
+  </div>
+
+  <div class="card">
+    <h2>Who can use this</h2>
+    <p class="sub">Anyone with access to this app in your Shopify admin can book, approve, cancel and see account-wide COD totals. NovaX does not apply separate roles inside Shopify — use Shopify's own staff permissions to control who opens it. Per-seat roles live in the NovaX portal.</p>
   </div>
 
   <div class="card">
@@ -271,6 +292,11 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     throw new Error("App Bridge not ready");
   }
 
+  // A77: these were relative, so the app served at /shopify/app/ resolved
+  // "state" to /shopify/app/state and every call 404'd -- the page read
+  // "Could not load" and every button failed. Anchor to the app's own base.
+  var API_BASE = location.pathname.replace(/\\/app\\/?$/, "") || "/shopify";
+
   async function api(path, body){
     var init = { headers: { Authorization: "Bearer " + (await token()) } };
     if (body !== undefined) {
@@ -278,7 +304,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       init.headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);
     }
-    var res = await fetch(path, init);
+    var res = await fetch(API_BASE + "/" + path.replace(/^\\//, ""), init);
     if (!res.ok) throw new Error("HTTP " + res.status);
     return await res.json();
   }
@@ -287,6 +313,8 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     var n = el(id);
     n.textContent = text || "";
     n.className = "msg " + (text ? (ok ? "ok" : "err") : "");
+    // A69: an error has to interrupt, a progress message must not.
+    n.setAttribute("aria-live", text && ok === false ? "assertive" : "polite");
   }
 
   // ---- status -------------------------------------------------------------
@@ -314,10 +342,26 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       return;
     }
 
+    // A60: "linked" was the only thing checked, so a blocked or uninstalled
+    // shop showed a green Connected banner and offered pickups that would fail.
+    // Installation, linkage and sync health are three different states.
+    if (s.status === "blocked" || s.status === "uninstalled") {
+      var dead = s.status === "blocked"
+        ? ["This store is blocked", "NovaX support has paused this connection. Nothing is being booked. Message 0312 3922558."]
+        : ["The app is no longer installed", "Reinstall NovaX from your Shopify admin to start booking again. Nothing has been lost."];
+      box.innerHTML = '<div class="banner bad"><strong>' + h(dead[0]) + '</strong><span>' + h(dead[1]) + '</span></div>';
+      show("connect", false); show("settings", false); show("ordersCard", true);
+      el("approveAll").classList.add("hide");
+      el("pickupBtn").classList.add("hide");
+      el("syncBtn").classList.add("hide");
+      return;
+    }
+
     var bits = [];
     if (s.awaiting_count)      bits.push('<b>' + s.awaiting_count + '</b> waiting for your approval');
     if (s.failed_count)        bits.push('<b>' + s.failed_count + '</b> could not be booked');
     if (s.sync_failed_count)   bits.push('<b>' + s.sync_failed_count + '</b> booked but not synced to Shopify');
+    if (s.webhooks_ok === false) bits.push('<b>order delivery from Shopify is not fully set up</b> — reinstall the app');
     box.innerHTML = '<div class="banner ' + (s.failed_count || s.sync_failed_count ? "info" : "active") + '">' +
       '<strong>Connected' + (s.client_name ? ' — ' + h(s.client_name) : '') + '</strong>' +
       '<span>' + (s.booking_mode === "manual"
@@ -336,18 +380,32 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   function renderStats(s, w){
     if (!s || !s.linked) { el("stats").innerHTML = ""; return; }
     var cells = [
-      [s.orders_booked || 0, "Orders booked"],
-      [money(w && w.available_balance), "COD available"],
-      [money(w && w.pending_payout), "Payout pending"],
-      [money(w && w.paid_this_month), "Paid this month"]
+      [s.orders_booked || 0, "Orders booked (this store)"],
+      // A68: bookings are this store; the money is the whole NovaX account,
+      // including other stores and parcels booked in the portal. Unlabelled,
+      // that reads as a settlement error.
+      [money(w && w.available_balance), "COD available (whole account)"],
+      [money(w && w.pending_payout), "Payout pending (whole account)"],
+      [money(w && w.paid_this_month), "Paid this month (whole account)"]
     ];
     el("stats").innerHTML = cells.map(function(c){
       return '<div class="stat"><div class="n">' + h(c[0]) + '</div><div class="l">' + h(c[1]) + '</div></div>';
     }).join("");
   }
 
+  var settingsDirty = false;
+  ["mode","confirmed","tags","pay","ship","locs"].forEach(function(id){
+    var n = el(id);
+    if (n) n.addEventListener("input", function(){ settingsDirty = true; });
+    if (n) n.addEventListener("change", function(){ settingsDirty = true; });
+  });
+
   function renderSettings(s){
     if (!s || !s.linked) return;
+    // A57: every refresh rewrote these inputs, so cancelling an order silently
+    // threw away a rule the merchant was halfway through typing. Their edits
+    // win until they save or reload.
+    if (settingsDirty) return;
     el("mode").value = s.booking_mode === "manual" ? "manual" : "auto";
     el("confirmed").checked = Boolean(s.rule_require_confirmed);
     el("tags").value = (s.rule_exclude_tags  || []).join(", ");
@@ -390,27 +448,52 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     if (r.status === "booked") {
       a.push('<button class="btn small ghost" data-act="split" data-id="' + h(r.shopify_order_id) + '">Extra box</button>');
     }
+    // A65: a sync that gave up had no way back, and a skipped order could not be
+    // reconsidered after the merchant fixed the address in Shopify.
+    if (r.fulfill_state === "failed") {
+      a.push('<button class="btn small" data-act="resync" data-id="' + h(r.shopify_order_id) + '">Retry sync</button>');
+    }
+    if (r.status === "skipped" || r.status === "failed") {
+      a.push('<button class="btn small" data-act="recheck" data-id="' + h(r.shopify_order_id) + '">Try again</button>');
+    }
     if (r.status === "booked" || r.status === "failed" || r.awb) {
       a.push('<button class="btn small ghost" data-act="ticket" data-id="' + h(r.shopify_order_id) + '">Problem?</button>');
     }
     if ((r.status === "booked" && !r.recall_requested) || r.status === "awaiting_approval") {
-      a.push('<button class="btn small ghost" data-act="cancel" data-id="' + h(r.shopify_order_id) + '">Cancel</button>');
+      a.push('<button class="btn small ghost danger" data-act="cancel" data-id="' + h(r.shopify_order_id) + '">Cancel</button>');
     }
     return '<div class="actions">' + a.join("") + '</div>';
   }
 
   function renderOrders(rows){
     var box = el("orders");
+    // A61: the list is capped and said nothing, so older held or failed orders
+    // silently vanished while the counters above still included them.
+    var cap = el("ordersCap");
+    if (cap) {
+      cap.textContent = rows && rows.length >= 100
+        ? "Showing the 100 most recent orders. Older ones are in the NovaX portal."
+        : "";
+    }
     if (!rows || !rows.length) {
       box.innerHTML = '<div class="empty"><strong>No orders yet</strong>' +
         'The next order this store receives appears here, with its AWB.</div>';
       return;
     }
     box.innerHTML = '<table><thead><tr>' +
-      '<th>Order</th><th>AWB</th><th>COD</th><th>Status</th><th>Received</th><th></th>' +
+      '<th>Order</th><th>AWB</th><th>COD</th><th>Status</th><th>Received (PKT)</th><th></th>' +
       '</tr></thead><tbody>' + rows.map(function(r){
-        var when = r.received_at ? new Date(r.received_at).toLocaleString("en-PK",
-          { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }) : "—";
+        // A72: this used the viewer's timezone and dropped the year, so an
+        // overseas owner and the Karachi desk read different dates for one
+        // event. Everything is stated in Pakistan time, and says so.
+        var when = "—", whenFull = "";
+        if (r.received_at) {
+          var d = new Date(r.received_at);
+          when = d.toLocaleString("en-PK", { day:"numeric", month:"short", year:"2-digit",
+            hour:"2-digit", minute:"2-digit", timeZone:"Asia/Karachi" });
+          whenFull = d.toLocaleString("en-PK", { dateStyle:"full", timeStyle:"long",
+            timeZone:"Asia/Karachi" }) + " (Pakistan time)";
+        }
         var why = "";
         if (r.status === "awaiting_approval" && r.hold_reason) why = r.hold_reason;
         else if (r.fulfill_state === "failed" && r.fulfill_error) {
@@ -422,10 +505,15 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
           '<td>' + h(r.order_name || "—") + (why ? '<div class="why">' + h(why) + '</div>' : "") + '</td>' +
           '<td class="awb">' + h(r.awb || "—") +
             ((r.extra_awbs && r.extra_awbs.length)
-              ? '<span class="more">+ ' + r.extra_awbs.map(h).join(", ") + '</span>' : "") + '</td>' +
+              // A66: extra boxes were plain text, so a merchant could not tell
+              // which box was where. Each one is a tracking link of its own.
+              ? '<span class="more">' + r.extra_awbs.map(function(x){
+                  return '<a href="https://novaxlogistics.com/tracking.html?awb=' + encodeURIComponent(x) +
+                         '" target="_blank" rel="noopener">' + h(x) + '</a>'; }).join(" · ") + '</span>'
+              : "") + '</td>' +
           '<td class="num">' + money(r.cod_amount) + '</td>' +
           '<td>' + statusCell(r) + '</td>' +
-          '<td class="num">' + h(when) + '</td>' +
+          '<td class="num" title="' + h(whenFull) + '">' + h(when) + '</td>' +
           '<td>' + actionsCell(r) + '</td>' +
         '</tr>';
       }).join("") + '</tbody></table>';
@@ -433,17 +521,45 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
 
   // ---- load ---------------------------------------------------------------
 
+  var lastLoaded = null;
+
   async function load(){
     state = await api("state");
+    lastLoaded = new Date();
     renderStatus(state.shop);
     renderStats(state.shop, state.wallet);
     renderSettings(state.shop);
     renderOrders(state.orders);
     var portal = (state.shop && state.shop.portal_url) || PORTAL;
     el("portal").href = portal;
-    el("getCode").href = portal + "#integrations";
+    el("getCode").href = portal + "?tab=integrations";
     el("signup").href  = portal.replace("client.html", "index.html") + "#signup";
+
+    // A58: the page loaded once and then went quietly stale -- a booking that
+    // finished a second later was invisible until a manual reload. A68: the
+    // money is account-wide, not per store, and saying so stops it reading as
+    // a settlement error.
+    var f = el("freshness");
+    if (f) {
+      f.textContent = "Updated " + lastLoaded.toLocaleTimeString("en-PK",
+        { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Karachi" }) + " PKT" +
+        (state.degraded && (state.degraded.wallet || state.degraded.orders)
+          ? " — some sections could not be loaded" : "");
+    }
   }
+
+  // Refresh when the merchant comes back to the tab, and slowly while they
+  // watch. Bounded, and paused while the tab is hidden so it cannot spin.
+  var poll = null;
+  function startPolling(){
+    if (poll) clearInterval(poll);
+    poll = setInterval(function(){
+      if (document.visibilityState === "visible") load().catch(function(){});
+    }, 60000);
+  }
+  document.addEventListener("visibilitychange", function(){
+    if (document.visibilityState === "visible") load().catch(function(){});
+  });
 
   // ---- actions ------------------------------------------------------------
 
@@ -473,18 +589,41 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
         location_ids: list(el("locs").value)
       });
       say("setMsg", r.message || "Saved.", Boolean(r.ok));
-      if (r.ok) await load();
+      if (r.ok) { settingsDirty = false; await load(); }
     } catch (e) {
       say("setMsg", "Could not save: " + String(e.message || e), false);
     } finally { btn.disabled = false; }
   });
 
+  var approveArmed = false;
   el("approveAll").addEventListener("click", async function(){
-    var btn = this; btn.disabled = true; say("bulkMsg", "Approving…", true);
+    var btn = this;
+    // A63: this booked every held order, including ones scrolled out of view,
+    // with no statement of how many or what they would cost. Two presses, and
+    // the first one says what is about to happen.
+    if (!approveArmed) {
+      approveArmed = true;
+      var n = (state && state.shop && state.shop.awaiting_count) || 0;
+      var held = (state && state.orders || []).filter(function(o){ return o.status === "awaiting_approval"; });
+      var total = held.reduce(function(a, o){ return a + (Number(o.cod_amount) || 0); }, 0);
+      say("bulkMsg", "This books " + n + " held order" + (n === 1 ? "" : "s") +
+        (total ? ", " + money(total) + " of COD" : "") +
+        ", each with its own delivery fee. Orders you excluded by tag are NOT included. Press again to confirm.", false);
+      btn.textContent = "Confirm — book all " + n;
+      setTimeout(function(){
+        if (approveArmed) {
+          approveArmed = false; say("bulkMsg", "");
+          btn.textContent = "Approve all " + n + " held order" + (n === 1 ? "" : "s");
+        }
+      }, 8000);
+      return;
+    }
+    approveArmed = false;
+    btn.disabled = true; say("bulkMsg", "Approving…", true);
     try {
       var r = await api("api/approve-all", {});
       say("bulkMsg", r.message || "", Boolean(r.ok));
-      setTimeout(load, 2000);
+      setTimeout(function(){ load().catch(function(e){ say("bulkMsg", (r.message || "Done") + " — refresh failed: " + String(e.message || e), false); }); }, 2000);
     } catch (e) { say("bulkMsg", String(e.message || e), false); }
     finally { btn.disabled = false; }
   });
@@ -516,11 +655,13 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   el("ticketSend").addEventListener("click", async function(){
     var body = el("ticketBody").value.trim();
     if (!body) { say("rowMsg", "Write what the problem is first.", false); return; }
+    // Freeze the target for the duration of the send.
+    var target = ticketFor;
     this.disabled = true;
     try {
-      var r = await api("api/ticket", { order_id: ticketFor, body: body });
+      var r = await api("api/ticket", { order_id: target, body: body });
       say("rowMsg", r.message || "", Boolean(r.ok));
-      if (r.ok) closeTicket();
+      if (r.ok && ticketFor === target) closeTicket();
     } catch (e) { say("rowMsg", String(e.message || e), false); }
     finally { this.disabled = false; }
   });
@@ -530,7 +671,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     try {
       var r = await api("api/reconcile", {});
       say("bulkMsg", r.message || "", Boolean(r.ok));
-      if (r.recovered) setTimeout(load, 1500);
+      if (r.recovered) setTimeout(function(){ load().catch(function(){}); }, 1500);
     } catch (e) { say("bulkMsg", String(e.message || e), false); }
     finally { btn.disabled = false; }
   });
@@ -541,6 +682,13 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     var act = b.getAttribute("data-act"), id = b.getAttribute("data-id");
 
     if (act === "ticket") {
+      // A67: the draft was shared. Typing about order A then clicking Problem?
+      // on B kept the text and silently changed the target, and a send that was
+      // in flight for A closed the panel B had just opened.
+      if (ticketFor && ticketFor !== id && el("ticketBody").value.trim()) {
+        say("rowMsg", "You have an unsent message about another order. Send it or press Cancel first.", false);
+        return;
+      }
       ticketFor = id;
       el("ticketWhich").textContent = "order " + (b.closest("tr").getAttribute("data-order-name") || id);
       el("ticketPanel").classList.remove("hide");
@@ -553,10 +701,14 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     // with the cost said out loud, because the merchant pays for this.
     if (act === "split" && splitArmed !== id) {
       splitArmed = id;
-      b.textContent = "Confirm — this is a 2nd parcel and a 2nd delivery fee";
+      b.textContent = "Confirm";
+      // A56: the old confirmation text was a 334px button inside a 236px column
+      // and grew the table by 118px even on desktop. The button stays short and
+      // the cost is said in the message line, which has room for it.
+      say("rowMsg", "An extra box is a second parcel and a second delivery fee. Press Confirm to book it.", false);
       setTimeout(function(){
-        if (splitArmed === id) { splitArmed = null; b.textContent = "Extra box"; }
-      }, 6000);
+        if (splitArmed === id) { splitArmed = null; b.textContent = "Extra box"; say("rowMsg", ""); }
+      }, 8000);
       return;
     }
     splitArmed = null;
@@ -567,13 +719,25 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     say("rowMsg", "");
     try {
       var r;
-      if (act === "cancel")     r = await api("api/order/cancel", { order_id: id });
+      if (act === "resync")     r = await api("api/order/resync", { order_id: id });
+      else if (act === "recheck") r = await api("api/order/recheck", { order_id: id });
+      else if (act === "cancel") r = await api("api/order/cancel", { order_id: id });
       else if (act === "split") r = await api("api/order/split",  { order_id: id });
       else                      r = await api("api/order/decide", { order_id: id, decision: act });
 
       say("rowMsg", (r && r.message) || "", Boolean(r && r.ok));
-      if (r && r.ok) setTimeout(load, (act === "approve" || act === "split") ? 1800 : 400);
-      else { b.disabled = false; b.textContent = prev; }
+      if (r && r.ok) {
+        // A59: this was a bare setTimeout(load). When the refresh failed the
+        // rejection was unhandled, the button stayed disabled showing "…", and
+        // the merchant could not tell that the action itself had worked.
+        setTimeout(function(){
+          load().catch(function(e){
+            b.disabled = false; b.textContent = prev;
+            say("rowMsg", ((r && r.message) || "Done") +
+              " — but the screen could not refresh: " + String(e.message || e), false);
+          });
+        }, (act === "approve" || act === "split" || act === "recheck") ? 1800 : 400);
+      } else { b.disabled = false; b.textContent = prev; }
     } catch (e) {
       b.disabled = false; b.textContent = prev;
       say("rowMsg", "Could not reach NovaX: " + String(e.message || e), false);

@@ -41,6 +41,9 @@ export async function graphql<T>(
 ): Promise<T> {
   const res = await fetch(`https://${shop}/admin/api/${API_VERSION}/graphql.json`, {
     method: "POST",
+    // A34: an unbounded call to Shopify could hold a cron run open until the
+    // platform terminated it, leaving every row behind it untouched.
+    signal: AbortSignal.timeout(20_000),
     headers: {
       "Content-Type": "application/json",
       "X-Shopify-Access-Token": accessToken,
@@ -163,7 +166,8 @@ const FULFILLMENT_ORDERS = `
     order(id: $id) {
       id
       name
-      fulfillmentOrders(first: 25, query: "status:open OR status:in_progress") {
+      fulfillmentOrders(first: 50, query: "status:open OR status:in_progress") {
+        pageInfo { hasNextPage }
         nodes {
           id
           status
@@ -181,6 +185,8 @@ const CREATE_FULFILLMENT = `
       userErrors { field message }
     }
   }`;
+
+interface FoPage { pageInfo?: { hasNextPage?: boolean }; nodes: FoNode[] }
 
 interface FoNode {
   id: string;
@@ -209,21 +215,46 @@ export async function pushTracking(
   shop: string,
   accessToken: string,
   shopifyOrderId: string,
-  awb: string,
-  trackingUrl: string,
-): Promise<{ ok: boolean; detail?: string }> {
+  awb: string | string[],
+  trackingUrl: string | string[],
+): Promise<{ ok: boolean; detail?: string; fulfillmentIds?: string[] }> {
+  // A44: an order shipped in three boxes sent the buyer one tracking number and
+  // the other two never reached Shopify at all. Shopify takes a list.
+  const numbers = (Array.isArray(awb) ? awb : [awb]).filter(Boolean);
+  const urls = (Array.isArray(trackingUrl) ? trackingUrl : [trackingUrl]).filter(Boolean);
+  const primary = numbers[0] ?? "";
   const gid = shopifyOrderId.startsWith("gid://")
     ? shopifyOrderId
     : `gid://shopify/Order/${shopifyOrderId}`;
 
-  const found = await graphql<{ order: { fulfillmentOrders: { nodes: FoNode[] } } | null }>(
+  const found = await graphql<{ order: { fulfillmentOrders: FoPage } | null }>(
     shop, accessToken, FULFILLMENT_ORDERS, { id: gid },
   );
+
+  // A48: the query capped at 10 with no cursor, so a complex order could leave
+  // fulfillment orders unsynced and say nothing. 50 covers anything realistic,
+  // and going over is now reported rather than hidden.
+  const truncated = Boolean(found.order?.fulfillmentOrders?.pageInfo?.hasNextPage);
 
   const nodes = (found.order?.fulfillmentOrders?.nodes ?? [])
     .filter((n) => (n.lineItems?.nodes ?? []).some((li) => (li.remainingQuantity ?? 0) > 0));
 
   if (nodes.length === 0) {
+    // A42: before calling this a failure, check whether THIS AWB is already on
+    // the order. If it is, an earlier attempt reached Shopify and only our own
+    // write failed -- the buyer has the tracking number and the right answer is
+    // success, not a permanent failure on a delivered parcel.
+    try {
+      const seen = await graphql<{ order: { fulfillments: Array<{ id: string; trackingInfo: Array<{ number: string | null }> }> } | null }>(
+        shop, accessToken,
+        `query t($id: ID!) { order(id: $id) { fulfillments(first: 20) { id trackingInfo { number } } } }`,
+        { id: gid },
+      );
+      const mine = (seen.order?.fulfillments ?? [])
+        .filter((f) => (f.trackingInfo ?? []).some((t) => t.number === primary));
+      if (mine.length) return { ok: true, fulfillmentIds: mine.map((f) => f.id) };
+    } catch { /* fall through to the ordinary answer */ }
+
     // Nothing open to fulfil: already fulfilled elsewhere, or fully cancelled.
     // Not an error worth alarming anyone about.
     return { ok: false, detail: "no open fulfillment order" };
@@ -240,6 +271,7 @@ export async function pushTracking(
   }
 
   const problems: string[] = [];
+  const fulfillmentIds: string[] = [];
   let ok = 0;
 
   for (const [, group] of byLocation) {
@@ -259,24 +291,37 @@ export async function pushTracking(
       }>(shop, accessToken, CREATE_FULFILLMENT, {
         fulfillment: {
           lineItemsByFulfillmentOrder,
-          trackingInfo: { number: awb, url: trackingUrl, company: "NovaX Logistics" },
+          trackingInfo: numbers.length > 1
+            ? { numbers, urls, company: "NovaX Logistics" }
+            : { number: primary, url: urls[0], company: "NovaX Logistics" },
           notifyCustomer: true,
         },
       });
 
       const errs = data.fulfillmentCreate.userErrors;
       if (errs.length) problems.push(errs.map((e) => e.message).join("; "));
-      else ok++;
+      else {
+        ok++;
+        // A42: the id was thrown away, so if Shopify succeeded and our own
+        // write then failed, the retry saw no open fulfillment order and
+        // reported failure for a customer who had already been emailed.
+        if (data.fulfillmentCreate.fulfillment?.id) {
+          fulfillmentIds.push(data.fulfillmentCreate.fulfillment.id);
+        }
+      }
     } catch (err) {
       problems.push(String((err as Error).message).slice(0, 200));
     }
   }
 
-  if (ok === 0) return { ok: false, detail: problems.join(" | ") || "fulfillment failed" };
+  if (ok === 0) return { ok: false, detail: problems.join(" | ") || "fulfillment failed", fulfillmentIds };
   // A partial success is still a failure to report: some items are not marked
   // shipped, and the merchant has to know which.
-  if (problems.length) return { ok: false, detail: `partly fulfilled; ${problems.join(" | ")}` };
-  return { ok: true };
+  if (problems.length) return { ok: false, detail: `partly fulfilled; ${problems.join(" | ")}`, fulfillmentIds };
+  if (truncated) {
+    return { ok: false, detail: "more than 50 fulfillment orders on this order; some were not synced", fulfillmentIds };
+  }
+  return { ok: true, fulfillmentIds };
 }
 
 // --------------------------------------------------------- reconcile --------

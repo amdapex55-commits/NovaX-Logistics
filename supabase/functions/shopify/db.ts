@@ -23,8 +23,13 @@ function headers(extra: Record<string, string> = {}): Record<string, string> {
 }
 
 async function pg(path: string, init: RequestInit = {}): Promise<unknown> {
+  // A34: no deadline meant a slow upstream held a webhook handler or a cron job
+  // until the platform killed it -- the merchant saw a button stuck on "…" and
+  // Shopify saw a timeout. 10s is well inside Shopify's 5s webhook budget for
+  // the synchronous path and generous for the background one.
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
+    signal: AbortSignal.timeout(10_000),
     headers: { ...headers(), ...(init.headers as Record<string, string> ?? {}) },
   });
   const text = await res.text();

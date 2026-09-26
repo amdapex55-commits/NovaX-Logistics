@@ -165,6 +165,15 @@ export async function verifySessionToken(
   const shop = cleanShop(dest.replace(/^https?:\/\//, ""));
   if (!shop) return null;
 
+  // A76: iss and dest must name the same shop. Shopify issues iss as
+  // https://<shop>/admin; a token whose issuer and destination disagree is not
+  // a token Shopify minted for this session, whatever its signature says.
+  const iss = typeof payload.iss === "string" ? payload.iss : "";
+  if (iss) {
+    const issShop = cleanShop(iss.replace(/^https?:\/\//, "").replace(/\/admin\/?$/, ""));
+    if (!issShop || issShop !== shop) return null;
+  }
+
   // sub is the Shopify staff user id, absent for offline/background contexts.
   const userId = typeof payload.sub === "string" ? payload.sub : null;
 
