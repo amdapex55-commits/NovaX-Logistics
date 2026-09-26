@@ -11282,7 +11282,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       chip("woocommerce","wooStatusChip"); chip("web","webStatusChip");
       const prefill={woocommerce:"wooStoreUrl",web:"webEndpoint"};
       Object.keys(prefill).forEach(p=>{ const c=storeConn(p); const el=document.getElementById(prefill[p]); if(c&&el&&!el.value) el.value=c.storeUrl||""; });
-      if(typeof shopifyCheckStatus==="function") shopifyCheckStatus();
+      /* The legacy Shopify link/secret/token panel is gone: merchants install
+         the NovaX app and paste a connect code instead. shopifyCheckStatus()
+         drove that panel's four step chips and has nothing left to update. */
       try{ nvShopifyConnectCode(false); }catch(e){}
       try{ nvShopifyStores(); }catch(e){}
     }

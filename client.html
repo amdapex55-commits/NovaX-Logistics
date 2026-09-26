@@ -2460,7 +2460,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=c2b7fae2" defer></script>
+  <script src="client-app.js?v=d7416d80" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2475,7 +2475,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=c2b7fae2<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=d7416d80<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -2811,7 +2811,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 <p class="footer-note">Live order sync for real Shopify, WooCommerce, and website orders activates once the backend is connected. Connection details you save here are kept and reused at go-live.</p>
               </div>
               <div class="panel mt-14" id="nvShopifyAppPanel">
-                <div class="section-head"><div><h3>NovaX app for Shopify</h3><p>The installable app. Install it from Shopify, then paste the code below into it to connect this NovaX account. No webhooks, no signing secrets, no copy-pasting URLs.</p></div><span class="chip good">Recommended</span></div>
+                <div class="section-head"><div><h3>Shopify</h3><p>Install the <b>NovaX Logistics</b> app from your Shopify admin, then paste the code below into it. That is the whole setup — no webhooks, no signing secrets, and nothing of yours to paste in here.</p></div><span class="chip good">Live</span></div>
                 <div id="nvShopifyStores" class="mt-12"></div>
                 <div class="field mt-12"><label>Your connect code</label>
                   <p class="footer-note" id="nvShopifyCodeOut">Loading your code&hellip;</p>
@@ -2821,114 +2821,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 
               <div class="grid two mt-14">
                 <div class="panel">
-                  <div class="section-head"><div><h3>Shopify Link Integration</h3><p>No Shopify app to install and no approval needed. Generate a link, add one webhook in your own Shopify Admin, and orders start flowing in.</p></div><span class="chip" id="shopifyStatusChip">Setup pending</span></div>
-                  <p class="footer-note" id="shopifyStatusNote">NovaX only shows "Live" once your first real signed order arrives from Shopify -- that's expected, not broken. Follow the 4 steps below.</p>
-
-                  <div class="ops-card mt-12" id="shopifyStepTracker">
-                    <div class="inline-actions" style="flex-wrap:wrap;gap:14px">
-                      <span class="footer-note" id="shopifyStepChip1">&#9675; 1. Link generated</span>
-                      <span class="footer-note" id="shopifyStepChip2">&#9675; 2. Webhook added in Shopify</span>
-                      <span class="footer-note" id="shopifyStepChip3">&#9675; 3. Signing secret saved</span>
-                      <span class="footer-note" id="shopifyStepChip4">&#9675; 4. First order received</span>
-                    </div>
-                    <p class="footer-note mt-8" id="shopifyNextActionNote">Next: generate your NovaX Shopify link below.</p>
-                  </div>
-
-                  <div class="field mt-12"><label>Step 1 &middot; Generate your NovaX Shopify link</label>
-                    <div class="inline-actions"><button class="action-btn" id="shopifyGenerateLinkBtn" onclick="shopifyGenerateLink()">Generate Shopify Link</button></div>
-                  </div>
-                  <div class="field" id="shopifyLinkBox" style="display:none;margin-top:10px">
-                    <label for="shopifyIntakeUrlOut">Your NovaX Webhook URL</label>
-                    <textarea id="shopifyIntakeUrlOut" readonly rows="2" onclick="this.select()" style="width:100%;box-sizing:border-box;display:block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-all;overflow-wrap:anywhere;overflow-x:auto;resize:none;padding:10px 12px;border-radius:8px"></textarea>
-                    <div class="inline-actions" style="margin-top:8px;flex-wrap:wrap"><button class="ghost-btn" onclick="copyFieldValue('shopifyIntakeUrlOut')">Copy URL</button><button class="ghost-btn" onclick="shopifyCopySetupInstructions()">Copy setup instructions</button></div>
-                  </div>
-
-                  <div class="field" id="shopifyStep2Box" style="display:none;margin-top:14px">
-                    <label>Step 2 &middot; Add the webhook in Shopify</label>
-                    <p class="footer-note">Shopify Admin &rarr; Settings &rarr; Notifications &rarr; Webhooks &rarr; Create webhook<br>Event: <b>Order creation</b><br>Format: <b>JSON</b><br>URL: use the NovaX webhook URL above (must match exactly)<br>Shopify will then show you a "Signing secret" -- paste it below.</p>
-                    <!-- Signing secrets are masked like every other credential on this page.
-     shopifySecretInput was the odd one out in plain text while
-     shopifyAdminTokenInput and wooSecret were already type=password, so a
-     webhook secret sat readable on a warehouse screen during entry. The
-     generated wooSecretOut/webSecretOut outputs are masked too -- both
-     already have a Copy button, so nothing needs to be read off the
-     screen to be used. -->
-              <label class="mt-8">Step 3 &middot; Paste Shopify Webhook Signing Secret</label>
-                    <div class="inline-actions"><input id="shopifySecretInput" aria-label="Shopify webhook signing secret" type="password" autocomplete="off" spellcheck="false" placeholder="shpss_... or whsec_..." style="flex:1"><button class="action-btn" onclick="shopifySaveSecret()">Save Secret</button></div>
-                    <p class="footer-note">Saved securely on the server only -- never stored in this browser.</p>
-                  </div>
-
-                  <div class="ops-card" id="shopifySecretSuccessBox" style="display:none;margin-top:14px;border:1px solid #b7e4c7;background:#f0fbf4">
-                    <p class="footer-note" style="color:#1a7a3f;font-weight:600">Secret saved. Now create one test order in Shopify.</p>
-                    <div class="inline-actions mt-8"><button class="action-btn" id="shopifyBigCheckBtn" onclick="shopifyCheckStatus()">I created a test order -- check again</button></div>
-                  </div>
-
-                  <div class="field" id="shopifyStep3Box" style="display:none;margin-top:14px">
-                    <label>Step 4 &middot; Waiting for your first order</label>
-                    <p class="footer-note">Place a real (or Shopify test) order in your store, then check status below.</p>
-                    <div class="inline-actions" style="flex-wrap:wrap">
-                      <button class="ghost-btn" id="shopifyTestBtn" onclick="shopifyCheckStatus()">Check status again</button>
-                      <button class="ghost-btn" onclick="shopifyCopySetupInstructions()">Copy setup instructions</button>
-                    </div>
-                    <p class="footer-note mt-8" id="shopifyStatusDetail">Waiting for first Shopify order.</p>
-
-                    <details id="shopifyTroubleshootBox" class="mt-10">
-                      <summary class="footer-note" style="cursor:pointer">Not arriving? Check this troubleshooting list</summary>
-                      <ul class="footer-note" style="margin-top:8px;padding-left:18px">
-                        <li>Event must be <b>Order creation</b></li>
-                        <li>Format must be <b>JSON</b></li>
-                        <li>URL must match the NovaX webhook URL exactly (no extra spaces/characters)</li>
-                        <li>Signing secret must be copied exactly from Shopify (no missing characters)</li>
-                        <li>JWT verification must be <b>OFF</b> on the Supabase Edge Function (Shopify does not send a Supabase auth token)</li>
-                      </ul>
-                    </details>
-
-                    <!-- NovaX new (Shopify bulk): a webhook only ever fires for
-                         orders created AFTER it is registered. A merchant
-                         arriving with 300 unfulfilled orders already in Shopify
-                         needs those PULLED. This optional step unlocks that. -->
-                    <div class="ops-card" id="shopifyBulkBox" style="margin-top:12px;border:1px solid var(--line)">
-                      <div class="ops-card-head"><strong>Import orders you already have</strong><span class="chip" id="shopifyBulkChip">optional</span></div>
-                      <p class="footer-note">New orders arrive automatically once the webhook above is live. To also pull the unfulfilled orders <b>already sitting in your Shopify</b>, add a read-only Admin API token once.</p>
-                      <details class="mt-8">
-                        <summary class="footer-note" style="cursor:pointer">How to get the token (2 minutes, one time)</summary>
-                        <ol class="footer-note" style="margin-top:8px;padding-left:18px;line-height:1.7">
-                          <li>Shopify Admin &rarr; <b>Settings</b> &rarr; <b>Apps and sales channels</b> &rarr; <b>Develop apps</b></li>
-                          <li><b>Create an app</b> &rarr; name it "NovaX" &rarr; Create</li>
-                          <li><b>Configuration</b> &rarr; Admin API scopes &rarr; tick <b>read_orders</b> (and <b>write_fulfillments</b> if you want NovaX to mark orders fulfilled) &rarr; Save</li>
-                          <li><b>API credentials</b> &rarr; <b>Install app</b> &rarr; copy the <b>Admin API access token</b> (starts with <code>shpat_</code>)</li>
-                        </ol>
-                      </details>
-                      <div class="field mt-10"><label>Your Shopify store domain</label>
-                        <div class="inline-actions"><input id="shopifyDomainInput" placeholder="your-store.myshopify.com" style="flex:1"><button class="ghost-btn" onclick="shopifySaveDomain()">Save</button></div>
-                      </div>
-                      <div class="field mt-8"><label>Admin API access token</label>
-                        <div class="inline-actions"><input id="shopifyAdminTokenInput" aria-label="Shopify admin API token" type="password" placeholder="shpat_..." style="flex:1"><button class="ghost-btn" onclick="shopifySaveAdminToken()">Save token</button></div>
-                        <p class="footer-note">Stored server-side only. Never saved in this browser and never shown again.</p>
-                      </div>
-                      <div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">
-                        <button class="action-btn" id="shopifyBulkBtn" onclick="shopifyBulkImport()">Import existing orders now</button>
-                        <button class="ghost-btn" onclick="shopifyLoadBulkState()">Refresh</button>
-                      </div>
-                      <p class="footer-note mt-8" id="shopifyBulkStatus"></p>
-                    </div>
-
-                    <div class="ops-card" id="shopifyImportSummary" style="display:none;margin-top:10px">
-                      <div class="money-grid">
-                        <div class="money-box"><span>Orders imported</span><strong id="shopifyImportedCount">0</strong></div>
-                        <div class="money-box"><span>Last order received</span><strong id="shopifyLastOrderAt">-</strong></div>
-                      </div>
-                      <p class="footer-note">Last imported AWB: <b id="shopifyLastAwb">-</b></p>
-                      <div class="inline-actions mt-8"><button class="ghost-btn" onclick="viewShopifyImportedOrders()">View imported orders</button></div>
-                    </div>
-                  </div>
-
-                  <!-- The Admin API token now lives in the "Import orders you
-                       already have" card above, because the same token powers
-                       both bulk import and status push-back. Keeping a second
-                       input with the same id here produced a duplicate DOM id
-                       and a shadowed handler. -->
-                  <p class="footer-note mt-14" id="shopifySyncNote">Two-way status sync (NovaX pushing delivery updates back into Shopify) uses the same Admin API token as bulk import &mdash; add it once in "Import orders you already have" above and both work.</p>
+                  <div class="section-head"><div><h3>Using the old Shopify webhook setup?</h3><p>The link-and-signing-secret flow has been replaced by the NovaX app above. Existing connections keep working, but install the app when you get a moment — it needs no webhook, no signing secret, and no Admin API token.</p></div><span class="chip">Retired</span></div>
                 </div>
                 <div class="panel">
                   <div class="section-head"><div><h3>WooCommerce</h3><p>Connect with your site URL and REST consumer key/secret.</p></div><span class="chip" id="wooStatusChip">Not connected</span></div>
