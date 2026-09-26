@@ -492,6 +492,10 @@ async function handleSplit(req: Request): Promise<Response> {
       // reload mints a new one. The database treats an unknown key moments
       // after the last box as a probable retry and asks first.
       p_confirm_additional: Boolean(b_.confirm_additional),
+      // F20: the box the merchant is asking for. A reload recomputes the same
+      // number from the same screen, so a lost response recovers instead of
+      // booking (and charging for) a second box.
+      p_expect_package: Number(b_.expect_package) > 1 ? Number(b_.expect_package) : null,
       p_consignee: bk.consignee, p_phone: bk.phone, p_city: bk.city, p_address: bk.address,
       // A49: an extra box is a separate package whose weight we do not know.
       p_weight: "0.5 kg", p_service: bk.service, p_category: bk.category,
@@ -1124,6 +1128,7 @@ async function handleFulfill(req: Request): Promise<Response> {
     // behind the bad one were never tried. One merchant with a revoked token
     // starved everybody else, forever, because the poison row was always first.
     let pushed: Awaited<ReturnType<typeof pushTracking>>;
+    let allAwbs: string[] = [];
     try {
       // A44 + B15: every box that has ACTUALLY been handed over, not every box
       // that exists. Sending a box still sitting at the merchant tells the buyer
@@ -1152,7 +1157,7 @@ async function handleFulfill(req: Request): Promise<Response> {
       }
       const moving = new Set(["Collected by rider", "Arrived at warehouse", "Parcel now in transit",
         "Parcel received at destination", "Parcel out for delivery", "Delivered"]);
-      const allAwbs = inCustody.filter((p) => moving.has(p.status)).map((p) => p.awb);
+      allAwbs = inCustody.filter((p) => moving.has(p.status)).map((p) => p.awb);
       if (!allAwbs.length) {
         // Cancelled, recalled, or never collected. Nothing shipped.
         await update("nvsh_order", where, {
@@ -1193,6 +1198,10 @@ async function handleFulfill(req: Request): Promise<Response> {
         fulfill_state: "done", fulfilled_at: now, fulfill_error: null,
         fulfill_leased_until: null, fulfill_lease_owner: null,
         shopify_fulfillment_ids: pushed.fulfillmentIds ?? null,
+        // F03: what has actually been published. The handover trigger requeues
+        // a box that is NOT in here, which is how a later box gets synced
+        // exactly once without the trigger looping on itself.
+        synced_awbs: allAwbs,
         updated_at: now,
       });
       done++;

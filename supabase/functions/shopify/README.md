@@ -31,6 +31,8 @@ Run the migrations in this order. Every one is idempotent.
 | 11 | `sql_novax_shopify_audit_b01_b30.sql` | **the columns the runtime needs** — webhooks_ok, next_attempt_at, fulfill_leased_until, shopify_fulfillment_ids, split_keys, fulfill_lease_owner, reconcile_cursor, reconciled_at — plus atomic claim, linked booking and package keys |
 | 12 | `sql_novax_shopify_ui_v2.sql` | order list with recipient/city/weight/fee, queue counts, fee quote |
 | 13 | `sql_novax_shopify_audit_f01_f22.sql` | privacy-completion admin check, JSONB fee extraction, split-key alignment, held-order weight and recipient search |
+| 14 | `sql_novax_shopify_audit_g01_g10.sql` | the `validating` state nothing books from, conditional release, shared fulfilment-failure transition, review weight matching booking |
+| 15 | `sql_novax_shopify_close_f03_f08_f20.sql` | package-number identity for extra boxes, later-box requeue, `synced_awbs` |
 
 Migrations 11-13 are **not optional**: the deployed function calls RPCs and
 columns that only exist after them. A database built from 1-10 alone will fail

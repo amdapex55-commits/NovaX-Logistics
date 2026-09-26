@@ -757,8 +757,12 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       else if (act === "split") {
         // The same intent must never book two boxes.
         splitKeys[id] = splitKeys[id] || (id + ":" + Date.now() + ":" + Math.random().toString(36).slice(2, 8));
+        // F20: identity is the box number the screen is showing, not a key
+        // that dies on reload.
+        var o = orderById(id);
+        var expect = ((o && o.extra_awbs ? o.extra_awbs.length : 0) + 2);
         r = await api("api/order/split", { order_id: id, key: splitKeys[id],
-          confirm_additional: Boolean(splitConfirm[id]) });
+          expect_package: expect, confirm_additional: Boolean(splitConfirm[id]) });
         // The server asks once when it suspects a retry rather than a new box.
         if (r && r.needs_confirm) {
           // Ask on the button, not behind it.

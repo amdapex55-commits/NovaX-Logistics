@@ -260,11 +260,36 @@ export async function pushTracking(
       if (!missing.length && numbers.some((n) => onOrder.has(n))) {
         return { ok: true, fulfillmentIds: (seen.order?.fulfillments ?? []).map((f) => f.id) };
       }
+      // F03: this detected the gap and stopped. A box handed over after the
+      // order was already fulfilled has no open fulfillment order to create
+      // against -- the tracking has to be ADDED to the fulfillment that exists.
       if (missing.length && onOrder.size) {
-        return {
-          ok: false,
-          detail: `already fulfilled, but ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not on the order`,
-        };
+        const target = (seen.order?.fulfillments ?? [])[0];
+        if (!target) return { ok: false, detail: "no fulfillment to add tracking to" };
+        try {
+          const upd = await graphql<{
+            fulfillmentTrackingInfoUpdate: {
+              fulfillment: { id: string } | null;
+              userErrors: Array<{ message: string }>;
+            };
+          }>(
+            shop, accessToken,
+            `mutation addTracking($id: ID!, $info: FulfillmentTrackingInput!) {
+               fulfillmentTrackingInfoUpdate(fulfillmentId: $id, trackingInfoInput: $info, notifyCustomer: true) {
+                 fulfillment { id }
+                 userErrors { message }
+               }
+             }`,
+            { id: target.id, info: { numbers, urls, company: "NovaX Logistics" } },
+          );
+          const errs = upd.fulfillmentTrackingInfoUpdate.userErrors ?? [];
+          if (errs.length) {
+            return { ok: false, detail: "could not add the later box's tracking: " + errs.map((e) => e.message).join("; ") };
+          }
+          return { ok: true, fulfillmentIds: [target.id] };
+        } catch (err) {
+          return { ok: false, detail: "could not add the later box's tracking: " + String((err as Error).message).slice(0, 160) };
+        }
       }
     } catch { /* fall through to the ordinary answer */ }
 
