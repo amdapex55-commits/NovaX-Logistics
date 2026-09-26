@@ -27,93 +27,129 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
 <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js" data-api-key="${esc(apiKey)}"></script>
 <style>
   :root{
-    --bg:#f6f6f7; --card:#fff; --ink:#1a1a1a; --muted:#616161;
-    --line:#e3e3e3; --brand:#0b7c4d; --warn:#8a6116; --warnbg:#fff6e0;
+    --bg:#f6f6f7; --card:#fff; --ink:#1a1a1a; --muted:#616161; --faint:#8a8a8a;
+    --line:#e3e3e3; --warn:#8a6116; --warnbg:#fff6e0;
     --bad:#8e1f0b; --badbg:#fdf0ed; --good:#0b7c4d; --goodbg:#eaf4ee;
     --info:#1f4f8a; --infobg:#eaf1fa;
     --goodln:#9ecdb4; --warnln:#e3c67d; --badln:#e0a99c; --infoln:#a8c3e2;
     /* The button is an inversion PAIR, not --ink used as a surface. --ink
        flips to near-white in dark mode, and white-on-white measured 1.28:1. */
     --btn-bg:#1a1a1a; --btn-fg:#fff; --neutralbg:#eee; --neutral:#555;
-    --field:#fff; --fieldline:#b5b5b5;
+    --field:#fff; --fieldline:#b5b5b5; --focus:#1f5eff;
+    --s1:6px; --s2:10px; --s3:14px; --s4:18px; --s5:24px;
+    --r1:8px; --r2:12px;
   }
   *{box-sizing:border-box}
-  body{margin:0;padding:20px;background:var(--bg);color:var(--ink);
-    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-  .wrap{max-width:920px;margin:0 auto;display:grid;gap:16px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
-  h1{font-size:19px;margin:0 0 4px}
-  h2{font-size:14px;margin:0 0 12px;color:var(--muted);font-weight:600;
-     text-transform:uppercase;letter-spacing:.04em}
-  .sub{color:var(--muted);margin:0}
-  .banner{border-radius:10px;padding:14px 16px;border:1px solid}
+  body{margin:0;padding:var(--s5) var(--s4) 40px;background:var(--bg);color:var(--ink);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:940px;margin:0 auto;display:grid;gap:var(--s3)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:var(--s4) var(--s5)}
+  .hdr{display:flex;align-items:center;gap:var(--s2)}
+  .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#0b7c4d,#14c77b);
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:12px;letter-spacing:.02em;flex:none}
+  h1{font-size:17px;margin:0;letter-spacing:-.01em}
+  h2{font-size:11.5px;margin:0 0 var(--s3);color:var(--faint);font-weight:700;
+     text-transform:uppercase;letter-spacing:.07em}
+  .sub{color:var(--muted);margin:var(--s2) 0 0;max-width:68ch}
+  .banner{border-radius:var(--r1);padding:var(--s3) var(--s4);border:1px solid}
   .banner.pending{background:var(--warnbg);border-color:var(--warnln);color:var(--warn)}
   .banner.active{background:var(--goodbg);border-color:var(--goodln);color:var(--good)}
   .banner.bad{background:var(--badbg);border-color:var(--badln);color:var(--bad)}
   .banner.info{background:var(--infobg);border-color:var(--infoln);color:var(--info)}
-  .banner strong{display:block;margin-bottom:2px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
-  .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
-  .stat .n{font-size:22px;font-weight:650;letter-spacing:-.01em}
-  .stat .l{color:var(--muted);font-size:12px;margin-top:2px}
+  .banner strong{display:block;margin-bottom:3px;font-size:14px}
+  .banner span{display:block;max-width:74ch}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:var(--s2)}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r1);padding:var(--s3) var(--s4)}
+  .stat .n{font-size:21px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .stat .l{color:var(--muted);font-size:12px;margin-top:1px}
   table{width:100%;border-collapse:collapse;font-size:13px}
-  th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;
-     text-transform:uppercase;letter-spacing:.04em;padding:0 8px 8px;border-bottom:1px solid var(--line)}
-  td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{text-align:left;color:var(--faint);font-weight:700;font-size:10.5px;
+     text-transform:uppercase;letter-spacing:.07em;padding:0 var(--s2) var(--s2);
+     border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:var(--s3) var(--s2);border-bottom:1px solid var(--line);vertical-align:top}
   tr:last-child td{border-bottom:0}
-  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+  td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:650;white-space:nowrap}
   .pill.booked{background:var(--goodbg);color:var(--good)}
   .pill.skipped,.pill.cancelled{background:var(--neutralbg);color:var(--neutral)}
   .pill.failed{background:var(--badbg);color:var(--bad)}
   .pill.pending_link,.pill.received,.pill.awaiting_approval{background:var(--warnbg);color:var(--warn)}
-  .pill.sync{background:var(--infobg);color:var(--info)}
-  .awb{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-  .why{color:var(--muted);font-size:12px;margin-top:3px;max-width:52ch}
+  .awb{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap}
+  .awb .more{display:block;color:var(--faint);font-size:11.5px;margin-top:2px;font-weight:400}
+  /* One sub-line under the pill instead of a second pill: two pills stacked in
+     a narrow cell read as two separate problems when it is one row. */
+  .sub2{display:block;margin-top:4px;font-size:11.5px;color:var(--muted)}
+  .sub2.warnish{color:var(--warn)} .sub2.badish{color:var(--bad)}
+  .why{color:var(--muted);font-size:12px;margin-top:4px;max-width:42ch;line-height:1.45}
   .btn{display:inline-block;background:var(--btn-bg);color:var(--btn-fg);text-decoration:none;
-       padding:9px 14px;border-radius:8px;font-weight:600;font-size:13px;border:0;cursor:pointer}
-  .btn.small{padding:5px 10px;font-size:12px}
-  .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--fieldline)}
-  .btn[disabled]{opacity:.55;cursor:default}
-  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  label{display:block;font-size:12px;color:var(--muted);margin:0 0 4px}
-  input[type=text],select{width:100%;padding:9px 10px;border:1px solid var(--fieldline);
-    border-radius:8px;background:var(--field);color:var(--ink);font:inherit;font-size:13px}
-  input[type=checkbox]{width:16px;height:16px;vertical-align:-2px;margin-right:6px}
-  .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;
-        text-transform:uppercase;font-size:18px;font-weight:700}
-  .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
-  .empty{color:var(--muted);padding:22px 8px;text-align:center}
-  /* .scroll had overflow-x:auto and nothing to overflow: the table simply
-     shrank to fit, and on a phone the reason column collapsed to about 60px
-     and wrapped one word per line. A min-width makes the container do its job
-     and keeps every column readable. */
-  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .scroll table{min-width:660px}
-  .why{max-width:44ch}
-  .note{font-size:12px;color:var(--muted);margin-top:6px}
-  .actions{display:flex;gap:6px;flex-wrap:wrap}
-  .msg{margin-top:10px;font-size:13px}
+       padding:9px 15px;border-radius:var(--r1);font-weight:650;font-size:13px;border:1px solid transparent;
+       cursor:pointer;font-family:inherit;line-height:1.2}
+  .btn.small{padding:5px 10px;font-size:12px;border-radius:7px}
+  .btn.ghost{background:transparent;color:var(--ink);border-color:var(--fieldline)}
+  .btn.ghost:hover{background:var(--neutralbg)}
+  .btn[disabled]{opacity:.5;cursor:default}
+  :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+  .row{display:flex;gap:var(--s2);flex-wrap:wrap;align-items:center}
+  label{display:block;font-size:12px;color:var(--muted);margin:0 0 5px}
+  input[type=text],select{width:100%;padding:9px 11px;border:1px solid var(--fieldline);
+    border-radius:var(--r1);background:var(--field);color:var(--ink);font:inherit;font-size:13px}
+  select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
+    linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+    background-position:calc(100% - 17px) 17px,calc(100% - 12px) 17px;
+    background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:32px}
+  .check{display:flex;align-items:flex-start;gap:8px;color:var(--ink);font-size:13px;margin:0}
+  .check input{width:16px;height:16px;margin:2px 0 0;flex:none}
+  .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.18em;
+        text-transform:uppercase;font-size:18px;font-weight:700;text-align:center}
+  .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:var(--s3)}
+  .empty{color:var(--muted);padding:26px var(--s2);text-align:center}
+  .empty strong{display:block;color:var(--ink);margin-bottom:3px}
+  /* .scroll had overflow-x:auto and nothing to overflow: the table shrank to
+     fit instead, and on a phone the reason column collapsed to about 60px and
+     wrapped one word per line. A min-width makes the container do its job. */
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 calc(var(--s5) * -1);padding:0 var(--s5)}
+  /* 680px was not enough once the action column took a fixed 236px: the order
+     column collapsed and the hold reason wrapped one word per line again. */
+  .scroll table{min-width:840px}
+  th:first-child,td:first-child{min-width:190px}
+  .note{font-size:12px;color:var(--faint);margin:5px 0 0;line-height:1.45}
+  /* A fixed width here so every row wraps its buttons the same way. Left to
+     itself the column sized to the widest row and the others wrapped
+     differently, which reads as misalignment rather than as a list. */
+  .actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+  .actions .btn{white-space:nowrap}
+  th:last-child,td:last-child{width:236px;min-width:236px}
+  .msg{font-size:13px;line-height:1.45}
+  .msg:empty{display:none}
   .msg.ok{color:var(--good)} .msg.err{color:var(--bad)}
   .hide{display:none!important}
+  .bar{display:flex;gap:var(--s2);flex-wrap:wrap;align-items:center;margin-bottom:var(--s3)}
+  @media (max-width:640px){
+    body{padding:var(--s3) var(--s2) 32px}
+    .card{padding:var(--s3) var(--s3)}
+    .scroll{margin:0 calc(var(--s3) * -1);padding:0 var(--s3)}
+  }
   @media (prefers-color-scheme:dark){
     /* Shopify admin has a dark mode, so this runs for real merchants. The
        background tokens were flipped here and the FOREGROUND ones were not:
        --good/--warn/--bad kept their light-theme values and sat on the new
        dark fills at 1.88-2.73:1, and the button reached 1.28:1. Every colour
-       used as text now flips with the surface it sits on. */
-    :root{--bg:#1a1a1a;--card:#242424;--ink:#e3e3e3;--muted:#a0a0a0;--line:#3a3a3a;
+       used as text or as a border now flips with the surface behind it. */
+    :root{--bg:#1a1a1a;--card:#242424;--ink:#e3e3e3;--muted:#a0a0a0;--faint:#8c8c8c;--line:#3a3a3a;
           --goodbg:#12301f;--warnbg:#302713;--badbg:#301613;--infobg:#132233;
-          --good:#5fe0a8;--warn:#e8b64c;--bad:#f0a396;--info:#8fbdf0;--brand:#5fe0a8;
+          --good:#5fe0a8;--warn:#e8b64c;--bad:#f0a396;--info:#8fbdf0;
+          --goodln:#2f6b4c;--warnln:#6b5524;--badln:#6b3228;--infoln:#2a4a6b;
           --btn-bg:#e3e3e3;--btn-fg:#1a1a1a;--neutralbg:#32363a;--neutral:#c2c8ce;
-          --field:#1c1c1c;--fieldline:#4a4a4a;
-          --goodln:#2f6b4c;--warnln:#6b5524;--badln:#6b3228;--infoln:#2a4a6b}
+          --field:#1c1c1c;--fieldline:#4a4a4a;--focus:#7aa2ff}
   }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="card">
-    <h1>NovaX Logistics</h1>
+    <div class="hdr"><span class="mark">NX</span><h1>NovaX Logistics</h1></div>
     <p class="sub" id="lede">Cash-on-delivery courier for Pakistan. Orders from this store become NovaX parcels, and the AWB goes back to Shopify as the tracking number.</p>
   </div>
 
@@ -123,7 +159,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   <div class="card hide" id="connect">
     <h2>Connect your NovaX account</h2>
     <p class="sub">Open the NovaX portal, go to <b>Integrations</b>, and generate a connect code. Paste it here. The code proves you own the account — we never match stores to accounts by email address.</p>
-    <div class="fields" style="margin-top:14px">
+    <div class="fields" style="margin-top:var(--s4)">
       <div>
         <label for="code">Connect code</label>
         <input type="text" id="code" class="code" maxlength="12" autocomplete="off" spellcheck="false" placeholder="ABCD2345">
@@ -132,8 +168,8 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
         <button class="btn" id="linkBtn" type="button">Connect this store</button>
       </div>
     </div>
-    <div class="msg" id="linkMsg"></div>
-    <div class="row" style="margin-top:14px">
+    <div class="msg" id="linkMsg" style="margin-top:var(--s3)"></div>
+    <div class="row" style="margin-top:var(--s4)">
       <a class="btn ghost" id="getCode" href="#" target="_blank" rel="noopener">Get my code</a>
       <a class="btn ghost" id="signup" href="#" target="_blank" rel="noopener">I don't have a NovaX account</a>
     </div>
@@ -148,8 +184,8 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       <div>
         <label for="mode">Booking</label>
         <select id="mode">
-          <option value="auto">Book every matching order automatically</option>
-          <option value="manual">Hold every order for my approval</option>
+          <option value="auto">Book matching orders automatically</option>
+          <option value="manual">Hold every order for approval</option>
         </select>
       </div>
       <div>
@@ -169,11 +205,11 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
         <input type="text" id="locs" placeholder="blank means any" autocomplete="off">
       </div>
       <div style="align-self:end">
-        <label><input type="checkbox" id="confirmed"> Only book paid orders</label>
-        <div class="note">COD orders are unpaid by design — leave this off if you sell COD.</div>
+        <label class="check" for="confirmed"><input type="checkbox" id="confirmed"> <span>Only book paid orders</span></label>
+        <p class="note">COD orders are unpaid by design — leave this off if you sell COD.</p>
       </div>
     </div>
-    <div class="row" style="margin-top:14px">
+    <div class="row" style="margin-top:var(--s4)">
       <button class="btn" id="saveBtn" type="button">Save</button>
       <span class="msg" id="setMsg"></span>
     </div>
@@ -182,13 +218,13 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   <!-- Orders -------------------------------------------------------------- -->
   <div class="card hide" id="ordersCard">
     <h2>Orders</h2>
-    <div class="row" style="margin-bottom:12px" id="bulkBar">
+    <div class="bar" id="bulkBar">
       <button class="btn small hide" id="approveAll" type="button">Approve all held orders</button>
       <button class="btn small ghost" id="pickupBtn" type="button">Request a pickup</button>
       <span class="msg" id="bulkMsg"></span>
     </div>
-    <div class="msg" id="rowMsg"></div>
-    <div class="card hide" id="ticketPanel" style="margin-bottom:12px">
+    <div class="msg" id="rowMsg" style="margin-bottom:var(--s2)"></div>
+    <div class="card hide" id="ticketPanel" style="margin-bottom:var(--s3);background:var(--bg)">
       <label for="ticketBody">Tell NovaX what is wrong with <span id="ticketWhich"></span></label>
       <input type="text" id="ticketBody" maxlength="500" placeholder="The buyer says the address is wrong" autocomplete="off">
       <div class="row" style="margin-top:10px">
@@ -256,18 +292,21 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     var box = el("status");
     if (!s) {
       box.innerHTML = '<div class="banner bad"><strong>This store is not registered with NovaX</strong>' +
-        'Uninstall and reinstall the app. If it happens again, message NovaX on WhatsApp 0312 3922558.</div>';
+        '<span>Uninstall and reinstall the app. If it happens again, message NovaX on WhatsApp 0312 3922558.</span></div>';
       show("connect", false); show("settings", false); show("ordersCard", false);
       return;
     }
     if (!s.linked) {
       var n = s.pending_count || 0;
       box.innerHTML = '<div class="banner pending"><strong>One step left: connect your NovaX account</strong>' +
-        'Nothing is booked until you do.' +
+        '<span>Nothing is booked until you do.' +
         (n ? ' <b>' + n + '</b> order' + (n === 1 ? '' : 's') + ' received so far ' +
              (n === 1 ? 'is' : 'are') + ' being held and will be booked the moment you connect — nothing is lost.' : '') +
-        '</div>';
+        '</span></div>';
       show("connect", true); show("settings", false); show("ordersCard", n > 0);
+    // Nothing here works until the store is connected, so nothing here is offered.
+    el("approveAll").classList.add("hide");
+    el("pickupBtn").classList.add("hide");
       return;
     }
 
@@ -277,12 +316,13 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     if (s.sync_failed_count)   bits.push('<b>' + s.sync_failed_count + '</b> booked but not synced to Shopify');
     box.innerHTML = '<div class="banner ' + (s.failed_count || s.sync_failed_count ? "info" : "active") + '">' +
       '<strong>Connected' + (s.client_name ? ' — ' + h(s.client_name) : '') + '</strong>' +
-      (s.booking_mode === "manual"
+      '<span>' + (s.booking_mode === "manual"
         ? 'Every order is held for your approval.'
         : 'Matching orders are booked automatically.') +
       (bits.length ? ' ' + bits.join(', ') + '.' : '') +
-      '</div>';
+      '</span></div>';
     show("connect", false); show("settings", true); show("ordersCard", true);
+    el("pickupBtn").classList.remove("hide");
     el("approveAll").classList[s.awaiting_count ? "remove" : "add"]("hide");
     el("approveAll").textContent = "Approve all " + s.awaiting_count + " held order" +
       (s.awaiting_count === 1 ? "" : "s");
@@ -318,13 +358,15 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   function statusCell(r){
     var label = String(r.status || "").replace(/_/g, " ");
     var out = '<span class="pill ' + h(r.status) + '">' + h(label) + '</span>';
-    if (r.status === "booked" && r.fulfill_state === "ready") {
-      out += ' <span class="pill sync">tracking sync pending</span>';
-    } else if (r.status === "booked" && r.fulfill_state === "failed") {
-      out += ' <span class="pill failed">tracking sync failed</span>';
+    if (r.parcel_status && r.parcel_status !== "New booked") {
+      out += '<span class="sub2">' + h(r.parcel_status) + '</span>';
     }
-    if (r.recall_requested) out += ' <span class="pill failed">recall requested</span>';
-    if (r.parcel_status)    out += '<div class="why">' + h(r.parcel_status) + '</div>';
+    if (r.status === "booked" && r.fulfill_state === "ready") {
+      out += '<span class="sub2">Tracking sync pending</span>';
+    } else if (r.status === "booked" && r.fulfill_state === "failed") {
+      out += '<span class="sub2 badish">Tracking not sent to Shopify</span>';
+    }
+    if (r.recall_requested) out += '<span class="sub2 badish">Recall requested</span>';
     return out;
   }
 
@@ -355,7 +397,8 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   function renderOrders(rows){
     var box = el("orders");
     if (!rows || !rows.length) {
-      box.innerHTML = '<p class="empty">No orders yet. The next order this store receives will appear here.</p>';
+      box.innerHTML = '<div class="empty"><strong>No orders yet</strong>' +
+        'The next order this store receives appears here, with its AWB.</div>';
       return;
     }
     box.innerHTML = '<table><thead><tr>' +
@@ -374,10 +417,10 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
           '<td>' + h(r.order_name || "—") + (why ? '<div class="why">' + h(why) + '</div>' : "") + '</td>' +
           '<td class="awb">' + h(r.awb || "—") +
             ((r.extra_awbs && r.extra_awbs.length)
-              ? '<div class="why">+ ' + r.extra_awbs.map(h).join(", ") + '</div>' : "") + '</td>' +
-          '<td>' + money(r.cod_amount) + '</td>' +
+              ? '<span class="more">+ ' + r.extra_awbs.map(h).join(", ") + '</span>' : "") + '</td>' +
+          '<td class="num">' + money(r.cod_amount) + '</td>' +
           '<td>' + statusCell(r) + '</td>' +
-          '<td>' + h(when) + '</td>' +
+          '<td class="num">' + h(when) + '</td>' +
           '<td>' + actionsCell(r) + '</td>' +
         '</tr>';
       }).join("") + '</tbody></table>';
