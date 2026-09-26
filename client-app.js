@@ -4178,13 +4178,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     /* Fires once the portal has a signed-in client, whatever tab they land on.
        Guarded so a re-render cannot reopen it. */
-    var __nvShopifyPopupDone=false;
+    var __nvShopifyPopupDone=false, __nvShopifyPopupTries=0;
     function nvShopifyPopupWhenReady(){
       if(__nvShopifyPopupDone) return;
       var want=false;
       try{ want = sessionStorage.getItem("novaxShopifyConnect")==="1"; }catch(e){}
       if(!want) return;
-      if(!window.sb || !state || !state.client) return;   // wait for auth
+
+      /* This used to test window.sb, which does not exist anywhere in this
+         codebase -- the client is window.__nvSb. The guard could never pass, so
+         the popup never opened and the flag sat in sessionStorage forever. */
+      var ready = Boolean(window.__nvSb) && state && state.client;
+      if(!ready){
+        /* Auth may still be settling. Try for a few seconds, then open anyway
+           and let the RPC say what is wrong rather than showing nothing. */
+        if(++__nvShopifyPopupTries < 20){
+          setTimeout(nvShopifyPopupWhenReady, 400);
+          return;
+        }
+      }
       __nvShopifyPopupDone=true;
       try{ nvShopifyMaybePopup(); }catch(e){}
     }
@@ -11301,7 +11313,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(exp) exp.textContent="Asking NovaX for your code\u2026";
       modal.classList.add("show");
 
-      Promise.resolve(sb.rpc("nvsh_link_code_issue",{ p_force: !!force })).then(function(r){
+      var client = window.__nvSb || (typeof sb !== "undefined" ? sb : null);
+      if(!client){
+        if(exp) exp.textContent="Still signing you in. Close this and press Get my code again in a moment.";
+        return;
+      }
+      Promise.resolve(client.rpc("nvsh_link_code_issue",{ p_force: !!force })).then(function(r){
         if(r && r.error){
           var m=String((r.error&&r.error.message)||"");
           if(exp) exp.textContent = /owner/i.test(m)
