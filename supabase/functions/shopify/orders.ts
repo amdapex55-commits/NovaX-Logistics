@@ -40,6 +40,7 @@ export interface ShopifyOrder {
   note?: string | null;
   shipping_address?: ShopifyAddress | null;
   customer?: { phone?: string | null; email?: string | null } | null;
+  _line_items_truncated?: boolean;
   line_items?: Array<{
     id?: number | string | null;
     grams?: number | null;
@@ -327,6 +328,16 @@ export function mapOrderToBooking(order: ShopifyOrder, opts: MapOptions = {}): M
     defaultCategory = "General",
     bookPrepaid = false,
   } = opts;
+
+  // F09: the adapter detected that Shopify had more line items than it
+  // returned and set a flag that nothing checked, so a truncated order was
+  // priced and booked as though it were complete.
+  if ((order as { _line_items_truncated?: boolean })._line_items_truncated) {
+    return {
+      action: "skip",
+      reason: "This order has more items than NovaX can read in one go, so its weight cannot be trusted. Book it by hand in the NovaX portal.",
+    };
+  }
 
   if (order.test) return { action: "skip", reason: "test order" };
   if (order.cancelled_at) return { action: "skip", reason: "order cancelled in Shopify" };

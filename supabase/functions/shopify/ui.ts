@@ -79,9 +79,17 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     background:rgba(255,255,255,.22);color:var(--btn-fg)}
 
   /* ---- one shipment, one row. Same markup on phone and desktop. ---- */
+  /* F06: the phone rules named .state, but .state sits inside an unclassified
+     wrapper -- the WRAPPER is the grid child. The rules applied to nothing, the
+     wrapper took the auto-sized column, and the recipient was squeezed to 38px
+     at 390 and to 0px at 320. Explicit areas on the real children. */
   .ship{display:grid;gap:var(--s2);padding:var(--s3) 0;border-bottom:1px solid var(--line);
-    grid-template-columns:minmax(0,1.5fr) minmax(0,1.2fr) auto auto;align-items:start}
+    grid-template-columns:minmax(140px,1.4fr) minmax(160px,1.3fr) minmax(90px,auto) auto;
+    grid-template-areas:"who st money act";align-items:start}
+  .ship > .who{grid-area:who} .ship > .st{grid-area:st}
+  .ship > .money{grid-area:money} .ship > .act{grid-area:act}
   .ship:last-child{border-bottom:0}
+  .ship > *{min-width:0}
   .ship .who{min-width:0}
   .ship .ord{font-weight:650;letter-spacing:-.01em}
   .ship .name{color:var(--muted);font-size:13px;margin-top:1px;
@@ -95,7 +103,8 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   .ship.busy{background:var(--sel)}
 
   /* ---- shipment state and Shopify sync are DIFFERENT things ---- */
-  .state{font-size:13px}
+  .state{font-size:13px;min-width:0}
+  .state .pill{white-space:normal}
   .state .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;
     font-weight:650;white-space:nowrap}
   .pill.booked{background:var(--goodbg);color:var(--good)}
@@ -184,11 +193,10 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     body{padding:var(--s3) var(--s2) 40px}
     .card{padding:var(--s3)}
     /* A phone gets stacked shipment rows, not a horizontally scrolled table. */
-    .ship{grid-template-columns:1fr auto;gap:var(--s1) var(--s2)}
-    .ship .who{grid-column:1}
-    .ship .money{grid-column:2;text-align:right}
-    .ship .state{grid-column:1 / -1}
-    .ship .act{grid-column:1 / -1;justify-content:flex-start}
+    .ship{grid-template-columns:minmax(0,1fr) auto;
+      grid-template-areas:"who money" "st st" "act act";gap:var(--s1) var(--s2)}
+    .ship .name{white-space:normal}
+    .ship .awb{display:flex;flex-wrap:wrap;gap:4px 10px}
     .btn.small{min-height:40px;padding:10px 13px;font-size:13px}
     .ship .act .btn{flex:1;min-width:120px;text-align:center}
   }
@@ -245,6 +253,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       <button class="btn small ghost" id="syncBtn" type="button">Check for missing orders</button>
     </div>
     <div class="msg" id="bulkMsg" role="status" aria-live="polite" style="margin-bottom:var(--s2)"></div>
+    <div class="hide" id="staleNote" role="status" aria-live="polite" style="margin-bottom:var(--s3)"></div>
 
     <div id="orders"><p class="empty">Loading…</p></div>
 
@@ -313,7 +322,8 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   var SHOP = ${JSON.stringify(shop)};
   var PORTAL = ${JSON.stringify(portalUrl)};
   var state = null, page = 0, PAGE = 25, tab = "all";
-  var lastGoodOrders = null, lastLoaded = null, inFlight = null;
+  var lastGoodOrders = null, lastGoodKey = null, lastGoodAt = null, lastLoaded = null, inFlight = null;
+  function viewKey(){ return tab + "|" + page + "|" + (el("q") ? el("q").value.trim() : ""); }
 
   function el(id){ return document.getElementById(id); }
   function show(id, on){ var n = el(id); if (n) n.classList[on ? "remove" : "add"]("hide"); }
@@ -430,22 +440,39 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
 
   function renderOrders(rows, degraded){
     var box = el("orders");
+    // F10: every load replaced innerHTML, so an open support form or review
+    // panel -- and whatever the merchant had typed into it -- vanished under
+    // them. Never redraw over work in progress.
+    if (box.querySelector(".ticket, .preview")) { pendingRows = rows; return; }
     // An outage is not an empty store.
+    // F11: the warning was written and then immediately replaced by the cached
+    // rows, so an outage looked like ordinary data. The notice stays ABOVE the
+    // stale rows, and the cache is keyed to the view it was read for.
+    var stale = el("staleNote");
     if (degraded) {
-      box.innerHTML = '<div class="empty"><strong>Orders could not be loaded</strong>' +
-        'This is a problem on our side, not an empty store.' +
-        (lastGoodOrders ? ' Showing the last successful load.' : '') + '</div>';
-      if (!lastGoodOrders) return;
+      var cacheOk = lastGoodOrders && lastGoodKey === viewKey();
+      stale.className = "banner bad";
+      stale.innerHTML = '<strong>Orders could not be loaded</strong><span>This is a problem on our side, not an empty store.' +
+        (cacheOk ? ' The list below was last read at ' + h(lastGoodAt) + ' and may be out of date.'
+                 : ' Press Check for missing orders to try again.') + '</span>';
+      if (!cacheOk) { box.innerHTML = ""; return; }
       rows = lastGoodOrders;
-    } else if (rows) {
-      lastGoodOrders = rows;
+    } else {
+      stale.className = "hide"; stale.innerHTML = "";
+      if (rows) {
+        lastGoodOrders = rows; lastGoodKey = viewKey();
+        lastGoodAt = new Date().toLocaleTimeString("en-PK",
+          { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Karachi" }) + " PKT";
+      }
     }
 
     if (!rows || !rows.length) {
       box.innerHTML = '<div class="empty"><strong>' +
-        (tab === "all" ? "No orders yet" : "Nothing in this queue") + '</strong>' +
-        (tab === "all" ? "The next order this store receives appears here, with its AWB."
-                       : "Good — there is nothing to deal with here.") + '</div>';
+        (el("q").value.trim() ? "No matching orders"
+          : (tab === "all" ? "No orders yet" : "Nothing in this queue")) + '</strong>' +
+        (el("q").value.trim() ? "Nothing here matches “" + h(el("q").value.trim()) + "”."
+          : (tab === "all" ? "The next order this store receives appears here, with its AWB."
+                           : "Good — there is nothing to deal with here.")) + '</div>';
     } else {
       box.innerHTML = rows.map(function(r){
         var where = [r.consignee, r.city].filter(Boolean).join(" · ");
@@ -458,7 +485,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
                 return '<a href="https://novaxlogistics.com/tracking.html?awb=' + encodeURIComponent(a) +
                        '" target="_blank" rel="noopener">' + h(a) + '</a>'; }).join(" · ") + '</div>' : '') +
           '</div>' +
-          '<div>' + stateCell(r) + '</div>' +
+          '<div class="st">' + stateCell(r) + '</div>' +
           '<div class="money">' + money(r.cod_amount) +
             (r.fee != null ? '<small>fee ' + money(r.fee) + '</small>' : '') +
           '</div>' +
@@ -580,22 +607,37 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     el("portal").href = portal;
     el("getCode").href = portal + "?tab=integrations";
     el("signup").href  = portal.replace("client.html", "index.html") + "#signup";
-    el("freshness").textContent = "Updated " + lastLoaded.toLocaleTimeString("en-PK",
-      { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Karachi" }) + " PKT";
+    // F11: this said "Updated" even when the orders read had failed.
+    el("freshness").textContent = (state.degraded && state.degraded.orders)
+      ? ("Orders last read " + (lastGoodAt || "—"))
+      : ("Updated " + lastLoaded.toLocaleTimeString("en-PK",
+          { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Karachi" }) + " PKT");
     window.scrollTo(0, scroll);
+  }
+
+  var pendingRows = null;
+  function redrawIfIdle(){
+    if (pendingRows && !el("orders").querySelector(".ticket, .preview")) {
+      var r = pendingRows; pendingRows = null; renderOrders(r, false);
+    }
   }
 
   var poll = null;
   function startPolling(){
     if (poll) clearInterval(poll);
     poll = setInterval(function(){
-      if (document.visibilityState === "visible" && !document.querySelector(".ship.busy")) {
+      if (document.visibilityState === "visible" && !document.querySelector(".ship.busy") &&
+          !el("orders").querySelector(".ticket, .preview")) {
         load().catch(function(){});
       }
     }, 60000);
   }
   document.addEventListener("visibilitychange", function(){
-    if (document.visibilityState === "visible") load().catch(function(){});
+    // Same guard as the poll: coming back to the tab must not wipe a draft.
+    if (document.visibilityState === "visible" && !document.querySelector(".ship.busy") &&
+        !el("orders").querySelector(".ticket, .preview")) {
+      load().catch(function(){});
+    }
   });
 
   // ---- tabs, search, paging ----------------------------------------------
@@ -638,6 +680,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     if (row.querySelector(".preview")) return;
 
     var weight = kind === "split" ? "0.5 kg" : (o.weight || "0.8 kg");
+    var weightNote = kind === "split" ? "" : (o.weight_known ? "" : " (estimated)");
     var cod = kind === "split" ? 0 : o.cod_amount;
     var box = document.createElement("div");
     box.className = "preview";
@@ -645,7 +688,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       '<dl>' +
         '<dt>To</dt><dd>' + h([o.consignee, o.address, o.city].filter(Boolean).join(", ") || "address on the order") + '</dd>' +
         '<dt>Collect</dt><dd>' + money(cod) + (kind === "split" ? ' <span class="dim">(collected once, on the first box)</span>' : '') + '</dd>' +
-        '<dt>Weight</dt><dd>' + h(weight) + '</dd>' +
+        '<dt>Weight</dt><dd>' + h(weight) + h(weightNote) + '</dd>' +
         '<dt>Delivery fee</dt><dd class="fee" data-fee>checking…</dd>' +
       '</dl>' +
       '<div class="row">' +
@@ -670,7 +713,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
 
     if (act === "preview")       return showPreview(id, "book");
     if (act === "splitPreview")  return showPreview(id, "split");
-    if (act === "closePreview")  { var p = rowOf(id).querySelector(".preview"); if (p) p.remove(); return; }
+    if (act === "closePreview")  { var p = rowOf(id).querySelector(".preview"); if (p) p.remove(); redrawIfIdle(); return; }
     if (act === "label") {
       var o = orderById(id);
       window.open((state.shop.portal_url || PORTAL) + "?awb=" + encodeURIComponent(o && o.awb || ""), "_blank", "noopener");
@@ -690,8 +733,11 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       else if (act === "split") {
         // The same intent must never book two boxes.
         splitKeys[id] = splitKeys[id] || (id + ":" + Date.now() + ":" + Math.random().toString(36).slice(2, 8));
-        r = await api("api/order/split", { order_id: id, key: splitKeys[id] });
-        if (r && r.ok) delete splitKeys[id];
+        r = await api("api/order/split", { order_id: id, key: splitKeys[id],
+          confirm_additional: Boolean(splitConfirm[id]) });
+        // The server asks once when it suspects a retry rather than a new box.
+        if (r && r.needs_confirm) { splitConfirm[id] = true; }
+        if (r && r.ok) { delete splitKeys[id]; delete splitConfirm[id]; }
       }
 
       rowSay(id, (r && r.message) || "", Boolean(r && r.ok));
@@ -711,7 +757,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
 
   // ---- support ticket, scoped to one order --------------------------------
 
-  var ticketFor = null, splitKeys = {};
+  var ticketFor = null, splitKeys = {}, splitConfirm = {};
   function openTicket(id){
     var row = rowOf(id); if (!row) return;
     if (row.querySelector(".ticket")) return;
@@ -728,7 +774,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     box.querySelector("input").focus();
     box.addEventListener("click", async function(ev){
       var c = ev.target.closest("[data-act='closeTicket']");
-      if (c) { box.remove(); return; }
+      if (c) { box.remove(); redrawIfIdle(); return; }
       var sBtn = ev.target.closest("[data-send]");
       if (!sBtn) return;
       var body = box.querySelector("input").value.trim();
@@ -737,7 +783,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       try {
         var r = await api("api/ticket", { order_id: id, body: body });
         rowSay(id, r.message || "", Boolean(r.ok));
-        if (r.ok) box.remove();
+        if (r.ok) { box.remove(); redrawIfIdle(); }
       } catch (e) { rowSay(id, String(e.message || e), false); }
       finally { sBtn.disabled = false; }
     });

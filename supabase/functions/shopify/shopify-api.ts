@@ -250,9 +250,22 @@ export async function pushTracking(
         `query t($id: ID!) { order(id: $id) { fulfillments(first: 20) { id trackingInfo { number } } } }`,
         { id: gid },
       );
-      const mine = (seen.order?.fulfillments ?? [])
-        .filter((f) => (f.trackingInfo ?? []).some((t) => t.number === primary));
-      if (mine.length) return { ok: true, fulfillmentIds: mine.map((f) => f.id) };
+      // F03: this accepted the PRIMARY AWB alone as success, so a second box
+      // handed over later was reported synced while its number never reached
+      // Shopify. Every number we are trying to publish has to be there.
+      const onOrder = new Set(
+        (seen.order?.fulfillments ?? []).flatMap((f) => (f.trackingInfo ?? []).map((t) => t.number)),
+      );
+      const missing = numbers.filter((n) => !onOrder.has(n));
+      if (!missing.length && numbers.some((n) => onOrder.has(n))) {
+        return { ok: true, fulfillmentIds: (seen.order?.fulfillments ?? []).map((f) => f.id) };
+      }
+      if (missing.length && onOrder.size) {
+        return {
+          ok: false,
+          detail: `already fulfilled, but ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not on the order`,
+        };
+      }
     } catch { /* fall through to the ordinary answer */ }
 
     // Nothing open to fulfil: already fulfilled elsewhere, or fully cancelled.
@@ -421,7 +434,7 @@ function toRestShape(o: GqlOrder): Record<string, unknown> {
     gateway: (o.paymentGatewayNames ?? [])[0] ?? null,
     payment_gateway_names: o.paymentGatewayNames ?? [],
     tags: o.tags ?? [],
-    // B26: say so rather than pretending this is the whole order.
+    // F09: this was a flag nobody read. mapOrderToBooking() refuses on it now.
     _line_items_truncated: Boolean(o.lineItems?.pageInfo?.hasNextPage),
     total_outstanding: o.totalOutstandingSet?.shopMoney?.amount ?? null,
     current_total_price: o.currentTotalPriceSet?.shopMoney?.amount ?? null,
@@ -495,17 +508,28 @@ export function mergeKnownWeights(
   const s = (stored?.line_items ?? []) as Array<{ id?: unknown; grams?: number }>;
   if (!s.length) return fresh;
 
+  // F04: the webhook carries numeric line-item ids and GraphQL carries GIDs
+  // (gid://shopify/LineItem/123). Comparing the raw strings matched nothing, so
+  // EVERY item fell through to the fallback -- which was the heaviest stored
+  // item's weight. A 1 kg item plus a 0.1 kg item came out as 2 kg and was
+  // priced that way.
+  const key = (v: unknown) => String(v ?? "").replace(/^gid:\/\/shopify\/[A-Za-z]+\//, "");
+
   const byId = new Map<string, number>();
-  let fallback = 0;
   for (const li of s) {
-    if (li?.id != null) byId.set(String(li.id), Number(li.grams ?? 0));
-    fallback = Math.max(fallback, Number(li?.grams ?? 0));
+    if (li?.id != null) byId.set(key(li.id), Number(li.grams ?? 0));
   }
 
-  const f = (fresh.line_items ?? []) as Array<{ id?: unknown; grams?: number }>;
+  const f = (fresh.line_items ?? []) as Array<{ id?: unknown; grams?: number; _weight_unknown?: boolean }>;
   for (const li of f) {
-    const known = li?.id != null ? byId.get(String(li.id)) : undefined;
-    li.grams = known ?? fallback;
+    const known = li?.id != null ? byId.get(key(li.id)) : undefined;
+    if (known != null) { li.grams = known; continue; }
+    // An item we have never weighed is UNKNOWN, not "the same as the heaviest
+    // thing we happen to know about". weightFromOrder() falls back to the
+    // default for the order as a whole, and the row says the weight is an
+    // estimate rather than a measurement.
+    li.grams = 0;
+    li._weight_unknown = true;
   }
   return fresh;
 }

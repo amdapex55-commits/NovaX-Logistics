@@ -28,6 +28,13 @@ Run the migrations in this order. Every one is idempotent.
 | 8 | `sql_novax_shopify_audit_a02_a10.sql` | cancellation tombstone, reconcile + drain cron |
 | 9 | `sql_novax_shopify_audit_a11_a30.sql` | compare-and-set cancel, privacy queue |
 | 10 | `sql_novax_shopify_audit_a31_a77.sql` | atomic nonce, link race, pickup amend, GC |
+| 11 | `sql_novax_shopify_audit_b01_b30.sql` | **the columns the runtime needs** — webhooks_ok, next_attempt_at, fulfill_leased_until, shopify_fulfillment_ids, split_keys, fulfill_lease_owner, reconcile_cursor, reconciled_at — plus atomic claim, linked booking and package keys |
+| 12 | `sql_novax_shopify_ui_v2.sql` | order list with recipient/city/weight/fee, queue counts, fee quote |
+| 13 | `sql_novax_shopify_audit_f01_f22.sql` | privacy-completion admin check, JSONB fee extraction, split-key alignment, held-order weight and recipient search |
+
+Migrations 11-13 are **not optional**: the deployed function calls RPCs and
+columns that only exist after them. A database built from 1-10 alone will fail
+at booking and at fulfillment.
 
 **Never run** `sql_novax_shopify_booking_core.sql`. It is superseded and its
 money functions are already live in a different form.

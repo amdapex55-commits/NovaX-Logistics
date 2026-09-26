@@ -324,9 +324,15 @@ async function handleDecide(req: Request): Promise<Response> {
         }
       }
     } catch (e) {
-      // Shopify unreachable: book what we have rather than stalling. The
-      // merchant asked for this order to go out.
+      // F14: this booked the stored payload without telling anyone. A merchant
+      // who held an order BECAUSE the address was wrong, fixed it in Shopify,
+      // and approved during an outage would have shipped to the old address.
       console.error("refresh before approval failed", orderId, e);
+      return json({
+        ok: false,
+        message: "Could not read the current order from Shopify, so nothing was booked — " +
+          "the details we hold may be out of date. Try again in a moment.",
+      }, 200, { "Cache-Control": "no-store" });
     }
 
     if (payload) background(processOrder(shop, orderId, payload));
@@ -466,9 +472,13 @@ async function handleSplit(req: Request): Promise<Response> {
   if (mapped.action === "skip") return json({ ok: false, message: mapped.reason });
   const bk = mapped.booking;
 
-  const res = await rpc<Array<{ ok: boolean; awb: string | null; package_no: number; message: string }>>(
+  const res = await rpc<Array<{ ok: boolean; awb: string | null; package_no: number; message: string; needs_confirm: boolean }>>(
     "nvsh_add_package", {
       p_shop: shop, p_order_id: orderId, p_key: key,
+      // F20: the key lives in the page's memory, so a lost response plus a
+      // reload mints a new one. The database treats an unknown key moments
+      // after the last box as a probable retry and asks first.
+      p_confirm_additional: Boolean(b_.confirm_additional),
       p_consignee: bk.consignee, p_phone: bk.phone, p_city: bk.city, p_address: bk.address,
       // A49: an extra box is a separate package whose weight we do not know.
       p_weight: "0.5 kg", p_service: bk.service, p_category: bk.category,
@@ -498,7 +508,17 @@ async function drainReceived(shop: string): Promise<void> {
       try {
         const fresh = await fetchOrder(shop, shopRow.access_token, r.shopify_order_id);
         if (fresh) payload = mergeKnownWeights(fresh, r.payload as unknown as Record<string, unknown>) as unknown as ShopifyOrder;
-      } catch (e) { console.error("bulk refresh failed", r.shopify_order_id, e); }
+      } catch (e) {
+        // Same rule in bulk: leave it for the merchant rather than shipping
+        // values we could not confirm.
+        console.error("bulk refresh failed", r.shopify_order_id, e);
+        await update("nvsh_order",
+          `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(r.shopify_order_id)}`,
+          { status: "awaiting_approval", approved_at: null,
+            hold_reason: "Shopify could not be reached to confirm the current address and total. Approve again to retry.",
+            updated_at: new Date().toISOString() });
+        continue;
+      }
     }
     await processOrder(shop, r.shopify_order_id, payload);
   }
@@ -514,6 +534,7 @@ async function reconcileShop(shop: string, hours: number): Promise<{
   skipped: number; failed: number; complete: boolean;
 }> {
   const empty = { checked: 0, discovered: 0, booked: 0, held: 0, skipped: 0, failed: 0, complete: true };
+  const found: string[] = [];
   const shopRow = await getShop(shop);
   if (!shopRow?.access_token || shopRow.status !== "active" || !shopRow.client_id) return empty;
 
@@ -534,6 +555,7 @@ async function reconcileShop(shop: string, hours: number): Promise<{
     );
     if (existing) continue;   // already known: webhook or an earlier pass got it
     discovered++;
+    found.push(id);
 
     await insert("nvsh_order", {
       shop_domain: shop,
@@ -550,11 +572,16 @@ async function reconcileShop(shop: string, hours: number): Promise<{
   // B23: "recovered" counted rows INSERTED, and the message said they had been
   // booked. A USD order was imported, reported as booked, and was actually
   // skipped with no parcel. Report what each one became.
-  const after = await selectMany<{ status: string }>(
-    "nvsh_order",
-    `shop_domain=eq.${encodeURIComponent(shop)}&select=status` +
-    `&received_at=gte.${encodeURIComponent(since)}&limit=500`,
-  ).catch(() => [] as Array<{ status: string }>);
+  // F12: this counted every recent order, so a scan that discovered one USD
+  // order and created zero parcels reported "1 booked, 1 skipped" by counting a
+  // pre-existing booking. Only what this scan found.
+  const after = found.length
+    ? await selectMany<{ status: string }>(
+        "nvsh_order",
+        `shop_domain=eq.${encodeURIComponent(shop)}&select=status` +
+        `&shopify_order_id=in.(${found.map(encodeURIComponent).join(",")})`,
+      ).catch(() => [] as Array<{ status: string }>)
+    : [];
   const n = (st: string) => after.filter((r) => r.status === st).length;
 
   await update("nvsh_shop", `shop_domain=eq.${encodeURIComponent(shop)}`, {
@@ -649,9 +676,9 @@ async function handleRecheck(req: Request): Promise<Response> {
   if (!b) return json({ ok: false, message: "Could not read that request." }, 400);
   const orderId = String(b.order_id ?? "");
 
-  const row = await selectOne<{ status: string }>(
+  const row = await selectOne<{ status: string; payload: ShopifyOrder | null }>(
     "nvsh_order",
-    `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}&select=status`,
+    `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}&select=status,payload`,
   );
   if (!row) return json({ ok: false, message: "No such order." });
   if (row.status !== "skipped" && row.status !== "failed") {
@@ -662,8 +689,13 @@ async function handleRecheck(req: Request): Promise<Response> {
   if (!shopRow?.access_token) return json({ ok: false, message: "This store is not connected." });
 
   try {
-    const fresh = await fetchOrder(shop, shopRow.access_token, orderId);
-    if (!fresh) return json({ ok: false, message: "Shopify no longer has that order." });
+    const raw = await fetchOrder(shop, shopRow.access_token, orderId);
+    if (!raw) return json({ ok: false, message: "Shopify no longer has that order." });
+    // F05: this selected only status, refetched a payload whose grams are zero,
+    // and overwrote the stored webhook payload -- so Try again booked a known
+    // 1.1 kg order at the 0.8 kg default AND destroyed the only record of its
+    // real weight.
+    const fresh = mergeKnownWeights(raw, row.payload as unknown as Record<string, unknown>);
     await update("nvsh_order",
       `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}`,
       { payload: fresh, status: "received", skip_reason: null, error: null,
@@ -1030,7 +1062,10 @@ async function handleFulfill(req: Request): Promise<Response> {
   // not, so two workers that both read a row both "won" it. One SQL statement
   // with FOR UPDATE SKIP LOCKED, and an owner token.
   const worker = crypto.randomUUID();
-  const rows = await rpc<FulfillRow[]>("nvsh_claim_fulfill", { p_worker: worker, p_limit: 25 }) ?? [];
+  // F15: 25 rows shared one three-minute lease and were processed serially, so
+  // the last rows could be past their lease before their turn came. Smaller
+  // batches, and the tick runs every minute anyway.
+  const rows = await rpc<FulfillRow[]>("nvsh_claim_fulfill", { p_worker: worker, p_limit: 8 }) ?? [];
 
   let done = 0, failed = 0;
   for (const r of rows) {
@@ -1053,22 +1088,42 @@ async function handleFulfill(req: Request): Promise<Response> {
     // loop -- the endpoint answered 500, no row's attempts moved, and the rows
     // behind the bad one were never tried. One merchant with a revoked token
     // starved everybody else, forever, because the poison row was always first.
-    let pushed: { ok: boolean; detail?: string };
+    let pushed: Awaited<ReturnType<typeof pushTracking>>;
     try {
       // A44 + B15: every box that has ACTUALLY been handed over, not every box
       // that exists. Sending a box still sitting at the merchant tells the buyer
       // it shipped.
       const candidates = [r.awb!, ...(r.extra_awbs ?? [])].filter(Boolean);
-      const inCustody = await selectMany<{ awb: string; status: string }>(
-        "parcels",
-        `awb=in.(${candidates.map(encodeURIComponent).join(",")})&select=awb,status`,
-      ).catch(() => [] as Array<{ awb: string; status: string }>);
+      // F02: this caught a failed custody read as an empty array and then fell
+      // back to the primary AWB -- so a database error became "tell the buyer it
+      // shipped". Custody has to be READ, not assumed. Fail closed and retry.
+      let inCustody: Array<{ awb: string; status: string }>;
+      try {
+        inCustody = await selectMany<{ awb: string; status: string }>(
+          "parcels",
+          `awb=in.(${candidates.map(encodeURIComponent).join(",")})&select=awb,status`,
+        );
+      } catch (err) {
+        await update("nvsh_order", where, {
+          fulfill_attempts: (r.fulfill_attempts ?? 0) + 1,
+          fulfill_error: "could not confirm the parcel is with a rider; not notifying the buyer yet",
+          fulfill_leased_until: null, updated_at: now,
+        });
+        failed++;
+        continue;
+      }
       const moving = new Set(["Collected by rider", "Arrived at warehouse", "Parcel now in transit",
         "Parcel received at destination", "Parcel out for delivery", "Delivered"]);
-      const allAwbs = inCustody.length
-        ? inCustody.filter((p) => moving.has(p.status)).map((p) => p.awb)
-        : [r.awb!];
-      if (!allAwbs.length) { failed++; continue; }
+      const allAwbs = inCustody.filter((p) => moving.has(p.status)).map((p) => p.awb);
+      if (!allAwbs.length) {
+        // Cancelled, recalled, or never collected. Nothing shipped.
+        await update("nvsh_order", where, {
+          fulfill_state: "none", fulfill_leased_until: null,
+          fulfill_error: "no parcel on this order is with a rider", updated_at: now,
+        });
+        failed++;
+        continue;
+      }
       pushed = await pushTracking(
         r.shop_domain, shopRow.access_token, r.shopify_order_id,
         allAwbs, allAwbs.map(trackingUrl),
@@ -1094,21 +1149,24 @@ async function handleFulfill(req: Request): Promise<Response> {
     }
 
     if (pushed.ok) {
-      await update("nvsh_order", where, {
+      // F15: the completion PATCH did not name the lease holder, so a worker
+      // whose lease had expired could overwrite a newer worker's result.
+      await update("nvsh_order", `${where}&fulfill_lease_owner=eq.${encodeURIComponent(worker)}`, {
         fulfill_state: "done", fulfilled_at: now, fulfill_error: null,
-        fulfill_leased_until: null,
+        fulfill_leased_until: null, fulfill_lease_owner: null,
         shopify_fulfillment_ids: pushed.fulfillmentIds ?? null,
         updated_at: now,
       });
       done++;
     } else {
       const attempts = (r.fulfill_attempts ?? 0) + 1;
-      await update("nvsh_order", where, {
+      await update("nvsh_order", `${where}&fulfill_lease_owner=eq.${encodeURIComponent(worker)}`, {
         // After twelve tries a human should look, and the merchant sees it as
         // a sync failure rather than a silent gap. Retry is offered in the app.
         fulfill_state: attempts >= 12 ? "failed" : "ready",
         fulfill_attempts: attempts,
         fulfill_error: pushed.detail ?? "unknown",
+        fulfill_leased_until: null, fulfill_lease_owner: null,
         updated_at: now,
       });
       await logEvent(r.shop_domain, "fulfillment", null, false,

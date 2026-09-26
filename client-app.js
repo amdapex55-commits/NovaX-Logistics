@@ -11225,7 +11225,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       out.setAttribute("data-loaded","1");
       if(btn) btn.disabled=true;
       out.textContent="Loading your code\u2026";
-      Promise.resolve(sb.rpc("nvsh_link_code_issue")).then(function(r){
+      /* F16: "New code" called the RPC with no arguments, so it returned the
+         existing code instead of rotating. The force flag is passed now. */
+      Promise.resolve(sb.rpc("nvsh_link_code_issue",{ p_force: !!force })).then(function(r){
         if(btn) btn.disabled=false;
         if(r && r.error){
           /* Staff seats hit this: only an owner may connect a store. That is
