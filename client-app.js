@@ -1039,6 +1039,20 @@
     (function(){
       try{
         var qp=new URLSearchParams(location.search);
+
+        /* Deep links from the NovaX app inside Shopify. Without these, "Get my
+           code" and "Label" both dropped the merchant on the dashboard to go
+           hunting, which is exactly the generic-dashboard landing the app is
+           supposed to avoid. ?tab= picks a tab; ?awb= opens the label tab and
+           marks the parcel so the render can scroll to it. */
+        var wantTab=qp.get("tab")||(location.hash==="#integrations"?"integrations":"");
+        var wantAwb=(qp.get("awb")||"").trim().toUpperCase();
+        if(wantAwb){ state.nvFocusAwb=wantAwb; wantTab=wantTab||"awbLabel"; }
+        if(wantTab && typeof normalizeClientTab==="function"){
+          var t=normalizeClientTab(wantTab);
+          if(typeof nvCanUseTab!=="function" || nvCanUseTab(t)) state.activeClientTab=t;
+        }
+
         var cachedMine=(state.parcels||[]).filter(function(p){ return p && state.client && p.clientId===state.client.id; });
         if((qp.get("welcome")==="1"||qp.get("firstBooking")==="1") && !localStorage.getItem("novaxFirstBookingSeen") && cachedMine.length===0){
           state.activeClientTab="newBooking";
@@ -11245,7 +11259,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const selected=new Set(Array.from(list.querySelectorAll(".newbooked-check:checked")).map(b=>b.value));
       const items=newBookedParcels();
       if(!items.length){ list.innerHTML=`<div class="ops-card"><strong>No new booked parcels yet</strong><p class="footer-note">Printable AWB labels appear here the moment a parcel is booked.</p><div class="inline-actions" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="action-btn" data-nv-cock="tab" data-tab="newBooking">Book a parcel</button><button class="ghost-btn" data-nv-cock="tab" data-tab="bulkBooking">Upload bulk CSV</button><button class="ghost-btn" data-nv-cock="tab" data-tab="integrations">Sync your store</button></div></div>`; return; }
-      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}"${selected.has(p.awb)?" checked":""}><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${nvSourceChip(p.source)}${nvPrintedMark(p)}</span><button class="ghost-btn nv-nb-act" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn nv-nb-act" title="Cancel this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:var(--nvu-bad-fg);border-color:var(--nvu-bad-ln)">Cancel booking</button></label>`).join("");
+      /* ?awb= arrived from the Shopify app's Label button. Highlight it once,
+         then forget it, so a later re-render does not keep jumping the page. */
+      var focusAwb=state.nvFocusAwb; if(focusAwb) state.nvFocusAwb=null;
+      list.innerHTML=items.map(p=>`<label class="ops-card"${p.awb===focusAwb?' data-nv-focus="1" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer;outline:2px solid var(--nvu-good-ln);outline-offset:2px"':' style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"'}><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}"${selected.has(p.awb)?" checked":""}><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${nvSourceChip(p.source)}${nvPrintedMark(p)}</span><button class="ghost-btn nv-nb-act" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn nv-nb-act" title="Cancel this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:var(--nvu-bad-fg);border-color:var(--nvu-bad-ln)">Cancel booking</button></label>`).join("");
+      if(focusAwb){ try{ var n=list.querySelector('[data-nv-focus="1"]'); if(n) n.scrollIntoView({block:"center",behavior:"smooth"}); }catch(e){} }
       nvSyncSelectAllNewBookedLabel();
     }
     /* Merchants were shown the raw internal value -- "client_portal",
