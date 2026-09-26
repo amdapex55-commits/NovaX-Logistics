@@ -1,0 +1,71 @@
+# The app in the NovaX Partner organisation (237676781 / partners 5212728).
+#
+# The two earlier apps were created in "My Store" (226564781), a STORE
+# organisation. A store org cannot distribute publicly, which is why its app
+# Overview has no Distribution card, why Partner -> App distribution listed no
+# apps, and why installs were refused on anything but a dev store. Three
+# symptoms, one cause.
+#
+# The CLI wants the ORGANISATION-ACCOUNT id (237676781, from
+# admin.shopify.com/organization/...), NOT the partners.shopify.com URL id
+# (5212728). Passing the Partner id returns "No Organization found" even to the
+# organisation's owner.
+#
+# Public-distribution app. Same backend, its own client ID and configuration.
+#
+# The custom app (0d3255e0..., shopify.app.toml) stays in the repo as the
+# record of how the first install was proven. It is NOT the app merchants get:
+# a custom app can only ever be installed on stores the org picks one at a
+# time, and its distribution cannot be changed after the fact -- hence a second
+# app rather than an edit to the first.
+#
+# One backend, one app at a time: the edge function reads a single
+# SHOPIFY_API_KEY / SHOPIFY_API_SECRET pair, so whichever app those secrets
+# belong to is the live one. They point at this app.
+
+name = "NovaX Logistics"
+handle = "novax-logistics-pk"
+client_id = "6cd43c1010ac631e9d1c161f772f9030"
+application_url = "https://novaxlogistics.com/shopify/app"
+embedded = true
+
+[access_scopes]
+# Minimum required. read_orders is Level 2 protected customer data (name,
+# address, phone). Do not widen: Shopify approves only the minimum, and
+# unapproved fields are silently redacted rather than erroring.
+#
+# A13: these were the *assigned* fulfillment-order scopes, which cover locations
+# owned by a registered fulfillment service. NovaX does not register one, so
+# ordinary merchant-managed warehouses were never in scope and fulfillmentCreate
+# had nothing it was allowed to touch. Merchant-managed is the correct model
+# here. write_fulfillments is dropped: the fulfillment-order scopes carry it.
+scopes = "read_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders"
+# The function implements the classic OAuth dance (/install -> authorize ->
+# /callback -> access_token). Managed install (this false) never calls
+# /callback at all: Shopify grants the scopes itself and expects a token
+# exchange, which this function does not implement. Left false, every shop
+# installs and then sits with no access token, forever unlinked.
+use_legacy_install_flow = true
+
+[auth]
+redirect_urls = [
+  "https://novaxlogistics.com/shopify/callback"
+]
+
+[webhooks]
+api_version = "2026-07"
+
+# Shopify's documented form: one subscription, one uri, all three compliance
+# topics, dispatched on the X-Shopify-Topic header. The older
+# [webhooks.privacy_compliance] block with three separate *_url keys is not in
+# the current app-configuration schema -- the CLI still parses it, which is why
+# it deployed cleanly and looked correct.
+#
+# app/uninstalled is deliberately NOT listed here. It is registered through the
+# Admin API at install time, and declaring it in config as well would create a
+# second subscription and deliver every uninstall twice.
+[[webhooks.subscriptions]]
+compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+uri = "https://novaxlogistics.com/shopify/webhooks/compliance"
+
+[build]
