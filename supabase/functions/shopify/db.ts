@@ -108,12 +108,20 @@ export interface ShopRow {
   client_id: string | null;
   status: string;
   orders_booked: number;
+  booking_mode: string | null;
+  rule_require_confirmed: boolean | null;
+  rule_payment_modes: string[] | null;
+  rule_shipping_names: string[] | null;
+  rule_location_ids: string[] | null;
+  rule_exclude_tags: string[] | null;
 }
 
 export function getShop(shop: string): Promise<ShopRow | null> {
   return selectOne<ShopRow>(
     "nvsh_shop",
-    `shop_domain=eq.${encodeURIComponent(shop)}&select=id,shop_domain,access_token,scopes,client_id,status,orders_booked`,
+    `shop_domain=eq.${encodeURIComponent(shop)}&select=id,shop_domain,access_token,scopes,client_id,status,orders_booked,` +
+      `booking_mode,rule_require_confirmed,rule_payment_modes,rule_shipping_names,` +
+      `rule_location_ids,rule_exclude_tags`,
   );
 }
 

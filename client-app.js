@@ -11194,6 +11194,38 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!conn||!conn.connected){ toast("Save the "+platformLabel(platform)+" connection first."); return; }
       toast(platformLabel(platform)+" orders sync automatically via your store's webhook -- there is no manual import. Last sync: "+(conn.lastSync||"never yet")+".");
     }
+    /* The Shopify app connects to a NovaX account with a code the merchant
+       generates here, while signed in. That session is the proof of ownership:
+       matching a store to an account by email address would let anyone who
+       knows a merchant's email address attach their own store to that
+       merchant's wallet. */
+    function nvShopifyConnectCode(force){
+      var out=document.getElementById("nvShopifyCodeOut");
+      var btn=document.getElementById("nvShopifyCodeBtn");
+      if(!out) return;
+      /* The code is shown the moment the tab opens, so this runs on render.
+         nvsh_link_code_issue() returns a live code unchanged rather than
+         minting a new one, which is what stops a re-render invalidating the
+         code the merchant just copied. "New code" forces a fresh one. */
+      if(!force && out.getAttribute("data-loaded")==="1") return;
+      out.setAttribute("data-loaded","1");
+      if(btn) btn.disabled=true;
+      out.textContent="Loading your code\u2026";
+      Promise.resolve(sb.rpc("nvsh_link_code_issue")).then(function(r){
+        if(btn) btn.disabled=false;
+        if(r && r.error){ out.textContent="Could not generate a code: "+(r.error.message||"unknown error"); return; }
+        var row=Array.isArray(r&&r.data)?r.data[0]:(r&&r.data);
+        if(!row||!row.code){ out.textContent="Could not generate a code. Only an account owner can connect a store."; return; }
+        var mins=Math.max(1,Math.round((new Date(row.expires_at)-new Date())/60000));
+        out.innerHTML='<strong style="font-family:ui-monospace,Menlo,monospace;letter-spacing:.16em;font-size:20px">'+
+          String(row.code).replace(/[&<>"]/g,"")+'</strong><br>Paste this into the NovaX app inside Shopify \u2014 valid for '+mins+' minutes, single use.';
+      }).catch(function(e){
+        if(btn) btn.disabled=false;
+        out.textContent="Could not generate a code: "+String((e&&e.message)||e);
+      });
+    }
+    window.nvShopifyConnectCode=nvShopifyConnectCode;
+
     function renderIntegrations(){
       // NovaX fix: Shopify no longer lives in the generic storeConnections
       // chip logic (that reads local/legacy `store_connections` state) --
@@ -11205,6 +11237,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const prefill={woocommerce:"wooStoreUrl",web:"webEndpoint"};
       Object.keys(prefill).forEach(p=>{ const c=storeConn(p); const el=document.getElementById(prefill[p]); if(c&&el&&!el.value) el.value=c.storeUrl||""; });
       if(typeof shopifyCheckStatus==="function") shopifyCheckStatus();
+      try{ nvShopifyConnectCode(false); }catch(e){}
     }
     function newBookedParcels(){ return (state.parcels||[]).filter(p=>p.clientId===activeClientId()&&p.status==="New booked"); }
     function renderNewBookedList(){

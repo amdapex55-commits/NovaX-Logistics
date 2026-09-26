@@ -14,7 +14,7 @@
 
 import { cleanShop, verifyOAuthHmac, verifySessionToken, verifyWebhookHmac } from "./verify.ts";
 import { pushTracking, registerWebhooks } from "./shopify-api.ts";
-import { mapOrderToBooking, type ShopifyOrder } from "./orders.ts";
+import { holdReason, mapOrderToBooking, type ShopifyOrder } from "./orders.ts";
 import {
   claimWebhook, getShop, insert, logEvent, logProtectedAccess, rpc, selectMany, selectOne, update,
 } from "./db.ts";
@@ -161,16 +161,111 @@ function handleApp(url: URL): Response {
   });
 }
 
-async function handleState(req: Request): Promise<Response> {
+/** Every merchant action is authorised the same way: an App Bridge session
+ *  token, signed by Shopify with our client secret, naming the shop. The shop
+ *  in that token is the ONLY shop the request may touch -- a shop parameter in
+ *  a body would let any merchant act on any store. */
+async function sessionShop(req: Request): Promise<string | null> {
   const auth = req.headers.get("Authorization") ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   const session = await verifySessionToken(token, API_KEY, API_SECRET);
+  return session?.shop ?? null;
+}
+
+async function jsonBody(req: Request): Promise<Record<string, unknown>> {
+  try { return await req.json() as Record<string, unknown>; } catch { return {}; }
+}
+
+/** Connect this store to a NovaX merchant with a code the merchant generated
+ *  while signed into that account. Ownership is proven by that session, never
+ *  by matching an email address -- an email match would let anyone who knows a
+ *  merchant's address attach their store to that merchant's wallet. */
+async function handleLink(req: Request): Promise<Response> {
+  const shop = await sessionShop(req);
+  if (!shop) return json({ error: "unauthorized" }, 401);
+
+  const body = await jsonBody(req);
+  const code = String(body.code ?? "").trim().toUpperCase();
+  if (!/^[A-Z0-9]{6,12}$/.test(code)) {
+    return json({ ok: false, message: "Enter the 8-character code from your NovaX portal." });
+  }
+
+  const res = await rpc<Array<{ ok: boolean; client_name: string | null; released: number; message: string }>>(
+    "nvsh_link_claim", { p_shop: shop, p_code: code },
+  );
+  const r = Array.isArray(res) ? res[0] : res;
+  await logEvent(shop, "link", null, Boolean(r?.ok), r?.message ?? "no result");
+  return json(r ?? { ok: false, message: "Could not connect." }, 200, { "Cache-Control": "no-store" });
+}
+
+async function handleSettings(req: Request): Promise<Response> {
+  const shop = await sessionShop(req);
+  if (!shop) return json({ error: "unauthorized" }, 401);
+
+  const b = await jsonBody(req);
+  const arr = (v: unknown): string[] =>
+    Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : [];
+  const mode = String(b.booking_mode ?? "auto");
+  if (mode !== "auto" && mode !== "manual") {
+    return json({ ok: false, message: "Booking mode must be automatic or manual." });
+  }
+
+  await rpc("nvsh_settings_update", {
+    p_shop: shop,
+    p_booking_mode: mode,
+    p_require_confirmed: Boolean(b.require_confirmed),
+    p_payment_modes: arr(b.payment_modes),
+    p_shipping_names: arr(b.shipping_names),
+    p_location_ids: arr(b.location_ids),
+    p_exclude_tags: arr(b.exclude_tags),
+  });
+  return json({ ok: true, message: "Saved." }, 200, { "Cache-Control": "no-store" });
+}
+
+async function handleDecide(req: Request): Promise<Response> {
+  const shop = await sessionShop(req);
+  if (!shop) return json({ error: "unauthorized" }, 401);
+  const b = await jsonBody(req);
+  const res = await rpc<Array<{ ok: boolean; message: string }>>("nvsh_order_decide", {
+    p_shop: shop,
+    p_order_id: String(b.order_id ?? ""),
+    p_decision: String(b.decision ?? ""),
+  });
+  const r = Array.isArray(res) ? res[0] : res;
+  // Approving moves the row to 'received', which is what the drain picks up.
+  // Book it now rather than making the merchant wait for the next tick: they
+  // are looking at the screen, and "approved" that does nothing for a minute
+  // reads as a dead button.
+  if (r?.ok && String(b.decision) === "approve") {
+    const orderId = String(b.order_id ?? "");
+    const row = await selectOne<{ payload: ShopifyOrder | null }>(
+      "nvsh_order",
+      `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}&select=payload`,
+    );
+    if (row?.payload) background(processOrder(shop, orderId, row.payload));
+  }
+  return json(r ?? { ok: false, message: "No result." }, 200, { "Cache-Control": "no-store" });
+}
+
+async function handleCancel(req: Request): Promise<Response> {
+  const shop = await sessionShop(req);
+  if (!shop) return json({ error: "unauthorized" }, 401);
+  const b = await jsonBody(req);
+  const res = await rpc<Array<{ ok: boolean; outcome: string; message: string }>>(
+    "nvsh_cancel_or_recall", { p_shop: shop, p_order_id: String(b.order_id ?? "") },
+  );
+  const r = Array.isArray(res) ? res[0] : res;
+  return json(r ?? { ok: false, message: "No result." }, 200, { "Cache-Control": "no-store" });
+}
+
+async function handleState(req: Request): Promise<Response> {
+  const session = await sessionShop(req);
   if (!session) return json({ error: "unauthorized" }, 401);
 
   const [shopRows, orders, wallet] = await Promise.all([
-    rpc<Array<Record<string, unknown>>>("nvsh_shop_state", { p_shop: session.shop }),
-    rpc<Array<Record<string, unknown>>>("nvsh_recent_orders", { p_shop: session.shop, p_limit: 20 }),
-    rpc<Array<Record<string, unknown>>>("nvsh_wallet_summary", { p_shop: session.shop }),
+    rpc<Array<Record<string, unknown>>>("nvsh_shop_state", { p_shop: session }),
+    rpc<Array<Record<string, unknown>>>("nvsh_recent_orders", { p_shop: session, p_limit: 50 }),
+    rpc<Array<Record<string, unknown>>>("nvsh_wallet_summary", { p_shop: session }),
   ]);
 
   return json({
@@ -271,6 +366,25 @@ async function processOrder(shop: string, orderId: string, order: ShopifyOrder):
       return;
     }
 
+    // The merchant's own rules, applied after "can this even be delivered".
+    // An undeliverable order is skipped whatever the rules say; a deliverable
+    // one the merchant wants to see first is held, not dropped.
+    //
+    // An order the merchant already approved is exempt. Without this, approving
+    // a held order re-evaluates the same rules that held it and holds it again
+    // -- an Approve button that puts the row straight back where it was.
+    const decided = await selectOne<{ approved_at: string | null }>(
+      "nvsh_order", `${where}&select=approved_at`,
+    );
+    const hold = decided?.approved_at ? null : holdReason(order, shopRow);
+    if (hold) {
+      await update("nvsh_order", where, {
+        status: "awaiting_approval", hold_reason: hold,
+        client_id: shopRow.client_id, updated_at: now,
+      });
+      return;
+    }
+
     const b = mapped.booking;
 
     // Level 2 protected customer data. Logged at the one point it is read.
@@ -324,14 +438,16 @@ async function processOrder(shop: string, orderId: string, order: ShopifyOrder):
 
 async function handleOrdersCancelled(v: Verified): Promise<Response> {
   const order = JSON.parse(v.body) as ShopifyOrder;
-  // Deliberately does not cancel the NovaX parcel. By the time Shopify says
-  // cancelled the parcel may already be with a rider, and silently voiding a
-  // real shipment is worse than a flag someone reads. Ops decides.
-  await update(
-    "nvsh_order",
-    `shop_domain=eq.${encodeURIComponent(v.shop)}&shopify_order_id=eq.${encodeURIComponent(String(order.id))}`,
-    { error: "cancelled in Shopify after booking — check whether the parcel should be recalled", updated_at: new Date().toISOString() },
+  // Before pickup the parcel has not moved and is cancelled outright. After
+  // pickup a rider is carrying it, so nothing here touches the parcel: it
+  // becomes a recall request on the operations queue. Silently voiding a
+  // shipment that is already on a bike is how a courier loses a box.
+  const res = await rpc<Array<{ ok: boolean; outcome: string; message: string }>>(
+    "nvsh_cancel_or_recall", { p_shop: v.shop, p_order_id: String(order.id) },
   );
+  const r = Array.isArray(res) ? res[0] : res;
+  await logEvent(v.shop, "orders/cancelled", v.webhookId, true,
+    `${order.id}: ${r?.outcome ?? "none"} — ${r?.message ?? ""}`);
   return text("ok");
 }
 
@@ -507,6 +623,10 @@ Deno.serve(async (req: Request) => {
     if (path === "/callback") return await handleCallback(url);
     if (path === "/app") return handleApp(url);
     if (path === "/api/state" || path === "/state") return await handleState(req);
+    if (path === "/api/link") return await handleLink(req);
+    if (path === "/api/settings") return await handleSettings(req);
+    if (path === "/api/order/decide") return await handleDecide(req);
+    if (path === "/api/order/cancel") return await handleCancel(req);
     if (path === "/drain") return await handleDrain(req);
     if (path === "/fulfill") return await handleFulfill(req);
 

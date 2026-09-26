@@ -41,6 +41,93 @@ export interface ShopifyOrder {
   shipping_address?: ShopifyAddress | null;
   customer?: { phone?: string | null; email?: string | null } | null;
   line_items?: Array<{ grams?: number | null; quantity?: number | null; requires_shipping?: boolean | null }> | null;
+  // Read only by the booking rules below.
+  tags?: string | string[] | null;
+  gateway?: string | null;
+  payment_gateway_names?: string[] | null;
+  location_id?: number | string | null;
+  shipping_lines?: Array<{ title?: string | null; code?: string | null }> | null;
+}
+
+/** The merchant's booking rules, as stored on nvsh_shop. A null array means
+ *  "no restriction" -- an empty array would otherwise read as "allow nothing",
+ *  which is the same mistake as an empty allowlist in a firewall. */
+export interface BookingRules {
+  booking_mode?: string | null;
+  rule_require_confirmed?: boolean | null;
+  rule_payment_modes?: string[] | null;
+  rule_shipping_names?: string[] | null;
+  rule_location_ids?: string[] | null;
+  rule_exclude_tags?: string[] | null;
+}
+
+const norm = (s: unknown) => String(s ?? "").trim().toLowerCase();
+
+function orderTags(order: ShopifyOrder): string[] {
+  const t = order.tags;
+  if (Array.isArray(t)) return t.map(norm).filter(Boolean);
+  return String(t ?? "").split(",").map(norm).filter(Boolean);
+}
+
+function orderGateways(order: ShopifyOrder): string[] {
+  const g = [order.gateway, ...(order.payment_gateway_names ?? [])];
+  return g.map(norm).filter(Boolean);
+}
+
+/**
+ * Why this order should NOT be booked automatically, or null to go ahead.
+ *
+ * Returns a reason a merchant can read, not a rule id: the whole point of
+ * holding an order is that a human then decides, and they cannot decide from
+ * "rule 3 matched".
+ */
+export function holdReason(order: ShopifyOrder, rules: BookingRules): string | null {
+  const tags = orderTags(order);
+  const excluded = (rules.rule_exclude_tags ?? []).map(norm).filter(Boolean);
+  const hit = excluded.find((t) => tags.includes(t));
+  if (hit) return `Order is tagged "${hit}", which you have excluded from automatic booking.`;
+
+  if (rules.rule_require_confirmed) {
+    // Shopify has no "confirmed" flag on the REST order; paid or partially
+    // paid is the closest honest reading, and COD orders are pending by
+    // design -- which is why this is off unless a merchant turns it on.
+    const fin = norm(order.financial_status);
+    if (fin !== "paid" && fin !== "partially_paid") {
+      return `Payment is ${fin || "not recorded"}, and you only auto-book confirmed orders.`;
+    }
+  }
+
+  const modes = rules.rule_payment_modes;
+  if (modes && modes.length) {
+    const want = modes.map(norm);
+    const have = orderGateways(order);
+    if (!have.some((g) => want.some((w) => g.includes(w)))) {
+      return `Paid by ${have.join(", ") || "an unrecorded method"}, which is not in your allowed payment methods.`;
+    }
+  }
+
+  const ships = rules.rule_shipping_names;
+  if (ships && ships.length) {
+    const want = ships.map(norm);
+    const have = (order.shipping_lines ?? []).map((l) => norm(l.title ?? l.code));
+    if (!have.some((h) => want.some((w) => h.includes(w)))) {
+      return `Shipping method ${have.join(", ") || "is not set"}, which is not in your allowed methods.`;
+    }
+  }
+
+  const locs = rules.rule_location_ids;
+  if (locs && locs.length) {
+    const have = String(order.location_id ?? "");
+    if (!locs.map(String).includes(have)) {
+      return `Order is assigned to a location you have not enabled for NovaX.`;
+    }
+  }
+
+  if (norm(rules.booking_mode) === "manual") {
+    return "You have automatic booking turned off. Approve it to create a parcel.";
+  }
+
+  return null;
 }
 
 export interface Booking {
