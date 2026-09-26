@@ -156,8 +156,13 @@ console.log("\n-- health & install --");
   t("install passes client_id", loc.includes(`client_id=${API_KEY}`));
   t("install passes redirect_uri", loc.includes(encodeURIComponent(`${APP}/callback`)));
   t("install stored a state nonce", db.nvsh_oauth_state.length === 1);
+  // A13: merchant-managed, not assigned. The assigned scopes only cover
+  // locations owned by a registered fulfillment service, which NovaX is not.
   t("install requests only minimum scopes",
-    /read_orders/.test(loc) && /write_fulfillments/.test(loc) && !/write_customers|read_all_orders/.test(loc));
+    /read_orders/.test(loc) &&
+    /write_merchant_managed_fulfillment_orders/.test(loc) &&
+    !/assigned_fulfillment_orders/.test(loc) &&
+    !/write_customers|read_all_orders/.test(loc), loc);
 }
 t("install rejects a non-myshopify shop", (await call("/install?shop=evil.com")).status === 400);
 
