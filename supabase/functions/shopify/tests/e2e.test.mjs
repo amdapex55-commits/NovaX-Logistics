@@ -12,7 +12,7 @@ const ENV = {
 };
 
 // ---- in-memory Postgres ---------------------------------------------------
-const db = { nvsh_shop: [], nvsh_oauth_state: [], nvsh_order: [], nvsh_event: [], nvsh_access_log: [] };
+const db = { nvsh_shop: [], nvsh_oauth_state: [], nvsh_order: [], nvsh_event: [], nvsh_access_log: [], parcels: [] };
 const calls = { graphql: [], tokenExchange: 0, rpc: [] };
 
 function matches(row, qs) {

@@ -221,6 +221,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     <div class="bar" id="bulkBar">
       <button class="btn small hide" id="approveAll" type="button">Approve all held orders</button>
       <button class="btn small ghost" id="pickupBtn" type="button">Request a pickup</button>
+      <button class="btn small ghost" id="syncBtn" type="button">Check for missing orders</button>
       <span class="msg" id="bulkMsg"></span>
     </div>
     <div class="msg" id="rowMsg" style="margin-bottom:var(--s2)"></div>
@@ -307,6 +308,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     // Nothing here works until the store is connected, so nothing here is offered.
     el("approveAll").classList.add("hide");
     el("pickupBtn").classList.add("hide");
+    el("syncBtn").classList.add("hide");
       return;
     }
 
@@ -323,6 +325,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       '</span></div>';
     show("connect", false); show("settings", true); show("ordersCard", true);
     el("pickupBtn").classList.remove("hide");
+    el("syncBtn").classList.remove("hide");
     el("approveAll").classList[s.awaiting_count ? "remove" : "add"]("hide");
     el("approveAll").textContent = "Approve all " + s.awaiting_count + " held order" +
       (s.awaiting_count === 1 ? "" : "s");
@@ -518,6 +521,16 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       if (r.ok) closeTicket();
     } catch (e) { say("rowMsg", String(e.message || e), false); }
     finally { this.disabled = false; }
+  });
+
+  el("syncBtn").addEventListener("click", async function(){
+    var btn = this; btn.disabled = true; say("bulkMsg", "Asking Shopify for the last 48 hours…", true);
+    try {
+      var r = await api("api/reconcile", {});
+      say("bulkMsg", r.message || "", Boolean(r.ok));
+      if (r.recovered) setTimeout(load, 1500);
+    } catch (e) { say("bulkMsg", String(e.message || e), false); }
+    finally { btn.disabled = false; }
   });
 
   el("orders").addEventListener("click", async function(ev){

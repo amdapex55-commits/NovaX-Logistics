@@ -184,22 +184,46 @@ export async function logProtectedAccess(
  * edge case. The unique index on nvsh_event.webhook_id makes the insert fail
  * for a repeat -- which is the check.
  */
+/** What a delivery is: never seen (fresh), seen but not finished (retry), or
+ *  finished (done). Three states, because the old boolean collapsed "already
+ *  handled" and "the database is down" into the same answer. */
+export type Claim = "fresh" | "retry" | "done";
+
 export async function claimWebhook(
   shopDomain: string | null,
   topic: string,
   webhookId: string | null,
-): Promise<boolean> {
-  if (!webhookId) return true; // nothing to dedupe on; let it through
+): Promise<Claim> {
+  if (!webhookId) return "fresh"; // nothing to dedupe on; let it through
+
   try {
+    // ok=false means "received, not finished". logEvent() flips it to true when
+    // the handler reports success, and that flag -- not the row's existence --
+    // is what makes a later delivery a duplicate.
     await insert("nvsh_event", {
-      shop_domain: shopDomain,
-      topic,
-      webhook_id: webhookId,
-      ok: true,
-      detail: "claimed",
+      shop_domain: shopDomain, topic, webhook_id: webhookId,
+      ok: false, detail: "processing",
     });
-    return true;
-  } catch {
-    return false;
+    return "fresh";
+  } catch (err) {
+    // ONLY a unique-key conflict means "seen before". The old code caught
+    // everything and returned false, so a database outage answered Shopify
+    // with 200 "ok (duplicate)" and the order was lost with no retry.
+    if (!String((err as Error).message ?? "").includes("409")) throw err;
+
+    const prior = await selectOne<{ ok: boolean }>(
+      "nvsh_event",
+      `webhook_id=eq.${encodeURIComponent(webhookId)}&select=ok`,
+    );
+    return prior?.ok ? "done" : "retry";
   }
+}
+
+/** Marks a delivery finished, so a later copy of it is a duplicate. */
+export async function completeWebhook(webhookId: string | null): Promise<void> {
+  if (!webhookId) return;
+  try {
+    await update("nvsh_event", `webhook_id=eq.${encodeURIComponent(webhookId)}`,
+      { ok: true, detail: "done" });
+  } catch { /* diagnostics only */ }
 }

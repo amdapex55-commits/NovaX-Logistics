@@ -13,10 +13,11 @@
 // ---------------------------------------------------------------------------
 
 import { cleanShop, verifyOAuthHmac, verifySessionToken, verifyWebhookHmac } from "./verify.ts";
-import { pushTracking, registerWebhooks } from "./shopify-api.ts";
+import { ordersSince, pushTracking, registerWebhooks } from "./shopify-api.ts";
 import { holdReason, mapOrderToBooking, type ShopifyOrder } from "./orders.ts";
 import {
-  claimWebhook, getShop, insert, logEvent, logProtectedAccess, rpc, selectMany, selectOne, update,
+  claimWebhook, completeWebhook, getShop, insert, logEvent, logProtectedAccess, rpc,
+  selectMany, selectOne, update,
 } from "./db.ts";
 import { embeddedApp, frameAncestors } from "./ui.ts";
 
@@ -195,6 +196,12 @@ async function handleLink(req: Request): Promise<Response> {
   );
   const r = Array.isArray(res) ? res[0] : res;
   await logEvent(shop, "link", null, Boolean(r?.ok), r?.message ?? "no result");
+
+  // A08: nvsh_link_claim() moves held orders to 'received' and nothing was
+  // scheduled to pick them up, so "will be booked the moment you connect" was
+  // untrue -- they sat there. Book them now.
+  if (r?.ok && (r.released ?? 0) > 0) background(drainReceived(shop));
+
   return json(r ?? { ok: false, message: "Could not connect." }, 200, { "Cache-Control": "no-store" });
 }
 
@@ -348,6 +355,79 @@ async function drainReceived(shop: string): Promise<void> {
   }
 }
 
+// -------------------------------------------------------- reconcile --------
+// A09: the drain re-reads rows we already hold, so it can never recover an
+// order whose webhook never landed. This asks Shopify what it has and books
+// anything missing. Runs on a schedule, and a merchant can trigger it.
+
+async function reconcileShop(shop: string, hours: number): Promise<{ checked: number; recovered: number }> {
+  const shopRow = await getShop(shop);
+  if (!shopRow?.access_token || shopRow.status !== "active" || !shopRow.client_id) {
+    return { checked: 0, recovered: 0 };
+  }
+
+  const since = new Date(Date.now() - hours * 3600_000).toISOString();
+  const orders = await ordersSince(shop, shopRow.access_token, since);
+  let recovered = 0;
+
+  for (const { id, order } of orders) {
+    const existing = await selectOne<{ id: string }>(
+      "nvsh_order",
+      `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(id)}&select=id`,
+    );
+    if (existing) continue;   // already known: webhook or an earlier pass got it
+
+    await insert("nvsh_order", {
+      shop_domain: shop,
+      shopify_order_id: id,
+      order_name: (order as { name?: string }).name ?? null,
+      payload: order,
+      status: "received",
+    }, { onConflict: "shop_domain,shopify_order_id", ignoreDuplicates: true });
+
+    await logEvent(shop, "reconcile", null, true, `${id}: recovered, no webhook was recorded`);
+    await processOrder(shop, id, order as unknown as ShopifyOrder);
+    recovered++;
+  }
+  return { checked: orders.length, recovered };
+}
+
+async function handleReconcile(req: Request): Promise<Response> {
+  // Two callers: the scheduled job with the drain secret (all shops), and a
+  // merchant pressing the button, whose session token names exactly one shop.
+  const hours = 48;
+  if (DRAIN_SECRET && req.headers.get("X-NovaX-Drain") === DRAIN_SECRET) {
+    const shops = await selectMany<{ shop_domain: string }>(
+      "nvsh_shop", "status=eq.active&client_id=not.is.null&select=shop_domain&limit=200",
+    );
+    let checked = 0, recovered = 0;
+    for (const s of shops) {
+      try {
+        const r = await reconcileShop(s.shop_domain, hours);
+        checked += r.checked; recovered += r.recovered;
+      } catch (e) {
+        await logEvent(s.shop_domain, "reconcile", null, false, String((e as Error).message).slice(0, 300));
+      }
+    }
+    return json({ shops: shops.length, checked, recovered });
+  }
+
+  const shop = await sessionShop(req);
+  if (!shop) return json({ error: "unauthorized" }, 401);
+  try {
+    const r = await reconcileShop(shop, hours);
+    return json({
+      ok: true,
+      message: r.recovered
+        ? `Found ${r.recovered} order${r.recovered === 1 ? "" : "s"} Shopify had but we did not. ${r.recovered === 1 ? "It has" : "They have"} been booked.`
+        : `Checked the last ${hours} hours — nothing missing.`,
+      ...r,
+    }, 200, { "Cache-Control": "no-store" });
+  } catch (e) {
+    return json({ ok: false, message: "Could not reach Shopify: " + String((e as Error).message).slice(0, 200) });
+  }
+}
+
 async function handleState(req: Request): Promise<Response> {
   const session = await sessionShop(req);
   if (!session) return json({ error: "unauthorized" }, 401);
@@ -477,6 +557,47 @@ async function processOrder(shop: string, orderId: string, order: ShopifyOrder):
 
     const b = mapped.booking;
 
+    // A05: the merchant may have cancelled while this was being processed --
+    // orders/cancelled can land mid-flight, and the processor previously never
+    // looked again. Booking after a cancellation sends a rider for a parcel
+    // nobody wants.
+    const live = await selectOne<{ status: string; awb: string | null }>(
+      "nvsh_order", `${where}&select=status,awb`,
+    );
+    if (live?.status === "cancelled") {
+      await logEvent(shop, "orders_create", null, true,
+        `${orderId}: cancelled while processing, not booked`);
+      return;
+    }
+    if (live?.awb) return;   // already booked by a concurrent run
+
+    // A06: a parcel can exist while nvsh_order has no AWB -- the booking RPC
+    // commits, then the linkage update fails. Replaying then hit the unique
+    // index and left the order permanently failed while a real, collectable
+    // parcel sat in the network. Adopt it instead of booking a second one.
+    let orphan: { awb: string } | null = null;
+    try {
+      orphan = await selectOne<{ awb: string }>(
+        "parcels",
+        `meta->>shopifyShop=eq.${encodeURIComponent(shop)}` +
+        `&meta->>shopifyOrderId=eq.${encodeURIComponent(orderId)}` +
+        `&meta->>shopifyPackage=eq.1&select=awb`,
+      );
+    } catch (e) {
+      // A lookup that cannot run must not stop a booking that can. The unique
+      // index is still there as the backstop.
+      console.error("orphan lookup failed", orderId, e);
+    }
+    if (orphan?.awb) {
+      await update("nvsh_order", where, {
+        status: "booked", awb: orphan.awb, cod_amount: b.cod,
+        client_id: shopRow.client_id, booked_at: now, updated_at: now, error: null,
+      });
+      await logEvent(shop, "orders_create", null, true,
+        `${orderId}: adopted existing parcel ${orphan.awb}`);
+      return;
+    }
+
     // Level 2 protected customer data. Logged at the one point it is read.
     await logProtectedAccess(shop, "book_courier_shipment",
       ["shipping_address.name", "shipping_address.address1", "shipping_address.city", "phone"],
@@ -505,9 +626,19 @@ async function processOrder(shop: string, orderId: string, order: ShopifyOrder):
       status: "booked", awb, cod_amount: b.cod, client_id: shopRow.client_id,
       booked_at: now, updated_at: now, error: null,
     });
-    await update("nvsh_shop", `shop_domain=eq.${encodeURIComponent(shop)}`, {
-      last_order_at: now, orders_booked: (shopRow.orders_booked ?? 0) + 1, updated_at: now,
-    });
+
+    // A07: this is a statistic. It used to sit inside the same try, so a 503
+    // on the counter PATCH threw, the catch wrote status 'failed', and an
+    // order with a real AWB ended up marked failed -- after which every drain
+    // retry hit the parcel's unique index. A count must never roll the booking
+    // state backwards.
+    try {
+      await update("nvsh_shop", `shop_domain=eq.${encodeURIComponent(shop)}`, {
+        last_order_at: now, orders_booked: (shopRow.orders_booked ?? 0) + 1, updated_at: now,
+      });
+    } catch (e) {
+      console.error("counter update failed (booking stands)", orderId, e);
+    }
 
     // Shopify is NOT told the order shipped here. An AWB is a booking
     // reference -- it means a merchant asked for a pickup, not that a parcel
@@ -721,6 +852,7 @@ Deno.serve(async (req: Request) => {
     if (path === "/api/approve-all") return await handleApproveAll(req);
     if (path === "/api/pickup") return await handlePickup(req);
     if (path === "/api/ticket") return await handleTicket(req);
+    if (path === "/api/reconcile" || path === "/reconcile") return await handleReconcile(req);
     if (path === "/drain") return await handleDrain(req);
     if (path === "/fulfill") return await handleFulfill(req);
 
@@ -736,8 +868,12 @@ Deno.serve(async (req: Request) => {
 
       const complianceHandler = COMPLIANCE_HANDLERS[topic];
       if (!complianceHandler) return text("unsupported compliance topic", 400);
-      if (!await claimWebhook(v.shop, v.topic, v.webhookId)) return text("ok (duplicate)");
-      return await complianceHandler(v);
+      if (await claimWebhook(v.shop, v.topic, v.webhookId) === "done") {
+        return text("ok (duplicate)");
+      }
+      const cres = await complianceHandler(v);
+      if (cres.status < 300) await completeWebhook(v.webhookId);
+      return cres;
     }
 
     const handler = WEBHOOKS[path];
@@ -746,12 +882,18 @@ Deno.serve(async (req: Request) => {
       const v = await verifiedWebhook(req, path.replace("/webhooks/", ""));
       if (v instanceof Response) return v;
 
-      // A repeat delivery of something already handled is acknowledged, not
-      // redone. Shopify retries aggressively and at-least-once is its promise,
-      // not exactly-once.
-      if (!await claimWebhook(v.shop, v.topic, v.webhookId)) return text("ok (duplicate)");
+      // A delivery that FINISHED is acknowledged without redoing it. One that
+      // was received and never finished is run again -- the old code treated
+      // both the same, so a handler that failed once was never retried.
+      // A claim failure that is not a key conflict throws, and the catch below
+      // answers 500 so Shopify retries rather than losing the event.
+      if (await claimWebhook(v.shop, v.topic, v.webhookId) === "done") {
+        return text("ok (duplicate)");
+      }
 
-      return await handler(v);
+      const res = await handler(v);
+      if (res.status < 300) await completeWebhook(v.webhookId);
+      return res;
     }
 
     return text("not found", 404);

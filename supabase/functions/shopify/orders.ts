@@ -267,6 +267,19 @@ export function mapOrderToBooking(order: ShopifyOrder, opts: MapOptions = {}): M
   if (order.test) return { action: "skip", reason: "test order" };
   if (order.cancelled_at) return { action: "skip", reason: "order cancelled in Shopify" };
 
+  // A10: the COD amount was taken as a bare number and handed to a rider who
+  // collects rupees. A USD 100 order became "Rs 100" with nothing said, and the
+  // merchant would have been short about 27,000 rupees per order. NovaX
+  // collects cash in Pakistan; there is no conversion policy and inventing one
+  // silently is worse than refusing.
+  const cur = String(order.currency ?? "").trim().toUpperCase();
+  if (cur && cur !== "PKR") {
+    return {
+      action: "skip",
+      reason: `Order is in ${cur}. NovaX riders collect cash in PKR only, so this order was not booked.`,
+    };
+  }
+
   const fs = String(order.fulfillment_status ?? "").toLowerCase();
   if (fs === "fulfilled" || fs === "restocked") {
     return { action: "skip", reason: `already ${fs} in Shopify` };

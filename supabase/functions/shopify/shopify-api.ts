@@ -231,3 +231,118 @@ export async function pushTracking(
   if (errs.length) return { ok: false, detail: errs.map((e) => e.message).join("; ") };
   return { ok: true };
 }
+
+// --------------------------------------------------------- reconcile --------
+// A09: webhooks are at-least-once but not at-all-once. An orders/create that
+// never reaches durable storage -- a deploy mid-request, a gateway 5xx after
+// Shopify gave up retrying, a webhook deleted by hand -- is invisible forever,
+// because the drain only ever re-reads rows we already have. The only cure is
+// to ask Shopify what it has.
+//
+// GraphQL rather than REST: REST order endpoints are legacy, and a new public
+// app should not ship on them.
+
+const ORDERS_SINCE = `
+  query orders($q: String!, $after: String) {
+    orders(first: 50, query: $q, after: $after, sortKey: CREATED_AT) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        id name createdAt cancelledAt test tags
+        displayFinancialStatus displayFulfillmentStatus currencyCode
+        phone
+        totalOutstandingSet { shopMoney { amount } }
+        currentTotalPriceSet { shopMoney { amount } }
+        shippingLine { title }
+        shippingAddress { name firstName lastName address1 address2 city province zip countryCodeV2 phone }
+        customer { phone }
+        lineItems(first: 100) {
+          nodes {
+            title quantity requiresShipping
+            variant { inventoryItem { measurement { weight { value unit } } } }
+          }
+        }
+      }
+    }
+  }`;
+
+interface GqlOrder {
+  id: string; name: string | null; createdAt: string; cancelledAt: string | null;
+  test: boolean | null; tags: string[] | null;
+  displayFinancialStatus: string | null; displayFulfillmentStatus: string | null;
+  currencyCode: string | null; phone: string | null;
+  totalOutstandingSet?: { shopMoney?: { amount?: string } } | null;
+  currentTotalPriceSet?: { shopMoney?: { amount?: string } } | null;
+  shippingLine?: { title?: string | null } | null;
+  shippingAddress?: Record<string, string | null> | null;
+  customer?: { phone?: string | null } | null;
+  lineItems?: { nodes: Array<{ quantity?: number; requiresShipping?: boolean;
+    // Weight moved off ProductVariant: the API answers
+    // "Field 'weight' doesn't exist on type 'ProductVariant'".
+    variant?: { inventoryItem?: { measurement?: { weight?: { value?: number | null; unit?: string | null } | null } | null } | null } | null }> } | null;
+}
+
+const GRAMS: Record<string, number> = { GRAMS: 1, KILOGRAMS: 1000, OUNCES: 28.3495, POUNDS: 453.592 };
+
+/** Reshapes a GraphQL order into the REST shape mapOrderToBooking() expects,
+ *  so reconciliation and webhooks go through exactly one mapper. Two mappers
+ *  is two sets of rules that drift. */
+function toRestShape(o: GqlOrder): Record<string, unknown> {
+  const a = o.shippingAddress ?? null;
+  return {
+    id: o.id.replace(/^gid:\/\/shopify\/Order\//, ""),
+    name: o.name,
+    test: o.test ?? false,
+    cancelled_at: o.cancelledAt,
+    financial_status: (o.displayFinancialStatus ?? "").toLowerCase(),
+    fulfillment_status: (o.displayFulfillmentStatus ?? "").toLowerCase(),
+    currency: o.currencyCode,
+    phone: o.phone,
+    tags: o.tags ?? [],
+    total_outstanding: o.totalOutstandingSet?.shopMoney?.amount ?? null,
+    current_total_price: o.currentTotalPriceSet?.shopMoney?.amount ?? null,
+    shipping_lines: o.shippingLine?.title ? [{ title: o.shippingLine.title }] : [],
+    customer: o.customer ? { phone: o.customer.phone ?? null } : null,
+    shipping_address: a
+      ? {
+        name: a.name, first_name: a.firstName, last_name: a.lastName,
+        address1: a.address1, address2: a.address2, city: a.city,
+        province: a.province, zip: a.zip, country_code: a.countryCodeV2, phone: a.phone,
+      }
+      : null,
+    line_items: (o.lineItems?.nodes ?? []).map((li) => ({
+      quantity: li.quantity ?? 1,
+      requires_shipping: li.requiresShipping ?? true,
+      grams: Math.round(
+        (li.variant?.inventoryItem?.measurement?.weight?.value ?? 0) *
+        (GRAMS[String(li.variant?.inventoryItem?.measurement?.weight?.unit)] ?? 1),
+      ),
+    })),
+  };
+}
+
+export async function ordersSince(
+  shop: string,
+  accessToken: string,
+  sinceIso: string,
+  maxPages = 4,
+): Promise<Array<{ id: string; order: Record<string, unknown> }>> {
+  const out: Array<{ id: string; order: Record<string, unknown> }> = [];
+  let after: string | null = null;
+
+  for (let page = 0; page < maxPages; page++) {
+    const data: {
+      orders: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: GqlOrder[] };
+    } = await graphql(shop, accessToken, ORDERS_SINCE, {
+      q: `created_at:>='${sinceIso}'`,
+      after,
+    });
+
+    for (const n of data.orders.nodes) {
+      const rest = toRestShape(n);
+      out.push({ id: String(rest.id), order: rest });
+    }
+    if (!data.orders.pageInfo.hasNextPage) break;
+    after = data.orders.pageInfo.endCursor;
+  }
+  return out;
+}
