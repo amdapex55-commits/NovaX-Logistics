@@ -613,7 +613,8 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
 
     var portal = (state.shop && state.shop.portal_url) || PORTAL;
     el("portal").href = portal;
-    el("getCode").href = portal + "?tab=integrations";
+    // The portal shows the code ONLY for someone who arrived this way.
+    el("getCode").href = portal + "?shopifyConnect=1";
     el("signup").href  = portal.replace("client.html", "index.html") + "#signup";
     // F11: this said "Updated" even when the orders read had failed.
     el("freshness").textContent = (state.degraded && state.degraded.orders)

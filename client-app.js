@@ -1045,7 +1045,13 @@
            hunting, which is exactly the generic-dashboard landing the app is
            supposed to avoid. ?tab= picks a tab; ?awb= opens the label tab and
            marks the parcel so the render can scroll to it. */
-        var wantTab=qp.get("tab")||(location.hash==="#integrations"?"integrations":"");
+        /* Captured here, at the earliest point the query string is still
+           present: signing in reloads client.html without it. */
+        if(qp.get("shopifyConnect")==="1"){
+          try{ sessionStorage.setItem("novaxShopifyConnect","1"); }catch(e){}
+        }
+        var wantTab=qp.get("tab")||(qp.get("shopifyConnect")==="1"?"integrations":"")
+          ||(location.hash==="#integrations"?"integrations":"");
         var wantAwb=(qp.get("awb")||"").trim().toUpperCase();
         if(wantAwb){ state.nvFocusAwb=wantAwb; wantTab=wantTab||"awbLabel"; }
         if(wantTab && typeof normalizeClientTab==="function"){
@@ -4142,7 +4148,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           || `<tr><td colspan="5" class="footer-note" style="padding:14px 8px">${pool.filtered?"No parcels match these filters.":"No parcels in your account yet. Book your first parcel and this breaks down by city as they move."}</td></tr>`;
       }
     }
+    /* Fires once the portal has a signed-in client, whatever tab they land on.
+       Guarded so a re-render cannot reopen it. */
+    var __nvShopifyPopupDone=false;
+    function nvShopifyPopupWhenReady(){
+      if(__nvShopifyPopupDone) return;
+      var want=false;
+      try{ want = sessionStorage.getItem("novaxShopifyConnect")==="1"; }catch(e){}
+      if(!want) return;
+      if(!window.sb || !state || !state.client) return;   // wait for auth
+      __nvShopifyPopupDone=true;
+      try{ nvShopifyMaybePopup(); }catch(e){}
+    }
+
     function renderClientModules(){
+      try{ nvShopifyPopupWhenReady(); }catch(e){}
       renderClientTabs(); renderAwbLabel();
       if(state.activeClientTab==="dashboard" && NV_CARDS_MQ.matches &&
          !document.getElementById("clientParcelCards")?.children.length && filteredParcels().length){
@@ -11211,45 +11231,81 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     /* The Shopify app connects to a NovaX account with a code the merchant
        generates here, while signed in. That session is the proof of ownership:
        matching a store to an account by email address would let anyone who
-       knows a merchant's email address attach their own store to that
-       merchant's wallet. */
-    function nvShopifyConnectCode(force){
+       knows a merchant's email attach their own store to that merchant's
+       wallet.
+
+       The code is NEVER shown just because someone opened this tab. It appears
+       when the merchant arrives from the Shopify app's "Get my code" button, or
+       when they deliberately ask for it here. The arrival is a one-shot flag
+       captured before the login redirect can strip the query string. */
+    var NV_SHOPIFY_CONNECT_FLAG = "novaxShopifyConnect";
+
+    function nvCloseShopifyCode(){
+      var m=document.getElementById("nvShopifyCodeModal");
+      if(m) m.classList.remove("show");
+    }
+    window.nvCloseShopifyCode=nvCloseShopifyCode;
+
+    function nvCopyShopifyCode(){
+      var v=document.getElementById("nvShopifyCodeValue");
+      var code=v?String(v.textContent||"").trim():"";
+      if(!code||code==="\u2014") return;
+      try{
+        navigator.clipboard.writeText(code);
+        toast("Code copied. Paste it into the NovaX app in Shopify.");
+      }catch(e){
+        try{ var t=document.createElement("textarea"); t.value=code; document.body.appendChild(t);
+             t.select(); document.execCommand("copy"); t.remove();
+             toast("Code copied."); }catch(e2){}
+      }
+    }
+    window.nvCopyShopifyCode=nvCopyShopifyCode;
+
+    /* force=true rotates. Otherwise a live code is returned unchanged, so two
+       tabs or a reload cannot invalidate a code already pasted into Shopify. */
+    function nvShopifyConnectPopup(force){
       var out=document.getElementById("nvShopifyCodeOut");
-      var btn=document.getElementById("nvShopifyCodeBtn");
-      if(!out) return;
-      /* The code is shown the moment the tab opens, so this runs on render.
-         nvsh_link_code_issue() returns a live code unchanged rather than
-         minting a new one, which is what stops a re-render invalidating the
-         code the merchant just copied. "New code" forces a fresh one. */
-      if(!force && out.getAttribute("data-loaded")==="1") return;
-      out.setAttribute("data-loaded","1");
-      if(btn) btn.disabled=true;
-      out.textContent="Loading your code\u2026";
-      /* F16: "New code" called the RPC with no arguments, so it returned the
-         existing code instead of rotating. The force flag is passed now. */
+      var modal=document.getElementById("nvShopifyCodeModal");
+      var val=document.getElementById("nvShopifyCodeValue");
+      var exp=document.getElementById("nvShopifyCodeExpiry");
+      if(!modal||!val) return;
+      val.textContent="\u2014";
+      if(exp) exp.textContent="Asking NovaX for your code\u2026";
+      modal.classList.add("show");
+
       Promise.resolve(sb.rpc("nvsh_link_code_issue",{ p_force: !!force })).then(function(r){
-        if(btn) btn.disabled=false;
         if(r && r.error){
-          /* Staff seats hit this: only an owner may connect a store. That is
-             not an error for them to act on, so it reads as information. */
           var m=String((r.error&&r.error.message)||"");
-          out.textContent=/owner/i.test(m)
-            ? "Ask an account owner to connect your Shopify store."
-            : "Could not load a connect code: "+(m||"unknown error");
-          if(btn) btn.style.display="none";
+          if(exp) exp.textContent = /owner/i.test(m)
+            ? "Only an account owner can connect a Shopify store. Ask the owner of this NovaX account."
+            : "Could not get a code: "+(m||"unknown error");
           return;
         }
         var row=Array.isArray(r&&r.data)?r.data[0]:(r&&r.data);
-        if(!row||!row.code){ out.textContent="Could not generate a code. Only an account owner can connect a store."; return; }
+        if(!row||!row.code){
+          if(exp) exp.textContent="Could not get a code. Only an account owner can connect a store.";
+          return;
+        }
+        val.textContent=String(row.code).replace(/[^A-Z0-9]/g,"");
         var mins=Math.max(1,Math.round((new Date(row.expires_at)-new Date())/60000));
-        out.innerHTML='<strong style="font-family:ui-monospace,Menlo,monospace;letter-spacing:.16em;font-size:20px">'+
-          String(row.code).replace(/[&<>"]/g,"")+'</strong><br>Paste this into the NovaX app inside Shopify \u2014 valid for '+mins+' minutes, single use.';
+        if(exp) exp.textContent="Valid for "+mins+" minute"+(mins===1?"":"s")+", and it can be used once.";
+        if(out) out.textContent="";
       }).catch(function(e){
-        if(btn) btn.disabled=false;
-        out.textContent="Could not generate a code: "+String((e&&e.message)||e);
+        if(exp) exp.textContent="Could not get a code: "+String((e&&e.message)||e);
       });
     }
-    window.nvShopifyConnectCode=nvShopifyConnectCode;
+    window.nvShopifyConnectPopup=nvShopifyConnectPopup;
+
+    /* Shown once, only for a merchant who arrived from Shopify. */
+    function nvShopifyMaybePopup(){
+      var want=false;
+      try{ want = sessionStorage.getItem(NV_SHOPIFY_CONNECT_FLAG)==="1"; }catch(e){}
+      if(!want) return;
+      try{ sessionStorage.removeItem(NV_SHOPIFY_CONNECT_FLAG); }catch(e){}
+      if(typeof showClientTab==="function"){ try{ showClientTab("integrations"); }catch(e){} }
+      nvShopifyConnectPopup(false);
+    }
+    window.nvShopifyMaybePopup=nvShopifyMaybePopup;
     /* Which stores are actually connected. Without this the portal showed a
        connect code and nothing else, so a merchant could not tell from the
        portal whether connecting had worked or which stores were attached --
@@ -11287,7 +11343,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       /* The legacy Shopify link/secret/token panel is gone: merchants install
          the NovaX app and paste a connect code instead. shopifyCheckStatus()
          drove that panel's four step chips and has nothing left to update. */
-      try{ nvShopifyConnectCode(false); }catch(e){}
       try{ nvShopifyStores(); }catch(e){}
     }
     function newBookedParcels(){ return (state.parcels||[]).filter(p=>p.clientId===activeClientId()&&p.status==="New booked"); }

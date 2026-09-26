@@ -2460,7 +2460,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=c73cc24e" defer></script>
+  <script src="client-app.js?v=2cd1bd22" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2475,7 +2475,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=c73cc24e<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=2cd1bd22<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -2813,9 +2813,10 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
               <div class="panel mt-14" id="nvShopifyAppPanel">
                 <div class="section-head"><div><h3>Shopify</h3><p>Install the <b>NovaX Logistics</b> app from your Shopify admin, then paste the code below into it. That is the whole setup — no webhooks, no signing secrets, and nothing of yours to paste in here.</p></div><span class="chip good">Live</span></div>
                 <div id="nvShopifyStores" class="mt-12"></div>
-                <div class="field mt-12"><label>Your connect code</label>
-                  <p class="footer-note" id="nvShopifyCodeOut">Loading your code&hellip;</p>
-                  <div class="inline-actions mt-8"><button class="ghost-btn" id="nvShopifyCodeBtn" onclick="nvShopifyConnectCode(true)">New code</button></div>
+                <div class="field mt-12">
+                  <p class="footer-note">Install the NovaX app in Shopify and press <b>Get my code</b> there. It brings you here and shows your connect code. A code is single use and lasts 20 minutes.</p>
+                  <div class="inline-actions mt-8"><button class="ghost-btn" id="nvShopifyCodeBtn" onclick="nvShopifyConnectPopup(true)">Show my connect code</button></div>
+                  <p class="footer-note mt-8" id="nvShopifyCodeOut"></p>
                 </div>
               </div>
 
@@ -3177,6 +3178,25 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
       </div>
     </div>
   </div>
+  <div class="modal-overlay" id="nvShopifyCodeModal" role="dialog" aria-modal="true" aria-labelledby="nvShopifyCodeTitle">
+    <div class="modal-card" style="max-width:520px">
+      <div class="modal-head">
+        <h3 id="nvShopifyCodeTitle">Your Shopify connect code</h3>
+        <button class="modal-close" type="button" aria-label="Close" onclick="nvCloseShopifyCode()">&times;</button>
+      </div>
+      <div style="padding:18px 20px 22px">
+        <p class="footer-note" style="margin-bottom:14px">Paste this into the NovaX app inside your Shopify admin, then press <b>Connect this store</b>.</p>
+        <div id="nvShopifyCodeValue" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.2em;font-size:30px;font-weight:800;text-align:center;padding:16px 10px;border-radius:12px;border:1px solid var(--nvu-line-2);background:var(--nvu-bg-2)">&mdash;</div>
+        <p class="footer-note mt-8" id="nvShopifyCodeExpiry"></p>
+        <div class="inline-actions mt-12" style="flex-wrap:wrap;gap:8px">
+          <button class="action-btn" type="button" onclick="nvCopyShopifyCode()">Copy code</button>
+          <button class="ghost-btn" type="button" onclick="nvShopifyConnectPopup(true)">New code</button>
+          <button class="ghost-btn" type="button" onclick="nvCloseShopifyCode()">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="awbModal" role="dialog" aria-modal="true" aria-label="AWB created">
     <div class="modal-card">
       <div class="modal-head"><h3>AWB Created</h3><button class="modal-close" aria-label="Close" onclick="closeAwbModal()">&times;</button></div>
