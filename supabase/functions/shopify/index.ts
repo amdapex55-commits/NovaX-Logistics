@@ -293,50 +293,63 @@ async function handleDecide(req: Request): Promise<Response> {
     p_decision: String(b.decision ?? ""),
   });
   const r = Array.isArray(res) ? res[0] : res;
-  // Approving moves the row to 'received', which is what the drain picks up.
-  // Book it now rather than making the merchant wait for the next tick: they
-  // are looking at the screen, and "approved" that does nothing for a minute
-  // reads as a dead button.
+  // G01: approval used to release the row to 'received' -- the state the drain
+  // books from -- and THEN refresh from Shopify. A failed refresh returned
+  // ok:false and left a fully bookable row behind, so a minute later the drain
+  // shipped the address the merchant had just corrected. nvsh_order_decide now
+  // parks it in 'validating', which nothing books from, and this handler is
+  // what releases it.
   if (r?.ok && String(b.decision) === "approve") {
     const orderId = String(b.order_id ?? "");
+    const where = `shop_domain=eq.${encodeURIComponent(shop)}` +
+      `&shopify_order_id=eq.${encodeURIComponent(orderId)}`;
     const row = await selectOne<{ payload: ShopifyOrder | null }>(
-      "nvsh_order",
-      `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}&select=payload`,
+      "nvsh_order", `${where}&select=payload`,
     );
 
-    // A24: the stored payload is whatever arrived with the webhook. A merchant
-    // who holds an order usually holds it BECAUSE something was wrong, fixes
-    // the address or the total in Shopify, and then approves -- and the old
-    // payload would have sent the parcel to the address they just corrected.
-    let payload = row?.payload ?? null;
+    let payload: ShopifyOrder | null = null;
+    let why = "";
     try {
       const shopRow = await getShop(shop);
-      if (shopRow?.access_token) {
+      if (!shopRow?.access_token) {
+        why = "This store is not connected to Shopify any more.";
+      } else {
         const fresh = await fetchOrder(shop, shopRow.access_token, orderId);
-        if (fresh) {
-          // B03: the GraphQL order carries no per-item weight without
-          // read_inventory, a scope this app does not request. Carry the
-          // weights we already have from the webhook payload.
+        // G04: a successful response carrying data.order = null never reached
+        // the catch, so `if (fresh)` fell straight through and the SAVED
+        // payload was booked. Null is not confirmation; it means the order is
+        // gone or unreadable.
+        if (!fresh) {
+          why = "Shopify did not return this order, so its current address and total could not be confirmed.";
+        } else {
           payload = mergeKnownWeights(fresh, row?.payload as unknown as Record<string, unknown>) as unknown as ShopifyOrder;
-          await update("nvsh_order",
-            `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}`,
-            { payload: fresh, updated_at: new Date().toISOString() });
+          await update("nvsh_order", where, { payload: fresh, updated_at: new Date().toISOString() });
         }
       }
     } catch (e) {
-      // F14: this booked the stored payload without telling anyone. A merchant
-      // who held an order BECAUSE the address was wrong, fixed it in Shopify,
-      // and approved during an outage would have shipped to the old address.
       console.error("refresh before approval failed", orderId, e);
-      return json({
-        ok: false,
-        message: "Could not read the current order from Shopify, so nothing was booked — " +
-          "the details we hold may be out of date. Try again in a moment.",
-      }, 200, { "Cache-Control": "no-store" });
+      why = "Shopify could not be reached to confirm the current address and total.";
     }
 
-    if (payload) background(processOrder(shop, orderId, payload));
+    if (!payload) {
+      await rpc("nvsh_validation_done", {
+        p_shop: shop, p_order_id: orderId, p_ok: false,
+        p_reason: why + " Nothing was booked. Approve again to retry.",
+      });
+      return json({ ok: false, message: why + " Nothing was booked — the order is still held." },
+        200, { "Cache-Control": "no-store" });
+    }
+
+    const released = await rpc<boolean>("nvsh_validation_done", {
+      p_shop: shop, p_order_id: orderId, p_ok: true, p_reason: null,
+    });
+    if (released !== true) {
+      return json({ ok: false, message: "That order changed while it was being checked. Reload and look again." },
+        200, { "Cache-Control": "no-store" });
+    }
+    background(processOrder(shop, orderId, payload));
   }
+
   return json(r ?? { ok: false, message: "No result." }, 200, { "Cache-Control": "no-store" });
 }
 
@@ -493,34 +506,56 @@ async function handleSplit(req: Request): Promise<Response> {
 /** Books every order sitting in 'received' for one shop. Shared by the drain
  *  and by bulk approve so there is one booking path, not two. */
 async function drainReceived(shop: string): Promise<void> {
-  const rows = await selectMany<{ shopify_order_id: string; payload: ShopifyOrder | null; approved_at: string | null }>(
+  const rows = await selectMany<{ shopify_order_id: string; payload: ShopifyOrder | null }>(
     "nvsh_order",
-    `shop_domain=eq.${encodeURIComponent(shop)}&status=eq.received&select=shopify_order_id,payload,approved_at&limit=100`,
+    `shop_domain=eq.${encodeURIComponent(shop)}&status=eq.received&select=shopify_order_id,payload&limit=100`,
+  );
+  for (const r of rows) {
+    if (r.payload) await processOrder(shop, r.shopify_order_id, r.payload);
+  }
+}
+
+/** G02: bulk approval released every held row first, so the ordinary drain
+ *  could book a stale payload while the refresh was still in flight -- and the
+ *  old catch then wrote the row back to 'awaiting_approval' unconditionally,
+ *  putting an order that already owned a parcel back in the approval queue with
+ *  an AWB attached. Rows now sit in 'validating' until each one is checked, and
+ *  nvsh_validation_done refuses to demote anything that has an AWB. */
+async function validateApproved(shop: string): Promise<void> {
+  const rows = await selectMany<{ shopify_order_id: string; payload: ShopifyOrder | null }>(
+    "nvsh_order",
+    `shop_domain=eq.${encodeURIComponent(shop)}&status=eq.validating&select=shopify_order_id,payload&limit=100`,
   );
   const shopRow = await getShop(shop);
+
   for (const r of rows) {
-    if (!r.payload) continue;
-    // B16: only individual approval refetched, so "Approve all" shipped the
-    // address the merchant had already corrected in Shopify. Anything a human
-    // approved is refetched before it is booked.
-    let payload = r.payload;
-    if (r.approved_at && shopRow?.access_token) {
-      try {
+    let payload: ShopifyOrder | null = null;
+    let why = "";
+    try {
+      if (!shopRow?.access_token) {
+        why = "This store is not connected to Shopify any more.";
+      } else {
         const fresh = await fetchOrder(shop, shopRow.access_token, r.shopify_order_id);
-        if (fresh) payload = mergeKnownWeights(fresh, r.payload as unknown as Record<string, unknown>) as unknown as ShopifyOrder;
-      } catch (e) {
-        // Same rule in bulk: leave it for the merchant rather than shipping
-        // values we could not confirm.
-        console.error("bulk refresh failed", r.shopify_order_id, e);
-        await update("nvsh_order",
-          `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(r.shopify_order_id)}`,
-          { status: "awaiting_approval", approved_at: null,
-            hold_reason: "Shopify could not be reached to confirm the current address and total. Approve again to retry.",
-            updated_at: new Date().toISOString() });
-        continue;
+        if (!fresh) why = "Shopify did not return this order.";
+        else payload = mergeKnownWeights(fresh, r.payload as unknown as Record<string, unknown>) as unknown as ShopifyOrder;
       }
+    } catch (e) {
+      console.error("bulk refresh failed", r.shopify_order_id, e);
+      why = "Shopify could not be reached to confirm the current address and total.";
     }
-    await processOrder(shop, r.shopify_order_id, payload);
+
+    if (!payload) {
+      await rpc("nvsh_validation_done", {
+        p_shop: shop, p_order_id: r.shopify_order_id, p_ok: false,
+        p_reason: why + " Nothing was booked. Approve again to retry.",
+      });
+      continue;
+    }
+
+    const released = await rpc<boolean>("nvsh_validation_done", {
+      p_shop: shop, p_order_id: r.shopify_order_id, p_ok: true, p_reason: null,
+    });
+    if (released === true) await processOrder(shop, r.shopify_order_id, payload);
   }
 }
 
@@ -1104,10 +1139,13 @@ async function handleFulfill(req: Request): Promise<Response> {
           `awb=in.(${candidates.map(encodeURIComponent).join(",")})&select=awb,status`,
         );
       } catch (err) {
-        await update("nvsh_order", where, {
-          fulfill_attempts: (r.fulfill_attempts ?? 0) + 1,
-          fulfill_error: "could not confirm the parcel is with a rider; not notifying the buyer yet",
-          fulfill_leased_until: null, updated_at: now,
+        // G05: this only bumped attempts, so at twelve the row stayed 'ready' --
+        // below the claim's ceiling and above the Retry button's condition, so
+        // it fell out of both and no one ever saw it again.
+        await rpc("nvsh_fulfill_fail", {
+          p_shop: r.shop_domain, p_order_id: r.shopify_order_id, p_worker: worker,
+          p_error: "could not confirm the parcel is with a rider; the buyer was not notified",
+          p_exhaust: false,
         });
         failed++;
         continue;

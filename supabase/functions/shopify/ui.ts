@@ -443,7 +443,15 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     // F10: every load replaced innerHTML, so an open support form or review
     // panel -- and whatever the merchant had typed into it -- vanished under
     // them. Never redraw over work in progress.
-    if (box.querySelector(".ticket, .preview")) { pendingRows = rows; return; }
+    //
+    // G08/G09: the deferral kept only the rows. Switching queues with a preview
+    // open left the OLD list on screen under the NEW tab's label, and a
+    // degraded read was deferred without its degraded flag -- so closing the
+    // preview drew an empty list as healthy data and cached it as a success.
+    if (box.querySelector(".ticket, .preview")) {
+      pending = { rows: rows, degraded: Boolean(degraded), key: viewKey() };
+      return;
+    }
     // An outage is not an empty store.
     // F11: the warning was written and then immediately replaced by the cached
     // rows, so an outage looked like ordinary data. The notice stays ABOVE the
@@ -615,11 +623,14 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     window.scrollTo(0, scroll);
   }
 
-  var pendingRows = null;
+  var pending = null;
   function redrawIfIdle(){
-    if (pendingRows && !el("orders").querySelector(".ticket, .preview")) {
-      var r = pendingRows; pendingRows = null; renderOrders(r, false);
-    }
+    if (!pending || el("orders").querySelector(".ticket, .preview")) return;
+    var p = pending; pending = null;
+    // If the merchant changed tab, page or search while the panel was open, the
+    // deferred rows belong to a view they are no longer looking at. Re-read.
+    if (p.key !== viewKey()) { load().catch(function(){}); return; }
+    renderOrders(p.rows, p.degraded);
   }
 
   var poll = null;
@@ -662,6 +673,19 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     var n = document.getElementById("m-" + id);
     if (n) { n.textContent = text || ""; n.className = "rowmsg " + (text ? (ok ? "ok" : "err") : ""); }
   }
+  // Everything a row can open, closed in one place, plus the confirmation
+  // state that belongs to it. G10: Cancel removed the panel and left
+  // splitConfirm set, so reopening Add another box and pressing Book once
+  // silently sent confirm_additional:true -- bypassing the very warning the
+  // merchant had just cancelled.
+  function closePanels(id){
+    var row = rowOf(id);
+    if (row) row.querySelectorAll(".preview, .ticket").forEach(function(n){ n.remove(); });
+    delete splitConfirm[id];
+    if (ticketFor === id) ticketFor = null;
+    redrawIfIdle();
+  }
+
   function busy(id, on){
     var row = rowOf(id); if (!row) return;
     row.classList[on ? "add" : "remove"]("busy");
@@ -713,7 +737,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
 
     if (act === "preview")       return showPreview(id, "book");
     if (act === "splitPreview")  return showPreview(id, "split");
-    if (act === "closePreview")  { var p = rowOf(id).querySelector(".preview"); if (p) p.remove(); redrawIfIdle(); return; }
+    if (act === "closePreview")  { closePanels(id); return; }
     if (act === "label") {
       var o = orderById(id);
       window.open((state.shop.portal_url || PORTAL) + "?awb=" + encodeURIComponent(o && o.awb || ""), "_blank", "noopener");
@@ -736,11 +760,21 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
         r = await api("api/order/split", { order_id: id, key: splitKeys[id],
           confirm_additional: Boolean(splitConfirm[id]) });
         // The server asks once when it suspects a retry rather than a new box.
-        if (r && r.needs_confirm) { splitConfirm[id] = true; }
+        if (r && r.needs_confirm) {
+          // Ask on the button, not behind it.
+          splitConfirm[id] = true;
+          var again = rowOf(id) && rowOf(id).querySelector("[data-act='split']");
+          if (again) again.textContent = "Yes, book another box";
+        }
         if (r && r.ok) { delete splitKeys[id]; delete splitConfirm[id]; }
       }
 
       rowSay(id, (r && r.message) || "", Boolean(r && r.ok));
+      // G03: a successful Book left its preview open, and renderOrders refuses
+      // to redraw while a preview exists -- so the row stayed disabled, still
+      // saying "awaiting approval", and polling refused to run. Only a full
+      // reload recovered it. A finished action closes what it opened.
+      closePanels(id);
       if (r && r.ok) {
         setTimeout(function(){
           load().catch(function(e){
@@ -774,7 +808,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     box.querySelector("input").focus();
     box.addEventListener("click", async function(ev){
       var c = ev.target.closest("[data-act='closeTicket']");
-      if (c) { box.remove(); redrawIfIdle(); return; }
+      if (c) { closePanels(id); return; }
       var sBtn = ev.target.closest("[data-send]");
       if (!sBtn) return;
       var body = box.querySelector("input").value.trim();
@@ -783,7 +817,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       try {
         var r = await api("api/ticket", { order_id: id, body: body });
         rowSay(id, r.message || "", Boolean(r.ok));
-        if (r.ok) { box.remove(); redrawIfIdle(); }
+        if (r.ok) closePanels(id);
       } catch (e) { rowSay(id, String(e.message || e), false); }
       finally { sBtn.disabled = false; }
     });

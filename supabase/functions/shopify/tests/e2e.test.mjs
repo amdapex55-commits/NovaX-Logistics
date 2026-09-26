@@ -15,6 +15,7 @@ const ENV = {
 const db = { nvsh_shop: [], nvsh_oauth_state: [], nvsh_order: [], nvsh_event: [], nvsh_access_log: [], parcels: [] };
 const calls = { graphql: [], gqlVars: [], tokenExchange: 0, rpc: [] };
 let ONE_LOCATION = false;
+let GRAPHQL_ORDER_FAILS = false;
 
 function matches(row, qs) {
   for (const [k, v] of qs) {
@@ -47,6 +48,23 @@ globalThis.fetch = async (input, init = {}) => {
     calls.gqlVars.push(body.variables ?? {});
     if (/webhookSubscriptionCreate/.test(body.query))
       return J({ data: { webhookSubscriptionCreate: { userErrors: [], webhookSubscription: { id: "gid://x/1" } } } });
+    if (/query one\(/.test(body.query) || /orders\(first/.test(body.query)) {
+      if (GRAPHQL_ORDER_FAILS) return J({ errors: [{ message: "upstream unavailable" }] }, 200);
+      return J({ data: { order: {
+        id: "gid://shopify/Order/G01", name: "#G01", createdAt: new Date().toISOString(),
+        cancelledAt: null, test: false, tags: [], displayFinancialStatus: "PENDING",
+        displayFulfillmentStatus: "UNFULFILLED", currencyCode: "PKR", phone: null,
+        paymentGatewayNames: [], totalOutstandingSet: { shopMoney: { amount: "1500.00" } },
+        currentTotalPriceSet: { shopMoney: { amount: "1500.00" } }, shippingLine: null,
+        shippingAddress: { name: "New Name", firstName: null, lastName: null,
+          address1: "NEW ADDRESS", address2: null, city: "Karachi", province: "Sindh",
+          zip: "75600", countryCodeV2: "PK", phone: "03001234567" },
+        customer: { phone: "03001234567" },
+        lineItems: { pageInfo: { hasNextPage: false },
+          nodes: [{ id: "gid://shopify/LineItem/1", title: "T", quantity: 1,
+                    requiresShipping: true, unfulfilledQuantity: 1 }] },
+      } } });
+    }
     if (/fulfillmentOrders/.test(body.query) && ONE_LOCATION)
       return J({ data: { order: { fulfillmentOrders: { pageInfo: { hasNextPage: false }, nodes: [
         { id: "gid://shopify/FulfillmentOrder/9", status: "OPEN",
@@ -125,6 +143,36 @@ globalThis.fetch = async (input, init = {}) => {
         return J(true);
       }
       // B05: rows are claimed by one SQL statement now.
+      // G01/G02: approval parks a row in 'validating'; only nvsh_validation_done
+      // releases it, and it refuses to demote a row that already has an AWB.
+      if (fn === "nvsh_order_decide") {
+        const o = db.nvsh_order.find(x => x.shop_domain === body.p_shop && x.shopify_order_id === body.p_order_id);
+        if (!o) return J([{ ok: false, message: "No such order." }]);
+        if (o.status !== "awaiting_approval") return J([{ ok: false, message: `That order is already ${o.status}.` }]);
+        if (body.p_decision === "approve") {
+          // G01: 'validating', never 'received'. Nothing books from here.
+          o.status = "validating"; o.approved_at = new Date().toISOString(); o.hold_reason = null;
+          return J([{ ok: true, message: "Checking the current order with Shopify…" }]);
+        }
+        o.status = "skipped"; o.skip_reason = "declined by merchant";
+        return J([{ ok: true, message: "Declined. No parcel was created." }]);
+      }
+      if (fn === "nvsh_validation_done") {
+        const o = db.nvsh_order.find(x => x.shop_domain === body.p_shop && x.shopify_order_id === body.p_order_id);
+        if (!o || o.status !== "validating" || o.awb) return J(false);
+        if (body.p_ok) o.status = "received";
+        else { o.status = "awaiting_approval"; o.approved_at = null; o.hold_reason = body.p_reason; }
+        return J(true);
+      }
+      if (fn === "nvsh_fulfill_fail") {
+        const o = db.nvsh_order.find(x => x.shop_domain === body.p_shop && x.shopify_order_id === body.p_order_id);
+        if (!o) return J(null);
+        o.fulfill_attempts = (o.fulfill_attempts ?? 0) + 1;
+        o.fulfill_state = (body.p_exhaust || o.fulfill_attempts >= 12) ? "failed" : "ready";
+        o.fulfill_error = body.p_error;
+        o.fulfill_leased_until = null; o.fulfill_lease_owner = null;
+        return J(null);
+      }
       if (fn === "nvsh_claim_fulfill") {
         const out = db.nvsh_order.filter(o =>
           o.fulfill_state === "ready" && o.awb && (o.fulfill_attempts ?? 0) < 12 &&
@@ -375,6 +423,55 @@ console.log("-- fulfilment happens at handover, not at booking --");
   b = await r.json();
   t("a fulfil retry books nothing", calls.rpc.filter(c => c === "nvsh_book_parcel").length === bookedBefore);
   t("nothing left ready", b.scanned === 0, JSON.stringify(b));
+}
+
+console.log("-- approval validates before it releases (G01/G02/G04) --");
+{
+  // A held order whose Shopify refresh fails must stay held. Before this, the
+  // decide RPC released it to 'received' and the ordinary drain booked the old
+  // address a minute later while the merchant had been told nothing happened.
+  db.nvsh_order.push({
+    shop_domain: SHOP, shopify_order_id: "G01", order_name: "#G01",
+    status: "awaiting_approval", hold_reason: "held for review",
+    payload: { id: "G01", currency: "PKR", financial_status: "pending",
+      shipping_address: { name: "Old Name", address1: "OLD ADDRESS", city: "Karachi",
+        country_code: "PK", phone: "03001234567" },
+      line_items: [{ quantity: 1, grams: 500 }] },
+    received_at: new Date().toISOString(),
+  });
+  const row = () => db.nvsh_order.find(o => o.shopify_order_id === "G01");
+
+  GRAPHQL_ORDER_FAILS = true;
+  let r = await call("/api/order/decide", {
+    method: "POST", headers: { Authorization: "Bearer " + sessionToken(), "Content-Type": "application/json" },
+    body: JSON.stringify({ order_id: "G01", decision: "approve" }),
+  });
+  await settle();
+  let b = await r.json();
+
+  t("a failed refresh does not claim success", b.ok === false, JSON.stringify(b));
+  t("the order goes back to held, not received", row().status === "awaiting_approval", row().status);
+  t("no AWB was created", !row().awb);
+  t("the merchant is told why", /could not|did not return/i.test(row().hold_reason ?? ""), row().hold_reason);
+
+  // And the drain must not book it while it is held.
+  const before = calls.rpc.filter(c => c === "nvsh_book_linked").length;
+  await call("/drain", { headers: { "X-NovaX-Drain": "drain_me" } });
+  await settle();
+  t("the drain will not book a held order",
+    calls.rpc.filter(c => c === "nvsh_book_linked").length === before);
+
+  // Now let Shopify answer, and it should book.
+  GRAPHQL_ORDER_FAILS = false;
+  r = await call("/api/order/decide", {
+    method: "POST", headers: { Authorization: "Bearer " + sessionToken(), "Content-Type": "application/json" },
+    body: JSON.stringify({ order_id: "G01", decision: "approve" }),
+  });
+  await settle();
+  b = await r.json();
+  t("approval succeeds once Shopify answers", b.ok === true, JSON.stringify(b));
+  t("the order is booked", row().status === "booked", row().status);
+  t("it has an AWB", Boolean(row().awb), row().awb);
 }
 
 console.log("-- a fresh order on a linked store --");
