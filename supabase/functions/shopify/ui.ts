@@ -235,6 +235,19 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   <!-- Orders -------------------------------------------------------------- -->
   <div class="card hide" id="ordersCard">
     <h2>Orders <span id="freshness" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
+    <div class="bar" id="filterBar">
+      <input type="text" id="q" placeholder="Search order number or AWB" autocomplete="off" style="max-width:260px">
+      <select id="filter" style="max-width:190px">
+        <option value="all">All orders</option>
+        <option value="action">Needs attention</option>
+        <option value="held">Waiting for approval</option>
+        <option value="failed">Failed</option>
+        <option value="booked">Booked</option>
+      </select>
+      <button class="btn small ghost" id="prevPage" type="button">Newer</button>
+      <button class="btn small ghost" id="nextPage" type="button">Older</button>
+      <span class="note" id="pageInfo"></span>
+    </div>
     <div class="bar" id="bulkBar">
       <button class="btn small hide" id="approveAll" type="button">Approve all held orders</button>
       <button class="btn small ghost" id="pickupBtn" type="button">Request a pickup</button>
@@ -445,7 +458,11 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       a.push('<a class="btn small ghost" target="_blank" rel="noopener" href="' +
              h(PORTAL + "?awb=" + encodeURIComponent(r.awb)) + '">Label</a>');
     }
-    if (r.status === "booked") {
+    // B22: this checked only the ORDER status, so a recalled or delivered
+    // shipment still offered Extra box and Cancel -- actions the server refuses.
+    var openParcel = !r.parcel_status ||
+      ["New booked","Collected by rider","Arrived at warehouse","Parcel now in transit"].indexOf(r.parcel_status) >= 0;
+    if (r.status === "booked" && openParcel && !r.recall_requested) {
       a.push('<button class="btn small ghost" data-act="split" data-id="' + h(r.shopify_order_id) + '">Extra box</button>');
     }
     // A65: a sync that gave up had no way back, and a skipped order could not be
@@ -459,21 +476,41 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     if (r.status === "booked" || r.status === "failed" || r.awb) {
       a.push('<button class="btn small ghost" data-act="ticket" data-id="' + h(r.shopify_order_id) + '">Problem?</button>');
     }
-    if ((r.status === "booked" && !r.recall_requested) || r.status === "awaiting_approval") {
+    if ((r.status === "booked" && !r.recall_requested && openParcel) || r.status === "awaiting_approval") {
       a.push('<button class="btn small ghost danger" data-act="cancel" data-id="' + h(r.shopify_order_id) + '">Cancel</button>');
     }
     return '<div class="actions">' + a.join("") + '</div>';
   }
 
-  function renderOrders(rows){
+  var lastGoodOrders = null;
+
+  function renderOrders(rows, degraded){
     var box = el("orders");
+    // B18: when the orders query failed the endpoint returned [] and the UI drew
+    // its cheerful "No orders yet" -- a merchant could not tell an outage from
+    // an empty store. Keep the last good list and say what happened.
+    if (degraded) {
+      box.innerHTML = '<div class="empty"><strong>Orders could not be loaded</strong>' +
+        'This is a problem on our side, not an empty store. ' +
+        (lastGoodOrders ? 'The list below is from the last successful load.' : 'Press Check for missing orders to try again.') +
+        '</div>' + (lastGoodOrders ? "" : "");
+      if (lastGoodOrders) { rows = lastGoodOrders; } else { return; }
+    } else if (rows && rows.length) {
+      lastGoodOrders = rows;
+    }
+    var total = (rows && rows[0] && rows[0].total_count) || 0;
+    var pi = el("pageInfo");
+    if (pi) {
+      var from = page * PAGE + 1, to = page * PAGE + (rows ? rows.length : 0);
+      pi.textContent = total ? ("Showing " + from + "–" + to + " of " + total) : "";
+    }
+    if (el("prevPage")) el("prevPage").disabled = page === 0;
+    if (el("nextPage")) el("nextPage").disabled = !rows || (page + 1) * PAGE >= total;
     // A61: the list is capped and said nothing, so older held or failed orders
     // silently vanished while the counters above still included them.
     var cap = el("ordersCap");
     if (cap) {
-      cap.textContent = rows && rows.length >= 100
-        ? "Showing the 100 most recent orders. Older ones are in the NovaX portal."
-        : "";
+      cap.textContent = "";
     }
     if (!rows || !rows.length) {
       box.innerHTML = '<div class="empty"><strong>No orders yet</strong>' +
@@ -521,15 +558,18 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
 
   // ---- load ---------------------------------------------------------------
 
-  var lastLoaded = null;
+  var lastLoaded = null, page = 0, PAGE = 50;
 
   async function load(){
-    state = await api("state");
+    var q = el("q") ? el("q").value.trim() : "";
+    var f = el("filter") ? el("filter").value : "all";
+    state = await api("state?limit=" + PAGE + "&offset=" + (page * PAGE) +
+      "&filter=" + encodeURIComponent(f) + "&q=" + encodeURIComponent(q));
     lastLoaded = new Date();
     renderStatus(state.shop);
     renderStats(state.shop, state.wallet);
     renderSettings(state.shop);
-    renderOrders(state.orders);
+    renderOrders(state.orders, state.degraded && state.degraded.orders);
     var portal = (state.shop && state.shop.portal_url) || PORTAL;
     el("portal").href = portal;
     el("getCode").href = portal + "?tab=integrations";
@@ -578,6 +618,11 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
 
   el("saveBtn").addEventListener("click", async function(){
     var btn = this;
+    // B19: only the button was disabled, so anything typed while the request was
+    // in flight was overwritten when the reply reloaded the saved values. Snapshot
+    // what is being saved and compare on the way back.
+    var fields = ["mode","confirmed","tags","pay","ship","locs"];
+    var snapshot = fields.map(function(id){ var n = el(id); return n.type === "checkbox" ? String(n.checked) : n.value; }).join("\u0000");
     btn.disabled = true; say("setMsg", "Saving…", true);
     try {
       var r = await api("api/settings", {
@@ -588,6 +633,11 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
         shipping_names: list(el("ship").value),
         location_ids: list(el("locs").value)
       });
+      var now = fields.map(function(id){ var n = el(id); return n.type === "checkbox" ? String(n.checked) : n.value; }).join("\u0000");
+      if (r.ok && now !== snapshot) {
+        say("setMsg", "Saved — but you changed something while it was saving, so your newer edits are still unsaved. Press Save again.", false);
+        return;
+      }
       say("setMsg", r.message || "Saved.", Boolean(r.ok));
       if (r.ok) { settingsDirty = false; await load(); }
     } catch (e) {
@@ -642,7 +692,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   // runs as one -- inside admin.shopify.com. A confirm() here does not warn
   // the merchant, it silently returns false, and a prompt() returns null, so
   // the button simply does nothing. Every prompt and every result is inline.
-  var ticketFor = null, splitArmed = null;
+  var ticketFor = null, splitArmed = null, splitKeys = {};
 
   function closeTicket(){
     ticketFor = null;
@@ -665,6 +715,15 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     } catch (e) { say("rowMsg", String(e.message || e), false); }
     finally { this.disabled = false; }
   });
+
+  var searchTimer = null;
+  if (el("q")) el("q").addEventListener("input", function(){
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function(){ page = 0; load().catch(function(){}); }, 350);
+  });
+  if (el("filter")) el("filter").addEventListener("change", function(){ page = 0; load().catch(function(){}); });
+  if (el("prevPage")) el("prevPage").addEventListener("click", function(){ if (page > 0) { page--; load().catch(function(){}); } });
+  if (el("nextPage")) el("nextPage").addEventListener("click", function(){ page++; load().catch(function(){}); });
 
   el("syncBtn").addEventListener("click", async function(){
     var btn = this; btn.disabled = true; say("bulkMsg", "Asking Shopify for the last 48 hours…", true);
@@ -722,7 +781,13 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       if (act === "resync")     r = await api("api/order/resync", { order_id: id });
       else if (act === "recheck") r = await api("api/order/recheck", { order_id: id });
       else if (act === "cancel") r = await api("api/order/cancel", { order_id: id });
-      else if (act === "split") r = await api("api/order/split",  { order_id: id });
+      else if (act === "split") {
+        // B09: the same intent must never book two boxes. The key is minted
+        // when the merchant confirms and reused if the click is repeated.
+        splitKeys[id] = splitKeys[id] || (id + ":" + Date.now() + ":" + Math.random().toString(36).slice(2, 8));
+        r = await api("api/order/split", { order_id: id, key: splitKeys[id] });
+        if (r && r.ok) delete splitKeys[id];
+      }
       else                      r = await api("api/order/decide", { order_id: id, decision: act });
 
       say("rowMsg", (r && r.message) || "", Boolean(r && r.ok));
@@ -747,6 +812,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   (async function(){
     try {
       await load();
+      startPolling();   // B17: this was defined and never called.
     } catch (e) {
       el("status").innerHTML = '<div class="banner bad"><strong>Could not load</strong>' +
         h(String(e.message || e)) + ' — reload the page, and message NovaX on WhatsApp 0312 3922558 if it keeps happening.</div>';

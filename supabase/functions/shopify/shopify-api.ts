@@ -270,6 +270,23 @@ export async function pushTracking(
     byLocation.set(loc, list);
   }
 
+  // B04: grouping by location fixed Shopify's constraint, not the contents
+  // problem. NovaX collects one parcel from one pickup address; it has no idea
+  // which warehouse's items are inside it. Fulfilling every open location marks
+  // a second warehouse's goods -- or another carrier's -- as shipped on the
+  // strength of our box. This app supports whole-order dispatch from one
+  // location; anything else is handed back to a human rather than guessed.
+  if (byLocation.size > 1) {
+    const names = [...byLocation.values()]
+      .map((g) => g[0].assignedLocation?.location?.name ?? "an unnamed location");
+    return {
+      ok: false,
+      detail: `This order ships from ${byLocation.size} locations (${names.join(", ")}). ` +
+        `NovaX collects one parcel from one address and cannot tell which items are in it, ` +
+        `so it will not mark the whole order shipped. Fulfil this one in Shopify by hand.`,
+    };
+  }
+
   const problems: string[] = [];
   const fulfillmentIds: string[] = [];
   let ok = 0;
@@ -338,15 +355,17 @@ const ORDER_FIELDS = `
         id name createdAt cancelledAt test tags
         displayFinancialStatus displayFulfillmentStatus currencyCode
         phone
+        paymentGatewayNames
         totalOutstandingSet { shopMoney { amount } }
         currentTotalPriceSet { shopMoney { amount } }
         shippingLine { title }
         shippingAddress { name firstName lastName address1 address2 city province zip countryCodeV2 phone }
         customer { phone }
-        lineItems(first: 100) {
+        lineItems(first: 250) {
+          pageInfo { hasNextPage }
           nodes {
-            title quantity requiresShipping
-            variant { inventoryItem { measurement { weight { value unit } } } }
+            id title quantity requiresShipping
+            unfulfilledQuantity
           }
         }
 `;
@@ -364,18 +383,26 @@ interface GqlOrder {
   test: boolean | null; tags: string[] | null;
   displayFinancialStatus: string | null; displayFulfillmentStatus: string | null;
   currencyCode: string | null; phone: string | null;
+  // B02: this was missing, so a refetched pending CARD order had no gateway and
+  // paymentKind() read "no gateway + pending" as cash on delivery -- a Visa
+  // authorisation became a COD parcel for the full amount.
+  paymentGatewayNames?: string[] | null;
   totalOutstandingSet?: { shopMoney?: { amount?: string } } | null;
   currentTotalPriceSet?: { shopMoney?: { amount?: string } } | null;
   shippingLine?: { title?: string | null } | null;
   shippingAddress?: Record<string, string | null> | null;
   customer?: { phone?: string | null } | null;
-  lineItems?: { nodes: Array<{ quantity?: number; requiresShipping?: boolean;
-    // Weight moved off ProductVariant: the API answers
-    // "Field 'weight' doesn't exist on type 'ProductVariant'".
-    variant?: { inventoryItem?: { measurement?: { weight?: { value?: number | null; unit?: string | null } | null } | null } | null } | null }> } | null;
+  // B03: variant.inventoryItem.measurement needs read_inventory, which this app
+  // does not request and should not. Weight is carried forward from the webhook
+  // payload instead -- see mergeKnownWeights().
+  // B11: unfulfilledQuantity is the remaining shippable count, and it needs no
+  // extra scope; without it a refetch weighed the ORIGINAL quantity.
+  // B26: lineItems was capped at 100 with no page info, so a long order was
+  // silently truncated.
+  lineItems?: { pageInfo?: { hasNextPage?: boolean }; nodes: Array<{
+    id?: string; quantity?: number; requiresShipping?: boolean;
+    unfulfilledQuantity?: number | null }> } | null;
 }
-
-const GRAMS: Record<string, number> = { GRAMS: 1, KILOGRAMS: 1000, OUNCES: 28.3495, POUNDS: 453.592 };
 
 /** Reshapes a GraphQL order into the REST shape mapOrderToBooking() expects,
  *  so reconciliation and webhooks go through exactly one mapper. Two mappers
@@ -391,7 +418,11 @@ function toRestShape(o: GqlOrder): Record<string, unknown> {
     fulfillment_status: (o.displayFulfillmentStatus ?? "").toLowerCase(),
     currency: o.currencyCode,
     phone: o.phone,
+    gateway: (o.paymentGatewayNames ?? [])[0] ?? null,
+    payment_gateway_names: o.paymentGatewayNames ?? [],
     tags: o.tags ?? [],
+    // B26: say so rather than pretending this is the whole order.
+    _line_items_truncated: Boolean(o.lineItems?.pageInfo?.hasNextPage),
     total_outstanding: o.totalOutstandingSet?.shopMoney?.amount ?? null,
     current_total_price: o.currentTotalPriceSet?.shopMoney?.amount ?? null,
     shipping_lines: o.shippingLine?.title ? [{ title: o.shippingLine.title }] : [],
@@ -404,12 +435,11 @@ function toRestShape(o: GqlOrder): Record<string, unknown> {
       }
       : null,
     line_items: (o.lineItems?.nodes ?? []).map((li) => ({
+      id: li.id ?? null,
       quantity: li.quantity ?? 1,
+      fulfillable_quantity: li.unfulfilledQuantity ?? li.quantity ?? 1,
       requires_shipping: li.requiresShipping ?? true,
-      grams: Math.round(
-        (li.variant?.inventoryItem?.measurement?.weight?.value ?? 0) *
-        (GRAMS[String(li.variant?.inventoryItem?.measurement?.weight?.unit)] ?? 1),
-      ),
+      grams: 0,   // filled in from the stored webhook payload; see below
     })),
   };
 }
@@ -418,10 +448,17 @@ export async function ordersSince(
   shop: string,
   accessToken: string,
   sinceIso: string,
-  maxPages = 4,
-): Promise<Array<{ id: string; order: Record<string, unknown> }>> {
+  maxPages = 10,
+  startCursor: string | null = null,
+): Promise<{ orders: Array<{ id: string; order: Record<string, unknown> }>; cursor: string | null; complete: boolean }> {
+  // B08: this stopped after four pages and returned normally, so a store with
+  // more than 200 orders in the window had the SAME first 200 re-scanned every
+  // run and its later orders were never looked at. The caller checkpoints the
+  // cursor and resumes, and an incomplete sweep says so instead of reporting
+  // success.
   const out: Array<{ id: string; order: Record<string, unknown> }> = [];
-  let after: string | null = null;
+  let after: string | null = startCursor;
+  let complete = true;
 
   for (let page = 0; page < maxPages; page++) {
     const data: {
@@ -435,15 +472,44 @@ export async function ordersSince(
       const rest = toRestShape(n);
       out.push({ id: String(rest.id), order: rest });
     }
-    if (!data.orders.pageInfo.hasNextPage) break;
+    if (!data.orders.pageInfo.hasNextPage) { after = null; break; }
     after = data.orders.pageInfo.endCursor;
+    if (page === maxPages - 1) complete = false;
   }
-  return out;
+  return { orders: out, cursor: complete ? null : after, complete };
 }
 
 /** A24: one order, refetched. Manual approval used the payload captured when
  *  the webhook arrived, so an address or a total the merchant corrected in
  *  Shopify afterwards was ignored and the parcel went out with the old one. */
+/**
+ * B03: the GraphQL order does not carry per-item weight without read_inventory,
+ * a scope this app deliberately does not request. The webhook payload does
+ * carry grams, and we stored it. Carry those weights across so a refetched
+ * order does not silently become the default weight.
+ */
+export function mergeKnownWeights(
+  fresh: Record<string, unknown>,
+  stored: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const s = (stored?.line_items ?? []) as Array<{ id?: unknown; grams?: number }>;
+  if (!s.length) return fresh;
+
+  const byId = new Map<string, number>();
+  let fallback = 0;
+  for (const li of s) {
+    if (li?.id != null) byId.set(String(li.id), Number(li.grams ?? 0));
+    fallback = Math.max(fallback, Number(li?.grams ?? 0));
+  }
+
+  const f = (fresh.line_items ?? []) as Array<{ id?: unknown; grams?: number }>;
+  for (const li of f) {
+    const known = li?.id != null ? byId.get(String(li.id)) : undefined;
+    li.grams = known ?? fallback;
+  }
+  return fresh;
+}
+
 export async function fetchOrder(
   shop: string,
   accessToken: string,

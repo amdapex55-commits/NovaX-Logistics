@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 import { cleanShop, verifyOAuthHmac, verifySessionToken, verifyWebhookHmac } from "./verify.ts";
-import { fetchOrder, ordersSince, pushTracking, registerWebhooks } from "./shopify-api.ts";
+import { fetchOrder, mergeKnownWeights, ordersSince, pushTracking, registerWebhooks } from "./shopify-api.ts";
 import { excludedByTag, holdReason, mapOrderToBooking, type ShopifyOrder } from "./orders.ts";
 import {
   claimWebhook, completeWebhook, getShop, insert, logEvent, logProtectedAccess, rpc,
@@ -314,7 +314,10 @@ async function handleDecide(req: Request): Promise<Response> {
       if (shopRow?.access_token) {
         const fresh = await fetchOrder(shop, shopRow.access_token, orderId);
         if (fresh) {
-          payload = fresh as unknown as ShopifyOrder;
+          // B03: the GraphQL order carries no per-item weight without
+          // read_inventory, a scope this app does not request. Carry the
+          // weights we already have from the webhook payload.
+          payload = mergeKnownWeights(fresh, row?.payload as unknown as Record<string, unknown>) as unknown as ShopifyOrder;
           await update("nvsh_order",
             `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}`,
             { payload: fresh, updated_at: new Date().toISOString() });
@@ -394,9 +397,10 @@ async function handleSplit(req: Request): Promise<Response> {
   if (bad) return bad;
   const shop = await sessionShop(req);
   if (!shop) return json({ error: "unauthorized" }, 401);
-  const b = await jsonBody(req);
-  if (!b) return json({ ok: false, message: "Could not read that request." }, 400);
-  const orderId = String(b.order_id ?? "");
+  const b_ = await jsonBody(req);
+  if (!b_) return json({ ok: false, message: "Could not read that request." }, 400);
+  const orderId = String(b_.order_id ?? "");
+  const shopRow = await getShop(shop);
 
   const row = await selectOne<{
     payload: ShopifyOrder | null; awb: string | null; extra_awbs: string[] | null;
@@ -430,68 +434,55 @@ async function handleSplit(req: Request): Promise<Response> {
     });
   }
 
-  const mapped = mapOrderToBooking(row.payload);
+  // B09: the package number came from the array length, so a lost response and
+  // a repeated click produced package 3 instead of recovering package 2 -- and
+  // charged for it. The caller's key is the intent; the same key returns the
+  // same box.
+  const key = String(b_.key ?? "").trim() || `${orderId}:${row.extra_awbs?.length ?? 0}`;
+
+  // B13: this called the mapper without the shop's prepaid setting, so a booked
+  // prepaid order was rejected as though prepaid booking were off.
+  const mapped = mapOrderToBooking(row.payload, {
+    bookPrepaid: Boolean(shopRow?.rule_require_confirmed),
+  });
   if (mapped.action === "skip") return json({ ok: false, message: mapped.reason });
-
-  const packageNo = 2 + (row.extra_awbs?.length ?? 0);
-
-  // A19: the parcel RPC could commit while the extra_awbs write failed, so the
-  // box existed, was collectable, was invisible to the order, and every retry
-  // hit the unique index on the package number instead of recovering. Adopt a
-  // package that already exists at this number.
-  try {
-    const already = await selectOne<{ awb: string }>(
-      "parcels",
-      `meta->>shopifyShop=eq.${encodeURIComponent(shop)}` +
-      `&meta->>shopifyOrderId=eq.${encodeURIComponent(orderId)}` +
-      `&meta->>shopifyPackage=eq.${packageNo}&select=awb`,
-    );
-    if (already?.awb) {
-      await update("nvsh_order",
-        `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}`,
-        { extra_awbs: [...(row.extra_awbs ?? []), already.awb], updated_at: new Date().toISOString() });
-      return json({ ok: true, message: `Package ${packageNo} was already booked as ${already.awb}.`, awb: already.awb });
-    }
-  } catch (e) {
-    console.error("split adoption lookup failed", orderId, e);
-  }
   const bk = mapped.booking;
-  try {
-    const parcel = await rpc<{ awb: string } | Array<{ awb: string }>>("nvsh_book_parcel", {
-      p_shop: shop, p_consignee: bk.consignee, p_phone: bk.phone, p_city: bk.city,
-      p_address: bk.address,
-      // The COD is collected once, on the first parcel. A second box that also
-      // asks for the money would double-charge the buyer at the door.
-      p_cod: 0,
-      // A49: this passed the original order's total weight, so a 2 kg order
-      // made every additional box 2 kg and charged for it. An extra box is a
-      // separate package whose weight we do not know; the base rate is the
-      // honest default until the merchant can tell us.
-      p_weight: "0.5 kg", p_service: bk.service, p_category: bk.category,
-      p_fragile: bk.fragile, p_payment_mode: bk.paymentMode,
-      p_order_id: bk.orderId, p_reference_no: orderId, p_package_no: packageNo,
-    });
-    const awb = Array.isArray(parcel) ? parcel[0]?.awb : parcel?.awb;
-    if (!awb) throw new Error("booking returned no AWB");
 
-    await update("nvsh_order",
-      `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}`,
-      { extra_awbs: [...(row.extra_awbs ?? []), awb], updated_at: new Date().toISOString() });
-    return json({ ok: true, message: `Package ${packageNo} booked as ${awb}.`, awb });
-  } catch (err) {
-    return json({ ok: false, message: String((err as Error).message ?? err).slice(0, 300) });
-  }
+  const res = await rpc<Array<{ ok: boolean; awb: string | null; package_no: number; message: string }>>(
+    "nvsh_add_package", {
+      p_shop: shop, p_order_id: orderId, p_key: key,
+      p_consignee: bk.consignee, p_phone: bk.phone, p_city: bk.city, p_address: bk.address,
+      // A49: an extra box is a separate package whose weight we do not know.
+      p_weight: "0.5 kg", p_service: bk.service, p_category: bk.category,
+      p_fragile: bk.fragile, p_payment_mode: bk.paymentMode, p_order_name: bk.orderId,
+    },
+  );
+  const r = Array.isArray(res) ? res[0] : res;
+  return json(r ?? { ok: false, message: "No result." }, 200, { "Cache-Control": "no-store" });
 }
+
 
 /** Books every order sitting in 'received' for one shop. Shared by the drain
  *  and by bulk approve so there is one booking path, not two. */
 async function drainReceived(shop: string): Promise<void> {
-  const rows = await selectMany<{ shopify_order_id: string; payload: ShopifyOrder | null }>(
+  const rows = await selectMany<{ shopify_order_id: string; payload: ShopifyOrder | null; approved_at: string | null }>(
     "nvsh_order",
-    `shop_domain=eq.${encodeURIComponent(shop)}&status=eq.received&select=shopify_order_id,payload&limit=100`,
+    `shop_domain=eq.${encodeURIComponent(shop)}&status=eq.received&select=shopify_order_id,payload,approved_at&limit=100`,
   );
+  const shopRow = await getShop(shop);
   for (const r of rows) {
-    if (r.payload) await processOrder(shop, r.shopify_order_id, r.payload);
+    if (!r.payload) continue;
+    // B16: only individual approval refetched, so "Approve all" shipped the
+    // address the merchant had already corrected in Shopify. Anything a human
+    // approved is refetched before it is booked.
+    let payload = r.payload;
+    if (r.approved_at && shopRow?.access_token) {
+      try {
+        const fresh = await fetchOrder(shop, shopRow.access_token, r.shopify_order_id);
+        if (fresh) payload = mergeKnownWeights(fresh, r.payload as unknown as Record<string, unknown>) as unknown as ShopifyOrder;
+      } catch (e) { console.error("bulk refresh failed", r.shopify_order_id, e); }
+    }
+    await processOrder(shop, r.shopify_order_id, payload);
   }
 }
 
@@ -500,15 +491,23 @@ async function drainReceived(shop: string): Promise<void> {
 // order whose webhook never landed. This asks Shopify what it has and books
 // anything missing. Runs on a schedule, and a merchant can trigger it.
 
-async function reconcileShop(shop: string, hours: number): Promise<{ checked: number; recovered: number }> {
+async function reconcileShop(shop: string, hours: number): Promise<{
+  checked: number; discovered: number; booked: number; held: number;
+  skipped: number; failed: number; complete: boolean;
+}> {
+  const empty = { checked: 0, discovered: 0, booked: 0, held: 0, skipped: 0, failed: 0, complete: true };
   const shopRow = await getShop(shop);
-  if (!shopRow?.access_token || shopRow.status !== "active" || !shopRow.client_id) {
-    return { checked: 0, recovered: 0 };
-  }
+  if (!shopRow?.access_token || shopRow.status !== "active" || !shopRow.client_id) return empty;
 
   const since = new Date(Date.now() - hours * 3600_000).toISOString();
-  const orders = await ordersSince(shop, shopRow.access_token, since);
-  let recovered = 0;
+  // B08/B24: resume from where the last sweep stopped instead of re-reading the
+  // same first 200 orders every run and never reaching the later ones.
+  const cur = await selectOne<{ reconcile_cursor: string | null }>(
+    "nvsh_shop", `shop_domain=eq.${encodeURIComponent(shop)}&select=reconcile_cursor`,
+  );
+  const page = await ordersSince(shop, shopRow.access_token, since, 10, cur?.reconcile_cursor ?? null);
+  const orders = page.orders;
+  let discovered = 0;
 
   for (const { id, order } of orders) {
     const existing = await selectOne<{ id: string }>(
@@ -516,6 +515,7 @@ async function reconcileShop(shop: string, hours: number): Promise<{ checked: nu
       `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(id)}&select=id`,
     );
     if (existing) continue;   // already known: webhook or an earlier pass got it
+    discovered++;
 
     await insert("nvsh_order", {
       shop_domain: shop,
@@ -527,9 +527,28 @@ async function reconcileShop(shop: string, hours: number): Promise<{ checked: nu
 
     await logEvent(shop, "reconcile", null, true, `${id}: recovered, no webhook was recorded`);
     await processOrder(shop, id, order as unknown as ShopifyOrder);
-    recovered++;
   }
-  return { checked: orders.length, recovered };
+
+  // B23: "recovered" counted rows INSERTED, and the message said they had been
+  // booked. A USD order was imported, reported as booked, and was actually
+  // skipped with no parcel. Report what each one became.
+  const after = await selectMany<{ status: string }>(
+    "nvsh_order",
+    `shop_domain=eq.${encodeURIComponent(shop)}&select=status` +
+    `&received_at=gte.${encodeURIComponent(since)}&limit=500`,
+  ).catch(() => [] as Array<{ status: string }>);
+  const n = (st: string) => after.filter((r) => r.status === st).length;
+
+  await update("nvsh_shop", `shop_domain=eq.${encodeURIComponent(shop)}`, {
+    reconcile_cursor: page.cursor, reconciled_at: new Date().toISOString(),
+  }).catch(() => []);
+
+  return {
+    checked: orders.length, discovered,
+    booked: n("booked"), held: n("awaiting_approval"),
+    skipped: n("skipped"), failed: n("failed"),
+    complete: page.complete,
+  };
 }
 
 async function handleReconcile(req: Request): Promise<Response> {
@@ -537,30 +556,43 @@ async function handleReconcile(req: Request): Promise<Response> {
   // merchant pressing the button, whose session token names exactly one shop.
   const hours = 48;
   if (DRAIN_SECRET && req.headers.get("X-NovaX-Drain") === DRAIN_SECRET) {
+    // B24: this took the first 200 shops with no ordering, so shop 201 might
+    // never be swept at all. Oldest-swept first, so every store comes round.
     const shops = await selectMany<{ shop_domain: string }>(
-      "nvsh_shop", "status=eq.active&client_id=not.is.null&select=shop_domain&limit=200",
+      "nvsh_shop",
+      "status=eq.active&client_id=not.is.null&select=shop_domain" +
+      "&order=reconciled_at.asc.nullsfirst&limit=50",
     );
-    let checked = 0, recovered = 0;
+    let checked = 0, discovered = 0, incomplete = 0;
     for (const s of shops) {
       try {
         const r = await reconcileShop(s.shop_domain, hours);
-        checked += r.checked; recovered += r.recovered;
+        checked += r.checked; discovered += r.discovered;
+        if (!r.complete) incomplete++;
       } catch (e) {
         await logEvent(s.shop_domain, "reconcile", null, false, String((e as Error).message).slice(0, 300));
       }
     }
-    return json({ shops: shops.length, checked, recovered });
+    return json({ shops: shops.length, checked, discovered, incomplete });
   }
 
   const shop = await sessionShop(req);
   if (!shop) return json({ error: "unauthorized" }, 401);
   try {
     const r = await reconcileShop(shop, hours);
+    const parts = [];
+    if (r.booked) parts.push(`${r.booked} booked`);
+    if (r.held) parts.push(`${r.held} waiting for approval`);
+    if (r.skipped) parts.push(`${r.skipped} skipped`);
+    if (r.failed) parts.push(`${r.failed} failed`);
     return json({
       ok: true,
-      message: r.recovered
-        ? `Found ${r.recovered} order${r.recovered === 1 ? "" : "s"} Shopify had but we did not. ${r.recovered === 1 ? "It has" : "They have"} been booked.`
-        : `Checked the last ${hours} hours — nothing missing.`,
+      message: r.discovered
+        ? `Found ${r.discovered} order${r.discovered === 1 ? "" : "s"} Shopify had and we did not` +
+          (parts.length ? ` — ${parts.join(", ")}. Check the list below.` : ".") +
+          (r.complete ? "" : " There are more to check; run it again.")
+        : `Checked the last ${hours} hours — nothing missing.` +
+          (r.complete ? "" : " More pages remain; run it again."),
       ...r,
     }, 200, { "Cache-Control": "no-store" });
   } catch (e) {
@@ -634,7 +666,13 @@ async function handleState(req: Request): Promise<Response> {
   // Each section reports its own health and the rest still works.
   const [shopRows, orders, wallet] = await Promise.allSettled([
     rpc<Array<Record<string, unknown>>>("nvsh_shop_state", { p_shop: session }),
-    rpc<Array<Record<string, unknown>>>("nvsh_recent_orders", { p_shop: session, p_limit: 100 }),
+    rpc<Array<Record<string, unknown>>>("nvsh_recent_orders", {
+      p_shop: session,
+      p_limit: Math.min(Math.max(Number(new URL(req.url).searchParams.get("limit") ?? 50), 1), 100),
+      p_offset: Math.max(Number(new URL(req.url).searchParams.get("offset") ?? 0), 0),
+      p_filter: new URL(req.url).searchParams.get("filter") ?? "all",
+      p_search: new URL(req.url).searchParams.get("q") ?? null,
+    }),
     rpc<Array<Record<string, unknown>>>("nvsh_wallet_summary", { p_shop: session }),
   ]);
   const val = <T>(r: PromiseSettledResult<T>): T | null => r.status === "fulfilled" ? r.value : null;
@@ -647,6 +685,7 @@ async function handleState(req: Request): Promise<Response> {
   return json({
     shop: val(shopRows)?.[0] ?? null,
     orders: val(orders) ?? [],
+    orders_total: (val(orders)?.[0] as { total_count?: number } | undefined)?.total_count ?? 0,
     wallet: val(wallet)?.[0] ?? null,
     degraded: {
       orders: orders.status === "rejected",
@@ -801,76 +840,36 @@ async function processOrder(shop: string, orderId: string, order: ShopifyOrder):
 
     const b = mapped.booking;
 
-    // A05: the merchant may have cancelled while this was being processed --
-    // orders/cancelled can land mid-flight, and the processor previously never
-    // looked again. Booking after a cancellation sends a rider for a parcel
-    // nobody wants.
-    const live = await selectOne<{ status: string; awb: string | null }>(
-      "nvsh_order", `${where}&select=status,awb`,
-    );
-    if (live?.status === "cancelled") {
-      await logEvent(shop, "orders_create", null, true,
-        `${orderId}: cancelled while processing, not booked`);
-      return;
-    }
-    if (live?.awb) return;   // already booked by a concurrent run
-
-    // A06: a parcel can exist while nvsh_order has no AWB -- the booking RPC
-    // commits, then the linkage update fails. Replaying then hit the unique
-    // index and left the order permanently failed while a real, collectable
-    // parcel sat in the network. Adopt it instead of booking a second one.
-    let orphan: { awb: string } | null = null;
-    try {
-      orphan = await selectOne<{ awb: string }>(
-        "parcels",
-        `meta->>shopifyShop=eq.${encodeURIComponent(shop)}` +
-        `&meta->>shopifyOrderId=eq.${encodeURIComponent(orderId)}` +
-        `&meta->>shopifyPackage=eq.1&select=awb`,
-      );
-    } catch (e) {
-      // A lookup that cannot run must not stop a booking that can. The unique
-      // index is still there as the backstop.
-      console.error("orphan lookup failed", orderId, e);
-    }
-    if (orphan?.awb) {
-      await update("nvsh_order", where, {
-        status: "booked", awb: orphan.awb, cod_amount: b.cod,
-        client_id: shopRow.client_id, booked_at: now, updated_at: now, error: null,
-      });
-      await logEvent(shop, "orders_create", null, true,
-        `${orderId}: adopted existing parcel ${orphan.awb}`);
-      return;
-    }
-
     // Level 2 protected customer data. Logged at the one point it is read.
     await logProtectedAccess(shop, "book_courier_shipment",
       ["shipping_address.name", "shipping_address.address1", "shipping_address.city", "phone"],
       `shopify_order:${orderId}`);
 
-    const parcel = await rpc<{ awb: string } | Array<{ awb: string }>>("nvsh_book_parcel", {
-      p_shop: shop,
-      p_consignee: b.consignee,
-      p_phone: b.phone,
-      p_city: b.city,
-      p_address: b.address,
-      p_cod: b.cod,
-      p_weight: b.weight,
-      p_service: b.service,
-      p_category: b.category,
-      p_fragile: b.fragile,
-      p_payment_mode: b.paymentMode,
-      p_order_id: b.orderId,
-      p_reference_no: b.referenceNo,
-    });
-
-    const awb = Array.isArray(parcel) ? parcel[0]?.awb : parcel?.awb;
-    if (!awb) throw new Error("booking returned no AWB");
-
-    await update("nvsh_order", where, {
-      status: "booked", awb, cod_amount: b.cod, client_id: shopRow.client_id,
-      booked_at: now, updated_at: now, error: null,
-      attempts: 0, next_attempt_at: null,
-    });
+    // B07: this was a status read, then the booking RPC, then the link write --
+    // three transactions, and a cancellation landing in either gap produced a
+    // real parcel for an order the merchant had cancelled. nvsh_book_linked()
+    // takes the same lock cancellation takes, re-checks, adopts an existing
+    // parcel rather than duplicating it, books, and writes the link, in one
+    // transaction.
+    const booked = await rpc<Array<{ ok: boolean; awb: string | null; message: string }>>(
+      "nvsh_book_linked", {
+        p_shop: shop, p_order_id: orderId,
+        p_consignee: b.consignee, p_phone: b.phone, p_city: b.city, p_address: b.address,
+        p_cod: b.cod, p_weight: b.weight, p_service: b.service, p_category: b.category,
+        p_fragile: b.fragile, p_payment_mode: b.paymentMode,
+        p_order_name: b.orderId, p_client_id: shopRow.client_id,
+      },
+    );
+    const bres = Array.isArray(booked) ? booked[0] : booked;
+    if (!bres?.ok) {
+      await logEvent(shop, "orders_create", null, true, `${orderId}: ${bres?.message ?? "not booked"}`);
+      return;
+    }
+    const awb = bres.awb!;
+    if (bres.message !== "booked") {
+      await logEvent(shop, "orders_create", null, true, `${orderId}: ${bres.message} (${awb})`);
+      return;
+    }
 
     // A07: this is a statistic. It used to sit inside the same try, so a 503
     // on the counter PATCH threw, the catch wrote status 'failed', and an
@@ -984,6 +983,9 @@ async function handleShopRedact(v: Verified): Promise<Response> {
   await rpc("nvsh_privacy_log", {
     p_shop: v.shop, p_kind: "shop/redact", p_customer: null, p_orders: [], p_payload: {},
   });
+  // B27: the privacy queue itself held data for this shop and shop/redact never
+  // cleared it.
+  await rpc("nvsh_privacy_purge_shop", { p_shop: v.shop });
   await logEvent(v.shop, "shop/redact", v.webhookId, true, "shop data cleared");
   return text("ok");
 }
@@ -1006,28 +1008,17 @@ async function handleFulfill(req: Request): Promise<Response> {
     return json({ error: "unauthorized" }, 401);
   }
 
-  const rows = await selectMany<FulfillRow>(
-    "nvsh_order",
-    // A41: six tries was about five minutes, so a brief Shopify outage left
-    // tracking permanently unsent. 12 attempts with backoff spans hours.
-    // A43: rows are leased before work starts, so an overlapping cron run and a
-    // manual retry cannot both process the same row.
-    "fulfill_state=eq.ready&fulfill_attempts=lt.12&awb=not.is.null" +
-      `&or=(fulfill_leased_until.is.null,fulfill_leased_until.lt.${encodeURIComponent(new Date().toISOString())})` +
-      "&select=shop_domain,shopify_order_id,awb,extra_awbs,fulfill_attempts&order=updated_at.asc&limit=25",
-  );
+  // B05: this was a SELECT that checked the lease followed by a PATCH that did
+  // not, so two workers that both read a row both "won" it. One SQL statement
+  // with FOR UPDATE SKIP LOCKED, and an owner token.
+  const worker = crypto.randomUUID();
+  const rows = await rpc<FulfillRow[]>("nvsh_claim_fulfill", { p_worker: worker, p_limit: 25 }) ?? [];
 
   let done = 0, failed = 0;
   for (const r of rows) {
     const where = `shop_domain=eq.${encodeURIComponent(r.shop_domain)}` +
       `&shopify_order_id=eq.${encodeURIComponent(r.shopify_order_id)}`;
     const now = new Date().toISOString();
-
-    // Take the lease first. A row we fail to lease is one another worker holds.
-    const leased = await update("nvsh_order", `${where}&fulfill_state=eq.ready`, {
-      fulfill_leased_until: new Date(Date.now() + 120_000).toISOString(),
-    });
-    if (!leased.length) continue;
 
     const shopRow = await getShop(r.shop_domain);
     if (!shopRow?.access_token) {
@@ -1046,8 +1037,20 @@ async function handleFulfill(req: Request): Promise<Response> {
     // starved everybody else, forever, because the poison row was always first.
     let pushed: { ok: boolean; detail?: string };
     try {
-      // A44: every box on the order, not just the first.
-      const allAwbs = [r.awb!, ...(r.extra_awbs ?? [])].filter(Boolean);
+      // A44 + B15: every box that has ACTUALLY been handed over, not every box
+      // that exists. Sending a box still sitting at the merchant tells the buyer
+      // it shipped.
+      const candidates = [r.awb!, ...(r.extra_awbs ?? [])].filter(Boolean);
+      const inCustody = await selectMany<{ awb: string; status: string }>(
+        "parcels",
+        `awb=in.(${candidates.map(encodeURIComponent).join(",")})&select=awb,status`,
+      ).catch(() => [] as Array<{ awb: string; status: string }>);
+      const moving = new Set(["Collected by rider", "Arrived at warehouse", "Parcel now in transit",
+        "Parcel received at destination", "Parcel out for delivery", "Delivered"]);
+      const allAwbs = inCustody.length
+        ? inCustody.filter((p) => moving.has(p.status)).map((p) => p.awb)
+        : [r.awb!];
+      if (!allAwbs.length) { failed++; continue; }
       pushed = await pushTracking(
         r.shop_domain, shopRow.access_token, r.shopify_order_id,
         allAwbs, allAwbs.map(trackingUrl),

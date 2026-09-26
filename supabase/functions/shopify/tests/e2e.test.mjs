@@ -14,6 +14,7 @@ const ENV = {
 // ---- in-memory Postgres ---------------------------------------------------
 const db = { nvsh_shop: [], nvsh_oauth_state: [], nvsh_order: [], nvsh_event: [], nvsh_access_log: [], parcels: [] };
 const calls = { graphql: [], gqlVars: [], tokenExchange: 0, rpc: [] };
+let ONE_LOCATION = false;
 
 function matches(row, qs) {
   for (const [k, v] of qs) {
@@ -46,6 +47,12 @@ globalThis.fetch = async (input, init = {}) => {
     calls.gqlVars.push(body.variables ?? {});
     if (/webhookSubscriptionCreate/.test(body.query))
       return J({ data: { webhookSubscriptionCreate: { userErrors: [], webhookSubscription: { id: "gid://x/1" } } } });
+    if (/fulfillmentOrders/.test(body.query) && ONE_LOCATION)
+      return J({ data: { order: { fulfillmentOrders: { pageInfo: { hasNextPage: false }, nodes: [
+        { id: "gid://shopify/FulfillmentOrder/9", status: "OPEN",
+          assignedLocation: { location: { id: "gid://shopify/Location/1", name: "Karachi" } },
+          lineItems: { nodes: [{ id: "gid://shopify/FulfillmentOrderLineItem/91", remainingQuantity: 2 }] } },
+      ] } } } });
     if (/fulfillmentOrders/.test(body.query))
       // Two fulfillment orders at DIFFERENT locations, each with real remaining
       // quantities: the shape that used to be bundled into one mutation and
@@ -68,10 +75,36 @@ globalThis.fetch = async (input, init = {}) => {
     if (rest.startsWith("rpc/")) {
       const fn = rest.slice(4);
       calls.rpc.push(fn);
-      if (fn === "nvsh_book_parcel") {
+      // B07: booking, the cancellation check and the link are one transaction
+      // in SQL now, so the stub has to behave like that function, not like the
+      // three separate calls it replaced.
+      if (fn === "nvsh_book_linked") {
         const shop = db.nvsh_shop.find(s => s.shop_domain === body.p_shop);
-        if (!shop?.client_id) return J({ message: "not linked" }, 400);
-        return J([{ awb: "N3690" + (100 + db.nvsh_order.filter(o => o.awb).length) }]);
+        if (!shop?.client_id) return J([{ ok: false, awb: null, message: "shop not linked" }]);
+        const o = db.nvsh_order.find(x => x.shop_domain === body.p_shop && x.shopify_order_id === body.p_order_id);
+        if (!o) return J([{ ok: false, awb: null, message: "order row missing" }]);
+        if (o.status === "cancelled") return J([{ ok: false, awb: null, message: "cancelled while processing" }]);
+        if (o.awb) return J([{ ok: true, awb: o.awb, message: "already booked" }]);
+        const awb = "N3690" + (100 + db.nvsh_order.filter(x => x.awb).length);
+        Object.assign(o, { status: "booked", awb, cod_amount: body.p_cod,
+          client_id: body.p_client_id, booked_at: new Date().toISOString(),
+          error: null, attempts: 0, next_attempt_at: null });
+        return J([{ ok: true, awb, message: "booked" }]);
+      }
+      if (fn === "nvsh_add_package") {
+        const o = db.nvsh_order.find(x => x.shop_domain === body.p_shop && x.shopify_order_id === body.p_order_id);
+        if (!o) return J([{ ok: false, awb: null, package_no: 0, message: "No such order." }]);
+        if (o.status !== "booked") return J([{ ok: false, awb: null, package_no: 0, message: `This order is ${o.status}.` }]);
+        const keys = o.split_keys ?? (o.split_keys = []);
+        const extra = o.extra_awbs ?? (o.extra_awbs = []);
+        const i = keys.indexOf(body.p_key);
+        // B09: the same key is the same intent, so a retry recovers rather than
+        // booking (and charging for) another box.
+        if (i >= 0) return J([{ ok: true, awb: extra[i], package_no: i + 2, message: `That box was already booked as ${extra[i]}.` }]);
+        const no = extra.length + 2;
+        const awb = "N3690" + (200 + extra.length);
+        extra.push(awb); keys.push(body.p_key);
+        return J([{ ok: true, awb, package_no: no, message: `Package ${no} booked as ${awb}.` }]);
       }
       if (fn === "nvsh_shop_state") {
         const s = db.nvsh_shop.find(x => x.shop_domain === body.p_shop);
@@ -90,6 +123,19 @@ globalThis.fetch = async (input, init = {}) => {
         if (!row) return J(false);
         row.used_at = new Date().toISOString();
         return J(true);
+      }
+      // B05: rows are claimed by one SQL statement now.
+      if (fn === "nvsh_claim_fulfill") {
+        const out = db.nvsh_order.filter(o =>
+          o.fulfill_state === "ready" && o.awb && (o.fulfill_attempts ?? 0) < 12 &&
+          (!o.fulfill_leased_until || new Date(o.fulfill_leased_until) < new Date()));
+        const picked = out.slice(0, body.p_limit ?? 25);
+        for (const o of picked) {
+          o.fulfill_leased_until = new Date(Date.now() + 180000).toISOString();
+          o.fulfill_lease_owner = body.p_worker;
+        }
+        return J(picked.map(o => ({ shop_domain: o.shop_domain, shopify_order_id: o.shopify_order_id,
+          awb: o.awb, extra_awbs: o.extra_awbs ?? [], fulfill_attempts: o.fulfill_attempts ?? 0 })));
       }
       if (fn === "nvsh_count_booked") {
         const sh = db.nvsh_shop.find(x => x.shop_domain === body.p_shop);
@@ -289,17 +335,34 @@ console.log("-- fulfilment happens at handover, not at booking --");
   t("still no fulfillmentCreate", !calls.graphql.some(q => /fulfillmentCreate/.test(q)));
 
   // What the DB trigger does when the rider takes the parcel.
+  db.parcels.push({ awb: db.nvsh_order[0].awb, status: "Collected by rider" });
   db.nvsh_order[0].fulfill_state = "ready";
 
   r = await call("/fulfill", { headers: { "X-NovaX-Drain": "drain_me" } });
   await settle();
   b = await r.json();
-  t("handover fulfilled the order", b.fulfilled === 1, JSON.stringify(b));
+  // B04: two warehouses is a refusal, not a double fulfillment. NovaX carries
+  // one parcel from one address and cannot know which items are inside it.
+  t("mixed-location order is refused, not over-fulfilled", b.fulfilled === 0, JSON.stringify(b));
+  t("no fulfillmentCreate for a two-warehouse order",
+    !calls.graphql.some(q => /fulfillmentCreate/.test(q)));
+  t("the refusal names the locations",
+    (db.nvsh_order[0].fulfill_error ?? "").includes("2 locations"),
+    db.nvsh_order[0].fulfill_error);
+
+  // Now the ordinary case: one warehouse.
+  ONE_LOCATION = true;
+  // B15: only boxes actually in custody are published, so the fixture needs a
+  // parcel row that says this one moved.
+  db.parcels.push({ awb: db.nvsh_order[0].awb, status: "Collected by rider" });
+  db.nvsh_order[0].fulfill_state = "ready";
+  db.nvsh_order[0].fulfill_attempts = 0;
+  db.nvsh_order[0].fulfill_leased_until = null;
+  r = await call("/fulfill", { headers: { "X-NovaX-Drain": "drain_me" } });
+  await settle();
+  b = await r.json();
+  t("single-location order is fulfilled", b.fulfilled === 1, JSON.stringify(b));
   t("fulfillmentCreate was called", calls.graphql.some(q => /fulfillmentCreate/.test(q)));
-  // A14: one mutation per location, never both locations in one call.
-  t("one fulfillmentCreate per location",
-    calls.graphql.filter(q => /fulfillmentCreate/.test(q)).length === 2,
-    String(calls.graphql.filter(q => /fulfillmentCreate/.test(q)).length));
   // A15: quantities are named, so Shopify cannot read it as "everything".
   t("quantities were named, not implied",
     calls.gqlVars.some(v => JSON.stringify(v).includes("fulfillmentOrderLineItems")));

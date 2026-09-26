@@ -110,15 +110,11 @@ function orderGateways(order: ShopifyOrder): string[] {
  */
 export function holdReason(order: ShopifyOrder, rules: BookingRules): string | null {
 
-  if (rules.rule_require_confirmed) {
-    // Shopify has no "confirmed" flag on the REST order; paid or partially
-    // paid is the closest honest reading, and COD orders are pending by
-    // design -- which is why this is off unless a merchant turns it on.
-    const fin = norm(order.financial_status);
-    if (fin !== "paid" && fin !== "partially_paid") {
-      return `Payment is ${fin || "not recorded"}, and you only auto-book confirmed orders.`;
-    }
-  }
+  // B10: rule_require_confirmed drove TWO things -- "also book prepaid" and
+  // "only book confirmed orders". Ticking the box to allow prepaid therefore
+  // started holding ordinary pending COD, which is the opposite of what the
+  // label promises. The flag now means only what it says; prepaid permission is
+  // passed to the mapper and nothing here holds a COD order for being unpaid.
 
   const modes = rules.rule_payment_modes;
   if (modes && modes.length) {
