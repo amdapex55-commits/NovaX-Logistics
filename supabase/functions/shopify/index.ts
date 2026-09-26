@@ -13,8 +13,8 @@
 // ---------------------------------------------------------------------------
 
 import { cleanShop, verifyOAuthHmac, verifySessionToken, verifyWebhookHmac } from "./verify.ts";
-import { ordersSince, pushTracking, registerWebhooks } from "./shopify-api.ts";
-import { holdReason, mapOrderToBooking, type ShopifyOrder } from "./orders.ts";
+import { fetchOrder, ordersSince, pushTracking, registerWebhooks } from "./shopify-api.ts";
+import { excludedByTag, holdReason, mapOrderToBooking, type ShopifyOrder } from "./orders.ts";
 import {
   claimWebhook, completeWebhook, getShop, insert, logEvent, logProtectedAccess, rpc,
   selectMany, selectOne, update,
@@ -24,8 +24,12 @@ import { embeddedApp, frameAncestors } from "./ui.ts";
 const API_KEY = Deno.env.get("SHOPIFY_API_KEY") ?? "";
 const API_SECRET = Deno.env.get("SHOPIFY_API_SECRET") ?? "";
 const APP_URL = (Deno.env.get("SHOPIFY_APP_URL") ?? "").replace(/\/+$/, "");
+// Must stay identical to [access_scopes] in shopify.app.novax-public.toml. The
+// toml is what Shopify grants; this is what /install asks for. When they drift,
+// the merchant authorises one set and the app is granted another, and the
+// mismatch only shows up as a permission error on the first fulfillment.
 const SCOPES = Deno.env.get("SHOPIFY_SCOPES") ??
-  "read_orders,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,write_fulfillments";
+  "read_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders";
 const PORTAL_URL = Deno.env.get("NOVAX_PORTAL_URL") ?? "https://novaxlogistics.com/client.html";
 const TRACKING_BASE = Deno.env.get("NOVAX_TRACKING_URL") ?? "https://novaxlogistics.com/tracking.html";
 const DRAIN_SECRET = Deno.env.get("NOVAX_DRAIN_SECRET") ?? "";
@@ -138,6 +142,18 @@ async function handleCallback(url: URL): Promise<Response> {
   }
 
   const results = await registerWebhooks(shop, tok.access_token, APP_URL);
+  // A23: a failed registration was logged and the merchant was redirected into
+  // an app that looked installed while no order would ever arrive. Record it on
+  // the shop so the embedded page can say so and the retry job can fix it.
+  const bad = results.filter((r) => !r.ok);
+  await update("nvsh_shop", `shop_domain=eq.${encodeURIComponent(shop)}`, {
+    webhooks_ok: bad.length === 0,
+    last_error: bad.length
+      ? `Shopify did not accept ${bad.length} order webhook(s): ${bad.map((b) => b.topic).join(", ")}`
+      : null,
+    last_error_at: bad.length ? new Date().toISOString() : null,
+    updated_at: new Date().toISOString(),
+  });
   const failed = results.filter((r) => !r.ok);
   await logEvent(shop, "oauth", null, failed.length === 0,
     failed.length ? `webhooks failed: ${failed.map((f) => `${f.topic}(${f.detail})`).join(", ")}` : "installed");
@@ -249,7 +265,30 @@ async function handleDecide(req: Request): Promise<Response> {
       "nvsh_order",
       `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}&select=payload`,
     );
-    if (row?.payload) background(processOrder(shop, orderId, row.payload));
+
+    // A24: the stored payload is whatever arrived with the webhook. A merchant
+    // who holds an order usually holds it BECAUSE something was wrong, fixes
+    // the address or the total in Shopify, and then approves -- and the old
+    // payload would have sent the parcel to the address they just corrected.
+    let payload = row?.payload ?? null;
+    try {
+      const shopRow = await getShop(shop);
+      if (shopRow?.access_token) {
+        const fresh = await fetchOrder(shop, shopRow.access_token, orderId);
+        if (fresh) {
+          payload = fresh as unknown as ShopifyOrder;
+          await update("nvsh_order",
+            `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}`,
+            { payload: fresh, updated_at: new Date().toISOString() });
+        }
+      }
+    } catch (e) {
+      // Shopify unreachable: book what we have rather than stalling. The
+      // merchant asked for this order to go out.
+      console.error("refresh before approval failed", orderId, e);
+    }
+
+    if (payload) background(processOrder(shop, orderId, payload));
   }
   return json(r ?? { ok: false, message: "No result." }, 200, { "Cache-Control": "no-store" });
 }
@@ -307,18 +346,63 @@ async function handleSplit(req: Request): Promise<Response> {
   const b = await jsonBody(req);
   const orderId = String(b.order_id ?? "");
 
-  const row = await selectOne<{ payload: ShopifyOrder | null; awb: string | null; extra_awbs: string[] | null }>(
+  const row = await selectOne<{
+    payload: ShopifyOrder | null; awb: string | null; extra_awbs: string[] | null;
+    status: string; recall_requested_at: string | null;
+  }>(
     "nvsh_order",
-    `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}&select=payload,awb,extra_awbs`,
+    `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}` +
+    `&select=payload,awb,extra_awbs,status,recall_requested_at`,
   );
   if (!row?.payload || !row.awb) {
     return json({ ok: false, message: "That order has no parcel yet." });
+  }
+
+  // A20: the only check was "is there a payload and an AWB", so a cancelled
+  // order happily produced package 2, and a delivered one -- whose nvsh_order
+  // row still reads 'booked' -- offered Extra box forever.
+  if (row.status !== "booked") {
+    return json({ ok: false, message: `This order is ${row.status}. Extra boxes can only be added to a booked order.` });
+  }
+  if (row.recall_requested_at) {
+    return json({ ok: false, message: "A recall has been raised for this order, so no more boxes can be added." });
+  }
+  const firstParcel = await selectOne<{ status: string }>(
+    "parcels", `awb=eq.${encodeURIComponent(row.awb)}&select=status`,
+  );
+  const openStates = ["New booked", "Collected by rider", "Arrived at warehouse", "Parcel now in transit"];
+  if (firstParcel && !openStates.includes(firstParcel.status)) {
+    return json({
+      ok: false,
+      message: `Parcel ${row.awb} is already ${firstParcel.status}. An extra box has to travel with the shipment, so it cannot be added now.`,
+    });
   }
 
   const mapped = mapOrderToBooking(row.payload);
   if (mapped.action === "skip") return json({ ok: false, message: mapped.reason });
 
   const packageNo = 2 + (row.extra_awbs?.length ?? 0);
+
+  // A19: the parcel RPC could commit while the extra_awbs write failed, so the
+  // box existed, was collectable, was invisible to the order, and every retry
+  // hit the unique index on the package number instead of recovering. Adopt a
+  // package that already exists at this number.
+  try {
+    const already = await selectOne<{ awb: string }>(
+      "parcels",
+      `meta->>shopifyShop=eq.${encodeURIComponent(shop)}` +
+      `&meta->>shopifyOrderId=eq.${encodeURIComponent(orderId)}` +
+      `&meta->>shopifyPackage=eq.${packageNo}&select=awb`,
+    );
+    if (already?.awb) {
+      await update("nvsh_order",
+        `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}`,
+        { extra_awbs: [...(row.extra_awbs ?? []), already.awb], updated_at: new Date().toISOString() });
+      return json({ ok: true, message: `Package ${packageNo} was already booked as ${already.awb}.`, awb: already.awb });
+    }
+  } catch (e) {
+    console.error("split adoption lookup failed", orderId, e);
+  }
   const bk = mapped.booking;
   try {
     const parcel = await rpc<{ awb: string } | Array<{ awb: string }>>("nvsh_book_parcel", {
@@ -475,9 +559,23 @@ async function verifiedWebhook(req: Request, topic: string): Promise<Verified | 
   };
 }
 
+/** A28: String(undefined) is "undefined", and every malformed delivery then
+ *  collapsed onto one shared fake order id -- unrelated events overwriting each
+ *  other's row, and a reference number of "undefined" on a real parcel. */
+function shopifyOrderId(raw: unknown): string | null {
+  const s = String(raw ?? "").trim().replace(/^gid:\/\/shopify\/Order\//, "");
+  return /^[0-9]{1,20}$/.test(s) ? s : null;
+}
+
 async function handleOrdersCreate(v: Verified): Promise<Response> {
   const order = JSON.parse(v.body) as ShopifyOrder;
-  const orderId = String(order.id);
+  const orderId = shopifyOrderId(order.id);
+  if (!orderId) {
+    await logEvent(v.shop, v.topic, v.webhookId, false,
+      `rejected: no usable order id in payload`);
+    // 400, not 500: retrying an unparseable payload cannot help.
+    return text("order id missing or malformed", 400);
+  }
 
   // Record it before doing anything slow. The unique index on
   // (shop_domain, shopify_order_id) means a Shopify retry lands on the same row
@@ -527,7 +625,11 @@ async function processOrder(shop: string, orderId: string, order: ShopifyOrder):
       return;
     }
 
-    const mapped = mapOrderToBooking(order);
+    // A12: bookPrepaid was never passed, so a fully paid order could never be
+    // booked no matter what the merchant ticked. The checkbox now sets it.
+    const mapped = mapOrderToBooking(order, {
+      bookPrepaid: Boolean(shopRow.rule_require_confirmed),
+    });
     if (mapped.action === "skip") {
       await update("nvsh_order", where, {
         status: "skipped", skip_reason: mapped.reason, error: mapped.reason,
@@ -543,6 +645,17 @@ async function processOrder(shop: string, orderId: string, order: ShopifyOrder):
     // An order the merchant already approved is exempt. Without this, approving
     // a held order re-evaluates the same rules that held it and holds it again
     // -- an Approve button that puts the row straight back where it was.
+    // A30: a hard exclusion is checked BEFORE the approved_at exemption, so
+    // approving cannot override "never book this".
+    const excluded = excludedByTag(order, shopRow);
+    if (excluded) {
+      await update("nvsh_order", where, {
+        status: "skipped", skip_reason: excluded, error: excluded,
+        client_id: shopRow.client_id, updated_at: now,
+      });
+      return;
+    }
+
     const decided = await selectOne<{ approved_at: string | null }>(
       "nvsh_order", `${where}&select=approved_at`,
     );
@@ -625,6 +738,7 @@ async function processOrder(shop: string, orderId: string, order: ShopifyOrder):
     await update("nvsh_order", where, {
       status: "booked", awb, cod_amount: b.cod, client_id: shopRow.client_id,
       booked_at: now, updated_at: now, error: null,
+      attempts: 0, next_attempt_at: null,
     });
 
     // A07: this is a statistic. It used to sit inside the same try, so a 503
@@ -633,9 +747,10 @@ async function processOrder(shop: string, orderId: string, order: ShopifyOrder):
     // retry hit the parcel's unique index. A count must never roll the booking
     // state backwards.
     try {
-      await update("nvsh_shop", `shop_domain=eq.${encodeURIComponent(shop)}`, {
-        last_order_at: now, orders_booked: (shopRow.orders_booked ?? 0) + 1, updated_at: now,
-      });
+      // A25: this was read-modify-write. Two bookings that read the same value
+      // both wrote value+1, so two dispatches showed as one. The increment
+      // happens inside the database now.
+      await rpc("nvsh_count_booked", { p_shop: shop });
     } catch (e) {
       console.error("counter update failed (booking stands)", orderId, e);
     }
@@ -687,10 +802,23 @@ async function handleUninstalled(v: Verified): Promise<Response> {
 // 2xx on success, and complete within 30 days.
 
 async function handleCustomersDataRequest(v: Verified): Promise<Response> {
-  // NovaX stores the consignee's name, address and phone on the parcel, because
-  // a courier cannot deliver without them. Fulfilling this is a manual export
-  // by ops within the 30 day window; recording it is what makes that possible.
-  await logEvent(v.shop, "customers/data_request", v.webhookId, true, v.body.slice(0, 500));
+  // A22: this used to write 500 characters of the payload into an event log and
+  // return 200. Answering the HMAC is not answering the request -- Shopify
+  // allows 30 days, and nothing recorded a deadline, an owner or a completion,
+  // so no one could have told whether a request had been fulfilled. It goes on
+  // a queue with a due date now, and an overdue one reaches operations.
+  const payload = JSON.parse(v.body) as {
+    customer?: { id?: number | string };
+    orders_requested?: Array<number | string>;
+  };
+  await rpc("nvsh_privacy_log", {
+    p_shop: v.shop,
+    p_kind: "customers/data_request",
+    p_customer: payload.customer?.id != null ? String(payload.customer.id) : null,
+    p_orders: (payload.orders_requested ?? []).map(String),
+    p_payload: payload,
+  });
+  await logEvent(v.shop, "customers/data_request", v.webhookId, true, "queued for export, due in 30 days");
   return text("ok");
 }
 
@@ -708,6 +836,11 @@ async function handleCustomersRedact(v: Verified): Promise<Response> {
       { payload: null, updated_at: new Date().toISOString() },
     );
   }
+  await rpc("nvsh_privacy_log", {
+    p_shop: v.shop, p_kind: "customers/redact",
+    p_customer: payload.customer?.id != null ? String(payload.customer.id) : null,
+    p_orders: ids, p_payload: payload,
+  });
   await logEvent(v.shop, "customers/redact", v.webhookId, true, `redacted payloads for ${ids.length} order(s)`);
   return text("ok");
 }
@@ -717,6 +850,9 @@ async function handleShopRedact(v: Verified): Promise<Response> {
     { payload: null, updated_at: new Date().toISOString() });
   await update("nvsh_shop", `shop_domain=eq.${encodeURIComponent(v.shop)}`,
     { access_token: null, status: "uninstalled", updated_at: new Date().toISOString() });
+  await rpc("nvsh_privacy_log", {
+    p_shop: v.shop, p_kind: "shop/redact", p_customer: null, p_orders: [], p_payload: {},
+  });
   await logEvent(v.shop, "shop/redact", v.webhookId, true, "shop data cleared");
   return text("ok");
 }
@@ -761,9 +897,34 @@ async function handleFulfill(req: Request): Promise<Response> {
       continue;
     }
 
-    const pushed = await pushTracking(
-      r.shop_domain, shopRow.access_token, r.shopify_order_id, r.awb!, trackingUrl(r.awb!),
-    );
+    // A16: pushTracking throws on 401/403, and the throw used to escape the
+    // loop -- the endpoint answered 500, no row's attempts moved, and the rows
+    // behind the bad one were never tried. One merchant with a revoked token
+    // starved everybody else, forever, because the poison row was always first.
+    let pushed: { ok: boolean; detail?: string };
+    try {
+      pushed = await pushTracking(
+        r.shop_domain, shopRow.access_token, r.shopify_order_id, r.awb!, trackingUrl(r.awb!),
+      );
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 401 || status === 403) {
+        // The install is dead. Mark the shop, stop retrying its rows, and move
+        // on to the next merchant rather than failing the whole batch.
+        await update("nvsh_shop", `shop_domain=eq.${encodeURIComponent(r.shop_domain)}`, {
+          last_error: "Shopify rejected our access token — the merchant must reinstall",
+          last_error_at: now, updated_at: now,
+        });
+        await update("nvsh_order", where, {
+          fulfill_state: "failed",
+          fulfill_error: "Shopify access was revoked. Reinstall the NovaX app to resume tracking sync.",
+          updated_at: now,
+        });
+        failed++;
+        continue;
+      }
+      pushed = { ok: false, detail: String((err as Error).message).slice(0, 200) };
+    }
 
     if (pushed.ok) {
       await update("nvsh_order", where, {
@@ -796,14 +957,33 @@ async function handleDrain(req: Request): Promise<Response> {
   if (!DRAIN_SECRET || req.headers.get("X-NovaX-Drain") !== DRAIN_SECRET) {
     return json({ error: "unauthorized" }, 401);
   }
-  const rows = await fetch(
-    `${Deno.env.get("SUPABASE_URL")}/rest/v1/nvsh_order?status=in.(received,failed)&select=shop_domain,shopify_order_id,payload&limit=25`,
-    { headers: { apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}` } },
-  ).then((r) => r.json()) as Array<{ shop_domain: string; shopify_order_id: string; payload: ShopifyOrder | null }>;
+  // A26: this took the first 25 rows by insertion order with no attempt count,
+  // no backoff and no cap, so a permanently broken order was picked first every
+  // single minute and newer orders behind it never ran. Rows now carry an
+  // attempt count and a next-attempt time, and a row that has failed 8 times
+  // stops being retried and becomes visible instead.
+  const nowIso = new Date().toISOString();
+  const rows = await selectMany<{
+    shop_domain: string; shopify_order_id: string; payload: ShopifyOrder | null; attempts: number | null;
+  }>(
+    "nvsh_order",
+    `status=in.(received,failed)&attempts=lt.8` +
+    `&or=(next_attempt_at.is.null,next_attempt_at.lte.${encodeURIComponent(nowIso)})` +
+    `&select=shop_domain,shopify_order_id,payload,attempts` +
+    `&order=next_attempt_at.asc.nullsfirst,received_at.asc&limit=25`,
+  );
 
   let done = 0;
   for (const r of rows) {
     if (!r.payload) continue;
+    const attempts = (r.attempts ?? 0) + 1;
+    // Exponential-ish backoff, capped at an hour, written BEFORE the attempt so
+    // a crash mid-processing still pushes the next try out.
+    const delayMs = Math.min(60, 2 ** attempts) * 60_000;
+    await update("nvsh_order",
+      `shop_domain=eq.${encodeURIComponent(r.shop_domain)}&shopify_order_id=eq.${encodeURIComponent(r.shopify_order_id)}`,
+      { attempts, next_attempt_at: new Date(Date.now() + delayMs).toISOString() });
+
     await processOrder(r.shop_domain, r.shopify_order_id, r.payload);
     done++;
   }

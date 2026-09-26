@@ -191,6 +191,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       <div>
         <label for="tags">Never book orders tagged</label>
         <input type="text" id="tags" placeholder="pickup, wholesale" autocomplete="off">
+        <p class="note">A hard exclusion. These are skipped, not held, and Approve all cannot release them.</p>
       </div>
       <div>
         <label for="pay">Only these payment methods</label>
@@ -201,12 +202,13 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
         <input type="text" id="ship" placeholder="Standard — blank means any" autocomplete="off">
       </div>
       <div>
-        <label for="locs">Only these location IDs</label>
+        <label for="locs">Only these POS location IDs</label>
         <input type="text" id="locs" placeholder="blank means any" autocomplete="off">
+        <p class="note">Online-store orders carry no location, so this only filters POS and draft orders. Leave it blank unless you sell in person.</p>
       </div>
       <div style="align-self:end">
-        <label class="check" for="confirmed"><input type="checkbox" id="confirmed"> <span>Only book paid orders</span></label>
-        <p class="note">COD orders are unpaid by design — leave this off if you sell COD.</p>
+        <label class="check" for="confirmed"><input type="checkbox" id="confirmed"> <span>Also book orders already paid online</span></label>
+        <p class="note">Off by default: NovaX is a cash-on-delivery courier, so a prepaid parcel is carried with nothing to collect.</p>
       </div>
     </div>
     <div class="row" style="margin-top:var(--s4)">

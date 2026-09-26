@@ -40,7 +40,14 @@ export interface ShopifyOrder {
   note?: string | null;
   shipping_address?: ShopifyAddress | null;
   customer?: { phone?: string | null; email?: string | null } | null;
-  line_items?: Array<{ grams?: number | null; quantity?: number | null; requires_shipping?: boolean | null }> | null;
+  line_items?: Array<{
+    id?: number | string | null;
+    grams?: number | null;
+    quantity?: number | null;
+    /** What is still shippable after refunds and earlier fulfillments. */
+    fulfillable_quantity?: number | null;
+    requires_shipping?: boolean | null;
+  }> | null;
   // Read only by the booking rules below.
   tags?: string | string[] | null;
   gateway?: string | null;
@@ -52,6 +59,26 @@ export interface ShopifyOrder {
 /** The merchant's booking rules, as stored on nvsh_shop. A null array means
  *  "no restriction" -- an empty array would otherwise read as "allow nothing",
  *  which is the same mistake as an empty allowlist in a firewall. */
+/**
+ * A30: an excluded tag is a HARD exclusion, not a hold.
+ *
+ * The field says "Never book orders tagged", and the rule put those orders in
+ * the approval queue -- where "Approve all held orders" released them in a
+ * single click, because approval sets approved_at and approval skips the rules.
+ * A merchant who tagged an order "pickup" had it booked anyway.
+ *
+ * Returned separately from holdReason() so the caller can skip rather than
+ * hold, and so approval cannot override it.
+ */
+export function excludedByTag(order: ShopifyOrder, rules: BookingRules): string | null {
+  const tags = orderTags(order);
+  const excluded = (rules.rule_exclude_tags ?? []).map(norm).filter(Boolean);
+  const hit = excluded.find((t) => tags.includes(t));
+  return hit
+    ? `Order is tagged "${hit}", which you have set NovaX never to book. Remove the tag in Shopify to book it.`
+    : null;
+}
+
 export interface BookingRules {
   booking_mode?: string | null;
   rule_require_confirmed?: boolean | null;
@@ -82,10 +109,6 @@ function orderGateways(order: ShopifyOrder): string[] {
  * "rule 3 matched".
  */
 export function holdReason(order: ShopifyOrder, rules: BookingRules): string | null {
-  const tags = orderTags(order);
-  const excluded = (rules.rule_exclude_tags ?? []).map(norm).filter(Boolean);
-  const hit = excluded.find((t) => tags.includes(t));
-  if (hit) return `Order is tagged "${hit}", which you have excluded from automatic booking.`;
 
   if (rules.rule_require_confirmed) {
     // Shopify has no "confirmed" flag on the REST order; paid or partially
@@ -115,11 +138,15 @@ export function holdReason(order: ShopifyOrder, rules: BookingRules): string | n
     }
   }
 
+  // A29: order.location_id is null for ordinary online-store orders -- it is
+  // only set for POS and some draft orders. Treating null as "not in the list"
+  // held every single order the moment a merchant filled this field in. A rule
+  // that cannot be evaluated is not a rule that failed.
   const locs = rules.rule_location_ids;
   if (locs && locs.length) {
-    const have = String(order.location_id ?? "");
-    if (!locs.map(String).includes(have)) {
-      return `Order is assigned to a location you have not enabled for NovaX.`;
+    const have = String(order.location_id ?? "").trim();
+    if (have && !locs.map(String).includes(have)) {
+      return `Order is assigned to location ${have}, which you have not enabled for NovaX.`;
     }
   }
 
@@ -225,13 +252,54 @@ export function codAmount(order: ShopifyOrder): number {
 
 // ------------------------------------------------------------- weight -------
 
+/** Gateways that mean "the rider collects cash". Anything else with money
+ *  still owed is ambiguous, and ambiguous is not COD. */
+const COD_GATEWAYS = [
+  "cod", "cash on delivery", "cash_on_delivery", "cashondelivery",
+  "manual", "bogus",
+];
+
+export type PaymentKind = "cod" | "prepaid" | "unknown";
+
+export function paymentKind(order: ShopifyOrder): PaymentKind {
+  const fin = String(order.financial_status ?? "").trim().toLowerCase();
+  if (fin === "paid") return "prepaid";
+
+  const gateways = [order.gateway, ...(order.payment_gateway_names ?? [])]
+    .map((g) => String(g ?? "").trim().toLowerCase())
+    .filter(Boolean);
+
+  // No gateway recorded at all: the ordinary shape of a COD order created by a
+  // theme or by hand, including the advance-plus-balance pattern that is normal
+  // in Pakistan -- codAmount() collects total_outstanding, which is the balance.
+  // The dangerous case A11 names is an AUTHORIZED CARD order, and that always
+  // carries a gateway, so it falls through to "unknown" below.
+  if (gateways.length === 0) {
+    return ["", "pending", "unpaid", "partially_paid", "partially_refunded", "authorized"]
+        .includes(fin)
+      ? (fin === "authorized" ? "unknown" : "cod")
+      : "unknown";
+  }
+  if (gateways.some((g) => COD_GATEWAYS.some((c) => g.includes(c)))) return "cod";
+
+  // A real payment method with money still outstanding -- authorized, pending
+  // capture, partially paid. Not ours to guess at.
+  return "unknown";
+}
+
 /** Shopify carries grams per line item. NovaX stores "0.8 kg" style strings. */
 export function weightFromOrder(order: ShopifyOrder, fallback: string): string {
   const items = order.line_items ?? [];
   let grams = 0;
   for (const li of items) {
     if (li.requires_shipping === false) continue;
-    grams += (li.grams ?? 0) * (li.quantity ?? 1);
+    // A21: quantity is what was ORDERED. fulfillable_quantity is what is left
+    // to ship after refunds, restocks and anything already sent by someone
+    // else. Weighing the original quantity overcharged the merchant for goods
+    // that were never in the parcel.
+    const qty = li.fulfillable_quantity ?? li.quantity ?? 1;
+    if (qty <= 0) continue;
+    grams += (li.grams ?? 0) * qty;
   }
   if (grams <= 0) return fallback;
 
@@ -304,6 +372,16 @@ export function mapOrderToBooking(order: ShopifyOrder, opts: MapOptions = {}): M
   const consignee = consigneeName(addr);
   if (!consignee) return { action: "skip", reason: "shipping address has no name" };
 
+  // A27: a Dubai address with a Pakistani mobile passed straight through and
+  // became a payable booking a rider could never deliver.
+  const country = String(addr.country_code ?? "").trim().toUpperCase();
+  if (country && country !== "PK") {
+    return {
+      action: "skip",
+      reason: `Delivery address is in ${country}. NovaX delivers inside Pakistan only.`,
+    };
+  }
+
   const city = (addr.city ?? "").trim();
   if (!city) return { action: "skip", reason: "shipping address has no city" };
 
@@ -318,13 +396,28 @@ export function mapOrderToBooking(order: ShopifyOrder, opts: MapOptions = {}): M
     };
   }
 
-  const prepaid = fin === "paid";
-  if (prepaid && !bookPrepaid) {
+  // A11/A12: the old rule was `prepaid = financial_status === "paid"`, so every
+  // other state -- authorized, pending, partially_paid -- became a COD parcel
+  // for the full amount. An authorised card order would have had the buyer
+  // charged twice: once by the card capture, once by the rider at the door.
+  // Financial status alone never proves cash on delivery; the gateway does.
+  const kind = paymentKind(order);
+
+  if (kind === "unknown") {
+    return {
+      action: "skip",
+      reason: `Payment method "${(order.gateway ?? order.payment_gateway_names?.[0] ?? "unrecorded")}" ` +
+        `is not a cash-on-delivery method and the order is not paid, so NovaX cannot tell how much ` +
+        `to collect. Book it by hand if the buyer is paying the rider.`,
+    };
+  }
+
+  if (kind === "prepaid" && !bookPrepaid) {
     return { action: "skip", reason: "order already paid online (prepaid booking is switched off)" };
   }
 
-  const cod = prepaid ? 0 : codAmount(order);
-  if (!prepaid && cod <= 0) {
+  const cod = kind === "prepaid" ? 0 : codAmount(order);
+  if (kind === "cod" && cod <= 0) {
     return { action: "skip", reason: "COD order with nothing left to collect" };
   }
 
@@ -340,7 +433,7 @@ export function mapOrderToBooking(order: ShopifyOrder, opts: MapOptions = {}): M
       service: defaultService,
       category: defaultCategory,
       fragile: "No",
-      paymentMode: prepaid ? "Prepaid" : "COD",
+      paymentMode: kind === "prepaid" ? "Prepaid" : "COD",
       orderId: (order.name ?? (order.order_number ? `#${order.order_number}` : "")).trim(),
       referenceNo: String(order.id),
     },

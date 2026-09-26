@@ -13,7 +13,7 @@ const ENV = {
 
 // ---- in-memory Postgres ---------------------------------------------------
 const db = { nvsh_shop: [], nvsh_oauth_state: [], nvsh_order: [], nvsh_event: [], nvsh_access_log: [], parcels: [] };
-const calls = { graphql: [], tokenExchange: 0, rpc: [] };
+const calls = { graphql: [], gqlVars: [], tokenExchange: 0, rpc: [] };
 
 function matches(row, qs) {
   for (const [k, v] of qs) {
@@ -43,10 +43,21 @@ globalThis.fetch = async (input, init = {}) => {
     // Record the WHOLE query. Recording only the first line made any assertion
     // about an identifier in the body silently pass whatever the code did.
     calls.graphql.push(body.query.trim());
+    calls.gqlVars.push(body.variables ?? {});
     if (/webhookSubscriptionCreate/.test(body.query))
       return J({ data: { webhookSubscriptionCreate: { userErrors: [], webhookSubscription: { id: "gid://x/1" } } } });
     if (/fulfillmentOrders/.test(body.query))
-      return J({ data: { order: { fulfillmentOrders: { nodes: [{ id: "gid://shopify/FulfillmentOrder/9", status: "OPEN" }] } } } });
+      // Two fulfillment orders at DIFFERENT locations, each with real remaining
+      // quantities: the shape that used to be bundled into one mutation and
+      // fulfilled in full regardless of what the parcel contained.
+      return J({ data: { order: { fulfillmentOrders: { nodes: [
+        { id: "gid://shopify/FulfillmentOrder/9", status: "OPEN",
+          assignedLocation: { location: { id: "gid://shopify/Location/1", name: "Karachi" } },
+          lineItems: { nodes: [{ id: "gid://shopify/FulfillmentOrderLineItem/91", remainingQuantity: 2 }] } },
+        { id: "gid://shopify/FulfillmentOrder/10", status: "OPEN",
+          assignedLocation: { location: { id: "gid://shopify/Location/2", name: "Lahore" } },
+          lineItems: { nodes: [{ id: "gid://shopify/FulfillmentOrderLineItem/101", remainingQuantity: 1 }] } },
+      ] } } } });
     if (/fulfillmentCreate/.test(body.query))
       return J({ data: { fulfillmentCreate: { fulfillment: { id: "gid://shopify/Fulfillment/7" }, userErrors: [] } } });
     return J({ errors: [{ message: "unexpected query" }] }, 200);
@@ -266,6 +277,13 @@ console.log("-- fulfilment happens at handover, not at booking --");
   b = await r.json();
   t("handover fulfilled the order", b.fulfilled === 1, JSON.stringify(b));
   t("fulfillmentCreate was called", calls.graphql.some(q => /fulfillmentCreate/.test(q)));
+  // A14: one mutation per location, never both locations in one call.
+  t("one fulfillmentCreate per location",
+    calls.graphql.filter(q => /fulfillmentCreate/.test(q)).length === 2,
+    String(calls.graphql.filter(q => /fulfillmentCreate/.test(q)).length));
+  // A15: quantities are named, so Shopify cannot read it as "everything".
+  t("quantities were named, not implied",
+    calls.gqlVars.some(v => JSON.stringify(v).includes("fulfillmentOrderLineItems")));
   t("row marked done", db.nvsh_order[0].fulfill_state === "done", db.nvsh_order[0].fulfill_state);
   t("fulfilled_at recorded", Boolean(db.nvsh_order[0].fulfilled_at));
 
@@ -284,7 +302,10 @@ console.log("-- a fresh order on a linked store --");
   await settle();
   const row = db.nvsh_order.find(x => x.shopify_order_id === "5002");
   t("second order booked straight through", row?.status === "booked", row?.status);
-  t("shop counter incremented", db.nvsh_shop[0].orders_booked >= 1, String(db.nvsh_shop[0].orders_booked));
+  // A25: the count is an atomic UPDATE inside the database now, so the stub
+  // sees an RPC rather than a PATCH carrying a pre-computed number.
+  t("shop counter incremented", calls.rpc.filter(c => c === "nvsh_count_booked").length >= 1,
+    String(calls.rpc.filter(c => c === "nvsh_count_booked").length));
 }
 
 console.log("-- duplicate delivery --");

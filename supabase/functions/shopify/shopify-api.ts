@@ -163,17 +163,17 @@ const FULFILLMENT_ORDERS = `
     order(id: $id) {
       id
       name
-      fulfillmentOrders(first: 10, query: "status:open OR status:in_progress") {
-        nodes { id status }
+      fulfillmentOrders(first: 25, query: "status:open OR status:in_progress") {
+        nodes {
+          id
+          status
+          assignedLocation { location { id name } }
+          lineItems(first: 100) { nodes { id remainingQuantity } }
+        }
       }
     }
   }`;
 
-// NOTE: fulfillmentCreate replaced fulfillmentCreateV2. The argument name is
-// the one detail in this file not proven against a live store -- Shopify's own
-// reference page shows `input:` in its example while the schema names the
-// argument `fulfillment:`. Confirm on the very first dev-store fulfillment;
-// a wrong name fails loudly with "unknown argument", it cannot fail silently.
 const CREATE_FULFILLMENT = `
   mutation fulfill($fulfillment: FulfillmentInput!) {
     fulfillmentCreate(fulfillment: $fulfillment) {
@@ -182,11 +182,28 @@ const CREATE_FULFILLMENT = `
     }
   }`;
 
+interface FoNode {
+  id: string;
+  status: string;
+  assignedLocation?: { location?: { id?: string | null; name?: string | null } | null } | null;
+  lineItems?: { nodes: Array<{ id: string; remainingQuantity: number }> } | null;
+}
+
 /**
  * Pushes the NovaX AWB back to Shopify as the tracking number and marks the
- * order fulfilled. This is what makes the merchant's customer see "shipped"
- * with a working tracking link, and it is the half of the integration that
- * every rival app is reviewed badly for getting wrong.
+ * handed-over items fulfilled.
+ *
+ * Two rules this used to break:
+ *
+ * A14 -- every open fulfillment order went into ONE mutation. Shopify requires
+ * the fulfillment orders in a single fulfillmentCreate to share a location, so
+ * a merchant shipping from two warehouses got a rejected mutation and a parcel
+ * that never appeared as shipped. One mutation per location now.
+ *
+ * A15 -- line items were omitted entirely, and Shopify reads that as "all of
+ * them". A split dispatch, a preorder, or a second carrier's items were marked
+ * shipped on the strength of a NovaX parcel that did not contain them. Each
+ * item is now named with its remaining quantity.
  */
 export async function pushTracking(
   shop: string,
@@ -199,36 +216,66 @@ export async function pushTracking(
     ? shopifyOrderId
     : `gid://shopify/Order/${shopifyOrderId}`;
 
-  const found = await graphql<{
-    order: { fulfillmentOrders: { nodes: Array<{ id: string; status: string }> } } | null;
-  }>(shop, accessToken, FULFILLMENT_ORDERS, { id: gid });
+  const found = await graphql<{ order: { fulfillmentOrders: { nodes: FoNode[] } } | null }>(
+    shop, accessToken, FULFILLMENT_ORDERS, { id: gid },
+  );
 
-  const nodes = found.order?.fulfillmentOrders?.nodes ?? [];
+  const nodes = (found.order?.fulfillmentOrders?.nodes ?? [])
+    .filter((n) => (n.lineItems?.nodes ?? []).some((li) => (li.remainingQuantity ?? 0) > 0));
+
   if (nodes.length === 0) {
     // Nothing open to fulfil: already fulfilled elsewhere, or fully cancelled.
     // Not an error worth alarming anyone about.
     return { ok: false, detail: "no open fulfillment order" };
   }
 
-  const data = await graphql<{
-    fulfillmentCreate: {
-      fulfillment: { id: string } | null;
-      userErrors: Array<{ field: string[]; message: string }>;
-    };
-  }>(shop, accessToken, CREATE_FULFILLMENT, {
-    fulfillment: {
-      lineItemsByFulfillmentOrder: nodes.map((n) => ({ fulfillmentOrderId: n.id })),
-      trackingInfo: {
-        number: awb,
-        url: trackingUrl,
-        company: "NovaX Logistics",
-      },
-      notifyCustomer: true,
-    },
-  });
+  // Group by assigned location. An unnamed location still gets its own bucket
+  // rather than being merged into someone else's.
+  const byLocation = new Map<string, FoNode[]>();
+  for (const n of nodes) {
+    const loc = n.assignedLocation?.location?.id ?? `unassigned:${n.id}`;
+    const list = byLocation.get(loc) ?? [];
+    list.push(n);
+    byLocation.set(loc, list);
+  }
 
-  const errs = data.fulfillmentCreate.userErrors;
-  if (errs.length) return { ok: false, detail: errs.map((e) => e.message).join("; ") };
+  const problems: string[] = [];
+  let ok = 0;
+
+  for (const [, group] of byLocation) {
+    const lineItemsByFulfillmentOrder = group.map((n) => ({
+      fulfillmentOrderId: n.id,
+      fulfillmentOrderLineItems: (n.lineItems?.nodes ?? [])
+        .filter((li) => (li.remainingQuantity ?? 0) > 0)
+        .map((li) => ({ id: li.id, quantity: li.remainingQuantity })),
+    }));
+
+    try {
+      const data = await graphql<{
+        fulfillmentCreate: {
+          fulfillment: { id: string } | null;
+          userErrors: Array<{ field: string[]; message: string }>;
+        };
+      }>(shop, accessToken, CREATE_FULFILLMENT, {
+        fulfillment: {
+          lineItemsByFulfillmentOrder,
+          trackingInfo: { number: awb, url: trackingUrl, company: "NovaX Logistics" },
+          notifyCustomer: true,
+        },
+      });
+
+      const errs = data.fulfillmentCreate.userErrors;
+      if (errs.length) problems.push(errs.map((e) => e.message).join("; "));
+      else ok++;
+    } catch (err) {
+      problems.push(String((err as Error).message).slice(0, 200));
+    }
+  }
+
+  if (ok === 0) return { ok: false, detail: problems.join(" | ") || "fulfillment failed" };
+  // A partial success is still a failure to report: some items are not marked
+  // shipped, and the merchant has to know which.
+  if (problems.length) return { ok: false, detail: `partly fulfilled; ${problems.join(" | ")}` };
   return { ok: true };
 }
 
@@ -242,11 +289,7 @@ export async function pushTracking(
 // GraphQL rather than REST: REST order endpoints are legacy, and a new public
 // app should not ship on them.
 
-const ORDERS_SINCE = `
-  query orders($q: String!, $after: String) {
-    orders(first: 50, query: $q, after: $after, sortKey: CREATED_AT) {
-      pageInfo { hasNextPage endCursor }
-      nodes {
+const ORDER_FIELDS = `
         id name createdAt cancelledAt test tags
         displayFinancialStatus displayFulfillmentStatus currencyCode
         phone
@@ -261,7 +304,13 @@ const ORDERS_SINCE = `
             variant { inventoryItem { measurement { weight { value unit } } } }
           }
         }
-      }
+`;
+
+const ORDERS_SINCE = `
+  query orders($q: String!, $after: String) {
+    orders(first: 50, query: $q, after: $after, sortKey: CREATED_AT) {
+      pageInfo { hasNextPage endCursor }
+      nodes { ${ORDER_FIELDS} }
     }
   }`;
 
@@ -345,4 +394,22 @@ export async function ordersSince(
     after = data.orders.pageInfo.endCursor;
   }
   return out;
+}
+
+/** A24: one order, refetched. Manual approval used the payload captured when
+ *  the webhook arrived, so an address or a total the merchant corrected in
+ *  Shopify afterwards was ignored and the parcel went out with the old one. */
+export async function fetchOrder(
+  shop: string,
+  accessToken: string,
+  orderId: string,
+): Promise<Record<string, unknown> | null> {
+  const gid = orderId.startsWith("gid://") ? orderId : `gid://shopify/Order/${orderId}`;
+  const data = await graphql<{ order: GqlOrder | null }>(
+    shop,
+    accessToken,
+    `query one($id: ID!) { order(id: $id) { ${ORDER_FIELDS} } }`,
+    { id: gid },
+  );
+  return data.order ? toRestShape(data.order) : null;
 }

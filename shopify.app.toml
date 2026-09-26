@@ -11,7 +11,13 @@ embedded = true
 # Minimum required. read_orders is Level 2 protected customer data (name,
 # address, phone). Do not widen: Shopify approves only the minimum, and
 # unapproved fields are silently redacted rather than erroring.
-scopes = "read_orders,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,write_fulfillments"
+#
+# A13: these were the *assigned* fulfillment-order scopes, which cover locations
+# owned by a registered fulfillment service. NovaX does not register one, so
+# ordinary merchant-managed warehouses were never in scope and fulfillmentCreate
+# had nothing it was allowed to touch. Merchant-managed is the correct model
+# here. write_fulfillments is dropped: the fulfillment-order scopes carry it.
+scopes = "read_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders"
 # The code implements the classic OAuth dance (/install -> authorize ->
 # /callback -> access_token). Managed install (this false) never calls
 # /callback at all: Shopify grants the scopes itself and expects a token
