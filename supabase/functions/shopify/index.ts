@@ -258,6 +258,96 @@ async function handleCancel(req: Request): Promise<Response> {
   return json(r ?? { ok: false, message: "No result." }, 200, { "Cache-Control": "no-store" });
 }
 
+async function handlePickup(req: Request): Promise<Response> {
+  const shop = await sessionShop(req);
+  if (!shop) return json({ error: "unauthorized" }, 401);
+  const b = await jsonBody(req);
+  const res = await rpc<Array<{ ok: boolean; message: string; awb_count: number }>>(
+    "nvsh_pickup_request", { p_shop: shop, p_note: String(b.note ?? "") },
+  );
+  const r = Array.isArray(res) ? res[0] : res;
+  return json(r ?? { ok: false, message: "No result." }, 200, { "Cache-Control": "no-store" });
+}
+
+async function handleTicket(req: Request): Promise<Response> {
+  const shop = await sessionShop(req);
+  if (!shop) return json({ error: "unauthorized" }, 401);
+  const b = await jsonBody(req);
+  const res = await rpc<Array<{ ok: boolean; message: string }>>("nvsh_ticket_open", {
+    p_shop: shop, p_order_id: String(b.order_id ?? ""), p_body: String(b.body ?? ""),
+  });
+  const r = Array.isArray(res) ? res[0] : res;
+  return json(r ?? { ok: false, message: "No result." }, 200, { "Cache-Control": "no-store" });
+}
+
+async function handleApproveAll(req: Request): Promise<Response> {
+  const shop = await sessionShop(req);
+  if (!shop) return json({ error: "unauthorized" }, 401);
+  const res = await rpc<Array<{ ok: boolean; message: string; approved: number }>>(
+    "nvsh_approve_all", { p_shop: shop },
+  );
+  const r = Array.isArray(res) ? res[0] : res;
+  if (r?.ok) background(drainReceived(shop));
+  return json(r ?? { ok: false, message: "No result." }, 200, { "Cache-Control": "no-store" });
+}
+
+/** Book another parcel for an order that ships in more than one box. The
+ *  package number is what separates a deliberate second box from an accidental
+ *  replay -- the unique index keys on it. */
+async function handleSplit(req: Request): Promise<Response> {
+  const shop = await sessionShop(req);
+  if (!shop) return json({ error: "unauthorized" }, 401);
+  const b = await jsonBody(req);
+  const orderId = String(b.order_id ?? "");
+
+  const row = await selectOne<{ payload: ShopifyOrder | null; awb: string | null; extra_awbs: string[] | null }>(
+    "nvsh_order",
+    `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}&select=payload,awb,extra_awbs`,
+  );
+  if (!row?.payload || !row.awb) {
+    return json({ ok: false, message: "That order has no parcel yet." });
+  }
+
+  const mapped = mapOrderToBooking(row.payload);
+  if (mapped.action === "skip") return json({ ok: false, message: mapped.reason });
+
+  const packageNo = 2 + (row.extra_awbs?.length ?? 0);
+  const bk = mapped.booking;
+  try {
+    const parcel = await rpc<{ awb: string } | Array<{ awb: string }>>("nvsh_book_parcel", {
+      p_shop: shop, p_consignee: bk.consignee, p_phone: bk.phone, p_city: bk.city,
+      p_address: bk.address,
+      // The COD is collected once, on the first parcel. A second box that also
+      // asks for the money would double-charge the buyer at the door.
+      p_cod: 0,
+      p_weight: bk.weight, p_service: bk.service, p_category: bk.category,
+      p_fragile: bk.fragile, p_payment_mode: bk.paymentMode,
+      p_order_id: bk.orderId, p_reference_no: orderId, p_package_no: packageNo,
+    });
+    const awb = Array.isArray(parcel) ? parcel[0]?.awb : parcel?.awb;
+    if (!awb) throw new Error("booking returned no AWB");
+
+    await update("nvsh_order",
+      `shop_domain=eq.${encodeURIComponent(shop)}&shopify_order_id=eq.${encodeURIComponent(orderId)}`,
+      { extra_awbs: [...(row.extra_awbs ?? []), awb], updated_at: new Date().toISOString() });
+    return json({ ok: true, message: `Package ${packageNo} booked as ${awb}.`, awb });
+  } catch (err) {
+    return json({ ok: false, message: String((err as Error).message ?? err).slice(0, 300) });
+  }
+}
+
+/** Books every order sitting in 'received' for one shop. Shared by the drain
+ *  and by bulk approve so there is one booking path, not two. */
+async function drainReceived(shop: string): Promise<void> {
+  const rows = await selectMany<{ shopify_order_id: string; payload: ShopifyOrder | null }>(
+    "nvsh_order",
+    `shop_domain=eq.${encodeURIComponent(shop)}&status=eq.received&select=shopify_order_id,payload&limit=100`,
+  );
+  for (const r of rows) {
+    if (r.payload) await processOrder(shop, r.shopify_order_id, r.payload);
+  }
+}
+
 async function handleState(req: Request): Promise<Response> {
   const session = await sessionShop(req);
   if (!session) return json({ error: "unauthorized" }, 401);
@@ -627,6 +717,10 @@ Deno.serve(async (req: Request) => {
     if (path === "/api/settings") return await handleSettings(req);
     if (path === "/api/order/decide") return await handleDecide(req);
     if (path === "/api/order/cancel") return await handleCancel(req);
+    if (path === "/api/order/split") return await handleSplit(req);
+    if (path === "/api/approve-all") return await handleApproveAll(req);
+    if (path === "/api/pickup") return await handlePickup(req);
+    if (path === "/api/ticket") return await handleTicket(req);
     if (path === "/drain") return await handleDrain(req);
     if (path === "/fulfill") return await handleFulfill(req);
 

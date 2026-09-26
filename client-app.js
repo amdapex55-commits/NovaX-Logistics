@@ -11227,7 +11227,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       out.textContent="Loading your code\u2026";
       Promise.resolve(sb.rpc("nvsh_link_code_issue")).then(function(r){
         if(btn) btn.disabled=false;
-        if(r && r.error){ out.textContent="Could not generate a code: "+(r.error.message||"unknown error"); return; }
+        if(r && r.error){
+          /* Staff seats hit this: only an owner may connect a store. That is
+             not an error for them to act on, so it reads as information. */
+          var m=String((r.error&&r.error.message)||"");
+          out.textContent=/owner/i.test(m)
+            ? "Ask an account owner to connect your Shopify store."
+            : "Could not load a connect code: "+(m||"unknown error");
+          if(btn) btn.style.display="none";
+          return;
+        }
         var row=Array.isArray(r&&r.data)?r.data[0]:(r&&r.data);
         if(!row||!row.code){ out.textContent="Could not generate a code. Only an account owner can connect a store."; return; }
         var mins=Math.max(1,Math.round((new Date(row.expires_at)-new Date())/60000));
@@ -11239,6 +11248,29 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
     }
     window.nvShopifyConnectCode=nvShopifyConnectCode;
+    /* Which stores are actually connected. Without this the portal showed a
+       connect code and nothing else, so a merchant could not tell from the
+       portal whether connecting had worked or which stores were attached --
+       only the Shopify side ever confirmed it. */
+    function nvShopifyStores(){
+      var box=document.getElementById("nvShopifyStores"); if(!box) return;
+      Promise.resolve(sb.rpc("nvsh_my_stores")).then(function(r){
+        if(r && r.error) return;
+        var rows=(r&&r.data)||[];
+        if(!rows.length){ box.innerHTML=""; return; }
+        box.innerHTML='<div class="ops-card"><strong>Connected stores</strong>'+rows.map(function(x){
+          var name=String(x.shop_domain||"").replace(/[&<>"]/g,"");
+          var when=x.linked_at?new Date(x.linked_at).toLocaleDateString():"";
+          var live=x.status==="active";
+          return '<p class="footer-note mt-8">'+
+            '<span class="chip '+(live?"good":"")+'">'+(live?"Connected":String(x.status||"").replace(/[&<>"]/g,""))+'</span> '+
+            name+' &middot; '+(x.orders_booked||0)+' order'+((x.orders_booked||0)===1?"":"s")+' booked'+
+            (when?' &middot; since '+when:'')+'</p>';
+        }).join("")+'</div>';
+      }).catch(function(){});
+    }
+    window.nvShopifyStores=nvShopifyStores;
+
 
     function renderIntegrations(){
       // NovaX fix: Shopify no longer lives in the generic storeConnections
@@ -11252,6 +11284,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       Object.keys(prefill).forEach(p=>{ const c=storeConn(p); const el=document.getElementById(prefill[p]); if(c&&el&&!el.value) el.value=c.storeUrl||""; });
       if(typeof shopifyCheckStatus==="function") shopifyCheckStatus();
       try{ nvShopifyConnectCode(false); }catch(e){}
+      try{ nvShopifyStores(); }catch(e){}
     }
     function newBookedParcels(){ return (state.parcels||[]).filter(p=>p.clientId===activeClientId()&&p.status==="New booked"); }
     function renderNewBookedList(){

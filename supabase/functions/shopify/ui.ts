@@ -31,6 +31,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     --line:#e3e3e3; --brand:#0b7c4d; --warn:#8a6116; --warnbg:#fff6e0;
     --bad:#8e1f0b; --badbg:#fdf0ed; --good:#0b7c4d; --goodbg:#eaf4ee;
     --info:#1f4f8a; --infobg:#eaf1fa;
+    --goodln:#9ecdb4; --warnln:#e3c67d; --badln:#e0a99c; --infoln:#a8c3e2;
     /* The button is an inversion PAIR, not --ink used as a surface. --ink
        flips to near-white in dark mode, and white-on-white measured 1.28:1. */
     --btn-bg:#1a1a1a; --btn-fg:#fff; --neutralbg:#eee; --neutral:#555;
@@ -46,10 +47,10 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
      text-transform:uppercase;letter-spacing:.04em}
   .sub{color:var(--muted);margin:0}
   .banner{border-radius:10px;padding:14px 16px;border:1px solid}
-  .banner.pending{background:var(--warnbg);border-color:#e3c67d;color:var(--warn)}
-  .banner.active{background:var(--goodbg);border-color:#9ecdb4;color:var(--good)}
-  .banner.bad{background:var(--badbg);border-color:#e0a99c;color:var(--bad)}
-  .banner.info{background:var(--infobg);border-color:#a8c3e2;color:var(--info)}
+  .banner.pending{background:var(--warnbg);border-color:var(--warnln);color:var(--warn)}
+  .banner.active{background:var(--goodbg);border-color:var(--goodln);color:var(--good)}
+  .banner.bad{background:var(--badbg);border-color:var(--badln);color:var(--bad)}
+  .banner.info{background:var(--infobg);border-color:var(--infoln);color:var(--info)}
   .banner strong{display:block;margin-bottom:2px}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
   .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
@@ -82,7 +83,13 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
         text-transform:uppercase;font-size:18px;font-weight:700}
   .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
   .empty{color:var(--muted);padding:22px 8px;text-align:center}
-  .scroll{overflow-x:auto}
+  /* .scroll had overflow-x:auto and nothing to overflow: the table simply
+     shrank to fit, and on a phone the reason column collapsed to about 60px
+     and wrapped one word per line. A min-width makes the container do its job
+     and keeps every column readable. */
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .scroll table{min-width:660px}
+  .why{max-width:44ch}
   .note{font-size:12px;color:var(--muted);margin-top:6px}
   .actions{display:flex;gap:6px;flex-wrap:wrap}
   .msg{margin-top:10px;font-size:13px}
@@ -98,7 +105,8 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
           --goodbg:#12301f;--warnbg:#302713;--badbg:#301613;--infobg:#132233;
           --good:#5fe0a8;--warn:#e8b64c;--bad:#f0a396;--info:#8fbdf0;--brand:#5fe0a8;
           --btn-bg:#e3e3e3;--btn-fg:#1a1a1a;--neutralbg:#32363a;--neutral:#c2c8ce;
-          --field:#1c1c1c;--fieldline:#4a4a4a}
+          --field:#1c1c1c;--fieldline:#4a4a4a;
+          --goodln:#2f6b4c;--warnln:#6b5524;--badln:#6b3228;--infoln:#2a4a6b}
   }
 </style>
 </head>
@@ -174,6 +182,20 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
   <!-- Orders -------------------------------------------------------------- -->
   <div class="card hide" id="ordersCard">
     <h2>Orders</h2>
+    <div class="row" style="margin-bottom:12px" id="bulkBar">
+      <button class="btn small hide" id="approveAll" type="button">Approve all held orders</button>
+      <button class="btn small ghost" id="pickupBtn" type="button">Request a pickup</button>
+      <span class="msg" id="bulkMsg"></span>
+    </div>
+    <div class="msg" id="rowMsg"></div>
+    <div class="card hide" id="ticketPanel" style="margin-bottom:12px">
+      <label for="ticketBody">Tell NovaX what is wrong with <span id="ticketWhich"></span></label>
+      <input type="text" id="ticketBody" maxlength="500" placeholder="The buyer says the address is wrong" autocomplete="off">
+      <div class="row" style="margin-top:10px">
+        <button class="btn small" id="ticketSend" type="button">Send to NovaX</button>
+        <button class="btn small ghost" id="ticketCancel" type="button">Cancel</button>
+      </div>
+    </div>
     <div class="scroll"><div id="orders"><p class="empty">Loading…</p></div></div>
   </div>
 
@@ -261,6 +283,9 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       (bits.length ? ' ' + bits.join(', ') + '.' : '') +
       '</div>';
     show("connect", false); show("settings", true); show("ordersCard", true);
+    el("approveAll").classList[s.awaiting_count ? "remove" : "add"]("hide");
+    el("approveAll").textContent = "Approve all " + s.awaiting_count + " held order" +
+      (s.awaiting_count === 1 ? "" : "s");
   }
 
   function renderStats(s, w){
@@ -315,6 +340,12 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       a.push('<a class="btn small ghost" target="_blank" rel="noopener" href="' +
              h(PORTAL + "?awb=" + encodeURIComponent(r.awb)) + '">Label</a>');
     }
+    if (r.status === "booked") {
+      a.push('<button class="btn small ghost" data-act="split" data-id="' + h(r.shopify_order_id) + '">Extra box</button>');
+    }
+    if (r.status === "booked" || r.status === "failed" || r.awb) {
+      a.push('<button class="btn small ghost" data-act="ticket" data-id="' + h(r.shopify_order_id) + '">Problem?</button>');
+    }
     if ((r.status === "booked" && !r.recall_requested) || r.status === "awaiting_approval") {
       a.push('<button class="btn small ghost" data-act="cancel" data-id="' + h(r.shopify_order_id) + '">Cancel</button>');
     }
@@ -339,9 +370,11 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
         } else if ((r.status === "skipped" || r.status === "failed" || r.status === "cancelled") && r.error) {
           why = r.error;
         }
-        return '<tr>' +
+        return '<tr data-order-name="' + h(r.order_name || "") + '">' +
           '<td>' + h(r.order_name || "—") + (why ? '<div class="why">' + h(why) + '</div>' : "") + '</td>' +
-          '<td class="awb">' + h(r.awb || "—") + '</td>' +
+          '<td class="awb">' + h(r.awb || "—") +
+            ((r.extra_awbs && r.extra_awbs.length)
+              ? '<div class="why">+ ' + r.extra_awbs.map(h).join(", ") + '</div>' : "") + '</td>' +
           '<td>' + money(r.cod_amount) + '</td>' +
           '<td>' + statusCell(r) + '</td>' +
           '<td>' + h(when) + '</td>' +
@@ -398,23 +431,94 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
     } finally { btn.disabled = false; }
   });
 
+  el("approveAll").addEventListener("click", async function(){
+    var btn = this; btn.disabled = true; say("bulkMsg", "Approving…", true);
+    try {
+      var r = await api("api/approve-all", {});
+      say("bulkMsg", r.message || "", Boolean(r.ok));
+      setTimeout(load, 2000);
+    } catch (e) { say("bulkMsg", String(e.message || e), false); }
+    finally { btn.disabled = false; }
+  });
+
+  el("pickupBtn").addEventListener("click", async function(){
+    var btn = this; btn.disabled = true; say("bulkMsg", "Requesting…", true);
+    try {
+      var r = await api("api/pickup", { note: "Requested from Shopify" });
+      say("bulkMsg", r.message || "", Boolean(r.ok));
+    } catch (e) { say("bulkMsg", String(e.message || e), false); }
+    finally { btn.disabled = false; }
+  });
+
+  // NOTE: no alert(), confirm() or prompt() anywhere in this page. Chrome
+  // blocks all three inside a cross-origin iframe, and this page only ever
+  // runs as one -- inside admin.shopify.com. A confirm() here does not warn
+  // the merchant, it silently returns false, and a prompt() returns null, so
+  // the button simply does nothing. Every prompt and every result is inline.
+  var ticketFor = null, splitArmed = null;
+
+  function closeTicket(){
+    ticketFor = null;
+    el("ticketPanel").classList.add("hide");
+    el("ticketBody").value = "";
+  }
+
+  el("ticketCancel").addEventListener("click", closeTicket);
+
+  el("ticketSend").addEventListener("click", async function(){
+    var body = el("ticketBody").value.trim();
+    if (!body) { say("rowMsg", "Write what the problem is first.", false); return; }
+    this.disabled = true;
+    try {
+      var r = await api("api/ticket", { order_id: ticketFor, body: body });
+      say("rowMsg", r.message || "", Boolean(r.ok));
+      if (r.ok) closeTicket();
+    } catch (e) { say("rowMsg", String(e.message || e), false); }
+    finally { this.disabled = false; }
+  });
+
   el("orders").addEventListener("click", async function(ev){
     var b = ev.target.closest("button[data-act]");
     if (!b) return;
     var act = b.getAttribute("data-act"), id = b.getAttribute("data-id");
+
+    if (act === "ticket") {
+      ticketFor = id;
+      el("ticketWhich").textContent = "order " + (b.closest("tr").getAttribute("data-order-name") || id);
+      el("ticketPanel").classList.remove("hide");
+      el("ticketBody").focus();
+      say("rowMsg", "");
+      return;
+    }
+
+    // An extra box is a second parcel and a second delivery fee. Two clicks,
+    // with the cost said out loud, because the merchant pays for this.
+    if (act === "split" && splitArmed !== id) {
+      splitArmed = id;
+      b.textContent = "Confirm — this is a 2nd parcel and a 2nd delivery fee";
+      setTimeout(function(){
+        if (splitArmed === id) { splitArmed = null; b.textContent = "Extra box"; }
+      }, 6000);
+      return;
+    }
+    splitArmed = null;
+
     b.disabled = true;
     var prev = b.textContent;
     b.textContent = "…";
+    say("rowMsg", "");
     try {
-      var r = act === "cancel"
-        ? await api("api/order/cancel", { order_id: id })
-        : await api("api/order/decide", { order_id: id, decision: act });
-      // A booking takes a moment; reload after it has had one.
-      setTimeout(load, act === "approve" ? 1500 : 0);
-      if (!r.ok) { b.disabled = false; b.textContent = prev; alert(r.message || "That did not work."); }
+      var r;
+      if (act === "cancel")     r = await api("api/order/cancel", { order_id: id });
+      else if (act === "split") r = await api("api/order/split",  { order_id: id });
+      else                      r = await api("api/order/decide", { order_id: id, decision: act });
+
+      say("rowMsg", (r && r.message) || "", Boolean(r && r.ok));
+      if (r && r.ok) setTimeout(load, (act === "approve" || act === "split") ? 1800 : 400);
+      else { b.disabled = false; b.textContent = prev; }
     } catch (e) {
       b.disabled = false; b.textContent = prev;
-      alert("Could not reach NovaX: " + String(e.message || e));
+      say("rowMsg", "Could not reach NovaX: " + String(e.message || e), false);
     }
   });
 
