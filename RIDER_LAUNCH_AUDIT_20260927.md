@@ -72,6 +72,7 @@ Controlled rider pilot recommended, not an unconditional full-fleet launch. The 
 - `node scripts/test-rider-sql.mjs`: isolated PostgreSQL 17 fixture, current generic status trigger and latest column/delivery-time guards. Tests include ownership, rollback of mixed batches, pickups, returns, reasons, GPS, payment conflicts, replay, concurrent replay, blocked accounts, direct evidence tampering, expenses, expected handover figures and one-time deductions. No production parcel transitions or cash declarations were used for tests.
 - `node scripts/test-rider-ui.mjs`: isolated JSDOM/Supabase fixture. Tests include scoped queues, storage rejection, PKT parsing, contacts, search, mixed batch rejection, a committed response lost in transit, offline persistence/reload, more than 1,000 rows, review retention and auth revocation.
 - `node scripts/check-build.mjs`: HTML/JS syntax, tracked-file secret scan, merchant bundle preservation, rider asset hashes and payment-rule parity.
+- `node scripts/test-rider-sw.mjs`: coherent offline assets, rider/merchant separation, uncached-page recovery, external/POST bypass and network-first navigation.
 - Browser fixture: all six screens at an observed 320 CSS pixels had zero horizontal overflow. Main workflows also fit at observed 390 CSS pixels; desktop at 1280 CSS pixels and the brand image loaded. Cash confirmation dialog and native focus behavior were inspected. Browser warning/error log was empty during this fixture check.
 - Supabase migration execution returned success. Live checks confirmed the summary, expense and checked-handover RPCs exist; anonymous summary access is denied; rider resolution requires active status.
 - Before migration, production had two handover records with zero recorded expense deductions. No historical cash/expense backfill was performed.
@@ -90,6 +91,12 @@ Controlled rider pilot recommended, not an unconditional full-fleet launch. The 
 10. Offline snapshots contain route contact information on the device. Use rider-controlled phones, device locks and logout on shared devices. Cash handover is online-only; every saved status remains provisional until acknowledged.
 11. Universal proof-of-delivery photos, customer OTP/signature, turn-by-turn route optimization, bank transfer automation and device-level background syncing are not included. Decide which are required before expanding beyond the pilot.
 12. The test fixture does not reproduce every production trigger/RLS combination or a 1,000-parcels/day multi-rider load. Monitor database latency, rejected RPCs and reconciliation daily during the pilot.
+13. Do not reassign an already-delivered parcel with unconfirmed COD to another rider. Existing cash ownership follows rider_id; a dedicated cash-liability transfer workflow is not implemented. Office correction must reconcile the original collector first.
+14. Expenses retain the existing parcel-linked storage model for admin compatibility. Do not delete an expense's anchor parcel before reconciliation; a separate immutable expense ledger is a future accounting improvement.
+
+## Publication
+
+Frontend commit `2519412` was pushed to main. GitHub Pages run `36338452855` completed successfully. The live app, core, CSS, SDK and service worker matched the local files byte-for-byte. Anonymous calls to the cash-summary endpoint returned HTTP 401 / SQLSTATE 42501. A live signed-out rider visit opened the existing sign-in form without console errors. This does not substitute for an authenticated real-rider acceptance test.
 
 ## Tomorrow's Acceptance Checklist
 
