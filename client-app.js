@@ -869,7 +869,18 @@
     __gsb.auth.getSession().then(function(r){
       try{ window.__novaxGateSession=(r&&r.data&&r.data.session)||null; }catch(e){}
       var session=r&&r.data&&r.data.session;
-      if(!session){ redirectAway("index.html"); return; }
+      if(!session){
+        try{
+          var emailQuery=new URLSearchParams(location.search), emailTab=emailQuery.get("tab");
+          if(["money","awbLabel","support"].indexOf(emailTab)>-1){
+            var emailAwb=(emailQuery.get("awb")||"").trim().toUpperCase();
+            sessionStorage.setItem("novaxEmailDestination",JSON.stringify({
+              tab:emailTab, awb:/^[A-Z0-9-]{1,80}$/.test(emailAwb)?emailAwb:"", at:Date.now()
+            }));
+          }
+        }catch(e){}
+        redirectAway("index.html"); return;
+      }
       // NovaX fix (auth flow v3): read the auth email and signup metadata
       // role FIRST, before ever fetching profiles. A known admin email or
       // an auth-metadata role of admin/staff/rider routes to the correct
@@ -1067,6 +1078,20 @@
     (function(){
       try{
         var qp=new URLSearchParams(location.search);
+
+        // Keep only known email destinations across the sign-in redirect.
+        var emailTabs=["money","awbLabel","support"], emailKey="novaxEmailDestination";
+        try{
+          if(!location.search && !location.hash){
+            var emailReturn=JSON.parse(sessionStorage.getItem(emailKey)||"null");
+            sessionStorage.removeItem(emailKey);
+            if(emailReturn && emailTabs.indexOf(emailReturn.tab)>-1 &&
+              Number.isFinite(emailReturn.at) && Date.now()-emailReturn.at>=0 && Date.now()-emailReturn.at<900000){
+              qp.set("tab",emailReturn.tab);
+              if(emailReturn.tab==="awbLabel" && /^[A-Z0-9-]{1,80}$/.test(emailReturn.awb||"")) qp.set("awb",emailReturn.awb);
+            }
+          }
+        }catch(e){}
 
         /* Deep links from the NovaX app inside Shopify. Without these, "Get my
            code" and "Label" both dropped the merchant on the dashboard to go
