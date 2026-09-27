@@ -22,6 +22,18 @@ assert.ok(buildEmail('payout_paid', 'owner@example.com', fixtures.payout_paid).h
 assert.ok(buildEmail('first_booking', 'owner@example.com', fixtures.first_booking).html.includes('href="https://novaxlogistics.com/client.html?tab=awbLabel&amp;awb=NVX-100001"'));
 assert.ok(buildEmail('welcome', 'owner@example.com', fixtures.welcome).html.includes('href="https://novaxlogistics.com/client.html?tab=support"'));
 assert.ok(buildEmail('payout_paid', 'owner@example.com', fixtures.payout_paid).text.includes('04:00 pm PKT'));
+const welcome = buildEmail('welcome', 'owner@example.com', fixtures.welcome);
+for (const feature of ['bulk bookings', 'parcel statuses', 'request payouts', 'Connect Shopify']) {
+  assert.ok(welcome.html.includes(feature));
+  assert.ok(welcome.text.includes(feature));
+}
+for (const [kind, data] of Object.entries(fixtures)) {
+  const message = buildEmail(kind, 'owner@example.com', data);
+  assert.ok(Buffer.byteLength(message.html) < 50000);
+  for (const link of message.html.matchAll(/href="([^"]+)"/g)) {
+    assert.equal(new URL(link[1].replaceAll('&amp;', '&')).origin, 'https://novaxlogistics.com');
+  }
+}
 const hostile = buildEmail('welcome', 'owner@example.com', { name: '<script>alert(1)</script>', business: 'A & B' });
 assert.ok(!hostile.html.includes('<script>'));
 assert.ok(hostile.html.includes('&lt;script&gt;'));
