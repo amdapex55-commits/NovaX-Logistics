@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import vm from 'node:vm';
+import {installFixture} from './rider-fixture.mjs';
+const require=createRequire(import.meta.url);
+let JSDOM;try{({JSDOM}=require('jsdom'));}catch{({JSDOM}=createRequire('/tmp/novax-rider-test-deps/package.json')('jsdom'));}
+const html=readFileSync(new URL('../rider.html',import.meta.url),'utf8');
+const scripts=['nv-payment.js','rider-core.js','rider-app.js'].map(f=>readFileSync(new URL('../'+f,import.meta.url),'utf8'));
+const wait=()=>new Promise(resolve=>setTimeout(resolve,40));
+async function app(options={}){
+  const dom=new JSDOM(html,{url:'https://fixture.invalid/rider.html?nosw=1',runScripts:'outside-only'}),w=dom.window;
+  w.crypto.randomUUID=()=>crypto.randomUUID();const fixture=installFixture(w,options);
+  const dialog=w.document.querySelector('dialog');dialog.showModal=()=>{dialog.open=true;};dialog.close=value=>{dialog.returnValue=value;dialog.open=false;dialog.dispatchEvent(new w.Event('close'));};
+  scripts.forEach(s=>w.eval(s));await wait();return{dom,w,fixture,q:id=>w.document.getElementById(id)};
+}
+const memory=()=>{const m=new Map();return{getItem:k=>m.get(k)||null,setItem:(k,v)=>m.set(k,v)}};
+const core={Intl,Date,Set,Number,isFinite};vm.createContext(core);vm.runInContext(scripts[0]+scripts[1],core);const R=core.NovaXRider;
+assert.equal(R.day('2026-09-27 00:30'),'2026-09-27');
+assert.equal(R.timestamp('2026-09-27 00:30'),Date.parse('2026-09-26T19:30:00Z'));
+assert.equal(R.deliveredAt({meta:{processHistory:[{to:'Delivered',at:'2026-09-27 00:30'}]},updatedAt:'later'}),'2026-09-27 00:30');
+assert.equal(R.phone('0092 300-1234567'),'+923001234567');assert.equal(R.phone('+971501234567'),'+971501234567');
+assert.deepEqual(Array.from(R.awbs('__proto__,constructor,foo,FOO')),['__PROTO__','CONSTRUCTOR','FOO']);
+const storage=memory(),qa=new R.Queue(storage,'a','r1'),qb=new R.Queue(storage,'b','r2');qa.add({key:'job'});assert.equal(qb.read().length,0);
+assert.throws(()=>new R.Queue({getItem:()=>'{bad'},'a','r').read(),/unreadable/);
+assert.throws(()=>new R.Queue({getItem:()=>null,setItem:()=>{throw Error('full')}},'a','r').add({}),/full/);
+let a=await app();assert.equal(a.q('gate').classList.contains('hidden'),true);assert.match(a.q('pickupList').textContent,/Shipper Store/);assert.doesNotMatch(a.q('pickupList').textContent,/Destination address/);assert.match(a.q('returnList').textContent,/Pickup address/);
+a.q('riderSearch').value='02134567890';a.q('riderSearch').dispatchEvent(new a.w.Event('input'));assert.equal(a.q('pickupList').querySelector('.parcel').hidden,false);assert.equal(a.q('deliveryList').querySelector('.parcel').hidden,true);assert.match(a.q('deliveryList').textContent,/No matching/);
+a.q('riderSearch').value='';a.q('riderSearch').dispatchEvent(new a.w.Event('input'));
+a.q('receiveAwbs').value='N1000002\nBAD';a.q('receiveBtn').click();await wait();assert.equal(a.fixture.requests.filter(r=>r.name==='rider_batch_update_status').length,0);assert.match(a.q('notice').textContent,/Nothing submitted/);
+a.fixture.failRpc='afterCommit';a.q('receiveAwbs').value='N1000002';a.q('receiveBtn').click();await wait();const saved=JSON.parse(a.w.localStorage.getItem('novaxRiderQueue:v2:fixture-user:fixture-rider'));assert.equal(saved.length,1);const first=a.fixture.requests.find(r=>r.name==='rider_batch_update_status');
+a.fixture.failRpc=null;a.w.dispatchEvent(new a.w.Event('online'));await wait();await wait();assert.equal(JSON.parse(a.w.localStorage.getItem('novaxRiderQueue:v2:fixture-user:fixture-rider')).length,0);assert.equal(a.fixture.requests.filter(r=>r.name==='rider_batch_update_status').at(-1).args.p_batch_key,first.args.p_batch_key);
+a.dom.window.close();
+a=await app({conflict:true});assert.equal(a.q('deliveryList').querySelector('[data-action="Delivered"]').disabled,true);assert.match(a.q('deliveryList').textContent,/marked Prepaid/);a.dom.window.close();
+a=await app({failLoad:true});assert.equal(a.q('retryBtn').classList.contains('hidden'),false);a.fixture.failLoad=false;a.q('retryBtn').click();await wait();assert.equal(a.q('gate').classList.contains('hidden'),true);a.dom.window.close();
+a=await app({large:true});assert.equal(a.q('transitList').querySelectorAll('.parcel').length,1006);a.dom.window.close();
+a=await app();a.fixture.online=false;a.w.dispatchEvent(new a.w.Event('offline'));a.q('receiveAwbs').value='N1000002';a.q('receiveBtn').click();await wait();assert.equal(JSON.parse(a.w.localStorage.getItem('novaxRiderQueue:v2:fixture-user:fixture-rider')).length,1);assert.equal(a.fixture.requests.filter(r=>r.name==='rider_batch_update_status').length,0);assert.match(a.q('receivedList').textContent,/Server confirmation pending/);assert.equal(a.q('depositCashBtn').disabled,true);
+const cached={};for(let i=0;i<a.w.localStorage.length;i++){const k=a.w.localStorage.key(i);cached[k]=a.w.localStorage.getItem(k);}a.dom.window.close();
+const dom=new JSDOM(html,{url:'https://fixture.invalid/rider.html?nosw=1',runScripts:'outside-only'});const fixture=installFixture(dom.window,{online:false});Object.entries(cached).forEach(([k,v])=>dom.window.localStorage.setItem(k,v));scripts.forEach(s=>dom.window.eval(s));await wait();assert.equal(dom.window.document.getElementById('gate').classList.contains('hidden'),true);assert.match(dom.window.document.getElementById('notice').textContent,/last saved route/);dom.window.close();
+a=await app();a.fixture.failRpc='reject';a.q('receiveAwbs').value='N1000002';a.q('receiveBtn').click();await wait();assert.equal(JSON.parse(a.w.localStorage.getItem('novaxRiderQueue:v2:fixture-user:fixture-rider'))[0].state,'review');assert.match(a.q('queueReview').textContent,/Not assigned/);a.dom.window.close();
+a=await app();a.fixture.authChange('SIGNED_OUT',null);assert.equal(a.q('gate').classList.contains('hidden'),false);assert.equal(a.q('receiveBtn').disabled,true);a.dom.window.close();
+console.log('PASS rider UI: owner-scoped queues, storage failures, PKT timestamps, phone normalization, shipper contacts, payment conflicts, search, all-or-nothing batches, response-lost replay, offline reload, pagination >1000, rejection review and session revocation.');

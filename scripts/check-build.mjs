@@ -127,8 +127,15 @@ for (const f of readdirSync(root).filter(f => f.endsWith(".html"))) checkHtml(f)
    parse, client.html renders as a dead shell -- markup with no behaviour and
    no error the merchant can see. nv-codegen.js and nv3d-hero.js were deleted
    on 25 Aug and are gone from this list with them. */
-for (const f of ["sw.js", "client-app.js"]) {
+for (const f of ["sw.js", "client-app.js", "rider-app.js", "rider-core.js"]) {
   try { checkJs(f); } catch { /* file may not exist; not a failure */ }
+}
+
+const riderHtml = readFileSync(join(root, "rider.html"), "utf8");
+for (const file of ["rider-app.js", "rider-core.js", "rider.css"]) {
+  const actual = execFileSync("git", ["hash-object", join(root, file)]).toString().trim().slice(0, 8);
+  if (!riderHtml.includes(file + "?v=" + actual)) problems.push(`${file}: rider.html must reference ?v=${actual} to bust stale offline assets.`);
+  else notes.push(`${file}?v=${actual} matches the file`);
 }
 
 /* ── asset version guard ────────────────────────────────────────────────

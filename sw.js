@@ -22,8 +22,8 @@
  *   way. That is the kill switch, and it is the reason it is safe to ship
  *   this at all.
  */
-var CACHE = "novax-v92";
-var PRECACHE = ["/client.html", "/assets/favicon.svg"];
+var CACHE = "novax-v93";
+var PRECACHE = ["/client.html", "/rider.html", "/assets/favicon.svg"];
 
 self.addEventListener("install", function (event) {
   self.skipWaiting();
@@ -41,18 +41,20 @@ self.addEventListener("install", function (event) {
            "one file did not arrive" with a Reload that changes nothing.
            Read the scripts the shell actually asks for and cache them with it,
            so the pair is always coherent. */
-        return c.match("/client.html").then(function (res) {
+        return Promise.all(["/client.html", "/rider.html"].map(function (shell) { return c.match(shell).then(function (res) {
           if (!res) return;
           return res.clone().text().then(function (html) {
             var urls = [], re = /<script[^>]+src="([^"]+)"/g, m;
             while ((m = re.exec(html))) {
               if (m[1].indexOf("//") === -1) urls.push(m[1]);   /* same-origin only */
             }
+            var css = /<link[^>]+href="([^"]+\.css[^\"]*)"/g;
+            while ((m = css.exec(html))) { if (m[1].indexOf("//") === -1) urls.push(m[1]); }
             return Promise.all(urls.map(function (u) {
               return c.add(u).catch(function () {});
             }));
           });
-        }).catch(function () {});
+        }).catch(function () {}); }));
       });
     })
   );
@@ -109,7 +111,11 @@ self.addEventListener("fetch", function (event) {
         return res;
       }).catch(function () {
         return caches.match(req).then(function (hit) {
-          return hit || caches.match("/client.html");
+          if (hit) return hit;
+          var shell = url.pathname === "/rider.html" ? "/rider.html" : url.pathname === "/client.html" ? "/client.html" : null;
+          return (shell ? caches.match(shell) : Promise.resolve(null)).then(function (cached) {
+            return cached || new Response("Offline. Reconnect to open this page.", { status: 503, headers: { "Content-Type": "text/plain" } });
+          });
         });
       })
     );
