@@ -389,6 +389,11 @@ export async function pushTracking(
 // GraphQL rather than REST: REST order endpoints are legacy, and a new public
 // app should not ship on them.
 
+// No customer { phone }: Order.customer needs read_customers, which this app
+// does not hold, and Shopify rejects the WHOLE query -- reconcile and every
+// fresh re-read of an order failed with "Access denied for customer field".
+// order.phone and shippingAddress.phone carry the buyer's number; webhook
+// payloads still include customer.phone for the fallback.
 const ORDER_FIELDS = `
         id name createdAt cancelledAt test tags
         displayFinancialStatus displayFulfillmentStatus currencyCode
@@ -398,7 +403,6 @@ const ORDER_FIELDS = `
         currentTotalPriceSet { shopMoney { amount } }
         shippingLine { title }
         shippingAddress { name firstName lastName address1 address2 city province zip countryCodeV2 phone }
-        customer { phone }
         lineItems(first: 250) {
           pageInfo { hasNextPage }
           nodes {
