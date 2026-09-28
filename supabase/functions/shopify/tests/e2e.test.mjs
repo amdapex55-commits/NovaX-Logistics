@@ -31,14 +31,19 @@ function matches(row, qs) {
 globalThis.fetch = async (input, init = {}) => {
   const url = new URL(typeof input === "string" ? input : input.url);
   const method = (init.method ?? "GET").toUpperCase();
-  const body = init.body ? JSON.parse(init.body) : null;
+  const body = init.body instanceof URLSearchParams ? Object.fromEntries(init.body) :
+    init.body ? JSON.parse(init.body) : null;
   const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "Content-Type": "application/json" } });
 
   // ---- Shopify token exchange
   if (url.href === `https://${SHOP}/admin/oauth/access_token`) {
     calls.tokenExchange++;
     if (body.client_secret !== SECRET) return J({ error: "bad secret" }, 401);
-    return J({ access_token: "shpat_live_token", scope: "read_orders,write_fulfillments" });
+    if (body.grant_type === "refresh_token") return J({ access_token: "shpat_refreshed_token",
+      refresh_token: "refresh_rotated", expires_in: 3600, refresh_token_expires_in: 7776000 });
+    return J({ access_token: "shpat_live_token", refresh_token: "refresh_initial",
+      expires_in: 3600, refresh_token_expires_in: 7776000,
+      scope: "read_orders,write_fulfillments" });
   }
   // ---- Shopify GraphQL
   if (url.pathname.endsWith("/graphql.json")) {
@@ -140,6 +145,13 @@ globalThis.fetch = async (input, init = {}) => {
           r => r.state === body.p_state && r.shop_domain === body.p_shop && !r.used_at);
         if (!row) return J(false);
         row.used_at = new Date().toISOString();
+        return J(true);
+      }
+      if (fn === "nvsh_claim_token_refresh") {
+        const row = db.nvsh_shop.find(r => r.shop_domain === body.p_shop &&
+          r.refresh_token === body.p_refresh_token && !r.refresh_lease_until);
+        if (!row) return J(false);
+        row.refresh_lease_until = new Date(Date.now() + 30000).toISOString();
         return J(true);
       }
       // B05: rows are claimed by one SQL statement now.
@@ -290,6 +302,8 @@ console.log("-- oauth callback --");
     ok.headers.get("location") === `https://${SHOP}/admin/apps/${API_KEY}`, ok.headers.get("location"));
   t("callback exchanged the code once", calls.tokenExchange === 1);
   t("shop row created", db.nvsh_shop.length === 1 && db.nvsh_shop[0].access_token === "shpat_live_token");
+  t("OAuth requests an expiring offline token", db.nvsh_shop[0].refresh_token === "refresh_initial" &&
+    !!db.nvsh_shop[0].token_expires_at);
   t("shop starts pending_link", db.nvsh_shop[0].status === "pending_link");
   /* Three, not six. The privacy/compliance topics are not members of
      WebhookSubscriptionTopic and cannot be subscribed to per shop -- Shopify
@@ -301,6 +315,13 @@ console.log("-- oauth callback --");
 
   const replay = await call(oauthUrl(p));
   t("callback rejects a replayed state", replay.status === 401);
+
+  db.nvsh_shop[0].token_expires_at = new Date(Date.now() - 1000).toISOString();
+  const { getShop } = await import("../db.ts");
+  const renewed = await getShop(SHOP);
+  t("expired offline token refreshes and rotates both credentials",
+    renewed.access_token === "shpat_refreshed_token" && renewed.refresh_token === "refresh_rotated" &&
+    Date.parse(renewed.token_expires_at) > Date.now());
 }
 
 console.log("-- embedded page --");

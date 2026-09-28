@@ -109,6 +109,9 @@ export interface ShopRow {
   id: string;
   shop_domain: string;
   access_token: string | null;
+  refresh_token: string | null;
+  token_expires_at: string | null;
+  refresh_token_expires_at: string | null;
   scopes: string | null;
   client_id: string | null;
   status: string;
@@ -121,13 +124,76 @@ export interface ShopRow {
   rule_exclude_tags: string[] | null;
 }
 
-export function getShop(shop: string): Promise<ShopRow | null> {
+async function readShop(shop: string): Promise<ShopRow | null> {
   return selectOne<ShopRow>(
     "nvsh_shop",
-    `shop_domain=eq.${encodeURIComponent(shop)}&select=id,shop_domain,access_token,scopes,client_id,status,orders_booked,` +
+    `shop_domain=eq.${encodeURIComponent(shop)}&select=id,shop_domain,access_token,refresh_token,token_expires_at,refresh_token_expires_at,scopes,client_id,status,orders_booked,` +
       `booking_mode,rule_require_confirmed,rule_payment_modes,rule_shipping_names,` +
       `rule_location_ids,rule_exclude_tags`,
   );
+}
+
+export async function getShop(shop: string, refresh = true): Promise<ShopRow | null> {
+  let row = await readShop(shop);
+  if (!refresh || !row?.refresh_token || !row.token_expires_at || row.status === "uninstalled") return row;
+  if (Date.parse(row.token_expires_at) > Date.now() + 5 * 60_000) return row;
+
+  const oldRefreshToken = row.refresh_token;
+  const claimed = await rpc<boolean>("nvsh_claim_token_refresh", {
+    p_shop: shop, p_refresh_token: oldRefreshToken,
+  });
+  if (!claimed) {
+    // A concurrent request is already rotating this store's credentials.
+    for (let i = 0; i < 20; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      row = await readShop(shop);
+      if (row?.refresh_token !== oldRefreshToken) return row;
+    }
+    throw new Error("Shopify token refresh is in progress");
+  }
+
+  try {
+    const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: "POST",
+      signal: AbortSignal.timeout(10_000),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: Deno.env.get("SHOPIFY_API_KEY") ?? "",
+        client_secret: Deno.env.get("SHOPIFY_API_SECRET") ?? "",
+        refresh_token: oldRefreshToken,
+      }),
+    });
+    if (!response.ok) throw new Error(`Shopify token refresh failed: ${response.status}`);
+    const token = await response.json() as {
+      access_token?: string; refresh_token?: string; expires_in?: number;
+      refresh_token_expires_in?: number;
+    };
+    if (!token.access_token || !token.refresh_token || !token.expires_in) {
+      throw new Error("Shopify token refresh returned incomplete credentials");
+    }
+    const patch: Record<string, unknown> = {
+      access_token: token.access_token,
+      refresh_token: token.refresh_token,
+      token_expires_at: new Date(Date.now() + token.expires_in * 1000).toISOString(),
+      refresh_lease_until: null,
+      updated_at: new Date().toISOString(),
+    };
+    if (token.refresh_token_expires_in) {
+      patch.refresh_token_expires_at = new Date(Date.now() + token.refresh_token_expires_in * 1000).toISOString();
+    }
+    const changed = await update<ShopRow>(
+      "nvsh_shop",
+      `shop_domain=eq.${encodeURIComponent(shop)}&refresh_token=eq.${encodeURIComponent(oldRefreshToken)}`,
+      patch,
+    );
+    if (changed.length === 0) throw new Error("Shopify token changed during refresh");
+    return changed[0];
+  } catch (error) {
+    await update("nvsh_shop", `shop_domain=eq.${encodeURIComponent(shop)}&refresh_token=eq.${encodeURIComponent(oldRefreshToken)}`,
+      { refresh_lease_until: null });
+    throw error;
+  }
 }
 
 export async function logEvent(

@@ -114,20 +114,34 @@ async function handleCallback(url: URL): Promise<Response> {
 
   const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ client_id: API_KEY, client_secret: API_SECRET, code }),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: API_KEY, client_secret: API_SECRET, code, expiring: "1" }),
   });
   if (!tokenRes.ok) {
     await logEvent(shop, "oauth", null, false, `token exchange ${tokenRes.status}`);
     return text("token exchange failed", 502);
   }
-  const tok = await tokenRes.json() as { access_token: string; scope: string };
+  const tok = await tokenRes.json() as {
+    access_token: string; scope: string; refresh_token?: string;
+    expires_in?: number; refresh_token_expires_in?: number;
+  };
+  if (!tok.access_token || !tok.refresh_token || !tok.expires_in || !tok.refresh_token_expires_in) {
+    await logEvent(shop, "oauth", null, false, "expiring token exchange returned incomplete credentials");
+    return text("token exchange returned incomplete credentials", 502);
+  }
+  const tokenFields = {
+    access_token: tok.access_token,
+    refresh_token: tok.refresh_token,
+    token_expires_at: new Date(Date.now() + tok.expires_in * 1000).toISOString(),
+    refresh_token_expires_at: new Date(Date.now() + tok.refresh_token_expires_in * 1000).toISOString(),
+    refresh_lease_until: null,
+  };
 
   // Upsert: a reinstall must replace the old token, not fail on the unique key.
-  const existing = await getShop(shop);
+  const existing = await getShop(shop, false);
   if (existing) {
     await update("nvsh_shop", `shop_domain=eq.${encodeURIComponent(shop)}`, {
-      access_token: tok.access_token,
+      ...tokenFields,
       scopes: tok.scope,
       // A37: reinstalling reactivated an administratively blocked shop. A block
       // is a decision someone made; only an admin undoes it.
@@ -140,7 +154,7 @@ async function handleCallback(url: URL): Promise<Response> {
   } else {
     await insert("nvsh_shop", {
       shop_domain: shop,
-      access_token: tok.access_token,
+      ...tokenFields,
       scopes: tok.scope,
       status: "pending_link",
     });
@@ -1010,6 +1024,10 @@ async function handleUninstalled(v: Verified): Promise<Response> {
   await update("nvsh_shop", `shop_domain=eq.${encodeURIComponent(v.shop)}`, {
     status: "uninstalled",
     access_token: null, // the token is dead the moment they uninstall
+    refresh_token: null,
+    token_expires_at: null,
+    refresh_token_expires_at: null,
+    refresh_lease_until: null,
     uninstalled_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   });
@@ -1068,7 +1086,9 @@ async function handleShopRedact(v: Verified): Promise<Response> {
   await update("nvsh_order", `shop_domain=eq.${encodeURIComponent(v.shop)}`,
     { payload: null, updated_at: new Date().toISOString() });
   await update("nvsh_shop", `shop_domain=eq.${encodeURIComponent(v.shop)}`,
-    { access_token: null, status: "uninstalled", updated_at: new Date().toISOString() });
+    { access_token: null, refresh_token: null, token_expires_at: null,
+      refresh_token_expires_at: null, refresh_lease_until: null,
+      status: "uninstalled", updated_at: new Date().toISOString() });
   await rpc("nvsh_privacy_log", {
     p_shop: v.shop, p_kind: "shop/redact", p_customer: null, p_orders: [], p_payload: {},
   });
@@ -1112,7 +1132,20 @@ async function handleFulfill(req: Request): Promise<Response> {
       `&shopify_order_id=eq.${encodeURIComponent(r.shopify_order_id)}`;
     const now = new Date().toISOString();
 
-    const shopRow = await getShop(r.shop_domain);
+    // getShop refreshes an expiring token and throws if Shopify refuses. That
+    // throw must not escape the loop -- the A16 starvation bug below, again.
+    let shopRow: Awaited<ReturnType<typeof getShop>>;
+    try {
+      shopRow = await getShop(r.shop_domain);
+    } catch (err) {
+      await rpc("nvsh_fulfill_fail", {
+        p_shop: r.shop_domain, p_order_id: r.shopify_order_id, p_worker: worker,
+        p_error: "could not refresh the Shopify access token: " + String((err as Error).message).slice(0, 150),
+        p_exhaust: false,
+      });
+      failed++;
+      continue;
+    }
     if (!shopRow?.access_token) {
       // Uninstalled between handover and here. There is nothing to fulfil and
       // no token to do it with, so stop retrying rather than burn attempts.
