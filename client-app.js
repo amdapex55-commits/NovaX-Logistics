@@ -5401,6 +5401,109 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           : "For a thermal label printer only. On an office printer this wastes a whole sheet per label.")+
         '</span>';
     }
+    /* ── Label PDF download ─────────────────────────────────────────────
+       Libraries load only when a merchant asks for a PDF (from jsDelivr, the
+       CDN supabase-js already comes from), so nobody else pays for them. */
+    var NV_PDF_LIBS=null;
+    function nvLoadScriptOnce(src){
+      return new Promise(function(resolve,reject){
+        if(document.querySelector('script[data-nv-src="'+src+'"]')){ resolve(); return; }
+        var sc=document.createElement("script"); sc.src=src; sc.async=true; sc.dataset.nvSrc=src;
+        sc.onload=function(){ resolve(); }; sc.onerror=function(){ sc.remove(); reject(new Error("Could not load "+src)); };
+        document.head.appendChild(sc);
+      });
+    }
+    function nvPdfLibs(){
+      if(window.jspdf && window.html2canvas) return Promise.resolve();
+      if(!NV_PDF_LIBS){
+        NV_PDF_LIBS=Promise.all([
+          nvLoadScriptOnce("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"),
+          nvLoadScriptOnce("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js")
+        ]).catch(function(e){ NV_PDF_LIBS=null; throw e; });
+      }
+      return NV_PDF_LIBS;
+    }
+    function nvDownloadLabelsPdf(awbs, btn){
+      var parcels=(awbs||[]).map(function(a){ return state.parcels.find(function(p){ return p.awb===a; }); }).filter(Boolean);
+      if(!parcels.length){ toast("No AWB available to download."); return Promise.resolve(false); }
+      if(nvDownloadLabelsPdf._busy) return Promise.resolve(false);
+      nvDownloadLabelsPdf._busy=true;
+      var label=btn?btn.textContent:"";
+      if(btn){ btn.disabled=true; btn.textContent="Preparing PDF…"; }
+      var host=null;
+      function done(){
+        nvDownloadLabelsPdf._busy=false;
+        if(host&&host.parentNode) host.parentNode.removeChild(host);
+        if(btn){ btn.disabled=false; btn.textContent=label; }
+      }
+      return nvPdfLibs().then(function(){
+        /* Off-screen, fixed width, and forced LIGHT: the label takes its
+           background from the theme, so in dark mode it would render dark. */
+        host=document.createElement("div");
+        host.setAttribute("aria-hidden","true");
+        host.style.cssText="position:fixed;left:-10000px;top:0;width:780px;padding:0;background:#fff;z-index:-1;"+
+          "--nvu-bg:#ffffff;--nvu-bg-2:#f7f9fb;--nvu-ink:#121821;--nvu-ink-2:#333;--nvu-ink-3:#444;--nvu-line:#d4dae1;--nvu-line-2:#b9c2cc;color-scheme:light;";
+        host.innerHTML=parcels.map(function(p){ return '<div class="nv-pdf-label" style="background:#fff;padding:8px">'+awbLabelHtml(p)+'</div>'; }).join("");
+        document.body.appendChild(host);
+        host.querySelectorAll(".awb-label").forEach(function(l){ l.style.boxShadow="none"; l.style.background="#fff"; });
+        var imgs=Array.from(host.querySelectorAll("img"));
+        return Promise.race([
+          Promise.all(imgs.map(function(img){ return img.complete?null:new Promise(function(r){ img.onload=img.onerror=r; }); })),
+          new Promise(function(r){ setTimeout(r,2500); })
+        ]);
+      }).then(function(){
+        var jsPDF=window.jspdf.jsPDF;
+        var doc=new jsPDF({ unit:"mm", format:"a4", orientation:"portrait", compress:true });
+        var pageW=210, pageH=297, margin=8, gap=6, usableW=pageW-margin*2;
+        var y=margin, first=true;
+        var blocks=Array.from(host.querySelectorAll(".nv-pdf-label"));
+        /* One label at a time, so a 50-label download does not hold 50
+           canvases in a phone's memory at once. */
+        return blocks.reduce(function(chain,block){
+          return chain.then(function(){
+            return window.html2canvas(block,{ scale:2, backgroundColor:"#ffffff", useCORS:true, logging:false })
+              .then(function(canvas){
+                var h=canvas.height*usableW/canvas.width;
+                if(!first && y+h>pageH-margin){ doc.addPage(); y=margin; }
+                doc.addImage(canvas.toDataURL("image/jpeg",0.92),"JPEG",margin,y,usableW,h);
+                y+=h+gap; first=false;
+                canvas.width=canvas.height=0;
+              });
+          });
+        },Promise.resolve()).then(function(){ return doc; });
+      }).then(function(doc){
+        var name=(parcels.length===1?("NovaX-AWB-"+parcels[0].awb):("NovaX-AWBs-"+parcels.length))+".pdf";
+        var blob=doc.output("blob");
+        var file=null;
+        try{ file=new File([blob],name,{ type:"application/pdf" }); }catch(e){}
+        var coarse=false; try{ coarse=matchMedia("(pointer:coarse)").matches; }catch(e){}
+        function download(){
+          var url=URL.createObjectURL(blob);
+          var a=document.createElement("a"); a.href=url; a.download=name; a.rel="noopener";
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function(){ URL.revokeObjectURL(url); },60000);
+          toast(parcels.length===1?("Label "+parcels[0].awb+" downloaded as PDF."):(parcels.length+" labels downloaded as one PDF."),"success");
+        }
+        /* Phones: the share sheet is where "Save to Files" and WhatsApp are.
+           If it is refused (no user gesture left after the libraries loaded,
+           or the browser has no share), fall back to a plain download. */
+        if(coarse && file && navigator.canShare && navigator.canShare({ files:[file] })){
+          return navigator.share({ files:[file], title:name }).then(function(){
+            toast("Label PDF ready.","success");
+          }).catch(function(e){
+            if(e && e.name==="AbortError") return;   // they closed the sheet on purpose
+            download();
+          });
+        }
+        download();
+      }).then(function(){ done(); return true; }).catch(function(e){
+        done();
+        toast("Could not create the PDF: "+String((e&&e.message)||e)+". Try again, or use Print Now.","error");
+        return false;
+      });
+    }
+    window.nvDownloadLabelsPdf=nvDownloadLabelsPdf;
+
     function printLabels(awbs){
       const stage=document.getElementById("printStage");
       // NovaX fix (Autopilot AWB printing v1): printLabels now always
@@ -12000,6 +12103,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(e.target && e.target.classList && e.target.classList.contains("newbooked-check")) nvSyncSelectAllNewBookedLabel();
     });
     document.getElementById("newBookedPrintBtn")?.addEventListener("click",printNewBookedSelected);
+    document.getElementById("newBookedPdfBtn")?.addEventListener("click",function(){
+      const awbs=Array.from(document.querySelectorAll(".newbooked-check")).filter(b=>b.checked).map(b=>b.value);
+      if(!awbs.length){ toast("Select at least one new booked AWB."); return; }
+      nvDownloadLabelsPdf(awbs,this);
+    });
     document.getElementById("loadSheetSelectAllBtn")?.addEventListener("click",toggleSelectAllLoadSheet);
     document.getElementById("loadSheetPrintBtn")?.addEventListener("click",printLoadSheetSelected);
     document.getElementById("requestPickupBtn")?.addEventListener("click",requestPickup);
@@ -12008,12 +12116,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        There is no bundler in this repo and so no PDF library, and a browser
        cannot attach a generated file to a wa.me link. Rather than fake either,
        both buttons do the real thing the platform allows and say so plainly. */
+    /* 28 Sep 2026 (TKT-000093, Shadesitori): "Save as PDF" opened the print
+       dialog and told the merchant to pick "Save as PDF" there. On most phones
+       -- in-app browsers, Samsung Internet, many iPhones -- that dialog never
+       appears or has no such option, so a merchant on a phone had NO way to get
+       a label file at all. This now builds a real PDF in the browser and hands
+       it over as a download (or the phone's share sheet, where Save to Files
+       and WhatsApp live). Print Now is unchanged. */
     document.getElementById("savePdfAwbBtn")?.addEventListener("click",function(){
       var awb=state.lastGeneratedAwb||state.selectedAwb;
       if(!awb){ toast("Book or select a parcel first."); return; }
-      toast("In the print dialog, set Destination to \u201cSave as PDF\u201d.");
-      /* Let the toast paint before the dialog steals the thread. */
-      setTimeout(function(){ nvSafeCallOuter(function(){ printLabels([awb]); }); },450);
+      nvDownloadLabelsPdf([awb], this);
     });
     document.getElementById("waAwbBtn")?.addEventListener("click",function(){
       var awb=state.lastGeneratedAwb||state.selectedAwb;
