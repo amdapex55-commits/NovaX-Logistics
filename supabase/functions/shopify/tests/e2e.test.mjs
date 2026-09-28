@@ -73,7 +73,7 @@ globalThis.fetch = async (input, init = {}) => {
     if (/fulfillmentOrders/.test(body.query) && ONE_LOCATION)
       return J({ data: { order: { fulfillmentOrders: { pageInfo: { hasNextPage: false }, nodes: [
         { id: "gid://shopify/FulfillmentOrder/9", status: "OPEN",
-          assignedLocation: { location: { id: "gid://shopify/Location/1", name: "Karachi" } },
+          assignedLocation: { name: "Karachi", address1: "1 Shahrah-e-Faisal", city: "Karachi", zip: "75400", countryCode: "PK" },
           lineItems: { nodes: [{ id: "gid://shopify/FulfillmentOrderLineItem/91", remainingQuantity: 2 }] } },
       ] } } } });
     if (/fulfillmentOrders/.test(body.query))
@@ -82,10 +82,10 @@ globalThis.fetch = async (input, init = {}) => {
       // fulfilled in full regardless of what the parcel contained.
       return J({ data: { order: { fulfillmentOrders: { nodes: [
         { id: "gid://shopify/FulfillmentOrder/9", status: "OPEN",
-          assignedLocation: { location: { id: "gid://shopify/Location/1", name: "Karachi" } },
+          assignedLocation: { name: "Karachi", address1: "1 Shahrah-e-Faisal", city: "Karachi", zip: "75400", countryCode: "PK" },
           lineItems: { nodes: [{ id: "gid://shopify/FulfillmentOrderLineItem/91", remainingQuantity: 2 }] } },
         { id: "gid://shopify/FulfillmentOrder/10", status: "OPEN",
-          assignedLocation: { location: { id: "gid://shopify/Location/2", name: "Lahore" } },
+          assignedLocation: { name: "Lahore", address1: "5 Mall Road", city: "Lahore", zip: "54000", countryCode: "PK" },
           lineItems: { nodes: [{ id: "gid://shopify/FulfillmentOrderLineItem/101", remainingQuantity: 1 }] } },
       ] } } } });
     if (/fulfillmentCreate/.test(body.query))
@@ -285,6 +285,21 @@ console.log("\n-- health & install --");
     !/write_customers|read_all_orders/.test(loc), loc);
 }
 t("install rejects a non-myshopify shop", (await call("/install?shop=evil.com")).status === 400);
+
+// 28 Sep 2026: two queries asked for fields behind scopes this app does not
+// hold -- customer { } (read_customers) and location { } (read_locations).
+// Shopify rejects the WHOLE query, so reconcile and every fulfillment failed
+// live while this stub, which answers anything, stayed green.
+{
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../shopify-api.ts", import.meta.url), "utf8")
+    .replace(/^\s*(\/\/|#).*$/gm, "");
+  const gql = [...src.matchAll(/`([^`]*)`/g)].map((m) => m[1])
+    .filter((q) => /\b(query|mutation)\b|lineItems\(/.test(q)).join("\n");
+  const gated = [...gql.matchAll(/\b(customer|location|locations|inventoryLevel|inventoryItem|customers)\s*(\(|\{)/g)]
+    .map((m) => m[1]);
+  t("no GraphQL field needs a scope we do not request", gated.length === 0, gated.join(","));
+}
 
 console.log("-- oauth callback --");
 {

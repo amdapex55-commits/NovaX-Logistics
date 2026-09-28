@@ -171,7 +171,11 @@ const FULFILLMENT_ORDERS = `
         nodes {
           id
           status
-          assignedLocation { location { id name } }
+          # Not location { id }: Location needs read_locations, which this app
+          # does not hold, and Shopify refused the whole query -- no fulfillment
+          # could ever be created. The assigned location's own name and address
+          # are readable with the fulfillment-order scopes alone.
+          assignedLocation { name address1 city zip countryCode }
           lineItems(first: 100) { nodes { id remainingQuantity } }
         }
       }
@@ -191,7 +195,10 @@ interface FoPage { pageInfo?: { hasNextPage?: boolean }; nodes: FoNode[] }
 interface FoNode {
   id: string;
   status: string;
-  assignedLocation?: { location?: { id?: string | null; name?: string | null } | null } | null;
+  assignedLocation?: {
+    name?: string | null; address1?: string | null; city?: string | null;
+    zip?: string | null; countryCode?: string | null;
+  } | null;
   lineItems?: { nodes: Array<{ id: string; remainingQuantity: number }> } | null;
 }
 
@@ -302,7 +309,10 @@ export async function pushTracking(
   // rather than being merged into someone else's.
   const byLocation = new Map<string, FoNode[]>();
   for (const n of nodes) {
-    const loc = n.assignedLocation?.location?.id ?? `unassigned:${n.id}`;
+    const a = n.assignedLocation;
+    const loc = a && (a.name || a.address1)
+      ? [a.name, a.address1, a.city, a.zip, a.countryCode].map((x) => x ?? "").join("|")
+      : `unassigned:${n.id}`;
     const list = byLocation.get(loc) ?? [];
     list.push(n);
     byLocation.set(loc, list);
@@ -316,7 +326,7 @@ export async function pushTracking(
   // location; anything else is handed back to a human rather than guessed.
   if (byLocation.size > 1) {
     const names = [...byLocation.values()]
-      .map((g) => g[0].assignedLocation?.location?.name ?? "an unnamed location");
+      .map((g) => g[0].assignedLocation?.name ?? "an unnamed location");
     return {
       ok: false,
       detail: `This order ships from ${byLocation.size} locations (${names.join(", ")}). ` +
