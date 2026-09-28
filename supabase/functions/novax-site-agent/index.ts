@@ -165,6 +165,34 @@ async function rateOk(ip: string): Promise<boolean> {
   } catch { return true; }
 }
 
+// ---- the admin-approved answer bank (sql_novax_ai_answer_bank.sql) ----
+async function bankLookup(question: string): Promise<{ answer: string; suggestions: string[] } | null> {
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key) return null;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 3000);
+    const r = await fetch(`${url}/rest/v1/rpc/nv_ai_answer_lookup`, {
+      method: "POST",
+      headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_q: question, p_scope: "site" }),
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(t));
+    if (!r.ok) return null;
+    const rows = await r.json() as Array<{ answer?: string; suggestions?: string[] }>;
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row || !row.answer) return null;
+    return {
+      answer: String(row.answer),
+      suggestions: (Array.isArray(row.suggestions) ? row.suggestions : []).map((x) => String(x).slice(0, 80)).slice(0, 3),
+    };
+  } catch (e) {
+    console.warn("novax-site-agent: answer bank lookup failed:", e);
+    return null;
+  }
+}
+
 // ---- record the conversation where admin already reads them ----------
 // Written directly with the service role, NOT through ai_conv_start /
 // ai_msg_log: both resolve nv_ai_my_client() and refuse when it is NULL,
@@ -252,6 +280,21 @@ Deno.serve(async (req: Request) => {
       answer: `You have asked a lot in a short time — message the team on WhatsApp and they will help right away: ${WHATSAPP.join(", ")}.`,
       suggestions: [], whatsapp: WHATSAPP, limitReached: true, turnsUsed, turnsLeft: 0,
     });
+  }
+
+  // ---- answer bank first: approved answers, free and instant -----------
+  // Only questions nothing in nv_ai_answers matches go on to the model. Any
+  // failure here just means "no match" -- it can never cost an answer.
+  {
+    const question = messages[messages.length - 1].content;
+    const hit = await bankLookup(question);
+    if (hit) {
+      const convId = await logTurn(typeof body.conv_id === "string" ? body.conv_id : null, question, hit.answer);
+      return json(req, {
+        answer: hit.answer, suggestions: hit.suggestions, conv_id: convId, source: "bank",
+        turnsUsed, turnsLeft: Math.max(0, MAX_TURNS - turnsUsed),
+      });
+    }
   }
 
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");

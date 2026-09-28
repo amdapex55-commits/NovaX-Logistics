@@ -5335,6 +5335,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                 <div class="admin-subnav">
                   <button type="button" class="admin-subtab" data-admin-tab="novaai">Message Limits</button>
                   <button type="button" class="admin-subtab" data-admin-tab="ai-chats">Merchant Conversations</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="ai-answers">Answer Bank</button>
                 </div>
               </div>
 
@@ -5951,6 +5952,49 @@ html,body{ background:var(--bg); color:var(--ink); }
                 </div>
                 <div id="nvAicStats" class="grid metrics" style="margin-bottom:12px"></div>
                 <div id="nvAicList" class="ops-list"><div class="footer-note">Loading conversations&hellip;</div></div>
+              </div>
+            </section>
+            <!-- NovaX AI answer bank (sql_novax_ai_answer_bank.sql). Approved
+                 answers the homepage chat and the portal Autopilot give
+                 instantly, before any AI model is asked. Writes go through
+                 nv_ai_answer_save / nv_ai_answer_delete, which enforce admin. -->
+            <section class="admin-module" id="admin-ai-answers">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>NovaX AI &mdash; Answer Bank</h3>
+                  <p>Approved answers the chat gives straight away, free, in exactly these words. A question gets an answer here when it contains one of that answer's phrases. Anything no answer matches (or a question about two different things) still goes to the AI. Write the Roman Urdu version too: people who ask in Roman Urdu get that one.</p></div>
+                  <div style="display:flex;gap:8px;flex:0 0 auto">
+                    <button class="ghost-btn" type="button" onclick="nvAbLoad()">Refresh</button>
+                    <button class="action-btn" type="button" onclick="nvAbEdit(null)">New answer</button>
+                  </div>
+                </div>
+                <div class="inline-actions" style="flex-wrap:wrap;gap:8px;margin:4px 0 12px">
+                  <input id="nvAbTestQ" class="search" placeholder="Try a question, e.g. Karachi se Lahore kitne din?" style="flex:1 1 260px;min-width:0" onkeydown="if(event.key==='Enter')nvAbTest()">
+                  <select id="nvAbTestScope" style="flex:0 0 auto"><option value="site">Website chat</option><option value="portal">Merchant portal</option></select>
+                  <button class="ghost-btn" type="button" onclick="nvAbTest()">Test</button>
+                </div>
+                <div id="nvAbTestOut" class="footer-note" style="margin:-4px 0 12px" hidden></div>
+                <div id="nvAbForm" class="panel" style="margin:0 0 14px;padding:14px" hidden>
+                  <div class="grid two" style="gap:10px">
+                    <div class="field"><label>Topic</label><input id="nvAbTopic" maxlength="80" placeholder="e.g. Rates"></div>
+                    <div class="field"><label>Used on</label><select id="nvAbScope"><option value="all">Website chat and merchant portal</option><option value="site">Website chat only</option><option value="portal">Merchant portal only</option></select></div>
+                  </div>
+                  <div class="field"><label>Phrases that trigger it (comma separated, whole words)</label><textarea id="nvAbPhrases" rows="2" placeholder="rates, price, charges, kitne ka"></textarea></div>
+                  <div class="field"><label>Answer (English)</label><textarea id="nvAbEn" rows="3" maxlength="1200"></textarea></div>
+                  <div class="field"><label>Answer (Roman Urdu, optional)</label><textarea id="nvAbUr" rows="3" maxlength="1200"></textarea></div>
+                  <div class="grid two" style="gap:10px">
+                    <div class="field"><label>Follow-up buttons, English (one per line, up to 3)</label><textarea id="nvAbSugEn" rows="3"></textarea></div>
+                    <div class="field"><label>Follow-up buttons, Roman Urdu (one per line)</label><textarea id="nvAbSugUr" rows="3"></textarea></div>
+                  </div>
+                  <label class="check-line"><input type="checkbox" id="nvAbEnabled" checked> Live (the chat uses this answer)</label>
+                  <div class="inline-actions" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+                    <button class="action-btn" type="button" id="nvAbSaveBtn" onclick="nvAbSave()">Save answer</button>
+                    <button class="ghost-btn" type="button" onclick="nvAbClose()">Cancel</button>
+                    <button class="ghost-btn" type="button" id="nvAbDelBtn" style="margin-left:auto;color:#c84b42" onclick="nvAbDelete()" hidden>Delete</button>
+                  </div>
+                  <div id="nvAbFormMsg" class="footer-note" style="margin-top:8px"></div>
+                </div>
+                <div id="nvAbList" class="ops-list"><div class="footer-note">Loading answers&hellip;</div></div>
               </div>
             </section>
             <section class="admin-module" id="admin-reviews">
@@ -6936,7 +6980,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       manifest: ["manifest-summary", "manifest-transit", "manifest-reached", "manifest-dispute"],
       riders: ["riders-route", "riders-report", "riders-summary"],
       support: ["support-tickets"],
-      novaxai: ["novaai", "ai-chats"],
+      novaxai: ["novaai", "ai-chats", "ai-answers"],
       finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-topup", "finance-dues", "finance-balances", "finance-summary", "finance-overall", "finance-revenue"],
       clients: ["clients-summary", "clients-leads", "clients-create-new", "clients-clients"],
       users: ["users-create", "users-edit", "users-staff"],
@@ -11615,6 +11659,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (state.activeAdminTab === "reviews") { try { loadAdminReviews(); } catch(e){} }
       if (state.activeAdminTab === "novaai") { try { loadAiQuotaQueue(); } catch(e){} }
       if (state.activeAdminTab === "ai-chats") { try { nvAicLoad(); } catch(e){} }
+      if (state.activeAdminTab === "ai-answers") { try { nvAbLoad(); } catch(e){} }
     }
 
     // NovaX fix (Order Processing RPC scope bug): rParcel() is defined much
@@ -16109,6 +16154,105 @@ html,body{ background:var(--bg); color:var(--ink); }
        it or reply into the merchant's AI thread from here. Replying is what
        the support ticket queue is for.
        =================================================================== */
+    /* ===================================================================
+       NovaX AI -- answer bank. Reads nv_ai_answers (admin SELECT policy);
+       writes only through nv_ai_answer_save / _delete, which check is_admin()
+       in Postgres. Supabase resolves failures with {error}, so every call
+       checks r.error before reporting success.
+       =================================================================== */
+    var NV_AB = { rows: [], editId: null, busy: false };
+    function nvAbEl(id){ return document.getElementById(id); }
+    function nvAbLines(v){ return String(v || "").split(/\n/).map(function(x){ return x.trim(); }).filter(Boolean).slice(0, 3); }
+    function nvAbLoad(){
+      var sb = window.__nvSb, host = nvAbEl("nvAbList");
+      if (!sb || !host) return;
+      Promise.resolve(sb.from("nv_ai_answers").select("*").order("hits", { ascending: false }).order("topic"))
+        .then(function(r){
+          if (r && r.error) { host.innerHTML = '<div class="footer-note">Could not load answers: ' + nvEscAdmin(r.error.message) + '</div>'; return; }
+          NV_AB.rows = (r && r.data) || [];
+          nvAbRender();
+        }, function(e){ host.innerHTML = '<div class="footer-note">Could not load answers.</div>'; });
+    }
+    function nvAbRender(){
+      var host = nvAbEl("nvAbList"); if (!host) return;
+      if (!NV_AB.rows.length) { host.innerHTML = '<div class="footer-note">No answers yet. Add the first one with New answer.</div>'; return; }
+      var scopeName = { all: "Website + portal", site: "Website only", portal: "Portal only" };
+      host.innerHTML = NV_AB.rows.map(function(a){
+        var ph = (a.phrases || []).slice(0, 10).join(", ") + ((a.phrases || []).length > 10 ? ", +" + ((a.phrases || []).length - 10) + " more" : "");
+        return '<div class="ops-card" style="display:block;padding:12px 14px">' +
+          '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+            '<b>' + nvEscAdmin(a.topic) + '</b>' +
+            '<span class="footer-note">' + nvEscAdmin(scopeName[a.scope] || a.scope) + '</span>' +
+            (a.enabled ? '' : '<span class="footer-note" style="color:#c84b42">Off</span>') +
+            '<span class="footer-note">' + Number(a.hits || 0) + ' answered' + (a.last_hit_at ? ' &middot; last ' + nvEscAdmin(nvAicAgo(a.last_hit_at)) : '') + '</span>' +
+            '<button class="ghost-btn" type="button" style="margin-left:auto" onclick="nvAbEdit(\'' + nvEscAdmin(a.id) + '\')">Edit</button>' +
+          '</div>' +
+          '<div style="margin-top:6px;font-size:13px;line-height:1.45">' + nvEscAdmin(a.answer_en) + '</div>' +
+          (a.answer_ur ? '<div class="footer-note" style="margin-top:4px">' + nvEscAdmin(a.answer_ur) + '</div>' : '') +
+          '<div class="footer-note" style="margin-top:6px">Triggers: ' + nvEscAdmin(ph) + '</div>' +
+        '</div>';
+      }).join("");
+    }
+    function nvAbEdit(id){
+      var a = id ? NV_AB.rows.filter(function(x){ return x.id === id; })[0] : null;
+      NV_AB.editId = a ? a.id : null;
+      nvAbEl("nvAbTopic").value = a ? a.topic : "";
+      nvAbEl("nvAbScope").value = a ? a.scope : "all";
+      nvAbEl("nvAbPhrases").value = a ? (a.phrases || []).join(", ") : "";
+      nvAbEl("nvAbEn").value = a ? a.answer_en : "";
+      nvAbEl("nvAbUr").value = a ? (a.answer_ur || "") : "";
+      nvAbEl("nvAbSugEn").value = a ? (a.suggest_en || []).join("\n") : "";
+      nvAbEl("nvAbSugUr").value = a ? (a.suggest_ur || []).join("\n") : "";
+      nvAbEl("nvAbEnabled").checked = a ? !!a.enabled : true;
+      nvAbEl("nvAbDelBtn").hidden = !a;
+      nvAbEl("nvAbFormMsg").textContent = "";
+      nvAbEl("nvAbForm").hidden = false;
+      try { nvAbEl("nvAbForm").scrollIntoView({ behavior: "smooth", block: "start" }); } catch(e){}
+      nvAbEl("nvAbTopic").focus();
+    }
+    function nvAbClose(){ nvAbEl("nvAbForm").hidden = true; NV_AB.editId = null; }
+    function nvAbSave(){
+      var sb = window.__nvSb; if (!sb || NV_AB.busy) return;
+      var msg = nvAbEl("nvAbFormMsg"), btn = nvAbEl("nvAbSaveBtn");
+      var phrases = String(nvAbEl("nvAbPhrases").value || "").split(/[,\n]/).map(function(x){ return x.trim(); }).filter(Boolean);
+      NV_AB.busy = true; btn.disabled = true; msg.textContent = "Saving\u2026";
+      Promise.resolve(sb.rpc("nv_ai_answer_save", {
+        p_id: NV_AB.editId, p_topic: nvAbEl("nvAbTopic").value, p_phrases: phrases,
+        p_answer_en: nvAbEl("nvAbEn").value, p_answer_ur: nvAbEl("nvAbUr").value,
+        p_suggest_en: nvAbLines(nvAbEl("nvAbSugEn").value), p_suggest_ur: nvAbLines(nvAbEl("nvAbSugUr").value),
+        p_scope: nvAbEl("nvAbScope").value, p_enabled: nvAbEl("nvAbEnabled").checked
+      })).then(function(r){
+        NV_AB.busy = false; btn.disabled = false;
+        if (r && r.error) { msg.textContent = r.error.message || "Could not save."; return; }
+        nvAbClose(); nvAbLoad();
+        try { toast("Answer saved. The chat uses it from the next question."); } catch(e){}
+      }, function(){ NV_AB.busy = false; btn.disabled = false; msg.textContent = "Could not save. Check your connection."; });
+    }
+    function nvAbDelete(){
+      var sb = window.__nvSb; if (!sb || !NV_AB.editId || NV_AB.busy) return;
+      if (!confirm("Delete this answer? The chat will send these questions to the AI instead. To pause it, untick Live instead.")) return;
+      NV_AB.busy = true;
+      Promise.resolve(sb.rpc("nv_ai_answer_delete", { p_id: NV_AB.editId })).then(function(r){
+        NV_AB.busy = false;
+        if (r && r.error) { nvAbEl("nvAbFormMsg").textContent = r.error.message || "Could not delete."; return; }
+        nvAbClose(); nvAbLoad();
+      }, function(){ NV_AB.busy = false; nvAbEl("nvAbFormMsg").textContent = "Could not delete."; });
+    }
+    function nvAbTest(){
+      var sb = window.__nvSb, out = nvAbEl("nvAbTestOut"), q = String(nvAbEl("nvAbTestQ").value || "").trim();
+      if (!sb || !q) return;
+      out.hidden = false; out.textContent = "Checking\u2026";
+      Promise.resolve(sb.rpc("nv_ai_answer_test", { p_q: q, p_scope: nvAbEl("nvAbTestScope").value })).then(function(r){
+        if (r && r.error) { out.textContent = r.error.message; return; }
+        var row = r && r.data && r.data[0];
+        out.innerHTML = row
+          ? 'Answered instantly by <b>' + nvEscAdmin(row.topic) + '</b> (matched &ldquo;' + nvEscAdmin(row.matched) + '&rdquo;): ' + nvEscAdmin(row.answer)
+          : 'No answer matches, so this question goes to the AI.';
+      }, function(){ out.textContent = "Could not test right now."; });
+    }
+    window.nvAbLoad = nvAbLoad; window.nvAbEdit = nvAbEdit; window.nvAbClose = nvAbClose;
+    window.nvAbSave = nvAbSave; window.nvAbDelete = nvAbDelete; window.nvAbTest = nvAbTest;
+
     var NV_AIC = { convs: [], msgs: {}, openId: null, q: "", days: 30, loading: false };
 
     function nvAicWhen(t){
@@ -19199,6 +19343,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       ["pickup-requests","Pickup Requests","Merchant pickup queue"],
       ["reviews","Reviews","Approve merchant testimonials"],
       ["novaai","NovaX AI — Message Limits","Approve AI message-limit requests"],
+      ["ai-answers","NovaX AI — Answer Bank","Edit the answers the chat gives instantly"],
       ["ai-chats","NovaX AI — Merchant Conversations","Read what merchants ask the AI"],
       ["riders-route","Riders — On Route","Live rider routes"],
       ["riders-report","Riders — Report","Rider performance and cash"],

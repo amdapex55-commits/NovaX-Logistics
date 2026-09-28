@@ -4515,6 +4515,14 @@ body.nvai-locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 .nvai-u a{color:#02130c}
 #nvai-type{align-self:flex-start;display:none;gap:4px;padding:12px 14px;background:var(--panel-2);border:1px solid var(--line);border-radius:15px;border-bottom-left-radius:5px;margin:0 15px}
 #nvai-type.on{display:flex}
+#nvai-type{flex-direction:column;gap:7px;font-size:12.5px;line-height:1.35;color:var(--ink-2)}
+#nvai-type .nvt-s{display:flex;align-items:center;gap:9px;animation:nvtIn .28s ease both}
+#nvai-type .nvt-s.nvt-run{color:var(--ink);font-weight:600}
+#nvai-type .nvt-i{width:14px;height:14px;flex:0 0 14px;display:grid;place-items:center;box-sizing:border-box}
+#nvai-type .nvt-s.nvt-run .nvt-i{border:2px solid var(--line-2);border-top-color:var(--green-2);border-radius:50%;animation:nvtSpin .8s linear infinite}
+#nvai-type .nvt-s.nvt-done .nvt-i::before{content:"";width:8px;height:4px;border-left:2px solid var(--green-2);border-bottom:2px solid var(--green-2);transform:translateY(-1px) rotate(-45deg)}
+@keyframes nvtSpin{to{transform:rotate(360deg)}}@keyframes nvtIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){#nvai-type .nvt-s,#nvai-type .nvt-s.nvt-run .nvt-i{animation:none}}
 #nvai-type i{width:6px;height:6px;border-radius:50%;background:var(--ink-2);animation:nvaiBob 1.3s ease-in-out infinite}
 #nvai-type i:nth-child(2){animation-delay:.16s}#nvai-type i:nth-child(3){animation-delay:.32s}
 @keyframes nvaiBob{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-5px);opacity:1}}
@@ -4582,7 +4590,7 @@ body.nvai-locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
     <button id="nvai-x" type="button" aria-label="Close">&times;</button>
   </div>
   <div id="nvai-log" role="log" aria-live="polite"></div>
-  <div id="nvai-type" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div id="nvai-type" role="status" aria-live="polite"></div>
   <div id="nvai-sugg"></div>
   <div id="nvai-foot">
     <div id="nvai-row">
@@ -4756,9 +4764,39 @@ body.nvai-locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
                esc(n)+'<em>WhatsApp &rarr;</em></a>'; }).join("");
     scroll();
   }
-  function setBusy(b){
+  /* Thinking steps instead of three dots: a short, topic-aware list that
+     ticks off while the answer is on its way, then disappears. */
+  var thinkT=null;
+  function thinkPlan(q){
+    var t=String(q||"").toLowerCase(), st;
+    if(/withdraw|payout|wallet|\bcod\b|paisa|paise|paisay|payment|\bfee|\btax|\bgst/.test(t)) st=["Reading your question","Checking how COD payouts work","Putting the numbers together"];
+    else if(/rate|price|charge|cost|\bkg\b|\d\s?kg|kitne ka|kitna/.test(t)) st=["Reading your question","Opening the NovaX rate card","Working out the price"];
+    else if(/pick ?up|drop/.test(t)) st=["Reading your question","Checking pickup options"];
+    else if(/\btrack|\bawb|parcel/.test(t)) st=["Reading your question","Checking how tracking works"];
+    else if(/cit(y|ies)|deliver|\bdin\b|days?\b|how long|how fast|lahore|islamabad|rawalpindi|karachi|\bisb\b/.test(t)) st=["Reading your question","Checking our delivery network","Looking up delivery times"];
+    else if(/account|sign ?up|register|shopify|woo|\bapi\b|integrat|store/.test(t)) st=["Reading your question","Checking how to set you up"];
+    else st=["Reading your question","Looking through what NovaX offers","Thinking it through"];
+    st.push("Writing your answer");
+    return st;
+  }
+  function thinkStart(q){
+    clearTimeout(thinkT);
+    typing.innerHTML="";
+    var steps=thinkPlan(q), i=0, cur=null;
+    (function add(){
+      if(!busy) return;
+      if(cur) cur.className="nvt-s nvt-done";
+      cur=document.createElement("div"); cur.className="nvt-s nvt-run";
+      cur.innerHTML='<span class="nvt-i"></span><span></span>';
+      cur.lastChild.textContent=steps[i]+(i===steps.length-1?"\u2026":"");
+      typing.appendChild(cur); i++; scroll();
+      if(i<steps.length) thinkT=setTimeout(add, 650+Math.floor(Math.random()*450));
+    })();
+  }
+  function setBusy(b, q){
     busy=b; send.disabled=b; typing.className=b?"on":"";
-    if(b) scroll();
+    if(b){ thinkStart(q); scroll(); }
+    else { clearTimeout(thinkT); typing.innerHTML=""; }
   }
 
   async function ask(q){
@@ -4768,7 +4806,7 @@ body.nvai-locked{position:fixed;left:0;right:0;width:100%;overflow:hidden}
     input.value=""; input.style.height="";
     bubble(q,"u");
     history.push({role:"user",content:q});
-    asked++; updateMeta(); chips([]); setBusy(true);
+    asked++; updateMeta(); chips([]); setBusy(true, q);
     var data=null;
     try{
       var res = await fetch(ENDPOINT, {

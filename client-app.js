@@ -16622,8 +16622,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   })();
 
   async function greetWithBriefing(){
-    var loadingEl=addMsg("Pulling your daily briefing...","b");
-    loadingEl.classList.add("nvauto-loading");
+    var loadingEl=addMsg("","b"), think=null;
+    try{ if(window.nvThinkSteps) think=window.nvThinkSteps(loadingEl, "", { kind:"open" }); }catch(e){ think=null; }
+    if(!think){ loadingEl.textContent="Pulling your daily briefing..."; loadingEl.classList.add("nvauto-loading"); }
+    else loadingEl.remove=function(){ try{ think.stop(); }catch(e){} if(loadingEl.parentNode) loadingEl.parentNode.removeChild(loadingEl); };
     try{
       var token=await getAuthToken();
       var res=await fetch(FN_URL,{
@@ -17045,7 +17047,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return { reply:"Charges depend on city/zone and COD amount \u2014 New Booking shows the exact rate as you fill the form.", actions:[{ label:"Start Booking", kind:"local", type:"go_booking" }] };
     }
     if(has(NV_KW.serviceability)){
-      return { reply:"Most major Pakistani cities are covered. Enter the city in New Booking and I'll reflect the rate if it's serviceable.", actions:[{ label:"Start Booking", kind:"local", type:"go_booking" }] };
+      return { reply:"We deliver in Karachi, Lahore, Islamabad and Rawalpindi. Enter the city in New Booking and it shows the exact rate.", actions:[{ label:"Start Booking", kind:"local", type:"go_booking" }] };
     }
     if(has(NV_KW.proof)){
       return { reply:"Delivery proof is attached once a parcel is delivered \u2014 check the AWB journey to see it." };
@@ -17391,6 +17393,31 @@ Track your parcel: ${trackingUrl(p.awb)}`;
      key, is rate limited, or errors — in every one of those cases this
      resolves to null and the caller carries on to the existing fallback.
      It can therefore only ever add an answer, never remove one. */
+  /* Answer bank (sql_novax_ai_answer_bank.sql). Needs the merchant's own
+     session -- the lookup is not granted to anon -- and any failure is just
+     "no match", so it can only ever add an answer. */
+  async function tryBank(text,token){
+    try{
+      if(!token || token===SB_KEY) return null;
+      var ctrl=new AbortController();
+      var kill=setTimeout(function(){ ctrl.abort(); },3500);
+      var res=await fetch(SB_URL.replace(/\/$/,"")+"/rest/v1/rpc/nv_ai_answer_lookup",{
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "apikey":SB_KEY, "Authorization":"Bearer "+token },
+        body:JSON.stringify({ p_q:text, p_scope:"portal" }),
+        signal:ctrl.signal
+      });
+      clearTimeout(kill);
+      if(!res.ok) return null;
+      var rows=await res.json();
+      var row=Array.isArray(rows)?rows[0]:null;
+      if(!row || !row.answer) return null;
+      /* Merchants here already have an account: drop sign-up follow-ups. */
+      var sug=(Array.isArray(row.suggestions)?row.suggestions:[]).map(String).filter(function(x){ return !/open an account|account kaise|sign ?up/i.test(x); }).slice(0,3);
+      return { answer:String(row.answer), suggestions:sug };
+    }catch(e){ return null; }
+  }
+
   var NV_BRAIN_HIST=[];
   async function tryBrain(text,token){
     try{
@@ -17451,8 +17478,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return;
     }
 
-    var loadingEl=addMsg("Checking your account data...","b");
-    loadingEl.classList.add("nvauto-loading");
+    var loadingEl=addMsg("","b");
+    var think=null;
+    try{
+      if(window.nvThinkSteps) think=window.nvThinkSteps(loadingEl, text, { kind:"portal", onStep:function(){
+        var mb=document.getElementById("nvautoMsgs"); if(mb) mb.scrollTop=mb.scrollHeight; } });
+    }catch(e){ think=null; }
+    if(!think){ loadingEl.textContent="Checking your account data..."; loadingEl.classList.add("nvauto-loading"); }
+    var doneLoading=function(){ try{ if(think) think.stop(); }catch(e){} if(loadingEl.parentNode) loadingEl.remove(); };
     try{
       var token=await getAuthToken();
       var reqBody=JSON.stringify({ message:text, awb:getAwbFromText(text), portal:PORTAL });
@@ -17481,8 +17514,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         /share the awb|tracking number and i'?ll look/i.test(String(out.reply||"")));
       var engineAnswered = res.ok && out && out.reply && out.intent!=="unknown" && !engineDodged;
       if(!engineAnswered){
+        /* Admin-approved answer bank first: free, instant, exact wording. */
+        var bank=await tryBank(text,token);
+        if(bank){
+          doneLoading();
+          addMsg(bank.answer,"b",bank.suggestions.map(function(q){ return { label:q, kind:"send", message:q }; }));
+          return;
+        }
         var brain=await tryBrain(text,token);
-        loadingEl.remove();
+        doneLoading();
         if(brain && brain.reply){
           addMsg(brain.reply,"b",brain.actions);
           return;
@@ -17498,12 +17538,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return;
       }
 
-      loadingEl.remove();
+      doneLoading();
       addMsg(out.reply,"b",out.actions);
       if(out.requireLogin) addMsg("Please log in again to continue, then ask me here.","b");
     }catch(e){
       console.warn("NovaX Autopilot backend request failed",e);
-      loadingEl.remove();
+      /* The engine is unreachable, but the answer bank is a plain database
+         read and may still answer. */
+      var bank2=null;
+      try{ bank2=await tryBank(text, await getAuthToken()); }catch(e2){ bank2=null; }
+      doneLoading();
+      if(bank2){
+        addMsg(bank2.answer,"b",bank2.suggestions.map(function(q){ return { label:q, kind:"send", message:q }; }));
+        return;
+      }
       var fb2=localAutopilotFallback(text);
       addMsg(fb2.reply,"b",fb2.actions);
     }
@@ -19383,13 +19431,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
   }
 
-  function thinking(){
+  /* q: the merchant's question (none for the opener). Steps replace the
+     three dots when the helper is there; the dots stay as the fallback. */
+  function thinking(q){
     if(!STREAM) return null;
     var wrap = document.createElement("div");
     wrap.className = "nvai-turn";
     wrap.setAttribute("data-thinking","1");
-    wrap.innerHTML = '<span class="nvai-av" aria-hidden="true">NX</span>' +
-      '<div class="nvai-body"><div class="nvai-think"><i></i><i></i><i></i></div></div>';
+    wrap.innerHTML = '<span class="nvai-av" aria-hidden="true">NX</span><div class="nvai-body"></div>';
+    var body = wrap.lastChild, think = null;
+    try{ if(window.nvThinkSteps) think = window.nvThinkSteps(body, q, { kind: q ? "portal" : "open", onStep: scroll }); }catch(e){ think = null; }
+    if(!think) body.innerHTML = '<div class="nvai-think"><i></i><i></i><i></i></div>';
+    else wrap.remove = function(){ try{ think.stop(); }catch(e){} if(wrap.parentNode) wrap.parentNode.removeChild(wrap); };
     STREAM.appendChild(wrap); scroll();
     return wrap;
   }
@@ -19588,7 +19641,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     turn("me", text);
     chips([], true);   /* keep the strip's height until the reply lands */
     lock(true);
-    var t = thinking();
+    var t = thinking(text);
     /* Same trap as boot(): a synchronous throw out of call() would leave the
        composer locked with no error and no way to retry. */
     var done = function(){ lock(false); if(INPUT) INPUT.focus(); };
@@ -20176,4 +20229,63 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     btn.addEventListener("click",function(){ var open=!box.classList.contains("nv-open"); set(open); if(open&&input){ try{ input.focus(); }catch(e){} } });
   }
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",wire); else wire();
+})();
+
+/* ==== AI "thinking" steps (28 Sep 2026) ====
+   Replaces the three bouncing dots while an AI reply is in flight. A short,
+   topic-aware list of what it is doing appears one step at a time, ticking
+   off as it goes, and the last step keeps spinning until the reply lands --
+   then the whole list is removed, so the thread only keeps the answer.
+   Presentation only: it never touches the request or the reply. */
+(function(){
+  if(window.nvThinkSteps) return;
+  var RM=false; try{ RM=matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+  var st=document.createElement("style");
+  st.textContent='.nv-think{display:flex;flex-direction:column;gap:7px;font-size:12.5px;line-height:1.35;color:var(--muted,#7b8794);padding:2px 0;min-width:0}'+
+    '.nv-think-s{display:flex;align-items:center;gap:9px;animation:nvThinkIn .28s ease both}'+
+    '.nv-think-s.nv-think-run{color:var(--ink,#121821);font-weight:600}'+
+    '.nv-think-i{width:14px;height:14px;flex:0 0 14px;display:grid;place-items:center;box-sizing:border-box}'+
+    '.nv-think-s.nv-think-run .nv-think-i{border:2px solid var(--line,#d5dbe1);border-top-color:var(--green-2,#13a36f);border-radius:50%;animation:nvThinkSpin .8s linear infinite}'+
+    '.nv-think-s.nv-think-done .nv-think-i::before{content:"";width:8px;height:4px;border-left:2px solid var(--green-2,#13a36f);border-bottom:2px solid var(--green-2,#13a36f);transform:translateY(-1px) rotate(-45deg)}'+
+    '@keyframes nvThinkSpin{to{transform:rotate(360deg)}}@keyframes nvThinkIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}'+
+    '@media (prefers-reduced-motion:reduce){.nv-think-s,.nv-think-s.nv-think-run .nv-think-i{animation:none!important}}';
+  document.head.appendChild(st);
+
+  function plan(q, kind){
+    var t=String(q||"").toLowerCase(), s;
+    if(kind==="open") s=["Opening your account","Checking today's parcels","Looking for anything that needs you"];
+    else if(/\b[a-z]?\d{6,}\b|\btrack|\bawb|where is|kahan hai|parcel/.test(t)) s=["Reading your question","Finding the parcel","Reading its latest scan"];
+    else if(/withdraw|payout|wallet|\bcod\b|paisa|paise|paisay|payment|\bfee|\btax|\bgst/.test(t)) s=["Reading your question", kind==="portal"?"Checking your wallet":"Checking how COD payouts work","Putting the numbers together"];
+    else if(/rate|price|charge|cost|\bkg\b|\d\s?kg|kitne ka|kitna/.test(t)) s=["Reading your question","Opening the NovaX rate card","Working out the price"];
+    else if(/pick ?up|drop/.test(t)) s=["Reading your question","Checking pickup options"];
+    else if(/cit(y|ies)|deliver|\bdin\b|days?\b|how long|how fast|lahore|islamabad|rawalpindi|karachi|\bisb\b|\blhr\b/.test(t)) s=["Reading your question","Checking our delivery network","Looking up delivery times"];
+    else if(/account|sign ?up|register|shopify|woo|\bapi\b|integrat|store/.test(t)) s=["Reading your question","Checking how to set you up"];
+    else s=["Reading your question","Looking through NovaX's records","Thinking it through"];
+    s.push("Writing your answer");
+    return s;
+  }
+
+  /* host: element to put the steps in. Returns {stop()}; stop() is safe to
+     call more than once and removes the list. */
+  window.nvThinkSteps=function(host, q, opts){
+    opts=opts||{};
+    var wrap=document.createElement("div");
+    wrap.className="nv-think"; wrap.setAttribute("role","status"); wrap.setAttribute("aria-live","polite");
+    if(host) host.appendChild(wrap);
+    var steps=plan(q, opts.kind), i=0, timer=null, stopped=false, cur=null;
+    function add(){
+      if(stopped) return;
+      if(cur){ cur.className="nv-think-s nv-think-done"; }
+      cur=document.createElement("div");
+      cur.className="nv-think-s nv-think-run";
+      cur.innerHTML='<span class="nv-think-i" aria-hidden="true"></span><span></span>';
+      cur.lastChild.textContent=steps[i]+(i===steps.length-1?"…":"");
+      wrap.appendChild(cur);
+      i++;
+      try{ if(typeof opts.onStep==="function") opts.onStep(); }catch(e){}
+      if(i<steps.length) timer=setTimeout(add, (RM?900:650)+Math.floor(Math.random()*450));
+    }
+    add();
+    return { el:wrap, stop:function(){ stopped=true; clearTimeout(timer); if(wrap.parentNode) wrap.parentNode.removeChild(wrap); } };
+  };
 })();
