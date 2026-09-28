@@ -5445,7 +5445,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           "--nvu-bg:#ffffff;--nvu-bg-2:#f7f9fb;--nvu-ink:#121821;--nvu-ink-2:#333;--nvu-ink-3:#444;--nvu-line:#d4dae1;--nvu-line-2:#b9c2cc;color-scheme:light;";
         host.innerHTML=parcels.map(function(p){ return '<div class="nv-pdf-label" style="background:#fff;padding:8px">'+awbLabelHtml(p)+'</div>'; }).join("");
         document.body.appendChild(host);
-        host.querySelectorAll(".awb-label").forEach(function(l){ l.style.boxShadow="none"; l.style.background="#fff"; });
+        /* Always the three-column desktop label. On a phone the screen CSS
+           stacks it into one tall column, so the same parcel produced a
+           different (and one-per-page) PDF depending on the device. */
+        host.querySelectorAll(".awb-label").forEach(function(l){
+          l.style.boxShadow="none"; l.style.background="#fff";
+          l.style.gridTemplateColumns="minmax(190px,230px) minmax(0,1fr) minmax(140px,170px)";
+        });
         var imgs=Array.from(host.querySelectorAll("img"));
         return Promise.race([
           Promise.all(imgs.map(function(img){ return img.complete?null:new Promise(function(r){ img.onload=img.onerror=r; }); })),
@@ -5463,9 +5469,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           return chain.then(function(){
             return window.html2canvas(block,{ scale:2, backgroundColor:"#ffffff", useCORS:true, logging:false })
               .then(function(canvas){
-                var h=canvas.height*usableW/canvas.width;
+                var w=usableW, h=canvas.height*usableW/canvas.width, maxH=pageH-margin*2;
+                /* A label taller than the page is scaled to fit, never cut. */
+                if(h>maxH){ w=w*maxH/h; h=maxH; }
                 if(!first && y+h>pageH-margin){ doc.addPage(); y=margin; }
-                doc.addImage(canvas.toDataURL("image/jpeg",0.92),"JPEG",margin,y,usableW,h);
+                doc.addImage(canvas.toDataURL("image/jpeg",0.92),"JPEG",margin+(usableW-w)/2,y,w,h);
                 y+=h+gap; first=false;
                 canvas.width=canvas.height=0;
               });
@@ -5487,15 +5495,32 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         /* Phones: the share sheet is where "Save to Files" and WhatsApp are.
            If it is refused (no user gesture left after the libraries loaded,
            or the browser has no share), fall back to a plain download. */
+        /* The merchant now has the label, exactly as after a print dialog, so
+           mark it the same way (with the same undo). Otherwise the tab kept
+           saying "not printed" -- the TKT-000076 complaint. */
+        function markPrinted(){
+          try{
+            /* Look the parcels up again: building the PDF takes seconds, and a
+               background refresh can replace state.parcels in that time, so
+               the objects captured at the click may no longer be the live ones. */
+            var want=parcels.map(function(p){ return p.awb; }), stamp=time();
+            (state.parcels||[]).forEach(function(p){ if(p && want.indexOf(p.awb)>=0){ p.awbPrinted=true; p.awbPrintedAt=stamp; } });
+            saveState();
+            try{ nvOfferPrintUndo(parcels.map(function(p){ return p.awb; })); }catch(e){}
+            try{ if(document.getElementById("awbLabelPreview")) renderAwbLabel(); }catch(e){}
+            try{ renderNewBookedList(); }catch(e){}
+          }catch(e){}
+        }
         if(coarse && file && navigator.canShare && navigator.canShare({ files:[file] })){
           return navigator.share({ files:[file], title:name }).then(function(){
+            markPrinted();
             toast("Label PDF ready.","success");
           }).catch(function(e){
             if(e && e.name==="AbortError") return;   // they closed the sheet on purpose
-            download();
+            download(); markPrinted();
           });
         }
-        download();
+        download(); markPrinted();
       }).then(function(){ done(); return true; }).catch(function(e){
         done();
         toast("Could not create the PDF: "+String((e&&e.message)||e)+". Try again, or use Print Now.","error");
@@ -11887,7 +11912,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var hit=el?nvPaMatch(el.value):null;
       var chips=document.getElementById("nvPaChips");
       if(chips) chips.querySelectorAll(".nv-pa-chip").forEach(function(c){
-        c.setAttribute("aria-checked", hit && c.dataset.id===hit.id ? "true" : "false");
+        c.setAttribute("aria-pressed", hit && c.dataset.id===hit.id ? "true" : "false");
       });
       var row=document.getElementById("nvPaSaveRow");
       if(row){
@@ -11900,7 +11925,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!NV_PA.rows.length){ box.hidden=true; box.innerHTML=""; nvPaSyncUi(); return; }
       box.hidden=false;
       box.innerHTML=NV_PA.rows.map(function(a){
-        return '<button type="button" class="nv-pa-chip" role="radio" aria-checked="false" data-id="'+escLabelText(a.id)+'" title="'+escLabelText(a.address)+'">'+
+        return '<button type="button" class="nv-pa-chip" aria-pressed="false" data-id="'+escLabelText(a.id)+'" title="'+escLabelText(a.address)+'">'+
           '<span>'+escLabelText(a.label)+'</span>'+(a.is_default?'<small>Default</small>':'')+'</button>';
       }).join("");
       nvPaSyncUi();
@@ -11979,7 +12004,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvPaResetForm(){
       NV_PA.editingId=null;
       ["nvPaId","nvPaLabel","nvPaAddress","nvPaPhone"].forEach(function(i){ var el=document.getElementById(i); if(el) el.value=""; });
-      var d=document.getElementById("nvPaDefault"); if(d) d.checked=!NV_PA.rows.length;
+      var d=document.getElementById("nvPaDefault"); if(d){ d.checked=!NV_PA.rows.length; d.disabled=false; d.title=""; }
       var t=document.getElementById("nvPaFormTitle"); if(t) t.textContent="Add an address";
       var c=document.getElementById("nvPaCancelEdit"); if(c) c.hidden=true;
       var b=document.getElementById("nvPaSubmitBtn"); if(b) b.textContent="Save address";
@@ -12014,7 +12039,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         document.getElementById("nvPaLabel").value=a.label||"";
         document.getElementById("nvPaAddress").value=a.address||"";
         document.getElementById("nvPaPhone").value=a.phone||"";
-        document.getElementById("nvPaDefault").checked=!!a.is_default;
+        /* The server moves a default, it never clears one, so unticking the
+           current default would look saved while changing nothing. */
+        var dBox=document.getElementById("nvPaDefault");
+        dBox.checked=!!a.is_default; dBox.disabled=!!a.is_default;
+        dBox.title=a.is_default?"To change the default, press Make default on another address.":"";
         document.getElementById("nvPaFormTitle").textContent="Edit “"+a.label+"”";
         document.getElementById("nvPaCancelEdit").hidden=false;
         document.getElementById("nvPaSubmitBtn").textContent="Save changes";
