@@ -6974,7 +6974,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        the portal through this bridge, so "delivered", "settled" and "rated"
        mean exactly what they mean on every other screen. Read-only. If the
        file cannot load, the classic report underneath is shown instead. */
-    var NV_REPORTS_SRC="client-reports.js?v=38c5f1a8";
+    var NV_REPORTS_SRC="client-reports.js?v=9f34b367";
     window.__nvRepBridge={
       clientId:function(){ return state.client&&state.client.id; },
       clientName:function(){ return (state.client&&state.client.name)||""; },

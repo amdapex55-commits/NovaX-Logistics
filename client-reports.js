@@ -246,7 +246,7 @@
   function spark(vals){
     var v = vals.map(function(x){ return x == null ? null : Number(x); });
     var real = v.filter(function(x){ return x != null; });
-    if (real.length < 2) return "";
+    if (real.length < 4) return "";              /* two or three points read as a stray stroke, not a trend */
     var max = Math.max.apply(null, real), min = Math.min.apply(null, real), W = 96, H = 28, n = v.length;
     var pts = [];
     v.forEach(function(x, i){ if (x == null) return; var X = n > 1 ? i / (n - 1) * W : 0; var Y = H - 3 - (max === min ? (H - 6) / 2 : (x - min) / (max - min) * (H - 6)); pts.push(X.toFixed(1) + "," + Y.toFixed(1)); });
