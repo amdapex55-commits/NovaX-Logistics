@@ -1886,6 +1886,111 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
   color:var(--ink);
 }
 </style>
+<style>
+/* ═══════════ 28 Sep 2026 — hero line, CTA colours, platform relay, tier badge ═══════════
+   Placed last so it wins over the layered fixes above without editing them. */
+
+/* 1. "AI handles the ___" — the rotating word sat higher than the words before
+   it: a fixed-height inline-block top-aligned inside a taller line box. Now one
+   capsule, flex-centred, with the word in its own fixed-width chip so the line
+   never shifts when the word changes. */
+.hero-rot{display:inline-flex;align-items:center;gap:10px;max-width:100%;
+  margin:20px 0 6px;padding:6px 6px 6px 14px;min-height:0;
+  border:1px solid var(--line-2);border-radius:999px;background:rgba(20,199,123,.07);
+  font-family:var(--mono);font-size:clamp(13px,1.45vw,16px);line-height:1;
+  font-weight:700;color:var(--ink-2);letter-spacing:0;white-space:nowrap}
+.hero-rot::before{content:"";width:7px;height:7px;border-radius:50%;flex:0 0 auto;
+  background:var(--green-2);box-shadow:0 0 0 4px rgba(78,230,165,.16)}
+.hero-rot .swap{display:inline-flex;align-items:center;justify-content:center;
+  box-sizing:border-box;width:calc(13ch + 26px);height:auto;min-width:0;
+  padding:8px 13px;border-radius:999px;overflow:hidden;vertical-align:middle;
+  background:linear-gradient(135deg,#17d986,#0fa866);color:#02130c;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+.hero-rot .swap i{display:block;line-height:1;font-style:normal;animation:swapFade .32s ease-out}
+@media (max-width:640px){
+  .hero-rot{margin:16px 0 4px;font-size:13px;gap:8px;padding-left:12px}
+  .hero-rot .swap{padding:7px 11px;width:calc(13ch + 22px)}
+}
+
+/* 2. Hero CTAs — each its own colour. Green stays the primary (signup). */
+.hero-cta .btn{border:0}
+.hero-cta .btn-demo,.hero-cta .btn-vivid,.hero-cta .btn-ghost,.hero-cta .btn-quiet{
+  backdrop-filter:none;-webkit-backdrop-filter:none;font-weight:800}
+.hero-cta .btn-demo{background:linear-gradient(135deg,#38d5f0,#0e9fbf)!important;color:#03171d!important;
+  box-shadow:0 10px 26px rgba(56,213,240,.22),inset 0 1px 0 rgba(255,255,255,.35)!important}
+.hero-cta .btn-demo .demo-dot{background:#03171d;box-shadow:none}
+.hero-cta .btn-vivid{background:linear-gradient(135deg,#fcd34d,#f59e0b)!important;background-image:linear-gradient(135deg,#fcd34d,#f59e0b)!important;
+  color:#221400!important;border:0!important;
+  box-shadow:0 10px 26px rgba(245,158,11,.22),inset 0 1px 0 rgba(255,255,255,.4)!important}
+.hero-cta .btn-ghost{background:linear-gradient(135deg,#4f8ff7,#2563eb)!important;color:#fff!important;
+  box-shadow:0 10px 26px rgba(37,99,235,.24),inset 0 1px 0 rgba(255,255,255,.25)!important}
+.hero-cta .btn-quiet{background:linear-gradient(135deg,#9d7bfa,#7c3aed)!important;color:#fff!important;
+  box-shadow:0 10px 26px rgba(124,58,237,.24),inset 0 1px 0 rgba(255,255,255,.25)!important}
+.hero-cta .btn-demo:hover,.hero-cta .btn-vivid:hover,.hero-cta .btn-ghost:hover,.hero-cta .btn-quiet:hover{
+  transform:translateY(-2px);filter:brightness(1.07)}
+.hero-cta .btn:focus-visible{outline:2px solid #fff;outline-offset:3px}
+
+/* 3. Platform relay — replaces the .spine rows. */
+.relay{margin-top:34px}
+.relay-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;position:relative}
+.relay-list::before{content:"";position:absolute;left:34px;right:34px;top:38px;height:2px;z-index:0;
+  background:linear-gradient(90deg,#4ee6a5,#38d5f0,#fbbf24,#a78bfa);opacity:.35;border-radius:2px}
+.relay-step{position:relative;z-index:1;display:flex;flex-direction:column;gap:10px;min-width:0;
+  padding:18px 18px 16px;border-radius:18px;border:1px solid color-mix(in srgb,var(--c) 30%,transparent);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--c) 10%,#0b1812),#0a1510 70%);
+  transition:transform .25s,border-color .25s}
+.relay-step:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--c) 60%,transparent)}
+.relay-top{display:flex;align-items:center;gap:11px}
+.relay-ic{width:40px;height:40px;flex:0 0 auto;border-radius:12px;display:grid;place-items:center;
+  color:var(--c);background:#0b1812;border:1px solid color-mix(in srgb,var(--c) 45%,transparent);
+  box-shadow:0 0 0 5px #0a1510}
+.relay-ic svg{width:21px;height:21px}
+.relay-who{display:flex;flex-direction:column;gap:3px;min-width:0;line-height:1.15}
+.relay-who b{font-size:15px;color:var(--ink);letter-spacing:-.01em}
+.relay-who small{font-size:12px;color:var(--c);font-weight:700}
+.relay-no{margin-left:auto;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink-3)}
+.relay-h{margin:4px 0 0;font-size:16px;line-height:1.3;color:var(--ink);letter-spacing:-.01em}
+.relay-d{margin:0;font-size:13.5px;line-height:1.55;color:var(--ink-2)}
+.relay-sees{margin-top:auto;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;
+  font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--ink);
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);min-width:0}
+.relay-live{width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:var(--c);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 22%,transparent)}
+.relay-cap{display:flex;align-items:center;gap:12px;margin:20px 0 0;font-size:14px;color:var(--ink-2);line-height:1.5}
+.relay-cap b{color:var(--ink)}
+.relay-avs{display:inline-flex;flex:0 0 auto}
+.relay-avs i{width:22px;height:22px;border-radius:50%;background:var(--c);border:3px solid #07120d;margin-left:-7px}
+.relay-avs i:first-child{margin-left:0}
+@media (max-width:1060px) and (min-width:761px){
+  .relay-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .relay-list::before{display:none}
+}
+/* Phone: a vertical relay. Every step visible, no carousel, no swipe. */
+@media (max-width:760px){
+  .relay{margin-top:22px}
+  .relay-list{grid-template-columns:1fr;gap:10px}
+  .relay-list::before{left:37px;right:auto;top:30px;bottom:30px;width:2px;height:auto;
+    background:linear-gradient(180deg,#4ee6a5,#38d5f0,#fbbf24,#a78bfa)}
+  .relay-step{display:grid;grid-template-columns:40px minmax(0,1fr);column-gap:13px;row-gap:6px;
+    padding:15px 14px;border-radius:16px}
+  .relay-top{display:contents}
+  .relay-ic{grid-column:1;grid-row:1 / span 4;align-self:start;width:40px;height:40px}
+  .relay-who{grid-column:2;grid-row:1;flex-direction:row;align-items:baseline;gap:7px}
+  .relay-no{display:none}
+  .relay-h{grid-column:2;grid-row:2;margin:0;font-size:15px}
+  .relay-d{grid-column:2;grid-row:3;font-size:13px}
+  .relay-sees{grid-column:2;grid-row:4;margin-top:4px;font-size:11px;padding:7px 9px}
+  .relay-cap{font-size:13px;align-items:flex-start}
+}
+@media (prefers-reduced-motion:reduce){.relay-step,.relay-step:hover{transition:none;transform:none}}
+
+/* 4. "Pakistan First" badge — on phones it straddled the card's top border and
+   overlapped it. In the flow there, not floating on the edge. */
+@media (max-width:760px){
+  #payouts .tier.hot{padding-top:14px}
+  #payouts .tier-crown{position:static;transform:none;display:inline-block;margin:0 auto 9px;top:auto;left:auto}
+}
+</style>
 </head>
 <body>
 
@@ -2423,38 +2528,57 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
       <p class="lead">With most couriers you end up chasing the same parcel through four different people. Here, one booking reaches everyone at once &mdash; and they all see the same thing.</p>
     </div>
 
-    <div class="spine rv rv-d1" id="spine">
-      <div class="sp-row" data-i="0"><span class="sp-dot"></span>
-        <div class="sp-app"><b>You</b><div class="who">book it</div></div>
-        <div class="sp-what">
-          <div class="h">Two taps and it&rsquo;s booked</div>
-          <div class="d">Paste a WhatsApp order. The label prints itself &mdash; address checked, price worked out.</div>
+    <!-- Rebuilt 28 Sep 2026. The old .spine was four full-width rows with a
+         dot that sat on top of each label ("•ou") and a phone carousel that
+         hid three of the four people. Now: four cards in a row on desktop,
+         a compact vertical relay on phones, nothing hidden behind a swipe and
+         nothing waiting on a script to become visible. -->
+    <div class="relay">
+      <ol class="relay-list">
+      <li class="relay-step" style="--c:#4ee6a5">
+        <div class="relay-top">
+          <span class="relay-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg></span>
+          <span class="relay-who"><b>You</b><small>book it</small></span>
+          <span class="relay-no">01</span>
         </div>
-      </div>
-      <div class="sp-row" data-i="1"><span class="sp-dot"></span>
-        <div class="sp-app"><b>The rider</b><div class="who">collects it</div></div>
-        <div class="sp-what">
-          <div class="h">Picked up without a phone call</div>
-          <div class="d">We send the right rider for the area, already knowing how much cash they can carry.</div>
+        <h3 class="relay-h">Two taps and it&rsquo;s booked</h3>
+        <p class="relay-d">Paste a WhatsApp order. The label prints itself &mdash; address checked, price worked out.</p>
+        <div class="relay-sees"><span class="relay-live" aria-hidden="true"></span>AWB N6570001 &middot; label ready</div>
+      </li>
+      <li class="relay-step" style="--c:#38d5f0">
+        <div class="relay-top">
+          <span class="relay-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M6 17h5l3-6h3M14 11l-2-4H9M17 11l1 6"/></svg></span>
+          <span class="relay-who"><b>The rider</b><small>collects it</small></span>
+          <span class="relay-no">02</span>
         </div>
-      </div>
-      <div class="sp-row" data-i="2"><span class="sp-dot"></span>
-        <div class="sp-app"><b>Our hub</b><div class="who">moves it</div></div>
-        <div class="sp-what">
-          <div class="h">Counted, and watched</div>
-          <div class="d">If your parcel stops moving, we chase it &mdash; usually before you notice.</div>
+        <h3 class="relay-h">Picked up without a phone call</h3>
+        <p class="relay-d">We send the right rider for the area, already knowing how much cash they can carry.</p>
+        <div class="relay-sees"><span class="relay-live" aria-hidden="true"></span>Pickup assigned &middot; Rs 1,000 COD</div>
+      </li>
+      <li class="relay-step" style="--c:#fbbf24">
+        <div class="relay-top">
+          <span class="relay-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l9-5 9 5v12"/><path d="M8 21v-6h8v6M8 12h8"/></svg></span>
+          <span class="relay-who"><b>Our hub</b><small>moves it</small></span>
+          <span class="relay-no">03</span>
         </div>
-      </div>
-      <div class="sp-row" data-i="3"><span class="sp-dot"></span>
-        <div class="sp-app"><b>Your customer</b><div class="who">follows it</div></div>
-        <div class="sp-what">
-          <div class="h">They stop asking you where it is</div>
-          <div class="d">A live link on WhatsApp. They can see it themselves, any time.</div>
+        <h3 class="relay-h">Counted, and watched</h3>
+        <p class="relay-d">If your parcel stops moving, we chase it &mdash; usually before you notice.</p>
+        <div class="relay-sees"><span class="relay-live" aria-hidden="true"></span>Scanned in &middot; Karachi hub</div>
+      </li>
+      <li class="relay-step" style="--c:#a78bfa">
+        <div class="relay-top">
+          <span class="relay-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 18.5h4M9 9l2 2 4-4"/></svg></span>
+          <span class="relay-who"><b>Your customer</b><small>follows it</small></span>
+          <span class="relay-no">04</span>
         </div>
-      </div>
+        <h3 class="relay-h">They stop asking you where it is</h3>
+        <p class="relay-d">A live link on WhatsApp. They can see it themselves, any time.</p>
+        <div class="relay-sees"><span class="relay-live" aria-hidden="true"></span>Out for delivery &middot; live link</div>
+      </li>
+      </ol>
+      <p class="relay-cap"><span class="relay-avs" aria-hidden="true"><i style="--c:#4ee6a5"></i><i style="--c:#38d5f0"></i><i style="--c:#fbbf24"></i><i style="--c:#a78bfa"></i></span>
+        <span><b>One parcel, four people.</b> Everyone sees the same answer, at the same moment.</span></p>
     </div>
-
-    <p class="spine-cap">One parcel. Four people who need to know where it is.<br>Everyone sees the same answer, at the same moment.</p>
   </div>
 </section>
 
