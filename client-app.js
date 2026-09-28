@@ -14369,7 +14369,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +".nv-more-logout{color:#b3261e;font-weight:800}"
           /* #42: the backdrop. Below the menu, above everything else. */
           +".nv-more-scrim{position:fixed;inset:0;z-index:135;background:rgba(6,20,15,.42);display:none}"
-          +"body.nv-more-open .nv-more-scrim{display:block}"
+          +"@media (max-width:759px){body.nv-more-open .nv-more-scrim{display:block}}"
           +"body.nv-more-open .nv-more-menu{z-index:141}"
           +".nv-omni{position:fixed;z-index:99990;background:var(--nvu-bg);border:1px solid #d7ede1;border-radius:var(--r-xl);box-shadow:var(--glow-1);max-height:340px;overflow:auto;display:none;padding:6px}"
           +".nv-omni.open{display:block}"
@@ -14698,9 +14698,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           });
           menu.appendChild(out);
         })();
-        /* #42. The menu opened over the page with no backdrop, so the support
-           controls behind it stayed lit and looked tappable -- a tap there
-           closed the menu instead of doing what it appeared to do. */
+        /* #42. The mobile drawer uses a backdrop. The desktop sidebar's nested
+           More menu must not activate it: the sidebar sits below the scrim,
+           which would make every dropdown item impossible to click. */
         var scrim=document.getElementById("nvMoreScrim");
         if(!scrim){
           scrim=document.createElement("div");
@@ -14713,19 +14713,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(cm) cm.classList.remove("open");
           var tg=document.getElementById("clientMenuToggle");
           if(tg) tg.setAttribute("aria-expanded","false");
-          document.body.classList.remove("nv-more-open");
+          try{ window.nvSyncMenuScrim(); }catch(e){}
           btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be";
         });
         btn.addEventListener("click",function(e){
           e.stopPropagation();
           var open=wrap.classList.toggle("open");
-          document.body.classList.toggle("nv-more-open",open);
           btn.setAttribute("aria-expanded",open?"true":"false");
           btn.textContent=open?"More \u25b4":"More \u25be";
         });
-        document.addEventListener("click",function(e){ if(!wrap.contains(e.target)){ wrap.classList.remove("open"); document.body.classList.remove("nv-more-open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; } });
-        document.addEventListener("keydown",function(e){ if(e.key==="Escape" && wrap.classList.contains("open")){ wrap.classList.remove("open"); document.body.classList.remove("nv-more-open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; btn.focus(); } });
-        menu.addEventListener("click",function(){ wrap.classList.remove("open"); document.body.classList.remove("nv-more-open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; });
+        document.addEventListener("click",function(e){ if(!wrap.contains(e.target)){ wrap.classList.remove("open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; } });
+        document.addEventListener("keydown",function(e){ if(e.key==="Escape" && wrap.classList.contains("open")){ wrap.classList.remove("open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; btn.focus(); } });
+        menu.addEventListener("click",function(){ wrap.classList.remove("open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; });
       }
 
       /* ---------- Task 15: header omni-search ---------- */
