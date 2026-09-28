@@ -872,6 +872,8 @@
       if(!session){
         try{
           var emailQuery=new URLSearchParams(location.search), emailTab=emailQuery.get("tab");
+          /* The Shopify app's Print label sends ?awb= alone; keep it across sign-in. */
+          if(!emailTab && emailQuery.get("awb")) emailTab="awbLabel";
           if(["money","awbLabel","support"].indexOf(emailTab)>-1){
             var emailAwb=(emailQuery.get("awb")||"").trim().toUpperCase();
             sessionStorage.setItem("novaxEmailDestination",JSON.stringify({
@@ -1109,7 +1111,13 @@
         if(wantAwb){ state.nvFocusAwb=wantAwb; wantTab=wantTab||"awbLabel"; }
         if(wantTab && typeof normalizeClientTab==="function"){
           var t=normalizeClientTab(wantTab);
-          if(typeof nvCanUseTab!=="function" || nvCanUseTab(t)) state.activeClientTab=t;
+          /* nvCanUseTab reads NOVAX_ROLE_TABS, a var declared ~11k lines below and
+             still undefined here. It threw, the outer try swallowed it, and every
+             ?awb= / ?tab= link landed on the dashboard. Roles are not loaded this
+             early anyway; nvApplyRolePermissions() re-checks once they are. */
+          var canUse=true;
+          try{ if(typeof nvCanUseTab==="function") canUse=nvCanUseTab(t); }catch(e){ canUse=true; }
+          if(canUse) state.activeClientTab=t;
         }
 
         var cachedMine=(state.parcels||[]).filter(function(p){ return p && state.client && p.clientId===state.client.id; });
