@@ -249,6 +249,19 @@ export function codAmount(order: ShopifyOrder): number {
 
 // ------------------------------------------------------------- weight -------
 
+/** The cities NovaX delivers to, from whatever a buyer typed: "karachi",
+ *  "Karachi Cantt", "Lahore, Punjab", "Pindi". Unknown is null, never a guess. */
+const SERVICE_CITIES: Array<[string, RegExp]> = [
+  ["Karachi", /\b(karachi|khi)\b/i],
+  ["Lahore", /\b(lahore|lhr)\b/i],
+  ["Islamabad", /\b(islamabad|isb)\b/i],
+  ["Rawalpindi", /\b(rawalpindi|pindi|rwp)\b/i],
+];
+export function serviceCity(raw: string): string | null {
+  const hits = SERVICE_CITIES.filter(([, re]) => re.test(raw)).map(([name]) => name);
+  return hits.length === 1 ? hits[0] : null;
+}
+
 /** Gateways that mean "the rider collects cash". Anything else with money
  *  still owed is ambiguous, and ambiguous is not COD. */
 const COD_GATEWAYS = [
@@ -389,8 +402,18 @@ export function mapOrderToBooking(order: ShopifyOrder, opts: MapOptions = {}): M
     };
   }
 
-  const city = (addr.city ?? "").trim();
-  if (!city) return { action: "skip", reason: "shipping address has no city" };
+  const rawCity = (addr.city ?? "").trim();
+  if (!rawCity) return { action: "skip", reason: "shipping address has no city" };
+  // 28 Sep 2026: any city was booked -- Multan, or "Qwerty" -- at Rs 250 for a
+  // parcel no rider could deliver. The portal refused these in the browser;
+  // this path never checked. Matched leniently, stored in the form ops uses.
+  const city = serviceCity(rawCity);
+  if (!city) {
+    return {
+      action: "skip",
+      reason: `NovaX does not deliver to "${rawCity}" yet — only Karachi, Lahore, Islamabad and Rawalpindi.`,
+    };
+  }
 
   const address = joinAddress(addr);
   if (!address) return { action: "skip", reason: "shipping address has no street address" };
