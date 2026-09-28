@@ -11382,11 +11382,25 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        connect code and nothing else, so a merchant could not tell from the
        portal whether connecting had worked or which stores were attached --
        only the Shopify side ever confirmed it. */
+    /* The code prompt is for connecting. Once a store is live it steps back to
+       a quiet "connect another store" link instead of asking for a new code. */
+    function nvShopifyConnectUi(connected){
+      var intro=document.getElementById("nvShopifyConnectIntro");
+      var btn=document.getElementById("nvShopifyCodeBtn");
+      if(intro) intro.style.display=connected?"none":"";
+      if(btn) btn.textContent=connected?"Connect another store":"Show my connect code";
+    }
     function nvShopifyStores(){
       var box=document.getElementById("nvShopifyStores"); if(!box) return;
-      Promise.resolve(sb.rpc("nvsh_my_stores")).then(function(r){
+      /* This called sb.rpc, and no `sb` exists in this scope -- a ReferenceError
+         swallowed by renderIntegrations' try, so no store was ever listed. The
+         live client is window.__nvSb, the same one the connect code uses. */
+      var client=window.__nvSb;
+      if(!client||typeof client.rpc!=="function") return;
+      Promise.resolve(client.rpc("nvsh_my_stores")).then(function(r){
         if(r && r.error) return;
         var rows=(r&&r.data)||[];
+        nvShopifyConnectUi(rows.some(function(x){ return x.status==="active"; }));
         if(!rows.length){ box.innerHTML=""; return; }
         box.innerHTML='<div class="ops-card"><strong>Connected stores</strong>'+rows.map(function(x){
           var name=String(x.shop_domain||"").replace(/[&<>"]/g,"");
