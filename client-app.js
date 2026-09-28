@@ -5849,6 +5849,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     function renderClientReportFull(){
+      if(state.activeClientTab==="reports"){ try{ nvReport2Open(); }catch(e){} }
       const tbody=document.getElementById("clientReportFullRows"); if(!tbody) return;
       const sel=document.getElementById("repStatus");
       if(sel && !sel.dataset.filled){ sel.innerHTML=`<option value="">All statuses</option>`+STATUS_TAGS.concat(["Cancelled by client"]).map(s=>`<option value="${s}">${escLabelText(nvStatusLabel(s))}</option>`)   /* value stays the STORED status; only the text a human reads is relabelled */.join(""); sel.dataset.filled="1"; }
@@ -6966,6 +6967,48 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       </style><div style="font-family:sans-serif;color:#000;background:var(--nvu-bg);padding:24px"><h2>NovaX Full Report — ${escLabelText(state.client.name)}</h2><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><tr><th>AWB</th><th>Date</th><th>Consignee</th><th>Status</th><th>COD</th><th>Fee</th></tr>${rows.map(p=>`<tr><td>${escLabelText(p.awb)}</td><td>${escLabelText(p.date)}</td><td>${escLabelText(p.consignee)}</td><td>${escLabelText(nvStatusLabel(p.status))}</td><td>${money(p.cod)}</td><td>${money(p.fee)}</td></tr>`).join("")}<tr><td colspan="4"><strong>Total &mdash; ${rows.length} parcel${rows.length===1?"":"s"}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.cod||0),0))}</strong></td><td><strong>${money(rows.reduce((a,p)=>a+Number(p.fee||0),0))}</strong></td></tr></table></div>`;
       toast(nvReportScopeNote(rows.length,res.complete), res.complete?"success":"error");
       nvPrintStageNow();
+    }
+
+    /* ═══ Reports v2 (28 Sep 2026) ══════════════════════════════════════
+       client-reports.js is loaded only when the Reports tab opens and reads
+       the portal through this bridge, so "delivered", "settled" and "rated"
+       mean exactly what they mean on every other screen. Read-only. If the
+       file cannot load, the classic report underneath is shown instead. */
+    const NV_REPORTS_SRC="client-reports.js?v=38c5f1a8";
+    window.__nvRepBridge={
+      clientId:function(){ return state.client&&state.client.id; },
+      clientName:function(){ return (state.client&&state.client.name)||""; },
+      parcels:function(){ const id=state.client&&state.client.id; return (state.parcels||[]).filter(function(p){ return p&&p.clientId===id; }); },
+      sb:function(){ return window.__nvSb||null; },
+      demo:function(){ return !!window.__NOVAX_DEMO; },
+      nvStatus:nvStatus, statusLabel:nvStatusLabel, money:money, esc:escLabelText,
+      isDelivered:isDeliveredLedgerParcel, settled:nvOutcomeSettled, rated:nvIsRatedParcel,
+      ageText:nvAgeText, agingHours:agingHours, paidPill:nvPaidPill, csvCell:csvCell, toast:toast,
+      stepsOf:function(st){ const T=STATUS_TAGS, i=T.indexOf(st); if(i<=0) return [T[0]]; const d=T.indexOf("Delivered"); return (d>0&&i>d)?T.slice(0,d).concat([st]):T.slice(0,i+1); },
+      /* A parcel the portal already holds opens exactly as it does everywhere
+         else; an older one the report fetched opens the same drawer from the
+         report's own copy, instead of bouncing to the dashboard. */
+      openParcel:function(p){
+        if((state.parcels||[]).some(function(x){ return x&&x.awb===p.awb; })){ openClientParcelJourney(p.awb); return; }
+        const U=window.NovaXUI;
+        if(U&&U.openDrawer){ try{ U.openDrawer('<span>'+escLabelText(p.awb)+'</span><small>'+escLabelText(p.consignee||"")+(p.city?" · "+escLabelText(p.city):"")+'</small>', nvParcelDrawerHtml(p)); return; }catch(e){} }
+        toast(p.awb+" — "+nvStatusLabel(p.status));
+      },
+      printHtml:function(html){ const st=document.getElementById("printStage"); if(!st) return false; st.innerHTML=html; nvPrintStageNow(); return true; },
+      showTab:function(id){ showClientTab(id); }
+    };
+    function nvReport2Open(){
+      const host=document.getElementById("nvReport2"); if(!host) return;
+      if(window.NovaXReports){ window.NovaXReports.open(host); return; }
+      if(host.dataset.loading) return;
+      host.dataset.loading="1";
+      nvLoadScriptOnce(NV_REPORTS_SRC).then(function(){
+        host.dataset.loading="";
+        if(window.NovaXReports) window.NovaXReports.open(host); else throw new Error("no module");
+      }).catch(function(){
+        host.dataset.loading=""; host.hidden=true;
+        const legacy=document.getElementById("nvReportLegacy"); if(legacy) legacy.hidden=false;
+      });
     }
 
     /* Wallet */
@@ -14685,7 +14728,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           { tab:"awbLabel", title:"AWB Label", text:"Every booking instantly generates a printable AWB with QR and barcode. Hand it to your rider or print it." },
           { tab:"bulkBooking", title:"Bulk Booking", text:"Shipping many orders at once? Download the CSV format, fill it in, and upload it here to create AWBs in bulk." },
           { tab:"integrations", title:"Store Integrations", text:"Connect Shopify, WooCommerce, or your own website here so new orders import automatically." },
-          { tab:"reports", title:"Full Report", text:"See every parcel with filters and export it as CSV or PDF." },
+          { tab:"reports", title:"Reports", text:"How your deliveries and COD are doing, with every parcel filterable and exportable as CSV or PDF." },
           /* Payments and Wallet were separate steps; both now alias to Money,
              so the tour showed the same tab twice and neither step highlighted
              anything. One step for the one tab that exists. */
@@ -18643,7 +18686,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ["newBooking","New Booking","Book a single parcel"],
       ["awbLabel","AWB Label","Print labels, request a pickup"],
       ["bulkBooking","Bulk Booking","Import a CSV of orders"],
-      ["reports","Full Report","Every parcel, filterable"],
+      ["reports","Reports","Performance, COD and every parcel"],
       ["payments","Payments","Invoices and settlement"],
       ["wallet","Wallet","Balance, withdrawals, ledger"],
       ["integrations","Integrations","Shopify, WooCommerce, API"],

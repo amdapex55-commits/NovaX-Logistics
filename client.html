@@ -2520,7 +2520,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=b99f6733r2" defer></script>
+  <script src="client-app.js?v=121ff5d6" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2535,7 +2535,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=b99f6733r2<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=121ff5d6<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -2644,7 +2644,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
               <button class="client-tab" data-client-tab="loadSheet">Load Sheet</button>
               <button class="client-tab" data-client-tab="bulkBooking">Bulk Booking</button>
               <button class="client-tab" data-client-tab="integrations">API</button>
-              <button class="client-tab" data-client-tab="reports">Full Report</button>
+              <button class="client-tab" data-client-tab="reports">Reports</button>
               <button class="client-tab" data-client-tab="money">Money</button>
               <button class="client-tab" data-client-tab="subAccounts">Sub Accounts</button>
               <button class="client-tab" data-client-tab="tickets">Support Tickets</button>
@@ -2964,6 +2964,11 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
             </section>
             <!-- FULL REPORT -->
             <section class="client-module" id="client-reports">
+              <!-- Reports v2: filled by client-reports.js, loaded when this tab
+                   opens. The classic report below stays in the page, hidden, as
+                   the fallback if that file cannot load. -->
+              <div id="nvReport2"></div>
+              <div id="nvReportLegacy" hidden>
               <div class="panel">
                 <div class="section-head"><div><h3>Full Report</h3><p>Full account parcel history. The filters below apply to the parcel table, the summaries and the downloads. The wallet and payout figures are whole-account totals and do not change with the filters.</p></div><div class="inline-actions"><button class="ghost-btn" id="reportCsvBtn">Export CSV</button><button class="ghost-btn" id="reportPdfBtn">Print / Save as PDF</button></div></div>
                 <div class="grid metrics" id="clientReportMetrics"></div>
@@ -2999,6 +3004,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                     <tbody id="clientReportRows"></tbody>
                   </table>
                 </div>
+              </div>
               </div>
             </section>
             <!-- WALLET -->
