@@ -6974,7 +6974,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        the portal through this bridge, so "delivered", "settled" and "rated"
        mean exactly what they mean on every other screen. Read-only. If the
        file cannot load, the classic report underneath is shown instead. */
-    const NV_REPORTS_SRC="client-reports.js?v=38c5f1a8";
+    var NV_REPORTS_SRC="client-reports.js?v=38c5f1a8";
     window.__nvRepBridge={
       clientId:function(){ return state.client&&state.client.id; },
       clientName:function(){ return (state.client&&state.client.name)||""; },
@@ -6997,12 +6997,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       printHtml:function(html){ const st=document.getElementById("printStage"); if(!st) return false; st.innerHTML=html; nvPrintStageNow(); return true; },
       showTab:function(id){ showClientTab(id); }
     };
+    /* Fetch the report module quietly once the portal has settled, so the
+       tab is usually instant when tapped. It only defines NovaXReports; it
+       renders nothing until the tab opens. */
+    setTimeout(function(){
+      try{
+        var go=function(){ nvReport2Load().catch(function(){}); };
+        if(window.requestIdleCallback) requestIdleCallback(go,{timeout:4000}); else go();
+      }catch(e){}
+    },5000);
+    /* One shared promise: nvLoadScriptOnce resolves at once if the tag is
+       already in the page, even while it is still downloading, so the
+       preload and a tap on the tab must wait on the same download. */
+    var NV_REPORTS_P=null;
+    function nvReport2Load(){
+      if(!NV_REPORTS_P) NV_REPORTS_P=nvLoadScriptOnce(NV_REPORTS_SRC).catch(function(e){ NV_REPORTS_P=null; throw e; });
+      return NV_REPORTS_P;
+    }
     function nvReport2Open(){
       const host=document.getElementById("nvReport2"); if(!host) return;
       if(window.NovaXReports){ window.NovaXReports.open(host); return; }
       if(host.dataset.loading) return;
       host.dataset.loading="1";
-      nvLoadScriptOnce(NV_REPORTS_SRC).then(function(){
+      if(!host.innerHTML.trim()) host.innerHTML='<div class="panel" style="padding:22px"><p class="footer-note" style="margin:0">Loading your report\u2026</p></div>';
+      nvReport2Load().then(function(){
         host.dataset.loading="";
         if(window.NovaXReports) window.NovaXReports.open(host); else throw new Error("no module");
       }).catch(function(){
