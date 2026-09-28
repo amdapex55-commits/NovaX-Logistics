@@ -1390,6 +1390,16 @@ Deno.serve(async (req: Request) => {
     return text("not found", 404);
   } catch (err) {
     console.error("unhandled", path, err);
+    // A merchant's button got a bare "internal error", which the page could only
+    // show as "Could not reach NovaX: HTTP 500". Say something a person can act
+    // on. Webhooks keep the plain 500: that is what makes Shopify retry.
+    if (path.startsWith("/api/")) {
+      return json({
+        ok: false,
+        message: "Something went wrong on NovaX's side. Refresh the list to see where things stand, " +
+          "then try again, and raise a ticket if it keeps happening.",
+      }, 500, { "Cache-Control": "no-store" });
+    }
     // 500 makes Shopify retry, which is right for a transient fault.
     return text("internal error", 500);
   }

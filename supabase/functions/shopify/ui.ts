@@ -358,8 +358,21 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       init.headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);
     }
-    var res = await fetch(API_BASE + "/" + path.replace(/^\\//, ""), init);
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    var res;
+    try { res = await fetch(API_BASE + "/" + path.replace(/^\\//, ""), init); }
+    catch (e) { throw new Error("Could not reach NovaX. Check your connection and try again."); }
+    if (!res.ok) {
+      // A bare "HTTP 500" told the merchant nothing. Prefer the server's own
+      // sentence; otherwise say what the status means for them.
+      var msg = "";
+      try { var j = await res.json(); msg = (j && (j.message || j.error)) || ""; } catch (e) {}
+      if (!msg || msg === "unauthorized") {
+        msg = res.status === 401 ? "Your Shopify session expired. Reload the app and try again."
+            : res.status >= 500 ? "NovaX had a problem with that. Refresh to see where things stand, then try again."
+            : "That request was not accepted (" + res.status + ").";
+      }
+      throw new Error(msg);
+    }
     return await res.json();
   }
 
@@ -790,7 +803,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       } else busy(id, false);
     } catch (e) {
       busy(id, false);
-      rowSay(id, "Could not reach NovaX: " + String(e.message || e), false);
+      rowSay(id, String(e.message || e), false);
     }
   });
 
@@ -838,7 +851,7 @@ export function embeddedApp(apiKey: string, shop: string, portalUrl: string): st
       var r = await api("api/link", { code: code });
       say("linkMsg", r.message || (r.ok ? "Connected." : "Could not connect."), Boolean(r.ok));
       if (r.ok) await load();
-    } catch (e) { say("linkMsg", "Could not reach NovaX: " + String(e.message || e), false); }
+    } catch (e) { say("linkMsg", String(e.message || e), false); }
     finally { btn.disabled = false; }
   });
 
