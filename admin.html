@@ -8760,13 +8760,24 @@ html,body{ background:var(--bg); color:var(--ink); }
 
     function nvDestinationRider(city) {
       const target = String(city || "").trim().toLowerCase();
-      return (state.riders || []).find(rd => {
+      /* 28 Sep 2026: only Lahore and Islamabad/Rawalpindi were known, so a
+         parcel travelling TO Karachi (booked at Rawalpindi Hub) could never be
+         put in transit: "No active destination rider is configured for
+         Karachi" -- while four active Karachi Hub riders existed. Every hub
+         city matches its own branch now; Islamabad and Rawalpindi share one. */
+      const names = (target === "islamabad" || target === "rawalpindi") ? ["islamabad", "rawalpindi"] : [target];
+      if (!target) return null;
+      const matches = (state.riders || []).filter(rd => {
         if (String(rd.access || "Active").toLowerCase() !== "active") return false;
         const label = `${rd.branch || ""} ${rd.manager || ""} ${rd.name || ""}`.toLowerCase();
-        if (target === "lahore") return label.includes("lahore");
-        if (target === "islamabad" || target === "rawalpindi") return label.includes("islamabad") || label.includes("rawalpindi");
-        return false;
-      }) || null;
+        return names.some(n => label.includes(n));
+      });
+      if (matches.length < 2) return matches[0] || null;
+      /* Several riders in one city: the one carrying the fewest open parcels,
+         so a whole manifest does not pile onto whoever is listed first. */
+      const open = ["Parcel now in transit", "Parcel received at destination", "Parcel out for delivery"];
+      const load = id => (state.parcels || []).filter(p => p && p.rider === id && open.includes(p.status)).length;
+      return matches.slice().sort((a, b) => load(a.id) - load(b.id))[0];
     }
 
     async function syncDestinationRoutes() {
