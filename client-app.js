@@ -11527,6 +11527,163 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     window.nvShopifyStores=nvShopifyStores;
 
 
+    /* ── Branded tracking page settings (28 Sep 2026) ─────────────────────
+       merchant_brand row + one logo file at merchant-logos/<client_id>/logo.
+       Saving goes through nv_brand_save, which re-checks the owner seat. */
+    var NV_BRAND={ loaded:false, loading:false, row:null, logoBlob:null, logoType:"", removeLogo:false, previewUrl:"" };
+    function nvBrandLum(hex){
+      var m=/^#([0-9a-f]{6})$/i.exec(hex||""); if(!m) return null;
+      var n=parseInt(m[1],16), c=[(n>>16)&255,(n>>8)&255,n&255].map(function(v){ v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4); });
+      return 0.2126*c[0]+0.7152*c[1]+0.0722*c[2];
+    }
+    function nvBrandInk(hex){
+      var L=nvBrandLum(hex); if(L===null) return null;
+      var cw=(1.05)/(L+0.05), cd=(L+0.05)/(nvBrandLum("#0b1512")+0.05);
+      if(cw>=4.5) return "#ffffff"; if(cd>=4.5) return "#0b1512"; return null;
+    }
+    function nvBrandEl(id){ return document.getElementById(id); }
+    function nvBrandMsg(t,k){ var m=nvBrandEl("nvBrandMsg"); if(!m) return; m.textContent=t||""; m.className="footer-note nv-pa-msg"+(k?(" "+k):""); }
+    function nvBrandLogoSrc(){
+      if(NV_BRAND.removeLogo) return "";
+      if(NV_BRAND.previewUrl) return NV_BRAND.previewUrl;
+      var r=NV_BRAND.row; if(!r||!r.logo_path) return "";
+      return "https://rhzunbzbdzicajqtohwp.supabase.co/storage/v1/object/public/merchant-logos/"+r.logo_path+"?v="+encodeURIComponent(r.updated_at||"");
+    }
+    function nvBrandPreview(){
+      var name=(nvBrandEl("nvBrandName")&&nvBrandEl("nvBrandName").value.trim())||"Your shop";
+      var accent=nvBrandEl("nvBrandAccent")?nvBrandEl("nvBrandAccent").value:"#0c7c59";
+      var bar=nvBrandEl("nvBpBar"), logo=nvBrandEl("nvBpLogo"), nm=nvBrandEl("nvBpName"), wa=nvBrandEl("nvBpWa"), note=nvBrandEl("nvBrandAccentNote");
+      if(!bar) return;
+      nm.textContent=name;
+      var ink=nvBrandInk(accent);
+      if(ink){ bar.style.background=accent; bar.style.color=ink; if(note) note.textContent="Reads clearly with "+(ink==="#ffffff"?"white":"dark")+" text."; }
+      else { bar.style.background=""; bar.style.color=""; if(note) note.textContent="Too hard to read on this colour — NovaX green will be used."; }
+      var src=nvBrandLogoSrc();
+      logo.innerHTML="";
+      if(src){ var img=document.createElement("img"); img.alt=""; img.src=src; logo.appendChild(img); }
+      else logo.textContent=name.split(/\s+/).slice(0,2).map(function(w){ return w.charAt(0); }).join("").toUpperCase();
+      var waOn=!!(nvBrandEl("nvBrandWa")&&nvBrandEl("nvBrandWa").value.replace(/\D/g,"").length>=10);
+      wa.hidden=!waOn;
+      if(waOn && ink){ wa.style.background=accent; wa.style.color=ink; } else { wa.style.background=""; wa.style.color=""; }
+      var rm=nvBrandEl("nvBrandLogoRemove"); if(rm) rm.hidden=!src;
+      var chip=nvBrandEl("nvBrandState"), on=nvBrandEl("nvBrandEnabled")&&nvBrandEl("nvBrandEnabled").checked;
+      if(chip){ chip.textContent=(NV_BRAND.row&&NV_BRAND.row.enabled)?"Live":"Off"; chip.className="chip"+((NV_BRAND.row&&NV_BRAND.row.enabled)?" good":""); }
+    }
+    function nvBrandFill(){
+      var r=NV_BRAND.row||{};
+      var name=r.display_name||((state.client&&state.client.name)||"");
+      if(nvBrandEl("nvBrandName")) nvBrandEl("nvBrandName").value=name;
+      if(nvBrandEl("nvBrandAccent")) nvBrandEl("nvBrandAccent").value=r.accent_hex||"#0c7c59";
+      if(nvBrandEl("nvBrandWa")) nvBrandEl("nvBrandWa").value=r.support_whatsapp?("0"+String(r.support_whatsapp).slice(2)):"";
+      if(nvBrandEl("nvBrandEnabled")) nvBrandEl("nvBrandEnabled").checked=!!r.enabled;
+      var owner=(typeof nvIsOwnerSeat!=="function")||nvIsOwnerSeat();
+      var note=nvBrandEl("nvBrandOwnerNote"); if(note) note.hidden=owner;
+      var form=nvBrandEl("nvBrandForm");
+      if(form) Array.from(form.querySelectorAll("input,button")).forEach(function(x){ x.disabled=!owner; });
+      nvBrandPreview();
+    }
+    function nvBrandLoad(force){
+      var sb=window.__nvSb;
+      if(!nvBrandEl("nvBrandPanel")||!sb||!sb.from||NV_BRAND.loading) return;
+      if(NV_BRAND.loaded && !force) return;
+      NV_BRAND.loading=true;
+      Promise.resolve(sb.from("merchant_brand").select("*").maybeSingle()).then(function(r){
+        NV_BRAND.loading=false;
+        if(r&&r.error){ if(!NV_BRAND.loaded) nvBrandFill(); return; }
+        NV_BRAND.row=(r&&r.data)||null; NV_BRAND.loaded=true;
+        NV_BRAND.logoBlob=null; NV_BRAND.removeLogo=false;
+        if(NV_BRAND.previewUrl){ try{ URL.revokeObjectURL(NV_BRAND.previewUrl); }catch(e){} NV_BRAND.previewUrl=""; }
+        var f=nvBrandEl("nvBrandLogo"); if(f) f.value="";
+        nvBrandFill();
+      }).catch(function(){ NV_BRAND.loading=false; });
+    }
+    /* Resize to at most 256px and re-encode, so a 4 MB phone photo becomes a
+       small logo instead of an upload error. */
+    function nvBrandPrepareLogo(file){
+      return new Promise(function(resolve,reject){
+        if(!/^image\/(png|jpeg|webp)$/.test(file.type)){ reject(new Error("Use a PNG, JPG or WebP image.")); return; }
+        if(file.size>15*1024*1024){ reject(new Error("That image is too large. Use one under 15 MB.")); return; }
+        var url=URL.createObjectURL(file), img=new Image();
+        img.onload=function(){
+          var k=Math.min(1,256/Math.max(img.naturalWidth,img.naturalHeight));
+          var w=Math.max(1,Math.round(img.naturalWidth*k)), h=Math.max(1,Math.round(img.naturalHeight*k));
+          var c=document.createElement("canvas"); c.width=w; c.height=h;
+          c.getContext("2d").drawImage(img,0,0,w,h);
+          URL.revokeObjectURL(url);
+          c.toBlob(function(png){
+            if(png && png.size<=200*1024){ resolve({ blob:png, type:"image/png" }); return; }
+            var cj=document.createElement("canvas"); cj.width=w; cj.height=h;
+            var g=cj.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,w,h); g.drawImage(img,0,0,w,h);
+            cj.toBlob(function(jpg){
+              if(jpg && jpg.size<=200*1024) resolve({ blob:jpg, type:"image/jpeg" });
+              else reject(new Error("Could not make that image small enough. Try a simpler logo."));
+            },"image/jpeg",0.88);
+          },"image/png");
+        };
+        img.onerror=function(){ URL.revokeObjectURL(url); reject(new Error("That file could not be read as an image.")); };
+        img.src=url;
+      });
+    }
+    document.addEventListener("change",function(e){
+      if(!e.target||e.target.id!=="nvBrandLogo") return;
+      var file=e.target.files&&e.target.files[0]; if(!file) return;
+      nvBrandMsg("Preparing logo…");
+      nvBrandPrepareLogo(file).then(function(out){
+        NV_BRAND.logoBlob=out.blob; NV_BRAND.logoType=out.type; NV_BRAND.removeLogo=false;
+        if(NV_BRAND.previewUrl){ try{ URL.revokeObjectURL(NV_BRAND.previewUrl); }catch(x){} }
+        NV_BRAND.previewUrl=URL.createObjectURL(out.blob);
+        nvBrandMsg("Logo ready. Press Save to publish it.","ok");
+        nvBrandPreview();
+      }).catch(function(err){ e.target.value=""; nvBrandMsg(err.message,"err"); });
+    });
+    document.addEventListener("input",function(e){
+      if(e.target && /^nvBrand(Name|Accent|Wa)$/.test(e.target.id||"")) nvBrandPreview();
+    });
+    function nvBrandRemoveLogo(){
+      NV_BRAND.logoBlob=null; NV_BRAND.removeLogo=true;
+      if(NV_BRAND.previewUrl){ try{ URL.revokeObjectURL(NV_BRAND.previewUrl); }catch(e){} NV_BRAND.previewUrl=""; }
+      var f=nvBrandEl("nvBrandLogo"); if(f) f.value="";
+      nvBrandMsg("Logo will be removed when you press Save.");
+      nvBrandPreview();
+    }
+    window.nvBrandRemoveLogo=nvBrandRemoveLogo;
+    function nvBrandSave(){
+      if(window.__NOVAX_DEMO){ try{ if(typeof window.nvDemoPrompt==="function") window.nvDemoPrompt("save"); }catch(e){} return; }
+      var sb=window.__nvSb; if(!sb||!sb.rpc){ nvBrandMsg("Cloud connection not ready yet, try again in a moment.","err"); return; }
+      var name=nvBrandEl("nvBrandName").value.trim();
+      if(name.length<2){ nvBrandMsg("Enter your shop name (at least 2 characters).","err"); nvBrandEl("nvBrandName").focus(); return; }
+      var accent=nvBrandEl("nvBrandAccent").value;
+      var wa=nvBrandEl("nvBrandWa").value.trim();
+      var enabled=nvBrandEl("nvBrandEnabled").checked;
+      var cid=activeClientId();
+      var btn=nvBrandEl("nvBrandSaveBtn"), was=btn.textContent;
+      btn.disabled=true; btn.textContent="Saving…"; nvBrandMsg("");
+      var hadLogo=!!(NV_BRAND.row&&NV_BRAND.row.logo_path);
+      var step=Promise.resolve();
+      if(NV_BRAND.logoBlob){
+        if(!/^[0-9a-f-]{36}$/i.test(String(cid||""))){ btn.disabled=false; btn.textContent=was; nvBrandMsg("Your account is still loading. Try again in a moment.","err"); return; }
+        step=Promise.resolve(sb.storage.from("merchant-logos").upload(cid+"/logo", NV_BRAND.logoBlob, { upsert:true, contentType:NV_BRAND.logoType, cacheControl:"300" }))
+          .then(function(r){ if(r&&r.error) throw new Error("Logo upload failed: "+r.error.message); });
+      } else if(NV_BRAND.removeLogo && hadLogo){
+        step=Promise.resolve(sb.storage.from("merchant-logos").remove([cid+"/logo"])).then(function(){});
+      }
+      var hasLogo=!!NV_BRAND.logoBlob || (hadLogo && !NV_BRAND.removeLogo);
+      step.then(function(){
+        return sb.rpc("nv_brand_save",{ p_display_name:name, p_accent:accent, p_whatsapp:wa||null, p_enabled:enabled, p_has_logo:hasLogo });
+      }).then(function(r){
+        btn.disabled=false; btn.textContent=was;
+        if(r&&r.error){ nvBrandMsg(/permission denied/i.test(r.error.message||"")?"Your sign-in has ended. Refresh and sign in again.":r.error.message,"err"); return; }
+        if(!r||!r.data){ nvBrandMsg("Not saved. Try again.","err"); return; }
+        NV_BRAND.row=Array.isArray(r.data)?r.data[0]:r.data;
+        NV_BRAND.logoBlob=null; NV_BRAND.removeLogo=false;
+        if(NV_BRAND.previewUrl){ try{ URL.revokeObjectURL(NV_BRAND.previewUrl); }catch(e){} NV_BRAND.previewUrl=""; }
+        var f=nvBrandEl("nvBrandLogo"); if(f) f.value="";
+        nvBrandFill();
+        nvBrandMsg(NV_BRAND.row.enabled?"Saved. Your buyers now see your brand on their tracking link.":"Saved. Tick “Show my brand” when you want buyers to see it.","ok");
+      }).catch(function(e){ btn.disabled=false; btn.textContent=was; nvBrandMsg(String((e&&e.message)||e),"err"); });
+    }
+    window.nvBrandSave=nvBrandSave;
+
     function renderIntegrations(){
       // NovaX fix: Shopify no longer lives in the generic storeConnections
       // chip logic (that reads local/legacy `store_connections` state) --
@@ -11541,6 +11698,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          the NovaX app and paste a connect code instead. shopifyCheckStatus()
          drove that panel's four step chips and has nothing left to update. */
       try{ nvShopifyStores(); }catch(e){}
+      try{ nvBrandLoad(false); }catch(e){}
     }
     function newBookedParcels(){ return (state.parcels||[]).filter(p=>p.clientId===activeClientId()&&p.status==="New booked"); }
     function renderNewBookedList(){
@@ -11670,12 +11828,249 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const active=activePickupAwbs();
       return newBookedParcels().filter(function(p){ return !active.has(p.awb); });
     }
+    /* ── Saved pickup addresses (28 Sep 2026) ─────────────────────────────
+       Stored in pickup_addresses, written only through nv_pickup_address_*
+       RPCs (the server sets the city from the account). The textarea stays
+       the record that is sent: choosing a saved address fills it, and a
+       request names the saved address only while the text still matches it,
+       so editing the text by hand can never send the wrong address id. */
+    var NV_PA={ rows:[], loaded:false, loading:false, city:"", editingId:null, confirmArchive:null };
+    function nvPaNorm(v){ return String(v||"").replace(/\s+/g," ").trim().toLowerCase(); }
+    function nvPaMatch(text){
+      var t=nvPaNorm(text); if(!t) return null;
+      for(var i=0;i<NV_PA.rows.length;i++){ if(nvPaNorm(NV_PA.rows[i].address)===t) return NV_PA.rows[i]; }
+      return null;
+    }
+    function nvPaDefault(){
+      for(var i=0;i<NV_PA.rows.length;i++){ if(NV_PA.rows[i].is_default) return NV_PA.rows[i]; }
+      return NV_PA.rows[0]||null;
+    }
+    function nvPaErr(r,e){
+      var m=(r&&r.error&&r.error.message)||(e&&e.message)||String(e||"");
+      /* An ended sign-in reaches the database as anon, which has no access. */
+      if((r&&r.status===401) || /permission denied/i.test(m)) return "Your sign-in has ended. Refresh the page and sign in again, then try once more.";
+      return m.replace(/^.*?ERROR:\s*/,"")||"Something went wrong. Try again.";
+    }
+    function nvPaEnsureLoaded(force){
+      var sb=window.__nvSb;
+      if(!sb||!sb.from||NV_PA.loading) return;
+      if(NV_PA.loaded && !force) { nvPaRenderChips(); return; }
+      NV_PA.loading=true;
+      Promise.resolve(sb.from("pickup_addresses")
+        .select("id,label,address,city,phone,is_default,created_at")
+        .is("archived_at",null).order("created_at",{ascending:true}))
+      .then(function(r){
+        NV_PA.loading=false;
+        if(r&&r.error){ return; }               /* keep the plain textarea working */
+        NV_PA.rows=Array.isArray(r&&r.data)?r.data:[];
+        NV_PA.loaded=true;
+        var el=document.getElementById("pickupAddress");
+        /* Fill the default only where nothing was typed, or where the box
+           holds our own earlier guess -- never over the merchant's typing. */
+        var d=nvPaDefault();
+        if(el && d && (!el.value.trim() || el.dataset.nvAuto==="1")){ el.value=d.address; el.dataset.nvAuto="1"; }
+        /* The form reset runs before this reload lands, so it saw the OLD
+           count and pre-ticked "default" for a second address. Re-sync it
+           here, unless the merchant is editing or has started typing. */
+        var dBox=document.getElementById("nvPaDefault"), lab=document.getElementById("nvPaLabel");
+        if(dBox && !NV_PA.editingId && lab && !lab.value.trim()) dBox.checked=!NV_PA.rows.length;
+        nvPaRenderChips(); nvPaRenderList();
+      }).catch(function(){ NV_PA.loading=false; });
+      if(!NV_PA.city && sb.rpc && !window.__NOVAX_DEMO){
+        Promise.resolve(sb.rpc("nv_my_pickup_city")).then(function(r){
+          if(r && !r.error && r.data){ NV_PA.city=String(r.data); nvPaRenderList(); }
+        }).catch(function(){});
+      }
+    }
+    function nvPaSyncUi(){
+      var el=document.getElementById("pickupAddress");
+      var hit=el?nvPaMatch(el.value):null;
+      var chips=document.getElementById("nvPaChips");
+      if(chips) chips.querySelectorAll(".nv-pa-chip").forEach(function(c){
+        c.setAttribute("aria-checked", hit && c.dataset.id===hit.id ? "true" : "false");
+      });
+      var row=document.getElementById("nvPaSaveRow");
+      if(row){
+        var show=!!(el && nvPaNorm(el.value).length>=8 && !hit && NV_PA.loaded && NV_PA.rows.length<20);
+        row.hidden=!show;
+      }
+    }
+    function nvPaRenderChips(){
+      var box=document.getElementById("nvPaChips"); if(!box) return;
+      if(!NV_PA.rows.length){ box.hidden=true; box.innerHTML=""; nvPaSyncUi(); return; }
+      box.hidden=false;
+      box.innerHTML=NV_PA.rows.map(function(a){
+        return '<button type="button" class="nv-pa-chip" role="radio" aria-checked="false" data-id="'+escLabelText(a.id)+'" title="'+escLabelText(a.address)+'">'+
+          '<span>'+escLabelText(a.label)+'</span>'+(a.is_default?'<small>Default</small>':'')+'</button>';
+      }).join("");
+      nvPaSyncUi();
+    }
+    function nvPaUse(id){
+      var a=NV_PA.rows.find(function(x){ return x.id===id; }); if(!a) return;
+      var el=document.getElementById("pickupAddress"); if(!el) return;
+      el.value=a.address; el.dataset.nvAuto="";
+      nvPaSyncUi();
+    }
+    document.addEventListener("click",function(e){
+      var c=e.target&&e.target.closest?e.target.closest(".nv-pa-chip"):null;
+      if(c && c.dataset.id){ e.preventDefault(); nvPaUse(c.dataset.id); }
+    });
+    document.addEventListener("input",function(e){
+      if(e.target && e.target.id==="pickupAddress"){ e.target.dataset.nvAuto=""; nvPaSyncUi(); }
+    });
+    function nvPaIdForText(text){ var a=nvPaMatch(text); return a?a.id:null; }
+
+    function nvPaDemoBlock(){
+      if(!window.__NOVAX_DEMO) return false;
+      try{ if(typeof window.nvDemoPrompt==="function") window.nvDemoPrompt("save"); }catch(e){}
+      return true;
+    }
+    function nvPaQuickSave(){
+      if(nvPaDemoBlock()) return;
+      var el=document.getElementById("pickupAddress"), lab=document.getElementById("nvPaQuickLabel"), btn=document.getElementById("nvPaQuickSave");
+      var label=(lab&&lab.value||"").trim(), address=(el&&el.value||"").trim();
+      if(!label){ toast("Give this address a short name first, like Clifton shop.","error"); if(lab) lab.focus(); return; }
+      if(!window.__nvSb||!window.__nvSb.rpc){ toast("Cloud connection not ready yet, please try again in a moment.","error"); return; }
+      if(btn){ btn.disabled=true; btn.textContent="Saving…"; }
+      Promise.resolve(window.__nvSb.rpc("nv_pickup_address_save",{ p_id:null, p_label:label, p_address:address, p_phone:null, p_make_default:false }))
+      .then(function(r){
+        if(btn){ btn.disabled=false; btn.textContent="Save address"; }
+        if(r&&r.error){ toast(nvPaErr(r),"error"); return; }
+        if(!r||!r.data){ toast("The address was not saved. Try again.","error"); return; }
+        if(lab) lab.value="";
+        var saved=Array.isArray(r.data)?r.data[0]:r.data;
+        NV_PA.rows=NV_PA.rows.filter(function(x){ return x.id!==saved.id; });
+        if(saved.is_default) NV_PA.rows.forEach(function(x){ x.is_default=false; });
+        NV_PA.rows.push(saved);
+        nvPaRenderChips(); nvPaRenderList();
+        toast("Saved “"+saved.label+"”. It will be one tap next time.","success");
+      }).catch(function(e){
+        if(btn){ btn.disabled=false; btn.textContent="Save address"; }
+        toast(nvPaErr(null,e),"error");
+      });
+    }
+    window.nvPaQuickSave=nvPaQuickSave;
+
+    /* ── Manage window ── */
+    function nvPaMsg(text,kind){ var m=document.getElementById("nvPaMsg"); if(!m) return; m.textContent=text||""; m.className="footer-note nv-pa-msg"+(kind?(" "+kind):""); }
+    function nvPaRenderList(){
+      var list=document.getElementById("nvPaList"); if(!list) return;
+      var note=document.getElementById("nvPaCityNote");
+      var city=NV_PA.city||(state.client&&state.client.pickupCity)||"";
+      if(note) note.textContent="Riders collect from these addresses. The default is filled in for every pickup request."+
+        (city?(" Addresses are in "+city+", your pickup city."):"");
+      if(!NV_PA.rows.length){
+        list.innerHTML='<div class="nv-pa-empty">No saved addresses yet. Add your shop or warehouse below and it will be filled in for every pickup.</div>';
+        return;
+      }
+      list.innerHTML=NV_PA.rows.map(function(a){
+        var id=escLabelText(a.id), arch=NV_PA.confirmArchive===a.id;
+        return '<div class="nv-pa-item">'+
+          '<div class="nv-pa-item-top"><b>'+escLabelText(a.label)+'</b>'+(a.is_default?'<span class="chip good">Default</span>':'')+'</div>'+
+          '<p>'+escLabelText(a.address)+(a.phone?('<br>Contact: '+escLabelText(a.phone)):'')+'</p>'+
+          '<div class="nv-pa-item-actions">'+
+            '<button type="button" class="ghost-btn" data-pa-act="use" data-id="'+id+'">Use for this pickup</button>'+
+            '<button type="button" class="ghost-btn" data-pa-act="edit" data-id="'+id+'">Edit</button>'+
+            (a.is_default?'':'<button type="button" class="ghost-btn" data-pa-act="default" data-id="'+id+'">Make default</button>')+
+            '<button type="button" class="ghost-btn" data-pa-act="archive" data-id="'+id+'" style="color:var(--nvu-bad-fg);border-color:var(--nvu-bad-ln)">'+(arch?'Tap again to remove':'Remove')+'</button>'+
+          '</div></div>';
+      }).join("");
+    }
+    function nvPaResetForm(){
+      NV_PA.editingId=null;
+      ["nvPaId","nvPaLabel","nvPaAddress","nvPaPhone"].forEach(function(i){ var el=document.getElementById(i); if(el) el.value=""; });
+      var d=document.getElementById("nvPaDefault"); if(d) d.checked=!NV_PA.rows.length;
+      var t=document.getElementById("nvPaFormTitle"); if(t) t.textContent="Add an address";
+      var c=document.getElementById("nvPaCancelEdit"); if(c) c.hidden=true;
+      var b=document.getElementById("nvPaSubmitBtn"); if(b) b.textContent="Save address";
+      nvPaMsg("");
+    }
+    window.nvPaResetForm=nvPaResetForm;
+    function nvPaOpen(){
+      var m=document.getElementById("nvPaModal"); if(!m) return;
+      NV_PA.confirmArchive=null;
+      nvPaResetForm(); nvPaRenderList();
+      m.classList.add("show");
+      nvPaEnsureLoaded(true);
+      setTimeout(function(){ var f=document.getElementById(NV_PA.rows.length?"nvPaTitle":"nvPaLabel"); if(f&&f.focus) f.focus(); },60);
+    }
+    function nvPaClose(){ var m=document.getElementById("nvPaModal"); if(m) m.classList.remove("show"); NV_PA.confirmArchive=null; }
+    window.nvPaOpen=nvPaOpen; window.nvPaClose=nvPaClose;
+    document.addEventListener("keydown",function(e){
+      var m=document.getElementById("nvPaModal");
+      if(e.key==="Escape" && m && m.classList.contains("show")) nvPaClose();
+    });
+    document.addEventListener("click",function(e){
+      var m=document.getElementById("nvPaModal");
+      if(m && e.target===m) { nvPaClose(); return; }
+      var b=e.target&&e.target.closest?e.target.closest("[data-pa-act]"):null; if(!b) return;
+      var id=b.dataset.id, act=b.dataset.paAct, a=NV_PA.rows.find(function(x){ return x.id===id; });
+      if(!a) return;
+      if(act!=="archive") NV_PA.confirmArchive=null;
+      if(act==="use"){ nvPaUse(id); nvPaClose(); toast("Pickup address set to “"+a.label+"”."); return; }
+      if(act==="edit"){
+        NV_PA.editingId=id;
+        document.getElementById("nvPaId").value=id;
+        document.getElementById("nvPaLabel").value=a.label||"";
+        document.getElementById("nvPaAddress").value=a.address||"";
+        document.getElementById("nvPaPhone").value=a.phone||"";
+        document.getElementById("nvPaDefault").checked=!!a.is_default;
+        document.getElementById("nvPaFormTitle").textContent="Edit “"+a.label+"”";
+        document.getElementById("nvPaCancelEdit").hidden=false;
+        document.getElementById("nvPaSubmitBtn").textContent="Save changes";
+        nvPaMsg(""); nvPaRenderList();
+        var l=document.getElementById("nvPaLabel"); if(l) l.focus();
+        return;
+      }
+      if(nvPaDemoBlock()) return;
+      if(act==="archive" && NV_PA.confirmArchive!==id){ NV_PA.confirmArchive=id; nvPaRenderList(); return; }
+      var rpc=act==="default"?"nv_pickup_address_set_default":"nv_pickup_address_archive";
+      b.disabled=true;
+      Promise.resolve(window.__nvSb.rpc(rpc,{ p_id:id })).then(function(r){
+        NV_PA.confirmArchive=null;
+        if(r&&r.error){ b.disabled=false; nvPaMsg(nvPaErr(r),"err"); nvPaRenderList(); return; }
+        if(act==="archive" && NV_PA.editingId===id) nvPaResetForm();
+        nvPaMsg(act==="default"?("“"+a.label+"” is now your default."):("Removed “"+a.label+"”. Past pickup requests keep their address."),"ok");
+        nvPaEnsureLoaded(true);
+      }).catch(function(err){ b.disabled=false; nvPaMsg(nvPaErr(null,err),"err"); });
+    });
+    function nvPaSubmit(){
+      if(nvPaDemoBlock()) return;
+      var label=document.getElementById("nvPaLabel").value.trim();
+      var address=document.getElementById("nvPaAddress").value.trim();
+      var phone=document.getElementById("nvPaPhone").value.trim();
+      var def=document.getElementById("nvPaDefault").checked;
+      if(!label){ nvPaMsg("Give the address a short name, like Clifton shop.","err"); document.getElementById("nvPaLabel").focus(); return; }
+      if(address.replace(/\s+/g," ").length<8){ nvPaMsg("Enter the full pickup address.","err"); document.getElementById("nvPaAddress").focus(); return; }
+      if(!window.__nvSb||!window.__nvSb.rpc){ nvPaMsg("Cloud connection not ready yet, try again in a moment.","err"); return; }
+      var btn=document.getElementById("nvPaSubmitBtn"), was=btn.textContent;
+      btn.disabled=true; btn.textContent="Saving…";
+      var editing=NV_PA.editingId;
+      Promise.resolve(window.__nvSb.rpc("nv_pickup_address_save",{ p_id:editing||null, p_label:label, p_address:address, p_phone:phone||null, p_make_default:def }))
+      .then(function(r){
+        btn.disabled=false; btn.textContent=was;
+        if(r&&r.error){ nvPaMsg(nvPaErr(r),"err"); return; }
+        if(!r||!r.data){ nvPaMsg("The address was not saved. Try again.","err"); return; }
+        var saved=Array.isArray(r.data)?r.data[0]:r.data;
+        /* If the pickup box showed the old text of an address being edited,
+           keep it in step with the new text. */
+        var el=document.getElementById("pickupAddress");
+        if(editing && el){ var old=NV_PA.rows.find(function(x){ return x.id===editing; }); if(old && nvPaNorm(el.value)===nvPaNorm(old.address)) el.value=saved.address; }
+        nvPaResetForm();
+        nvPaMsg(editing?("Saved changes to “"+saved.label+"”."):("Added “"+saved.label+"”."),"ok");
+        nvPaEnsureLoaded(true);
+      }).catch(function(e){ btn.disabled=false; btn.textContent=was; nvPaMsg(nvPaErr(null,e),"err"); });
+    }
+    window.nvPaSubmit=nvPaSubmit;
+
     /* The merchant's own warehouse address, retyped on every single pickup
        request because the field was cleared on submit and never prefilled
        except from the row-level "Request pickup" chip. Last address used wins,
        then whatever is saved on the account. */
     function nvPickupAddressDefault(){
       try{
+        /* A saved default is an explicit choice; it beats "last used". */
+        var saved=nvPaDefault(); if(saved) return String(saved.address||"").trim();
         var last=String(state.lastPickupAddress||"").trim();
         if(last) return last;
         var prev=(state.pickupRequests||[]).find(function(r){
@@ -11689,12 +12084,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var el=document.getElementById("pickupAddress");
       if(!el || el.value.trim()) return;          // never overwrite typing
       var v=nvPickupAddressDefault();
-      if(v) el.value=v;
+      if(v){ el.value=v; el.dataset.nvAuto="1"; }
     }
     function renderPickupEligibleList(){
       const list=document.getElementById("pickupEligibleList"); if(!list) return;
       const selected=new Set(Array.from(list.querySelectorAll(".pickup-check:checked")).map(b=>b.value));
       nvPrefillPickupAddress();
+      try{ nvPaEnsureLoaded(false); }catch(e){}
       const items=pickupEligibleParcels();
       if(!items.length){ list.innerHTML=`<p class="footer-note">No New booked AWBs are available for pickup right now.</p>`; return; }
       list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="pickup-check" value="${escLabelText(p.awb)}"${selected.has(p.awb)?" checked":""}><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${labelText(p.consignee)} &middot; ${labelText(p.city)} &middot; ${money(p.cod)}</span></label>`).join("");
@@ -11740,7 +12136,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var pending=await window.__novaxIdemKeys.acquire("pickup",String(clientId),fingerprint);
         var requestId=String(pending.key||"").replace(/^pickup:/,"");
         if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) throw new Error("Could not create a pickup request ID. Refresh and try again.");
-        var r=await sb.from("pickup_requests").insert({ id:requestId, client_id:clientId, awbs:awbs, pickup_address:address, requested_for:requestedFor, note:note, status:"Requested", meta:{} }).select("id,created_at").maybeSingle();
+        var row={ id:requestId, client_id:clientId, awbs:awbs, pickup_address:address, requested_for:requestedFor, note:note, status:"Requested", meta:{} };
+        /* Optional: a pickup must never fail because the saved-address helper
+           is missing or throws. */
+        var paId=null; try{ paId=(typeof nvPaIdForText==="function")?nvPaIdForText(address):null; }catch(e){ paId=null; }
+        if(paId) row.pickup_address_id=paId;
+        var r=await sb.from("pickup_requests").insert(row).select("id,created_at").maybeSingle();
         if(!r || r.error || !r.data){
           /* A duplicate primary key is a confirmed earlier success. Any other
              missing reply might also be one, so check the exact ID first. */

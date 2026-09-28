@@ -15370,7 +15370,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const rider = (state.riders || []).find(r => r.id === req.riderId);
       const clientLabel = labelText(client && client.name, "NovaX Client");
       const riderLabel = labelText(rider && rider.name, "Unassigned");
-      const pickupAddress = labelText(req.pickupAddress, "Address pending");
+      const pickupAddress = (req.pickupAddressLabel ? `${escLabelText(req.pickupAddressLabel)} &middot; ` : "") + labelText(req.pickupAddress, "Address pending");
       const requestedFor = labelText(req.requestedFor, req.createdAt || "-");
       const rows = (req.awbs || []).map(awb => state.parcels.find(p => p.awb === awb)).filter(Boolean);
       let totalCod = 0;
@@ -16412,7 +16412,7 @@ html,body{ background:var(--bg); color:var(--ink); }
              admin simply could not cancel a pickup. The renderer's own
              comment above describes Cancelled as an intended outcome. */
           `<button class="ghost-btn" type="button" onclick="cancelPickupRequest('${nvEscAttrJs(req.id)}')">Cancel</button>`;
-        return `<tr><td>${clientLabel}</td><td>${(req.awbs || []).length} AWB(s)<div class="footer-note">${awbList}</div></td><td>${labelText(req.pickupAddress, "-")}</td><td>${labelText(req.requestedFor, req.createdAt || "-")}</td><td><span class="chip ${statusChipClass}">${escLabelText(req.status)}</span></td><td><select onchange="assignPickupRider('${req.id}', this.value)" ${req.status === "Picked Up" || req.status === "Cancelled" ? "disabled" : ""}>${riderOptions}</select></td><td>${actions}</td></tr>`;
+        return `<tr><td>${clientLabel}</td><td>${(req.awbs || []).length} AWB(s)<div class="footer-note">${awbList}</div></td><td>${req.pickupAddressLabel ? `<strong>${escLabelText(req.pickupAddressLabel)}</strong><div class="footer-note">${labelText(req.pickupAddress, "-")}</div>` : labelText(req.pickupAddress, "-")}</td><td>${labelText(req.requestedFor, req.createdAt || "-")}</td><td><span class="chip ${statusChipClass}">${escLabelText(req.status)}</span></td><td><select onchange="assignPickupRider('${req.id}', this.value)" ${req.status === "Picked Up" || req.status === "Cancelled" ? "disabled" : ""}>${riderOptions}</select></td><td>${actions}</td></tr>`;
       }).join("");
     }
 
@@ -17332,7 +17332,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         var awbs = r.awbs;
         if (typeof awbs === "string") { try { awbs = JSON.parse(awbs); } catch (e) { awbs = []; } }
         if (!Array.isArray(awbs)) awbs = [];
-        return { _uuid: r.id, id: r.id, clientId: r.client_id, awbs: awbs, pickupAddress: r.pickup_address || "", requestedFor: r.requested_for || "", note: r.note || "", status: r.status || "Requested", riderId: r.rider_id || "", createdAt: dtpart(r.created_at), updatedAt: r.updated_at ? dtpart(r.updated_at) : "" };
+        return { _uuid: r.id, id: r.id, clientId: r.client_id, awbs: awbs, pickupAddress: r.pickup_address || "", pickupAddressLabel: (r.saved_address && r.saved_address.label) || "", requestedFor: r.requested_for || "", note: r.note || "", status: r.status || "Requested", riderId: r.rider_id || "", createdAt: dtpart(r.created_at), updatedAt: r.updated_at ? dtpart(r.updated_at) : "" };
       }
       function fPickup(pr) {
         var cid = cuid(pr.clientId);
@@ -17474,7 +17474,9 @@ html,body{ background:var(--bg); color:var(--ink); }
           sb.from("staff_users").select("*").order("created_at",{ascending:false}).limit(2000),
           sb.from("staff_activity").select("*").order("created_at",{ascending:false}).limit(100),
           sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}).limit(5000),
-          sb.from("pickup_requests").select("*").order("created_at",{ascending:false}).limit(3000),
+          /* saved_address: the merchant's name for a saved pickup address
+             ("Clifton shop"). Aliased so it can never shadow pickup_address. */
+          sb.from("pickup_requests").select("*,saved_address:pickup_addresses(label)").order("created_at",{ascending:false}).limit(3000),
           sb.from("profiles").select("id,email,client_id").not("client_id","is",null).limit(5000)
         ]).then(function(res){
           function D(i){ return (res[i]&&res[i].data)||[]; }

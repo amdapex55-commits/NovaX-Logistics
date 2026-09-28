@@ -98,6 +98,13 @@
     background:url(/assets/icon-192.png) center/contain no-repeat;flex:none;
   }
   .brandbar .t{min-width:0;}
+  .brandbar img.nv-shop-logo{width:40px;height:40px;border-radius:10px;object-fit:contain;background:#fff;padding:3px;box-sizing:border-box;flex:none;}
+  .brandbar .nv-shop-initials{width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.22) none;
+    display:grid;place-items:center;font-weight:850;font-size:15px;letter-spacing:.02em;flex:none;}
+  .brandbar strong{overflow-wrap:anywhere;}
+  .nv-shop-wa{display:flex;align-items:center;justify-content:center;min-height:46px;margin:-6px 0 16px;padding:10px 14px;
+    border-radius:var(--radius);background:#25d366;color:#04140d;font-weight:800;font-size:14px;text-decoration:none;text-align:center;}
+  .nv-shop-wa:focus-visible{outline:2px solid #fff;outline-offset:2px;}
   .brandbar strong{display:block;font-size:15px;letter-spacing:.01em;}
   .brandbar span{display:block;font-size:11.5px;opacity:.9;}
   .card{
@@ -521,6 +528,52 @@
      cannot be mistaken for a rider at the door. */
   var TRANSIT_TO_CITY = { "Parcel now in transit": 1, "Return in transit": 1 };
 
+  /* ── Merchant brand on the tracking page (28 Sep 2026) ── */
+  function nvLum(hex){
+    var m=/^#([0-9a-f]{6})$/i.exec(hex||""); if(!m) return null;
+    var n=parseInt(m[1],16), c=[(n>>16)&255,(n>>8)&255,n&255].map(function(v){
+      v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4); });
+    return 0.2126*c[0]+0.7152*c[1]+0.0722*c[2];
+  }
+  function nvContrast(a,b){ var x=Math.max(a,b), y=Math.min(a,b); return (x+0.05)/(y+0.05); }
+  function applyBrand(b, awb){
+    var bar=document.querySelector(".brandbar"); if(!bar) return;
+    var name=String(b.display_name||"").trim(); if(!name) return;
+    var accent=/^#[0-9a-f]{6}$/i.test(b.accent_hex||"")?b.accent_hex:null;
+    var logo=bar.querySelector(".logo");
+    if(logo){
+      if(b.logo_url && /^https:\/\/rhzunbzbdzicajqtohwp\.supabase\.co\/storage\/v1\/object\/public\/merchant-logos\//.test(b.logo_url)){
+        var img=document.createElement("img");
+        img.className="logo nv-shop-logo"; img.alt=name+" logo"; img.src=b.logo_url;
+        img.onerror=function(){ img.replaceWith(initials()); };
+        logo.replaceWith(img);
+      } else logo.replaceWith(initials());
+    }
+    function initials(){
+      var d=document.createElement("div"); d.className="logo nv-shop-initials"; d.setAttribute("aria-hidden","true");
+      d.textContent=name.split(/\s+/).slice(0,2).map(function(w){ return w.charAt(0); }).join("").toUpperCase();
+      return d;
+    }
+    var t=bar.querySelector(".t");
+    if(t) t.innerHTML='<strong></strong><span>Your order &middot; delivered by NovaX Logistics</span>';
+    if(t) t.querySelector("strong").textContent=name;
+    if(accent){
+      var L=nvLum(accent);
+      /* White text if it reads on the colour, dark text otherwise. */
+      var ink=nvContrast(L,1)>=4.5?"#ffffff":(nvContrast(L,nvLum("#0b1512"))>=4.5?"#0b1512":null);
+      if(ink){ bar.style.background=accent; bar.style.color=ink; }
+    }
+    try{ document.title=name+" \u2014 track your order"; }catch(e){}
+    if(b.support_whatsapp && /^923[0-9]{9}$/.test(b.support_whatsapp) && !document.getElementById("nvShopWa")){
+      var a=document.createElement("a");
+      a.id="nvShopWa"; a.className="nv-shop-wa"; a.target="_blank"; a.rel="noopener";
+      a.href="https://wa.me/"+b.support_whatsapp+"?text="+encodeURIComponent("Hi "+name+", about my order "+(awb||""));
+      a.textContent="Message "+name+" on WhatsApp";
+      if(accent){ var L2=nvLum(accent); var ink2=nvContrast(L2,1)>=4.5?"#ffffff":"#0b1512";
+        if(nvContrast(L2,nvLum(ink2))>=4.5){ a.style.background=accent; a.style.color=ink2; } }
+      bar.insertAdjacentElement("afterend",a);
+    }
+  }
   function render(row){
     var st=nvStatus(row.status)||"";
     var say=SAY[st]||[st||"Tracking",""];
@@ -690,6 +743,13 @@
         return;
       }
       render(row);
+      /* The shop's own brand, if they set one. Token links only -- the ?awb=
+         path never names the merchant (AWBs are sequential). A failure here
+         leaves the NovaX header exactly as it was. */
+      sb.rpc("public_track_brand",{ p_token: token }).then(function(br){
+        var b=br&&!br.error&&br.data&&br.data[0];
+        if(b) applyBrand(b, row.awb);
+      }).catch(function(){});
     }).catch(function(){
       fail("Tracking is temporarily unavailable","Please try again in a moment.");
     });

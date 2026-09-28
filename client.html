@@ -2101,6 +2101,66 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   .nvai-stream{scroll-behavior:auto}
 }
 </style>
+  <style>
+    /* Saved pickup addresses (28 Sep 2026). Theme tokens only, so light and
+       dark both follow. Nothing here starts hidden waiting on a script except
+       the chip row and save row, which have nothing to show until data loads. */
+    .nv-pa-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .nv-pa-head label{margin:0}
+    .nv-pa-manage{background:none;border:0;padding:4px 0;font:inherit;font-size:12.5px;font-weight:700;
+      color:var(--nvu-accent);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+    .nv-pa-chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+    /* .ghost-btn / .action-btn set display, which beats the [hidden] attribute. */
+    .nv-pa-chips[hidden],.nv-pa-save[hidden],#nvPaModal [hidden]{display:none!important}
+    .nv-pa-chip{display:inline-flex;align-items:center;gap:7px;max-width:100%;min-height:36px;padding:7px 12px;
+      border-radius:999px;border:1px solid var(--nvu-line-2);background:var(--nvu-bg-2);color:var(--nvu-ink);
+      font:inherit;font-size:13px;font-weight:700;cursor:pointer;text-align:left}
+    .nv-pa-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
+    .nv-pa-chip small{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+      color:var(--nvu-good-fg);background:var(--nvu-good-bg);border-radius:999px;padding:2px 7px}
+    .nv-pa-chip[aria-checked="true"]{border-color:var(--nvu-accent);background:var(--nvu-good-bg);
+      box-shadow:0 0 0 1px var(--nvu-accent) inset}
+    .nv-pa-chip:focus-visible,.nv-pa-manage:focus-visible{outline:2px solid var(--nvu-accent);outline-offset:2px}
+    .nv-pa-save{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:12.5px;color:var(--nvu-ink-2)}
+    .nv-pa-save input{flex:1 1 180px;min-width:0;min-height:38px}
+    .nv-pa-body{padding:16px 20px 22px;display:flex;flex-direction:column;gap:14px;max-height:min(78vh,720px);overflow:auto}
+    .nv-pa-list{display:flex;flex-direction:column;gap:8px}
+    .nv-pa-item{border:1px solid var(--nvu-line);border-radius:12px;padding:12px 14px;background:var(--nvu-bg-2)}
+    .nv-pa-item-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .nv-pa-item-top b{font-size:14px;color:var(--nvu-ink)}
+    .nv-pa-item p{margin:6px 0 0;font-size:13px;line-height:1.5;color:var(--nvu-ink-2);word-break:break-word}
+    .nv-pa-item-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+    .nv-pa-item-actions button{min-height:34px;padding:6px 12px;font-size:12.5px}
+    .nv-pa-empty{border:1px dashed var(--nvu-line-2);border-radius:12px;padding:14px;font-size:13px;color:var(--nvu-ink-2);text-align:center}
+    .nv-pa-form{border-top:1px solid var(--nvu-line);padding-top:14px;display:flex;flex-direction:column;gap:10px}
+    .nv-pa-form h4{margin:0;font-size:14px}
+    .nv-pa-form textarea{min-height:72px}
+    .nv-pa-check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--nvu-ink);cursor:pointer}
+    .nv-pa-msg:empty{display:none}
+    .nv-pa-msg.err{color:var(--nvu-bad-fg);font-weight:700}
+    .nv-pa-msg.ok{color:var(--nvu-good-fg);font-weight:700}
+    @media (max-width:520px){ .nv-pa-chip span{max-width:150px} .nv-pa-body{padding:14px 14px 18px} }
+    /* Branded tracking page settings */
+    #nvBrandState{align-self:flex-start;flex:0 0 auto;width:auto}
+    .nv-brand-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:22px;align-items:start;margin-top:6px}
+    .nv-brand-form{display:flex;flex-direction:column;gap:12px}
+    .nv-brand-switch{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;color:var(--nvu-ink);cursor:pointer}
+    .nv-brand-switch input{width:20px;height:20px;accent-color:var(--nvu-accent)}
+    .nv-brand-logo-row,.nv-brand-color-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .nv-brand-logo-row input[type=file]{flex:1 1 200px;min-width:0;font-size:13px}
+    .nv-brand-color-row input[type=color]{width:52px;height:40px;padding:2px;border-radius:10px;border:1px solid var(--nvu-line-2);background:var(--nvu-bg);cursor:pointer}
+    .nv-brand-owner[hidden],#nvBrandLogoRemove[hidden],.nv-bp-wa[hidden]{display:none!important}
+    .nv-brand-preview{border-radius:18px;padding:14px;background:#0b1512;border:1px solid var(--nvu-line);max-width:380px}
+    .nv-bp-bar{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:linear-gradient(135deg,#0c7c59,#14c77b);color:#fff}
+    .nv-bp-logo{width:40px;height:40px;border-radius:10px;flex:none;display:grid;place-items:center;font-weight:850;background:rgba(255,255,255,.22);overflow:hidden}
+    .nv-bp-logo img{width:100%;height:100%;object-fit:contain;background:#fff;padding:3px;box-sizing:border-box}
+    .nv-bp-t{min-width:0}.nv-bp-t strong{display:block;font-size:15px;overflow-wrap:anywhere}.nv-bp-t span{display:block;font-size:11.5px;opacity:.9}
+    .nv-bp-wa{margin-top:10px;padding:11px;border-radius:14px;text-align:center;font-weight:800;font-size:13.5px;background:#25d366;color:#04140d}
+    .nv-bp-card{margin-top:10px;padding:14px;border-radius:14px;background:#111c17;border:1px solid #1f3129;color:#e8f3ee}
+    .nv-bp-card b{display:block;font-size:17px}.nv-bp-card span{display:block;font-size:12.5px;color:#8fa89c;margin-top:3px}
+    .nv-bp-steps{display:flex;gap:6px;margin-top:12px}.nv-bp-steps i{flex:1;height:5px;border-radius:5px;background:#26382f}.nv-bp-steps i.on{background:#14c77b}
+    @media (max-width:760px){ .nv-brand-grid{grid-template-columns:1fr} .nv-brand-preview{max-width:none} }
+  </style>
 </head>
 <!-- AUTH_GATE_VERSION: 2026-07-16-auth-flow-v3 -->
 <body>
@@ -2460,7 +2520,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=60cdffbc" defer></script>
+  <script src="client-app.js?v=bd486297" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2475,7 +2535,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=60cdffbc<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=bd486297<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -2759,7 +2819,17 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 <div class="section-head"><div><h3>Request Pickup</h3><p>Select unpicked New booked AWBs and ask a rider to collect them.</p></div></div>
                 <div id="pickupEligibleList" style="margin-bottom:12px"></div>
                 <div class="form-grid">
-                  <div class="field" style="grid-column:1/-1"><label for="pickupAddress">Pickup Address</label><textarea id="pickupAddress" placeholder="Where should the rider collect these parcels from?"></textarea></div>
+                  <div class="field" style="grid-column:1/-1">
+                    <div class="nv-pa-head"><label for="pickupAddress">Pickup Address</label><button type="button" class="nv-pa-manage" id="nvPaManageBtn" onclick="nvPaOpen()">Manage saved addresses</button></div>
+                    <!-- Saved pickup addresses. Choosing one fills the box below; the box stays the record that is sent. -->
+                    <div class="nv-pa-chips" id="nvPaChips" role="radiogroup" aria-label="Saved pickup addresses" hidden></div>
+                    <textarea id="pickupAddress" placeholder="Where should the rider collect these parcels from?"></textarea>
+                    <div class="nv-pa-save" id="nvPaSaveRow" hidden>
+                      <span>New address?</span>
+                      <input id="nvPaQuickLabel" maxlength="40" placeholder="Name it, e.g. Clifton shop" aria-label="Name for this address">
+                      <button type="button" class="ghost-btn" id="nvPaQuickSave" onclick="nvPaQuickSave()">Save address</button>
+                    </div>
+                  </div>
                   <div class="field"><label for="pickupRequestedFor">Preferred Pickup Time / Date</label><input id="pickupRequestedFor" placeholder="e.g. Today 4-6 PM, or 2026-07-14 morning"></div>
                   <div class="field"><label for="pickupNote">Note / Instructions</label><input id="pickupNote" placeholder="Optional instructions for the rider"></div>
                 </div>
@@ -2817,6 +2887,41 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                   <p class="footer-note" id="nvShopifyConnectIntro">Install the NovaX app in Shopify and press <b>Get my code</b> there. It brings you here and shows your connect code. A code is single use and lasts 20 minutes.</p>
                   <div class="inline-actions mt-8"><button class="ghost-btn" id="nvShopifyCodeBtn" onclick="nvShopifyConnectPopup(true)">Show my connect code</button></div>
                   <p class="footer-note mt-8" id="nvShopifyCodeOut"></p>
+                </div>
+              </div>
+
+              <!-- Branded tracking page (28 Sep 2026). Owner only; the server enforces it. -->
+              <div class="panel mt-14" id="nvBrandPanel">
+                <div class="section-head"><div><h3>Your tracking page</h3><p>Put your shop's name, logo and colour on the tracking link your buyers open. NovaX still delivers it, and says so in small print.</p></div><span class="chip" id="nvBrandState">Off</span></div>
+                <p class="footer-note nv-brand-owner" id="nvBrandOwnerNote" hidden>Only the account owner can change this.</p>
+                <div class="nv-brand-grid">
+                  <form class="nv-brand-form" id="nvBrandForm" onsubmit="event.preventDefault();nvBrandSave()">
+                    <label class="nv-brand-switch"><input type="checkbox" id="nvBrandEnabled"> <span>Show my brand on the tracking page</span></label>
+                    <div class="field"><label for="nvBrandName">Shop name <span class="required-star">*</span></label><input id="nvBrandName" maxlength="40" placeholder="As your buyers know you"></div>
+                    <div class="field">
+                      <label for="nvBrandLogo">Logo</label>
+                      <div class="nv-brand-logo-row">
+                        <input id="nvBrandLogo" type="file" accept="image/png,image/jpeg,image/webp">
+                        <button type="button" class="ghost-btn" id="nvBrandLogoRemove" onclick="nvBrandRemoveLogo()" hidden>Remove logo</button>
+                      </div>
+                      <div class="footer-note mt-4">PNG, JPG or WebP. Square works best; we resize it for you.</div>
+                    </div>
+                    <div class="field">
+                      <label for="nvBrandAccent">Brand colour</label>
+                      <div class="nv-brand-color-row"><input id="nvBrandAccent" type="color" value="#0c7c59"><span class="footer-note" id="nvBrandAccentNote"></span></div>
+                    </div>
+                    <div class="field"><label for="nvBrandWa">WhatsApp for buyers</label><input id="nvBrandWa" inputmode="tel" maxlength="20" placeholder="Optional, e.g. 0300 1234567"><div class="footer-note mt-4">Adds a "Message us on WhatsApp" button. Leave empty to hide it.</div></div>
+                    <p class="footer-note nv-pa-msg" id="nvBrandMsg" role="status" aria-live="polite"></p>
+                    <div class="inline-actions"><button class="action-btn" type="submit" id="nvBrandSaveBtn">Save tracking page</button></div>
+                  </form>
+                  <div class="nv-brand-preview-wrap">
+                    <div class="footer-note" style="margin-bottom:8px">What your buyer sees</div>
+                    <div class="nv-brand-preview" id="nvBrandPreview">
+                      <div class="nv-bp-bar" id="nvBpBar"><div class="nv-bp-logo" id="nvBpLogo"></div><div class="nv-bp-t"><strong id="nvBpName">Your shop</strong><span>Your order &middot; delivered by NovaX Logistics</span></div></div>
+                      <div class="nv-bp-wa" id="nvBpWa" hidden>Message us on WhatsApp</div>
+                      <div class="nv-bp-card"><b>Out for delivery</b><span>Parcel aaj deliver hoga.</span><div class="nv-bp-steps"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div></div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -3178,6 +3283,32 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
       </div>
     </div>
   </div>
+  <div class="modal-overlay" id="nvPaModal" role="dialog" aria-modal="true" aria-labelledby="nvPaTitle">
+    <div class="modal-card" style="max-width:560px">
+      <div class="modal-head">
+        <h3 id="nvPaTitle">Saved pickup addresses</h3>
+        <button class="modal-close" type="button" aria-label="Close" onclick="nvPaClose()">&times;</button>
+      </div>
+      <div class="nv-pa-body">
+        <p class="footer-note" id="nvPaCityNote">Riders collect from these addresses. The default is filled in for every pickup request.</p>
+        <div id="nvPaList" class="nv-pa-list"></div>
+        <form class="nv-pa-form" id="nvPaForm" onsubmit="event.preventDefault();nvPaSubmit()">
+          <h4 id="nvPaFormTitle">Add an address</h4>
+          <input type="hidden" id="nvPaId">
+          <div class="field"><label for="nvPaLabel">Name <span class="required-star">*</span></label><input id="nvPaLabel" maxlength="40" placeholder="e.g. Clifton shop, Main warehouse" required></div>
+          <div class="field"><label for="nvPaAddress">Full address <span class="required-star">*</span></label><textarea id="nvPaAddress" maxlength="300" placeholder="House / plot, street, area" required></textarea></div>
+          <div class="field"><label for="nvPaPhone">Contact at this address</label><input id="nvPaPhone" inputmode="tel" maxlength="20" placeholder="Optional, e.g. 0300 1234567"></div>
+          <label class="nv-pa-check"><input type="checkbox" id="nvPaDefault"> Use as my default pickup address</label>
+          <p class="footer-note nv-pa-msg" id="nvPaMsg" role="status" aria-live="polite"></p>
+          <div class="inline-actions" style="gap:8px;flex-wrap:wrap">
+            <button class="action-btn" type="submit" id="nvPaSubmitBtn">Save address</button>
+            <button class="ghost-btn" type="button" id="nvPaCancelEdit" onclick="nvPaResetForm()" hidden>Cancel editing</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="nvShopifyCodeModal" role="dialog" aria-modal="true" aria-labelledby="nvShopifyCodeTitle">
     <div class="modal-card" style="max-width:520px">
       <div class="modal-head">
