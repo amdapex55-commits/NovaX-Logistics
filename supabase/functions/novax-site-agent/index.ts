@@ -51,6 +51,7 @@ NovaX Logistics — cash-on-delivery courier for Pakistani online sellers. Karac
 
 COVERAGE
 - Pickup: Karachi, Lahore, Islamabad and Rawalpindi — free, from the seller's shop or warehouse.
+  Pickup hours: 11 am to 9 pm, every working day.
 - Delivery: Karachi, Lahore, Islamabad, Rawalpindi. Nowhere else yet. If asked about
   any other city (Faisalabad, Multan, Peshawar, Hyderabad, Gujranwala, abroad), say
   plainly that NovaX does not deliver there yet.
