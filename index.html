@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>COD Courier for Pakistani Online Sellers | NovaX Logistics</title>
-<meta name="description" content="COD courier for Pakistani e-commerce sellers. Same-day or next-day delivery in Karachi, 2–3 working days to Lahore, Islamabad and Rawalpindi, and your cash-on-delivery settled the day it lands. Flat Rs 220.">
+<meta name="description" content="COD courier for Pakistani e-commerce sellers. Same-day or next-day delivery in Karachi, 2–3 working days to Lahore, Islamabad and Rawalpindi, and your cash-on-delivery settled the day it lands. From Rs 225 per parcel.">
 <meta name="theme-color" content="#04100b">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="format-detection" content="telephone=no">
@@ -19,7 +19,7 @@
 <meta property="og:locale" content="en_PK">
 <meta property="og:url" content="https://novaxlogistics.com/">
 <meta property="og:title" content="NovaX Logistics — The Courier That Runs Itself">
-<meta property="og:description" content="AI-run courier for Pakistani e-commerce sellers. Same-day or next-day delivery in Karachi, 2–3 working days nationwide, full automation, and COD in your wallet the day it's delivered.">
+<meta property="og:description" content="AI-run courier for Pakistani e-commerce sellers. Same-day or next-day delivery in Karachi, 2–3 working days to Lahore, Islamabad and Rawalpindi, full automation, and COD in your wallet the day it's delivered.">
 <meta property="og:image" content="https://novaxlogistics.com/assets/og-image.png">
 <meta property="og:image:secure_url" content="https://novaxlogistics.com/assets/og-image.png">
 <meta property="og:image:type" content="image/png">
@@ -101,11 +101,13 @@
    "provider": {
     "@id": "https://novaxlogistics.com/#org"
    },
-   "areaServed": {
-    "@type": "Country",
-    "name": "Pakistan"
-   },
-   "description": "Same-day or next-day delivery within Karachi, 2–3 working day nationwide COD parcel booking, live tracking, and same-day COD settlement into a seller wallet."
+   "areaServed": [
+    {"@type": "City", "name": "Karachi"},
+    {"@type": "City", "name": "Lahore"},
+    {"@type": "City", "name": "Islamabad"},
+    {"@type": "City", "name": "Rawalpindi"}
+   ],
+   "description": "Same-day or next-day delivery within Karachi, 2–3 working days to Lahore, Islamabad and Rawalpindi, pickup in all four cities, COD parcel booking, live tracking, and same-day COD settlement into a seller wallet."
   },
   {
    "@type": "SoftwareApplication",
@@ -2778,6 +2780,10 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
         <a href="/cod-courier-lahore.html">COD Courier to Lahore</a>
         <a href="/cod-courier-islamabad.html">COD Courier to Islamabad</a>
         <a href="/cod-courier-rawalpindi.html">COD Courier to Rawalpindi</a>
+        <a href="/cod-delivery-cost-karachi-to-lahore.html">Karachi to Lahore COD cost</a>
+        <a href="/when-is-cod-paid.html">When is COD paid?</a>
+        <a href="/customer-refused-cod-parcel.html">If a customer refuses</a>
+        <a href="/shopify-orders-to-novax-bookings.html">Shopify orders to NovaX</a>
         <a href="#contact-sales" data-mdl="sales">Talk To Sales Today</a>
         <a href="#signin" data-mdl="signin">Sign In</a>
       </div>
@@ -3167,24 +3173,18 @@ document.querySelectorAll(".bar-fl").forEach(function(b){
     var kgTxt=(kg%1===0?kg:kg.toFixed(1));
     wv.textContent=kgTxt+" kg";
 
-    /* NovaX collects in Karachi and nowhere else -- 213 of 214 merchants with a
-       pickup city are Karachi. "intra" only ever meant Karachi -> Karachi, but
-       it is computed as from===to, so Lahore -> Lahore fell into Zone A and was
-       quoted Rs 225 "same day / next day": a price and a promise for a route
-       with no pickup leg at all. Quoting the intercity rate instead would be no
-       better -- it would still imply we collect there. */
+    /* Pickup runs in all four cities (29 Sep 2026: 270 Karachi, 17 Lahore,
+       5 Islamabad and 4 Rawalpindi merchants), and the server prices by
+       DESTINATION whatever the pickup city: Rs 225 to a Karachi address,
+       Rs 250 to Lahore, Islamabad or Rawalpindi (a Lahore merchant pays
+       Rs 250 Lahore -> Lahore and Rs 225 Lahore -> Karachi). This quoted
+       "not available" for every non-Karachi pickup. Same-day / next-day is
+       only promised Karachi -> Karachi. */
     var bookBtn=document.querySelector('[data-carry-quote="1"]');
-    if(f.value!=="karachi"){
-      pr.textContent="Not available";
-      nt.textContent="We collect from Karachi only — pickup from "+CITY[f.value]+" is not available yet.";
-      window.NV_LAST_QUOTE=null;
-      if(bookBtn){ bookBtn.setAttribute("disabled",""); bookBtn.setAttribute("aria-disabled","true"); }
-      return;
-    }
     if(bookBtn){ bookBtn.removeAttribute("disabled"); bookBtn.removeAttribute("aria-disabled"); }
-
-    var price=(intra?ZONE_A:ZONE_B)+Math.max(0,Math.ceil(kg-1))*ADDL_KG;
-    var eta=intra?"same day / next day":"in 2–3 working days";
+    var toKarachi=(t.value==="karachi"), kk=(intra && f.value==="karachi");
+    var price=(toKarachi?ZONE_A:ZONE_B)+Math.max(0,Math.ceil(kg-1))*ADDL_KG;
+    var eta=kk?"same day / next day":"in 2–3 working days";
     pr.textContent="Rs "+comma(price);
     nt.textContent=CITY[f.value]+" → "+CITY[t.value]+" · "+kgTxt+" kg · delivered "+eta;
     /* The quote the visitor is looking at, so "Book at this rate" can carry it

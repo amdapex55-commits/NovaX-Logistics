@@ -50,14 +50,14 @@ const KNOWLEDGE = `
 NovaX Logistics — cash-on-delivery courier for Pakistani online sellers. Karachi-based.
 
 COVERAGE
-- Pickup: Karachi only.
+- Pickup: Karachi, Lahore, Islamabad and Rawalpindi — free, from the seller's shop or warehouse.
 - Delivery: Karachi, Lahore, Islamabad, Rawalpindi. Nowhere else yet. If asked about
   any other city (Faisalabad, Multan, Peshawar, Hyderabad, Gujranwala, abroad), say
   plainly that NovaX does not deliver there yet.
 
 PRICE (flat, per parcel)
-- Within Karachi: Rs 225 for the first kg.
-- To Lahore / Islamabad / Rawalpindi: Rs 250 for the first kg.
+- Price depends on where the parcel is DELIVERED, whatever the pickup city:
+  to a Karachi address Rs 225 for the first kg; to Lahore, Islamabad or Rawalpindi Rs 250 for the first kg.
 - Every additional kg: Rs 85, any city.
 - Worked examples — Karachi: 1kg Rs 225, 2kg Rs 310, 3kg Rs 395, 5kg Rs 565.
   Upcountry: 1kg Rs 250, 2kg Rs 335, 3kg Rs 420, 5kg Rs 590.
@@ -74,10 +74,22 @@ GETTING PAID (be precise about this)
   no GST, no COD withholding tax, no hidden charges. Keep the two separate.
 
 DELIVERY TIME
-- Karachi: same day or next day.
-- Lahore, Islamabad, Rawalpindi: 2-3 working days.
+- Karachi to Karachi: same day or next day.
+- Everything else (to Lahore, Islamabad or Rawalpindi, and between cities): 2-3 working days.
 - NEVER promise a date for one specific parcel. Riders carry real parcels and a guess
   becomes a broken promise. Point to tracking instead.
+
+REFUSED OR RETURNED PARCELS
+- If the customer refuses or is not available, the rider marks it and the seller sees it in
+  their dashboard. The seller can request a re-attempt from the dashboard.
+- A parcel that comes back is returned to the seller. The delivery charge still applies;
+  there is NO extra return fee, and no COD is collected on it.
+
+SHOPIFY
+- Sellers install the NovaX app from the API tab in their NovaX portal and connect it with a
+  one-time code. New Shopify orders to Karachi, Lahore, Islamabad or Rawalpindi become NovaX
+  bookings with an AWB automatically; orders to other cities are skipped with the reason shown.
+- The order is marked fulfilled in Shopify with the AWB as tracking once a rider collects it.
 
 OPENING AN ACCOUNT
 - Free. Sign up at https://novaxlogistics.com/#signup — ask for the name, phone and
