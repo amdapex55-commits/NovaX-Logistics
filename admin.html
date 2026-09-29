@@ -6371,13 +6371,13 @@ html,body{ background:var(--bg); color:var(--ink); }
             </section>
             <section class="admin-module" id="admin-finance-dues">
               <div class="panel">
-                <div class="section-head"><div><h3>Negative Accounts</h3><p>Merchants who owe NovaX delivery charges on prepaid parcels. Balances build up from every Delivery Charges invoice and stay here until payment is recorded.</p></div><button class="ghost-btn" onclick="loadClientDues()">Refresh</button></div>
+                <div class="section-head"><div><h3>Negative Accounts</h3><p>Merchants whose wallet is below zero &mdash; that is what they owe NovaX. Every charge goes into the wallet, so this is one number per merchant: new COD clears it automatically, and a payment you record here is credited to their wallet.</p></div><button class="ghost-btn" onclick="loadClientDues()">Refresh</button></div>
                 <div class="grid metrics" id="duesSummaryCards"></div>
               </div>
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>Outstanding Balances</h3><p>Largest first. "Oldest" shows how long the earliest unpaid charge has been sitting.</p></div>
+                <div class="section-head"><div><h3>Who owes NovaX</h3><p>Largest first. The age is how long the oldest unpaid charge has been sitting.</p></div>
                   <div class="inline-actions">
-                    <button class="action-btn" type="button" onclick="printAllOutstandingInvoices()" title="Prints every invoice that still owes NovaX, one client per page.">Print All Invoices</button>
+                    <button class="action-btn" type="button" onclick="printAllOutstandingInvoices()" title="One statement per merchant: what they owe and the charges behind it.">Print Statements</button>
                     <button class="ghost-btn" type="button" onclick="downloadOutstandingCsv()" title="Call sheet: client, contact, phone and amount owed.">Download Call Sheet</button>
                   </div></div>
                 <div class="ops-list" id="duesList"></div>
@@ -8110,9 +8110,9 @@ html,body{ background:var(--bg); color:var(--ink); }
         var total = rows.reduce(function(n,r){ return n + Number(r.outstanding || 0); }, 0);
         var oldest = rows.reduce(function(n,r){ return Math.max(n, Number(r.oldest_due_age_days || 0)); }, 0);
         cards.innerHTML = [
-          moneyBox("Total outstanding", nvMoney(total), "owed to NovaX"),
+          moneyBox("Total owed", nvMoney(total), "to NovaX"),
           moneyBox("Accounts", String(rows.length), "with a balance"),
-          moneyBox("Oldest unpaid", oldest ? (oldest + " days") : "-", "since first charge")
+          moneyBox("Oldest unpaid", oldest ? (oldest + " days") : "-", "oldest charge")
         ].join("");
       }
       var badge = document.getElementById("duesSubtabBadge");
@@ -8129,10 +8129,10 @@ html,body{ background:var(--bg); color:var(--ink); }
         var cid = nvEscAdmin(r.client_id);
         return '<div class="nv-settle-row ready">' +
             '<div class="nm">' + nvEscAdmin(r.client_name || "Unnamed client") +
-              '<small>' + nvEscAdmin(String(r.due_invoice_count || 0)) + ' invoice(s) &middot; oldest ' + nvWhen(r.oldest_due_at) + '</small></div>' +
+              '<small>' + nvEscAdmin(String(r.due_invoice_count || 0)) + ' charge(s) &middot; oldest ' + nvWhen(r.oldest_due_at) + '</small></div>' +
             '<span class="chip ' + ageCls + '">' + (age ? (age + "d") : "new") + '</span>' +
-            '<div class="amt">Outstanding<b>' + nvEscAdmin(nvMoney(r.outstanding)) + '</b></div>' +
-            '<div class="amt">Wallet<b>' + nvEscAdmin(nvMoney(r.wallet_balance)) + '</b></div>' +
+            '<div class="amt">Owes NovaX<b>' + nvEscAdmin(nvMoney(r.outstanding)) + '</b></div>' +
+            '<div class="amt">Last payment<b>' + (r.last_payment_at ? nvEscAdmin(nvWhen(r.last_payment_at)) : "&mdash;") + '</b></div>' +
             '<button class="action-btn" onclick="nvOpenDuePayment(\'' + cid + '\')">Record payment</button>' +
           '</div>';
       }).join("");
@@ -8145,12 +8145,12 @@ html,body{ background:var(--bg); color:var(--ink); }
       var outstanding = Number(row.outstanding || 0);
       var raw = prompt(
         (row.client_name || "This client") + " owes " + nvMoney(outstanding) + ".\n\n" +
-        "Enter the amount received (or the full amount to clear the account):",
+        "Enter the amount NovaX received. It is credited to their wallet (enter the full amount to clear it):",
         String(outstanding)
       );
       if (raw === null) return;
       var amt = Number(String(raw).replace(/[^0-9.\-]/g, ""));
-      if (!isFinite(amt) || amt === 0) { toast("Enter a valid amount."); return; }
+      if (!isFinite(amt) || amt <= 0) { toast("Enter a valid amount."); return; }
       if (amt > outstanding) { toast("That is more than the outstanding balance of " + nvMoney(outstanding) + "."); return; }
       var ref = prompt("Reference (bank transaction id, receipt no, or leave blank):", "") || "";
 
@@ -8174,8 +8174,8 @@ html,body{ background:var(--bg); color:var(--ink); }
         }
         var left = Number((r && r.data) || 0);
         toast(left > 0
-          ? ("Payment recorded. " + nvMoney(left) + " still outstanding.")
-          : "Payment recorded. Account is now clear.");
+          ? ("Payment recorded and credited to their wallet. They still owe " + nvMoney(left) + ".")
+          : "Payment recorded and credited to their wallet. They owe nothing now.");
         loadClientDues();
       }).catch(function(e){ nvRelease(nvDueKey); loadClientDues(); toast("Could not record payment: " + ((e && e.message) || e)); });
     }
@@ -8511,13 +8511,19 @@ html,body{ background:var(--bg); color:var(--ink); }
         primaryAction = "push";
         chipLabel = "Generated";
         chipClass = "warn";
+      } else if (due > 0 && invoice.walletPushedAt) {
+        /* One balance (29 Sep 2026): the charge is already in the merchant's
+           wallet. Marking it "Paid To NovaX" as well collected it twice. */
+        chipLabel = "Taken from wallet";
+        chipClass = "good";
       } else if (due > 0) {
         primaryAction = "paidNovax";
         chipLabel = "Generated";
         chipClass = "warn";
       }
-      const enteredWallet = isPushedWallet || isSettled;
-      return { payable, due, status, isPushedWallet, isSettled, isPaidToNovax, isCancelled, isClosed, enteredWallet, primaryAction, chipLabel, chipClass };
+      const isTaken = due > 0 && !!invoice.walletPushedAt && !isCancelled && !isPaidToNovax;
+      const enteredWallet = isPushedWallet || isSettled || isTaken;
+      return { payable, due, status, isPushedWallet, isSettled, isPaidToNovax, isCancelled, isClosed, isTaken, enteredWallet, primaryAction, chipLabel, chipClass };
     }
 
 
@@ -9177,6 +9183,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       var inv = (state.invoices||[]).find(function(i){ return i._uuid === p.invoiceId || i.id === p.invoiceId; });
       if(!inv) return { cls:"invoiced", label:"INVOICED", title:"Invoice linked but not loaded in this view." };
       var s2 = String(inv.status||"");
+      if(Number(inv.dueToNovax||0) > 0 && inv.walletPushedAt && s2 !== "Cancelled")
+        return { cls:"paid", label:"CHARGED", title:"Invoice " + (inv.id||"") + " \u2014 delivery charges taken from the merchant's wallet." };
       if(s2 === "Paid to NovaX") return { cls:"owing", label:"PAID TO NOVAX", title:"Negative invoice \u2014 settled the other way." };
       if(s2 === "Settled" || s2 === "Pushed to wallet")
         return { cls:"paid", label:"PAID", title:"Invoice " + (inv.id||"") + " \u2014 " + s2 + ". Money is with the merchant." };
@@ -9989,7 +9997,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         "orders-processing": P.filter(function(p){ return p && p.status === "New booked"; }).length,
         // ── finance
         "finance-wallets":   W.filter(function(w){ return w && w.status === "Pending admin payout"; }).length,
-        "finance-invoices":  I.filter(function(v){ return v && v.status === "Generated"; }).length,
+        "finance-invoices":  I.filter(function(v){ return v && v.status === "Generated" && !(Number(v.dueToNovax || 0) > 0 && v.walletPushedAt); }).length,
         // ── clients
         "clients-leads":     SL.filter(function(l){ return l && String(l.status||"") === "New"; }).length
                              + SU.filter(function(l){ return l && String(l.status||"") !== "workspace_created"; }).length,
@@ -10695,7 +10703,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           return `
             <div class="ops-card">
               <div class="ops-card-head"><strong>${invoice.id} | ${escLabelText(client.name)}</strong><span class="chip ${ui.chipClass}">${escLabelText(ui.chipLabel)}</span></div>
-              <p>${invType} \u00b7 ${(invoice.parcelRefs || []).join(", ")}<br>${due > 0 && invoice.payable <= 0 ? `Net ${nvSignedMoney(-due)} · due to NovaX` : `Payable ${money(invoice.payable)}`} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
+              <p>${invType} \u00b7 ${(invoice.parcelRefs || []).join(", ")}<br>${due > 0 && invoice.payable <= 0 ? (ui.isTaken ? `${money(due)} charges · taken from wallet` : `Net ${nvSignedMoney(-due)} · due to NovaX`) : `Payable ${money(invoice.payable)}`} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
               ${ui.primaryAction === "push" ? `<p class="footer-note" style="color:#0c7c59">Push To Client Wallet credits client balance.</p>` : ""}
               ${ui.primaryAction === "paidNovax" ? `<p class="footer-note" style="color:#0c7c59">Mark Paid To NovaX records money received by NovaX.</p>` : ""}
               <div class="inline-actions" style="margin-top:8px">
@@ -10867,7 +10875,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const clientGroups = Object.keys(invoicesByClient).map(cid => {
         const client = clientById(cid);
         const invs = invoicesByClient[cid].slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-        const openCount = invs.filter(invoice => !invoiceUiState(invoice).isClosed).length;
+        const openCount = invs.filter(invoice => { const u = invoiceUiState(invoice); return !u.isClosed && !u.isTaken; }).length;
         const totalPayable = invs.reduce((sum, invoice) => sum + Number(invoice.payable || 0), 0);
         const totalDue = invs.reduce((sum, invoice) => sum + Number(invoice.dueToNovax || 0), 0);
         return { client, invs, openCount, totalPayable, totalDue };
@@ -11422,12 +11430,13 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (walletInvoices) {
         walletInvoices.innerHTML = state.invoices.filter(invoice => invoice.status !== "Deleted").map(invoice => {
           const client = clientById(invoice.clientId);
-          const inWallet = invoiceUiState(invoice).enteredWallet;
+          const wui = invoiceUiState(invoice);
+          const inWallet = wui.enteredWallet;
           const dueAmt = Number(invoice.dueToNovax || 0);
           return `<div class="ops-card ${inWallet ? "" : "alert-row"}">
-            <div class="ops-card-head"><strong>${invoice.id} | ${escLabelText(client.name)}</strong><span class="chip ${inWallet ? "good" : "warn"}">${invoice.status}</span></div>
+            <div class="ops-card-head"><strong>${invoice.id} | ${escLabelText(client.name)}</strong><span class="chip ${inWallet ? "good" : "warn"}">${escLabelText(wui.chipLabel || invoice.status)}</span></div>
             <p>${(invoice.parcelRefs || []).join(", ")} | Payable ${money(invoice.payable)} | Charges ${money(invoice.charges)}${dueAmt > 0 ? ` | Due to NovaX ${money(dueAmt)} | Net ${nvSignedMoney(Number(invoice.payable || 0) - dueAmt)}` : ""}</p>
-            <div class="footer-note">${inWallet ? `Entered wallet at ${invoice.walletPushedAt || invoice.paidAt}` : (dueAmt > 0 ? "Delivery-charges invoice -- amount due to NovaX, never enters wallet." : "Visible invoice only. Not in wallet until pushed.")}</div>
+            <div class="footer-note">${wui.isTaken ? `Charges taken from the wallet at ${invoice.walletPushedAt}` : inWallet ? `Entered wallet at ${invoice.walletPushedAt || invoice.paidAt}` : (dueAmt > 0 ? "Delivery-charges invoice -- amount due to NovaX, never enters wallet." : "Visible invoice only. Not in wallet until pushed.")}</div>
           </div>`;
         }).join("") || `<div class="ops-card"><strong>No wallet invoices</strong><p>Push generated invoices into wallets to start payout flow.</p></div>`;
       }
@@ -11488,7 +11497,10 @@ html,body{ background:var(--bg); color:var(--ink); }
           payout_fee: { label: "Payout fees", rows: [] },
           payout_paid: { label: "Payout paid (with proof)", rows: [] },
           admin_adjustment: { label: "Admin adjustments", rows: [] },
-          delivery_charge_due: { label: "Delivery charges (non-COD)", rows: [] }
+          delivery_charge_due: { label: "Delivery charges (non-COD)", rows: [] },
+          invoice_due_debit: { label: "Charges taken from wallet", rows: [] },
+          invoice_due_reversal: { label: "Charges returned (invoice cancelled)", rows: [] },
+          due_payment: { label: "Payments received by NovaX", rows: [] }
         };
         rows.forEach(row => { if (groups[row.entryType]) groups[row.entryType].rows.push(row); });
         const groupHtml = Object.keys(groups).map(key => {
@@ -13596,7 +13608,10 @@ html,body{ background:var(--bg); color:var(--ink); }
       payout_fee:"Payout fee deducted",
       payout_paid:"Payout paid",
       admin_adjustment:"Admin adjustment",
-      delivery_charge_due:"Delivery charge (non-COD)"
+      delivery_charge_due:"Delivery charge (non-COD)",
+      invoice_due_debit:"Charges taken from wallet",
+      invoice_due_reversal:"Charges returned",
+      due_payment:"Payment received by NovaX"
     };
 
     function nvRenderTopupTrail(){
@@ -15878,7 +15893,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const lineFee = lines.reduce((s, l) => s + Number(l.deliveryCharge || 0), 0);
       const drift = (Math.abs(lineCod - Number(invoice.cod || 0)) > 1) || (Math.abs(lineFee - Number(invoice.charges || 0)) > 1);
       const driftNote = drift ? `<div style="background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:11px;line-height:1.5"><b>Reconciliation:</b> rows sum to ${escLabelText(money(lineCod))} COD / ${escLabelText(money(lineFee))} charges, against invoice totals of ${escLabelText(money(invoice.cod))} / ${escLabelText(money(invoice.charges))}. The invoice totals are what settle. A gap normally means a parcel's status moved after the invoice was generated.</div>` : "";
-      const balanceLabel = due > 0 ? "Amount Due to NovaX" : "Payable to Client";
+      const balanceLabel = due > 0 ? (invoice.walletPushedAt && invoice.status !== "Cancelled" ? "Taken from Client Wallet" : "Amount Due to NovaX") : "Payable to Client";
       const balanceValue = due > 0 ? money(due) : money(invoice.payable);
       return `<div class="manifest-page">
         <div class="manifest-head"><h2>NovaX Logistics</h2><p>Courier &amp; COD Operating Account</p></div>
@@ -15958,7 +15973,7 @@ html,body{ background:var(--bg); color:var(--ink); }
        whatever the wallet happens to net out to. */
     function nvOutstandingInvoices() {
       return (state.invoices || [])
-        .filter(inv => Number(inv.dueToNovax || 0) > 0
+        .filter(inv => Number(inv.dueToNovax || 0) > 0 && !inv.walletPushedAt
                     && !["Paid to NovaX", "Cancelled", "Deleted"].includes(inv.status))
         .sort((a, b) => {
           const an = (clientById(a.clientId).name || "").toLowerCase();
@@ -15967,47 +15982,71 @@ html,body{ background:var(--bg); color:var(--ink); }
         });
     }
 
-    function printAllOutstandingInvoices() {
-      const list = nvOutstandingInvoices();
-      if (!list.length) { toast("No outstanding invoices to bill.", "error"); return; }
-      const stage = document.getElementById("adminPrintStage");
-      if (!stage) { toast("Print stage unavailable — refresh and try again.", "error"); return; }
-      /* page-break-after on every invoice except the last: each client gets a
-         clean sheet, so the stack can be split and sent without re-sorting. */
-      stage.innerHTML = list.map((inv, i) =>
-        '<div style="' + (i < list.length - 1 ? "page-break-after:always;break-after:page;" : "") + '">'
-        + adminInvoiceHtml(inv) + '</div>').join("");
-      stage.classList.add("show");
-      const clients = new Set(list.map(inv => inv.clientId)).size;
-      setTimeout(() => {
-        nvAdminPrintDoc(() => { stage.classList.remove("show"); stage.innerHTML = ""; });
-        toast(`${list.length} invoice(s) for ${clients} client(s) sent to print, one per page. Use Save as PDF to keep them.`);
+    /* One balance (29 Sep 2026): what a merchant owes is their negative
+       wallet, so the call sheet and statements come from the Negative
+       Accounts list, not from invoices -- an invoice's charges are already
+       inside that wallet figure, and billing invoices separately is how the
+       same charges were chased twice. */
+    function nvOwingRows(then) {
+      if (NV_DUES.rows) { then(NV_DUES.rows); return; }
+      loadClientDues();
+      var tries = 0, t = setInterval(function(){
+        tries++;
+        if (NV_DUES.rows || tries > 40) { clearInterval(t); then(NV_DUES.rows || []); }
       }, 250);
+    }
+    const NV_CHARGE_LABEL = { invoice_due_debit:"Delivery charges (invoice)", delivery_charge_due:"Delivery charge (prepaid parcel)",
+      payout_fee:"Payout fee", withdrawal_requested:"Withdrawal", admin_adjustment:"Adjustment", invoice_credit:"COD credited",
+      due_payment:"Payment received", invoice_due_reversal:"Charges returned", payout_rejected:"Payout returned", payout_paid:"Payout paid" };
+
+    function printAllOutstandingInvoices() {
+      nvOwingRows(function(rows){
+        if (!rows.length) { toast("No merchant owes NovaX anything right now.", "success"); return; }
+        const stage = document.getElementById("adminPrintStage");
+        if (!stage) { toast("Print stage unavailable — refresh and try again.", "error"); return; }
+        const today = new Date().toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric", timeZone:"Asia/Karachi" });
+        stage.innerHTML = rows.map(function(r, i){
+          const c = clientById(r.client_id) || {};
+          const lines = (Array.isArray(r.charges) ? r.charges : []).map(function(x){
+            const d = x.at ? new Date(x.at).toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric", timeZone:"Asia/Karachi" }) : "";
+            return '<tr><td style="padding:6px;border-bottom:1px solid #ddd">' + nvEscAdmin(d) + '</td><td style="padding:6px;border-bottom:1px solid #ddd">' + nvEscAdmin(NV_CHARGE_LABEL[x.type] || x.type) + (x.ref ? ' &middot; ' + nvEscAdmin(x.ref) : '') + '</td><td style="padding:6px;border-bottom:1px solid #ddd;text-align:right">' + nvEscAdmin(nvMoney(x.amount)) + '</td></tr>';
+          }).join("");
+          return '<div style="' + (i < rows.length - 1 ? "page-break-after:always;break-after:page;" : "") + 'font-family:sans-serif;color:#000;background:#fff;padding:28px">' +
+            '<div style="display:flex;justify-content:space-between;border-bottom:2px solid #0c7c59;padding-bottom:10px;margin-bottom:16px"><div><div style="font-size:20px;font-weight:800">' + nvEscAdmin(r.client_name || c.name || "") + '</div><div style="color:#555">' + nvEscAdmin([c.owner, c.phone, c.city].filter(Boolean).join(" · ")) + '</div></div><div style="text-align:right"><div style="color:#0c7c59;font-weight:800">NovaX Logistics</div><div style="color:#555">Statement &middot; ' + nvEscAdmin(today) + '</div></div></div>' +
+            '<div style="font-size:14px;color:#555">Amount owed to NovaX</div><div style="font-size:30px;font-weight:800;margin:4px 0 16px">' + nvEscAdmin(nvMoney(r.outstanding)) + '</div>' +
+            '<div style="font-size:12px;color:#555;margin-bottom:6px">Your wallet balance is ' + nvEscAdmin(nvMoney(r.wallet_balance)) + '. Every charge is taken from the wallet, so a balance below zero is what is owed. New COD clears it automatically; you can also pay NovaX directly.</div>' +
+            (lines ? '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:10px"><thead><tr><th style="text-align:left;padding:6px;border-bottom:2px solid #000">Date</th><th style="text-align:left;padding:6px;border-bottom:2px solid #000">Entry</th><th style="text-align:right;padding:6px;border-bottom:2px solid #000">Amount</th></tr></thead><tbody>' + lines + '</tbody></table>' : '') +
+            '</div>';
+        }).join("");
+        stage.classList.add("show");
+        setTimeout(() => {
+          nvAdminPrintDoc(() => { stage.classList.remove("show"); stage.innerHTML = ""; });
+          toast(rows.length + " statement(s) sent to print, one merchant per page. Use Save as PDF to keep them.");
+        }, 250);
+      });
     }
 
     function downloadOutstandingCsv() {
-      const list = nvOutstandingInvoices();
-      if (!list.length) { toast("No outstanding invoices to export.", "error"); return; }
-      /* The collections call sheet: who, which number to ring, how much, and
-         how long it has been sitting. Same figures as the printed invoices. */
-      const head = ["invoice", "client", "contact", "phone", "email", "city",
-                    "amount_due_to_novax", "charges", "parcels", "created", "status"];
-      const rows = list.map(inv => {
-        const c = clientById(inv.clientId) || {};
-        return [inv.id, c.name || "", c.owner || "", c.phone || "", c.email || "", c.city || "",
-                Number(inv.dueToNovax || 0), Number(inv.charges || 0),
-                (inv.parcelRefs || []).length, inv.createdAt || "", inv.status || ""]
-               .map(adminBulkCsvEscape).join(",");
+      nvOwingRows(function(rows){
+        if (!rows.length) { toast("No merchant owes NovaX anything right now.", "success"); return; }
+        const head = ["client", "contact", "phone", "email", "city", "owes_novax", "wallet_balance", "oldest_charge", "days", "last_payment"];
+        const lines = rows.map(function(r){
+          const c = clientById(r.client_id) || {};
+          return [r.client_name || c.name || "", c.owner || "", c.phone || "", c.email || "", c.city || "",
+                  Number(r.outstanding || 0), Number(r.wallet_balance || 0),
+                  r.oldest_due_at ? String(r.oldest_due_at).slice(0, 10) : "", Number(r.oldest_due_age_days || 0),
+                  r.last_payment_at ? String(r.last_payment_at).slice(0, 10) : ""].map(adminBulkCsvEscape).join(",");
+        });
+        const total = rows.reduce((n, r) => n + Number(r.outstanding || 0), 0);
+        lines.push(["TOTAL", "", "", "", "", total, "", "", "", ""].map(adminBulkCsvEscape).join(","));
+        const blob = new Blob([head.join(",") + "\n" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `novax-owed-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        toast(rows.length + " merchant(s) on the call sheet.", "success");
       });
-      const total = list.reduce((n, inv) => n + Number(inv.dueToNovax || 0), 0);
-      rows.push(["TOTAL", "", "", "", "", "", total, "", "", "", ""].map(adminBulkCsvEscape).join(","));
-      const blob = new Blob([head.join(",") + "\n" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `novax-outstanding-${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      toast(`${list.length} outstanding invoice(s) exported.`, "success");
     }
 
     function downloadAdminInvoiceCsv(id) {

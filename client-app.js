@@ -1408,6 +1408,10 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     const NV_CLOSED_STATUSES=["Delivered","Return to shipper","Parcel returned to consignee","Cancelled","Cancelled by client"];
     const NV_INVOICE_CLOSED_STATUSES=["Paid","Pushed to wallet","Settled","Paid to NovaX"];
     function isInvoiceClosed(status){ return NV_INVOICE_CLOSED_STATUSES.indexOf(status)>-1; }
+    /* One balance (29 Sep 2026): a charges invoice whose amount is already in
+       the wallet. It is not owed separately -- counting it as well as the
+       negative wallet is how the same charges showed up twice. */
+    function nvInvTaken(inv){ return !!inv && Number(inv.dueToNovax||0)>0 && !!inv.walletPushedAt && inv.status!=="Cancelled" && inv.status!=="Paid to NovaX"; }
     function paidParcelRefs(){ return new Set(state.invoices.filter(i=>isInvoiceClosed(i.status)).flatMap(i=>i.parcelRefs||[])); }
     function isUnpaidDeliveredParcel(p){ return isDeliveredLedgerParcel(p) && !paidParcelRefs().has(p.awb); }
     /* ═══ What counts as a delivery attempt ═══════════════════════════════
@@ -2682,6 +2686,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       // outstanding even after the client had actually been paid.
       if(due>0){
         if(isInvoiceClosed(inv.status)) return moneyBox("Paid in full",money(due),"Settled - nothing owed");
+        if(nvInvTaken(inv)) return moneyBox("Taken from your wallet","\u2212"+money(due),"already in your wallet balance \u2014 nothing else to pay");
         return moneyBox("Amount due to NovaX","\u2212"+money(due),"net balance \u2014 you owe this to NovaX");
       }
       if(inv.status==="Pushed to wallet") return moneyBox("In wallet",money(inv.payable),"Ready for you - withdraw anytime");
@@ -4302,18 +4307,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // charged, what is left for the merchant. The subtraction is shown
         // rather than left for them to do across separate tiles.
         const sum = owed>0
-          ? `${n} prepaid parcel${n===1?"":"s"} &middot; <strong>${money(inv.charges)}</strong> delivery charges &rarr; <strong>${money(owed)}</strong> to pay NovaX`
+          ? (nvInvTaken(inv)
+            ? `${n} parcel${n===1?"":"s"} &middot; <strong>${money(owed)}</strong> delivery charges &rarr; taken from your wallet`
+            : `${n} prepaid parcel${n===1?"":"s"} &middot; <strong>${money(inv.charges)}</strong> delivery charges &rarr; <strong>${money(owed)}</strong> to pay NovaX`)
           : `${n} parcel${n===1?"":"s"} &middot; ${money(inv.cod)} collected &minus; ${money(inv.charges)} charges = <strong>${money(inv.payable)}</strong> to you`;
         // Only on an invoice that has not reached the wallet yet, and only
         // while a shortfall actually exists.
-        const notYetInWallet = !isInvoiceClosed(inv.status) && inv.status!=="Cancelled" && inv.status!=="Pushed to wallet";
+        const notYetInWallet = !isInvoiceClosed(inv.status) && inv.status!=="Cancelled" && inv.status!=="Pushed to wallet" && !nvInvTaken(inv);
         const clears = (owed<=0 && notYetInWallet && __nvShortfall>0)
           ? Math.min(__nvShortfall, Number(inv.payable||0))
           : 0;
         const absorbLine = clears>0
           ? `<p class="nv-inv-absorb">${money(clears)} of this clears the charges already on your account &mdash; <strong>${money(Math.max(0, Number(inv.payable||0)-clears))}</strong> reaches your wallet.</p>`
           : "";
-        return `<div class="invoice-card nv-inv-row" style="animation-delay:${Math.min(idx*70,560)}ms"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="footer-note" style="margin-left:auto">${escLabelText(inv.createdAt)}</span></div><p style="margin:6px 0 0">${sum}</p>${absorbLine}${nvInvoiceSteps(inv.status)}<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Print statement</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">CSV</button></div></div>`;
+        return `<div class="invoice-card nv-inv-row" style="animation-delay:${Math.min(idx*70,560)}ms"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="footer-note" style="margin-left:auto">${escLabelText(inv.createdAt)}</span></div><p style="margin:6px 0 0">${sum}</p>${absorbLine}${nvInvoiceSteps(nvInvTaken(inv)?"Taken from wallet":inv.status)}<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Print statement</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">CSV</button></div></div>`;
       }).join("")||`<div class="ops-card"><strong>No invoices yet</strong><p>Once a delivered parcel is invoiced it appears here with a full statement.</p></div>`;
       /* Order Logs tab removed 3 Sep 2026. It rendered one card per PARCEL --
          not per event -- showing the current status and "Last update", which
@@ -6279,7 +6286,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!led.length){ toast("No wallet activity to put on a statement yet."); return; }
       var labels={ invoice_credit:"COD settlement credited", withdrawal_requested:"Withdrawal requested",
                    payout_fee:"Payout fee", payout_paid:"Payout paid", payout_rejected:"Payout rejected/refunded",
-                   admin_adjustment:"Adjustment by NovaX", delivery_charge_due:"Delivery charge" };
+                   admin_adjustment:"Adjustment by NovaX", delivery_charge_due:"Delivery charge",
+                   invoice_due_debit:"Delivery charges taken from wallet", invoice_due_reversal:"Charges returned",
+                   due_payment:"Payment received by NovaX" };
       var rows=led;
       var credits=rows.reduce(function(n,l){ return n+(Number(l.amount)>0?Number(l.amount):0); },0);
       var debits =rows.reduce(function(n,l){ return n+(Number(l.amount)<0?Math.abs(Number(l.amount)):0); },0);
@@ -6332,6 +6341,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // Settled or Paid-to-NovaX invoice printed/downloaded by the client still
     // said "Pending - not yet pushed to wallet" on the invoice document itself.
     function invoiceSettlementNote(inv){
+      if(nvInvTaken(inv)) return "Taken from your wallet - nothing else to pay";
       if(inv.status==="Pushed to wallet") return "Credited to wallet - ready for you to withdraw";
       if(isInvoiceClosed(inv.status)) return "Paid in full - settled, nothing owed";
       return "Pending - not yet pushed to wallet";
@@ -6406,12 +6416,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         "Settled":"Credited to your wallet",
         "Paid":"Paid to your bank",
         "Paid to NovaX":"You've paid this",
+        "Taken from wallet":"Taken from your wallet",
         "Cancelled":"Cancelled"
       };
       return m[status] || status || "Being counted";
     }
     function nvMoneyStage(status){
       if(status === "Cancelled") return 0;
+      if(status === "Taken from wallet") return 3;
       if(isInvoiceClosed(status)) return 3;
       if(status === "Pushed to wallet") return 2;
       return 1;
@@ -6493,7 +6505,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               .filter(function(w){ return w.clientId === myId && w.status === "Paid"; })
               .reduce(function(s,w){ return s + Number(w.net || 0); }, 0);
       }catch(e){ paid = 0; }
-      var owed  = invoices.filter(function(i){ return !isInvoiceClosed(i.status) && i.status !== "Cancelled"; })
+      var owed  = invoices.filter(function(i){ return !isInvoiceClosed(i.status) && i.status !== "Cancelled" && !nvInvTaken(i); })
                           .reduce(function(s,i){ return s + Number(i.dueToNovax||0); }, 0);
       return { invoices:invoices, counting:counting, ready:ready, paid:paid,
                owed:owed, shortfall:shortfall, rawBalance:rawBalance };
@@ -6660,7 +6672,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var list = document.getElementById("nvOwedList");
         if(list){
           list.innerHTML = f.invoices.filter(function(i){
-            return Number(i.dueToNovax||0) > 0 && i.status !== "Paid to NovaX" && i.status !== "Cancelled";
+            return Number(i.dueToNovax||0) > 0 && i.status !== "Paid to NovaX" && i.status !== "Cancelled" && !nvInvTaken(i);
           }).map(function(i){
             return '<div class="log-item"><strong>' + escLabelText(i.id) + '</strong>' +
                    '<div><strong>' + money(i.dueToNovax) + '</strong>' +
@@ -6849,7 +6861,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const driftNote=drift?`<div style="background:var(--nvu-warn-bg);border:1px solid var(--nvu-warn-ln);color:var(--nvu-warn-fg);border-radius:var(--r-md);padding:10px 12px;margin-bottom:14px;font-size:12px;line-height:1.5">
         <b>Note:</b> the per-parcel rows below add up to ${escLabelText(money(lineCod))} COD and ${escLabelText(money(lineFee))} in charges, which differs from the invoice totals shown in the summary. The <b>summary totals are the ones that settle</b> &mdash; they are calculated by NovaX at the moment the invoice is generated. A difference here usually means a parcel's status changed after invoicing. Please contact support if the gap looks wrong.
       </div>`:"";
-      const balanceLabel=due>0?"Amount Due to NovaX":"Grand Total Payable";
+      const balanceLabel=due>0?(nvInvTaken(inv)?"Taken from your wallet":"Amount Due to NovaX"):"Grand Total Payable";
       const balanceValue=due>0?money(due):money(inv.payable||0);
       return `<div class="nv-doc-paper" style="font-family:Arial,Helvetica,sans-serif;color:#0b1f16;background:var(--nvu-bg);padding:26px;max-width:820px;margin:0 auto;border-radius:var(--r-lg)">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid var(--nvu-accent);padding-bottom:14px;margin-bottom:18px">
@@ -6860,7 +6872,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Billed to</div><div style="font-weight:700">${labelText(c&&c.name,inv.clientId)}</div><div style="font-size:12px">${labelText(c&&c.city)} ${labelText(c&&c.email,"")}</div></div>
           <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Invoice date</div><div style="font-weight:700">${escLabelText(inv.createdAt)}</div></div>
           <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Invoice type</div><div style="font-weight:700">${escLabelText(invType)}</div></div>
-          <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Status</div><div style="font-weight:700">${escLabelText(inv.status)}</div><div style="font-size:11px;color:#5b6b64">${escLabelText(invoiceSettlementNote(inv))}</div></div>
+          <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Status</div><div style="font-weight:700">${escLabelText(nvInvTaken(inv)?"Taken from wallet":inv.status)}</div><div style="font-size:11px;color:#5b6b64">${escLabelText(invoiceSettlementNote(inv))}</div></div>
         </div>
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#5b6b64;margin-bottom:6px">Tracking &amp; delivery charge breakdown</div>
         ${outcomeStrip}
@@ -7379,7 +7391,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(row){ state.serverWalletSummary=row; renderClientWallet(); }
         }).catch(function(e){ console.warn("NovaX wallet summary fetch error:",e&&e.message); });
       }
-      const entryLabels={ invoice_credit:"Invoice credited", withdrawal_requested:"Withdrawal requested", payout_fee:"Payout fee deducted", payout_paid:"Payout paid", admin_adjustment:"Admin adjustment", delivery_charge_due:"Delivery charge collected" };
+      const entryLabels={ invoice_credit:"Invoice credited", withdrawal_requested:"Withdrawal requested", payout_fee:"Payout fee deducted", payout_paid:"Payout paid", admin_adjustment:"Admin adjustment", delivery_charge_due:"Delivery charge collected", invoice_due_debit:"Delivery charges taken from wallet", invoice_due_reversal:"Charges returned", due_payment:"Payment received by NovaX" };
       /* walletPushNote read state.lastWalletPush, which is NEVER ASSIGNED
          anywhere in the codebase -- so the note permanently said "No admin
          credit yet" while the ledger directly below it listed admin credits of
@@ -7467,7 +7479,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            admin_adjustment                   -> amber down, green up
            credits                            -> green */
       var NV_LEDGER_HUE={ withdrawal_requested:"out", payout_paid:"out",
-                          payout_fee:"warn", delivery_charge_due:"warn" };
+                          payout_fee:"warn", delivery_charge_due:"warn", invoice_due_debit:"warn" };
       function nvLedgerChip(l){
         var amt=Number(l.amount||0);
         if(l.affectsBalance){
