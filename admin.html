@@ -14060,6 +14060,14 @@ html,body{ background:var(--bg); color:var(--ink); }
               const d = (r && r.data) || {};
               if (state.activeRateClient === clientId) state.activeRateClient = null;
               toast(nm + " deleted: " + (d.parcels || 0) + " parcel(s), " + (d.invoices || 0) + " invoice(s), " + (d.seats || 0) + " team seat(s).");
+              /* Storage has no cascade: remove their logo file too, or it stays
+                 public at merchant-logos/<id>/logo after the account is gone.
+                 Harmless when they never uploaded one. */
+              try {
+                Promise.resolve(sb.storage.from("merchant-logos").remove([cid + "/logo"]))
+                  .then(function(x){ if (x && x.error) console.warn("NovaX: logo not removed for deleted client " + cid + ": " + x.error.message); })
+                  .catch(function(e){ console.warn("NovaX: logo not removed for deleted client " + cid, e); });
+              } catch (e) {}
               refresh();
             });
         });
