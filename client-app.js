@@ -5850,6 +5850,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     function renderClientReportFull(){
       if(state.activeClientTab==="reports"){ try{ nvReport2Open(); }catch(e){} }
+      if(state.activeClientTab==="profile"){ try{ nvPfOpen(); }catch(e){} }
       const tbody=document.getElementById("clientReportFullRows"); if(!tbody) return;
       const sel=document.getElementById("repStatus");
       if(sel && !sel.dataset.filled){ sel.innerHTML=`<option value="">All statuses</option>`+STATUS_TAGS.concat(["Cancelled by client"]).map(s=>`<option value="${s}">${escLabelText(nvStatusLabel(s))}</option>`)   /* value stays the STORED status; only the text a human reads is relabelled */.join(""); sel.dataset.filled="1"; }
@@ -11770,6 +11771,230 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     window.nvBrandSave=nvBrandSave;
 
+    /* ═══ Profile tab (29 Sep 2026) ═════════════════════════════════════
+       One business name and one set of details. Saved through
+       nv_profile_save (owner only, every change logged, admin sees it),
+       which also keeps merchant_brand in step -- the tracking link reads
+       clients.name, so there is exactly one name. The logo shows on this
+       dashboard and on the tracking link only. */
+    var NV_PF={ loaded:false, loading:false, data:null, hist:[], logoBlob:null, logoType:"", logoPreview:"", removeLogo:false, saving:false, headerTried:false };
+    var NV_PF_DEFAULT_ACCENT="#0c7c59";
+    function nvPfEl(id){ return document.getElementById(id); }
+    function nvPfInitials(n){ return String(n||"").trim().split(/\s+/).slice(0,2).map(function(w){ return w.charAt(0); }).join("").toUpperCase()||"NX"; }
+    function nvPfLogoSrc(){
+      if(NV_PF.removeLogo) return "";
+      if(NV_PF.logoPreview) return NV_PF.logoPreview;
+      return (NV_PF.data&&NV_PF.data.logo_url)||"";
+    }
+    function nvPfOwner(){ return !!(NV_PF.data&&NV_PF.data.is_owner); }
+    function nvPfVal(id){ var e=nvPfEl(id); return e?String(e.value||"").trim():""; }
+    /* What the form would save. The colour input can never be empty, so an
+       untouched default is sent as "no colour" -- otherwise the first save of
+       anything would log a colour change nobody made. */
+    function nvPfValues(){
+      var d=NV_PF.data||{}, accent=(nvPfVal("nvPfAccent")||"").toLowerCase();
+      if(!d.accent && accent===NV_PF_DEFAULT_ACCENT) accent="";
+      return {
+        name:nvPfVal("nvPfName"), phone:nvPfVal("nvPfPhone"), email:nvPfVal("nvPfEmail"), website:nvPfVal("nvPfWeb"),
+        business_type:nvPfVal("nvPfType"), address:nvPfVal("nvPfAddr"), accent:accent, whatsapp:nvPfVal("nvPfWa"),
+        tracking_on:!!(nvPfEl("nvPfTrackOn")&&nvPfEl("nvPfTrackOn").checked),
+        has_logo:!!NV_PF.logoBlob || (!!d.logo_url && !NV_PF.removeLogo),
+        logo_replaced:!!NV_PF.logoBlob
+      };
+    }
+    function nvPfBaseline(){
+      var d=NV_PF.data||{};
+      return { name:d.name||"", phone:d.phone||"", email:d.email||"", website:d.website||"", business_type:d.business_type||"",
+               address:d.address||"", accent:(d.accent||"").toLowerCase(), whatsapp:d.whatsapp||"", tracking_on:!!d.tracking_on,
+               has_logo:!!d.logo_url, logo_replaced:false };
+    }
+    function nvPfDirty(){
+      if(!NV_PF.loaded) return false;
+      var a=nvPfValues(), b=nvPfBaseline();
+      return Object.keys(b).some(function(k){ return a[k]!==b[k]; });
+    }
+    function nvPfPaintLogo(box, src, name){
+      if(!box) return;
+      box.innerHTML="";
+      if(src){ var img=document.createElement("img"); img.alt=""; img.src=src; box.appendChild(img); }
+      else box.textContent=nvPfInitials(name);
+    }
+    function nvPfSync(){
+      var v=nvPfValues(), name=v.name||"Your shop", src=nvPfLogoSrc();
+      nvPfPaintLogo(nvPfEl("nvPfLogoBox"), src, name);
+      nvPfPaintLogo(nvPfEl("nvPfPvDash"), src, name);
+      nvPfPaintLogo(nvPfEl("nvPfPvLogo"), src, name);
+      ["nvPfPvDashName","nvPfPvName","nvPfPvLabel"].forEach(function(id){ var e=nvPfEl(id); if(e) e.textContent=name; });
+      var accent=nvPfVal("nvPfAccent")||NV_PF_DEFAULT_ACCENT, ink=(typeof nvBrandInk==="function")?nvBrandInk(accent):null;
+      var bar=nvPfEl("nvPfPvBar"), note=nvPfEl("nvPfAccentNote");
+      if(bar){ if(ink){ bar.style.background=accent; bar.style.color=ink; } else { bar.style.background=""; bar.style.color=""; } }
+      if(note) note.textContent=ink?("Reads clearly with "+(ink==="#ffffff"?"white":"dark")+" text."):"Too hard to read on this colour — NovaX green will be used.";
+      var wa=nvPfEl("nvPfPvWa"), waOn=v.whatsapp.replace(/\D/g,"").length>=10;
+      if(wa){ wa.hidden=!waOn; if(waOn&&ink){ wa.style.background=accent; wa.style.color=ink; } else { wa.style.background=""; wa.style.color=""; } }
+      var tr=nvPfEl("nvPfPvTrack"); if(tr) tr.classList.toggle("is-off", !v.tracking_on);
+      var off=nvPfEl("nvPfPvOff"); if(off) off.hidden=v.tracking_on;
+      var rm=nvPfEl("nvPfLogoRemove"); if(rm) rm.hidden=!src||!nvPfOwner();
+      var pick=nvPfEl("nvPfLogoPick"); if(pick) pick.textContent=src?"Change logo":"Upload logo";
+      var bar2=nvPfEl("nvPfSaveBar"), dirty=nvPfOwner()&&nvPfDirty();
+      if(bar2 && !NV_PF.saving){ bar2.hidden=!dirty; var m=nvPfEl("nvPfSaveMsg"); if(m && dirty && !m.classList.contains("is-err")) m.textContent="You have unsaved changes"; }
+    }
+    function nvPfFill(){
+      var d=NV_PF.data||{};
+      var set=function(id,v){ var e=nvPfEl(id); if(e) e.value=v==null?"":v; };
+      set("nvPfName",d.name); set("nvPfPhone",d.phone); set("nvPfEmail",d.email); set("nvPfWeb",d.website);
+      set("nvPfType",d.business_type); set("nvPfAddr",d.address); set("nvPfWa",d.whatsapp);
+      set("nvPfAccent",d.accent||NV_PF_DEFAULT_ACCENT);
+      var t=nvPfEl("nvPfTrackOn"); if(t) t.checked=!!d.tracking_on;
+      var c=nvPfEl("nvPfCity"); if(c) c.textContent=d.pickup_city||"—";
+      var s=nvPfEl("nvPfSince"); if(s) s.textContent=d.member_since?new Date(d.member_since).toLocaleDateString("en-GB",{ day:"numeric", month:"short", year:"numeric", timeZone:"Asia/Karachi" }):"—";
+      var owner=nvPfOwner(), on=nvPfEl("nvPfOwnerNote"); if(on) on.hidden=owner;
+      var sec=nvPfEl("client-profile");
+      if(sec) Array.prototype.forEach.call(sec.querySelectorAll(".nv-pf-main input,.nv-pf-main textarea"),function(x){ x.disabled=!owner; });
+      var pick=nvPfEl("nvPfLogoPick"); if(pick){ pick.style.pointerEvents=owner?"":"none"; pick.style.opacity=owner?"":".5"; }
+      var m=nvPfEl("nvPfSaveMsg"); if(m) m.classList.remove("is-err");
+      nvPfSync(); nvPfHistory();
+    }
+    function nvPfShowVal(field, v){
+      if(v==null||v==="") return "—";
+      if(field==="WhatsApp for customers" && /^92\d{10}$/.test(v)) return "0"+v.slice(2);
+      return v;
+    }
+    function nvPfHistory(){
+      var host=nvPfEl("nvPfHistory"); if(!host) return;
+      var h=NV_PF.hist||[];
+      if(!h.length){ host.innerHTML='<p class="footer-note">No changes yet.</p>'; return; }
+      host.innerHTML=h.map(function(r){
+        var when=r.created_at?new Date(r.created_at).toLocaleString("en-GB",{ day:"numeric", month:"short", hour:"2-digit", minute:"2-digit", timeZone:"Asia/Karachi" }):"";
+        return '<div class="row"><em>'+escLabelText(when)+'</em><b>'+escLabelText(r.field)+'</b><span>'+escLabelText(nvPfShowVal(r.field,r.old_value))+' → '+escLabelText(nvPfShowVal(r.field,r.new_value))+'</span></div>';
+      }).join("");
+    }
+    function nvPfWorkspace(d){
+      var img=nvPfEl("nvWsLogo"), wrap=nvPfEl("nvWsId");
+      var src=d&&d.logo_url;
+      if(img){ if(src){ if(img.getAttribute("src")!==src) img.src=src; img.hidden=false; } else { img.hidden=true; img.removeAttribute("src"); } }
+      if(wrap) wrap.classList.toggle("has-logo", !!src);
+    }
+    function nvPfLoad(force){
+      var sb=window.__nvSb;
+      if(!sb||!sb.rpc||NV_PF.loading) return Promise.resolve();
+      if(NV_PF.loaded && !force) return Promise.resolve();
+      NV_PF.loading=true;
+      var err=nvPfEl("nvPfLoadErr");
+      return Promise.all([
+        Promise.resolve(sb.rpc("nv_profile_get")),
+        Promise.resolve(sb.from("client_profile_changes").select("field,old_value,new_value,created_at").order("created_at",{ ascending:false }).limit(12))
+      ]).then(function(res){
+        NV_PF.loading=false;
+        var r=res[0], h=res[1];
+        if(r&&r.error){ if(err){ err.hidden=false; err.textContent=/permission denied/i.test(r.error.message||"")?"Your sign-in has ended. Refresh and sign in again.":"Could not load your profile: "+r.error.message; } return; }
+        if(!r||!r.data){ if(err){ err.hidden=false; err.textContent="Could not load your profile. Refresh the page."; } return; }
+        if(err) err.hidden=true;
+        NV_PF.data=Array.isArray(r.data)?r.data[0]:r.data;
+        NV_PF.hist=(h&&!h.error&&h.data)||[];
+        NV_PF.loaded=true;
+        nvPfWorkspace(NV_PF.data);
+        if(!nvPfDirty()) nvPfFill(); else nvPfHistory();
+      }).catch(function(){ NV_PF.loading=false; });
+    }
+    /* The header logo is wanted on every tab, so fetch the profile once per
+       session as soon as the account is confirmed. */
+    function nvPfEnsureHeader(){
+      if(NV_PF.headerTried || !state.identityVerified || window.__NOVAX_DEMO) return;
+      NV_PF.headerTried=true;
+      nvPfLoad(false);
+    }
+    function nvPfOpen(){
+      if(window.__NOVAX_DEMO && !NV_PF.loaded){
+        /* The demo has no real account behind it: show its sample shop so the
+           tab can be explored; saving is intercepted by the demo prompt. */
+        NV_PF.data={ name:(state.identityVerified&&state.client&&state.client.name)||"Sana's Closet", phone:"03000000000", email:"", website:"", business_type:"Clothing",
+                     address:"Shop 14, Tariq Road, Karachi", pickup_city:"Karachi", member_since:null, is_owner:true, logo_url:"", accent:"", whatsapp:"", tracking_on:false };
+        NV_PF.loaded=true; nvPfFill(); return;
+      }
+      nvPfLoad(false);
+    }
+    function nvPfResetLogo(){
+      if(NV_PF.logoPreview){ try{ URL.revokeObjectURL(NV_PF.logoPreview); }catch(e){} }
+      NV_PF.logoPreview=""; NV_PF.logoBlob=null; NV_PF.logoType=""; NV_PF.removeLogo=false;
+      var f=nvPfEl("nvPfLogo"); if(f) f.value="";
+    }
+    function nvPfMsg(t, err){
+      var bar=nvPfEl("nvPfSaveBar"), m=nvPfEl("nvPfSaveMsg");
+      if(bar) bar.hidden=false;
+      if(m){ m.textContent=t; m.classList.toggle("is-err", !!err); }
+    }
+    function nvPfSave(){
+      if(NV_PF.saving || !NV_PF.loaded) return;
+      if(window.__NOVAX_DEMO){ try{ if(typeof window.nvDemoPrompt==="function") window.nvDemoPrompt("save"); }catch(e){} return; }
+      if(!nvPfOwner()){ nvPfMsg("Only the account owner can change these details.", true); return; }
+      var sb=window.__nvSb; if(!sb||!sb.rpc){ nvPfMsg("Still connecting — try again in a moment.", true); return; }
+      var v=nvPfValues();
+      if(v.name.length<2){ nvPfMsg("Enter your business name.", true); nvPfEl("nvPfName").focus(); return; }
+      if(v.phone.replace(/\D/g,"").length<10){ nvPfMsg("Enter your business phone number.", true); nvPfEl("nvPfPhone").focus(); return; }
+      var cid=activeClientId();
+      if((NV_PF.logoBlob || NV_PF.removeLogo) && !/^[0-9a-f-]{36}$/i.test(String(cid||""))){ nvPfMsg("Your account is still loading. Try again in a moment.", true); return; }
+      NV_PF.saving=true;
+      var btn=nvPfEl("nvPfSave"), was=btn?btn.textContent:"";
+      if(btn){ btn.disabled=true; btn.textContent="Saving…"; }
+      nvPfMsg("Saving…");
+      var hadLogo=!!(NV_PF.data&&NV_PF.data.logo_url), step=Promise.resolve();
+      if(NV_PF.logoBlob){
+        step=Promise.resolve(sb.storage.from("merchant-logos").upload(cid+"/logo", NV_PF.logoBlob, { upsert:true, contentType:NV_PF.logoType, cacheControl:"300" }))
+          .then(function(r){ if(r&&r.error) throw new Error("Logo upload failed: "+r.error.message); });
+      } else if(NV_PF.removeLogo && hadLogo){
+        step=Promise.resolve(sb.storage.from("merchant-logos").remove([cid+"/logo"])).then(function(){});
+      }
+      var done=function(){ NV_PF.saving=false; if(btn){ btn.disabled=false; btn.textContent=was; } };
+      step.then(function(){ return sb.rpc("nv_profile_save", { p:v }); }).then(function(r){
+        done();
+        if(r&&r.error){ nvPfMsg(/permission denied/i.test(r.error.message||"")?"Your sign-in has ended. Refresh and sign in again.":r.error.message, true); return; }
+        if(!r||!r.data){ nvPfMsg("Not saved. Try again.", true); return; }
+        NV_PF.data=Array.isArray(r.data)?r.data[0]:r.data;
+        nvPfResetLogo();
+        if(state.client){ state.client.name=NV_PF.data.name; }
+        nvPfFill();
+        nvPfWorkspace(NV_PF.data);
+        var bar=nvPfEl("nvPfSaveBar"); if(bar) bar.hidden=true;
+        toast("Profile saved. Your new details are live everywhere.","success");
+        /* refresh the change list, and every screen that shows the name */
+        nvPfLoad(true);
+        try{ NV_BRAND.loaded=false; }catch(e){}
+        try{ if(typeof loadAll==="function") loadAll(); }catch(e){}
+      }).catch(function(e){ done(); nvPfMsg(String((e&&e.message)||e), true); });
+    }
+    function nvPfDiscard(){ nvPfResetLogo(); nvPfFill(); var bar=nvPfEl("nvPfSaveBar"); if(bar) bar.hidden=true; }
+    document.addEventListener("input",function(e){ if(e.target&&e.target.closest&&e.target.closest("#client-profile .nv-pf-main")) nvPfSync(); });
+    document.addEventListener("change",function(e){
+      var t=e.target; if(!t) return;
+      if(t.id==="nvPfTrackOn"||t.id==="nvPfAccent"){ nvPfSync(); return; }
+      if(t.id!=="nvPfLogo") return;
+      var file=t.files&&t.files[0]; if(!file) return;
+      nvPfMsg("Preparing logo…");
+      nvBrandPrepareLogo(file).then(function(out){
+        if(NV_PF.logoPreview){ try{ URL.revokeObjectURL(NV_PF.logoPreview); }catch(e){} }
+        NV_PF.logoBlob=out.blob; NV_PF.logoType=out.type; NV_PF.removeLogo=false; NV_PF.logoPreview=URL.createObjectURL(out.blob);
+        var m=nvPfEl("nvPfSaveMsg"); if(m) m.classList.remove("is-err");
+        nvPfSync();
+      }).catch(function(err){ t.value=""; nvPfMsg(String((err&&err.message)||err), true); });
+    });
+    document.addEventListener("click",function(e){
+      var t=e.target&&e.target.closest?e.target.closest("#nvPfSave,#nvPfDiscard,#nvPfLogoRemove,#nvPfCityReq"):null;
+      if(!t) return;
+      if(t.id==="nvPfSave") nvPfSave();
+      else if(t.id==="nvPfDiscard") nvPfDiscard();
+      else if(t.id==="nvPfLogoRemove"){ if(NV_PF.logoPreview){ try{ URL.revokeObjectURL(NV_PF.logoPreview); }catch(err){} } NV_PF.logoPreview=""; NV_PF.logoBlob=null; NV_PF.removeLogo=true; var f=nvPfEl("nvPfLogo"); if(f) f.value=""; nvPfSync(); }
+      else if(t.id==="nvPfCityReq"){
+        showClientTab("tickets");
+        setTimeout(function(){
+          var s=document.getElementById("nvTkSubject"), b=document.getElementById("nvTkBody");
+          if(s && !s.value) s.value="Change my pickup city";
+          if(b && !b.value) b.value="Current pickup city: "+((NV_PF.data&&NV_PF.data.pickup_city)||"")+". New pickup city: ";
+          if(b){ b.focus(); try{ b.setSelectionRange(b.value.length,b.value.length); }catch(err){} }
+        },250);
+      }
+    });
+    window.addEventListener("beforeunload",function(e){ if(nvPfOwner() && nvPfDirty()){ e.preventDefault(); e.returnValue=""; } });
+
     function renderIntegrations(){
       // NovaX fix: Shopify no longer lives in the generic storeConnections
       // chip logic (that reads local/legacy `store_connections` state) --
@@ -12321,6 +12546,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ if(typeof window.nvFillBusinessName === "function") window.nvFillBusinessName(state.client && state.client.name); }catch(e){}
       const workspaceName = document.getElementById("clientWorkspaceName");
       if (workspaceName) { const cds=clientDisplayState(); workspaceName.textContent = cds.showWorkspaceSuffix ? `${cds.label} workspace` : cds.label; }
+      try{ nvPfEnsureHeader(); }catch(e){}
       try{ if(typeof renderDashboardEmptyState==="function") renderDashboardEmptyState(); }catch(e){}
       try{ if(typeof renderDailyCommandCenter==="function") renderDailyCommandCenter(); }catch(e){}
       /* NovaX new (Smart Portal E): once-per-session insight fetch. Guarded
@@ -12350,7 +12576,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        makes the call safe from any point in the file. */
     function normalizeClientTab(id){
       var TABS = ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","integrations",
-                  "reports","money","subAccounts","tickets","support"];
+                  "reports","money","profile","subAccounts","tickets","support"];
       var ALIASES = { wallet:"money", payments:"money", payment:"money", invoices:"money" };
       var v = String(id || "").trim();
       if(ALIASES[v]) v = ALIASES[v];
@@ -12725,10 +12951,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // the old split was quietly acting as the permission boundary, so
       // merging the tabs without this change would have handed every Finance
       // sub-account the ability to withdraw to any IBAN they typed.
-      Owner:     ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","integrations","reports","money","subAccounts","tickets","support"],
-      Finance:   ["dashboard","reports","money","tickets","support"],
-      Warehouse: ["dashboard","newBooking","bulkBooking","awbLabel","loadSheet","support"],
-      Support:   ["dashboard","tickets","support"]
+      Owner:     ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","integrations","reports","money","profile","subAccounts","tickets","support"],
+      /* Profile is viewable by every seat (read-only); nv_profile_save
+         refuses anyone but the owner. */
+      Finance:   ["dashboard","reports","money","profile","tickets","support"],
+      Warehouse: ["dashboard","newBooking","bulkBooking","awbLabel","loadSheet","profile","support"],
+      Support:   ["dashboard","profile","tickets","support"]
     };
     /* Until the seat lookup has actually answered, act as the most limited
        role. This defaulted to Owner, so a failed staff_users read handed a
@@ -15267,7 +15495,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
 
       /* Demote rarely used tabs behind a "More" menu (all 11 tabs stay available). */
-      var RARE_TABS=["integrations","subAccounts","support"];
+      var RARE_TABS=["integrations","profile","subAccounts","support"];
       function nvGroupRareTabs(){
         var tabs=document.querySelectorAll("[data-client-tab]");
         if(!tabs.length || document.getElementById("nvMoreWrap")) return;
@@ -18705,6 +18933,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ["awbLabel","AWB Label","Print labels, request a pickup"],
       ["bulkBooking","Bulk Booking","Import a CSV of orders"],
       ["reports","Reports","Performance, COD and every parcel"],
+      ["profile","Profile","Business name, logo, phone and address"],
       ["payments","Payments","Invoices and settlement"],
       ["wallet","Wallet","Balance, withdrawals, ledger"],
       ["integrations","Integrations","Shopify, WooCommerce, API"],

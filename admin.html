@@ -5387,6 +5387,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <button type="button" class="admin-subtab" data-admin-tab="clients-leads">Leads <span class="nav-badge" id="leadsSubtabBadge" style="display:none">0</span></button>
                   <button type="button" class="admin-subtab" data-admin-tab="clients-create-new">Create New Client</button>
                   <button type="button" class="admin-subtab" data-admin-tab="clients-clients">Edit Rates</button>
+                  <button type="button" class="admin-subtab" data-admin-tab="clients-profile-changes">Profile Changes <span class="nav-badge" id="nvPcBadge" style="display:none">0</span></button>
                 </div>
               </div>
 
@@ -5616,6 +5617,21 @@ html,body{ background:var(--bg); color:var(--ink); }
               </div>
             </section>
 
+            <!-- Merchant profile changes (sql_novax_merchant_profile.sql). Merchants
+                 change their business name, phone, address, logo etc. instantly
+                 from their Profile tab; every change lands here for review. -->
+            <section class="admin-module" id="admin-clients-profile-changes">
+              <div class="panel">
+                <div class="section-head">
+                  <div><h3>Merchant profile changes</h3><p>Every change merchants make to their business name, contact details, logo or tracking-link branding. Changes apply instantly; this is where you check them. Unseen changes are highlighted.</p></div>
+                  <div style="display:flex;gap:8px;flex:0 0 auto">
+                    <button class="ghost-btn" type="button" onclick="nvPcLoad()">Refresh</button>
+                    <button class="action-btn" type="button" id="nvPcSeenAll" onclick="nvPcSeen()">Mark all seen</button>
+                  </div>
+                </div>
+                <div id="nvPcList" class="ops-list"><div class="footer-note">Loading&hellip;</div></div>
+              </div>
+            </section>
             <section class="admin-module" id="admin-clients-leads">
               <div class="panel">
                 <div class="section-head">
@@ -6982,7 +6998,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       support: ["support-tickets"],
       novaxai: ["novaai", "ai-chats", "ai-answers"],
       finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-topup", "finance-dues", "finance-balances", "finance-summary", "finance-overall", "finance-revenue"],
-      clients: ["clients-summary", "clients-leads", "clients-create-new", "clients-clients"],
+      clients: ["clients-summary", "clients-leads", "clients-create-new", "clients-clients", "clients-profile-changes"],
       users: ["users-create", "users-edit", "users-staff"],
       api: ["api-shopify", "api-web", "api-woo-commerce"],
       system: ["system-health", "system-notifications", "system-errors"]
@@ -11660,6 +11676,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (state.activeAdminTab === "novaai") { try { loadAiQuotaQueue(); } catch(e){} }
       if (state.activeAdminTab === "ai-chats") { try { nvAicLoad(); } catch(e){} }
       if (state.activeAdminTab === "ai-answers") { try { nvAbLoad(); } catch(e){} }
+      if (state.activeAdminTab === "clients-profile-changes") { try { nvPcLoad(); } catch(e){} }
     }
 
     // NovaX fix (Order Processing RPC scope bug): rParcel() is defined much
@@ -16160,6 +16177,47 @@ html,body{ background:var(--bg); color:var(--ink); }
        in Postgres. Supabase resolves failures with {error}, so every call
        checks r.error before reporting success.
        =================================================================== */
+    /* ===================================================================
+       Merchant profile changes. Read through admin_profile_changes(); marked
+       seen through admin_profile_changes_seen(). Both check is_admin().
+       =================================================================== */
+    function nvPcBadge(n){
+      var b = document.getElementById("nvPcBadge"); if (!b) return;
+      b.textContent = n; b.style.display = n > 0 ? "" : "none";
+    }
+    function nvPcLoad(){
+      var sb = window.__nvSb, host = document.getElementById("nvPcList");
+      if (!sb || !sb.rpc) return;
+      Promise.resolve(sb.rpc("admin_profile_changes", { p_limit: 300 })).then(function(r){
+        if (r && r.error) { if (host) host.innerHTML = '<div class="footer-note">Could not load: ' + nvEscAdmin(r.error.message) + '</div>'; return; }
+        var rows = (r && r.data) || [];
+        nvPcBadge(rows.filter(function(x){ return !x.seen_at; }).length);
+        if (!host) return;
+        if (!rows.length) { host.innerHTML = '<div class="footer-note">No merchant has changed their profile yet.</div>'; return; }
+        var show = function(f, v){ if (v == null || v === "") return "—"; if (f === "WhatsApp for customers" && /^92\d{10}$/.test(v)) return "0" + v.slice(2); return v; };
+        host.innerHTML = rows.map(function(x){
+          var when = x.created_at ? new Date(x.created_at).toLocaleString("en-GB", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit", timeZone:"Asia/Karachi" }) : "";
+          var fresh = !x.seen_at, important = x.field === "Business name";
+          return '<div class="ops-card" style="display:block;padding:11px 14px;' + (fresh ? 'border-color:var(--nvu-accent,#0c7c59);' : '') + '">' +
+            '<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><b>' + nvEscAdmin(x.client_name || "Unknown client") + '</b>' +
+            '<span class="footer-note">' + nvEscAdmin(when) + '</span>' +
+            (fresh ? '<span class="chip ' + (important ? 'warn' : 'info') + '">New</span>' : '') + '</div>' +
+            '<div style="margin-top:4px;font-size:13.5px"><b>' + nvEscAdmin(x.field) + ':</b> ' +
+            '<span style="text-decoration:line-through;opacity:.65">' + nvEscAdmin(show(x.field, x.old_value)) + '</span> &rarr; <b>' + nvEscAdmin(show(x.field, x.new_value)) + '</b></div></div>';
+        }).join("");
+      }, function(){ if (host) host.innerHTML = '<div class="footer-note">Could not load changes.</div>'; });
+    }
+    function nvPcSeen(){
+      var sb = window.__nvSb; if (!sb || !sb.rpc) return;
+      Promise.resolve(sb.rpc("admin_profile_changes_seen", { p_ids: null })).then(function(r){
+        if (r && r.error) { try { toast("Could not mark seen: " + r.error.message, "error"); } catch(e){} return; }
+        nvPcLoad();
+      });
+    }
+    window.nvPcLoad = nvPcLoad; window.nvPcSeen = nvPcSeen;
+    /* badge on boot, so a rename is noticed without opening the tab */
+    [4000, 15000].forEach(function(ms){ setTimeout(function(){ try { if (window.__nvSb && state.activeAdminTab !== "clients-profile-changes") nvPcLoad(); } catch(e){} }, ms); });
+
     var NV_AB = { rows: [], editId: null, busy: false };
     function nvAbEl(id){ return document.getElementById(id); }
     function nvAbLines(v){ return String(v || "").split(/\n/).map(function(x){ return x.trim(); }).filter(Boolean).slice(0, 3); }
@@ -19344,6 +19402,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       ["reviews","Reviews","Approve merchant testimonials"],
       ["novaai","NovaX AI — Message Limits","Approve AI message-limit requests"],
       ["ai-answers","NovaX AI — Answer Bank","Edit the answers the chat gives instantly"],
+      ["clients-profile-changes","Clients — Profile Changes","Business names, phones and logos merchants changed"],
       ["ai-chats","NovaX AI — Merchant Conversations","Read what merchants ask the AI"],
       ["riders-route","Riders — On Route","Live rider routes"],
       ["riders-report","Riders — Report","Rider performance and cash"],
