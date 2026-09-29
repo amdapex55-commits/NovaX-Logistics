@@ -16,7 +16,7 @@ async function app(opts){
   scripts.forEach(s=>w.eval(s));await wait();return{dom,w,fixture,q:id=>w.document.getElementById(id),dialog};
 }
 let a=await app({swap:true});
-const card=[...a.q('deliveryList').querySelectorAll('.parcel')].find(c=>c.querySelector('[data-swap]'));
+const card=[...a.q('outList').querySelectorAll('.parcel')].find(c=>c.querySelector('[data-swap]'));
 assert.ok(card,'swap card shows swap buttons');
 assert.match(card.textContent,/NOVA SWAP/);assert.match(card.textContent,/N9999999/);
 assert.equal(card.querySelector('[data-action="Delivered"]'),null,'normal Delivered button replaced');
@@ -29,7 +29,7 @@ assert.equal(a.fixture.rows[4].status,'Delivered');
 a.dom.window.close();
 // lost reply: same key is replayed, never a second action
 a=await app({swap:true});a.fixture.failRpc='afterCommit';
-[...a.q('deliveryList').querySelectorAll('[data-swap="exchanged"]')][0].click();await wait();a.dialog.close('confirm');await wait(120);
+[...a.q('outList').querySelectorAll('[data-swap="exchanged"]')][0].click();await wait();a.dialog.close('confirm');await wait(120);
 const queued=JSON.parse(a.w.localStorage.getItem([...Array(a.w.localStorage.length).keys()].map(i=>a.w.localStorage.key(i)).find(k=>/Queue:v2/.test(k)))||'[]');
 assert.equal(queued.length,1);a.fixture.failRpc=null;a.w.dispatchEvent(new a.w.Event('online'));await wait(150);
 req=a.fixture.requests.filter(r=>r.name==='rider_swap_complete');
@@ -37,7 +37,7 @@ assert.equal(new Set(req.map(r=>r.args.p_key)).size,1,'replay uses one key');
 a.dom.window.close();
 // cannot exchange: needs a reason
 a=await app({swap:true});
-[...a.q('deliveryList').querySelectorAll('[data-swap="failed"]')][0].click();await wait();
+[...a.q('outList').querySelectorAll('[data-swap="failed"]')][0].click();await wait();
 a.q('reasonOther').value='Customer does not have the old item';a.dialog.close('confirm');await wait(120);
 req=a.fixture.requests.filter(r=>r.name==='rider_swap_complete');
 assert.equal(req[0].args.p_outcome,'failed');assert.match(req[0].args.p_reason,/old item/);

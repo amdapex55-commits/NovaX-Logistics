@@ -6,64 +6,87 @@
   <meta name="robots" content="noindex,nofollow">
   <title>NovaX | Rider</title>
   <link rel="icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="rider.css?v=9adc2261">
+  <link rel="stylesheet" href="rider.css?v=c2a116fa">
   <script defer src="assets/vendor/supabase-2.117.2.js"></script>
   <script defer src="nv-payment.js"></script>
   <script defer src="nv-journey.js?v=77db2b46"></script>
   <script defer src="rider-core.js?v=c5f16927"></script>
-  <script defer src="rider-app.js?v=beeac78c"></script>
+  <script defer src="rider-app.js?v=17ccc860"></script>
 </head>
 <body>
   <div class="gate" id="gate"><div class="gatebox">
-    <div class="spin" id="gateSpin"></div><h2 id="gateTitle">Loading your route</h2>
+    <div class="spin" id="gateSpin"></div><h2 id="gateTitle">Loading your station</h2>
     <p id="gateText">Checking your rider account...</p>
     <div class="actions"><button class="btn secondary hidden" id="retryBtn">Retry</button><a class="call hidden" id="loginLink" href="index.html#signin">Sign in</a></div>
   </div></div>
-  <header><div class="head"><div class="brand"><img src="/assets/favicon.svg" width="32" height="32" alt=""><div><b>NovaX Rider</b><small id="routeName">Deliveries, pickups &amp; returns</small></div></div>
-    <div class="header-actions"><button class="refresh" id="refreshBtn" aria-label="Refresh route" title="Refresh route">&#8635;</button><button class="refresh" id="logoutBtn">Log out</button></div>
+  <header><div class="head"><div class="brand"><img src="/assets/favicon.svg" width="32" height="32" alt=""><div><b>NovaX Rider</b><small id="routeName">Pickup, delivery &amp; transit</small></div></div>
+    <div class="header-actions"><button class="refresh" id="langBtn" aria-label="Switch language">Urdu</button><button class="refresh" id="refreshBtn" aria-label="Refresh" title="Refresh">&#8635;</button><button class="refresh" id="logoutBtn">Log out</button></div>
   </div></header>
   <main>
-    <section class="hello"><h1 id="riderName">My Route</h1><p><span id="network">Connecting</span> <span id="lastSync">Not synced yet</span></p></section>
+    <section class="hello"><h1 id="riderName">My station</h1><p><span id="network">Connecting</span> <span id="lastSync">Not synced yet</span></p></section>
     <div class="notice" id="notice" role="status" aria-live="polite"></div>
     <div class="notice" id="queueNote" role="status" aria-live="polite"></div><div id="queueReview" class="list"></div>
-    <section class="stats" id="stats" aria-label="Route totals"></section>
-    <div class="search-row"><label class="sr-only" for="riderSearch">Search your parcels</label><input id="riderSearch" type="search" placeholder="Search AWB, name, address or phone"><button class="btn secondary" type="button" id="searchScanBtn" aria-label="Scan an AWB barcode to find the parcel">Scan</button></div>
+
     <section class="view" id="view-home">
-      <div class="section-heading"><h2>Today</h2><span class="badge" id="todayLabel"></span></div><div id="todaySummary"></div>
-      <h2>Needs attention</h2><div class="list" id="attentionList"></div>
-      <h2>Between-stop estimate</h2><p class="sub">Straight-line GPS distance, not road mileage or a fuel claim.</p><div class="stats" id="routeStats"></div><div class="list" id="routeSegments"></div>
+      <div class="home-grid">
+        <button class="home-btn" data-view="pickup"><span class="home-ic" aria-hidden="true">&#128230;</span><b data-t="pickup">Parcel Pickup</b><small id="homePickup"></small></button>
+        <button class="home-btn" data-view="delivery"><span class="home-ic" aria-hidden="true">&#128666;</span><b data-t="delivery">Parcel Delivery</b><small id="homeDelivery"></small></button>
+        <button class="home-btn" data-view="transit"><span class="home-ic" aria-hidden="true">&#128257;</span><b data-t="transit">Parcel Transit</b><small id="homeTransit"></small></button>
+      </div>
+      <section class="stats" id="stats" aria-label="Today"></section>
+      <h2 data-t="attention">Needs attention</h2><div class="list" id="attentionList"></div>
     </section>
-    <section class="view hidden" id="view-pickups"><div class="section-heading"><h2>Pickups</h2><span class="badge" id="pickupCount">0</span></div><div class="list" id="pickupList"></div></section>
-    <section class="view hidden" id="view-station">
-      <div class="section-heading"><h2>Station</h2><div class="segments"><button class="active" data-station="transit" aria-pressed="true">Transit</button><button data-station="received" aria-pressed="false">Received</button></div></div>
-      <div id="station-transit"><div class="processor"><label for="receiveAwbs">AWB numbers</label><textarea id="receiveAwbs" placeholder="One AWB per line"></textarea><div class="actions"><button class="btn secondary" id="scanBtn">Scan barcodes</button><button class="btn" id="receiveBtn" data-write>Mark received</button></div><p class="sub" id="receiveLoadCount">0 AWBs loaded</p></div><input class="hidden" id="scanFile" type="file" accept="image/*" capture="environment"><div class="list" id="transitList"></div></div>
-      <div id="station-received" class="hidden"><div class="list" id="receivedList"></div></div>
+
+    <div class="search-row hidden" id="searchRow"><label class="sr-only" for="riderSearch">Search</label><input id="riderSearch" type="search" inputmode="search" placeholder="AWB, last 4 digits, name or phone"><button class="btn secondary" type="button" id="scanBtn">Scan</button></div>
+
+    <section class="view hidden" id="view-pickup">
+      <div class="segments seg-wide"><button class="active" data-tab="pickup:collect" aria-pressed="true" data-t="collectTab">Collect from shippers</button><button data-tab="pickup:receive" aria-pressed="false" data-t="receiveTab">Receive batch</button></div>
+      <div id="pickupCollect"><div class="list" id="collectList"></div></div>
+      <div id="pickupReceive" class="hidden"><div class="list" id="batchList"></div><div class="list" id="receiveList"></div></div>
     </section>
-    <section class="view hidden" id="view-delivery"><div class="section-heading"><h2>Delivery route</h2><span class="badge" id="deliveryCount">0</span></div><div class="list" id="deliveryList"></div><h2>Failed attempts</h2><div class="list" id="failedList"></div></section>
-    <section class="view hidden" id="view-returns"><div class="section-heading"><h2>Returns</h2><span class="badge" id="returnCount">0</span></div><div class="list" id="returnList"></div><h2>Returned to shipper</h2><div class="list" id="returnedList"></div></section>
+
+    <section class="view hidden" id="view-delivery">
+      <div class="segments seg-wide"><button class="active" data-tab="delivery:station" aria-pressed="true" data-t="stationTab">At station</button><button data-tab="delivery:out" aria-pressed="false" data-t="outTab">Out now</button></div>
+      <div id="deliveryStation"><div class="list" id="stationList"></div></div>
+      <div id="deliveryOut" class="hidden"><div class="list" id="outList"></div><h2 data-t="doneToday">Delivered today</h2><div class="list" id="doneList"></div></div>
+    </section>
+
+    <section class="view hidden" id="view-transit">
+      <p class="sub" data-t="transitHelp">Parcels at your station that belong to another city. Send them together as one batch.</p>
+      <div class="list" id="transitGroups"></div>
+      <h2 data-t="sentBatches">Batches sent</h2><div class="list" id="sentList"></div>
+    </section>
+
     <section class="view hidden" id="view-cash">
-      <h2>Cash reconciliation</h2><div id="cashHero"></div><button class="btn full" id="depositCashBtn" data-write disabled>Record physical cash handover</button>
-      <div class="notice" id="cashResult" role="status"></div><h2>Cash to hand over</h2><div class="list" id="cashList"></div>
-      <h2>Awaiting office confirmation</h2><div class="list" id="cashPendingList"></div>
-      <h2>Confirmed cash &middot; recent history</h2><div class="list" id="cashHistoryList"></div>
-      <h2>Route expenses</h2><form id="expenseForm" class="expense-grid">
+      <h2 data-t="cash">Cash reconciliation</h2><div id="cashHero"></div>
+      <div class="expense-grid">
+        <label><span data-t="method">How was it sent?</span><select id="depositMethod"><option>Bank transfer</option><option>Easypaisa</option><option>JazzCash</option><option>Cash to office</option></select></label>
+        <label><span data-t="txn">Transaction ID</span><input id="depositRef" maxlength="80" autocomplete="off" placeholder="From the receipt"></label>
+      </div>
+      <button class="btn full" id="depositCashBtn" data-write disabled data-t="handover">Record today's cash handover</button>
+      <div class="notice" id="cashResult" role="status"></div><h2 data-t="cashToHand">Cash to hand over</h2><div class="list" id="cashList"></div>
+      <h2 data-t="awaitingOffice">Awaiting office confirmation</h2><div class="list" id="cashPendingList"></div>
+      <h2 data-t="confirmedCash">Confirmed cash &middot; recent</h2><div class="list" id="cashHistoryList"></div>
+      <h2 data-t="expenses">Route expenses</h2><form id="expenseForm" class="expense-grid">
         <label>Category<select id="expenseCategory"><option>Fuel</option><option>Toll</option><option>Bike repair</option><option>Meal</option><option>Other</option></select></label>
         <label>Amount (Rs)<input id="expenseAmount" type="number" min="0.01" max="100000" step="0.01" inputmode="decimal" required></label>
         <label class="wide">Note or receipt reference<input id="expenseNote" maxlength="160"></label><button class="btn wide" id="expenseBtn" data-write>Add expense</button>
       </form><div class="notice" id="expenseResult" role="status"></div><div class="list" id="expenseList"></div>
     </section>
   </main>
+  <div class="actionbar hidden" id="actionBar"><span id="actionInfo"></span><button class="btn" id="actionGo" data-write></button><button class="btn secondary" id="actionClear" type="button" data-t="clear">Clear</button></div>
   <nav aria-label="Rider navigation">
-    <button class="navbtn active" data-view="home" aria-current="page"><b aria-hidden="true">&#8962;</b>Home</button>
-    <button class="navbtn" data-view="pickups"><b aria-hidden="true">&#8593;</b>Pickups</button>
-    <button class="navbtn" data-view="station"><b aria-hidden="true">&#9635;</b>Station</button>
-    <button class="navbtn" data-view="delivery"><b aria-hidden="true">&#8594;</b>Delivery</button>
-    <button class="navbtn" data-view="returns"><b aria-hidden="true">&#8617;</b>Returns</button>
-    <button class="navbtn" data-view="cash"><b aria-hidden="true">Rs</b>Cash</button>
+    <button class="navbtn active" data-view="home" aria-current="page"><b aria-hidden="true">&#8962;</b><span data-t="home">Home</span></button>
+    <button class="navbtn" data-view="pickup"><b aria-hidden="true">&#8593;</b><span data-t="navPickup">Pickup</span></button>
+    <button class="navbtn" data-view="delivery"><b aria-hidden="true">&#8594;</b><span data-t="navDelivery">Delivery</span></button>
+    <button class="navbtn" data-view="transit"><b aria-hidden="true">&#8646;</b><span data-t="navTransit">Transit</span></button>
+    <button class="navbtn" data-view="cash"><b aria-hidden="true">Rs</b><span data-t="navCash">Cash</span></button>
   </nav>
+  <input class="hidden" id="scanFile" type="file" accept="image/*" capture="environment">
   <dialog id="actionDialog" aria-labelledby="dialogTitle"><form method="dialog">
     <h2 id="dialogTitle">Confirm</h2><p id="dialogText"></p><div class="list" id="reasonPresets"></div>
-    <label id="reasonLabel" class="hidden">Reason<input id="reasonOther" maxlength="160"></label>
+    <label id="reasonLabel" class="hidden"><span id="reasonLabelText">Reason</span><input id="reasonOther" maxlength="160"></label>
+    <label id="extraLabel" class="hidden"><span id="extraLabelText">Details</span><input id="extraInput" maxlength="80" autocomplete="off"></label>
     <p id="dialogError" class="error-text" role="alert"></p><div class="actions"><button class="btn secondary" value="cancel">Cancel</button><button class="btn" id="dialogConfirm" value="confirm">Confirm</button></div>
   </form></dialog>
   <script>

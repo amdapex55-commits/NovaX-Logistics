@@ -4441,6 +4441,16 @@ html,body{ background:var(--bg); color:var(--ink); }
        that most needs to be legible. Tokens flip with the theme; the inset bar
        uses --red, which is defined for both. */
     .parcel-card:has(.chip.bad), .parcel-card:has(.status.bad), .ops-card:has(.chip.bad), tr:has(.chip.bad), tr:has(.status.bad) { background:var(--nvu-bad-bg) !important; border-color:var(--nvu-bad-ln) !important; box-shadow:inset 4px 0 0 var(--red); }
+
+    .nv-st-cities{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:6px}
+    .nv-st-city{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--panel)}
+    .nv-st-head{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:8px}
+    .nv-st-head b{font-size:16px}.nv-st-head small{color:var(--muted);font-size:12px;text-align:right}
+    .nv-st-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+    .nv-st-n{border-radius:10px;padding:8px;background:rgba(127,127,127,.08);text-align:center}
+    .nv-st-n b{display:block;font-size:20px}.nv-st-n span{font-size:11px;color:var(--muted)}
+    .nv-st-n.warn b{color:#c07a00}
+    .nv-st-chk{display:inline-flex;align-items:center;gap:5px;margin:0 12px 4px 0;font-size:13px;white-space:nowrap}
 </style>
   <!-- NovaX (admin AWB parity): AWB print modes, identical to client.html.
        Exactly one of these two is left enabled at a time -- JS toggles
@@ -5481,6 +5491,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <span>RIDERS</span><span class="chevron">v</span>
                 </button>
                 <div class="admin-subnav">
+                  <button type="button" class="admin-subtab" data-admin-tab="riders-stations">Stations</button>
                   <button type="button" class="admin-subtab" data-admin-tab="riders-route">Rider On Route</button>
                   <button type="button" class="admin-subtab" data-admin-tab="riders-report">Rider Report</button>
                   <button type="button" class="admin-subtab" data-admin-tab="riders-summary">Rider Summary</button>
@@ -5947,6 +5958,15 @@ html,body{ background:var(--bg); color:var(--ink); }
               </div>
             </section>
 
+            <!-- STATIONS (29 Sep 2026): one rider per city works from the rider
+                 app; this is head office's view of every city at once. -->
+            <section class="admin-module" id="admin-riders-stations">
+              <div class="panel">
+                <div class="section-head"><div><h3>Stations</h3><p>Every city at a glance: waiting for pickup, coming in, at the station, out for delivery and waiting to be sent on. Updated by the riders' app, no WhatsApp needed.</p></div>
+                  <div class="inline-actions"><button class="ghost-btn" type="button" onclick="nvStLoad()">Refresh</button></div></div>
+                <div id="nvStRoot"><p class="footer-note">Loading…</p></div>
+              </div>
+            </section>
             <section class="admin-module" id="admin-riders">
               <div class="panel">
                 <div class="section-head">
@@ -7142,7 +7162,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     const ADMIN_NAV_GROUPS = {
       orders: ["orders-view-all", "orders-book", "orders-report", "orders-processing", "orders-manifest", "orders-demanifest"],
       manifest: ["manifest-summary", "manifest-transit", "manifest-reached", "manifest-dispute"],
-      riders: ["riders-route", "riders-report", "riders-summary"],
+      riders: ["riders-stations", "riders-route", "riders-report", "riders-summary"],
       support: ["support-tickets"],
       novaxai: ["novaai", "ai-chats", "ai-answers"],
       finance: ["finance-expense", "finance-invoices", "finance-wallets", "finance-topup", "finance-dues", "finance-balances", "finance-summary", "finance-overall", "finance-revenue"],
@@ -11890,6 +11910,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (state.activeAdminTab === "ai-chats") { try { nvAicLoad(); } catch(e){} }
       if (state.activeAdminTab === "ai-answers") { try { nvAbLoad(); } catch(e){} }
       if (state.activeAdminTab === "clients-profile-changes") { try { nvPcLoad(); } catch(e){} }
+      if (state.activeAdminTab === "riders-stations") { try { nvStLoad(); } catch(e){} }
     }
 
     // NovaX fix (Order Processing RPC scope bug): rParcel() is defined much
@@ -16434,6 +16455,51 @@ html,body{ background:var(--bg); color:var(--ink); }
       var b = document.getElementById("nvPcBadge"); if (!b) return;
       b.textContent = n; b.style.display = n > 0 ? "" : "none";
     }
+    /* ═══ Stations (29 Sep 2026) ═══════════════════════════════════════════ */
+    var NV_ST_CITIES = ["Karachi", "Lahore", "Islamabad", "Rawalpindi"];
+    async function nvStLoad(){
+      const root = document.getElementById("nvStRoot"); if (!root) return;
+      const sb = window.__nvSb; if (!sb) { root.innerHTML = '<p class="footer-note">Not connected.</p>'; return; }
+      let ov, rd;
+      try { [ov, rd] = await Promise.all([ sb.rpc("admin_station_overview"), sb.from("riders").select("id,name,branch,cities,access").order("name") ]); }
+      catch (e) { root.innerHTML = '<p class="footer-note">Could not load stations: ' + escLabelText(e && e.message || e) + '</p>'; return; }
+      if (ov.error) { root.innerHTML = '<p class="footer-note">Could not load stations: ' + escLabelText(ov.error.message) + '</p>'; return; }
+      const d = ov.data || {}, riders = (rd && !rd.error && rd.data) || [];
+      const cityCards = (d.cities || []).map(c => {
+        const names = (c.riders || []).filter(r => r.access === "Active").map(r => r.name).join(", ") || "No active rider";
+        const cell = (n, l, warn) => `<div class="nv-st-n${warn && n ? " warn" : ""}"><b>${Number(n || 0)}</b><span>${l}</span></div>`;
+        return `<div class="nv-st-city"><div class="nv-st-head"><b>${escLabelText(c.city)}</b><small>${escLabelText(names)}</small></div>
+          <div class="nv-st-grid">${cell(c.to_pickup, "to pick up", true)}${cell(c.incoming, "coming in")}${cell(c.at_station, "at station", true)}${cell(c.out_now, "out now")}${cell(c.to_send, "to send on", true)}${cell(c.delivered_today, "delivered today")}</div></div>`;
+      }).join("");
+      const riderRows = riders.filter(r => r.access !== "Blocked").map(r => {
+        const mine = (r.cities || []).map(x => String(x).toLowerCase());
+        return `<tr><td><b>${escLabelText(r.name)}</b><br><span class="footer-note">${escLabelText(r.branch || "")}</span></td><td>${NV_ST_CITIES.map(c =>
+          `<label class="nv-st-chk"><input type="checkbox" data-st-rider="${escLabelText(r.id)}" value="${c}"${mine.includes(c.toLowerCase()) ? " checked" : ""}> ${c}</label>`).join("")}</td>
+          <td><button class="ghost-btn" type="button" onclick="nvStSaveCities('${nvEscAttrJs(r.id)}', this)">Save</button></td></tr>`;
+      }).join("");
+      const batchRows = (d.batches || []).map(b => `<tr><td><b>${escLabelText(b.code)}</b>${b.kind === "return" ? ' <span class="chip warn">return</span>' : ""}</td><td>${escLabelText(b.from)} → ${escLabelText(b.to)}</td><td>${escLabelText(b.reference || "")}</td>
+          <td>${Number(b.received)} / ${Number(b.sent)}</td><td><span class="chip ${b.status === "Received" ? "good" : b.status === "Sent" ? "info" : "warn"}">${escLabelText(b.status)}</span></td>
+          <td>${(b.missing || []).length && b.status !== "Sent" ? '<span class="chip bad">Missing: ' + escLabelText((b.missing || []).join(", ")) + '</span>' : ""}</td><td>${escLabelText(nvDateTimeA(b.sent_at))}</td></tr>`).join("");
+      const depRows = (d.deposits || []).map(x => `<tr><td>${escLabelText(x.rider)}</td><td>${money(x.net)}</td><td>${escLabelText(x.method || "—")}</td><td>${escLabelText(x.reference || "—")}</td><td>${escLabelText(nvDateTimeA(x.at))}</td></tr>`).join("");
+      root.innerHTML = `<div class="nv-st-cities">${cityCards}</div>
+        <h4 class="mt-10">Riders and their cities</h4><p class="footer-note">A rider sees and works every parcel picked up in, or going to, the cities ticked here.</p>
+        <div class="table-wrap"><table><thead><tr><th>Rider</th><th>Cities</th><th></th></tr></thead><tbody>${riderRows || '<tr><td colspan="3">No riders.</td></tr>'}</tbody></table></div>
+        <h4 class="mt-10">Transit batches (14 days)</h4>
+        <div class="table-wrap"><table><thead><tr><th>Batch</th><th>Route</th><th>Bilty</th><th>Received</th><th>Status</th><th></th><th>Sent</th></tr></thead><tbody>${batchRows || '<tr><td colspan="7">No batches yet.</td></tr>'}</tbody></table></div>
+        <h4 class="mt-10">Cash handovers (14 days)</h4>
+        <div class="table-wrap"><table><thead><tr><th>Rider</th><th>Amount</th><th>Method</th><th>Reference</th><th>When</th></tr></thead><tbody>${depRows || '<tr><td colspan="5">None yet.</td></tr>'}</tbody></table></div>`;
+    }
+    async function nvStSaveCities(riderId, btn){
+      const cities = Array.from(document.querySelectorAll(`[data-st-rider="${CSS.escape(riderId)}"]:checked`)).map(x => x.value);
+      btn.disabled = true;
+      const r = await window.__nvSb.rpc("admin_set_rider_cities", { p_rider: riderId, p_cities: cities });
+      btn.disabled = false;
+      if (r.error) { toast("Could not save: " + r.error.message, "error"); return; }
+      toast("Cities saved: " + ((r.data || []).join(", ") || "none"), "success");
+      nvStLoad();
+    }
+    window.nvStLoad = nvStLoad; window.nvStSaveCities = nvStSaveCities;
+
     function nvPcLoad(){
       var sb = window.__nvSb, host = document.getElementById("nvPcList");
       if (!sb || !sb.rpc) return;
@@ -19654,6 +19720,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       ["novaai","NovaX AI — Message Limits","Approve AI message-limit requests"],
       ["ai-answers","NovaX AI — Answer Bank","Edit the answers the chat gives instantly"],
       ["clients-profile-changes","Clients — Profile Changes","Business names, phones and logos merchants changed"],
+      ["riders-stations","Riders — Stations","Every city: to pick up, at station, out, in transit; rider cities"],
       ["ai-chats","NovaX AI — Merchant Conversations","Read what merchants ask the AI"],
       ["riders-route","Riders — On Route","Live rider routes"],
       ["riders-report","Riders — Report","Rider performance and cash"],
