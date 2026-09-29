@@ -378,6 +378,14 @@
 
     /* NovaX dashboard refresh: 7-day booking activity sparkline */
     .nv-trend-panel{background:var(--nvu-bg);border:1px solid var(--line);border-radius:var(--r-xl);padding:14px 16px;box-shadow:var(--shadow)}
+    /* nothing renders into this panel any more; an empty frame read as a broken card */
+    .nv-trend-panel:empty{display:none!important}
+    .nv-search-mobile{display:none}
+    .nv-search-btn{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:12px;border:1px solid var(--nvu-line-2);background:var(--nvu-bg-2);color:var(--nvu-ink-2);font:inherit;font-size:13px;font-weight:650;cursor:pointer;min-width:0}
+    .nv-search-btn:hover{border-color:var(--nvu-accent);color:var(--nvu-ink)}
+    .nv-search-btn kbd{font:600 11px/1 ui-monospace,monospace;border:1px solid var(--nvu-line-2);border-radius:6px;padding:3px 6px;color:var(--nvu-ink-3)}
+    @media (max-width:900px){.nv-search-btn{width:44px;height:44px;padding:0;justify-content:center}.nv-search-btn .nv-search-txt,.nv-search-btn kbd{display:none}}
+    .nv-notif-facts{display:grid;gap:12px}.nv-notif-facts>div{display:flex;gap:12px;align-items:flex-start}.nv-notif-facts .chip{flex:none;margin-top:2px}.nv-notif-facts b{font-size:14px}.nv-notif-facts p{margin:3px 0 0}
     .nv-trend-panel h4{margin:0;font-size:13px;color:var(--ink)}
     .nv-trend-bars{display:flex;align-items:flex-end;gap:6px;height:64px;margin-top:14px}
     .nv-trend-bar{flex:1;background:var(--mint);border-radius:4px 4px 0 0;position:relative;min-height:3px;transition:height .3s ease}
@@ -861,6 +869,9 @@
       .topbar-inner{display:grid;grid-template-columns:1fr;gap:8px;padding:9px 10px;overflow:hidden;}
       .brand-text span{display:block;white-space:normal;font-size:11px;}
       .topbar .auth-actions{display:none;}
+      /* keep search reachable on phones: the button moves out of the hidden group */
+      .topbar-inner{position:relative}
+      .topbar .nv-search-btn.nv-search-mobile{display:inline-flex;position:absolute;right:10px;top:9px;z-index:2}
       /* NovaX fix (mobile UX audit, vertical-text bug): this was hardcoded
          to 4 equal grid columns while the nav only ever has 2 tabs (Home,
          Seller Suite) -- grid-template-columns reserves all 4 tracks
@@ -2576,7 +2587,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=c2a06d3c" defer></script>
+  <script src="client-app.js?v=3e360931" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2591,7 +2602,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=c2a06d3c<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=3e360931<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -2660,7 +2671,10 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
           <a class="tab-btn" href="index.html">Home</a>
           <a class="tab-btn active" href="client.html">Seller Suite</a>
         </nav>
+        <button type="button" class="nv-search-btn nv-search-mobile" aria-label="Search parcels" onclick="if(window.NovaXCmdK)NovaXCmdK.open()"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="9" cy="9" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m14 14 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
         <div class="auth-actions">
+          <!-- Search from anywhere (29 Sep 2026): AWB, phone, customer name or order number. -->
+          <button type="button" class="nv-search-btn" id="nvSearchBtn" aria-label="Search parcels" onclick="if(window.NovaXCmdK)NovaXCmdK.open()"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="9" cy="9" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m14 14 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="nv-search-txt">Search AWB, phone, name</span><kbd>/</kbd></button>
           <span class="account-pill"><span class="account-dot"></span><span id="topAccountName">Client</span></span>
           <a class="ghost-btn" href="index.html">Sign Out</a>
         </div>
@@ -3310,7 +3324,17 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
               <div class="panel mt-14 nv-pf-moved">
                 <div class="section-head"><div><h3>Your business name</h3><p>Your name, logo, phone and address now live together in <b>Profile</b>, and are used everywhere from there.</p></div><button type="button" class="ghost-btn" onclick="showClientTab('profile')">Open Profile</button></div>
               </div>
+              <!-- Notifications, told straight (29 Sep 2026). The WhatsApp / SMS /
+                   Email switches were saved but nothing ever read them -- no
+                   channel sends parcel updates yet. The old controls stay in the
+                   page, hidden, so loadClientNotificationPrefs() keeps working. -->
               <div class="panel mt-14">
+                <div class="section-head"><div><h3>What NovaX sends you</h3><p>So you know exactly what to expect.</p></div></div>
+                <div class="nv-notif-facts">
+                  <div><span class="chip good">On</span><div><b>Account emails</b><p class="footer-note">To your login email: when your account is ready, when your first parcel is booked, and when a payout is sent to your bank.</p></div></div>
+                  <div><span class="chip">Not yet</span><div><b>Parcel-by-parcel updates by WhatsApp, SMS or email</b><p class="footer-note">Not available yet. Your dashboard shows every parcel's status live, and each parcel's tracking link shows the same to your customer.</p></div></div>
+                </div>
+                <div hidden aria-hidden="true">
                 <div class="section-head"><div><h3>Notification preferences</h3><p>Choose how you want to hear about your parcels. WhatsApp/SMS/Email sending is coming soon -- your choices are saved now so nothing needs to change later.</p></div></div>
                 <p class="footer-note">These preferences are saved for future messaging. WhatsApp, SMS and email updates are not active yet; check your portal for live status.</p>
                 <div class="grid three">
@@ -3321,6 +3345,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 <div class="grid three mt-10" id="notifPrefEventsGrid"></div>
                 <p class="footer-note" id="notifPrefStatus" role="status">Loading your current settings&hellip;</p>
                 <div class="inline-actions mt-10"><button class="action-btn" id="notifPrefSaveBtn" onclick="saveClientNotificationPrefs()" disabled>Save Preferences</button></div>
+                </div>
               </div>
             </section>
           </div>

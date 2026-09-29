@@ -3218,7 +3218,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         '<dt>Phone</dt><dd>'+escLabelText(p.phone||"Not provided")+'</dd>'+
         '<dt>Delivery charge</dt><dd>'+escLabelText(money(p.fee||0))+'</dd>'+
         (p.orderId?'<dt>Your order</dt><dd>'+escLabelText(p.orderId)+'</dd>':'')+
-        '<dt>Booked</dt><dd>'+escLabelText(p.date||"—")+'</dd>'+
+        '<dt>Booked</dt><dd>'+escLabelText(p.date?nvDate(p.date):"—")+'</dd>'+
       '</dl></div>'+
       '<div class="nvdr-sec"><h4>Journey</h4>'+nvJourneyHtml(p,rows)+'</div>'+
       '<div class="nvdr-actions">'+
@@ -3328,9 +3328,44 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }catch(e){ return null; }
     }
 
+    /* ═══ ONE date format (29 Sep 2026) ═══════════════════════════════════
+       Merchants saw "2026-08-20" in some places, "20 Aug" in others and
+       "20 Aug 2026, 14:05 PKT" in a third. Everything a person reads now
+       comes from here: "20 Aug" this year, "20 Aug 2025" otherwise, plus
+       ", 3:45 pm" when there is a time -- always Pakistan time. Stored values
+       stay ISO: filters and sorting depend on them. */
+    var NV_MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    function nvDateParts(v){
+      if(v==null||v==="") return null;
+      var s=String(v).trim();
+      var hasZone=/([Zz]|[+-]\d{2}:?\d{2})$/.test(s);
+      var m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+      /* zone-less "YYYY-MM-DD HH:MM" is already Pakistan time (dtpart) */
+      if(m && !hasZone) return { y:+m[1], mo:+m[2], d:+m[3], h:(m[4]!=null?+m[4]:null), mi:(m[5]!=null?+m[5]:null) };
+      var dt=new Date(s); if(isNaN(dt)) return null;
+      try{
+        var o={}; new Intl.DateTimeFormat("en-GB",{ timeZone:"Asia/Karachi", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hourCycle:"h23" })
+          .formatToParts(dt).forEach(function(x){ o[x.type]=x.value; });
+        return { y:+o.year, mo:+o.month, d:+o.day, h:+o.hour, mi:+o.minute };
+      }catch(e){ return null; }
+    }
+    function nvThisYear(){ try{ return +new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" }).slice(0,4); }catch(e){ return new Date().getFullYear(); } }
+    function nvDate(v){
+      var p=nvDateParts(v); if(!p||!p.mo) return v?String(v):"";
+      return p.d+" "+NV_MON[p.mo-1]+(p.y!==nvThisYear()?" "+p.y:"");
+    }
+    function nvDateTime(v){
+      var p=nvDateParts(v); if(!p||!p.mo) return v?String(v):"";
+      var base=p.d+" "+NV_MON[p.mo-1]+(p.y!==nvThisYear()?" "+p.y:"");
+      if(p.h==null) return base;
+      var h=p.h%12||12, mi=String(p.mi).padStart(2,"0");
+      return base+", "+h+":"+mi+" "+(p.h<12?"am":"pm");
+    }
+    try{ window.nvDate=nvDate; window.nvDateTime=nvDateTime; }catch(e){}
     function nvPktLabel(v){
       var d=nvPkt(v);
       if(!d) return "";
+      return nvDateTime(v);
       try{
         return d.toLocaleString("en-GB",{ timeZone:"Asia/Karachi", day:"numeric", month:"short",
                                           hour:"2-digit", minute:"2-digit", hour12:true });
@@ -4320,7 +4355,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const absorbLine = clears>0
           ? `<p class="nv-inv-absorb">${money(clears)} of this clears the charges already on your account &mdash; <strong>${money(Math.max(0, Number(inv.payable||0)-clears))}</strong> reaches your wallet.</p>`
           : "";
-        return `<div class="invoice-card nv-inv-row" style="animation-delay:${Math.min(idx*70,560)}ms"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="footer-note" style="margin-left:auto">${escLabelText(inv.createdAt)}</span></div><p style="margin:6px 0 0">${sum}</p>${absorbLine}${nvInvoiceSteps(nvInvTaken(inv)?"Taken from wallet":inv.status)}<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Print statement</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">CSV</button></div></div>`;
+        return `<div class="invoice-card nv-inv-row" style="animation-delay:${Math.min(idx*70,560)}ms"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="footer-note" style="margin-left:auto">${escLabelText(nvDateTime(inv.createdAt))}</span></div><p style="margin:6px 0 0">${sum}</p>${absorbLine}${nvInvoiceSteps(nvInvTaken(inv)?"Taken from wallet":inv.status)}<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Print statement</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">CSV</button></div></div>`;
       }).join("")||`<div class="ops-card"><strong>No invoices yet</strong><p>Once a delivered parcel is invoiced it appears here with a full statement.</p></div>`;
       /* Order Logs tab removed 3 Sep 2026. It rendered one card per PARCEL --
          not per event -- showing the current status and "Last update", which
@@ -5728,7 +5763,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         "To: " + String(p.consignee||"-") + " (" + String(p.city||"-") + ")",
         "COD: " + money(p.cod),
         String(p.weight||"") ? ("Weight: " + p.weight) : "",
-        "Booked: " + String((p.date||"")).slice(0,10)
+        "Booked: " + nvDate(String((p.date||"")).slice(0,10))
       ].filter(Boolean);
       var link="";
       try{ link=customerTrackMessage(p)||""; }catch(e){}
@@ -5867,7 +5902,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          report stops requiring horizontal scanning on a phone. */
       /* Was onclick alone on a <tr>: reachable with a mouse and with nothing
          else. Same keyboard contract the status board already uses. */
-      tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><td data-label="AWB"><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}</td><td data-label="Date">${escLabelText(p.date||"-")}</td><td data-label="Consignee">${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td data-label="Status"><span class="status ${statusClass(p)}">${escLabelText(nvStatusLabel(p.status))}</span></td><td data-label="COD">${nvCodCell(p)}</td><td data-label="Fee">${money(p.fee)}</td><td data-label="Time">${escLabelText(nvAgeText(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
+      tbody.innerHTML=rows.map(p=>`<tr class="clickable-row" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${escLabelText(p.awb)}')"><td data-label="AWB"><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}</td><td data-label="Date">${escLabelText(p.date?nvDate(p.date):"-")}</td><td data-label="Consignee">${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td data-label="Status"><span class="status ${statusClass(p)}">${escLabelText(nvStatusLabel(p.status))}</span></td><td data-label="COD">${nvCodCell(p)}</td><td data-label="Fee">${money(p.fee)}</td><td data-label="Time">${escLabelText(nvAgeText(p))}</td></tr>`).join("")||`<tr><td colspan="7">No parcels match these filters.</td></tr>`;
     }
 
     /* renderLatestInvoice() removed 25 Aug 2026: #clientLatestInvoice does not
@@ -6676,7 +6711,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }).map(function(i){
             return '<div class="log-item"><strong>' + escLabelText(i.id) + '</strong>' +
                    '<div><strong>' + money(i.dueToNovax) + '</strong>' +
-                   '<div class="footer-note" style="margin-top:2px">' + escLabelText(i.createdAt) +
+                   '<div class="footer-note" style="margin-top:2px">' + escLabelText(nvDateTime(i.createdAt)) +
                    ' &middot; ' + ((i.parcelRefs||[]).length) + ' parcel' + ((i.parcelRefs||[]).length===1?'':'s') + '</div></div>' +
                    '<button class="ghost-btn" onclick="printInvoice(&quot;' + i.id + '&quot;)">Print statement</button></div>';
           }).join("");
@@ -6795,6 +6830,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        reports Pakistan time whatever the device is set to, and said so nowhere. */
     function nvNiceDate(v){
       if(!v) return "";
+      var one=nvDateTime(v); if(one && one!==String(v)) return one;
       var raw=String(v).trim();
       var hasZone=/([Zz]|[+-]\d{2}:?\d{2})$/.test(raw);
       var m=raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
@@ -6870,7 +6906,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         </div>
         <div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:16px;flex-wrap:wrap">
           <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Billed to</div><div style="font-weight:700">${labelText(c&&c.name,inv.clientId)}</div><div style="font-size:12px">${labelText(c&&c.city)} ${labelText(c&&c.email,"")}</div></div>
-          <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Invoice date</div><div style="font-weight:700">${escLabelText(inv.createdAt)}</div></div>
+          <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Invoice date</div><div style="font-weight:700">${escLabelText(nvDateTime(inv.createdAt))}</div></div>
           <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Invoice type</div><div style="font-weight:700">${escLabelText(invType)}</div></div>
           <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Status</div><div style="font-weight:700">${escLabelText(nvInvTaken(inv)?"Taken from wallet":inv.status)}</div><div style="font-size:11px;color:#5b6b64">${escLabelText(invoiceSettlementNote(inv))}</div></div>
         </div>
@@ -7138,10 +7174,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(bd&&bd.iban&&String(bd.iban).trim().toUpperCase()===clean) return;   // already saved
       var sb=window.__nvSb;
       if(!sb||!sb.rpc) return;
-      setTimeout(function(){
+      setTimeout(async function(){
         var holder=(bd&&bd.holderName)||(state.client&&state.client.name)||"";
-        if(!window.confirm("Save "+maskIban(clean)+" as your payout account so you don't have to type it next time?")) return;
-        var name=holder||window.prompt("Account holder name (as printed on the bank account):","")||"";
+        if(!(await window.nvAsk({ title:"Save this payout account?", body:"Save "+maskIban(clean)+" so you don't have to type it next time.", ok:"Save", cancel:"Not now" }))) return;
+        var name=holder||(await window.nvAsk({ title:"Account holder name", body:"As printed on the bank account.", input:{ label:"Account holder name", required:true, maxlength:120, autocomplete:"name" }, ok:"Save" }))||"";
         name=String(name).trim();
         if(!name){ toast("Not saved — an account holder name is required."); return; }
         sb.rpc("save_client_bank_details",{ p_holder_name:name, p_iban:clean, p_bank_name:(bd&&bd.bankName)||"" })
@@ -7293,7 +7329,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                  print to the paisa so they tie back to the ledger. */
               (paidRows.length?'<div class="nv-cod-recent"><span>Recent settlements</span>'+
                 paidRows.map(w=>'<div class="nv-cod-r"><b>'+escLabelText(moneyExact(w.net))+'</b>'+
-                  '<em>'+escLabelText(String(w.paidAt||w.createdAt||"").slice(0,10))+'</em>'+
+                  '<em>'+escLabelText(nvDate(String(w.paidAt||w.createdAt||"").slice(0,10)))+'</em>'+
                   '<span class="nvst nvst-good"><i>\u2713</i>Paid</span></div>').join("")+
                 '<button type="button" class="nv-cod-all" data-client-tab="wallet">View all settlements</button>'+
               '</div>':'')+
@@ -7590,7 +7626,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const paidRef=(w.status==="Paid"&&w.paidTxnId)?` &middot; Paid with reference ${w.paidTxnId}`:"";
         // NovaX fix (wallet IBAN UX, item #10): history now shows a masked
         // IBAN (e.g. PK24****3344) instead of the full account number.
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(w.id)}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${escLabelText(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${w.createdAt}${w.paidAt?(" &middot; Paid "+w.paidAt):""}${paidRef}</div><div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" style="padding:5px 11px;font-size:12px" onclick="nvWithdrawalReceipt('${escLabelText(w.id)}')">Receipt</button></div></div>`;
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(w.id)}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${escLabelText(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${escLabelText(nvDateTime(w.createdAt))}${w.paidAt?(" &middot; Paid "+escLabelText(nvDateTime(w.paidAt))):""}${paidRef}</div><div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" style="padding:5px 11px;font-size:12px" onclick="nvWithdrawalReceipt('${escLabelText(w.id)}')">Receipt</button></div></div>`;
       }).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Tap Withdraw to request your first payout.</p></div>`;
     }
     /* Durable, privacy-safe request identities shared by booking and payout.
@@ -9558,14 +9594,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(invalidCount>0){ toast(`${invalidCount} row(s) blocked. Fix them or use "Import valid rows only".`,"error"); return; }
       importBulkRows(parsed.results.map(r=>r.record), parsed.results.length);
     }
-    function importValidBulkRowsOnly(){
+    async function importValidBulkRowsOnly(){
       if(NV_BULK_BUSY){ toast("An import is already running. Wait for it to finish.","error"); return; }
       const parsed=state.lastBulkValidation;
       if(!parsed||!parsed.results){ toast("Upload a CSV first."); return; }
       const validRecords=parsed.results.filter(r=>r.ok).map(r=>r.record);
       const rejected=parsed.results.length-validRecords.length;
       if(!validRecords.length){ toast("No valid rows to import.","error"); return; }
-      if(!window.confirm(`Import ${validRecords.length} valid row(s) and skip ${rejected} rejected row(s)? Rejected rows will not get an AWB.`)) return;
+      if(!(await window.nvAsk({ title:"Import "+validRecords.length+" row"+(validRecords.length===1?"":"s")+"?", body:rejected+" rejected row"+(rejected===1?"":"s")+" will be skipped and will not get an AWB.", ok:"Import" }))) return;
       importBulkRows(validRecords, parsed.results.length);
     }
     /* One import at a time. Upload, "Import N rows" and "Import valid rows
@@ -9755,7 +9791,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        This comment used to claim client_create_ops_request "already exists".
        It never has. Opens a support ticket instead -- a real deployed RPC
        with a human workflow behind it. */
-    function requestAddressFix(awb){
+    async function requestAddressFix(awb){
       const p=state.parcels.find(x=>x.awb===awb);
       if(!p){ toast("Parcel not found."); return Promise.reject(new Error("Parcel not found.")); }
       if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment."); return Promise.reject(new Error("Cloud connection not ready.")); }
@@ -9770,11 +9806,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
       }catch(e){}
 
-      const note=window.prompt(
-        "What needs correcting on "+awb+"?\n\n" +
-        "Currently filed as: "+(p.city||"(no city)")+"\n"+(p.address||"(no address)")+"\n\n" +
-        "Operations will review and apply the change.",
-        hint);
+      const note=await window.nvAsk({ title:"What needs correcting on "+awb+"?",
+        body:"Currently filed as: "+(p.city||"(no city)")+"\n"+(p.address||"(no address)")+"\n\nOperations will review and apply the change.",
+        input:{ label:"Correction", value:hint, textarea:true, maxlength:500 }, ok:"Send" });
       if(note===null) return Promise.resolve();
       const body=String(note||"").trim();
       if(!body){ toast("Describe what needs correcting so operations can act on it.","error"); return Promise.resolve(); }
@@ -9947,14 +9981,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!mode || !cod || mode._nvWired) return;
       mode._nvWired=true;
 
-      mode.addEventListener("change", function(){
+      mode.addEventListener("change", async function(){
         if(!nvEdIsPrepaidMode(mode.value)) return;
         var amount=Number(cod.value||0);
         if(!(amount > 0)) return;                 // already nothing to collect
-        var ok=window.confirm(
-          "Prepaid means the rider collects nothing at the door.\n\n" +
-          "This will set the COD amount from " + money(amount) + " to Rs 0.\n\n" +
-          "Continue?");
+        var ok=await window.nvAsk({ title:"Make this parcel prepaid?",
+          body:"Prepaid means the rider collects nothing at the door. This sets the COD amount from " + money(amount) + " to Rs 0.",
+          ok:"Set COD to Rs 0", cancel:"Keep COD" });
         if(ok){
           cod.value="0";
           nvEditParcelError("");
@@ -10231,7 +10264,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       },0);
     }
 
-    function cancelClientBooking(awb, ev){
+    async function cancelClientBooking(awb, ev){
       try{ if(ev && ev.stopPropagation) ev.stopPropagation(); }catch(e){}
       var p=(state.parcels||[]).find(function(x){ return x.awb===awb; });
       if(!p){ toast("That booking is no longer on your account.","error"); return Promise.resolve(); }
@@ -10240,7 +10273,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return Promise.resolve();
       }
       var label=awb+(p.consignee?(" for "+p.consignee):"")+(Number(p.cod)?(" \u00b7 COD "+money(p.cod)):"");
-      if(!window.confirm("Cancel booking "+label+"?\n\nThe booking is removed completely. Only possible before a rider collects it. This cannot be undone.")) return Promise.resolve();
+      if(!(await window.nvAsk({ title:"Cancel booking "+awb+"?", body:label+"\n\nThe booking is removed completely. Only possible before a rider collects it. This cannot be undone.", ok:"Cancel booking", cancel:"Keep it", danger:true }))) return;
       if(!window.__nvSb || !window.__nvSb.rpc){ toast("Cloud connection not ready yet, please try again in a moment.","error"); return Promise.resolve(); }
 
       var __done = nvBusy("Cancelling\u2026");
@@ -10632,7 +10665,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
     }
 
-    function nvTkSubmit(){
+    async function nvTkSubmit(){
       var sb = window.__nvSb;
       var subj = (document.getElementById("nvTkSubject") || {}).value || "";
       var body = (document.getElementById("nvTkBody") || {}).value || "";
@@ -10659,7 +10692,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           var msg = openPrior.length
             ? "You already have an OPEN ticket for " + __dupAwb + " (" + (openPrior[0].code || "") + "). Replying there keeps it with the same agent. Open another anyway?"
             : "You have raised " + prior.length + " ticket" + (prior.length===1?"":"s") + " for " + __dupAwb + " before, most recently " + (latest.code || "") + ". Open another?";
-          if (!confirm(msg)) {
+          if (!(await window.nvAsk({ title:"Open another ticket?", body:msg, ok:"Open another", cancel:openPrior.length?"Go to open ticket":"Cancel" }))) {
             if (openPrior.length){
               NV_TK.filter = "all"; NV_TK.openId = openPrior[0].id;
               try{ nvTkRender(); nvTkLoadReplies(openPrior[0].id); }catch(e){}
@@ -11470,7 +11503,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     function showWooWebhookResult(intakeUrl, secret){
       const box=document.getElementById("wooWebhookResult");
-      if(!box){ alert("Webhook Delivery URL:\n"+intakeUrl+"\n\nSecret:\n"+secret); return; }
+      if(!box){ window.nvAsk({ title:"WooCommerce webhook", fields:[{ name:"u", label:"Delivery URL", value:intakeUrl, readonly:true, copy:true },{ name:"s", label:"Secret", value:secret, readonly:true, copy:true }], ok:"Done", cancel:false }); return; }
       const urlEl=document.getElementById("wooIntakeUrlOut"); if(urlEl) urlEl.value=intakeUrl;
       const secretEl=document.getElementById("wooSecretOut"); if(secretEl) secretEl.value=secret;
       box.style.display="block";
@@ -12065,11 +12098,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        rider has collected it a physical parcel exists and it has to be
        tracked to an end state instead. The RPC also re-checks ownership,
        so this button can never delete someone else's parcel. */
-    function deleteNewBooking(awb){
+    async function deleteNewBooking(awb){
       if(!awb) return;
       var p=(state.parcels||[]).find(function(x){ return x.awb===awb; });
       var label=p?(awb+" for "+(p.consignee||"")+(Number(p.cod)?(" · COD "+money(p.cod)):"")):awb;
-      if(!confirm("Delete booking "+label+"?\n\nThis removes the parcel completely. Only possible before a rider collects it.")) return;
+      if(!(await window.nvAsk({ title:"Delete booking "+awb+"?", body:label+"\n\nThis removes the parcel completely. Only possible before a rider collects it.", ok:"Delete", cancel:"Keep it", danger:true }))) return;
       if(!window.__nvSb||!window.__nvSb.rpc){ toast("Cloud connection not ready.","error"); return; }
       window.__nvSb.rpc("delete_new_booked_parcel",{ p_awb:awb }).then(function(r){
         if(r&&r.error){ toast("Could not delete: "+r.error.message,"error"); return; }
@@ -12433,7 +12466,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       list.innerHTML=items.map(pr=>{
         const cls=chipClass[pr.status]||"warn";
         const awbList=(pr.awbs||[]).map(a=>escLabelText(a)).join(", ");
-        return `<div class="ops-card" style="margin-bottom:8px"><div class="ops-card-head"><strong>${(pr.awbs||[]).length} AWB(s)</strong><span class="chip ${cls}">${escLabelText(pr.status)}</span></div><p class="footer-note">${awbList}</p><p class="footer-note">Pickup: ${labelText(pr.pickupAddress,"-")}${pr.requestedFor?(" &middot; "+labelText(pr.requestedFor)):""}</p></div>`;
+        return `<div class="ops-card" style="margin-bottom:8px"><div class="ops-card-head"><strong>${(pr.awbs||[]).length} AWB(s)</strong><span class="chip ${cls}">${escLabelText(pr.status)}</span></div><p class="footer-note">${awbList}</p><p class="footer-note">Pickup: ${labelText(pr.pickupAddress,"-")}${pr.requestedFor?(" &middot; "+labelText(nvDate(pr.requestedFor))):""}</p></div>`;
       }).join("");
     }
     function requestPickup(){
@@ -13070,7 +13103,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var role=NOVAX_ROLE_TABS[r.role]?r.role:"Support";
         var st=String(r.status||"active").toLowerCase();
         var chip=(st==="active")?"good":((st==="revoked")?"bad":"warn");
-        var last=r.last_active_at?String(r.last_active_at).slice(0,16).replace("T"," "):"never";
+        var last=r.last_active_at?nvDateTime(r.last_active_at):"never";
         return '<div class="ops-card"><div class="ops-card-head"><strong>'+escLabelText(r.name||r.email||"Team member")+'</strong><span class="chip '+chip+'">'+escLabelText(st)+'</span></div>'
           +'<p class="footer-note">'+escLabelText(r.email||"-")+'</p>'
           +'<p><strong>'+escLabelText(role)+'</strong> — '+escLabelText(nvRolePermissionSummary(role))+'</p>'
@@ -13215,22 +13248,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             closeInviteUserModal();
             /* A prompt, not a toast: the password is shown once, and a toast
                that fades after four seconds is how it gets lost. */
-            window.prompt(
-              "Login created for "+b.user.name+" ("+b.user.role+").\n\n"+
-              "Send these to them yourself — we do not email anything, and this "+
-              "password cannot be retrieved again.\n\n"+
-              "Portal: https://novaxlogistics.com/client.html\n"+
-              "Email: "+b.user.email,
-              b.password);
+            window.nvAsk({ title:"Login created for "+b.user.name,
+              body:b.user.role+" access. Send these to them yourself \u2014 we do not email anything, and this password cannot be retrieved again.",
+              fields:[{ name:"u", label:"Portal", value:"https://novaxlogistics.com/client.html", readonly:true, copy:true },
+                      { name:"e", label:"Email", value:b.user.email, readonly:true, copy:true },
+                      { name:"p", label:"Password", value:b.password, readonly:true, copy:true }],
+              ok:"I've saved them", cancel:false });
             toast(b.user.email+" can sign in now as "+b.user.role+".","success");
             loadSubAccounts();
           });
       }).catch(function(e){ restore(); toast("Not created: "+String((e&&e.message)||e),"error"); });
     }
-    function revokeSubAccountUser(id){
+    async function revokeSubAccountUser(id){
       if(!id) return;
       if(!nvIsOwnerSeat()){ toast("Only the account Owner can revoke access."); return; }
-      if(!window.confirm("Revoke this user's access to your portal?")) return;
+      if(!(await window.nvAsk({ title:"Revoke access?", body:"This user will no longer be able to sign in to your portal.", ok:"Revoke access", danger:true }))) return;
       var sb=window.__nvSb;
       if(!sb||!sb.rpc){ toast("Not revoked: no server connection right now."); return; }
       sb.rpc("revoke_staff_user",{ p_staff_id:id }).then(function(res){
@@ -15356,6 +15388,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
         if(document.activeElement && box.contains(document.activeElement)) return;
         var b=nvTodayBuckets();
+        /* Before the account's parcels have arrived this printed "All time ·
+           0 parcels", "Nothing needs you right now" and "No parcels in transit
+           yet" -- facts, as far as a merchant could tell, that flipped a second
+           later. Until the data is in, say that it is loading. */
+        if(!window.__novaxClientDataReady && !b.all.length){
+          var ld='<p class="nv-c-empty nv-c-loading">Loading your parcels\u2026</p>';
+          nvSetHtml(box, '<div class="nv-cockpit-head"><b>Your parcels</b><span class="nv-c-sub">Loading\u2026</span></div>'
+            +'<div class="nv-cockpit-cols"><div class="nv-c-col"><h4>Needs you now</h4>'+ld+'</div>'
+            +'<div class="nv-c-col"><h4>What\u2019s moving</h4>'+ld+'</div>'
+            +'<div class="nv-c-col"><h4>What\u2019s next</h4>'+ld+'</div></div>');
+          return;
+        }
         /* Same predicate the command strip uses, so the two cannot disagree.
            Falls back to the old bucket if the helper is somehow out of scope,
            which keeps a stale cached page rendering rather than blank. */
@@ -15814,16 +15858,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(!eligible.length){ nvSafeCall(function(){ toast(NV_BULK_WHY[act]||"That action does not apply to the selected parcels.","error"); }); return; }
         if(act==="print") nvSafeCall(function(){ printLabels(eligible); });
         else if(act==="reattempt"){
-          if(!window.confirm("Request a re-attempt for "+eligible.length+" parcel"+(eligible.length===1?"":"s")+"?"+
-             (skipped?("\n\n"+skipped+" of the "+list.length+" selected will be skipped: a re-attempt only applies after a delivery has failed."):""))) return;
+          window.nvAsk({ title:"Request a re-attempt for "+eligible.length+" parcel"+(eligible.length===1?"":"s")+"?",
+             body:(skipped?(skipped+" of the "+list.length+" selected will be skipped: a re-attempt only applies after a delivery has failed."):"Operations will send a rider again."),
+             ok:"Request re-attempt" }).then(function(yes){ if(!yes) return;
           Promise.allSettled(eligible.map(function(a){ return Promise.resolve().then(function(){return requestRedelivery(a);}); }))
             .then(function(results){ var ok=results.filter(function(r){return r.status==="fulfilled";}).length; toast(ok+" reattempt request(s) sent; "+(results.length-ok)+" failed.",ok===results.length?"success":"error"); });
+          });
         }
         else if(act==="message"){
           /* Browsers block a burst of window.open calls, so this opens the
              first five. It used to drop the rest silently. */
           var MSG_MAX=5, batch=eligible.slice(0,MSG_MAX), rest=eligible.length-batch.length;
-          if(rest>0 && !window.confirm("WhatsApp can only be opened for "+MSG_MAX+" customers at a time.\n\nOpen the first "+MSG_MAX+" now? The remaining "+rest+" stay selected so you can press Message customers again.")) return;
+          /* No confirm here: waiting on a dialog would cost the tap that lets
+             the browser open WhatsApp at all. The first MSG_MAX open now; the
+             toast below says how many are still selected for the next press. */
           var openedAwbs=batch.filter(function(a){ return !!nvSafeCall(function(){return messageCustomer(a);}); });
           var opened=openedAwbs.length;
           if(rest>0){
@@ -17970,7 +18018,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          attention, with no account of the other 17. One predicate, one number. */
       var attnN=(typeof nvAttentionParcels==="function") ? nvAttentionParcels().length : (delayed+refused);
       if(attnN>0) return { h:"Some parcels need attention.", a:attnN+" parcel"+(attnN===1?"":"s")+" \u2014 aging, refused, exceptions or missing details. Review them first.", key:"dash_attn_"+attnN, go:"dashboard" };
-      return { h:"Today's focus: check parcels needing attention.", a:"Tap any AWB to see full journey.", key:"dash_default", go:"dashboard" };
+      /* This said "Today's focus: check parcels needing attention" directly
+         under "Nothing needs you right now". Nothing does -- say so. */
+      return { h:"All clear.", a:"No parcel needs you right now. Tap any AWB to see its full journey.", key:"dash_default", go:"dashboard" };
     }
     if(tab==="newBooking"){
       var pct=bookingFormPercent();
@@ -18787,6 +18837,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     '#nvck .nvck-s{display:block;font-size:11.5px;color:#6b7d74;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}' +
     '#nvck .nvck-go{font-size:10px;color:#9fb3ab;flex:0 0 auto;}' +
     '#nvck .nvck-empty{padding:26px 16px;text-align:center;color:#6b7d74;font-size:13px;}' +
+    '#nvck .nvck-row[aria-selected="true"] .nvck-t{color:#0b1512;}' +
     '#nvck .nvck-foot{display:flex;gap:14px;padding:9px 14px;border-top:1px solid var(--nvu-line);background:var(--nvu-bg-2);' +
       'font-size:10.5px;color:#7c8b86;flex-wrap:wrap;}' +
     '#nvck .nvck-foot b{color:var(--nvu-neutral-fg);font-weight:800;}' +
@@ -18831,17 +18882,36 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     });
   }
 
+  var asyncSeq = 0, asyncTimer = null;
   function refresh(q) {
     var query = String(q || "").trim().toLowerCase();
     try { items = (cfg.sources(query) || []).slice(0, MAX); }
     catch (e) { items = []; }
     active = 0;
     render();
+    /* Optional server lookup, for parcels this page has not loaded. Only the
+       newest query's answer is used; results already shown are not repeated. */
+    if (cfg.asyncSources && query.length >= 3) {
+      var seq = ++asyncSeq;
+      clearTimeout(asyncTimer);
+      asyncTimer = setTimeout(function(){
+        try {
+          cfg.asyncSources(query, function(extra){
+            if (seq !== asyncSeq || !open || !extra || !extra.length) return;
+            var seen = {}; items.forEach(function(it){ if (it.key) seen[it.key] = 1; });
+            var add = extra.filter(function(it){ return !it.key || !seen[it.key]; });
+            if (!add.length) return;
+            items = items.concat(add).slice(0, MAX);
+            render();
+          });
+        } catch (e) {}
+      }, 250);
+    }
   }
 
   function render() {
     if (!items.length) {
-      list.innerHTML = '<div class="nvck-empty">No matches. Try an AWB, a client name, a city, or a command.</div>';
+      list.innerHTML = '<div class="nvck-empty">No matches yet. Try an AWB, a phone number, a customer name or an order number.</div>';
       return;
     }
     var html = "", lastGroup = null;
@@ -18933,11 +19003,38 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   try{
     if(!window.NovaXCmdK) return;
     function myParcelsSafe(){
+      try{ if(window.__nvRepBridge) return window.__nvRepBridge.parcels(); }catch(e){}
       try{
         var id = state && state.client && state.client.id;
         if(!id) return [];
         return (state.parcels||[]).filter(function(p){ return p && p.clientId===id; });
       }catch(e){ return []; }
+    }
+    /* Parcels older than what this page loaded: ask the server (row-level
+       security keeps it to this merchant's own parcels). */
+    function serverParcels(q, done){
+      var B=window.__nvRepBridge, sb=window.__nvSb;
+      if(!B||!sb||!sb.from||B.demo()) return;
+      var cid=B.clientId(); if(!cid) return;
+      var raw=String(q||"").trim(), digits=raw.replace(/\D/g,"").replace(/^(92|0)/,"");
+      var safe=raw.replace(/[%,()*]/g," ").trim(); if(!safe) return;
+      var ors=["awb.ilike."+safe+"%","consignee.ilike.%"+safe+"%","meta->>orderId.ilike.%"+safe+"%"];
+      if(digits.length>=4 && /^[\d\s+()-]+$/.test(raw)) ors.push("phone.ilike.%"+digits+"%");
+      Promise.resolve(sb.from("parcels").select("id,awb,consignee,phone,address,city,status,cod_amount,fee,booked_at,delivered_at,status_since,exception,invoice_id,steps:meta->steps,orderId:meta->>orderId")
+        .eq("client_id",cid).or(ors.join(",")).order("booked_at",{ascending:false}).limit(8))
+        .then(function(r){
+          if(!r||r.error||!Array.isArray(r.data)) return;
+          done(r.data.map(function(x){
+            var st=B.nvStatus(x.status)||"New booked";
+            var p={ _uuid:x.id, awb:x.awb, consignee:x.consignee||"", phone:x.phone||"", address:x.address||"", city:x.city||"", status:st,
+                    cod:Number(x.cod_amount||0), fee:Number(x.fee||0), bookedAt:x.booked_at, date:String(x.booked_at||"").slice(0,10),
+                    deliveredAt:x.delivered_at, statusSince:x.status_since, exception:x.exception||"", invoiceId:x.invoice_id,
+                    steps:(Array.isArray(x.steps)&&x.steps.length)?x.steps:B.stepsOf(st), processHistory:[], orderId:x.orderId||"", clientId:cid };
+            return { group:"Older parcels", icon:"▣", key:"p:"+p.awb, title:(p.awb||"")+" \u00b7 "+(p.consignee||""),
+              subtitle:(p.city||"")+" \u00b7 "+B.statusLabel(p.status)+(p.cod>0?(" \u00b7 Rs "+p.cod.toLocaleString("en-PK")):" \u00b7 Prepaid"),
+              run:function(){ B.openParcel(p); } };
+          }));
+        }).catch(function(){});
     }
     var TABS=[
       ["dashboard","Dashboard","Overview, alerts and today's cockpit"],
@@ -18954,6 +19051,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     ];
     window.NovaXCmdK.init({
       accent:"var(--nvu-accent)",
+      asyncSources:serverParcels,
       sources:function(q){
         var out=[];
         // Commands first when the query is short -- they are what a merchant
@@ -18965,10 +19063,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }
         });
         if(q && q.length>=2){
+          var qd=q.replace(/\D/g,"").replace(/^(92|0)/,""), phoneQ=qd.length>=4 && /^[\d\s+()-]+$/.test(q);
           myParcelsSafe().forEach(function(p){
             var hay=[p.awb,p.consignee,p.city,p.status,p.orderId].join(" ").toLowerCase();
-            if(hay.indexOf(q)===-1) return;
-            out.push({group:"Parcels",icon:"▣",
+            var phoneHit=phoneQ && String(p.phone||"").replace(/\D/g,"").indexOf(qd)>-1;
+            if(hay.indexOf(q)===-1 && !phoneHit) return;
+            out.push({group:"Parcels",icon:"▣",key:"p:"+p.awb,
               title:(p.awb||"")+" · "+(p.consignee||""),
               subtitle:(p.city||"")+" · "+(p.status||"")+(Number(p.cod)>0?(" · Rs "+Number(p.cod).toLocaleString("en-PK")):" · Prepaid"),
               run:function(){ if(typeof openClientParcelJourney==="function") openClientParcelJourney(p.awb); }});
@@ -20589,5 +20689,137 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     add();
     return { el:wrap, stop:function(){ stopped=true; clearTimeout(timer); if(wrap.parentNode) wrap.parentNode.removeChild(wrap); } };
+  };
+})();
+
+/* ═══ In-app dialog (29 Sep 2026) ═════════════════════════════════════
+   Replaces the browser's confirm() / prompt() / alert(), which look like
+   errors on Android, cannot be styled, and lose what was typed on a mis-tap.
+   window.nvAsk(options) -> Promise:
+     confirm:  nvAsk({ title, body, ok, cancel, danger })        -> true | false
+     one value: nvAsk({ title, body, input:{ label, value, ... } }) -> string | null
+     a form:   nvAsk({ title, fields:[{ name, label, value, ... }] }) -> { name:value } | null
+     notice:   nvAsk({ title, body, cancel:false })                -> true
+   Field options: type, placeholder, maxlength, inputmode, textarea, readonly,
+   required, copy (adds a Copy button), options (makes a select), validate(v)
+   returning an error string. match:"DELETE" asks the user to type a word.
+   Every text goes in with textContent -- names and notes can never become HTML. */
+(function(){
+  if (window.nvAsk) return;
+  var CSS = [
+    '.nvask-back{position:fixed;inset:0;z-index:2147483000;background:rgba(6,10,14,.58);display:flex;align-items:center;justify-content:center;padding:16px;animation:nvaskIn .14s ease-out}',
+    '.nvask{width:100%;max-width:440px;max-height:calc(100vh - 32px);overflow:auto;background:var(--nvu-bg,#fff);color:var(--nvu-ink,#121821);border:1px solid var(--nvu-line-2,#d4dae1);border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,.35);padding:20px 20px 16px;font-family:inherit}',
+    '.nvask h3{margin:0 0 6px;font-size:17px;font-weight:800;letter-spacing:-.01em;line-height:1.3}',
+    '.nvask p.nvask-body{margin:0 0 14px;font-size:14px;line-height:1.5;color:var(--nvu-ink-2,#5b6875);white-space:pre-line;overflow-wrap:anywhere}',
+    '.nvask label{display:block;font-size:12px;font-weight:750;letter-spacing:.03em;color:var(--nvu-ink-2,#5b6875);margin:10px 0 5px}',
+    '.nvask input,.nvask textarea,.nvask select{width:100%;box-sizing:border-box;min-height:44px;padding:10px 12px;border-radius:12px;border:1px solid var(--nvu-line-2,#d4dae1);background:var(--nvu-bg-2,#f7f9fb);color:var(--nvu-ink,#121821);font:inherit;font-size:16px}',
+    '.nvask textarea{min-height:88px;resize:vertical}',
+    '.nvask input:focus,.nvask textarea:focus,.nvask select:focus{outline:none;border-color:var(--nvu-accent,#0c7c59);box-shadow:0 0 0 3px var(--nvu-good-bg,#e6f6ee)}',
+    '.nvask-row{display:flex;gap:8px}.nvask-row input{flex:1;min-width:0}',
+    '.nvask-err{min-height:18px;margin:8px 0 0;font-size:13px;font-weight:650;color:var(--nvu-bad-fg,#b3261e)}',
+    '.nvask-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:12px;flex-wrap:wrap}',
+    '.nvask button{min-height:44px;padding:0 18px;border-radius:12px;font:inherit;font-size:14px;font-weight:750;cursor:pointer;border:1px solid var(--nvu-line-2,#d4dae1);background:transparent;color:var(--nvu-ink,#121821)}',
+    '.nvask button.nvask-ok{background:var(--nvu-accent,#0c7c59);border-color:var(--nvu-accent,#0c7c59);color:var(--nvu-accent-ink,#fff)}',
+    '.nvask button.nvask-ok.is-danger{background:#c0392b;border-color:#c0392b;color:#fff}',
+    '.nvask button.nvask-copy{min-height:44px;padding:0 14px;flex:none}',
+    '.nvask button:focus-visible{outline:2px solid var(--nvu-accent,#0c7c59);outline-offset:2px}',
+    '@media (max-width:520px){.nvask-back{align-items:flex-end;padding:0}.nvask{max-width:none;border-radius:18px 18px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom))}.nvask-acts button{flex:1 1 0}}',
+    '@keyframes nvaskIn{from{opacity:0}to{opacity:1}}',
+    '@media (prefers-reduced-motion:reduce){.nvask-back{animation:none}}'
+  ].join("\n");
+  var n = 0;
+  window.nvAsk = function(o){
+    o = o || {};
+    if (!document.getElementById("nvaskCss")) { var st = document.createElement("style"); st.id = "nvaskCss"; st.textContent = CSS; document.head.appendChild(st); }
+    return new Promise(function(resolve){
+      var id = "nvask" + (++n), prev = document.activeElement, settled = false;
+      var single = !!o.input && !o.fields;
+      var fields = o.fields ? o.fields.slice() : (o.input ? [Object.assign({ name: "value" }, o.input)] : []);
+      if (o.match) fields.push({ name: "__match", label: 'Type ' + o.match + ' to confirm', value: "", autocomplete: "off" });
+      var back = document.createElement("div"); back.className = "nvask-back";
+      var box = document.createElement("div"); box.className = "nvask";
+      box.setAttribute("role", fields.length ? "dialog" : "alertdialog");
+      box.setAttribute("aria-modal", "true"); box.setAttribute("aria-labelledby", id + "t");
+      var h = document.createElement("h3"); h.id = id + "t"; h.textContent = o.title || "Please confirm"; box.appendChild(h);
+      if (o.body) { var p = document.createElement("p"); p.className = "nvask-body"; p.id = id + "b"; p.textContent = o.body; box.appendChild(p); box.setAttribute("aria-describedby", id + "b"); }
+      var inputs = [];
+      fields.forEach(function(f, i){
+        var lab = document.createElement("label"); lab.textContent = f.label || ""; lab.htmlFor = id + "f" + i;
+        if (f.label) box.appendChild(lab);
+        var inp;
+        if (f.options) {
+          inp = document.createElement("select");
+          f.options.forEach(function(opt){ var op = document.createElement("option"); op.value = (opt && opt.value != null) ? opt.value : opt; op.textContent = (opt && opt.label != null) ? opt.label : opt; inp.appendChild(op); });
+        } else if (f.textarea) inp = document.createElement("textarea");
+        else { inp = document.createElement("input"); inp.type = f.type || "text"; }
+        inp.id = id + "f" + i;
+        if (f.value != null) inp.value = String(f.value);
+        if (f.placeholder) inp.placeholder = f.placeholder;
+        if (f.maxlength) inp.maxLength = f.maxlength;
+        if (f.inputmode) inp.setAttribute("inputmode", f.inputmode);
+        inp.setAttribute("autocomplete", f.autocomplete || "off");
+        if (f.readonly) inp.readOnly = true;
+        inputs.push(inp);
+        if (f.copy) {
+          var row = document.createElement("div"); row.className = "nvask-row"; row.appendChild(inp);
+          var cp = document.createElement("button"); cp.type = "button"; cp.className = "nvask-copy"; cp.textContent = "Copy";
+          cp.addEventListener("click", function(){
+            var done = function(ok){ cp.textContent = ok ? "Copied" : "Select and copy"; setTimeout(function(){ cp.textContent = "Copy"; }, 1600); };
+            try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(inp.value).then(function(){ done(true); }, function(){ inp.select(); done(false); }); return; } } catch(e) {}
+            try { inp.select(); done(document.execCommand("copy")); } catch(e) { done(false); }
+          });
+          row.appendChild(cp); box.appendChild(row);
+        } else box.appendChild(inp);
+      });
+      var err = document.createElement("p"); err.className = "nvask-err"; err.setAttribute("role", "alert"); box.appendChild(err);
+      var acts = document.createElement("div"); acts.className = "nvask-acts";
+      var cancelBtn = null;
+      if (o.cancel !== false) { cancelBtn = document.createElement("button"); cancelBtn.type = "button"; cancelBtn.textContent = o.cancel || "Cancel"; acts.appendChild(cancelBtn); }
+      var okBtn = document.createElement("button"); okBtn.type = "button"; okBtn.className = "nvask-ok" + (o.danger ? " is-danger" : ""); okBtn.textContent = o.ok || (fields.length ? "Save" : "OK");
+      acts.appendChild(okBtn); box.appendChild(acts);
+      back.appendChild(box); document.body.appendChild(back);
+      function finish(val){
+        if (settled) return; settled = true;
+        document.removeEventListener("keydown", onKey, true);
+        if (back.parentNode) back.parentNode.removeChild(back);
+        try { if (prev && prev.focus) prev.focus(); } catch(e) {}
+        resolve(val);
+      }
+      function cancel(){ finish(o.cancel === false ? true : (fields.length && !(o.match && fields.length === 1) ? null : false)); }
+      function ok(){
+        err.textContent = "";
+        var out = {};
+        for (var i = 0; i < fields.length; i++) {
+          var f = fields[i], v = String(inputs[i].value == null ? "" : inputs[i].value);
+          if (f.name === "__match") { if (v.trim().toUpperCase() !== String(o.match).toUpperCase()) { err.textContent = "Type " + o.match + " exactly to confirm."; inputs[i].focus(); return; } continue; }
+          if (f.required && !v.trim()) { err.textContent = (f.label || "This field") + " is required."; inputs[i].focus(); return; }
+          if (typeof f.validate === "function") { var m = f.validate(v); if (m) { err.textContent = m; inputs[i].focus(); return; } }
+          out[f.name] = v;
+        }
+        if (!fields.length || (o.match && fields.length === 1)) return finish(true);
+        finish(single ? out.value : out);
+      }
+      function onKey(e){
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); return; }
+        if (e.key === "Enter" && !(e.target && e.target.tagName === "TEXTAREA") && !(e.target && e.target.classList && e.target.classList.contains("nvask-copy"))) {
+          if (box.contains(e.target) || e.target === document.body) { e.preventDefault(); if (e.target === cancelBtn) cancel(); else ok(); }
+          return;
+        }
+        if (e.key === "Tab") {
+          var f = box.querySelectorAll("input,textarea,select,button"); if (!f.length) return;
+          var first = f[0], last = f[f.length - 1];
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      }
+      document.addEventListener("keydown", onKey, true);
+      okBtn.addEventListener("click", ok);
+      if (cancelBtn) cancelBtn.addEventListener("click", cancel);
+      back.addEventListener("mousedown", function(e){ if (e.target === back && o.cancel !== false) cancel(); });
+      setTimeout(function(){
+        var first = inputs.filter(function(x){ return !x.readOnly; })[0];
+        try { (first || (o.danger && cancelBtn) || okBtn).focus(); if (first && first.select && first.value) first.select(); } catch(e) {}
+      }, 30);
+    });
   };
 })();

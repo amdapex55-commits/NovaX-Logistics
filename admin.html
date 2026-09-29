@@ -14,6 +14,140 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
 
   <script>
+/* ═══ In-app dialog (29 Sep 2026) ═════════════════════════════════════
+   Replaces the browser's confirm() / prompt() / alert(), which look like
+   errors on Android, cannot be styled, and lose what was typed on a mis-tap.
+   window.nvAsk(options) -> Promise:
+     confirm:  nvAsk({ title, body, ok, cancel, danger })        -> true | false
+     one value: nvAsk({ title, body, input:{ label, value, ... } }) -> string | null
+     a form:   nvAsk({ title, fields:[{ name, label, value, ... }] }) -> { name:value } | null
+     notice:   nvAsk({ title, body, cancel:false })                -> true
+   Field options: type, placeholder, maxlength, inputmode, textarea, readonly,
+   required, copy (adds a Copy button), options (makes a select), validate(v)
+   returning an error string. match:"DELETE" asks the user to type a word.
+   Every text goes in with textContent -- names and notes can never become HTML. */
+(function(){
+  if (window.nvAsk) return;
+  var CSS = [
+    '.nvask-back{position:fixed;inset:0;z-index:2147483000;background:rgba(6,10,14,.58);display:flex;align-items:center;justify-content:center;padding:16px;animation:nvaskIn .14s ease-out}',
+    '.nvask{width:100%;max-width:440px;max-height:calc(100vh - 32px);overflow:auto;background:var(--nvu-bg,#fff);color:var(--nvu-ink,#121821);border:1px solid var(--nvu-line-2,#d4dae1);border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,.35);padding:20px 20px 16px;font-family:inherit}',
+    '.nvask h3{margin:0 0 6px;font-size:17px;font-weight:800;letter-spacing:-.01em;line-height:1.3}',
+    '.nvask p.nvask-body{margin:0 0 14px;font-size:14px;line-height:1.5;color:var(--nvu-ink-2,#5b6875);white-space:pre-line;overflow-wrap:anywhere}',
+    '.nvask label{display:block;font-size:12px;font-weight:750;letter-spacing:.03em;color:var(--nvu-ink-2,#5b6875);margin:10px 0 5px}',
+    '.nvask input,.nvask textarea,.nvask select{width:100%;box-sizing:border-box;min-height:44px;padding:10px 12px;border-radius:12px;border:1px solid var(--nvu-line-2,#d4dae1);background:var(--nvu-bg-2,#f7f9fb);color:var(--nvu-ink,#121821);font:inherit;font-size:16px}',
+    '.nvask textarea{min-height:88px;resize:vertical}',
+    '.nvask input:focus,.nvask textarea:focus,.nvask select:focus{outline:none;border-color:var(--nvu-accent,#0c7c59);box-shadow:0 0 0 3px var(--nvu-good-bg,#e6f6ee)}',
+    '.nvask-row{display:flex;gap:8px}.nvask-row input{flex:1;min-width:0}',
+    '.nvask-err{min-height:18px;margin:8px 0 0;font-size:13px;font-weight:650;color:var(--nvu-bad-fg,#b3261e)}',
+    '.nvask-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:12px;flex-wrap:wrap}',
+    '.nvask button{min-height:44px;padding:0 18px;border-radius:12px;font:inherit;font-size:14px;font-weight:750;cursor:pointer;border:1px solid var(--nvu-line-2,#d4dae1);background:transparent;color:var(--nvu-ink,#121821)}',
+    '.nvask button.nvask-ok{background:var(--nvu-accent,#0c7c59);border-color:var(--nvu-accent,#0c7c59);color:var(--nvu-accent-ink,#fff)}',
+    '.nvask button.nvask-ok.is-danger{background:#c0392b;border-color:#c0392b;color:#fff}',
+    '.nvask button.nvask-copy{min-height:44px;padding:0 14px;flex:none}',
+    '.nvask button:focus-visible{outline:2px solid var(--nvu-accent,#0c7c59);outline-offset:2px}',
+    '@media (max-width:520px){.nvask-back{align-items:flex-end;padding:0}.nvask{max-width:none;border-radius:18px 18px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom))}.nvask-acts button{flex:1 1 0}}',
+    '@keyframes nvaskIn{from{opacity:0}to{opacity:1}}',
+    '@media (prefers-reduced-motion:reduce){.nvask-back{animation:none}}'
+  ].join("\n");
+  var n = 0;
+  window.nvAsk = function(o){
+    o = o || {};
+    if (!document.getElementById("nvaskCss")) { var st = document.createElement("style"); st.id = "nvaskCss"; st.textContent = CSS; document.head.appendChild(st); }
+    return new Promise(function(resolve){
+      var id = "nvask" + (++n), prev = document.activeElement, settled = false;
+      var single = !!o.input && !o.fields;
+      var fields = o.fields ? o.fields.slice() : (o.input ? [Object.assign({ name: "value" }, o.input)] : []);
+      if (o.match) fields.push({ name: "__match", label: 'Type ' + o.match + ' to confirm', value: "", autocomplete: "off" });
+      var back = document.createElement("div"); back.className = "nvask-back";
+      var box = document.createElement("div"); box.className = "nvask";
+      box.setAttribute("role", fields.length ? "dialog" : "alertdialog");
+      box.setAttribute("aria-modal", "true"); box.setAttribute("aria-labelledby", id + "t");
+      var h = document.createElement("h3"); h.id = id + "t"; h.textContent = o.title || "Please confirm"; box.appendChild(h);
+      if (o.body) { var p = document.createElement("p"); p.className = "nvask-body"; p.id = id + "b"; p.textContent = o.body; box.appendChild(p); box.setAttribute("aria-describedby", id + "b"); }
+      var inputs = [];
+      fields.forEach(function(f, i){
+        var lab = document.createElement("label"); lab.textContent = f.label || ""; lab.htmlFor = id + "f" + i;
+        if (f.label) box.appendChild(lab);
+        var inp;
+        if (f.options) {
+          inp = document.createElement("select");
+          f.options.forEach(function(opt){ var op = document.createElement("option"); op.value = (opt && opt.value != null) ? opt.value : opt; op.textContent = (opt && opt.label != null) ? opt.label : opt; inp.appendChild(op); });
+        } else if (f.textarea) inp = document.createElement("textarea");
+        else { inp = document.createElement("input"); inp.type = f.type || "text"; }
+        inp.id = id + "f" + i;
+        if (f.value != null) inp.value = String(f.value);
+        if (f.placeholder) inp.placeholder = f.placeholder;
+        if (f.maxlength) inp.maxLength = f.maxlength;
+        if (f.inputmode) inp.setAttribute("inputmode", f.inputmode);
+        inp.setAttribute("autocomplete", f.autocomplete || "off");
+        if (f.readonly) inp.readOnly = true;
+        inputs.push(inp);
+        if (f.copy) {
+          var row = document.createElement("div"); row.className = "nvask-row"; row.appendChild(inp);
+          var cp = document.createElement("button"); cp.type = "button"; cp.className = "nvask-copy"; cp.textContent = "Copy";
+          cp.addEventListener("click", function(){
+            var done = function(ok){ cp.textContent = ok ? "Copied" : "Select and copy"; setTimeout(function(){ cp.textContent = "Copy"; }, 1600); };
+            try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(inp.value).then(function(){ done(true); }, function(){ inp.select(); done(false); }); return; } } catch(e) {}
+            try { inp.select(); done(document.execCommand("copy")); } catch(e) { done(false); }
+          });
+          row.appendChild(cp); box.appendChild(row);
+        } else box.appendChild(inp);
+      });
+      var err = document.createElement("p"); err.className = "nvask-err"; err.setAttribute("role", "alert"); box.appendChild(err);
+      var acts = document.createElement("div"); acts.className = "nvask-acts";
+      var cancelBtn = null;
+      if (o.cancel !== false) { cancelBtn = document.createElement("button"); cancelBtn.type = "button"; cancelBtn.textContent = o.cancel || "Cancel"; acts.appendChild(cancelBtn); }
+      var okBtn = document.createElement("button"); okBtn.type = "button"; okBtn.className = "nvask-ok" + (o.danger ? " is-danger" : ""); okBtn.textContent = o.ok || (fields.length ? "Save" : "OK");
+      acts.appendChild(okBtn); box.appendChild(acts);
+      back.appendChild(box); document.body.appendChild(back);
+      function finish(val){
+        if (settled) return; settled = true;
+        document.removeEventListener("keydown", onKey, true);
+        if (back.parentNode) back.parentNode.removeChild(back);
+        try { if (prev && prev.focus) prev.focus(); } catch(e) {}
+        resolve(val);
+      }
+      function cancel(){ finish(o.cancel === false ? true : (fields.length && !(o.match && fields.length === 1) ? null : false)); }
+      function ok(){
+        err.textContent = "";
+        var out = {};
+        for (var i = 0; i < fields.length; i++) {
+          var f = fields[i], v = String(inputs[i].value == null ? "" : inputs[i].value);
+          if (f.name === "__match") { if (v.trim().toUpperCase() !== String(o.match).toUpperCase()) { err.textContent = "Type " + o.match + " exactly to confirm."; inputs[i].focus(); return; } continue; }
+          if (f.required && !v.trim()) { err.textContent = (f.label || "This field") + " is required."; inputs[i].focus(); return; }
+          if (typeof f.validate === "function") { var m = f.validate(v); if (m) { err.textContent = m; inputs[i].focus(); return; } }
+          out[f.name] = v;
+        }
+        if (!fields.length || (o.match && fields.length === 1)) return finish(true);
+        finish(single ? out.value : out);
+      }
+      function onKey(e){
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancel(); return; }
+        if (e.key === "Enter" && !(e.target && e.target.tagName === "TEXTAREA") && !(e.target && e.target.classList && e.target.classList.contains("nvask-copy"))) {
+          if (box.contains(e.target) || e.target === document.body) { e.preventDefault(); if (e.target === cancelBtn) cancel(); else ok(); }
+          return;
+        }
+        if (e.key === "Tab") {
+          var f = box.querySelectorAll("input,textarea,select,button"); if (!f.length) return;
+          var first = f[0], last = f[f.length - 1];
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      }
+      document.addEventListener("keydown", onKey, true);
+      okBtn.addEventListener("click", ok);
+      if (cancelBtn) cancelBtn.addEventListener("click", cancel);
+      back.addEventListener("mousedown", function(e){ if (e.target === back && o.cancel !== false) cancel(); });
+      setTimeout(function(){
+        var first = inputs.filter(function(x){ return !x.readOnly; })[0];
+        try { (first || (o.danger && cancelBtn) || okBtn).focus(); if (first && first.select && first.value) first.select(); } catch(e) {}
+      }, 30);
+    });
+  };
+})();
+
+  </script>
+  <script>
     (function () {
       var APP_VERSION = "2026-09-02.1";
       try {
@@ -7693,11 +7827,11 @@ html,body{ background:var(--bg); color:var(--ink); }
        ===================================================================== */
     var NV_ABK = { clientId: null, clientName: "" };
 
-    function nvAdminDeleteParcel(awb){
+    async function nvAdminDeleteParcel(awb){
       if (!awb) return;
       var p = (state.parcels || []).filter(function(x){ return x.awb === awb; })[0];
       var who = p ? (" for " + (p.consignee || "")) : "";
-      if (!confirm("Delete parcel " + awb + who + "?\n\nOnly possible while it is still New booked. This cannot be undone, but a record is kept in the audit log.")) return;
+      if (!(await window.nvAsk({ title: "Delete parcel " + awb + "?", body: (who ? who.trim() + ". " : "") + "Only possible while it is still New booked. This cannot be undone, but a record is kept in the audit log.", ok: "Delete parcel", danger: true }))) return;
       var sb = window.__nvSb;
       if (!sb || !sb.rpc) { toast("Cloud connection not ready."); return; }
       sb.rpc("delete_new_booked_parcel", { p_awb: awb }).then(function(r){
@@ -7828,7 +7962,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       return best;
     }
     /* Blank means "unchanged"; a typed 0 means zero and is confirmed once. */
-    function nvEditMoneyField(id, label) {
+    async function nvEditMoneyField(id, label) {
       var el = document.getElementById(id);
       if (!el) return null;
       var raw = String(el.value == null ? "" : el.value).trim();
@@ -7836,7 +7970,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       var n = Number(raw);
       if (!isFinite(n) || n < 0) return null;
       if (n === 0) {
-        if (!window.confirm("Set the " + label + " to Rs 0?\n\nThis is a real change and the rider will collect nothing. Leave the box empty instead if you did not mean to change it.")) {
+        if (!(await window.nvAsk({ title: "Set the " + label + " to Rs 0?", body: "This is a real change and the rider will collect nothing. Leave the box empty instead if you did not mean to change it.", ok: "Set to Rs 0", cancel: "Leave unchanged" }))) {
           return null;
         }
       }
@@ -7882,12 +8016,14 @@ html,body{ background:var(--bg); color:var(--ink); }
       var host = document.getElementById("nvParcelEditModal");
       if (host) { host.classList.remove("show"); host.style.display = "none"; }
     }
-    function nvSaveParcelEdit(){
+    async function nvSaveParcelEdit(){
       var sb = window.__nvSb;
       if (!sb || !sb.rpc) { toast("Cloud connection not ready."); return; }
       var awb = document.getElementById("npeAwbHidden").value;
       var cityVal = String((document.getElementById("npeCity") || {}).value || "").trim();
       if (!cityVal) { toast("Pick a destination city — it sets the zone and the rate.", "error"); return; }
+      var npeCodV = await nvEditMoneyField("npeCod", "COD amount");
+      var npeFeeV = await nvEditMoneyField("npeFee", "delivery charge");
       var btn = document.getElementById("npeSave");
       var old = btn ? btn.textContent : "";
       if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
@@ -7908,8 +8044,8 @@ html,body{ background:var(--bg); color:var(--ink); }
            RPC's is-distinct-from guard expects. Zeroing is still possible --
            you type 0 -- and it is confirmed once, because a real zero on a
            COD parcel is worth one question. */
-        p_cod: nvEditMoneyField("npeCod", "COD amount"),
-        p_fee: nvEditMoneyField("npeFee", "delivery charge"),
+        p_cod: npeCodV,
+        p_fee: npeFeeV,
         p_weight: document.getElementById("npeWeight").value,
         p_category: null,
         p_payment_mode: null,
@@ -8075,11 +8211,32 @@ html,body{ background:var(--bg); color:var(--ink); }
     function nvMoney(v){
       try { return money(Number(v || 0)); } catch(e){ return "Rs " + Math.round(Number(v||0)); }
     }
-    function nvWhen(t){
-      if (!t) return "-";
-      try { var d = new Date(t); return isNaN(d.getTime()) ? "-" : d.toLocaleDateString(); }
-      catch(e){ return "-"; }
+    /* ONE date format (29 Sep 2026), same as the merchant portal: "20 Aug"
+       this year, "20 Aug 2025" otherwise, ", 3:45 pm" when there is a time,
+       always Pakistan time. It printed "7/28/2026" (month first) before. */
+    var NV_MON_A = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    function nvDatePartsA(v){
+      if (v == null || v === "") return null;
+      var s = String(v).trim();
+      var hasZone = /([Zz]|[+-]\d{2}:?\d{2})$/.test(s);
+      var m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+      if (m && !hasZone) return { y:+m[1], mo:+m[2], d:+m[3], h:(m[4] != null ? +m[4] : null), mi:(m[5] != null ? +m[5] : null) };
+      var dt = new Date(s); if (isNaN(dt)) return null;
+      try {
+        var o = {}; new Intl.DateTimeFormat("en-GB", { timeZone:"Asia/Karachi", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hourCycle:"h23" })
+          .formatToParts(dt).forEach(function(x){ o[x.type] = x.value; });
+        return { y:+o.year, mo:+o.month, d:+o.day, h:+o.hour, mi:+o.minute };
+      } catch(e) { return null; }
     }
+    function nvThisYearA(){ try { return +new Date().toLocaleDateString("en-CA", { timeZone:"Asia/Karachi" }).slice(0,4); } catch(e) { return new Date().getFullYear(); } }
+    function nvDateA(v){ var p = nvDatePartsA(v); if (!p || !p.mo) return v ? String(v) : ""; return p.d + " " + NV_MON_A[p.mo-1] + (p.y !== nvThisYearA() ? " " + p.y : ""); }
+    function nvDateTimeA(v){
+      var p = nvDatePartsA(v); if (!p || !p.mo) return v ? String(v) : "";
+      var base = p.d + " " + NV_MON_A[p.mo-1] + (p.y !== nvThisYearA() ? " " + p.y : "");
+      if (p.h == null) return base;
+      return base + ", " + (p.h % 12 || 12) + ":" + String(p.mi).padStart(2,"0") + " " + (p.h < 12 ? "am" : "pm");
+    }
+    function nvWhen(t){ if (!t) return "-"; var r = nvDateA(t); return r || "-"; }
 
     function loadClientDues(){
       var sb = window.__nvSb || window.sbClient || null;
@@ -8138,21 +8295,27 @@ html,body{ background:var(--bg); color:var(--ink); }
       }).join("");
     }
 
-    function nvOpenDuePayment(clientId){
+    async function nvOpenDuePayment(clientId){
       var rows = NV_DUES.rows || [];
       var row = rows.filter(function(r){ return String(r.client_id) === String(clientId); })[0];
       if (!row) { toast("Client not found. Refresh and try again."); return; }
       var outstanding = Number(row.outstanding || 0);
-      var raw = prompt(
-        (row.client_name || "This client") + " owes " + nvMoney(outstanding) + ".\n\n" +
-        "Enter the amount NovaX received. It is credited to their wallet (enter the full amount to clear it):",
-        String(outstanding)
-      );
-      if (raw === null) return;
+      var form = await window.nvAsk({
+        title: "Record payment from " + (row.client_name || "this client"),
+        body: "They owe " + nvMoney(outstanding) + ". What NovaX received is credited to their wallet \u2014 enter the full amount to clear it.",
+        fields: [
+          { name: "amt", label: "Amount received (Rs)", value: String(outstanding), inputmode: "decimal", required: true,
+            validate: function(v){ var n = Number(String(v).replace(/[^0-9.]/g, "")); if (!isFinite(n) || n <= 0) return "Enter the amount received."; if (n > outstanding) return "That is more than the " + nvMoney(outstanding) + " they owe."; return ""; } },
+          { name: "ref", label: "Reference (bank transaction ID or receipt no, optional)", value: "", maxlength: 80 }
+        ],
+        ok: "Record payment"
+      });
+      if (form === null) return;
+      var raw = form.amt;
       var amt = Number(String(raw).replace(/[^0-9.\-]/g, ""));
       if (!isFinite(amt) || amt <= 0) { toast("Enter a valid amount."); return; }
       if (amt > outstanding) { toast("That is more than the outstanding balance of " + nvMoney(outstanding) + "."); return; }
-      var ref = prompt("Reference (bank transaction id, receipt no, or leave blank):", "") || "";
+      var ref = String(form.ref || "").trim();
 
       var sb = window.__nvSb || window.sbClient || null;
       if (!sb || !sb.rpc) { toast("Cloud connection not ready."); return; }
@@ -9259,7 +9422,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const items = [];
       if (oldestDelayed) items.push(`Oldest delayed parcel: ${oldestDelayed.awb} (${Math.round(agingHours(oldestDelayed))}h in ${oldestDelayed.status})`);
       if (topCashRider && Number(topCashRider.cashHeld || 0) > 0) items.push(`Highest cash exposure rider: ${topCashRider.name} holding ${money(topCashRider.cashHeld || 0)}`);
-      if (oldPayout) items.push(`Oldest pending payout: ${oldPayout.id} since ${oldPayout.createdAt}`);
+      if (oldPayout) items.push(`Oldest pending payout: ${oldPayout.id} since ${nvDateTimeA(oldPayout.createdAt)}`);
       if (shopifyError) items.push(`Shopify connection with latest error: ${clientById(shopifyError.client_id)?.name || shopifyError.client_name || shopifyError.client_id} -- ${shopifyError.last_error}`);
       if (topBranch) items.push(`Branch with most open issues: ${topBranch[0]} (${topBranch[1]})`);
       return items;
@@ -9681,7 +9844,7 @@ html,body{ background:var(--bg); color:var(--ink); }
 
     async function nvWaDone(awb) {
       if (!window.__nvSb) { toast("Not connected to the server.", "error"); return; }
-      const note = window.prompt("Mark " + awb + " done? The WhatsApp button will not come back.\n\nNote (optional):", "");
+      const note = await window.nvAsk({ title: "Mark " + awb + " done?", body: "The WhatsApp button will not come back for this parcel.", input: { label: "Note (optional)", value: "", maxlength: 300 }, ok: "Mark done" });
       if (note === null) return;
       try {
         const r = await window.__nvSb.rpc("admin_wa_nudge_done", { p_awb: awb, p_note: note.trim() || null });
@@ -9745,9 +9908,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     }
 
     async function nvWaUnlock(awb) {
-      const reason = window.prompt(
-        "This parcel has already been asked once. Release it so it can be asked again?\n\n" +
-        "Why? (recorded against your name)");
+      const reason = await window.nvAsk({ title: "Release " + awb + "?", body: "This parcel has already been asked once. Releasing it lets it be asked again. The reason is recorded against your name.", input: { label: "Why?", required: true, maxlength: 300 }, ok: "Release" });
       if (reason === null) return;
       if (!reason.trim()) { toast("A reason is required to release it.", "error"); return; }
       try {
@@ -9923,7 +10084,7 @@ html,body{ background:var(--bg); color:var(--ink); }
               ${moneyBox("COD collected", money(invoice.cod), `${(invoice.parcelRefs || []).length} parcel(s)`)}
               ${moneyBox("Delivery charges", money(invoice.charges), "NovaX revenue")}
               ${moneyBox("Client payable", money(invoice.payable), "Amount due to client")}
-              ${moneyBox("Invoice date", invoice.createdAt, invoice.paidAt ? `Paid ${invoice.paidAt}` : "Pending payment")}
+              ${moneyBox("Invoice date", invoice.createdAt, invoice.paidAt ? `Paid ${nvDateTimeA(invoice.paidAt)}` : "Pending payment")}
             </div>
           </div>
         `).join("") || `<div class="ops-card"><strong>No invoices yet</strong><p>Invoices appear here after admin creates them from delivered parcels with cash collected.</p></div>`;
@@ -10294,7 +10455,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <td>${shortClientCode(client)}<br><strong>${escLabelText(client.name)}</strong></td>
             <td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.address)}</span></td>
             <td>${nvChargesCell(p)}</td>
-            <td><strong>${deliveryJourneyLabel(p)}</strong><br><span class="footer-note">Booked ${p.date || "system date"}</span></td>
+            <td><strong>${deliveryJourneyLabel(p)}</strong><br><span class="footer-note">Booked ${p.date ? nvDateA(p.date) : "system date"}</span></td>
             <td><strong>${agingLabel(agingHours(p))}</strong><br><span class="footer-note">${escLabelText(p.status)}</span></td>
             <td>
               <div class="meter ${progress < 45 ? "amber" : ""}"><span style="width:${progress}%"></span></div>
@@ -10409,7 +10570,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <span class="chip ${leadStageClass(lead.status)}">${escLabelText(lead.status || "New")}</span>
           </div>
           <p>Phone: ${escLabelText(lead.phone)}. ${lead.businessType ? "Business: " + escLabelText(lead.businessType) + ". " : ""}${lead.city ? "City: " + escLabelText(lead.city) + ". " : ""}Ships about ${escLabelText(lead.parcels || "an unknown amount of")} parcels/month.${lead.website ? " Site: " + escLabelText(lead.website) + "." : ""}</p>
-          <div class="footer-note">Requested: ${escLabelText(lead.createdAt || "recently")}.${lead.nextFollowup ? " Next follow-up: " + escLabelText(lead.nextFollowup) + "." : ""}${lead.assignedTo ? " Assigned: " + escLabelText(lead.assignedTo) + "." : ""}${lead.demoAt ? " Demo: " + escLabelText(lead.demoAt) + "." : ""}</div>
+          <div class="footer-note">Requested: ${escLabelText(lead.createdAt ? nvDateTimeA(lead.createdAt) : "recently")}.${lead.nextFollowup ? " Next follow-up: " + escLabelText(lead.nextFollowup) + "." : ""}${lead.assignedTo ? " Assigned: " + escLabelText(lead.assignedTo) + "." : ""}${lead.demoAt ? " Demo: " + escLabelText(lead.demoAt) + "." : ""}</div>
           ${lead.notes ? `<div class="footer-note">Notes: ${escLabelText(lead.notes)}</div>` : ""}
           <div class="inline-actions" style="margin-top:6px;flex-wrap:wrap;gap:6px">
             ${lead.status !== "Contacted" && lead.status !== "Lost" ? `<button class="action-btn" onclick="markSalesLeadContacted('${nvEscAttrJs(lead.id)}')">Mark Contacted</button>` : ""}
@@ -10432,7 +10593,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <span class="chip warn">Signup stuck - workspace never created</span>
           </div>
           <p>Phone: ${escLabelText(lead.phone)}. Email: ${escLabelText(lead.email || "n/a")}. City: ${escLabelText(lead.city || "n/a")}. Sells: ${escLabelText(lead.businessType || "n/a")}. This person already has a login but no client workspace was created - set one up manually then mark resolved.</p>
-          <div class="footer-note">Signed up: ${escLabelText(lead.createdAt || "recently")}.${lead.errorMessage ? " Error: " + escLabelText(lead.errorMessage) : ""}</div>
+          <div class="footer-note">Signed up: ${escLabelText(lead.createdAt ? nvDateTimeA(lead.createdAt) : "recently")}.${lead.errorMessage ? " Error: " + escLabelText(lead.errorMessage) : ""}</div>
           <button class="action-btn" onclick="resolveSignupLead('${nvEscAttrJs(lead.id)}')">Mark Resolved</button>
         </div>
       `);
@@ -10703,7 +10864,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           return `
             <div class="ops-card">
               <div class="ops-card-head"><strong>${invoice.id} | ${escLabelText(client.name)}</strong><span class="chip ${ui.chipClass}">${escLabelText(ui.chipLabel)}</span></div>
-              <p>${invType} \u00b7 ${(invoice.parcelRefs || []).join(", ")}<br>${due > 0 && invoice.payable <= 0 ? (ui.isTaken ? `${money(due)} charges · taken from wallet` : `Net ${nvSignedMoney(-due)} · due to NovaX`) : `Payable ${money(invoice.payable)}`} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt || "now"}</p>
+              <p>${invType} \u00b7 ${(invoice.parcelRefs || []).join(", ")}<br>${due > 0 && invoice.payable <= 0 ? (ui.isTaken ? `${money(due)} charges · taken from wallet` : `Net ${nvSignedMoney(-due)} · due to NovaX`) : `Payable ${money(invoice.payable)}`} \u00b7 Charges ${money(invoice.charges)} \u00b7 Created ${invoice.createdAt ? nvDateTimeA(invoice.createdAt) : "now"}</p>
               ${ui.primaryAction === "push" ? `<p class="footer-note" style="color:#0c7c59">Push To Client Wallet credits client balance.</p>` : ""}
               ${ui.primaryAction === "paidNovax" ? `<p class="footer-note" style="color:#0c7c59">Mark Paid To NovaX records money received by NovaX.</p>` : ""}
               <div class="inline-actions" style="margin-top:8px">
@@ -10852,7 +11013,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <strong>${escLabelText(invoice.id)}<br>${escLabelText(client.name)}</strong>
             <div>
               <strong>${(invoice.parcelRefs || []).join(", ")}</strong>
-              <div class="footer-note">${escLabelText(invoice.summary || "Delivered parcel invoice")} | Created ${escLabelText(invoice.createdAt || "now")}</div>
+              <div class="footer-note">${escLabelText(invoice.summary || "Delivered parcel invoice")} | Created ${escLabelText(invoice.createdAt ? nvDateTimeA(invoice.createdAt) : "now")}</div>
               ${ui.primaryAction === "push" ? `<div class="footer-note" style="color:#0c7c59;margin-top:4px">Push To Client Wallet credits this client's wallet balance.</div>` : ""}
               ${ui.primaryAction === "paidNovax" ? `<div class="footer-note" style="color:#0c7c59;margin-top:4px">Mark Paid To NovaX records money received by NovaX -- it never touches the client wallet.</div>` : ""}
             </div>
@@ -11436,7 +11597,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           return `<div class="ops-card ${inWallet ? "" : "alert-row"}">
             <div class="ops-card-head"><strong>${invoice.id} | ${escLabelText(client.name)}</strong><span class="chip ${inWallet ? "good" : "warn"}">${escLabelText(wui.chipLabel || invoice.status)}</span></div>
             <p>${(invoice.parcelRefs || []).join(", ")} | Payable ${money(invoice.payable)} | Charges ${money(invoice.charges)}${dueAmt > 0 ? ` | Due to NovaX ${money(dueAmt)} | Net ${nvSignedMoney(Number(invoice.payable || 0) - dueAmt)}` : ""}</p>
-            <div class="footer-note">${wui.isTaken ? `Charges taken from the wallet at ${invoice.walletPushedAt}` : inWallet ? `Entered wallet at ${invoice.walletPushedAt || invoice.paidAt}` : (dueAmt > 0 ? "Delivery-charges invoice -- amount due to NovaX, never enters wallet." : "Visible invoice only. Not in wallet until pushed.")}</div>
+            <div class="footer-note">${wui.isTaken ? `Charges taken from the wallet on ${nvDateTimeA(invoice.walletPushedAt)}` : inWallet ? `Entered wallet at ${nvDateTimeA(invoice.walletPushedAt || invoice.paidAt)}` : (dueAmt > 0 ? "Delivery-charges invoice -- amount due to NovaX, never enters wallet." : "Visible invoice only. Not in wallet until pushed.")}</div>
           </div>`;
         }).join("") || `<div class="ops-card"><strong>No wallet invoices</strong><p>Push generated invoices into wallets to start payout flow.</p></div>`;
       }
@@ -11464,7 +11625,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <div class="ops-card-head"><strong>${item.code || item.id} | ${escLabelText(client.name)}</strong><span class="chip ${statusChipClass}">${statusLabel}</span></div>
             <p>Pay ${money(item.net)} to IBAN ${escLabelText(item.iban)}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed)}).</p>
             <div class="footer-note">Account holder: <b>${escLabelText(item.holderName || "Not saved")}</b>${item.bankName ? (" &middot; " + escLabelText(item.bankName)) : ""}</div>
-            <div class="footer-note">Created ${item.createdAt}. Wallet reconciliation: ${recon.mismatch ? `mismatch of ${money(recon.difference)}` : "clean"}.</div>
+            <div class="footer-note">Created ${nvDateTimeA(item.createdAt)}. Wallet reconciliation: ${recon.mismatch ? `mismatch of ${money(recon.difference)}` : "clean"}.</div>
             ${lock.reasons.length ? `<div class="footer-note" style="color:#b42318">Risk reasons: ${lock.reasons.join("; ")}${!hardBlocked ? " -- click Mark Paid to review and confirm" : ""}</div>` : ""}
             <div class="footer-note" style="margin-top:6px">Mark Paid closes payout after bank transfer -- it never reduces the wallet balance again (that already happened when this was requested).</div>
             <div class="inline-actions" style="margin-top:10px">
@@ -11482,7 +11643,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           return `<div class="ops-card">
             <div class="ops-card-head"><strong>${item.code || item.id} | ${escLabelText(client.name)}</strong><span class="chip good">Paid</span></div>
             <p>Paid ${money(item.net)} to IBAN ${escLabelText(item.iban)} (${walletSpeedLabel(item.speed)}, fee ${money(item.fee)}).</p>
-            <div class="footer-note">${item.paidTxnId ? `Paid with reference ${escLabelText(item.paidTxnId)}` : "Paid"}${item.paidBy ? ` by ${escLabelText(item.paidBy)}` : ""}${item.paidAt ? ` on ${escLabelText(item.paidAt)}` : ""}.${item.paidProof ? ` Proof: ${escLabelText(item.paidProof)}` : ""}</div>
+            <div class="footer-note">${item.paidTxnId ? `Paid with reference ${escLabelText(item.paidTxnId)}` : "Paid"}${item.paidBy ? ` by ${escLabelText(item.paidBy)}` : ""}${item.paidAt ? ` on ${escLabelText(nvDateTimeA(item.paidAt))}` : ""}.${item.paidProof ? ` Proof: ${escLabelText(item.paidProof)}` : ""}</div>
           </div>`;
         }).join("") || `<div class="ops-card"><strong>No paid payouts yet</strong><p>Settled withdrawals will show their bank transaction reference and paid-by staff name here.</p></div>`;
       }
@@ -11506,7 +11667,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         const groupHtml = Object.keys(groups).map(key => {
           const group = groups[key];
           if (!group.rows.length) return `<div class="ops-card"><strong>${group.label}</strong><p>No entries yet.</p></div>`;
-          const items = group.rows.map(row => `<div class="footer-note">${row.createdAt} | ${escLabelText(row.note || row.referenceCode || row.entryType)} | ${money(row.amount)}${row.referenceCode ? ` | ref ${row.referenceCode}` : ""}</div>`).join("");
+          const items = group.rows.map(row => `<div class="footer-note">${nvDateTimeA(row.createdAt)} | ${escLabelText(row.note || row.referenceCode || row.entryType)} | ${money(row.amount)}${row.referenceCode ? ` | ref ${row.referenceCode}` : ""}</div>`).join("");
           return `<div class="ops-card"><strong>${group.label} (${group.rows.length})</strong>${items}</div>`;
         }).join("");
         ledgerDrilldown.innerHTML = `<div class="ops-card ${activeRecon.mismatch ? "alert-row" : ""}">
@@ -11934,12 +12095,10 @@ html,body{ background:var(--bg); color:var(--ink); }
           const lines = block.awbs.slice(0, 6).join(", ")
                       + (block.awbs.length > 6 ? " and " + (block.awbs.length - 6) + " more" : "");
           toast(block.message, "error");
-          window.alert(
-            "Payment conflict — batch not processed\n\n" + block.message +
-            "\n\nAffected: " + lines +
-            "\n\nFix each one from its parcel row: either set the COD amount to 0 " +
-            "(it really was prepaid) or change the payment mode to COD (the rider does collect)."
-          );
+          window.nvAsk({ title: "Payment conflict \u2014 batch not processed",
+            body: block.message + "\n\nAffected: " + lines +
+              "\n\nFix each one from its parcel row: either set the COD amount to 0 (it really was prepaid) or change the payment mode to COD (the rider does collect).",
+            ok: "OK", cancel: false });
           return;
         }
       }
@@ -11999,7 +12158,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         }
         msg += "\n\n" + batchAwbs.slice(0, 8).join(", ")
              + (batchAwbs.length > 8 ? " and " + (batchAwbs.length - 8) + " more" : "");
-        if (!window.confirm(msg)) return;
+        if (!(await window.nvAsk({ title: "Apply this status change?", body: msg, ok: "Apply" }))) return;
       }
       // riderId in the select is the rider's short code (rider.id); the RPC
       // needs the real Supabase uuid (rider._uuid), same mapping used
@@ -12036,10 +12195,8 @@ html,body{ background:var(--bg); color:var(--ink); }
                                "Out of service area","Ready for return"];
         var nvReason = "";
         if (NV_NEEDS_REASON.indexOf(status) > -1) {
-          nvReason = (window.prompt(
-            "Why is " + (batchAwbs.length > 1 ? batchAwbs.length + " parcels" : batchAwbs[0]) +
-            " marked \"" + status + "\"?\n\nThe merchant sees this in their parcel drawer.",
-            "") || "").trim();
+          nvReason = ((await window.nvAsk({ title: "Why is " + (batchAwbs.length > 1 ? batchAwbs.length + " parcels" : batchAwbs[0]) + " marked \u201c" + status + "\u201d?",
+            body: "The merchant sees this in their parcel drawer.", input: { label: "Reason", required: true, maxlength: 300 }, ok: "Save" })) || "").trim();
           if (!nvReason) {
             toast("Cancelled — a reason is required for " + status + ".", "error");
             return;
@@ -12620,18 +12777,18 @@ html,body{ background:var(--bg); color:var(--ink); }
       renderAdmin();
       toast("Showing Shopify parcels for this client.");
     }
-    function adminRegenerateShopifyIntake(clientId){
+    async function adminRegenerateShopifyIntake(clientId){
       if(!window.__nvSb) return;
-      if(!confirm("Regenerate this client's Shopify intake URL? Their old webhook URL will stop working until they update it in Shopify.")) return;
+      if(!(await window.nvAsk({ title:"Regenerate the Shopify intake URL?", body:"Their old webhook URL will stop working until they update it in Shopify.", ok:"Regenerate", danger:true }))) return;
       window.__nvSb.rpc("admin_regenerate_shopify_intake", { p_client_id: clientId }).then(function(r){
         if(r && r.error){ toast("Failed to regenerate: "+r.error.message); return; }
         toast("Intake URL regenerated. Send the client the new URL.");
         renderAdminShopifyHealth(true);
       }).catch(function(e){ toast("Failed to regenerate: "+e); });
     }
-    function adminResetShopifySecret(clientId){
+    async function adminResetShopifySecret(clientId){
       if(!window.__nvSb) return;
-      if(!confirm("Reset this client's Shopify signing secret? They will need to paste a fresh one before new orders will import again.")) return;
+      if(!(await window.nvAsk({ title:"Reset the Shopify signing secret?", body:"They will need to paste a fresh one before new orders will import again.", ok:"Reset secret", danger:true }))) return;
       window.__nvSb.rpc("admin_reset_shopify_secret", { p_client_id: clientId }).then(function(r){
         if(r && r.error){ toast("Failed to reset secret: "+r.error.message); return; }
         toast("Signing secret reset.");
@@ -12701,7 +12858,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           } else {
             msg = "Give this to the client's developer for their custom store:\n\nOrder push URL (their site POSTs new orders here):\n" + intakeUrl + "\n\nShared signing secret (HMAC-SHA256 hex of the raw JSON body, sent as header X-NovaX-Signature):\n" + row.webhook_secret + "\n\nWe will POST status updates to the Status Update URL you just saved (" + storeUrl + "), signed the same way.";
           }
-          alert(msg);
+          window.nvAsk({ title: "Send this to the client", body: msg, ok: "Done", cancel: false });
         }
         toast(client.name+" "+adminPlatformLabel(platform)+" connection saved.");
       }).catch(function(e){ toast("Failed to save "+adminPlatformLabel(platform)+" connection: "+e); });
@@ -12988,14 +13145,14 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (invalidCount > 0) { toast(`${invalidCount} row(s) blocked. Fix them or use "Import valid rows only".`, "error"); return; }
       importAdminBulkRows(parsed.results.map(r => r.record), parsed.results.length, clientId);
     }
-    function importAdminValidBulkRowsOnly() {
+    async function importAdminValidBulkRowsOnly() {
       const parsed = state.lastAdminBulkValidation;
       const clientId = document.getElementById("adminBulkClientId")?.value || "";
       if (!parsed || !parsed.results) { toast("Upload a CSV first."); return; }
       const validRecords = parsed.results.filter(r => r.ok).map(r => r.record);
       const rejected = parsed.results.length - validRecords.length;
       if (!validRecords.length) { toast("No valid rows to import.", "error"); return; }
-      if (!window.confirm(`Import ${validRecords.length} valid row(s) and skip ${rejected} rejected row(s)? Rejected rows will not get an AWB.`)) return;
+      if (!(await window.nvAsk({ title: `Import ${validRecords.length} row(s)?`, body: `${rejected} rejected row(s) will be skipped and will not get an AWB.`, ok: "Import" }))) return;
       importAdminBulkRows(validRecords, parsed.results.length, clientId);
     }
     function importAdminBulkRows(records, totalRowsSeen, clientId) {
@@ -13293,7 +13450,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       toast(`${id} cannot be pushed to wallet yet -- this invoice is not synced to the cloud. Wait for sync and try again.`, "error");
     }
 
-    function deleteInvoice(id) {
+    async function deleteInvoice(id) {
       const invoice = state.invoices.find(item => item.id === id);
       if (!invoice) return;
       if (invoice.status !== "Generated") {
@@ -13307,11 +13464,9 @@ html,body{ background:var(--bg); color:var(--ink); }
          misclick. Friction should track consequence, not which day the
          handler was written. */
       const invClient = clientById(invoice.clientId);
-      if (!window.confirm(
-        `Cancel invoice ${id}` + (invClient && invClient.name ? ` for ${invClient.name}` : "") + `?\n\n` +
-        `Amount: ${money(Number(invoice.payable || 0))}\n\n` +
-        `This cannot be undone from here — a cancelled invoice has to be regenerated.`
-      )) return;
+      if (!(await window.nvAsk({ title: `Cancel invoice ${id}?`,
+        body: (invClient && invClient.name ? invClient.name + " \u00b7 " : "") + `Amount: ${money(Number(invoice.payable || 0))}\n\nThis cannot be undone from here \u2014 a cancelled invoice has to be regenerated.`,
+        ok: "Cancel invoice", cancel: "Keep it", danger: true }))) return;
 
       if (!(window.__nvSb && invoice._uuid)) {
         toast(`${id} cannot be cancelled yet -- this invoice is not synced to the cloud. Wait for sync and try again.`, "error");
@@ -13431,14 +13586,14 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (drilldown && drilldown.scrollIntoView) drilldown.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
-    function rejectWalletWithdrawal(id) {
+    async function rejectWalletWithdrawal(id) {
       // NovaX new (wallet+invoice rebuild v1): lets admin close a pending
       // payout as Rejected / Cancelled instead of paying it, returning the
       // reserved amount to the client's wallet exactly once via
       // admin_reject_wallet_withdrawal (server-side, atomic).
       const withdrawal = state.walletWithdrawals.find(item => item.id === id);
       if (!withdrawal || withdrawal.status !== "Pending admin payout") return;
-      const reason = window.prompt("Reason for rejecting/cancelling this withdrawal (required):", "");
+      const reason = await window.nvAsk({ title: "Reject this withdrawal?", body: "The amount returns to the merchant's wallet. The reason is recorded.", input: { label: "Reason (required)", required: true, maxlength: 300 }, ok: "Reject withdrawal", danger: true });
       if (!reason || !reason.trim()) {
         toast("A reason is required to reject/cancel a withdrawal.", "error");
         return;
@@ -13664,7 +13819,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       (rows.length>20?'<div class="footer-note">Showing the 20 most recent of '+rows.length+' entries.</div>':"");
     }
 
-    function nvSubmitWalletTopup(){
+    async function nvSubmitWalletTopup(){
       var client=nvTopupSelectedClient();
       if(!client){ toast("Pick a client first.","error"); return; }
 
@@ -13694,9 +13849,9 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast(client.name+" has not finished syncing to the cloud yet, so their wallet cannot be adjusted.","error");
         return;
       }
-      if(!window.confirm("Adjust "+client.name+" by "+money(amount)+"?\n\n"+
-                         money(Number(client.walletBalance||0))+" \u2192 "+money(Number(client.walletBalance||0)+amount)+
-                         "\n\nReason: "+note+"\n\nThis is real money and the merchant will see it immediately.")) return;
+      if(!(await window.nvAsk({ title:"Adjust "+client.name+" by "+money(amount)+"?",
+                         body:money(Number(client.walletBalance||0))+" \u2192 "+money(Number(client.walletBalance||0)+amount)+"\n\nReason: "+note+"\n\nThis is real money and the merchant will see it immediately.",
+                         ok:"Adjust wallet" }))) return;
 
       var btn=document.getElementById("nvTopupBtn");
       if(btn){ btn.disabled=true; btn.textContent="Adding..."; }
@@ -13779,11 +13934,11 @@ html,body{ background:var(--bg); color:var(--ink); }
         });
     }
 
-    function deleteExpense(uuid) {
+    async function deleteExpense(uuid) {
       if (!uuid) { toast("This entry has not reached the server yet.", "error"); return; }
       const row = (state.expenses || []).filter(function(x){ return x._uuid === uuid; })[0];
       const label = row ? (money(row.amount) + " " + (row.type || "expense")) : "this expense";
-      if (!confirm("Delete " + label + "?\n\nThis cannot be undone.")) return;
+      if (!(await window.nvAsk({ title: "Delete " + label + "?", body: "This cannot be undone.", ok: "Delete", danger: true }))) return;
       if (!window.nvExpenseDelete) { toast("Still connecting \u2014 try again in a moment.", "error"); return; }
       window.nvExpenseDelete(uuid).then(function(r){
         if (r && r.error) { toast("Could not delete: " + r.error.message, "error"); return; }
@@ -13918,7 +14073,7 @@ html,body{ background:var(--bg); color:var(--ink); }
        this genuinely locks them out on their next request. The local row is
        kept and marked Blocked rather than hidden -- hiding it is what created
        the false impression in the first place. */
-    function revokeUserAccess(userId) {
+    async function revokeUserAccess(userId) {
       const user = state.users.find(u => u.id === userId);
       if (!user) { toast("User not found."); return; }
       const email = String(user.email || "").trim();
@@ -13927,11 +14082,9 @@ html,body{ background:var(--bg); color:var(--ink); }
       const sb = window.__nvSb;
       if (!sb) { toast("Cloud connection not ready — nothing was changed.", "error"); return; }
 
-      if (!window.confirm(
-        `Revoke app access for ${user.name} (${email})?\n\n` +
-        `They will be signed out and refused on their next request, on every portal. ` +
-        `Their record is kept so you can see who was revoked and when.`
-      )) return;
+      if (!(await window.nvAsk({ title: `Revoke app access for ${user.name}?`,
+        body: `${email}\n\nThey will be signed out and refused on their next request, on every portal. Their record is kept so you can see who was revoked and when.`,
+        ok: "Revoke access", danger: true }))) return;
 
       const key = "revoke:" + email;
       if (!nvClaim(key)) { toast("Already revoking that account — one moment."); return; }
@@ -14009,7 +14162,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       toast("Checking " + nm + "'s records…");
 
       Promise.all([cnt("withdrawals"), cnt("payment_logs"), cnt("parcels"), cnt("invoices"), cnt("wallet_ledger")])
-        .then(function(res){
+        .then(async function(res){
           const nW = res[0] && res[0].count, nP = res[1] && res[1].count;
           const nPar = res[2] && res[2].count, nInv = res[3] && res[3].count;
           /* wallet_ledger was missing from this check. A manual admin wallet
@@ -14031,7 +14184,7 @@ html,body{ background:var(--bg); color:var(--ink); }
               (bal !== 0 ? " and a balance of " + money(bal) : "") + ".\n\n" +
               "Deleting the account would orphan those financial records. NovaX will not do that.\n\n" +
               "Set the account to Inactive instead? Everything is kept.";
-            if (window.confirm(msg)) nvDeactivateClient(cid, nm);
+            if (await window.nvAsk({ title: "Deactivate " + nm + " instead?", body: msg, ok: "Set Inactive", cancel: "Keep as is" })) nvDeactivateClient(cid, nm);
             return;
           }
 
@@ -14043,16 +14196,14 @@ html,body{ background:var(--bg); color:var(--ink); }
               "Deleting the account would destroy that payout history, which you may need for a dispute or an audit. " +
               "NovaX will not do that.\n\n" +
               "Set the account to Inactive instead? They stop appearing as active and their login is blocked, but every record is kept.";
-            if (window.confirm(msg)) nvDeactivateClient(cid, nm);
+            if (await window.nvAsk({ title: "Deactivate " + nm + " instead?", body: msg, ok: "Set Inactive", cancel: "Keep as is" })) nvDeactivateClient(cid, nm);
             return;
           }
 
-          const typed = window.prompt(
-            "Permanently delete " + nm + "?\n\n" +
-            "This removes " + nPar + " parcel(s) and " + nInv + " invoice(s) and unlinks their login. It cannot be undone.\n" +
-            "They have no payout history, so nothing financial is lost.\n\n" +
-            "Type DELETE to confirm.", "");
-          if (String(typed || "").trim().toUpperCase() !== "DELETE") { toast("Cancelled — nothing was deleted."); return; }
+          const typedOk = await window.nvAsk({ title: "Permanently delete " + nm + "?",
+            body: "This removes " + nPar + " parcel(s) and " + nInv + " invoice(s) and unlinks their login. It cannot be undone.\nThey have no payout history, so nothing financial is lost.",
+            match: "DELETE", ok: "Delete permanently", danger: true });
+          if (!typedOk) { toast("Cancelled — nothing was deleted."); return; }
 
           /* One server transaction (admin_delete_client). The browser used to run
              four separate deletes; staff_users has no cascade, so a client with
@@ -14104,7 +14255,7 @@ html,body{ background:var(--bg); color:var(--ink); }
        This exists for the case that choice creates: a merchant on per-km whose
        area is not mapped has their Karachi bookings refused by design, and
        without this the only way to move them was a SQL statement. */
-    function nvSetClientPricingMode(clientId, mode) {
+    async function nvSetClientPricingMode(clientId, mode) {
       const client = clientById(clientId);
       if (!client || !client._uuid) { toast("Client not found.", "error"); return; }
       const sb = window.__nvSb;
@@ -14116,7 +14267,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const msg = want === "distance"
         ? ("Move " + nm + " to per-kilometre pricing?\n\nTheir Karachi parcels will be priced on road distance from their pickup point (Rs 120 min, Rs 20/km, Rs 320 cap). If their pickup point is not set, their Karachi bookings will be refused rather than quietly charged the flat rate.")
         : ("Move " + nm + " to the flat rate?\n\nEvery parcel is priced from their rate card (Rs " + NV_ZONE_A_BASE + " within Karachi, Rs " + NV_ZONE_B_BASE + " to other cities) regardless of distance. Use this if they are stuck on per-km and cannot book.");
-      if (!window.confirm(msg)) { renderAdmin(); return; }
+      if (!(await window.nvAsk({ title: "Change pricing for " + nm + "?", body: msg, ok: "Change pricing" }))) { renderAdmin(); return; }
 
       const key = "pmode:" + client._uuid;
       if (!nvClaim(key)) { toast("Already saving that change — one moment."); return; }
@@ -14191,9 +14342,13 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!client) { toast("Client not found."); return; }
       let user = state.users.find(u => u.clientId === clientId && /client/i.test(`${u.accessSide || ""} ${u.role || ""}`));
       const currentLogin = user ? (user.email || user.username || user.name) : (client.email || "");
-      const newLogin = (window.prompt(`Client login username / email for ${escLabelText(client.name)}:`, currentLogin) || "").trim();
+      const lf = await window.nvAsk({ title: `Login for ${client.name}`, fields: [
+        { name: "login", label: "Login email / username", value: currentLogin, required: true, maxlength: 120 },
+        { name: "pass", label: "New password (leave blank to keep their current one)", value: "", maxlength: 72 } ], ok: "Save login" });
+      if (!lf) return;
+      const newLogin = String(lf.login || "").trim();
       if (!newLogin) { toast("Login username is required."); return; }
-      const newPass = (window.prompt(`New login password for ${escLabelText(client.name)} (leave blank to keep their current real password unchanged):`, "") || "").trim();
+      const newPass = String(lf.pass || "").trim();
       if (newPass && newPass.length < 10) { toast("Password must be at least 10 characters."); return; }
       const loginChanged = String(newLogin || "").trim().toLowerCase() !== String(currentLogin || "").trim().toLowerCase();
       if (!loginChanged && !newPass) { toast("Nothing changed."); return; }
@@ -14315,16 +14470,11 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!client) { toast("Client not found.", "error"); return; }
       if (!window.__nvSb) { toast("Not connected.", "error"); return; }
 
-      const label = (window.prompt(
-        `Issue a Merchant API key for ${client.name}?\n\n` +
-        `Label it so you can tell keys apart later (e.g. "WooCommerce site", "Shopify", "Dev sandbox").`,
-        "Website integration") || "").trim();
+      const label = ((await window.nvAsk({ title: `Issue a Merchant API key for ${client.name}?`,
+        body: `The key is shown ONCE and cannot be retrieved afterwards \u2014 we only store a hash. Have somewhere ready to paste it.`,
+        input: { label: "Label (so you can tell keys apart, e.g. \u201cWooCommerce site\u201d)", value: "Website integration", required: true, maxlength: 60 },
+        ok: "Issue key" })) || "").trim();
       if (!label) return;
-
-      if (!window.confirm(
-        `Issue a new API key for ${client.name}?\n\n` +
-        `The key is shown ONCE and cannot be retrieved afterwards — we only store a hash. ` +
-        `Have somewhere ready to paste it.`)) return;
 
       let r;
       try {
@@ -14339,24 +14489,26 @@ html,body{ background:var(--bg); color:var(--ink); }
 
       /* Shown in a prompt rather than a toast on purpose: a prompt is
          selectable, survives until dismissed, and cannot be missed. */
-      window.prompt(
-        `API key for ${row.client_name || client.name} — copy it NOW.\n\n` +
-        `This is the only time it will ever be shown.\n` +
-        `Send it to the merchant over WhatsApp and tell them to keep it secret — ` +
-        `anyone holding it can book parcels on this account.\n\n` +
-        `Endpoint: https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/api/orders`,
-        row.api_key);
+      await window.nvAsk({ title: `API key for ${row.client_name || client.name} \u2014 copy it now`,
+        body: `This is the only time it will ever be shown. Send it to the merchant over WhatsApp and tell them to keep it secret \u2014 anyone holding it can book parcels on this account.`,
+        fields: [{ name: "k", label: "API key", value: row.api_key, readonly: true, copy: true },
+                 { name: "e", label: "Endpoint", value: "https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/api/orders", readonly: true, copy: true }],
+        ok: "I've copied it", cancel: false });
       toast(`API key issued for ${client.name} (${row.key_prefix}…). It will not be shown again.`, "success");
     }
 
-    function nvClientPasswordMenu(clientId) {
+    async function nvClientPasswordMenu(clientId) {
       const client = (state.clients || []).find(c => c.id === clientId);
       const label = client ? client.name : "this client";
-      const choice = (window.prompt(
-        `Password for ${label}:\n\n1 = Email them a reset link (they choose their own)\n2 = Set a password now (you send it to them)\n\nType 1 or 2:`, "1") || "").trim();
+      const pick = await window.nvAsk({ title: `Password for ${label}`,
+        fields: [{ name: "how", label: "What should happen?", value: "1", options: [
+          { value: "1", label: "Email them a reset link (they choose their own)" },
+          { value: "2", label: "Set a password now (you send it to them)" } ] }], ok: "Continue" });
+      const choice = pick ? String(pick.how) : "";
       if (choice === "1") { nvAdminResetPassword(clientId, "email"); return; }
       if (choice !== "2") return;
-      const pw = (window.prompt(`New password for ${label} (minimum 10 characters):`, "") || "").trim();
+      const pw = ((await window.nvAsk({ title: `New password for ${label}`, input: { label: "Password (minimum 10 characters)", type: "text", required: true,
+        validate: function(v){ return String(v).trim().length < 10 ? "Password must be at least 10 characters." : ""; } }, ok: "Set password" })) || "").trim();
       if (!pw) return;
       if (pw.length < 10) { toast("Password must be at least 10 characters."); return; }
       nvAdminResetPassword(clientId, "set", pw);
@@ -14368,7 +14520,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       el.style.display = el.style.display === "none" ? "block" : "none";
     }
 
-    function editClientDetails(clientId) {
+    async function editClientDetails(clientId) {
       const client = state.clients.find(c => c.id === clientId);
       if (!client) { toast("Client not found."); return; }
       // NovaX fix: prefill with the recovered/display values (real data if
@@ -14376,13 +14528,23 @@ html,body{ background:var(--bg); color:var(--ink); }
       // original signup_leads row) instead of the raw field, which may
       // still be blank or a leftover fake placeholder.
       const cleanFor = (display, placeholder) => (display && display !== placeholder) ? display : "";
-      const newName = (window.prompt(`Business / account name for ${escLabelText(client.name)}:`, client.name || "") || "").trim();
+      /* One form. The six prompts it replaces saved a BLANK phone or address
+         whenever one of the later prompts was cancelled. */
+      const cf = await window.nvAsk({ title: `Edit ${client.name}`, fields: [
+        { name: "name", label: "Business / account name", value: client.name || "", required: true, maxlength: 80 },
+        { name: "owner", label: "Owner / contact person", value: cleanFor(client.displayOwner, "Unassigned"), maxlength: 80 },
+        { name: "phone", label: "Phone number", value: cleanFor(client.displayPhone, "Phone missing"), inputmode: "tel", maxlength: 20 },
+        { name: "address", label: "Address", value: cleanFor(client.displayAddress, "Pickup address missing"), textarea: true, maxlength: 300 },
+        { name: "city", label: "City", value: cleanFor(client.displayCity, "City missing") || "Karachi", options: ["Karachi","Lahore","Islamabad","Rawalpindi"] },
+        { name: "type", label: "Business type (e.g. Fashion, Electronics)", value: cleanFor(client.displayBusinessType, "Product missing"), maxlength: 60 } ], ok: "Save client" });
+      if (!cf) return;
+      const newName = String(cf.name || "").trim();
       if (!newName) { toast("Account name is required."); return; }
-      const newOwner = (window.prompt(`Owner / contact person name:`, cleanFor(client.displayOwner, "Unassigned")) || "").trim();
-      const newPhone = (window.prompt(`Phone number:`, cleanFor(client.displayPhone, "Phone missing")) || "").trim();
-      const newAddress = (window.prompt(`Address:`, cleanFor(client.displayAddress, "Pickup address missing")) || "").trim();
-      const newCity = (window.prompt(`City (Karachi, Lahore, Islamabad, Rawalpindi):`, cleanFor(client.displayCity, "City missing")) || "").trim();
-      const newBusinessType = (window.prompt(`Business type (e.g. Fashion, Electronics):`, cleanFor(client.displayBusinessType, "Product missing")) || "").trim();
+      const newOwner = String(cf.owner || "").trim();
+      const newPhone = String(cf.phone || "").trim();
+      const newAddress = String(cf.address || "").trim();
+      const newCity = String(cf.city || "").trim();
+      const newBusinessType = String(cf.type || "").trim();
       const oldName = client.name;
       client.name = newName;
       if (newOwner) client.owner = newOwner;
@@ -14623,9 +14785,9 @@ html,body{ background:var(--bg); color:var(--ink); }
         </div>
       `).join("");
     }
-    function assignToBranchTeam(awb) {
+    async function assignToBranchTeam(awb) {
       const p = state.parcels.find(x => x.awb === awb); if (!p) return;
-      const branch = window.prompt("Assign to which branch/team?", p.branch || "Karachi Hub");
+      const branch = await window.nvAsk({ title: "Assign " + p.awb + " to which branch/team?", input: { label: "Branch / team", value: p.branch || "Karachi Hub", required: true, maxlength: 60 }, ok: "Assign" });
       if (!branch) return;
       p.branch = branch.trim(); saveState(); renderAdmin();
       toast(awb + " assigned to " + p.branch + ".");
@@ -15013,7 +15175,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       toast(`${awb} return proof attached. Manager acceptance is now allowed.`);
     }
 
-    function runAdminAction() {
+    async function runAdminAction() {
       const action = document.getElementById("adminAction").value;
       // NovaX fix (Medium #5): never fall back to the first parcel in the list.
       const target = state.parcels.find(p => p.awb === state.selectedAwb);
@@ -15035,7 +15197,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           toast(`${target.awb} is "${target.status}" — there is no next delivery step to scan. Change its status deliberately from the parcel instead.`, "error");
           return;
         }
-        if (step === "Delivered" && !window.confirm(`Mark ${target.awb} as Delivered? This also records COD ${money(target.cod)} as collected.`)) return;
+        if (step === "Delivered" && !(await window.nvAsk({ title: `Mark ${target.awb} as Delivered?`, body: `This also records COD ${money(target.cod)} as collected.`, ok: "Mark Delivered" }))) return;
         if (step) {
           setParcelStatus(target, step);
           target.risk = Math.max(4, target.risk - 6);
@@ -15899,7 +16061,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         <div class="manifest-head"><h2>NovaX Logistics</h2><p>Courier &amp; COD Operating Account</p></div>
         <div class="manifest-meta">
           <div><span>Invoice ID</span><strong>${escLabelText(invoice.id)}</strong></div>
-          <div><span>Date</span><strong>${escLabelText(invoice.createdAt || "-")}</strong></div>
+          <div><span>Date</span><strong>${escLabelText(invoice.createdAt ? nvDateTimeA(invoice.createdAt) : "-")}</strong></div>
           <div><span>Client</span><strong>${labelText(client && client.name, "NovaX Client")}</strong></div>
           <div><span>City</span><strong>${labelText(client && client.city)}</strong></div>
           <div><span>Email</span><strong>${labelText(client && client.email, "-")}</strong></div>
@@ -16178,10 +16340,10 @@ html,body{ background:var(--bg); color:var(--ink); }
         });
     }
 
-    function decideAiQuota(requestId, approve){
+    async function decideAiQuota(requestId, approve){
       var sb = window.__nvSb;
       if (!sb) return;
-      if (!approve && !window.confirm("Deny this request? The merchant stays capped until you approve a later one.")) return;
+      if (!approve && !(await window.nvAsk({ title: "Deny this request?", body: "The merchant stays capped until you approve a later one.", ok: "Deny", danger: true }))) return;
       var nvQKey = "quota:" + requestId;
       if (!nvClaim(nvQKey)) { toast("Already saving that decision — one moment."); return; }
       Promise.resolve(sb.rpc("admin_ai_quota_decide", { p_request_id: requestId, p_approve: !!approve, p_note: null }))
@@ -16333,9 +16495,9 @@ html,body{ background:var(--bg); color:var(--ink); }
         try { toast("Answer saved. The chat uses it from the next question."); } catch(e){}
       }, function(){ NV_AB.busy = false; btn.disabled = false; msg.textContent = "Could not save. Check your connection."; });
     }
-    function nvAbDelete(){
+    async function nvAbDelete(){
       var sb = window.__nvSb; if (!sb || !NV_AB.editId || NV_AB.busy) return;
-      if (!confirm("Delete this answer? The chat will send these questions to the AI instead. To pause it, untick Live instead.")) return;
+      if (!(await window.nvAsk({ title: "Delete this answer?", body: "The chat will send these questions to the AI instead. To pause it, untick Live instead.", ok: "Delete", danger: true }))) return;
       NV_AB.busy = true;
       Promise.resolve(sb.rpc("nv_ai_answer_delete", { p_id: NV_AB.editId })).then(function(r){
         NV_AB.busy = false;
@@ -16661,7 +16823,7 @@ html,body{ background:var(--bg); color:var(--ink); }
              admin simply could not cancel a pickup. The renderer's own
              comment above describes Cancelled as an intended outcome. */
           `<button class="ghost-btn" type="button" onclick="cancelPickupRequest('${nvEscAttrJs(req.id)}')">Cancel</button>`;
-        return `<tr><td>${clientLabel}</td><td>${(req.awbs || []).length} AWB(s)<div class="footer-note">${awbList}</div></td><td>${req.pickupAddressLabel ? `<strong>${escLabelText(req.pickupAddressLabel)}</strong><div class="footer-note">${labelText(req.pickupAddress, "-")}</div>` : labelText(req.pickupAddress, "-")}</td><td>${labelText(req.requestedFor, req.createdAt || "-")}</td><td><span class="chip ${statusChipClass}">${escLabelText(req.status)}</span></td><td><select onchange="assignPickupRider('${req.id}', this.value)" ${req.status === "Picked Up" || req.status === "Cancelled" ? "disabled" : ""}>${riderOptions}</select></td><td>${actions}</td></tr>`;
+        return `<tr><td>${clientLabel}</td><td>${(req.awbs || []).length} AWB(s)<div class="footer-note">${awbList}</div></td><td>${req.pickupAddressLabel ? `<strong>${escLabelText(req.pickupAddressLabel)}</strong><div class="footer-note">${labelText(req.pickupAddress, "-")}</div>` : labelText(req.pickupAddress, "-")}</td><td>${labelText(req.requestedFor ? nvDateA(req.requestedFor) : "", req.createdAt ? nvDateTimeA(req.createdAt) : "-")}</td><td><span class="chip ${statusChipClass}">${escLabelText(req.status)}</span></td><td><select onchange="assignPickupRider('${req.id}', this.value)" ${req.status === "Picked Up" || req.status === "Cancelled" ? "disabled" : ""}>${riderOptions}</select></td><td>${actions}</td></tr>`;
       }).join("");
     }
 
@@ -16682,10 +16844,10 @@ html,body{ background:var(--bg); color:var(--ink); }
       nvSaveThenToast([["pickupRequests", req]], `Pickup request ${req.id} marked Assigned.`, ["pickup_requests"]);
     }
 
-    function cancelPickupRequest(id) {
+    async function cancelPickupRequest(id) {
       const req = (state.pickupRequests || []).find(r => r.id === id);
       if (!req) { toast("Pickup request not found."); return; }
-      if (!window.confirm(`Cancel pickup request ${req.id}? The AWB(s) in it will become available for a new pickup request.`)) return;
+      if (!(await window.nvAsk({ title: `Cancel pickup request ${req.id}?`, body: "The AWB(s) in it will become available for a new pickup request.", ok: "Cancel request", cancel: "Keep it", danger: true }))) return;
       req.status = "Cancelled";
       saveState();
       renderAdmin();
@@ -16752,10 +16914,10 @@ html,body{ background:var(--bg); color:var(--ink); }
       }).catch(localFallback);
     }
 
-    function nvCodReset() {
+    async function nvCodReset() {
       // Destructive-ish and shared: everyone's board zeroes. Confirm first.
       const since = nvCodResetAt ? new Date(nvCodResetAt).toLocaleString("en-PK") : "never";
-      if (!confirm(`Reset the COD collection board for a new day?\n\nCurrent period started: ${since}\n\nEveryone in the ops team sees the same board, so this clears it for all of them. Delivered parcels are not changed -- only the counting window moves.`)) return;
+      if (!(await window.nvAsk({ title: "Reset the COD collection board for a new day?", body: `Current period started: ${since}\n\nEveryone in the ops team sees the same board, so this clears it for all of them. Delivered parcels are not changed \u2014 only the counting window moves.`, ok: "Reset board" }))) return;
       const sb = window.__nvSb;
       const nowIso = new Date().toISOString();
       const applyLocal = (shared) => {
@@ -17020,11 +17182,11 @@ html,body{ background:var(--bg); color:var(--ink); }
           return '<td><strong>' + money(f) + '</strong><div style="font-size:10px;color:' + (cheap ? "#0c7c59" : "#b3261e") + ';font-weight:700">' + (cheap ? "-" : "+") + money(Math.abs(flat - f)) + '</div></td>';
         }).join("") + '</tr></tbody></table></div></div>';
     }
-    function nvPricingSave() {
+    async function nvPricingSave() {
       var sb = window.__nvSb; if (!sb) { toast("Not connected.", "error"); return; }
       var num = function (id) { var el = document.getElementById(id); var v = el ? Number(el.value) : NaN; return isFinite(v) ? v : null; };
       var enabled = (document.getElementById("nvPricingEnabled") || {}).value === "true";
-      if (enabled && !confirm("Enable distance pricing?\n\nNEW Karachi bookings with a mapped pickup point and delivery area will be charged per kilometre instead of the flat rate.\n\nParcels already booked are NOT affected — they keep the fee they were quoted.")) return;
+      if (enabled && !(await window.nvAsk({ title: "Enable distance pricing?", body: "NEW Karachi bookings with a mapped pickup point and delivery area will be charged per kilometre instead of the flat rate.\n\nParcels already booked are NOT affected \u2014 they keep the fee they were quoted.", ok: "Enable" }))) return;
       var btn = document.getElementById("nvPricingSaveBtn");
       if (btn) { btn.disabled = true; btn.textContent = "Saving..."; }
       sb.rpc("novax_pricing_config_set", {
@@ -18111,7 +18273,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             try{ if(typeof render==="function") render(); }catch(e){}
             console.warn("NovaX "+what+" failed", r.error.message);
             try{ toast("Could not save: "+what+" -- "+r.error.message+". The change has been undone.","error"); }
-            catch(e){ try{ alert("Could not save: "+what+". The change has been undone."); }catch(e2){} }
+            catch(e){ try{ window.nvAsk({ title:"Could not save", body:"Could not save: "+what+". The change has been undone.", ok:"OK", cancel:false }); }catch(e2){} }
             return false;
           }
           return true;
@@ -18132,10 +18294,10 @@ html,body{ background:var(--bg); color:var(--ink); }
         nvLeadWrite(sb.from("sales_leads").update({ status:"Contacted" }).eq("id",id),
           function(){ lead.status=__prev; }, "mark lead contacted");
       };
-      window.deleteSalesLead=function(id){
+      window.deleteSalesLead=async function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
-        if(!window.confirm("Delete this sales lead ("+lead.name+")? This cannot be undone.")) return;
+        if(!(await window.nvAsk({ title:"Delete this sales lead?", body:lead.name+" \u2014 this cannot be undone.", ok:"Delete", danger:true }))) return;
         var __prevLeadList=(state.salesLeads||[]).slice();
         state.salesLeads=(state.salesLeads||[]).filter(function(l){return l.id!==id;});
         try{ if(typeof render==="function") render(); }catch(e){}
@@ -18151,10 +18313,10 @@ html,body{ background:var(--bg); color:var(--ink); }
         nvLeadWrite(sb.from("sales_leads").update({ status:stage }).eq("id",id),
           function(){ lead.status=__prevStage; }, "change lead stage");
       };
-      window.scheduleSalesLeadDemo=function(id){
+      window.scheduleSalesLeadDemo=async function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
-        var when=window.prompt("Demo date/time for "+lead.name+" (e.g. 2026-07-20 15:00):", lead.demoAt||"");
+        var when=await window.nvAsk({ title:"Demo for "+lead.name, input:{ label:"Date and time (e.g. 2026-07-20 15:00)", value:lead.demoAt||"", maxlength:40 }, ok:"Save" });
         if(when===null) return;
         var __prevDemo=lead.demoAt, __prevStatus=lead.status;
         lead.demoAt=when; lead.status="Demo Scheduled";
@@ -18162,10 +18324,10 @@ html,body{ background:var(--bg); color:var(--ink); }
         nvLeadWrite(sb.from("sales_leads").update({ demo_at:when||null, status:"Demo Scheduled" }).eq("id",id),
           function(){ lead.demoAt=__prevDemo; lead.status=__prevStatus; }, "schedule demo");
       };
-      window.addSalesLeadNote=function(id){
+      window.addSalesLeadNote=async function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
-        var note=window.prompt("Add note for "+lead.name+":", "");
+        var note=await window.nvAsk({ title:"Note for "+lead.name, input:{ label:"Note", textarea:true, maxlength:1000 }, ok:"Add note" });
         if(!note) return;
         var __prevNotes=lead.notes;
         lead.notes=(lead.notes?lead.notes+" | ":"")+note;
@@ -18173,10 +18335,10 @@ html,body{ background:var(--bg); color:var(--ink); }
         nvLeadWrite(sb.from("sales_leads").update({ notes:lead.notes }).eq("id",id),
           function(){ lead.notes=__prevNotes; }, "add note");
       };
-      window.setSalesLeadFollowup=function(id){
+      window.setSalesLeadFollowup=async function(id){
         var lead=(state.salesLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
-        var when=window.prompt("Next follow-up date for "+lead.name+" (YYYY-MM-DD):", lead.nextFollowup||"");
+        var when=await window.nvAsk({ title:"Next follow-up for "+lead.name, input:{ label:"Date", type:"date", value:lead.nextFollowup||"" }, ok:"Save" });
         if(when===null) return;
         var __prevFollow=lead.nextFollowup;
         lead.nextFollowup=when;
@@ -18208,10 +18370,10 @@ html,body{ background:var(--bg); color:var(--ink); }
         lead.status="Onboarded";
         sb.from("sales_leads").update({ status:"Onboarded" }).eq("id",id).then(function(r){ if(r&&r.error) console.warn("NovaX sales_leads update",r.error.message); });
       };
-      window.resolveSignupLead=function(id){
+      window.resolveSignupLead=async function(id){
         var lead=(state.signupLeads||[]).find(function(l){return l.id===id;});
         if(!lead) return;
-        if(!window.confirm("Mark this stuck signup ("+lead.name+") as resolved? Only do this after you've manually created their workspace or contacted them.")) return;
+        if(!(await window.nvAsk({ title:"Mark "+lead.name+" as resolved?", body:"Only do this after you've manually created their workspace or contacted them.", ok:"Mark resolved" }))) return;
         /* The row is removed from the array, so a rollback has to put the
            array back -- restoring a field on the detached object would have
            left the operator with the lead still gone from the list. */
@@ -18869,9 +19031,11 @@ html,body{ background:var(--bg); color:var(--ink); }
     }
     function staffBump(uid,tid,d){ const u=(state.users||[]).find(x=>x.id===uid); const t=u&&(u.staffTargets||[]).find(g=>g.id===tid); if(!t) return; t.now=Math.max(0,t.now+d); saveState(); renderStaffTab(); }
     function staffNote(ownerId){ const el=document.getElementById("stk_note_"+ownerId); const v=(el.value||"").trim(); if(!v) return; staffLog(ownerId,v); el.value=""; saveState(); renderStaffTab(); toast("Activity logged."); }
-    function staffAssignTarget(uid){
-      const label=prompt("Target label (e.g. Calls / day):"); if(!label) return;
-      const goal=Number(prompt("Goal number:","30"))||0;
+    async function staffAssignTarget(uid){
+      const tf=await window.nvAsk({ title:"Assign a target", fields:[{ name:"label", label:"Target (e.g. Calls / day)", required:true, maxlength:60 },{ name:"goal", label:"Goal number", value:"30", inputmode:"numeric" }], ok:"Assign" });
+      if(!tf) return;
+      const label=String(tf.label||"").trim(); if(!label) return;
+      const goal=Number(tf.goal)||0;
       const u=(state.users||[]).find(x=>x.id===uid); (u.staffTargets=u.staffTargets||[]).push({id:"T"+Date.now(),label,now:0,goal,pct:false});
       saveState(); renderStaffTab(); toast("Target assigned.");
     }
