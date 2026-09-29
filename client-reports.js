@@ -124,7 +124,10 @@
     }
     var sb = B.sb(), cid = B.clientId();
     if (!sb || !cid || B.demo()) throw new Error("offline");
-    var out = [], page = 0, SIZE = 1000;
+    /* Reads every page. The ceiling only exists so a runaway account cannot
+       hang the tab; if it is ever reached the report SAYS it is incomplete
+       (scope line, CSV notice, PDF banner) rather than looking whole. */
+    var out = [], page = 0, SIZE = 1000, CEILING = 200000, truncated = false;
     while (true) {
       var q = sb.from("parcels").select(COLS).eq("client_id", cid);
       if (a) q = q.gte("booked_at", startIso(a));
@@ -133,10 +136,13 @@
       if (r.error) throw new Error(r.error.message);
       var batch = r.data || [];
       out = out.concat(batch);
-      if (batch.length < SIZE || out.length >= 20000) break;
+      if (batch.length < SIZE) break;
+      if (out.length >= CEILING) { truncated = true; break; }
       page++;
     }
-    return out.map(mapRow);
+    var mapped = out.map(mapRow);
+    mapped.truncated = truncated;
+    return mapped;
   }
   function localRange(a, b){
     return B.parcels().filter(function(p){ var d = p.date || pktDay(p.bookedAt); return (!a || d >= a) && d <= b; });
@@ -145,7 +151,14 @@
      Otherwise a quiet refresh (the portal re-renders often): at most once a
      minute, no dimming, no count-up replay, and no repaint at all unless the
      data actually changed, so the page never jumps under someone reading it. */
-  function sig(rows){ return rows.length + ":" + rows.map(function(p){ return p.awb + p.status + p.cod + p.fee; }).join("|"); }
+  /* Every field any part of the page (rows, drawer, exports, timings) reads,
+     so a changed delivery time, invoice, recipient or journey repaints. */
+  function sig(rows){
+    return rows.length + ":" + rows.map(function(p){
+      return [p.awb, p.status, p.cod, p.fee, p.deliveredAt, p.statusSince, p.bookedAt, p.invoiceId, p.consignee, p.phone,
+              p.address, p.city, p.exception, p.orderId, (p.steps || []).join(">"), (p._meta || {}).destinationArrivedAt || ""].join("~");
+    }).join("|");
+  }
   async function load(force){
     var R = range(), key = S.period + "|" + R.a + "|" + R.b + "|" + (S.compare ? 1 : 0);
     if (!force && S.key === key && S.rows && Date.now() - S.at < 60000) return;
@@ -154,15 +167,15 @@
     S.loading = true; S.err = ""; S.key = key;
     if (!S.rows) paint();                         /* skeleton only on the very first load */
     else if (!quiet) markBusy(true);
-    var fromA = (S.compare && R.pa) ? R.pa : R.a, all, partial = false;
-    try { all = await fetchRange(fromA, R.b); }
+    var fromA = (S.compare && R.pa) ? R.pa : R.a, all, partial = false, truncated = false;
+    try { all = await fetchRange(fromA, R.b); truncated = !!all.truncated; }
     catch(e){ all = localRange(fromA, R.b); partial = !B.demo(); }
     if (S.key !== key) return;                    /* a newer request superseded this one */
     var rows = all.filter(function(p){ return (!R.a || p.date >= R.a) && p.date <= R.b; });
     var prev = (S.compare && R.pa) ? all.filter(function(p){ return p.date >= R.pa && p.date <= R.pb; }) : null;
     S.loading = false; S.at = Date.now();
-    if (quiet && S.rows && sig(rows) === sig(S.rows) && sig(prev || []) === sig(S.prev || []) && partial === S.partial) return;
-    S.rows = rows; S.prev = prev; S.partial = partial;
+    if (quiet && S.rows && sig(rows) === sig(S.rows) && sig(prev || []) === sig(S.prev || []) && partial === S.partial && truncated === !!S.truncated) return;
+    S.rows = rows; S.prev = prev; S.partial = partial; S.truncated = truncated;
     if (!quiet) { S.counted = false; S.shown = 50; }
     var y = window.scrollY;
     paint();
@@ -177,21 +190,28 @@
     return isFinite(h) && h >= 0 ? h : null;
   }
   function metrics(rows){
+    /* Charges follow the invoice (clientInvoiceLineItems): every invoiced
+       parcel carries its fee -- delivered ones as "delivery charges", and
+       refused / unanswered / out-of-area / returned ones as "return charges",
+       with no COD collected. Cancelled bookings are never invoiced. So
+       "Yours" is collected COD minus BOTH, exactly as the invoice nets it. */
     var m = { total:rows.length, g:{ booked:0, moving:0, delivered:0, problem:0, returned:0, cancelled:0 },
-              cod:{ delivered:0, moving:0, lost:0, all:0 }, fees:0, deliveredCount:0, settled:0, pendingCod:0, times:[] };
+              cod:{ delivered:0, moving:0, notPicked:0, lost:0, all:0 }, fees:0, returnFees:0, deliveredCount:0, settled:0, pendingCod:0, times:[] };
     rows.forEach(function(p){
       var g = group(p); m.g[g]++;
       if (g !== "cancelled") m.cod.all += p.cod;
       if (g === "delivered") { m.cod.delivered += p.cod; m.fees += p.fee; var h = hoursToDeliver(p); if (h != null) m.times.push(h); }
-      else if (g === "booked" || g === "moving") m.cod.moving += p.cod;
-      else if (g === "problem" || g === "returned") m.cod.lost += p.cod;
+      else if (g === "moving") m.cod.moving += p.cod;
+      else if (g === "booked") m.cod.notPicked += p.cod;
+      else if (g === "problem" || g === "returned") { m.cod.lost += p.cod; m.returnFees += p.fee; }
       if (String(p.status).indexOf("Delivered") > -1) m.deliveredCount++;
       if (B.settled(p) && B.rated(p)) m.settled++;
-      if (COLLECTIBLE.indexOf(String(p.status)) > -1) m.pendingCod += p.cod;
+      if (g === "moving") m.pendingCod += p.cod;
     });
     m.rate = m.settled ? Math.round(m.deliveredCount / m.settled * 100) : null;
     m.median = median(m.times);
-    m.net = m.cod.delivered - m.fees;
+    m.charges = m.fees + m.returnFees;
+    m.net = m.cod.delivered - m.charges;
     return m;
   }
 
@@ -214,9 +234,12 @@
         if (B.settled(p) && B.rated(p)) list[i].settled++;
         if (String(p.status).indexOf("Delivered") > -1) list[i].dcount++;
       }
-      if (group(p) === "delivered") {
-        var dd = pktDay(p.deliveredAt) || p.date, j = idx[keyOf(dd)];
-        if (j != null) { list[j].delivered++; list[j].cod += p.cod; var h = hoursToDeliver(p); if (h != null) list[j].times.push(h); }
+      /* Plotted by BOOKING day, like every figure on the page: "of the
+         parcels booked that day, how many were delivered". Plotting by
+         delivery day dropped deliveries that landed after the period ended,
+         so the chart and the Delivered COD card could never add up. */
+      if (i != null && group(p) === "delivered") {
+        list[i].delivered++; list[i].cod += p.cod; var h = hoursToDeliver(p); if (h != null) list[i].times.push(h);
       }
     });
     list.forEach(function(x){ x.rate = x.settled ? x.dcount / x.settled * 100 : null; x.med = median(x.times); });
@@ -253,13 +276,14 @@
     return '<svg class="nvr-spark" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true"><polyline points="' + pts.join(" ") + '"/></svg>';
   }
   function phoneFmt(ph){ var d = String(ph || "").replace(/\D/g, ""); if (d.indexOf("92") === 0) d = "0" + d.slice(2); return d.length === 11 ? d.slice(0,4) + " " + d.slice(4) : (ph || ""); }
-  function groupLabel(g){ for (var i = 0; i < GROUPS.length; i++) if (GROUPS[i][0] === g) return GROUPS[i][1]; return g; }
+  function groupLabel(g){ if (g === "issues") return "Problem and returned"; for (var i = 0; i < GROUPS.length; i++) if (GROUPS[i][0] === g) return GROUPS[i][1]; return g; }
 
   /* ------------------------------------------------------------ view */
   function filtered(){
     var q = S.q.trim().toLowerCase();
     var list = (S.rows || []).filter(function(p){
-      if (S.group !== "all" && group(p) !== S.group) return false;
+      if (S.group === "issues") { var gg = group(p); if (gg !== "problem" && gg !== "returned") return false; }
+      else if (S.group !== "all" && group(p) !== S.group) return false;
       if (S.city && p.city !== S.city) return false;
       if (q) {
         var hay = (p.awb + " " + p.consignee + " " + p.city + " " + B.statusLabel(p.status) + " " + p.phone + " " + p.orderId).toLowerCase();
@@ -353,10 +377,17 @@
       '</div>' + custom + '</div>';
   }
 
+  /* One wording for every place the data might be incomplete. */
+  function incompleteNote(){
+    if (S.partial) return "offline: only the parcels this page already had are included";
+    if (S.truncated) return "very large account: only the most recent 200,000 parcels are included";
+    return "";
+  }
   function scopeLine(m, R){
     var s = '<b>' + esc(rangeLabel(R.a, R.b)) + '</b> · ' + num(m.total) + ' parcel' + (m.total === 1 ? "" : "s") + ' booked';
     if (S.compare && R.pa) s += ' <span class="nvr-muted">· compared with ' + esc(rangeLabel(R.pa, R.pb)) + '</span>';
-    if (S.partial) s += ' <span class="nvr-warn">· offline: showing only the parcels this page already had</span>';
+    var inc = incompleteNote();
+    if (inc) s += ' <span class="nvr-warn">· ' + esc(inc) + '</span>';
     return '<p class="nvr-scope">' + s + '</p>';
   }
 
@@ -386,23 +417,29 @@
 
   function moneyFlow(m){
     var c = m.cod, tot = c.all || 0;
-    if (!tot) return '<div class="nvr-card"><h4 class="nvr-h">Where your COD is</h4><p class="nvr-empty">No COD parcels in this period.</p></div>';
-    function seg(v, cls, label){ var w = v / tot * 100; return w > 0 ? '<span class="nvr-seg ' + cls + '" style="width:' + w.toFixed(2) + '%" title="' + esc(label + ": " + rs(v)) + '"></span>' : ""; }
-    var net = Math.max(0, m.net);
-    return '<div class="nvr-card nvr-flow"><div class="nvr-hrow"><h4 class="nvr-h">Where your COD is</h4><button type="button" class="nvr-link" data-go="money">Wallet &amp; payouts →</button></div>' +
+    if (!tot && !m.charges) return '<div class="nvr-card"><h4 class="nvr-h">Where your COD is</h4><p class="nvr-empty">No COD parcels in this period.</p></div>';
+    function seg(v, cls, label){ var w = tot ? v / tot * 100 : 0; return w > 0 ? '<span class="nvr-seg ' + cls + '" style="width:' + w.toFixed(2) + '%" title="' + esc(label + ": " + rs(v)) + '"></span>' : ""; }
+    function leg(cls, label, v, note){ return '<div><i class="' + cls + '"></i><span>' + label + '</span><b>' + rs(v) + '</b><em>' + note + '</em></div>'; }
+    var yours = m.net;
+    return '<div class="nvr-card nvr-flow"><div class="nvr-hrow"><h4 class="nvr-h">Where your COD is</h4><button type="button" class="nvr-link" data-go="money">Wallet &amp; payouts \u2192</button></div>' +
       '<p class="nvr-sub">' + rs(tot) + ' of COD on parcels booked in this period</p>' +
-      '<div class="nvr-stack" role="img" aria-label="' + esc("Collected " + rs(c.delivered) + ", on the way " + rs(c.moving) + ", not collected " + rs(c.lost)) + '">' +
-        seg(c.delivered, "is-good", "Collected") + seg(c.moving, "is-info", "On the way") + seg(c.lost, "is-bad", "Not collected") + '</div>' +
+      (tot ? '<div class="nvr-stack" role="img" aria-label="' + esc("Collected " + rs(c.delivered) + ", on the way " + rs(c.moving) + ", not picked up yet " + rs(c.notPicked) + ", not collected " + rs(c.lost)) + '">' +
+        seg(c.delivered, "is-good", "Collected") + seg(c.moving, "is-info", "On the way") + seg(c.notPicked, "is-neutral", "Not picked up yet") + seg(c.lost, "is-bad", "Not collected") + '</div>' : "") +
       '<div class="nvr-legend">' +
-        '<div><i class="is-good"></i><span>Collected</span><b>' + rs(c.delivered) + '</b><em>' + pct(c.delivered, tot) + '%</em></div>' +
-        '<div><i class="is-info"></i><span>On the way</span><b>' + rs(c.moving) + '</b><em>' + pct(c.moving, tot) + '%</em></div>' +
-        '<div><i class="is-bad"></i><span>Not collected</span><b>' + rs(c.lost) + '</b><em>refused or returned</em></div>' +
+        leg("is-good", "Collected", c.delivered, pct(c.delivered, tot) + "%") +
+        (c.moving ? leg("is-info", "On the way", c.moving, "picked up") : "") +
+        (c.notPicked ? leg("is-neutral", "Not picked up yet", c.notPicked, "awaiting rider") : "") +
+        (c.lost ? leg("is-bad", "Not collected", c.lost, "refused or returned") : "") +
       '</div>' +
       '<div class="nvr-sum">' +
-        '<div><span>Collected</span><b>' + rs(c.delivered) + '</b></div><span class="nvr-op">−</span>' +
-        '<div class="is-minus"><span>NovaX delivery charges</span><b>' + rs(m.fees) + '</b></div><span class="nvr-op">=</span>' +
-        '<div class="is-net"><span>Yours</span><b>' + rs(net) + '</b></div>' +
-      '</div></div>';
+        '<div><span>Collected</span><b>' + rs(c.delivered) + '</b></div><span class="nvr-op">\u2212</span>' +
+        '<div class="is-minus"><span>Delivery charges</span><b>' + rs(m.fees) + '</b></div>' +
+        (m.returnFees ? '<span class="nvr-op">\u2212</span><div class="is-minus"><span>Return charges</span><b>' + rs(m.returnFees) + '</b></div>' : "") +
+        '<span class="nvr-op">=</span>' +
+        '<div class="is-net' + (yours < 0 ? " is-owed" : "") + '"><span>' + (yours < 0 ? "You owe NovaX" : "Yours") + '</span><b>' + rs(Math.abs(yours)) + '</b></div>' +
+      '</div>' +
+      (m.returnFees ? '<p class="nvr-foot">Return charges are the delivery fee on refused and returned parcels, the same line your invoices show.</p>' : "") +
+      '</div>';
   }
 
   function trend(bk){
@@ -410,8 +447,8 @@
     if (L.length < 2) return "";
     var any = L.some(function(x){ return x.booked || x.delivered; });
     var unit = bk.unit === "day" ? "per day" : bk.unit === "week" ? "per week" : "per month";
-    return '<div class="nvr-card nvr-trend"><div class="nvr-hrow"><h4 class="nvr-h">Bookings and deliveries <span class="nvr-muted">' + unit + '</span></h4>' +
-      '<div class="nvr-keys"><span><i class="k-book"></i>Booked</span><span><i class="k-del"></i>Delivered</span></div></div>' +
+    return '<div class="nvr-card nvr-trend"><div class="nvr-hrow"><h4 class="nvr-h">Parcels booked and delivered <span class="nvr-muted">' + unit + ', by booking day</span></h4>' +
+      '<div class="nvr-keys"><span><i class="k-book"></i>Booked</span><span><i class="k-del"></i>Of those, delivered</span></div></div>' +
       (any ? '<div class="nvr-chart" id="nvrChart"></div><div class="nvr-tip" id="nvrTip" hidden></div>' : '<p class="nvr-empty">Nothing booked in this period.</p>') + '</div>';
   }
   function drawChart(bk){
@@ -437,7 +474,7 @@
       var i = Math.max(0, Math.min(n - 1, Math.floor((x - pl) / iw * n))), d = L[i];
       cur.setAttribute("x1", X(i)); cur.setAttribute("x2", X(i)); cur.style.display = "";
       var when = bk.unit === "day" ? dLabel(d.k, true) : bk.unit === "week" ? "Week of " + dLabel(d.k) : MON[Number(d.k.slice(5,7)) - 1] + " " + d.k.slice(0,4);
-      tip.innerHTML = '<b>' + when + '</b><span><i class="k-book"></i>' + d.booked + ' booked</span><span><i class="k-del"></i>' + d.delivered + ' delivered</span>' + (d.cod ? '<span>' + rs(d.cod) + ' collected</span>' : "");
+      tip.innerHTML = '<b>' + when + '</b><span><i class="k-book"></i>' + d.booked + ' booked</span><span><i class="k-del"></i>' + d.delivered + ' of them delivered</span>' + (d.cod ? '<span>' + rs(d.cod) + ' collected on them</span>' : "");
       tip.hidden = false;
       var tx = X(i) / W * r.width, tw = tip.offsetWidth, hw = host.clientWidth;
       tip.style.left = Math.max(0, Math.min(hw - tw, tx - tw / 2)) + "px";
@@ -475,7 +512,10 @@
     var rows = S.rows || [];
     var reasons = [["Refused","Customer refused"],["Consignee not available","Customer not available"],["Out of service area","Outside our area"]];
     var counts = reasons.map(function(r){ return { k:r[0], label:r[1], n:rows.filter(function(p){ return p.status === r[0]; }).length }; });
-    counts.push({ k:"_ret", label:"Returned to you", n:m.g.returned });
+    var back = rows.filter(function(p){ return group(p) === "returned" && !/^(Return to shipper|Parcel returned to consignee)$/.test(String(p.status)); }).length;
+    counts.push({ k:"_back", label:"On the way back", n:back });
+    counts.push({ k:"_ret", label:"Returned to you", n:m.g.returned - back });
+    counts = counts.filter(function(x){ return x.k !== "_back" || x.n; });
     var totalBad = counts.reduce(function(s, x){ return s + x.n; }, 0);
     var byPhone = {};
     rows.concat(S.prev || []).forEach(function(p){
@@ -487,7 +527,7 @@
       .sort(function(a, b){ return b.list.length - a.list.length; }).slice(0, 6);
     var maxN = Math.max(1, Math.max.apply(null, counts.map(function(x){ return x.n; })));
     return '<div class="nvr-card nvr-probs" id="nvrProblems"><div class="nvr-hrow"><h4 class="nvr-h">Problems</h4>' +
-      (totalBad ? '<button type="button" class="nvr-link" data-group="problem">See these parcels →</button>' : "") + '</div>' +
+      (totalBad ? '<button type="button" class="nvr-link" data-group="issues">See these parcels →</button>' : "") + '</div>' +
       (totalBad
         ? '<div class="nvr-reasons">' + counts.map(function(x){ return '<div class="nvr-rs"><span>' + x.label + '</span><span class="nvr-rs-bar"><i style="width:' + (x.n / maxN * 100).toFixed(1) + '%"></i></span><b>' + x.n + '</b></div>'; }).join("") + '</div>'
         : '<p class="nvr-empty is-good">No refusals or returns in this period.</p>') +
@@ -590,7 +630,8 @@
     var R = range(), name = "novax-report-" + (R.a || "all") + "-to-" + R.b + ".csv";
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + lines.join("\n")], { type:"text/csv" })); a.download = name; a.click();
     setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
-    B.toast(list.length + " parcel" + (list.length === 1 ? "" : "s") + " exported" + (S.partial ? " — offline, only what this page had loaded." : "."), S.partial ? "error" : "success");
+    var inc = incompleteNote();
+    B.toast(list.length + " parcel" + (list.length === 1 ? "" : "s") + " exported" + (inc ? " — INCOMPLETE: " + inc + "." : "."), inc ? "error" : "success");
   }
   function exportPdf(){
     var R = range(), m = metrics(S.rows || []), cs = cityStats(S.rows), list = filtered();
@@ -598,8 +639,9 @@
     var html = '<style>#printStage thead{display:table-header-group}#printStage tr{break-inside:avoid;page-break-inside:avoid}</style>' +
       '<div style="font-family:system-ui,sans-serif;color:#000;background:#fff;padding:24px">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #0c7c59;padding-bottom:10px;margin-bottom:16px"><div><div style="font-size:20px;font-weight:800">' + esc(B.clientName()) + '</div><div style="color:#555">NovaX delivery report · ' + esc(rangeLabel(R.a, R.b)) + '</div></div><div style="color:#0c7c59;font-weight:800">NovaX Logistics</div></div>' +
+      (incompleteNote() ? '<div style="border:2px solid #b3261e;background:#fdecea;color:#b3261e;font-weight:700;padding:10px 12px;border-radius:8px;margin-bottom:14px">INCOMPLETE REPORT \u2014 ' + esc(incompleteNote()) + '. Re-export when you are back online.</div>' : '') +
       '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><tr>' + box("Parcels booked", num(m.total)) + box("Delivery success", m.rate == null ? "—" : m.rate + "%") + box("Delivered COD", rs(m.cod.delivered)) + box("Typical delivery time", durLabel(m.median)) + '</tr><tr>' +
-        box("Delivery charges", rs(m.fees)) + box("Yours after charges", rs(Math.max(0, m.net))) + box("COD on the way", rs(m.cod.moving)) + box("Not collected", rs(m.cod.lost)) + '</tr></table>' +
+        box("Delivery + return charges", rs(m.charges)) + box(m.net < 0 ? "You owe NovaX" : "Yours after charges", rs(Math.abs(m.net))) + box("COD on the way", rs(m.cod.moving)) + box("Not collected", rs(m.cod.lost)) + '</tr></table>' +
       (cs.length ? '<h3 style="margin:16px 0 6px">Cities</h3><table style="width:100%;border-collapse:collapse" border="1" cellpadding="6"><thead><tr><th align="left">City</th><th>Parcels</th><th>Delivered</th><th>Success</th><th>Typical time</th><th align="right">Collected</th></tr></thead>' +
         cs.map(function(c){ return '<tr><td>' + esc(c.city) + '</td><td align="center">' + c.total + '</td><td align="center">' + c.delivered + '</td><td align="center">' + (c.rate == null ? "—" : c.rate + "%") + '</td><td align="center">' + durLabel(c.med) + '</td><td align="right">' + rs(c.cod) + '</td></tr>'; }).join("") + '</table>' : "") +
       '<h3 style="margin:16px 0 6px">Parcels (' + list.length + ')</h3><table style="width:100%;border-collapse:collapse;font-size:12px" border="1" cellpadding="5"><thead><tr><th align="left">AWB</th><th>Booked</th><th align="left">Customer</th><th align="left">City</th><th align="left">Status</th><th align="right">COD</th><th align="right">Fee</th></tr></thead>' +
@@ -741,7 +783,7 @@
     '.is-info.nvr-seg,.nvr-legend i.is-info,.nvr-keys i.is-info{background:#4bb8e8}',
     '.is-bad.nvr-seg,.nvr-legend i.is-bad,.nvr-keys i.is-bad{background:#e0604b}',
     '.is-warn.nvr-seg,.nvr-keys i.is-warn{background:#e8b64c}',
-    '.is-neutral.nvr-seg,.nvr-keys i.is-neutral{background:var(--nvu-ink-3);opacity:.55}',
+    '.is-neutral.nvr-seg,.nvr-keys i.is-neutral,.nvr-legend i.is-neutral{background:var(--nvu-ink-3);opacity:.55}',
     '.is-muted.nvr-seg{background:var(--nvu-line-2)}',
     '.nvr-legend{display:grid;gap:8px;margin-top:14px}',
     '.nvr-legend div{display:grid;grid-template-columns:10px 1fr auto 86px;align-items:center;gap:10px;font-size:13.5px}',
@@ -749,7 +791,7 @@
     '.nvr-sum{display:flex;align-items:stretch;gap:8px;margin-top:16px;padding-top:14px;border-top:1px dashed var(--nvu-line-2);flex-wrap:wrap}',
     '.nvr-sum div{display:flex;flex-direction:column;gap:2px;flex:1 1 90px}.nvr-sum span{font-size:11.5px;color:var(--nvu-ink-2);font-weight:650}.nvr-sum b{font-size:16px;font-variant-numeric:tabular-nums}',
     '.nvr-sum .nvr-op{flex:0 0 auto;align-self:center;font-size:18px;color:var(--nvu-ink-3);font-weight:700}',
-    '.nvr-sum .is-net b{color:var(--nvu-good-fg)}',
+    '.nvr-sum .is-net b{color:var(--nvu-good-fg)}.nvr-sum .is-owed b{color:var(--nvu-bad-fg)}',
     '.nvr-keys{display:flex;gap:12px;font-size:12px;color:var(--nvu-ink-2);font-weight:650}.nvr-keys span{display:inline-flex;align-items:center;gap:6px}',
     '.nvr-keys i{width:10px;height:10px;border-radius:3px;display:inline-block}.nvr-keys-wrap{flex-wrap:wrap;margin-top:12px}',
     'i.k-book{background:var(--nvu-line-2);width:10px;height:10px;border-radius:3px;display:inline-block}i.k-del{background:var(--nvu-accent);width:14px;height:3px;border-radius:2px;display:inline-block}',
@@ -881,6 +923,7 @@
       }
     },
     refresh: function(){ return load(true); },
-    _state: S
+    _state: S,
+    _t: { metrics:metrics, buckets:buckets, range:range, group:group, sig:sig }   /* read-only, for tests */
   };
 })();
