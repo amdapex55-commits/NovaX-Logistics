@@ -13474,16 +13474,47 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var nvKeyReady = nvOrderKey
           ? Promise.resolve({ key: "order:" + nvOrderKey, slot: null })
           : window.__novaxIdemKeys.acquire("form", String(MY), nvFp);
-        return nvKeyReady.then(function(pending){
-          nvPendingKey = pending;
+        /* A brief API blip (the schema cache reloading after a database
+           change, a pool hiccup, a dropped connection) used to fail the
+           booking on the first try with "Protected booking is temporarily
+           unavailable". The idempotency key makes a resend safe -- the server
+           returns the same parcel if the first attempt landed -- so transient
+           errors are retried quietly before the merchant sees anything. */
+        function nvBookTransient(ri){
+          var e = ri && ri.error; if (!e) return false;
+          var m = String(e.message || ""), c = String(e.code || ""), st = Number(ri.status || 0);
+          return /^PGRST00[0-3]$/.test(c) || st === 502 || st === 503 || st === 504 || st === 520 ||
+                 /schema cache|Retrying|upstream|temporarily|connection|Failed to fetch|NetworkError|Load failed|timeout/i.test(m);
+        }
+        function nvBookMissing(ri){
+          var e = ri && ri.error; if (!e) return false;
+          return String(e.code || "") === "PGRST202" ||
+                 /Could not find the function|function public\.client_book_parcel_idem\(.*\) does not exist/i.test(String(e.message || ""));
+        }
+        function nvBookSend(attempt){
           return sb.rpc("client_book_parcel_idem", Object.assign({}, argsWithOpen, {
-            p_idem_key: pending.key,
+            p_idem_key: nvPendingKey.key,
             p_origin_area_id: null,
             p_dest_area_id: o.destAreaId || null
-          }));
+          })).then(function(ri){
+            if (attempt < 4 && (nvBookTransient(ri) || nvBookMissing(ri))) {
+              return new Promise(function(res){ setTimeout(res, 1200 * attempt); }).then(function(){ return nvBookSend(attempt + 1); });
+            }
+            return ri;
+          }, function(err){
+            if (attempt < 4) return new Promise(function(res){ setTimeout(res, 1200 * attempt); }).then(function(){ return nvBookSend(attempt + 1); });
+            throw err;
+          });
+        }
+        return nvKeyReady.then(function(pending){
+          nvPendingKey = pending;
+          return nvBookSend(1);
         }).then(function(ri){
           var mi = (ri && ri.error && ri.error.message) || "";
-          if (mi && /client_book_parcel_idem|does not exist|not find|schema cache|no function matches/i.test(mi)) {
+          if (ri && ri.error && String(ri.error.code || "") !== "P0001") {
+            try { window.__nvSb && window.__nvSb.rpc("log_portal_error", { p_source:"client", p_rpc_name:"client_book_parcel_idem", p_page:"booking", p_message:(String(ri.error.code || "") + " " + (ri.status || "") + " " + mi).slice(0,300), p_severity:"error" }).then(function(){}, function(){}); } catch(e) {}
+          }
+          if (nvBookMissing(ri) || (mi && nvBookTransient(ri) && !/timeout|fetch|network|Load failed/i.test(mi))) {
             if (nvPendingKey && nvPendingKey.slot) window.__novaxIdemKeys.release(String(MY), nvPendingKey.slot, nvPendingKey.key);
             console.error("NovaX protected booking RPC unavailable:", mi);
             throw new Error("Protected booking is temporarily unavailable. No parcel was created and nothing was charged. Please try again shortly.");
