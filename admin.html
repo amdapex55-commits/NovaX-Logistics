@@ -5566,7 +5566,7 @@ html,body{ background:var(--bg); color:var(--ink); }
               <div class="grid metrics" id="adminMetrics"></div>
 
               <div class="panel mt-14" id="adminPeriodPanel">
-                <div class="section-head"><div><h3>Revenue by Collection Date</h3><p>Delivery fees from parcels collected by a rider in the selected dates. COD belongs to merchants and is excluded.</p></div></div>
+                <div class="section-head"><div><h3>Revenue by Collection Date</h3><p>Delivery fees from parcels that reached the warehouse in the selected dates. COD belongs to merchants and is excluded.</p></div></div>
                 <div class="filter-bar">
                   <div class="field"><label for="adminPeriodFrom">From</label><input id="adminPeriodFrom" type="date"></div>
                   <div class="field"><label for="adminPeriodTo">To</label><input id="adminPeriodTo" type="date"></div>
@@ -8511,8 +8511,13 @@ html,body{ background:var(--bg); color:var(--ink); }
     // (in transit, delivered, refused, reattempt, or all the way through a
     // return back to the consignee) -- not just once it reaches "Delivered".
     // Only "New booked" (stage 0, not yet collected) should NOT count yet.
+    /* By STATUS, not stage: stage is now the shared journey's step count
+       (nv-journey.js), so comparing it with a STATUS_TAGS index stopped
+       meaning "has left the merchant". */
+    function nvStatusIdx(parcel) { return STATUS_TAGS.indexOf(nvStatus(parcel && parcel.status) || ""); }
     function isPickedUpParcel(parcel) {
-      return parcel.stage >= STATUS_TAGS.indexOf("Collected by rider");
+      const st = nvStatus(parcel && parcel.status) || "";
+      return st !== "" && st !== "New booked" && !/cancel/i.test(st);
     }
 
     function isCashCollectedParcel(parcel) {
@@ -9152,10 +9157,24 @@ html,body{ background:var(--bg); color:var(--ink); }
       return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
     }
 
+    /* Collection is counted when the parcel ARRIVES AT THE WAREHOUSE (Aisha,
+       29 Sep): riders do not reliably scan "Collected by rider", and
+       processing often goes New booked -> Arrived at warehouse directly, so
+       a parcel physically in the warehouse had no collection date and was
+       dropped from revenue ("397 excluded"). Arrival first; then a rider
+       collection scan; then the first scan of any later step. */
     function nvCollectedAt(parcel) {
       const history = Array.isArray(parcel && parcel.processHistory) ? parcel.processHistory : [];
-      const hit = history.find(row => row && nvStatus(row.status) === "Collected by rider" && row.at);
-      return hit ? hit.at : "";
+      const at = st => { const h = history.find(row => row && nvStatus(row.status || row.to) === st && row.at); return h ? h.at : ""; };
+      const arrived = at("Arrived at warehouse");
+      if (arrived) return arrived;
+      const collected = at("Collected by rider");
+      if (collected) return collected;
+      const later = history.find(row => {
+        const st = nvStatus(row && (row.status || row.to)) || "";
+        return row && row.at && st && st !== "New booked" && !/cancel/i.test(st);
+      });
+      return later ? later.at : "";
     }
 
     function initPeriodInputs(todayOnly) {
@@ -9195,7 +9214,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         metricCard("Expenses", money(expenses), percent(expenses, 100000), "expense dates in range", "amber"),
         metricCard("Net Revenue", money(fees - expenses), percent(Math.max(0, fees - expenses), 100000), "fees minus expenses", fees - expenses < 0 ? "red" : "good")
       ].join("");
-      if (note) note.textContent = `${from} to ${to}, Pakistan time.${missingTimestamp ? ` ${missingTimestamp} picked-up parcel(s) are excluded because their collection timestamp is missing.` : ""}`;
+      if (note) note.textContent = `${from} to ${to}, Pakistan time.${missingTimestamp ? ` ${missingTimestamp} older parcel(s) are excluded because they have no warehouse or pickup scan time.` : ""}`;
     }
 
     function percent(value, max) {
@@ -9305,8 +9324,9 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (alert.level === "warning") return "warn";
       var hue = nvStatusHue(parcel.status);
       if (hue) return hue;
-      if (parcel.stage < 5) return "info";
-      if (parcel.stage < 8) return "warn";
+      const idx = nvStatusIdx(parcel);
+      if (idx < 5) return "info";
+      if (idx < 8) return "warn";
       return "good";
     }
 
@@ -11256,7 +11276,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     }
 
     function renderRider() {
-      const assigned = state.parcels.filter(p => p.rider === "R-22" || p.stage >= 5).slice(0, 4);
+      const assigned = state.parcels.filter(p => p.rider === "R-22" || nvStatusIdx(p) >= 5).slice(0, 4);
       document.getElementById("riderStops").innerHTML = assigned.map(p => {
         const blocked = state.riders.find(r => r.id === p.rider)?.cashHeld > state.riders.find(r => r.id === p.rider)?.cashLimit;
         return `

@@ -2574,7 +2574,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       var s=(typeof nvStatus==="function")?nvStatus(st):String(st||"");
       return NV_STATUS_HUE[s]||"";
     }
-    function statusClass(p){ const a=alertForParcel(p); if(a.level==="critical"||p.risk>=65||p.exception) return "bad"; if(a.level==="warning") return "warn"; var hue=nvStatusHue(p.status); if(hue) return hue; if(p.stage<5) return "info"; if(p.stage<8) return "warn"; return "good"; }
+    function statusClass(p){ const a=alertForParcel(p); if(a.level==="critical"||p.risk>=65||p.exception) return "bad"; if(a.level==="warning") return "warn"; var hue=nvStatusHue(p.status); if(hue) return hue; var nvIdx=STATUS_TAGS.indexOf(p.status); if(nvIdx<5) return "info"; if(nvIdx<8) return "warn"; return "good"; }
     /* Judged on where the parcel IS, not where it has been. This used to test
        the whole step history, so a parcel refused once and then delivered --
        or returned -- kept offering "Reattempt / Return" and a customer message
