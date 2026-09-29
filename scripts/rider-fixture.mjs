@@ -7,6 +7,7 @@ export function installFixture(window, options = {}) {
   if(options.large)for(let i=0;i<1005;i++)fixture.rows.push({...fixture.rows[2],id:'large'+String(i).padStart(5,'0'),awb:'B'+i});
   if(options.long)fixture.rows[0].awb='A'.repeat(80);
   if(options.conflict)fixture.rows[4].meta.paymentMode='non-cod';
+  if(options.swap){fixture.rows[4].cod_amount=0;fixture.rows[4].meta={...fixture.rows[4].meta,swapLeg:'out',swapId:'SW-0001',swapPairAwb:'N9999999',paymentMode:'Non COD Prepaid'};}
   Object.defineProperty(window.navigator,'onLine',{configurable:true,get:()=>fixture.online});
   Object.defineProperty(window.navigator,'locks',{configurable:true,value:{request:async(_key,fn)=>fn()}});
   Object.defineProperty(window.navigator,'geolocation',{configurable:true,value:{getCurrentPosition:fn=>fn({coords:{latitude:24.9,longitude:67.1,accuracy:20}})}});
@@ -42,6 +43,10 @@ export function installFixture(window, options = {}) {
       if(rows.some(p=>!p))return{error:{message:'Not assigned to you',code:'P0001'}};
       for(const p of rows){p.status=args.p_to;p.updated_at=now;if(args.p_to==='Delivered')p.delivered_at=now;}
       result={count:rows.length,moved:args.p_awbs,status:args.p_to};
+    }else if(name==='rider_swap_complete'){
+      const p=fixture.rows.find(r=>r.awb===args.p_out_awb);if(!p)return{error:{message:'Not assigned to you',code:'P0001'}};
+      p.status=args.p_outcome==='exchanged'?'Delivered':'Refused';p.updated_at=now;
+      result={outcome:args.p_outcome,code:'SW-0001',out_awb:p.awb,back_awb:'N9999999',moved:[p.awb]};
     }else if(name==='rider_add_expense')result={id:requestKey,amount:args.p_amount};
     else result={net:args.p_expected_net,count:1,batch:requestKey};
     fixture.saved.set(requestKey,result);

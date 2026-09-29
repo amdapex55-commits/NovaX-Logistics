@@ -2591,8 +2591,8 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="nv-journey.js?v=e44d7f85" defer></script>
-  <script src="client-app.js?v=95562c8c" defer></script>
+  <script src="nv-journey.js?v=77db2b46" defer></script>
+  <script src="client-app.js?v=f9d26539" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2607,7 +2607,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=95562c8c<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=f9d26539<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -2721,6 +2721,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
               <button class="client-tab" data-client-tab="awbLabel">AWB Label</button>
               <button class="client-tab" data-client-tab="loadSheet">Load Sheet</button>
               <button class="client-tab" data-client-tab="bulkBooking">Bulk Booking</button>
+              <button class="client-tab" data-client-tab="swap">Nova Swap</button>
               <button class="client-tab" data-client-tab="integrations">API</button>
               <button class="client-tab" data-client-tab="reports">Reports</button>
               <button class="client-tab" data-client-tab="money">Money</button>
@@ -3154,6 +3155,8 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
             <!-- PROFILE (29 Sep 2026). One business name and one set of details,
                  saved through nv_profile_save (owner only, logged). The logo is
                  shown on this dashboard and on the tracking link only. -->
+            <!-- NOVA SWAP (29 Sep 2026). Exchange in one visit; rendered by nvSwRender(). -->
+            <section class="client-module" id="client-swap"><div id="nvSwRoot" class="nv-sw"></div></section>
             <section class="client-module" id="client-profile">
               <div class="nv-pf-grid">
                 <div class="nv-pf-main">
@@ -5250,6 +5253,52 @@ body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
 /* The derived Payment line reads as an answer the portal already has, not as
    a disabled input -- a greyed-out select looks broken; a stated value looks
    decided. */
+
+.nv-sw{display:grid;gap:16px;max-width:860px}
+.nv-sw .section-head p{margin:4px 0 0}
+.nv-sw-note{margin:0 0 12px;padding:10px 12px;border-radius:12px;background:var(--nvu-warn-bg);color:var(--nvu-warn-fg);font-size:13px;font-weight:700}
+.nv-sw-step{display:flex;gap:12px;padding:14px 0;border-top:1px solid var(--nvu-line)}
+.nv-sw-step.is-off{opacity:.55}
+.nv-sw-n{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--nvu-accent);color:var(--nvu-accent-ink,#fff);font-weight:800;font-size:13px}
+.nv-sw-body{flex:1;min-width:0;display:grid;gap:6px}
+.nv-sw-body label{font-size:12.5px;font-weight:750;color:var(--nvu-ink-2);margin-top:4px}
+.nv-sw-body input{width:100%;box-sizing:border-box;min-height:44px;padding:10px 12px;border-radius:12px;border:1px solid var(--nvu-line-2);background:var(--nvu-bg-2);color:var(--nvu-ink);font:inherit;font-size:16px}
+.nv-sw-results{display:grid;gap:6px;margin-top:4px}
+.nv-sw-res{display:grid;gap:2px;text-align:left;padding:10px 12px;min-height:48px;border-radius:12px;border:1px solid var(--nvu-line);background:var(--nvu-bg);color:var(--nvu-ink);font:inherit;cursor:pointer}
+.nv-sw-res:hover:not([disabled]){border-color:var(--nvu-accent)}
+.nv-sw-res[disabled]{opacity:.5;cursor:not-allowed}
+.nv-sw-res span,.nv-sw-pick span{display:block;font-size:12.5px;color:var(--nvu-ink-2);overflow-wrap:anywhere}
+.nv-sw-pick{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--nvu-accent);border-radius:12px;background:var(--nvu-bg-2)}
+.nv-sw-pick>div{min-width:0}
+.nv-sw-chips{display:flex;gap:8px;flex-wrap:wrap}
+.nv-sw-chip{min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--nvu-line-2);background:var(--nvu-bg);color:var(--nvu-ink);font:inherit;font-weight:700;cursor:pointer}
+.nv-sw-chip.on{background:var(--nvu-accent);border-color:var(--nvu-accent);color:var(--nvu-accent-ink,#fff)}
+.nv-sw-price{margin-top:6px;padding:12px 14px;border:1px solid var(--nvu-line-2);border-radius:14px;background:var(--nvu-bg-2);animation:nvSwIn .2s ease-out}
+.nv-sw-price>div{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:13.5px;color:var(--nvu-ink-2)}
+.nv-sw-price b{color:var(--nvu-ink);font-variant-numeric:tabular-nums}
+.nv-sw-total{border-top:1px solid var(--nvu-line);margin-top:4px;padding-top:9px!important;font-weight:800;color:var(--nvu-ink)!important}
+.nv-sw-total b{font-size:18px}
+.nv-sw-price p{margin:6px 0 0;font-size:12px;color:var(--nvu-ink-2);line-height:1.45}
+.nv-sw-err{min-height:18px;margin:10px 0 0;font-size:13px;font-weight:700;color:var(--nvu-bad-fg,#b3261e)}
+.nv-sw-go{width:100%;min-height:48px;margin-top:4px;font-size:15px}
+.nv-sw-done{text-align:center;animation:nvSwIn .25s ease-out}
+.nv-sw-tick{width:52px;height:52px;margin:0 auto 10px;border-radius:50%;display:grid;place-items:center;background:var(--nvu-accent);color:#fff;font-size:26px;font-weight:900}
+.nv-sw-sub{margin:6px 0 12px;color:var(--nvu-ink-2);line-height:1.5}
+.nv-sw-steps{text-align:left;margin:0 auto 14px;max-width:520px;padding-left:20px;line-height:1.55;font-size:13.5px}
+.nv-sw-acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.nv-sw-row{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--nvu-line)}
+.nv-sw-row-main{min-width:0}
+.nv-sw-row-sub{font-size:12.5px;color:var(--nvu-ink-2);margin-top:3px;overflow-wrap:anywhere}
+.nv-sw-row-side{text-align:right;flex:none}
+.nv-sw-row-acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;margin-top:6px}
+.nv-sw-cancel{color:var(--nvu-bad-fg,#b3261e)}
+@keyframes nvSwIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.nv-sw-price,.nv-sw-done{animation:none}}
+@media (max-width:600px){.nv-sw-row{flex-direction:column}.nv-sw-row-side{text-align:left}.nv-sw-row-acts{justify-content:flex-start}.nv-sw-acts .action-btn{flex:1 1 100%}}
+/* More menu (desktop sidebar): open upward when there is no room below, and
+   never run past the screen -- the last items (NovaX AI, Log out) were cut off. */
+.nv-more-wrap.nv-more-up .nv-more-menu{top:auto;bottom:calc(100% + 6px)}
+.nv-more-menu{max-height:calc(100vh - 24px);overflow-y:auto;overscroll-behavior:contain}
 .nv-book-review{grid-column:1/-1;margin-top:14px;padding:12px 14px;border:1px solid var(--nvu-line-2);border-radius:14px;background:var(--nvu-bg-2)}
 .nv-book-review[hidden]{display:none!important}
 .nv-book-review-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:14px;font-weight:700;color:var(--nvu-ink)}

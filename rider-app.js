@@ -63,13 +63,23 @@
     var age = Math.max(0, (Date.now() - R.timestamp(p.statusSince)) / 3600000);
     var limit = p.status === "Parcel now in transit" ? 72 : ["Parcel received at destination", "Parcel out for delivery", "Reattempt", "Reassigned"].includes(p.status) ? 24 : null;
     var breach = limit && age >= limit;
-    var actions = actionable ? (R.ACTIONS[p.status] || []).map(function (s) {
+    var swapOut = p.meta.swapLeg === "out" && p.status === "Parcel out for delivery";
+    var swapPending = jobs().some(function (j) { return j.kind === "swap" && j.awb === p.awb && j.state !== "review"; });
+    var actions = actionable && swapOut ? (swapPending ? '<span class="pending-label">Saved on this phone \u2014 sending\u2026</span>' :
+      '<button class="btn" data-write data-swap="exchanged" data-awb="' + esc(p.awb) + '">Exchange done</button>' +
+      '<button class="btn secondary" data-write data-swap="failed" data-awb="' + esc(p.awb) + '">Can\u2019t exchange</button>')
+      : actionable ? (R.ACTIONS[p.status] || []).map(function (s) {
       var disabled = s === "Delivered" && pay.conflict || ["Collected by rider", "Return to shipper"].includes(s) && !c.address;
       return '<button class="btn ' + (s === "Refused" ? "danger" : s === "Consignee not available" ? "secondary" : "") + '" data-write data-action="' + esc(s) + '" data-awb="' + esc(p.awb) + '"' + (disabled ? ' data-blocked disabled' : '') + '>' + esc(LABELS[s]) + '</button>';
     }).join("") : "";
-    return '<article class="parcel' + (p.pending ? ' pending' : '') + (breach ? ' sla-breach' : '') + '" data-search="' + esc([p.awb, c.name, c.phone, call, c.address, c.city].join(" ").toLowerCase()) + '"><div class="parcel-head"><b class="awb">' + esc(p.awb) + '</b><span class="status">' + esc(p.status) + '</span></div>' + jline(p) + '<p><b>' + esc(c.name || "Name not recorded") + '</b><br>' + esc(location || "Address missing. Contact the office.") + '<br>' + esc(c.phone || "Phone not recorded") + '</p><div class="moneyline">' + (origin ? "No recipient COD collection on this task" : pay.conflict ? '<span class="error-text">' + esc(pay.label) + '. Office correction required.</span>' : (p.status === "Delivered" ? 'Delivered COD ' : 'Collect ') + money(pay.collectable)) + '</div>' + (p.pending ? '<p class="pending-label">Saved on this phone. Server confirmation pending.</p>' : '') + (breach ? '<p class="sla-note">Overdue by ' + Math.floor(age - limit) + 'h</p>' : '') + '<div class="contacts">' + (validPhone ? '<a class="call" href="tel:' + esc(call) + '">Call ' + (origin ? 'shipper' : 'consignee') + '</a>' : '') + (location ? '<a class="call" href="https://www.google.com/maps/search/?api=1&amp;query=' + encodeURIComponent(location) + '" target="_blank" rel="noopener">Navigate</a><button class="call" data-copy="' + esc(location) + '">Copy address</button>' : '') + '</div>' + (actions ? '<div class="actions">' + actions + '</div>' : '') + '</article>';
+    return '<article class="parcel' + (p.pending ? ' pending' : '') + (breach ? ' sla-breach' : '') + '" data-search="' + esc([p.awb, c.name, c.phone, call, c.address, c.city].join(" ").toLowerCase()) + '"><div class="parcel-head"><b class="awb">' + esc(p.awb) + '</b><span class="status">' + esc(p.status) + '</span></div>' + swapTag(p) + jline(p) + '<p><b>' + esc(c.name || "Name not recorded") + '</b><br>' + esc(location || "Address missing. Contact the office.") + '<br>' + esc(c.phone || "Phone not recorded") + '</p><div class="moneyline">' + (origin ? "No recipient COD collection on this task" : pay.conflict ? '<span class="error-text">' + esc(pay.label) + '. Office correction required.</span>' : (p.status === "Delivered" ? 'Delivered COD ' : 'Collect ') + money(pay.collectable)) + '</div>' + (p.pending ? '<p class="pending-label">Saved on this phone. Server confirmation pending.</p>' : '') + (breach ? '<p class="sla-note">Overdue by ' + Math.floor(age - limit) + 'h</p>' : '') + '<div class="contacts">' + (validPhone ? '<a class="call" href="tel:' + esc(call) + '">Call ' + (origin ? 'shipper' : 'consignee') + '</a>' : '') + (location ? '<a class="call" href="https://www.google.com/maps/search/?api=1&amp;query=' + encodeURIComponent(location) + '" target="_blank" rel="noopener">Navigate</a><button class="call" data-copy="' + esc(location) + '">Copy address</button>' : '') + '</div>' + (actions ? '<div class="actions">' + actions + '</div>' : '') + '</article>';
   }
   /* The same journey the merchant and admin see (nv-journey.js). */
+  function swapTag(p) {
+    if (p.meta.swapLeg === "out") return '<p class="swaptag">NOVA SWAP \u00b7 hand over the new item, collect the old one' + (p.meta.swapPairAwb ? ' \u00b7 return AWB <b>' + esc(p.meta.swapPairAwb) + '</b>' : '') + '</p>';
+    if (p.meta.swapLeg === "back") return '<p class="swaptag back">NOVA SWAP RETURN \u00b7 old item going back to the merchant</p>';
+    return "";
+  }
   function jline(p) {
     try {
       if (!window.NVJourney) return "";
@@ -180,7 +190,7 @@
   async function save(job, id) {
     await lock(function () {
       var pending = jobs();
-      if (pending.some(function (j) { return j.kind === job.kind && (job.kind !== "status" || j.to === job.to && JSON.stringify(j.list) === JSON.stringify(job.list)); })) throw new Error("This action already has a saved request. Reconnect or ask the office to review it; do not submit it twice.");
+      if (pending.some(function (j) { return j.kind === job.kind && (job.kind === "swap" ? j.awb === job.awb : (job.kind !== "status" || j.to === job.to && JSON.stringify(j.list) === JSON.stringify(job.list))); })) throw new Error("This action already has a saved request. Reconnect or ask the office to review it; do not submit it twice.");
       queue.add(Object.assign(job, { key: key(job.kind), at: new Date().toISOString(), state: "pending" }));
     });
     render(); msg("Saved on this phone. Awaiting server confirmation.", "info", id);
@@ -197,6 +207,7 @@
           await identity();
           var name, args;
           if (j.kind === "status") { name = "rider_batch_update_status"; args = { p_awbs: j.list, p_to: j.to, p_reason: j.reason || "", p_batch_key: j.key, p_delivery_loc: j.location || null }; }
+          else if (j.kind === "swap") { name = "rider_swap_complete"; args = { p_out_awb: j.awb, p_outcome: j.outcome, p_reason: j.reason || "", p_key: j.key, p_loc: j.location || null }; }
           else if (j.kind === "expense") { name = "rider_add_expense"; args = { p_key: j.key, p_category: j.category, p_amount: j.amount, p_note: j.note }; }
           else if (j.kind === "deposit") { name = "rider_deposit_cash_checked"; args = { p_batch_key: j.key, p_expected_gross: j.gross, p_expected_expenses: j.expenses, p_expected_net: j.net }; }
           else throw new Error("Unknown saved action. Contact the office.");
@@ -220,7 +231,11 @@
           }
           if (!response.data || j.kind === "status" && !Array.isArray(response.data.moved)) { queue.change(j.key, { state: "review", error: "Unexpected server acknowledgement; office must check this reference." }); break; }
           await identity(); queue.remove(j.key); connected = true; changed = true; retryDelay = 0;
-          if (j.kind === "status") ping("\u2713 " + ((j.list || []).length > 1 ? (j.list.length + " parcels") : (j.list || [""])[0]) + ": " + (LABELS[j.to] || j.to) + " \u2014 confirmed", "ok", [40, 60, 40]);
+          if (j.kind === "swap") {
+            data.parcels.forEach(function (p) { if (p.awb.toUpperCase() === String(j.awb).toUpperCase()) { p.status = j.outcome === "exchanged" ? "Delivered" : "Refused"; p.updatedAt = j.at; p.statusSince = j.at; if (j.outcome === "exchanged") p.deliveredAt = j.at; } });
+            ping(j.outcome === "exchanged" ? "\u2713 Exchange done \u2014 new item delivered, old item collected (" + (response.data.back_awb || "") + ")" : "\u2713 Recorded: exchange did not happen. Bring the new item back.", "ok", [40, 60, 40]);
+          }
+          else if (j.kind === "status") ping("\u2713 " + ((j.list || []).length > 1 ? (j.list.length + " parcels") : (j.list || [""])[0]) + ": " + (LABELS[j.to] || j.to) + " \u2014 confirmed", "ok", [40, 60, 40]);
           else if (j.kind === "expense") ping("\u2713 Expense recorded", "ok", [40, 60, 40]);
           if (j.kind === "status") data.parcels.forEach(function (p) { if (j.list.includes(p.awb.toUpperCase())) { p.status = j.to; p.updatedAt = j.at; p.statusSince = j.at; if (j.to === "Delivered") p.deliveredAt = j.at; } });
           msg(j.kind === "deposit" ? money(response.data.net) + " handover recorded. Awaiting office receipt confirmation. Ref " + j.key : "Confirmed by NovaX: " + (j.to || j.kind) + ". Ref " + j.key, "ok", j.kind === "deposit" ? "cashResult" : j.kind === "expense" ? "expenseResult" : "notice");
@@ -289,6 +304,25 @@
     } catch (e) { msg(String(e.message || e), "error"); }
     finally { busy = false; render(); void flush(); }
   }
+  async function swapAction(awb, outcome) {
+    if (busy || flushing || !authorized) return;
+    busy = true; controls();
+    try {
+      var p = data.parcels.find(function (x) { return x.awb.toUpperCase() === String(awb).toUpperCase(); });
+      if (!p) throw new Error("Parcel not found on your route. Refresh.");
+      var pair = p.meta.swapPairAwb || "";
+      var reason = "";
+      if (outcome === "exchanged") {
+        if (!await confirm("Exchange done?", "1. Take the old item and put it in a bag.\n2. Stick return label " + pair + " on it, or write " + pair + " on the bag.\n3. Hand over the new item.\n\nConfirm only when you have the old item in your hand.")) return;
+      } else {
+        reason = await confirm("Exchange did not happen", "Keep the new item. It goes back to the merchant.", ["Customer does not have the old item", "Customer changed their mind", "Customer not available", "Address not found"]);
+        if (!reason) return;
+      }
+      var location = outcome === "exchanged" ? await gps() : null;
+      await save({ kind: "swap", awb: p.awb, outcome: outcome, reason: reason === true ? "" : reason, location: location });
+    } catch (e) { msg(String(e.message || e), "error"); }
+    finally { busy = false; render(); void flush(); }
+  }
   q("expenseForm").onsubmit = async function (e) {
     e.preventDefault(); if (busy || flushing) return; busy = true; controls();
     try {
@@ -319,6 +353,7 @@
   document.addEventListener("click", async function (e) {
     var retry = e.target.closest("[data-retry]");
     if (retry) { if (busy || flushing || !authorized) return; try { await lock(function () { queue.change(retry.dataset.retry,{state:"pending",error:""}); }); render(); void flush(); } catch (err) { msg(String(err.message || err),"error"); } return; }
+    var sw = e.target.closest("[data-swap]"); if (sw) { if (!sw.disabled) void swapAction(sw.dataset.awb, sw.dataset.swap); return; }
     var action = e.target.closest("[data-action]"); if (action) { if (!action.disabled) void update([action.dataset.awb.toUpperCase()], action.dataset.action); return; }
     var view = e.target.closest("[data-view]");
     if (view) { document.querySelectorAll(".view").forEach(function (el) { el.classList.toggle("hidden", el.id !== "view-" + view.dataset.view); }); document.querySelectorAll(".navbtn").forEach(function (b) { b.classList.toggle("active", b === view); if (b === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }); window.scrollTo(0, 0); return; }

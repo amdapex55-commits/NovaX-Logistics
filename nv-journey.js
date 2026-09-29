@@ -83,7 +83,19 @@
     return r;
   }
 
+  /* Nova Swap return leg: collected from the customer, delivered back to
+     the merchant -- same scans, words that say so. */
   function steps(p) {
+    var rows = baseSteps(p);
+    var leg = (p && (p.swapLeg || (p.meta && p.meta.swapLeg))) || "";
+    if (leg === "back") rows.forEach(function (r) {
+      if (r.status === "New booked") r.label = "Return booked";
+      else if (r.status === "Collected by rider") r.label = "Collected from customer";
+      else if (r.status === "Delivered") r.label = "Back with you";
+    });
+    return rows;
+  }
+  function baseSteps(p) {
     var st = String(p && p.status || "New booked"), seen = recorded(p);
     var fwd = intercity(p, seen) ? INTER : LOCAL;
 
@@ -97,7 +109,7 @@
     }
     /* A status from the other path (an intercity scan on a parcel recorded as
        local, or the reverse) still has to land somewhere sensible. */
-    if (has(INTER, st)) return steps(Object.assign({}, p, { pickupCity: "Karachi", city: "Lahore", steps: seen.concat(["Parcel now in transit"]) }));
+    if (has(INTER, st)) return baseSteps(Object.assign({}, p, { pickupCity: "Karachi", city: "Lahore", steps: seen.concat(["Parcel now in transit"]) }));
 
     var ofd = fwd.indexOf("Parcel out for delivery");
     if (has(ATTEMPT, st)) {

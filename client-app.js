@@ -1583,6 +1583,9 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
         var late=nvParcelDelayed(p);
         var cash=(typeof isRiderCashHolding==="function") && isRiderCashHolding(p);
         if(nvWithinNewGrace(p)) return;
+        /* The Nova Swap return leg waits at "New booked" until the rider
+           collects it at the customer's door. That is not stuck. */
+        if(p.swapLeg==="back" && st==="New booked") return;
         /* #16. The cockpit added a SECOND set on top of this one -- parcels
            sitting at a moving stage for over 48 hours -- so the command strip
            said "35 need attention" and "Your parcels" said "38 need you" on the
@@ -5943,8 +5946,214 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return { rows:nvReportRows(), complete:false };
     }
 
+    /* ═══ Nova Swap (29 Sep 2026) ═════════════════════════════════════════
+       One exchange, one visit: the rider hands the customer the replacement
+       and brings the old item back. The merchant picks a delivered order,
+       says what goes out and what comes back, sees ONE price and confirms.
+       Behind it client_create_swap() books two ordinary prepaid parcels --
+       out (to the customer) and back (to the merchant) -- priced by the
+       normal rate card; the back leg is charged only if it is collected. */
+    var NV_SW={ list:[], loaded:false, loading:false, sel:null, weight:"0.5 kg", busy:false, key:null, done:null, q:"", err:"" };
+    var NV_SW_STATUS={
+      "Requested":["Requested","info"], "On the way":["Rider on the way","info"], "Exchanged":["Exchanged","good"],
+      "Old item back":["Old item back with you","good"], "Could not exchange":["Could not exchange","bad"], "Cancelled":["Cancelled",""]
+    };
+    function nvSwKey(){ if(!NV_SW.key){ try{ NV_SW.key="swap-"+crypto.randomUUID(); }catch(e){ NV_SW.key="swap-"+Date.now()+"-"+Math.random().toString(36).slice(2); } } return NV_SW.key; }
+    function nvSwDemo(){ return !!window.__NOVAX_DEMO; }
+    function nvSwCandidates(){
+      var q=String(NV_SW.q||"").trim().toLowerCase(), qd=q.replace(/\D/g,"");
+      var used={}; (NV_SW.list||[]).forEach(function(s){ if(s.status!=="Cancelled") used[String(s.original_awb||"").toUpperCase()]=s.code; });
+      return (state.parcels||[]).filter(function(p){
+        if(!p || p.clientId!==(state.client&&state.client.id) || p.status!=="Delivered" || p.swapLeg) return false;
+        if(!q) return true;
+        var hay=[p.awb,p.consignee,p.city,p.orderId].join(" ").toLowerCase();
+        var ph=String(p.phone||"").replace(/\D/g,"");
+        return hay.indexOf(q)>-1 || (qd.length>=4 && ph.indexOf(qd)>-1);
+      }).sort(function(a,b){ return String(b.deliveredAt||b.date||"").localeCompare(String(a.deliveredAt||a.date||"")); })
+        .slice(0,8).map(function(p){ return { p:p, used:used[String(p.awb).toUpperCase()]||"" }; });
+    }
+    function nvSwQuote(){
+      var p=NV_SW.sel; if(!p) return null;
+      var client=clientById(state.client&&state.client.id);
+      var rc=normalizeRateCard(client&&client.rateCard, client&&client.rate);
+      var home=(state.client&&state.client.pickupCity)||"Karachi";
+      var out=bookingChargeBreakdown(rc, zoneForCity(p.city), NV_SW.weight).total;
+      var back=bookingChargeBreakdown(rc, zoneForCity(home), NV_SW.weight).total;
+      return { out:out, back:back, total:out+back, home:home };
+    }
+    function nvSwWaLink(s, p){
+      var ph=String((s&&s.customer_phone)||(p&&p.phone)||"").replace(/\D/g,"");
+      if(ph.indexOf("0")===0) ph="92"+ph.slice(1); else if(ph.length===10 && ph.indexOf("3")===0) ph="92"+ph;
+      var shop=(state.client&&state.client.name)||"your seller";
+      var outP=(state.parcels||[]).find(function(x){ return x && x.awb===(s&&s.out_awb); });
+      var link=""; try{ link=(outP && typeof customerTrackUrl==="function" && customerTrackUrl(outP))||""; }catch(e){}
+      var msg="Assalam o Alaikum "+((s&&s.customer_name)||"")+", your exchange from "+shop+" is on its way with NovaX (AWB "+(s&&s.out_awb||"")+").\n\n"+
+        "Please keep the old item ready"+((s&&s.coming_back)?" ("+s.coming_back+")":"")+". The rider will take it when he hands you the new one.\n"+
+        "Nothing to pay, nothing to print."+(link?("\n\nTrack it: "+link):"");
+      return "https://wa.me/"+ph+"?text="+encodeURIComponent(msg);
+    }
+    function nvSwLoad(force){
+      var sb=window.__nvSb;
+      if(nvSwDemo() || !sb){ NV_SW.loaded=true; nvSwRender(); return; }
+      if(NV_SW.loading || (NV_SW.loaded && !force)){ nvSwRender(); return; }
+      NV_SW.loading=true; nvSwRender();
+      Promise.resolve(sb.from("nv_swaps").select("*").order("created_at",{ascending:false}).limit(100)).then(function(r){
+        NV_SW.loading=false;
+        if(r && r.error){ NV_SW.err="Could not load your swaps just now."; nvSwRender(); return; }
+        NV_SW.err=""; NV_SW.list=(r&&r.data)||[]; NV_SW.loaded=true; nvSwRender();
+      },function(){ NV_SW.loading=false; NV_SW.err="Could not load your swaps just now."; nvSwRender(); });
+    }
+    function nvSwOpen(){ nvSwLoad(true); }
+    function nvSwRender(){
+      var root=document.getElementById("nvSwRoot"); if(!root) return;
+      if(root.contains(document.activeElement) && document.activeElement.id==="nvSwFind"){ nvSwRenderResults(); return; }
+      var h='';
+      if(NV_SW.done){
+        var d=NV_SW.done;
+        h+='<div class="panel nv-sw-done"><div class="nv-sw-tick" aria-hidden="true">✓</div><h3>Nova Swap '+escLabelText(d.code)+' booked</h3>'+
+           '<p class="nv-sw-sub">New item <b>'+escLabelText(d.out_awb)+'</b> goes to '+escLabelText(d.customer||"your customer")+'. Old item comes back on <b>'+escLabelText(d.back_awb)+'</b>. Total '+escLabelText(money(d.total))+'.</p>'+
+           '<ol class="nv-sw-steps"><li>Print both labels. Stick the first on the new item. Put the second (the return label) inside the parcel for the rider.</li><li>Tell your customer to keep the old item ready.</li><li>Request a pickup for the new item as usual.</li></ol>'+
+           '<div class="nv-sw-acts"><button type="button" class="action-btn" data-sw-act="print" data-awbs="'+escLabelText(d.out_awb+","+d.back_awb)+'">Print both labels</button>'+
+           '<button type="button" class="action-btn ghost" data-sw-act="wa" data-code="'+escLabelText(d.code)+'">Send to customer on WhatsApp</button>'+
+           '<button type="button" class="action-btn ghost" data-sw-act="again">Book another swap</button></div></div>';
+      } else {
+        h+='<div class="panel nv-sw-new"><div class="section-head"><div><h3>New Nova Swap</h3><p>We deliver the new item and bring the old one back in the same visit. Your customer needs no printer and pays nothing.</p></div></div>';
+        if(nvSwDemo()) h+='<p class="nv-sw-note">Nova Swap works on a real account. This is the demo.</p>';
+        h+='<div class="nv-sw-step"><span class="nv-sw-n">1</span><div class="nv-sw-body"><label for="nvSwFind">Which delivered order?</label>';
+        if(NV_SW.sel){
+          var sp=NV_SW.sel;
+          h+='<div class="nv-sw-pick"><div><b>'+escLabelText(sp.consignee||"")+'</b><span>'+escLabelText([sp.awb, sp.city, sp.phone].filter(Boolean).join(" · "))+'</span><span>'+escLabelText(sp.address||"")+'</span></div><button type="button" class="action-btn ghost" data-sw-act="change">Change</button></div>';
+        } else {
+          h+='<input id="nvSwFind" type="search" autocomplete="off" placeholder="AWB, customer name or phone" value="'+escLabelText(NV_SW.q)+'"><div id="nvSwResults" class="nv-sw-results"></div>';
+        }
+        h+='</div></div>';
+        var dis=NV_SW.sel?'':' disabled';
+        h+='<div class="nv-sw-step'+(NV_SW.sel?'':' is-off')+'"><span class="nv-sw-n">2</span><div class="nv-sw-body">'+
+           '<label for="nvSwSending">What are you sending?</label><input id="nvSwSending" maxlength="140" placeholder="e.g. Oud 100ml, size L shirt"'+dis+'>'+
+           '<label for="nvSwBack">What is coming back?</label><input id="nvSwBack" maxlength="140" placeholder="e.g. Oud 50ml, size M shirt"'+dis+'>'+
+           '<label>Weight of each item</label><div class="nv-sw-chips" role="radiogroup">'+["0.5 kg","1 kg","2 kg","3 kg"].map(function(w){
+             return '<button type="button" role="radio" aria-checked="'+(NV_SW.weight===w)+'" class="nv-sw-chip'+(NV_SW.weight===w?' on':'')+'" data-sw-w="'+w+'"'+dis+'>'+w+'</button>'; }).join("")+'</div>'+
+           '<label for="nvSwNote">Note for the rider <small>(optional)</small></label><input id="nvSwNote" maxlength="180" placeholder="e.g. Call before arriving"'+dis+'>'+
+           '</div></div>';
+        var q=nvSwQuote();
+        if(q){
+          h+='<div class="nv-sw-price" id="nvSwPrice"><div><span>New item to '+escLabelText(NV_SW.sel.city)+'</span><b>'+escLabelText(money(q.out))+'</b></div>'+
+             '<div><span>Old item back to you ('+escLabelText(q.home)+')</span><b>'+escLabelText(money(q.back))+'</b></div>'+
+             '<div class="nv-sw-total"><span>Nova Swap total</span><b>'+escLabelText(money(q.total))+'</b></div>'+
+             '<p>Taken from your wallet on the next invoice. If the customer has no old item, only the delivery is charged, like a refused parcel.</p></div>';
+        }
+        h+='<p class="nv-sw-err" id="nvSwErr" role="alert"></p>'+
+           '<button type="button" class="action-btn nv-sw-go" id="nvSwGo"'+(NV_SW.sel&&!nvSwDemo()?'':' disabled')+'>'+(NV_SW.busy?'Booking…':(q?'Book Nova Swap · '+escLabelText(money(q.total)):'Book Nova Swap'))+'</button></div>';
+      }
+      h+='<div class="panel nv-sw-list"><div class="section-head"><div><h3>Your swaps</h3></div></div>';
+      if(NV_SW.loading && !NV_SW.list.length) h+='<p class="footer-note">Loading…</p>';
+      else if(NV_SW.err) h+='<p class="footer-note">'+escLabelText(NV_SW.err)+' <button type="button" class="action-btn ghost" data-sw-act="reload">Retry</button></p>';
+      else if(!NV_SW.list.length) h+='<p class="footer-note">No swaps yet. When a customer wants a different size or item, book it above.</p>';
+      else h+=NV_SW.list.map(function(s){
+        var st=NV_SW_STATUS[s.status]||[s.status,""];
+        return '<div class="nv-sw-row"><div class="nv-sw-row-main"><b>'+escLabelText(s.code)+'</b> <span class="chip '+st[1]+'">'+escLabelText(st[0])+'</span>'+
+          '<div class="nv-sw-row-sub">'+escLabelText(s.customer_name)+' · '+escLabelText(s.customer_city)+' · '+escLabelText(nvDate(s.created_at))+'</div>'+
+          '<div class="nv-sw-row-sub">Out: '+escLabelText(s.sending)+' ('+escLabelText(s.out_awb)+') · Back: '+escLabelText(s.coming_back)+' ('+escLabelText(s.back_awb)+')</div></div>'+
+          '<div class="nv-sw-row-side"><b>'+escLabelText(money(Number(s.fee_out||0)+Number(s.fee_back||0)))+'</b><div class="nv-sw-row-acts">'+
+          (s.status==="Requested"?'<button type="button" class="action-btn ghost" data-sw-act="print" data-awbs="'+escLabelText(s.out_awb+","+s.back_awb)+'">Labels</button><button type="button" class="action-btn ghost" data-sw-act="wa" data-code="'+escLabelText(s.code)+'">WhatsApp</button><button type="button" class="action-btn ghost nv-sw-cancel" data-sw-act="cancel" data-code="'+escLabelText(s.code)+'">Cancel</button>':'')+
+          '</div></div></div>';
+      }).join("");
+      h+='</div>';
+      root.innerHTML=h;
+      nvSwRenderResults();
+      var keep=NV_SW.draft||{};
+      ["nvSwSending","nvSwBack","nvSwNote"].forEach(function(id){ var el=document.getElementById(id); if(el && keep[id]!=null) el.value=keep[id]; });
+    }
+    function nvSwRenderResults(){
+      var box=document.getElementById("nvSwResults"); if(!box) return;
+      var rows=nvSwCandidates();
+      if(!rows.length){ box.innerHTML='<p class="footer-note">'+(NV_SW.q?'No delivered order matches that.':'No delivered orders yet.')+'</p>'; return; }
+      box.innerHTML=rows.map(function(x){
+        var p=x.p;
+        return '<button type="button" class="nv-sw-res" data-sw-pick="'+escLabelText(p.awb)+'"'+(x.used?' disabled':'')+'><b>'+escLabelText(p.consignee||"")+'</b>'+
+          '<span>'+escLabelText([p.awb,p.city,p.deliveredAt?("delivered "+nvDate(p.deliveredAt)):""].filter(Boolean).join(" · "))+(x.used?' · already in '+escLabelText(x.used):'')+'</span></button>';
+      }).join("");
+    }
+    function nvSwSaveDraft(){ NV_SW.draft={}; ["nvSwSending","nvSwBack","nvSwNote"].forEach(function(id){ var el=document.getElementById(id); if(el) NV_SW.draft[id]=el.value; }); }
+    function nvSwSubmit(){
+      if(NV_SW.busy || !NV_SW.sel) return;
+      var err=document.getElementById("nvSwErr"); if(err) err.textContent="";
+      var sending=String((document.getElementById("nvSwSending")||{}).value||"").trim();
+      var back=String((document.getElementById("nvSwBack")||{}).value||"").trim();
+      var note=String((document.getElementById("nvSwNote")||{}).value||"").trim();
+      if(!sending){ if(err) err.textContent="Say what you are sending to the customer."; var f=document.getElementById("nvSwSending"); if(f) f.focus(); return; }
+      var sb=window.__nvSb; if(!sb){ if(err) err.textContent="Not connected. Refresh and try again."; return; }
+      nvSwSaveDraft(); NV_SW.busy=true;
+      var btn=document.getElementById("nvSwGo"); if(btn){ btn.disabled=true; btn.textContent="Booking…"; }
+      var sel=NV_SW.sel;
+      Promise.resolve(sb.rpc("client_create_swap",{ p_original_awb:sel.awb, p_sending:sending, p_returning:back||"Old item", p_weight:NV_SW.weight, p_back_weight:null, p_note:note, p_key:nvSwKey() })).then(function(r){
+        NV_SW.busy=false;
+        if(r && r.error){
+          var m=String(r.error.message||"Could not book this swap.");
+          if(/timeout|fetch|network/i.test(m)) m="We could not confirm the booking. Press Book again: the same request is recognised, so nothing is booked twice.";
+          else NV_SW.key=null;
+          nvSwRender(); var e2=document.getElementById("nvSwErr"); if(e2) e2.textContent=m; return;
+        }
+        var d=r.data||{}; d.customer=sel.consignee;
+        NV_SW.done=d; NV_SW.key=null; NV_SW.sel=null; NV_SW.q=""; NV_SW.draft={};
+        try{ toast("Nova Swap "+d.code+" booked · "+money(d.total),"success"); }catch(e){}
+        nvSwRender(); nvSwLoad(true);
+        try{ if(typeof window.__novaxReloadClientData==="function") window.__novaxReloadClientData(); }catch(e){}
+      },function(){
+        NV_SW.busy=false; nvSwRender();
+        var e3=document.getElementById("nvSwErr"); if(e3) e3.textContent="We could not confirm the booking. Press Book again: the same request is recognised, so nothing is booked twice.";
+      });
+    }
+    function nvSwPrint(awbs){
+      var have=awbs.filter(function(a){ return (state.parcels||[]).some(function(p){ return p && p.awb===a; }); });
+      if(have.length===awbs.length){ printLabels(awbs); return; }
+      toast("Loading the new labels…");
+      Promise.resolve(window.__novaxReloadClientData && window.__novaxReloadClientData()).then(function(){
+        var ok=awbs.filter(function(a){ return (state.parcels||[]).some(function(p){ return p && p.awb===a; }); });
+        if(ok.length===awbs.length) printLabels(awbs); else toast("The labels are not ready yet. Try again in a moment.","error");
+      });
+    }
+    document.addEventListener("input",function(e){
+      if(e.target && e.target.id==="nvSwFind"){ NV_SW.q=e.target.value; nvSwRenderResults(); }
+      else if(e.target && /^nvSw(Sending|Back|Note)$/.test(e.target.id)) nvSwSaveDraft();
+    });
+    document.addEventListener("click",function(e){
+      var t=e.target&&e.target.closest?e.target:null; if(!t) return;
+      var pick=t.closest("[data-sw-pick]");
+      if(pick){ var a=pick.getAttribute("data-sw-pick"); NV_SW.sel=(state.parcels||[]).find(function(p){ return p && p.awb===a; })||null; NV_SW.key=null; nvSwRender(); var s=document.getElementById("nvSwSending"); if(s) s.focus(); return; }
+      var w=t.closest("[data-sw-w]");
+      if(w){ nvSwSaveDraft(); NV_SW.weight=w.getAttribute("data-sw-w"); nvSwRender(); return; }
+      if(t.closest("#nvSwGo")){ nvSwSubmit(); return; }
+      var act=t.closest("[data-sw-act]"); if(!act) return;
+      var k=act.getAttribute("data-sw-act");
+      if(k==="change"){ NV_SW.sel=null; NV_SW.key=null; nvSwRender(); var f=document.getElementById("nvSwFind"); if(f) f.focus(); }
+      else if(k==="again"){ NV_SW.done=null; nvSwRender(); }
+      else if(k==="reload"){ nvSwLoad(true); }
+      else if(k==="print"){ nvSwPrint(String(act.getAttribute("data-awbs")||"").split(",").filter(Boolean)); }
+      else if(k==="wa"){
+        var code=act.getAttribute("data-code");
+        var s=(NV_SW.list||[]).find(function(x){ return x.code===code; }) || (NV_SW.done && NV_SW.done.code===code ? { code:code, out_awb:NV_SW.done.out_awb, customer_name:NV_SW.done.customer, customer_phone:"" } : null);
+        if(s && !s.customer_phone){ var op=(state.parcels||[]).find(function(p){ return p && p.awb===s.out_awb; }); if(op) s.customer_phone=op.phone; }
+        if(!s || !String(s.customer_phone||"").replace(/\D/g,"")){ toast("The customer's phone is not loaded yet. Try again in a moment.","error"); return; }
+        var win=window.open(nvSwWaLink(s),"_blank","noopener"); if(!win) toast("WhatsApp may have been blocked. Allow pop-ups and try again.","error");
+      }
+      else if(k==="cancel"){
+        var c=act.getAttribute("data-code");
+        Promise.resolve(window.nvAsk ? window.nvAsk({ title:"Cancel "+c+"?", body:"Both parcels of this swap are cancelled. Nothing is charged.", ok:"Cancel swap", cancel:"Keep it", danger:true }) : true).then(function(yes){
+          if(!yes) return;
+          act.disabled=true;
+          Promise.resolve(window.__nvSb.rpc("client_swap_cancel",{ p_code:c })).then(function(r){
+            if(r && r.error){ act.disabled=false; toast(r.error.message||"Could not cancel.","error"); return; }
+            toast(c+" cancelled.","success"); nvSwLoad(true);
+            try{ window.__novaxReloadClientData && window.__novaxReloadClientData(); }catch(e){}
+          },function(){ act.disabled=false; toast("Could not cancel just now.","error"); });
+        });
+      }
+    });
+
     function renderClientReportFull(){
       if(state.activeClientTab==="reports"){ try{ nvReport2Open(); }catch(e){} }
+      if(state.activeClientTab==="swap"){ try{ nvSwOpen(); }catch(e){} }
       if(state.activeClientTab==="profile"){ try{ nvPfOpen(); }catch(e){} }
       const tbody=document.getElementById("clientReportFullRows"); if(!tbody) return;
       const sel=document.getElementById("repStatus");
@@ -12286,7 +12495,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     function pickupEligibleParcels(){
       const active=activePickupAwbs();
-      return newBookedParcels().filter(function(p){ return !active.has(p.awb); });
+      /* A Nova Swap return is collected from the CUSTOMER at the exchange,
+         never picked up from the merchant. */
+      return newBookedParcels().filter(function(p){ return !active.has(p.awb) && p.swapLeg!=="back"; });
     }
     /* ── Saved pickup addresses (28 Sep 2026) ─────────────────────────────
        Stored in pickup_addresses, written only through nv_pickup_address_*
@@ -12724,7 +12935,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        A function declaration is fully hoisted, so keeping the data inside it
        makes the call safe from any point in the file. */
     function normalizeClientTab(id){
-      var TABS = ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","integrations",
+      var TABS = ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","swap","integrations",
                   "reports","money","profile","subAccounts","tickets","support"];
       var ALIASES = { wallet:"money", payments:"money", payment:"money", invoices:"money" };
       var v = String(id || "").trim();
@@ -13107,11 +13318,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // the old split was quietly acting as the permission boundary, so
       // merging the tabs without this change would have handed every Finance
       // sub-account the ability to withdraw to any IBAN they typed.
-      Owner:     ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","integrations","reports","money","profile","subAccounts","tickets","support"],
+      Owner:     ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","swap","integrations","reports","money","profile","subAccounts","tickets","support"],
       /* Profile is viewable by every seat (read-only); nv_profile_save
          refuses anyone but the owner. */
       Finance:   ["dashboard","reports","money","profile","tickets","support"],
-      Warehouse: ["dashboard","newBooking","bulkBooking","awbLabel","loadSheet","profile","support"],
+      Warehouse: ["dashboard","newBooking","bulkBooking","swap","awbLabel","loadSheet","profile","support"],
       Support:   ["dashboard","profile","tickets","support"]
     };
     /* Until the seat lookup has actually answered, act as the most limited
@@ -13907,7 +14118,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            merchant and a different one to their customer. Same field, both
            screens, from here on. */
         deliveredAt:r.delivered_at||null,
-        statusSince:r.status_since||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.status_since||r.booked_at), stage:nvJStage(r,m).stage, totalStages:nvJStage(r,m).total, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _meta:m, trackingToken:r.tracking_token||"", _raw:{ consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0) },
+        statusSince:r.status_since||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.status_since||r.booked_at), stage:nvJStage(r,m).stage, totalStages:nvJStage(r,m).total, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", swapId:m.swapId||"", swapLeg:m.swapLeg||"", swapPairAwb:m.swapPairAwb||"", pickupContact:(m.pickupContact&&typeof m.pickupContact==="object")?m.pickupContact:null, category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _meta:m, trackingToken:r.tracking_token||"", _raw:{ consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0) },
         // NovaX distance pricing. Null on every parcel booked before it existed,
         // which is exactly how the label and invoice detect "flat, show nothing".
         pricingMode:r.pricing_mode||"", distanceKm:(r.distance_km!=null?Number(r.distance_km):null),
@@ -15821,6 +16032,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           var open=wrap.classList.toggle("open");
           btn.setAttribute("aria-expanded",open?"true":"false");
           btn.textContent=open?"More \u25b4":"More \u25be";
+          /* The sidebar menu always dropped DOWN, so on a laptop screen the
+             last rows (NovaX AI, Log out) fell below the window with no way
+             to scroll to them. Open upward when there is more room above,
+             and cap the height to what is visible either way. */
+          if(open){
+            wrap.classList.remove("nv-more-up");
+            try{
+              var r=btn.getBoundingClientRect(), vh=window.innerHeight||document.documentElement.clientHeight;
+              var below=vh-r.bottom-12, above=r.top-12;
+              var need=menu.scrollHeight;
+              var up=need>below && above>below;
+              wrap.classList.toggle("nv-more-up", up);
+              menu.style.maxHeight=Math.max(160, Math.floor(up?above:below))+"px";
+            }catch(_){}
+          }
         });
         document.addEventListener("click",function(e){ if(!wrap.contains(e.target)){ wrap.classList.remove("open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; } });
         document.addEventListener("keydown",function(e){ if(e.key==="Escape" && wrap.classList.contains("open")){ wrap.classList.remove("open"); btn.setAttribute("aria-expanded","false"); btn.textContent="More \u25be"; btn.focus(); } });
@@ -19249,6 +19475,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ["newBooking","New Booking","Book a single parcel"],
       ["awbLabel","AWB Label","Print labels, request a pickup"],
       ["bulkBooking","Bulk Booking","Import a CSV of orders"],
+      ["swap","Nova Swap","Exchange an item: new one out, old one back"],
       ["reports","Reports","Performance, COD and every parcel"],
       ["profile","Profile","Business name, logo, phone and address"],
       ["payments","Payments","Invoices and settlement"],
