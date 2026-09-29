@@ -1596,6 +1596,15 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
            parcel reached its destination city. A parcel rescanned daily at the
            same depot keeps resetting the first and never the second. */
         var stalled = NV_MOVING_STAGES.indexOf(st)>=0 && Number(agingHours(p))>48;
+        /* A return that has REACHED the merchant is finished. /return/i kept
+           every "Return to shipper" in this set for ever -- 130 of the 132 on
+           the live book were over a week old -- so "need you" could never reach
+           zero and every count built on it was inflated by history. A
+           completed return now shows for 3 days (so the merchant notices it
+           came back) and then drops out; returns still on the way stay in. */
+        if(st==="Return to shipper"){
+          var since=Date.parse(p.statusSince||""); if(!Number.isFinite(since) || (Date.now()-since)>72*3600000) return;
+        }
         if(late || stalled || ["Refused","Consignee not available","Out of service area"].indexOf(st)>=0 || /return/i.test(st) ||
            (p.exception && String(p.exception).trim()) || cash || nvMissingDeliveryInfo(p)){
           set[p.awb]=p;
@@ -2434,7 +2443,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
     }
     function alertForParcel(p){ return {level:"ok",label:nvOutcomeSettled(p)?"Time to deliver":"Waiting",due:agingLabel(agingHours(p))}; }
     function urgencyClass(l){ if(l==="critical"||l==="super urgent") return "bad"; if(l==="warning"||l==="urgent") return "warn"; return "good"; }
-    function setParcelStatus(p,status){ p.status=status; p.statusAgeHours=0; p.statusSince=new Date().toISOString(); p.updated=time(); p.stage=Math.max(0,STATUS_TAGS.indexOf(status)); if(!Array.isArray(p.steps)) p.steps=[]; if(!p.steps.includes(status)) p.steps.push(status); }
+    function setParcelStatus(p,status){ p.status=status; p.statusAgeHours=0; p.statusSince=new Date().toISOString(); p.updated=time(); p.stage=Math.max(0,STATUS_TAGS.indexOf(status)); if(!Array.isArray(p.steps)) p.steps=[]; if(!p.steps.includes(status)) p.steps.push(status); try{ if(window.NVJourney){ var g=window.NVJourney.progress(p); p.stage=g.stage; p.totalStages=g.total; } }catch(e){} }
     /* ═══ Parcel progress ══════════════════════════════════════════════════
        STATUS_TAGS is not a linear pipeline. Indices 0-6 are the delivery path;
        7-11 are exceptions that happen AT the delivery attempt; 12-16 are the
@@ -2449,7 +2458,12 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
                               "Reassigned","Out of service area"];
     var NV_RETURN_PATH=["Ready for return","Return in transit","Return received at origin",
                         "Return out for delivery","Return to shipper"];
-    function nvProgressPct(status){
+    /* Both helpers now take the parcel and ask NVJourney (nv-journey.js), the
+       one journey client, admin and rider share: a Karachi-to-Karachi parcel
+       has 5 steps, not the intercity 7. Status-only calls keep the old path. */
+    function nvJourneyOf(p){ try{ return (p && typeof p==="object" && window.NVJourney) ? window.NVJourney.progress(p) : null; }catch(e){ return null; } }
+    function nvProgressPct(status, p){
+      var jr=nvJourneyOf(p); if(jr) return jr.pct;
       var st=(typeof nvStatus==="function"?nvStatus(status):status)||"";
       if(st==="Delivered") return 100;
       /* Percentage is derived from the SAME fraction the step label shows.
@@ -2464,7 +2478,8 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
       return 0;
     }
     /* "5 of 7" along whichever path applies, instead of "6/16". */
-    function nvProgressStep(status){
+    function nvProgressStep(status, p){
+      var jr=nvJourneyOf(p); if(jr) return jr.step;
       var st=(typeof nvStatus==="function"?nvStatus(status):status)||"";
       var d=NV_DELIVERY_PATH.indexOf(st);
       if(d>-1) return (d+1)+"/"+NV_DELIVERY_PATH.length;
@@ -3086,6 +3101,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return "No parcels match “"+escLabelText(term)+"”. "+
           '<button class="action-btn ghost" onclick="nvClearParcelSearch()">Clear search</button>';
       }
+      if(window.__nvLoadFailed) return 'Your parcels could not be loaded. <button class="action-btn ghost" onclick="window.__novaxRetryLoad&&window.__novaxRetryLoad()">Retry</button>';
+      if(!window.__novaxClientDataReady) return "Loading your parcels\u2026";
       return "No parcels in this date range.";
     }
     function nvClearParcelSearch(){
@@ -3144,7 +3161,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(reason && typeof nvAttentionParcels==="function"){
         attnSet=new Set(nvAttentionParcels().map(x=>x&&x.awb));
       }
-      return clientScopedParcels().filter(p=>{
+      /* The attention chip counts the WHOLE book (nvAttentionParcels), so its
+         list must too: filtering it through the date range made "5 need you"
+         open a list of 2 whenever the range was shorter than the backlog. */
+      const base=reason ? ((typeof getCurrentClientParcels==="function")?getCurrentClientParcels():clientScopedParcels()) : clientScopedParcels();
+      return base.filter(p=>{
         if(!`${p.awb} ${p.consignee} ${p.city} ${p.status}`.toLowerCase().includes(t)) return false;
         if(reason){
           if(!attnSet || !attnSet.has(p.awb)) return false;
@@ -3187,7 +3208,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // is appended rather than pretending it sits on the delivery path.
       const idx=FLOW.indexOf(cur);
       let rows=[];
-      if(idx>=0){
+      if(window.NVJourney){
+        rows=window.NVJourney.steps(p).map(r=>({ status:r.status, label:r.label, state:r.state, bad:r.bad,
+          note:(r.state==="now" && r.bad && p.exception) ? p.exception : r.note }));
+      } else if(idx>=0){
         rows=FLOW.slice(0,Math.max(idx+1,1)).map((s,i)=>({status:s,label:U.statusMeta(s).short,
           state:i===idx?"now":"done"}));
         FLOW.slice(idx+1).forEach(s=>rows.push({status:s,label:U.statusMeta(s).short,state:"todo"}));
@@ -3419,7 +3443,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var sayOnce = missing>=2 && missing===doneRows.length-(doneRows.some(function(r){return r.at;})?1:0)
         ? missing : 0;
       return '<div class="nv-jt">'+stamped.map(function(r){
-        var cls = r.state==="now" ? "is-now" : (r.state==="todo" ? "is-todo" : "is-done");
+        var cls = (r.state==="now" ? "is-now" : (r.state==="todo" ? "is-todo" : "is-done"))+(r.bad?" is-bad":"");
         return '<div class="nv-jt-row '+cls+'">'+
                  '<span class="nv-jt-dot"></span>'+
                  '<div class="nv-jt-body">'+
@@ -3543,7 +3567,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return '<span class="nv-done-date">'+escLabelText(st)+'</span>';
       }
       return '<div class="meter '+(statusClass(p)==="bad"?"red":"blue")+'"><span style="width:'+pr+'%"></span></div>'
-        +'<div class="meter-caption"><span>'+escLabelText(nvProgressStep(p.status))+'</span><span>'+pr+'%</span></div>'
+        +'<div class="meter-caption"><span>'+escLabelText(nvProgressStep(p.status,p))+'</span><span>'+pr+'%</span></div>'
         +nvEtaHtml(p);
     }
     /* The mobile card carries the same fact as the table's Journey column, so
@@ -3726,8 +3750,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
-      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${nvCodCell(p)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
-      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><label style="display:inline-flex;align-items:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -6px;padding:10px 6px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${nvCodCell(p)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
+      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${nvCodCell(p)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
+      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><label style="display:inline-flex;align-items:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -6px;padding:10px 6px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${nvCodCell(p)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
       /* "Showing 25 of 189" with one control to load more. Without this the
          merchant cannot tell whether the list ended or was truncated. */
       (function(){
@@ -3975,7 +3999,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         ["Return out for delivery","Return out for delivery"],
         ["Return to shipper","Returned to you"]
       ];
-      const rows=important
+      /* Same journey as the drawer, admin and the rider app (nv-journey.js):
+         the real path for this route, upcoming steps shown as upcoming. */
+      const rows=window.NVJourney ? window.NVJourney.steps(p).map((r,i)=>{
+          const current=r.state==="now", todo=r.state==="todo";
+          const problem=r.bad && (current || r.status===p.status);
+          const place=p.branch||p.city||"";
+          const whenNote=current?[place,p.updated||""].filter(Boolean).join(" | "):"";
+          const friendly=FRIENDLY_STEP_NOTE[r.status]||r.label;
+          const note=problem?(p.exception||friendly):(todo?"Next":(r.note||friendly)+(whenNote?(" — "+whenNote):""));
+          return `<div class="seller-step ${current?"current":""} ${problem?"problem":""} ${todo?"pending":""}"><div class="step-dot">${i+1}</div><div><strong>${escLabelText(r.label)}</strong> <span>${escLabelText(note)}</span></div><span class="chip ${problem?"bad":current?"info":todo?"":"good"}">${problem?"review":current?"current":todo?"next":"done"}</span></div>`;
+        }) : important
         .filter(([status])=>(p.steps||[]).includes(status)||p.status===status||(["Refused","Consignee not available","Reattempt"].includes(status)&&isRefusalReview(p)))
         .map(([status,label],i)=>{
           const current=p.status===status;
@@ -5615,6 +5649,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return { ok:false, count:0, awbs:[], error:"Label content did not render." };
       }
       stage.style.display="block";
+      /* Say something the moment Print is pressed. The dialog can take a
+         second or two (images, fonts), and a silent button gets pressed
+         again -- two dialogs, or a merchant who thinks nothing happened. */
+      try{ toast(valid.length===1?("Opening the print window for "+valid[0].awb+"…"):("Opening the print window for "+valid.length+" labels…")); }catch(e){}
       const imgs=Array.from(stage.querySelectorAll("img"));
       const waitAll=Promise.all(imgs.map(img=>new Promise(resolve=>{
         if(img.complete){ resolve(); return; }
@@ -5633,7 +5671,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           return;
         }
         nvPrintThemeLight();
-        window.print();
+        try{ window.print(); }
+        catch(printErr){
+          stage.style.display="none"; stage.innerHTML=""; stage.classList.remove("bulk-print");
+          try{ nvConfirmPrinted(valid.map(p=>p.awb), null, true); }catch(e){ toast("This browser could not open a print window. Use Download PDF on the AWB tab.","error"); }
+          return;
+        }
         // NovaX fix (Autopilot AWB printing v1): the old fixed 500ms
         // cleanup could fire before the browser's print dialog actually
         // finished reading the stage on slower devices, which is what
@@ -5697,7 +5740,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        printed unless the merchant confirms, which is the opposite of the old
        behaviour -- the portal no longer claims a label exists on the strength
        of a print() call that may have done nothing. */
-    function nvConfirmPrinted(awbs, onYes){
+    function nvConfirmPrinted(awbs, onYes, failed){
       if(!awbs||!awbs.length) return;
       var host=document.getElementById("nvPrintConfirm");
       if(!host){
@@ -5707,20 +5750,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         host.style.cssText="position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:calc(100% - 28px);z-index:99999;display:none;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;background:var(--nvu-bg);border:1px solid var(--nvu-line-2);box-shadow:var(--sh-2);font-size:13px;color:var(--nvu-ink)";
         host.innerHTML='<span id="nvPrintConfirmText"></span>'+
           '<button type="button" id="nvPrintConfirmYes" style="min-height:38px;padding:8px 12px;border-radius:9px;border:1px solid var(--nvu-line-2);background:var(--nvu-accent);color:var(--nvu-accent-ink);font-weight:700;cursor:pointer">Yes, it printed</button>'+
+          '<button type="button" id="nvPrintConfirmPdf" style="min-height:38px;padding:8px 12px;border-radius:9px;border:1px solid var(--nvu-line-2);background:transparent;color:var(--nvu-ink);font-weight:700;cursor:pointer">Download PDF</button>'+
           '<button type="button" id="nvPrintConfirmNo" style="min-height:38px;padding:8px 12px;border-radius:9px;border:1px solid var(--nvu-line-2);background:transparent;color:var(--nvu-ink);font-weight:600;cursor:pointer">No</button>';
         document.body.appendChild(host);
       }
+      host.style.flexWrap="wrap";
+      /* No afterprint means no print window was ever seen: blocked by the
+         browser, an in-app webview (Instagram, Facebook) that has no print, or
+         a phone that silently ignored it. The PDF is the way out of all three,
+         so it is offered right here instead of on another tab. */
       var txt=document.getElementById("nvPrintConfirmText");
-      if(txt) txt.textContent=awbs.length===1
-        ? ("Did "+awbs[0]+" print? It is still marked not printed.")
-        : ("Did all "+awbs.length+" labels print? They are still marked not printed.");
+      var what=awbs.length===1?awbs[0]:(awbs.length+" labels");
+      if(txt) txt.textContent=failed
+        ? ("This browser could not open a print window for "+what+". Download the PDF and print or share it from there.")
+        : ("No print window was detected for "+what+". If it did not open, download the PDF instead. Did it print?");
+      var yesB=document.getElementById("nvPrintConfirmYes"); if(yesB) yesB.style.display=failed?"none":"";
+      var pdfB=document.getElementById("nvPrintConfirmPdf");
+      if(pdfB) pdfB.onclick=function(){ host.style.display="none"; try{ nvDownloadLabelsPdf(awbs, null); }catch(e){ toast("Could not build the PDF. Open the AWB tab and try Download PDF.","error"); } };
       host.style.display="flex";
       if(nvConfirmPrinted._t) clearTimeout(nvConfirmPrinted._t);
       nvConfirmPrinted._t=setTimeout(function(){ host.style.display="none"; },20000);
       var yes=document.getElementById("nvPrintConfirmYes");
       var no=document.getElementById("nvPrintConfirmNo");
       if(yes) yes.onclick=function(){ host.style.display="none"; try{ onYes&&onYes(); }catch(e){} };
-      if(no) no.onclick=function(){ host.style.display="none"; toast("Left as not printed.","success"); };
+      if(no){ no.textContent=failed?"Close":"No"; no.onclick=function(){ host.style.display="none"; if(!failed) toast("Left as not printed.","success"); }; }
     }
     function nvOfferPrintUndo(awbs){
       if(!awbs||!awbs.length) return;
@@ -7907,7 +7960,42 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const weightEl=document.getElementById("bookingWeight");
       const breakdown=bookingChargeBreakdown(rc, zone, weightEl?weightEl.value:"0.8 kg");
       hint.textContent=zoneLabel(zone)+" · base Rs "+fmt(breakdown.base)+" + additional Rs "+fmt(breakdown.additional)+" ("+breakdown.extraKg+" extra kg) = estimated total Rs "+fmt(breakdown.total)+(breakdown.overCap?" (over 5kg normal slab, confirm manually)":"");
+      try{ nvRenderBookReview(); }catch(e){}
     }
+    /* FINAL REVIEW (21 Sep list, booking-to-print). The delivery charge only
+       lived in a grey hint under the city field, worded as a zone formula, so
+       a merchant pressed Create Booking without ever seeing what the parcel
+       would cost them or what they would get back. This line sits directly
+       above the button and says it in money: charge, COD, what reaches the
+       wallet. Same bookingChargeBreakdown() the hint uses, so the two can
+       never disagree. The server's fee is still the one that counts -- the
+       success message below quotes the booked row, not this estimate. */
+    function nvBookReviewData(){
+      var cityEl=document.getElementById("bookingCity"), wEl=document.getElementById("bookingWeight"), codEl=document.getElementById("bookingCod");
+      var city=String(cityEl&&cityEl.value||"").trim(); if(!city) return null;
+      var w=String(wEl&&wEl.value||"").trim(); if(!w || nvWeightProblem(w)) return null;
+      var client=clientById(state.client&&state.client.id);
+      var rc=normalizeRateCard(client&&client.rateCard, client&&client.rate);
+      var b=bookingChargeBreakdown(rc, zoneForCity(city), w);
+      var codRaw=String(codEl&&codEl.value||"").trim();
+      var cod=codRaw===""?null:Number(codRaw);
+      if(cod!==null && (!Number.isFinite(cod) || cod<0)) cod=null;
+      return { city:city, kg:b.weightKg, fee:b.total, cod:cod, overCap:b.overCap };
+    }
+    function nvRenderBookReview(){
+      var el=document.getElementById("nvBookReview"); if(!el) return;
+      var d=nvBookReviewData();
+      if(!d){ el.hidden=true; el.innerHTML=""; return; }
+      var kg=Number.isFinite(d.kg)?(Math.round(d.kg*100)/100)+" kg":"";
+      var line2=d.cod===null ? "Enter the COD amount to see what reaches your wallet."
+        : d.cod===0 ? "Prepaid: nothing is collected at the door. The charge is taken from your wallet."
+        : "COD "+money(d.cod)+" collected · <b>you receive "+money(Math.max(0,d.cod-d.fee))+"</b>"+(d.cod<d.fee?" (the charge is more than the COD, so the rest is taken from your wallet)":"");
+      el.innerHTML='<div class="nv-book-review-top"><span>Delivery charge</span><b>'+money(d.fee)+'</b></div>'+
+        '<div class="nv-book-review-sub">'+escLabelText([kg, "to "+d.city].filter(Boolean).join(" "))+(d.overCap?" · over 5 kg, NovaX confirms the rate":"")+'</div>'+
+        '<div class="nv-book-review-sub">'+line2+'</div>';
+      el.hidden=false;
+    }
+    window.nvBookReviewCharge=function(){ try{ var d=nvBookReviewData(); return d?d.fee:null; }catch(e){ return null; } };
     /* ==================================================================
        NovaX distance pricing -- merchant side.
 
@@ -8174,6 +8262,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          ETA left to miss. */
       if(st === "Delivered" || st === "Return to shipper" || st === "Cancelled by client") return "";
       if(nvOutcomeSettled(p)) return "";
+      /* A reattempt, a reassignment or a return is not NovaX running late: the
+         customer asked for another day, or the parcel is on its way back. The
+         booking-date promise kept counting through all of them ("4d late" on a
+         parcel the customer postponed). Say what is happening instead. */
+      if(window.NVJourney && !window.NVJourney.lateApplies(p)){
+        var why = st==="Reattempt" ? "Reattempt scheduled" : st==="Reassigned" ? "With another rider" : /return/i.test(st) ? "Returning to you" : "";
+        return why ? '<div class="nv-eta"><span class="nv-eta-long">'+escLabelText(why)+'</span><span class="nv-eta-short">'+escLabelText(why)+'</span></div>' : "";
+      }
       /* #9. Once a parcel has reached its destination city the booking-date
          promise is the wrong clock: it kept reporting "late - was due Mon 22"
          for a parcel that arrived on time and is simply sitting at the depot
@@ -8841,6 +8937,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             ? ((document.getElementById("bookingDestArea")||{}).value||null)
             : null) });
         const awb=mapped&&mapped.awb;
+        /* The booked row's own fee and COD -- what the server charged, not the
+           form's estimate. */
+        const nvBookedFee=Number(mapped&&mapped.fee||0), nvBookedCod=Number(mapped&&mapped.cod||0);
+        const nvChargeLine="Delivery charge "+money(nvBookedFee)+(nvBookedCod>0?(" · COD "+money(nvBookedCod)+" · you receive "+money(Math.max(0,nvBookedCod-nvBookedFee))):" · prepaid");
+        const nvSuccessInfo={ fee:nvBookedFee, cod:nvBookedCod, city:(mapped&&mapped.city)||"", chargeLine:nvChargeLine };
         /* Captured BEFORE resetBookingForm() runs. That function sets every
            select back to index 0 -- which used to land on "Lahore" but now
            lands on the blank "Select destination city..." placeholder added
@@ -8858,14 +8959,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            navigation used elsewhere on this page. */
         if(confirmLine){ confirmLine.innerHTML=mapped.packingNoteWarning
           ? `AWB ${escLabelText(awb)} was created, but its packing note was not saved. Check the note with NovaX before dispatch. <button type="button" class="ghost-btn" data-client-tab="awbLabel" style="margin-left:8px">Open AWB label</button>`
-          : `Synced to NovaX. AWB ${escLabelText(awb)} is ready to print. <button type="button" class="ghost-btn" data-client-tab="awbLabel" style="margin-left:8px">Open AWB label</button>`;
+          : `AWB ${escLabelText(awb)} created and ready to print. <span style="font-weight:600;color:var(--nvu-ink-2)">${escLabelText(nvChargeLine)}.</span> <button type="button" class="ghost-btn" data-client-tab="awbLabel" style="margin-left:8px">Print AWB label</button>`;
           confirmLine.style.color=mapped.packingNoteWarning?"#a15c00":""; confirmLine.style.display="block"; }
         // NovaX fix (confidence messaging): explicit "synced" + "ready to
         // print" pairing matches the two things the client actually needs to
         // know once the server has confirmed the booking.
         nvClearBookingDraft(); toast(mapped.packingNoteWarning
           ? `${awb} booked, but its packing note was not saved. Check it before dispatch.`
-          : `${awb} synced to NovaX. AWB ready to print.`,mapped.packingNoteWarning?"error":"success");
+          : `${awb} booked · ${nvChargeLine}. Ready to print.`,mapped.packingNoteWarning?"error":"success");
         /* NovaX motion: the parcel just became real -- print its label. Runs
            after the booking has already succeeded and cannot affect it. */
         // The label animation owns the screen first; the what-next card and
@@ -8873,13 +8974,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var __afterReveal=function(){
           if(preBookingCount===0 && localStorage.getItem("novaxFirstBookingCompleted")!=="1"){
             try{ localStorage.setItem("novaxFirstBookingCompleted","1"); }catch(e){}
-            if(window.novaxShowFirstBookingSuccess) window.novaxShowFirstBookingSuccess(awb);
+            if(window.novaxShowFirstBookingSuccess) window.novaxShowFirstBookingSuccess(awb, Object.assign({ first:true }, nvSuccessInfo));
             if(window.novaxAutopilotSay) window.novaxAutopilotSay("Great. Your first parcel is booked. I\u2019ll watch it from pickup to delivery and tell you if anything needs attention.",[
               { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:awb },
               { label:"Print AWB", kind:"local", type:"go_awb_label" }
             ]);
           } else if(window.innerWidth<=760 && window.novaxShowFirstBookingSuccess){
-            window.novaxShowFirstBookingSuccess(awb);
+            window.novaxShowFirstBookingSuccess(awb, Object.assign({ first:false }, nvSuccessInfo));
           }
         };
         try{
@@ -9935,8 +10036,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         b.addEventListener("click",function(){
           b.disabled=true; b.textContent="Retrying…";
           try{
+            /* loadAll() never rejects -- a failed retry re-shows this bar
+               itself -- so hiding it here on resolve hid a still-failing
+               state. A successful load clears the bar on its own. */
             Promise.resolve(window.__novaxRetryLoad && window.__novaxRetryLoad())
-              .then(function(){ nvAccountUnconfirmedClear(); })
+              .then(function(){ if(b.isConnected){ b.disabled=false; b.textContent="Retry"; } })
               .catch(function(){ b.disabled=false; b.textContent="Retry"; });
           }catch(e){ b.disabled=false; b.textContent="Retry"; }
         });
@@ -12798,6 +12902,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        TypeError here and took the whole bundle down with it. */
     { const b=document.getElementById("bookParcelBtn"); if(b) b.addEventListener("click",()=>showClientTab("newBooking")); }
     document.getElementById("nvBookingForm").addEventListener("submit",function(e){ e.preventDefault(); quickBooking(); });
+    (function(){
+      var f=document.getElementById("nvBookingForm"); if(!f) return;
+      var t=null;
+      function kick(){ clearTimeout(t); t=setTimeout(function(){ try{ nvRenderBookReview(); }catch(e){} },120); }
+      f.addEventListener("input",kick); f.addEventListener("change",kick);
+      setTimeout(kick,400);
+    })();
     /* BUG FIX: the desktop "+ Book Parcel" floating button (#nvDesktopQuickBook,
        visible at >=901px, bottom-right) had NO event listener at all. It is the
        largest, greenest, most prominent control on the page, so merchants who
@@ -13582,6 +13693,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var MY=null, loaded=false, shadow={}, subscribed=false;
       var TAGS=(typeof STATUS_TAGS!=="undefined"&&STATUS_TAGS&&STATUS_TAGS.length)?STATUS_TAGS:["New booked"];
       function stageOf(s){ var i=TAGS.indexOf(s); return i<0?0:i; }
+      /* stage/totalStages used to be the status's index in all 17 statuses,
+         so a delivered parcel was "6 of 16". Now the shared journey's count. */
+      var __nvJSC=null;
+      function nvJStage(r,m){
+        if(__nvJSC && __nvJSC.r===r) return __nvJSC.v;
+        var v={ stage:stageOf(r.status), total:TAGS.length-1 };
+        try{ if(window.NVJourney){ var g=window.NVJourney.progress({ status:nvStatus(r.status)||r.status, city:r.city, pickupCity:(m&&m.pickupCity)||"", steps:(m&&m.steps)||[] }); v={ stage:g.stage, total:g.total }; } }catch(e){}
+        __nvJSC={ r:r, v:v }; return v;
+      }
       /* A fallback journey for a parcel with no recorded steps. TAGS lists
          Delivered BEFORE the failure and return statuses, so slicing up to a
          Refused parcel's index drew "Delivered" as a completed step above
@@ -13787,7 +13907,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            merchant and a different one to their customer. Same field, both
            screens, from here on. */
         deliveredAt:r.delivered_at||null,
-        statusSince:r.status_since||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.status_since||r.booked_at), stage:stageOf(r.status), totalStages:TAGS.length-1, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _meta:m, trackingToken:r.tracking_token||"", _raw:{ consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0) },
+        statusSince:r.status_since||r.booked_at||new Date().toISOString(), statusAgeHours:hrs(r.status_since||r.booked_at), stage:nvJStage(r,m).stage, totalStages:nvJStage(r,m).total, steps:(m.steps&&m.steps.length?m.steps:stepsOf(r.status)), processHistory:(Array.isArray(m.processHistory)?m.processHistory:[]), risk:Number(m.risk||0), rider:r.rider_id||"", branch:m.branch||"", service:m.service||"COD Standard", weight:m.weight||"", pickupCity:m.pickupCity||"", category:m.category||"", fragile:m.fragile||"", allowOpen:(m.allowOpen==="Yes"?"Yes":"No"), paymentMode:m.paymentMode||"COD", orderId:m.orderId||"", referenceNo:m.referenceNo||m.reference||m.ref||m.customerRef||"", source:m.source||"", returnProof:m.returnProof||"", clientFeedback:m.clientFeedback||"", comments:m.comments||"", proofPhoto:m.proofPhoto||"", signature:m.signature||"", signedAt:m.signedAt||"", callRecord:m.callRecord||"", awbPrinted:!!m.awbPrinted, awbPrintedAt:m.awbPrintedAt||"", _meta:m, trackingToken:r.tracking_token||"", _raw:{ consignee:r.consignee||"", phone:r.phone||"", address:r.address||"", city:r.city||"", cod:Number(r.cod_amount||0) },
         // NovaX distance pricing. Null on every parcel booked before it existed,
         // which is exactly how the label and invoice detect "flat, show nothing".
         pricingMode:r.pricing_mode||"", distanceKm:(r.distance_km!=null?Number(r.distance_km):null),
@@ -13971,6 +14091,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             var el=document.getElementById(id);
             if(el && !el.children.length) el.innerHTML=row+row+row;
           });
+          /* The desktop parcel table is a <tbody>: a div inside it is thrown
+             out by the parser, so it needs rows of its own. */
+          var tb=document.getElementById("clientParcelRows");
+          if(tb && !tb.children.length) tb.innerHTML=[1,2,3,4].map(function(){ return '<tr class="nv-skel-tr"><td colspan="7">'+row+'</td></tr>'; }).join("");
         }catch(e){}
       }
 
@@ -13989,6 +14113,26 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }catch(e){ return { data:null, error:{message:String((e&&e.message)||e)} }; }
       }
 
+      /* A load that FAILED must never look like an account with nothing in it.
+         Put back the last saved view when there is one; when there is not,
+         keep the screen in its loading shape with a Retry, instead of "No
+         parcels" / "All clear" -- which a merchant reads as their parcels
+         being gone. */
+      function nvLoadFailedView(why){
+        try{
+          var cached=nvCachedWorkspaceFor(MY);
+          if(cached && !(state.parcels||[]).length) nvRestoreCachedWorkspace(cached);
+          var haveData=!!(state.parcels||[]).length;
+          __nvFirstLoadDone=true;
+          window.__nvLoadFailed=!haveData;
+          window.__novaxClientDataReady=haveData;
+          try{ render(); }catch(e){}
+          nvAccountUnconfirmed(haveData
+            ? "We could not refresh your account just now, so this is your last saved view."
+            : "We could not load your account. Check your connection and tap Retry.");
+          try{ window.__novaxMarkDataStale(why||"load failed"); }catch(e){}
+        }catch(e){}
+      }
       var __nvLoadSeq=0;
       function loadAll(){
         var thisLoad=++__nvLoadSeq;
@@ -14095,6 +14239,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }
           state.identityVerified=true;
           state.clientRecordMissing=false;
+          window.__nvLoadFailed=false;
           /* A confirmed read supersedes any "we could not confirm this" view. */
           state.workspaceFromCache=false;
           try{ nvAccountUnconfirmedClear(); }catch(e){}
@@ -14144,6 +14289,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             var slot=nvSlot(1,"parcels",mapParcel,state.parcels);
             state.parcelHistoryComplete=slot.ok;
             if(slot.ok) state.parcels=slot.rows;
+            else if(!(state.parcels||[]).length){
+              var pc=nvCachedWorkspaceFor(MY);
+              if(pc){ state.parcels=(pc.parcels||[]).map(function(p){ if(p&&typeof p==="object") p._partial=true; return p; }); state.workspaceFromCache=true; }
+              else window.__nvLoadFailed=true;
+            }
           })();
           (function(){ var sl=nvSlot(2,"invoices",mapInvoice,state.invoices); if(sl.ok) state.invoices=sl.rows; })();
           /* Closed parcels are no longer in the main pull, but an invoice
@@ -14187,7 +14337,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           /* Only claim the view is current when every read actually came back.
              Marking fresh after a partial failure is what let an empty screen
              look up to date. */
-          if(nvStale.length){
+          if(window.__nvLoadFailed){
+            window.__novaxClientDataReady=false;
+            try{ render(); }catch(e){}
+            nvAccountUnconfirmed("We could not load your parcels. Check your connection and tap Retry.");
+            try{ window.__novaxMarkDataStale(nvStale.join(", ")); }catch(e){}
+          } else if(nvStale.length){
             console.warn("NovaX: stale after partial load --", nvStale.join(", "));
             try{ toast("Could not refresh " + nvStale[0] + " just now. Showing your last saved view.","error"); }catch(e){}
             try{ window.__novaxMarkDataStale(nvStale.join(", ")); }catch(e){}
@@ -14196,8 +14351,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }
         }).catch(function(e){
           if(e && e.__nvAuth){ try{ nvSessionExpired(e.at); }catch(err){} window.__novaxClientDataReady=true; return; }
-          console.warn("NovaX load failed",e); window.__novaxClientDataReady=true;
-          try{ window.__novaxMarkDataStale("load failed"); }catch(err){}
+          console.warn("NovaX load failed",e);
+          if(thisLoad!==__nvLoadSeq) return;
+          nvLoadFailedView("load failed");
         });
       }
       function syncNew(){
@@ -15423,9 +15579,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            0 parcels", "Nothing needs you right now" and "No parcels in transit
            yet" -- facts, as far as a merchant could tell, that flipped a second
            later. Until the data is in, say that it is loading. */
-        if(!window.__novaxClientDataReady && !b.all.length){
-          var ld='<p class="nv-c-empty nv-c-loading">Loading your parcels\u2026</p>';
-          nvSetHtml(box, '<div class="nv-cockpit-head"><b>Your parcels</b><span class="nv-c-sub">Loading\u2026</span></div>'
+        if((!window.__novaxClientDataReady || window.__nvLoadFailed) && !b.all.length){
+          var nvFailed=!!window.__nvLoadFailed;
+          var ld=nvFailed
+            ? '<p class="nv-c-empty">Could not load. <button type="button" class="action-btn ghost" onclick="window.__novaxRetryLoad&&window.__novaxRetryLoad()">Retry</button></p>'
+            : '<p class="nv-c-empty nv-c-loading">Loading your parcels\u2026</p>';
+          nvSetHtml(box, '<div class="nv-cockpit-head"><b>Your parcels</b><span class="nv-c-sub">'+(nvFailed?'Not loaded':'Loading\u2026')+'</span></div>'
             +'<div class="nv-cockpit-cols"><div class="nv-c-col"><h4>Needs you now</h4>'+ld+'</div>'
             +'<div class="nv-c-col"><h4>What\u2019s moving</h4>'+ld+'</div>'
             +'<div class="nv-c-col"><h4>What\u2019s next</h4>'+ld+'</div></div>');
@@ -18182,6 +18341,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       +".nvfs-chip.on{background:var(--nvu-accent);color:#fff;border-color:var(--nvu-accent)}"
       +".nvfs-arrow{color:#8fd8b9}"
       +".nvfs-actions{display:flex;gap:8px;flex-wrap:wrap}"
+      +".nvfs-money{margin:4px 0 14px;border:1px solid var(--nvu-line);border-radius:12px;padding:4px 12px;text-align:left}"
+      +".nvfs-money>div{display:flex;justify-content:space-between;gap:10px;padding:7px 0;font-size:13px;color:var(--nvu-ink-2)}"
+      +".nvfs-money>div+div{border-top:1px solid var(--nvu-line)}"
+      +".nvfs-money b{color:var(--nvu-ink);font-variant-numeric:tabular-nums}"
+      +".nvfs-money .nvfs-net b{color:var(--nvu-accent);font-size:14px}"
       +".nvfs-btn{flex:1;min-width:110px;border:none;border-radius:var(--r-lg);padding:11px 10px;font-size:12.5px;font-weight:700;cursor:pointer}"
       +".nvfs-btn.primary{background:var(--nvu-accent);color:#fff}"
       +".nvfs-btn.ghost{background:#eafff5;color:var(--nvu-accent);border:1px solid #bfe8d7}"
@@ -18200,11 +18364,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(p && typeof nvDeliveryPromise==="function") return nvDeliveryPromise(p.city).label.toLowerCase();
       }
     }catch(e){}
-    return "in 3\u20134 days";
+    return "in 2\u20133 working days";
   }
 
-  window.novaxShowFirstBookingSuccess=function(awb){
+  window.novaxShowFirstBookingSuccess=function(awb, info){
     try{
+      info=info||{};
+      var nvFirst=info.first!==false;
+      function nvRs(v){ return "Rs "+Number(v||0).toLocaleString("en-PK"); }
       injectFirstBookingStyles();
       if(document.getElementById("nvfsOverlay")) return;
       var stages=["Booked","Pickup Pending","In Transit","Out for Delivery","Delivered"];
@@ -18216,19 +18383,28 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ov.innerHTML='<div class="nvfs-card">'
         +'<button class="nvfs-x" id="nvfsClose" aria-label="Close">\u00d7</button>'
         +'<div class="nvfs-check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.6l5.2 5.2L20 7"/></svg></div>'
-        +'<h3>Your first AWB is ready.</h3>'
+        +'<h3>'+(nvFirst?'Your first AWB is ready.':'AWB ready to print.')+'</h3>'
         +'<div class="nvfs-awb"><span>'+awb+'</span><button type="button" class="nvfs-copy" onclick="(function(b){try{navigator.clipboard.writeText(\''+awb+'\');b.textContent=\'Copied\';setTimeout(function(){b.textContent=\'Copy\'},1400)}catch(e){}})(this)">Copy</button></div>'
+        /* The charge, COD and payout for THIS parcel, from the booked row. A
+           success screen that hides the price is where "why was I charged
+           Rs 335?" questions start. */
+        +((info.fee!=null&&isFinite(info.fee))?('<div class="nvfs-money">'
+          +'<div><span>Delivery charge</span><b>'+nvRs(info.fee)+'</b></div>'
+          +(Number(info.cod)>0
+            ? '<div><span>COD collected</span><b>'+nvRs(info.cod)+'</b></div><div class="nvfs-net"><span>You receive</span><b>'+nvRs(Math.max(0,Number(info.cod)-Number(info.fee)))+'</b></div>'
+            : '<div><span>Payment</span><b>Prepaid</b></div>')
+          +'</div>'):'')
         +'<p>Next: print this label and attach it to the parcel before pickup.</p>'
         /* The card told a first-time merchant what to do and showed the
            journey, but not the three things they actually ask next: when do
            you collect it, when does it arrive, and when do I get my money.
            Answered here rather than in a second card, so there is one success
            moment and not two competing ones. */
-        +'<ul class="nvfs-facts">'
+        +(!nvFirst?'':'<ul class="nvfs-facts">'
           +'<li><b>We collect it</b><span>Request a pickup from your dashboard and a rider comes to you.</span></li>'
           +'<li><b>Delivered '+nvFsPromise(awb)+'</b><span>Every step is visible on your dashboard as it happens.</span></li>'
           +'<li><b>COD reaches your wallet</b><span>Delivery charges netted off. Withdraw whenever you like.</span></li>'
-        +'</ul>'
+        +'</ul>')
         +'<div class="nvfs-journey">'+chips+'</div>'
         +'<div class="nvfs-actions">'
         +'<button class="nvfs-btn primary" id="nvfsPrint">Print AWB</button>'
@@ -18349,7 +18525,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return;
       }
       sticky.dataset.nvMode="";
-      sticky.textContent=real.textContent||"Create Booking";
+      var nvCharge=(!real.disabled && typeof window.nvBookReviewCharge==="function")?window.nvBookReviewCharge():null;
+      sticky.textContent=(real.textContent||"Create Booking")+(nvCharge!=null?(" · Rs "+Number(nvCharge).toLocaleString("en-PK")):"");
       sticky.disabled=!!real.disabled;
     }catch(e){}
   }

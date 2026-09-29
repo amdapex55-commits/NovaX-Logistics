@@ -6,7 +6,7 @@ import {installFixture} from './rider-fixture.mjs';
 const require=createRequire(import.meta.url);
 let JSDOM;try{({JSDOM}=require('jsdom'));}catch{({JSDOM}=createRequire('/tmp/novax-rider-test-deps/package.json')('jsdom'));}
 const html=readFileSync(new URL('../rider.html',import.meta.url),'utf8');
-const scripts=['nv-payment.js','rider-core.js','rider-app.js'].map(f=>readFileSync(new URL('../'+f,import.meta.url),'utf8'));
+const scripts=['nv-payment.js','nv-journey.js','rider-core.js','rider-app.js'].map(f=>readFileSync(new URL('../'+f,import.meta.url),'utf8'));
 const wait=()=>new Promise(resolve=>setTimeout(resolve,40));
 async function app(options={}){
   const dom=new JSDOM(html,{url:'https://fixture.invalid/rider.html?nosw=1',runScripts:'outside-only'}),w=dom.window;
@@ -15,7 +15,7 @@ async function app(options={}){
   scripts.forEach(s=>w.eval(s));await wait();return{dom,w,fixture,q:id=>w.document.getElementById(id)};
 }
 const memory=()=>{const m=new Map();return{getItem:k=>m.get(k)||null,setItem:(k,v)=>m.set(k,v)}};
-const core={Intl,Date,Set,Number,isFinite};vm.createContext(core);vm.runInContext(scripts[0]+scripts[1],core);const R=core.NovaXRider;
+const core={Intl,Date,Set,Number,isFinite};vm.createContext(core);vm.runInContext(scripts[0]+scripts[1]+scripts[2],core);const R=core.NovaXRider;
 assert.equal(R.day('2026-09-27 00:30'),'2026-09-27');
 assert.equal(R.timestamp('2026-09-27 00:30'),Date.parse('2026-09-26T19:30:00Z'));
 assert.equal(R.deliveredAt({meta:{processHistory:[{to:'Delivered',at:'2026-09-27 00:30'}]},updatedAt:'later'}),'2026-09-27 00:30');

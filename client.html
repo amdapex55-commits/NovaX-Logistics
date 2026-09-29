@@ -1796,6 +1796,10 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   .nv-jt-body{ min-width:0; flex:1; }
   .nv-jt-label{ font-size:13.5px; font-weight:700; color:var(--ink); display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
   .nv-jt-row.is-todo .nv-jt-label{ color:var(--muted); font-weight:600; }
+  .nv-jt-row.is-bad .nv-jt-dot{ background:#d64545; }
+  .nv-jt-row.is-bad.is-now .nv-jt-dot{ box-shadow:0 0 0 4px rgba(214,69,69,.18); }
+  .nv-jt-row.is-bad .nv-jt-label{ color:var(--nvu-bad-fg,#b3261e); }
+  .seller-step.pending{ opacity:.6; }
   .nv-jt-gap{
     font-size:11px; font-weight:700; color:var(--muted);
     background:var(--mint); border:1px solid var(--line); border-radius:var(--r-pill); padding:1px 7px;
@@ -2587,7 +2591,8 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   }
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
-  <script src="client-app.js?v=af5e7d27" defer></script>
+  <script src="nv-journey.js?v=e44d7f85" defer></script>
+  <script src="client-app.js?v=95562c8c" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2602,7 +2607,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=af5e7d27<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=95562c8c<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -2875,6 +2880,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                   <div class="field" style="grid-column:1/-1"><label for="bookingAddress">Delivery Address <span class="required-star">*</span></label><textarea id="bookingAddress" placeholder="Full delivery address where the parcel is going" maxlength="400" required></textarea></div>
                   <div id="bookingCityWarn" style="grid-column:1/-1;display:none;background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a00;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.5"></div>
                 </div>
+                <div id="nvBookReview" class="nv-book-review" hidden aria-live="polite"></div>
                 <div class="footer-note" id="bookingConfirmLine" style="display:none;margin-top:12px;font-weight:700;color:var(--green)"></div>
                 </form>
               </div>
@@ -5244,6 +5250,12 @@ body:has(#nvStaleBanner) #nvOfflineBanner{ display:none !important; }
 /* The derived Payment line reads as an answer the portal already has, not as
    a disabled input -- a greyed-out select looks broken; a stated value looks
    decided. */
+.nv-book-review{grid-column:1/-1;margin-top:14px;padding:12px 14px;border:1px solid var(--nvu-line-2);border-radius:14px;background:var(--nvu-bg-2)}
+.nv-book-review[hidden]{display:none!important}
+.nv-book-review-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:14px;font-weight:700;color:var(--nvu-ink)}
+.nv-book-review-top b{font-size:18px;font-weight:850;font-variant-numeric:tabular-nums}
+.nv-book-review-sub{margin-top:4px;font-size:12.5px;line-height:1.45;color:var(--nvu-ink-2)}
+.nv-book-review-sub b{color:var(--nvu-accent);font-weight:800}
 .nv-derived{display:flex;align-items:center;min-height:44px;padding:0 12px;
   border:1px dashed var(--nvu-line-2,#26332e);border-radius:12px;
   font-weight:650;color:var(--nvu-ink,#eafff5);background:transparent}

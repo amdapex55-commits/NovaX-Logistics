@@ -4831,6 +4831,7 @@ html,body{ background:var(--bg); color:var(--ink); }
   select.nv-unset, select:invalid{ color:var(--muted) !important; opacity:.72; }
 </style>
   <script src="nv-payment.js?v=a14f4c65"></script>
+  <script src="nv-journey.js?v=e44d7f85"></script>
 </head>
 <!-- AUTH_GATE_VERSION: 2026-07-16-role-hard-stop-v2 -->
 <body>
@@ -6780,6 +6781,19 @@ html,body{ background:var(--bg); color:var(--ink); }
       return new Date(Date.now() - NV_ADMIN_WINDOW_DAYS*24*3600*1000).toISOString();
     }
 
+    /* Progress from the shared journey (nv-journey.js), the one client and
+       rider use too. stage/totalStages used to be read from meta (default 9)
+       or the status's index in all 17 statuses: a delivered parcel was "6/16". */
+    window.nvJA = function (r, m) {
+      try {
+        if (window.NVJourney) return window.NVJourney.progress({
+          status: (typeof nvStatus === "function" ? nvStatus(r.status) : r.status) || r.status || "New booked",
+          city: r.city, pickupCity: (m && m.pickupCity) || r.pickupCity || "",
+          steps: (m && m.steps) || r.steps || [], processHistory: (m && m.processHistory) || r.processHistory || []
+        });
+      } catch (e) {}
+      return { stage: Number(m && m.stage || 0), total: Number(m && m.totalStages || 9) };
+    };
     const STATUS_TAGS = [
       "New booked",
       "Collected by rider",
@@ -7479,8 +7493,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         parcel.origin = parcel.origin || parcel.pickupCity;
         parcel.weight = parcel.weight || `${(0.6 + index * 0.35).toFixed(1)} kg`;
         parcel.service = parcel.service || "COD Standard";
-        parcel.totalStages = STATUS_TAGS.length - 1;
-        parcel.stage = Math.max(0, STATUS_TAGS.indexOf(parcel.status));
+        { const jr = window.nvJA(parcel, parcel); parcel.totalStages = jr.total; parcel.stage = jr.stage; }
         parcel.statusSince = parcel.statusSince || new Date(Date.now() - Number(parcel.statusAgeHours || 0) * 3600000).toISOString();
         parcel.steps = Array.isArray(parcel.steps) && parcel.steps.length ? parcel.steps : ["New booked"];
         parcel.processHistory = Array.isArray(parcel.processHistory) ? parcel.processHistory : parcel.steps.map((step, stepIndex) => ({
@@ -9055,8 +9068,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       parcel.statusAgeHours = 0;
       parcel.statusSince = new Date().toISOString();
       parcel.updated = exactTime;
-      parcel.stage = Math.max(0, STATUS_TAGS.indexOf(status));
       if (!parcel.steps.includes(status)) parcel.steps.push(status);
+      { const jr = window.nvJA(parcel, parcel); parcel.stage = jr.stage; parcel.totalStages = jr.total; }
       const processorName = processor.name || currentAdminName();
       const username = processor.username || "admin";
       const branch = processor.branch || parcel.branch || `${escLabelText(parcel.city)} Hub`;
@@ -9540,19 +9553,26 @@ html,body{ background:var(--bg); color:var(--ink); }
       // NovaX fix (Medium #5): never fall back to the first parcel in the list.
       const p = state.parcels.find(parcel => parcel.awb === state.selectedAwb) || emptyParcel();
       document.getElementById("selectedParcelText").textContent = `${p.awb} for ${p.consignee}. Current status: ${p.status}.`;
-      const allSteps = STATUS_TAGS;
-      document.getElementById("clientJourney").innerHTML = allSteps.map((step, index) => {
-        const done = p.steps.includes(step) || p.status === step;
-        const alert = p.exception && p.status === step;
-        const detail = done ? `${escLabelText(p.branch)} | ${index === p.stage ? escLabelText(p.updated) : "system logged"}` : "Waiting for previous control";
+      /* One journey (nv-journey.js), the same the merchant and the rider see:
+         this route's real steps, not all seventeen statuses listed as if
+         every parcel passed through every return leg. */
+      const hist = Array.isArray(p.processHistory) ? p.processHistory : [];
+      const whenOf = st => { const h = hist.slice().reverse().find(x => x && (x.status === st || x.to === st)); return h ? (h.at || h.time || "") : ""; };
+      const jsteps = window.NVJourney ? window.NVJourney.steps(p)
+        : STATUS_TAGS.filter(st => p.steps.includes(st) || p.status === st).map(st => ({ status: st, label: st, state: st === p.status ? "now" : "done", bad: false, note: "" }));
+      document.getElementById("clientJourney").innerHTML = jsteps.map((r, index) => {
+        const done = r.state === "done", now = r.state === "now", todo = r.state === "todo";
+        const alert = r.bad && (now || r.status === p.status);
+        const at = whenOf(r.status);
+        const detail = todo ? "Next" : [escLabelText(r.status !== r.label ? r.status : ""), escLabelText(at || (now ? p.updated : "")), escLabelText(r.note || "")].filter(Boolean).join(" | ");
         return `
-          <div class="journey-item ${done ? "" : "pending"} ${alert ? "alert" : ""}">
+          <div class="journey-item ${todo ? "pending" : ""} ${alert ? "alert" : ""}">
             <div class="step-dot">${done ? "OK" : index + 1}</div>
             <div>
-              <strong>${step}</strong>
-              <span>${alert ? escLabelText(p.exception) : detail}</span>
+              <strong>${escLabelText(r.label)}</strong>
+              <span>${alert && p.exception ? escLabelText(p.exception) : (detail || (now ? "Current step" : "Done"))}</span>
             </div>
-            <span class="chip ${done ? (alert ? "bad" : "good") : "info"}">${done ? "locked" : "next"}</span>
+            <span class="chip ${alert ? "bad" : done ? "good" : now ? "warn" : "info"}">${alert ? "problem" : done ? "done" : now ? "now" : "next"}</span>
           </div>
         `;
       }).join("");
@@ -11892,7 +11912,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         _uuid: r.id, awb: r.awb, clientId: r.client_id, date: mapProcessingDate(r.booked_at),
         consignee: r.consignee || "", city: r.city || "", address: r.address || "", phone: r.phone || "",
         cod: Number(r.cod_amount || 0), fee: Number(r.fee || 0), status: nvStatus(r.status) || "New booked",
-        statusAgeHours: Number(m.statusAgeHours || 0), stage: Number(m.stage || 0), totalStages: Number(m.totalStages || 9),
+        statusAgeHours: Number(m.statusAgeHours || 0), stage: window.nvJA(r, m).stage, totalStages: window.nvJA(r, m).total,
         rider: r.rider_id || "", branch: m.branch || "", risk: Number(m.risk || 0), updated: mapProcessingTime(r.updated_at),
         exception: r.exception || "", cashReceived: !!m.cashReceived, returnProof: m.returnProof || "",
         resolutionRemark: m.resolutionRemark || "", riderInput: m.riderInput || null,
@@ -12930,8 +12950,8 @@ html,body{ background:var(--bg); color:var(--ink); }
         address: bookAddress,
         status: "New booked",
         statusAgeHours: 0,
-        stage: 0,
-        totalStages: STATUS_TAGS.length - 1,
+        stage: 1,
+        totalStages: window.nvJA({ status: "New booked", city: bookedCity, pickupCity: overrides.pickupCity || "Karachi" }, {}).total,
         rider: "R-17",
         branch: "Karachi Hub",
         risk: 8,
@@ -17671,7 +17691,7 @@ html,body{ background:var(--bg); color:var(--ink); }
            read -- showed "Return to shipper". Three surfaces, two different
            labels for the same parcel. nvStatus() is the same alias map the
            other two portals use. */
-        status:nvStatus(r.status)||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:Number(m.stage||0), totalStages:Number(m.totalStages||9), rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at),
+        status:nvStatus(r.status)||"New booked", statusAgeHours:Number(m.statusAgeHours||0), stage:window.nvJA(r,m).stage, totalStages:window.nvJA(r,m).total, rider:r.rider_id||"", branch:m.branch||"", risk:Number(m.risk||0), updated:tpart(r.updated_at),
         /* NovaX new (daily COD collection board): `updated` is tpart() -- HH:MM
            only -- so the DATE was being thrown away and nothing downstream
            could ask "was this delivered today?". Keep the raw timestamps.

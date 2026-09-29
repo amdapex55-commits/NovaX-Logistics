@@ -106,6 +106,22 @@ const TOOLS = [
     },
   },
   {
+    name: "get_invoice",
+    description:
+      "Open one invoice by its code (e.g. INV-2609295b15b): every parcel on it with COD and charge, the totals, what was paid to the merchant and what they owe. Use when the merchant names an invoice or asks what an invoice contains.",
+    input_schema: {
+      type: "object",
+      properties: { code: { type: "string", description: "The invoice code, e.g. INV-2609295b15b." } },
+      required: ["code"],
+    },
+  },
+  {
+    name: "account_info",
+    description:
+      "This merchant's account facts: business name, account code (CL-...), phone, pickup city and address, join date, parcels booked, wallet balance. Use for 'what is my account number', 'which pickup city', 'when did I join'.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "rate_card",
     description:
       "Get this merchant's negotiated shipping rates — base rate and the per-zone rate card. Use for pricing, tariff and 'how much to ship' questions. Never quote a price without calling this first.",
@@ -602,6 +618,18 @@ Be brief and warm. Two or three sentences. End by calling present exactly once.`
       : userText,
   });
 
+  /* A double tap or a retry after a slow reply sends the same question
+     again. ai_conv_start now reuses the conversation, so catch the repeat
+     here instead of answering it twice. */
+  if (mode === "chat" && convId && userText) {
+    const { data: dup } = await sb
+      .from("nv_ai_messages").select("id")
+      .eq("conv_id", convId).eq("role", "user").eq("content", userText)
+      .gte("created_at", new Date(Date.now() - 20000).toISOString()).limit(1);
+    if (dup && dup.length) {
+      return json({ error: "duplicate", conv_id: convId, answer: "One moment — still working on that one." }, 429);
+    }
+  }
   if (mode === "chat" && convId) {
     await sb.rpc("ai_msg_log", { p_conv: convId, p_role: "user", p_content: userText });
   }
@@ -628,6 +656,10 @@ Be brief and warm. Two or three sentences. End by calling present exactly once.`
           return (await sb.rpc("ai_tool_list_invoices", { p_limit: Number(input.limit ?? 10) })).data;
         case "rate_card":
           return (await sb.rpc("ai_tool_rate_card")).data;
+        case "get_invoice":
+          return (await sb.rpc("ai_tool_get_invoice", { p_code: String(input.code ?? "") })).data;
+        case "account_info":
+          return (await sb.rpc("ai_tool_account")).data;
         case "search_parcels":
           return (await sb.rpc("ai_tool_search_parcels", {
             p_status: input.status ? String(input.status) : null,

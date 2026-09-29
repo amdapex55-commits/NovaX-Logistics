@@ -12,7 +12,7 @@
       finally { clearTimeout(timer); if (source) source.removeEventListener("abort", abort); }
     } } });
   var userId, riderId, queue, cacheKey, channel, authSubscription, lastSync = 0, connected = false;
-  var busy = false, loading = false, flushing = false, authorized = false, refreshTimer;
+  var busy = false, loading = false, flushing = false, authorized = false, refreshTimer, retryTimer = null, retryDelay = 0;
   var data = { rider: null, parcels: [], clients: {}, cash: null };
   var ACTIVE = Object.keys(R ? R.ACTIONS : {}).concat(["Refused", "Consignee not available", "Out of service area"]);
   function q(id) { return document.getElementById(id); }
@@ -33,6 +33,8 @@
   function paintNetwork() {
     q("network").textContent = !navigator.onLine ? "Offline" : connected ? "Connected" : "Connection unverified";
     q("network").style.color = connected && navigator.onLine ? "#087854" : "#a72d24";
+    var waiting = queue ? jobs().filter(function (j) { return j.state !== "review"; }).length : 0;
+    if (waiting) q("network").textContent += " \u00b7 " + waiting + " saved, waiting to send";
     q("lastSync").textContent = lastSync ? "Synced " + Math.max(0, Math.floor((Date.now() - lastSync) / 60000)) + " min ago" : "Not synced yet";
   }
   function paintQueue() {
@@ -65,7 +67,27 @@
       var disabled = s === "Delivered" && pay.conflict || ["Collected by rider", "Return to shipper"].includes(s) && !c.address;
       return '<button class="btn ' + (s === "Refused" ? "danger" : s === "Consignee not available" ? "secondary" : "") + '" data-write data-action="' + esc(s) + '" data-awb="' + esc(p.awb) + '"' + (disabled ? ' data-blocked disabled' : '') + '>' + esc(LABELS[s]) + '</button>';
     }).join("") : "";
-    return '<article class="parcel' + (p.pending ? ' pending' : '') + (breach ? ' sla-breach' : '') + '" data-search="' + esc([p.awb, c.name, c.phone, call, c.address, c.city].join(" ").toLowerCase()) + '"><div class="parcel-head"><b class="awb">' + esc(p.awb) + '</b><span class="status">' + esc(p.status) + '</span></div><p><b>' + esc(c.name || "Name not recorded") + '</b><br>' + esc(location || "Address missing. Contact the office.") + '<br>' + esc(c.phone || "Phone not recorded") + '</p><div class="moneyline">' + (origin ? "No recipient COD collection on this task" : pay.conflict ? '<span class="error-text">' + esc(pay.label) + '. Office correction required.</span>' : (p.status === "Delivered" ? 'Delivered COD ' : 'Collect ') + money(pay.collectable)) + '</div>' + (p.pending ? '<p class="pending-label">Saved on this phone. Server confirmation pending.</p>' : '') + (breach ? '<p class="sla-note">Overdue by ' + Math.floor(age - limit) + 'h</p>' : '') + '<div class="contacts">' + (validPhone ? '<a class="call" href="tel:' + esc(call) + '">Call ' + (origin ? 'shipper' : 'consignee') + '</a>' : '') + (location ? '<a class="call" href="https://www.google.com/maps/search/?api=1&amp;query=' + encodeURIComponent(location) + '" target="_blank" rel="noopener">Navigate</a><button class="call" data-copy="' + esc(location) + '">Copy address</button>' : '') + '</div>' + (actions ? '<div class="actions">' + actions + '</div>' : '') + '</article>';
+    return '<article class="parcel' + (p.pending ? ' pending' : '') + (breach ? ' sla-breach' : '') + '" data-search="' + esc([p.awb, c.name, c.phone, call, c.address, c.city].join(" ").toLowerCase()) + '"><div class="parcel-head"><b class="awb">' + esc(p.awb) + '</b><span class="status">' + esc(p.status) + '</span></div>' + jline(p) + '<p><b>' + esc(c.name || "Name not recorded") + '</b><br>' + esc(location || "Address missing. Contact the office.") + '<br>' + esc(c.phone || "Phone not recorded") + '</p><div class="moneyline">' + (origin ? "No recipient COD collection on this task" : pay.conflict ? '<span class="error-text">' + esc(pay.label) + '. Office correction required.</span>' : (p.status === "Delivered" ? 'Delivered COD ' : 'Collect ') + money(pay.collectable)) + '</div>' + (p.pending ? '<p class="pending-label">Saved on this phone. Server confirmation pending.</p>' : '') + (breach ? '<p class="sla-note">Overdue by ' + Math.floor(age - limit) + 'h</p>' : '') + '<div class="contacts">' + (validPhone ? '<a class="call" href="tel:' + esc(call) + '">Call ' + (origin ? 'shipper' : 'consignee') + '</a>' : '') + (location ? '<a class="call" href="https://www.google.com/maps/search/?api=1&amp;query=' + encodeURIComponent(location) + '" target="_blank" rel="noopener">Navigate</a><button class="call" data-copy="' + esc(location) + '">Copy address</button>' : '') + '</div>' + (actions ? '<div class="actions">' + actions + '</div>' : '') + '</article>';
+  }
+  /* The same journey the merchant and admin see (nv-journey.js). */
+  function jline(p) {
+    try {
+      if (!window.NVJourney) return "";
+      var g = window.NVJourney.progress({ status: p.status, city: p.city, pickupCity: p.meta.pickupCity || "", steps: p.meta.steps || [], processHistory: p.meta.processHistory || [] });
+      return '<p class="jstep' + (g.tone === "bad" ? " bad" : "") + '">Step ' + esc(g.step) + ' &middot; ' + esc(g.label) + '</p>';
+    } catch (_) { return ""; }
+  }
+  /* Confirmation a rider can SEE. The notice sits at the top of the page, so
+     a rider tapping Delivered halfway down a 40-stop list never saw it and
+     tapped again. This floats above the nav, and the phone buzzes: once when
+     saved on the phone, twice when NovaX confirms. */
+  var toastTimer = null;
+  function ping(text, type, buzz) {
+    var t = q("riderToast");
+    if (!t) { t = document.createElement("div"); t.id = "riderToast"; t.setAttribute("role", "status"); t.setAttribute("aria-live", "polite"); document.body.appendChild(t); }
+    t.className = "rider-toast show " + (type || "info"); t.textContent = text;
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.className = "rider-toast " + (type || "info"); }, type === "error" ? 6000 : 3200);
+    try { if (buzz && navigator.vibrate) navigator.vibrate(buzz); } catch (_) {}
   }
   function list(id, rows, actionable, empty) {
     q(id).innerHTML = rows.map(function (p) { return card(p, actionable); }).join("") || '<p class="empty">' + esc(empty || "No parcels here.") + '</p>';
@@ -162,6 +184,7 @@
       queue.add(Object.assign(job, { key: key(job.kind), at: new Date().toISOString(), state: "pending" }));
     });
     render(); msg("Saved on this phone. Awaiting server confirmation.", "info", id);
+    ping(navigator.onLine ? "Saved \u2014 sending to NovaX\u2026" : "Saved on this phone. It will send when you are back online.", "info", 30);
   }
   async function flush() {
     if (flushing || loading || busy || !authorized || !navigator.onLine || !jobs().some(function (j) { return j.state !== "review"; })) return;
@@ -181,13 +204,24 @@
           try { response = await sb.rpc(name, args); } catch (e) { response = { error: e }; }
           if (response.error) {
             connected = false;
-            if (R.retryable(response.error)) { msg("Connection interrupted. The same saved reference will retry; do not repeat the action.", "info"); break; }
+            if (R.retryable(response.error)) {
+              msg("Connection interrupted. The same saved reference will retry; do not repeat the action.", "info");
+              /* Retry on its own instead of waiting for the next minute's
+                 refresh: 5s, 10s, 20s ... up to a minute. Same key, so a
+                 request that did land is not applied twice. */
+              retryDelay = Math.min(60000, retryDelay ? retryDelay * 2 : 5000);
+              clearTimeout(retryTimer); retryTimer = setTimeout(function () { void flush(); }, retryDelay);
+              break;
+            }
             queue.change(j.key, { state: "review", error: String(response.error.message || response.error) });
             jobs().forEach(function (other) { if (other.key !== j.key && other.kind === "status" && (other.list || []).some(function (awb) { return (j.list || []).includes(awb); })) queue.change(other.key, { state: "review", error: "Earlier action needs office review: " + j.key }); });
-            msg("Action rejected. Its reference is kept for office review: " + String(response.error.message || response.error), "error"); break;
+            msg("Action rejected. Its reference is kept for office review: " + String(response.error.message || response.error), "error");
+            ping("Not accepted: " + String(response.error.message || response.error).slice(0, 120), "error", [120]); break;
           }
           if (!response.data || j.kind === "status" && !Array.isArray(response.data.moved)) { queue.change(j.key, { state: "review", error: "Unexpected server acknowledgement; office must check this reference." }); break; }
-          await identity(); queue.remove(j.key); connected = true; changed = true;
+          await identity(); queue.remove(j.key); connected = true; changed = true; retryDelay = 0;
+          if (j.kind === "status") ping("\u2713 " + ((j.list || []).length > 1 ? (j.list.length + " parcels") : (j.list || [""])[0]) + ": " + (LABELS[j.to] || j.to) + " \u2014 confirmed", "ok", [40, 60, 40]);
+          else if (j.kind === "expense") ping("\u2713 Expense recorded", "ok", [40, 60, 40]);
           if (j.kind === "status") data.parcels.forEach(function (p) { if (j.list.includes(p.awb.toUpperCase())) { p.status = j.to; p.updatedAt = j.at; p.statusSince = j.at; if (j.to === "Delivered") p.deliveredAt = j.at; } });
           msg(j.kind === "deposit" ? money(response.data.net) + " handover recorded. Awaiting office receipt confirmation. Ref " + j.key : "Confirmed by NovaX: " + (j.to || j.kind) + ". Ref " + j.key, "ok", j.kind === "deposit" ? "cashResult" : j.kind === "expense" ? "expenseResult" : "notice");
         }
@@ -206,11 +240,33 @@
       dialog.returnValue = "cancel"; dialog.onclose = function () { resolve(dialog.returnValue === "confirm" ? input.value.trim() || true : null); dialog.onclose = null; }; dialog.showModal();
     });
   }
+  /* The first fix a cheap phone returns is often a cell-tower guess, 500 m
+     or more out, and it was saved as the delivery point. This watches for up
+     to 10 s and keeps the best reading, stopping early at 25 m or better. */
   function gps() {
     return new Promise(function (resolve) {
       var at = new Date().toISOString();
       if (!navigator.geolocation) { resolve({ unavailable: true, at: at }); return; }
-      navigator.geolocation.getCurrentPosition(function (p) { resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, at: at }); }, function () { resolve({ unavailable: true, at: at }); }, { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 });
+      var best = null, done = false, watch = null, timer = null;
+      function out(p) { return { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: Math.round(p.coords.accuracy), at: at }; }
+      function finish() {
+        if (done) return; done = true; clearTimeout(timer);
+        if (watch != null) { try { navigator.geolocation.clearWatch(watch); } catch (_) {} }
+        resolve(best ? out(best) : { unavailable: true, at: at });
+      }
+      function take(p) {
+        if (!p || !p.coords) return;
+        if (!best || p.coords.accuracy < best.coords.accuracy) best = p;
+        if (best.coords.accuracy <= 25) finish(); else msg("Getting GPS fix\u2026 \u00b1" + Math.round(best.coords.accuracy) + " m", "info");
+      }
+      if (typeof navigator.geolocation.watchPosition !== "function") {
+        navigator.geolocation.getCurrentPosition(function (p) { best = p; finish(); }, finish, { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 });
+        return;
+      }
+      timer = setTimeout(finish, 10000);
+      msg("Getting GPS fix\u2026", "info");
+      try { watch = navigator.geolocation.watchPosition(take, function (e) { if (e && e.code === 1) finish(); }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }); }
+      catch (_) { finish(); }
     });
   }
   async function update(list, to) {
@@ -228,6 +284,7 @@
       var location = to === "Delivered" ? await gps() : null;
       await save({ kind: "status", list: list, to: to, reason: reason, location: location });
       if (location && location.unavailable) msg("Delivery saved on this phone without GPS. Server confirmation is still pending.", "info");
+      else if (location && location.accuracy > 100) msg("Delivery saved. GPS was weak (\u00b1" + location.accuracy + " m), so the office sees the location as approximate.", "info");
       if (to === "Parcel received at destination") q("receiveAwbs").value = "";
     } catch (e) { msg(String(e.message || e), "error"); }
     finally { busy = false; render(); void flush(); }
@@ -268,10 +325,91 @@
     var station = e.target.closest("[data-station]"); if (station) { ["transit", "received"].forEach(function (s) { q("station-" + s).classList.toggle("hidden", station.dataset.station !== s); }); document.querySelectorAll("[data-station]").forEach(function (b) { b.classList.toggle("active", b === station); b.setAttribute("aria-pressed", String(b === station)); }); return; }
     var copy = e.target.closest("[data-copy]"); if (copy) { try { await navigator.clipboard.writeText(copy.dataset.copy); msg("Address copied.", "ok"); } catch (_) { msg("Copy unavailable on this phone. Use Navigate or Call.", "error"); } }
   });
-  q("scanBtn").onclick = async function () {
-    if (!window.BarcodeDetector) { msg("Photo barcode scanning is unavailable in this browser. Type or paste the AWB; a keyboard scanner also works.", "info"); q("receiveAwbs").focus(); return; }
-    q("scanFile").click();
-  };
+  /* LIVE SCANNING. The old button only took one photo at a time: point,
+     shoot, wait, repeat -- forty times for a bag of forty. This keeps the
+     camera open and adds every new AWB it sees, with a buzz for each, until
+     Done. "find" mode reads one code and jumps to that parcel. Falls back to
+     the photo picker where the camera or BarcodeDetector is missing
+     (iPhone Safari), and a keyboard scanner still types into the box. */
+  var scanSession = null;
+  function scanFormats() {
+    return BarcodeDetector.getSupportedFormats().then(function (supported) {
+      return ["code_128", "code_39", "ean_13", "qr_code"].filter(function (f) { return supported.includes(f); });
+    });
+  }
+  function awbFrom(raw) {
+    var v = String(raw || "").trim();
+    var m = v.match(/[?&]awb=([A-Za-z0-9-]{3,50})/); if (m) v = m[1];
+    return /^[a-z0-9-]{3,50}$/i.test(v) ? v.toUpperCase() : "";
+  }
+  function beep() {
+    try {
+      var A = window.AudioContext || window.webkitAudioContext; if (!A) return;
+      var ctx = beep.ctx || (beep.ctx = new A()), o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 1400; g.gain.value = 0.08; o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.07);
+    } catch (_) {}
+  }
+  function stopScan() {
+    if (!scanSession) return;
+    var sess = scanSession; scanSession = null;
+    clearInterval(sess.loop);
+    try { sess.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (_) {}
+    if (sess.ov && sess.ov.parentNode) sess.ov.parentNode.removeChild(sess.ov);
+    if (sess.mode === "list" && sess.found.length) msg(sess.found.length + " AWB" + (sess.found.length === 1 ? "" : "s") + " scanned. Check the list, then Mark received.", "ok");
+  }
+  async function startScan(mode) {
+    if (scanSession) return;
+    if (!window.BarcodeDetector || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (mode === "list" && window.BarcodeDetector) { q("scanFile").click(); return; }
+      msg("Camera scanning is not available in this browser. Type the AWB; a keyboard scanner also works.", "info");
+      (mode === "list" ? q("receiveAwbs") : q("riderSearch")).focus(); return;
+    }
+    var formats;
+    try { formats = await scanFormats(); } catch (_) { formats = []; }
+    if (!formats.length) { msg("This phone cannot read barcodes. Type the AWB.", "info"); return; }
+    var stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }); }
+    catch (e) {
+      if (mode === "list") { msg("Camera permission was not given. Take a photo of the barcode instead.", "info"); q("scanFile").click(); }
+      else msg("Camera permission was not given. Type the AWB to search.", "info");
+      return;
+    }
+    var ov = document.createElement("div"); ov.className = "scan-ov"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-label", "Barcode scanner");
+    ov.innerHTML = '<video playsinline muted autoplay></video><div class="scan-frame" aria-hidden="true"></div>' +
+      '<div class="scan-panel"><p class="scan-status">' + (mode === "list" ? "Point at each AWB barcode. Every new one is added." : "Point at the AWB barcode.") + '</p>' +
+      '<p class="scan-list"></p><div class="actions"><button class="btn" type="button" data-scan-done>' + (mode === "list" ? "Done" : "Cancel") + '</button></div></div>';
+    document.body.appendChild(ov);
+    var video = ov.querySelector("video"); video.srcObject = stream;
+    try { await video.play(); } catch (_) {}
+    var detector = new BarcodeDetector({ formats: formats }), busyDetect = false;
+    scanSession = { mode: mode, stream: stream, ov: ov, found: [], loop: null };
+    ov.querySelector("[data-scan-done]").onclick = stopScan;
+    scanSession.loop = setInterval(async function () {
+      var sess = scanSession; if (!sess || busyDetect || video.readyState < 2) return;
+      busyDetect = true;
+      try {
+        var codes = await detector.detect(video);
+        codes.map(function (c) { return awbFrom(c.rawValue); }).filter(Boolean).forEach(function (awb) {
+          if (!scanSession || sess.found.indexOf(awb) > -1) return;
+          sess.found.push(awb); beep(); try { if (navigator.vibrate) navigator.vibrate(40); } catch (_) {}
+          if (mode === "find") {
+            q("riderSearch").value = awb; applySearch(); stopScan();
+            var hit = Array.from(document.querySelectorAll(".view:not(.hidden) [data-search]")).find(function (c) { return !c.hidden; });
+            if (hit && hit.scrollIntoView) hit.scrollIntoView({ block: "center" });
+            ping(hit ? awb + " found" : awb + " is not on this screen. Check the other tabs.", hit ? "ok" : "info");
+            return;
+          }
+          q("receiveAwbs").value = R.awbs(q("receiveAwbs").value + "\n" + awb).join("\n"); q("receiveAwbs").oninput();
+          ov.querySelector(".scan-status").textContent = sess.found.length + " scanned. Keep going, or tap Done.";
+          ov.querySelector(".scan-list").textContent = sess.found.slice(-4).reverse().join("  \u00b7  ");
+        });
+      } catch (_) {}
+      busyDetect = false;
+    }, 250);
+  }
+  q("scanBtn").onclick = function () { void startScan("list"); };
+  if (q("searchScanBtn")) q("searchScanBtn").onclick = function () { void startScan("find"); };
+  document.addEventListener("visibilitychange", function () { if (document.hidden) stopScan(); });
   q("scanFile").onchange = async function () {
     var file = q("scanFile").files[0], bitmap; if (!file) return;
     try {
