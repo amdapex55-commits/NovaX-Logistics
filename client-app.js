@@ -12360,7 +12360,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        client-kyc bucket. Status comes from client_kyc_status(); the database
        decides who may upload or see them (the Owner, until NovaX verifies).
        Photo shrinking and upload are shared with signup and admin in
-       nv-cnic.js. */
+       nv-cnic.js, which also explains why an upload was refused. */
     var NV_KYC={ data:null, loading:false, tried:false, pick:null, editing:false, sending:false, thumbKey:"" };
     function nvKycEl(id){ return document.getElementById(id); }
     function nvKycWhen(ts){ return ts?new Date(ts).toLocaleDateString("en-GB",{ day:"numeric", month:"short", year:"numeric", timeZone:"Asia/Karachi" }):""; }

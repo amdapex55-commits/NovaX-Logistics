@@ -3,7 +3,9 @@
    (client-app.js) and admin review (admin.html). Photos go to the private
    client-kyc bucket as <client_id>/cnic-<front|back>-<ms>-<8 hex>.jpg.
    Who may upload, see or delete them is decided by the database
-   (sql_novax_client_cnic_20260930.sql + _hardening_), never by this file. */
+   (sql_novax_client_cnic_20260930.sql + _hardening_), never by this file.
+   Deploying: Cloudflare keeps .js for 4 hours per URL, so never open a new
+   ?v= address before GitHub Pages has finished publishing it (check sw.js). */
 (function () {
   "use strict";
   var BUCKET = "client-kyc";
