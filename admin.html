@@ -4842,7 +4842,7 @@ html,body{ background:var(--bg); color:var(--ink); }
 </style>
   <script src="nv-payment.js?v=a14f4c65"></script>
   <script src="nv-journey.js?v=77db2b46"></script>
-  <script src="nv-cnic.js?v=05655461"></script>
+  <script src="nv-cnic.js?v=e81167cc"></script>
 </head>
 <!-- AUTH_GATE_VERSION: 2026-07-16-role-hard-stop-v2 -->
 <body>
@@ -14234,10 +14234,38 @@ html,body{ background:var(--bg); color:var(--ink); }
         const rows = {};
         ((r && r.data) || []).forEach(function (x) { rows[x.client_id] = x; });
         NV_KYC_ADMIN.rows = rows; NV_KYC_ADMIN.loaded = true; NV_KYC_ADMIN.error = "";
+        if (!NV_KYC_ADMIN.swept) { NV_KYC_ADMIN.swept = true; nvKycAdminSweep(null); }
       }).catch(function (e) {
         NV_KYC_ADMIN.error = String((e && e.message) || e);
       }).then(function () { NV_KYC_ADMIN.loading = null; nvKycAdminPaint(); });
       return NV_KYC_ADMIN.loading;
+    }
+    /* Files nothing points at: uploads a merchant never submitted (over a day
+       old) and every file of a deleted account. Only the Storage API can
+       remove a file, so the admin page does it: once per page load, and right
+       after a client is deleted. Stops when a round removes nothing. */
+    function nvKycAdminSweep(clientId) {
+      const sb = window.__nvSb;
+      if (!sb || !sb.rpc || !sb.storage) return Promise.resolve(0);
+      let removed = 0, rounds = 0;
+      const round = function () {
+        return Promise.resolve(sb.rpc("admin_kyc_orphans", { p_client: clientId || null, p_limit: 100 })).then(function (r) {
+          if (r && r.error) throw new Error(r.error.message);
+          const names = ((r && r.data) || []).map(function (x) { return x && x.name; }).filter(Boolean);
+          if (!names.length) return removed;
+          return Promise.resolve(sb.storage.from("client-kyc").remove(names)).then(function (y) {
+            if (y && y.error) throw new Error(y.error.message);
+            const gone = ((y && y.data) || []).length;
+            removed += gone;
+            if (!gone || ++rounds >= 10) return removed;
+            return round();
+          });
+        });
+      };
+      return round().catch(function (e) {
+        console.warn("NovaX: CNIC leftovers not cleared yet: " + ((e && e.message) || e));
+        return removed;
+      });
     }
     function nvKycAdminLook(uuid) {
       if (typeof NV_KYC_ADMIN === "undefined" || !NV_KYC_ADMIN || !NV_KYC_ADMIN.loaded) return ["CNIC …", ""];
@@ -14338,7 +14366,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       box.setAttribute("aria-label", "CNIC for " + (client.name || "this client"));
       box.innerHTML = '<p class="nvkyc-sub">Loading…</p>';
       back.appendChild(box); document.body.appendChild(back);
-      let busy = false, pick = null, gen = 0;
+      let busy = false, pick = null, gen = 0, shown = null, note = "";
       const rot = { front: 0, back: 0 };
       const esc = escLabelText;
       function close() {
@@ -14362,12 +14390,17 @@ html,body{ background:var(--bg); color:var(--ink); }
       }
       async function review(decision, reason, name) {
         if (busy) return;
+        if (!shown) { err("The photos are not on screen yet."); return; }
         busy = true; err("");
         box.querySelectorAll(".nvkyc-acts button").forEach(function (b) { b.disabled = true; });
-        const r = await Promise.resolve(sb.rpc("admin_kyc_review", { p_client: uuid, p_decision: decision, p_reason: reason || null, p_name: name || null }))
+        /* The decision names the photos on this screen. If the merchant sent
+           new ones meanwhile, the server refuses and the new ones are shown. */
+        const r = await Promise.resolve(sb.rpc("admin_kyc_review", { p_client: uuid, p_decision: decision, p_reason: reason || null,
+            p_name: name || null, p_front: shown.front, p_back: shown.back }))
           .catch(function (e) { return { error: { message: String((e && e.message) || e) } }; });
         busy = false;
         if (r && r.error) {
+          if (/sent new photos/i.test(r.error.message || "")) { note = r.error.message; paint(); return; }
           box.querySelectorAll(".nvkyc-acts button").forEach(function (b) { b.disabled = false; });
           err(r.error.message || "Not saved. Try again.");
           return;
@@ -14383,6 +14416,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         if (my !== gen || !back.parentNode) return;
         if (pick) { try { pick.reset(); } catch (e) {} pick = null; }
         const k = NV_KYC_ADMIN.rows[uuid] || null, look = nvKycAdminLook(uuid);
+        shown = null;
         const bank = (client._meta && client._meta.bank) || {};
         const line = !k ? "Not added yet. If the merchant sent the photos another way, upload them here."
           : k.status === "submitted" ? "Sent " + nvKycAdminWhen(k.submitted_at) + ". Check both sides, then Verify or ask for a new photo."
@@ -14405,33 +14439,46 @@ html,body{ background:var(--bg); color:var(--ink); }
           `<div class="nvkyc-up" data-up hidden>` +
             `<p class="nvkyc-sub" style="margin:0 0 8px">Photos the merchant sent another way (WhatsApp, email). They go in for checking like any other.</p>` +
             `<div class="cnic-pair" data-pair>` +
-              `<label class="cnic-tile" data-cnic-side="front"><input type="file" accept="image/*"><img alt="Front of the CNIC" hidden><span class="cnic-cap"><i aria-hidden="true">+</i><b>Front of CNIC</b><span data-cnic-note aria-live="polite">Choose a photo</span></span></label>` +
-              `<label class="cnic-tile" data-cnic-side="back"><input type="file" accept="image/*"><img alt="Back of the CNIC" hidden><span class="cnic-cap"><i aria-hidden="true">+</i><b>Back of CNIC</b><span data-cnic-note aria-live="polite">Choose a photo</span></span></label>` +
+              `<label class="cnic-tile" data-cnic-side="front"><input type="file" accept="image/jpeg,image/png,image/webp"><img alt="Front of the CNIC" hidden><span class="cnic-cap"><i aria-hidden="true">+</i><b>Front of CNIC</b><span data-cnic-note aria-live="polite">Choose a photo</span></span></label>` +
+              `<label class="cnic-tile" data-cnic-side="back"><input type="file" accept="image/jpeg,image/png,image/webp"><img alt="Back of the CNIC" hidden><span class="cnic-cap"><i aria-hidden="true">+</i><b>Back of CNIC</b><span data-cnic-note aria-live="polite">Choose a photo</span></span></label>` +
             `</div>` +
             `<div class="nvkyc-acts" style="margin-top:10px"><button type="button" class="is-ok" data-act="upsave" disabled>Save photos</button></div>` +
           `</div>` +
           `<p class="nvkyc-err" data-err role="alert"></p>` +
           `<div class="nvkyc-acts">` +
-            (k && k.status !== "verified" ? `<button type="button" class="is-ok" data-act="verify">Verify</button>` : "") +
-            (k ? `<button type="button" class="is-bad" data-act="reject">${k.status === "verified" ? "Unlock and ask for a new photo" : "Ask for a new photo"}</button>` : "") +
+            (k && k.status !== "verified" ? `<button type="button" class="is-ok" data-act="verify" disabled>Verify</button>` : "") +
+            (k ? `<button type="button" class="is-bad" data-act="reject" disabled>${k.status === "verified" ? "Unlock and ask for a new photo" : "Ask for a new photo"}</button>` : "") +
             `<button type="button" data-act="upload">Upload photos for them</button>` +
             `<button type="button" data-act="close">Close</button>` +
           `</div>`;
+        if (note) { err(note); note = ""; }
         if (k) {
+          /* Verify and Ask stay off until both photos are actually on screen:
+             nobody decides on photos they have not seen. */
+          let loaded = 0;
+          const unable = function () { if (my === gen) err("The photos could not be opened, so they cannot be checked yet. Close this and open it again."); };
           NVCnic.signedUrls(sb, [k.front_path, k.back_path], 600).then(function (u) {
             if (my !== gen) return;
             [["front", k.front_path], ["back", k.back_path]].forEach(function (x) {
               const bx = box.querySelector(`[data-box="${x[0]}"]`), a = box.querySelector(`[data-open="${x[0]}"]`), url = u[x[1]];
               if (!bx) return;
-              if (!url) { bx.textContent = "This photo could not be opened."; return; }
+              if (!url) { bx.textContent = "This photo could not be opened."; unable(); return; }
               bx.textContent = "";
-              const img = document.createElement("img"); img.alt = (x[0] === "front" ? "Front" : "Back") + " of the CNIC"; img.src = url;
+              const img = document.createElement("img"); img.alt = (x[0] === "front" ? "Front" : "Back") + " of the CNIC";
+              img.addEventListener("load", function () {
+                if (my !== gen || ++loaded < 2) return;
+                shown = { front: k.front_path, back: k.back_path };
+                box.querySelectorAll('[data-act="verify"],[data-act="reject"]').forEach(function (b) { b.disabled = false; });
+              });
+              img.addEventListener("error", function () { bx.textContent = "This photo could not be opened."; unable(); });
+              img.src = url;
               bx.appendChild(img);
               if (a) a.href = url;
             });
           }).catch(function (e) {
             if (my !== gen) return;
             box.querySelectorAll("[data-box]").forEach(function (bx) { bx.textContent = "Could not open the photos: " + ((e && e.message) || e); });
+            unable();
           });
         }
         Promise.resolve(sb.rpc("admin_kyc_events", { p_client: uuid })).then(function (r) {
@@ -14592,20 +14639,11 @@ html,body{ background:var(--bg); color:var(--ink); }
                   .then(function(x){ if (x && x.error) console.warn("NovaX: logo not removed for deleted client " + cid + ": " + x.error.message); })
                   .catch(function(e){ console.warn("NovaX: logo not removed for deleted client " + cid, e); });
               } catch (e) {}
-              /* And the CNIC photos (private bucket, admin-only delete). */
-              try {
-                Promise.resolve(sb.storage.from("client-kyc").list(cid, { limit: 100 }))
-                  .then(function(x){
-                    if (x && x.error) throw new Error(x.error.message);
-                    const names = ((x && x.data) || []).filter(function(o){ return o && o.name; }).map(function(o){ return cid + "/" + o.name; });
-                    if (!names.length) return;
-                    return Promise.resolve(sb.storage.from("client-kyc").remove(names)).then(function(y){
-                      if (y && y.error) console.warn("NovaX: CNIC photos not removed for deleted client " + cid + ": " + y.error.message);
-                    });
-                  })
-                  .catch(function(e){ console.warn("NovaX: CNIC photos not removed for deleted client " + cid, e); });
-              } catch (e) {}
-              try { nvKycAdminLoad(true); } catch (e) {}
+              /* And the CNIC photos. The account row is gone, so every file in
+                 its folder is now a leftover; anything this misses (a dropped
+                 connection, a closed tab) is caught by the sweep on the next
+                 admin page load. */
+              try { nvKycAdminSweep(cid).then(function(){ try { nvKycAdminLoad(true); } catch (e) {} }); } catch (e) {}
               refresh();
             });
         });

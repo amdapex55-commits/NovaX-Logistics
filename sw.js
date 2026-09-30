@@ -22,7 +22,7 @@
  *   way. That is the kill switch, and it is the reason it is safe to ship
  *   this at all.
  */
-var CACHE = "novax-v116";
+var CACHE = "novax-v117";
 var PRECACHE = ["/client.html", "/rider.html", "/assets/favicon.svg"];
 
 self.addEventListener("install", function (event) {

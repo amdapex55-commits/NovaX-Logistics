@@ -12432,7 +12432,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       var hasPhotos=!!(d.front_path&&d.back_path);
       var editing=!!d.can_upload && (NV_KYC.editing || st==="missing" || st==="rejected");
-      if(st==="missing") say("Add a photo of the front and the back of your CNIC. Use good light and keep the whole card in the frame.");
+      /* Why the merchant cannot add photos right now (e.g. 20 uploads today). */
+      if(d.upload_block && st!=="verified") say(d.upload_block, true);
+      else if(st==="missing") say("Add a photo of the front and the back of your CNIC. Use good light and keep the whole card in the frame.");
       else if(st==="rejected") say("We need a new photo"+(d.reason?": "+d.reason+(/[.!?]$/.test(d.reason)?"":"."):".")+" Add the front and the back again.", true);
       else if(st==="submitted") say(NV_KYC.editing?"":"NovaX is checking your CNIC. Sent "+nvKycWhen(d.submitted_at)+".");
       else if(st==="verified") say("Verified"+(d.reviewed_at?" on "+nvKycWhen(d.reviewed_at):"")+". To change it, contact NovaX support.");
@@ -12464,7 +12466,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         NV_KYC.sending=false; if(btn) btn.textContent=was;
         nvKycSendState();
         var t=String((e&&e.message)||e), m=nvKycEl("nvKycMsg");
-        if(/row-level security|permission denied|Unauthorized/i.test(t)) t="Only the account owner can add the CNIC. If that is you, refresh the page and sign in again.";
+        if(/permission denied|JWT expired/i.test(t)) t="Your sign-in has ended. Refresh the page and sign in again.";
         if(m){ m.hidden=false; m.classList.remove("is-ok","is-info"); m.classList.add("is-err"); m.textContent=t; }
       });
     }
