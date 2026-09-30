@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow, noarchive">
+  <!-- Clickjacking guard (1 Oct 2026). GitHub Pages cannot send
+       X-Frame-Options or frame-ancestors, so this page refuses to show
+       inside another site's frame: nothing to click, nothing to trick. -->
+  <script>if(window.top!==window.self){document.documentElement.style.display="none";try{window.top.location.replace(window.location.href);}catch(e){}}</script>
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
@@ -2623,7 +2628,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.js?v=a4feb6d8" defer></script>
+  <script src="client-app.js?v=41363f38" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2638,7 +2643,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=a4feb6d8<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=41363f38<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -2946,10 +2951,15 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                       <button type="button" class="ghost-btn" id="nvPaQuickSave" onclick="nvPaQuickSave()">Save address</button>
                     </div>
                   </div>
-                  <div class="field"><label for="pickupRequestedFor">Preferred Pickup Time / Date (riders collect 11 am – 9 pm)</label><input id="pickupRequestedFor" placeholder="e.g. Today 4-6 PM, or tomorrow 11 AM"></div>
+                  <!-- Day and window, not free text (1 Oct 2026). Typed times included
+                       "Today Now", "10 Am" and "8am", outside the hours riders
+                       collect. The chosen slot is written into #pickupRequestedFor,
+                       which is what the request sends. -->
+                  <div class="field nv-pk-when"><label for="pickupDay">Pickup day</label><select id="pickupDay"></select></div>
+                  <div class="field nv-pk-when"><label for="pickupSlot">Pickup time <span class="footer-note">(Pakistan time)</span></label><select id="pickupSlot"></select><input type="hidden" id="pickupRequestedFor"></div>
                   <div class="field"><label for="pickupNote">Note / Instructions</label><input id="pickupNote" placeholder="Optional instructions for the rider"></div>
                 </div>
-                <div class="inline-actions mt-10"><button class="action-btn" id="requestPickupBtn">Request Pickup</button></div>
+                <div class="inline-actions mt-10"><button class="action-btn" id="requestPickupBtn" aria-describedby="pickupBtnHint">Request Pickup</button><span class="footer-note" id="pickupBtnHint" role="status"></span></div>
                 <div class="mt-16"><h4 style="margin:0 0 8px">Your Pickup Requests</h4><div id="pickupRequestList"></div></div>
               </div>
             </section>
@@ -2978,7 +2988,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
               <div class="grid two">
                 <div class="panel">
                   <div class="section-head"><div><h3>Bulk Booking</h3><p>Download the accepted CSV format, fill it, then upload. No demo parcels are generated.</p></div><button class="action-btn" id="downloadBulkTemplateBtn">Download CSV Format</button></div>
-                  <div class="bulk-drop"><div><strong>Upload completed CSV here</strong><p class="footer-note">Accepted values — <b>city</b>: Karachi, Lahore, Islamabad, Rawalpindi · <b>payment_mode</b>: cod or prepaid · <b>fragile</b>: yes or no · <b>weight</b>: 0.1–70 kg. Required columns: consignee, phone, city, address, cod, weight, order_id, product, payment_mode. Optional: reference, reference_no, fragile. Phone/city/weight/COD are normalized automatically.</p><input id="bulkCsvInput" type="file" accept=".csv,text/csv" class="mt-12"><button class="ghost-btn mt-12" id="bulkUploadBtn">Upload CSV</button></div></div>
+                  <div class="bulk-drop"><div><label for="bulkCsvInput"><strong>Upload completed CSV here</strong></label><p class="footer-note" id="bulkCsvHelp">Accepted values — <b>city</b>: Karachi, Lahore, Islamabad, Rawalpindi · <b>payment_mode</b>: COD or Prepaid · <b>fragile</b>: yes or no · <b>weight</b>: 0.1–70 kg, like 1.5 kg or 500 g. Required columns: consignee, phone, city, address, cod, weight, order_id, product, payment_mode. Optional: reference, reference_no, fragile. Checking a file books nothing: you confirm the bookings after.</p><input id="bulkCsvInput" type="file" accept=".csv,text/csv" class="mt-12" aria-describedby="bulkCsvHelp"><button class="ghost-btn mt-12" id="bulkUploadBtn">Check CSV</button></div></div>
                 </div>
                 <div class="panel">
                   <div class="section-head"><div><h3>Row checks</h3><p>Invalid city, duplicate order ID, missing phone, and impossible COD values are blocked before AWB generation.</p></div></div>
@@ -3025,7 +3035,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                     <label>Your WooCommerce Webhook Setup</label>
                     <p class="footer-note">Go to WooCommerce &rarr; Settings &rarr; Advanced &rarr; Webhooks &rarr; Add webhook. Topic: <b>Order created</b>. Status: <b>Active</b>. Paste the two values below exactly.</p>
                     <label class="mt-8">Delivery URL</label>
-                    <div class="inline-actions"><input id="wooIntakeUrlOut" readonly style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('wooIntakeUrlOut')">Copy</button></div>
+                    <div class="inline-actions"><input id="wooIntakeUrlOut" readonly style="flex:1" aria-label="WooCommerce webhook delivery URL"><button class="ghost-btn" onclick="copyFieldValue('wooIntakeUrlOut')">Copy</button></div>
                     <label class="mt-8">Secret</label>
                     <div class="inline-actions"><input id="wooSecretOut" aria-label="Generated WooCommerce signing secret" type="password" readonly autocomplete="off" style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('wooSecretOut')">Copy</button></div>
                   </div>
@@ -3035,14 +3045,14 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 <div class="section-head"><div><h3>Custom Web / API</h3><p>For your own custom-built store (not Shopify/WooCommerce). Your site pushes orders to us, and we push status updates back to your site.</p></div><span class="chip" id="webStatusChip">Not connected</span></div>
                 <div class="grid two">
                   <div class="field"><label for="webEndpoint">Status Update URL (we POST status changes here)</label><input id="webEndpoint" placeholder="https://yourstore.com/api/novax-status"></div>
-                  <div class="field"><label for="webKey">API Key (optional, sent as Bearer token)</label><input id="webKey" placeholder="api key or bearer token"></div>
+                  <div class="field"><label for="webKey">API Key (optional, sent as Bearer token)</label><div class="nv-secret-row"><input id="webKey" type="password" autocomplete="off" spellcheck="false" placeholder="api key or bearer token" style="flex:1"><button type="button" class="ghost-btn nv-reveal" data-nv-reveal="webKey" aria-pressed="false">Show</button></div></div>
                 </div>
                 <div class="inline-actions mt-10"><button class="action-btn" onclick="connectStore('web')">Save Connection</button></div>
                 <div class="field" id="webWebhookResult" style="display:none;margin-top:10px">
                   <label>Your Order Push Setup</label>
                   <p class="footer-note">Give this to your developer. Your site should POST new orders as JSON to the URL below, with header <b>X-NovaX-Signature</b> set to the hex HMAC-SHA256 of the raw JSON body using the secret below.</p>
                   <label class="mt-8">Order Push URL</label>
-                  <div class="inline-actions"><input id="webIntakeUrlOut" readonly style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('webIntakeUrlOut')">Copy</button></div>
+                  <div class="inline-actions"><input id="webIntakeUrlOut" readonly style="flex:1" aria-label="Order intake URL for your website"><button class="ghost-btn" onclick="copyFieldValue('webIntakeUrlOut')">Copy</button></div>
                   <label class="mt-8">Signing Secret</label>
                   <div class="inline-actions"><input id="webSecretOut" aria-label="Generated web signing secret" type="password" readonly autocomplete="off" style="flex:1"><button class="ghost-btn" onclick="copyFieldValue('webSecretOut')">Copy</button></div>
                 </div>
@@ -3171,7 +3181,11 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 <div class="section-head"><div><h3>Bank Account / IBAN</h3><p>Add your payout bank details anytime, even before you have any wallet balance.</p></div></div>
                 <div id="bankDetailsSection"></div>
               </div>
-              <div class="panel mt-14">
+              <!-- The Withdraw buttons open the transfer sheet (Wallet v3). This
+                   older form was still reachable here and accepted a malformed
+                   IBAN and a Rs 0.01 amount it previewed as Rs 0. Hidden, not
+                   removed: its handlers still bind to these ids. -->
+              <div class="panel mt-14" hidden aria-hidden="true">
                 <div class="section-head"><div><h3>Withdraw Funds</h3><p>Choose an amount, payout speed and destination IBAN. Your saved bank details are prefilled.</p></div></div>
                 <div class="field" style="max-width:280px"><label for="withdrawAmount">Amount to withdraw</label><input id="withdrawAmount" type="number" min="1"></div>
                 <div class="field" style="max-width:380px;margin-top:10px"><label for="withdrawIbanInput">Payout IBAN</label><input id="withdrawIbanInput" placeholder="PK00 BANK 0000 0000 0000 0000"></div>
@@ -3343,10 +3357,10 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                      an empty textarea; they want to point at a problem. -->
                 <div class="nv-tk-reasons" id="nvTkReasons" aria-label="Common issues"></div>
                 <div class="form-grid">
-                  <div class="field" style="grid-column:1/-1"><label for="nvTkSubject">What is the issue?</label><input id="nvTkSubject" maxlength="120" placeholder="One line, e.g. COD not received for N5990018"></div>
-                  <div class="field"><label for="nvTkAwb">Tracking number (optional)</label><input id="nvTkAwb" placeholder="N5990018" autocapitalize="characters"></div>
+                  <div class="field" style="grid-column:1/-1"><label for="nvTkSubject">What is the issue?</label><input id="nvTkSubject" maxlength="150" placeholder="One line, e.g. COD not received for N5990018"></div>
+                  <div class="field"><label for="nvTkAwb">Tracking number (optional)</label><input id="nvTkAwb" maxlength="20" placeholder="N5990018" autocapitalize="characters"></div>
                   <div class="field"><label for="nvTkPriority">Priority</label><select id="nvTkPriority"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option></select></div>
-                  <div class="field" style="grid-column:1/-1"><label for="nvTkBody">Details</label><textarea id="nvTkBody" rows="3" placeholder="What happened, what you need, and any reference numbers."></textarea></div>
+                  <div class="field" style="grid-column:1/-1"><label for="nvTkBody">Details</label><textarea id="nvTkBody" rows="3" maxlength="4000" placeholder="What happened, what you need, and any reference numbers."></textarea></div>
                 </div>
                 <div class="inline-actions mt-12"><button class="action-btn" id="nvTkSubmit">Open Ticket</button></div>
               </div>
@@ -3754,6 +3768,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 
 /* -- detail drawer -- */
 #nvdrawer{position:fixed;inset:0;z-index:99990;pointer-events:none;}
+#nvdrawer[hidden]{display:none!important;}
 #nvdrawer .nvdr-back{position:absolute;inset:0;background:var(--nvu-scrim);opacity:0;
   transition:opacity .22s ease;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);}
 #nvdrawer .nvdr-panel{position:absolute;top:0;right:0;bottom:0;width:min(460px,100%);
@@ -4539,6 +4554,12 @@ body,.panel,.ops-card,.metric,.client-side,.client-menu-head,.status,.chip,
 .nv-cod-v{font-size:clamp(26px,4vw,36px);font-weight:900;letter-spacing:-.03em;line-height:1.05;
   margin-top:5px;color:var(--nvu-ink,var(--nvu-ink));font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
 .nv-cod-spark{margin-top:8px;max-width:240px;}
+/* Bulk: the confirmation step before any AWB is created (1 Oct 2026). */
+.nv-secret-row{display:flex;gap:8px;align-items:stretch;}
+.nv-secret-row .nv-reveal{flex:0 0 auto;min-width:64px;}
+.nv-bulk-sum{display:flex;flex-wrap:wrap;gap:6px 14px;margin:10px 0 8px;font-size:13px;color:var(--nvu-ink-2,var(--nvu-ink-2));}
+.nv-bulk-sum b{color:var(--nvu-ink,var(--nvu-ink));font-variant-numeric:tabular-nums;}
+.nv-bulk-sample{display:grid;gap:4px;font-size:12.5px;color:var(--nvu-ink-2,var(--nvu-ink-2));overflow-wrap:anywhere;}
 /* Hide amounts, on Home too (30 Sep 2026): the same setting as the Money card's eye. */
 .nv-cod-main{position:relative;}
 .nv-cod-eye{position:absolute;top:-8px;right:-8px;width:40px;height:40px;display:grid;place-items:center;

@@ -19,7 +19,7 @@ const coreJs=slice(app,"    /* One protected path for every withdrawal","    fun
 const idemJs=slice(app,"window.__novaxIdemKeys = window.__novaxIdemKeys ||","\n\n    let __withdrawInFlight");
 const heroHtml=slice(html,'<div class="nvw-card" id="nvwCard">','<span class="nv-mh-note" id="nvMhNote"></span>');
 const actHtml=slice(html,'<div class="nvw-filters" id="nvwFilters"','<div id="withdrawHistory" hidden></div>');
-const CID='d2485e75-dde9-446a-a0ab-c5db158df20f', IBAN='PK36MEZN0000001123456702';
+const CID='d2485e75-dde9-446a-a0ab-c5db158df20f', IBAN='PK40MEZN0000001123456702';
 
 function page(o={}){
   const dom=new JSDOM('<!doctype html><body><section id="client-money"><div id="hero">'+heroHtml+'</div><div id="nvwActivityHead"></div>'+actHtml+'</section></body>',
@@ -42,7 +42,7 @@ function page(o={}){
     'var NV_KYC='+JSON.stringify(o.kyc?{data:{status:o.kyc}}:{data:null})+';',
     'const PKR=new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0});',
     'const WALLET_FEE={ "24h":0.001, "12h":0.003, "instant":0.007 };',
-    ...['money','moneyExact','walletFeeRate','nvPayoutFee','walletFeePct','walletSpeedLabel','validateIbanValue','maskIban','escLabelText'].map(fn),
+    ...['money','moneyExact','walletFeeRate','nvPayoutFee','walletFeePct','walletSpeedLabel','nvIbanChecksumOk','validateIbanValue','maskIban','escLabelText'].map(fn),
     'function nvNiceDate(v){return String(v||"");}',
     'function clientById(id){return {id:id,walletBalance:'+(o.balance!=null?o.balance:3425)+'};}',
     'function toast(m){window.__toasts.push(m);} function showClientTab(t){window.__tabs.push(t);} function nvOpenWalletForms(f){window.__forms.push(f);}',
@@ -127,7 +127,7 @@ const rpcCalls=p=>p.w.__calls.filter(c=>c[0]==='request_wallet_withdrawal_idem')
   assert.equal(sh.querySelector('[data-wd="speed"]').hidden,false);
   assert.equal(sh.querySelectorAll('[data-wd-speed]').length,3);
   assert.equal(sh.querySelector('[data-wd-net]').textContent.replace(/\u00a0/g,' '),'Rs 1,248.75');
-  assert.match(sh.querySelector('.nvw-bank').textContent.replace(/\u00a0/g,' '),/Meezan/);assert.match(sh.querySelector('.nvw-bank-num').textContent.replace(/\u00a0/g,' '),/PK36 MEZN •••• •••• 6702/);
+  assert.match(sh.querySelector('.nvw-bank').textContent.replace(/\u00a0/g,' '),/Meezan/);assert.match(sh.querySelector('.nvw-bank-num').textContent.replace(/\u00a0/g,' '),/PK40 MEZN •••• •••• 6702/);
   sh.querySelector('[data-wd-speed="instant"]').click();await wait(520);
   assert.equal(sh.querySelector('[data-wd-net]').textContent.replace(/\u00a0/g,' '),'Rs 1,241.25');
   assert.equal(sh.querySelector('[data-wd-speed="instant"]').getAttribute('aria-checked'),'true');

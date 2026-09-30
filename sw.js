@@ -22,7 +22,7 @@
  *   way. That is the kill switch, and it is the reason it is safe to ship
  *   this at all.
  */
-var CACHE = "novax-v121";
+var CACHE = "novax-v122";
 var PRECACHE = ["/client.html", "/rider.html", "/assets/favicon.svg"];
 
 self.addEventListener("install", function (event) {
@@ -101,9 +101,12 @@ self.addEventListener("fetch", function (event) {
                (req.headers.get("accept") || "").indexOf("text/html") > -1;
 
   if (isHTML) {
-    /* NETWORK FIRST. Cache only as a fallback for a failed network. */
+    /* NETWORK FIRST. Cache only as a fallback for a failed network.
+       cache:"no-cache" revalidates with the server every time: GitHub Pages
+       sends max-age=600, so a plain fetch could hand back a page up to ten
+       minutes old after a fix went out. */
     event.respondWith(
-      fetch(req).then(function (res) {
+      fetch(req, { cache: "no-cache" }).then(function (res) {
         if (res && res.ok) {
           var copy = res.clone();
           caches.open(CACHE).then(function (c) { c.put(req, copy); }).catch(function () {});

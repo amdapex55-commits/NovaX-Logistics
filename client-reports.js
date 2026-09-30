@@ -173,6 +173,13 @@
     if (S.key !== key) return;                    /* a newer request superseded this one */
     var rows = all.filter(function(p){ return (!R.a || p.date >= R.a) && p.date <= R.b; });
     var prev = (S.compare && R.pa) ? all.filter(function(p){ return p.date >= R.pa && p.date <= R.pb; }) : null;
+    /* A 2000-2026 report compared itself with 1973-1999. When the earlier
+       window is empty and ends before the first parcel in view, or the range
+       is longer than a year, there is nothing honest to compare with. */
+    if (prev) {
+      var first = rows.reduce(function(m, p){ return (!m || p.date < m) ? p.date : m; }, "");
+      if ((!prev.length && first && R.pb < first) || (R.a && daysBetween(R.a, R.b) > 366)) prev = null;
+    }
     S.loading = false; S.at = Date.now();
     if (quiet && S.rows && sig(rows) === sig(S.rows) && sig(prev || []) === sig(S.prev || []) && partial === S.partial && truncated === !!S.truncated) return;
     S.rows = rows; S.prev = prev; S.partial = partial; S.truncated = truncated;

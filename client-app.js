@@ -258,7 +258,7 @@
               note:"Welcome credit" }
           ],
           withdrawals: [{ id:"demo-wd-1", client_id:CID, amount:4800, fee:4.8, net:4795.2,
-            iban:"PK36MEZN0000001123456702", speed:"24h", status:"Paid",
+            iban:"PK40MEZN0000001123456702", speed:"24h", status:"Paid",
             created_at:iso(now-3*D+2*H), paid_at:iso(now-2*D), paid_txn_id:"FT2609DEMO4471" }],
           payment_logs: [], pickup_requests: [],
           store_connections: [], staff_users: [],
@@ -1169,7 +1169,11 @@ function nvClone(o){
   try{ if(typeof structuredClone==="function") return structuredClone(o); }catch(e){}
   try{ return JSON.parse(JSON.stringify(o)); }catch(e){ return {}; }
 }
-function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?JSON.parse(s):nvClone(baseState); }catch(e){ return nvClone(baseState); } }
+/* A saved view older than a week is not shown: its parcels, invoices and
+   wallet rows are dropped (settings are kept) and the server fills them in. */
+function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) return nvClone(baseState); const st=JSON.parse(s);
+  if(st && (!st._savedAt || Date.now()-st._savedAt>7*864e5)) ["parcels","invoices","walletLedger","walletWithdrawals","paymentLogs","pickupRequests"].forEach(function(k){ if(Array.isArray(st[k])) st[k]=[]; });
+  return st; }catch(e){ return nvClone(baseState); } }
     // NovaX fix (PII leak through localStorage): the portal used to serialise
     // the whole state object, including the unmasked IBAN + bank holder name
     // and every consignee's phone/address. Those fields are now kept in the
@@ -1189,7 +1193,9 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
        point of the three keys beside it. Nothing is lost by dropping it:
        Edit now re-reads the authoritative row (which rebuilds _raw) before it
        will let anyone save. */
-    const NOVAX_PARCEL_PII_KEYS = ["phone","address","trackingToken","_raw"];
+    /* consignee added 1 Oct 2026: customer names stayed in this browser's
+       storage until logout. The live list loads them from the server. */
+    const NOVAX_PARCEL_PII_KEYS = ["phone","address","trackingToken","_raw","consignee"];
     function persistableState(){
       try{
         const copy = {};
@@ -1202,6 +1208,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
             return clean;
           });
         }
+        copy._savedAt = Date.now();
         return copy;
       }catch(e){ return { _persistError:true }; }
     }
@@ -3779,7 +3786,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
-      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note">${escLabelText(p.updated)}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${nvCodCell(p)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
+      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note" title="Last status update">${p.updated?"Updated "+escLabelText(p.updated):""}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${nvCodCell(p)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
       if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><label style="display:inline-flex;align-items:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -6px;padding:10px 6px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${nvCodCell(p)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
       /* "Showing 25 of 189" with one control to load more. Without this the
          merchant cannot tell whether the list ended or was truncated. */
@@ -4364,7 +4371,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          problems on upload and renders them elsewhere, so before an upload
          this panel now says what it actually knows: nothing yet. */
       const bvl=document.getElementById("bulkValidationList");
-      if(bvl){
+      /* Every render reset this panel to "No file checked yet", so any
+         refresh wiped the row-fix cards mid-edit -- and would wipe the
+         "Create N bookings" step. Once a file has been checked (or booked),
+         the panel keeps its result until the next file. */
+      if(bvl && bvl.dataset.nvBulk!=="1"){
         const U=window.NovaXUI;
         bvl.innerHTML=(U&&U.emptyState)
           /* This panel lives ON the Bulk Booking tab, so "Go to Bulk Booking"
@@ -4444,7 +4455,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        console (#nvAiShell) plus the Autopilot panel. */
 
     /* ===== Added: AWB label, print, modals, bulk preview, report, invoice download, wallet ===== */
-    function awbCompleteBadge(p){ return p.awbPrinted ? `<div class="chip good" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700">✅ AWB printed — booking complete${p.awbPrintedAt?" · "+p.awbPrintedAt:""}</div>` : `<div class="chip warn" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700">⏳ AWB not printed yet</div>`; }
+    function awbCompleteBadge(p){ return p.awbPrinted ? `<div class="chip good" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700">✅ ${p.status&&p.status!=="New booked"?"AWB printed · now "+escLabelText(p.status):"AWB printed — ready for pickup"}${p.awbPrintedAt?" · printed "+escLabelText(nvNiceDate(p.awbPrintedAt)):""}</div>` : `<div class="chip warn" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;font-weight:700">⏳ AWB not printed yet</div>`; }
     // NovaX fix (CSV injection + quote breaking): every exported CSV cell goes
     // through this helper. Embedded quotes are doubled, the value is always
     // wrapped in quotes so commas/newlines cannot break the column layout, and
@@ -5608,7 +5619,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             /* Look the parcels up again: building the PDF takes seconds, and a
                background refresh can replace state.parcels in that time, so
                the objects captured at the click may no longer be the live ones. */
-            var want=parcels.map(function(p){ return p.awb; }), stamp=time();
+            var want=parcels.map(function(p){ return p.awb; }), stamp=nvwPktNow();
             (state.parcels||[]).forEach(function(p){ if(p && want.indexOf(p.awb)>=0){ p.awbPrinted=true; p.awbPrintedAt=stamp; } });
             saveState();
             try{ nvOfferPrintUndo(parcels.map(function(p){ return p.awb; })); }catch(e){}
@@ -5736,7 +5747,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var nvMarked=false;
         function nvMarkPrinted(){
           if(nvMarked) return; nvMarked=true;
-          valid.forEach(p=>{ p.awbPrinted=true; p.awbPrintedAt=time(); });
+          valid.forEach(p=>{ p.awbPrinted=true; p.awbPrintedAt=nvwPktNow(); });
           saveState();
           try{ nvOfferPrintUndo(nvPrintedNow); }catch(e){}
           try{ if(document.getElementById("awbLabelPreview")) renderAwbLabel(); }catch(e){}
@@ -6829,12 +6840,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         b._nvWired=true;
         b.addEventListener("click",function(){
           if(!nvIsOwnerSeat()){ try{ toast("Withdrawals are Owner-only on this account."); }catch(e){} return; }
-          /* The transfer sheet (Wallet v3). The classic form stays reachable
-             through Bank, and it is the fallback if the sheet cannot open. */
+          /* The transfer sheet (Wallet v3) is the only way to withdraw. The
+             classic form it replaced is hidden (it accepted a malformed IBAN
+             and Rs 0.01), so a failure here says so instead of opening it. */
           try{ nvwOpenWithdraw(); return; }catch(e){ console.warn("NovaX withdraw sheet", e); }
-          var f=document.getElementById("withdrawAmount");
-          try{ var fig=nvMoneyFigures(); if(f && !f.value) f.value=String(Math.round(fig.ready)); }catch(e){}
-          nvOpenWalletForms("withdrawAmount");
+          try{ toast("Withdraw could not open. Refresh the page and try again.","error"); }catch(e){}
         });
       }
       if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",bind);
@@ -7282,7 +7292,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        the portal through this bridge, so "delivered", "settled" and "rated"
        mean exactly what they mean on every other screen. Read-only. If the
        file cannot load, the classic report underneath is shown instead. */
-    var NV_REPORTS_SRC="client-reports.js?v=a004335b";
+    var NV_REPORTS_SRC="client-reports.js?v=be1a496c";
     window.__nvRepBridge={
       clientId:function(){ return state.client&&state.client.id; },
       clientName:function(){ return (state.client&&state.client.name)||""; },
@@ -7363,11 +7373,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // details, withdraw confirmation, and history all agree on the same
     // rule (required, must start with PK, minimum 15 characters) and never
     // show a full IBAN once it's saved.
+    /* "PK12-INVALID-$$$$" passed this (starts with PK, 15+ characters). A
+       Pakistani IBAN is 24 characters -- PK, two check digits, a four-letter
+       bank code, 16 characters -- and its check digits must add up (ISO
+       13616 mod 97). The server (nv_iban_pk_valid) applies the same rule. */
+    function nvIbanChecksumOk(s){
+      var r=s.slice(4)+s.slice(0,4), m=0;
+      for(var i=0;i<r.length;i++){
+        var c=r.charCodeAt(i), d=(c>=65&&c<=90)?String(c-55):r[i];
+        for(var j=0;j<d.length;j++) m=(m*10+(d.charCodeAt(j)-48))%97;
+      }
+      return m===1;
+    }
     function validateIbanValue(iban){
-      const s=String(iban||"").replace(/\s+/g,"").toUpperCase();
+      const s=String(iban||"").replace(/[\s-]+/g,"").toUpperCase();
       if(!s) return "IBAN is required.";
       if(!s.startsWith("PK")) return "IBAN must start with PK.";
-      if(s.length<15) return "IBAN must be at least 15 characters.";
+      if(!/^PK[0-9]{2}[A-Z]{4}[0-9A-Z]{16}$/.test(s)) return "A Pakistani IBAN has 24 letters and numbers, like PK36SCBL0000001123456702.";
+      if(!nvIbanChecksumOk(s)) return "This IBAN has a typo: its check digits don't match. Copy it from your bank app.";
       return "";
     }
     function maskIban(iban){
@@ -7506,6 +7529,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function renderCodHero(){
       const host=document.getElementById("nvCodHero");
       if(!host) return;
+      /* Warehouse and Support seats do not see wallet figures (the server
+         returns none to them since 1 Oct 2026), so no empty wallet card. */
+      try{ if(typeof nvCanUseTab==="function" && !nvCanUseTab("money")){ host.innerHTML=""; return; } }catch(e){}
       const U=window.NovaXUI;
       try{
         const c=(typeof clientById==="function"&&state.client)?clientById(state.client.id):null;
@@ -8614,7 +8640,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         window.__nvSb.rpc("client_wallet_summary",{}).then(function(r){
           if(r&&r.error){ console.warn("NovaX wallet summary fetch failed:",r.error.message); return; }
           const row=Array.isArray(r.data)?r.data[0]:r.data;
-          if(row){ state.serverWalletSummary=row; renderClientWallet(); }
+          if(row){
+            state.serverWalletSummary=row;
+            /* The card read the balance from the client row loaded at page
+               open, Home from this summary: the same column, read at two
+               times, could briefly disagree. This read is the newest. */
+            try{
+              var nvMe=clientById(state.client.id);
+              if(nvMe && row.available_balance!=null && Number(nvMe.walletBalance)!==Number(row.available_balance)){
+                nvMe.walletBalance=Number(row.available_balance);
+                try{ renderCodHero(); }catch(e){}
+              }
+            }catch(e){}
+            renderClientWallet();
+          }
         }).catch(function(e){ console.warn("NovaX wallet summary fetch error:",e&&e.message); });
       }
       const entryLabels={ invoice_credit:"Invoice credited", withdrawal_requested:"Withdrawal requested", payout_fee:"Payout fee deducted", payout_paid:"Payout paid", admin_adjustment:"Admin adjustment", delivery_charge_due:"Delivery charge collected", invoice_due_debit:"Delivery charges taken from wallet", invoice_due_reversal:"Charges returned", due_payment:"Payment received by NovaX" };
@@ -9962,8 +10001,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(possibleDupe){ toast(`Looks like a duplicate \u2014 ${possibleDupe.awb} was just booked for ${consignee} with the same details. Check the AWB tab before booking again.`,"error"); return; }
 
       const riskWarnEl=document.getElementById("nvRiskWarning");
-      const riskInput={ phone:phone, address, cod:document.getElementById("bookingCod").value, city:document.getElementById("bookingCity").value, product:document.getElementById("bookingCategory").value.trim(), weight:document.getElementById("bookingWeight").value.trim(), recentDuplicate:false };
+      const riskInput={ phone:phone, address, cod:document.getElementById("bookingCod").value, city:document.getElementById("bookingCity").value, product:document.getElementById("bookingCategory").value.trim(), weight:document.getElementById("bookingWeight").value.trim(), consignee:consignee, recentDuplicate:false };
       const risk=checkBookingRisk(riskInput);
+      if(risk.serious.length && riskWarnEl){
+        nvShowBookingProblem(risk.serious[0], risk.seriousFields[0]);
+        try{ nvFlagField(risk.seriousFields[0]); }catch(e){}
+        return;
+      }
       if(risk.serious.length){
         /* The same sentence was shown twice simultaneously: in the inline
            banner above the form AND as a toast over it. Two copies of one
@@ -9978,6 +10022,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
         return;
       }
+      if(cod>50000){
+        const okBig=await window.nvAsk({ title:"Book with "+money(cod)+" COD?",
+          body:"That is far more than a usual parcel. Check the amount: the rider will collect exactly "+money(cod)+" from "+(consignee||"the customer")+".",
+          ok:"Yes, book it", cancel:"Change amount" });
+        if(!okBig){ try{ nvFlagField("bookingCod"); }catch(e){} return; }
+      }
+      if(riskWarnEl){ delete riskWarnEl.dataset.nvRisk; riskWarnEl.removeAttribute("role"); nvMarkBookingField(null); }
       if(risk.minor.length){
         if(riskWarnEl){ riskWarnEl.style.display="block"; riskWarnEl.style.color="#a15c00"; riskWarnEl.style.background="var(--nvu-warn-bg)"; riskWarnEl.style.borderColor="#f0d6a0"; riskWarnEl.textContent=risk.minor[0]; }
       } else if(riskWarnEl){ riskWarnEl.style.display="none"; }
@@ -10378,7 +10429,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     /* ===== Booking Risk Check (item 4) ===== */
     function checkBookingRisk(o){
-      var serious=[], minor=[];
+      var serious=[], minor=[], seriousFields=[];
+      var nvSerious=function(msg, field){ serious.push(msg); seriousFields.push(field); };
+      /* The server refuses these (client_book_parcel, 1 Oct 2026), so say it
+         here first, against the right field. Only obvious junk is refused:
+         any script counts as a letter. */
+      var nvName=String(o.consignee==null?"":o.consignee).trim();
+      if(o.consignee!=null && (nvName.length<2 || !/[^0-9\s\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/.test(nvName))){ nvSerious("Enter the consignee's full name.","bookingName"); }
       var phoneDigits=String(o.phone||"").replace(/\D/g,"");
       /* Normalise first, then validate. Booking used to demand a bare
          ^03\d{9}$, so "0311 332 3923", "+92 311 332 3923" and a pasted
@@ -10387,7 +10444,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          of a Pakistani mobile in this file; every entry point should agree
          with it, and now booking does. */
       var phoneNorm = nvNormalizePkPhone(phoneDigits);
-      if(!phoneNorm){ serious.push("Phone number looks incomplete. Use 03XXXXXXXXX."); }
+      if(!phoneNorm){ nvSerious("Phone number looks incomplete. Use 03XXXXXXXXX.","bookingPhone"); }
       else { phoneDigits = phoneNorm; }
 
       /* NovaX: address FORMAT checking removed entirely.
@@ -10395,26 +10452,79 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          blocked real bookings — Pakistani addresses legitimately come in forms
          no keyword list can cover. The address is still REQUIRED (the
          mandatory-fields check in quickBooking() rejects an empty one), it is
-         simply no longer judged on length, wording or content. */
+         simply no longer judged on length, wording or content. The one floor
+         (1 Oct 2026) refuses obvious junk only: under 5 characters, or no
+         letter at all. */
+      var nvAddr=String(o.address==null?"":o.address).trim();
+      if(nvAddr && (nvAddr.length<5 || !/[^0-9\s\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/.test(nvAddr))){ nvSerious("Enter the full delivery address: house, street and area.","bookingAddress"); }
 
       var cod=Number(o.cod);
-      if(o.cod===""||o.cod===null||o.cod===undefined||!Number.isFinite(cod)||cod<0){ serious.push("COD amount must be zero or more (0 for prepaid)."); }
-      else if(cod>100000){ minor.push("COD amount looks unusually high. Please confirm this is correct."); }
+      if(o.cod===""||o.cod===null||o.cod===undefined||!Number.isFinite(cod)||cod<0){ nvSerious("COD amount must be zero or more (0 for prepaid).","bookingCod"); }
+      /* "Looks unusually high, please confirm" never asked for confirmation:
+         the booking went straight through. No parcel has carried more than
+         Rs 14,090, so above Rs 50,000 the merchant confirms (quickBooking),
+         and above Rs 200,000 it is refused, as the server does. */
+      else if(cod>200000){ nvSerious("COD above Rs 200,000 can't be booked online. Message NovaX support to arrange it.","bookingCod"); }
 
       if(!nvFindCity(String(o.city||""))){ minor.push("City is not one of the recognized service cities. Please confirm delivery is available there."); }
 
-      if(!String(o.product||"").trim()){ serious.push("Product details are missing. Add what is being shipped."); }
+      if(!String(o.product||"").trim()){ nvSerious("Product details are missing. Add what is being shipped.","bookingCategory"); }
 
       var weight=String(o.weight||"").trim();
       /* /\d/ only asked whether a digit was present, so "0", "0 kg" and "-1 kg"
          all passed and were then silently rebilled at 0.8 kg. */
       var nvWp=(typeof nvWeightProblem==="function") ? nvWeightProblem(weight) : null;
-      if(nvWp){ serious.push(nvWp); }
+      if(nvWp){ nvSerious(nvWp,"bookingWeight"); }
 
       if(o.recentDuplicate){ minor.push("This looks similar to a booking made in the last few minutes. Please confirm it is not a duplicate."); }
 
-      return { serious: serious, minor: minor };
+      return { serious: serious, minor: minor, seriousFields: seriousFields };
     }
+    /* A serious problem is shown once, against its field, and goes away as
+       soon as it is fixed. The banner stayed up after the phone was
+       corrected, and the field was never marked for screen readers. */
+    function nvBookingRiskInput(){
+      var v=function(id){ var e=document.getElementById(id); return e?String(e.value||""):""; };
+      return { phone:v("bookingPhone").replace(/\D/g,""), address:v("bookingAddress").trim(), cod:v("bookingCod"),
+        city:v("bookingCity"), product:v("bookingCategory").trim(), weight:v("bookingWeight").trim(), consignee:v("bookingName"), recentDuplicate:false };
+    }
+    function nvMarkBookingField(id){
+      document.querySelectorAll('#client-newBooking [aria-describedby~="nvRiskWarning"]').forEach(function(el){
+        if(el.id===id) return;
+        el.removeAttribute("aria-invalid");
+        var d=(el.getAttribute("aria-describedby")||"").split(/\s+/).filter(function(x){ return x && x!=="nvRiskWarning"; }).join(" ");
+        if(d) el.setAttribute("aria-describedby",d); else el.removeAttribute("aria-describedby");
+      });
+      var el=id && document.getElementById(id);
+      if(!el) return;
+      el.setAttribute("aria-invalid","true");
+      var d=(el.getAttribute("aria-describedby")||"").split(/\s+/).filter(Boolean);
+      if(d.indexOf("nvRiskWarning")<0){ d.push("nvRiskWarning"); el.setAttribute("aria-describedby",d.join(" ")); }
+    }
+    function nvShowBookingProblem(msg, field){
+      var w=document.getElementById("nvRiskWarning");
+      if(!w){ toast(msg,"error"); return; }
+      w.style.display="block"; w.style.color="#a1230e"; w.style.background="var(--nvu-bad-bg)"; w.style.borderColor="#f0b4ac";
+      w.setAttribute("role","alert"); w.dataset.nvRisk="serious"; w.textContent=msg;
+      nvMarkBookingField(field);
+    }
+    function nvRecheckBookingProblem(){
+      var w=document.getElementById("nvRiskWarning");
+      if(!w || w.dataset.nvRisk!=="serious") return;
+      var r=checkBookingRisk(nvBookingRiskInput());
+      if(r.serious.length){ if(w.textContent!==r.serious[0]) w.textContent=r.serious[0]; nvMarkBookingField(r.seriousFields[0]); return; }
+      w.style.display="none"; w.textContent=""; delete w.dataset.nvRisk; w.removeAttribute("role");
+      nvMarkBookingField(null);
+    }
+    (function(){
+      var t=null;
+      var again=function(e){
+        if(!e.target || !e.target.closest || !e.target.closest("#client-newBooking")) return;
+        clearTimeout(t); t=setTimeout(nvRecheckBookingProblem,250);
+      };
+      document.addEventListener("input",again,true);
+      document.addEventListener("change",again,true);
+    })();
 
     // NovaX fix (CSV injection): csvEscape() only quoted values that already
     // contained a comma/quote/newline, so a leading = + - @ passed straight
@@ -10455,6 +10565,27 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // fix) instead of one flat error array, so the UI can show exactly which
     // rows are blocking the import and which are clean -- and "Import valid
     // rows only" can safely skip just the bad ones.
+    /* Reads a bulk-sheet weight: "1.5", "1,5 kg", "500 g", "1 500 g",
+       "01.50kg". Returns { kg } or { error }. A comma followed by one or two
+       digits is a decimal comma; groups of three after a space or comma are
+       thousands, which only make sense in grams -- "1,500 kg" is ambiguous and
+       refused rather than guessed. Nothing is truncated. */
+    function nvBulkWeightKg(raw){
+      var t=String(raw==null?"":raw).trim().toLowerCase().replace(/\s+/g," ");
+      if(!t) return { error:"is missing." };
+      var m=t.match(/^([0-9][0-9 ,.]*?)\s*(kg|kgs|kilo|kilos|kilogram|kilograms|g|gm|gms|gr|gram|grams)?$/);
+      if(!m) return { error:"is not a weight." };
+      var num=m[1].trim(), grams=!!m[2]&&!/^k/.test(m[2]), v;
+      if(/^\d+$/.test(num) || /^\d+\.\d+$/.test(num)) v=Number(num);
+      else if(/^\d+,\d{1,2}$/.test(num)) v=Number(num.replace(",","."));
+      else if(/^\d{1,3}([ ,]\d{3})+(\.\d+)?$/.test(num)){
+        if(!grams) return { error:"is ambiguous. Write 1.5 kg, or the grams like 1500 g." };
+        v=Number(num.replace(/[ ,]/g,""));
+      }
+      else return { error:"is not a weight." };
+      if(!Number.isFinite(v)) return { error:"is not a weight." };
+      return { kg: grams ? Math.round(v)/1000 : Math.round(v*1000)/1000 };
+    }
     function validateBulkRows(rows){
       const headers=(rows[0]||[]).map(h=>h.toLowerCase().trim());
       const required=["consignee","phone","city","address","cod","weight","order_id","product","payment_mode"];
@@ -10516,16 +10647,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         let weightKg=0.8;
         if(!weightRaw) addProblem("weight","Weight is missing.","Enter the package weight, e.g. 0.8 kg.");
         else {
-          /* Units matter. This stripped "kg" and ignored every other unit, so
-             "500 g" became 500 kg and was billed at the 5 kg ceiling. */
-          const wtxt=String(weightRaw).trim().toLowerCase();
-          let wnum=parseFloat(wtxt.replace(/[a-z\s]+$/,""));
-          if(/[\d.]\s*(g|gm|gms|gr|gram|grams)$/.test(wtxt)) wnum=wnum/1000;
-          if(!Number.isFinite(wnum)||wnum<=0||wnum>70) addProblem("weight",`Weight "${weightRaw}" is invalid.`,"Use a weight above 0 and no more than 70 kg.");
-          else weightKg=wnum;
+          /* parseFloat read "1,5 kg" as 1 kg and "1 500 g" as 1 g, silently.
+             nvBulkWeightKg reads the whole value or refuses it. */
+          const wread=nvBulkWeightKg(weightRaw);
+          if(wread.error) addProblem("weight",`Weight "${weightRaw}" ${wread.error}`,"Write it like 1.5 kg or 500 g.");
+          else if(wread.kg<=0||wread.kg>70) addProblem("weight",`Weight "${weightRaw}" is invalid.`,"Use a weight above 0 and no more than 70 kg.");
+          else weightKg=wread.kg;
         }
-        const paymentMode=["COD","Non COD Prepaid"].includes(paymentModeRaw)?paymentModeRaw:(paymentModeRaw?paymentModeRaw:"COD");
-        if(paymentModeRaw&&!(["COD","Non COD Prepaid"].includes(paymentModeRaw))) addProblem("payment_mode",`payment_mode "${paymentModeRaw}" is not recognized.`,"Use COD or Non COD Prepaid.");
+        /* The page said "cod or prepaid" while only the exact "COD" and
+           "Non COD Prepaid" passed. Case, spaces and the usual names now all
+           read the same way. */
+        const paymentKey=String(paymentModeRaw||"").toLowerCase().replace(/[\s_\-]+/g,"");
+        const paymentMode=!paymentKey||paymentKey==="cod"||paymentKey==="cashondelivery"?"COD"
+          :(["prepaid","noncod","noncodprepaid","paid","nocod","advance"].indexOf(paymentKey)>-1?"Non COD Prepaid":paymentModeRaw);
+        if(paymentMode!=="COD"&&paymentMode!=="Non COD Prepaid") addProblem("payment_mode",`payment_mode "${paymentModeRaw}" is not recognized.`,"Use COD or Prepaid.");
         /* A prepaid row with money on it is the conflict that put 3 live
            parcels worth Rs 11,099 into the field with their COD invisible to
            both the invoice and the rider's cash sheet. Refuse it at upload,
@@ -10687,9 +10822,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         /* Import button matters here now: after fixing rows in place the
            user needs a way to book them, since the auto-import only runs on
            the original upload. */
-        html+=`<div class="ops-card"><strong>${validRows.length} clean row(s) ready</strong><p>All phones, cities, addresses, product details, COD values, weights, order IDs, and references passed validation.</p><div class="inline-actions" style="margin-top:10px"><button class="action-btn" onclick="nvImportFixedBulk()">Import ${validRows.length} row(s)</button></div></div>`;
+        const nvRecs=validRows.map(r=>r.record||{});
+        const nvCodTotal=nvRecs.reduce((t,r)=>t+Number(r.cod||0),0);
+        const nvKgTotal=nvRecs.reduce((t,r)=>t+(parseFloat(r.weight)||0),0);
+        const nvPrepaid=nvRecs.filter(r=>r.paymentMode==="Non COD Prepaid").length;
+        html+=`<div class="ops-card" id="nvBulkConfirm"><strong>Ready to book ${validRows.length} parcel${validRows.length===1?"":"s"}</strong>`+
+          `<p class="footer-note">Nothing is booked yet. Check this is the right file.</p>`+
+          `<div class="nv-bulk-sum"><span><b>${validRows.length}</b> rows</span><span><b>${escLabelText(money(nvCodTotal))}</b> COD to collect</span><span><b>${escLabelText((Math.round(nvKgTotal*10)/10).toLocaleString("en-PK"))} kg</b> total</span>${nvPrepaid?`<span><b>${nvPrepaid}</b> prepaid</span>`:""}</div>`+
+          `<div class="nv-bulk-sample">${nvRecs.slice(0,3).map(r=>`<div><b>${escLabelText(r.consignee||"")}</b> · ${escLabelText(r.city||"")} · ${escLabelText(money(Number(r.cod||0)))} · ${escLabelText(r.weight||"")}${r.orderId?` · ${escLabelText(r.orderId)}`:""}</div>`).join("")}${nvRecs.length>3?`<div class="footer-note">and ${nvRecs.length-3} more</div>`:""}</div>`+
+          `<div class="inline-actions" style="margin-top:10px"><button class="action-btn" id="nvBulkCreateBtn" onclick="nvImportFixedBulk()">Create ${validRows.length} booking${validRows.length===1?"":"s"}</button></div></div>`;
       }
       el.innerHTML=html;
+      el.dataset.nvBulk="1";
     }
     // NovaX (Part 6): CSV rows are never booked directly from a flat
     // records list anymore -- validateBulkRows() now returns per-row
@@ -10756,7 +10900,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!parsed.results.length){ toast("No data rows found in this CSV.","error"); return; }
       const invalidCount=parsed.results.filter(r=>!r.ok).length;
       if(invalidCount>0){ toast(`${invalidCount} row(s) blocked. Fix them or use "Import valid rows only".`,"error"); return; }
-      importBulkRows(parsed.results.map(r=>r.record), parsed.results.length);
+      /* Uploading used to book every row the moment a valid file was picked:
+         the wrong (valid) file meant real AWBs. Now it only checks. The
+         summary below says what would be booked, and "Create N bookings"
+         does it. */
+      toast(`${parsed.results.length} row(s) checked. Review the summary, then press Create ${parsed.results.length} booking${parsed.results.length===1?"":"s"}.`,"success");
+      try{ var bl=document.getElementById("bulkValidationList"); if(bl) bl.scrollIntoView({behavior:"smooth",block:"start"}); }catch(e){}
     }
     async function importValidBulkRowsOnly(){
       if(NV_BULK_BUSY){ toast("An import is already running. Wait for it to finish.","error"); return; }
@@ -10804,6 +10953,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       state.lastBulkAwbs=awbs; saveState(); renderBulkPreview();
       const skipped=Math.max(0,(totalRowsSeen||records.length)-awbs.length);
       const el=document.getElementById("bulkValidationList");
+      /* This file is done: its confirmation card must not be able to book it
+         again, and the next file starts from a clean check. */
+      state.lastBulkValidation=null; NV_BULK_RAW=null;
+      try{ var nvDone=document.getElementById("nvBulkConfirm"); if(nvDone) nvDone.remove(); }catch(e){}
+      try{ var nvIn=document.getElementById("bulkCsvInput"); if(nvIn) nvIn.value=""; }catch(e){}
+      if(el) el.dataset.nvBulk="1";
       if(el) el.insertAdjacentHTML("afterbegin", `<div class="ops-card" style="margin-bottom:10px"><strong>Import complete: ${awbs.length} AWB(s) created${skipped?`, ${skipped} row(s) skipped`:""}</strong><p>Booked rows are saved on the server now. New AWBs appear in "New Booked AWBs" for printing.</p></div>`);
       if(failed.length){
         /* Bulk import is deliberately NOT transactional -- a rejected row must
@@ -11839,6 +11994,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var awb  = (document.getElementById("nvTkAwb") || {}).value || "";
       var pri  = (document.getElementById("nvTkPriority") || {}).value || "normal";
       if (!subj.trim()){ toast("Please describe the issue in one line.", "error"); return; }
+      if (subj.trim().length < 3){ toast("Say a little more about the problem.", "error"); return; }
+      if (subj.trim().length > 150){ toast("Keep the first line under 150 characters and put the details below it.", "error"); return; }
+      if (body.length > 4000){ toast("Keep the details under 4,000 characters.", "error"); return; }
+      if (awb.trim()){
+        var __mineAwb = awb.trim().toUpperCase(), __cid = state.client && state.client.id;
+        var __known = (state.parcels||[]).some(function(p){ return p && String(p.awb||"").toUpperCase()===__mineAwb && (!__cid || p.clientId===__cid); });
+        if (!__known && state.parcelHistoryComplete===true){ toast("AWB " + __mineAwb + " is not one of your parcels. Check the number, or leave it empty.", "error"); return; }
+      }
       /* #34-#37. This account carries three tickets for N8530014, three for
          N8530019 and two each for N8530030, N8530027, N8530041 and N8530052 --
          every one of them "Reattempt requested", opened days apart because
@@ -12624,6 +12787,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const cfg=map[platform]; if(!cfg) return;
       const storeUrl=(document.getElementById(cfg.url).value||"").trim();
       if(!storeUrl){ toast(platform==="web" ? "Enter your status update URL first." : "Enter your store URL first."); return; }
+      /* Any text was accepted. NovaX's servers call this address, so it must
+         be a public https site (the server checks the same). */
+      var nvUrlOk=false;
+      try{
+        var nvU=new URL(storeUrl), nvH=nvU.hostname.toLowerCase();
+        nvUrlOk=nvU.protocol==="https:" && !nvU.username && !nvU.password && (!nvU.port||nvU.port==="443") &&
+          nvH.indexOf(".")>0 && !/^[0-9.]+$/.test(nvH) && nvH.indexOf(":")<0 && nvH!=="localhost" &&
+          !/\.(localhost|local|internal|lan|home|corp|intranet)$/.test(nvH);
+      }catch(e){ nvUrlOk=false; }
+      if(!nvUrlOk){ toast("Use your store's public https address, like https://yourstore.com.","error"); try{ nvFlagField(cfg.url); }catch(e){} return; }
 
       // Real, live connection for both platforms: calls the NovaX backend
       // and actually wires up automated order intake + status sync. Credentials
@@ -13090,25 +13263,38 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     function nvPfLoad(force){
       var sb=window.__nvSb;
-      if(!sb||!sb.rpc||NV_PF.loading) return Promise.resolve();
+      if(!sb||!sb.rpc){
+        /* Opened before the connection was ready (a ?tab=profile link):
+           try again shortly instead of leaving the form empty. */
+        NV_PF.waits=(NV_PF.waits||0)+1;
+        if(NV_PF.waits<=10) setTimeout(function(){ if(!NV_PF.loaded) nvPfLoad(force); },1500);
+        return Promise.resolve();
+      }
+      if(NV_PF.loading) return Promise.resolve();
       if(NV_PF.loaded && !force) return Promise.resolve();
       NV_PF.loading=true;
       var err=nvPfEl("nvPfLoadErr");
+      /* Blank fields with "—" and "Your shop" looked like the account had no
+         details. Say it is loading, and on failure say so with a retry. */
+      if(err && !NV_PF.loaded){ err.hidden=false; err.classList.remove("is-err"); err.textContent="Loading your profile…"; }
       return Promise.all([
         Promise.resolve(sb.rpc("nv_profile_get")),
         Promise.resolve(sb.from("client_profile_changes").select("field,old_value,new_value,created_at").order("created_at",{ ascending:false }).limit(12))
       ]).then(function(res){
         NV_PF.loading=false;
         var r=res[0], h=res[1];
-        if(r&&r.error){ if(err){ err.hidden=false; err.textContent=/permission denied/i.test(r.error.message||"")?"Your sign-in has ended. Refresh and sign in again.":"Could not load your profile: "+r.error.message; } return; }
-        if(!r||!r.data){ if(err){ err.hidden=false; err.textContent="Could not load your profile. Refresh the page."; } return; }
+        if(r&&r.error){ if(err){ err.hidden=false; err.classList.add("is-err"); err.textContent=/permission denied/i.test(r.error.message||"")?"Your sign-in has ended. Refresh and sign in again.":"Could not load your profile: "+r.error.message; } return; }
+        if(!r||!r.data){ if(err){ err.hidden=false; err.classList.add("is-err"); err.textContent="Could not load your profile. Refresh the page."; } return; }
         if(err) err.hidden=true;
         NV_PF.data=Array.isArray(r.data)?r.data[0]:r.data;
         NV_PF.hist=(h&&!h.error&&h.data)||[];
         NV_PF.loaded=true;
         nvPfWorkspace(NV_PF.data);
         if(!nvPfDirty()) nvPfFill(); else nvPfHistory();
-      }).catch(function(){ NV_PF.loading=false; });
+      }).catch(function(){
+        NV_PF.loading=false;
+        if(err){ err.hidden=false; err.classList.add("is-err"); err.innerHTML='Could not load your profile. Check your connection. <button type="button" class="nv-pf-link" onclick="nvPfLoad(true)">Try again</button>'; }
+      });
     }
     /* The header logo is wanted on every tab, so fetch the profile once per
        session as soon as the account is confirmed. */
@@ -13145,6 +13331,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var v=nvPfValues();
       if(v.name.length<2){ nvPfMsg("Enter your business name.", true); nvPfEl("nvPfName").focus(); return; }
       if(v.phone.replace(/\D/g,"").length<10){ nvPfMsg("Enter your business phone number.", true); nvPfEl("nvPfPhone").focus(); return; }
+      /* The same rules nv_profile_save applies, checked here first so the
+         merchant sees which field before anything is sent. */
+      var nvPh=v.phone.replace(/\D/g,""); if(/^92/.test(nvPh)&&nvPh.length===12) nvPh="0"+nvPh.slice(2); if(/^3\d{9}$/.test(nvPh)) nvPh="0"+nvPh;
+      if(!/^0\d{9,10}$/.test(nvPh)){ nvPfMsg("Enter a Pakistani phone number, like 0300 1234567.", true); nvPfEl("nvPfPhone").focus(); return; }
+      var nvEm=String(v.email||"").trim();
+      if(nvEm && (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(nvEm) || nvEm.length>120)){ nvPfMsg("That email address does not look right.", true); nvPfEl("nvPfEmail").focus(); return; }
+      var nvWeb=String(v.website||"").trim(); if(nvWeb && !/^https?:\/\//i.test(nvWeb)) nvWeb="https://"+nvWeb;
+      if(nvWeb && (!/^https?:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+(\/[^\s<>"]*)?$/i.test(nvWeb) || nvWeb.length>200)){ nvPfMsg("That website address does not look right.", true); nvPfEl("nvPfWeb").focus(); return; }
+      var nvWa=String(v.whatsapp||"").replace(/\D/g,"");
+      if(nvWa && (nvWa.length<10 || nvWa.length>13)){ nvPfMsg("Enter the WhatsApp number with its area code, like 0300 1234567.", true); nvPfEl("nvPfWa").focus(); return; }
       var cid=activeClientId();
       if((NV_PF.logoBlob || NV_PF.removeLogo) && !/^[0-9a-f-]{36}$/i.test(String(cid||""))){ nvPfMsg("Your account is still loading. Try again in a moment.", true); return; }
       NV_PF.saving=true;
@@ -13744,8 +13940,62 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var v=nvPickupAddressDefault();
       if(v){ el.value=v; el.dataset.nvAuto="1"; }
     }
+    /* Pickup day and window (1 Oct 2026). Riders collect 11 am - 9 pm, so the
+       choices are those hours in two-hour windows, in Pakistan time; a window
+       that has already ended today cannot be chosen, and neither can today
+       once the last one has. The label is what the request sends. */
+    var NV_PK_SLOTS=[[11,13,"11 am – 1 pm"],[13,15,"1 – 3 pm"],[15,17,"3 – 5 pm"],[17,19,"5 – 7 pm"],[19,21,"7 – 9 pm"],[11,21,"Any time, 11 am – 9 pm"]];
+    function nvPkNow(){
+      var d=new Date(), p=new Intl.DateTimeFormat("en-GB",{ timeZone:"Asia/Karachi", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hourCycle:"h23" }).formatToParts(d);
+      var g=function(t){ var x=p.find(function(q){ return q.type===t; }); return x?Number(x.value):0; };
+      return { y:g("year"), m:g("month"), d:g("day"), h:g("hour")+g("minute")/60 };
+    }
+    function nvPkDays(){
+      var n=nvPkNow(), out=[];
+      for(var i=0;i<7;i++){
+        var day=new Date(Date.UTC(n.y,n.m-1,n.d+i,12));
+        var name=day.toLocaleDateString("en-GB",{ weekday:"short", day:"numeric", month:"short", timeZone:"UTC" });
+        if(i===0 && n.h>=20.5) continue;
+        out.push({ key:day.toISOString().slice(0,10), today:i===0, label:(i===0?"Today, ":i===1?"Tomorrow, ":"")+name, short:name });
+      }
+      return out;
+    }
+    function nvPkSync(){
+      var dayEl=document.getElementById("pickupDay"), slotEl=document.getElementById("pickupSlot"), out=document.getElementById("pickupRequestedFor");
+      if(!dayEl||!slotEl||!out) return;
+      var days=nvPkDays(), keep=dayEl.value;
+      dayEl.innerHTML=days.map(function(d){ return '<option value="'+d.key+'">'+escLabelText(d.label)+'</option>'; }).join("");
+      if(keep && days.some(function(d){ return d.key===keep; })) dayEl.value=keep;
+      var day=days.find(function(d){ return d.key===dayEl.value; })||days[0], now=nvPkNow().h, slotKeep=slotEl.value;
+      slotEl.innerHTML=NV_PK_SLOTS.map(function(sl,i){
+        var gone=day && day.today && sl[1]-0.5<=now;
+        return '<option value="'+i+'"'+(gone?" disabled":"")+'>'+escLabelText(sl[2])+(gone?" (passed)":"")+'</option>';
+      }).join("");
+      var firstOk=Array.prototype.find.call(slotEl.options,function(o){ return !o.disabled; });
+      if(slotKeep!=="" && slotEl.options[slotKeep] && !slotEl.options[slotKeep].disabled) slotEl.value=slotKeep;
+      else if(firstOk) slotEl.value=firstOk.value;
+      var sl=NV_PK_SLOTS[Number(slotEl.value)];
+      out.value=(day&&sl)?(day.short+", "+sl[2]+" (PKT)"):"";
+    }
+    (function(){
+      var on=function(e){ if(e.target && (e.target.id==="pickupDay"||e.target.id==="pickupSlot")) nvPkSync(); };
+      document.addEventListener("change",on,true);
+      document.addEventListener("change",function(e){ if(e.target && e.target.classList && e.target.classList.contains("pickup-check")) nvPkButtonState(); },true);
+    })();
+    /* Request Pickup stayed enabled with nothing to pick up and answered
+       with a toast. It is off, with the reason beside it, until a parcel is
+       ticked. */
+    function nvPkButtonState(){
+      var btn=document.getElementById("requestPickupBtn"), hint=document.getElementById("pickupBtnHint");
+      if(!btn || requestPickup._busy) return;
+      var any=document.querySelectorAll(".pickup-check").length, ticked=document.querySelectorAll(".pickup-check:checked").length;
+      btn.disabled=!ticked;
+      if(hint) hint.textContent=ticked?"":(any?"Tick the parcels the rider should collect.":"Book a parcel first: only new bookings can be picked up.");
+    }
     function renderPickupEligibleList(){
       const list=document.getElementById("pickupEligibleList"); if(!list) return;
+      try{ nvPkSync(); }catch(e){}
+      setTimeout(function(){ try{ nvPkButtonState(); }catch(e){} },0);
       const selected=new Set(Array.from(list.querySelectorAll(".pickup-check:checked")).map(b=>b.value));
       nvPrefillPickupAddress();
       try{ nvPaEnsureLoaded(false); }catch(e){}
@@ -13776,7 +14026,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(dupes.length){ toast("These AWBs already have an active pickup request: "+dupes.join(", "),"error"); return; }
       const address=(document.getElementById("pickupAddress")?.value||"").trim();
       if(!address){ toast("Enter a pickup address before requesting pickup."); return; }
+      try{ nvPkSync(); }catch(e){}
       const requestedFor=(document.getElementById("pickupRequestedFor")?.value||"").trim();
+      if(!requestedFor){ toast("Choose a pickup day and time.","error"); return; }
       const note=(document.getElementById("pickupNote")?.value||"").trim();
       const sb=window.__nvSb;
       if(!sb||!sb.from){ toast("Cloud connection not ready yet, please try again in a moment.","error"); return; }
@@ -14324,7 +14576,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        the boundary: nv_client_money_allowed() refuses withdrawals and bank
        changes for restricted seats, and is_client_owner_seat() refuses team
        changes, whatever this function returns. */
-    function nvClientRole(){ var r=window.__novaxClientRole; return NOVAX_ROLE_TABS[r]?r:"Owner"; }
+    /* 1 Oct 2026: the account holder still defaults to Owner (the 10 Sep
+       lesson above). A login an Owner CREATED -- a team seat, marked
+       created_by_owner when it was made -- now waits as the most limited seat
+       until its own seat row is read, so a slow or failed lookup can no
+       longer show a Warehouse or Support login the Owner's tabs. Controls are
+       only hidden, never replaced, so nothing is lost when the real role
+       arrives; and the server refuses money data to those seats anyway. */
+    function nvClientRole(){
+      var r=window.__novaxClientRole;
+      if(NOVAX_ROLE_TABS[r]) return r;
+      try{
+        var u=window.__novaxGateSession&&window.__novaxGateSession.user;
+        if(!window.__NOVAX_DEMO && u && u.user_metadata && u.user_metadata.created_by_owner) return "Support";
+      }catch(e){}
+      return "Owner";
+    }
     function nvRoleRetry(){
       if(window.__novaxClientRole || window.__NOVAX_DEMO) return;
       var n=(window.__nvRoleRetries=(window.__nvRoleRetries||0)+1);
@@ -14466,7 +14733,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +'<label class="footer-note" for="nvInviteEmail">Work email</label><input id="nvInviteEmail" type="email" placeholder="name@company.com" style="width:100%;margin-bottom:8px">'
           +'<label class="footer-note" for="nvInviteRole">Role</label><select id="nvInviteRole" style="width:100%;margin-bottom:8px">'+nvStaffRoleOptions("Support")+'</select>'
           +'<label class="footer-note" for="nvInvitePass">Password <span style="text-transform:none;letter-spacing:0">(optional \u2014 leave blank and we will make one)</span></label>'
-          +'<input id="nvInvitePass" type="text" autocomplete="off" placeholder="At least 10 characters" style="width:100%;margin-bottom:8px">'
+          +'<div class="nv-secret-row" style="margin-bottom:8px"><input id="nvInvitePass" type="password" autocomplete="new-password" spellcheck="false" placeholder="At least 10 characters" style="flex:1"><button type="button" class="ghost-btn nv-reveal" data-nv-reveal="nvInvitePass" aria-pressed="false">Show</button></div>'
           +'<p class="footer-note" id="nvInviteHint"></p>'
           +'<p class="footer-note">We do not email anything. You will get the login details on screen \u2014 send them to your team member yourself.</p>'
           +'<div class="inline-actions" style="margin-top:8px"><button class="action-btn" id="nvInviteSend">Create login</button></div></div>';
@@ -14516,8 +14783,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!NOVAX_ROLE_TABS[role]){ toast("Pick a valid role."); return; }
       var pass=String((document.getElementById("nvInvitePass")||{}).value||"").trim();
       if(pass && pass.length<10){ toast("Password must be at least 10 characters, or leave it blank."); return; }
+      /* Owner is full access, withdrawals and team included; picking it by
+         accident was one tap. It now needs the word typed. */
+      if(role==="Owner"){
+        Promise.resolve(window.nvAsk ? window.nvAsk({ title:"Give "+name+" full Owner access?",
+          body:"An Owner can withdraw money to a bank account, change bank details and add or remove anyone on the team, including you. Only do this for a business partner.",
+          match:"OWNER", ok:"Give Owner access" }) : false).then(function(ok){ if(ok) sendStaffInvite(name,email,role,pass); });
+        return;
+      }
       sendStaffInvite(name,email,role,pass);
     }
+    /* Show/hide for secret fields (invite password, API key). */
+    document.addEventListener("click",function(e){
+      var b=e.target&&e.target.closest?e.target.closest("[data-nv-reveal]"):null; if(!b) return;
+      var f=document.getElementById(b.getAttribute("data-nv-reveal")); if(!f) return;
+      var show=f.type==="password"; f.type=show?"text":"password";
+      b.textContent=show?"Hide":"Show"; b.setAttribute("aria-pressed",show?"true":"false");
+    });
     /* Creates a real, usable login.
 
        This used to call invite_staff_user(), which inserted a staff_users row
@@ -14630,7 +14912,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ console.warn("NovaX: data marked stale --", reason||"refresh failed"); }catch(e){}
       try{ nvShowStaleBanner(); }catch(e){}
     };
-    nvInterval(()=>{ const el=document.getElementById("clockB"); if(el) el.textContent=`Live ${time()}`; },1000);
+    nvInterval(()=>{ const el=document.getElementById("clockB"); if(el) el.textContent=`Live ${time()} PKT`; },1000);
 
     // NovaX fix (withdrawal UX v3): saveBankDetails/editBankDetails/
     // cancelBankDetailsEdit/requestWalletWithdrawal were missing from this
@@ -14661,7 +14943,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          data layer returns here and the demo renders an empty portal -- which
          is exactly what happened on the deployed site, where the Supabase CDN
          script is not available, while localhost (where it loads) worked. */
-      if(!window.__NOVAX_DEMO && (!window.supabase||!window.supabase.createClient)){ console.warn("NovaX: cloud library not loaded, local only."); window.__novaxClientDataReady=true; return; }
+      if(!window.__NOVAX_DEMO && (!window.supabase||!window.supabase.createClient)){
+        console.warn("NovaX: cloud library not loaded, local only.");
+        window.__novaxClientDataReady=true;
+        /* This used to fall back to the saved view without a word, as if it
+           were live. Say so; the library only loads with the page, so the
+           button reloads it. */
+        try{
+          nvAccountUnconfirmed("NovaX can't be reached right now, so this is your last saved view, not live. Bookings, pickups and withdrawals will work again once you're connected.");
+          var nvBar=document.getElementById("nvAccountUnconfirmedBar"), nvOld=nvBar&&nvBar.querySelector("button");
+          if(nvOld){ var nvNew=nvOld.cloneNode(false); nvNew.textContent="Reload"; nvNew.addEventListener("click",function(){ location.reload(); }); nvOld.replaceWith(nvNew); }
+        }catch(e){}
+        return;
+      }
       // NovaX fix ("Multiple GoTrueClient instances detected"): reuse the
       // client the auth gate already created instead of making a second one on
       // the same storage key.
@@ -17375,17 +17669,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }).join("")
           +"</div>";
       }
-      var __nvOrigRenderBulkValidation=renderBulkValidation;
-      renderBulkValidation=function(parsed){
-        __nvOrigRenderBulkValidation(parsed);
-        try{
-          if(!parsed||(parsed.missingColumns&&parsed.missingColumns.length)) return;
-          var el=document.getElementById("bulkValidationList");
-          if(!el) return;
-          var grid=nvBulkFixGrid(parsed);
-          if(grid) el.insertAdjacentHTML("beforeend",grid);
-        }catch(e){ console.error("NovaX bulk fix grid failed",e); }
-      };
+      /* The grid is no longer added under the row cards (30 Sep 2026 review):
+         it edited its own copy of the rows (nvCsvRows) while the cards edit
+         NV_BULK_RAW, so a fix in one could be undone by re-checking the
+         other. The row cards above cover every problem the validator
+         reports. nvBulkFixGrid is kept only so nothing that references it
+         breaks. */
       window.renderBulkValidation=renderBulkValidation;
       var nvFixTimer=null;
       document.addEventListener("input",function(e){
@@ -19746,15 +20035,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       sticky.disabled=!!real.disabled;
     }catch(e){}
   }
+  /* One copy of a problem at a time: the bar repeats the banner only while
+     the banner itself is scrolled out of sight, so a phone never shows the
+     same sentence twice. */
   function syncRisk(){
     try{
       var real=document.getElementById("nvRiskWarning"); var mirror=document.getElementById("nvMobileRiskMirror");
       if(!real||!mirror) return;
       var visible=real.style.display!=="none" && real.textContent.trim().length>0;
+      if(visible){
+        var r=real.getBoundingClientRect(), barTop=bar.getBoundingClientRect().top||window.innerHeight;
+        if(r.height && r.bottom>0 && r.top<barTop) visible=false;
+      }
       mirror.style.display=visible?"":"none";
       mirror.textContent=real.textContent;
     }catch(e){}
   }
+  var nvRiskScrollT=null;
+  window.addEventListener("scroll",function(){ if(nvRiskScrollT) return; nvRiskScrollT=setTimeout(function(){ nvRiskScrollT=null; syncRisk(); },120); },{ passive:true });
   function anyBlockingOverlayOpen(){
     try{
       if(document.querySelector(".nvauto-panel.open")) return true;
@@ -20676,20 +20974,34 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if (e.key === "Escape" && drawer && drawer.classList.contains("on")) closeDrawer();
     });
   }
+  var drawerHideT = null;
   function openDrawer(title, html) {
     try {
       buildDrawer();
       drawerLast = document.activeElement;
       drawerTitle.innerHTML = title || "";
       drawerBody.innerHTML = html || "";
+      clearTimeout(drawerHideT);
+      drawer.hidden = false; drawer.removeAttribute("aria-hidden");
+      try { drawer.inert = false; } catch (e) {}
+      void drawer.offsetWidth;
       drawer.classList.add("on");
       document.body.style.overflow = "hidden";
       setTimeout(function () { try { drawer.querySelector(".nvdr-x").focus(); } catch (e) {} }, 60);
     } catch (e) {}
   }
+  /* Closing only slid the drawer away: it stayed a modal dialog in the
+     accessibility tree with the consignee's name, phone and address in it.
+     Now it is hidden and inert, and emptied once the slide has finished. */
   function closeDrawer() {
     if (!drawer) return;
     drawer.classList.remove("on");
+    drawer.setAttribute("aria-hidden", "true");
+    try { drawer.inert = true; } catch (e) {}
+    clearTimeout(drawerHideT);
+    drawerHideT = setTimeout(function () {
+      if (drawer && !drawer.classList.contains("on")) { drawer.hidden = true; if (drawerBody) drawerBody.innerHTML = ""; }
+    }, 320);
     document.body.style.overflow = "";
     try { if (drawerLast && drawerLast.focus) drawerLast.focus(); } catch (e) {}
   }
