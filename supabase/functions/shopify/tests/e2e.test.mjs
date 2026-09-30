@@ -341,6 +341,19 @@ console.log("-- oauth callback --");
 
 console.log("-- embedded page --");
 {
+  const firstVisit = await call("/app?shop=first-install.myshopify.com");
+  t("first visit begins Shopify OAuth before rendering the app",
+    firstVisit.status === 302 &&
+      firstVisit.headers.get("location")?.startsWith("https://first-install.myshopify.com/admin/oauth/authorize"));
+  t("first visit creates a state nonce", db.nvsh_oauth_state.some(s => s.shop_domain === "first-install.myshopify.com"));
+  const framed = await call("/app?shop=framed-first.myshopify.com&embedded=1&host=abc");
+  const framedHtml = await framed.text();
+  t("inside the admin frame: no blank 302, a page that breaks out", framed.status === 200 &&
+    framedHtml.includes('"_top"') && framedHtml.includes("/install?shop=framed-first.myshopify.com"));
+  t("break-out page may be framed only by this shop and the admin",
+    (framed.headers.get("content-security-policy") || "").includes("frame-ancestors https://framed-first.myshopify.com https://admin.shopify.com"));
+  const framedHdr = await call("/app?shop=framed-two.myshopify.com", { headers: { "sec-fetch-dest": "iframe" } });
+  t("a framed request without ?embedded is still broken out", framedHdr.status === 200 && (await framedHdr.text()).includes('"_top"'));
   const r = await call("/app?shop=" + SHOP);
   const html = await r.text();
   t("app 200", r.status === 200);
@@ -569,6 +582,10 @@ console.log("-- uninstall --");
   t("uninstall 200s", r.status === 200);
   t("uninstall destroys the token", db.nvsh_shop[0].access_token === null);
   t("uninstall marks the shop", db.nvsh_shop[0].status === "uninstalled");
+  const reinstall = await call("/app?shop=" + SHOP);
+  t("reinstall begins Shopify OAuth before rendering the app",
+    reinstall.status === 302 &&
+      reinstall.headers.get("location")?.startsWith(`https://${SHOP}/admin/oauth/authorize`));
 }
 
 

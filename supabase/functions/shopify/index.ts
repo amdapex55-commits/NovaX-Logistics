@@ -19,7 +19,7 @@ import {
   claimWebhook, completeWebhook, getShop, insert, logEvent, logProtectedAccess, rpc,
   selectMany, selectOne, update,
 } from "./db.ts";
-import { embeddedApp, frameAncestors } from "./ui.ts";
+import { embeddedApp, exitIframe, frameAncestors } from "./ui.ts";
 
 const API_KEY = Deno.env.get("SHOPIFY_API_KEY") ?? "";
 const API_SECRET = Deno.env.get("SHOPIFY_API_SECRET") ?? "";
@@ -182,9 +182,31 @@ async function handleCallback(url: URL): Promise<Response> {
 
 // ------------------------------------------------------------ embedded ------
 
-function handleApp(url: URL): Response {
+async function handleApp(url: URL, req?: Request): Promise<Response> {
   const shop = cleanShop(url.searchParams.get("shop"));
   if (!shop) return text("missing or invalid ?shop", 400);
+
+  // No live token for this shop (first visit, or after an uninstall): start
+  // the install instead of rendering a screen that can do nothing. Shopify's
+  // "immediately authenticates after install" check expects exactly this.
+  const installed = await getShop(shop, false);
+  if (!installed?.access_token || installed.status === "uninstalled") {
+    // Inside the admin's iframe a 302 to Shopify's grant screen shows a blank
+    // frame -- that page refuses to be framed. Break out to the top window
+    // through App Bridge first, then start the install there.
+    const framed = url.searchParams.get("embedded") === "1" ||
+      req?.headers.get("sec-fetch-dest") === "iframe";
+    if (framed) {
+      return new Response(exitIframe(API_KEY, `${APP_URL}/install?shop=${encodeURIComponent(shop)}`), {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Security-Policy": frameAncestors(shop),
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+    return await handleInstall(url);
+  }
 
   return new Response(embeddedApp(API_KEY, shop, PORTAL_URL), {
     headers: {
@@ -1330,7 +1352,7 @@ Deno.serve(async (req: Request) => {
     }
     if (path === "/install" || path === "/") return await handleInstall(url);
     if (path === "/callback") return await handleCallback(url);
-    if (path === "/app") return handleApp(url);
+    if (path === "/app") return await handleApp(url, req);
     if (path === "/api/state" || path === "/state") return await handleState(req);
     if (path === "/api/link") return await handleLink(req);
     if (path === "/api/settings") return await handleSettings(req);

@@ -17,6 +17,27 @@ export function frameAncestors(shop: string): string {
   return `frame-ancestors https://${shop} https://admin.shopify.com;`;
 }
 
+/** Shown only inside the admin frame when the store has no live install: it
+ *  hands the top window to our install route, which then sends the merchant
+ *  to Shopify's grant screen (that screen cannot be shown inside a frame). */
+export function exitIframe(apiKey: string, target: string): string {
+  const t = JSON.stringify(target).replace(/</g, "\\u003c");
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NovaX Logistics</title>
+<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js" data-api-key="${esc(apiKey)}"></script>
+</head>
+<body style="font-family:system-ui,-apple-system,sans-serif;padding:24px;color:#1a1a1a">
+<p>Taking you to Shopify to finish installing NovaX\u2026</p>
+<p><a href="${esc(target)}" target="_top">Continue</a></p>
+<script>(function(){var u=${t};try{window.open(u,"_top");}catch(e){try{window.top.location.href=u;}catch(_){}}})();</script>
+</body>
+</html>`;
+}
+
 export function embeddedApp(apiKey: string, shop: string, portalUrl: string): string {
   return `<!doctype html>
 <html lang="en">
