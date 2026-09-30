@@ -16469,7 +16469,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         const names = (c.riders || []).filter(r => r.access === "Active").map(r => r.name).join(", ") || "No active rider";
         const cell = (n, l, warn) => `<div class="nv-st-n${warn && n ? " warn" : ""}"><b>${Number(n || 0)}</b><span>${l}</span></div>`;
         return `<div class="nv-st-city"><div class="nv-st-head"><b>${escLabelText(c.city)}</b><small>${escLabelText(names)}</small></div>
-          <div class="nv-st-grid">${cell(c.to_pickup, "to pick up", true)}${cell(c.incoming, "coming in")}${cell(c.at_station, "at station", true)}${cell(c.out_now, "out now")}${cell(c.to_send, "to send on", true)}${cell(c.delivered_today, "delivered today")}</div></div>`;
+          <div class="nv-st-grid">${cell(c.to_pickup, "to pick up", true)}${cell(c.incoming, "coming in")}${cell(c.at_station, "at station", true)}${cell(c.out_now, "out now")}${cell(c.to_send, "to send on", true)}${cell(c.delivered_today, "delivered today")}${cell(c.no_gps_7d, "delivered without GPS, 7 days", true)}</div></div>`;
       }).join("");
       const riderRows = riders.filter(r => r.access !== "Blocked").map(r => {
         const mine = (r.cities || []).map(x => String(x).toLowerCase());
@@ -18011,6 +18011,25 @@ html,body{ background:var(--bg); color:var(--ink); }
             }).filter(Boolean);
           });
           state.expenses=D(4).map(rExpense).concat(riderExpenses);
+          /* Rider expenses live in nv_rider_expense since 30 Sep (audit
+             RIDER-020), not inside parcel meta. Loaded separately so the
+             indexed results above keep their positions; marked _riderEmbedded
+             so fExpense never copies them into the office expenses table. */
+          Promise.resolve(sb.from("nv_rider_expense").select("id,rider_id,category,amount,note,expense_date,created_at,status,settled,riders(name,branch)").order("created_at",{ascending:false}).limit(2000))
+            .then(function(rx){
+              if(!rx || rx.error || !Array.isArray(rx.data) || !rx.data.length) return;
+              var have={}; (state.expenses||[]).forEach(function(e){ if(e&&e._uuid) have[e._uuid]=1; });
+              var rows=rx.data.filter(function(e){ return e && !have[e.id]; }).map(function(e){
+                var rd=e.riders||{};
+                return { _uuid:e.id, _riderEmbedded:true, _riderTable:true, id:e.id, name:(e.category||"Rider expense")+" - "+(rd.name||"Rider"),
+                         amount:Number(e.amount||0), type:e.category||"Other", owner:rd.branch||"Rider",
+                         status:e.settled?"Settled":(e.status||"Rider submitted"), note:e.note||"",
+                         date:e.expense_date||String(e.created_at||"").slice(0,10), riderId:e.rider_id };
+              });
+              if(!rows.length) return;
+              state.expenses=(state.expenses||[]).concat(rows);
+              try{ render(); }catch(e){ console.warn("NovaX admin render",e); }
+            }, function(){});
           state.walletWithdrawals=D(5).map(rWd);
           state.paymentLogs=D(6).map(rPl);
           state.salesLeads=D(7).map(rSalesLead);
@@ -18313,6 +18332,16 @@ html,body{ background:var(--bg); color:var(--ink); }
         return new Promise(function(resolve){
           if(!uuid) return resolve({ error:{ message:"This entry is not linked to the server yet." } });
           var embedded=(state.expenses||[]).find(function(e){return e._uuid===uuid&&e._riderEmbedded;});
+          if(embedded && embedded._riderTable){
+            return Promise.resolve(sb.from("nv_rider_expense").delete().eq("id",uuid).select("id"))
+              .catch(function(e){return{error:{message:String((e&&e.message)||e)}};})
+              .then(function(r){
+                if(r&&r.error)return resolve({error:r.error});
+                if(!r||!Array.isArray(r.data)||!r.data.length)return resolve({error:{message:"the server did not remove the rider expense"}});
+                state.expenses=(state.expenses||[]).filter(function(e){return e._uuid!==uuid;});
+                resolve({ok:true});
+              });
+          }
           if(embedded){
             var parcel=(state.parcels||[]).find(function(p){return p._uuid===embedded._parcelUuid;});
             if(!parcel) return resolve({error:{message:"The parcel carrying this rider expense is outside the current admin window."}});

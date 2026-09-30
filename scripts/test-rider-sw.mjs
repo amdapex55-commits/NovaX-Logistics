@@ -23,5 +23,6 @@ assert.equal((await request('/tracking.html?uncached=1')).status,503);
 assert.equal(await request('https://api.example.com/data'),null);
 assert.equal(await request('/rider.html','POST'),null);
 offline=false;assert.equal(await(await request('/rider.html?fresh=1')).text(),'network HTML');
-handlers.activate({waitUntil:p=>{pending=p;}});await pending;assert.deepEqual(deleted,['novax-v92']);
+const current=(readFileSync(new URL('../sw.js',import.meta.url),'utf8').match(/CACHE = "([^"]+)"/)||[])[1];
+handlers.activate({waitUntil:p=>{pending=p;}});await pending;assert.deepEqual(deleted,['novax-v92','novax-v93'].filter(k=>k!==current));
 console.log('PASS rider service worker: coherent HTML/JS/CSS precache, role-correct offline fallbacks, unknown-page 503, external/POST bypass, network-first HTML and cache version cleanup.');

@@ -87,12 +87,20 @@
     q("queueNote").className = "notice";
     if (list.length) msg(list.length + " saved action(s): " + review.length + " need office review. Keep this phone's data until all actions are confirmed.", review.length ? "error" : "info", "queueNote");
     q("queueReview").innerHTML = review.map(function (j) {
-      return '<article class="parcel"><b>Not confirmed: ' + esc(j.action || j.to || j.kind) + '</b><p>' + esc((j.list || [j.awb]).join(", ")) + ' ' + esc(j.error || "Office review required") + '</p><small>Reference ' + esc(j.key) + '</small><div class="actions"><button class="btn secondary" data-write data-retry="' + esc(j.key) + '">Retry saved action</button></div></article>';
+      return '<article class="parcel"><b>Not confirmed: ' + esc(j.action || j.to || j.kind) + '</b><p>' + esc((j.list || [j.awb]).join(", ")) + ' ' + esc(j.error || "Office review required") + '</p><small>Reference ' + esc(j.key) + '</small><div class="actions"><button class="btn secondary" data-write data-retry="' + esc(j.key) + '">Retry saved action</button><button class="btn danger" data-write data-discard="' + esc(j.key) + '">Remove from phone</button></div></article>';
     }).join("");
+  }
+  /* Saved actions that change what cash the rider holds. Anything else --
+     a disputed pickup, a transit batch -- must not freeze the handover. */
+  function cashJobs() {
+    return jobs().filter(function (j) {
+      return j.kind === "deposit" || j.kind === "expense" || (j.kind === "swap" && j.outcome === "exchanged") ||
+        (j.kind === "station" && j.action === "delivered") || (j.kind === "status" && j.to === "Delivered");
+    });
   }
   function controls() {
     document.querySelectorAll("[data-write]").forEach(function (b) { b.disabled = busy || flushing || !authorized || b.hasAttribute("data-blocked"); });
-    q("depositCashBtn").disabled = busy || flushing || !authorized || !connected || !navigator.onLine || !data.cash || !data.cash.count || jobs().length > 0 || data.cash.review;
+    q("depositCashBtn").disabled = busy || flushing || !authorized || !connected || !navigator.onLine || !data.cash || !data.cash.count || cashJobs().length > 0 || data.cash.review;
     q("refreshBtn").disabled = loading || busy || flushing; paintNetwork();
   }
   function payment(p) { return P.classify({ cod: p.cod, paymentMode: p.meta.paymentMode || p.meta.payment_mode }); }
@@ -113,15 +121,24 @@
     var pc = p.meta.pickupContact;
     return { name: p.consignee, phone: p.phone, address: p.address, city: p.city, alt: pc };
   }
+  /* Why the server would refuse to take this parcel out right now. */
+  function outLock(p) {
+    if (p.bucket !== "station") return "";
+    var retry = /^(Refused|Consignee not available|Reattempt|Reassigned|Parcel received at destination)$/.test(p.status);
+    if (retry && Number(p.attempts || 0) >= 3) return LANG === "ur" ? "3 dafa ja chuke — office wapsi karega" : "3 attempts done — the office sends it back";
+    var nx = String(p.meta.nextAttempt || "");
+    if (p.status === "Reattempt" && /^\d{4}-\d{2}-\d{2}$/.test(nx) && nx > today()) return (LANG === "ur" ? "Agli dafa: " : "Next try: ") + nx;
+    return "";
+  }
   function card(p, opts) {
     opts = opts || {};
-    var c = where(p), pend = pendingAwbs().has(p.awb.toUpperCase()), pay = payment(p);
+    var c = where(p), pend = pendingAwbs().has(p.awb.toUpperCase()), pay = payment(p), lock = opts.select ? outLock(p) : "";
     var call = R.phone(c.phone), validPhone = /^\+?\d{9,15}$/.test(call);
-    var sel = opts.select ? '<input type="checkbox" class="pick" data-pick="' + esc(p.awb) + '"' + (ui.sel.has(p.awb) ? " checked" : "") + (pend ? " disabled" : "") + ' aria-label="Select ' + esc(p.awb) + '">' : "";
+    var sel = opts.select ? '<input type="checkbox" class="pick" data-pick="' + esc(p.awb) + '"' + (ui.sel.has(p.awb) && !lock ? " checked" : "") + (pend || lock ? " disabled" : "") + ' aria-label="Select ' + esc(p.awb) + '">' : "";
     var tag = p.meta.swapLeg === "out" ? '<p class="swaptag">NOVA SWAP · collect the old item' + (p.meta.swapPairAwb ? ' · return AWB <b>' + esc(p.meta.swapPairAwb) + '</b>' : '') + '</p>' :
               p.meta.swapLeg === "back" ? '<p class="swaptag back">NOVA SWAP RETURN · going back to the merchant</p>' :
               isReturn(p) ? '<p class="swaptag back">RETURN · going back to ' + esc(p.shipper && p.shipper.name || "the shipper") + '</p>' : "";
-    var money2 = p.cod > 0 ? (pay.conflict ? '<span class="error-text">COD/prepaid conflict — marked Prepaid. Call the office.</span>' : "COD " + money(p.cod)) : "Prepaid · collect nothing";
+    var money2 = (isReturn(p) || p.meta.swapLeg === "back") ? (LANG === "ur" ? "Shipper ko wapsi · kuch collect nahi karna" : "Return to shipper · collect nothing") : p.cod > 0 ? (pay.conflict ? '<span class="error-text">COD/prepaid conflict — marked Prepaid. Call the office.</span>' : "COD " + money(p.cod)) : "Prepaid · collect nothing";
     var att = Number(p.attempts || 0), attTxt = att ? (att + " " + t("attempts") + (att > 1 ? (LANG === "ur" ? "" : "s") : "")) : "";
     var route = (p.origin || "") + " → " + (p.city || "");
     var ageD = Math.floor((Date.now() - R.timestamp(p.statusSince)) / 864e5);
@@ -130,16 +147,19 @@
       '<p><b>' + esc(c.name || "Name not recorded") + '</b><br>' + esc(c.address || "Address missing. Call the office.") + (c.phone ? '<br>' + esc(c.phone) : "") + '</p>' +
       '<p class="meta-line">' + esc(route) + (age ? ' · <b class="' + (ageD >= 3 ? 'age-old' : '') + '">' + esc(age) + '</b>' : '') + (attTxt ? ' · ' + esc(attTxt) : '') + (p.meta.weight ? ' · ' + esc(p.meta.weight) : '') + (p.exception ? ' · ' + esc(p.exception) : '') + '</p>' +
       (p.heldBy && p.bucket === "out" ? '<p class="meta-line">Was with ' + esc(p.heldBy) + ' — now yours</p>' : '') +
+      (p.outside ? '<p class="meta-line error-text">Outside your cities — call the office before delivering.</p>' : '') +
+      (lock ? '<p class="meta-line error-text">' + esc(lock) + '</p>' : '') +
       '<div class="moneyline">' + money2 + '</div>';
-    if (opts.contacts && validPhone) {
+    if (opts.contacts && (validPhone || c.address)) {
       var wa = call.replace(/^\+/, "");
-      body += '<div class="contacts"><a class="call" href="tel:' + esc(call) + '">' + esc(t("call")) + '</a><a class="call" href="https://wa.me/' + esc(wa) + '" target="_blank" rel="noopener">WhatsApp</a>' +
+      body += '<div class="contacts">' +
+        (validPhone ? '<a class="call" href="tel:' + esc(call) + '">' + esc(t("call")) + '</a><a class="call" href="https://wa.me/' + esc(wa) + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
         (c.address ? '<a class="call" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(c.address + ", " + (c.city || "")) + '" target="_blank" rel="noopener">' + esc(t("directions")) + '</a>' : '') + '</div>';
     }
     if (pend) body += '<p class="pending-label">' + esc(t("saved")) + '</p>';
     else if (opts.outcomes) body += '<div class="actions">' + outcomeButtons(p, pay) + '</div>';
     var search = [p.awb, c.name, c.phone, c.address, p.city, p.origin, p.consignee].join(" ").toLowerCase();
-    return '<article class="parcel' + (pend ? ' pending' : '') + (ui.sel.has(p.awb) ? ' picked' : '') + '" data-awb="' + esc(p.awb) + '" data-search="' + esc(search) + '">' + body + '</article>';
+    return '<article class="parcel' + (pend ? ' pending' : '') + (ui.sel.has(p.awb) && !lock ? ' picked' : '') + '" data-awb="' + esc(p.awb) + '" data-search="' + esc(search) + '">' + body + '</article>';
   }
   function outcomeButtons(p, pay) {
     if (p.meta.swapLeg === "out" && p.status === "Parcel out for delivery")
@@ -167,7 +187,13 @@
     q("riderName").textContent = data.rider.name || "My station";
     q("routeName").textContent = cities;
     var pick = inBucket("pickup"), inc = inBucket("incoming"), st = inBucket("station"), out = inBucket("out"), tr = inBucket("transit"), done = inBucket("done");
-    var pend = pendingAwbs(), free = function (list) { return list.filter(function (p) { return !pend.has(p.awb.toUpperCase()); }); };
+    var pend = pendingAwbs(), free = function (list) { return list.filter(function (p) { return !pend.has(p.awb.toUpperCase()) && !outLock(p); }); };
+    (function prune() {
+      var want = { collect: "pickup", receive: "incoming", station: "station", transit: "transit" }[scopeNow()];
+      var ok = new Set(data.parcels.filter(function (p) { return p.bucket === want && !pend.has(p.awb.toUpperCase()) && !outLock(p); }).map(function (p) { return p.awb; }));
+      Array.from(ui.sel).forEach(function (a) { if (!ok.has(a)) ui.sel.delete(a); });
+      if (!ui.sel.size) ui.selScope = "";
+    })();
     q("homePickup").textContent = pick.length + " " + t("toCollect") + " · " + inc.length + " " + t("incoming");
     q("homeDelivery").textContent = st.length + " " + t("atStation") + " · " + out.length + " " + t("outNow");
     q("homeTransit").textContent = tr.length + " " + t("toSend");
@@ -193,6 +219,7 @@
       var got = (b.received || []).length, all = (b.awbs || []).length;
       var awaiting = (b.awbs || []).filter(function (a) { return (b.received || []).indexOf(a) < 0; });
       return '<article class="parcel batch"><div class="parcel-head"><b>' + esc(b.code) + '</b><span class="status">' + esc(b.status) + '</span></div><p>' + esc(b.from_city) + ' → ' + esc(b.to_city) + ' · ' + esc(b.reference || "") + '<br>' + got + ' / ' + all + ' received</p>' +
+        (got && awaiting.length ? '<p class="meta-line error-text">Not arrived yet: ' + esc(awaiting.join(", ")) + '</p>' : '') +
         selectAllBtn("receive", awaiting.filter(function (a) { return inc.some(function (p) { return p.awb === a && !pend.has(a); }); })) + '</article>';
     }).join("");
     q("receiveList").innerHTML = (inc.length ? selectAllBtn("receive", free(inc).map(function (p) { return p.awb; })) : "") + (inc.map(function (p) { return card(p, { select: true }); }).join("") || empty());
@@ -214,10 +241,14 @@
 
     // Transit: grouped by where it is going
     var tg = {};
-    tr.forEach(function (p) { var to = p.status === "Ready for return" ? p.origin : p.city; var k = (p.status === "Ready for return" ? "R:" : "F:") + to; (tg[k] = tg[k] || []).push(p); });
+    /* RIDER-012: a batch leaves ONE station. A two-city rider (Islamabad +
+       Rawalpindi) gets one group per station and destination. */
+    tr.forEach(function (p) { var ret = p.status === "Ready for return", from = ret ? p.city : p.origin, to = ret ? p.origin : p.city;
+      var k = (ret ? "R" : "F") + "|" + from + "|" + to; (tg[k] = tg[k] || []).push(p); });
+    var multi = (data.rider.cities || []).length > 1;
     q("transitGroups").innerHTML = Object.keys(tg).sort().map(function (k) {
-      var list = tg[k], to = k.slice(2), ret = k[0] === "R", ids = free(list).map(function (p) { return p.awb; });
-      return '<section class="shipper"><div class="shipper-head"><div><b>' + (ret ? "Returns to " : "To ") + esc(to) + ' (' + list.length + ')</b></div>' +
+      var bits = k.split("|"), ret = bits[0] === "R", from = bits[1], to = bits[2], list = tg[k], ids = free(list).map(function (p) { return p.awb; });
+      return '<section class="shipper"><div class="shipper-head"><div><b>' + (multi ? esc(from) + " \u2192 " : "") + (ret ? "Returns to " : "To ") + esc(to) + ' (' + list.length + ')</b></div>' +
         (ids.length ? '<button class="btn" type="button" data-write data-sendall="' + esc(to) + '" data-awbs="' + esc(ids.join(",")) + '">' + esc(t("sendN", { n: ids.length, city: to })) + '</button>' : '') + '</div>' +
         list.map(function (p) { return card(p, { select: true }); }).join("") + '</section>';
     }).join("") || empty();
@@ -234,9 +265,22 @@
     var mine = data.parcels.filter(function (p) { return p.status === "Delivered" && p.cod > 0 && p.rider_id === riderId; });
     q("cashHero").innerHTML = cash ? '<div class="cash-grid">' + stat("Delivered COD", money(cash.gross)) + stat("Unsettled expenses", money(cash.expenses)) + stat("Net to hand over", money(cash.net), true) + stat("Awaiting office", money(cash.pending)) + '</div>' + (cash.review ? '<p class="error-text">Expenses need office review before handover.</p>' : '') : '<p class="sub">Cash service unavailable.</p>';
     if (cash && data.rider && Number(data.rider.cash_limit) > 0 && cash.gross > Number(data.rider.cash_limit)) q("cashHero").insertAdjacentHTML("beforeend", '<p class="error-text">Cash is over your limit of ' + money(data.rider.cash_limit) + '. Hand it over today.</p>');
-    q("cashList").innerHTML = mine.filter(function (p) { return !R.truth(p.meta.cashReceived) && p.meta.cashDepositStatus !== "pending_confirmation"; }).map(function (p) { return card(p); }).join("") || empty();
-    q("cashPendingList").innerHTML = mine.filter(function (p) { return p.meta.cashDepositStatus === "pending_confirmation"; }).map(function (p) { return card(p); }).join("") || empty();
-    q("cashHistoryList").innerHTML = mine.filter(function (p) { return R.truth(p.meta.cashReceived); }).map(function (p) { return card(p); }).join("") || empty();
+    /* RIDER-001: these lists used to be filtered from the station view, which
+       only carries the last 36 hours of deliveries, so they did not add up to
+       the totals above them. The cash service now returns the rows itself. */
+    var cashRow = function (x) {
+      return '<article class="parcel cashrow"><div class="parcel-head"><b class="awb">' + esc(x.awb) + '</b><span class="status">' + esc(money(x.cod)) + '</span></div>' +
+        '<p class="meta-line">' + esc(x.consignee || "") + ' · ' + esc(x.city || "") + (x.delivered_at ? ' · delivered ' + esc(R.day(x.delivered_at)) : '') + '</p></article>';
+    };
+    var handRows = cash && Array.isArray(cash.hand_rows) ? cash.hand_rows : null;
+    q("cashList").innerHTML = handRows ? (handRows.map(cashRow).join("") || empty())
+      : (mine.filter(function (p) { return !R.truth(p.meta.cashReceived) && p.meta.cashDepositStatus !== "pending_confirmation"; }).map(function (p) { return card(p); }).join("") || empty());
+    q("cashPendingList").innerHTML = cash && Array.isArray(cash.pending_rows) ? (cash.pending_rows.map(function (d) {
+        return '<article class="parcel cashrow"><div class="parcel-head"><b>' + esc(money(d.net)) + '</b><span class="status">' + esc(d.method || "Handover") + '</span></div>' +
+          '<p class="meta-line">' + esc(String(d.parcels || 0)) + ' parcels' + (d.reference ? ' · ref ' + esc(d.reference) : '') + (d.at ? ' · ' + esc(R.day(d.at)) : '') + '</p>' +
+          '<p class="meta-line">' + esc((d.awbs || []).join(", ")) + '</p></article>';
+      }).join("") || empty()) : empty();
+    q("cashHistoryList").innerHTML = cash && Array.isArray(cash.confirmed_rows) ? (cash.confirmed_rows.map(cashRow).join("") || empty()) : empty();
     q("expenseList").innerHTML = (cash && cash.expense_rows || []).map(function (e) { return '<article class="parcel"><b>' + esc(e.category) + ' &middot; ' + money(e.amount) + '</b><p>' + esc(e.note) + '</p><small>' + esc(e.expenseDate) + (R.truth(e.settled) ? ' &middot; Settled' : ' &middot; Unsettled') + '</small></article>'; }).join("") || empty();
   }
   function paintView() {
@@ -269,9 +313,10 @@
     bar.classList.remove("hidden"); document.body.classList.add("has-bar");
   }
   function transitTarget(awbs) {
-    var tos = new Set(), kinds = new Set();
-    awbs.forEach(function (a) { var p = data.parcels.find(function (x) { return x.awb === a; }); if (p) { tos.add(p.status === "Ready for return" ? p.origin : p.city); kinds.add(p.status === "Ready for return"); } });
-    return tos.size === 1 && kinds.size === 1 ? Array.from(tos)[0] : "";
+    var tos = new Set(), froms = new Set(), kinds = new Set();
+    awbs.forEach(function (a) { var p = data.parcels.find(function (x) { return x.awb === a; }); if (p) { var ret = p.status === "Ready for return";
+      tos.add(ret ? p.origin : p.city); froms.add(ret ? p.city : p.origin); kinds.add(ret); } });
+    return tos.size === 1 && froms.size === 1 && kinds.size === 1 ? Array.from(tos)[0] : "";
   }
   /* Cards on the screen the rider is looking at: not the other tab's panel. */
   function shownCards() {
@@ -335,6 +380,8 @@
         if (j.kind !== job.kind || j.state === "review") return false;
         if (job.kind === "swap") return j.awb === job.awb;
         if (job.kind === "station") return j.action === job.action && JSON.stringify(j.list) === JSON.stringify(job.list);
+        if (job.kind === "expense") return j.amount === job.amount && j.category === job.category && j.note === job.note && (Date.now() - Date.parse(j.at || 0)) < 15000;
+        if (job.kind === "deposit") return true;
         return job.kind !== "status" || j.to === job.to && JSON.stringify(j.list) === JSON.stringify(job.list);
       })) throw new Error("This action is already saved. Reconnect or ask the office to review it; do not submit it twice.");
       queue.add(Object.assign(job, { key: key(job.kind), at: new Date().toISOString(), state: "pending" }));
@@ -362,8 +409,12 @@
           var response;
           try { response = await sb.rpc(name, args); } catch (e) { response = { error: e }; }
           if (response.error) {
-            connected = false;
+            /* A rejection is an ANSWER from the server: the connection is fine.
+               Only a network-type failure means we are offline. Marking a
+               rejection as "not connected" disabled the cash handover over an
+               unrelated parcel dispute (audit RIDER-018). */
             if (R.retryable(response.error)) {
+              connected = false;
               msg("Connection interrupted. The same saved reference will retry; do not repeat the action.", "info");
               retryDelay = Math.min(60000, retryDelay ? retryDelay * 2 : 5000);
               clearTimeout(retryTimer); retryTimer = setTimeout(function () { void flush(); }, retryDelay);
@@ -374,6 +425,11 @@
             ping("Not accepted: " + String(response.error.message || response.error).slice(0, 140), "error", [120]); break;
           }
           if (!response.data || (j.kind === "station" || j.kind === "status") && !Array.isArray(response.data.moved)) { queue.change(j.key, { state: "review", error: "Unexpected server acknowledgement; office must check this reference." }); break; }
+          if (j.kind === "station") {
+            var sent = (j.list || []).map(function (a) { return String(a).toUpperCase(); }).sort().join(","),
+                got = response.data.moved.map(function (a) { return String(a).toUpperCase(); }).sort().join(",");
+            if (sent !== got) { queue.change(j.key, { state: "review", error: "NovaX confirmed " + response.data.moved.length + " of " + (j.list || []).length + " parcels; office must check this reference." }); break; }
+          }
           await identity(); queue.remove(j.key); connected = true; changed = true; retryDelay = 0;
           if (j.kind === "station") ping("✓ " + response.data.count + " parcel" + (response.data.count === 1 ? "" : "s") + " " + (DONE_WORDS[j.action] || "saved") + (response.data.batch ? " · batch " + response.data.batch : ""), "ok", [40, 60, 40]);
           else if (j.kind === "swap") ping(j.outcome === "exchanged" ? "✓ Exchange done — new item delivered, old item collected (" + (response.data.back_awb || "") + ")" : "✓ Recorded: exchange did not happen. Bring the new item back.", "ok", [40, 60, 40]);
@@ -391,7 +447,9 @@
       var dialog = q("actionDialog"), input = q("reasonOther"), ex = q("extraInput");
       q("dialogTitle").textContent = title; q("dialogText").textContent = text; q("dialogError").textContent = ""; input.value = ""; ex.value = extra && extra.value || "";
       q("reasonLabel").classList.toggle("hidden", !reasons);
-      q("extraLabel").classList.toggle("hidden", !extra); if (extra) { q("extraLabelText").textContent = extra.label; ex.placeholder = extra.placeholder || ""; }
+      q("extraLabel").classList.toggle("hidden", !extra);
+      ex.type = extra && extra.type || "text"; ex.min = extra && extra.min_value || ""; ex.max = extra && extra.max_value || "";
+      if (extra) { q("extraLabelText").textContent = extra.label; ex.placeholder = extra.placeholder || ""; }
       q("reasonPresets").innerHTML = (reasons || []).map(function (r) { return '<button class="btn secondary" type="button" data-reason="' + esc(r) + '">' + esc(r) + '</button>'; }).join("");
       q("reasonPresets").onclick = function (e) { var b = e.target.closest("[data-reason]"); if (b) input.value = b.dataset.reason; };
       dialog.querySelector("form").onsubmit = function (e) {
@@ -434,10 +492,12 @@
     if (!list.length) return;
     busy = true; controls();
     try {
-      if (scope === "collect") await station(list, "collect");
-      else if (scope === "receive") await station(list, "receive");
-      else if (scope === "station") await station(list, "out");
-      else if (scope === "transit") await sendTransit(list);
+      var action = { collect: "collect", receive: "receive", station: "out" }[scope];
+      if (action) { for (var ci = 0; ci < list.length; ci += 200) await station(list.slice(ci, ci + 200), action); }
+      else if (scope === "transit") {
+        if (list.length > 200) throw new Error("A batch can hold 200 parcels. Select 200 or fewer and send the rest as a second batch.");
+        await sendTransit(list);
+      }
       else return;
       ui.sel.clear(); ui.selScope = "";
     } catch (e) { msg(String(e.message || e), "error"); }
@@ -445,6 +505,7 @@
   }
   async function sendTransit(list) {
     var to = transitTarget(list); if (!to) throw new Error("Pick parcels going to one city.");
+    if (list.length > 200) throw new Error("A batch can hold 200 parcels. Select 200 or fewer and send the rest as a second batch.");
     var res = await confirm(t("sendN", { n: list.length, city: to }), "Enter the bus or courier reference (bilty number) for this batch.", null,
       { label: "Bilty / reference", placeholder: "e.g. Daewoo 123456", required: true, min: 2, error: "Enter the bilty or courier reference." });
     if (!res) throw new Error("Not sent.");
@@ -462,10 +523,12 @@
         if (!await confirm(p.status === "Return out for delivery" ? t("returned") : t("delivered"), what)) return;
         location = await gps();
       } else if (action === "reattempt") {
-        var tom = new Date(Date.now() + 864e5); var d = tom.toISOString().slice(0, 10);
+        var d = R.day(new Date(Date.now() + 864e5)), dMin = today(), dMax = R.day(new Date(Date.now() + 14 * 864e5));
         var r = await confirm(t("reattempt"), "Why is it coming back to the station, and when to try again?", ["Customer asked for tomorrow", "Phone off", "Not at home", "Address incomplete"],
-          { label: "Next try (YYYY-MM-DD)", value: d, required: true, min: 8, error: "Enter the next date." });
-        if (!r) return; reason = r.reason; extra = { next_date: r.extra };
+          { label: LANG === "ur" ? "Agli dafa kab" : "Next try", type: "date", value: d, min_value: dMin, max_value: dMax, required: true, min: 10, error: "Choose the next date." });
+        if (!r) return;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(r.extra) || r.extra < dMin || r.extra > dMax) throw new Error("Choose a date between today and 14 days from now.");
+        reason = r.reason; extra = { next_date: r.extra };
       } else if (action === "refused") {
         reason = await confirm(t("refused"), "What did the customer say?", ["Customer refused", "Wrong item ordered", "No money", "Fake order"]); if (!reason) return;
       } else if (action === "not_available") {
@@ -576,7 +639,7 @@
     finally { busy = false; render(); void flush(); }
   };
   q("depositCashBtn").onclick = async function () {
-    if (busy || flushing || jobs().length || !connected || !navigator.onLine) return;
+    if (busy || flushing || cashJobs().length || !connected || !navigator.onLine) return;
     busy = true; controls();
     try {
       var method = q("depositMethod").value, ref = q("depositRef").value.trim();
@@ -620,10 +683,39 @@
   document.addEventListener("click", async function (e) {
     var retry = e.target.closest("[data-retry]");
     if (retry) { if (busy || flushing || !authorized) return; try { await lock(function () { queue.change(retry.dataset.retry, { state: "pending", error: "" }); }); render(); void flush(); } catch (err) { msg(String(err.message || err), "error"); } return; }
+    var dis = e.target.closest("[data-discard]");
+    if (dis) {
+      if (busy || flushing || !authorized) return;
+      var jk = dis.dataset.discard, job = jobs().find(function (j) { return j.key === jk; });
+      if (!job) return;
+      if (!navigator.onLine) { msg("Connect to the internet first, so the office has a record of what was removed.", "error"); return; }
+      if (!await confirm("Remove this saved action?", "Only do this after the office has checked it. It will not be sent to NovaX, and the office keeps a record that it was removed.")) return;
+      busy = true; controls();
+      try {
+        var lr = await sb.rpc("rider_queue_discard", { p_key: job.key, p_kind: job.kind, p_detail: job });
+        if (lr.error) throw lr.error;
+        await lock(function () { queue.remove(job.key); });
+        ping("Removed. The office has a record of it.", "ok", 30);
+      } catch (err) { msg("Could not remove it: " + String(err.message || err), "error"); }
+      finally { busy = false; render(); }
+      return;
+    }
     var sw = e.target.closest("[data-swap]"); if (sw) { if (!sw.disabled) void swapAction(sw.dataset.awb, sw.dataset.swap); return; }
     var act = e.target.closest("[data-act]"); if (act) { if (!act.disabled) void outcome(act.dataset.awb, act.dataset.act); return; }
     var all = e.target.closest("[data-selall]");
-    if (all) { String(all.dataset.awbs || "").split(",").filter(Boolean).forEach(function (a) { ui.sel.add(a); }); ui.selScope = scopeNow(); render(); return; }
+    if (all) {
+      var room = 200 - ui.sel.size, skipped = 0;
+      String(all.dataset.awbs || "").split(",").filter(Boolean).forEach(function (a) {
+        var cardEl = Array.from(document.querySelectorAll('.view:not(.hidden) [data-awb="' + a + '"]')).find(function (el) { return !el.hidden && !el.closest(".hidden"); });
+        var cb = cardEl && cardEl.querySelector("[data-pick]");
+        if (!cb || cb.disabled || ui.sel.has(a)) return;
+        if (room <= 0) { skipped++; return; }
+        ui.sel.add(a); room--;
+      });
+      ui.selScope = scopeNow(); render();
+      if (skipped) ping("200 selected — the most one action can carry. Send these, then select the rest.", "info");
+      return;
+    }
     var send = e.target.closest("[data-sendall]");
     if (send) {
       if (busy || flushing || !authorized) return;
@@ -635,7 +727,7 @@
       return;
     }
     var tab = e.target.closest("[data-tab]");
-    if (tab) { var p = tab.dataset.tab.split(":"); ui.tab[p[0]] = p[1]; ui.sel.clear(); ui.selScope = ""; render(); return; }
+    if (tab) { var p = tab.dataset.tab.split(":"); ui.tab[p[0]] = p[1]; ui.sel.clear(); ui.selScope = ""; q("riderSearch").value = ""; render(); return; }
     var view = e.target.closest("[data-view]");
     if (view) { ui.view = view.dataset.view; ui.sel.clear(); ui.selScope = ""; q("riderSearch").value = ""; render(); window.scrollTo(0, 0); return; }
   });

@@ -39,6 +39,7 @@ export function installFixture(window, options = {}) {
   async function rpc(name,args={}) {
     fixture.requests.push({name,args});
     if(name==='rider_cash_summary')return{data:{...fixture.cash},error:null};
+    if(name==='rider_queue_discard'){fixture.discards=(fixture.discards||[]).concat([args]);return{data:{ok:true},error:null};}
     if(name==='rider_station_view'){
       if(!fixture.online||fixture.failLoad)return{error:{message:'Failed to fetch'}};
       const C=['lahore'],o=p=>String(p.meta.pickupCity||'Karachi').toLowerCase(),d=p=>String(p.city).toLowerCase();
@@ -71,7 +72,7 @@ export function installFixture(window, options = {}) {
       const rows=args.p_awbs.map(awb=>fixture.rows.find(p=>p.awb===awb));
       if(rows.some(p=>!p))return{error:{message:'no such AWB',code:'P0001'}};
       for(const p of rows){p.status=map[args.p_action];p.rider_id=rider;p.updated_at=now;if(p.status==='Delivered')p.delivered_at=now;}
-      result={action:args.p_action,count:rows.length,moved:args.p_awbs,batch:args.p_action==='transit'?'LAH-KAR-0930-01':null};
+      result=fixture.zeroMove?{action:args.p_action,count:0,moved:[],batch:null}:{action:args.p_action,count:rows.length,moved:args.p_awbs,batch:args.p_action==='transit'?'LAH-KAR-0930-01':null};
     }else if(name==='rider_swap_complete'){
       const p=fixture.rows.find(r=>r.awb===args.p_out_awb);if(!p)return{error:{message:'Not assigned to you',code:'P0001'}};
       p.status=args.p_outcome==='exchanged'?'Delivered':'Refused';p.updated_at=now;
