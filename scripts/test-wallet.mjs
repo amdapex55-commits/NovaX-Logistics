@@ -22,7 +22,7 @@ const actHtml=slice(html,'<div class="nvw-filters" id="nvwFilters"','<div id="wi
 const CID='d2485e75-dde9-446a-a0ab-c5db158df20f', IBAN='PK36MEZN0000001123456702';
 
 function page(o={}){
-  const dom=new JSDOM('<!doctype html><body><div id="hero">'+heroHtml+'</div><div id="nvwActivityHead"></div>'+actHtml+'</body>',
+  const dom=new JSDOM('<!doctype html><body><section id="client-money"><div id="hero">'+heroHtml+'</div><div id="nvwActivityHead"></div>'+actHtml+'</section></body>',
     {runScripts:'outside-only',url:'https://novaxlogistics.com/client.html',pretendToBeVisual:true});
   const w=dom.window;
   Object.defineProperty(w,'crypto',{value:webcrypto,configurable:true});
@@ -33,6 +33,7 @@ function page(o={}){
       net:a.p_amount-Math.round(a.p_amount*({ '24h':0.001,'12h':0.003,instant:0.007 }[a.p_speed])*100)/100},error:null};
     return{data:null,error:null};}};
   w.__NOVAX_DEMO=!!o.demo;
+  try{ w.localStorage.setItem('nvWalletHidden',o.hidden?'1':'0'); }catch(e){}
   w.eval(idemJs+';');
   w.eval([
     'var state='+JSON.stringify(Object.assign({client:{id:CID,name:"Test Store"},walletWithdrawals:[],paymentLogs:[],invoices:[],walletLedger:[],
@@ -212,7 +213,13 @@ const rpcCalls=p=>p.w.__calls.filter(c=>c[0]==='request_wallet_withdrawal_idem')
   const paid=p.w.eval('nvwTrackerHtml({status:"Paid",paidAt:"2026-10-01 11:00",paidTxnId:"FT99"},"2026-09-30 10:00")');
   assert.match(paid,/Bank ref FT99/);assert.deepEqual(cls({status:'Paid',paidAt:'x'}),['is-done:Requested','is-done:Being verified','is-done:Paid']);
   assert.deepEqual(cls({status:'Rejected'}),['is-done:Requested','is-bad:Returned to your wallet']);
-  ok('tracker: pending, paid (with bank reference) and returned');
+  assert.deepEqual(cls({status:'Rejected / Cancelled'}),['is-done:Requested','is-bad:Returned to your wallet']);
+  for(const st of ['Failed','Expired','Reversed']) assert.deepEqual(cls({status:st}),['is-done:Requested','is-bad:'+st]);
+  assert.deepEqual(plain(p.w.eval('["Paid","Pending admin payout","Rejected / Cancelled","Failed","Expired","Reversed",""].map(nvwPayoutStage)')),
+    ['paid','pending','returned','other','other','other','other']);
+  const tag=st=>p.w.eval('nvwTx({id:"x",entryType:"withdrawal_requested",amount:-100,affectsBalance:true,referenceType:"withdrawal",referenceId:"w9",referenceCode:"w9",createdAt:"2026-09-30 10:00"},null,[{_uuid:"w9",id:"W9",status:'+JSON.stringify(st)+',net:99,fee:1,speed:"24h",iban:"'+IBAN+'"}]).tag[0]');
+  assert.equal(tag('Pending admin payout'),'Processing');assert.equal(tag('Failed'),'Failed');assert.equal(tag('Paid'),'Completed');
+  ok('tracker: pending, paid (with bank reference), returned; failed/expired/reversed are never shown or counted as on their way');
   p.dom.window.close();
 }
 
@@ -269,14 +276,110 @@ const rpcCalls=p=>p.w.__calls.filter(c=>c[0]==='request_wallet_withdrawal_idem')
   assert.deepEqual(sep.lines.map(l=>l.balance),[3000,2500]);
   const aug=plain(p.w.eval('nvwStatementData("2026-08",'+led+',1500)'));assert.equal(aug.opening,0);assert.equal(aug.closing,1000);
   const all=plain(p.w.eval('nvwStatementData("all",'+led+',1500)'));assert.equal(all.opening,0);assert.equal(all.closing,1500);assert.equal(all.lines.length,5);
-  ok('statement: Sep opens 1,000, closes 2,500 (Aug closing = Sep opening); fees not counted twice; all-time closes at today\'s balance');
+  ok('statement (demo, worked out locally): Sep opens 1,000, closes 2,500 (Aug closing = Sep opening); fees not counted twice');
+  p.dom.window.close();
+}
+{
+  // The demo has no server: it still gets a statement, from its own data.
+  const d=page({demo:true,balance:1500,state:{walletLedger:[
+    {id:'1',clientId:CID,entryType:'invoice_credit',amount:5000,affectsBalance:true,referenceCode:'INV-AUG',createdAt:'2026-08-20 10:00'},
+    {id:'4',clientId:CID,entryType:'invoice_credit',amount:2000,affectsBalance:true,referenceCode:'INV-SEP',createdAt:'2026-09-10 10:00'},
+    {id:'6',clientId:CID,entryType:'withdrawal_requested',amount:-5500,affectsBalance:true,referenceType:'withdrawal',referenceCode:'w2',createdAt:'2026-09-12 10:00'}]}});
+  d.w.eval('nvwBuildStatement("2026-09")');
+  assert.equal(d.w.__docs.length,1);assert.match(d.w.__docs[0].h.replace(/\u00a0/g,' '),/Rs 1,500/);
+  assert.equal(d.w.__calls.filter(c=>c[0]==='client_wallet_statement').length,0);
+  d.dom.window.close();
+}
+{
+  // Live: one server snapshot; the page's own ledger copy is not used for balances.
+  const server={period:'2026-09',opening:1000,closing:2500,money_in:2000,money_out:500,balance_now:2500,first_day:'2026-09-01',last_day:'2026-09-30',
+    generated_at:'2026-09-30 22:40',lines:[
+      {id:'a',at:'2026-09-01 00:30',entry_type:'invoice_credit',amount:2000,reference_type:'invoice',reference_id:null,reference_code:'INV-SEP',note:'',balance:3000},
+      {id:'b',at:'2026-09-20 10:00',entry_type:'invoice_due_debit',amount:-500,reference_type:'invoice',reference_id:null,reference_code:'INV-SEP2',note:'',balance:2500}]};
+  const p=page({balance:999999,state:{walletLedger:[{id:'stale',clientId:CID,entryType:'invoice_credit',amount:999999,affectsBalance:true,createdAt:'2026-09-02 10:00'}]},
+    rpcs:{client_wallet_statement:()=>({data:server,error:null})}});
   p.w.eval('nvWalletStatement()');await wait(50);
   const months=[...p.sheet().querySelectorAll('.nvw-month')];assert.equal(months.length,7);
-  p.w.eval('nvwBuildStatement("2026-09")');const doc=p.w.__docs[0];doc.h=doc.h.replace(/\u00a0/g,' ');
-  assert.match(doc.h,/Opening balance/);assert.match(doc.h,/Closing balance/);assert.match(doc.h,/Rs 2,500/);assert.match(doc.h,/Wallet ID: CL-D2485E/);
-  assert.equal(doc.c[0].join(','),'date,description,reference,money_in,money_out,balance');assert.equal(doc.n,'NovaX-wallet-statement-2026-09.csv');
-  ok('statement: month picker (6 months + all time), bank-style document and CSV with running balance');
+  months[0].click();await wait(300);
+  assert.equal(p.w.__calls.filter(c=>c[0]==='client_wallet_statement').length,1,'the month picker asks the server');
+  p.w.__docs.length=0;p.w.__calls.length=0;
+  await p.w.eval('nvwBuildStatement("2026-09")');
+  assert.deepEqual(plain(p.w.__calls.find(c=>c[0]==='client_wallet_statement')[1]),{p_period:'2026-09'});
+  const doc=p.w.__docs[0];doc.h=doc.h.replace(/\u00a0/g,' ');
+  assert.match(doc.h,/Opening balance/);assert.match(doc.h,/Rs 1,000/);assert.match(doc.h,/Rs 2,500/);assert.doesNotMatch(doc.h,/999,999/);
+  assert.match(doc.h,/1 Sept? 2026 – 30 Sept? 2026/);assert.match(doc.h,/Generated: 30 Sept? 2026, 10:40 pm PKT/);
+  assert.equal(doc.c[2][0],'2026-09-01 00:30');assert.equal(doc.c[2][5],3000);assert.equal(doc.c.at(-1)[5],2500);
+  assert.equal(doc.n,'NovaX-wallet-statement-2026-09.csv');
+  const bad=page({rpcs:{client_wallet_statement:()=>({data:null,error:{message:'JWT expired'}})}});
+  await bad.w.eval('nvwBuildStatement("2026-09")');
+  assert.equal(bad.w.__docs.length,0);assert.match(bad.w.__toasts.at(-1),/Couldn't make your statement/);
+  const thrown=page({rpcs:{client_wallet_statement:()=>{throw new Error('offline');}}});
+  await thrown.w.eval('nvwBuildStatement("all")');
+  assert.equal(thrown.w.__docs.length,0);assert.match(thrown.w.__toasts.at(-1),/Couldn't make your statement/);
+  ok('statement (live): built by the server in Pakistan months, a failed call says so instead of showing local figures');
+  p.dom.window.close();bad.dom.window.close();thrown.dom.window.close();
+}
+
+/* ─── hide amounts: the page text, not just the styling ──────────────── */
+{
+  const p=page({state:{walletWithdrawals:[{_uuid:'wd-1',id:'WDR-AAAA01',iban:IBAN,speed:'24h',status:'Paid',net:4795.2,fee:4.8,createdAt:'2026-09-27 23:05',paidAt:'2026-09-28 21:06',paidTxnId:'FT1'}]}});
+  const d=p.w.document, $=q=>d.querySelector(q);
+  const rows=[
+    {id:'l1',entryType:'invoice_credit',amount:3225,affectsBalance:true,referenceType:'invoice',referenceCode:'INV-A',createdAt:'2026-09-30 16:05'},
+    {id:'l2',entryType:'withdrawal_requested',amount:-4800,affectsBalance:true,referenceType:'withdrawal',referenceId:'wd-1',referenceCode:'wd-1',createdAt:'2026-09-27 23:05'}];
+  const render=()=>p.w.eval('nvwRenderCard(3425);nvwPaintBalance(document.getElementById("walletBalanceText"),3425);nvwRenderActivity(document.getElementById("walletLedgerList"),'+JSON.stringify(rows)+',"these 2 entries total Rs 3,425 · balance Rs 3,425.")');
+  render();
+  d.getElementById('client-money').insertAdjacentHTML('beforeend','<ol id="rail"><li><strong aria-label="Paid Rs 4,795">Rs 4,795</strong><em>Rs 4,795 this month</em></li></ol>');
+  d.body.insertAdjacentHTML('beforeend','<div id="nvCodHero"><div class="nv-cod-main"><span class="nv-cod-l">Wallet balance</span>'+p.w.eval('nvwEyeButton("nv-cod-eye")')+
+    '<div class="nv-cod-v">Rs 3,425</div></div><div class="nv-cod-b"><span>Pending payout</span><strong>Rs 0</strong></div></div><div id="elsewhere">COD Rs 1,899 on N123</div>');
+  const areas=()=>$('#client-money').textContent+$('#nvCodHero').textContent;
+  const attrs=()=>[...d.querySelectorAll('#client-money [aria-label],#client-money [title],#nvCodHero [aria-label]')].map(e=>(e.getAttribute('aria-label')||'')+(e.getAttribute('title')||'')).join('|');
+  const AMT=/(Rs|PKR)\.?[\s\u00a0]?[\u2212-]?\d/;
+  const shown=$('#client-money').textContent, shownHome=$('#nvCodHero').textContent;
+  assert.match(shown.replace(/\u00a0/g,' '),/balance Rs 3,425/);
+
+  $('#nvwEye').click();await wait(0);
+  assert.doesNotMatch(areas(),AMT,'no amount left in the wallet areas');
+  assert.doesNotMatch(attrs(),AMT,'no amount left for screen readers');
+  const flat=areas().replace(/\u00a0/g,' ');
+  assert.match(flat,/balance Rs ••••/);assert.match(flat,/\+ Rs ••••/);assert.match(flat,/− Rs ••••/);
+  assert.equal($('#walletBalanceText').getAttribute('aria-label'),'Balance hidden');
+  assert.match($('#elsewhere').textContent,/Rs 1,899/,'parcel COD outside the wallet areas is untouched');
+  for(const b of d.querySelectorAll('[data-nvw-eye]')){ assert.equal(b.getAttribute('aria-pressed'),'true'); assert.equal(b.getAttribute('aria-label'),'Show amounts'); }
+
+  render();await wait(0);
+  assert.doesNotMatch(areas(),AMT,'a re-render while hidden stays hidden');
+  p.w.eval('nvwShowLanded(3225,['+JSON.stringify(Object.assign({},rows[0],{clientId:CID}))+'])');await wait(0);
+  assert.doesNotMatch($('#nvwLanded').textContent,AMT,'"just landed" hides its amount too');
+  $('#nvwLanded').remove();
+  d.querySelector('[data-nvw-tx="0"]').click();await wait(50);
+  assert.match(p.sheet().textContent.replace(/\u00a0/g,' '),/Rs 3,225/,'a receipt opened on purpose shows its figures');
+  p.sheet().querySelector('[data-nvw="close"]').click();await wait(250);
+
+  $('.nv-cod-eye').click();await wait(0);
+  assert.equal($('#client-money').textContent,shown,'showing again restores every amount exactly');
+  assert.equal($('#nvCodHero').textContent,shownHome);
+  assert.match(attrs(),/Paid Rs 4,795/);
+  for(const b of d.querySelectorAll('[data-nvw-eye]')) assert.equal(b.getAttribute('aria-pressed'),'false');
+  assert.equal(p.w.localStorage.getItem('nvWalletHidden'),'0');
   p.dom.window.close();
+
+  // Hidden last time: hidden from the first paint.
+  const q2=page({hidden:true});
+  q2.w.eval('nvwRenderCard(3425);nvwPaintBalance(document.getElementById("walletBalanceText"),3425);nvwRenderActivity(document.getElementById("walletLedgerList"),'+JSON.stringify(rows)+',"balance Rs 3,425.")');
+  await wait(0);
+  assert.doesNotMatch(q2.w.document.getElementById('client-money').textContent,AMT);
+  q2.dom.window.close();
+  ok('hide amounts: every wallet amount and label becomes dots in the text itself, on Money and Home, through re-renders; receipts opened on purpose still show; showing restores exactly');
+}
+
+/* ─── labels that read alike ─────────────────────────────────────────── */
+{
+  assert.ok(!app.includes("'<div class=\"nv-inc-lbl\">On its way to you</div>'"));
+  assert.ok(app.includes("'<div class=\"nv-inc-lbl\">Coming to your wallet</div>'"));
+  assert.ok(html.includes('<strong id="nvRailReq">Rs 0</strong><em>being paid to your bank</em>'));
+  assert.ok(!/On its way to your bank/.test(html));
+  ok('labels: money coming INTO the wallet and a payout going OUT to the bank no longer read alike');
 }
 
 console.log('PASS wallet: '+passed.length+' checks\n  - '+passed.join('\n  - '));

@@ -2623,7 +2623,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.js?v=29a03646" defer></script>
+  <script src="client-app.js?v=a4feb6d8" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2638,7 +2638,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=29a03646<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=a4feb6d8<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -3114,7 +3114,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                   <span class="nvw-sheen" aria-hidden="true"></span>
                   <div class="nvw-card-top">
                     <span class="nvw-label" id="nvwLabel">Available to withdraw</span>
-                    <button type="button" class="nvw-eye" id="nvwEye" aria-pressed="false" aria-label="Hide balance" title="Hide balance">
+                    <button type="button" class="nvw-eye" id="nvwEye" data-nvw-eye aria-pressed="false" aria-label="Hide amounts" title="Hide amounts">
                       <svg class="nvw-eye-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
                       <svg class="nvw-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
                     </button>
@@ -3144,7 +3144,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                   <li data-stage="transit"><span>In transit</span><strong id="nvRailTransit">Rs 0</strong><em>rider still collecting</em></li>
                   <li data-stage="clearing"><span>Clearing</span><strong id="nvMhCounting">Rs 0</strong><em>delivered, being invoiced</em></li>
                   <li data-stage="available" class="is-now"><span>Available</span><strong class="nv-w2-here">&#8593;</strong><em>the figure above</em></li>
-                  <li data-stage="requested"><span>Requested</span><strong id="nvRailReq">Rs 0</strong><em>on its way to your bank</em></li>
+                  <li data-stage="requested"><span>Requested</span><strong id="nvRailReq">Rs 0</strong><em>being paid to your bank</em></li>
                   <li data-stage="paid"><span>Paid</span><strong id="nvMhPaid">Rs 0</strong><em id="nvRailPaidSub">lifetime, into your bank</em></li>
                 </ol>
               </div>
@@ -4539,6 +4539,15 @@ body,.panel,.ops-card,.metric,.client-side,.client-menu-head,.status,.chip,
 .nv-cod-v{font-size:clamp(26px,4vw,36px);font-weight:900;letter-spacing:-.03em;line-height:1.05;
   margin-top:5px;color:var(--nvu-ink,var(--nvu-ink));font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
 .nv-cod-spark{margin-top:8px;max-width:240px;}
+/* Hide amounts, on Home too (30 Sep 2026): the same setting as the Money card's eye. */
+.nv-cod-main{position:relative;}
+.nv-cod-eye{position:absolute;top:-8px;right:-8px;width:40px;height:40px;display:grid;place-items:center;
+  border:0;border-radius:50%;background:transparent;color:var(--nvu-ink-3,var(--nvu-ink-3));cursor:pointer;}
+.nv-cod-eye:hover{color:var(--nvu-ink,var(--nvu-ink));}
+.nv-cod-eye:focus-visible{outline:2px solid var(--nvu-good-fg,#14c77b);outline-offset:-2px;}
+.nv-cod-eye svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+.nv-cod-eye .nvw-eye-off,.nv-cod-eye[aria-pressed="true"] .nvw-eye-on{display:none;}
+.nv-cod-eye[aria-pressed="true"] .nvw-eye-off{display:block;}
 .nv-cod-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
 .nv-cod-b{border:1px solid var(--nvu-line,var(--nvu-line));border-radius:var(--r-xl);padding:10px 11px;
   background:var(--nvu-bg-2,var(--nvu-bg-2));min-width:0;}
@@ -4875,7 +4884,7 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
     </svg>
     <h3 id="nvWdTitle">Withdrawal requested</h3>
     <div class="nv-wd-amt" id="nvWdAmount">Rs 0</div>
-    <p class="nv-wd-sub" id="nvWdSub">On its way to your bank.</p>
+    <p class="nv-wd-sub" id="nvWdSub">NovaX is sending this to your bank.</p>
     <dl class="nv-wd-kv">
       <dt>Amount</dt><dd id="nvWdGross">Rs 0</dd>
       <dt>Payout fee</dt><dd id="nvWdFee">Rs 0</dd>

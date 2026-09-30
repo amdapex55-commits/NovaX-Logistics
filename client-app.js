@@ -2208,9 +2208,13 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?J
 
       host.style.display="block";
       host.innerHTML='<div class="nv-inc">'+
-        '<div class="nv-inc-lbl">On its way to you</div>'+
+        /* Was "On its way to you", right beside "Requested -- on its way to
+           your bank": two different sums, two near-identical labels, and they
+           read as one figure contradicting the other. This is COD heading INTO
+           the wallet; the rail's Requested is a payout going OUT to the bank. */
+        '<div class="nv-inc-lbl">Coming to your wallet</div>'+
         '<div class="nv-inc-amt">'+escLabelText(money(onWay))+'</div>'+
-        '<div class="nv-inc-sub">COD collected or in transit that has not reached your wallet yet.</div>'+
+        '<div class="nv-inc-sub">COD from your parcels that is not in your wallet yet.</div>'+
         '<div class="nv-inc-chips">'+chips+'</div>'+
         nvFlowChartHtml(inFlow,outFlow)+
       '</div>';
@@ -6869,16 +6873,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(inc && inc.transit != null) transit = Number(inc.transit) || 0;
       }catch(e){}
 
+      /* Requested counted every payout that was not Paid and not rejected or
+         cancelled, so any other status would have sat in "being paid to your
+         bank" for ever. Only a payout NovaX is paying counts, the same rule the
+         server uses; its figure wins when it has loaded. "This month" is a
+         Pakistan month: the phone's own calendar could disagree near midnight. */
       var wds = (state.walletWithdrawals || []).filter(function(w){ return w && w.clientId === myId; });
-      var requested = wds.filter(function(w){ return String(w.status||"") !== "Paid" && !/reject|cancel/i.test(String(w.status||"")); })
-                         .reduce(function(t,w){ return t + Number(w.net||0); }, 0);
+      var sv = state.serverWalletSummary || null;
+      var requested = (sv && sv.pending_payout != null) ? Number(sv.pending_payout || 0)
+        : wds.filter(function(w){ return nvwPayoutStage(w.status) === "pending"; })
+             .reduce(function(t,w){ return t + Number(w.net||0); }, 0);
 
-      var now = new Date();
-      var monthPaid = wds.filter(function(w){
-        if(String(w.status||"") !== "Paid" || !w.paidAt) return false;
-        var d = new Date(String(w.paidAt).replace(" ","T"));
-        return !isNaN(d) && d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
-      }).reduce(function(t,w){ return t + Number(w.net||0); }, 0);
+      var monthKey = new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" }).slice(0,7);
+      var monthPaid = (sv && sv.paid_this_month != null) ? Number(sv.paid_this_month || 0)
+        : wds.filter(function(w){
+            return nvwPayoutStage(w.status) === "paid" && String(w.paidAt || w.createdAt || "").slice(0,7) === monthKey;
+          }).reduce(function(t,w){ return t + Number(w.net||0); }, 0);
 
       nvSetRailValue(document.getElementById("nvRailTransit"), money(transit),   "var(--nvu-neutral-fg)");
       nvSetRailValue(document.getElementById("nvRailReq"),     money(requested), "var(--nvu-out-fg)");
@@ -7549,6 +7559,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                  their parcels and to chase the difference. It is what they can
                  withdraw right now, so it says that. */
               '<span class="nv-cod-l">Wallet balance</span>'+
+              nvwEyeButton("nv-cod-eye")+
               '<div class="nv-cod-v">'+escLabelText(money(balance))+'</div>'+
               (spark.length>1?'<div class="nv-cod-spark">'+U.sparkline(spark,{w:220,h:30})+'</div>':'')+
             '</div>'+
@@ -7608,6 +7619,103 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     };
     function nvwHidden(){ try{ return localStorage.getItem(NV_W3.hiddenKey)==="1"; }catch(e){ return false; } }
     function nvwSetHidden(v){ try{ localStorage.setItem(NV_W3.hiddenKey, v?"1":"0"); }catch(e){} }
+
+    /* ── Hide amounts ──────────────────────────────────────────────────────
+       The eye used to hide the card figure only. Every other amount stayed on
+       screen, and the activity footer ("these 6 entries total Rs 3,425 ·
+       balance Rs 3,425") printed the hidden balance itself. While hidden,
+       every amount in the wallet areas -- the Money tab, the wallet card and
+       money tiles on Home, the "just landed" notice -- is replaced in the page
+       TEXT, so screen readers and copy/paste get dots too, and stays replaced
+       as those areas re-render. A receipt, Withdraw or a statement that the
+       merchant opens on purpose still shows its figures. */
+    var NVW_PRIV={ obs:null, text:new WeakMap(), attr:new WeakMap() };
+    var NVW_PRIV_ROOTS="#client-money,#nvCodHero,#clientMetrics,#nvCsBrief,#nvwLanded";
+    var NVW_PRIV_ONE=/(Rs|PKR)\.?[\s\u00a0]?[\u2212-]?\d/;
+    var NVW_PRIV_ALL=/(Rs|PKR)(\.?[\s\u00a0]?)[\u2212-]?\d[\d,]*(?:\.\d+)?/g;
+    function nvwPrivIn(n){
+      var el=n && (n.nodeType===1 ? n : n.parentElement);
+      return !!(el && el.closest && el.closest(NVW_PRIV_ROOTS));
+    }
+    function nvwPrivText(n){
+      var v=n.nodeValue||"";
+      if(NVW_PRIV_ONE.test(v)){ NVW_PRIV.text.set(n,v); n.nodeValue=v.replace(NVW_PRIV_ALL,"$1$2••••"); }
+      else if(v.indexOf("••••")<0) NVW_PRIV.text.delete(n);
+    }
+    function nvwPrivAttrs(el){
+      ["aria-label","title"].forEach(function(a){
+        var v=el.getAttribute && el.getAttribute(a);
+        if(!v || !NVW_PRIV_ONE.test(v)) return;
+        var m=NVW_PRIV.attr.get(el)||{}; m[a]=v; NVW_PRIV.attr.set(el,m);
+        el.setAttribute(a,v.replace(NVW_PRIV_ALL,"$1$2••••"));
+      });
+    }
+    function nvwPrivTree(root){
+      if(!root) return;
+      if(root.nodeType===3){ nvwPrivText(root); return; }
+      if(root.nodeType!==1) return;
+      nvwPrivAttrs(root);
+      Array.prototype.forEach.call(root.querySelectorAll("[aria-label],[title]"),nvwPrivAttrs);
+      var w=document.createTreeWalker(root,4), n;
+      while((n=w.nextNode())) nvwPrivText(n);
+    }
+    function nvwPrivStart(){
+      if(!NVW_PRIV.obs && typeof MutationObserver==="function" && document.body){
+        NVW_PRIV.obs=new MutationObserver(function(list){
+          list.forEach(function(m){
+            if(m.type==="characterData"){ if(nvwPrivIn(m.target)) nvwPrivText(m.target); return; }
+            if(m.type==="attributes"){ if(nvwPrivIn(m.target)) nvwPrivAttrs(m.target); return; }
+            Array.prototype.forEach.call(m.addedNodes,function(a){
+              if(nvwPrivIn(a)) nvwPrivTree(a);
+              else if(a.nodeType===1) Array.prototype.forEach.call(a.querySelectorAll(NVW_PRIV_ROOTS),nvwPrivTree);
+            });
+          });
+        });
+        NVW_PRIV.obs.observe(document.body,{ subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:["aria-label","title"] });
+      }
+      Array.prototype.forEach.call(document.querySelectorAll(NVW_PRIV_ROOTS),nvwPrivTree);
+    }
+    function nvwPrivStop(){
+      if(NVW_PRIV.obs){ NVW_PRIV.obs.disconnect(); NVW_PRIV.obs=null; }
+      Array.prototype.forEach.call(document.querySelectorAll(NVW_PRIV_ROOTS),function(r){
+        var w=document.createTreeWalker(r,4), n;
+        while((n=w.nextNode())){ var o=NVW_PRIV.text.get(n); if(o!=null){ n.nodeValue=o; NVW_PRIV.text.delete(n); } }
+        [r].concat(Array.prototype.slice.call(r.querySelectorAll("[aria-label],[title]"))).forEach(function(el){
+          var m=NVW_PRIV.attr.get(el); if(!m) return;
+          Object.keys(m).forEach(function(a){ el.setAttribute(a,m[a]); }); NVW_PRIV.attr.delete(el);
+        });
+      });
+    }
+    function nvwEyeButton(cls){
+      var on=nvwHidden(), t=on?"Show amounts":"Hide amounts";
+      return '<button type="button" class="'+cls+'" data-nvw-eye aria-pressed="'+(on?"true":"false")+'" aria-label="'+t+'" title="'+t+'">'+
+        '<svg class="nvw-eye-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>'+
+        '<svg class="nvw-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button>';
+    }
+    function nvwApplyPrivacy(){
+      var on=nvwHidden(), t=on?"Show amounts":"Hide amounts";
+      try{ nvwRenderCard(NV_W3.balance); nvwPaintBalance(document.getElementById("walletBalanceText"),NV_W3.balance); }catch(e){}
+      Array.prototype.forEach.call(document.querySelectorAll("[data-nvw-eye]"),function(b){
+        b.setAttribute("aria-pressed",on?"true":"false"); b.setAttribute("aria-label",t); b.title=t;
+      });
+      if(on) nvwPrivStart(); else nvwPrivStop();
+    }
+
+    /* One reading of a payout's status for the whole wallet, so the tracker,
+       the activity tags and the "Requested" total always agree. Only "Pending
+       admin payout" is money being paid to the bank; rejected or cancelled
+       payouts came back to the wallet. Any other status -- one NovaX adds
+       later -- is never counted as on its way: it shows as it is, with a
+       pointer to support. */
+    function nvwPayoutStage(status){
+      var s=String(status||"").trim();
+      if(s==="Paid") return "paid";
+      if(s==="Pending admin payout") return "pending";
+      if(/reject|cancel/i.test(s)) return "returned";
+      return "other";
+    }
+    /* Left hidden last time: hidden from the first paint, not after a tap. */
+    try{ if(nvwHidden()) nvwPrivStart(); }catch(e){}
     function nvwBankLine(iban){
       var s=String(iban||"").replace(/\s+/g,"").toUpperCase();
       if(!s) return "your bank";
@@ -7646,7 +7754,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       card.classList.toggle("is-hidden",hidden);
       var lab=document.getElementById("nvwLabel"); if(lab) lab.textContent=owe?"You owe NovaX":"Available to withdraw";
       var eye=document.getElementById("nvwEye");
-      if(eye){ eye.setAttribute("aria-pressed",hidden?"true":"false"); var t=hidden?"Show balance":"Hide balance"; eye.setAttribute("aria-label",t); eye.title=t; }
+      if(eye){ eye.setAttribute("aria-pressed",hidden?"true":"false"); var t=hidden?"Show amounts":"Hide amounts"; eye.setAttribute("aria-label",t); eye.title=t; }
       var idt=document.getElementById("nvwIdText"), wid=nvwWalletId(); if(idt) idt.textContent=wid||"—";
       var idb=document.getElementById("nvwId"); if(idb) idb.hidden=!wid;
       var dues=document.getElementById("nvwActDues"); if(dues) dues.hidden=!owe;
@@ -7705,7 +7813,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         x.kind="payout"; x.icon="out"; x.w=w;
         x.title="Payout to "+nvwBankLine(w&&w.iban);
         x.sub=w?(walletSpeedLabel(w.speed)+" payout"):"Payout";
-        x.tag=st==="Paid"?["Completed","good"]:(/reject|cancel/i.test(st)?["Returned","info"]:["Processing","warn"]);
+        var stage=w?nvwPayoutStage(st):"pending";
+        x.tag=stage==="paid"?["Completed","good"]:stage==="returned"?["Returned","info"]:stage==="pending"?["Processing","warn"]:[st,""];
         x.rows=[["Amount",moneyExact(Math.abs(amt))], ["Payout fee"+(w?" ("+walletFeePct(w.speed)+")":""), fee>0?("− "+moneyExact(fee)):"None"],
                 ["You receive",moneyExact(w?Number(w.net||0):Math.abs(amt)-fee)], ["To",nvwBankLine(w&&w.iban)],
                 ["Speed",w?walletSpeedLabel(w.speed):"—"], ["Requested",nvNiceDate(l.createdAt)],
@@ -7947,12 +8056,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }catch(e){}
     }
     document.addEventListener("click",function(e){
-      var t=e.target&&e.target.closest?e.target.closest("#nvwEye,#nvwId,#nvwActStatement,#nvwActReceipts,#nvwActDues,[data-nvw-filter],[data-nvw-tx]"):null;
+      var t=e.target&&e.target.closest?e.target.closest("[data-nvw-eye],#nvwId,#nvwActStatement,#nvwActReceipts,#nvwActDues,[data-nvw-filter],[data-nvw-tx]"):null;
       if(!t) return;
-      if(t.id==="nvwEye"){
-        nvwSetHidden(!nvwHidden()); nvwRenderCard(NV_W3.balance);
-        nvwPaintBalance(document.getElementById("walletBalanceText"),NV_W3.balance); return;
-      }
+      if(t.hasAttribute("data-nvw-eye")){ nvwSetHidden(!nvwHidden()); nvwApplyPrivacy(); return; }
       if(t.id==="nvwId"){
         var id=nvwWalletId(); if(!id) return;
         var ok=function(){ try{ toast("Wallet ID "+id+" copied.","success"); }catch(err){} };
@@ -8028,10 +8134,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     /* ── Payout tracker: Requested -> Being verified -> Paid ─────────────── */
     function nvwTrackerHtml(w, requestedAt){
-      var st=w?String(w.status||""):"", paid=st==="Paid", back=/reject|cancel/i.test(st);
+      var st=w?String(w.status||""):"", stage=w?nvwPayoutStage(st):"pending", paid=stage==="paid", back=stage==="returned";
       var steps=[{ t:"Requested", s:nvNiceDate(requestedAt||(w&&w.createdAt)||""), c:"done" }];
       if(back){
         steps.push({ t:"Returned to your wallet", s:"This payout was not sent. The money is back in your balance.", c:"bad" });
+      } else if(stage==="other"){
+        steps.push({ t:st, s:"Ask NovaX support about this payout. It is not counted as on its way to your bank.", c:"bad" });
       } else {
         steps.push({ t:"Being verified", s:paid?"Checked by NovaX finance":"NovaX finance is checking it and sending it to your bank", c:paid?"done":"now" });
         steps.push({ t:"Paid", s:paid?(nvNiceDate(w.paidAt)+(w.paidTxnId?" · Bank ref "+w.paidTxnId:"")):"Shows here with the bank reference once paid", c:paid?"done":"next" });
@@ -8349,21 +8457,49 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                moneyOut:r2(inP.filter(function(l){ return Number(l.amount)<0; }).reduce(function(t,l){ return t-Number(l.amount); },0)),
                lines:lines };
     }
+    /* The statement comes from the server (client_wallet_statement): one
+       database snapshot, Pakistan-time months and a running balance on every
+       line. It used to be worked out here from the ledger loaded when the page
+       opened, so it could miss anything credited since. Only the demo, which
+       has no server, still works it out locally. */
+    function nvwStatementFromServer(d){
+      var n=function(v){ return Math.round(Number(v||0)*100)/100; };
+      return { opening:n(d.opening), closing:n(d.closing), moneyIn:n(d.money_in), moneyOut:n(d.money_out),
+        firstDay:String(d.first_day||""), lastDay:String(d.last_day||""), generated:String(d.generated_at||""),
+        lines:(Array.isArray(d.lines)?d.lines:[]).map(function(x){
+          return { l:{ id:x.id, entryType:x.entry_type||"", amount:Number(x.amount||0), affectsBalance:true,
+            referenceType:x.reference_type||"", referenceId:x.reference_id||"", referenceCode:x.reference_code||"",
+            note:x.note||"", createdAt:String(x.at||"") }, balance:n(x.balance) };
+        }) };
+    }
     function nvwBuildStatement(key){
-      var cid=state.client&&state.client.id;
-      var rows=(state.walletLedger||[]).filter(function(l){ return l && l.clientId===cid; });
-      var c=clientById(cid), bal=Number((c&&c.walletBalance)||0);
-      var D=nvwStatementData(key, rows, bal), all=key==="all";
+      if(window.__NOVAX_DEMO){
+        var cid=state.client&&state.client.id, c=clientById(cid);
+        nvwShowStatement(key, nvwStatementData(key, (state.walletLedger||[]).filter(function(l){ return l && l.clientId===cid; }), Number((c&&c.walletBalance)||0)));
+        return Promise.resolve();
+      }
+      var sb=window.__nvSb;
+      if(!sb || typeof sb.rpc!=="function"){ toast("Couldn't make your statement. Reload the page and try again.","error"); return Promise.resolve(); }
+      toast("Preparing your statement\u2026");
+      return Promise.resolve().then(function(){ return sb.rpc("client_wallet_statement",{ p_period:key }); }).then(function(r){
+        if(!r || r.error || !r.data || !Array.isArray(r.data.lines)) throw new Error("statement");
+        nvwShowStatement(key, nvwStatementFromServer(r.data));
+      }).catch(function(){ toast("Couldn't make your statement. Check your connection and try again.","error"); });
+    }
+    function nvwShowStatement(key, D){
+      var all=key==="all";
       var fmtDay=function(s){ var d=new Date(String(s).slice(0,10)+"T12:00:00+05:00"); return isNaN(d)?String(s||""):d.toLocaleDateString("en-GB",{ day:"numeric", month:"short", year:"numeric", timeZone:"Asia/Karachi" }); };
       var period=all?"All time":new Date(key+"-15T12:00:00+05:00").toLocaleDateString("en-GB",{ month:"long", year:"numeric", timeZone:"Asia/Karachi" });
-      var startLabel=all?(D.lines.length?fmtDay(D.lines[0].l.createdAt):"Start"):fmtDay(key+"-01");
-      var endKey=(function(){ if(all) return new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" });
+      var startLabel=all?(D.firstDay?fmtDay(D.firstDay):(D.lines.length?fmtDay(D.lines[0].l.createdAt):"Start")):fmtDay(key+"-01");
+      var endKey=D.lastDay||(function(){ if(all) return new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" });
         var y=+key.slice(0,4), m=+key.slice(5,7), last=new Date(Date.UTC(y,m,0)).getUTCDate();
         var end=key+"-"+String(last).padStart(2,"0"), today=new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" });
         return end>today?today:end; })();
       var wds=state.walletWithdrawals||[];
       var desc=function(l){ var x=nvwTx(l,null,wds); return { t:x.title, ref:(x.w&&x.w.id)||l.referenceCode||"" }; };
-      var made=new Date().toLocaleString("en-GB",{ day:"numeric", month:"short", year:"numeric", hour:"numeric", minute:"2-digit", hour12:true, timeZone:"Asia/Karachi" });
+      var gen=D.generated?new Date(D.generated.replace(" ","T")+":00+05:00"):new Date();
+      if(isNaN(gen)) gen=new Date();
+      var made=gen.toLocaleString("en-GB",{ day:"numeric", month:"short", year:"numeric", hour:"numeric", minute:"2-digit", hour12:true, timeZone:"Asia/Karachi" });
       var box=function(label,v,big){ return '<div class="nv-doc-box'+(big?' big':'')+'"><span>'+escLabelText(label)+'</span><strong>'+escLabelText(moneyExact(v))+'</strong></div>'; };
       var html=nvDocHead("Wallet statement", period, ["Wallet ID: "+(nvwWalletId()||"—"), "Period: "+startLabel+" – "+fmtDay(endKey), "Generated: "+made+" PKT"])+
         '<div class="nv-doc-grid">'+box("Opening balance",D.opening)+box("Money in",D.moneyIn)+box("Money out",D.moneyOut)+box("Closing balance",D.closing,true)+'</div>'+
@@ -8378,7 +8514,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           '<tr><td>'+escLabelText(fmtDay(endKey))+'</td><td colspan="4"><strong>Closing balance</strong></td><td class="num"><strong>'+escLabelText(moneyExact(D.closing))+'</strong></td></tr>'+
         '</tbody></table>'+
         '<div class="nv-doc-total"><span>Closing balance</span><span>'+escLabelText(moneyExact(D.closing))+'</span></div>'+
-        nvDocFoot("Balances are worked back from your wallet balance today, so the latest closing balance is your balance now. Payout fees are included in each payout.");
+        nvDocFoot("Balances are worked back from your wallet balance at the time this statement was made, so the latest closing balance is your balance then. Dates and months are Pakistan time. Payout fees are included in each payout.");
       var csv=[["date","description","reference","money_in","money_out","balance"],[startLabel,"Opening balance","","","",D.opening]]
         .concat(D.lines.map(function(x){ var l=x.l, a=Number(l.amount||0), d=desc(l); return [l.createdAt||"",d.t,d.ref,a>0?a:"",a<0?-a:"",x.balance]; }))
         .concat([[fmtDay(endKey),"Closing balance","","","",D.closing]]);
@@ -14794,7 +14930,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             date: d.toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" }),
             time: d.toLocaleTimeString("en-GB",{ timeZone:"Asia/Karachi", hour:"2-digit", minute:"2-digit", hour12:false })
           };
-        }catch(e){ return null; }
+        }catch(e){
+          /* A browser without time-zone support used to fall back to the raw
+             UTC text, which put a 1 am payment on the previous day. Pakistan
+             keeps UTC+5 all year (no daylight saving since 2009), so add it. */
+          var k=new Date(d.getTime()+5*3600000).toISOString();
+          return { date:k.slice(0,10), time:k.slice(11,16) };
+        }
       }
       function dpart(t){
         var k=nvKarachiParts(t);
