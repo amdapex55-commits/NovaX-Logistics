@@ -4842,6 +4842,7 @@ html,body{ background:var(--bg); color:var(--ink); }
 </style>
   <script src="nv-payment.js?v=a14f4c65"></script>
   <script src="nv-journey.js?v=77db2b46"></script>
+  <script src="nv-cnic.js?v=05655461"></script>
 </head>
 <!-- AUTH_GATE_VERSION: 2026-07-16-role-hard-stop-v2 -->
 <body>
@@ -5747,7 +5748,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <div class="field"><label>Phone</label><input type="tel" inputmode="numeric" autocomplete="tel" id="newClientPhone" placeholder="03113323923"></div>
                   <div class="field"><label>Product Details</label><input id="newClientBusiness" placeholder="Write what this client sells"></div>
                   <div class="field"><label>City</label><select id="newClientCity"><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>
-                  <div class="field"><label>CNIC / NTN</label><input id="newClientTax" placeholder="CNIC or NTN"></div>
+                  <div class="field"><label>CNIC</label><p class="footer-note" style="margin:10px 0 0">After creating the client, add the CNIC photos with the CNIC button on their card.</p></div>
                   <div class="field" style="grid-column:span 2"><label>Pickup Address</label><input id="newClientAddress" placeholder="Complete pickup address"></div>
                   <div class="field" style="grid-column:span 2"><label>Settlement IBAN</label><input id="newClientIban" placeholder="PK00 BANK 0000 0000 0000 0000"></div>
                 </div>
@@ -6583,6 +6584,10 @@ html,body{ background:var(--bg); color:var(--ink); }
             </section>
 
             <section class="admin-module" id="admin-clients-summary">
+              <div class="panel" id="nvKycReviewPanel" style="margin-bottom:14px">
+                <div class="section-head"><div><h3>CNIC to review</h3><p>Front and back of each merchant owner's CNIC. Verify, or ask for a new photo; the merchant is emailed either way.</p></div><span class="chip" id="nvKycReviewCount">&hellip;</span></div>
+                <div class="ops-list" id="nvKycReviewList"><div class="log-item"><div class="footer-note">Loading&hellip;</div></div></div>
+              </div>
               <div class="panel">
                 <div class="section-head"><div><h3>Client Summary</h3><p>Client summary navigation is ready. We will show each client's revenue, payable, problems, resolve rate, rate card, and account health.</p></div></div>
                 <div class="grid metrics" id="clientSummaryMetrics"></div>
@@ -10696,6 +10701,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         metricCard("Wallet Liability", money(walletLiability), Math.min(100, percent(walletLiability, 150000)), "client payable", walletLiability ? "amber" : "good"),
         metricCard("Avg Health", `${avgClientHealth}%`, avgClientHealth, "delivery + issue health", avgClientHealth > 80 ? "good" : "amber")
       ].join("");
+      try { nvKycAdminLoad(false); } catch (e) {}
       document.getElementById("clientSummaryList").innerHTML = allClients.map(client => {
         const parcels = state.parcels.filter(p => p.clientId === client.id);
         const delivered = parcels.filter(isDeliveredLedgerParcel);
@@ -10725,8 +10731,10 @@ html,body{ background:var(--bg); color:var(--ink); }
             <span class="chip ${client.status === "Active" ? "good" : "warn"}">${client.status}</span>
             <span class="chip info">${parcels.length} parcels | ${delivered.length} delivered</span>
             <span class="chip ${issues.length ? "bad" : "good"}">${issues.length} issue(s)</span>
+            ${nvKycAdminChipHtml(client)}
             <button class="ghost-btn" onclick="showAdminTab('clients-clients')">Edit Rates: Zone A ${money(rc.A.overnight)} | Zone B ${money(rc.B.overnight)}</button>
             <button class="ghost-btn" onclick="editClientDetails('${nvEscAttrJs(client.id)}')">Edit Details</button>
+            <button class="ghost-btn" onclick="nvKycOpen('${nvEscAttrJs(client._uuid || client.id)}')">CNIC</button>
             <button class="ghost-btn" onclick="editClientLogin('${nvEscAttrJs(client.id)}')">Edit Login</button>
             <button class="ghost-btn" onclick="nvClientPasswordMenu('${nvEscAttrJs(client.id)}')">Reset Password</button>
             <button class="ghost-btn" onclick="nvIssueApiKey('${nvEscAttrJs(client.id)}')" title="Issue a Merchant API key so this client can book from their own website">API Key</button>
@@ -10742,6 +10750,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         `;
       }).join("");
 
+      try { nvKycAdminPaint(); } catch (e) {}
       const clientsNeedingAudit = allClients.filter(client => client.needsSignupAudit);
       const signupAuditEl = document.getElementById("clientSignupAuditList");
       if (signupAuditEl) {
@@ -13266,7 +13275,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         phone,
         businessType,
         address,
-        taxId: document.getElementById("newClientTax").value.trim() || "Not added",
+        taxId: "Not added",
         iban: document.getElementById("newClientIban").value.trim() || "Not added",
         city: document.getElementById("newClientCity").value,
         walletTopup: 0,
@@ -14202,6 +14211,294 @@ html,body{ background:var(--bg); color:var(--ink); }
         });
     }
 
+    /* ═══ Owner's CNIC review (30 Sep 2026) ═════════════════════════════
+       Merchants add the front and back of the owner's CNIC at signup or from
+       Profile (nv-cnic.js). Here admin checks them: Verify, or ask for a new
+       photo with a reason; the merchant is emailed either way. Photos a
+       merchant sends on WhatsApp can be uploaded from the same screen. All of
+       it is enforced by the database (sql_novax_client_cnic_20260930.sql). */
+    var NV_KYC_ADMIN = { rows: {}, loaded: false, loading: null, error: "" };
+    var NV_KYC_REASONS = ["Photo is blurry", "Part of the card is cut off", "Glare covers the details", "Not a CNIC",
+      "CNIC has expired", "Name does not match the account owner", "Both photos show the same side", "Other (write it below)"];
+    function nvKycAdminWhen(ts) {
+      return ts ? new Date(ts).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Karachi" }) : "";
+    }
+    function nvKycAdminLoad(force) {
+      if (typeof NV_KYC_ADMIN === "undefined" || !NV_KYC_ADMIN) return Promise.resolve();
+      const sb = window.__nvSb;
+      if (!sb || !sb.rpc) return Promise.resolve();
+      if (NV_KYC_ADMIN.loading) return NV_KYC_ADMIN.loading;
+      if (NV_KYC_ADMIN.loaded && !force) return Promise.resolve();
+      NV_KYC_ADMIN.loading = Promise.resolve(sb.rpc("admin_kyc_list")).then(function (r) {
+        if (r && r.error) throw new Error(r.error.message || "Could not load CNICs.");
+        const rows = {};
+        ((r && r.data) || []).forEach(function (x) { rows[x.client_id] = x; });
+        NV_KYC_ADMIN.rows = rows; NV_KYC_ADMIN.loaded = true; NV_KYC_ADMIN.error = "";
+      }).catch(function (e) {
+        NV_KYC_ADMIN.error = String((e && e.message) || e);
+      }).then(function () { NV_KYC_ADMIN.loading = null; nvKycAdminPaint(); });
+      return NV_KYC_ADMIN.loading;
+    }
+    function nvKycAdminLook(uuid) {
+      if (typeof NV_KYC_ADMIN === "undefined" || !NV_KYC_ADMIN || !NV_KYC_ADMIN.loaded) return ["CNIC …", ""];
+      const k = NV_KYC_ADMIN.rows[uuid];
+      if (!k) return ["CNIC: not added", "warn"];
+      return ({ submitted: ["CNIC: to review", "info"], verified: ["CNIC: verified", "good"], rejected: ["CNIC: new photo asked", "bad"] })[k.status] || ["CNIC: " + k.status, ""];
+    }
+    function nvKycAdminChipHtml(client) {
+      const uuid = String(client._uuid || client.id || ""), look = nvKycAdminLook(uuid);
+      return `<span class="chip ${look[1]}" data-kyc-chip="${escLabelText(uuid)}">${escLabelText(look[0])}</span>`;
+    }
+    function nvKycAdminPaint() {
+      if (typeof NV_KYC_ADMIN === "undefined" || !NV_KYC_ADMIN) return;
+      document.querySelectorAll("[data-kyc-chip]").forEach(function (el) {
+        const look = nvKycAdminLook(el.getAttribute("data-kyc-chip"));
+        el.textContent = look[0]; el.className = "chip " + look[1];
+      });
+      const list = document.getElementById("nvKycReviewList"), count = document.getElementById("nvKycReviewCount");
+      if (!list) return;
+      if (NV_KYC_ADMIN.error) {
+        list.innerHTML = `<div class="log-item"><strong>Could not load CNICs</strong><div class="footer-note">${escLabelText(NV_KYC_ADMIN.error)}</div></div>`;
+        return;
+      }
+      if (!NV_KYC_ADMIN.loaded) return;
+      const byId = {};
+      (state.clients || []).forEach(function (c) { byId[c._uuid || c.id] = c; });
+      const all = Object.values(NV_KYC_ADMIN.rows);
+      const waiting = all.filter(function (k) { return k.status === "submitted"; })
+        .sort(function (a, b) { return String(a.submitted_at).localeCompare(String(b.submitted_at)); });
+      const nVer = all.filter(function (k) { return k.status === "verified"; }).length;
+      const nRej = all.filter(function (k) { return k.status === "rejected"; }).length;
+      const nMissing = Math.max(0, (state.clients || []).filter(function (c) { return c.id !== "CL-0000" && !NV_KYC_ADMIN.rows[c._uuid || c.id]; }).length);
+      if (count) { count.textContent = waiting.length + " to review"; count.className = "chip " + (waiting.length ? "warn" : "good"); }
+      const summary = `<div class="footer-note" style="margin:0 0 6px">${nVer} verified &middot; ${nRej} waiting for a new photo &middot; ${nMissing} not added yet</div>`;
+      list.innerHTML = summary + (waiting.length ? waiting.map(function (k) {
+        const c = byId[k.client_id];
+        const name = c ? `${shortClientCode(c)} · ${c.name}` : k.client_id;
+        return `<div class="log-item"><strong>${escLabelText(name)}</strong><div class="footer-note">Sent ${escLabelText(nvKycAdminWhen(k.submitted_at))}</div><button class="ghost-btn" onclick="nvKycOpen('${nvEscAttrJs(k.client_id)}')">Review</button></div>`;
+      }).join("") : `<div class="log-item"><strong>All clear</strong><div class="footer-note">No CNIC is waiting to be checked.</div></div>`);
+    }
+    function nvKycAdminCss() {
+      if (document.getElementById("nvKycCss")) return;
+      const st = document.createElement("style"); st.id = "nvKycCss";
+      st.textContent = [
+        ".nvkyc-back{position:fixed;inset:0;z-index:2147482000;background:rgba(6,10,14,.58);display:flex;align-items:center;justify-content:center;padding:16px}",
+        ".nvkyc{width:100%;max-width:880px;max-height:calc(100vh - 32px);overflow:auto;background:var(--nvu-bg,#fff);color:var(--nvu-ink,#10201b);border:1px solid var(--nvu-line-2,#d8e6e0);border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,.35);padding:18px 20px}",
+        ".nvkyc h3{margin:0 0 4px;font-size:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}",
+        ".nvkyc-sub{margin:0 0 14px;color:var(--nvu-ink-2,#60726b);font-size:13px;line-height:1.5;overflow-wrap:anywhere}",
+        ".nvkyc-imgs{display:grid;grid-template-columns:1fr 1fr;gap:12px}",
+        ".nvkyc-imgs figure{margin:0;min-width:0}",
+        ".nvkyc-box{aspect-ratio:1.586;border-radius:12px;background:#0b0f0d;display:grid;place-items:center;overflow:hidden;border:1px solid var(--nvu-line,#e7efeb);color:#9dbdae;font-size:13px}",
+        ".nvkyc-box img{max-width:100%;max-height:100%;object-fit:contain;transition:transform .2s}",
+        ".nvkyc-imgs figcaption{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-top:6px;font-size:12.5px;font-weight:750}",
+        ".nvkyc-imgs figcaption a,.nvkyc-imgs figcaption button{font:inherit;font-size:12.5px;font-weight:700;color:var(--nvu-accent,#0c7c59);background:none;border:0;padding:8px 2px;cursor:pointer;text-decoration:underline}",
+        ".nvkyc-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px 16px;margin:14px 0;font-size:13.5px}",
+        ".nvkyc-facts span{display:block;color:var(--nvu-ink-2,#60726b);font-size:11.5px;font-weight:750}",
+        ".nvkyc-facts b{overflow-wrap:anywhere}",
+        ".nvkyc-hist{margin:0 0 12px;padding:0;list-style:none;font-size:12.5px;color:var(--nvu-ink-2,#60726b);max-height:150px;overflow:auto;border-top:1px solid var(--nvu-line,#e7efeb)}",
+        ".nvkyc-hist li{padding:6px 0;border-bottom:1px solid var(--nvu-line,#e7efeb);overflow-wrap:anywhere}",
+        ".nvkyc-up{border:1px dashed var(--nvu-line-2,#d8e6e0);border-radius:12px;padding:12px;margin:0 0 12px}",
+        ".nvkyc-up[hidden]{display:none}",
+        ".nvkyc-err{min-height:18px;margin:0 0 8px;font-size:13px;font-weight:700;color:var(--nvu-bad-fg,#b3261e)}",
+        ".nvkyc-acts{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}",
+        ".nvkyc-acts button{min-height:44px;padding:0 16px;border-radius:12px;font:inherit;font-size:14px;font-weight:750;cursor:pointer;border:1px solid var(--nvu-line-2,#d8e6e0);background:transparent;color:var(--nvu-ink,#10201b)}",
+        ".nvkyc-acts button.is-ok{background:var(--nvu-accent,#0c7c59);border-color:var(--nvu-accent,#0c7c59);color:var(--nvu-accent-ink,#fff)}",
+        ".nvkyc-acts button.is-bad{color:var(--nvu-bad-fg,#b3261e);border-color:var(--nvu-bad-ln,#efc2bd)}",
+        ".nvkyc-acts button:disabled{opacity:.5;cursor:not-allowed}",
+        ".nvkyc .cnic-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}",
+        ".nvkyc .cnic-tile{position:relative;display:flex;flex-direction:column;justify-content:flex-end;min-height:120px;padding:10px;border-radius:12px;border:1px dashed var(--nvu-line-2,#d8e6e0);background:var(--nvu-bg-2,#fafdfb);cursor:pointer;overflow:hidden;font-size:12.5px;color:var(--nvu-ink-2,#60726b)}",
+        ".nvkyc .cnic-tile:focus-within{outline:2px solid var(--nvu-accent,#0c7c59);outline-offset:2px}",
+        ".nvkyc .cnic-tile input[type=file]{position:absolute;top:0;left:0;width:1px;height:1px;padding:0;margin:0;border:0;opacity:0;pointer-events:none}",
+        ".nvkyc .cnic-tile img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}",
+        ".nvkyc .cnic-tile img[hidden]{display:none}",
+        ".nvkyc .cnic-cap{position:relative;display:block;line-height:1.35}",
+        ".nvkyc .cnic-cap b{display:block;font-size:13.5px;font-weight:800;color:var(--nvu-ink,#10201b)}",
+        ".nvkyc .cnic-cap i{display:block;font-style:normal;font-size:22px;line-height:1;color:var(--nvu-accent,#0c7c59);margin-bottom:6px}",
+        ".nvkyc .cnic-tile.is-set{border-style:solid;border-color:var(--nvu-accent,#0c7c59)}",
+        ".nvkyc .cnic-tile.is-set .cnic-cap{margin:-10px;padding:24px 10px 10px;background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.78));color:#fff}",
+        ".nvkyc .cnic-tile.is-set .cnic-cap b{color:#fff}",
+        ".nvkyc .cnic-tile.is-set .cnic-cap i{display:none}",
+        ".nvkyc .cnic-tile.is-err{border-style:solid;border-color:var(--nvu-bad-fg,#b3261e)}",
+        ".nvkyc .cnic-tile.is-err [data-cnic-note]{color:var(--nvu-bad-fg,#b3261e)}",
+        "@media (max-width:620px){.nvkyc-imgs{grid-template-columns:1fr}.nvkyc{padding:16px}.nvkyc-acts button{flex:1 1 auto}}"
+      ].join("\n");
+      document.head.appendChild(st);
+    }
+    function nvKycOpen(clientId) {
+      const client = (state.clients || []).find(function (c) { return (c._uuid || c.id) === clientId || c.id === clientId; });
+      if (!client) { toast("Client not found."); return; }
+      const sb = window.__nvSb;
+      if (!sb || !sb.rpc || !window.NVCnic) { toast("Still connecting. Try again in a moment.", "error"); return; }
+      const uuid = String(client._uuid || client.id);
+      nvKycAdminCss();
+      const prev = document.activeElement;
+      const back = document.createElement("div"); back.className = "nvkyc-back";
+      const box = document.createElement("div"); box.className = "nvkyc";
+      box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true");
+      box.setAttribute("aria-label", "CNIC for " + (client.name || "this client"));
+      box.innerHTML = '<p class="nvkyc-sub">Loading…</p>';
+      back.appendChild(box); document.body.appendChild(back);
+      let busy = false, pick = null, gen = 0;
+      const rot = { front: 0, back: 0 };
+      const esc = escLabelText;
+      function close() {
+        document.removeEventListener("keydown", onKey, true);
+        if (back.parentNode) back.parentNode.removeChild(back);
+        if (pick) { try { pick.reset(); } catch (e) {} }
+        try { if (prev && prev.focus) prev.focus(); } catch (e) {}
+      }
+      function onKey(e) {
+        if (e.key === "Escape" && !document.querySelector(".nvask-back")) { e.preventDefault(); close(); }
+      }
+      document.addEventListener("keydown", onKey, true);
+      back.addEventListener("mousedown", function (e) { if (e.target === back && !busy) close(); });
+      function err(t) { const el = box.querySelector("[data-err]"); if (el) el.textContent = t || ""; }
+      function said(e) {
+        if (e.event === "submitted") return "Sent by the merchant";
+        if (e.event === "admin_attached") return "Uploaded by " + (e.actor_email || "admin");
+        const d = e.detail || {};
+        if (e.event === "verified") return "Verified by " + (e.actor_email || "admin") + (d.name ? " · name on card: " + d.name : "");
+        return "New photo asked by " + (e.actor_email || "admin") + (d.reason ? ": " + d.reason : "");
+      }
+      async function review(decision, reason, name) {
+        if (busy) return;
+        busy = true; err("");
+        box.querySelectorAll(".nvkyc-acts button").forEach(function (b) { b.disabled = true; });
+        const r = await Promise.resolve(sb.rpc("admin_kyc_review", { p_client: uuid, p_decision: decision, p_reason: reason || null, p_name: name || null }))
+          .catch(function (e) { return { error: { message: String((e && e.message) || e) } }; });
+        busy = false;
+        if (r && r.error) {
+          box.querySelectorAll(".nvkyc-acts button").forEach(function (b) { b.disabled = false; });
+          err(r.error.message || "Not saved. Try again.");
+          return;
+        }
+        const d = (r && r.data) || {};
+        const mail = d.unchanged ? "" : (d.emailed === false ? " No owner email is on file, so no email was sent." : " The merchant is emailed.");
+        toast(decision === "verified" ? `${client.name}: CNIC verified.${mail}` : `${client.name}: new photo asked.${mail}`);
+        paint();
+      }
+      async function paint() {
+        const my = ++gen;
+        await nvKycAdminLoad(true);
+        if (my !== gen || !back.parentNode) return;
+        if (pick) { try { pick.reset(); } catch (e) {} pick = null; }
+        const k = NV_KYC_ADMIN.rows[uuid] || null, look = nvKycAdminLook(uuid);
+        const bank = (client._meta && client._meta.bank) || {};
+        const line = !k ? "Not added yet. If the merchant sent the photos another way, upload them here."
+          : k.status === "submitted" ? "Sent " + nvKycAdminWhen(k.submitted_at) + ". Check both sides, then Verify or ask for a new photo."
+          : k.status === "verified" ? "Verified " + nvKycAdminWhen(k.reviewed_at) + (k.reviewed_by_email ? " by " + k.reviewed_by_email : "") + (k.name_on_card ? ". Name on card: " + k.name_on_card : "") + "."
+          : "New photo asked " + nvKycAdminWhen(k.reviewed_at) + ": " + (k.reject_reason || "") + ". The photos below are the ones that were not accepted.";
+        const fig = function (side, label) {
+          return `<figure><div class="nvkyc-box" data-box="${side}">Loading…</div><figcaption>${label}<span><button type="button" data-rot="${side}">Rotate</button> <a data-open="${side}" target="_blank" rel="noopener">Open full size</a></span></figcaption></figure>`;
+        };
+        box.innerHTML =
+          `<h3>CNIC &middot; ${esc(client.name || "")} <span class="chip ${look[1]}">${esc(look[0].replace(/^CNIC: /, ""))}</span></h3>` +
+          `<p class="nvkyc-sub">${esc(shortClientCode(client))} &middot; ${esc(line)}</p>` +
+          (k ? `<div class="nvkyc-imgs">${fig("front", "Front")}${fig("back", "Back")}</div>` : "") +
+          `<div class="nvkyc-facts">` +
+            `<div><span>Owner</span><b>${esc(client.displayOwner || client.owner || "—")}</b></div>` +
+            `<div><span>Bank account holder</span><b>${esc(bank.holderName || "No bank details yet")}</b></div>` +
+            `<div><span>Phone</span><b>${esc(client.displayPhone || client.phone || "—")}</b></div>` +
+            `<div><span>City</span><b>${esc(client.displayCity || client.city || "—")}</b></div>` +
+          `</div>` +
+          `<ul class="nvkyc-hist" data-hist><li>Loading history…</li></ul>` +
+          `<div class="nvkyc-up" data-up hidden>` +
+            `<p class="nvkyc-sub" style="margin:0 0 8px">Photos the merchant sent another way (WhatsApp, email). They go in for checking like any other.</p>` +
+            `<div class="cnic-pair" data-pair>` +
+              `<label class="cnic-tile" data-cnic-side="front"><input type="file" accept="image/*"><img alt="Front of the CNIC" hidden><span class="cnic-cap"><i aria-hidden="true">+</i><b>Front of CNIC</b><span data-cnic-note aria-live="polite">Choose a photo</span></span></label>` +
+              `<label class="cnic-tile" data-cnic-side="back"><input type="file" accept="image/*"><img alt="Back of the CNIC" hidden><span class="cnic-cap"><i aria-hidden="true">+</i><b>Back of CNIC</b><span data-cnic-note aria-live="polite">Choose a photo</span></span></label>` +
+            `</div>` +
+            `<div class="nvkyc-acts" style="margin-top:10px"><button type="button" class="is-ok" data-act="upsave" disabled>Save photos</button></div>` +
+          `</div>` +
+          `<p class="nvkyc-err" data-err role="alert"></p>` +
+          `<div class="nvkyc-acts">` +
+            (k && k.status !== "verified" ? `<button type="button" class="is-ok" data-act="verify">Verify</button>` : "") +
+            (k ? `<button type="button" class="is-bad" data-act="reject">${k.status === "verified" ? "Unlock and ask for a new photo" : "Ask for a new photo"}</button>` : "") +
+            `<button type="button" data-act="upload">Upload photos for them</button>` +
+            `<button type="button" data-act="close">Close</button>` +
+          `</div>`;
+        if (k) {
+          NVCnic.signedUrls(sb, [k.front_path, k.back_path], 600).then(function (u) {
+            if (my !== gen) return;
+            [["front", k.front_path], ["back", k.back_path]].forEach(function (x) {
+              const bx = box.querySelector(`[data-box="${x[0]}"]`), a = box.querySelector(`[data-open="${x[0]}"]`), url = u[x[1]];
+              if (!bx) return;
+              if (!url) { bx.textContent = "This photo could not be opened."; return; }
+              bx.textContent = "";
+              const img = document.createElement("img"); img.alt = (x[0] === "front" ? "Front" : "Back") + " of the CNIC"; img.src = url;
+              bx.appendChild(img);
+              if (a) a.href = url;
+            });
+          }).catch(function (e) {
+            if (my !== gen) return;
+            box.querySelectorAll("[data-box]").forEach(function (bx) { bx.textContent = "Could not open the photos: " + ((e && e.message) || e); });
+          });
+        }
+        Promise.resolve(sb.rpc("admin_kyc_events", { p_client: uuid })).then(function (r) {
+          if (my !== gen) return;
+          const ul = box.querySelector("[data-hist]"); if (!ul) return;
+          if (r && r.error) { ul.innerHTML = `<li>${esc(r.error.message || "Could not load the history.")}</li>`; return; }
+          const rows = (r && r.data) || [];
+          ul.innerHTML = rows.length ? rows.map(function (e) { return `<li><b>${esc(nvKycAdminWhen(e.at))}</b> &middot; ${esc(said(e))}</li>`; }).join("") : "<li>No history yet.</li>";
+        }).catch(function () {});
+        const first = box.querySelector(".nvkyc-acts button"); if (first) { try { first.focus(); } catch (e) {} }
+      }
+      box.addEventListener("click", async function (e) {
+        const t = e.target && e.target.closest ? e.target.closest("[data-act],[data-rot]") : null;
+        if (!t || busy) return;
+        if (t.hasAttribute("data-rot")) {
+          const side = t.getAttribute("data-rot"), img = box.querySelector(`[data-box="${side}"] img`);
+          rot[side] = (rot[side] + 90) % 360;
+          if (img) img.style.transform = "rotate(" + rot[side] + "deg)" + (rot[side] % 180 ? " scale(.63)" : "");
+          return;
+        }
+        const act = t.getAttribute("data-act");
+        if (act === "close") { close(); return; }
+        if (act === "verify") {
+          const f = await window.nvAsk({ title: "Verify this CNIC?", body: "Both sides are clear and it belongs to the account owner. The merchant is emailed.",
+            fields: [{ name: "name", label: "Name as printed on the CNIC (optional)", maxlength: 80 }], ok: "Verify" });
+          if (f) review("verified", null, String(f.name || "").trim());
+          return;
+        }
+        if (act === "reject") {
+          const f = await window.nvAsk({ title: "Ask for a new photo", body: "The merchant sees the reason in their portal and is emailed.",
+            fields: [{ name: "reason", label: "What is wrong", options: NV_KYC_REASONS },
+                     { name: "note", label: "Add a detail (optional)", maxlength: 120 }], ok: "Send" });
+          if (!f) return;
+          let reason = String(f.reason || ""); const note = String(f.note || "").trim();
+          if (/^Other/.test(reason)) { if (!note) { err("Write what is wrong, so the merchant knows what to fix."); return; } reason = note; }
+          else if (note) reason = reason + ". " + note;
+          review("rejected", reason, null);
+          return;
+        }
+        if (act === "upload") {
+          const up = box.querySelector("[data-up]"); if (!up) return;
+          up.hidden = false;
+          if (!pick) {
+            const save = box.querySelector('[data-act="upsave"]');
+            pick = NVCnic.picker(box.querySelector("[data-pair]"), { onChange: function () { if (save) save.disabled = !pick.ready(); } });
+          }
+          try { up.scrollIntoView({ block: "nearest" }); } catch (x) {}
+          return;
+        }
+        if (act === "upsave") {
+          if (!pick || !pick.ready()) return;
+          busy = true; err(""); t.disabled = true; t.textContent = "Saving…";
+          const ph = pick.photos();
+          NVCnic.attach(sb, uuid, ph.front, ph.back).then(function () {
+            busy = false;
+            toast(`${client.name}: CNIC photos saved. Check them, then Verify.`);
+            paint();
+          }).catch(function (x) {
+            busy = false; t.disabled = false; t.textContent = "Save photos";
+            err((x && x.message) || String(x));
+          });
+        }
+      });
+      paint();
+    }
+    window.nvKycOpen = nvKycOpen;
+
     function deleteClient(clientId) {
       const client = state.clients.find(c => c.id === clientId);
       if (!client) { toast("Client not found."); return; }
@@ -14295,6 +14592,20 @@ html,body{ background:var(--bg); color:var(--ink); }
                   .then(function(x){ if (x && x.error) console.warn("NovaX: logo not removed for deleted client " + cid + ": " + x.error.message); })
                   .catch(function(e){ console.warn("NovaX: logo not removed for deleted client " + cid, e); });
               } catch (e) {}
+              /* And the CNIC photos (private bucket, admin-only delete). */
+              try {
+                Promise.resolve(sb.storage.from("client-kyc").list(cid, { limit: 100 }))
+                  .then(function(x){
+                    if (x && x.error) throw new Error(x.error.message);
+                    const names = ((x && x.data) || []).filter(function(o){ return o && o.name; }).map(function(o){ return cid + "/" + o.name; });
+                    if (!names.length) return;
+                    return Promise.resolve(sb.storage.from("client-kyc").remove(names)).then(function(y){
+                      if (y && y.error) console.warn("NovaX: CNIC photos not removed for deleted client " + cid + ": " + y.error.message);
+                    });
+                  })
+                  .catch(function(e){ console.warn("NovaX: CNIC photos not removed for deleted client " + cid, e); });
+              } catch (e) {}
+              try { nvKycAdminLoad(true); } catch (e) {}
               refresh();
             });
         });

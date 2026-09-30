@@ -846,6 +846,28 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 .mdl .fld{margin-bottom:12px}
 .mdl .btn{width:100%;margin-top:7px}
 .mdl-note{font-size:11px;color:var(--ink-3);text-align:center;margin-top:11px;font-weight:600;line-height:1.5}
+/* CNIC photos at signup (30 Sep 2026). Two tap targets; the file inputs stay
+   in the DOM (and focusable) but are visually hidden inside their labels. */
+.cnic-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fld label.cnic-tile{position:relative;display:flex;flex-direction:column;justify-content:flex-end;min-height:118px;margin:0;
+  padding:10px;border-radius:12px;border:1px dashed var(--line-2);background:rgba(255,255,255,.04);cursor:pointer;overflow:hidden;
+  text-transform:none;letter-spacing:0;font-size:12px;font-weight:600;color:var(--ink-2);transition:border-color .2s,box-shadow .2s}
+.fld label.cnic-tile:hover{border-color:var(--green)}
+.fld label.cnic-tile:focus-within{border-color:var(--green);box-shadow:0 0 0 3px rgba(20,199,123,.14)}
+.fld .cnic-tile input[type=file]{position:absolute;top:0;left:0;width:1px;height:1px;padding:0;margin:0;border:0;opacity:0;pointer-events:none}
+.cnic-tile img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cnic-tile img[hidden]{display:none!important}
+.cnic-cap{position:relative;display:block;line-height:1.35}
+.cnic-cap b{display:block;font-size:13px;font-weight:800;color:var(--ink)}
+.cnic-cap i{display:block;font-style:normal;font-size:22px;line-height:1;color:var(--green);margin-bottom:6px}
+.fld label.cnic-tile.is-set{border-style:solid;border-color:var(--green)}
+.cnic-tile.is-set .cnic-cap{margin:-10px;padding:22px 10px 10px;background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.78));color:#fff}
+.cnic-tile.is-set .cnic-cap b{color:#fff}
+.cnic-tile.is-set .cnic-cap i{display:none}
+.fld label.cnic-tile.is-err{border-color:#ff7a70;border-style:solid}
+.cnic-tile.is-err [data-cnic-note]{color:#ff9d95}
+.cnic-tile.is-busy{opacity:.75}
+.cnic-why{font-size:11.5px;color:var(--ink-3);margin:7px 0 0;line-height:1.5;font-weight:600}
 .form-msg{font-size:12.5px;font-weight:700;padding:12px 14px;border-radius:11px;margin-top:12px;display:none;line-height:1.5}
 .form-msg.err{display:block;background:rgba(224,96,75,.12);border:1px solid rgba(224,96,75,.34);color:#f0a396}
 .form-msg.ok{display:block;background:rgba(20,199,123,.12);border:1px solid var(--line-2);color:var(--green-2)}
@@ -2800,6 +2822,13 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
     <div class="fld"><label for="merchantStoreName">Store / business name</label><input id="merchantStoreName" placeholder="Your store or business name" autocomplete="organization"></div>
     <div class="fld"><label for="merchantCity">Which city do we collect your parcels from?</label><select id="merchantCity"><option value="">Select your pickup city…</option><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select><p class="form-msg" style="min-height:0;color:#5c6157;font-size:12px;margin-top:4px">This becomes your pickup city on every booking. NovaX collects from Karachi, Lahore, Islamabad and Rawalpindi.</p></div>
     <div class="fld"><label for="merchantName">Owner / contact name</label><input id="merchantName" placeholder="Your full name" autocomplete="name"></div>
+    <div class="fld"><label id="merchantCnicLbl">Owner's CNIC &mdash; front and back</label>
+      <div class="cnic-pair" id="merchantCnic" role="group" aria-labelledby="merchantCnicLbl">
+        <label class="cnic-tile" data-cnic-side="front"><input type="file" accept="image/*"><img alt="Front of your CNIC" hidden><span class="cnic-cap"><i aria-hidden="true">+</i><b>Front of CNIC</b><span data-cnic-note aria-live="polite">Take or choose a photo</span></span></label>
+        <label class="cnic-tile" data-cnic-side="back"><input type="file" accept="image/*"><img alt="Back of your CNIC" hidden><span class="cnic-cap"><i aria-hidden="true">+</i><b>Back of CNIC</b><span data-cnic-note aria-live="polite">Take or choose a photo</span></span></label>
+      </div>
+      <p class="cnic-why">Only NovaX staff can see these photos. We use them to confirm who owns the account and who we pay.</p>
+    </div>
     <div class="fld"><label for="merchantPhone">Your phone number</label><input id="merchantPhone" placeholder="03001234567" maxlength="11" inputmode="numeric" autocomplete="tel"></div>
     <div class="fld"><label for="merchantAddress">Your address</label><textarea id="merchantAddress" placeholder="Pickup address" autocomplete="street-address"></textarea></div>
     <div class="fld"><label for="merchantProduct">What product do you sell?</label><input id="merchantProduct" placeholder="Fashion, cosmetics, electronics, etc."></div>
@@ -2877,6 +2906,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 calc(32px + var(--sa-b))}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="nv-cnic.js?v=05655461"></script>
 <script>
 (function(){
 "use strict";
@@ -3467,6 +3497,29 @@ function renderDone(modalId,cls,title,body,withBar){
   el.addEventListener("input",function(){ this.value=this.value.replace(/\D/g,"").slice(0,11); });
 });
 
+/* ═════ CNIC PHOTOS AT SIGNUP (30 Sep 2026) ═════
+   Picked and shrunk in the browser while the merchant fills the form; sent
+   after the workspace exists. Resolves "sent", "failed" or "skipped" and
+   never rejects, so a photo problem can never strand a signup. */
+try{
+  if(window.NVCnic && $("merchantCnic")){
+    window.__nvSignupCnic=window.NVCnic.picker($("merchantCnic"),{ onChange:function(ph,err){
+      if(!err && ph.front && ph.back) clearMsg("mSignup");
+    }});
+  }
+}catch(e){ window.__nvSignupCnic=null; }
+function nvSignupSendCnic(clientId,btn){
+  try{
+    var pick=window.__nvSignupCnic;
+    if(!pick || !pick.ready() || !window.NVCnic || !__nvSb) return Promise.resolve("skipped");
+    if(btn) btn.textContent="Uploading your CNIC…";
+    var ph=pick.photos();
+    return window.NVCnic.send(__nvSb,clientId,ph.front,ph.back,60000)
+      .then(function(){ return "sent"; })
+      .catch(function(err){ console.warn("NovaX CNIC at signup:",err&&err.message); return "failed"; });
+  }catch(e){ return Promise.resolve("failed"); }
+}
+
 /* ═════ SIGNUP AS NOVAX MERCHANT → AUTO-OPEN WORKSPACE ═════ */
 $("fSignup").addEventListener("submit",function(e){
   e.preventDefault();
@@ -3483,6 +3536,9 @@ $("fSignup").addEventListener("submit",function(e){
     showMsg("mSignup","We collect from Karachi, Lahore, Islamabad and Rawalpindi. Please pick one of those.",false); return; }
   if(!city||!storeName||!name||!phone||!address||!product||!email||!password){
     showMsg("mSignup","Store name, owner name, city, phone, address, product, email, and password are all required.",false); return; }
+  var cnicPick=window.__nvSignupCnic||null;
+  if(cnicPick && cnicPick.busy()){ showMsg("mSignup","Your CNIC photo is still being prepared. Wait a moment, then press the button again.",false); return; }
+  if(cnicPick && !cnicPick.ready()){ showMsg("mSignup","Add a photo of the front and the back of your CNIC. Only NovaX staff can see it.",false); return; }
   var phoneNorm=nvNormalizePkPhone(phone);
   if(!phoneNorm){ showMsg("mSignup","Enter a Pakistani mobile number. 03001234567, 0300-1234567 and +92 300 1234567 all work.",false); return; }
   phone=phoneNorm;
@@ -3560,10 +3616,17 @@ $("fSignup").addEventListener("submit",function(e){
         if(leadId) Promise.resolve(__nvSb.rpc("nv_signup_lead_mark",{p_lead_id:leadId,p_status:"workspace_created"})).catch(function(){});
         try{ localStorage.setItem("novaxSession",JSON.stringify({role:"client",email:email,
           uid:(newUser&&newUser.id)||null,client_id:(rpcRes&&rpcRes.data)||null,rider_id:null,at:Date.now()})); }catch(e){}
-        renderDone("mdlSignup","g","Workspace Ready","NovaX Autopilot is preparing your first booking desk.",true);
-        launchWorkspace("client.html?welcome=1&firstBooking=1",
-          "Building your workspace","Welcome to NovaX, "+(name.split(" ")[0]||"there")+".",
-          { who:storeName, city:city, plan:"Merchant Workspace", seed:email });
+        /* The CNIC photos go up only now: they are stored under the new
+           workspace's id. This step never fails the signup -- if it does not
+           finish, the portal asks for the photos again. */
+        nvSignupSendCnic((rpcRes&&rpcRes.data)||null, btn).then(function(cnic){
+          renderDone("mdlSignup","g","Workspace Ready",cnic==="failed"
+            ?"Your CNIC photos did not upload. Your portal will ask for them again."
+            :"NovaX Autopilot is preparing your first booking desk.",true);
+          launchWorkspace("client.html?welcome=1&firstBooking=1",
+            "Building your workspace","Welcome to NovaX, "+(name.split(" ")[0]||"there")+".",
+            { who:storeName, city:city, plan:"Merchant Workspace", seed:email });
+        });
       }).catch(function(err){
         btn.disabled=false; btn.textContent=oldTxt;
         showMsg("mSignup",(err&&err.message)||"Workspace could not be prepared. Please sign in again.",false);

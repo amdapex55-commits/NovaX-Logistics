@@ -9,6 +9,8 @@ const fixtures = {
   first_booking: { business: 'Sample Store', awb: 'NVX-100001', booked_at: '2026-09-27T11:00:00Z' },
   payout_paid: { business: 'Sample Store', amount: '10500', fee: '500', net: '10000',
     reference: 'DEMO-TRANSFER-001', paid_at: '2026-09-27T11:00:00Z' },
+  cnic_verified: { business: 'Sample Store' },
+  cnic_rejected: { business: 'Sample Store', reason: 'Front photo is blurry' },
 };
 for (const [kind, data] of Object.entries(fixtures)) {
   const message = buildEmail(kind, 'owner@example.com', data);
@@ -22,6 +24,14 @@ assert.ok(buildEmail('payout_paid', 'owner@example.com', fixtures.payout_paid).h
 assert.ok(buildEmail('first_booking', 'owner@example.com', fixtures.first_booking).html.includes('href="https://novaxlogistics.com/client.html?tab=awbLabel&amp;awb=NVX-100001"'));
 assert.ok(buildEmail('welcome', 'owner@example.com', fixtures.welcome).html.includes('href="https://novaxlogistics.com/client.html?tab=support"'));
 assert.ok(buildEmail('payout_paid', 'owner@example.com', fixtures.payout_paid).text.includes('04:00 pm PKT'));
+for (const kind of ['cnic_verified', 'cnic_rejected']) {
+  const m = buildEmail(kind, 'owner@example.com', fixtures[kind]);
+  assert.ok(m.html.includes('href="https://novaxlogistics.com/client.html?tab=profile"'));
+  assert.ok(m.text.includes('Sample Store'));
+}
+assert.ok(buildEmail('cnic_rejected', 'owner@example.com', fixtures.cnic_rejected).html.includes('Front photo is blurry'));
+assert.throws(() => buildEmail('cnic_rejected', 'owner@example.com', { business: 'Sample Store' }), /missing_reason/);
+assert.ok(!buildEmail('cnic_rejected', 'owner@example.com', { business: 'S', reason: '<img src=x onerror=alert(1)>' }).html.includes('<img src=x'));
 const welcome = buildEmail('welcome', 'owner@example.com', fixtures.welcome);
 for (const feature of ['bulk bookings', 'parcel statuses', 'request payouts', 'Connect Shopify']) {
   assert.ok(welcome.html.includes(feature));

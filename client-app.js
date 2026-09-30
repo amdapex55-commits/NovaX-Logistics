@@ -874,7 +874,7 @@
           var emailQuery=new URLSearchParams(location.search), emailTab=emailQuery.get("tab");
           /* The Shopify app's Print label sends ?awb= alone; keep it across sign-in. */
           if(!emailTab && emailQuery.get("awb")) emailTab="awbLabel";
-          if(["money","awbLabel","support"].indexOf(emailTab)>-1){
+          if(["money","awbLabel","support","profile"].indexOf(emailTab)>-1){
             var emailAwb=(emailQuery.get("awb")||"").trim().toUpperCase();
             sessionStorage.setItem("novaxEmailDestination",JSON.stringify({
               tab:emailTab, awb:/^[A-Z0-9-]{1,80}$/.test(emailAwb)?emailAwb:"", at:Date.now()
@@ -1082,7 +1082,7 @@
         var qp=new URLSearchParams(location.search);
 
         // Keep only known email destinations across the sign-in redirect.
-        var emailTabs=["money","awbLabel","support"], emailKey="novaxEmailDestination";
+        var emailTabs=["money","awbLabel","support","profile"], emailKey="novaxEmailDestination";
         try{
           if(!location.search && !location.hash){
             var emailReturn=JSON.parse(sessionStorage.getItem(emailKey)||"null");
@@ -6154,7 +6154,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function renderClientReportFull(){
       if(state.activeClientTab==="reports"){ try{ nvReport2Open(); }catch(e){} }
       if(state.activeClientTab==="swap"){ try{ nvSwOpen(); }catch(e){} }
-      if(state.activeClientTab==="profile"){ try{ nvPfOpen(); }catch(e){} }
+      if(state.activeClientTab==="profile"){ try{ nvPfOpen(); }catch(e){} try{ nvKycLoad(); }catch(e){} }
       const tbody=document.getElementById("clientReportFullRows"); if(!tbody) return;
       const sel=document.getElementById("repStatus");
       if(sel && !sel.dataset.filled){ sel.innerHTML=`<option value="">All statuses</option>`+STATUS_TAGS.concat(["Cancelled by client"]).map(s=>`<option value="${s}">${escLabelText(nvStatusLabel(s))}</option>`)   /* value stays the STORED status; only the text a human reads is relabelled */.join(""); sel.dataset.filled="1"; }
@@ -12355,6 +12355,131 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     });
     window.addEventListener("beforeunload",function(e){ if(nvPfOwner() && nvPfDirty()){ e.preventDefault(); e.returnValue=""; } });
 
+    /* ═══ Owner's CNIC (30 Sep 2026) ════════════════════════════════════
+       Front and back photos of the account owner's CNIC, in the private
+       client-kyc bucket. Status comes from client_kyc_status(); the database
+       decides who may upload or see them (the Owner, until NovaX verifies).
+       Photo shrinking and upload are shared with signup and admin in
+       nv-cnic.js. */
+    var NV_KYC={ data:null, loading:false, tried:false, pick:null, editing:false, sending:false, thumbKey:"" };
+    function nvKycEl(id){ return document.getElementById(id); }
+    function nvKycWhen(ts){ return ts?new Date(ts).toLocaleDateString("en-GB",{ day:"numeric", month:"short", year:"numeric", timeZone:"Asia/Karachi" }):""; }
+    function nvKycLoad(){
+      if(window.__NOVAX_DEMO){
+        /* The demo has no real account: show the empty panel; sending is
+           intercepted by the demo prompt. No reminder banner. */
+        if(!NV_KYC.data) NV_KYC.data={ status:"missing", is_owner:true, can_upload:true, demo:true };
+        nvKycRender(); return Promise.resolve();
+      }
+      var sb=window.__nvSb;
+      if(!sb||!sb.rpc||!window.NVCnic||NV_KYC.loading) return Promise.resolve();
+      NV_KYC.loading=true;
+      return window.NVCnic.status(sb).then(function(d){
+        NV_KYC.loading=false; NV_KYC.data=d||null; nvKycRender();
+      }).catch(function(e){
+        NV_KYC.loading=false;
+        var m=nvKycEl("nvKycMsg");
+        if(m){ m.hidden=false; m.classList.remove("is-ok","is-info"); m.classList.add("is-err"); m.textContent=/permission denied/i.test((e&&e.message)||"")?"Your sign-in has ended. Refresh and sign in again.":"Could not load your CNIC. Refresh the page."; }
+      });
+    }
+    function nvKycEnsure(){
+      if(NV_KYC.tried || !state.identityVerified || window.__NOVAX_DEMO) return;
+      NV_KYC.tried=true;
+      nvKycLoad();
+    }
+    function nvKycSendState(){
+      var b=nvKycEl("nvKycSend");
+      if(b && !NV_KYC.sending) b.disabled=!(NV_KYC.pick && NV_KYC.pick.ready());
+    }
+    function nvKycThumbs(d){
+      var sb=window.__nvSb, key=d.front_path+"|"+d.back_path;
+      if(!sb||!window.NVCnic||NV_KYC.thumbKey===key) return;
+      NV_KYC.thumbKey=key;
+      window.NVCnic.signedUrls(sb,[d.front_path,d.back_path],600).then(function(u){
+        [["nvKycFrontImg","nvKycFrontLink",d.front_path],["nvKycBackImg","nvKycBackLink",d.back_path]].forEach(function(x){
+          var img=nvKycEl(x[0]), a=nvKycEl(x[1]), url=u[x[2]];
+          if(img&&url) img.src=url;
+          if(a&&url) a.href=url;
+        });
+      }).catch(function(){ NV_KYC.thumbKey=""; });
+    }
+    function nvKycRender(){
+      var d=NV_KYC.data; if(!d) return;
+      var owner=!!d.is_owner, st=d.status||"missing";
+      var ban=nvKycEl("nvKycBanner");
+      if(ban){
+        var need=owner && !d.demo && (st==="missing"||st==="rejected");
+        ban.hidden=!need;
+        ban.classList.toggle("is-bad", st==="rejected");
+        if(need){
+          nvKycEl("nvKycBannerT").textContent=st==="rejected"?"We need a new photo of your CNIC":"Add the owner's CNIC";
+          nvKycEl("nvKycBannerB").textContent=st==="rejected"
+            ?(d.reason?"What to fix: "+d.reason:"Please add new photos of the front and the back.")
+            :"A photo of the front and the back. Only NovaX staff can see it.";
+          nvKycEl("nvKycBannerGo").textContent=st==="rejected"?"Add new photos":"Add CNIC";
+        }
+      }
+      var chip=nvKycEl("nvKycChip");
+      var look={ missing:["Not added","warn"], submitted:["Being checked","info"], verified:["Verified","good"], rejected:["New photo needed","bad"] }[st]||["Not added","warn"];
+      if(chip){ chip.hidden=false; chip.textContent=look[0]; chip.className="chip "+look[1]; }
+      var msg=nvKycEl("nvKycMsg"), view=nvKycEl("nvKycView"), edit=nvKycEl("nvKycEdit"), acts=nvKycEl("nvKycActs");
+      if(!msg||!view||!edit||!acts) return;
+      var say=function(t, err){ msg.hidden=!t; msg.textContent=t||""; msg.classList.toggle("is-err", !!err); };
+      if(!owner){
+        say(st==="verified"?"The owner's CNIC is verified.":"Only the account owner can see and add the CNIC.");
+        view.hidden=true; edit.hidden=true; acts.hidden=true;
+        return;
+      }
+      var hasPhotos=!!(d.front_path&&d.back_path);
+      var editing=!!d.can_upload && (NV_KYC.editing || st==="missing" || st==="rejected");
+      if(st==="missing") say("Add a photo of the front and the back of your CNIC. Use good light and keep the whole card in the frame.");
+      else if(st==="rejected") say("We need a new photo"+(d.reason?": "+d.reason+(/[.!?]$/.test(d.reason)?"":"."):".")+" Add the front and the back again.", true);
+      else if(st==="submitted") say(NV_KYC.editing?"":"NovaX is checking your CNIC. Sent "+nvKycWhen(d.submitted_at)+".");
+      else if(st==="verified") say("Verified"+(d.reviewed_at?" on "+nvKycWhen(d.reviewed_at):"")+". To change it, contact NovaX support.");
+      msg.classList.toggle("is-ok", st==="verified");
+      msg.classList.toggle("is-info", st==="submitted");
+      edit.hidden=!editing;
+      view.hidden=editing || !hasPhotos;
+      acts.hidden=editing || !d.can_upload || !hasPhotos;
+      var cancel=nvKycEl("nvKycCancel"); if(cancel) cancel.hidden=!(NV_KYC.editing && hasPhotos && st!=="rejected");
+      if(editing && !NV_KYC.pick && window.NVCnic && nvKycEl("nvKycPair")){
+        NV_KYC.pick=window.NVCnic.picker(nvKycEl("nvKycPair"),{ onChange:function(){ nvKycSendState(); } });
+      }
+      nvKycSendState();
+      if(!view.hidden) nvKycThumbs(d);
+    }
+    function nvKycSend(){
+      if(NV_KYC.sending||!NV_KYC.pick||!NV_KYC.pick.ready()) return;
+      if(window.__NOVAX_DEMO){ try{ if(typeof window.nvDemoPrompt==="function") window.nvDemoPrompt("save"); }catch(e){} return; }
+      var sb=window.__nvSb, btn=nvKycEl("nvKycSend"), was=btn?btn.textContent:"";
+      NV_KYC.sending=true;
+      if(btn){ btn.disabled=true; btn.textContent="Sending…"; }
+      var ph=NV_KYC.pick.photos();
+      window.NVCnic.send(sb, activeClientId(), ph.front, ph.back).then(function(){
+        NV_KYC.sending=false; if(btn) btn.textContent=was;
+        NV_KYC.editing=false; NV_KYC.pick.reset(); NV_KYC.thumbKey="";
+        toast("CNIC sent. NovaX will check it.","success");
+        return nvKycLoad();
+      }).catch(function(e){
+        NV_KYC.sending=false; if(btn) btn.textContent=was;
+        nvKycSendState();
+        var t=String((e&&e.message)||e), m=nvKycEl("nvKycMsg");
+        if(/row-level security|permission denied|Unauthorized/i.test(t)) t="Only the account owner can add the CNIC. If that is you, refresh the page and sign in again.";
+        if(m){ m.hidden=false; m.classList.remove("is-ok","is-info"); m.classList.add("is-err"); m.textContent=t; }
+      });
+    }
+    document.addEventListener("click",function(e){
+      var t=e.target&&e.target.closest?e.target.closest("#nvKycSend,#nvKycReplace,#nvKycCancel,#nvKycBannerGo"):null;
+      if(!t) return;
+      if(t.id==="nvKycSend") nvKycSend();
+      else if(t.id==="nvKycReplace"){ NV_KYC.editing=true; nvKycRender(); }
+      else if(t.id==="nvKycCancel"){ NV_KYC.editing=false; if(NV_KYC.pick) NV_KYC.pick.reset(); nvKycRender(); }
+      else if(t.id==="nvKycBannerGo"){
+        showClientTab("profile");
+        setTimeout(function(){ var p=nvKycEl("nvKycPanel"); if(p&&p.scrollIntoView) p.scrollIntoView({ behavior:"smooth", block:"start" }); },250);
+      }
+    });
+
     function renderIntegrations(){
       // NovaX fix: Shopify no longer lives in the generic storeConnections
       // chip logic (that reads local/legacy `store_connections` state) --
@@ -12909,6 +13034,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const workspaceName = document.getElementById("clientWorkspaceName");
       if (workspaceName) { const cds=clientDisplayState(); workspaceName.textContent = cds.showWorkspaceSuffix ? `${cds.label} workspace` : cds.label; }
       try{ nvPfEnsureHeader(); }catch(e){}
+      try{ nvKycEnsure(); }catch(e){}
       try{ if(typeof renderDashboardEmptyState==="function") renderDashboardEmptyState(); }catch(e){}
       try{ if(typeof renderDailyCommandCenter==="function") renderDailyCommandCenter(); }catch(e){}
       /* NovaX new (Smart Portal E): once-per-session insight fetch. Guarded

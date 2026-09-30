@@ -2211,6 +2211,36 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
     .nv-pf-facts div{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
     .nv-pf-facts span{min-width:110px;color:var(--nvu-ink-2);font-size:13px}.nv-pf-facts b{font-size:14.5px}
     .nv-pf-hist{display:grid;gap:8px}
+    /* Owner's CNIC (30 Sep 2026): Profile panel + dashboard reminder */
+    #nvKycBanner[hidden],#nvKycChip[hidden],#nvKycView[hidden],#nvKycEdit[hidden],#nvKycActs[hidden],#nvKycCancel[hidden],.cnic-tile img[hidden]{display:none!important}
+    .nv-pf-note.is-ok{background:var(--nvu-good-bg);color:var(--nvu-good-fg)}
+    .nv-pf-note.is-info{background:var(--nvu-info-bg);color:var(--nvu-info-fg)}
+    .nv-kyc-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 14px;padding:14px 16px;border-radius:16px;background:var(--nvu-warn-bg);color:var(--nvu-warn-fg);box-shadow:inset 0 0 0 1px var(--nvu-warn-ln)}
+    .nv-kyc-banner.is-bad{background:var(--nvu-bad-bg);color:var(--nvu-bad-fg);box-shadow:inset 0 0 0 1px var(--nvu-bad-ln)}
+    .nv-kyc-banner>div{flex:1 1 240px;min-width:0}
+    .nv-kyc-banner b{display:block;font-size:15px}.nv-kyc-banner span{display:block;font-size:13px;margin-top:2px}
+    #nvKycPanel .section-head .chip{align-self:flex-start;justify-self:start;flex:none;width:auto}
+    .nv-kyc-view{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:4px 0 12px}
+    .nv-kyc-view figure{margin:0;min-width:0}
+    .nv-kyc-view a{display:block;border-radius:12px;overflow:hidden;border:1px solid var(--nvu-line);background:var(--nvu-bg-2);aspect-ratio:1.586}
+    .nv-kyc-view img{width:100%;height:100%;object-fit:cover;display:block}
+    .nv-kyc-view figcaption{font-size:12px;color:var(--nvu-ink-2);margin-top:6px;font-weight:650}
+    .cnic-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .cnic-tile{position:relative;display:flex;flex-direction:column;justify-content:flex-end;min-height:130px;padding:10px;border-radius:12px;border:1px dashed var(--nvu-line-2);background:var(--nvu-bg-2);cursor:pointer;overflow:hidden;font-size:12.5px;color:var(--nvu-ink-2)}
+    .cnic-tile:hover{border-color:var(--nvu-accent)}
+    .cnic-tile:focus-within{outline:2px solid var(--nvu-accent);outline-offset:2px}
+    .cnic-tile input[type=file]{position:absolute;top:0;left:0;width:1px;height:1px;padding:0;margin:0;border:0;opacity:0;pointer-events:none}
+    .cnic-tile img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .cnic-cap{position:relative;display:block;line-height:1.35}
+    .cnic-cap b{display:block;font-size:13.5px;font-weight:800;color:var(--nvu-ink)}
+    .cnic-cap i{display:block;font-style:normal;font-size:22px;line-height:1;color:var(--nvu-accent);margin-bottom:6px}
+    .cnic-tile.is-set{border-style:solid;border-color:var(--nvu-accent)}
+    .cnic-tile.is-set .cnic-cap{margin:-10px;padding:24px 10px 10px;background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.78));color:#fff}
+    .cnic-tile.is-set .cnic-cap b{color:#fff}
+    .cnic-tile.is-set .cnic-cap i{display:none}
+    .cnic-tile.is-err{border-style:solid;border-color:var(--nvu-bad-fg)}
+    .cnic-tile.is-err [data-cnic-note]{color:var(--nvu-bad-fg)}
+    .cnic-tile.is-busy{opacity:.7}
     .nv-pf-hist .row{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:13px;padding:8px 0;border-top:1px solid var(--nvu-line)}
     .nv-pf-hist .row:first-child{border-top:0}
     .nv-pf-hist .row em{font-style:normal;color:var(--nvu-ink-3);font-size:12px;white-space:nowrap}
@@ -2592,7 +2622,8 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   </style>
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
-  <script src="client-app.js?v=3bfe933a" defer></script>
+  <script src="nv-cnic.js?v=05655461" defer></script>
+  <script src="client-app.js?v=7b0d1a9c" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2607,7 +2638,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=3bfe933a<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=7b0d1a9c<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -2753,6 +2784,10 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                    renderCodHero() from the same server-computed figures the
                    Wallet tab uses -- this panel never does its own arithmetic. -->
               <div id="nvCodHero"></div>
+              <div class="nv-kyc-banner" id="nvKycBanner" role="status" hidden>
+                <div><b id="nvKycBannerT">Add the owner's CNIC</b><span id="nvKycBannerB">A photo of the front and the back. Only NovaX staff can see it.</span></div>
+                <button type="button" class="action-btn" id="nvKycBannerGo">Add CNIC</button>
+              </div>
               <div class="nv-command-strip" id="nvCommandStrip">
                 <!-- reorder anchor: nv-command-strip is order:2 on mobile, see mobile overhaul CSS -->
                 <div class="nv-cs-text">
@@ -3206,6 +3241,23 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                       <div><span>Pickup city</span><b id="nvPfCity">&mdash;</b><button type="button" class="nv-pf-link" id="nvPfCityReq">Request a change</button></div>
                       <div><span>Member since</span><b id="nvPfSince">&mdash;</b></div>
                     </div>
+                  </div>
+
+                  <div class="panel mt-14" id="nvKycPanel">
+                    <div class="section-head"><div><h3>Owner's CNIC</h3><p>A photo of the front and the back of the account owner's CNIC. Only you and NovaX staff can see these photos.</p></div><span class="chip" id="nvKycChip" hidden></span></div>
+                    <p class="nv-pf-note" id="nvKycMsg" hidden></p>
+                    <div class="nv-kyc-view" id="nvKycView" hidden>
+                      <figure><a id="nvKycFrontLink" target="_blank" rel="noopener" title="Open full size"><img id="nvKycFrontImg" alt="Front of your CNIC"></a><figcaption>Front</figcaption></figure>
+                      <figure><a id="nvKycBackLink" target="_blank" rel="noopener" title="Open full size"><img id="nvKycBackImg" alt="Back of your CNIC"></a><figcaption>Back</figcaption></figure>
+                    </div>
+                    <div id="nvKycEdit" hidden>
+                      <div class="cnic-pair" id="nvKycPair" role="group" aria-label="CNIC photos">
+                        <label class="cnic-tile" data-cnic-side="front"><input type="file" accept="image/*"><img alt="Front of your CNIC" hidden><span class="cnic-cap"><i aria-hidden="true">+</i><b>Front of CNIC</b><span data-cnic-note aria-live="polite">Take or choose a photo</span></span></label>
+                        <label class="cnic-tile" data-cnic-side="back"><input type="file" accept="image/*"><img alt="Back of your CNIC" hidden><span class="cnic-cap"><i aria-hidden="true">+</i><b>Back of CNIC</b><span data-cnic-note aria-live="polite">Take or choose a photo</span></span></label>
+                      </div>
+                      <div class="inline-actions mt-14"><button type="button" class="action-btn" id="nvKycSend" disabled>Send for checking</button><button type="button" class="ghost-btn" id="nvKycCancel" hidden>Cancel</button></div>
+                    </div>
+                    <div class="inline-actions" id="nvKycActs" hidden><button type="button" class="ghost-btn" id="nvKycReplace">Replace photos</button></div>
                   </div>
 
                   <div class="panel mt-14">
