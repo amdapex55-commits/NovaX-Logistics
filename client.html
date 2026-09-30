@@ -2623,7 +2623,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.js?v=ddfd2f11" defer></script>
+  <script src="client-app.js?v=8cda1ac4" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2638,7 +2638,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=ddfd2f11<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=8cda1ac4<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -3105,17 +3105,33 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                    difference. The number lives here and nowhere else; the rail
                    below shows what is on either side of it. -->
               <div class="panel nv-w2" id="nvMoneyHero">
-                <div class="nv-w2-top">
-                  <div class="nv-w2-main">
-                    <label>Available to withdraw</label>
-                    <div class="wallet-balance count-up" id="walletBalanceText">Rs 0</div>
-                    <span class="wallet-pulse"><span class="pulse"></span><span id="walletPushNote">No admin credit yet</span></span>
+                <!-- Wallet card (30 Sep 2026). One balance: when it is negative
+                     the same card turns amber and says what is owed; there is
+                     never a second figure. The ids walletBalanceText,
+                     walletPushNote, nvMhWithdrawBtn and nvWalletBankBtn are
+                     kept because existing handlers bind to them. -->
+                <div class="nvw-card" id="nvwCard">
+                  <span class="nvw-sheen" aria-hidden="true"></span>
+                  <div class="nvw-card-top">
+                    <span class="nvw-label" id="nvwLabel">Available to withdraw</span>
+                    <button type="button" class="nvw-eye" id="nvwEye" aria-pressed="false" aria-label="Hide balance" title="Hide balance">
+                      <svg class="nvw-eye-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                      <svg class="nvw-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+                    </button>
                   </div>
-                  <div class="nv-w2-acts">
-                    <button type="button" class="nv-mh-btn" id="nvMhWithdrawBtn">Withdraw</button>
-                    <button type="button" class="ghost-btn" id="nvWalletBankBtn">Bank details</button>
-                    <button type="button" class="ghost-btn" onclick="nvWalletStatement()">Statement</button>
+                  <div class="wallet-balance nvw-amount" id="walletBalanceText" aria-live="polite">Rs 0</div>
+                  <div class="nvw-card-foot">
+                    <button type="button" class="nvw-id" id="nvwId" title="Copy wallet ID">Wallet ID <b id="nvwIdText">&mdash;</b>
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+                    <span class="wallet-pulse nvw-last"><span class="pulse"></span><span id="walletPushNote">No credits to your wallet yet.</span></span>
                   </div>
+                </div>
+                <div class="nvw-acts" id="nvwActs" role="group" aria-label="Wallet actions">
+                  <button type="button" class="nvw-act" id="nvMhWithdrawBtn"><i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></i><span>Withdraw</span></button>
+                  <button type="button" class="nvw-act" id="nvwActStatement"><i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg></i><span>Statement</span></button>
+                  <button type="button" class="nvw-act" id="nvWalletBankBtn"><i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 21h18"/></svg></i><span>Bank</span></button>
+                  <button type="button" class="nvw-act" id="nvwActReceipts"><i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></i><span>Receipts</span></button>
+                  <button type="button" class="nvw-act nvw-act-due" id="nvwActDues" hidden><i aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/></svg></i><span>Pay dues</span></button>
                 </div>
                 <span class="nv-mh-note" id="nvMhNote"></span>
 
@@ -3176,7 +3192,13 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                    ledger row itself. #withdrawHistory is kept, hidden, because
                    its renderer writes into it unconditionally. -->
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>Wallet activity</h3><p>Every credit, deduction and payout. Rows marked &ldquo;already netted&rdquo; are shown for reference and are not deducted again.</p></div><div class="inline-actions"><button class="ghost-btn" onclick="nvWalletStatement()">Download statement</button></div></div>
+                <div class="section-head" id="nvwActivityHead"><div><h3>Wallet activity</h3><p>Every credit, charge and payout. Tap any entry for its receipt.</p></div></div>
+                <div class="nvw-filters" id="nvwFilters" role="group" aria-label="Show">
+                  <button type="button" class="nvw-chip is-on" data-nvw-filter="all" aria-pressed="true">All</button>
+                  <button type="button" class="nvw-chip" data-nvw-filter="in" aria-pressed="false">Money in</button>
+                  <button type="button" class="nvw-chip" data-nvw-filter="out" aria-pressed="false">Money out</button>
+                  <button type="button" class="nvw-chip" data-nvw-filter="payouts" aria-pressed="false">Payouts</button>
+                </div>
                 <div class="ops-list" id="walletLedgerList"></div>
               </div>
               <div id="withdrawHistory" hidden></div>
@@ -4163,6 +4185,238 @@ html[data-theme="dark"] .nv-ls td.idx{ color:#666 !important; }
    Replaces a layout that printed the same figure eight times across 2,845px
    (3,909px on a phone) and kept two forms permanently open. */
 .nv-w2{padding:18px 20px}
+/* ═══ Wallet v3 (30 Sep 2026): card, round actions, banking-style activity, receipt sheet ═══ */
+.nvw-card{position:relative;overflow:hidden;border-radius:20px;padding:18px 20px 16px;color:#fff;
+  background:radial-gradient(120% 140% at 100% 0%,#1f8f63 0%,rgba(31,143,99,0) 55%),linear-gradient(135deg,#0b3a29 0%,#082418 60%,#06170f 100%);
+  box-shadow:0 14px 34px rgba(4,24,16,.28),inset 0 1px 0 rgba(255,255,255,.08)}
+.nvw-card::after{content:"";position:absolute;right:-70px;bottom:-90px;width:230px;height:230px;border-radius:50%;border:30px solid rgba(255,255,255,.045);pointer-events:none}
+.nvw-card.is-owe{background:radial-gradient(120% 140% at 100% 0%,#c98a12 0%,rgba(201,138,18,0) 55%),linear-gradient(135deg,#6f4700 0%,#523400 60%,#3d2600 100%);
+  box-shadow:0 14px 34px rgba(61,38,0,.3),inset 0 1px 0 rgba(255,255,255,.08)}
+.nvw-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px;position:relative;z-index:1}
+.nvw-label{font-size:12.5px;font-weight:700;color:rgba(255,255,255,.8)}
+.nvw-eye{appearance:none;border:0;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;cursor:pointer;background:rgba(255,255,255,.12);color:#fff}
+.nvw-eye svg,.nvw-id svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nvw-eye svg{width:18px;height:18px}
+.nvw-eye .nvw-eye-off,.nvw-card.is-hidden .nvw-eye .nvw-eye-on{display:none}
+.nvw-card.is-hidden .nvw-eye .nvw-eye-off{display:block}
+.nvw-eye:focus-visible,.nvw-id:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.nvw-card .wallet-balance.nvw-amount{position:relative;z-index:1;margin:10px 0 14px;font-size:clamp(34px,9vw,46px);font-weight:800;letter-spacing:-.02em;line-height:1.05;font-variant-numeric:tabular-nums;color:#fff}
+.nvw-amount .nvw-cur{font-size:.42em;font-weight:700;opacity:.82;margin-right:6px;vertical-align:.38em;letter-spacing:0}
+.nvw-amount .nvw-dec{font-size:.46em;font-weight:700;opacity:.82;letter-spacing:0}
+.nvw-amount .nvw-dots{letter-spacing:.14em}
+.nvw-card-foot{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.nvw-id{appearance:none;border:0;display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 12px;border-radius:999px;cursor:pointer;background:rgba(255,255,255,.1);color:rgba(255,255,255,.85);font:inherit;font-size:12px;font-weight:600}
+.nvw-id b{color:#fff;font-weight:800;letter-spacing:.04em}
+.nvw-id svg{width:14px;height:14px}
+.nvw-card .nvw-last{color:rgba(255,255,255,.8);font-size:12px}
+.nvw-card.is-owe .nvw-last,.nvw-card.is-hidden .nvw-last{display:none}
+.nvw-acts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:14px 0 6px}
+.nvw-acts.has-dues{grid-template-columns:repeat(5,minmax(0,1fr))}
+.nvw-act{appearance:none;border:0;background:none;color:var(--nvu-ink);font:inherit;font-size:12px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:7px;padding:4px 0;min-width:0;border-radius:14px}
+.nvw-act i{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:var(--nvu-bg-2);border:1px solid var(--nvu-line);color:var(--nvu-accent);transition:transform .15s ease,background .15s ease}
+.nvw-act svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.nvw-act:hover:not(:disabled) i{transform:translateY(-1px)}
+.nvw-act:active:not(:disabled) i{transform:scale(.95)}
+.nvw-act:focus-visible{outline:2px solid var(--nvu-accent);outline-offset:2px}
+.nvw-act:disabled{cursor:not-allowed;opacity:.45}
+.nvw-act span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.nvw-act[hidden]{display:none}
+#nvMhWithdrawBtn i{background:var(--nvu-accent);border-color:var(--nvu-accent);color:var(--nvu-accent-ink)}
+.nvw-act-due i{background:var(--nvu-warn-bg);border-color:var(--nvu-warn-ln);color:var(--nvu-warn-fg)}
+@media (max-width:420px){.nvw-acts.has-dues{gap:2px}.nvw-acts.has-dues .nvw-act{font-size:11px;letter-spacing:-.01em}.nvw-acts.has-dues .nvw-act i{width:46px;height:46px}}
+.nvw-filters{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:2px -2px 8px;padding:2px}
+.nvw-filters::-webkit-scrollbar{display:none}
+.nvw-chip{flex:none;appearance:none;border:1px solid var(--nvu-line-2);background:transparent;color:var(--nvu-ink-2);font:inherit;font-size:12.5px;font-weight:700;min-height:36px;padding:0 14px;border-radius:999px;cursor:pointer}
+.nvw-chip.is-on{background:var(--nvu-ink);border-color:var(--nvu-ink);color:var(--nvu-bg)}
+.nvw-chip:focus-visible{outline:2px solid var(--nvu-accent);outline-offset:2px}
+.nvw-day{font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--nvu-ink-3);margin:16px 8px 2px}
+.nvw-day:first-child{margin-top:6px}
+.nvw-row{appearance:none;width:100%;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;display:grid;grid-template-columns:40px minmax(0,1fr) auto;align-items:center;gap:12px;padding:11px 8px;border-radius:14px;min-height:62px}
+.nvw-row:hover{background:var(--nvu-bg-2)}
+.nvw-row:focus-visible{outline:2px solid var(--nvu-accent);outline-offset:1px}
+.nvw-ico{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--nvu-bg-2);color:var(--nvu-ink-2);border:1px solid var(--nvu-line)}
+.nvw-ico svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.nvw-ico.in{background:var(--nvu-good-bg);color:var(--nvu-good-fg);border-color:var(--nvu-good-ln)}
+.nvw-ico.out{background:var(--nvu-out-bg);color:var(--nvu-out-fg);border-color:var(--nvu-out-ln)}
+.nvw-ico.charge{background:var(--nvu-warn-bg);color:var(--nvu-warn-fg);border-color:var(--nvu-warn-ln)}
+.nvw-t{min-width:0}
+.nvw-t b{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:14px;font-weight:700;line-height:1.3;overflow-wrap:anywhere}
+.nvw-t span{display:block;font-size:12px;color:var(--nvu-ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.nvw-r{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.nvw-amt{font-size:14.5px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--nvu-ink)}
+.nvw-amt.pos{color:var(--nvu-good-fg)}
+.nvw-amt.info{color:var(--nvu-ink-3);font-weight:700;font-size:12.5px}
+.nvw-tag{font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:999px;background:var(--nvu-bg-2);color:var(--nvu-ink-2);white-space:nowrap}
+.nvw-tag.good{background:var(--nvu-good-bg);color:var(--nvu-good-fg)}
+.nvw-tag.warn{background:var(--nvu-warn-bg);color:var(--nvu-warn-fg)}
+.nvw-tag.info{background:var(--nvu-info-bg);color:var(--nvu-info-fg)}
+.nvw-empty{padding:18px 8px;color:var(--nvu-ink-2);font-size:13.5px}
+.nvw-recon{margin-top:12px}
+/* Visible by default; the entrance is a keyframe on top, so a sheet can
+   never be stuck invisible when animation frames do not run. */
+.nvw-back{position:fixed;inset:0;z-index:4000;background:rgba(3,9,6,.55);display:flex;align-items:center;justify-content:center;padding:16px;animation:nvwBackIn .18s ease-out}
+.nvw-back.out{opacity:0;transition:opacity .2s ease}
+@keyframes nvwBackIn{from{opacity:0}}
+.nvw-sheet{position:relative;width:100%;max-width:440px;max-height:calc(100vh - 32px);overflow:auto;background:var(--nvu-bg);color:var(--nvu-ink);border-radius:22px;padding:22px 20px 18px;box-shadow:0 24px 60px rgba(0,0,0,.35);animation:nvwSheetIn .26s cubic-bezier(.2,.9,.3,1)}
+.nvw-back.out .nvw-sheet{transform:translateY(14px) scale(.98);transition:transform .2s ease}
+@keyframes nvwSheetIn{from{transform:translateY(14px) scale(.98)}}
+@keyframes nvwSheetUp{from{transform:translateY(100%)}}
+.nvw-grab{display:none;width:40px;height:4px;border-radius:4px;background:var(--nvu-line-2);margin:-8px auto 14px}
+.nvw-rc-head{text-align:center}
+.nvw-rc-head .nvw-ico{width:54px;height:54px;margin:0 auto 10px}
+.nvw-rc-head .nvw-ico svg{width:24px;height:24px}
+.nvw-rc-title{font-size:14.5px;font-weight:700;color:var(--nvu-ink-2);overflow-wrap:anywhere}
+.nvw-rc-amt{font-size:34px;font-weight:800;letter-spacing:-.02em;margin:6px 0 8px;font-variant-numeric:tabular-nums}
+.nvw-rc-amt.pos{color:var(--nvu-good-fg)}
+.nvw-rc-rows{margin:16px 0 0;border-top:1px dashed var(--nvu-line-2);padding-top:4px}
+.nvw-rc-rows div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;font-size:13.5px;border-bottom:1px solid var(--nvu-line)}
+.nvw-rc-rows dt{color:var(--nvu-ink-2);flex:none}
+.nvw-rc-rows dd{margin:0;font-weight:700;text-align:right;overflow-wrap:anywhere;min-width:0}
+.nvw-rc-note{font-size:12.5px;color:var(--nvu-ink-2);margin:12px 0 0;line-height:1.5}
+.nvw-rc-acts{display:grid;gap:8px;margin-top:16px}
+.nvw-rc-acts button{min-height:46px;border-radius:14px;font:inherit;font-size:14.5px;font-weight:800;cursor:pointer}
+.nvw-primary{border:0;background:var(--nvu-accent);color:var(--nvu-accent-ink);display:flex;align-items:center;justify-content:center;gap:8px}
+.nvw-primary svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.nvw-sec{border:1px solid var(--nvu-line-2);background:transparent;color:var(--nvu-ink)}
+.nvw-rc-acts button:focus-visible{outline:2px solid var(--nvu-accent);outline-offset:2px}
+@media (max-width:640px){
+  .nvw-back{align-items:flex-end;padding:0}
+  .nvw-sheet{max-width:none;border-radius:22px 22px 0 0;max-height:92vh;padding-bottom:calc(18px + env(safe-area-inset-bottom));animation-name:nvwSheetUp}
+  .nvw-back.out .nvw-sheet{transform:translateY(100%)}
+  .nvw-grab{display:block}
+}
+@media (prefers-reduced-motion:reduce){.nvw-back,.nvw-sheet,.nvw-act i{transition:none;animation:none}}
+/* Wallet v3 part 2: withdraw sheet, tracker, bank card, landed notice, statement picker, motion */
+.nvw-sheen{position:absolute;top:-20%;bottom:-20%;left:0;width:38%;z-index:0;pointer-events:none;
+  background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.16),rgba(255,255,255,0));transform:translateX(-160%) skewX(-18deg)}
+.nvw-card.is-shine .nvw-sheen,.nvw-bank .nvw-sheen{animation:nvwSheen 1.15s cubic-bezier(.3,.7,.2,1) 1}
+@keyframes nvwSheen{from{transform:translateX(-160%) skewX(-18deg)}to{transform:translateX(330%) skewX(-18deg)}}
+.nvw-sheet-wd{max-width:420px}
+.nvw-wd-head{display:grid;grid-template-columns:40px 1fr 40px;align-items:center;margin:-4px 0 6px}
+.nvw-wd-head .nvw-rc-title{text-align:center;font-size:15.5px;color:var(--nvu-ink);font-weight:800}
+.nvw-wd-back{appearance:none;border:0;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--nvu-bg-2);color:var(--nvu-ink);cursor:pointer}
+.nvw-wd-back svg,.nvw-keypad svg,.nvw-month svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.nvw-wd-back[hidden]{visibility:hidden;display:grid}
+.nvw-wd-dots{display:flex;gap:5px;justify-content:flex-end;padding-right:4px}
+.nvw-wd-dots i{width:6px;height:6px;border-radius:6px;background:var(--nvu-line-2);transition:width .25s ease,background .25s ease}
+.nvw-wd-dots i.is-on{width:14px;background:var(--nvu-accent)}
+.nvw-wd-step[hidden]{display:none}
+.nvw-wd-step.nvw-in{animation:nvwStepIn .32s cubic-bezier(.2,.8,.2,1)}
+@keyframes nvwStepIn{from{transform:translateX(18px)}to{transform:none}}
+.nvw-wd-avail{text-align:center;font-size:13px;color:var(--nvu-ink-2);margin:4px 0 0}
+.nvw-wd-avail b{color:var(--nvu-ink)}
+.nvw-wd-amt{display:flex;align-items:baseline;justify-content:center;gap:6px;margin:14px 0 2px;min-height:58px;font-variant-numeric:tabular-nums}
+.nvw-wd-amt .nvw-cur{font-size:18px;font-weight:700;color:var(--nvu-ink-2)}
+.nvw-wd-amt [data-wd-num]{display:inline-block;font-size:clamp(38px,11vw,50px);font-weight:800;letter-spacing:-.02em;color:var(--nvu-ink);line-height:1}
+.nvw-wd-amt.is-over [data-wd-num]{color:var(--nvu-bad-fg)}
+.nvw-caret{display:inline-block;width:2px;height:38px;background:var(--nvu-accent);align-self:center;animation:nvwBlink 1s steps(1) infinite}
+@keyframes nvwBlink{50%{opacity:0}}
+.nvw-pop{animation:nvwPop .18s ease-out}
+@keyframes nvwPop{40%{transform:scale(1.06)}}
+.nvw-wd-amt.is-shake{animation:nvwShake .36s}
+@keyframes nvwShake{20%{transform:translateX(-8px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(3px)}}
+.nvw-wd-err{min-height:20px;text-align:center;font-size:12.5px;font-weight:700;color:var(--nvu-bad-fg);margin:2px 0 8px}
+.nvw-wd-chips{display:flex;gap:8px;justify-content:center;margin:0 0 12px}
+.nvw-wd-chips button{appearance:none;border:1px solid var(--nvu-line-2);background:var(--nvu-bg-2);color:var(--nvu-ink);font:inherit;font-size:13px;font-weight:800;min-height:38px;min-width:72px;border-radius:999px;cursor:pointer}
+.nvw-wd-chips button:active{transform:scale(.95)}
+.nvw-keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:0 0 14px}
+.nvw-keypad button{appearance:none;border:0;background:transparent;color:var(--nvu-ink);font:inherit;font-size:24px;font-weight:700;min-height:54px;border-radius:14px;cursor:pointer;display:grid;place-items:center;transition:background .12s ease,transform .08s ease}
+.nvw-keypad button:hover{background:var(--nvu-bg-2)}
+.nvw-keypad button:active{background:var(--nvu-good-bg);transform:scale(.94)}
+.nvw-keypad button:focus-visible,.nvw-wd-chips button:focus-visible,.nvw-wd-back:focus-visible,.nvw-speed:focus-visible,.nvw-hold:focus-visible,.nvw-month:focus-visible{outline:2px solid var(--nvu-accent);outline-offset:2px}
+.nvw-wd-go{width:100%;min-height:50px;border-radius:14px;font:inherit;font-size:15px;font-weight:800;cursor:pointer}
+.nvw-wd-go:disabled{opacity:.45;cursor:not-allowed}
+.nvw-wd-sum{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:12px 14px;border-radius:14px;background:var(--nvu-bg-2);margin:4px 0 12px;font-size:13px;color:var(--nvu-ink-2)}
+.nvw-wd-sum b{font-size:18px;color:var(--nvu-ink);font-variant-numeric:tabular-nums}
+.nvw-speeds{display:grid;gap:8px}
+.nvw-speed{appearance:none;display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;border-radius:14px;border:1.5px solid var(--nvu-line-2);background:transparent;color:var(--nvu-ink);font:inherit;cursor:pointer;transition:border-color .15s ease,background .15s ease,transform .1s ease}
+.nvw-speed:active{transform:scale(.99)}
+.nvw-speed i{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--nvu-line-2);display:grid;place-items:center;transition:all .2s ease}
+.nvw-speed i svg{width:14px;height:14px;fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;transform:scale(0);transition:transform .2s cubic-bezier(.3,1.6,.5,1)}
+.nvw-speed b{display:block;font-size:14px}
+.nvw-speed em{display:block;font-style:normal;font-size:12px;color:var(--nvu-ink-2);margin-top:2px}
+.nvw-speed.is-on{border-color:var(--nvu-accent);background:var(--nvu-good-bg)}
+.nvw-speed.is-on i{background:var(--nvu-accent);border-color:var(--nvu-accent)}
+.nvw-speed.is-on i svg{transform:scale(1)}
+.nvw-receive{display:flex;justify-content:space-between;align-items:baseline;margin:14px 2px 12px;font-size:13.5px;color:var(--nvu-ink-2)}
+.nvw-receive b{font-size:22px;font-weight:800;color:var(--nvu-good-fg);font-variant-numeric:tabular-nums}
+.nvw-wd-to>span{display:block;font-size:12px;font-weight:700;color:var(--nvu-ink-2);margin:0 2px 6px}
+.nvw-hold{position:relative;overflow:hidden;width:100%;min-height:54px;margin-top:14px;border:0;border-radius:16px;background:var(--nvu-accent);color:var(--nvu-accent-ink);font:inherit;font-size:15px;font-weight:800;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.nvw-hold-fill{position:absolute;inset:0;background:rgba(0,0,0,.22);transform:scaleX(0);transform-origin:left center;transition:transform .18s ease}
+.nvw-hold.is-holding .nvw-hold-fill{transform:scaleX(1);transition:transform 1.1s linear}
+.nvw-hold.is-done .nvw-hold-fill,.nvw-hold.is-busy .nvw-hold-fill{transform:scaleX(1);transition:none}
+.nvw-hold.is-holding{animation:nvwBreathe 1.1s ease-in-out}
+@keyframes nvwBreathe{50%{transform:scale(.985)}}
+.nvw-hold-t{position:relative}
+.nvw-hold:disabled{cursor:progress}
+.nvw-center{text-align:center}
+.nvw-done{text-align:center;position:relative}
+.nvw-tick{width:84px;height:84px;margin:4px auto 10px;display:block}
+.nvw-tick circle{fill:var(--nvu-good-bg);stroke:var(--nvu-accent);stroke-width:3;stroke-dasharray:183;stroke-dashoffset:183;animation:nvwDraw .6s ease-out forwards}
+.nvw-tick path{fill:none;stroke:var(--nvu-accent);stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:44;stroke-dashoffset:44;animation:nvwDraw .38s .45s ease-out forwards}
+@keyframes nvwDraw{to{stroke-dashoffset:0}}
+.nvw-done-sub{font-size:13px;color:var(--nvu-ink-2);margin:4px 0 6px;line-height:1.5}
+.nvw-confetti{position:absolute;left:50%;top:60px;width:0;height:0;pointer-events:none;z-index:2}
+.nvw-confetti i{position:absolute;width:8px;height:12px;border-radius:2px;opacity:0;animation:nvwBurst 1.2s var(--d) cubic-bezier(.2,.7,.3,1) forwards}
+@keyframes nvwBurst{0%{opacity:1;transform:translate(0,0) rotate(0)}70%{opacity:1}100%{opacity:0;transform:translate(var(--x),calc(var(--y) + 170px)) rotate(var(--r))}}
+.nvw-track{list-style:none;margin:16px 0 4px;padding:0;text-align:left}
+.nvw-track li{position:relative;display:grid;grid-template-columns:22px 1fr;gap:12px;padding:0 0 14px}
+.nvw-track li:last-child{padding-bottom:0}
+.nvw-track li::before{content:"";position:absolute;left:10px;top:22px;bottom:-2px;width:2px;background:var(--nvu-line-2)}
+.nvw-track li:last-child::before{display:none}
+.nvw-track li.is-done::before{background:var(--nvu-accent)}
+.nvw-track i{width:22px;height:22px;border-radius:50%;border:2px solid var(--nvu-line-2);background:var(--nvu-bg);position:relative;z-index:1}
+.nvw-track li.is-done i{background:var(--nvu-accent);border-color:var(--nvu-accent);box-shadow:inset 0 0 0 4px var(--nvu-bg)}
+.nvw-track li.is-now i{border-color:var(--nvu-warn-fg);background:var(--nvu-warn-bg);animation:nvwPulse 1.6s ease-out infinite}
+.nvw-track li.is-bad i{border-color:var(--nvu-info-fg);background:var(--nvu-info-bg)}
+@keyframes nvwPulse{0%{box-shadow:0 0 0 0 rgba(201,138,18,.45)}70%{box-shadow:0 0 0 10px rgba(201,138,18,0)}100%{box-shadow:0 0 0 0 rgba(201,138,18,0)}}
+.nvw-track b{display:block;font-size:13.5px}
+.nvw-track span{display:block;font-size:12px;color:var(--nvu-ink-2);margin-top:1px;overflow-wrap:anywhere}
+.nvw-track li.is-next b{color:var(--nvu-ink-2)}
+.nvw-bank{position:relative;overflow:hidden;border-radius:18px;padding:16px 18px;color:#fff;min-height:150px;display:flex;flex-direction:column;justify-content:space-between;gap:10px;
+  background:radial-gradient(120% 140% at 100% 0%,#3d5a80 0%,rgba(61,90,128,0) 55%),linear-gradient(135deg,#1c2b41 0%,#141f30 60%,#0e1623 100%);box-shadow:0 10px 26px rgba(8,14,24,.3)}
+.nvw-bank.is-empty{background:var(--nvu-bg-2);color:var(--nvu-ink);border:1.5px dashed var(--nvu-line-2);box-shadow:none;min-height:0;justify-content:center;text-align:center}
+.nvw-bank.is-empty span{font-size:12.5px;color:var(--nvu-ink-2)}
+.nvw-bank-top{position:relative;z-index:1;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.nvw-bank-top b{font-size:15px;letter-spacing:.01em}
+.nvw-bank-ok{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;padding:3px 8px 3px 5px;border-radius:999px;background:rgba(110,231,168,.18);color:#8ff0c7}
+.nvw-bank-ok[hidden]{display:none}
+.nvw-bank-ok svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.nvw-bank-chip{position:relative;z-index:1;width:38px;height:28px;border-radius:6px;background:linear-gradient(135deg,#e8d38a,#b8983f);box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
+.nvw-bank-num{position:relative;z-index:1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:clamp(14px,4.2vw,17px);letter-spacing:.08em;white-space:nowrap}
+.nvw-bank-foot{position:relative;z-index:1;display:flex;flex-direction:column}
+.nvw-bank-foot span{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.6)}
+.nvw-bank-foot b{font-size:14px;text-transform:uppercase;letter-spacing:.04em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nvw-bank-wrap{margin:12px 0 4px}
+.nvw-months{display:grid;gap:6px;margin:12px 0 0}
+.nvw-month{appearance:none;display:grid;grid-template-columns:1fr auto;grid-template-rows:auto auto;align-items:center;column-gap:10px;text-align:left;width:100%;padding:12px 14px;border-radius:14px;border:1px solid var(--nvu-line);background:var(--nvu-bg-2);color:var(--nvu-ink);font:inherit;cursor:pointer}
+.nvw-month:hover{border-color:var(--nvu-accent)}
+.nvw-month b{font-size:14px}
+.nvw-month span{grid-row:2;font-size:12px;color:var(--nvu-ink-2)}
+.nvw-month span:empty{display:none}
+.nvw-month svg{grid-column:2;grid-row:1/3;color:var(--nvu-ink-3)}
+.nvw-landed{position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top));z-index:4100;display:flex;align-items:center;gap:12px;max-width:calc(100vw - 24px);padding:10px 16px 10px 10px;border:0;border-radius:999px;cursor:pointer;
+  background:linear-gradient(135deg,#0b3a29,#06170f);color:#fff;font:inherit;text-align:left;box-shadow:0 14px 36px rgba(4,24,16,.35),0 0 0 1px rgba(143,240,199,.25);transform:translate(-50%,0);animation:nvwLandIn .5s cubic-bezier(.2,1.2,.3,1)}
+@keyframes nvwLandIn{from{transform:translate(-50%,-140%)}}
+.nvw-landed.out{transform:translate(-50%,-140%);transition:transform .3s ease-in}
+.nvw-landed-ico{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#14c77b;color:#062016;flex:none;animation:nvwGlow 1.4s ease-out 2}
+.nvw-landed-ico svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+@keyframes nvwGlow{0%{box-shadow:0 0 0 0 rgba(20,199,123,.6)}100%{box-shadow:0 0 0 16px rgba(20,199,123,0)}}
+.nvw-landed-t b{display:block;font-size:14.5px;font-variant-numeric:tabular-nums}
+.nvw-landed-t em{display:block;font-style:normal;font-size:12px;color:rgba(255,255,255,.75);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64vw}
+.nvw-row.nvw-enter{animation:nvwRowIn .42s cubic-bezier(.2,.8,.2,1) both}
+@keyframes nvwRowIn{from{transform:translateY(10px)}to{transform:none}}
+.nvw-act i svg{transition:transform .2s cubic-bezier(.3,1.6,.5,1)}
+.nvw-act:hover:not(:disabled) i svg{transform:scale(1.12)}
+.nvw-rc-acts .nvw-primary{transition:transform .1s ease,filter .15s ease}
+.nvw-rc-acts .nvw-primary:active{transform:scale(.98)}
+@media (prefers-reduced-motion:reduce){
+  .nvw-card.is-shine .nvw-sheen,.nvw-bank .nvw-sheen,.nvw-wd-step.nvw-in,.nvw-pop,.nvw-wd-amt.is-shake,.nvw-caret,.nvw-hold.is-holding,
+  .nvw-tick circle,.nvw-tick path,.nvw-track li.is-now i,.nvw-landed-ico,.nvw-row.nvw-enter{animation:none}
+  .nvw-tick circle,.nvw-tick path{stroke-dashoffset:0}
+  .nvw-landed{transition:none;animation:none}
+  .nvw-speed i svg,.nvw-act i svg{transition:none}
+}
 .nv-w2-top{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap}
 .nv-w2-main{min-width:0}
 .nv-w2-main label{display:block;font-size:10.5px;font-weight:800;letter-spacing:.1em;

@@ -225,7 +225,11 @@
                      phone:"0300-0000005", address:"Flat 12, Clifton Block 2, Karachi",
                      cod:4300, age:3*H, upd:3*H, kg:"1.5 kg" })
           ],
-          invoices: [{ id:"demo-inv-1", code:"INV-DEMO001", client_id:CID,
+          invoices: [{ id:"demo-inv-0", code:"INV-DEMO000", client_id:CID,
+            parcel_refs:["N8990101","N8990102"], cod_total:5250, fee_total:450, net_payable:4800,
+            due_to_novax:0, invoice_type:"COD Settlement", status:"Pushed to wallet",
+            created_at:iso(now-3*D), wallet_pushed_at:iso(now-3*D), meta:{} },
+            { id:"demo-inv-1", code:"INV-DEMO001", client_id:CID,
             parcel_refs:["N9000001"], cod_total:3450, fee_total:225, net_payable:3225,
             due_to_novax:0, invoice_type:"COD Settlement", status:"Pushed to wallet",
             created_at:iso(now-6*H), wallet_pushed_at:iso(now-5*H), meta:{} }],
@@ -234,11 +238,29 @@
               affects_balance:true, status:"Credited", reference_type:"invoice",
               reference_code:"INV-DEMO001", created_at:iso(now-5*H),
               note:"Invoice INV-DEMO001 credited to wallet. Rs 3,225 now available to withdraw." },
+            { id:"demo-l-w3", client_id:CID, entry_type:"payout_paid", amount:0,
+              affects_balance:false, status:"Paid", reference_type:"withdrawal", reference_id:"demo-wd-1",
+              reference_code:"demo-wd-1", created_at:iso(now-2*D), note:"Withdrawal paid via bank transfer." },
+            { id:"demo-l-w1", client_id:CID, entry_type:"withdrawal_requested", amount:-4800,
+              affects_balance:true, status:"Requested", reference_type:"withdrawal", reference_id:"demo-wd-1",
+              reference_code:"demo-wd-1", created_at:iso(now-3*D+2*H),
+              note:"Withdrawal requested: Rs 4800 reserved, 4795.20 net after Rs 4.80 fee (24h)." },
+            { id:"demo-l-w2", client_id:CID, entry_type:"payout_fee", amount:-4.8,
+              affects_balance:false, status:"Info", reference_type:"withdrawal", reference_id:"demo-wd-1",
+              reference_code:"demo-wd-1", created_at:iso(now-3*D+2*H),
+              note:"NovaX payout fee for this withdrawal (informational only, already netted into the amount above)." },
+            { id:"demo-l-0", client_id:CID, entry_type:"invoice_credit", amount:4800,
+              affects_balance:true, status:"Credited", reference_type:"invoice",
+              reference_code:"INV-DEMO000", created_at:iso(now-3*D),
+              note:"Invoice INV-DEMO000 credited to wallet. Rs 4,800 now available to withdraw." },
             { id:"demo-l-2", client_id:CID, entry_type:"admin_adjustment", amount:200,
               affects_balance:true, status:"Credited", created_at:iso(now-4*D),
               note:"Welcome credit" }
           ],
-          withdrawals: [], payment_logs: [], pickup_requests: [],
+          withdrawals: [{ id:"demo-wd-1", client_id:CID, amount:4800, fee:4.8, net:4795.2,
+            iban:"PK36MEZN0000001123456702", speed:"24h", status:"Paid",
+            created_at:iso(now-3*D+2*H), paid_at:iso(now-2*D), paid_txn_id:"FT2609DEMO4471" }],
+          payment_logs: [], pickup_requests: [],
           store_connections: [], staff_users: [],
           novax_tickets: [{ id:"demo-t-1", client_id:CID, code:"TKT-DEMO1",
             subject:"Reattempt for N9000004", status:"resolved", priority:"normal",
@@ -256,7 +278,7 @@
            shim's pattern match, so only the read side needs answers. */
         rpcs: {
           client_wallet_summary: [{ available_balance:3425, pending_payout:0,
-            paid_this_month:0, lifetime_withdrawn:0 }],
+            paid_this_month:4795.2, lifetime_withdrawn:4795.2 }],
           client_wallet_incoming: [{ delivered_uninvoiced:5849, parcels:2 }],
           client_bank_details: [],
           client_pickup_locations_list: [{ id:"demo-loc", label:"Shop 14, Tariq Road",
@@ -6578,44 +6600,6 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     /* ---- full wallet statement ---- */
-    function nvWalletStatement(){
-      var led=(state.walletLedger||[]).filter(function(l){ return l.clientId===(state.client&&state.client.id); });
-      if(!led.length){ toast("No wallet activity to put on a statement yet."); return; }
-      var labels={ invoice_credit:"COD settlement credited", withdrawal_requested:"Withdrawal requested",
-                   payout_fee:"Payout fee", payout_paid:"Payout paid", payout_rejected:"Payout rejected/refunded",
-                   admin_adjustment:"Adjustment by NovaX", delivery_charge_due:"Delivery charge",
-                   invoice_due_debit:"Delivery charges taken from wallet", invoice_due_reversal:"Charges returned",
-                   due_payment:"Payment received by NovaX" };
-      var rows=led;
-      var credits=rows.reduce(function(n,l){ return n+(Number(l.amount)>0?Number(l.amount):0); },0);
-      var debits =rows.reduce(function(n,l){ return n+(Number(l.amount)<0?Math.abs(Number(l.amount)):0); },0);
-      var bal=Number((state.serverWalletSummary&&state.serverWalletSummary.available_balance)!=null
-                ? state.serverWalletSummary.available_balance
-                : ((state.client&&state.client.walletBalance)||0));
-      var meta=["Statement date: "+new Date().toLocaleDateString(),"Entries shown: "+rows.length];
-      var html=nvDocHead("Wallet Statement","All wallet activity",meta)+
-        '<div class="nv-doc-grid">'+
-          '<div class="nv-doc-box big"><span>Closing balance</span><strong>'+escLabelText(money(bal))+'</strong></div>'+
-          '<div class="nv-doc-box"><span>Total credited</span><strong>'+escLabelText(money(credits))+'</strong></div>'+
-          '<div class="nv-doc-box"><span>Total debited</span><strong>'+escLabelText(money(debits))+'</strong></div>'+
-          '<div class="nv-doc-box"><span>Entries</span><strong>'+rows.length+'</strong></div>'+
-        '</div>'+
-        '<table><thead><tr><th>Date</th><th>Description</th><th>Reference</th><th class="num">Amount</th></tr></thead><tbody>'+
-        rows.map(function(l){
-          return '<tr><td>'+escLabelText(l.createdAt||"")+'</td>'+
-                 '<td>'+escLabelText(labels[l.entryType]||l.entryType||"")+'</td>'+
-                 '<td>'+escLabelText(l.referenceCode||l.note||"")+'</td>'+
-                 '<td class="num">'+escLabelText(money(l.amount))+'</td></tr>';
-        }).join("")+
-        '</tbody></table>'+
-        '<div class="nv-doc-total"><span>Closing balance</span><span>'+escLabelText(money(bal))+'</span></div>'+
-        nvDocFoot("Every line above corresponds to a real parcel settlement, payout or adjustment on your account.");
-      var csv=[["date","type","description","reference","amount"]].concat(rows.map(function(l){
-        return [l.createdAt||"",l.entryType||"",labels[l.entryType]||l.entryType||"",l.referenceCode||l.note||"",l.amount];
-      }));
-      nvOpenDoc("Wallet statement",html,csv,"NovaX-wallet-statement.csv");
-    }
-
     function downloadInvoiceCsv(id){
       const inv=state.invoices.find(i=>i.id===id); if(!inv) return;
       const c=clientById(inv.clientId);
@@ -6834,18 +6818,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           bank._nvWired=true;
           bank.addEventListener("click",function(){
             if(!nvIsOwnerSeat()){ try{ toast("Bank details are Owner-only on this account."); }catch(e){} return; }
-            nvOpenWalletForms("bankHolderName");
+            try{ nvwOpenBank(); }catch(e){ nvOpenWalletForms("bankHolderName"); }
           });
         }
         if(!b||b._nvWired) return;
         b._nvWired=true;
         b.addEventListener("click",function(){
+          if(!nvIsOwnerSeat()){ try{ toast("Withdrawals are Owner-only on this account."); }catch(e){} return; }
+          /* The transfer sheet (Wallet v3). The classic form stays reachable
+             through Bank, and it is the fallback if the sheet cannot open. */
+          try{ nvwOpenWithdraw(); return; }catch(e){ console.warn("NovaX withdraw sheet", e); }
           var f=document.getElementById("withdrawAmount");
-          if(!f || !nvIsOwnerSeat()){ try{ toast("Withdrawals are Owner-only on this account."); }catch(e){} return; }
-          try{
-            var fig=nvMoneyFigures();
-            if(!f.value) f.value=String(Math.round(fig.ready));
-          }catch(e){}
+          try{ var fig=nvMoneyFigures(); if(f && !f.value) f.value=String(Math.round(fig.ready)); }catch(e){}
           nvOpenWalletForms("withdrawAmount");
         });
       }
@@ -6941,7 +6925,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         btn.classList.toggle("nv-live", live);
         /* The amount sits directly above this button. Printing it here too
            was one of the eight places the same figure appeared. */
-        btn.textContent = live ? "Withdraw" : "Nothing to withdraw yet";
+        var btnLabel = btn.querySelector("span");
+        if(btnLabel) btnLabel.textContent = "Withdraw";
+        else btn.textContent = live ? "Withdraw" : "Nothing to withdraw yet";
+        btn.title = live ? "Withdraw" : "Nothing to withdraw yet";
       }
       var note = document.getElementById("nvMhNote");
       if(note){
@@ -6953,7 +6940,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              none of the options can meet. */
           ? "Tap Withdraw to choose an amount, a payout speed and the IBAN."
           : (f.shortfall > 0
-              ? "Your wallet is " + money(f.shortfall) + " short. New COD clears that first, then the rest is yours to withdraw."
+              ? "Your wallet is " + moneyExact(f.shortfall) + " short. New COD clears that first, then the rest is yours to withdraw."
               : (f.counting > 0
                   ? money(f.counting) + " is still being counted — it moves here once released."
                   : "Delivered parcels turn into invoices, then into withdrawable balance."));
@@ -7599,9 +7586,809 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           '</div>';
       }catch(e){ try{ host.innerHTML=""; }catch(_){} }
     }
+    /* ═══ Wallet v3 (30 Sep 2026) ════════════════════════════════════════
+       The card, the round actions, a banking-style activity feed and a
+       receipt sheet with a shareable image. Presentation only: every figure
+       comes from the same state the rest of the Money tab reads, and the
+       balance is still ONE balance -- negative means "you owe NovaX", never a
+       second figure beside it. */
+    var NV_W3={ filter:"all", list:[], balance:0, hiddenKey:"nvWalletHidden" };
+    var NV_W3_BANKS={ MEZN:"Meezan", HABB:"HBL", UNIL:"UBL", MUCB:"MCB", ALFH:"Alfalah", ABPA:"Allied", BAHL:"Bank Al Habib",
+      SCBL:"Standard Chartered", FAYS:"Faysal", ASCM:"Askari", NBPA:"NBP", JSBL:"JS Bank", SONE:"Soneri", BKIP:"BankIslami",
+      DUIB:"Dubai Islamic", MPBL:"Habib Metro", BPUN:"Bank of Punjab", SAUD:"Silkbank", SUMB:"Summit", AIIN:"Al Baraka",
+      MCIB:"MCB Islamic", TMFB:"Easypaisa", JCMA:"JazzCash", SADA:"SadaPay", NAYA:"NayaPay" };
+    var NV_W3_ICONS={
+      in:'<svg viewBox="0 0 24 24"><path d="M17 7L7 17M7 9v8h8"/></svg>',
+      out:'<svg viewBox="0 0 24 24"><path d="M7 17L17 7M9 7h8v8"/></svg>',
+      charge:'<svg viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/></svg>',
+      back:'<svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>',
+      adjust:'<svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+      info:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+      share:'<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>'
+    };
+    function nvwHidden(){ try{ return localStorage.getItem(NV_W3.hiddenKey)==="1"; }catch(e){ return false; } }
+    function nvwSetHidden(v){ try{ localStorage.setItem(NV_W3.hiddenKey, v?"1":"0"); }catch(e){} }
+    function nvwBankLine(iban){
+      var s=String(iban||"").replace(/\s+/g,"").toUpperCase();
+      if(!s) return "your bank";
+      return (NV_W3_BANKS[s.slice(4,8)]||"Bank")+" ••"+s.slice(-4);
+    }
+    function nvwWalletId(){
+      var id=String((state.client&&state.client.id)||"");
+      if(/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id)) return "CL-"+id.slice(0,6).toUpperCase();
+      return id ? "CL-"+id.replace(/[^A-Za-z0-9]/g,"").slice(0,6).toUpperCase() : "";
+    }
+    function nvwParts(v){
+      var s=Math.abs(Number(v)||0).toLocaleString("en-PK",{ minimumFractionDigits:2, maximumFractionDigits:2 });
+      var i=s.lastIndexOf(".");
+      return { int:i>-1?s.slice(0,i):s, dec:i>-1?s.slice(i):".00" };
+    }
+    /* Writes the card figure. Called every frame of the count-up, so it only
+       builds a few spans. Hidden shows dots and never the number, even while
+       counting. The screen-reader label carries the exact amount. */
+    function nvwPaintBalance(el, v){
+      if(!el) return;
+      var card=document.getElementById("nvwCard");
+      if(card && card.classList.contains("is-hidden")){
+        el.innerHTML='<span class="nvw-cur">Rs</span><span class="nvw-dots">••••••</span>';
+        el.setAttribute("aria-label","Balance hidden");
+        return;
+      }
+      var p=nvwParts(v);
+      el.innerHTML='<span class="nvw-cur">Rs</span><span class="nvw-int">'+escLabelText(p.int)+'</span><span class="nvw-dec">'+escLabelText(p.dec)+'</span>';
+      el.setAttribute("aria-label",(Number(v)<0?"You owe NovaX ":"")+moneyExact(Math.abs(Number(v)||0)));
+    }
+    function nvwRenderCard(balance){
+      NV_W3.balance=Number(balance)||0;
+      var card=document.getElementById("nvwCard"); if(!card) return;
+      var owe=NV_W3.balance<0, hidden=nvwHidden();
+      card.classList.toggle("is-owe",owe);
+      card.classList.toggle("is-hidden",hidden);
+      var lab=document.getElementById("nvwLabel"); if(lab) lab.textContent=owe?"You owe NovaX":"Available to withdraw";
+      var eye=document.getElementById("nvwEye");
+      if(eye){ eye.setAttribute("aria-pressed",hidden?"true":"false"); var t=hidden?"Show balance":"Hide balance"; eye.setAttribute("aria-label",t); eye.title=t; }
+      var idt=document.getElementById("nvwIdText"), wid=nvwWalletId(); if(idt) idt.textContent=wid||"—";
+      var idb=document.getElementById("nvwId"); if(idb) idb.hidden=!wid;
+      var dues=document.getElementById("nvwActDues"); if(dues) dues.hidden=!owe;
+      var acts=document.getElementById("nvwActs"); if(acts) acts.classList.toggle("has-dues",owe);
+    }
+
+    function nvwDayLabel(key){
+      if(!key) return "Earlier";
+      var opt={ timeZone:"Asia/Karachi" };
+      var today=new Date().toLocaleDateString("en-CA",opt), yday=new Date(Date.now()-864e5).toLocaleDateString("en-CA",opt);
+      if(key===today) return "Today";
+      if(key===yday) return "Yesterday";
+      var d=new Date(key+"T12:00:00+05:00");
+      if(isNaN(d)) return key;
+      var o={ weekday:"short", day:"numeric", month:"short", timeZone:"Asia/Karachi" };
+      if(key.slice(0,4)!==today.slice(0,4)) o.year="numeric";
+      return d.toLocaleDateString("en-GB",o);
+    }
+    function nvwTime(v){
+      var m=String(v||"").match(/\d{4}-\d{2}-\d{2}[ T](\d{2}):(\d{2})/);
+      if(!m) return "";
+      var h=+m[1]; return (h%12||12)+":"+m[2]+" "+(h>=12?"pm":"am");
+    }
+    /* One transaction per event. A payout writes three ledger rows
+       (withdrawal_requested, payout_fee, payout_paid); the fee and the paid
+       marker never move the balance, so they fold into the payout's receipt
+       the way a banking app shows one transfer. */
+    function nvwTransactions(rows){
+      var wds=state.walletWithdrawals||[], groups={};
+      rows.forEach(function(l){
+        if(String(l.referenceType||"")!=="withdrawal") return;
+        var k=String(l.referenceId||l.referenceCode||""); if(!k) return;
+        (groups[k]=groups[k]||{})[l.entryType]=l;
+      });
+      var out=[];
+      rows.forEach(function(l){
+        var k=String(l.referenceId||l.referenceCode||""), g=groups[k];
+        if((l.entryType==="payout_fee"||l.entryType==="payout_paid") && String(l.referenceType||"")==="withdrawal" && g && g.withdrawal_requested) return;
+        out.push(nvwTx(l,g||null,wds));
+      });
+      return out;
+    }
+    function nvwTx(l, g, wds){
+      var t=l.entryType, amt=Number(l.amount||0), ref=l.referenceCode||"";
+      var x={ l:l, type:t, amount:amt, affects:!!l.affectsBalance, day:String(l.createdAt||"").slice(0,10), time:nvwTime(l.createdAt),
+              when:l.createdAt, sub:"", note:"", rows:null, tag:null, kind:"", icon:"adjust", title:"" };
+      if(t==="invoice_credit"){
+        var inv=(state.invoices||[]).find(function(i){ return i && i.id===ref; })||null, n=inv?(inv.parcelRefs||[]).length:0;
+        x.kind="in"; x.icon="in"; x.inv=inv;
+        x.title=n?("COD from "+n+" parcel"+(n===1?"":"s")):"COD settlement"; x.sub=ref;
+        x.rows=[["Invoice",ref], inv?["Parcels",String(n)]:null, inv?["COD collected",moneyExact(inv.cod)]:null,
+                inv?["Delivery charges","− "+moneyExact(inv.charges)]:null, ["Credited to wallet",moneyExact(amt)], ["Date",nvNiceDate(l.createdAt)]];
+      } else if(t==="withdrawal_requested"){
+        var w=wds.find(function(v){ return v && (String(v._uuid)===String(l.referenceId) || String(v.id)===String(l.referenceCode)); })||null;
+        var st=w?String(w.status||""):"", fee=w?Number(w.fee||0):Math.abs(Number(g&&g.payout_fee&&g.payout_fee.amount||0));
+        x.kind="payout"; x.icon="out"; x.w=w;
+        x.title="Payout to "+nvwBankLine(w&&w.iban);
+        x.sub=w?(walletSpeedLabel(w.speed)+" payout"):"Payout";
+        x.tag=st==="Paid"?["Completed","good"]:(/reject|cancel/i.test(st)?["Returned","info"]:["Processing","warn"]);
+        x.rows=[["Amount",moneyExact(Math.abs(amt))], ["Payout fee"+(w?" ("+walletFeePct(w.speed)+")":""), fee>0?("− "+moneyExact(fee)):"None"],
+                ["You receive",moneyExact(w?Number(w.net||0):Math.abs(amt)-fee)], ["To",nvwBankLine(w&&w.iban)],
+                ["Speed",w?walletSpeedLabel(w.speed):"—"], ["Requested",nvNiceDate(l.createdAt)],
+                (w&&w.paidAt)?["Paid",nvNiceDate(w.paidAt)]:null, (w&&w.paidTxnId)?["Bank reference",w.paidTxnId]:null,
+                w?["Receipt no.",w.id]:null];
+      } else if(t==="payout_rejected"){
+        x.kind="in"; x.icon="back"; x.title="Payout returned to wallet"; x.tag=["Returned","info"];
+      } else if(t==="delivery_charge_due"){
+        x.kind="charge"; x.icon="charge"; x.title="Delivery charge"; x.sub=ref?("Parcel "+ref):"";
+      } else if(t==="invoice_due_debit"){
+        x.kind="charge"; x.icon="charge"; x.title="Delivery charges"; x.sub=ref;
+      } else if(t==="invoice_due_reversal"){
+        x.kind="in"; x.icon="back"; x.title="Charges returned"; x.sub=ref;
+      } else if(t==="due_payment"){
+        x.kind="in"; x.icon="in"; x.title="Payment received by NovaX"; x.sub=ref;
+      } else if(t==="admin_adjustment"){
+        x.kind=!x.affects?"info":(amt>=0?"in":"charge"); x.icon="adjust";
+        x.title=x.affects?"Adjustment by NovaX":"Balance note";
+      } else if(t==="payout_fee" || t==="payout_paid"){
+        x.kind="info"; x.icon="info"; x.title=t==="payout_fee"?"Payout fee (included)":"Payout completed";
+      } else {
+        x.kind=!x.affects?"info":(amt>=0?"in":"charge");
+        x.title=t.replace(/_/g," ").replace(/^./,function(c){ return c.toUpperCase(); });
+      }
+      if(!x.tag) x.tag=x.affects?["Completed","good"]:["Info",""];
+      if(!x.sub) x.sub=l.note||ref||"";
+      if(!x.note && l.note && x.kind!=="payout" && x.kind!=="in") x.note=l.note;
+      if(!x.rows) x.rows=[["Amount",x.affects?moneyExact(Math.abs(amt)):(amt?"Included: "+moneyExact(Math.abs(amt)):"—")],
+                          ["Date",nvNiceDate(l.createdAt)], ref?["Reference",ref]:null];
+      x.sign=!x.affects?"":(amt>=0?"+":"−");
+      x.amountText=x.affects?(x.sign+" "+moneyExact(Math.abs(amt))):(amt?"incl. "+moneyExact(Math.abs(amt)):"—");
+      return x;
+    }
+    function nvwMatches(x, f){
+      if(f==="in") return x.affects && x.amount>0;
+      if(f==="out") return x.affects && x.amount<0;
+      if(f==="payouts") return x.kind==="payout" || x.type==="payout_rejected";
+      return true;
+    }
+    function nvwRenderActivity(host, rows, tailHtml){
+      if(!host) return;
+      NV_W3.list=nvwTransactions(rows.slice().sort(function(a,b){ return String(b.createdAt||"").localeCompare(String(a.createdAt||"")); }));
+      var f=NV_W3.filter||"all", shown=[], html="", lastDay=null;
+      NV_W3.list.forEach(function(x,i){ if(nvwMatches(x,f)) shown.push(i); });
+      document.querySelectorAll("[data-nvw-filter]").forEach(function(b){
+        var on=b.getAttribute("data-nvw-filter")===f; b.classList.toggle("is-on",on); b.setAttribute("aria-pressed",on?"true":"false");
+      });
+      shown.forEach(function(i){
+        var x=NV_W3.list[i];
+        if(x.day!==lastDay){ lastDay=x.day; html+='<div class="nvw-day">'+escLabelText(nvwDayLabel(x.day))+'</div>'; }
+        var ico=x.kind==="payout"?"out":(x.kind==="info"?"":x.kind);
+        var amtCls=!x.affects?"info":(x.amount>=0?"pos":"");
+        html+='<button type="button" class="nvw-row" data-nvw-tx="'+i+'">'+
+          '<span class="nvw-ico '+ico+'">'+(NV_W3_ICONS[x.icon]||NV_W3_ICONS.adjust)+'</span>'+
+          '<span class="nvw-t"><b>'+escLabelText(x.title)+'</b><span>'+escLabelText([x.time,x.sub].filter(Boolean).join(" · "))+'</span></span>'+
+          '<span class="nvw-r"><span class="nvw-amt '+amtCls+'">'+escLabelText(x.amountText)+'</span><span class="nvw-tag '+x.tag[1]+'">'+escLabelText(x.tag[0])+'</span></span>'+
+        '</button>';
+      });
+      if(!NV_W3.list.length) html='<div class="nvw-empty">No wallet activity yet. COD from delivered parcels shows up here once it is credited to your wallet.</div>';
+      else if(!shown.length) html='<div class="nvw-empty">Nothing here yet.</div>';
+      host.innerHTML=html+(tailHtml?'<div class="nvw-recon">'+tailHtml+'</div>':'');
+      /* A small entrance when what the list shows changes (another filter,
+         new entries) -- movement only, never a fade, so rows are never
+         invisible if the animation does not run. */
+      var sig=f+"|"+shown.length+"|"+(shown.length?String(NV_W3.list[shown[0]].l.id):"");
+      if(sig!==NV_W3.sig){
+        NV_W3.sig=sig;
+        if(document.visibilityState==="visible" && !nvwReduced()){
+          Array.prototype.slice.call(host.querySelectorAll(".nvw-row"),0,10).forEach(function(r,i){
+            r.style.animationDelay=(i*35)+"ms"; r.classList.add("nvw-enter");
+          });
+        }
+      }
+    }
+
+    /* The sheet: bottom sheet on a phone, centred card on a wider screen. */
+    function nvwOpenSheet(inner, onAction, opts){
+      opts=opts||{};
+      var prev=document.activeElement;
+      var back=document.createElement("div"); back.className="nvw-back";
+      var sh=document.createElement("div"); sh.className="nvw-sheet";
+      sh.setAttribute("role","dialog"); sh.setAttribute("aria-modal","true");
+      sh.innerHTML='<div class="nvw-grab" aria-hidden="true"></div>'+inner;
+      var t=sh.querySelector(".nvw-rc-title"); if(t){ t.id="nvwSheetT"+Date.now(); sh.setAttribute("aria-labelledby",t.id); }
+      back.appendChild(sh); document.body.appendChild(back);
+      try{ document.body.style.overflow="hidden"; }catch(e){}
+      var closed=false;
+      function close(){
+        if(closed) return;
+        if(opts.canClose && !opts.canClose()) return;
+        closed=true;
+        document.removeEventListener("keydown",onKey,true);
+        if(opts.onClose){ try{ opts.onClose(); }catch(e){} }
+        back.classList.add("out");
+        setTimeout(function(){ if(back.parentNode) back.parentNode.removeChild(back); try{ document.body.style.overflow=""; }catch(e){} },220);
+        try{ if(prev&&prev.focus) prev.focus(); }catch(e){}
+      }
+      function onKey(e){
+        if(e.key==="Escape"){ e.preventDefault(); close(); return; }
+        if(e.key==="Tab"){
+          var f=sh.querySelectorAll("button"); if(!f.length) return;
+          if(e.shiftKey && document.activeElement===f[0]){ e.preventDefault(); f[f.length-1].focus(); }
+          else if(!e.shiftKey && document.activeElement===f[f.length-1]){ e.preventDefault(); f[0].focus(); }
+        }
+      }
+      document.addEventListener("keydown",onKey,true);
+      back.addEventListener("click",function(e){
+        if(e.target===back){ close(); return; }
+        var b=e.target.closest&&e.target.closest("[data-nvw]"); if(!b) return;
+        var a=b.getAttribute("data-nvw");
+        if(a==="close"){ close(); return; }
+        if(onAction) onAction(a,close,b);
+      });
+      var first=sh.querySelector("button:not([hidden])"); if(first){ try{ first.focus({ preventScroll:true }); }catch(e){} }
+      return { close:close, sheet:sh, back:back };
+    }
+    function nvwRowsHtml(rows){
+      return '<dl class="nvw-rc-rows">'+rows.filter(Boolean).map(function(r){
+        return '<div><dt>'+escLabelText(r[0])+'</dt><dd>'+escLabelText(r[1])+'</dd></div>';
+      }).join("")+'</dl>';
+    }
+    function nvwOpenReceipt(x){
+      var ico=x.kind==="payout"?"out":(x.kind==="info"?"":x.kind);
+      var inner='<div class="nvw-rc-head"><span class="nvw-ico '+ico+'">'+(NV_W3_ICONS[x.icon]||NV_W3_ICONS.adjust)+'</span>'+
+        '<div class="nvw-rc-title">'+escLabelText(x.title)+'</div>'+
+        '<div class="nvw-rc-amt'+(x.affects&&x.amount>=0?" pos":"")+'">'+escLabelText(x.amountText)+'</div>'+
+        '<span class="nvw-tag '+x.tag[1]+'">'+escLabelText(x.tag[0])+'</span></div>'+
+        (x.kind==="payout" ? nvwTrackerHtml(x.w, x.when) : "")+
+        nvwRowsHtml(x.rows)+
+        (x.note?'<p class="nvw-rc-note">'+escLabelText(x.note)+'</p>':'')+
+        '<div class="nvw-rc-acts">'+
+          '<button type="button" class="nvw-primary" data-nvw="share">'+NV_W3_ICONS.share+'Share receipt</button>'+
+          (x.w?'<button type="button" class="nvw-sec" data-nvw="doc">Full receipt</button>':'')+
+          (x.inv?'<button type="button" class="nvw-sec" data-nvw="inv">Open invoice</button>':'')+
+          '<button type="button" class="nvw-sec" data-nvw="close">Close</button>'+
+        '</div>';
+      nvwOpenSheet(inner,function(a,close,b){
+        if(a==="share"){ nvwShareReceipt(x,b); return; }
+        if(a==="doc" && x.w){ close(); try{ nvWithdrawalReceipt(x.w.id); }catch(e){} return; }
+        if(a==="inv" && x.inv){ close(); try{ viewInvoice(x.inv.id); }catch(e){} return; }
+      });
+    }
+    function nvwOpenDues(){
+      var owed=Math.abs(Math.min(0,NV_W3.balance));
+      var inner='<div class="nvw-rc-head"><span class="nvw-ico charge">'+NV_W3_ICONS.charge+'</span>'+
+        '<div class="nvw-rc-title">You owe NovaX</div><div class="nvw-rc-amt">'+escLabelText(moneyExact(owed))+'</div></div>'+
+        '<p class="nvw-rc-note">These are delivery charges on prepaid and returned parcels, where there was no COD to take them from. Your next COD clears them first, automatically.</p>'+
+        '<div class="nvw-rc-acts">'+
+          '<button type="button" class="nvw-primary" data-nvw="dues-msg">Pay now: message NovaX</button>'+
+          '<button type="button" class="nvw-sec" data-nvw="dues-list">See the charges</button>'+
+          '<button type="button" class="nvw-sec" data-nvw="close">Close</button>'+
+        '</div>';
+      nvwOpenSheet(inner,function(a,close){
+        close();
+        if(a==="dues-list"){
+          setTimeout(function(){ var p=document.getElementById("nvOwedPanel"); if(p&&p.style.display!=="none"&&p.scrollIntoView) p.scrollIntoView({ behavior:"smooth", block:"start" }); },240);
+          return;
+        }
+        if(a==="dues-msg"){
+          showClientTab("tickets");
+          setTimeout(function(){
+            var s=document.getElementById("nvTkSubject"), b=document.getElementById("nvTkBody");
+            if(s && !s.value) s.value="Pay my NovaX dues";
+            if(b && !b.value) b.value="I want to pay my dues of "+moneyExact(owed)+" now. Please share how to pay.";
+            if(b){ try{ b.focus(); }catch(e){} }
+          },250);
+        }
+      });
+    }
+
+    /* The receipt as a picture, the way Pakistani merchants already pass
+       transfer proof around: drawn on a canvas, shared through the phone's
+       share sheet (WhatsApp is one tap away), downloaded where sharing files
+       is not supported. Masked IBAN only; nothing that is not on screen. */
+    function nvwRR(g,x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
+    function nvwFit(g,text,max){
+      text=String(text==null?"":text); if(g.measureText(text).width<=max) return text;
+      while(text.length>1 && g.measureText(text+"…").width>max) text=text.slice(0,-1);
+      return text+"…";
+    }
+    function nvwReceiptImage(x){
+      return new Promise(function(resolve,reject){
+        var rows=(x.rows||[]).filter(Boolean), W=1080, H=Math.max(1350, 880+rows.length*86);
+        var c=document.createElement("canvas"); c.width=W; c.height=H;
+        var g=c.getContext("2d"); if(!g){ reject(new Error("canvas")); return; }
+        var F='Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif', L=108, R=W-108;
+        g.fillStyle="#e9f0ec"; g.fillRect(0,0,W,H);
+        nvwRR(g,48,48,W-96,H-96,44); g.fillStyle="#ffffff"; g.fill();
+        g.save(); nvwRR(g,48,48,W-96,H-96,44); g.clip();
+        var hg=g.createLinearGradient(48,48,W-48,300); hg.addColorStop(0,"#0b3a29"); hg.addColorStop(1,"#06170f");
+        g.fillStyle=hg; g.fillRect(48,48,W-96,236); g.restore();
+        g.fillStyle="#ffffff"; g.font="800 50px "+F; g.textBaseline="alphabetic"; g.fillText("NovaX",L,150);
+        var nw=g.measureText("NovaX ").width; g.font="500 50px "+F; g.fillText("Logistics",L+nw,150);
+        g.fillStyle="#8ff0c7"; g.font="700 28px "+F; g.fillText("WALLET RECEIPT",L,206);
+        var biz=(state.client&&state.client.name)||""; if(biz){ g.textAlign="right"; g.fillStyle="#cfe8dc"; g.font="600 30px "+F; g.fillText(nvwFit(g,biz,420),R,206); g.textAlign="left"; }
+        g.textAlign="center"; g.fillStyle="#52645a"; g.font="600 36px "+F; g.fillText(nvwFit(g,x.title,W-260),W/2,380);
+        g.fillStyle=(x.affects&&x.amount>=0)?"#0c7c59":"#10201b"; g.font="800 92px "+F; g.fillText(nvwFit(g,x.amountText,W-220),W/2,490);
+        var tag=x.tag[0], tc=x.tag[1]==="good"?["#e6f6ee","#0c7c59"]:x.tag[1]==="warn"?["#fff6e5","#8a5a00"]:["#eef2f6","#4b5b53"];
+        g.font="800 28px "+F; var tw=g.measureText(tag).width+56;
+        nvwRR(g,W/2-tw/2,528,tw,54,27); g.fillStyle=tc[0]; g.fill(); g.fillStyle=tc[1]; g.fillText(tag,W/2,565);
+        g.textAlign="left"; var y=660;
+        g.strokeStyle="#c9d6cf"; g.setLineDash([10,10]); g.beginPath(); g.moveTo(L,y-40); g.lineTo(R,y-40); g.stroke(); g.setLineDash([]);
+        rows.forEach(function(r){
+          g.fillStyle="#62736a"; g.font="500 32px "+F; g.textAlign="left"; g.fillText(nvwFit(g,r[0],360),L,y+20);
+          g.fillStyle="#10201b"; g.font="700 32px "+F; g.textAlign="right"; g.fillText(nvwFit(g,r[1],R-L-400),R,y+20);
+          g.strokeStyle="#e7efeb"; g.beginPath(); g.moveTo(L,y+50); g.lineTo(R,y+50); g.stroke();
+          y+=86;
+        });
+        g.textAlign="center"; g.fillStyle="#7b8a82"; g.font="500 26px "+F;
+        var made=new Date().toLocaleString("en-GB",{ day:"numeric", month:"short", year:"numeric", hour:"numeric", minute:"2-digit", hour12:true, timeZone:"Asia/Karachi" });
+        g.fillText("Generated "+made+" PKT · novaxlogistics.com",W/2,H-100);
+        c.toBlob(function(b){ if(b) resolve(b); else reject(new Error("toBlob")); },"image/png");
+      });
+    }
+    function nvwShareReceipt(x, btn){
+      var was=btn?btn.innerHTML:"";
+      if(btn){ btn.disabled=true; btn.textContent="Preparing…"; }
+      var done=function(msg){
+        if(!btn) return;
+        if(msg){ btn.textContent=msg; setTimeout(function(){ btn.disabled=false; btn.innerHTML=was; },2600); }
+        else { btn.disabled=false; btn.innerHTML=was; }
+      };
+      var ref=(x.w&&x.w.id)||x.l.referenceCode||x.l.id||"wallet";
+      var name="NovaX-receipt-"+String(ref).replace(/[^A-Za-z0-9_-]/g,"").slice(0,40)+".png";
+      nvwReceiptImage(x).then(function(blob){
+        var file=null; try{ file=new File([blob],name,{ type:"image/png" }); }catch(e){}
+        if(file && navigator.canShare && navigator.share && navigator.canShare({ files:[file] })){
+          return navigator.share({ files:[file], title:"NovaX receipt", text:x.title+" · "+x.amountText })
+            .then(done,function(e){ done(); if(!(e&&e.name==="AbortError")){ nvwDownload(blob,name); } });
+        }
+        nvwDownload(blob,name); done("Saved to your downloads");
+      }).catch(function(){ done("Could not make the image. Try Full receipt."); });
+    }
+    function nvwDownload(blob,name){
+      try{
+        var u=URL.createObjectURL(blob), a=document.createElement("a");
+        a.href=u; a.download=name; document.body.appendChild(a); a.click();
+        setTimeout(function(){ URL.revokeObjectURL(u); if(a.parentNode) a.parentNode.removeChild(a); },1500);
+      }catch(e){}
+    }
+    document.addEventListener("click",function(e){
+      var t=e.target&&e.target.closest?e.target.closest("#nvwEye,#nvwId,#nvwActStatement,#nvwActReceipts,#nvwActDues,[data-nvw-filter],[data-nvw-tx]"):null;
+      if(!t) return;
+      if(t.id==="nvwEye"){
+        nvwSetHidden(!nvwHidden()); nvwRenderCard(NV_W3.balance);
+        nvwPaintBalance(document.getElementById("walletBalanceText"),NV_W3.balance); return;
+      }
+      if(t.id==="nvwId"){
+        var id=nvwWalletId(); if(!id) return;
+        var ok=function(){ try{ toast("Wallet ID "+id+" copied.","success"); }catch(err){} };
+        try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(id).then(ok,function(){ toast("Your wallet ID is "+id+"."); }); return; } }catch(err){}
+        toast("Your wallet ID is "+id+"."); return;
+      }
+      if(t.id==="nvwActStatement"){ try{ nvWalletStatement(); }catch(err){} return; }
+      if(t.id==="nvwActDues"){ nvwOpenDues(); return; }
+      if(t.id==="nvwActReceipts" || t.hasAttribute("data-nvw-filter")){
+        NV_W3.filter=t.id==="nvwActReceipts"?"payouts":(t.getAttribute("data-nvw-filter")||"all");
+        try{ renderClientWallet(); }catch(err){}
+        if(t.id==="nvwActReceipts"){ var h=document.getElementById("nvwActivityHead"); if(h&&h.scrollIntoView) h.scrollIntoView({ behavior:"smooth", block:"start" }); }
+        return;
+      }
+      var i=Number(t.getAttribute("data-nvw-tx")), x=NV_W3.list[i];
+      if(x) nvwOpenReceipt(x);
+    });
+
+    /* ─── Wallet v3, part 2 (30 Sep 2026) ─────────────────────────────────
+       Transfer-style withdraw, the payout tracker, "just landed", the bank
+       card and a bank-style monthly statement. Money only ever moves through
+       nvWithdrawCore -- the same protected, replay-safe path as the classic
+       form -- and every figure is read from state the server filled. */
+    NV_W3_ICONS.del='<svg viewBox="0 0 24 24"><path d="M21 5H9l-6 7 6 7h12z"/><path d="M13 10l4 4M17 10l-4 4"/></svg>';
+    NV_W3_ICONS.prev='<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>';
+    NV_W3_ICONS.doc='<svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg>';
+    NV_W3_ICONS.bank='<svg viewBox="0 0 24 24"><path d="M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 21h18"/></svg>';
+    function nvwReduced(){ try{ return matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){ return false; } }
+    function nvwBuzz(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms||15); }catch(e){} }
+    function nvwAvailable(){
+      var c=clientById(state.client.id), sv=state.serverWalletSummary;
+      return Math.max(0, sv ? Number(sv.available_balance||0) : Number((c&&c.walletBalance)||0));
+    }
+    function nvwFloor2(n){ return Math.floor((Number(n)||0)*100+1e-6)/100; }
+    function nvwIbanPretty(iban){
+      var s=String(iban||"").replace(/\s+/g,"").toUpperCase();
+      if(s.length<12) return s||"—";
+      return s.slice(0,4)+" "+s.slice(4,8)+" •••• •••• "+s.slice(-4);
+    }
+    function nvwBankName(bd){
+      var s=String((bd&&bd.iban)||"").replace(/\s+/g,"").toUpperCase();
+      return (bd && String(bd.bankName||"").trim()) || NV_W3_BANKS[s.slice(4,8)] || "Your bank";
+    }
+    function nvwVerified(){ try{ return !!(NV_KYC && NV_KYC.data && NV_KYC.data.status==="verified"); }catch(e){ return false; } }
+    /* A count between two figures on an element; exact on the last frame. */
+    function nvwTween(el, from, to, fmt, ms){
+      if(!el) return;
+      fmt=fmt||moneyExact;
+      if(nvwReduced() || from===to){ el.textContent=fmt(to); return; }
+      var t0=performance.now(), dur=ms||450;
+      (function step(ts){
+        var k=Math.min(1,((ts||performance.now())-t0)/dur), e=1-Math.pow(1-k,3);
+        el.textContent=k<1 ? fmt(Math.round((from+(to-from)*e)*100)/100) : fmt(to);
+        if(k<1 && el.isConnected) requestAnimationFrame(step);
+      })(t0);
+    }
+    function nvwConfetti(host){
+      if(nvwReduced() || !host) return;
+      var box=document.createElement("div"); box.className="nvw-confetti"; box.setAttribute("aria-hidden","true");
+      var colors=["#14c77b","#8ff0c7","#0c7c59","#f5c451","#ffffff"];
+      for(var i=0;i<22;i++){
+        var p=document.createElement("i");
+        p.style.setProperty("--x",(Math.random()*240-120).toFixed(0)+"px");
+        p.style.setProperty("--y",(-(Math.random()*150+70)).toFixed(0)+"px");
+        p.style.setProperty("--r",(Math.random()*540-270).toFixed(0)+"deg");
+        p.style.setProperty("--d",(Math.random()*120).toFixed(0)+"ms");
+        p.style.background=colors[i%colors.length];
+        box.appendChild(p);
+      }
+      host.appendChild(box);
+      setTimeout(function(){ if(box.parentNode) box.parentNode.removeChild(box); },1600);
+    }
+
+    /* ── Payout tracker: Requested -> Being verified -> Paid ─────────────── */
+    function nvwTrackerHtml(w, requestedAt){
+      var st=w?String(w.status||""):"", paid=st==="Paid", back=/reject|cancel/i.test(st);
+      var steps=[{ t:"Requested", s:nvNiceDate(requestedAt||(w&&w.createdAt)||""), c:"done" }];
+      if(back){
+        steps.push({ t:"Returned to your wallet", s:"This payout was not sent. The money is back in your balance.", c:"bad" });
+      } else {
+        steps.push({ t:"Being verified", s:paid?"Checked by NovaX finance":"NovaX finance is checking it and sending it to your bank", c:paid?"done":"now" });
+        steps.push({ t:"Paid", s:paid?(nvNiceDate(w.paidAt)+(w.paidTxnId?" · Bank ref "+w.paidTxnId:"")):"Shows here with the bank reference once paid", c:paid?"done":"next" });
+      }
+      return '<ol class="nvw-track" aria-label="Payout progress">'+steps.map(function(x){
+        return '<li class="is-'+x.c+'"><i aria-hidden="true"></i><div><b>'+escLabelText(x.t)+'</b><span>'+escLabelText(x.s)+'</span></div></li>';
+      }).join("")+'</ol>';
+    }
+
+    /* ── Bank card ─────────────────────────────────────────────────────── */
+    function nvwBankCardHtml(bd){
+      if(!bd || !bd.iban) return '<div class="nvw-bank is-empty"><b>No bank account yet</b><span>Add the account your payouts should go to.</span></div>';
+      return '<div class="nvw-bank"><span class="nvw-sheen" aria-hidden="true"></span>'+
+        '<div class="nvw-bank-top"><b>'+escLabelText(nvwBankName(bd))+'</b>'+
+          '<span class="nvw-bank-ok" data-nvw-verified'+(nvwVerified()?'':' hidden')+'><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>Owner verified</span></div>'+
+        '<i class="nvw-bank-chip" aria-hidden="true"></i>'+
+        '<div class="nvw-bank-num">'+escLabelText(nvwIbanPretty(bd.iban))+'</div>'+
+        '<div class="nvw-bank-foot"><span>Account holder</span><b>'+escLabelText(bd.holderName||"—")+'</b></div>'+
+      '</div>';
+    }
+    function nvwOpenBank(){
+      var bd=state.clientBankDetails||null, has=!!(bd&&bd.iban);
+      var note=function(){ return has ? (nvwVerified() ? "Payouts go only to this account. The owner's CNIC is verified."
+                                                       : "Payouts go only to this account. Add the owner's CNIC in Profile to get the verified tick.")
+                                      : "Add the bank account your payouts should go to."; };
+      var inner='<div class="nvw-rc-head"><div class="nvw-rc-title">Payout account</div></div>'+
+        '<div class="nvw-bank-wrap">'+nvwBankCardHtml(bd)+'</div>'+
+        '<p class="nvw-rc-note" data-nvw-vnote>'+escLabelText(note())+'</p>'+
+        '<div class="nvw-rc-acts"><button type="button" class="nvw-primary" data-nvw="bank-edit">'+(has?"Change bank account":"Add bank account")+'</button>'+
+        '<button type="button" class="nvw-sec" data-nvw="close">Close</button></div>';
+      var h=nvwOpenSheet(inner,function(a,close){
+        if(a==="bank-edit"){ close(); setTimeout(function(){ try{ nvOpenWalletForms("bankHolderName"); }catch(e){} },240); }
+      });
+      if(has && !nvwVerified() && !window.__NOVAX_DEMO && typeof nvKycLoad==="function"){
+        Promise.resolve(nvKycLoad()).then(function(){
+          if(!nvwVerified() || !h.sheet) return;
+          var b=h.sheet.querySelector("[data-nvw-verified]"); if(b) b.hidden=false;
+          var n=h.sheet.querySelector("[data-nvw-vnote]"); if(n) n.textContent=note();
+        }).catch(function(){});
+      }
+    }
+
+    /* ── Withdraw, like a transfer ─────────────────────────────────────── */
+    function nvwEta(speed){
+      var hours=speed==="instant"?3:speed==="12h"?12:24;
+      var by=new Date(Date.now()+hours*3600e3).toLocaleString("en-GB",{ weekday:"short", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true, timeZone:"Asia/Karachi" });
+      return (speed==="instant"?"usually within 2-3 hours":speed==="12h"?"within 12 hours":"within 24 hours")+" (by "+by+")";
+    }
+    function nvwPktNow(){
+      var d=new Date();
+      return d.toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" })+" "+d.toLocaleTimeString("en-GB",{ timeZone:"Asia/Karachi", hour:"2-digit", minute:"2-digit", hourCycle:"h23" });
+    }
+    function nvwOpenWithdraw(){
+      var avail=nvwAvailable(), bd=state.clientBankDetails||null;
+      var iban=bd&&bd.iban?String(bd.iban).replace(/\s+/g,"").toUpperCase():"";
+      var S={ raw:"", speed:state.walletWithdrawSpeed||"24h", busy:false, hold:null, step:"amount" };
+      if(["24h","12h","instant"].indexOf(S.speed)<0) S.speed="24h";
+      var keys=["1","2","3","4","5","6","7","8","9",".","0","del"];
+      var inner='<div class="nvw-wd">'+
+        '<div class="nvw-wd-head"><button type="button" class="nvw-wd-back" data-nvw="wd-back" aria-label="Back" hidden>'+NV_W3_ICONS.prev+'</button>'+
+          '<div class="nvw-rc-title">Withdraw</div><span class="nvw-wd-dots" aria-hidden="true"><i class="is-on"></i><i></i><i></i></span></div>'+
+        '<section class="nvw-wd-step" data-wd="amount">'+
+          '<div class="nvw-wd-avail">Available <b>'+escLabelText(moneyExact(avail))+'</b></div>'+
+          '<div class="nvw-wd-amt" data-wd-amt><span class="nvw-cur">Rs</span><span data-wd-num>0</span><i class="nvw-caret" aria-hidden="true"></i></div>'+
+          '<div class="nvw-wd-err" data-wd-err role="alert"></div>'+
+          '<div class="nvw-wd-chips"><button type="button" data-wd-pct="25">25%</button><button type="button" data-wd-pct="50">50%</button><button type="button" data-wd-pct="100">All</button></div>'+
+          '<div class="nvw-keypad">'+keys.map(function(k){
+            return '<button type="button" data-wd-key="'+k+'" aria-label="'+(k==="del"?"Delete":k==="."?"Decimal point":k)+'">'+(k==="del"?NV_W3_ICONS.del:k)+'</button>';
+          }).join("")+'</div>'+
+          '<button type="button" class="nvw-primary nvw-wd-go" data-nvw="wd-next" disabled>Continue</button>'+
+        '</section>'+
+        '<section class="nvw-wd-step" data-wd="speed" hidden></section>'+
+        '<section class="nvw-wd-step" data-wd="done" hidden></section>'+
+      '</div>';
+      var h=nvwOpenSheet(inner,onAction,{ onClose:function(){ document.removeEventListener("keydown",onKey,true); cancelHold(); },
+                                          canClose:function(){ return !S.busy; } });
+      var sh=h.sheet, $=function(q){ return sh.querySelector(q); };
+      sh.classList.add("nvw-sheet-wd");
+
+      function value(){ var n=Number(S.raw||0); return isFinite(n)?nvwFloor2(n):0; }
+      function shake(){
+        var a=$("[data-wd-amt]"); if(!a || nvwReduced()) return;
+        a.classList.remove("is-shake"); void a.offsetWidth; a.classList.add("is-shake"); nvwBuzz(30);
+      }
+      function paintAmount(pop){
+        var raw=S.raw||"0", i=raw.indexOf("."), int=i>-1?raw.slice(0,i):raw, dec=i>-1?raw.slice(i):"";
+        var intFmt=Number(int||0).toLocaleString("en-PK");
+        var num=$("[data-wd-num]"); if(num) num.textContent=intFmt+dec;
+        var v=value(), err=$("[data-wd-err]"), go=$("[data-nvw='wd-next']");
+        var msg=avail<=0 ? "Nothing to withdraw yet. New COD shows up here once it is credited."
+              : v>avail ? "That is more than your available balance."
+              : (S.raw && v>0 && v<1) ? "The smallest withdrawal is Rs 1." : "";
+        if(err) err.textContent=msg;
+        if(go) go.disabled=!(v>=1 && v<=avail);
+        var amt=$("[data-wd-amt]"); if(amt) amt.classList.toggle("is-over", v>avail);
+        if(pop && !nvwReduced() && num){ num.classList.remove("nvw-pop"); void num.offsetWidth; num.classList.add("nvw-pop"); }
+      }
+      function press(k){
+        if(S.step!=="amount" || avail<=0) return;
+        var r=S.raw;
+        if(k==="del"){ S.raw=r.slice(0,-1); paintAmount(true); return; }
+        if(k==="."){ if(r.indexOf(".")>-1){ shake(); return; } S.raw=(r||"0")+"."; paintAmount(true); return; }
+        if(/^\d$/.test(k)){
+          var i=r.indexOf(".");
+          if(i>-1 && r.length-i>2){ shake(); return; }                  // two decimals at most
+          if(i<0 && r.replace(/^0+/,"").length>=8){ shake(); return; } // Rs 99,999,999 at most
+          S.raw=(r==="0")?k:r+k;
+          if(Number(S.raw)>avail) shake();
+          paintAmount(true);
+        }
+      }
+      function setPct(p){
+        if(avail<=0) return;
+        var v=p>=100?nvwFloor2(avail):nvwFloor2(avail*p/100);
+        S.raw=(Math.round(v*100)%100===0)?String(Math.round(v)):v.toFixed(2);
+        paintAmount(true);
+      }
+      function dots(n){ Array.prototype.forEach.call(sh.querySelectorAll(".nvw-wd-dots i"),function(d,i){ d.classList.toggle("is-on",i<=n); }); }
+      function go(step){
+        S.step=step;
+        Array.prototype.forEach.call(sh.querySelectorAll("[data-wd]"),function(sec){
+          var on=sec.getAttribute("data-wd")===step; sec.hidden=!on;
+          if(on && !nvwReduced()){ sec.classList.remove("nvw-in"); void sec.offsetWidth; sec.classList.add("nvw-in"); }
+        });
+        var back=$("[data-nvw='wd-back']"); if(back) back.hidden=step!=="speed";
+        dots(step==="amount"?0:step==="speed"?1:2);
+        var f=sh.querySelector('[data-wd="'+step+'"] button:not([disabled])'); if(f){ try{ f.focus({ preventScroll:true }); }catch(e){} }
+      }
+      function renderSpeed(){
+        var amt=value(), sec=$('[data-wd="speed"]');
+        sec.innerHTML=
+          '<div class="nvw-wd-sum"><span>You are withdrawing</span><b>'+escLabelText(moneyExact(amt))+'</b></div>'+
+          '<div class="nvw-speeds" role="radiogroup" aria-label="Payout speed">'+["24h","12h","instant"].map(function(sp){
+            var on=sp===S.speed;
+            return '<button type="button" role="radio" aria-checked="'+on+'" class="nvw-speed'+(on?' is-on':'')+'" data-wd-speed="'+sp+'">'+
+              '<i aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></i>'+
+              '<span><b>'+escLabelText(walletSpeedLabel(sp))+'</b><em>Fee '+walletFeePct(sp)+' · '+escLabelText(moneyExact(nvPayoutFee(amt,sp)))+'</em></span></button>';
+          }).join("")+'</div>'+
+          '<div class="nvw-receive"><span>You will receive</span><b data-wd-net>'+escLabelText(moneyExact(amt-nvPayoutFee(amt,S.speed)))+'</b></div>'+
+          '<div class="nvw-wd-to"><span>To</span>'+nvwBankCardHtml(bd)+'</div>'+
+          (iban
+            ? '<button type="button" class="nvw-hold" data-wd-hold aria-label="Press and hold to withdraw '+escLabelText(moneyExact(amt))+'">'+
+                '<span class="nvw-hold-fill" aria-hidden="true"></span><span class="nvw-hold-t" data-wd-hold-t>Hold to withdraw '+escLabelText(moneyExact(amt))+'</span></button>'+
+              '<div class="nvw-wd-err" data-wd-err2 role="alert"></div>'+
+              '<p class="nvw-rc-note nvw-center">Press and hold for a second to confirm. Money goes only to the account above.</p>'
+            : '<button type="button" class="nvw-primary" data-nvw="wd-bank">Add bank account</button>'+
+              '<p class="nvw-rc-note nvw-center">Add where your payouts should go, then withdraw.</p>');
+        if(!iban) return;
+        var hold=$("[data-wd-hold]");
+        hold.addEventListener("pointerdown",function(e){ if(e.button!==undefined && e.button!==0) return; e.preventDefault(); startHold(e); });
+        ["pointerup","pointercancel","pointerleave"].forEach(function(t){ hold.addEventListener(t,cancelHold); });
+        hold.addEventListener("keydown",function(e){ if((e.key==="Enter"||e.key===" ") && !e.repeat){ e.preventDefault(); startHold(); } });
+        hold.addEventListener("keyup",function(e){ if(e.key==="Enter"||e.key===" ") cancelHold(); });
+        hold.addEventListener("contextmenu",function(e){ e.preventDefault(); });
+        hold.addEventListener("click",function(e){
+          e.preventDefault();
+          if(!S.busy && !S.hold){ var t=$("[data-wd-err2]"); if(t) t.textContent="Keep holding the button for a second."; }
+        });
+      }
+      function setHoldText(t){ var el=$("[data-wd-hold-t]"); if(el) el.textContent=t; }
+      function startHold(e){
+        if(S.busy || S.hold || S.step!=="speed") return;
+        var btn=$("[data-wd-hold]"); if(!btn) return;
+        if(e && e.pointerId!=null){ try{ btn.setPointerCapture(e.pointerId); }catch(x){} }
+        var t=$("[data-wd-err2]"); if(t) t.textContent="";
+        btn.classList.add("is-holding"); setHoldText("Keep holding…");
+        S.hold=setTimeout(function(){ S.hold=null; btn.classList.remove("is-holding"); btn.classList.add("is-done"); nvwBuzz(25); submit(); },1100);
+      }
+      function cancelHold(){
+        if(!S.hold) return;
+        clearTimeout(S.hold); S.hold=null;
+        var btn=$("[data-wd-hold]"); if(btn) btn.classList.remove("is-holding");
+        setHoldText("Hold to withdraw "+moneyExact(value()));
+      }
+      function resetHold(label){
+        var btn=$("[data-wd-hold]"); if(btn){ btn.classList.remove("is-holding","is-done","is-busy"); btn.disabled=false; }
+        setHoldText(label||("Hold to withdraw "+moneyExact(value())));
+      }
+      function fail(msg){ var t=$("[data-wd-err2]"); if(t) t.textContent=msg; nvwBuzz(40); }
+      function submit(){
+        if(S.busy) return;
+        var amt=value();
+        if(window.__NOVAX_DEMO){ resetHold(); try{ if(typeof window.nvDemoPrompt==="function") window.nvDemoPrompt("save"); }catch(e){} return; }
+        var ibanErr=validateIbanValue(iban); if(ibanErr){ resetHold(); fail(ibanErr); return; }
+        if(!(amt>=1) || amt>nvwAvailable()){ resetHold(); fail("That amount is no longer available. Go back and check it."); return; }
+        S.busy=true;
+        var btn=$("[data-wd-hold]"); if(btn){ btn.disabled=true; btn.classList.add("is-busy"); }
+        setHoldText("Sending…");
+        var back=$("[data-nvw='wd-back']"); if(back) back.disabled=true;
+        nvWithdrawCore(amt, iban, S.speed).then(function(res){
+          S.busy=false; if(back) back.disabled=false;
+          if(!res.ok){ resetHold(); fail(res.message); return; }
+          state.walletWithdrawSpeed=S.speed; try{ saveState(); }catch(e){}
+          showDone(res);
+          try{ render(); }catch(e){}
+          try{ if(window.__novaxReloadClientData) window.__novaxReloadClientData(); }catch(e){}
+        });
+      }
+      function showDone(res){
+        var id=res.d&&res.d.id;
+        var w=(state.walletWithdrawals||[]).find(function(x){ return x && id && String(x._uuid)===String(id); })||
+              { status:(res.d&&res.d.status)||"Pending admin payout", createdAt:nvwPktNow(), iban:iban, speed:res.speed, net:res.net, fee:res.fee };
+        var sec=$('[data-wd="done"]');
+        sec.innerHTML='<div class="nvw-done">'+
+          '<svg class="nvw-tick" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29"/><path d="M19 33.5l9 9 17-19"/></svg>'+
+          '<div class="nvw-rc-title">Withdrawal requested</div>'+
+          '<div class="nvw-rc-amt pos" data-wd-done-amt>'+escLabelText(moneyExact(res.net))+'</div>'+
+          '<p class="nvw-done-sub">To '+escLabelText(nvwBankLine(iban))+' · '+escLabelText(nvwEta(res.speed))+'</p>'+
+          nvwTrackerHtml(w, w.createdAt)+
+          '<div class="nvw-rc-acts"><button type="button" class="nvw-primary" data-nvw="wd-receipt">View receipt</button>'+
+          '<button type="button" class="nvw-sec" data-nvw="close">Done</button></div></div>';
+        S.done={ res:res, w:w };
+        go("done");
+        nvwTween($("[data-wd-done-amt]"),0,res.net,moneyExact,700);
+        nvwConfetti(sec); nvwBuzz(35);
+      }
+      function onAction(a, close){
+        if(a==="wd-next"){ if(value()>=1 && value()<=avail){ renderSpeed(); go("speed"); } return; }
+        if(a==="wd-back"){ if(!S.busy){ cancelHold(); go("amount"); } return; }
+        if(a==="wd-bank"){ close(); setTimeout(function(){ try{ nvOpenWalletForms("bankHolderName"); }catch(e){} },240); return; }
+        if(a==="wd-receipt" && S.done){
+          var r=S.done.res, row={ id:"wd-new", entryType:"withdrawal_requested", amount:-r.gross, affectsBalance:true,
+            referenceType:"withdrawal", referenceId:(r.d&&r.d.id)||"", referenceCode:(r.d&&r.d.id)||"", note:"", createdAt:S.done.w.createdAt||nvwPktNow() };
+          var x=nvwTx(row,null,(state.walletWithdrawals||[]));
+          if(!x.w) x.w=S.done.w;
+          close(); setTimeout(function(){ nvwOpenReceipt(x); },240);
+        }
+      }
+      function onKey(e){
+        if(S.step!=="amount" || e.ctrlKey || e.metaKey || e.altKey) return;
+        var k=e.key;
+        if(/^\d$/.test(k) || k==="." || k===","){ e.preventDefault(); press(k===","?".":k); return; }
+        if(k==="Backspace"){ e.preventDefault(); press("del"); return; }
+        if(k==="Enter"){ var g=$("[data-nvw='wd-next']"); if(g && !g.disabled){ e.preventDefault(); onAction("wd-next",h.close); } }
+      }
+      document.addEventListener("keydown",onKey,true);
+      sh.addEventListener("click",function(e){
+        var t=e.target&&e.target.closest?e.target.closest("[data-wd-key],[data-wd-pct],[data-wd-speed]"):null;
+        if(!t) return;
+        if(t.hasAttribute("data-wd-key")){ press(t.getAttribute("data-wd-key")); nvwBuzz(8); return; }
+        if(t.hasAttribute("data-wd-pct")){ setPct(Number(t.getAttribute("data-wd-pct"))); nvwBuzz(8); return; }
+        var sp=t.getAttribute("data-wd-speed"); if(!sp || S.busy || sp===S.speed) return;
+        var amt=value(), was=amt-nvPayoutFee(amt,S.speed);
+        S.speed=sp;
+        Array.prototype.forEach.call(sh.querySelectorAll("[data-wd-speed]"),function(b){
+          var on=b.getAttribute("data-wd-speed")===sp; b.classList.toggle("is-on",on); b.setAttribute("aria-checked",on?"true":"false");
+        });
+        nvwTween($("[data-wd-net]"),was,amt-nvPayoutFee(amt,sp));
+        nvwBuzz(8);
+      });
+      paintAmount(false);
+    }
+
+    /* ── "Rs 12,450 just landed" ───────────────────────────────────────────
+       Only for money that arrives WHILE the portal is open: the first server
+       load of the ledger is the baseline, and a credit is announced once. */
+    function nvwDetectLanded(rows){
+      var loads=window.__nvLedgerLoads||0;
+      if(!loads || window.__NOVAX_DEMO) return;
+      if(!NV_W3.seen){ NV_W3.seen={}; rows.forEach(function(l){ if(l&&l.id) NV_W3.seen[l.id]=1; }); NV_W3.seenLoads=loads; return; }
+      if(NV_W3.seenLoads===loads) return;
+      NV_W3.seenLoads=loads;
+      var fresh=rows.filter(function(l){ return l && l.id && !NV_W3.seen[l.id]; });
+      fresh.forEach(function(l){ NV_W3.seen[l.id]=1; });
+      var landed=fresh.filter(function(l){
+        return l.affectsBalance && Number(l.amount)>0 && /^(invoice_credit|admin_adjustment|due_payment|invoice_due_reversal|payout_rejected)$/.test(l.entryType);
+      });
+      if(landed.length) nvwShowLanded(landed.reduce(function(t,l){ return t+Number(l.amount||0); },0), landed);
+    }
+    function nvwShowLanded(sum, entries){
+      var old=document.getElementById("nvwLanded"); if(old && old.parentNode) old.parentNode.removeChild(old);
+      var one=entries.length===1 ? nvwTx(entries[0],null,state.walletWithdrawals||[]) : null;
+      var el=document.createElement("button"); el.type="button"; el.id="nvwLanded"; el.className="nvw-landed"; el.setAttribute("aria-live","polite");
+      el.innerHTML='<span class="nvw-landed-ico">'+NV_W3_ICONS.in+'</span><span class="nvw-landed-t"><b><span data-amt>'+escLabelText(moneyExact(nvwReduced()?sum:0))+'</span> just landed</b>'+
+        '<em>'+escLabelText((one?one.title:(entries.length+" credits to your wallet"))+" · tap to see")+'</em></span>';
+      document.body.appendChild(el);
+      nvwTween(el.querySelector("[data-amt]"),0,sum,moneyExact,900);
+      nvwBuzz(20);
+      var gone=false, timer=setTimeout(dismiss,7000);
+      function dismiss(){ if(gone) return; gone=true; el.classList.add("out"); setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); },400); }
+      el.addEventListener("click",function(){ clearTimeout(timer); dismiss(); try{ showClientTab("money"); }catch(e){} });
+    }
+
+    /* ── Monthly statement, like a bank's ──────────────────────────────────
+       Worked back from today's balance: closing = balance now minus every
+       movement after the period; opening = closing minus the period's
+       movements. The ledger in state is read in full (paged), so both ends
+       are exact. */
+    function nvWalletStatement(){
+      var opt={ timeZone:"Asia/Karachi" }, today=new Date().toLocaleDateString("en-CA",opt);
+      var y=+today.slice(0,4), m=+today.slice(5,7), keys=[];
+      for(var i=0;i<6;i++){ var mm=m-i, yy=y; while(mm<1){ mm+=12; yy--; } keys.push(yy+"-"+String(mm).padStart(2,"0")); }
+      var label=function(k){ return new Date(k+"-15T12:00:00+05:00").toLocaleDateString("en-GB",{ month:"long", year:"numeric", timeZone:"Asia/Karachi" }); };
+      var inner='<div class="nvw-rc-head"><span class="nvw-ico">'+NV_W3_ICONS.doc+'</span><div class="nvw-rc-title">Wallet statement</div></div>'+
+        '<p class="nvw-rc-note nvw-center">Pick a month: opening and closing balance, and every credit, charge and payout in between.</p>'+
+        '<div class="nvw-months">'+keys.map(function(k,i){
+          return '<button type="button" class="nvw-month" data-nvw="stmt:'+k+'"><b>'+escLabelText(label(k))+'</b><span>'+(i===0?"This month so far":"")+'</span>'+NV_W3_ICONS.prev.replace('M15 5l-7 7 7 7','M9 5l7 7-7 7')+'</button>';
+        }).join("")+
+        '<button type="button" class="nvw-month" data-nvw="stmt:all"><b>All time</b><span>Everything since you joined</span>'+NV_W3_ICONS.prev.replace('M15 5l-7 7 7 7','M9 5l7 7-7 7')+'</button></div>'+
+        '<div class="nvw-rc-acts"><button type="button" class="nvw-sec" data-nvw="close">Close</button></div>';
+      nvwOpenSheet(inner,function(a,close){ if(a.indexOf("stmt:")===0){ close(); setTimeout(function(){ nvwBuildStatement(a.slice(5)); },200); } });
+    }
+    function nvwStatementData(key, rows, balance){
+      var all=key==="all", r2=function(n){ return Math.round(n*100)/100; };
+      var aff=rows.filter(function(l){ return l && l.affectsBalance; })
+                  .sort(function(a,b){ return String(a.createdAt||"").localeCompare(String(b.createdAt||"")); });
+      var inP=all?aff:aff.filter(function(l){ return String(l.createdAt||"").slice(0,7)===key; });
+      var after=all?[]:aff.filter(function(l){ return String(l.createdAt||"").slice(0,7)>key; });
+      var sum=function(list){ return list.reduce(function(t,l){ return t+Number(l.amount||0); },0); };
+      var closing=r2(Number(balance||0)-sum(after));
+      var opening=r2(closing-sum(inP));
+      var run=opening, lines=inP.map(function(l){ run=r2(run+Number(l.amount||0)); return { l:l, balance:run }; });
+      return { opening:opening, closing:closing,
+               moneyIn:r2(inP.filter(function(l){ return Number(l.amount)>0; }).reduce(function(t,l){ return t+Number(l.amount); },0)),
+               moneyOut:r2(inP.filter(function(l){ return Number(l.amount)<0; }).reduce(function(t,l){ return t-Number(l.amount); },0)),
+               lines:lines };
+    }
+    function nvwBuildStatement(key){
+      var cid=state.client&&state.client.id;
+      var rows=(state.walletLedger||[]).filter(function(l){ return l && l.clientId===cid; });
+      var c=clientById(cid), bal=Number((c&&c.walletBalance)||0);
+      var D=nvwStatementData(key, rows, bal), all=key==="all";
+      var fmtDay=function(s){ var d=new Date(String(s).slice(0,10)+"T12:00:00+05:00"); return isNaN(d)?String(s||""):d.toLocaleDateString("en-GB",{ day:"numeric", month:"short", year:"numeric", timeZone:"Asia/Karachi" }); };
+      var period=all?"All time":new Date(key+"-15T12:00:00+05:00").toLocaleDateString("en-GB",{ month:"long", year:"numeric", timeZone:"Asia/Karachi" });
+      var startLabel=all?(D.lines.length?fmtDay(D.lines[0].l.createdAt):"Start"):fmtDay(key+"-01");
+      var endKey=(function(){ if(all) return new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" });
+        var y=+key.slice(0,4), m=+key.slice(5,7), last=new Date(Date.UTC(y,m,0)).getUTCDate();
+        var end=key+"-"+String(last).padStart(2,"0"), today=new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" });
+        return end>today?today:end; })();
+      var wds=state.walletWithdrawals||[];
+      var desc=function(l){ var x=nvwTx(l,null,wds); return { t:x.title, ref:(x.w&&x.w.id)||l.referenceCode||"" }; };
+      var made=new Date().toLocaleString("en-GB",{ day:"numeric", month:"short", year:"numeric", hour:"numeric", minute:"2-digit", hour12:true, timeZone:"Asia/Karachi" });
+      var box=function(label,v,big){ return '<div class="nv-doc-box'+(big?' big':'')+'"><span>'+escLabelText(label)+'</span><strong>'+escLabelText(moneyExact(v))+'</strong></div>'; };
+      var html=nvDocHead("Wallet statement", period, ["Wallet ID: "+(nvwWalletId()||"—"), "Period: "+startLabel+" – "+fmtDay(endKey), "Generated: "+made+" PKT"])+
+        '<div class="nv-doc-grid">'+box("Opening balance",D.opening)+box("Money in",D.moneyIn)+box("Money out",D.moneyOut)+box("Closing balance",D.closing,true)+'</div>'+
+        '<table><thead><tr><th>Date</th><th>Description</th><th>Reference</th><th class="num">Money in</th><th class="num">Money out</th><th class="num">Balance</th></tr></thead><tbody>'+
+          '<tr><td>'+escLabelText(startLabel)+'</td><td colspan="4"><strong>Opening balance</strong></td><td class="num"><strong>'+escLabelText(moneyExact(D.opening))+'</strong></td></tr>'+
+          (D.lines.length ? D.lines.map(function(x){
+            var l=x.l, a=Number(l.amount||0), d=desc(l);
+            return '<tr><td>'+escLabelText(fmtDay(l.createdAt))+'</td><td>'+escLabelText(d.t)+'</td><td>'+escLabelText(d.ref)+'</td>'+
+              '<td class="num">'+(a>0?escLabelText(moneyExact(a)):"")+'</td><td class="num">'+(a<0?escLabelText(moneyExact(-a)):"")+'</td>'+
+              '<td class="num">'+escLabelText(moneyExact(x.balance))+'</td></tr>';
+          }).join("") : '<tr><td colspan="6">No money moved in this period.</td></tr>')+
+          '<tr><td>'+escLabelText(fmtDay(endKey))+'</td><td colspan="4"><strong>Closing balance</strong></td><td class="num"><strong>'+escLabelText(moneyExact(D.closing))+'</strong></td></tr>'+
+        '</tbody></table>'+
+        '<div class="nv-doc-total"><span>Closing balance</span><span>'+escLabelText(moneyExact(D.closing))+'</span></div>'+
+        nvDocFoot("Balances are worked back from your wallet balance today, so the latest closing balance is your balance now. Payout fees are included in each payout.");
+      var csv=[["date","description","reference","money_in","money_out","balance"],[startLabel,"Opening balance","","","",D.opening]]
+        .concat(D.lines.map(function(x){ var l=x.l, a=Number(l.amount||0), d=desc(l); return [l.createdAt||"",d.t,d.ref,a>0?a:"",a<0?-a:"",x.balance]; }))
+        .concat([[fmtDay(endKey),"Closing balance","","","",D.closing]]);
+      nvOpenDoc("Wallet statement · "+period, html, csv, "NovaX-wallet-statement-"+(all?"all-time":key)+".csv");
+    }
+
     function renderClientWallet(){
       const bt=document.getElementById("walletBalanceText"); if(!bt) return;
       const c=clientById(state.client.id); const balance=Number(c.walletBalance||0);
+      try{ nvwRenderCard(balance); }catch(e){}
       /* NovaX motion: money arriving is the moment the merchant is here for.
          The balance used to snap and replay a generic pop on every render.
          Now it counts from the previously shown figure to the new one only
@@ -7610,6 +8397,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          frame always writes the exact value via money(). */
       const __prevBal = (typeof window.__nvShownBalance==="number") ? window.__nvShownBalance : null;
       const __balMoved = __prevBal!==null && __prevBal!==balance;
+      if((__balMoved || __prevBal===null) && !nvwReduced() && document.visibilityState==="visible"){
+        const card=document.getElementById("nvwCard");
+        if(card){ card.classList.remove("is-shine"); void card.offsetWidth; card.classList.add("is-shine"); }
+      }
       window.__nvShownBalance = balance;
       if(__balMoved && !matchMedia("(prefers-reduced-motion: reduce)").matches){
         (function(){
@@ -7617,13 +8408,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           (function step(ts){
             if(!bt.isConnected) return;
             const k=Math.min(1,((ts||performance.now())-t0)/dur), e=1-Math.pow(1-k,3);
-            bt.textContent = k<1 ? money(Math.round(from+(to-from)*e)) : money(to);
+            nvwPaintBalance(bt, k<1 ? Math.round(from+(to-from)*e) : to);
             if(k<1) requestAnimationFrame(step);
           })(t0);
         })();
         bt.classList.remove("count-up"); void bt.offsetWidth; bt.classList.add("count-up");
       } else {
-        bt.textContent=money(balance);
+        nvwPaintBalance(bt, balance);
         if(__prevBal===null){ bt.classList.remove("count-up"); void bt.offsetWidth; bt.classList.add("count-up"); }
       }
       // NovaX fix (withdrawal UX v2): pull the server-saved bank details once
@@ -7642,6 +8433,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // statement -- no numbers, no alarm.
       const myWds=(state.walletWithdrawals||[]).filter(w=>w.clientId===c.id);
       const myLedger=(state.walletLedger||[]).filter(l=>l.clientId===c.id);
+      try{ nvwDetectLanded(myLedger); }catch(e){}
       const expectedRaw=myLedger.filter(l=>l.affectsBalance).reduce((s,l)=>s+Number(l.amount||0),0);
       // NovaX fix (non-COD delivery charge): negative wallet balances are
       // now a legitimate state (a client owes NovaX for delivery charges),
@@ -7755,67 +8547,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               : '')+
             '</div>';
         })();
-        /* payout_paid rows are MARKERS: the money already left the balance on the
-   matching withdrawal_requested row, so they carry amount 0 and
-   affects_balance=false by design. Rendering that as "Rs 0" made a
-   completed bank transfer look like a zero-value payout -- KKM has nine
-   of them. A marker row now says "completed" and lets its own note
-   explain, instead of showing an amount that is not a quantity. */
-      /* #11. A payout_fee row carried a MINUS sign and a red-ish chip -- the
-         same visual language as a real deduction -- and only the small print
-         underneath said it had already been netted into the withdrawal above.
-         Read down the column and KKM's Rs 383.50 fee looks like a second bite
-         out of the balance. The chip now names it as included rather than
-         showing a signed amount it never subtracted, and the amount is printed
-         to the paisa (#9) so the withdrawal, the fee and the settlement line
-         actually reconcile: 54,785.00 - 383.50 = 54,401.50. */
-      /* Every debit used to paint amber, so a withdrawal the merchant asked for
-         looked exactly like a charge they did not expect. Amber means "look at
-         this"; a payout is not that. Split by what the row IS:
-           withdrawal_requested / payout_paid -> indigo, money moving to the bank
-           payout_fee / delivery_charge_due   -> amber, money we kept
-           admin_adjustment                   -> amber down, green up
-           credits                            -> green */
-      var NV_LEDGER_HUE={ withdrawal_requested:"out", payout_paid:"out",
-                          payout_fee:"warn", delivery_charge_due:"warn", invoice_due_debit:"warn" };
-      function nvLedgerChip(l){
-        var amt=Number(l.amount||0);
-        if(l.affectsBalance){
-          var cls = amt>=0 ? "good" : (NV_LEDGER_HUE[l.entryType] || "warn");
-          return { cls:cls, txt:moneyExact(amt) };
-        }
-        if(amt===0) return { cls:"hold", txt:"completed" };
-        return { cls:"hold", txt:"includes "+moneyExact(Math.abs(amt)) };
-      }
-      /* Every payout ledger row carries reference_type='withdrawal' plus the
-         withdrawal's own id -- verified across all 114 payout rows -- so the
-         receipt hangs off the entry the merchant is already looking at, rather
-         than living in a second panel that reprinted the same events.
-         nvWithdrawalReceipt() already builds the whole document (amount, masked
-         IBAN, fee, net, both timestamps, bank reference, CSV export); it was
-         simply four screens down where nobody found it. */
-      function nvLedgerReceiptBtn(l){
-        try{
-          /* One withdrawal writes three rows -- withdrawal_requested,
-             payout_fee and payout_paid -- so keying off reference_type alone
-             printed the same receipt three times. The request is the primary
-             event; the other two are its consequences. */
-          if(String(l.entryType||"")!=="withdrawal_requested") return "";
-          if(String(l.referenceType||"")!=="withdrawal" || !l.referenceId) return "";
-          var w=(state.walletWithdrawals||[]).find(function(x){
-            return x && (String(x._uuid)===String(l.referenceId) || String(x.id)===String(l.referenceCode));
-          });
-          if(!w) return "";
-          return '<div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" style="padding:5px 11px;font-size:12px" onclick="nvWithdrawalReceipt(\''+escLabelText(w.id)+'\')">Receipt</button></div>';
-        }catch(e){ return ""; }
-      }
-      ledgerList.innerHTML=reconHtml+myLedger.slice(0,shownN).map(l=>{ const ch=nvLedgerChip(l); return `<div class="ops-card${l.affectsBalance?"":" nv-ledger-info"}"><div class="ops-card-head"><strong>${escLabelText(entryLabels[l.entryType]||l.entryType)}</strong><span class="chip ${ch.cls}">${escLabelText(ch.txt)}</span></div><p>${escLabelText(l.note||l.referenceCode||"")}</p><div class="footer-note">${escLabelText(nvNiceDate(l.createdAt))}${l.affectsBalance?"":" · already netted — not deducted again"}</div></div>${nvLedgerReceiptBtn(l)}`; }).join("")||`<div class="ops-card"><strong>No wallet activity yet</strong></div>`;
+        /* The activity rows are drawn by nvwRenderActivity (Wallet v3): a
+           payout's fee and paid-marker rows fold into the payout itself, and
+           its receipt opens from the row. */
+      nvwRenderActivity(ledgerList, myLedger.slice(0,shownN), reconHtml);
         /* NovaX motion: when the balance actually moved this render, flag the
            newest ledger row so the merchant can see what caused it, rather
            than just noticing a different total. Same .nv-changed sweep the
            parcel list uses, so the vocabulary is consistent. */
         if(__balMoved && !matchMedia("(prefers-reduced-motion: reduce)").matches){
-          const firstRow=ledgerList.firstElementChild;
+          const firstRow=ledgerList.querySelector(".nvw-row");
           if(firstRow) firstRow.classList.add("nv-changed");
         }
       }
@@ -7959,6 +8700,72 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     // requestWalletWithdrawal to match the button label and the required
     // client-side entry point; confirmWalletWithdraw is kept below as a thin
     // backward-compatible alias.
+    /* One protected path for every withdrawal, whichever screen asks: the
+       transfer sheet (Wallet v3) and the classic form both come through here.
+       Resolves { ok:true, d, gross, fee, net, speed, iban } or
+       { ok:false, message }; never rejects. The durable request key makes a
+       refresh, timeout or lost reply a replay, never a second payout. */
+    function nvWithdrawCore(amt, iban, speed){
+      return new Promise(function(resolve){
+        if(__withdrawInFlight||state.__withdrawInFlight){ resolve({ ok:false, busy:true, message:"A withdrawal is already being submitted." }); return; }
+        const c=clientById(state.client.id);
+        const sbClient=window.__nvSb;
+        if(!sbClient){ resolve({ ok:false, message:"Cloud connection not ready yet, please try again in a moment." }); return; }
+        __withdrawInFlight=true; state.__withdrawInFlight=true;
+        let payoutPendingKey=null;
+        const payoutFingerprint=JSON.stringify([amt,iban,speed]);
+        window.__novaxIdemKeys.acquire("payout",String(c.id),payoutFingerprint).then(function(pending){
+          payoutPendingKey=pending;
+          return sbClient.rpc("request_wallet_withdrawal_idem",{
+            p_amount:amt, p_iban:iban, p_speed:speed, p_request_key:pending.key
+          });
+        }).then(function(r){
+          __withdrawInFlight=false; state.__withdrawInFlight=false;
+          if(r&&r.error){
+            const serverMessage=String(r.error.message||"Server declined the request.");
+            // A definite RPC rejection means no transaction committed. Network
+            // uncertainty keeps the key so the next attempt remains a replay.
+            if(!/timeout|fetch|network|Failed to fetch/i.test(serverMessage) && payoutPendingKey){
+              window.__novaxIdemKeys.release(String(c.id),payoutPendingKey.slot,payoutPendingKey.key);
+            }
+            const unavailable=/request_wallet_withdrawal_idem|does not exist|not find|schema cache|no function matches/i.test(serverMessage);
+            resolve({ ok:false, message: unavailable
+              ? "Protected payout submission is temporarily unavailable. No withdrawal was created. Please try again shortly."
+              : "Withdrawal request rejected: "+serverMessage });
+            return;
+          }
+          if(payoutPendingKey) window.__novaxIdemKeys.release(String(c.id),payoutPendingKey.slot,payoutPendingKey.key);
+          const d=r&&r.data;
+          const fee=Number(d&&d.fee!=null?d.fee:nvPayoutFee(amt,speed));
+          const net=Number(d&&d.net!=null?d.net:amt-fee);
+          // NovaX fix (rebuild integration mismatch): wallet_balance must never
+          // be mutated in the browser -- request_wallet_withdrawal already
+          // reserved this amount atomically on the server. Only the withdrawal
+          // and payment-log entries are recorded locally for instant feedback;
+          // the balance is re-read from the server right after.
+          const alreadyKnown=!!(d&&d.id&&(state.walletWithdrawals||[]).some(function(w){ return w&&w._uuid===d.id; }));
+          if(!alreadyKnown){
+            state.walletWithdrawals.unshift({ id:nextId("WDR",state.walletWithdrawals), _uuid:d&&d.id, clientId:c.id, amount:amt, fee, net, iban, speed, status:(d&&d.status)||"Pending admin payout",
+            /* Date and time from one Karachi clock: a UTC date here glued a
+               14 Sep date onto a 15 Sep PKT time for five hours every night. */
+            createdAt:`${new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" })} ${time()}` });
+            state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:c.id, type:"Wallet withdrawal requested", amount:amt, status:`${money(net)} net after ${money(fee)} fee`, ref:walletSpeedLabel(speed) });
+          }
+          saveState();
+          /* A withdrawal just changed the real balance -- one of the few
+             genuine reasons to re-read the wallet intelligence RPCs. */
+          try{ nvLoadWalletIntelligence(true); }catch(e){}
+          // Force the throttled client_wallet_summary fetch to run again now.
+          state.__walletSummaryFetchedAt=0;
+          resolve({ ok:true, d:d, gross:amt, fee:fee, net:net, speed:speed, iban:iban });
+        }).catch(function(e){
+          __withdrawInFlight=false; state.__withdrawInFlight=false;
+          resolve({ ok:false, message:"Withdrawal request failed: "+(e&&e.message?e.message:"network error, please try again.") });
+        });
+      });
+    }
+    window.nvWithdrawCore=nvWithdrawCore;
+
     function requestWalletWithdrawal(){
       // Guard against a double click / rapid repeat firing two requests
       // before the button has even finished disabling -- this is in addition
@@ -7970,12 +8777,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const balance=sv?Number(sv.available_balance||0):Number(c.walletBalance||0);
       const amt=Math.min(Number(document.getElementById("withdrawAmount").value||0),balance);
       const speed=state.walletWithdrawSpeed||"24h";
-      // NovaX fix (withdrawal UX v3): the payout IBAN always comes from the
-      // editable Payout IBAN field on this card now -- prefilled from saved
-      // bank details as a convenience default only, never locked to it. A
-      // client can type or paste any valid PK IBAN here and it's sent
-      // straight to request_wallet_withdrawal, which validates/normalizes it
-      // server-side independently of whatever is saved.
+      // The payout IBAN comes from the editable Payout IBAN field on this card,
+      // prefilled from saved bank details as a convenience default only.
       const ibanInput=document.getElementById("withdrawIbanInput");
       const iban=(ibanInput&&ibanInput.value||"").trim().toUpperCase();
       if(!amt||amt<1){ toast("Enter a valid amount.","error"); return; }
@@ -7983,119 +8786,34 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!speed){ toast("Select a payout speed.","error"); return; }
       const ibanErr=validateIbanValue(iban);
       if(ibanErr){ toast(ibanErr,"error"); return; }
+      if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment.","error"); return; }
       const btn=document.getElementById("confirmWithdrawBtn");
-      // NovaX fix: this was calling a bare "sb" variable that only exists
-      // inside the separate cloud-sync IIFE further down this file -- it is
-      // NOT in scope here, so every click threw an immediate, uncaught
-      // "sb is not defined" error right after the button was disabled and
-      // set to "Submitting...", before the code ever reached .then()/.catch()
-      // to reset it. That's why the button looked permanently stuck. The real
-      // live client is window.__nvSb (set via `window.__nvSb=sb;` in that
-      // cloud-sync block), so use that instead, and bail out cleanly with the
-      // button re-enabled if it isn't ready yet instead of throwing.
-      const sbClient=window.__nvSb;
-      if(!sbClient){ toast("Cloud connection not ready yet, please try again in a moment.","error"); return; }
-      __withdrawInFlight=true; state.__withdrawInFlight=true;
       if(btn){ btn.disabled=true; btn.textContent="Submitting..."; }
-      // A refresh, timeout or lost reply reuses this request key. The server
-      // returns the original withdrawal and never reserves the balance twice.
-      let payoutPendingKey=null;
-      const payoutFingerprint=JSON.stringify([amt,iban,speed]);
-      window.__novaxIdemKeys.acquire("payout",String(c.id),payoutFingerprint).then(function(pending){
-        payoutPendingKey=pending;
-        return sbClient.rpc("request_wallet_withdrawal_idem",{
-          p_amount:amt, p_iban:iban, p_speed:speed, p_request_key:pending.key
-        });
-      }).then(function(r){
-        __withdrawInFlight=false; state.__withdrawInFlight=false;
+      nvWithdrawCore(amt, iban, speed).then(function(res){
         if(btn){ btn.disabled=false; btn.textContent="Request Withdrawal"; }
-        if(r&&r.error){
-          const serverMessage=String(r.error.message||"Server declined the request.");
-          // A definite RPC rejection means no transaction committed. Network
-          // uncertainty keeps the key so the next attempt remains a replay.
-          if(!/timeout|fetch|network|Failed to fetch/i.test(serverMessage) && payoutPendingKey){
-            window.__novaxIdemKeys.release(String(c.id),payoutPendingKey.slot,payoutPendingKey.key);
-          }
-          const unavailable=/request_wallet_withdrawal_idem|does not exist|not find|schema cache|no function matches/i.test(serverMessage);
-          toast(unavailable
-            ? "Protected payout submission is temporarily unavailable. No withdrawal was created. Please try again shortly."
-            : "Withdrawal request rejected: "+serverMessage,"error");
-          renderClientWallet();
-          return;
-        }
-        if(payoutPendingKey) window.__novaxIdemKeys.release(String(c.id),payoutPendingKey.slot,payoutPendingKey.key);
-        // Animations 5 + 6: the hand-off plays only here, after the server
-        // has actually created the withdrawal row. It is a receipt for money
-        // that has moved, never an optimistic flourish.
+        if(!res.ok){ toast(res.message,"error"); renderClientWallet(); return; }
+        // The hand-off plays only after the server has created the withdrawal.
         try{ nvMoneySentAnimation(amt); }catch(e){}
-        const d=r&&r.data;
-        const fee=Number(d&&d.fee!=null?d.fee:nvPayoutFee(amt,speed));
-        const net=Number(d&&d.net!=null?d.net:amt-fee);
-        // Receipt drawer. Uses the server's fee/net when the RPC returned them
-        // so the merchant is shown the figures that were actually recorded,
-        // not the browser's preview of them.
         try{
           nvShowWithdrawDrawer({
-            gross: amt, fee: fee, net: net,
+            gross: amt, fee: res.fee, net: res.net,
             pct: walletFeePct(speed),
             speedLabel: walletSpeedLabel(speed),
-            iban: (typeof maskIban==="function" ? maskIban(iban) : String(iban||"").slice(-6).padStart(10,"\u2022")),
+            iban: (typeof maskIban==="function" ? maskIban(iban) : String(iban||"").slice(-6).padStart(10,"•")),
             eta: (speed==="instant" ? "usually within 2-3 hours"
                  : speed==="12h" ? "within 12 hours" : "within 24 hours")
           });
         }catch(e){ console.warn("NovaX withdraw drawer", e); }
-        // NovaX fix (rebuild integration mismatch): wallet_balance must never
-        // be mutated in the browser -- request_wallet_withdrawal already
-        // reserved this amount atomically on the server the moment it
-        // succeeded above. We only record the withdrawal/payment-log entries
-        // locally for instant UI feedback; the actual balance is always
-        // re-read from the server truth immediately below (and again via
-        // client_wallet_summary on next render), so a stale/duplicate local
-        // subtraction can never happen.
-        const alreadyKnown=!!(d&&d.id&&(state.walletWithdrawals||[]).some(function(w){ return w&&w._uuid===d.id; }));
-        if(!alreadyKnown){
-          state.walletWithdrawals.unshift({ id:nextId("WDR",state.walletWithdrawals), _uuid:d&&d.id, clientId:c.id, amount:amt, fee, net, iban, speed, status:(d&&d.status)||"Pending admin payout", /* Date and time must come from the SAME zone. time() is Asia/Karachi, so a
-             UTC date here glued a 14 Sep date onto a 15 Sep PKT time for five
-             hours every night -- on a withdrawal record. */
-          createdAt:`${new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" })} ${time()}` });
-          state.paymentLogs.unshift({ id:nextId("PAY",state.paymentLogs), clientId:c.id, type:"Wallet withdrawal requested", amount:amt, status:`${money(net)} net after ${money(fee)} fee`, ref:walletSpeedLabel(speed) });
-        }
-        // NovaX fix (withdrawal UX v2): clear the amount instead of leaving the
-        // old (now stale) value in the box -- the next render refills it from
-        // the fresh, reduced server balance once that arrives.
+        // Clear the amount; the next render refills it from the fresh balance.
         const amtInputEl=document.getElementById("withdrawAmount"); if(amtInputEl) amtInputEl.value="";
-        saveState();
-        document.getElementById("walletDoneText").textContent=`${money(net)} will reach ${maskIban(iban)} via ${walletSpeedLabel(speed)} payout. NovaX fee ${money(fee)}. Status: Pending admin payout.`;
-        /* A withdrawal just changed the real balance -- this is one of the
-           few genuine reasons to re-read the wallet intelligence RPCs. */
-        try{ nvLoadWalletIntelligence(true); }catch(e){}
-        /* NovaX new (deferred bank details): signup never asks for an IBAN,
-           and nothing blocks on it -- the merchant types it here, at the
-           moment they actually want money. The only friction left was
-           having to retype it every time, so offer to remember it once the
-           payout has actually gone through. Never auto-saves: a one-off
-           payout to someone else's account must stay a one-off. */
+        const doneText=document.getElementById("walletDoneText");
+        if(doneText) doneText.textContent=`${money(res.net)} will reach ${maskIban(iban)} via ${walletSpeedLabel(speed)} payout. NovaX fee ${money(res.fee)}. Status: Pending admin payout.`;
+        // Offer to remember a new IBAN once the payout has actually gone through.
         try{ nvOfferSaveIban(iban); }catch(e){}
-        // NovaX fix (confidence messaging): the modal already explains the
-        // payout math, but a quick toast confirms what just happened and what
-        // to expect next, matching the same pattern used elsewhere (booking,
-        // store connect).
         toast(`Payout requested. Status: Pending admin payout.`,"success");
-        // NovaX fix (rebuild integration mismatch): force the throttled
-        // client_wallet_summary fetch to run again immediately (instead of
-        // waiting out its normal throttle window) so the wallet card shows
-        // the real server-reserved balance right away.
-        state.__walletSummaryFetchedAt=0;
         openWalletDone(); render();
-        // Pull the authoritative client row + wallet summary back from
-        // Supabase right after so the UI reflects exactly what the atomic
-        // RPC reserved server-side -- never a local guess.
+        // Pull the authoritative client row + wallet summary back right after.
         if(window.__novaxReloadClientData) window.__novaxReloadClientData();
-      }).catch(function(e){
-        __withdrawInFlight=false; state.__withdrawInFlight=false;
-        if(btn){ btn.disabled=false; btn.textContent="Request Withdrawal"; }
-        toast("Withdrawal request failed: "+(e&&e.message?e.message:"network error, please try again."),"error");
-        renderClientWallet();
       });
     }
     // Backward-compatible alias in case anything else still calls the old name.
@@ -14648,7 +15366,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           (function(){ var sl=nvSlot(3,"withdrawals",mapWd,state.walletWithdrawals); if(sl.ok) state.walletWithdrawals=sl.rows; })();
           (function(){ var sl=nvSlot(4,"payment logs",mapPl,state.paymentLogs); if(sl.ok) state.paymentLogs=sl.rows; })();
           (function(){ var sl=nvSlot(5,"store connections",mapSc,state.storeConnections); if(sl.ok) state.storeConnections=sl.rows; })();
-          (function(){ var sl=nvSlot(6,"wallet ledger",mapLedger,state.walletLedger); if(sl.ok) state.walletLedger=sl.rows; })();
+          (function(){ var sl=nvSlot(6,"wallet ledger",mapLedger,state.walletLedger); if(sl.ok){ state.walletLedger=sl.rows; window.__nvLedgerLoads=(window.__nvLedgerLoads||0)+1; } })();
           shadow={}; state.parcels.forEach(function(p){ if(p._uuid) shadow[p._uuid]=(p.status||"")+"|"+(p.exception||"")+"|"+(p.awbPrinted?"1":"0")+"|"+(p.awbPrintedAt||""); });
           /* res[7] -- pickup_requests -- was queried and then simply never
              read. mapPickup() sat in the file with no caller at all, and
