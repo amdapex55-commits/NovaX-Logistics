@@ -11914,7 +11914,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
         val.textContent=String(row.code).replace(/[^A-Z0-9]/g,"");
         var mins=Math.max(1,Math.round((new Date(row.expires_at)-new Date())/60000));
-        if(exp) exp.textContent="Valid for "+mins+" minute"+(mins===1?"":"s")+", and it can be used once.";
+        /* Reviewers connect two test stores at once. Every code stays valid for
+           its own 20 minutes now, so say plainly: one code per store. */
+        if(exp) exp.textContent="Valid for "+mins+" minute"+(mins===1?"":"s")+" for one store. Connecting another store? Press Get my code in that store too \u2014 each store gets its own code.";
         if(out) out.textContent="";
       }).catch(function(e){
         if(exp) exp.textContent="Could not get a code: "+String((e&&e.message)||e);
