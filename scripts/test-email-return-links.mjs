@@ -19,7 +19,7 @@ vm.runInNewContext(restore, context);
 assert.equal(context.qp.get('tab'), 'awbLabel');
 assert.equal(context.qp.get('awb'), 'NV-123');
 assert.equal(values.size, 0);
-for (const tab of ['money', 'support', 'profile']) {
+for (const tab of ['money', 'support', 'profile', 'newBooking']) {
   context.location.search = `?tab=${tab}`;
   vm.runInNewContext(save, context);
   context.location.search = '';

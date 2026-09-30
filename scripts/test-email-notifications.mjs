@@ -11,7 +11,11 @@ const fixtures = {
     reference: 'DEMO-TRANSFER-001', paid_at: '2026-09-27T11:00:00Z' },
   cnic_verified: { business: 'Sample Store' },
   cnic_rejected: { business: 'Sample Store', reason: 'Front photo is blurry' },
+  first_parcel_d1: { name: 'Aisha', business: 'Sample Store', token: '8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11', step: 1 },
+  first_parcel_d3: { name: 'Aisha', business: 'Sample Store', token: '8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11', step: 3 },
+  first_parcel_d7: { name: 'Aisha', business: 'Sample Store', token: '8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11', step: 7 },
 };
+const REMINDER_KINDS = ['first_parcel_d1', 'first_parcel_d3', 'first_parcel_d7'];
 for (const [kind, data] of Object.entries(fixtures)) {
   const message = buildEmail(kind, 'owner@example.com', data);
   assert.ok(message.html.includes('name="viewport"'));
@@ -41,7 +45,13 @@ for (const [kind, data] of Object.entries(fixtures)) {
   const message = buildEmail(kind, 'owner@example.com', data);
   assert.ok(Buffer.byteLength(message.html) < 50000);
   for (const link of message.html.matchAll(/href="([^"]+)"/g)) {
-    assert.equal(new URL(link[1].replaceAll('&amp;', '&')).origin, 'https://novaxlogistics.com');
+    const url = new URL(link[1].replaceAll('&amp;', '&'));
+    // The day-7 reminder's button opens NovaX's own WhatsApp support number, nothing else.
+    if (kind === 'first_parcel_d7' && url.origin === 'https://wa.me') {
+      assert.equal(url.pathname, '/923123922558');
+      continue;
+    }
+    assert.equal(url.origin, 'https://novaxlogistics.com');
   }
 }
 const hostile = buildEmail('welcome', 'owner@example.com', { name: '<script>alert(1)</script>', business: 'A & B' });
@@ -58,7 +68,53 @@ assert.throws(() => buildEmail('payout_paid', 'a@example.com', { ...fixtures.pay
 assert.throws(() => buildEmail('payout_paid', 'a@example.com', { ...fixtures.payout_paid, reference: '' }));
 assert.throws(() => buildEmail('first_booking', 'a@example.com', { ...fixtures.first_booking, booked_at: '' }));
 assert.throws(() => buildEmail('untrusted', 'a@example.com', {}));
-console.log('PASS: three templates, net payout, PKT dates, escaping and invalid-data guards.');
+
+// First-parcel reminders.
+const PRICE = 'Rs 225 for the first kg to a Karachi address, Rs 250 to Lahore, Islamabad or Rawalpindi, plus Rs 85 per additional kg.';
+const STOP = 'https://novaxlogistics.com/unsubscribe.html?t=8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11';
+const reminders = Object.fromEntries(REMINDER_KINDS.map(kind => [kind, buildEmail(kind, 'owner@example.com', fixtures[kind])]));
+for (const [kind, m] of Object.entries(reminders)) {
+  assert.ok(m.html.includes(`href="${STOP}"`), kind + ' stop link');
+  assert.ok(m.html.includes('Stop these reminders'));
+  assert.ok(m.html.includes('three of these at most'));
+  assert.ok(m.text.includes(STOP));
+  assert.deepEqual(m.headers, { 'List-Unsubscribe': `<${STOP}>` });
+  assert.ok(m.html.includes('Hi Aisha, '));
+  assert.ok(!m.html.includes('Automated account notification'));
+  assert.equal(m.tags[0].value, kind);
+  assert.ok(m.html.includes('href="https://novaxlogistics.com/client.html?tab=newBooking"'), kind + ' books');
+  for (const bad of ['undefined', 'null', 'NaN', '[object']) assert.ok(!m.text.includes(bad), kind + ' ' + bad);
+  for (const token of [undefined, '', 'not-a-token', '8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c1', '"><script>']) {
+    assert.throws(() => buildEmail(kind, 'owner@example.com', { ...fixtures[kind], token }), /missing_token/);
+  }
+  const anonymous = buildEmail(kind, 'owner@example.com', { ...fixtures[kind], name: '' });
+  assert.ok(anonymous.html.includes('Hi there, '));
+  const hostileReminder = buildEmail(kind, 'owner@example.com', { ...fixtures[kind], name: '<b>x</b>', business: 'A & B' });
+  assert.ok(!hostileReminder.html.includes('<b>x</b>'));
+}
+assert.equal(reminders.first_parcel_d1.subject, 'Your first NovaX parcel, in three steps');
+assert.ok(reminders.first_parcel_d1.html.includes('Rs&nbsp;250 to Lahore'));
+assert.ok(reminders.first_parcel_d1.text.includes('Rs 250 to Lahore'));
+assert.ok(reminders.first_parcel_d1.html.replaceAll('&nbsp;', ' ').includes('Price: ' + PRICE));
+assert.ok(reminders.first_parcel_d1.html.includes('between 11 am and 9 pm on working days'));
+assert.ok(reminders.first_parcel_d1.html.includes('Paste order'));
+assert.ok(reminders.first_parcel_d1.html.includes('Sample Store'));
+assert.ok(reminders.first_parcel_d3.html.includes('COD in your wallet the day it lands.'));
+assert.ok(reminders.first_parcel_d3.html.includes('try again or bring it back'));
+assert.ok(reminders.first_parcel_d7.html.replaceAll('&nbsp;', ' ').includes(PRICE));
+assert.ok(reminders.first_parcel_d7.html.includes('Karachi same day or next day. Lahore, Islamabad and Rawalpindi in 2–3 working days.'));
+assert.ok(reminders.first_parcel_d7.html.includes('COD in your wallet the day it lands.'));
+assert.ok(reminders.first_parcel_d7.html.includes('href="https://wa.me/923123922558?text=Hi%20NovaX%2C%20I%20need%20help%20booking%20my%20first%20parcel."'));
+assert.ok(reminders.first_parcel_d7.html.includes('0312 3922558'));
+assert.ok(reminders.first_parcel_d7.html.includes('This is our last reminder.'));
+assert.ok(reminders.first_parcel_d7.text.includes('Or book it yourself in your portal: https://novaxlogistics.com/client.html?tab=newBooking'));
+for (const kind of ['welcome', 'first_booking', 'payout_paid', 'cnic_verified', 'cnic_rejected']) {
+  const m = buildEmail(kind, 'owner@example.com', fixtures[kind]);
+  assert.equal(m.headers, undefined);
+  assert.ok(m.html.includes('Automated account notification'));
+  assert.ok(!m.html.includes('unsubscribe.html'));
+}
+console.log('PASS: eight templates, net payout, PKT dates, escaping, invalid-data guards and reminder stop links.');
 
 const config = { url: 'https://example.supabase.co', serviceKey: 'test-service-key',
   resendKey: 'test-resend-key', drainToken: 'a'.repeat(64) };

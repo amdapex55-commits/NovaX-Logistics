@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Email reminders | NovaX Logistics</title>
+<meta name="description" content="Stop NovaX first-parcel reminder emails.">
+<meta name="robots" content="noindex,nofollow">
+<!-- The link carries a private token: never pass it on to another site. -->
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#04100b;--panel:rgba(255,255,255,.04);--line:rgba(20,199,123,.16);
+ --line2:rgba(20,199,123,.34);--ink:#eafff5;--ink2:#9dbdae;--ink3:#5f8272;--green:#14c77b;--green2:#4ee6a5}
+body{background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,sans-serif;line-height:1.65;
+ min-height:100vh;display:flex;flex-direction:column}
+a{color:var(--green2)}
+.wrap{width:100%;max-width:560px;margin:0 auto;padding:0 16px}
+header{border-bottom:1px solid var(--line);padding:16px 0}
+.brand{display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink)}
+.mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#0c7c59,var(--green));
+ display:grid;place-items:center;font-weight:900;font-size:14px;color:#fff}
+.brand b{font-size:16px;letter-spacing:-.02em;display:block;line-height:1.15;color:var(--ink)}
+.brand .tag{display:block;font-size:9.5px;letter-spacing:.2em;color:var(--ink3);font-weight:700}
+main.wrap{flex:1;padding:44px 16px 56px}
+.nw{white-space:nowrap}
+.card{border:1px solid var(--line2);border-radius:16px;padding:26px 22px;background:var(--panel)}
+h1{font-size:clamp(24px,6vw,30px);line-height:1.15;letter-spacing:-.03em;font-weight:900;margin-bottom:12px}
+p{color:var(--ink2);margin-bottom:14px}
+p:last-child{margin-bottom:0}
+.btn{display:block;width:100%;min-height:50px;margin:22px 0 4px;border:0;border-radius:12px;background:var(--green);
+ color:#03120b;font:inherit;font-size:15.5px;font-weight:800;cursor:pointer}
+.btn:hover{background:var(--green2)}
+.btn:focus-visible{outline:3px solid var(--green2);outline-offset:3px}
+.btn[disabled]{opacity:.6;cursor:progress}
+.tick{width:46px;height:46px;border-radius:50%;background:rgba(20,199,123,.14);border:1px solid var(--line2);
+ display:grid;place-items:center;margin-bottom:16px;color:var(--green2);font-size:22px;font-weight:900}
+.small{font-size:13.5px;color:var(--ink3)}
+.err{color:#ffb4a8}
+footer{border-top:1px solid var(--line);padding:22px 0 34px;font-size:13px;color:var(--ink3)}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <a class="brand" href="/"><span class="mark">NX</span><span><b>NovaX Logistics</b><span class="tag">COD COURIER · PAKISTAN</span></span></a>
+</div></header>
+
+<main class="wrap">
+  <div class="card" id="card" aria-live="polite">
+    <h1>Stop first-parcel reminders?</h1>
+    <p>Until you book your first parcel, we send up to three short reminders in your first week. You can switch them off here.</p>
+    <p>Emails about your account, such as your first booking and your payouts, will keep coming.</p>
+    <button class="btn" id="stopBtn" type="button">Stop reminders</button>
+    <p class="small" id="note" role="status"></p>
+  </div>
+</main>
+
+<footer><div class="wrap">
+  NovaX Logistics · Karachi, Sindh, Pakistan<br>
+  Questions? <a class="nw" href="https://wa.me/923123922558">WhatsApp 0312 3922558</a>
+</div></footer>
+
+<script>
+(function(){
+  var SB_URL = "https://rhzunbzbdzicajqtohwp.supabase.co";
+  var SB_KEY = "sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+  var card = document.getElementById("card");
+  var btn = document.getElementById("stopBtn");
+  var note = document.getElementById("note");
+  var token = "";
+  try { token = (new URLSearchParams(location.search).get("t") || "").trim().toLowerCase(); } catch (e) {}
+  var valid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(token);
+
+  function show(title, lines, tick){
+    card.innerHTML = (tick ? '<div class="tick" aria-hidden="true">&#10003;</div>' : '') +
+      '<h1></h1>' + lines.map(function(){ return '<p></p>'; }).join("");
+    card.querySelector("h1").textContent = title;
+    var ps = card.querySelectorAll("p");
+    lines.forEach(function(line, i){
+      if (typeof line === "string") ps[i].textContent = line;
+      else { ps[i].textContent = line[0]; var a = document.createElement("a"); a.href = line[2]; a.textContent = line[1]; a.className = "nw"; ps[i].appendChild(a); }
+    });
+  }
+
+  if (!valid) {
+    show("This link isn't complete", [
+      "Open the link from the NovaX email again. Some email apps cut long links short.",
+      ["Or message us and we'll stop the reminders for you: ", "WhatsApp 0312 3922558", "https://wa.me/923123922558"]
+    ]);
+    return;
+  }
+
+  btn.addEventListener("click", function(){
+    btn.disabled = true;
+    btn.textContent = "Stopping…";
+    note.textContent = "";
+    note.classList.remove("err");
+    fetch(SB_URL + "/rest/v1/rpc/nv_email_reminders_stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": SB_KEY },
+      body: JSON.stringify({ p_token: token })
+    }).then(function(r){
+      if (!r.ok) throw new Error("http_" + r.status);
+      return r.json();
+    }).then(function(stopped){
+      if (stopped === true) {
+        show("Reminders stopped", [
+          "We won't send you first-parcel reminders again.",
+          "Emails about your account, such as your payouts, will keep coming.",
+          ["Whenever you're ready: ", "book a parcel in your portal", "/client.html?tab=newBooking"]
+        ], true);
+      } else {
+        show("We couldn't find this link", [
+          "It may be from an old email, or it was copied only in part.",
+          ["Message us and we'll stop the reminders for you: ", "WhatsApp 0312 3922558", "https://wa.me/923123922558"]
+        ]);
+      }
+    }).catch(function(){
+      btn.disabled = false;
+      btn.textContent = "Stop reminders";
+      note.textContent = "Couldn't reach NovaX. Check your connection and tap again.";
+      note.classList.add("err");
+    });
+  });
+})();
+</script>
+</body>
+</html>

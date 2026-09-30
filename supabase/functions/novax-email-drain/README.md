@@ -7,6 +7,15 @@ Activated on 2026-09-27 in project `rhzunbzbdzicajqtohwp`. This worker handles:
 | Public merchant auth account created | Signup email | Once per auth user |
 | First parcel inserted, from portal/API/Shopify/admin | Workspace owner login | Once per workspace |
 | Withdrawal status changes to `Paid` | Workspace owner login | Once per withdrawal |
+| No parcel booked yet, 1, 3 and 7 days after signup | Workspace owner login | At most three, 44 h apart |
+
+First-parcel reminders (`sql_novax_first_parcel_reminders_20260930.sql`) are queued by the
+hourly job `novax-first-parcel-reminders`, Monday to Saturday 10 am to 8 pm PKT, and only
+while fewer than 80 emails went out in the last 24 hours (Resend's free plan allows 100).
+They stop when the merchant books, uses the "Stop these reminders" link
+(`unsubscribe.html` → `nv_email_reminders_stop`), turned email off, or the account is not
+active. Switch the job on or off with
+`cron.alter_job((select jobid from cron.job where jobname = 'novax-first-parcel-reminders'), active := true|false)`.
 
 Sender: `NovaX Logistics <updates@auth.novaxlogistics.com>` on the already verified
 Resend domain. This address does not create a receiving mailbox. OTP, verification
