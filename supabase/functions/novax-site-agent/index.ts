@@ -4,9 +4,11 @@
 // ANTHROPIC_API_KEY lives ONLY here, as a Supabase secret. index.html is
 // a public file in a public repo; the key must never reach the browser.
 //
-// This function has NO database access and NO tools. It answers from a
-// fixed knowledge base below. A prompt-injected model can therefore leak
-// nothing -- there is nothing for it to read.
+// The model has NO database access and NO tools. It answers from a fixed
+// knowledge base below, so a prompt-injected model can leak nothing -- there
+// is nothing for it to read. The function itself (never the model) uses the
+// service role for three things: the rate limiter, the approved answer bank,
+// and recording the conversation where admin reads it.
 //
 // Deploy:  supabase functions deploy novax-site-agent --no-verify-jwt
 // =====================================================================
@@ -19,6 +21,12 @@ const MAX_TOKENS = 700;
 const MAX_TURNS = 10;        // server-side mirror of the browser's counter
 const MAX_CHARS = 600;       // per question
 const RATE_LIMIT = 25;       // messages per IP per hour
+const MODEL_LIMIT = 300;     // model calls per hour for everyone together: the cost ceiling
+const MAX_INFLIGHT = 6;      // model calls at once from one instance
+// If the shared limiter cannot be asked, this instance keeps counting on its
+// own instead of letting everything through.
+const EMERGENCY_PER_IP = 6;
+const EMERGENCY_ALL = 60;
 const WHATSAPP = ["0312 3922558", "0325 8743409", "0321 1551245"];
 
 const ALLOWED_ORIGINS = [
@@ -93,8 +101,14 @@ SHOPIFY
 - The order is marked fulfilled in Shopify with the AWB as tracking once a rider collects it.
 
 OPENING AN ACCOUNT
-- Free. Sign up at https://novaxlogistics.com/#signup — ask for the name, phone and
-  roughly how many parcels a month, and the team activates the account.
+- Free. Sign up at https://novaxlogistics.com/#signup. The form asks for the store name,
+  the pickup city, the owner's name, phone, pickup address, what they sell, an email and
+  a password, and a photo of the front and back of the owner's CNIC (only NovaX staff
+  can see it).
+- The workspace is created the moment signup finishes: no review and no waiting. They
+  can book and print their first parcel in the same session.
+- Prefer a call first? "Talk to sales" on the homepage takes a name and number and the
+  team calls back the same day.
 - When someone asks how to start, GIVE THAT LINK.
 
 WHAT A SELLER GETS
@@ -158,25 +172,52 @@ const TOOL = {
 };
 
 function clientIp(req: Request): string {
+  const cf = (req.headers.get("cf-connecting-ip") || "").trim();
+  if (cf) return cf;
   const f = req.headers.get("x-forwarded-for") || "";
   return (f.split(",")[0] || "").trim();
 }
 
-async function rateOk(ip: string): Promise<boolean> {
-  if (!ip) return true;
+// The shared limiter, in the database. null = it could not be asked.
+async function sharedLimit(bucket: string, limit: number, window: string): Promise<boolean | null> {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!url || !key) return true;              // never block on our own misconfig
+  if (!url || !key) return null;
   try {
     const r = await fetch(`${url}/rest/v1/rpc/nv_track_rate_ok`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: key, Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ p_key: `siteai:${ip}`, p_limit: RATE_LIMIT, p_window: "01:00:00" }),
+      body: JSON.stringify({ p_key: bucket, p_limit: limit, p_window: window }),
     });
-    if (!r.ok) return true;
+    if (!r.ok) return null;
     return (await r.json()) !== false;
-  } catch { return true; }
+  } catch { return null; }
 }
+
+// This used to answer "yes" whenever the database could not be reached, so an
+// outage made the most expensive public endpoint unlimited. Now it falls back
+// to a small per-instance count and says so in the logs.
+const memHits = new Map<string, { n: number; at: number }>();
+let limiterDownLogged = 0;
+function memOk(bucket: string, limit: number): boolean {
+  const now = Date.now();
+  if (memHits.size > 5000) memHits.clear();
+  const h = memHits.get(bucket);
+  if (!h || now - h.at > 3_600_000) { memHits.set(bucket, { n: 1, at: now }); return true; }
+  if (h.n >= limit) return false;
+  h.n++;
+  return true;
+}
+async function allowed(bucket: string, limit: number, window: string, emergency: number): Promise<boolean> {
+  const v = await sharedLimit(bucket, limit, window);
+  if (v !== null) return v;
+  if (Date.now() - limiterDownLogged > 60_000) {
+    limiterDownLogged = Date.now();
+    console.error("novax-site-agent: shared rate limiter unreachable; per-instance emergency limits in force");
+  }
+  return memOk(bucket, emergency);
+}
+let inflight = 0;
 
 // ---- the admin-approved answer bank (sql_novax_ai_answer_bank.sql) ----
 async function bankLookup(question: string): Promise<{ answer: string; suggestions: string[] } | null> {
@@ -288,7 +329,7 @@ Deno.serve(async (req: Request) => {
     return json(req, { answer: HANDOFF, suggestions: [], whatsapp: WHATSAPP, limitReached: true, turnsUsed: MAX_TURNS, turnsLeft: 0 });
   }
 
-  if (!(await rateOk(clientIp(req)))) {
+  if (!(await allowed(`siteai:${clientIp(req) || "unknown"}`, RATE_LIMIT, "01:00:00", EMERGENCY_PER_IP))) {
     return json(req, {
       answer: `You have asked a lot in a short time — message the team on WhatsApp and they will help right away: ${WHATSAPP.join(", ")}.`,
       suggestions: [], whatsapp: WHATSAPP, limitReached: true, turnsUsed, turnsLeft: 0,
@@ -310,12 +351,22 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // Only questions the answer bank could not answer cost anything, so the
+  // ceilings sit here: one for everyone per hour, one for calls in flight.
+  if (inflight >= MAX_INFLIGHT || !(await allowed("siteai:model", MODEL_LIMIT, "01:00:00", EMERGENCY_ALL))) {
+    return json(req, {
+      answer: `We are answering a lot of questions right now. For a quick reply, message the team on WhatsApp: ${WHATSAPP.join(", ")}.`,
+      suggestions: [], whatsapp: WHATSAPP, turnsUsed, turnsLeft: Math.max(0, MAX_TURNS - turnsUsed),
+    });
+  }
+
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) {
     console.error("novax-site-agent: ANTHROPIC_API_KEY is not set");
     return json(req, { answer: HANDOFF, suggestions: [], whatsapp: WHATSAPP, turnsUsed, turnsLeft: MAX_TURNS - turnsUsed });
   }
 
+  inflight++;
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 25000);
@@ -389,5 +440,7 @@ Deno.serve(async (req: Request) => {
       answer: `I could not reach my brain just then. The team answers fast on WhatsApp: ${WHATSAPP.join(", ")}.`,
       suggestions: [], whatsapp: WHATSAPP, turnsUsed, turnsLeft: Math.max(0, MAX_TURNS - turnsUsed),
     });
+  } finally {
+    inflight--;
   }
 });
