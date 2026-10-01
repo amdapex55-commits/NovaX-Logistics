@@ -4568,7 +4568,7 @@ html,body{ background:var(--bg); color:var(--ink); }
   <style id="nvPrintDoc" media="print" disabled>
     @page{size:A4 landscape;margin:8mm;}
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/assets/vendor/supabase-2.117.2.js"></script>
   <!-- Local QR + Code128 generator, INLINED on purpose.
        This used to be an external "nv-codegen.js" file. It kept 404ing in
        production, which silently pushed every AWB print back onto
@@ -9038,6 +9038,27 @@ html,body{ background:var(--bg); color:var(--ink); }
       return "good";
     }
 
+    /* Said once per city per page load: the parcel still moves, it just waits
+       at that city's station for whichever rider works there. */
+    const __nvNoDestNoted = {};
+    function nvLoadWarn(bad) {
+      var el = document.getElementById("nvLoadWarn");
+      if (!bad || !bad.length) { if (el) el.remove(); return; }
+      if (!el) {
+        el = document.createElement("div"); el.id = "nvLoadWarn"; el.setAttribute("role", "alert");
+        el.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99999;background:#9b1c13;color:#fff;font:600 14px/1.4 system-ui,sans-serif;padding:10px 16px;text-align:center";
+        document.body.appendChild(el);
+      }
+      el.textContent = "Could not load " + bad.join(", ") + " just now. Those sections show the last figures loaded, not live ones. Refresh to try again.";
+    }
+
+    function nvNoDestRiderNote(city) {
+      const k = String(city || "").trim().toLowerCase();
+      if (!k || __nvNoDestNoted[k]) return;
+      __nvNoDestNoted[k] = true;
+      setTimeout(() => toast(`Marked in transit. No active rider is set for ${city}, so these parcels wait at the ${city} station until a rider for ${city} receives them. Check Riders if this is wrong.`, "success"), 2200);
+    }
+
     function nvDestinationRider(city) {
       const target = String(city || "").trim().toLowerCase();
       /* 28 Sep 2026: only Lahore and Islamabad/Rawalpindi were known, so a
@@ -9095,10 +9116,15 @@ html,body{ background:var(--bg); color:var(--ink); }
     }
 
     function setParcelStatus(parcel, status, processor = {}) {
+      /* 1 Oct 2026: transit no longer needs a destination rider. The rider app
+         lists incoming parcels by city (rider_station_view) and any rider of
+         that city may take an unassigned one (nv_rider_can_take), so a city
+         whose rider is blocked or not set up yet only means the parcel waits
+         at that station -- it must not stop Karachi from dispatching it. */
       if (status === "Parcel now in transit" && !parcel.rider) {
         const destinationRider = nvDestinationRider(parcel.city);
-        if (!destinationRider) throw new Error(`No active destination rider is configured for ${parcel.city}.`);
-        parcel.rider = destinationRider.id;
+        if (destinationRider) parcel.rider = destinationRider.id;
+        else nvNoDestRiderNote(parcel.city);
       }
       const exactTime = time();
       const stamp = `${new Date().toISOString().slice(0, 10)} ${exactTime}`;
@@ -12210,11 +12236,8 @@ html,body{ background:var(--bg); color:var(--ink); }
         }
         const city = cities[0];
         const destinationRider = nvDestinationRider(city);
-        if (!destinationRider) {
-          toast(`No active destination rider is configured for ${batch[0].city}.`, "error");
-          return;
-        }
-        riderId = destinationRider.id;
+        if (destinationRider) riderId = destinationRider.id;
+        else nvNoDestRiderNote(batch[0].city);
       }
       const riderPushStatuses = ["Parcel out for delivery", "Return out for delivery"];
       if (riderPushStatuses.includes(status) && !riderId) {
@@ -12406,10 +12429,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         return;
       }
       const missingDestinationRider = parcels.find(p => !p.rider && !nvDestinationRider(p.city));
-      if (missingDestinationRider) {
-        toast(`No active destination rider is configured for ${missingDestinationRider.city}.`, "error");
-        return;
-      }
+      if (missingDestinationRider) nvNoDestRiderNote(missingDestinationRider.city);
       const id = `MAN-${from.slice(0,3).toUpperCase()}-${to.slice(0,3).toUpperCase()}-${String(state.transit.length + state.completedSacks.length + 1).padStart(3, "0")}`.replace(/\s/g, "");
       parcels.forEach(parcel => setParcelStatus(parcel, "Parcel now in transit", { name: "Manifest Desk", username: "manifest", branch: `${from} to ${to}` }));
       state.transit.unshift({ id, from, to, expected: parcels.length, scanned: parcels.length, demanifested: 0, health: 100, status: "Active", type: "parcel manifest", parcels: parcels.map(p => p.awb), demanifestedAwbs: [], createdAt: `${new Date().toISOString().slice(0, 10)} ${time()}` });
@@ -18354,11 +18374,19 @@ html,body{ background:var(--bg); color:var(--ink); }
           sb.from("profiles").select("id,email,client_id").not("client_id","is",null).limit(5000)
         ]).then(function(res){
           function D(i){ return (res[i]&&res[i].data)||[]; }
+          /* 1 Oct 2026: a failed query used to read as "no rows" -- one
+             timeout and the dashboard showed zero parcels, invoices or
+             clients with no warning. A table whose query failed now keeps
+             what was last loaded, and a red bar names it. */
+          var NV_LOAD_NAMES=["clients","riders","parcels","invoices","expenses","withdrawals","payment logs","sales leads","signup leads",
+            "operations issues","resolved alerts","manifests","staff","staff activity","wallet ledger","pickup requests","client logins"];
+          var nvLoadBad=[];
+          function ok(i){ var e=res[i]&&res[i].error; if(e){ if(nvLoadBad.indexOf(NV_LOAD_NAMES[i])<0) nvLoadBad.push(NV_LOAD_NAMES[i]); console.error("NovaX admin load failed:",NV_LOAD_NAMES[i],e.message||e); } return !e; }
           window.__nvAdminLastLoad=Date.now();
-          state.clients=D(0).map(rClient);
-          state.riders=D(1).map(rRider);
-          state.parcels=D(2).map(rParcel);
-          state.invoices=D(3).map(rInvoice);
+          if(ok(0)) state.clients=D(0).map(rClient);
+          if(ok(1)) state.riders=D(1).map(rRider);
+          if(ok(2)) state.parcels=D(2).map(rParcel);
+          if(ok(3)) state.invoices=D(3).map(rInvoice);
           var riderExpenseSeen={};
           var riderExpenses=state.parcels.flatMap(function(parcel){
             var rows=Array.isArray(parcel._meta&&parcel._meta.riderExpenses)?parcel._meta.riderExpenses:[];
@@ -18367,7 +18395,7 @@ html,body{ background:var(--bg); color:var(--ink); }
               return { _uuid:e.id, _riderEmbedded:true, _parcelUuid:parcel._uuid, id:e.id, name:e.name||e.category||"Rider expense", amount:Number(e.amount||0), type:e.category||"Other", owner:e.branch||"Rider", status:e.status||"Rider submitted", note:e.note||"", date:e.expenseDate||String(e.createdAt||"").slice(0,10), riderId:e.riderId||parcel.rider };
             }).filter(Boolean);
           });
-          state.expenses=D(4).map(rExpense).concat(riderExpenses);
+          if(ok(4)) state.expenses=D(4).map(rExpense).concat(riderExpenses);
           /* Rider expenses live in nv_rider_expense since 30 Sep (audit
              RIDER-020), not inside parcel meta. Loaded separately so the
              indexed results above keep their positions; marked _riderEmbedded
@@ -18387,21 +18415,24 @@ html,body{ background:var(--bg); color:var(--ink); }
               state.expenses=(state.expenses||[]).concat(rows);
               try{ render(); }catch(e){ console.warn("NovaX admin render",e); }
             }, function(){});
-          state.walletWithdrawals=D(5).map(rWd);
-          state.paymentLogs=D(6).map(rPl);
-          state.salesLeads=D(7).map(rSalesLead);
-          state.signupLeads=D(8).map(rSignupLead);
+          if(ok(5)) state.walletWithdrawals=D(5).map(rWd);
+          if(ok(6)) state.paymentLogs=D(6).map(rPl);
+          if(ok(7)) state.salesLeads=D(7).map(rSalesLead);
+          if(ok(8)) state.signupLeads=D(8).map(rSignupLead);
 
-          state.operationsIssues=D(9).map(rOpsIssue);
-          state.resolvedAlerts=D(10).map(rResolvedAlert);
-          var manifestRows=D(11).map(rManifest);
-          state.transit=manifestRows.filter(function(m){ return m.status!=="Complete"; });
-          state.completedSacks=manifestRows.filter(function(m){ return m.status==="Complete"; });
-          state.users=D(12).map(rStaffUser);
-          state.staffActivity=D(13).map(rStaffActivity);
-          state.walletLedger=D(14).map(rLedger);
-          state.pickupRequests=D(15).map(rPickup);
-          state.clientProfiles=D(16).map(function(r){ return { id:r.id, email:r.email||"", clientId:r.client_id||null }; });
+          if(ok(9)) state.operationsIssues=D(9).map(rOpsIssue);
+          if(ok(10)) state.resolvedAlerts=D(10).map(rResolvedAlert);
+          if(ok(11)){
+            var manifestRows=D(11).map(rManifest);
+            state.transit=manifestRows.filter(function(m){ return m.status!=="Complete"; });
+            state.completedSacks=manifestRows.filter(function(m){ return m.status==="Complete"; });
+          }
+          if(ok(12)) state.users=D(12).map(rStaffUser);
+          if(ok(13)) state.staffActivity=D(13).map(rStaffActivity);
+          if(ok(14)) state.walletLedger=D(14).map(rLedger);
+          if(ok(15)) state.pickupRequests=D(15).map(rPickup);
+          if(ok(16)) state.clientProfiles=D(16).map(function(r){ return { id:r.id, email:r.email||"", clientId:r.client_id||null }; });
+          nvLoadWarn(nvLoadBad);
           // NovaX fix (Best Fix Rule): the embedded Client Portal preview must
           // never silently default to the first client in the list -- leave
           // it unset ("No client selected") until admin explicitly picks one

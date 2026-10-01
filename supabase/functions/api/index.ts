@@ -514,8 +514,17 @@ Deno.serve(async (req) => {
     if (one && req.method === "GET") {
       const awb = decodeURIComponent(one[1]).toUpperCase();
       const r = await table(`parcels?client_id=eq.${clientId}&awb=eq.${encodeURIComponent(awb)}&limit=1`);
-      const p = r.ok && r.data?.[0];
-      if (!p) return fail(404, "order_not_found", `No parcel ${awb} on this account.`);
+      if (!r.ok) return fail(502, "upstream_error", "Try again in a minute.");
+      const p = r.data?.[0];
+      if (!p) {
+        /* 1 Oct 2026: one integration asked for a parcel NovaX had deleted 672
+           times in a week -- a 404 reads as "not there yet, ask again". A
+           parcel deleted by NovaX answers 410 Gone: it will never come back. */
+        const d = await table(`parcel_admin_audit?client_id=eq.${clientId}&awb=eq.${encodeURIComponent(awb)}&action=eq.deleted&order=created_at.desc&limit=1&select=created_at`);
+        const del = d.ok && d.data?.[0];
+        if (del) return fail(410, "order_deleted", `${awb} was deleted by NovaX on ${String(del.created_at).slice(0, 10)}. Stop tracking it.`);
+        return fail(404, "order_not_found", `No parcel ${awb} on this account.`);
+      }
       const steps = (p.meta && p.meta.steps) || [];
       return json({ ok: true, order: { ...parcelOut(p), history: steps } });
     }

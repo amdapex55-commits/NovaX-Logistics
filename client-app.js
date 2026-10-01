@@ -15102,12 +15102,28 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           return String(e.code || "") === "PGRST202" ||
                  /Could not find the function|function public\.client_book_parcel_idem\(.*\) does not exist/i.test(String(e.message || ""));
         }
+        /* 1 Oct 2026: four bookings failed as "401 permission denied for
+           function client_book_parcel_idem" -- the browser's sign-in had
+           lapsed (laptop asleep, token not refreshed), so the call went out
+           signed-out. Refresh the session once and resend with the same key;
+           if the session cannot be refreshed, say so plainly. */
+        var nvAuthRetried = false;
+        function nvBookAuthLost(ri){
+          var e = ri && ri.error; if (!e) return false;
+          return Number(ri.status || 0) === 401 || (String(e.code || "") === "42501" && /permission denied/i.test(String(e.message || "")));
+        }
         function nvBookSend(attempt){
           return sb.rpc("client_book_parcel_idem", Object.assign({}, argsWithOpen, {
             p_idem_key: nvPendingKey.key,
             p_origin_area_id: null,
             p_dest_area_id: o.destAreaId || null
           })).then(function(ri){
+            if (!nvAuthRetried && nvBookAuthLost(ri) && sb.auth && typeof sb.auth.refreshSession === "function") {
+              nvAuthRetried = true;
+              return Promise.resolve(sb.auth.refreshSession()).catch(function(){ return null; }).then(function(rs){
+                return (rs && rs.data && rs.data.session) ? nvBookSend(attempt + 1) : ri;
+              });
+            }
             if (attempt < 4 && (nvBookTransient(ri) || nvBookMissing(ri))) {
               return new Promise(function(res){ setTimeout(res, 1200 * attempt); }).then(function(){ return nvBookSend(attempt + 1); });
             }
@@ -15124,6 +15140,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           var mi = (ri && ri.error && ri.error.message) || "";
           if (ri && ri.error && String(ri.error.code || "") !== "P0001") {
             try { window.__nvSb && window.__nvSb.rpc("log_portal_error", { p_source:"client", p_rpc_name:"client_book_parcel_idem", p_page:"booking", p_message:(String(ri.error.code || "") + " " + (ri.status || "") + " " + mi).slice(0,300), p_severity:"error" }).then(function(){}, function(){}); } catch(e) {}
+          }
+          if (nvBookAuthLost(ri)) {
+            if (nvPendingKey && nvPendingKey.slot) window.__novaxIdemKeys.release(String(MY), nvPendingKey.slot, nvPendingKey.key);
+            throw new Error("Your sign-in has expired, so this parcel was not booked and nothing was charged. Sign in again, then press Book.");
           }
           if (nvBookMissing(ri) || (mi && nvBookTransient(ri) && !/timeout|fetch|network|Load failed/i.test(mi))) {
             if (nvPendingKey && nvPendingKey.slot) window.__novaxIdemKeys.release(String(MY), nvPendingKey.slot, nvPendingKey.key);
