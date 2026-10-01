@@ -64,7 +64,7 @@ button{cursor:pointer}
 .fld input:focus,.fld select:focus,.fld textarea:focus{outline:0;border-color:var(--green-2);box-shadow:0 0 0 3px rgba(15,191,120,.18)}
 .hint{font-size:12.5px;color:var(--muted);margin-top:5px}
 .row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
-.msg{display:none;margin-top:10px;padding:11px 13px;border-radius:11px;font-size:14px;font-weight:600;line-height:1.45}
+.msg{display:none;margin-top:10px;padding:11px 13px;border-radius:11px;font-size:14px;font-weight:600;line-height:1.45;overflow-wrap:anywhere}
 .msg.err{display:block;background:var(--red-bg);color:var(--red-ink);border:1px solid #f0c4bf}
 .msg.ok{display:block;background:var(--mint);color:var(--green-3);border:1px solid var(--mint-line)}
 
@@ -97,7 +97,7 @@ h1.page{font:800 clamp(24px,5vw,30px)/1.15 var(--display);letter-spacing:-.02em;
 .sub{color:var(--muted);font-size:15px}
 .sec{margin-top:22px}
 .sec>h2{font:800 18px/1.25 var(--display);margin-bottom:10px;display:flex;align-items:center;gap:8px}
-.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;overflow-wrap:anywhere}
 .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
 @media (min-width:760px){.stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px}
@@ -1011,85 +1011,46 @@ function rewardsCsv(){
   var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" })); a.download = "novax-sales-rewards-" + todayPk(0) + ".csv"; a.click();
 }
 ADMIN.sheet = function(){
-  return loadOverview().then(function(o){
-    if (S.tab !== "sheet") return; $("main").innerHTML = '<h1 class="page">Google Sheet</h1><p class="sub">Keep your lead list in a Google Sheet. It sends new leads here and shows each lead\'s status, calls and signup back in the sheet, every 15 minutes. Free: it runs on Google Apps Script.</p>' +
-      '<section class="sec"><h2>1. Set up the sheet</h2><div class="card"><p>Make a tab named <b>Leads</b>. Put these headings in row 1, in this order:</p><div class="tpl">' + esc(SHEET_HEADERS.join(" | ")) +
-        '</div><button class="btn btn-plain btn-sm" type="button" data-copy="' + esc(SHEET_HEADERS.join("\t")) + '">Copy headings (paste into A1)</button>' +
-        '<p class="hint" style="margin-top:10px">You fill columns A to J. NovaX fills K onwards; don\'t type there. Assign to = a rep code, or leave it empty and hand leads out from the Leads tab here.</p></div></section>' +
-      '<section class="sec"><h2>2. Add the script</h2><div class="card"><p>In the sheet: <b>Extensions → Apps Script</b>. Delete what is there, paste this, and press Save.</p>' +
-        '<div class="pre" id="gs"></div><button class="btn btn-dark btn-sm" style="margin-top:10px" type="button" id="copyGs">Copy script</button></div></section>' +
-      '<section class="sec"><h2>3. Connect it</h2><div class="card"><p>' + (o.sheet_connected ? '<span class="chip good">A sheet key exists</span> Making a new key disconnects the old one.' : "No sheet is connected yet.") + "</p>" +
-        '<button class="btn btn-primary" style="margin-top:10px" type="button" id="mkKey">' + (o.sheet_connected ? "Make a new key" : "Make the key") + '</button><div id="keyOut"></div>' +
-        '<p class="hint" style="margin-top:10px">Back in the sheet, reload it. A <b>NovaX</b> menu appears: choose <b>Connect</b> and paste the key, then <b>Turn on auto-sync</b>. Google asks you to allow the script once.</p></div></section>';
-    $("gs").textContent = GS_CODE;
+  return rpc("sales_admin_sheet_status").then(function(st){
+    if (S.tab !== "sheet") return;
+    $("main").innerHTML = '<h1 class="page">Google Sheet</h1><p class="sub">Add leads to your Google Sheet. NovaX reads it every 15 minutes and adds new rows here as leads. Nothing is written back to the sheet; calls, statuses and signups live in this portal.</p>' +
+      '<section class="sec"><h2>Your sheet</h2><form id="fSheet" class="card" novalidate>' +
+        '<div class="fld"><label for="shUrl">Google Sheet link</label><input id="shUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://docs.google.com/spreadsheets/d/…" value="' + esc(st.sheet_url || "") + '"></div>' +
+        '<div class="row-btns" style="margin-top:0"><button class="btn btn-primary" id="shSave" type="submit">' + (st.sheet_id ? "Save link and import" : "Link sheet and import") + "</button>" +
+        (st.sheet_id ? '<button class="btn btn-dark" type="button" id="shPull">Import now</button><a class="btn btn-plain" target="_blank" rel="noopener" href="' + esc(st.sheet_url) + '">Open sheet</a>' : "") + "</div>" +
+        '<div class="msg" id="shMsg" role="alert"></div></form></section>' +
+      '<section class="sec"><h2>Last import</h2><div id="shLast">' + sheetLast(st.last) + "</div></section>" +
+      '<section class="sec"><h2>How the sheet must look</h2><div class="card"><ul style="margin:0;padding-left:20px">' +
+        "<li>A tab named <b>Leads</b> (otherwise NovaX reads the first tab).</li>" +
+        "<li>Headings in row 1. NovaX reads these columns by name, in any order:</li></ul><div class=\"tpl\">" + esc(SHEET_HEADERS.join(" | ")) + "</div>" +
+        '<button class="btn btn-plain btn-sm" type="button" data-copy="' + esc(SHEET_HEADERS.join("\t")) + '">Copy headings (paste into A1)</button>' +
+        '<ul style="margin:12px 0 0;padding-left:20px"><li><b>Store name</b> and <b>Phone</b> (a Pakistani mobile) are required; rows without them are listed below with the reason.</li>' +
+        "<li>Leave <b>Lead ID</b> empty if you like; NovaX matches a lead by its Lead ID or phone, so re-reading the sheet never makes duplicates.</li>" +
+        "<li><b>Assign to</b> = a rep code. It only places a lead that has no rep yet; moves you make here are never undone by the sheet.</li>" +
+        "<li>Sharing: <b>Share → General access → Anyone with the link → Viewer</b>. NovaX cannot read a private sheet.</li>" +
+        "<li>Deleting a row in the sheet does not delete the lead here.</li></ul></div></section>";
   });
 };
-var SHEET_HEADERS = ["Lead ID", "Store name", "Contact person", "Phone", "City", "Category", "Where found", "Store link", "Orders per month", "Assign to",
-  "Status", "Calls", "Last called", "Next follow-up", "Last note", "Signed up", "First pickup", "Rewards Rs", "Synced at", "Sent assign"];
-var GS_CODE = [
-"// NovaX lead sheet sync. Tab \"Leads\", headings in row 1 (see the NovaX Sales page).",
-"// Columns A-J are yours; NovaX writes K-T. Free: runs on Google Apps Script.",
-"var NOVAX_URL = '" + SB_URL + "/rest/v1/rpc/sales_sheet_sync';",
-"var NOVAX_KEY = '" + SB_KEY + "'; // NovaX's public site key, not your sheet key",
-"",
-"function onOpen() {",
-"  SpreadsheetApp.getUi().createMenu('NovaX')",
-"    .addItem('Connect (paste key)', 'novaxConnect')",
-"    .addItem('Sync now', 'novaxSync')",
-"    .addItem('Turn on auto-sync (every 15 min)', 'novaxAuto')",
-"    .addToUi();",
-"}",
-"function novaxConnect() {",
-"  var r = SpreadsheetApp.getUi().prompt('Paste the key from NovaX Sales → Google Sheet');",
-"  if (r.getSelectedButton() !== SpreadsheetApp.getUi().Button.OK) return;",
-"  PropertiesService.getDocumentProperties().setProperty('NOVAX_SHEET_KEY', r.getResponseText().trim());",
-"  novaxSync();",
-"}",
-"function novaxAuto() {",
-"  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'novaxSync') ScriptApp.deleteTrigger(t); });",
-"  ScriptApp.newTrigger('novaxSync').timeBased().everyMinutes(15).create();",
-"  SpreadsheetApp.getActive().toast('Auto-sync is on: every 15 minutes.');",
-"}",
-"function novaxSync() {",
-"  var key = PropertiesService.getDocumentProperties().getProperty('NOVAX_SHEET_KEY');",
-"  if (!key) throw new Error('Choose NovaX → Connect first.');",
-"  var sh = SpreadsheetApp.getActive().getSheetByName('Leads');",
-"  if (!sh) throw new Error('Make a tab named Leads.');",
-"  var last = sh.getLastRow(); if (last < 2) return;",
-"  var data = sh.getRange(2, 1, last - 1, 20).getValues();",
-"  var rows = [], idCol = [];",
-"  for (var i = 0; i < data.length; i++) {",
-"    var r = data[i];",
-"    if (!String(r[1]).trim() && !String(r[3]).trim()) { idCol.push([r[0]]); continue; }",
-"    var id = String(r[0]).trim() || ('L' + Utilities.formatDate(new Date(), 'Asia/Karachi', 'yyMMdd') + '-' + (i + 2));",
-"    idCol.push([id]);",
-"    var row = { lead_ref: id, store_name: String(r[1]), contact_name: String(r[2]), phone: String(r[3]), city: String(r[4]),",
-"      category: String(r[5]), source: String(r[6]), store_link: String(r[7]), est_orders: String(r[8]) };",
-"    var assign = String(r[9]).trim().toUpperCase();",
-"    if (assign !== String(r[19]).trim().toUpperCase()) row.assign_to = assign; // only when you changed it",
-"    rows.push(row);",
-"  }",
-"  sh.getRange(2, 1, idCol.length, 1).setValues(idCol);",
-"  var res = UrlFetchApp.fetch(NOVAX_URL, { method: 'post', contentType: 'application/json', muteHttpExceptions: true,",
-"    headers: { apikey: NOVAX_KEY, Authorization: 'Bearer ' + NOVAX_KEY },",
-"    payload: JSON.stringify({ p_key: key, p_rows: rows.slice(0, 2000) }) });",
-"  var body = JSON.parse(res.getContentText() || '{}');",
-"  if (res.getResponseCode() !== 200) throw new Error('NovaX: ' + (body.message || res.getResponseCode()));",
-"  var byRef = {}; (body.leads || []).forEach(function (l) { if (l.lead_ref) byRef[l.lead_ref] = l; });",
-"  var now = Utilities.formatDate(new Date(), 'Asia/Karachi', 'yyyy-MM-dd HH:mm');",
-"  var out = [], assignOut = [];",
-"  for (var j = 0; j < idCol.length; j++) {",
-"    var l = byRef[String(idCol[j][0])];",
-"    if (!l) { out.push(['', '', '', '', '', '', '', '', '', '']); assignOut.push([data[j][9]]); continue; }",
-"    out.push([l.status, l.call_count, l.last_called_at || '', l.next_followup_on || '', l.last_note || '', l.signed_up_on || '',",
-"      l.first_pickup ? 'Yes' : '', l.rewards || 0, now, l.rep_code || '']);",
-"    assignOut.push([l.rep_code || '']);",
-"  }",
-"  sh.getRange(2, 11, out.length, 10).setValues(out);",
-"  sh.getRange(2, 10, assignOut.length, 1).setValues(assignOut);",
-"  var skipped = (body.skipped || []).length;",
-"  SpreadsheetApp.getActive().toast('NovaX: ' + (body.inserted || 0) + ' new, ' + (body.updated || 0) + ' updated' + (skipped ? ', ' + skipped + ' skipped (check phone and store name)' : '') + '.');",
-"}"].join("\n");
+function sheetLast(l){
+  if (!l) return '<div class="empty">No import yet.</div>';
+  if (!l.ok) return '<div class="msg err" style="display:block">' + esc(l.error || "The import failed.") + (l.at ? " (" + esc(pkt(l.at, true)) + ")" : "") + "</div>";
+  var sk = l.skipped || [], nt = l.notes || [];
+  return '<div class="card"><p><b>' + esc(pkt(l.at, true)) + "</b> · " + (l.rows || 0) + " rows read · " + (l.inserted || 0) + " new · " + (l.updated || 0) + " already here" + (sk.length ? " · " + sk.length + " skipped" : "") + "</p>" +
+    (sk.length || nt.length ? '<ul style="margin:10px 0 0;padding-left:20px;font-size:14px">' + sk.concat(nt).map(function(x){ return "<li>Row " + esc(x.row) + (x.lead_ref ? " (" + esc(x.lead_ref) + ")" : "") + ": " + esc(x.reason) + "</li>"; }).join("") + "</ul>" : "") + "</div>";
+}
+var SHEET_HEADERS = ["Lead ID", "Store name", "Contact person", "Phone", "City", "Category", "Where found", "Store link", "Orders per month", "Assign to"];
+function sheetDone(r, btn){
+  busy(btn, false);
+  if (r && r.ok) toast("Imported: " + (r.inserted || 0) + " new, " + (r.updated || 0) + " already here" + ((r.skipped || []).length ? ", " + r.skipped.length + " skipped" : ""));
+  return ADMIN.sheet();
+}
+function doSheet(e){
+  e.preventDefault();
+  var btn = $("shSave"), url = $("shUrl").value.trim();
+  if (!/\/spreadsheets\/d\/[A-Za-z0-9_-]{20,}/.test(url)) return showMsg($("shMsg"), "Paste the full Google Sheet link (it starts with https://docs.google.com/spreadsheets/d/).");
+  busy(btn, true, "Reading the sheet…");
+  rpc("sales_admin_set_sheet", { p_url: url }).then(function(r){ return sheetDone(r, btn); }).catch(function(err){ busy(btn, false); showMsg($("shMsg"), err.message); });
+}
 
 /* ═════ events ═════ */
 var sheetReturn = null;
@@ -1139,13 +1100,8 @@ document.addEventListener("click", function(e){
   }
   if (t.closest("#refreshNow")) { var b = t.closest("#refreshNow"); busy(b, true, "Updating…"); return rpc("sales_refresh").then(function(r){ toast("Updated: " + (r.credited || 0) + " new stores credited, " + (r.rewards_earned || 0) + " rewards earned"); ADMIN.overview(); }).catch(function(err){ busy(b, false); toast(err.message); }); }
   if (t.closest("#csvOut")) return rewardsCsv();
-  if (t.closest("#copyGs")) return copy(GS_CODE);
-  if (t.closest("#mkKey")) {
-    if (!confirm("Make a new sheet key? A sheet using the old key stops syncing until you paste the new one.")) return;
-    return rpc("sales_admin_sheet_key").then(function(k){
-      $("keyOut").innerHTML = '<p style="margin-top:12px"><b>Copy this key now. It is shown only once.</b></p><div class="copybox"><input readonly value="' + esc(k) + '" aria-label="Sheet key"><button class="btn btn-dark" type="button" data-copy="' + esc(k) + '">Copy</button></div>';
-    }).catch(function(err){ toast(err.message); });
-  }
+  if (t.closest("#shPull")) { var pb = t.closest("#shPull"); busy(pb, true, "Importing…");
+    return rpc("sales_admin_pull_sheet").then(function(r){ return sheetDone(r, pb); }).catch(function(err){ busy(pb, false); toast(err.message); }); }
   if (t.closest("#forgot")) return doForgot();
   if ((el = t.closest("[data-doc]"))) {
     var w = el.getAttribute("data-doc");
@@ -1181,6 +1137,7 @@ document.addEventListener("submit", function(e){
   if (id === "fInvite") return doInvite(e);
   if (id === "fAssign") return doAssign(e);
   if (id === "fImport") return doImport(e);
+  if (id === "fSheet") return doSheet(e);
 });
 document.addEventListener("input", function(e){
   if (e.target.id === "q") { S.q = e.target.value; drawLeadList(); }
