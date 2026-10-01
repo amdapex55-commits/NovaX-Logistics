@@ -285,6 +285,8 @@ h2{font:800 clamp(30px,6.4vw,50px)/1.06 var(--display);letter-spacing:-.035em;ma
 .btn-outline:hover{background:var(--mint)}
 .btn-plain{background:var(--card);border-color:var(--line-2);color:var(--ink)}
 .btn-plain:hover{border-color:var(--ink-2)}
+.btn-signin{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn-signin:hover{background:#23392e;border-color:#23392e}
 .btn-sm{min-height:44px;padding:8px 14px;font-size:14.5px;border-radius:10px}
 .btn-lg{min-height:54px;padding:14px 24px;font-size:16.5px}
 .btn-block{width:100%}
@@ -641,7 +643,7 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
 .mbar.on{transform:none;visibility:visible;transition:transform .22s ease}
 .mbar .btn{min-height:48px;padding:10px 14px}
 .mbar .btn-primary{flex:1}
-.mbar-wa{width:52px;flex:none}
+.mbar .btn-signin{flex:1}
 @media (min-width:861px){.mbar{display:none}}
 @media (max-width:860px){footer{padding-bottom:calc(92px + var(--sa-b))}}
 @media (prefers-reduced-motion:reduce){.mbar,.mbar.on{transition:none}}
@@ -842,7 +844,7 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
     </nav>
     <div class="nav-acts">
       <a class="nav-track" href="#track">Track</a>
-      <a class="btn btn-plain btn-sm nav-signin" id="hdrSignin" href="#signin" data-mdl="signin">Sign in</a>
+      <a class="btn btn-signin btn-sm nav-signin" id="hdrSignin" href="#signin" data-mdl="signin">Sign in</a>
       <button class="btn btn-primary btn-sm nav-signup" type="button" data-mdl="signup">Sign up free</button>
       <button class="burger" id="burger" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks"><span></span></button>
     </div>
@@ -863,13 +865,13 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
       <p class="lead">A rider collects from your door, your customer follows a live link, and the cash they pay lands in your NovaX wallet the same day the parcel is delivered. From Rs&nbsp;225 a parcel.</p>
       <div class="cta-row" id="heroCtas">
         <button class="btn btn-primary btn-lg" type="button" data-mdl="signup">Sign up free</button>
+        <a class="btn btn-signin btn-lg" href="#signin" data-mdl="signin" id="heroSignin">Sign in</a>
         <a class="btn btn-outline btn-lg" href="client.html?demo=1" data-demo-cta>See the portal — no signup</a>
       </div>
       <div class="tlinks">
         <button class="tlink" type="button" data-mdl="sales">Talk to sales</button>
         <a class="tlink" href="#track">Track a parcel</a>
       </div>
-      <p class="returning" id="heroReturning">Already shipping with NovaX? <a href="#signin" data-mdl="signin" id="heroSignin">Sign in to your portal</a></p>
       <!-- Two fixed-height rows. They ship with true static lines and are
            swapped in place for the live rating (public_reviews),
            so nothing below them ever moves when the data arrives. -->
@@ -1211,8 +1213,8 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
 <!-- Phone action bar: appears once the hero buttons scroll away. -->
 <nav class="mbar" id="mbar" aria-label="Quick actions">
   <button class="btn btn-primary" type="button" data-mdl="signup">Sign up free</button>
+  <a class="btn btn-signin" href="#signin" data-mdl="signin" id="barSignin">Sign in</a>
   <a class="btn btn-plain" href="#track">Track</a>
-  <a class="btn btn-plain mbar-wa" href="https://wa.me/923123922558?text=Assalam%20o%20Alaikum%20NovaX%2C%20I%20want%20to%20start%20shipping%20with%20you." target="_blank" rel="noopener" aria-label="WhatsApp NovaX"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3.6 20.4l1.3-4.1a8.4 8.4 0 1 1 3.2 3z"/><path d="M9.3 8.3c.3-.5.7-.5 1-.5h.4c.2 0 .4.1.5.4l.7 1.6c.1.2 0 .5-.1.7l-.5.6c.5 1 1.3 1.8 2.3 2.3l.6-.5c.2-.2.5-.2.7-.1l1.6.7c.3.1.4.3.4.5v.4c0 .3-.1.7-.6 1-.6.3-1.6.4-3-.3a8.5 8.5 0 0 1-3.6-3.6c-.7-1.4-.6-2.5-.4-3.2z" fill="currentColor" stroke="none"/></svg></a>
 </nav>
 
 <script>
@@ -1813,15 +1815,14 @@ function nvFriendly(t){
       if(!p||p.error||!p.data) return;
       var r=String(p.data.role||"client").toLowerCase();
       var t2=r==="rider"?"rider.html":(ADMIN_ROLES.indexOf(r)>-1?"admin.html":"client.html");
-      ["hdrSignin","menuSignin","ftSignin","heroSignin"].forEach(function(id){ var a=$(id); if(a&&!a.hasAttribute("data-mdl")) a.setAttribute("href",t2); });
+      ["hdrSignin","menuSignin","ftSignin","heroSignin","barSignin"].forEach(function(id){ var a=$(id); if(a&&!a.hasAttribute("data-mdl")) a.setAttribute("href",t2); });
     }).catch(function(){});
-    ["hdrSignin","menuSignin","ftSignin","heroSignin"].forEach(function(id){
+    /* Merchants look for "Sign in", so the label never changes; for someone
+       already signed in it simply goes straight to their portal. */
+    ["hdrSignin","menuSignin","ftSignin","heroSignin","barSignin"].forEach(function(id){
       var a=$(id); if(!a) return;
-      a.textContent=id==="hdrSignin"?"Open portal":"Open my portal";
       a.setAttribute("href",target); a.removeAttribute("data-mdl");
     });
-    var p=$("heroReturning");
-    if(p&&p.firstChild&&p.firstChild.nodeType===3) p.firstChild.nodeValue="Welcome back. ";
   }).catch(function(){});
 })();
 
