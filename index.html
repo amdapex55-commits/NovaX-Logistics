@@ -871,7 +871,7 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
       </div>
       <p class="returning" id="heroReturning">Already shipping with NovaX? <a href="#signin" data-mdl="signin" id="heroSignin">Sign in to your portal</a></p>
       <!-- Two fixed-height rows. They ship with true static lines and are
-           swapped in place for live figures (public_reviews, public_home_stats),
+           swapped in place for the live rating (public_reviews),
            so nothing below them ever moves when the data arrives. -->
       <div class="proof" aria-live="polite">
         <p class="proof-row" id="heroRate"><span class="pdot" aria-hidden="true"></span>No setup fee · no monthly charge · no contract</p>
@@ -991,18 +991,6 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
         <li><div><b>Payout to Meezan Bank</b><span>24&nbsp;hours · fee Rs&nbsp;25 · bank ref&nbsp;0412</span></div><div class="amt">−Rs&nbsp;25,000<small>Yesterday</small></div></li>
       </ol>
     </figure>
-  </div>
-  <!-- Live network totals from public_home_stats(): aggregates only. Below the
-       fold and hidden until real numbers arrive, so it never shows a zero. -->
-  <div class="wrap">
-    <div class="board" id="board" hidden>
-      <div class="board-head"><span class="board-live"><i class="ping" aria-hidden="true"></i>Live from the NovaX ledger</span><span class="board-asof" id="boardAsOf"></span></div>
-      <dl class="board-grid">
-        <div><dt>Paid to sellers' banks</dt><dd class="board-v" id="bPaid"></dd><dd class="board-s">Every payout carries a bank reference</dd></div>
-        <div><dt>COD collected at the door</dt><dd class="board-v" id="bCod"></dd><dd class="board-s">For sellers in Karachi, Lahore, Islamabad and Rawalpindi</dd></div>
-        <div><dt>Stores signed up</dt><dd class="board-v" id="bStores"></dd><dd class="board-s" id="bGrowth">Online sellers across Pakistan</dd></div>
-      </dl>
-    </div>
   </div>
 </section>
 
@@ -1807,36 +1795,6 @@ function nvFriendly(t){
     }
     sec.hidden=false;
   }).catch(function(e){ console.warn("NovaX reviews:",e&&e.message); });
-})();
-
-/* ═════ LIVE NETWORK FIGURES ═════
-   public_home_stats(): network totals only. Money is shown in lakh, rounded
-   DOWN to one decimal, so the page can only ever understate it. Parcel counts
-   are not shown. The ledger board stays hidden unless real numbers came back. */
-(function(){
-  if(!trackSb) return;
-  function tenths(n){ return Math.floor((Number(n)||0)/10000); }          // lakh x 10
-  function lakhTxt(t){ var v=t/10; return "Rs "+(t%10===0?v.toFixed(0):v.toFixed(1))+" lakh"; }
-  trackSb.rpc("public_home_stats",{}).then(function(r){
-    if(r&&r.error){ console.warn("NovaX figures:",r.error.message); return; }
-    var d=r&&r.data; if(!d) return;
-    var paid=tenths(d.paid_out_total), cod=tenths(d.cod_collected_total), stores=Number(d.stores_signed_up)||0, growth=Number(d.growth_last_month)||0;
-    var row=$("heroDelivered");
-    if(row&&paid>=10){
-      row.innerHTML='<span class="pdot ping" aria-hidden="true"></span><b data-count="'+paid+'" data-fmt="lakh">'+lakhTxt(paid)+'</b> paid out to sellers’ banks';
-      if(window.__nvMotion) window.__nvMotion.count(row.querySelector("[data-count]"));
-    }
-    if(paid>=10&&cod>=10&&stores>0){
-      var set=function(id,n,fmt){ var el=$(id); el.textContent=fmt==="lakh"?lakhTxt(n):comma(n); el.setAttribute("data-count",String(n)); if(fmt) el.setAttribute("data-fmt",fmt); };
-      set("bPaid",paid,"lakh"); set("bCod",cod,"lakh"); set("bStores",stores);
-      if(growth>=1.9) $("bGrowth").textContent="Deliveries "+(growth>=2.9?Math.floor(growth)+"×":"doubled")+" last month";
-      else if(growth>=1.2) $("bGrowth").textContent="Deliveries up "+Math.round((growth-1)*100)+"% last month";
-      var m=String(d.as_of||"").match(/(\d{2}):(\d{2})$/);
-      if(m){ var h=+m[1]; $("boardAsOf").textContent="Updated "+((h%12)||12)+":"+m[2]+(h<12?" am":" pm")+", Pakistan time"; }
-      $("board").hidden=false;
-      if(window.__nvMotion) window.__nvMotion.board($("board"));
-    }
-  }).catch(function(e){ console.warn("NovaX figures:",e&&e.message); });
 })();
 
 /* ═════ ALREADY SIGNED IN ═════
