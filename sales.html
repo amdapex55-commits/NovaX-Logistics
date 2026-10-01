@@ -808,6 +808,7 @@ REP.link = function(){
       '<a class="btn btn-primary btn-block" style="margin-top:10px" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(T[0][1]) + '">Share on WhatsApp</a></section>' +
     '<section class="sec"><h2>Messages you can send</h2>' + T.map(function(t){ return '<div class="card" style="margin-bottom:10px"><b>' + esc(t[0]) + '</b><div class="tpl">' + esc(t[1]) +
       '</div><button class="btn btn-plain btn-sm" type="button" data-copy="' + esc(t[1]) + '">Copy message</button></div>'; }).join("") + "</section>" +
+    '<section class="sec"><h2>Rep guide</h2><div class="card"><p class="sub" style="margin-bottom:10px">Call script, answers to every objection, prices, how to use this page and the payout rules. Roman Urdu, 38 pages. Always the latest version.</p><button class="btn btn-primary btn-block" type="button" id="getGuide">Rep guide (PDF)</button></div></section>' +
     '<section class="sec"><h2>My joining documents</h2><div class="card"><p class="sub" style="margin-bottom:10px">Your signed offer letter, commission agreement and joining certificate.</p><button class="btn btn-dark btn-block" type="button" id="myDocs">View or save my documents</button></div></section>';
   return Promise.resolve();
 };
@@ -1112,6 +1113,17 @@ document.addEventListener("click", function(e){
   if ((el = t.closest("[data-print]"))) return printDocs(el.getAttribute("data-print").split(",").map(function(k){ return S.join.D[k]; }).join(""));
   if (t.closest("#openSales")) return startApp("rep");
   if (t.closest("#docsBack")) return S.join && S.join.back && S.join.back();
+  if (t.closest("#getGuide")) { var gb = t.closest("#getGuide"); busy(gb, true, "Getting the guide…");
+    return rpc("sales_guide").then(function(g){
+      busy(gb, false);
+      if (!g || !g.b64) return toast("The guide isn't available yet. Ask NovaX.");
+      var bin = atob(g.b64), bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([bytes], { type: g.mime || "application/pdf" })), a = document.createElement("a");
+      a.href = url; a.download = g.name || "NovaX-Sales-Rep-Guide.pdf"; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+      toast("Rep guide downloaded");
+    }).catch(function(err){ busy(gb, false); toast(err.message); }); }
   if (t.closest("#myDocs")) { var md = t.closest("#myDocs"); busy(md, true, "Opening…");
     return rpc("sales_my_documents").then(function(sig){ busy(md, false); if (S.tab === "link") renderDocsView(S.me.rep, sig, function(){ go("link"); }, "Back"); })
       .catch(function(err){ busy(md, false); toast(err.message); }); }
