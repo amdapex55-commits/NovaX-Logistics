@@ -1649,7 +1649,19 @@ var CFG = window.NOVAX_CONFIG = {
 
 /* ═════ SUPABASE ═════ */
 var __nvSb=null;
-try{ if(window.supabase&&window.supabase.createClient) __nvSb=window.supabase.createClient(CFG.SB_URL,CFG.SB_KEY); }
+/* A request that never answers left signup on "Creating your workspace..."
+   for good. Every call now gives up after 45 s and the form's own error path
+   takes over; CNIC uploads (storage) keep their own longer limit. */
+function nvTimedFetch(input,init){
+  var url=String((input&&input.url)||input||"");
+  if(/\/storage\/v1\//.test(url)||typeof AbortController==="undefined") return fetch(input,init);
+  var ctl=new AbortController(), t=setTimeout(function(){ ctl.abort(); },45000);
+  init=Object.assign({},init||{});
+  if(init.signal){ try{ init.signal.addEventListener("abort",function(){ ctl.abort(); }); }catch(e){} }
+  init.signal=ctl.signal;
+  return fetch(input,init).finally(function(){ clearTimeout(t); });
+}
+try{ if(window.supabase&&window.supabase.createClient) __nvSb=window.supabase.createClient(CFG.SB_URL,CFG.SB_KEY,{global:{fetch:nvTimedFetch}}); }
 catch(e){ console.warn("NovaX: cloud init failed",e); }
 /* The password-recovery script further down reads window.__nvSb. On the old
    page nothing ever set it -- __nvSb lived only inside this closure -- so
@@ -1684,8 +1696,8 @@ function nvFriendly(t){
   if(/rate limit|over_email_send_rate|too many requests from this|too many attempts/i.test(s) && !/connection|right now/i.test(s)) return "Too many attempts. Please wait a minute and try again.";
   if(/password should|weak password|password is too|pwned/i.test(s)) return "Please choose a stronger password: at least 8 characters and not a common one.";
   if(/invalid email|unable to validate email/i.test(s)) return "Please enter a valid email address.";
-  if(/failed to fetch|networkerror|load failed|network request|timed? ?out/i.test(s)) return "We couldn't reach NovaX. Check your internet connection and try again.";
-  if(/function|relation|column|schema|violates|constraint|permission denied|jwt|pgrst|syntax|null value|duplicate key|sqlstate|\brpc\b|42\d{3}|23\d{3}/i.test(s)){
+  if(/failed to fetch|networkerror|load failed|network request|timed? ?out|aborted|aborterror/i.test(s)) return "We couldn't reach NovaX. Check your internet connection and try again.";
+  if(/\bfunction\b|\brelation\b|\bcolumn\b|\bschema\b|violates|constraint|permission denied|\bjwt\b|pgrst|syntax error|null value|duplicate key|sqlstate|\brpc\b/i.test(s)){
     console.warn("NovaX:",s);
     return "Something went wrong on our side. Please try again, or message us on WhatsApp 0312 3922558.";
   }
@@ -1836,8 +1848,15 @@ function nvFriendly(t){
   Promise.resolve(__nvSb.auth.getSession()).then(function(r){
     var s=r&&r.data&&r.data.session;
     if(!s||!s.user) return;
-    var role=""; try{ role=String((JSON.parse(localStorage.getItem("novaxSession")||"{}")||{}).role||""); }catch(e){}
-    var target=role==="admin"?"admin.html":role==="rider"?"rider.html":"client.html";
+    var stored=""; try{ stored=String((JSON.parse(localStorage.getItem("novaxSession")||"{}")||{}).role||""); }catch(e){}
+    var target=stored==="admin"?"admin.html":stored==="rider"?"rider.html":"client.html";
+    /* The note in this browser can be stale; the profile decides. */
+    Promise.resolve(__nvSb.from("profiles").select("role").eq("id",s.user.id).maybeSingle()).then(function(p){
+      if(!p||p.error||!p.data) return;
+      var r=String(p.data.role||"client").toLowerCase();
+      var t2=r==="rider"?"rider.html":(ADMIN_ROLES.indexOf(r)>-1?"admin.html":"client.html");
+      ["hdrSignin","menuSignin","ftSignin","heroSignin"].forEach(function(id){ var a=$(id); if(a&&!a.hasAttribute("data-mdl")) a.setAttribute("href",t2); });
+    }).catch(function(){});
     ["hdrSignin","menuSignin","ftSignin","heroSignin"].forEach(function(id){
       var a=$(id); if(!a) return;
       a.textContent=id==="hdrSignin"?"Open portal":"Open my portal";
@@ -2227,6 +2246,8 @@ $("fSignup").addEventListener("submit",function(e){
       website=val("merchantWebsite"), email=val("merchantEmail").toLowerCase(), password=val("merchantPassword");
   /* "mystore.pk" is how people write their site; store a working link. */
   if(website&&!/^https?:\/\//i.test(website)) website="https://"+website;
+  if(website&&!/^https?:\/\/([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(:\d+)?(\/\S*)?$/i.test(website)){
+    showMsg("mSignup","Check your website address, for example yourstore.pk, or leave it empty.",false); return; }
 
   /* Faisalabad, Multan and "Other" were offered but NovaX does not collect
      from them -- a merchant could sign up from a city no rider serves. The list

@@ -171,7 +171,7 @@ const removed=sb=>sb.calls.filter(c=>c[0]==='remove').flatMap(c=>c[2]);
 /* ─── 2. Signup (index.html) ──────────────────────────────────────────── */
 async function signupPage(o={}){
   let html=read('index.html');
-  html=html.replace('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>',
+  html=html.replace(/<script src="(https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase\/supabase-js@2|\/assets\/vendor\/supabase-[0-9.]+\.js)"><\/script>/,
     '<script>window.supabase={createClient:function(){return window.__stubSb;}};</script>');
   html=html.replace(/<script src="nv-cnic\.js\?v=[a-f0-9]+"><\/script>/,o.noHelper?'':()=>'<script>'+cnicJs.replace(/<\/script/gi,'<\\/script')+'</script>');
   const vc=new VirtualConsole();const errors=[];vc.on('jsdomError',e=>{if(!/Not implemented|navigation/i.test(e.message))errors.push(e.message);});
