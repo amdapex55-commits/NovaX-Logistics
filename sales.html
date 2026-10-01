@@ -7,6 +7,7 @@
 <meta name="robots" content="noindex,nofollow">
 <meta name="theme-color" content="#fbfcf8">
 <meta name="referrer" content="strict-origin-when-cross-origin">
+<script>if(window.top!==window.self){document.documentElement.style.display="none";try{window.top.location.replace(window.location.href);}catch(e){}}</script>
 <meta name="format-detection" content="telephone=no">
 <link rel="icon" href="/assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
@@ -754,13 +755,16 @@ REP.stores = function(){
     var REW = { Waiting: "info", Earned: "good", Approved: "good", Paid: "good", Rejected: "bad" };
     if (S.tab !== "stores") return; $("main").innerHTML = '<h1 class="page">My stores</h1><p class="sub">Stores that signed up through you. You earn Rs 500 when a store\'s CNIC is verified and Rs 500 after its first pickup.</p>' +
       '<section class="sec">' + (S.stores.length ? '<div class="list">' + S.stores.map(function(s){
-        var m = s.milestones || {}, w = s.rewards || {};
+        var m = s.milestones || {}, w = s.rewards || {}, amt = s.amounts || {};
+        if (s.status === "Rejected") return '<div class="item" style="display:block"><b>' + esc(s.store_name) + '</b><span class="meta">' + esc([s.city, "signed up " + pkt(s.signed_up_at)].filter(Boolean).join(" · ")) + "</span>" +
+          '<div class="steps"><span class="chip bad">Not credited to you</span></div><p class="hint" style="margin-top:6px">' + esc(s.note ? "NovaX: " + s.note : "NovaX did not credit this store to you.") +
+          " If you have new details (when and how you reached them), send the claim again below.</p></div>";
         return '<div class="item" style="display:block"><b>' + esc(s.store_name) + '</b><span class="meta">' + esc([s.city, "signed up " + pkt(s.signed_up_at)].filter(Boolean).join(" · ")) + "</span>" +
           '<div class="steps">' + (s.status === "Pending" ? '<span class="chip warn">Waiting for NovaX to confirm</span>' : '<span class="chip good">✓ Account opened</span>') +
           '<span class="chip ' + (m.cnic_verified ? "good" : "") + '">' + (m.cnic_verified ? "✓ CNIC verified" : "CNIC not verified yet") + "</span>" +
           '<span class="chip ' + (m.picked_up ? "good" : "") + '">' + (m.picked_up ? "✓ First pickup" : "No pickup yet") + "</span></div>" +
           '<div class="steps">' + ["account_opened", "first_pickup"].filter(function(k){ return w[k]; }).map(function(k){
-            return '<span class="chip ' + (REW[w[k]] || "") + '">' + (k === "account_opened" ? "Account" : "Pickup") + " Rs 500 · " + esc(w[k]) + "</span>"; }).join("") + "</div></div>";
+            return '<span class="chip ' + (REW[w[k]] || "") + '">' + (k === "account_opened" ? "Account" : "Pickup") + " " + rs(amt[k] != null ? amt[k] : 500) + " · " + esc(w[k]) + "</span>"; }).join("") + "</div></div>";
       }).join("") + "</div>" : '<div class="empty">No stores yet. When a store you called signs up, it appears here within 15 minutes.</div>') + "</section>" +
       '<section class="sec"><h2>Store signed up but isn\'t here?</h2><form id="fClaim" class="card" novalidate><p class="sub" style="margin-bottom:10px">If the store didn\'t use your code and wasn\'t on your lead list, send NovaX its number. NovaX checks and confirms.</p>' +
         '<div class="fld"><label for="clPhone">Store\'s mobile number</label><input id="clPhone" type="tel" inputmode="tel" maxlength="20" placeholder="0300 1234567"></div>' +
@@ -784,6 +788,7 @@ REP.earnings = function(){
     if (S.tab !== "earnings") return; $("main").innerHTML = '<h1 class="page">My earnings</h1><p class="sub">Rs 500 when a store\'s CNIC is verified, Rs 500 after its first pickup is delivered. NovaX pays weekly.</p>' +
       '<div class="stats"><div class="stat"><small>Waiting</small><b>' + rs(t.waiting) + '</b></div><div class="stat"><small>Earned</small><b>' + rs(t.earned) + "</b></div>" +
         '<div class="stat"><small>Approved to pay</small><b>' + rs(t.approved) + '</b></div><div class="stat go"><small>Paid to you</small><b>' + rs(t.paid) + "</b></div></div>" +
+      payoutCard() +
       '<section class="sec"><h2>Every reward</h2>' + (rows.length ? '<div class="list">' + rows.map(function(w){
         return '<div class="item"><span class="grow"><b>' + esc(w.store_name) + '</b><span class="meta">' + (w.kind === "account_opened" ? "Account opened" : "First pickup") +
           (w.paid_at ? " · paid " + esc(pkt(w.paid_at)) + (w.paid_ref ? " · ref " + esc(w.paid_ref) : "") : w.earned_at ? " · earned " + esc(pkt(w.earned_at)) : "") +
@@ -793,6 +798,7 @@ REP.earnings = function(){
       '<section class="sec"><h2>What the words mean</h2><div class="card"><dl class="kv"><dt>Waiting</dt><dd>The store signed up; waiting for its CNIC check or its first pickup to be delivered.</dd>' +
         "<dt>Earned</dt><dd>Done. NovaX approves it this week.</dd><dt>Approved</dt><dd>In this week's payment.</dd><dt>Paid</dt><dd>Sent to you, with the bank reference.</dd>" +
         "<dt>Rejected</dt><dd>Not payable; the reason is shown.</dd></dl></div></section>";
+    poLabels();
   });
 };
 REP.link = function(){
@@ -812,6 +818,38 @@ REP.link = function(){
     '<section class="sec"><h2>My joining documents</h2><div class="card"><p class="sub" style="margin-bottom:10px">Your signed offer letter, commission agreement and joining certificate.</p><button class="btn btn-dark btn-block" type="button" id="myDocs">View or save my documents</button></div></section>';
   return Promise.resolve();
 };
+
+function payoutCard(){
+  var po = S.me.rep && S.me.rep.payout, open = !po || S.payoutEdit;
+  if (!open) return '<section class="sec"><h2>Where NovaX pays you</h2><div class="card"><dl class="kv"><dt>Account</dt><dd>' + esc(po.method) + '</dd><dt>Title</dt><dd>' + esc(po.title) +
+    '</dd><dt>' + (po.method === "Bank" ? "IBAN" : "Number") + '</dt><dd style="font-family:var(--mono)">' + esc(po.account) + '</dd></dl>' +
+    '<button class="btn btn-plain btn-sm" type="button" id="poEdit" style="margin-top:10px">Change</button></div></section>';
+  return '<section class="sec"><h2>Where NovaX pays you</h2><form id="fPayout" class="card" novalidate>' +
+    (po ? "" : '<div class="msg err" style="display:block;margin:0 0 12px">Add your account, or NovaX cannot pay you.</div>') +
+    '<p class="sub" style="margin-bottom:10px">An account in your own name. NovaX sends every payment here.</p>' +
+    '<div class="fld"><label for="poMethod">Account type</label><select id="poMethod">' + ["Bank", "JazzCash", "Easypaisa"].map(function(m){ return '<option' + (po && po.method === m ? " selected" : "") + ">" + m + "</option>"; }).join("") + "</select></div>" +
+    '<div class="fld"><label for="poTitle">Account title (as the bank or app shows it)</label><input id="poTitle" maxlength="80" autocomplete="name" value="' + esc(po ? po.title : S.me.rep.full_name) + '"></div>' +
+    '<div class="fld"><label for="poAcc" id="poAccL">IBAN</label><input id="poAcc" maxlength="34" autocomplete="off" autocapitalize="characters" value="' + esc(po ? po.account : "") + '" placeholder="PK36SCBL0000001123456702"><p class="hint" id="poHint">24 characters, starting with PK. It is on your cheque book or banking app.</p></div>' +
+    '<button class="btn btn-primary btn-block" id="poBtn" type="submit">Save account</button><div class="msg" id="poMsg" role="alert"></div></form></section>';
+}
+function poLabels(){
+  var m = $("poMethod"); if (!m) return;
+  var bank = m.value === "Bank";
+  $("poAccL").textContent = bank ? "IBAN" : m.value + " mobile number";
+  $("poAcc").placeholder = bank ? "PK36SCBL0000001123456702" : "03001234567";
+  $("poAcc").setAttribute("inputmode", bank ? "text" : "tel");
+  $("poHint").textContent = bank ? "24 characters, starting with PK. It is on your cheque book or banking app." : "The number your " + m.value + " account is on.";
+}
+function doPayout(e){
+  e.preventDefault();
+  var btn = $("poBtn"), msg = $("poMsg"), m = $("poMethod").value, title = $("poTitle").value.trim(), acc = $("poAcc").value.trim();
+  if (title.length < 3) return showMsg(msg, "Enter the account title exactly as the bank or app shows it.");
+  if (m === "Bank" && !/^PK\d{2}[A-Z]{4}\d{16}$/.test(acc.replace(/\s/g, "").toUpperCase())) return showMsg(msg, "Enter your 24-character IBAN, starting with PK.");
+  if (m !== "Bank" && !/^(\+?92|0)?3\d{9}$/.test(acc.replace(/[\s-]/g, ""))) return showMsg(msg, "Enter the " + m + " mobile number, like 03001234567.");
+  busy(btn, true, "Saving…");
+  rpc("sales_set_payout", { p_method: m, p_title: title, p_account: acc }).then(function(me){ S.me = me; S.payoutEdit = false; busy(btn, false); toast("Payout account saved"); go("earnings"); })
+    .catch(function(err){ busy(btn, false); showMsg(msg, err.message); });
+}
 
 /* ═════ ADMIN ═════ */
 var ADMIN = {};
@@ -982,15 +1020,18 @@ ADMIN.rewards = function(){
     var sum = rows.reduce(function(s, w){ return s + Number(w.amount || 0); }, 0);
     if (S.tab !== "rewards") return; $("main").innerHTML = '<h1 class="page">Rewards</h1><p class="sub">Approve what reps earned, then mark it paid with the bank reference. Reps see every step.</p>' +
       '<div class="filters">' + ["Earned", "Approved", "Waiting", "Paid", "Rejected", "All"].map(function(s){ return '<button type="button" data-rfilter="' + s + '" aria-pressed="' + (st === s) + '">' + s + "</button>"; }).join("") + "</div>" +
+      (st === "Earned" && rows.length ? '<p class="hint" style="margin-bottom:10px">Approve first. Approved rewards are paid from the Approved filter, to the account each rep added.</p>' : "") +
       (rows.length ? '<div class="card" style="margin-bottom:10px"><label style="display:flex;align-items:center;gap:10px;font-weight:700"><input type="checkbox" class="check" id="selAll"> Select all ' + rows.length + " (" + rs(sum) + ")</label>" +
         '<div class="steps" style="margin-top:10px">' + (st === "Earned" ? '<button class="btn btn-primary btn-sm" type="button" data-bulk="Approved">Approve selected</button>' : "") +
-        (st === "Earned" || st === "Approved" ? '<button class="btn btn-dark btn-sm" type="button" data-bulk="Paid">Mark selected paid…</button>' : "") +
+        (st === "Approved" ? '<button class="btn btn-dark btn-sm" type="button" data-bulk="Paid">Mark selected paid…</button>' : "") +
         (st !== "Paid" && st !== "Rejected" ? '<button class="btn btn-danger btn-sm" type="button" data-bulk="Rejected">Reject selected…</button>' : "") +
         '<button class="btn btn-plain btn-sm" type="button" id="csvOut">Download CSV</button></div><div class="msg" id="rwMsg" role="alert"></div></div>' +
         '<table class="tbl"><thead><tr><th></th><th>Rep</th><th>Store</th><th>For</th><th class="num">Amount</th><th>Status</th><th>When</th></tr></thead><tbody>' + rows.map(function(w){
           return '<tr><td data-l="Pick"><input type="checkbox" class="check" data-rw="' + esc(w.id) + '" aria-label="Select ' + esc(w.store_name) + '"></td><td data-l="Rep"><b>' + esc(w.rep_code) + "</b> " + esc(w.rep_name) +
+            (w.status === "Paid" ? "" : '<br><span class="hint">' + (w.payout ? esc(w.payout) + (w.payout_name_differs ? ' <b style="color:var(--red-ink)">· title differs from rep name</b>' : "") : '<b style="color:var(--red-ink)">No payout account yet</b>') + "</span>") +
             '</td><td data-l="Store">' + esc(w.store_name) + '</td><td data-l="For">' + (w.kind === "account_opened" ? "Account opened" : "First pickup") + '</td><td class="num" data-l="Amount">' + rs(w.amount) +
-            '</td><td data-l="Status">' + esc(w.status) + (w.paid_ref ? '<br><span class="hint">' + esc(w.paid_ref) + "</span>" : "") + (w.note ? '<br><span class="hint">' + esc(w.note) + "</span>" : "") +
+            '</td><td data-l="Status">' + esc(w.status) + (w.paid_ref ? '<br><span class="hint">' + esc(w.paid_ref) + (w.paid_to ? " → " + esc(w.paid_to) : "") + "</span>" : "") + (w.note ? '<br><span class="hint">' + esc(w.note) + "</span>" : "") +
+            ((w.approved_by || w.paid_by || w.rejected_by) ? '<br><span class="hint">' + esc([w.approved_by ? "approved by " + w.approved_by : "", w.paid_by ? "paid by " + w.paid_by : "", w.rejected_by ? "rejected by " + w.rejected_by : ""].filter(Boolean).join(" · ")) + "</span>" : "") +
             '</td><td data-l="When">' + esc(pkt(w.paid_at || w.approved_at || w.earned_at)) + "</td></tr>"; }).join("") + "</tbody></table>"
       : '<div class="empty">No rewards here.</div>');
   });
@@ -1006,8 +1047,8 @@ function bulkRewards(status){
 }
 function rewardsCsv(){
   var rows = S.admin.rewardRows || [], q = function(v){ v = String(v == null ? "" : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-  var csv = [["Rep code", "Rep", "Store", "For", "Amount", "Status", "Earned", "Paid", "Reference", "Note"]].concat(rows.map(function(w){
-    return [w.rep_code, w.rep_name, w.store_name, w.kind === "account_opened" ? "Account opened" : "First pickup", w.amount, w.status, pkt(w.earned_at), pkt(w.paid_at), w.paid_ref, w.note]; }))
+  var csv = [["Rep code", "Rep", "Store", "For", "Amount", "Status", "Earned", "Approved by", "Pay to", "Paid", "Paid by", "Reference", "Paid to", "Note"]].concat(rows.map(function(w){
+    return [w.rep_code, w.rep_name, w.store_name, w.kind === "account_opened" ? "Account opened" : "First pickup", w.amount, w.status, pkt(w.earned_at), w.approved_by, w.payout, pkt(w.paid_at), w.paid_by, w.paid_ref, w.paid_to, w.note]; }))
     .map(function(r){ return r.map(q).join(","); }).join("\n");
   var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" })); a.download = "novax-sales-rewards-" + todayPk(0) + ".csv"; a.click();
 }
@@ -1020,10 +1061,11 @@ ADMIN.sheet = function(){
         '<div class="row-btns" style="margin-top:0"><button class="btn btn-primary" id="shSave" type="submit">' + (st.sheet_id ? "Save link and import" : "Link sheet and import") + "</button>" +
         (st.sheet_id ? '<button class="btn btn-dark" type="button" id="shPull">Import now</button><a class="btn btn-plain" target="_blank" rel="noopener" href="' + esc(st.sheet_url) + '">Open sheet</a>' : "") + "</div>" +
         '<div class="msg" id="shMsg" role="alert"></div></form></section>' +
-      '<section class="sec"><h2>Last import</h2><div id="shLast">' + sheetLast(st.last) + "</div></section>" +
+      '<section class="sec"><h2>Last import</h2><div id="shLast">' + (st.cron && st.cron.status === "failed" && (!st.last || !st.last.at || new Date(st.cron.at) > new Date(st.last.at)) ?
+        '<div class="msg err" style="display:block;margin:0 0 10px">The automatic import at ' + esc(pkt(st.cron.at, true)) + " failed: " + esc(String(st.cron.message || "").replace(/^ERROR:\s*/, "").replace(/^Sheet import failed:\s*/, "")) + "</div>" : "") + sheetLast(st.last) + "</div></section>" +
       '<section class="sec"><h2>How the sheet must look</h2><div class="card"><ul style="margin:0;padding-left:20px">' +
         "<li>A tab named <b>Leads</b> (otherwise NovaX reads the first tab).</li>" +
-        "<li>Headings in row 1. NovaX reads these columns by name, in any order:</li></ul><div class=\"tpl\">" + esc(SHEET_HEADERS.join(" | ")) + "</div>" +
+        "<li>Headings in row 1. NovaX reads these columns by name, in any order (Store name and Phone are a must; NovaX never guesses a column):</li></ul><div class=\"tpl\">" + esc(SHEET_HEADERS.join(" | ")) + "</div>" +
         '<button class="btn btn-plain btn-sm" type="button" data-copy="' + esc(SHEET_HEADERS.join("\t")) + '">Copy headings (paste into A1)</button>' +
         '<ul style="margin:12px 0 0;padding-left:20px"><li><b>Store name</b> and <b>Phone</b> (a Pakistani mobile) are required; rows without them are listed below with the reason.</li>' +
         "<li>Leave <b>Lead ID</b> empty if you like; NovaX matches a lead by its Lead ID or phone, so re-reading the sheet never makes duplicates.</li>" +
@@ -1037,6 +1079,7 @@ function sheetLast(l){
   if (!l.ok) return '<div class="msg err" style="display:block">' + esc(l.error || "The import failed.") + (l.at ? " (" + esc(pkt(l.at, true)) + ")" : "") + "</div>";
   var sk = l.skipped || [], nt = l.notes || [];
   return '<div class="card"><p><b>' + esc(pkt(l.at, true)) + "</b> · " + (l.rows || 0) + " rows read · " + (l.inserted || 0) + " new · " + (l.updated || 0) + " already here" + (sk.length ? " · " + sk.length + " skipped" : "") + "</p>" +
+    ((l.ignored_columns || []).length ? '<p class="hint" style="margin-top:6px">Columns NovaX does not read: ' + esc(l.ignored_columns.join(", ")) + "</p>" : "") +
     (sk.length || nt.length ? '<ul style="margin:10px 0 0;padding-left:20px;font-size:14px">' + sk.concat(nt).map(function(x){ return "<li>Row " + esc(x.row) + (x.lead_ref ? " (" + esc(x.lead_ref) + ")" : "") + ": " + esc(x.reason) + "</li>"; }).join("") + "</ul>" : "") + "</div>";
 }
 var SHEET_HEADERS = ["Lead ID", "Store name", "Contact person", "Phone", "City", "Category", "Where found", "Store link", "Orders per month", "Assign to"];
@@ -1087,9 +1130,10 @@ document.addEventListener("click", function(e){
   if ((el = t.closest("[data-bulk]"))) return bulkRewards(el.getAttribute("data-bulk"));
   if ((el = t.closest("[data-decide]"))) {
     var st = el.getAttribute("data-decide");
-    if (st === "Rejected" && !confirm("Credit nobody for this store? Any unpaid rewards for it are cancelled.")) return;
+    var why = null;
+    if (st === "Rejected") { why = prompt("Credit nobody for this store? Unpaid rewards for it are cancelled.\n\nWhy? The rep will see this:"); if (why === null) return; if (why.trim().length < 3) return toast("Write a short reason, so the rep understands."); }
     el.disabled = true;
-    return rpc("sales_admin_decide", { p_client: el.getAttribute("data-client"), p_status: st, p_rep: el.getAttribute("data-rep") || null })
+    return rpc("sales_admin_decide", { p_client: el.getAttribute("data-client"), p_status: st, p_rep: el.getAttribute("data-rep") || null, p_note: why })
       .then(function(){ toast(st === "Approved" ? "Credited" : "Nobody credited"); ADMIN.approvals(); }).catch(function(err){ el.disabled = false; toast(err.message); });
   }
   if ((el = t.closest("[data-rep-status]"))) {
@@ -1113,6 +1157,7 @@ document.addEventListener("click", function(e){
   if ((el = t.closest("[data-print]"))) return printDocs(el.getAttribute("data-print").split(",").map(function(k){ return S.join.D[k]; }).join(""));
   if (t.closest("#openSales")) return startApp("rep");
   if (t.closest("#docsBack")) return S.join && S.join.back && S.join.back();
+  if (t.closest("#poEdit")) { S.payoutEdit = true; return go("earnings"); }
   if (t.closest("#getGuide")) { var gb = t.closest("#getGuide"); busy(gb, true, "Getting the guide…");
     return rpc("sales_guide").then(function(g){
       busy(gb, false);
@@ -1150,6 +1195,7 @@ document.addEventListener("submit", function(e){
   if (id === "fAssign") return doAssign(e);
   if (id === "fImport") return doImport(e);
   if (id === "fSheet") return doSheet(e);
+  if (id === "fPayout") return doPayout(e);
 });
 document.addEventListener("input", function(e){
   if (e.target.id === "q") { S.q = e.target.value; drawLeadList(); }
@@ -1158,6 +1204,7 @@ document.addEventListener("input", function(e){
   if (e.target.id === "jCode" || e.target.id === "cCode" || e.target.id === "rCode") e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 });
 document.addEventListener("change", function(e){
+  if (e.target.id === "poMethod") { poLabels(); $("poAcc").value = ""; return; }
   if (e.target.id === "lfRep" || e.target.id === "lfStatus") return loadAdminLeads();
   if (e.target.id === "selAll") { [].forEach.call(document.querySelectorAll("[data-rw]"), function(c){ c.checked = e.target.checked; }); return; }
   var r = e.target.getAttribute && e.target.getAttribute("data-reassign");
