@@ -364,11 +364,20 @@
           return '<label>'+f[0]+'<span>'+(f[1]||'')+'</span></label>'; }).join("") + '</div>'; },
         chip: function(t, cls){ return '<span class="nvob-chip '+(cls||'')+'">'+t+'</span>'; }
       };
+      /* The homepage sends visitors here with "See the portal, no signup", and
+         they were greeted with "Your workspace is live" and an empty wallet
+         over a demo full of sample parcels. In the demo the first card says
+         what they are looking at. */
+      var first = window.__NOVAX_DEMO
+        ? { t:"This is the real portal, with sample parcels", nav:"dashboard",
+            b:"Every tab works on example data, and nothing you do here is sent anywhere. Sign up and your own workspace opens straight away: no approval queue, no waiting.",
+            v: m.rows([["Workspace","Demo","ok"],["Parcels","Samples","ok"],["Setup fee","None","ok"],["Contract","None","ok"]]) }
+        : { t:"Your workspace is live", nav:"dashboard",
+            b:"No approval queue, no waiting. You can book a parcel right now and we will collect it.",
+            v: m.big("Wallet", "Rs 0", "nothing owed, nothing owing") +
+               m.rows([["Account","Active","ok"],["Setup fee","None","ok"],["Contract","None","ok"]]) };
       return [
-        { t:"Your workspace is live", nav:"dashboard",
-          b:"No approval queue, no waiting. You can book a parcel right now and we will collect it.",
-          v: m.big("Wallet", "Rs 0", "nothing owed, nothing owing") +
-             m.rows([["Account","Active","ok"],["Setup fee","None","ok"],["Contract","None","ok"]]) },
+        first,
         { t:"Book your first parcel", nav:"newBooking",
           b:"Consignee, address, COD amount. That is the whole form — we generate the tracking number for you.",
           v: m.form([["Consignee","Hina Raza"],["City","Karachi"],["Address","Flat 3B, Gulshan-e-Iqbal"],["COD","Rs 3,450"]]) },
