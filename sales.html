@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NovaX Sales</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#fbfcf8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="format-detection" content="telephone=no">
+<link rel="icon" href="/assets/favicon.ico" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://rhzunbzbdzicajqtohwp.supabase.co">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet">
+<style>
+/* NovaX Sales (2 Oct 2026). One page for commission sales reps and for the
+   admins who watch them. Every number and every action goes through a
+   database function that checks who is asking; this page only draws. */
+:root{
+  --ink:#10221a; --ink-2:#33463c; --muted:#5d6e65; --green:#0fbf78; --green-h:#14cf86; --green-2:#087c55; --green-3:#06603f;
+  --mint:#eafbf3; --mint-line:#c6ebd8; --lime:#d9ff74; --paper:#fbfcf8; --paper-2:#f3f5ee; --card:#fff;
+  --line:#dce7df; --line-2:#c4d6ca; --amber:#fff4da; --amber-ink:#7a5500; --blue:#eaf3ff; --blue-ink:#235c93;
+  --red-bg:#fdecea; --red-ink:#9b1c13; --navy:#0d2920;
+  --sa-b:env(safe-area-inset-bottom,0px); --sa-t:env(safe-area-inset-top,0px);
+  --display:Manrope,"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --body:"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.5 var(--body);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+[hidden]{display:none!important}
+h1,h2,h3,p{margin:0}
+a{color:var(--green-2)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--green-2);outline-offset:2px}
+.wrap{width:100%;max-width:1100px;margin:0 auto;padding:0 16px}
+@media (min-width:700px){.wrap{padding:0 24px}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:10px 18px;border-radius:12px;border:1.5px solid transparent;
+  font:700 15.5px/1.2 var(--body);text-decoration:none;cursor:pointer;transition:background-color .15s,border-color .15s}
+.btn[disabled]{opacity:.6;cursor:default}
+.btn-primary{background:var(--green);border-color:var(--green);color:#04170e}
+.btn-primary:hover:not([disabled]){background:var(--green-h);border-color:var(--green-h)}
+.btn-dark{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn-plain{background:var(--card);border-color:var(--line-2);color:var(--ink)}
+.btn-plain:hover:not([disabled]){border-color:var(--ink-2)}
+.btn-danger{background:var(--card);border-color:#e7b1ab;color:var(--red-ink)}
+.btn-sm{min-height:40px;padding:6px 12px;font-size:14px;border-radius:10px}
+.btn-block{width:100%}
+
+/* forms */
+.fld{margin-bottom:12px}
+.fld label{display:block;margin-bottom:6px;font-size:13px;font-weight:700;color:var(--ink-2)}
+.fld input,.fld select,.fld textarea{width:100%;min-height:48px;padding:0 13px;border:1.5px solid var(--line-2);border-radius:12px;background:#fff;font:500 16px var(--body)}
+.fld textarea{min-height:84px;padding:11px 13px;resize:vertical;line-height:1.45}
+.fld input:focus,.fld select:focus,.fld textarea:focus{outline:0;border-color:var(--green-2);box-shadow:0 0 0 3px rgba(15,191,120,.18)}
+.hint{font-size:12.5px;color:var(--muted);margin-top:5px}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.msg{display:none;margin-top:10px;padding:11px 13px;border-radius:11px;font-size:14px;font-weight:600;line-height:1.45}
+.msg.err{display:block;background:var(--red-bg);color:var(--red-ink);border:1px solid #f0c4bf}
+.msg.ok{display:block;background:var(--mint);color:var(--green-3);border:1px solid var(--mint-line)}
+
+/* header and tabs */
+.top{position:sticky;top:0;z-index:30;background:rgba(251,252,248,.98);border-bottom:1px solid var(--line);padding-top:var(--sa-t)}
+.top .wrap{display:flex;align-items:center;gap:12px;min-height:60px}
+.brand{display:flex;align-items:center;gap:9px;text-decoration:none;color:var(--ink)}
+.brand img{width:32px;height:32px;border-radius:9px}
+.brand b{font:800 16px/1 var(--display)}
+.brand small{display:block;font:700 9px/1 var(--mono);letter-spacing:.18em;color:var(--green-2);margin-top:3px}
+.who{margin-left:auto;text-align:right;font-size:13px;line-height:1.3;min-width:0;overflow:hidden}
+.who span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
+.who b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
+.who span{color:var(--muted);font-family:var(--mono);font-size:11.5px}
+.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;border-top:1px solid var(--line)}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:none;min-height:46px;padding:0 14px;border:0;background:none;font-weight:700;font-size:14.5px;color:var(--muted);border-bottom:3px solid transparent}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--green)}
+/* reps: thumb tabs at the bottom on phones */
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-top:1px solid var(--line);padding-bottom:var(--sa-b)}
+.bnav button{min-height:58px;border:0;background:none;font-size:11.5px;font-weight:700;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.bnav button i{font-style:normal;font-size:18px;line-height:1}
+.bnav button[aria-selected="true"]{color:var(--green-2)}
+.has-bnav main{padding-bottom:calc(84px + var(--sa-b))}
+@media (min-width:900px){.bnav{display:none}.has-bnav main{padding-bottom:40px}}
+@media (max-width:899px){.rep .tabs{display:none}}
+
+main{padding:18px 0 40px}
+h1.page{font:800 clamp(24px,5vw,30px)/1.15 var(--display);letter-spacing:-.02em;margin-bottom:4px}
+.sub{color:var(--muted);font-size:15px}
+.sec{margin-top:22px}
+.sec>h2{font:800 18px/1.25 var(--display);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+@media (min-width:760px){.stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px}
+.stat small{display:block;font:700 10.5px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.stat b{display:block;font:800 26px/1.1 var(--display);margin-top:5px;font-variant-numeric:tabular-nums}
+.stat.go{background:var(--mint);border-color:var(--mint-line)}
+.chip{display:inline-flex;align-items:center;padding:4px 8px;border-radius:7px;font-size:12px;font-weight:700;white-space:nowrap;background:var(--paper-2);color:var(--ink-2)}
+.chip.good{background:var(--mint);color:var(--green-3)}
+.chip.warn{background:var(--amber);color:var(--amber-ink)}
+.chip.info{background:var(--blue);color:var(--blue-ink)}
+.chip.bad{background:var(--red-bg);color:var(--red-ink)}
+.list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;min-height:64px}
+button.item:hover{border-color:var(--line-2)}
+.item .grow{flex:1;min-width:0}
+.item b{display:block;font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item span.meta{display:block;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.empty{padding:22px;text-align:center;color:var(--muted);background:#fff;border:1px dashed var(--line-2);border-radius:14px}
+.filters{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px;margin:12px 0 10px}
+.filters::-webkit-scrollbar{display:none}
+.filters button{flex:none;min-height:40px;padding:0 13px;border-radius:999px;border:1.5px solid var(--line-2);background:#fff;font-weight:700;font-size:13.5px;color:var(--ink-2)}
+.filters button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.search{width:100%;min-height:48px;padding:0 14px;border:1.5px solid var(--line-2);border-radius:12px;background:#fff;font-size:16px}
+.steps{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.loading{padding:30px;text-align:center;color:var(--muted)}
+.copybox{display:flex;gap:8px;align-items:stretch}
+.copybox input{flex:1;min-width:0;min-height:48px;padding:0 12px;border:1.5px solid var(--line-2);border-radius:12px;font:600 14px var(--mono);background:var(--paper-2)}
+.tpl{white-space:pre-wrap;font-size:14.5px;line-height:1.5;background:var(--paper-2);border-radius:12px;padding:12px;margin:8px 0}
+
+/* lead sheet: bottom sheet on phones, side panel on desktop */
+.scrim{position:fixed;inset:0;z-index:40;background:rgba(13,41,32,.45)}
+.sheet{position:fixed;z-index:41;left:0;right:0;bottom:0;max-height:92vh;max-height:92dvh;overflow-y:auto;overscroll-behavior:contain;background:#fff;
+  border-radius:20px 20px 0 0;padding:18px 16px calc(18px + var(--sa-b));box-shadow:0 -20px 60px rgba(13,41,32,.25)}
+@media (min-width:900px){.sheet{left:auto;top:0;bottom:0;width:440px;max-height:none;border-radius:0;padding:22px}}
+.sheet-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
+.sheet-head h2{font:800 20px/1.25 var(--display);flex:1;min-width:0}
+.x{flex:none;width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--paper-2);font-size:22px;line-height:1}
+.contact{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:12px 0}
+.outcomes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.outcomes button{min-height:48px;border-radius:12px;border:1.5px solid var(--line-2);background:#fff;font-weight:700;font-size:14.5px}
+.outcomes button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.quick button{min-height:38px;padding:0 12px;border-radius:999px;border:1.5px solid var(--line-2);background:#fff;font-weight:700;font-size:13px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+
+/* tables (admin, desktop) collapse into cards on phones */
+.tbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:14px}
+.tbl th,.tbl td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{font:700 10.5px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:var(--paper-2)}
+.tbl td.num,.tbl th.num{text-align:right;font-variant-numeric:tabular-nums}
+@media (max-width:759px){
+  .tbl,.tbl tbody,.tbl tr,.tbl td{display:block;width:100%}
+  .tbl thead{display:none}
+  .tbl{border:0;background:none}
+  .tbl tr{background:#fff;border:1px solid var(--line);border-radius:14px;margin-bottom:8px;padding:6px 0}
+  .tbl td{border:0;padding:5px 14px;display:flex;justify-content:space-between;gap:12px}
+  .tbl td::before{content:attr(data-l);font:700 10.5px/1.6 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .tbl td.num{text-align:right}
+}
+.toast{position:fixed;left:50%;bottom:calc(96px + var(--sa-b));transform:translateX(-50%);z-index:60;max-width:calc(100vw - 32px);
+  background:var(--ink);color:#fff;padding:12px 16px;border-radius:12px;font-weight:600;font-size:14.5px;box-shadow:0 10px 30px rgba(0,0,0,.25);pointer-events:none}
+@media (min-width:900px){.toast{bottom:28px}}
+.auth{max-width:440px;margin:28px auto}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--paper-2);border-radius:12px;padding:4px;margin:16px 0}
+.seg button{min-height:44px;border:0;border-radius:9px;background:none;font-weight:700;color:var(--muted)}
+.seg button[aria-selected="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.pre{font:500 12.5px/1.5 var(--mono);background:var(--navy);color:#e8f5ee;border-radius:12px;padding:14px;overflow:auto;max-height:340px;white-space:pre}
+.split{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.split>*,.list>*{min-width:0}
+@media (min-width:900px){.split{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.check{width:22px;height:22px}
+</style>
+</head>
+<body>
+<header class="top" id="top">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="NovaX home"><img src="/assets/icon-192.png" alt="" width="32" height="32"><span><b>NovaX</b><small>SALES</small></span></a>
+    <div class="who" id="who" hidden><b id="whoName"></b><span id="whoCode"></span></div>
+    <button class="btn btn-plain btn-sm" id="signOut" type="button" hidden>Sign out</button>
+  </div>
+  <div class="wrap"><nav class="tabs" id="tabs" role="tablist" aria-label="Sections" hidden></nav></div>
+</header>
+
+<main id="main" class="wrap" tabindex="-1">
+  <div class="loading" id="boot">Loading…</div>
+</main>
+<nav class="bnav" id="bnav" role="tablist" aria-label="Sections" hidden></nav>
+<div id="sheetRoot"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="/assets/vendor/supabase-2.117.2.js"></script>
+<script>
+(function(){
+"use strict";
+var SB_URL = "https://rhzunbzbdzicajqtohwp.supabase.co";
+var SB_KEY = "sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+var SITE = "https://novaxlogistics.com";
+
+/* No request may leave a button spinning forever. */
+function timedFetch(input, init){
+  if (typeof AbortController === "undefined") return fetch(input, init);
+  var ctl = new AbortController(), t = setTimeout(function(){ ctl.abort(); }, 45000);
+  init = Object.assign({}, init || {}); init.signal = ctl.signal;
+  return fetch(input, init).finally(function(){ clearTimeout(t); });
+}
+var sb = null;
+try { sb = window.supabase.createClient(SB_URL, SB_KEY, { global: { fetch: timedFetch } }); } catch (e) {}
+window.__nvSales = { sb: sb };
+
+function $(id){ return document.getElementById(id); }
+function esc(v){ return String(v == null ? "" : v).replace(/[&<>"'`]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;", "`":"&#96;" }[c]; }); }
+function rs(n){ return "Rs " + Math.round(Number(n) || 0).toLocaleString("en-US"); }
+function pkt(iso, withTime){
+  if (!iso) return "";
+  var d = new Date(iso); if (isNaN(d)) return String(iso);
+  var o = { timeZone: "Asia/Karachi", day: "numeric", month: "short" };
+  if (withTime) { o.hour = "numeric"; o.minute = "2-digit"; }
+  return d.toLocaleString("en-GB", o);
+}
+function todayPk(add){
+  var p = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  var d = new Date(p + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + (add || 0));
+  return d.toISOString().slice(0, 10);
+}
+function dayLabel(ymd){
+  if (!ymd) return "";
+  if (ymd === todayPk(0)) return "today";
+  if (ymd === todayPk(1)) return "tomorrow";
+  if (ymd < todayPk(0)) return "overdue · " + pkt(ymd + "T12:00:00Z");
+  return pkt(ymd + "T12:00:00Z");
+}
+function waNum(phone){ var d = String(phone || "").replace(/\D/g, ""); return d.charAt(0) === "0" ? "92" + d.slice(1) : d; }
+
+/* Plain words, never a database message. */
+function friendly(m){
+  var s = String(m || "");
+  if (/invalid login credentials/i.test(s)) return "Wrong email or password.";
+  if (/already (been )?registered|already exists/i.test(s)) return "This email already has a login. Sign in instead, then enter your rep code.";
+  if (/rate limit|too many requests|over_email/i.test(s)) return "Too many tries. Wait a minute and try again.";
+  if (/password should|weak password/i.test(s)) return "Choose a stronger password: at least 8 characters.";
+  if (/failed to fetch|networkerror|load failed|abort|timed? ?out/i.test(s)) return "We couldn't reach NovaX. Check your internet and try again.";
+  if (/jwt|pgrst|\bfunction\b|\brelation\b|\bcolumn\b|violates|syntax error|permission denied for/i.test(s)) { console.warn("NovaX Sales:", s); return "Something went wrong on our side. Try again, or tell NovaX on WhatsApp."; }
+  return s;
+}
+function rpc(name, args){
+  if (!sb) return Promise.reject(new Error("We couldn't reach NovaX. Refresh the page."));
+  return Promise.resolve(sb.rpc(name, args || {})).then(function(r){
+    if (r && r.error) throw new Error(friendly(r.error.message));
+    return r ? r.data : null;
+  }, function(e){ throw new Error(friendly(e && e.message)); });
+}
+var toastT = null;
+function toast(t){ var el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(function(){ el.hidden = true; }, 3200); }
+function showMsg(el, text, ok){ el.className = "msg " + (ok ? "ok" : "err"); el.textContent = text; }
+function busy(btn, on, label){ if (!btn) return; if (on) { btn.dataset.label = btn.textContent; btn.textContent = label || "Please wait…"; btn.disabled = true; } else { btn.textContent = btn.dataset.label || btn.textContent; btn.disabled = false; } }
+function copy(text){
+  var done = function(){ toast("Copied"); };
+  if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text).then(done, function(){ fallbackCopy(text); });
+  fallbackCopy(text);
+  function fallbackCopy(t){ var a = document.createElement("textarea"); a.value = t; document.body.appendChild(a); a.select(); try { document.execCommand("copy"); done(); } catch (e) {} a.remove(); }
+}
+
+var S = { me: null, mode: null, tab: null, leads: [], stores: [], earnings: null, filter: "todo", q: "", admin: {} };
+var STATUS_TONE = { "Not called": "info", "No answer": "warn", "Busy": "warn", "Call back": "warn", "Demo booked": "good", "Interested": "good",
+  "Not interested": "bad", "Wrong number": "bad", "Signed up": "good" };
+var OUTCOMES = ["No answer", "Busy", "Interested", "Call back", "Demo booked", "Not interested", "Wrong number"];
+function chip(status){ return '<span class="chip ' + (STATUS_TONE[status] || "") + '">' + esc(status) + "</span>"; }
+
+/* ═════ boot and routing ═════ */
+function boot(){
+  if (!sb) { $("main").innerHTML = '<div class="empty">NovaX could not load. Check your internet and refresh.</div>'; return; }
+  sb.auth.getSession().then(function(r){
+    var s = r && r.data && r.data.session;
+    if (!s) return renderAuth();
+    return loadMe();
+  }).catch(function(){ renderAuth(); });
+}
+function loadMe(){
+  return rpc("sales_me").then(function(me){
+    S.me = me || {};
+    if (S.me.is_admin) return startApp("admin");
+    if (S.me.rep && S.me.rep.status === "Active") return startApp("rep");
+    renderJoin();
+  }).catch(function(e){ $("main").innerHTML = '<div class="empty">' + esc(e.message) + ' <button class="btn btn-plain btn-sm" type="button" data-act="reload">Try again</button></div>'; });
+}
+var REP_TABS = [["today", "Today", "⌂"], ["leads", "Leads", "☎"], ["stores", "Stores", "▣"], ["earnings", "Earnings", "₨"], ["link", "My link", "↗"]];
+var ADMIN_TABS = [["overview", "Overview"], ["reps", "Reps"], ["leads", "Leads"], ["approvals", "Approvals"], ["rewards", "Rewards"], ["sheet", "Google Sheet"]];
+function startApp(mode){
+  S.mode = mode;
+  document.body.classList.toggle("rep", mode === "rep");
+  document.body.classList.toggle("has-bnav", mode === "rep");
+  $("who").hidden = false; $("signOut").hidden = false;
+  $("whoName").textContent = mode === "rep" ? S.me.rep.full_name : "Sales HQ";
+  $("whoCode").textContent = mode === "rep" ? "Code " + S.me.rep.code : (S.me.email || "admin");
+  var tabs = mode === "rep" ? REP_TABS : ADMIN_TABS;
+  $("tabs").innerHTML = tabs.map(function(t){ return '<button type="button" role="tab" data-tab="' + t[0] + '" aria-selected="false">' + esc(t[1]) + "</button>"; }).join("");
+  $("tabs").hidden = false;
+  if (mode === "rep") {
+    $("bnav").innerHTML = tabs.map(function(t){ return '<button type="button" role="tab" data-tab="' + t[0] + '" aria-selected="false"><i aria-hidden="true">' + t[2] + "</i>" + esc(t[1]) + "</button>"; }).join("");
+    $("bnav").hidden = false;
+  }
+  var want = (location.hash || "").replace("#", "");
+  go(tabs.some(function(t){ return t[0] === want; }) ? want : tabs[0][0]);
+}
+function go(tab){
+  S.tab = tab;
+  [].forEach.call(document.querySelectorAll("[data-tab]"), function(b){ b.setAttribute("aria-selected", b.getAttribute("data-tab") === tab ? "true" : "false"); });
+  if (history.replaceState) history.replaceState(null, "", "#" + tab);
+  $("main").innerHTML = '<div class="loading">Loading…</div>';
+  window.scrollTo(0, 0);
+  var f = (S.mode === "rep" ? REP : ADMIN)[tab];
+  Promise.resolve().then(f).catch(function(e){ $("main").innerHTML = '<div class="empty">' + esc(e.message) + ' <button class="btn btn-plain btn-sm" type="button" data-act="retab">Try again</button></div>'; });
+}
+
+/* ═════ sign in / join ═════ */
+function renderAuth(view){
+  view = view || "signin";
+  $("tabs").hidden = true; $("bnav").hidden = true; $("who").hidden = true; $("signOut").hidden = true;
+  document.body.classList.remove("has-bnav", "rep");
+  $("main").innerHTML =
+    '<div class="auth"><h1 class="page">NovaX sales team</h1><p class="sub">Call stores, open accounts, earn Rs 500 when a store opens and Rs 500 on its first pickup.</p>' +
+    '<div class="seg" role="tablist"><button type="button" role="tab" data-auth="signin" aria-selected="' + (view === "signin") + '">Sign in</button>' +
+    '<button type="button" role="tab" data-auth="join" aria-selected="' + (view === "join") + '">Join the team</button></div>' +
+    (view === "signin" ?
+      '<form id="fIn" class="card" novalidate><div class="fld"><label for="inEmail">Email</label><input id="inEmail" type="email" autocomplete="email" inputmode="email" maxlength="254" required></div>' +
+      '<div class="fld"><label for="inPass">Password</label><input id="inPass" type="password" autocomplete="current-password" maxlength="72" required></div>' +
+      '<button class="btn btn-dark btn-block" id="inBtn" type="submit">Sign in</button>' +
+      '<div style="text-align:center;margin-top:8px"><button type="button" class="btn btn-plain btn-sm" id="forgot" style="border:0">Forgot your password?</button></div>' +
+      '<div class="msg" id="inMsg" role="alert"></div></form>'
+    :
+      '<form id="fJoin" class="card" novalidate><p class="sub" style="margin-bottom:12px">NovaX gives you a rep code and the email it is linked to. Use exactly that email.</p>' +
+      '<div class="fld"><label for="jCode">Your rep code</label><input id="jCode" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="e.g. AYESHA" required></div>' +
+      '<div class="fld"><label for="jName">Your full name</label><input id="jName" autocomplete="name" maxlength="80" required></div>' +
+      '<div class="fld"><label for="jEmail">Email</label><input id="jEmail" type="email" autocomplete="email" inputmode="email" maxlength="254" required></div>' +
+      '<div class="row2"><div class="fld"><label for="jPass">Password</label><input id="jPass" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></div>' +
+      '<div class="fld"><label for="jPass2">Again</label><input id="jPass2" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></div></div>' +
+      '<button class="btn btn-primary btn-block" id="jBtn" type="submit">Create my sales login</button><div class="msg" id="jMsg" role="alert"></div></form>') +
+    '</div>';
+}
+function renderJoin(){
+  $("tabs").hidden = true; $("bnav").hidden = true; $("signOut").hidden = false; $("who").hidden = true;
+  $("main").innerHTML = '<div class="auth"><h1 class="page">One more step</h1><p class="sub">You are signed in as <b>' + esc(S.me.email || "") +
+    '</b>. Enter the rep code NovaX gave you for this email.</p>' + (S.me.rep && S.me.rep.status === "Removed" ? '<div class="msg err" style="display:block">Your sales access has been closed. Talk to NovaX if this is a mistake.</div>' : "") +
+    '<form id="fCode" class="card" style="margin-top:16px" novalidate><div class="fld"><label for="cCode">Rep code</label><input id="cCode" autocapitalize="characters" maxlength="12" required></div>' +
+    '<button class="btn btn-primary btn-block" id="cBtn" type="submit">Open my sales page</button><div class="msg" id="cMsg" role="alert"></div></form></div>';
+}
+function doSignIn(e){
+  e.preventDefault();
+  var email = $("inEmail").value.trim().toLowerCase(), pass = $("inPass").value, btn = $("inBtn"), msg = $("inMsg");
+  if (!/^\S+@\S+\.\S+$/.test(email) || !pass) return showMsg(msg, "Enter your email and password.");
+  busy(btn, true, "Signing in…");
+  sb.auth.signInWithPassword({ email: email, password: pass }).then(function(r){
+    busy(btn, false);
+    if (r.error) return showMsg(msg, friendly(r.error.message));
+    loadMe();
+  }).catch(function(err){ busy(btn, false); showMsg(msg, friendly(err && err.message)); });
+}
+function doForgot(){
+  var email = ($("inEmail").value || "").trim().toLowerCase(), msg = $("inMsg");
+  if (!/^\S+@\S+\.\S+$/.test(email)) { $("inEmail").focus(); return showMsg(msg, "Type your email above first, then tap Forgot your password."); }
+  Promise.resolve(sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + "/new-password.html" })).catch(function(){}).then(function(){
+    showMsg(msg, "If " + email + " has a login, a reset link is on its way. Check your inbox and spam.", true);
+  });
+}
+function doJoin(e){
+  e.preventDefault();
+  var code = $("jCode").value.trim().toUpperCase(), name = $("jName").value.trim(), email = $("jEmail").value.trim().toLowerCase(),
+      p1 = $("jPass").value, p2 = $("jPass2").value, btn = $("jBtn"), msg = $("jMsg");
+  if (!/^[A-Z0-9]{3,12}$/.test(code)) return showMsg(msg, "Enter the rep code NovaX gave you (3 to 12 letters or numbers).");
+  if (name.length < 2) return showMsg(msg, "Enter your full name.");
+  if (!/^\S+@\S+\.\S+$/.test(email)) return showMsg(msg, "Enter the email NovaX has for you.");
+  if (p1.length < 8) return showMsg(msg, "Your password needs at least 8 characters.");
+  if (p1 !== p2) return showMsg(msg, "The two passwords don't match.");
+  busy(btn, true, "Creating your login…");
+  sb.auth.signUp({ email: email, password: p1, options: { data: { role: "sales", full_name: name } } }).then(function(r){
+    if (r.error) throw new Error(r.error.message);
+    var u = r.data && r.data.user;
+    if (u && Array.isArray(u.identities) && u.identities.length === 0) throw new Error("This email already has a login. Sign in instead, then enter your rep code.");
+    if (!r.data.session) throw new Error("Check your email to confirm it, then sign in and enter your code.");
+    return rpc("sales_join", { p_code: code });
+  }).then(function(me){ S.me = me; busy(btn, false); toast("Welcome to the NovaX sales team"); startApp("rep"); })
+    .catch(function(err){ busy(btn, false); showMsg(msg, friendly(err && err.message)); });
+}
+function doCode(e){
+  e.preventDefault();
+  var code = $("cCode").value.trim().toUpperCase(), btn = $("cBtn"), msg = $("cMsg");
+  if (!/^[A-Z0-9]{3,12}$/.test(code)) return showMsg(msg, "Enter your rep code.");
+  busy(btn, true);
+  rpc("sales_join", { p_code: code }).then(function(me){ S.me = me; busy(btn, false); startApp("rep"); })
+    .catch(function(err){ busy(btn, false); showMsg(msg, err.message); });
+}
+
+/* ═════ REP ═════ */
+var REP = {};
+function loadLeads(){ return rpc("sales_my_leads").then(function(d){ S.leads = d || []; return S.leads; }); }
+REP.today = function(){
+  return Promise.all([loadLeads(), rpc("sales_my_earnings"), rpc("sales_my_stores")]).then(function(res){
+    var leads = res[0], earn = res[1] || { totals: {} }, stores = res[2] || [];
+    S.stores = stores;
+    var today = todayPk(0);
+    var due = leads.filter(function(l){ return l.next_followup_on && l.next_followup_on <= today && l.status !== "Signed up"; });
+    var fresh = leads.filter(function(l){ return l.status === "Not called"; });
+    var callsToday = leads.filter(function(l){ return l.last_called_at && pkt(l.last_called_at) === pkt(new Date().toISOString()); }).length;
+    var t = earn.totals || {};
+    $("main").innerHTML =
+      '<h1 class="page">Salaam, ' + esc(S.me.rep.full_name.split(" ")[0]) + '</h1><p class="sub">' + (due.length ? due.length + " follow-up" + (due.length === 1 ? "" : "s") + " due today. " : "") +
+        fresh.length + " new lead" + (fresh.length === 1 ? "" : "s") + " to call.</p>" +
+      '<div class="stats"><div class="stat go"><small>Follow-ups due</small><b>' + due.length + '</b></div><div class="stat"><small>Leads called today</small><b>' + callsToday + "</b></div>" +
+        '<div class="stat"><small>Stores signed up</small><b>' + stores.length + '</b></div><div class="stat"><small>Earned so far</small><b>' + rs((t.earned || 0) + (t.approved || 0) + (t.paid || 0)) + "</b></div></div>" +
+      '<section class="sec"><h2>Call these first</h2>' + leadList(due, "Nothing due. Call a new lead.") + "</section>" +
+      '<section class="sec"><h2>New leads</h2>' + leadList(fresh.slice(0, 8), "No new leads. NovaX will give you more.") +
+        (fresh.length > 8 ? '<button class="btn btn-plain btn-block" style="margin-top:8px" type="button" data-act="goleads">See all ' + fresh.length + " new leads</button>" : "") + "</section>";
+  });
+};
+function leadList(rows, empty){
+  if (!rows.length) return '<div class="empty">' + esc(empty) + "</div>";
+  return '<div class="list">' + rows.map(function(l){
+    var when = l.next_followup_on ? " · follow up " + dayLabel(l.next_followup_on) : (l.last_called_at ? " · called " + pkt(l.last_called_at) : "");
+    return '<button class="item" type="button" data-lead="' + esc(l.id) + '"><span class="grow"><b>' + esc(l.store_name) + '</b><span class="meta">' +
+      esc([l.city, l.category].filter(Boolean).join(" · ")) + esc(when) + "</span></span>" + chip(l.status) + "</button>";
+  }).join("") + "</div>";
+}
+var LEAD_FILTERS = [["todo", "To do"], ["Not called", "New"], ["Call back", "Call back"], ["Interested", "Interested"], ["Demo booked", "Demo"], ["No answer", "No answer"], ["closed", "Closed"], ["all", "All"]];
+function filterLeads(){
+  var f = S.filter, q = S.q.trim().toLowerCase(), qd = q.replace(/\D/g, "");
+  return S.leads.filter(function(l){
+    var ok = f === "all" ? true : f === "todo" ? ["Not called", "No answer", "Busy", "Call back", "Interested", "Demo booked"].indexOf(l.status) > -1
+      : f === "closed" ? ["Not interested", "Wrong number", "Signed up"].indexOf(l.status) > -1 : l.status === f || (f === "No answer" && l.status === "Busy");
+    if (ok && q) ok = (l.store_name || "").toLowerCase().indexOf(q) > -1 || (qd.length >= 3 && (l.phone || "").indexOf(qd) > -1) || (l.city || "").toLowerCase().indexOf(q) > -1;
+    return ok;
+  });
+}
+REP.leads = function(){
+  return loadLeads().then(function(){
+    if (S.tab !== "leads") return; $("main").innerHTML = '<h1 class="page">My leads</h1><p class="sub">' + S.leads.length + ' stores assigned to you. Tap one to call and save what happened.</p>' +
+      '<div style="margin-top:14px"><label class="sr" for="q">Search</label><input class="search" id="q" type="search" placeholder="Search store, city or number" value="' + esc(S.q) + '"></div>' +
+      '<div class="filters" id="lf">' + LEAD_FILTERS.map(function(f){ return '<button type="button" data-filter="' + esc(f[0]) + '" aria-pressed="' + (S.filter === f[0]) + '">' + esc(f[1]) + "</button>"; }).join("") + "</div>" +
+      '<div id="leadList"></div>';
+    drawLeadList();
+  });
+};
+function drawLeadList(){ var el = $("leadList"); if (el) el.innerHTML = leadList(filterLeads(), S.leads.length ? "Nothing here. Try another filter." : "No leads yet. NovaX will assign some to you."); }
+
+function openLead(id){
+  var l = S.leads.filter(function(x){ return x.id === id; })[0];
+  if (!l) return;
+  var link = SITE + "/?ref=" + encodeURIComponent(S.me.rep.code);
+  var intro = "Assalam o Alaikum! Main " + S.me.rep.full_name.split(" ")[0] + " NovaX Logistics se. Hum Karachi, Lahore, Islamabad aur Rawalpindi mein COD courier hain, Rs 225 se. COD ka paisa, delivery ke din. Free account yahan se banayein: " + link;
+  var closed = l.status === "Signed up";
+  openSheet('<div class="sheet-head"><h2 id="sheetTitle">' + esc(l.store_name) + '</h2><button class="x" type="button" data-act="close" aria-label="Close">×</button></div>' +
+    '<div>' + chip(l.status) + (l.call_count ? ' <span class="chip">Called ' + l.call_count + "×</span>" : "") + "</div>" +
+    '<div class="contact"><a class="btn btn-primary" href="tel:+' + esc(waNum(l.phone)) + '">Call ' + esc(l.phone) + '</a>' +
+      '<a class="btn btn-plain" target="_blank" rel="noopener" href="https://wa.me/' + esc(waNum(l.phone)) + "?text=" + encodeURIComponent(intro) + '">WhatsApp</a></div>' +
+    '<dl class="kv">' + (l.contact_name ? "<dt>Contact</dt><dd>" + esc(l.contact_name) + "</dd>" : "") + (l.city ? "<dt>City</dt><dd>" + esc(l.city) + "</dd>" : "") +
+      (l.category ? "<dt>Sells</dt><dd>" + esc(l.category) + "</dd>" : "") + (l.est_orders ? "<dt>Orders</dt><dd>" + esc(l.est_orders) + "/month</dd>" : "") +
+      (l.source ? "<dt>Found on</dt><dd>" + esc(l.source) + "</dd>" : "") +
+      (l.store_link && /^https?:\/\//i.test(l.store_link) ? '<dt>Store</dt><dd><a href="' + esc(l.store_link) + '" target="_blank" rel="noopener noreferrer">Open store link</a></dd>' : "") +
+      (l.last_note ? "<dt>Last note</dt><dd>" + esc(l.last_note) + "</dd>" : "") + (l.next_followup_on ? "<dt>Follow up</dt><dd>" + esc(dayLabel(l.next_followup_on)) + "</dd>" : "") + "</dl>" +
+    (closed ? '<div class="msg ok" style="display:block;margin-top:14px">This store has signed up. Find it under Stores.</div>' :
+    '<form id="fCall" style="margin-top:16px" novalidate><fieldset style="border:0;margin:0;padding:0"><legend class="fld" style="font-size:13px;font-weight:700;color:var(--ink-2);margin-bottom:6px;padding:0">What happened on the call?</legend>' +
+      '<div class="outcomes">' + OUTCOMES.map(function(o){ return '<button type="button" data-outcome="' + esc(o) + '" aria-pressed="false">' + esc(o) + "</button>"; }).join("") + "</div></fieldset>" +
+      '<div class="fld" style="margin-top:12px" id="fuWrap"><label for="fu">Follow up on <span id="fuReq" class="hint" style="display:inline"></span></label>' +
+        '<div class="quick"><button type="button" data-fu="1">Tomorrow</button><button type="button" data-fu="3">In 3 days</button><button type="button" data-fu="7">Next week</button><button type="button" data-fu="">No date</button></div>' +
+        '<input id="fu" type="date" min="' + todayPk(0) + '" max="' + todayPk(60) + '" value="' + esc(l.next_followup_on || "") + '"></div>' +
+      '<div class="fld"><label for="note">Note (what they said)</label><textarea id="note" maxlength="500" placeholder="e.g. Uses TCS, wants lower rates. Call after 4 pm."></textarea></div>' +
+      '<input type="hidden" id="leadId" value="' + esc(l.id) + '"><button class="btn btn-dark btn-block" id="callBtn" type="submit">Save call</button><div class="msg" id="callMsg" role="alert"></div></form>'), "sheetTitle");
+}
+function saveCall(e){
+  e.preventDefault();
+  var pressed = document.querySelector("[data-outcome][aria-pressed='true']"), msg = $("callMsg"), btn = $("callBtn");
+  if (!pressed) return showMsg(msg, "Tap what happened on the call.");
+  var outcome = pressed.getAttribute("data-outcome"), fu = $("fu").value || null, note = $("note").value.trim();
+  if ((outcome === "Call back" || outcome === "Demo booked") && !fu) return showMsg(msg, "Pick the follow-up date.");
+  busy(btn, true, "Saving…");
+  rpc("sales_log_call", { p_prospect: $("leadId").value, p_outcome: outcome, p_note: note || null, p_followup: fu }).then(function(){
+    closeSheet(); toast("Saved: " + outcome);
+    go(S.tab);
+  }).catch(function(err){ busy(btn, false); showMsg(msg, err.message); });
+}
+REP.stores = function(){
+  return rpc("sales_my_stores").then(function(stores){
+    S.stores = stores || [];
+    var REW = { Waiting: "info", Earned: "good", Approved: "good", Paid: "good", Rejected: "bad" };
+    if (S.tab !== "stores") return; $("main").innerHTML = '<h1 class="page">My stores</h1><p class="sub">Stores that signed up through you. You earn Rs 500 when a store\'s CNIC is verified and Rs 500 after its first pickup.</p>' +
+      '<section class="sec">' + (S.stores.length ? '<div class="list">' + S.stores.map(function(s){
+        var m = s.milestones || {}, w = s.rewards || {};
+        return '<div class="item" style="display:block"><b>' + esc(s.store_name) + '</b><span class="meta">' + esc([s.city, "signed up " + pkt(s.signed_up_at)].filter(Boolean).join(" · ")) + "</span>" +
+          '<div class="steps">' + (s.status === "Pending" ? '<span class="chip warn">Waiting for NovaX to confirm</span>' : '<span class="chip good">✓ Account opened</span>') +
+          '<span class="chip ' + (m.cnic_verified ? "good" : "") + '">' + (m.cnic_verified ? "✓ CNIC verified" : "CNIC not verified yet") + "</span>" +
+          '<span class="chip ' + (m.picked_up ? "good" : "") + '">' + (m.picked_up ? "✓ First pickup" : "No pickup yet") + "</span></div>" +
+          '<div class="steps">' + ["account_opened", "first_pickup"].filter(function(k){ return w[k]; }).map(function(k){
+            return '<span class="chip ' + (REW[w[k]] || "") + '">' + (k === "account_opened" ? "Account" : "Pickup") + " Rs 500 · " + esc(w[k]) + "</span>"; }).join("") + "</div></div>";
+      }).join("") + "</div>" : '<div class="empty">No stores yet. When a store you called signs up, it appears here within 15 minutes.</div>') + "</section>" +
+      '<section class="sec"><h2>Store signed up but isn\'t here?</h2><form id="fClaim" class="card" novalidate><p class="sub" style="margin-bottom:10px">If the store didn\'t use your code and wasn\'t on your lead list, send NovaX its number. NovaX checks and confirms.</p>' +
+        '<div class="fld"><label for="clPhone">Store\'s mobile number</label><input id="clPhone" type="tel" inputmode="tel" maxlength="20" placeholder="0300 1234567"></div>' +
+        '<div class="fld"><label for="clNote">How you got them (optional)</label><input id="clNote" maxlength="300"></div>' +
+        '<button class="btn btn-dark btn-block" id="clBtn" type="submit">Send claim</button><div class="msg" id="clMsg" role="alert"></div></form></section>';
+  });
+};
+function doClaim(e){
+  e.preventDefault();
+  var btn = $("clBtn"), msg = $("clMsg"), phone = $("clPhone").value.trim();
+  if (phone.replace(/\D/g, "").length < 10) return showMsg(msg, "Enter the store's mobile number.");
+  busy(btn, true);
+  rpc("sales_claim_store", { p_phone: phone, p_note: $("clNote").value.trim() || null }).then(function(r){
+    busy(btn, false); showMsg(msg, r && r.message || "Claim sent.", true); $("clPhone").value = ""; $("clNote").value = "";
+  }).catch(function(err){ busy(btn, false); showMsg(msg, err.message); });
+}
+REP.earnings = function(){
+  return rpc("sales_my_earnings").then(function(e){
+    var t = (e && e.totals) || {}, rows = (e && e.rewards) || [];
+    var TONE = { Waiting: "info", Earned: "good", Approved: "good", Paid: "good", Rejected: "bad" };
+    if (S.tab !== "earnings") return; $("main").innerHTML = '<h1 class="page">My earnings</h1><p class="sub">Rs 500 when a store\'s CNIC is verified, Rs 500 after its first pickup is delivered. NovaX pays weekly.</p>' +
+      '<div class="stats"><div class="stat"><small>Waiting</small><b>' + rs(t.waiting) + '</b></div><div class="stat"><small>Earned</small><b>' + rs(t.earned) + "</b></div>" +
+        '<div class="stat"><small>Approved to pay</small><b>' + rs(t.approved) + '</b></div><div class="stat go"><small>Paid to you</small><b>' + rs(t.paid) + "</b></div></div>" +
+      '<section class="sec"><h2>Every reward</h2>' + (rows.length ? '<div class="list">' + rows.map(function(w){
+        return '<div class="item"><span class="grow"><b>' + esc(w.store_name) + '</b><span class="meta">' + (w.kind === "account_opened" ? "Account opened" : "First pickup") +
+          (w.paid_at ? " · paid " + esc(pkt(w.paid_at)) + (w.paid_ref ? " · ref " + esc(w.paid_ref) : "") : w.earned_at ? " · earned " + esc(pkt(w.earned_at)) : "") +
+          (w.note ? " · " + esc(w.note) : "") + '</span></span><span style="text-align:right"><b>' + rs(w.amount) + "</b>" +
+          '<span class="chip ' + (TONE[w.status] || "") + '">' + esc(w.status) + "</span></span></div>";
+      }).join("") + "</div>" : '<div class="empty">Nothing yet. Your first Rs 500 comes when a store you signed up gets its CNIC verified.</div>') + "</section>" +
+      '<section class="sec"><h2>What the words mean</h2><div class="card"><dl class="kv"><dt>Waiting</dt><dd>The store signed up; waiting for its CNIC check or its first pickup to be delivered.</dd>' +
+        "<dt>Earned</dt><dd>Done. NovaX approves it this week.</dd><dt>Approved</dt><dd>In this week's payment.</dd><dt>Paid</dt><dd>Sent to you, with the bank reference.</dd>" +
+        "<dt>Rejected</dt><dd>Not payable; the reason is shown.</dd></dl></div></section>";
+  });
+};
+REP.link = function(){
+  var code = S.me.rep.code, link = SITE + "/?ref=" + encodeURIComponent(code), first = S.me.rep.full_name.split(" ")[0];
+  var T = [
+    ["First message", "Assalam o Alaikum! Main " + first + " NovaX Logistics se. Hum Karachi, Lahore, Islamabad aur Rawalpindi mein COD courier hain, Rs 225 se. COD ka paisa, delivery ke din aap ke wallet mein. Free account yahan se banayein, 5 minute lagte hain: " + link],
+    ["After the call", "Shukriya baat karne ka! Jaisa bataya: Karachi mein Rs 225, Lahore, Islamabad aur Rawalpindi Rs 250, har extra kg Rs 85. Pickup free, ghar ya shop se. Account yahan banayein: " + link + "\nKoi sawal ho to isi number par message karein."],
+    ["Follow-up", "Assalam o Alaikum! " + first + " NovaX se. Aap ne account bana liya? Agar koi masla aa raha ho to batayein, main step by step help kar deta/deti hoon. Link: " + link]
+  ];
+  if (S.tab !== "link") return; $("main").innerHTML = '<h1 class="page">My link and code</h1><p class="sub">Stores that sign up with your link or code are counted as yours automatically.</p>' +
+    '<section class="sec"><h2>Your code</h2><div class="card"><div style="font:800 34px/1 var(--mono);letter-spacing:.06em">' + esc(code) + '</div><p class="hint" style="margin-top:8px">Read it out on the phone: they type it in the "Referral code" box when they sign up.</p></div></section>' +
+    '<section class="sec"><h2>Your signup link</h2><div class="copybox"><label class="sr" for="myLink">Your link</label><input id="myLink" readonly value="' + esc(link) + '"><button class="btn btn-dark" type="button" data-copy="' + esc(link) + '">Copy</button></div>' +
+      '<a class="btn btn-primary btn-block" style="margin-top:10px" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(T[0][1]) + '">Share on WhatsApp</a></section>' +
+    '<section class="sec"><h2>Messages you can send</h2>' + T.map(function(t){ return '<div class="card" style="margin-bottom:10px"><b>' + esc(t[0]) + '</b><div class="tpl">' + esc(t[1]) +
+      '</div><button class="btn btn-plain btn-sm" type="button" data-copy="' + esc(t[1]) + '">Copy message</button></div>'; }).join("") + "</section>";
+  return Promise.resolve();
+};
+
+/* ═════ ADMIN ═════ */
+var ADMIN = {};
+function repOptions(sel, withPool){
+  var reps = (S.admin.reps || []).filter(function(r){ return r.status !== "Removed"; });
+  return (withPool ? '<option value="">Pool (no rep)</option>' : '<option value="">Choose a rep</option>') +
+    reps.map(function(r){ return '<option value="' + esc(r.id) + '"' + (sel === r.id ? " selected" : "") + ">" + esc(r.code + " · " + r.full_name) + "</option>"; }).join("");
+}
+function loadOverview(){ return rpc("sales_admin_overview").then(function(o){ S.admin.ov = o; S.admin.reps = o.reps || []; return o; }); }
+ADMIN.overview = function(){
+  return loadOverview().then(function(o){
+    var reps = o.reps.filter(function(r){ return r.status !== "Removed"; });
+    if (S.tab !== "overview") return; $("main").innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;justify-content:space-between"><div><h1 class="page">Sales HQ</h1><p class="sub">Every rep\'s calls, signups, pickups and rewards. Numbers update every 15 minutes.</p></div>' +
+      '<button class="btn btn-plain btn-sm" type="button" id="refreshNow">Update numbers now</button></div>' +
+      '<div class="stats"><div class="stat"><small>Leads in the pool</small><b>' + o.pool + '</b></div><div class="stat' + (o.pending_claims ? " go" : "") + '"><small>Claims to check</small><b>' + o.pending_claims + "</b></div>" +
+        '<div class="stat' + (o.rewards_to_approve ? " go" : "") + '"><small>Rewards to approve</small><b>' + o.rewards_to_approve + '</b></div><div class="stat"><small>Owed to reps</small><b>' + rs(o.owed_total) + "</b></div></div>" +
+      '<section class="sec"><h2>Reps</h2>' + (reps.length ? '<table class="tbl"><thead><tr><th>Rep</th><th class="num">Calls today</th><th class="num">Calls 7 days</th><th class="num">Open leads</th><th class="num">Follow-ups due</th><th class="num">Reached</th><th class="num">Interested</th><th class="num">Signups</th><th class="num">First pickups</th><th class="num">Owed</th><th class="num">Paid</th><th>Last call</th></tr></thead><tbody>' +
+        reps.map(function(r){ return '<tr><td data-l="Rep"><b>' + esc(r.code) + "</b> " + esc(r.full_name) + (r.status === "Invited" ? ' <span class="chip warn">not joined</span>' : "") + "</td>" +
+          '<td class="num" data-l="Calls today">' + r.calls_today + '</td><td class="num" data-l="Calls 7 days">' + r.calls_7d + '</td><td class="num" data-l="Open leads">' + r.leads_open +
+          '</td><td class="num" data-l="Follow-ups due">' + r.followups_due + '</td><td class="num" data-l="Reached">' + r.reached + '</td><td class="num" data-l="Interested">' + r.interested +
+          '</td><td class="num" data-l="Signups"><b>' + r.signups + '</b></td><td class="num" data-l="First pickups"><b>' + r.first_pickups + '</b></td><td class="num" data-l="Owed">' + rs(r.owed) +
+          '</td><td class="num" data-l="Paid">' + rs(r.paid) + '</td><td data-l="Last call">' + esc(r.last_call_at ? pkt(r.last_call_at, true) : "never") + "</td></tr>"; }).join("") + "</tbody></table>"
+        : '<div class="empty">No reps yet. Add one under Reps.</div>') + "</section>";
+  });
+};
+ADMIN.reps = function(){
+  return loadOverview().then(function(o){
+    if (S.tab !== "reps") return; $("main").innerHTML = '<h1 class="page">Reps</h1><p class="sub">Add a rep, then send them their code. They join at novaxlogistics.com/sales.html with exactly the email you enter here.</p>' +
+      '<div class="split sec"><form id="fInvite" class="card" novalidate><h2 style="font:800 18px var(--display);margin-bottom:10px">Add a rep</h2>' +
+        '<div class="fld"><label for="rName">Full name</label><input id="rName" maxlength="80" autocomplete="off"></div>' +
+        '<div class="fld"><label for="rEmail">Email they will sign in with</label><input id="rEmail" type="email" inputmode="email" maxlength="254" autocomplete="off"></div>' +
+        '<div class="row2"><div class="fld"><label for="rPhone">Phone</label><input id="rPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="off"></div>' +
+        '<div class="fld"><label for="rCode">Rep code</label><input id="rCode" maxlength="12" autocapitalize="characters" autocomplete="off" placeholder="AYESHA"></div></div>' +
+        '<p class="hint" style="margin:-4px 0 10px">The code goes in their signup link, so keep it short: their name, or SALES01.</p>' +
+        '<button class="btn btn-primary btn-block" id="rBtn" type="submit">Add rep</button><div class="msg" id="rMsg" role="alert"></div><div id="rJoin"></div></form>' +
+      '<div><h2 style="font:800 18px var(--display);margin-bottom:10px">Team</h2>' + (o.reps.length ? '<div class="list">' + o.reps.map(function(r){
+        return '<div class="item"><span class="grow"><b>' + esc(r.code + " · " + r.full_name) + '</b><span class="meta">' + esc(r.email) + (r.joined_on ? " · joined " + esc(pkt(r.joined_on + "T12:00:00Z")) : "") + "</span></span>" +
+          (r.status === "Active" ? '<span class="chip good">Active</span>' : r.status === "Invited" ? '<span class="chip warn">Not joined</span>' : '<span class="chip bad">Removed</span>') +
+          (r.status === "Removed" ? '<button class="btn btn-plain btn-sm" type="button" data-rep-status="Active" data-rep="' + esc(r.id) + '">Restore</button>'
+            : '<button class="btn btn-danger btn-sm" type="button" data-rep-status="Removed" data-rep="' + esc(r.id) + '" data-name="' + esc(r.full_name) + '">Remove</button>') + "</div>";
+      }).join("") + "</div>" : '<div class="empty">No reps yet.</div>') + "</div></div>";
+  });
+};
+function joinText(code, email){ return "Assalam o Alaikum! NovaX sales team mein khush aamdeed.\n1. Kholiye: " + SITE + "/sales.html\n2. \"Join the team\" dabayein\n3. Rep code: " + code + "\n4. Email: " + email + "\n5. Apna password banayein.\nAap ka signup link: " + SITE + "/?ref=" + code; }
+function doInvite(e){
+  e.preventDefault();
+  var btn = $("rBtn"), msg = $("rMsg"), name = $("rName").value.trim(), email = $("rEmail").value.trim().toLowerCase(), code = $("rCode").value.trim().toUpperCase();
+  if (name.length < 2) return showMsg(msg, "Enter the rep's full name.");
+  if (!/^\S+@\S+\.\S+$/.test(email)) return showMsg(msg, "Enter the email they will sign in with.");
+  if (!/^[A-Z0-9]{3,12}$/.test(code)) return showMsg(msg, "The code must be 3 to 12 letters or numbers.");
+  busy(btn, true);
+  rpc("sales_admin_invite", { p_name: name, p_email: email, p_phone: $("rPhone").value.trim(), p_code: code }).then(function(){
+    busy(btn, false); var t = joinText(code, email);
+    ADMIN.reps().then(function(){ showMsg($("rMsg"), "Added. Send them this message:", true);
+      $("rJoin").innerHTML = '<div class="tpl">' + esc(t) + '</div><button class="btn btn-dark btn-sm" type="button" data-copy="' + esc(t) + '">Copy message</button>'; });
+  }).catch(function(err){ busy(btn, false); showMsg(msg, err.message); });
+}
+ADMIN.leads = function(){
+  return loadOverview().then(function(o){
+    if (S.tab !== "leads") return; $("main").innerHTML = '<h1 class="page">Leads</h1><p class="sub">' + o.leads_total + " leads · " + o.pool + ' in the pool. Import, hand out, and move leads between reps.</p>' +
+      '<div class="split sec"><form id="fAssign" class="card" novalidate><h2 style="font:800 18px var(--display);margin-bottom:10px">Hand out from the pool</h2>' +
+        '<div class="fld"><label for="aRep">To</label><select id="aRep">' + repOptions() + "</select></div>" +
+        '<div class="row2"><div class="fld"><label for="aCount">How many</label><input id="aCount" type="number" inputmode="numeric" min="1" max="500" value="25"></div>' +
+        '<div class="fld"><label for="aCity">City (optional)</label><input id="aCity" maxlength="40" placeholder="Any"></div></div>' +
+        '<button class="btn btn-primary btn-block" id="aBtn" type="submit">Hand out leads</button><div class="msg" id="aMsg" role="alert"></div></form>' +
+      '<form id="fImport" class="card" novalidate><h2 style="font:800 18px var(--display);margin-bottom:6px">Import a CSV</h2><p class="hint" style="margin-bottom:10px">Columns: Lead ID, Store name, Contact person, Phone, City, Category, Where found, Store link, Orders per month, Assign to. Only Store name and Phone are required. Saving from Google Sheets as CSV works.</p>' +
+        '<div class="fld"><label for="csvFile">CSV file</label><input id="csvFile" type="file" accept=".csv,text/csv"></div>' +
+        '<div class="fld"><label for="csvText">…or paste the rows</label><textarea id="csvText" placeholder="Store name,Phone,City&#10;Glow Cosmetics,0321 1234567,Karachi"></textarea></div>' +
+        '<button class="btn btn-dark btn-block" id="iBtn" type="submit">Check and import</button><div class="msg" id="iMsg" role="alert"></div><div id="iSkip"></div></form></div>' +
+      '<section class="sec"><h2>Find leads</h2><div class="row2" style="margin-bottom:8px"><select class="search" id="lfRep"><option value="">Every rep</option><option value="pool">Pool only</option>' +
+        (o.reps || []).map(function(r){ return '<option value="' + esc(r.id) + '">' + esc(r.code) + "</option>"; }).join("") + '</select><select class="search" id="lfStatus"><option value="">Any status</option>' +
+        ["Not called", "No answer", "Busy", "Call back", "Interested", "Demo booked", "Not interested", "Wrong number", "Signed up"].map(function(s){ return "<option>" + esc(s) + "</option>"; }).join("") + "</select></div>" +
+        '<input class="search" id="lfQ" type="search" placeholder="Store or number"><div id="adminLeads" style="margin-top:10px"><div class="loading">Loading…</div></div></section>';
+    loadAdminLeads();
+  });
+};
+var leadsT = null;
+function loadAdminLeads(){
+  var repv = ($("lfRep") || {}).value || "", st = ($("lfStatus") || {}).value || "", q = (($("lfQ") || {}).value || "").trim();
+  return rpc("sales_admin_leads", { p_rep: repv && repv !== "pool" ? repv : null, p_status: st || null, p_search: q || null, p_pool: repv === "pool" }).then(function(rows){
+    var el = $("adminLeads"); if (!el) return;
+    rows = rows || [];
+    el.innerHTML = rows.length ? '<p class="hint" style="margin-bottom:6px">' + rows.length + (rows.length === 500 ? "+ (first 500)" : "") + ' leads</p><table class="tbl"><thead><tr><th>Store</th><th>Phone</th><th>City</th><th>Status</th><th>Calls</th><th>Last note</th><th>Rep</th></tr></thead><tbody>' +
+      rows.map(function(l){ return '<tr><td data-l="Store"><b>' + esc(l.store_name) + "</b>" + (l.lead_ref ? '<br><span class="hint">' + esc(l.lead_ref) + "</span>" : "") + '</td><td data-l="Phone">' + esc(l.phone) +
+        '</td><td data-l="City">' + esc(l.city || "") + '</td><td data-l="Status">' + chip(l.status) + '</td><td data-l="Calls" class="num">' + l.call_count + '</td><td data-l="Last note">' + esc(l.last_note || "") +
+        '</td><td data-l="Rep">' + (l.status === "Signed up" ? esc(l.rep_code || "") : '<label class="sr" for="rs-' + esc(l.id) + '">Rep</label><select id="rs-' + esc(l.id) + '" data-reassign="' + esc(l.id) + '" style="min-height:40px;border-radius:9px;border:1.5px solid var(--line-2)">' +
+          repOptions(((S.admin.reps || []).filter(function(r){ return r.code === l.rep_code; })[0] || {}).id, true) + "</select>") + "</td></tr>"; }).join("") + "</tbody></table>"
+      : '<div class="empty">No leads match.</div>';
+  }).catch(function(e){ var el = $("adminLeads"); if (el) el.innerHTML = '<div class="empty">' + esc(e.message) + "</div>"; });
+}
+function doAssign(e){
+  e.preventDefault();
+  var btn = $("aBtn"), msg = $("aMsg"), rep = $("aRep").value, n = parseInt($("aCount").value, 10);
+  if (!rep) return showMsg(msg, "Choose the rep.");
+  if (!(n >= 1 && n <= 500)) return showMsg(msg, "Hand out between 1 and 500.");
+  busy(btn, true);
+  rpc("sales_admin_assign", { p_rep: rep, p_count: n, p_city: $("aCity").value.trim() || null }).then(function(c){
+    busy(btn, false); showMsg(msg, c ? c + " leads handed out." : "The pool has no matching leads.", !!c); loadAdminLeads();
+  }).catch(function(err){ busy(btn, false); showMsg(msg, err.message); });
+}
+
+/* CSV: quotes, commas and newlines inside quotes, and a header row. */
+function parseCsv(text){
+  var rows = [], row = [], f = "", q = false, i, c;
+  text = String(text || "").replace(/^﻿/, "");
+  for (i = 0; i < text.length; i++) {
+    c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === "," || c === "\t") { row.push(f); f = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(f); rows.push(row); row = []; f = ""; }
+    else f += c;
+  }
+  if (f !== "" || row.length) { row.push(f); rows.push(row); }
+  return rows.filter(function(r){ return r.some(function(x){ return String(x).trim() !== ""; }); });
+}
+var HEAD = { "lead id": "lead_ref", "lead_ref": "lead_ref", "id": "lead_ref", "store name": "store_name", "store": "store_name", "business": "store_name", "name": "store_name",
+  "contact person": "contact_name", "contact": "contact_name", "owner": "contact_name", "phone": "phone", "mobile": "phone", "number": "phone", "whatsapp": "phone",
+  "city": "city", "category": "category", "sells": "category", "where found": "source", "source": "source", "store link": "store_link", "link": "store_link", "url": "store_link",
+  "orders per month": "est_orders", "orders": "est_orders", "assign to": "assign_to", "rep": "assign_to", "rep code": "assign_to" };
+function csvToRows(text){
+  var t = parseCsv(text); if (t.length < 2) throw new Error("Add a header row and at least one lead.");
+  var keys = t[0].map(function(h){ return HEAD[String(h).trim().toLowerCase()] || null; });
+  if (keys.indexOf("store_name") < 0 || keys.indexOf("phone") < 0) throw new Error("The first row needs a \"Store name\" and a \"Phone\" column.");
+  return t.slice(1).map(function(r){ var o = {}; keys.forEach(function(k, i){ if (k && r[i] != null && String(r[i]).trim() !== "") o[k] = String(r[i]).trim(); }); return o; });
+}
+function doImport(e){
+  e.preventDefault();
+  var btn = $("iBtn"), msg = $("iMsg"), file = $("csvFile").files && $("csvFile").files[0];
+  $("iSkip").innerHTML = "";
+  (file ? file.text() : Promise.resolve($("csvText").value)).then(function(text){
+    var rows = csvToRows(text);
+    if (rows.length > 2000) throw new Error("That is " + rows.length + " rows. Import at most 2,000 at a time.");
+    busy(btn, true, "Importing " + rows.length + "…");
+    return rpc("sales_admin_import", { p_rows: rows });
+  }).then(function(r){
+    busy(btn, false);
+    var sk = (r && r.skipped) || [];
+    showMsg(msg, r.inserted + " new, " + r.updated + " updated" + (sk.length ? ", " + sk.length + " skipped (below)" : "") + ".", true);
+    if (sk.length) $("iSkip").innerHTML = '<div class="tpl">' + sk.slice(0, 50).map(function(s){ return "Row " + (s.row + 1) + (s.lead_ref ? " (" + s.lead_ref + ")" : "") + ": " + s.reason; }).map(esc).join("\n") + "</div>";
+    $("csvText").value = ""; $("csvFile").value = ""; loadAdminLeads();
+  }).catch(function(err){ busy(btn, false); showMsg(msg, err.message); });
+}
+ADMIN.approvals = function(){
+  return Promise.all([rpc("sales_admin_attributions"), loadOverview()]).then(function(res){
+    var rows = res[0] || [], pend = rows.filter(function(a){ return a.status === "Pending"; }), done = rows.filter(function(a){ return a.status !== "Pending"; });
+    var M = { ref_code: "Signed up with the rep's code", phone_match: "Was on the rep's lead list", claim: "Rep claimed it", admin: "Credited by admin" };
+    if (S.tab !== "approvals") return; $("main").innerHTML = '<h1 class="page">Approvals</h1><p class="sub">Stores waiting for you to say which rep gets the credit. Most stores are credited automatically and never appear here.</p>' +
+      '<section class="sec"><h2>Waiting (' + pend.length + ")</h2>" + (pend.length ? '<div class="list">' + pend.map(function(a){
+        return '<div class="card"><b>' + esc(a.store_name) + '</b><p class="hint">' + esc([a.city, a.phone, "signed up " + pkt(a.signed_up_at)].filter(Boolean).join(" · ")) + "</p>" +
+          '<p style="margin:8px 0">' + esc(M[a.method] || a.method) + ": <b>" + esc(a.rep_code) + "</b>" + (a.alt_rep_code ? " · but it was on <b>" + esc(a.alt_rep_code) + "</b>'s lead list" : "") + (a.note ? '<br><span class="hint">' + esc(a.note) + "</span>" : "") + "</p>" +
+          '<div class="steps"><button class="btn btn-primary btn-sm" type="button" data-decide="Approved" data-client="' + esc(a.client_id) + '" data-rep="' + esc(a.rep_id) + '">Credit ' + esc(a.rep_code) + "</button>" +
+          (a.alt_rep_id ? '<button class="btn btn-plain btn-sm" type="button" data-decide="Approved" data-client="' + esc(a.client_id) + '" data-rep="' + esc(a.alt_rep_id) + '">Credit ' + esc(a.alt_rep_code) + "</button>" : "") +
+          '<button class="btn btn-danger btn-sm" type="button" data-decide="Rejected" data-client="' + esc(a.client_id) + '">Credit nobody</button></div></div>';
+      }).join("") + "</div>" : '<div class="empty">Nothing waiting.</div>') + "</section>" +
+      '<section class="sec"><h2>Recently credited</h2>' + (done.length ? '<table class="tbl"><thead><tr><th>Store</th><th>Rep</th><th>How</th><th>Status</th><th>Signed up</th></tr></thead><tbody>' +
+        done.slice(0, 100).map(function(a){ return '<tr><td data-l="Store">' + esc(a.store_name) + '</td><td data-l="Rep">' + esc(a.rep_code) + '</td><td data-l="How">' + esc(M[a.method] || a.method) +
+          '</td><td data-l="Status">' + chip(a.status === "Approved" ? "Signed up" : a.status) + '</td><td data-l="Signed up">' + esc(pkt(a.signed_up_at)) + "</td></tr>"; }).join("") + "</tbody></table>" : '<div class="empty">None yet.</div>') + "</section>";
+  });
+};
+ADMIN.rewards = function(){
+  var st = S.admin.rewardFilter || "Earned";
+  return rpc("sales_admin_rewards", { p_status: st === "All" ? null : st }).then(function(rows){
+    rows = rows || []; S.admin.rewardRows = rows;
+    var sum = rows.reduce(function(s, w){ return s + Number(w.amount || 0); }, 0);
+    if (S.tab !== "rewards") return; $("main").innerHTML = '<h1 class="page">Rewards</h1><p class="sub">Approve what reps earned, then mark it paid with the bank reference. Reps see every step.</p>' +
+      '<div class="filters">' + ["Earned", "Approved", "Waiting", "Paid", "Rejected", "All"].map(function(s){ return '<button type="button" data-rfilter="' + s + '" aria-pressed="' + (st === s) + '">' + s + "</button>"; }).join("") + "</div>" +
+      (rows.length ? '<div class="card" style="margin-bottom:10px"><label style="display:flex;align-items:center;gap:10px;font-weight:700"><input type="checkbox" class="check" id="selAll"> Select all ' + rows.length + " (" + rs(sum) + ")</label>" +
+        '<div class="steps" style="margin-top:10px">' + (st === "Earned" ? '<button class="btn btn-primary btn-sm" type="button" data-bulk="Approved">Approve selected</button>' : "") +
+        (st === "Earned" || st === "Approved" ? '<button class="btn btn-dark btn-sm" type="button" data-bulk="Paid">Mark selected paid…</button>' : "") +
+        (st !== "Paid" && st !== "Rejected" ? '<button class="btn btn-danger btn-sm" type="button" data-bulk="Rejected">Reject selected…</button>' : "") +
+        '<button class="btn btn-plain btn-sm" type="button" id="csvOut">Download CSV</button></div><div class="msg" id="rwMsg" role="alert"></div></div>' +
+        '<table class="tbl"><thead><tr><th></th><th>Rep</th><th>Store</th><th>For</th><th class="num">Amount</th><th>Status</th><th>When</th></tr></thead><tbody>' + rows.map(function(w){
+          return '<tr><td data-l="Pick"><input type="checkbox" class="check" data-rw="' + esc(w.id) + '" aria-label="Select ' + esc(w.store_name) + '"></td><td data-l="Rep"><b>' + esc(w.rep_code) + "</b> " + esc(w.rep_name) +
+            '</td><td data-l="Store">' + esc(w.store_name) + '</td><td data-l="For">' + (w.kind === "account_opened" ? "Account opened" : "First pickup") + '</td><td class="num" data-l="Amount">' + rs(w.amount) +
+            '</td><td data-l="Status">' + esc(w.status) + (w.paid_ref ? '<br><span class="hint">' + esc(w.paid_ref) + "</span>" : "") + (w.note ? '<br><span class="hint">' + esc(w.note) + "</span>" : "") +
+            '</td><td data-l="When">' + esc(pkt(w.paid_at || w.approved_at || w.earned_at)) + "</td></tr>"; }).join("") + "</tbody></table>"
+      : '<div class="empty">No rewards here.</div>');
+  });
+};
+function bulkRewards(status){
+  var ids = [].map.call(document.querySelectorAll("[data-rw]:checked"), function(c){ return c.getAttribute("data-rw"); }), msg = $("rwMsg");
+  if (!ids.length) return showMsg(msg, "Tick the rewards first.");
+  var ref = null, note = null;
+  if (status === "Paid") { ref = prompt("Bank or transfer reference for these " + ids.length + " payments:"); if (ref === null) return; if (ref.trim().length < 3) return showMsg(msg, "Enter the bank or transfer reference."); }
+  if (status === "Rejected") { note = prompt("Why? The rep will see this:"); if (note === null) return; if (note.trim().length < 3) return showMsg(msg, "Say why, so the rep understands."); }
+  rpc("sales_admin_set_rewards", { p_ids: ids, p_status: status, p_ref: ref, p_note: note }).then(function(n){ toast(n + " updated"); ADMIN.rewards(); })
+    .catch(function(e){ showMsg(msg, e.message); });
+}
+function rewardsCsv(){
+  var rows = S.admin.rewardRows || [], q = function(v){ v = String(v == null ? "" : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  var csv = [["Rep code", "Rep", "Store", "For", "Amount", "Status", "Earned", "Paid", "Reference", "Note"]].concat(rows.map(function(w){
+    return [w.rep_code, w.rep_name, w.store_name, w.kind === "account_opened" ? "Account opened" : "First pickup", w.amount, w.status, pkt(w.earned_at), pkt(w.paid_at), w.paid_ref, w.note]; }))
+    .map(function(r){ return r.map(q).join(","); }).join("\n");
+  var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" })); a.download = "novax-sales-rewards-" + todayPk(0) + ".csv"; a.click();
+}
+ADMIN.sheet = function(){
+  return loadOverview().then(function(o){
+    if (S.tab !== "sheet") return; $("main").innerHTML = '<h1 class="page">Google Sheet</h1><p class="sub">Keep your lead list in a Google Sheet. It sends new leads here and shows each lead\'s status, calls and signup back in the sheet, every 15 minutes. Free: it runs on Google Apps Script.</p>' +
+      '<section class="sec"><h2>1. Set up the sheet</h2><div class="card"><p>Make a tab named <b>Leads</b>. Put these headings in row 1, in this order:</p><div class="tpl">' + esc(SHEET_HEADERS.join(" | ")) +
+        '</div><button class="btn btn-plain btn-sm" type="button" data-copy="' + esc(SHEET_HEADERS.join("\t")) + '">Copy headings (paste into A1)</button>' +
+        '<p class="hint" style="margin-top:10px">You fill columns A to J. NovaX fills K onwards; don\'t type there. Assign to = a rep code, or leave it empty and hand leads out from the Leads tab here.</p></div></section>' +
+      '<section class="sec"><h2>2. Add the script</h2><div class="card"><p>In the sheet: <b>Extensions → Apps Script</b>. Delete what is there, paste this, and press Save.</p>' +
+        '<div class="pre" id="gs"></div><button class="btn btn-dark btn-sm" style="margin-top:10px" type="button" id="copyGs">Copy script</button></div></section>' +
+      '<section class="sec"><h2>3. Connect it</h2><div class="card"><p>' + (o.sheet_connected ? '<span class="chip good">A sheet key exists</span> Making a new key disconnects the old one.' : "No sheet is connected yet.") + "</p>" +
+        '<button class="btn btn-primary" style="margin-top:10px" type="button" id="mkKey">' + (o.sheet_connected ? "Make a new key" : "Make the key") + '</button><div id="keyOut"></div>' +
+        '<p class="hint" style="margin-top:10px">Back in the sheet, reload it. A <b>NovaX</b> menu appears: choose <b>Connect</b> and paste the key, then <b>Turn on auto-sync</b>. Google asks you to allow the script once.</p></div></section>';
+    $("gs").textContent = GS_CODE;
+  });
+};
+var SHEET_HEADERS = ["Lead ID", "Store name", "Contact person", "Phone", "City", "Category", "Where found", "Store link", "Orders per month", "Assign to",
+  "Status", "Calls", "Last called", "Next follow-up", "Last note", "Signed up", "First pickup", "Rewards Rs", "Synced at", "Sent assign"];
+var GS_CODE = [
+"// NovaX lead sheet sync. Tab \"Leads\", headings in row 1 (see the NovaX Sales page).",
+"// Columns A-J are yours; NovaX writes K-T. Free: runs on Google Apps Script.",
+"var NOVAX_URL = '" + SB_URL + "/rest/v1/rpc/sales_sheet_sync';",
+"var NOVAX_KEY = '" + SB_KEY + "'; // NovaX's public site key, not your sheet key",
+"",
+"function onOpen() {",
+"  SpreadsheetApp.getUi().createMenu('NovaX')",
+"    .addItem('Connect (paste key)', 'novaxConnect')",
+"    .addItem('Sync now', 'novaxSync')",
+"    .addItem('Turn on auto-sync (every 15 min)', 'novaxAuto')",
+"    .addToUi();",
+"}",
+"function novaxConnect() {",
+"  var r = SpreadsheetApp.getUi().prompt('Paste the key from NovaX Sales → Google Sheet');",
+"  if (r.getSelectedButton() !== SpreadsheetApp.getUi().Button.OK) return;",
+"  PropertiesService.getDocumentProperties().setProperty('NOVAX_SHEET_KEY', r.getResponseText().trim());",
+"  novaxSync();",
+"}",
+"function novaxAuto() {",
+"  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'novaxSync') ScriptApp.deleteTrigger(t); });",
+"  ScriptApp.newTrigger('novaxSync').timeBased().everyMinutes(15).create();",
+"  SpreadsheetApp.getActive().toast('Auto-sync is on: every 15 minutes.');",
+"}",
+"function novaxSync() {",
+"  var key = PropertiesService.getDocumentProperties().getProperty('NOVAX_SHEET_KEY');",
+"  if (!key) throw new Error('Choose NovaX → Connect first.');",
+"  var sh = SpreadsheetApp.getActive().getSheetByName('Leads');",
+"  if (!sh) throw new Error('Make a tab named Leads.');",
+"  var last = sh.getLastRow(); if (last < 2) return;",
+"  var data = sh.getRange(2, 1, last - 1, 20).getValues();",
+"  var rows = [], idCol = [];",
+"  for (var i = 0; i < data.length; i++) {",
+"    var r = data[i];",
+"    if (!String(r[1]).trim() && !String(r[3]).trim()) { idCol.push([r[0]]); continue; }",
+"    var id = String(r[0]).trim() || ('L' + Utilities.formatDate(new Date(), 'Asia/Karachi', 'yyMMdd') + '-' + (i + 2));",
+"    idCol.push([id]);",
+"    var row = { lead_ref: id, store_name: String(r[1]), contact_name: String(r[2]), phone: String(r[3]), city: String(r[4]),",
+"      category: String(r[5]), source: String(r[6]), store_link: String(r[7]), est_orders: String(r[8]) };",
+"    var assign = String(r[9]).trim().toUpperCase();",
+"    if (assign !== String(r[19]).trim().toUpperCase()) row.assign_to = assign; // only when you changed it",
+"    rows.push(row);",
+"  }",
+"  sh.getRange(2, 1, idCol.length, 1).setValues(idCol);",
+"  var res = UrlFetchApp.fetch(NOVAX_URL, { method: 'post', contentType: 'application/json', muteHttpExceptions: true,",
+"    headers: { apikey: NOVAX_KEY, Authorization: 'Bearer ' + NOVAX_KEY },",
+"    payload: JSON.stringify({ p_key: key, p_rows: rows.slice(0, 2000) }) });",
+"  var body = JSON.parse(res.getContentText() || '{}');",
+"  if (res.getResponseCode() !== 200) throw new Error('NovaX: ' + (body.message || res.getResponseCode()));",
+"  var byRef = {}; (body.leads || []).forEach(function (l) { if (l.lead_ref) byRef[l.lead_ref] = l; });",
+"  var now = Utilities.formatDate(new Date(), 'Asia/Karachi', 'yyyy-MM-dd HH:mm');",
+"  var out = [], assignOut = [];",
+"  for (var j = 0; j < idCol.length; j++) {",
+"    var l = byRef[String(idCol[j][0])];",
+"    if (!l) { out.push(['', '', '', '', '', '', '', '', '', '']); assignOut.push([data[j][9]]); continue; }",
+"    out.push([l.status, l.call_count, l.last_called_at || '', l.next_followup_on || '', l.last_note || '', l.signed_up_on || '',",
+"      l.first_pickup ? 'Yes' : '', l.rewards || 0, now, l.rep_code || '']);",
+"    assignOut.push([l.rep_code || '']);",
+"  }",
+"  sh.getRange(2, 11, out.length, 10).setValues(out);",
+"  sh.getRange(2, 10, assignOut.length, 1).setValues(assignOut);",
+"  var skipped = (body.skipped || []).length;",
+"  SpreadsheetApp.getActive().toast('NovaX: ' + (body.inserted || 0) + ' new, ' + (body.updated || 0) + ' updated' + (skipped ? ', ' + skipped + ' skipped (check phone and store name)' : '') + '.');",
+"}"].join("\n");
+
+/* ═════ events ═════ */
+var sheetReturn = null;
+function openSheet(html, labelId){
+  sheetReturn = document.activeElement;
+  $("sheetRoot").innerHTML = '<div class="scrim" data-act="close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="' + labelId + '" id="sheet">' + html + "</div>";
+  document.body.style.overflow = "hidden";
+  [].forEach.call(document.querySelectorAll("main,.top,.bnav"), function(el){ el.setAttribute("inert", ""); });
+  setTimeout(function(){ var x = document.querySelector("#sheet .x"); if (x) x.focus(); }, 30);
+}
+function closeSheet(){
+  $("sheetRoot").innerHTML = ""; document.body.style.overflow = "";
+  [].forEach.call(document.querySelectorAll("[inert]"), function(el){ el.removeAttribute("inert"); });
+  if (sheetReturn && sheetReturn.focus) try { sheetReturn.focus(); } catch (e) {}
+}
+document.addEventListener("click", function(e){
+  var t = e.target, el;
+  if ((el = t.closest("[data-tab]"))) return go(el.getAttribute("data-tab"));
+  if ((el = t.closest("[data-auth]"))) return renderAuth(el.getAttribute("data-auth"));
+  if ((el = t.closest("[data-lead]"))) return openLead(el.getAttribute("data-lead"));
+  if ((el = t.closest("[data-filter]"))) { S.filter = el.getAttribute("data-filter"); [].forEach.call(document.querySelectorAll("[data-filter]"), function(b){ b.setAttribute("aria-pressed", b === el ? "true" : "false"); }); return drawLeadList(); }
+  if ((el = t.closest("[data-outcome]"))) {
+    [].forEach.call(document.querySelectorAll("[data-outcome]"), function(b){ b.setAttribute("aria-pressed", b === el ? "true" : "false"); });
+    var o = el.getAttribute("data-outcome"), need = o === "Call back" || o === "Demo booked";
+    $("fuReq").textContent = need ? "(needed)" : "(optional)";
+    if (o === "Not interested" || o === "Wrong number") $("fu").value = "";
+    else if (!$("fu").value && (o === "No answer" || o === "Busy")) $("fu").value = todayPk(1);
+    return;
+  }
+  if ((el = t.closest("[data-fu]"))) { var n = el.getAttribute("data-fu"); $("fu").value = n === "" ? "" : todayPk(parseInt(n, 10)); return; }
+  if ((el = t.closest("[data-copy]"))) return copy(el.getAttribute("data-copy"));
+  if ((el = t.closest("[data-rfilter]"))) { S.admin.rewardFilter = el.getAttribute("data-rfilter"); return ADMIN.rewards(); }
+  if ((el = t.closest("[data-bulk]"))) return bulkRewards(el.getAttribute("data-bulk"));
+  if ((el = t.closest("[data-decide]"))) {
+    var st = el.getAttribute("data-decide");
+    if (st === "Rejected" && !confirm("Credit nobody for this store? Any unpaid rewards for it are cancelled.")) return;
+    el.disabled = true;
+    return rpc("sales_admin_decide", { p_client: el.getAttribute("data-client"), p_status: st, p_rep: el.getAttribute("data-rep") || null })
+      .then(function(){ toast(st === "Approved" ? "Credited" : "Nobody credited"); ADMIN.approvals(); }).catch(function(err){ el.disabled = false; toast(err.message); });
+  }
+  if ((el = t.closest("[data-rep-status]"))) {
+    var to = el.getAttribute("data-rep-status");
+    if (to === "Removed" && !confirm("Remove " + el.getAttribute("data-name") + "? They lose access now and their open leads go back to the pool. Earned rewards stay.")) return;
+    el.disabled = true;
+    return rpc("sales_admin_set_rep_status", { p_rep: el.getAttribute("data-rep"), p_status: to }).then(function(){ toast(to === "Removed" ? "Removed" : "Restored"); ADMIN.reps(); })
+      .catch(function(err){ el.disabled = false; toast(err.message); });
+  }
+  if (t.closest("#refreshNow")) { var b = t.closest("#refreshNow"); busy(b, true, "Updating…"); return rpc("sales_refresh").then(function(r){ toast("Updated: " + (r.credited || 0) + " new stores credited, " + (r.rewards_earned || 0) + " rewards earned"); ADMIN.overview(); }).catch(function(err){ busy(b, false); toast(err.message); }); }
+  if (t.closest("#csvOut")) return rewardsCsv();
+  if (t.closest("#copyGs")) return copy(GS_CODE);
+  if (t.closest("#mkKey")) {
+    if (!confirm("Make a new sheet key? A sheet using the old key stops syncing until you paste the new one.")) return;
+    return rpc("sales_admin_sheet_key").then(function(k){
+      $("keyOut").innerHTML = '<p style="margin-top:12px"><b>Copy this key now. It is shown only once.</b></p><div class="copybox"><input readonly value="' + esc(k) + '" aria-label="Sheet key"><button class="btn btn-dark" type="button" data-copy="' + esc(k) + '">Copy</button></div>';
+    }).catch(function(err){ toast(err.message); });
+  }
+  if (t.closest("#forgot")) return doForgot();
+  if (t.closest("#signOut")) { return Promise.resolve(sb.auth.signOut()).catch(function(){}).then(function(){ S = { me: null, mode: null, tab: null, leads: [], stores: [], earnings: null, filter: "todo", q: "", admin: {} }; location.hash = ""; renderAuth(); }); }
+  if ((el = t.closest("[data-act]"))) {
+    var a = el.getAttribute("data-act");
+    if (a === "close") return closeSheet();
+    if (a === "goleads") { S.filter = "Not called"; return go("leads"); }
+    if (a === "reload") return location.reload();
+    if (a === "retab") return go(S.tab);
+  }
+});
+document.addEventListener("submit", function(e){
+  var id = e.target.id;
+  if (id === "fIn") return doSignIn(e);
+  if (id === "fJoin") return doJoin(e);
+  if (id === "fCode") return doCode(e);
+  if (id === "fCall") return saveCall(e);
+  if (id === "fClaim") return doClaim(e);
+  if (id === "fInvite") return doInvite(e);
+  if (id === "fAssign") return doAssign(e);
+  if (id === "fImport") return doImport(e);
+});
+document.addEventListener("input", function(e){
+  if (e.target.id === "q") { S.q = e.target.value; drawLeadList(); }
+  if (e.target.id === "lfQ") { clearTimeout(leadsT); leadsT = setTimeout(loadAdminLeads, 350); }
+  if (e.target.id === "jCode" || e.target.id === "cCode" || e.target.id === "rCode") e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+});
+document.addEventListener("change", function(e){
+  if (e.target.id === "lfRep" || e.target.id === "lfStatus") return loadAdminLeads();
+  if (e.target.id === "selAll") { [].forEach.call(document.querySelectorAll("[data-rw]"), function(c){ c.checked = e.target.checked; }); return; }
+  var r = e.target.getAttribute && e.target.getAttribute("data-reassign");
+  if (r) { var sel = e.target; sel.disabled = true;
+    rpc("sales_admin_reassign", { p_prospect: r, p_rep: sel.value || null }).then(function(){ sel.disabled = false; toast(sel.value ? "Lead moved" : "Back in the pool"); })
+      .catch(function(err){ sel.disabled = false; toast(err.message); loadAdminLeads(); }); }
+});
+document.addEventListener("keydown", function(e){
+  if (e.key === "Escape" && $("sheet")) closeSheet();
+  if (e.key === "Tab" && $("sheet")) {
+    var f = [].filter.call($("sheet").querySelectorAll("a[href],button:not([disabled]),input,textarea,select"), function(x){ return x.offsetWidth || x.offsetHeight; });
+    if (!f.length) return;
+    if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  }
+});
+if (sb) sb.auth.onAuthStateChange(function(ev){ if (ev === "SIGNED_OUT" && S.mode) { S.mode = null; renderAuth(); } });
+boot();
+})();
+</script>
+</body>
+</html>

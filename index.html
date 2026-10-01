@@ -1553,6 +1553,7 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
     <div class="fld"><label for="merchantPassword">Create password</label><input id="merchantPassword" type="password" placeholder="At least 8 characters" autocomplete="new-password" minlength="8" maxlength="72" aria-describedby="merchantPasswordHint"><div class="form-msg" id="merchantPasswordHint" style="min-height:0"></div></div>
     <div class="fld"><label for="merchantPasswordConfirm">Confirm password</label><input id="merchantPasswordConfirm" type="password" placeholder="Type it again" autocomplete="new-password" minlength="8" maxlength="72"></div>
     <div class="fld"><label for="merchantWebsite">Website link if any</label><input id="merchantWebsite" type="url" placeholder="yourstore.com" inputmode="url" autocomplete="url" maxlength="200"></div>
+    <div class="fld"><label for="merchantRef">Referral code (optional)</label><input id="merchantRef" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="If someone from NovaX called you"><p class="fld-hint">The code of the NovaX person who helped you sign up, if any.</p></div>
     <button class="btn btn-primary" type="submit" id="merchantSubmit">Create my workspace</button>
     <div class="form-msg" id="mSignup" role="alert"></div>
     <div class="mdl-note">You'll get instant access — your workspace opens right after signup. By signing up you agree to how we handle your data in our <a href="/privacy.html" target="_blank" rel="noopener">Privacy policy</a>.</div>
@@ -1814,7 +1815,7 @@ function nvFriendly(t){
     Promise.resolve(__nvSb.from("profiles").select("role").eq("id",s.user.id).maybeSingle()).then(function(p){
       if(!p||p.error||!p.data) return;
       var r=String(p.data.role||"client").toLowerCase();
-      var t2=r==="rider"?"rider.html":(ADMIN_ROLES.indexOf(r)>-1?"admin.html":"client.html");
+      var t2=r==="rider"?"rider.html":r==="sales"?"sales.html":(ADMIN_ROLES.indexOf(r)>-1?"admin.html":"client.html");
       ["hdrSignin","menuSignin","ftSignin","heroSignin","barSignin"].forEach(function(id){ var a=$(id); if(a&&!a.hasAttribute("data-mdl")) a.setAttribute("href",t2); });
     }).catch(function(){});
     /* Merchants look for "Sign in", so the label never changes; for someone
@@ -1949,6 +1950,14 @@ tIn.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefaul
 (function(){
   var q="";
   try{ var p=new URLSearchParams(location.search); q=(p.get("track")||p.get("awb")||"").trim().toUpperCase(); }catch(e){}
+  /* A sales rep's link (?ref=CODE): remembered for 30 days, so a store that
+     comes back later still signs up under that rep. */
+  try{
+    var ref=String(new URLSearchParams(location.search).get("ref")||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+    if(/^[A-Z0-9]{3,12}$/.test(ref)) localStorage.setItem("nvSalesRef",JSON.stringify({code:ref,at:Date.now()}));
+    var saved=JSON.parse(localStorage.getItem("nvSalesRef")||"null");
+    if(saved&&saved.code&&Date.now()-saved.at<30*864e5){ var rf=$("merchantRef"); if(rf&&!rf.value) rf.value=saved.code; }
+  }catch(e){}
   if(q && AWB_RE.test(q)){ tIn.value=q; track(); }
   else tRes.innerHTML='<div class="tres" style="opacity:.8"><div class="tres-meta">Enter a tracking ID above to see live status — no login required.</div></div>';
 })();
@@ -2240,7 +2249,8 @@ $("fSignup").addEventListener("submit",function(e){
   __nvSb.auth.signUp({
     email:email, password:password,
     options:{ data:{ business_name:storeName, owner_name:name, full_name:name, role:"client",
-      phone:phone, city:city, address:address, business_type:product, website:website||"" } }
+      phone:phone, city:city, address:address, business_type:product, website:website||"",
+      sales_ref:(function(){ var v=String(val("merchantRef")||"").toUpperCase().replace(/[^A-Z0-9]/g,""); return /^[A-Z0-9]{3,12}$/.test(v)?v:""; })() } }
   }).then(function(r){
     if(r&&r.error){ btn.disabled=false; btn.textContent=oldTxt;
       showMsg("mSignup",r.error.message||"Could not create your account. Please try again.",false); return; }
@@ -2425,9 +2435,11 @@ $("fSignin").addEventListener("submit",function(e){
       var role=String(p.data.role||"client").toLowerCase(), target;
       if(ADMIN_ROLES.indexOf(role)>-1) target="admin.html";
       else if(role==="rider") target="rider.html";
+      else if(role==="sales") target="sales.html";
       else if(role==="client"){
         if(p.data.client_id) target="client.html";
         else if(String(meta.role||"").toLowerCase()==="client") target="client.html";
+        else if(String(meta.role||"").toLowerCase()==="sales") target="sales.html";   /* a rep who has not entered their code yet */
         else{
           try{ __nvSb.auth.signOut(); }catch(e){}
           clearNovaxSession(); btn.disabled=false; btn.textContent=oldTxt;
@@ -2443,7 +2455,7 @@ $("fSignin").addEventListener("submit",function(e){
         client_id:p.data.client_id||null,rider_id:p.data.rider_id||null,at:Date.now()})); }catch(e){}
       renderDone("mdlSignin","g","Signed In","Opening your NovaX workspace…",true);
       launchWorkspace(target,
-        target==="admin.html"?"Opening ops console":target==="rider.html"?"Opening rider app":"Opening your workspace",
+        target==="admin.html"?"Opening ops console":target==="rider.html"?"Opening rider app":target==="sales.html"?"Opening your sales page":"Opening your workspace",
         "Signed in as "+email,
         { who:(meta.business_name||meta.full_name||email.split("@")[0]),
           city:(meta.city||"Pakistan"),

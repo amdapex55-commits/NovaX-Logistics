@@ -750,6 +750,7 @@
         if (remembered && remembered.user === userId && Date.now() - remembered.at < 864e5) profile = { data: remembered.profile };
       }
       if (profile.error) throw profile.error;
+      if (profile.data && String(profile.data.role).toLowerCase() === "sales") { location.replace("sales.html"); return; }
       if (!profile.data || String(profile.data.role).toLowerCase() !== "rider" || String(profile.data.status).toLowerCase() !== "active" || !profile.data.rider_id) throw new Error("This account is not an active rider. Contact the office.");
       riderId = profile.data.rider_id; queue = new R.Queue(localStorage, userId, riderId); cacheKey = "novaxRiderStation:v1:" + userId + ":" + riderId; jobs(); authorized = true;
       if (navigator.onLine) { try { localStorage.setItem("novaxRiderIdentity:" + userId, JSON.stringify({ user: userId, at: Date.now(), profile: profile.data })); } catch (_) {} }
