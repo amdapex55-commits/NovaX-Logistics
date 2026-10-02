@@ -2628,7 +2628,7 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.js?v=378e2bce" defer></script>
+  <script src="client-app.js?v=58655104" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2752,18 +2752,24 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
                 <span class="nv-ai-entry-txt"><b>Talk to NovaX AI</b><small>Ask about parcels, payouts, rates</small></span>
               </button>
               <nav class="client-menu" id="clientMenu" aria-label="Client portal sections">
-              <button class="client-tab active" data-client-tab="dashboard">Dashboard</button>
-              <button class="client-tab" data-client-tab="newBooking">New Booking</button>
+              <!-- 2 Oct 2026: grouped. On a phone the first four are already in the
+                   bottom nav, so More hides them (.nv-on-nav) and opens straight
+                   onto the tools. Profile, Sub Accounts, API and NovaX AI are moved
+                   into the "More" group by nvGroupRareTabs(), which adds the
+                   Account and Help labels; Log out follows on its own row. -->
+              <button class="client-tab active nv-on-nav" data-client-tab="dashboard">Dashboard</button>
+              <button class="client-tab nv-on-nav" data-client-tab="newBooking">New Booking</button>
+              <button class="client-tab nv-on-nav" data-client-tab="money">Money</button>
+              <button class="client-tab nv-on-nav" data-client-tab="tickets">Support Tickets</button>
+              <p class="nv-menu-h">Shipping</p>
               <button class="client-tab" data-client-tab="awbLabel">AWB Label</button>
               <button class="client-tab" data-client-tab="loadSheet">Load Sheet</button>
               <button class="client-tab" data-client-tab="bulkBooking">Bulk Booking</button>
               <button class="client-tab" data-client-tab="swap">Nova Swap</button>
-              <button class="client-tab" data-client-tab="integrations">API</button>
               <button class="client-tab" data-client-tab="reports">Reports</button>
-              <button class="client-tab" data-client-tab="money">Money</button>
               <button class="client-tab" data-client-tab="profile">Profile</button>
               <button class="client-tab" data-client-tab="subAccounts">Sub Accounts</button>
-              <button class="client-tab" data-client-tab="tickets">Support Tickets</button>
+              <button class="client-tab" data-client-tab="integrations">API</button>
               <!-- The "support" tab is where the Autopilot console lives, and it
                    had no entry in this menu at all: the only ways in were the
                    floating launcher and #nvAiEntry, and #nvAiEntry is
@@ -5977,6 +5983,72 @@ html body #nvcoachGo{min-width:64px;min-height:40px}
 /* A disabled Book bar still carries an instruction ("Fill booking details
    first"), so it must stay readable: a quiet solid fill, not 65% opacity. */
 html body .nv-mobile-book-bar button[disabled]{opacity:1;background:var(--nvu-bg-2);color:var(--nvu-ink-2);border:1px dashed var(--nvu-line-2)}
+
+/* ── More menu groups and a calmer assistant button (2 Oct 2026) ──────────
+   More used to open on 14 equal tiles, four of them the same as the bottom
+   nav, with Log out sitting next to API. On a phone the duplicates are gone,
+   the rest are grouped, and Log out has its own row. The assistant button sat
+   over card text on Home and Money with a red count that repeats Home's own
+   "needs attention"; on a phone it is smaller, has no badge or bubble, and
+   slides away while the page scrolls down. */
+.nv-menu-h{margin:10px 8px 4px;font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--nvu-ink-2)}
+.nv-more-menu .nv-menu-h:first-child{margin-top:4px}
+/* in the desktop tab bar a label would read as a tab: drawer only */
+@media (min-width:901px){ #clientMenu > .nv-menu-h{display:none!important} }
+@media (max-width:900px){
+  #clientMenu.open .nv-menu-h{grid-column:1/-1;margin:10px 6px 0}
+}
+@media (max-width:760px){
+  #clientMenu .nv-on-nav{display:none!important}
+  #clientMenu.open > .nv-menu-h:first-of-type{margin-top:2px}
+  #clientMenu.open .nv-more-logout{grid-column:1/-1;margin-top:10px;border-top:1px solid var(--line)}
+  html body .nvauto-btn{width:48px;height:48px;min-width:48px;min-height:48px;max-height:48px;padding:0;justify-content:center;
+    transition:translate .22s ease,opacity .18s ease,transform .24s cubic-bezier(.2,.9,.2,1),box-shadow .22s}
+  html body .nvauto-btn .nvauto-badge{display:none!important}
+  html body .nvauto-btn.nv-pulse{animation:none!important}
+  html body .nvauto-nudge{display:none!important}
+  body.nv-fab-away .nvauto-btn{translate:0 calc(100% + 90px);opacity:0;pointer-events:none}
+}
+@media (max-width:760px) and (prefers-reduced-motion:reduce){ html body .nvauto-btn{transition:none} }
 </style>
+
+<script>
+/* 2 Oct 2026. (1) A More-menu group heading hides when every item under it
+   is hidden (seats see only the tabs their role allows). (2) On a phone the
+   assistant button steps aside while the page scrolls down and comes back on
+   any scroll up or when scrolling stops. */
+(function(){
+  function syncHeads(){
+    var menu=document.getElementById("clientMenu"); if(!menu) return;
+    var heads=menu.querySelectorAll(".nv-menu-h");
+    for(var i=0;i<heads.length;i++){
+      var any=false;
+      for(var n=heads[i].nextElementSibling; n && !n.classList.contains("nv-menu-h"); n=n.nextElementSibling){
+        if(n.classList.contains("client-tab") && !n.classList.contains("nv-more-logout") && n.style.display!=="none" && !n.hidden){ any=true; break; }
+      }
+      heads[i].style.display=any?"":"none";
+    }
+  }
+  function start(){
+    var menu=document.getElementById("clientMenu");
+    if(menu){ syncHeads(); try{ new MutationObserver(syncHeads).observe(menu,{subtree:true,childList:true,attributes:true,attributeFilter:["style","hidden"]}); }catch(e){} }
+    var mq=window.matchMedia?window.matchMedia("(max-width:760px)"):{matches:false};
+    var lastY=window.pageYOffset||0, idle=null, ticking=false;
+    window.addEventListener("scroll",function(){
+      if(ticking) return; ticking=true;
+      requestAnimationFrame(function(){
+        ticking=false;
+        var y=window.pageYOffset||0, body=document.body;
+        if(!mq.matches){ body.classList.remove("nv-fab-away"); lastY=y; return; }
+        if(y>lastY+6 && y>120) body.classList.add("nv-fab-away");
+        else if(y<lastY-6) body.classList.remove("nv-fab-away");
+        lastY=y;
+        clearTimeout(idle); idle=setTimeout(function(){ body.classList.remove("nv-fab-away"); },900);
+      });
+    },{passive:true});
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",start); else start();
+})();
+</script>
 </body>
 </html>

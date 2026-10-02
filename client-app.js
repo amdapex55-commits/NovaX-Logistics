@@ -17046,6 +17046,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           /* Phones: paired buttons like Chase pickup / Journey / Cancel get narrow
              and easy to mis-tap at 360px. Give each its own full-width row, and
              raise them to a comfortable target. */
+          +".nv-c-open{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:2px 0;margin:0;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer;border-radius:var(--r-md)}"
+          +".nv-c-open .nv-c-txt{display:block;flex:1;min-width:0;margin:0;font-size:inherit}"
+          +".nv-c-open strong{font-size:14px}.nv-c-open .nv-c-txt span{font-size:12.5px;margin-top:2px}"
+          +".nv-c-go{flex:none;width:8px;height:8px;margin-right:4px;border-right:2px solid var(--nvu-ink-2);border-bottom:2px solid var(--nvu-ink-2);transform:rotate(-45deg)}"
+          +".nv-c-open:focus-visible{outline:2px solid var(--nvu-accent);outline-offset:3px}"
           +"@media (max-width:900px){.nv-cockpit-cols{grid-template-columns:1fr}}"
           +"@media (max-width:430px){"
           +".nv-c-item .nv-c-acts{flex-direction:column;gap:7px}"
@@ -17066,9 +17071,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       function nvParcelActions(p){
         var st=String((p&&p.status)||"");
         var awb=nvEsc((p&&p.awb)||"");
-        var journey='<button class="nv-c-btn" data-nv-cock="journey" data-awb="'+awb+'">Journey</button>';
+        /* The card itself opens the journey now (nvItem), so no action set
+           carries a "Journey" button: a card shows buttons only for a decision. */
         if(st==="New booked"){
-          var acts='<button class="nv-c-btn solid" data-nv-cock="pickup" data-awb="'+awb+'">Chase pickup</button>'+journey;
+          var acts='<button class="nv-c-btn solid" data-nv-cock="pickup" data-awb="'+awb+'">Chase pickup</button>';
           if(nvSafeCall(function(){ return isCancellableBooking(p); })) {
             acts+='<button class="nv-c-btn" data-nv-cock="cancel" data-awb="'+awb+'">Cancel</button>';
           }
@@ -17081,22 +17087,29 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            teaches merchants the buttons are decorative. */
         if(st==="Out of service area"){
           return '<button class="nv-c-btn solid" data-nv-cock="editaddr" data-awb="'+awb+'">Change address</button>'+
-                 '<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+awb+'">Ask for return</button>'+journey;
+                 '<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+awb+'">Ask for return</button>';
         }
         if(NEEDS_ME.indexOf(st)>=0){
-          return '<button class="nv-c-btn solid" data-nv-cock="reattempt" data-awb="'+awb+'">Re-attempt</button>'+journey;
+          return '<button class="nv-c-btn solid" data-nv-cock="reattempt" data-awb="'+awb+'">Re-attempt</button>';
         }
         /* #10. A parcel sitting at Reattempt for over a week offered nothing but
            "Report an issue". Re-delivery is the action it is waiting for. */
         if(st==="Reattempt"){
           return '<button class="nv-c-btn solid" data-nv-cock="reattempt" data-awb="'+awb+'">Confirm re-delivery</button>'+
-                 '<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+awb+'">Chase it</button>'+journey;
+                 '<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+awb+'">Chase it</button>';
         }
-        return journey;
+        return "";
       }
 
+      /* 2 Oct 2026: every card carried a full-width "Journey" button, so three
+         cards filled a phone screen. The AWB/status area is now the button
+         that opens the journey; the card shows other buttons only when the
+         merchant has a decision to make. */
       function nvItem(p,acts){
-        return '<div class="nv-c-item"><strong>'+nvEsc(p.awb)+'</strong><span>'+nvEsc(p.status||"")+(p.city?" \u00b7 "+nvEsc(p.city):"")+(p.consignee?" \u00b7 "+nvEsc(p.consignee):"")+'</span><div class="nv-c-acts">'+acts+"</div></div>";
+        return '<div class="nv-c-item"><button type="button" class="nv-c-open" data-nv-cock="journey" data-awb="'+nvEsc(p.awb)+'" title="Open the journey">'
+          +'<span class="nv-c-txt"><strong>'+nvEsc(p.awb)+'</strong><span>'+nvEsc(p.status||"")+(p.city?" \u00b7 "+nvEsc(p.city):"")+(p.consignee?" \u00b7 "+nvEsc(p.consignee):"")+'</span></span>'
+          +'<i class="nv-c-go" aria-hidden="true"></i></button>'
+          +(acts?'<div class="nv-c-acts">'+acts+"</div>":"")+"</div>";
       }
       function nvRenderCockpit(){
         var anchor=document.getElementById("clientActionNeededCard");
@@ -17275,7 +17288,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
 
       /* Demote rarely used tabs behind a "More" menu (all 11 tabs stay available). */
-      var RARE_TABS=["integrations","profile","subAccounts","support"];
+      var RARE_TABS=["profile","subAccounts","integrations","support"];
+      /* 2 Oct 2026: labelled groups inside "More" -- Account, then Help. */
+      var RARE_HEADS={ profile:"Account", support:"Help" };
       function nvGroupRareTabs(){
         var tabs=document.querySelectorAll("[data-client-tab]");
         if(!tabs.length || document.getElementById("nvMoreWrap")) return;
@@ -17291,6 +17306,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         wrap.appendChild(btn); wrap.appendChild(menu); bar.appendChild(wrap);
         RARE_TABS.forEach(function(id){
           var el=bar.querySelector('[data-client-tab="'+id+'"]');
+          if(el && RARE_HEADS[id]){ var hd=document.createElement("p"); hd.className="nv-menu-h"; hd.textContent=RARE_HEADS[id]; menu.appendChild(hd); }
           if(el) menu.appendChild(el);
           /* #50. The Support module opens on "Your business name" -- the
              settings block -- so the item labelled "NovaX AI" delivered the
