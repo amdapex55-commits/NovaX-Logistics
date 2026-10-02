@@ -6828,15 +6828,33 @@ html,body{ background:var(--bg); color:var(--ink); }
        as a tie-break so pages are stable, and skips any row that shifts onto
        the next page while it loads. Resolves to { data, error } like a query. */
     function nvAllRows(q, cap){
-      var PAGE = 1000, out = [], seen = {};
-      q = q.order("id", { ascending: true });
-      function page(from){
+      /* Pass a function that returns a fresh query to fetch two pages at a
+         time (2 Oct 2026): each round trip to the database costs a few
+         hundred ms, and parcels need two pages. A query object must not be
+         shared between parallel pages -- it is only read when sent. */
+      var mk = typeof q === "function" ? q : null;
+      var PAGE = 1000, PAR = mk ? 2 : 1, out = [], seen = {};
+      var base = mk ? null : q.order("id", { ascending: true });
+      function one(from){
         var to = Math.min(from + PAGE, cap) - 1;
-        return Promise.resolve(q.range(from, to)).then(function(r){
-          if (!r || r.error) return { data: null, error: (r && r.error) || { message: "No response" } };
-          var d = r.data || [];
-          d.forEach(function(row){ var k = row && row.id; if (k == null || !seen[k]) { if (k != null) seen[k] = 1; out.push(row); } });
-          return (d.length < to - from + 1 || from + PAGE >= cap) ? { data: out, error: null } : page(from + PAGE);
+        var qq = mk ? mk().order("id", { ascending: true }) : base;
+        return Promise.resolve(qq.range(from, to)).then(function(r){ return { r: r, want: to - from + 1 }; });
+      }
+      function page(from){
+        var starts = [];
+        for (var k = 0; k < PAR && from + k * PAGE < cap; k++) starts.push(from + k * PAGE);
+        return Promise.all(starts.map(one)).then(function(list){
+          var done = false;
+          for (var x = 0; x < list.length; x++) {
+            var r = list[x].r;
+            if (!r || r.error) return { data: null, error: (r && r.error) || { message: "No response" } };
+            if (done) continue;
+            var d = r.data || [];
+            d.forEach(function(row){ var k = row && row.id; if (k == null || !seen[k]) { if (k != null) seen[k] = 1; out.push(row); } });
+            if (d.length < list[x].want) done = true;
+          }
+          var next = from + PAR * PAGE;
+          return (done || next >= cap) ? { data: out, error: null } : page(next);
         });
       }
       return page(0);
@@ -8139,7 +8157,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         if (r && r.error) { toast("Could not save: " + r.error.message); return; }
         toast(awb + " updated.");
         nvCloseParcelEdit();
-        try { if (typeof nvRefresh === "function") nvRefresh(["parcels"]); else if (typeof loadAll === "function") loadAll(); else renderAdmin(); } catch(e){}
+        try { if (typeof window.nvRefreshParcels === "function") window.nvRefreshParcels([awb]); else if (typeof nvRefresh === "function") nvRefresh(["parcels"]); else if (typeof loadAll === "function") loadAll(); else renderAdmin(); } catch(e){}
       }).catch(function(e){
         if (btn) { btn.disabled = false; btn.textContent = old; }
         toast("Could not save: " + ((e && e.message) || e));
@@ -8185,7 +8203,7 @@ html,body{ background:var(--bg); color:var(--ink); }
              : "charge unchanged at " + money(d.new_fee)),
             delta < 0 ? "error" : "ok"
           );
-          try { if (typeof nvRefresh === "function") nvRefresh(["parcels"]); else if (typeof loadAll === "function") loadAll(); else renderAdmin(); } catch(e){}
+          try { if (typeof window.nvRefreshParcels === "function") window.nvRefreshParcels([awb]); else if (typeof nvRefresh === "function") nvRefresh(["parcels"]); else if (typeof loadAll === "function") loadAll(); else renderAdmin(); } catch(e){}
         })
         .catch(function(e){
           if (btn) { btn.disabled = false; btn.textContent = old; }
@@ -8275,7 +8293,8 @@ html,body{ background:var(--bg); color:var(--ink); }
         });
         // Booking on a client's behalf only creates a parcel row.
         try {
-          if (typeof nvRefresh === "function") nvRefresh(["parcels"]);
+          if (typeof window.nvRefreshParcels === "function") window.nvRefreshParcels(awb ? [awb] : []);
+          else if (typeof nvRefresh === "function") nvRefresh(["parcels"]);
           else if (typeof loadAll === "function") loadAll();
         } catch(e){}
       }).catch(function(e){
@@ -13656,7 +13675,8 @@ html,body{ background:var(--bg); color:var(--ink); }
       }
       window.__nvSb.rpc("admin_cancel_invoice", { p_invoice_id: invoice._uuid }).then(r => {
         if (r && r.error) { toast(`Could not cancel ${id}: ${r.error.message}`, "error"); return; }
-        if (typeof nvRefresh === "function") nvRefresh(["invoices","parcels","clients"]); else if (typeof loadAll === "function") loadAll();
+        if (typeof window.nvRefreshParcels === "function" && (invoice.parcelRefs || []).length) window.nvRefreshParcels(invoice.parcelRefs, ["invoices","clients"]);
+        else if (typeof nvRefresh === "function") nvRefresh(["invoices","parcels","clients"]); else if (typeof loadAll === "function") loadAll();
         toast(`${id} cancelled. Parcels returned to the delivered invoice pool.`);
       }).catch(e => toast(`Could not cancel ${id}: ${(e && e.message) || e}`, "error"));
     }
@@ -15610,7 +15630,8 @@ html,body{ background:var(--bg); color:var(--ink); }
         // removes them from the invoiceable pool). Parcels ARE included here
         // for that reason -- omitting them would leave already-invoiced
         // parcels showing as still billable.
-        if (typeof nvRefresh === "function") nvRefresh(["invoices","parcels","clients"]);
+        if (typeof window.nvRefreshParcels === "function") window.nvRefreshParcels(awbs, ["invoices","clients"]);
+        else if (typeof nvRefresh === "function") nvRefresh(["invoices","parcels","clients"]);
         else if (typeof loadAll === "function") loadAll();
         if (!rows.length) {
           toast("Invoice generated.", "success");
@@ -18458,7 +18479,7 @@ html,body{ background:var(--bg); color:var(--ink); }
              history was pulled on every admin refresh; a 120-day window covers
              every parcel that can still be invoiced, disputed or reconciled,
              and keeps the working set flat as the business grows. */
-          nvAllRows(sb.from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}), 20000),
+          nvAllRows(function(){ return sb.from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}); }, 20000),
           nvAllRows(sb.from("invoices").select("*").order("created_at",{ascending:false}), 5000),
           nvAllRows(sb.from("expenses").select("*").order("created_at",{ascending:false}), 3000),
           nvAllRows(sb.from("withdrawals").select("*").order("created_at",{ascending:false}), 3000),
@@ -18468,7 +18489,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           /* Every OPEN issue, plus resolved ones from the last 30 days. Loading
              only the newest 2,000 hid older open issues, so the page re-created
              them on each refresh (2 Oct 2026). */
-          nvAllRows(sb.from("operations_issues").select("*").or("resolved.eq.false,created_at.gte."+new Date(Date.now()-30*864e5).toISOString()).order("created_at",{ascending:false}), 10000),
+          nvAllRows(function(){ return sb.from("operations_issues").select("*").or("resolved.eq.false,created_at.gte."+new Date(Date.now()-30*864e5).toISOString()).order("created_at",{ascending:false}); }, 10000),
           nvAllRows(sb.from("resolved_alerts").select("*").order("created_at",{ascending:false}), 2000),
           nvAllRows(sb.from("manifest_logs").select("*").order("created_at",{ascending:false}), 2000),
           nvAllRows(sb.from("staff_users").select("*").order("created_at",{ascending:false}), 2000),
@@ -18598,7 +18619,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           set: function(d){ state.walletWithdrawals = d.map(rWd); }
         },
         parcels: {
-          q: function(){ return nvAllRows(sb.from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}), 20000); },
+          q: function(){ return nvAllRows(function(){ return sb.from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}); }, 20000); },
           set: function(d){ state.parcels = d.map(rParcel); }
         }
       };
@@ -18733,6 +18754,54 @@ html,body{ background:var(--bg); color:var(--ink); }
         nvSaveStateSoon();
         nvRenderFor(["parcels"]);
         requestAnimationFrame(function(){ window.scrollTo(0, keepScroll); });
+      };
+
+      /* Refetch only the parcels an action changed (2 Oct 2026). Generating
+         an invoice re-downloaded all 1,199 parcels -- two round trips to the
+         database in Sydney plus ~3 MB of JSON -- to update a handful of rows.
+         `tables` are refetched alongside, in parallel. Anything unexpected
+         (a failed query, an AWB that no longer matches) does the full refresh. */
+      window.nvRefreshParcels = function(awbs, tables){
+        tables = (tables||[]).filter(function(t){ return t !== "parcels"; });
+        var seen = {}, list = [];
+        (awbs||[]).forEach(function(a){ a = String(a||"").trim(); if(a && !seen[a]){ seen[a] = 1; list.push(a); } });
+        function full(){ window.nvRefresh(tables.concat(["parcels"])); }
+        if(!loaded || !sb || !list.length || list.length > 1000) { full(); return; }
+        if(tables.some(function(t){ return !NV_REFRESH_SPEC[t]; })) { full(); return; }
+        var keepScroll = window.pageYOffset || document.documentElement.scrollTop || 0;
+        var keepClientId = (state.client && state.client.id) || null;
+        var chunks = [];
+        for(var i=0;i<list.length;i+=150) chunks.push(list.slice(i, i+150));
+        Promise.all(
+          chunks.map(function(c){ return Promise.resolve(sb.from("parcels").select("*").in("awb", c)); })
+            .concat(tables.map(function(t){ return NV_REFRESH_SPEC[t].q(); }))
+        ).then(function(res){
+          if(res.some(function(r){ return !r || r.error; })) { full(); return; }
+          var rows = [];
+          for(var i=0;i<chunks.length;i++) rows = rows.concat(res[i].data || []);
+          if(rows.length !== list.length) { full(); return; }
+          tables.forEach(function(t, j){
+            try{ NV_REFRESH_SPEC[t].set(res[chunks.length + j].data || []); }
+            catch(e){ console.warn("NovaX nvRefreshParcels map failed for "+t, e); }
+          });
+          var at = Object.create(null);
+          (state.parcels||[]).forEach(function(p,i){ if(p && p._uuid) at[p._uuid] = i; });
+          rows.forEach(function(r){
+            var o = rParcel(r);
+            if(at[o._uuid] != null) state.parcels[at[o._uuid]] = o;
+            else state.parcels.unshift(o);
+          });
+          if(keepClientId){
+            var found = (state.clients||[]).find(function(c){ return c.id===keepClientId; });
+            state.client = found || null;
+          }
+          var all = tables.concat(["parcels"]);
+          rebuildShadowFor(all);
+          try{ if(typeof normalizeStateAwbs==="function") normalizeStateAwbs(state); }catch(e){}
+          nvSaveStateSoon();
+          nvRenderFor(all);
+          requestAnimationFrame(function(){ window.scrollTo(0, keepScroll); });
+        }).catch(function(e){ console.warn("NovaX nvRefreshParcels failed, full refresh", e); full(); });
       };
 
       /* Debounced state persistence.
