@@ -7355,7 +7355,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const parcels = clientScopedParcels();
       const delivered = parcels.filter(p => p.status.includes("Delivered")).length;
       const deliveredParcels = parcels.filter(isDeliveredLedgerParcel);
-      const unpaidDeliveredParcels = parcels.filter(isUnpaidDeliveredParcel);
+      const unpaidDeliveredParcels = nvFilterUnpaidDelivered(parcels);
       const revenueParcels = parcels.filter(isPickedUpParcel);
       const codCollected = deliveredParcels.reduce((s, p) => s + Number(p.cod || 0), 0);
       const deliveryCharges = revenueParcels.reduce((s, p) => s + Number(p.fee || 0), 0);
@@ -8614,6 +8614,12 @@ html,body{ background:var(--bg); color:var(--ink); }
     function isUnpaidDeliveredParcel(parcel) {
       return isDeliveredLedgerParcel(parcel) && !paidParcelRefs().has(parcel.awb);
     }
+    /* Same test for a whole list, building the paid-invoice set once instead
+       of once per parcel (it was ~200 ms per redraw with 1,199 parcels). */
+    function nvFilterUnpaidDelivered(list) {
+      const paid = paidParcelRefs();
+      return list.filter(parcel => isDeliveredLedgerParcel(parcel) && !paid.has(parcel.awb));
+    }
 
     function riderReceivable(riderId) {
       return state.parcels
@@ -9234,7 +9240,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       const parcels = state.parcels;
       const delivered = parcels.filter(p => p.status.includes("Delivered")).length;
       const deliveredParcels = parcels.filter(isDeliveredLedgerParcel);
-      const unpaidDeliveredParcels = parcels.filter(isUnpaidDeliveredParcel);
+      const unpaidDeliveredParcels = nvFilterUnpaidDelivered(parcels);
       const revenueParcels = parcels.filter(isPickedUpParcel);
       const codCollected = deliveredParcels.reduce((s, p) => s + Number(p.cod || 0), 0);
       const revenue = revenueParcels.reduce((s, p) => s + Number(p.fee || 0), 0);
@@ -10363,6 +10369,35 @@ html,body{ background:var(--bg); color:var(--ink); }
       const mod = el.closest(".admin-module");
       return !mod || mod.classList.contains("active");
     }
+    /* Long lists show 100 rows, with "Show more" and "Show all" (2 Oct 2026).
+       Drawing all 1,199 parcels took ~0.4 s and 46,000 elements per redraw.
+       Search and filters still cover every row; changing either starts the
+       list again at 100. Live updates keep however many rows were opened. */
+    const NV_PAGE = 100;
+    const nvShowLimit = {};
+    function nvPageTake(key, sig) {
+      let c = nvShowLimit[key];
+      if (!c || c.sig !== sig) c = nvShowLimit[key] = { sig: sig, n: NV_PAGE, total: 0 };
+      c.total = 0;
+      return function (_, i, arr) { c.total = arr.length; return i < c.n; };
+    }
+    function nvMoreHtml(key, colspan) {
+      const c = nvShowLimit[key];
+      if (!c || c.total <= c.n) return "";
+      const left = c.total - c.n;
+      const inner = `<span class="footer-note">Showing ${c.n} of ${c.total}.</span> ` +
+        `<button type="button" class="ghost-btn" onclick="event.stopPropagation(); nvShowMore('${key}')">Show ${Math.min(NV_PAGE, left)} more</button> ` +
+        `<button type="button" class="ghost-btn" onclick="event.stopPropagation(); nvShowMore('${key}', true)">Show all ${c.total}</button>`;
+      return colspan
+        ? `<tr class="nv-more-row"><td colspan="${colspan}" style="text-align:center;padding:12px">${inner}</td></tr>`
+        : `<div class="nv-more-row" style="text-align:center;padding:12px">${inner}</div>`;
+    }
+    function nvShowMore(key, all) {
+      const c = nvShowLimit[key];
+      if (!c) return;
+      c.n = all ? c.total : c.n + NV_PAGE;
+      if (key === "exceptions") renderExceptionControlRoom(); else renderAdmin();
+    }
     function renderAdmin() {
       syncRiderAccess();
       state.activeAdminTab = normalizeAdminTab(state.activeAdminTab);
@@ -10544,7 +10579,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           // NovaX (Shopify Final Test Visibility): "View Shopify parcels for
           // this client" sets this transient filter alongside the client filter.
           && (!state.adminOrderSourceFilter || (p.source || "") === state.adminOrderSourceFilter);
-      }).map(p => {
+      }).filter(nvPageTake("orders", [adminOrderSearch, clientFilter, statusFilter, cityFilter, originFilter, branchFilter, alertFilter, state.adminOrderSourceFilter || ""].join("|"))).map(p => {
         const client = clientById(p.clientId);
         const alert = alertForParcel(p);
         const process = lastProcess(p);
@@ -10573,7 +10608,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             </td>
           </tr>
         `;
-      }).join("") || `<tr><td colspan="8">No parcels match these filters.</td></tr>`;
+      }).join("") + nvMoreHtml("orders", 8) || `<tr><td colspan="8">No parcels match these filters.</td></tr>`;
 
       const reportRows = state.parcels.filter(p => {
         const client = clientById(p.clientId);
@@ -10592,7 +10627,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         metricCard("Avg Journey Aging", agingLabel(avgJourney), Math.min(100, percent(avgJourney, 96)), "booking to current point", avgJourney > 72 ? "red" : "amber"),
         metricCard("Critical Breaches", breachedReport, Math.min(100, breachedReport * 18), "needs escalation", breachedReport ? "red" : "good")
       ].join("");
-      if (nvAdminShown("orderReportRows")) document.getElementById("orderReportRows").innerHTML = reportRows.map(p => {
+      if (nvAdminShown("orderReportRows")) document.getElementById("orderReportRows").innerHTML = reportRows.filter(nvPageTake("report", [orderReportSearch, reportStatusFilter, reportClientFilter].join("|"))).map(p => {
         const client = clientById(p.clientId);
         const alert = alertForParcel(p);
         const process = lastProcess(p);
@@ -10617,7 +10652,7 @@ html,body{ background:var(--bg); color:var(--ink); }
             <td><button class="ghost-btn" style="padding:5px 9px;font-size:11.5px" onclick="event.stopPropagation(); nvOpenParcelEdit('${nvEscAttrJs(p.awb)}')">Edit</button></td>
           </tr>
         `;
-      }).join("") || `<tr><td colspan="10">No report rows match these filters.</td></tr>`;
+      }).join("") + nvMoreHtml("report", 10) || `<tr><td colspan="10">No report rows match these filters.</td></tr>`;
 
       const processBatch = processingParcels();
       const processParcel = processBatch[0] || processingParcel();
@@ -10849,7 +10884,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       document.getElementById("adminClientRows").innerHTML = state.clients.filter(client => client.id !== "CL-0000").map(client => {
         const parcels = state.parcels.filter(p => p.clientId === client.id);
         const cod = parcels.reduce((s, p) => s + Number(p.cod || 0), 0);
-      const deliveredParcels = parcels.filter(isUnpaidDeliveredParcel);
+      const deliveredParcels = nvFilterUnpaidDelivered(parcels);
         const fees = deliveredParcels.reduce((s, p) => s + Number(p.fee || 0), 0);
         const collected = deliveredParcels.reduce((s, p) => s + Number(p.cod || 0), 0);
         const payable = Math.max(0, collected - fees);
@@ -10945,7 +10980,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         return (!opsBranch || issue.branch === opsBranch)
           && (!opsUrgency || issue.urgency === opsUrgency)
           && (opsResolved === "resolved" ? issue.resolved : !issue.resolved);
-      }).map(issue => `
+      }).filter(nvPageTake("ops", [opsBranch, opsUrgency, opsResolved].join("|"))).map(issue => `
         <div class="ops-card ${issue.urgency === "super urgent" && !issue.resolved ? "alert-row critical" : issue.resolved ? "" : "alert-row"}">
           <div class="ops-card-head">
             <strong>${issue.id} | ${escLabelText(issue.branch)}</strong>
@@ -10957,7 +10992,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           ${issue.resolutionReason ? `<div class="resolved-note"><strong>Reason:</strong> ${issue.resolutionReason}</div>` : ""}
           ${issue.resolved ? "" : `<div class="field" style="margin-top:10px"><label>Resolution reason</label><input id="issueReason-${issue.id}" value="${issue.problem} checked and assigned action completed"></div><button class="action-btn" data-resolve-issue="${issue.id}" onclick="resolveOperationIssue('${nvEscAttrJs(issue.id)}')">Resolve With Reason</button>`}
         </div>
-      `).join("") || `<div class="ops-card"><strong>No ${opsResolved} issues</strong><p>Filters are clear for this view.</p></div>`;
+      `).join("") + nvMoreHtml("ops") || `<div class="ops-card"><strong>No ${opsResolved} issues</strong><p>Filters are clear for this view.</p></div>`;
 
       document.getElementById("completedEvaluationList").innerHTML = state.resolvedAlerts.map(done => `
         <div class="ops-card">
@@ -15249,7 +15284,8 @@ html,body{ background:var(--bg); color:var(--ink); }
         (!clientSel || !clientSel.value || r.clientId === clientSel.value)
       );
       if (!rows.length) { list.innerHTML = "<div class=\"ops-card\"><strong>No exceptions match these filters</strong><p>Every tracked parcel is clean right now.</p></div>"; return; }
-      list.innerHTML = rows.map(r => `
+      const excSig = [branchSel && branchSel.value, issueSel && issueSel.value, urgencySel && urgencySel.value, clientSel && clientSel.value].join("|");
+      list.innerHTML = rows.filter(nvPageTake("exceptions", excSig)).map(r => `
         <div class="ops-card ${r.urgency === "critical" ? "alert-row" : ""}">
           <div class="ops-card-head"><strong>${r.awb}</strong><span class="chip ${r.urgency === "critical" ? "bad" : r.urgency === "warning" ? "warn" : "info"}">${escLabelText(r.issueType)}</span></div>
           <p>${escLabelText(r.clientName)} &middot; ${escLabelText(r.consignee || "-")} &middot; ${escLabelText(r.phone || "-")} &middot; ${escLabelText(r.city || "-")} / ${escLabelText(r.branch || "-")} &middot; status: ${escLabelText(r.status)} &middot; aging ${agingLabel(r.agingHours)} &middot; priority: <strong>${r.urgency === "critical" ? "High" : r.urgency === "warning" ? "Medium" : "Normal"}</strong></p>
@@ -15270,7 +15306,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           <div class="field" style="margin-top:8px"><label>Resolution note (required to resolve)</label><input id="excNote_${r.awb}" placeholder="What was done to resolve this?"></div>
           <button class="action-btn" style="margin-top:6px" onclick="resolveExceptionIssue('${nvEscAttrJs(r.awb)}')">Resolve</button>
         </div>
-      `).join("");
+      `).join("") + nvMoreHtml("exceptions");
     }
     async function assignToBranchTeam(awb) {
       const p = state.parcels.find(x => x.awb === awb); if (!p) return;
