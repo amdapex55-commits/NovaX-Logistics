@@ -39,6 +39,18 @@ async function logCall(keyId: string | null, clientId: string | null,
 }
 
 import { classify as classifyPayment, PREPAID_RE } from "../_shared/payment.ts";
+import { unsafeDestination } from "../_shared/destination.ts";
+
+/* 2 Oct 2026: the success-path log write was fire-and-forget, and the runtime
+   may stop a function once its response is sent, dropping the row. waitUntil
+   keeps the instance alive until the write finishes without making the
+   merchant wait for it. */
+function keepAlive(p: Promise<unknown>) {
+  try {
+    const rt = (globalThis as any).EdgeRuntime;
+    if (rt && typeof rt.waitUntil === "function") rt.waitUntil(p);
+  } catch { /* never surfaces */ }
+}
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -209,13 +221,13 @@ Deno.serve(async (req) => {
          that a merchant is hitting missing_fields, not that something failed.
          res.clone() so the body the merchant receives is untouched. */
       if (errCode !== undefined) {
-        logCall(keyId, clientId, logRoute, req.method, res.status, res.status >= 400 ? errCode : null, started);
+        keepAlive(logCall(keyId, clientId, logRoute, req.method, res.status, res.status >= 400 ? errCode : null, started));
       } else if (res.status >= 400) {
-        res.clone().json()
+        keepAlive(res.clone().json()
           .then((j: any) => logCall(keyId, clientId, logRoute, req.method, res.status, j?.error ?? "error", started))
-          .catch(() => logCall(keyId, clientId, logRoute, req.method, res.status, "error", started));
+          .catch(() => logCall(keyId, clientId, logRoute, req.method, res.status, "error", started)));
       } else {
-        logCall(keyId, clientId, logRoute, req.method, res.status, null, started);
+        keepAlive(logCall(keyId, clientId, logRoute, req.method, res.status, null, started));
       }
     } catch { /* never surfaces */ }
     return res;
@@ -595,14 +607,13 @@ Deno.serve(async (req) => {
       /* Same rule the database enforces, answered here with a reason instead
          of a bare webhook_not_saved. */
       if (target) {
-        let u: URL | null = null;
-        try { u = new URL(target); } catch { u = null; }
-        const h = (u?.hostname ?? "").replace(/^\[|\]$/g, "").toLowerCase();
-        if (!u || u.username || u.password || (u.port && u.port !== "443") ||
-            h.includes(":") || /^[0-9.]+$/.test(h) || !h.includes(".") || h === "localhost" ||
-            /\.(localhost|local|internal|lan|home|corp|intranet)$/.test(h)) {
+        /* The shared checker, including where the name actually resolves
+           (2 Oct 2026), so a refused address is refused when it is saved, not
+           silently at delivery time. */
+        const why = await unsafeDestination(target);
+        if (why) {
           return fail(422, "invalid_webhook_url",
-            "Use a public https address on port 443. Private, local and IP-address destinations are not allowed.");
+            `Use a public https address on port 443. Private, local and IP-address destinations are not allowed (${why}).`);
         }
       }
       const res = await rpc("nv_api_set_webhook_v2", {

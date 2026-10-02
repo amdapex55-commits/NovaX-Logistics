@@ -32,13 +32,19 @@ export async function unsafeDestination(raw: string): Promise<string | null> {
   if (host.includes(":") || /^[0-9.]+$/.test(host)) return "ip_address";
   if (!host.includes(".") || host === "localhost" ||
       /\.(localhost|local|internal|lan|home|corp|intranet)$/.test(host)) return "private_host";
-  if (typeof (Deno as any).resolveDns !== "function") return null;
+  /* Fail closed (2 Oct 2026): a name we cannot resolve is a name we cannot
+     check, so it is refused rather than sent. Supabase's runtime does
+     resolve (checked live), so this only bites when DNS is genuinely down.
+     Known residual risk, accepted: DNS rebinding -- the name answering a
+     public address here and a private one at send time -- needs an outbound
+     proxy to close fully. */
+  if (typeof (Deno as any).resolveDns !== "function") return "dns_unavailable";
   let failures = 0;
   const look = (t: "A" | "AAAA") =>
     (Deno as any).resolveDns(host, t).catch(() => { failures++; return [] as string[]; });
   const [v4, v6] = await Promise.all([look("A"), look("AAAA")]);
   if ((v4 as string[]).some(privateV4) || (v6 as string[]).some(privateV6)) return "private_address";
-  if (failures === 2) return null;   // resolver unavailable here; hostname rules above still held
+  if (failures === 2) return "dns_failed";
   if (!(v4 as string[]).length && !(v6 as string[]).length) return "unresolvable_host";
   return null;
 }

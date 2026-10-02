@@ -4935,9 +4935,17 @@ html,body{ background:var(--bg); color:var(--ink); }
     var __ALLOWED_ROLES=["admin","owner","superadmin","ops","ops manager","branch manager","warehouse","warehouse staff","processing","processing staff","staff","rider supervisor"];
     var __resolveGate; window.__novaxAuthGateReady=new Promise(function(res){ __resolveGate=res; });
     function clearLocalSession(){ try{ localStorage.removeItem("novaxSession"); }catch(e){} }
-    function redirectAway(url){ clearLocalSession(); window.location.replace(url); }
+    function redirectAway(url){ window.__nvLeaving=true; clearLocalSession(); window.location.replace(url); }
+    /* 2 Oct 2026: once this page has decided to send a signed-out visitor away, its
+       database calls would only fail as permission-denied (each one a rolled-back
+       transaction). Answer them locally instead; nothing else is affected. */
+    function __nvLeavingFetch(input, init){
+      if (window.__nvLeaving && String(input && input.url || input).indexOf('/rest/v1/') > -1)
+        return Promise.resolve(new Response(JSON.stringify({ code: 'NV_LEAVING', message: 'Signed out' }), { status: 401, headers: { 'Content-Type': 'application/json' } }));
+      return fetch(input, init);
+    }
     var __gsb=null;
-    try{ __gsb=window.__nvSb||null; if(!__gsb&&window.supabase&&window.supabase.createClient){ __gsb=window.supabase.createClient(__SB_URL,__SB_KEY); } }catch(__e){}
+    try{ __gsb=window.__nvSb||null; if(!__gsb&&window.supabase&&window.supabase.createClient){ __gsb=window.supabase.createClient(__SB_URL,__SB_KEY,{ global:{ fetch:__nvLeavingFetch } }); } }catch(__e){}
     // NovaX fix: publish the gate's client so the data layer below reuses this
     // exact instance instead of constructing a second GoTrueClient on the same
     // storage key.
@@ -18362,7 +18370,10 @@ html,body{ background:var(--bg); color:var(--ink); }
           sb.from("payment_logs").select("*").order("created_at",{ascending:false}).limit(3000),
           sb.from("sales_leads").select("*").order("created_at",{ascending:false}).limit(2000),
           sb.from("signup_leads").select("*").neq("status","workspace_created").order("created_at",{ascending:false}).limit(2000),
-          sb.from("operations_issues").select("*").order("created_at",{ascending:false}).limit(2000),
+          /* Every OPEN issue, plus resolved ones from the last 30 days. Loading
+             only the newest 2,000 hid older open issues, so the page re-created
+             them on each refresh (2 Oct 2026). */
+          sb.from("operations_issues").select("*").or("resolved.eq.false,created_at.gte."+new Date(Date.now()-30*864e5).toISOString()).order("created_at",{ascending:false}).limit(10000),
           sb.from("resolved_alerts").select("*").order("created_at",{ascending:false}).limit(2000),
           sb.from("manifest_logs").select("*").order("created_at",{ascending:false}).limit(2000),
           sb.from("staff_users").select("*").order("created_at",{ascending:false}).limit(2000),
@@ -18687,6 +18698,16 @@ html,body{ background:var(--bg); color:var(--ink); }
           if(!row) return;
           var sig=sigOf(row);
           if(o._uuid){ if(shadow[o._uuid]===sig) return; var patch=nvRowPatch(shadowRow[o._uuid], row); shadow[o._uuid]=sig; shadowRow[o._uuid]=row; if(!patch) return; sb.from(table).update(patch).eq("id",o._uuid).then(function(r){ if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else { console.warn("NovaX "+table+" update",r.error.message); } } }); }
+          else if(table==="operations_issues"){
+            /* Add-if-not-already-open on the server: returns the existing open
+               issue's id instead of failing on the unique index (2 Oct 2026). */
+            o._pending=true;
+            Promise.resolve(sb.rpc("nv_ops_issue_open",{ p_row: row })).then(function(r){
+              o._pending=false;
+              if(r&&r.error){ console.warn("NovaX operations_issues add",r.error.message); o._syncBlocked=true; return; }
+              if(r&&r.data){ o._uuid=r.data; shadow[o._uuid]=sig; shadowRow[o._uuid]=row; scheduleResync(); }
+            },function(e){ o._pending=false; console.warn("NovaX operations_issues add",e&&e.message); });
+          }
           else { o._pending=true; sb.from(table).insert(row).select("id").maybeSingle().then(function(r){ o._pending=false; if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else if(isDuplicateKeyError(r.error)){ adoptExistingRow(o,row,table,sig); } else { console.warn("NovaX "+table+" insert",r.error.message); } return; } if(r&&r.data){ o._uuid=r.data.id; shadow[o._uuid]=sig; shadowRow[o._uuid]=row; scheduleResync(); } }); }
         });
       }
@@ -20479,6 +20500,33 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
 .mt-2{margin-top:2px}.mt-3{margin-top:3px}.mt-4{margin-top:4px}.mt-6{margin-top:6px}
 .mt-8{margin-top:8px}.mt-9{margin-top:9px}.mt-10{margin-top:10px}.mt-12{margin-top:12px}
 .mt-14{margin-top:14px}.mt-16{margin-top:16px}.mt-18{margin-top:18px}
+
+/* ── Phone ergonomics (2 Oct 2026, mobile UX audit at 320/360/412 px) ──────
+   Measured in a stubbed admin: header links at 1.76:1 (white ink on the
+   phone rule's light pill), a 60-item menu above every screen, the Stations
+   Save button breaking one letter per line, clipped Stations tables, and the
+   "v" chevron floating mid-row. */
+.admin-nav-main > span:first-child{margin-right:auto;text-align:left}
+.admin-nav-main .chevron:not([aria-hidden="true"]){order:3;font-size:0;width:10px;height:10px;display:inline-grid;place-items:center}
+.admin-nav-main .chevron:not([aria-hidden="true"])::before{content:"";width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-2px) rotate(45deg)}
+.admin-nav-main .nv-tab-badge{order:2}
+#nvStRoot .ghost-btn{white-space:nowrap;overflow-wrap:normal}
+.nv-money-cell .nv-money{font-size:11px}
+.inline-actions .ghost-btn{font-size:12.5px}
+@media (max-width:760px){
+  .nav-tabs .tab-btn:not(.active){background:rgba(255,255,255,.06)!important;border:1px solid var(--line)!important;color:var(--ink)!important}
+  .nav-tabs .tab-btn{font-size:13px!important}
+  #admin > .portal-title > div > p{display:none}
+  .admin-nav-main,.admin-subtab,.inline-actions .ghost-btn{min-height:44px}
+  .table-wrap{overflow-x:auto}
+  .admin-content{padding-bottom:96px}
+  .admin-side .client-menu-head.nv-menu-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;cursor:pointer;width:100%;text-align:left;border:0;font:inherit;border-radius:inherit}
+  .nv-menu-toggle .nv-menu-now{display:block;font-size:13px;color:var(--green);margin-top:2px}
+  .nv-menu-toggle .nv-menu-caret{flex:none;width:9px;height:9px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin-right:6px}
+  .admin-side:not(.nv-menu-collapsed) .nv-menu-toggle .nv-menu-caret{transform:rotate(225deg)}
+  .admin-side.nv-menu-collapsed .admin-menu{display:none!important}
+}
+@media (min-width:761px){ .nv-menu-toggle .nv-menu-now,.nv-menu-toggle .nv-menu-caret{display:none} }
 </style>
 <script>
 /* ============================================================================
@@ -20848,6 +20896,75 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
 
 
 
+</script>
+
+<script>
+/* Phone ergonomics (2 Oct 2026). On a phone the admin menu used to sit,
+   fully open, above every screen: pick "View All" and the list started a
+   screen and a half further down. Below 761 px the "Admin Menu" header is now
+   a toggle that names the current screen; picking a screen folds the menu and
+   brings its content up. Desktop is untouched. Form fields whose visible
+   label is not tied to them get that label as their accessible name. */
+(function(){
+  var mq = window.matchMedia ? window.matchMedia("(max-width:760px)") : { matches:false };
+  function side(){ return document.querySelector("#admin .admin-side"); }
+  function nowLabel(){
+    var a = document.querySelector("#admin .admin-subtab.active") || document.querySelector("#admin .admin-nav-main.active[data-admin-tab]");
+    return a ? a.textContent.replace(/\s+\d+\s*$/, "").replace(/\s+/g, " ").trim() : "Dashboard";
+  }
+  function paint(){
+    var s = side(); if (!s) return;
+    var head = s.querySelector(".client-menu-head"); if (!head) return;
+    var now = head.querySelector(".nv-menu-now");
+    if (now) now.textContent = "Showing: " + nowLabel();
+    head.setAttribute("aria-expanded", s.classList.contains("nv-menu-collapsed") ? "false" : "true");
+  }
+  function setup(){
+    var s = side(); if (!s || s.dataset.nvMenu) return; s.dataset.nvMenu = "1";
+    var head = s.querySelector(".client-menu-head"); if (!head) return;
+    head.classList.add("nv-menu-toggle");
+    head.setAttribute("role", "button"); head.setAttribute("tabindex", "0");
+    head.setAttribute("aria-controls", "nvAdminMenu");
+    var menu = s.querySelector(".admin-menu"); if (menu && !menu.id) menu.id = "nvAdminMenu";
+    var box = head.querySelector("div");
+    if (box && !box.querySelector(".nv-menu-now")) { var n = document.createElement("span"); n.className = "nv-menu-now"; box.appendChild(n); }
+    if (!head.querySelector(".nv-menu-caret")) { var c = document.createElement("span"); c.className = "nv-menu-caret"; c.setAttribute("aria-hidden", "true"); head.appendChild(c); }
+    if (mq.matches) s.classList.add("nv-menu-collapsed");
+    function toggle(){ s.classList.toggle("nv-menu-collapsed"); paint(); }
+    head.addEventListener("click", toggle);
+    head.addEventListener("keydown", function(e){ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+    s.addEventListener("click", function(e){
+      var b = e.target.closest(".admin-subtab, .admin-nav-main[data-admin-tab]");
+      if (!b || !mq.matches) return;
+      setTimeout(function(){
+        s.classList.add("nv-menu-collapsed"); paint();
+        var content = document.querySelector("#admin .admin-content");
+        if (content) content.scrollIntoView({ block:"start" });
+      }, 0);
+    });
+    document.querySelectorAll("#admin .admin-nav-main .chevron:not([aria-hidden])").forEach(function(c){ c.setAttribute("aria-hidden", "true"); });
+    paint();
+  }
+  var labelQueued = false;
+  function labelFields(){
+    labelQueued = false;
+    document.querySelectorAll(".field:not([data-nv-lab])").forEach(function(f){
+      f.setAttribute("data-nv-lab", "1");
+      var lab = f.querySelector(":scope > label"); if (!lab) return;
+      var ctl = f.querySelector("input:not([type=hidden]):not([type=checkbox]):not([type=radio]), select, textarea");
+      if (!ctl || (ctl.labels && ctl.labels.length) || ctl.getAttribute("aria-label") || lab.contains(ctl)) return;
+      var text = lab.textContent.replace(/\s+/g, " ").replace(/\*/g, "").trim();
+      if (text) ctl.setAttribute("aria-label", text);
+    });
+  }
+  function queueLabels(){ if (!labelQueued) { labelQueued = true; requestAnimationFrame(labelFields); } }
+  function start(){
+    setup(); labelFields();
+    try { new MutationObserver(queueLabels).observe(document.body, { childList:true, subtree:true }); } catch (e) {}
+    document.addEventListener("click", function(e){ if (e.target.closest && e.target.closest("[data-admin-tab]")) setTimeout(paint, 0); });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
+})();
 </script>
 </body>
 </html>

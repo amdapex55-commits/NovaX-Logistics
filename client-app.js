@@ -880,10 +880,18 @@
           return;
         }
       }catch(e){}
-      clearLocalSession(); window.location.replace(url);
+      window.__nvLeaving=true; clearLocalSession(); window.location.replace(url);
+    }
+    /* 2 Oct 2026: once this page has decided to send a signed-out visitor away, its
+       database calls would only fail as permission-denied (each one a rolled-back
+       transaction). Answer them locally instead; nothing else is affected. */
+    function __nvLeavingFetch(input, init){
+      if (window.__nvLeaving && String(input && input.url || input).indexOf('/rest/v1/') > -1)
+        return Promise.resolve(new Response(JSON.stringify({ code: 'NV_LEAVING', message: 'Signed out' }), { status: 401, headers: { 'Content-Type': 'application/json' } }));
+      return fetch(input, init);
     }
     var __gsb=null;
-    try{ __gsb=window.__nvSb||null; if(!__gsb&&window.supabase&&window.supabase.createClient){ __gsb=window.supabase.createClient(__SB_URL,__SB_KEY); } }catch(__e){}
+    try{ __gsb=window.__nvSb||null; if(!__gsb&&window.supabase&&window.supabase.createClient){ __gsb=window.supabase.createClient(__SB_URL,__SB_KEY,{ global:{ fetch:__nvLeavingFetch } }); } }catch(__e){}
     // NovaX fix: publish the gate's client so the data layer below reuses this
     // exact instance instead of constructing a second GoTrueClient on the same
     // storage key (which races on token refresh).
