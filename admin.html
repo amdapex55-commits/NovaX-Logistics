@@ -18120,14 +18120,29 @@ html,body{ background:var(--bg); color:var(--ink); }
       document.addEventListener("visibilitychange", function(){
         if (!document.hidden && typeof nvLivePending === "object" && Object.keys(nvLivePending).length) { try { nvLiveChange(); } catch(e){} }
       });
-      function nvLiveChange(table){
-        if (table) nvLivePending[table] = true;
+      /* 2 Oct 2026: a parcel change used to refetch EVERY parcel in the window
+         (1,174 rows, ~1.7 MB) two seconds after each rider scan -- all day.
+         The realtime event already carries the changed row, so inserts and
+         updates are applied in place; only a delete, or an event without the
+         row, falls back to the full parcel refresh. The 180 s poll and the
+         focus refresh still reload everything, so nothing can drift for long. */
+      var nvLiveRows = Object.create(null);
+      function nvLiveChange(table, payload){
+        var row = payload && payload.eventType !== "DELETE" && payload.new;
+        if (table === "parcels" && row && row.id && row.awb && row.status) nvLiveRows[row.id] = row;
+        else if (table) nvLivePending[table] = true;
         if (document.hidden) return;
         if (nvLiveTimer) return;                       // already scheduled
         nvLiveTimer = setTimeout(function(){
           nvLiveTimer = null;
           var tables = Object.keys(nvLivePending);
           nvLivePending = Object.create(null);
+          var rows = Object.keys(nvLiveRows).map(function(k){ return nvLiveRows[k]; });
+          nvLiveRows = Object.create(null);
+          if (rows.length && tables.indexOf("parcels") === -1) {
+            try { if (typeof window.nvApplyParcelRows === "function") window.nvApplyParcelRows(rows); else tables.push("parcels"); }
+            catch(e){ tables.push("parcels"); }
+          }
           if (!tables.length) return;
 
           var known = tables.filter(function(t){ return NV_LIVE_KNOWN[t]; });
@@ -18615,6 +18630,31 @@ html,body{ background:var(--bg); color:var(--ink); }
         });
       };
 
+      /* Apply changed parcel rows (from realtime) without refetching the rest.
+         Same follow-up as nvRefresh: re-point the open client, re-sign only
+         parcels, persist, redraw only what parcels affect, keep the scroll. */
+      window.nvApplyParcelRows = function(rows){
+        if(!loaded || !sb){ if(typeof loadAll==="function") loadAll(); return; }
+        var keepScroll = window.pageYOffset || document.documentElement.scrollTop || 0;
+        var keepClientId = (state.client && state.client.id) || null;
+        var at = Object.create(null);
+        (state.parcels||[]).forEach(function(p,i){ if(p && p._uuid) at[p._uuid] = i; });
+        rows.forEach(function(r){
+          var o = rParcel(r);
+          if(at[o._uuid] != null) state.parcels[at[o._uuid]] = o;
+          else { state.parcels.unshift(o); }
+        });
+        if(keepClientId){
+          var found = (state.clients||[]).find(function(c){ return c.id===keepClientId; });
+          state.client = found || null;
+        }
+        rebuildShadowFor(["parcels"]);
+        try{ if(typeof normalizeStateAwbs==="function") normalizeStateAwbs(state); }catch(e){}
+        nvSaveStateSoon();
+        nvRenderFor(["parcels"]);
+        requestAnimationFrame(function(){ window.scrollTo(0, keepScroll); });
+      };
+
       /* Debounced state persistence.
          JSON.stringify(state) over tens of thousands of rows is a synchronous
          main-thread freeze, and past roughly 5MB the browser rejects the write
@@ -18971,7 +19011,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                already refreshes itself -- the subscription was telling this tab
                about work it had just done. */
             ["parcels","pickup_requests","withdrawals"].forEach(function(t){
-              liveChannel.on("postgres_changes",{event:"*",schema:"public",table:t},function(){ nvLiveChange(t); });
+              liveChannel.on("postgres_changes",{event:"*",schema:"public",table:t},function(payload){ nvLiveChange(t, payload); });
             });
             liveChannel.subscribe(function(status,err){
               if(err) console.warn("NovaX admin realtime",status,err.message||err);
