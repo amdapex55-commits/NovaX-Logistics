@@ -14,7 +14,7 @@
 //   supabase functions deploy novax-ai
 // =====================================================================
 
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 
 // The Messages API is called over plain fetch rather than the SDK: it
 // removes an npm version pin from the cold path, and the wire format
@@ -837,8 +837,11 @@ Be brief and warm. Two or three sentences. End by calling present exactly once.`
   if (bookingDraft) {
     actions.push({ label: "Review & Book", kind: "local", type: "prefill_booking", draft: bookingDraft });
   }
-  if (pendingAction) {
-    actions.push({ label: pendingAction.label, kind: "local", type: "confirm_action", action: pendingAction });
+  /* pendingAction is set inside a callback, so the checker narrows it to
+     null here; read it through its declared type. */
+  const pa = pendingAction as Record<string, string> | null;
+  if (pa) {
+    actions.push({ label: pa.label, kind: "local", type: "confirm_action", action: pa });
   }
   for (const sug of suggestions.slice(0, 3)) {
     if (sug) actions.push({ label: String(sug), kind: "send", message: String(sug) });

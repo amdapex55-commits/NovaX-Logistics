@@ -2351,7 +2351,9 @@ $("fSales").addEventListener("submit",function(e){
   clearMsg("mSales");
   var btn=$("salesLeadSubmit"), oldTxt=btn.textContent;
   btn.disabled=true; btn.textContent="Sending your request…";
-  __nvSb.from("sales_leads").insert({name:name,phone:phone,parcels_per_month:parcels,status:"New"}).then(function(r){
+  /* Through nv_sales_lead_create (2 Oct 2026): signed-out visitors no longer
+     write tables directly; the same guard still checks name, phone and limits. */
+  Promise.resolve(__nvSb.rpc("nv_sales_lead_create",{p_name:name,p_phone:phone,p_parcels:parcels})).then(function(r){
     btn.disabled=false; btn.textContent=oldTxt;
     if(r&&r.error){ showMsg("mSales",r.error.message||"Could not send your request. Please try again.",false); return; }
     renderDone("mdlSales","v","Request Received","Our sales team will call you back today.",false);

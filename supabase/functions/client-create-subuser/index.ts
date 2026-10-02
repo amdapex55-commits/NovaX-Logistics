@@ -23,7 +23,7 @@
    The password is returned ONCE. The owner passes it on however they already
    talk to their staff, which in Pakistan is WhatsApp, not email.
 */
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",

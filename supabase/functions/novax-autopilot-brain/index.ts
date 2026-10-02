@@ -38,7 +38,7 @@
 //   bash scripts/deploy_brain.sh
 // ============================================================================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.2";
 
 /* ── CORS ───────────────────────────────────────────────────────────────── */
 function corsHeaders(req: Request): Record<string, string> {
@@ -137,7 +137,10 @@ const TOOLS = [
 ];
 
 /* ── Tool implementations (service role, always caller-scoped) ──────────── */
-type Admin = ReturnType<typeof createClient>;
+/* Loose on purpose (2 Oct 2026): with no generated database types,
+   ReturnType<typeof createClient> types every table as `never`. */
+// deno-lint-ignore no-explicit-any
+type Admin = any;
 
 // Three column sets on purpose: `meta` holds the status timeline and is by far
 // the heaviest column — pulling it for a 25-row list wastes both database
@@ -232,7 +235,7 @@ async function runTool(admin: Admin, clientId: string, name: string, args: any):
       let rows = (data || []).map(safeParcel);
       if (args?.stale_hours) {
         const min = Number(args.stale_hours);
-        rows = rows.filter((r) => r.hours_since_update !== null && r.hours_since_update >= min);
+        rows = rows.filter((r: any) => r.hours_since_update !== null && r.hours_since_update >= min);
       }
       return { count: rows.length, parcels: rows };
     }

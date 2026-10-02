@@ -21,7 +21,12 @@
 //   - Public (unauthenticated) tracking/reply replies never include internal
 //     exception notes — only status/city/last-updated.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+/* Typed loosely on purpose (2 Oct 2026): this project has no generated
+   database types, and ReturnType<typeof createClient> resolves every table
+   to `never`, which made the type check fail on correct code. */
+// deno-lint-ignore no-explicit-any
+type SbAdmin = any;
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.2";
 
 const ALLOWED_ORIGINS = [
   "https://novaxlogistics.com",
@@ -193,7 +198,7 @@ type ParcelRow = {
 };
 
 // ---- Client Autopilot Memory: one fresh, DB-grounded context snapshot ----
-async function loadClientContext(admin: ReturnType<typeof createClient>, clientId: string) {
+async function loadClientContext(admin: SbAdmin, clientId: string) {
   const [{ data: parcels }, { data: clientRow }, { data: invoices }, { data: tickets }] = await Promise.all([
     admin
       .from("parcels")
@@ -467,7 +472,7 @@ function identityFor(req: Request, callerClientId: string | null): string {
 }
 
 async function countEvents(
-  admin: ReturnType<typeof createClient>,
+  admin: SbAdmin,
   identity: string,
   kind: "message" | "ticket",
   windowMs: number,
@@ -482,7 +487,7 @@ async function countEvents(
   return count || 0;
 }
 
-async function logEvent(admin: ReturnType<typeof createClient>, identity: string, kind: "message" | "ticket") {
+async function logEvent(admin: SbAdmin, identity: string, kind: "message" | "ticket") {
   try {
     await admin.from("autopilot_events").insert({ identity, kind });
   } catch {
@@ -495,7 +500,7 @@ function ticketCode(): string {
 }
 
 async function createTicket(
-  admin: ReturnType<typeof createClient>,
+  admin: SbAdmin,
   opts: {
     clientId: string | null;
     subject: string;
@@ -560,7 +565,7 @@ type Action = { label: string; kind: "send" | "local"; message?: string; type?: 
 // buttons shown after every Autopilot reply on the client). Fire-and-forget,
 // no normal reply processing — just records the signal so it can be reviewed
 // later; never blocks or errors out the widget. ----
-async function handleFeedback(req: Request, admin: ReturnType<typeof createClient>, payload: any): Promise<Response> {
+async function handleFeedback(req: Request, admin: SbAdmin, payload: any): Promise<Response> {
   const value = String(payload?.feedback || "").slice(0, 20);
   const fwd = req.headers.get("x-forwarded-for") || "";
   const ip = (fwd.split(",")[0] || "").trim() || req.headers.get("cf-connecting-ip") || "unknown";

@@ -24,7 +24,7 @@
      6. email/password policy enforced server-side
      7. every attempt is written to admin_audit_log, allowed or refused
 */
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",

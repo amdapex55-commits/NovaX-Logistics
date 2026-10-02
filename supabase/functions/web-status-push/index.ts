@@ -18,7 +18,7 @@
 //   Authorization: Bearer <API key> -- only sent if an API key was saved
 //     for this connection (optional, for the client's own auth check).
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.2";
 import { unsafeDestination } from "../_shared/destination.ts";
 
 /* Only NovaX's own database may call this (30 Sep 2026 review). It trusted
