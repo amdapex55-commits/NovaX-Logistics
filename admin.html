@@ -6821,6 +6821,26 @@ html,body{ background:var(--bg); color:var(--ink); }
     function NV_ADMIN_WINDOW(){
       return new Date(Date.now() - NV_ADMIN_WINDOW_DAYS*24*3600*1000).toISOString();
     }
+    /* The server returns at most 1,000 rows per request, whatever .limit()
+       asks for. Parcels passed 1,000 on 2 Oct 2026 and the oldest rows fell
+       off the admin page (Delivered showed 662 of 808, dropping with every
+       new booking). This pages through 1,000 at a time up to `cap`, with id
+       as a tie-break so pages are stable, and skips any row that shifts onto
+       the next page while it loads. Resolves to { data, error } like a query. */
+    function nvAllRows(q, cap){
+      var PAGE = 1000, out = [], seen = {};
+      q = q.order("id", { ascending: true });
+      function page(from){
+        var to = Math.min(from + PAGE, cap) - 1;
+        return Promise.resolve(q.range(from, to)).then(function(r){
+          if (!r || r.error) return { data: null, error: (r && r.error) || { message: "No response" } };
+          var d = r.data || [];
+          d.forEach(function(row){ var k = row && row.id; if (k == null || !seen[k]) { if (k != null) seen[k] = 1; out.push(row); } });
+          return (d.length < to - from + 1 || from + PAGE >= cap) ? { data: out, error: null } : page(from + PAGE);
+        });
+      }
+      return page(0);
+    }
 
     /* Progress from the shared journey (nv-journey.js), the one client and
        rider use too. stage/totalStages used to be read from meta (default 9)
@@ -18381,33 +18401,33 @@ html,body{ background:var(--bg); color:var(--ink); }
            the admin views for that table should get real pagination/infinite
            scroll instead of a single full-table load. */
         return Promise.all([
-          sb.from("clients").select("*").order("created_at",{ascending:false}).limit(5000),
-          sb.from("riders").select("*").order("created_at",{ascending:false}).limit(5000),
+          nvAllRows(sb.from("clients").select("*").order("created_at",{ascending:false}), 5000),
+          nvAllRows(sb.from("riders").select("*").order("created_at",{ascending:false}), 5000),
           /* Admin still needs closed parcels -- invoices are generated FROM delivered
              ones -- so this is bounded by age, not by status. 5000 rows of full
              history was pulled on every admin refresh; a 120-day window covers
              every parcel that can still be invoiced, disputed or reconciled,
              and keeps the working set flat as the business grows. */
-          sb.from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}).limit(5000),
-          sb.from("invoices").select("*").order("created_at",{ascending:false}).limit(5000),
-          sb.from("expenses").select("*").order("created_at",{ascending:false}).limit(3000),
-          sb.from("withdrawals").select("*").order("created_at",{ascending:false}).limit(3000),
-          sb.from("payment_logs").select("*").order("created_at",{ascending:false}).limit(3000),
-          sb.from("sales_leads").select("*").order("created_at",{ascending:false}).limit(2000),
-          sb.from("signup_leads").select("*").neq("status","workspace_created").order("created_at",{ascending:false}).limit(2000),
+          nvAllRows(sb.from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}), 20000),
+          nvAllRows(sb.from("invoices").select("*").order("created_at",{ascending:false}), 5000),
+          nvAllRows(sb.from("expenses").select("*").order("created_at",{ascending:false}), 3000),
+          nvAllRows(sb.from("withdrawals").select("*").order("created_at",{ascending:false}), 3000),
+          nvAllRows(sb.from("payment_logs").select("*").order("created_at",{ascending:false}), 3000),
+          nvAllRows(sb.from("sales_leads").select("*").order("created_at",{ascending:false}), 2000),
+          nvAllRows(sb.from("signup_leads").select("*").neq("status","workspace_created").order("created_at",{ascending:false}), 2000),
           /* Every OPEN issue, plus resolved ones from the last 30 days. Loading
              only the newest 2,000 hid older open issues, so the page re-created
              them on each refresh (2 Oct 2026). */
-          sb.from("operations_issues").select("*").or("resolved.eq.false,created_at.gte."+new Date(Date.now()-30*864e5).toISOString()).order("created_at",{ascending:false}).limit(10000),
-          sb.from("resolved_alerts").select("*").order("created_at",{ascending:false}).limit(2000),
-          sb.from("manifest_logs").select("*").order("created_at",{ascending:false}).limit(2000),
-          sb.from("staff_users").select("*").order("created_at",{ascending:false}).limit(2000),
+          nvAllRows(sb.from("operations_issues").select("*").or("resolved.eq.false,created_at.gte."+new Date(Date.now()-30*864e5).toISOString()).order("created_at",{ascending:false}), 10000),
+          nvAllRows(sb.from("resolved_alerts").select("*").order("created_at",{ascending:false}), 2000),
+          nvAllRows(sb.from("manifest_logs").select("*").order("created_at",{ascending:false}), 2000),
+          nvAllRows(sb.from("staff_users").select("*").order("created_at",{ascending:false}), 2000),
           sb.from("staff_activity").select("*").order("created_at",{ascending:false}).limit(100),
-          sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}).limit(5000),
+          nvAllRows(sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}), 5000),
           /* saved_address: the merchant's name for a saved pickup address
              ("Clifton shop"). Aliased so it can never shadow pickup_address. */
-          sb.from("pickup_requests").select("*,saved_address:pickup_addresses(label)").order("created_at",{ascending:false}).limit(3000),
-          sb.from("profiles").select("id,email,client_id").not("client_id","is",null).limit(5000)
+          nvAllRows(sb.from("pickup_requests").select("*,saved_address:pickup_addresses(label)").order("created_at",{ascending:false}), 3000),
+          nvAllRows(sb.from("profiles").select("id,email,client_id").not("client_id","is",null), 5000)
         ]).then(function(res){
           function D(i){ return (res[i]&&res[i].data)||[]; }
           /* 1 Oct 2026: a failed query used to read as "no rows" -- one
@@ -18436,7 +18456,7 @@ html,body{ background:var(--bg); color:var(--ink); }
              RIDER-020), not inside parcel meta. Loaded separately so the
              indexed results above keep their positions; marked _riderEmbedded
              so fExpense never copies them into the office expenses table. */
-          Promise.resolve(sb.from("nv_rider_expense").select("id,rider_id,category,amount,note,expense_date,created_at,status,settled,riders(name,branch)").order("created_at",{ascending:false}).limit(2000))
+          Promise.resolve(nvAllRows(sb.from("nv_rider_expense").select("id,rider_id,category,amount,note,expense_date,created_at,status,settled,riders(name,branch)").order("created_at",{ascending:false}), 2000))
             .then(function(rx){
               if(!rx || rx.error || !Array.isArray(rx.data) || !rx.data.length) return;
               var have={}; (state.expenses||[]).forEach(function(e){ if(e&&e._uuid) have[e._uuid]=1; });
@@ -18508,27 +18528,27 @@ html,body{ background:var(--bg); color:var(--ink); }
       ===================================================================== */
       var NV_REFRESH_SPEC = {
         clients: {
-          q: function(){ return sb.from("clients").select("*").order("created_at",{ascending:false}).limit(5000); },
+          q: function(){ return nvAllRows(sb.from("clients").select("*").order("created_at",{ascending:false}), 5000); },
           set: function(d){ state.clients = d.map(rClient); }
         },
         invoices: {
-          q: function(){ return sb.from("invoices").select("*").order("created_at",{ascending:false}).limit(5000); },
+          q: function(){ return nvAllRows(sb.from("invoices").select("*").order("created_at",{ascending:false}), 5000); },
           set: function(d){ state.invoices = d.map(rInvoice); }
         },
         wallet_ledger: {
-          q: function(){ return sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}).limit(5000); },
+          q: function(){ return nvAllRows(sb.from("wallet_ledger").select("*").order("created_at",{ascending:false}), 5000); },
           set: function(d){ state.walletLedger = d.map(rLedger); }
         },
         payment_logs: {
-          q: function(){ return sb.from("payment_logs").select("*").order("created_at",{ascending:false}).limit(3000); },
+          q: function(){ return nvAllRows(sb.from("payment_logs").select("*").order("created_at",{ascending:false}), 3000); },
           set: function(d){ state.paymentLogs = d.map(rPl); }
         },
         withdrawals: {
-          q: function(){ return sb.from("withdrawals").select("*").order("created_at",{ascending:false}).limit(3000); },
+          q: function(){ return nvAllRows(sb.from("withdrawals").select("*").order("created_at",{ascending:false}), 3000); },
           set: function(d){ state.walletWithdrawals = d.map(rWd); }
         },
         parcels: {
-          q: function(){ return sb.from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}).limit(5000); },
+          q: function(){ return nvAllRows(sb.from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}), 20000); },
           set: function(d){ state.parcels = d.map(rParcel); }
         }
       };
