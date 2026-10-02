@@ -7152,7 +7152,18 @@ html,body{ background:var(--bg); color:var(--ink); }
     function adminPersistableState() {
       try {
         const copy = {};
-        Object.keys(state).forEach(k => { copy[k] = state[k]; });
+        /* 2 Oct 2026: the cache held every parcel, client and ledger row --
+           megabytes stringified on the main thread at each save, then rejected
+           by the browser's ~5MB quota anyway (QuotaExceededError), so every save
+           froze the page for nothing. Database rows (those with a _uuid) are
+           reloaded by loadAll() on every visit, so they are cached as empty
+           lists; rows not yet saved to the database and all screen settings
+           (tabs, filters, drafts) are still kept. */
+        Object.keys(state).forEach(k => {
+          const v = state[k];
+          const dbRows = Array.isArray(v) && v.length > 50 && v.some(r => r && typeof r === "object" && (r._uuid || r.awb || r.problem));
+          copy[k] = dbRows ? v.filter(r => !(r && typeof r === "object" && r._uuid)).slice(0, 200) : v;
+        });
         Object.keys(NV_ADMIN_STRIP).forEach(coll => {
           if (!Array.isArray(copy[coll])) return;
           const drop = NV_ADMIN_STRIP[coll];
@@ -18746,7 +18757,8 @@ html,body{ background:var(--bg); color:var(--ink); }
               o._pending=false;
               if(r&&r.error){ console.warn("NovaX operations_issues add",r.error.message); o._syncBlocked=true; return; }
               if(r&&r.data){ o._uuid=r.data; shadow[o._uuid]=sig; shadowRow[o._uuid]=row; scheduleResync(); }
-            },function(e){ o._pending=false; console.warn("NovaX operations_issues add",e&&e.message); });
+              else { o._syncBlocked=true; }   // no id back: never retry it every tick
+            },function(e){ o._pending=false; o._syncBlocked=true; console.warn("NovaX operations_issues add",e&&e.message); });
           }
           else { o._pending=true; sb.from(table).insert(row).select("id").maybeSingle().then(function(r){ o._pending=false; if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else if(isDuplicateKeyError(r.error)){ adoptExistingRow(o,row,table,sig); } else { console.warn("NovaX "+table+" insert",r.error.message); } return; } if(r&&r.data){ o._uuid=r.data.id; shadow[o._uuid]=sig; shadowRow[o._uuid]=row; scheduleResync(); } }); }
         });
