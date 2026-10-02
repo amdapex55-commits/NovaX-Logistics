@@ -10352,6 +10352,17 @@ html,body{ background:var(--bg); color:var(--ink); }
       }catch(e){ console.warn("NovaX tab badges skipped:", e && e.message); }
     }
 
+    /* Draw a table only when its tab is open (2 Oct 2026). renderAdmin runs
+       on every tab switch, search keystroke and live parcel update, and it
+       used to rebuild every tab's tables -- about 180,000 elements -- while
+       one tab is on screen. showAdminTab calls renderAdmin after switching,
+       so a skipped table is drawn fresh the moment its tab opens. */
+    function nvAdminShown(id) {
+      const el = document.getElementById(id);
+      if (!el) return false;
+      const mod = el.closest(".admin-module");
+      return !mod || mod.classList.contains("active");
+    }
     function renderAdmin() {
       syncRiderAccess();
       state.activeAdminTab = normalizeAdminTab(state.activeAdminTab);
@@ -10379,7 +10390,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       });
 
       const m = metrics();
-      try { renderCodBoard(); } catch (e) { console.warn("NovaX COD board render", e); }
+      if (nvAdminShown("codBoardPanel")) { try { renderCodBoard(); } catch (e) { console.warn("NovaX COD board render", e); } }
       renderAdminIntegrations();
       const statusFilterEl = document.getElementById("adminOrderStatusFilter");
       const clientFilterEl = document.getElementById("adminOrderClientFilter");
@@ -10519,7 +10530,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         </tr>
       `).join("") || `<tr><td colspan="5">No exceptions. Every journey is clean.</td></tr>`;
 
-      document.getElementById("adminOrderRows").innerHTML = state.parcels.filter(p => {
+      if (nvAdminShown("adminOrderRows")) document.getElementById("adminOrderRows").innerHTML = state.parcels.filter(p => {
         const client = clientById(p.clientId);
         const alert = alertForParcel(p);
         const haystack = `${p.awb} ${escLabelText(client.name)} ${client.id} ${escLabelText(p.consignee)} ${p.address} ${escLabelText(p.city)} ${p.status} ${p.branch} ${parcelOrigin(p)} ${p.weight}`.toLowerCase();
@@ -10581,7 +10592,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         metricCard("Avg Journey Aging", agingLabel(avgJourney), Math.min(100, percent(avgJourney, 96)), "booking to current point", avgJourney > 72 ? "red" : "amber"),
         metricCard("Critical Breaches", breachedReport, Math.min(100, breachedReport * 18), "needs escalation", breachedReport ? "red" : "good")
       ].join("");
-      document.getElementById("orderReportRows").innerHTML = reportRows.map(p => {
+      if (nvAdminShown("orderReportRows")) document.getElementById("orderReportRows").innerHTML = reportRows.map(p => {
         const client = clientById(p.clientId);
         const alert = alertForParcel(p);
         const process = lastProcess(p);
@@ -10774,7 +10785,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         metricCard("Avg Health", `${avgClientHealth}%`, avgClientHealth, "delivery + issue health", avgClientHealth > 80 ? "good" : "amber")
       ].join("");
       try { nvKycAdminLoad(false); } catch (e) {}
-      document.getElementById("clientSummaryList").innerHTML = allClients.map(client => {
+      if (nvAdminShown("clientSummaryList")) document.getElementById("clientSummaryList").innerHTML = allClients.map(client => {
         const parcels = state.parcels.filter(p => p.clientId === client.id);
         const delivered = parcels.filter(isDeliveredLedgerParcel);
         const issues = state.operationsIssues.filter(issue => issue.awb && parcels.some(parcel => parcel.awb === issue.awb) && !issue.resolved);
@@ -10927,10 +10938,10 @@ html,body{ background:var(--bg); color:var(--ink); }
       const opsResolved = document.getElementById("opsResolvedFilter")?.value || "open";
       try { renderPickupQueue(); } catch (e) {}
       try { renderAdminReviews(); } catch (e) {}
-      try { renderExceptionControlRoom(); } catch (e) {}
+      if (nvAdminShown("exceptionControlRoomList")) { try { renderExceptionControlRoom(); } catch (e) {} }
       try { renderReconciliationAudit(); } catch (e) {}
 
-      document.getElementById("operationsIssueList").innerHTML = state.operationsIssues.filter(issue => {
+      if (nvAdminShown("operationsIssueList")) document.getElementById("operationsIssueList").innerHTML = state.operationsIssues.filter(issue => {
         return (!opsBranch || issue.branch === opsBranch)
           && (!opsUrgency || issue.urgency === opsUrgency)
           && (opsResolved === "resolved" ? issue.resolved : !issue.resolved);
@@ -17897,7 +17908,10 @@ html,body{ background:var(--bg); color:var(--ink); }
     document.getElementById("adminPeriodFrom").addEventListener("change", renderPeriodMetrics);
     document.getElementById("adminPeriodTo").addEventListener("change", renderPeriodMetrics);
     document.getElementById("adminPeriodToday").addEventListener("click", () => { initPeriodInputs(true); renderPeriodMetrics(); });
-    document.getElementById("adminOrderSearch").addEventListener("input", renderAdmin);
+    /* Search redraws once typing pauses, not on every letter (2 Oct 2026). */
+    let nvSearchT = null;
+    function nvSearchSoon() { clearTimeout(nvSearchT); nvSearchT = setTimeout(renderAdmin, 200); }
+    document.getElementById("adminOrderSearch").addEventListener("input", nvSearchSoon);
     document.getElementById("adminOrderClientFilter").addEventListener("change", renderAdmin);
     document.getElementById("adminOrderStatusFilter").addEventListener("change", renderAdmin);
     document.getElementById("adminOrderCityFilter").addEventListener("change", renderAdmin);
@@ -17905,7 +17919,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     document.getElementById("adminOrderBranchFilter").addEventListener("change", renderAdmin);
     document.getElementById("adminOrderAlertFilter").addEventListener("change", renderAdmin);
     document.getElementById("clearAdminFiltersBtn").addEventListener("click", clearAdminFilters);
-    document.getElementById("orderReportSearch").addEventListener("input", renderAdmin);
+    document.getElementById("orderReportSearch").addEventListener("input", nvSearchSoon);
     document.getElementById("orderReportStatusFilter").addEventListener("change", renderAdmin);
     document.getElementById("orderReportClientFilter").addEventListener("change", renderAdmin);
     document.getElementById("clearOrderReportFiltersBtn").addEventListener("click", clearOrderReportFilters);
@@ -21026,7 +21040,11 @@ tbody tr.nv-row-selected{background:var(--nvu-good-bg,var(--nvu-good-bg));box-sh
       f.setAttribute("data-nv-lab", "1");
       var lab = f.querySelector(":scope > label"); if (!lab) return;
       var ctl = f.querySelector("input:not([type=hidden]):not([type=checkbox]):not([type=radio]), select, textarea");
-      if (!ctl || (ctl.labels && ctl.labels.length) || ctl.getAttribute("aria-label") || lab.contains(ctl)) return;
+      /* Not ctl.labels: Chrome finds a control's labels by walking the whole
+         document, so with ~2,400 fields on a 180,000-element page this took
+         3 s after every redraw (2 Oct 2026). The label it would find is this
+         sibling one, so check its "for" directly. */
+      if (!ctl || (lab.htmlFor && lab.htmlFor === ctl.id) || ctl.getAttribute("aria-label") || lab.contains(ctl)) return;
       var text = lab.textContent.replace(/\s+/g, " ").replace(/\*/g, "").trim();
       if (text) ctl.setAttribute("aria-label", text);
     });
