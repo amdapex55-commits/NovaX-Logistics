@@ -681,6 +681,14 @@
     paintBar(); controls();
   });
   document.addEventListener("click", async function (e) {
+    /* Tapping a card's top row (AWB and status) ticks its box: a 30 px box is
+       a small target on a bike with gloves on. Links and buttons keep their own job. */
+    var head = e.target.closest(".parcel-head");
+    if (head && !e.target.closest("input,button,a,label")) {
+      var hcb = head.querySelector("[data-pick]");
+      if (hcb && !hcb.disabled) { hcb.checked = !hcb.checked; hcb.dispatchEvent(new Event("change", { bubbles: true })); }
+      if (hcb) return;
+    }
     var retry = e.target.closest("[data-retry]");
     if (retry) { if (busy || flushing || !authorized) return; try { await lock(function () { queue.change(retry.dataset.retry, { state: "pending", error: "" }); }); render(); void flush(); } catch (err) { msg(String(err.message || err), "error"); } return; }
     var dis = e.target.closest("[data-discard]");
