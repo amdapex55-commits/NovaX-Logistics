@@ -7789,7 +7789,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (!s || isNaN(n) || n <= 0) return 0.8;
       return n;
     }
-    // charge = baseRate + ceil(max(0, weightKg-1)) * additionalKgRate, capped at the 5kg normal slab.
+    // charge = baseRate + ceil(max(0, weightKg-1)) * additionalKgRate. No weight ceiling (5 kg cap removed 2 Oct 2026).
     function bookingChargeBreakdown(rateCard, zone, weightInput) {
       var z = zone === "A" ? "A" : "B";
       var zoneBase = z === "A" ? NV_ZONE_A_BASE : NV_ZONE_B_BASE;
@@ -7797,11 +7797,10 @@ html,body{ background:var(--bg); color:var(--ink); }
       var base = Number(card.overnight) || zoneBase;
       var addlRate = Number(card.additionalKg) || 85;
       var weightKg = parseWeightKg(weightInput);
-      var cappedKg = Math.min(weightKg, 5);
-      var extraKg = Math.ceil(Math.max(0, cappedKg - 1));
+      var extraKg = Math.ceil(Math.max(0, weightKg - 1));
       var additional = extraKg * addlRate;
       var total = base + additional;
-      return { zone: z, weightKg: weightKg, base: base, addlRate: addlRate, extraKg: extraKg, additional: additional, total: total, overCap: weightKg > 5 };
+      return { zone: z, weightKg: weightKg, base: base, addlRate: addlRate, extraKg: extraKg, additional: additional, total: total };
     }
     function updateZoneRateHint() {
       const el = document.getElementById("bookingCity");
@@ -7821,7 +7820,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         hint.textContent = "Per-kilometre merchant \u00b7 Karachi is priced on road distance from their pickup point (Rs 120 min, Rs 20/km, Rs 320 cap), not this flat card.";
         return;
       }
-      hint.textContent = zoneLabel(zone) + " · base Rs " + fmt(breakdown.base) + " + additional Rs " + fmt(breakdown.additional) + " (" + breakdown.extraKg + " extra kg) = estimated total Rs " + fmt(breakdown.total) + (breakdown.overCap ? " (over 5kg normal slab, confirm manually)" : "") + (mode === "distance" ? " \u00b7 per-km merchant, flat applies outside Karachi" : "");
+      hint.textContent = zoneLabel(zone) + " · base Rs " + fmt(breakdown.base) + " + additional Rs " + fmt(breakdown.additional) + " (" + breakdown.extraKg + " extra kg) = estimated total Rs " + fmt(breakdown.total) + (mode === "distance" ? " \u00b7 per-km merchant, flat applies outside Karachi" : "");
     }
 
     /* Delivered Parcel Pool filter. Re-runs the same renderAdmin() the page

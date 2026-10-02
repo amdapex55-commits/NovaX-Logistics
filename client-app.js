@@ -1383,7 +1383,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
       return null;
     }
     window.nvWeightProblem=nvWeightProblem;
-    // charge = baseRate + ceil(max(0, weightKg-1)) * additionalKgRate, capped at the 5kg normal slab.
+    // charge = baseRate + ceil(max(0, weightKg-1)) * additionalKgRate. No weight ceiling (5 kg cap removed 2 Oct 2026).
     function bookingChargeBreakdown(rateCard, zone, weightInput){
       var z=zone==="A"?"A":"B";
       var zoneBase=z==="A"?NV_ZONE_A_BASE:NV_ZONE_B_BASE;
@@ -1391,11 +1391,10 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
       var base=Number(card.overnight)||zoneBase;
       var addlRate=Number(card.additionalKg)||85;
       var weightKg=parseWeightKg(weightInput);
-      var cappedKg=Math.min(weightKg,5);
-      var extraKg=Math.ceil(Math.max(0,cappedKg-1));
+      var extraKg=Math.ceil(Math.max(0,weightKg-1));
       var additional=extraKg*addlRate;
       var total=base+additional;
-      return { zone:z, weightKg:weightKg, base:base, addlRate:addlRate, extraKg:extraKg, additional:additional, total:total, overCap:weightKg>5 };
+      return { zone:z, weightKg:weightKg, base:base, addlRate:addlRate, extraKg:extraKg, additional:additional, total:total };
     }
     // NovaX fix (Medium #4): clientById() must never fall back to
     // state.clients[0]. That silently attached the first client's name/rate
@@ -9080,7 +9079,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const zone=zoneForCity(el.value);
       const weightEl=document.getElementById("bookingWeight");
       const breakdown=bookingChargeBreakdown(rc, zone, weightEl?weightEl.value:"0.8 kg");
-      hint.textContent=zoneLabel(zone)+" · base Rs "+fmt(breakdown.base)+" + additional Rs "+fmt(breakdown.additional)+" ("+breakdown.extraKg+" extra kg) = estimated total Rs "+fmt(breakdown.total)+(breakdown.overCap?" (over 5kg normal slab, confirm manually)":"");
+      hint.textContent=zoneLabel(zone)+" · base Rs "+fmt(breakdown.base)+" + additional Rs "+fmt(breakdown.additional)+" ("+breakdown.extraKg+" extra kg) = estimated total Rs "+fmt(breakdown.total);
       try{ nvRenderBookReview(); }catch(e){}
     }
     /* FINAL REVIEW (21 Sep list, booking-to-print). The delivery charge only
@@ -9101,7 +9100,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var codRaw=String(codEl&&codEl.value||"").trim();
       var cod=codRaw===""?null:Number(codRaw);
       if(cod!==null && (!Number.isFinite(cod) || cod<0)) cod=null;
-      return { city:city, kg:b.weightKg, fee:b.total, cod:cod, overCap:b.overCap };
+      return { city:city, kg:b.weightKg, fee:b.total, cod:cod };
     }
     function nvRenderBookReview(){
       var el=document.getElementById("nvBookReview"); if(!el) return;
@@ -9112,7 +9111,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         : d.cod===0 ? "Prepaid: nothing is collected at the door. The charge is taken from your wallet."
         : "COD "+money(d.cod)+" collected · <b>you receive "+money(Math.max(0,d.cod-d.fee))+"</b>"+(d.cod<d.fee?" (the charge is more than the COD, so the rest is taken from your wallet)":"");
       el.innerHTML='<div class="nv-book-review-top"><span>Delivery charge</span><b>'+money(d.fee)+'</b></div>'+
-        '<div class="nv-book-review-sub">'+escLabelText([kg, "to "+d.city].filter(Boolean).join(" "))+(d.overCap?" · over 5 kg, NovaX confirms the rate":"")+'</div>'+
+        '<div class="nv-book-review-sub">'+escLabelText([kg, "to "+d.city].filter(Boolean).join(" "))+'</div>'+
         '<div class="nv-book-review-sub">'+line2+'</div>';
       el.hidden=false;
     }
