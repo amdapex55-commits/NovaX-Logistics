@@ -10715,7 +10715,8 @@ html,body{ background:var(--bg); color:var(--ink); }
             const wNow = escLabelText(p.weight || "");
             return `<div style="padding:5px 0;border-bottom:1px solid var(--nvu-line-2)">
               <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-                <span><strong>${p.awb}</strong> | ${p.status} | ${escLabelText(p.branch)} | ${p.updated}</span>
+                <span><strong>${p.awb}</strong> | ${p.status} | ${escLabelText(p.branch)} | ${p.updated}
+                  ${processBatch.length > 1 ? `<button type="button" class="ghost-btn" style="padding:2px 8px;font-size:11.5px;margin-left:6px" title="Take ${p.awb} out of this batch" onclick="nvProcRemoveAwb('${nvEscAttrJs(p.awb)}')">Remove</button>` : ""}</span>
                 <span style="white-space:nowrap">${nvPayConflictChip(p) || (prepaid ? '<span class="chip info">Prepaid</span>' : `<strong>${money(p.cod)}</strong>`)}
                   <span class="footer-note">+ ${money(p.fee)} charges${km}</span></span>
               </div>
@@ -12114,11 +12115,16 @@ html,body{ background:var(--bg); color:var(--ink); }
         state.processingBatchAwbs = found.map(p => p.awb);
         state.activeProcessingAwb = found[0].awb;
         state.pendingProcessingStatus = found[0].status;
-        if (input) input.value = "";
         nvSaveStateSoon();
         renderAdmin();
-        if (input) { input.value = ""; input.focus(); }
-        toast(`${found.length} parcel(s) loaded for processing.`, "success");
+        /* 3 Oct 2026: the tracking IDs stay in the box after loading, one per
+           line, so one can be corrected or removed and the batch reloaded.
+           IDs that matched no parcel stay too, so a typo can be fixed. */
+        if (input) { input.value = awbs.join("\n") + "\n"; input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+        const nvMissing = awbs.filter(a => !found.some(p => String(p.awb || "").toUpperCase() === a));
+        toast(`${found.length} parcel(s) loaded for processing.` +
+              (nvMissing.length ? ` Not found: ${nvMissing.slice(0, 5).join(", ")}${nvMissing.length > 5 ? " +" + (nvMissing.length - 5) + " more" : ""}.` : ""),
+              nvMissing.length ? "error" : "success");
       } catch (e) {
         console.error("NovaX processing lookup failed", e);
         // NovaX fix: clear any stale batch on a thrown/network error too, same
@@ -12326,6 +12332,9 @@ html,body{ background:var(--bg); color:var(--ink); }
         state.pendingProcessingRider = "";
         nvSaveStateSoon();
         renderAdmin();
+        /* The batch is done: empty the tracking-ID box so the next scan
+           starts a new batch instead of re-sending these parcels. */
+        try { const nvIn = document.getElementById("processingAwbInput"); if (nvIn) nvIn.value = ""; } catch (e) {}
         toast(`${rows.length} parcel(s) updated to ${status}.`, "success");
 
         /* NovaX new (rider run sheet): out-for-delivery is assigned by hand
@@ -12362,6 +12371,20 @@ html,body{ background:var(--bg); color:var(--ink); }
         if (btn) { btn.disabled = false; btn.textContent = oldText || "Confirm Status Update"; }
       }
     }
+
+    /* Take one parcel out of the loaded batch, and out of the tracking-ID
+       box, without reloading the rest (3 Oct 2026). */
+    function nvProcRemoveAwb(awb) {
+      const key = String(awb || "").toUpperCase();
+      state.processingBatchAwbs = (state.processingBatchAwbs || []).filter(a => String(a).toUpperCase() !== key);
+      if (String(state.activeProcessingAwb || "").toUpperCase() === key) state.activeProcessingAwb = state.processingBatchAwbs[0] || "";
+      const input = document.getElementById("processingAwbInput");
+      if (input) input.value = parseAwbList(input.value || "").filter(a => a !== key).join("\n");
+      nvSaveStateSoon();
+      renderAdmin();
+      toast(`${awb} removed from the batch. ${state.processingBatchAwbs.length} left.`);
+    }
+    window.nvProcRemoveAwb = nvProcRemoveAwb;
 
     function clearProcessingBatch() {
       state.processingBatchAwbs = [];
