@@ -166,4 +166,29 @@ function page(body = '') {
   ok('badge dates old prints and names their status; the device copy keeps no customer names and expires in a week; guards and labels are in the pages');
 }
 
+/* ─── reattempt: once per parcel (3 Oct 2026) ─────────────────────────── */
+{
+  const w = page().window;
+  w.eval('var __rpc=[], __next=null; function nvBusy(){ return function(){}; } function saveState(){} function render(){} function nvOpsRequestTicket(){ return Promise.resolve(); }' +
+    'window.__nvSb={ rpc:function(n,a){ __rpc.push(n+":"+a.p_awb); var r=__next||{ data:{ ok:true } }; __next=null; return Promise.resolve(r); } };');
+  w.eval(fn('nvReattemptUsed') + fn('nvReattemptDoneMsg') + fn('requestRedelivery'));
+  w.eval('state.parcels=[' +
+    '{ awb:"A1", status:"Consignee not available", steps:["New booked","Parcel out for delivery","Consignee not available"], _meta:{} },' +
+    '{ awb:"A2", status:"Refused", steps:["New booked","Parcel out for delivery","Reattempt","Refused"], _meta:{} },' +
+    '{ awb:"A3", status:"Reattempt", steps:["New booked","Parcel out for delivery","Reattempt"], _meta:{} },' +
+    '{ awb:"A4", status:"Refused", steps:["New booked","Refused"], _meta:{} }]');
+  const used = a => w.eval('nvReattemptUsed(' + JSON.stringify(a) + ')');
+  assert.equal(used('A1'), ''); assert.equal(used('A2'), 'used'); assert.equal(used('A3'), '', 'a parcel waiting at Reattempt may be confirmed once');
+  const req = a => w.eval('requestRedelivery(' + JSON.stringify(a) + ').then(function(){ return "ok"; }, function(e){ return "refused: " + e.message; })');
+  assert.equal(await req('A1'), 'ok');
+  assert.equal(used('A1'), 'requested', 'the request is remembered on the parcel');
+  assert.match(await req('A1'), /^refused: A1: a reattempt is already requested/);
+  assert.match(await req('A2'), /^refused: A2 has already had its one reattempt/);
+  w.eval('__next={ data:{ ok:false, reason:"already_requested", at:"2026-10-03T08:00:00Z" } }');
+  assert.match(await req('A4'), /already requested/, 'the server refusing a repeat is shown, not reported as sent');
+  assert.equal(used('A4'), 'requested');
+  assert.equal(w.eval('__rpc.join(",")'), 'ai_action_request_reattempt:A1,ai_action_request_reattempt:A4', 'refused locally without calling the server');
+  ok('reattempt: one request per parcel; none after a used reattempt; a server refusal is shown and remembered');
+}
+
 console.log('PASS portal hardening: ' + passed.length + ' checks\n  - ' + passed.join('\n  - '));

@@ -1,4 +1,4 @@
-// Drift check for the 21 triggers on public.parcels (2 Oct 2026).
+// Drift check for the 22 triggers on public.parcels (2 Oct 2026).
 // Fails if any trigger is renamed, added, removed, disabled or pointed at a
 // different function. Postgres fires triggers of the same timing in NAME
 // order, so a rename can silently reorder them -- that is why names matter.
@@ -17,6 +17,7 @@ import { execFileSync } from 'node:child_process';
    BEFORE INSERT parcels_set_tracking_token_trg -> parcels_set_tracking_token
    BEFORE UPDATE trg_enforce_parcel_status_transition -> enforce_parcel_status_transition
    BEFORE UPDATE trg_nv_freeze_parcel_money -> nv_freeze_parcel_money
+   BEFORE UPDATE trg_nv_one_reattempt -> nv_one_reattempt
    BEFORE UPDATE trg_nv_protect_parcel_contact -> nv_protect_parcel_contact
    BEFORE INSERT/UPDATE zz_nv_stamp_status_since -> nv_stamp_status_since
    AFTER INSERT nv_email_first_booking -> nv_email_on_first_booking
@@ -40,6 +41,7 @@ const EXPECTED = [
   "BEFORE INSERT parcels_set_tracking_token_trg -> parcels_set_tracking_token",
   "BEFORE UPDATE trg_enforce_parcel_status_transition -> enforce_parcel_status_transition",
   "BEFORE UPDATE trg_nv_freeze_parcel_money -> nv_freeze_parcel_money",
+  "BEFORE UPDATE trg_nv_one_reattempt -> nv_one_reattempt",
   "BEFORE UPDATE trg_nv_protect_parcel_contact -> nv_protect_parcel_contact",
   "BEFORE INSERT/UPDATE zz_nv_stamp_status_since -> nv_stamp_status_since",
   "AFTER INSERT nv_email_first_booking -> nv_email_on_first_booking",

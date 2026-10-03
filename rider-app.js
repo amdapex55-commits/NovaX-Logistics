@@ -167,11 +167,14 @@
     if (p.status === "Return out for delivery")
       return '<button class="btn" data-write data-act="delivered" data-awb="' + esc(p.awb) + '">' + esc(t("returned")) + '</button><button class="btn secondary" data-write data-act="not_available" data-awb="' + esc(p.awb) + '">' + esc(t("notAvailable")) + '</button>';
     var att = Number(p.attempts || 0);
+    /* One reattempt per parcel (3 Oct 2026); the server refuses a second. */
+    var raUsed = !!(p.meta && Array.isArray(p.meta.steps) && p.meta.steps.indexOf("Reattempt") >= 0);
     return '<button class="btn" data-write data-act="delivered" data-awb="' + esc(p.awb) + '"' + (pay.conflict ? ' data-blocked disabled' : '') + '>' + esc(t("delivered")) + '</button>' +
-      (att < 3 ? '<button class="btn secondary" data-write data-act="reattempt" data-awb="' + esc(p.awb) + '">' + esc(t("reattempt")) + '</button>' : '') +
+      (att < 3 && !raUsed ? '<button class="btn secondary" data-write data-act="reattempt" data-awb="' + esc(p.awb) + '">' + esc(t("reattempt")) + '</button>' : '') +
       '<button class="btn danger" data-write data-act="refused" data-awb="' + esc(p.awb) + '">' + esc(t("refused")) + '</button>' +
       '<button class="btn secondary" data-write data-act="not_available" data-awb="' + esc(p.awb) + '">' + esc(t("notAvailable")) + '</button>' +
-      (att >= 3 ? '<p class="sla-note">3 attempts done. Mark Refused so it goes back.</p>' : '');
+      (att >= 3 ? '<p class="sla-note">3 attempts done. Mark Refused so it goes back.</p>'
+        : raUsed ? '<p class="sla-note">' + esc(LANG === "ur" ? "Reattempt ho chuka — deliver karein ya Refused / Not available lagayein." : "Already reattempted once. Deliver it, or mark Refused or Not available.") + '</p>' : '');
   }
   function empty() { return '<p class="empty">' + esc(t("nothing")) + '</p>'; }
   function selectAllBtn(scope, awbs) {

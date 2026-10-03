@@ -3928,7 +3928,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var hideDeliveryActions=(cls.key==="cash"||cls.key==="delayed"||cls.key==="return");
         var btns="";
         btns+=`<button class="ghost-btn" type="button" onclick="copyExceptionMessage('${p.awb}')">Copy Message</button>`;
-        if(!hideDeliveryActions) btns+=`<button class="action-btn" type="button" onclick="requestRedelivery('${p.awb}')">Reattempt</button><button class="ghost-btn" type="button" onclick="requestReturnToOrigin('${p.awb}')">Return</button>`;
+        if(!hideDeliveryActions){
+          var nvRaUsed=nvReattemptUsed(p);
+          btns+=(nvRaUsed ? `<span class="chip" title="${escLabelText(nvReattemptDoneMsg(p.awb,nvRaUsed))}">${nvRaUsed==="requested"?"Reattempt requested":"Reattempted once"}</span>`
+                          : `<button class="action-btn" type="button" onclick="requestRedelivery('${p.awb}')">Reattempt</button>`) +
+                `<button class="ghost-btn" type="button" onclick="requestReturnToOrigin('${p.awb}')">Return</button>`;
+        }
         btns+=`<button class="ghost-btn" type="button" onclick="messageCustomerException('${p.awb}')">Message Customer</button>`;
         /* Admin can correct a mis-typed city on a booked parcel; a merchant
            previously had to phone support. This gives them the same route
@@ -11080,6 +11085,23 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
     }
 
+    /* One reattempt per parcel (3 Oct 2026). "requested": the merchant has
+       already asked; "used": the parcel's reattempt was made and failed again.
+       ai_action_request_reattempt enforces the same rule on the server. */
+    function nvReattemptUsed(pOrAwb){
+      var p = typeof pOrAwb === "string" ? (state.parcels||[]).find(function(x){ return x && x.awb===pOrAwb; }) : pOrAwb;
+      if(!p) return "";
+      var m = p._meta || {};
+      if(m.reattemptRequestedAt) return "requested";
+      if((p.steps||[]).indexOf("Reattempt")>=0 && p.status!=="Reattempt") return "used";
+      return "";
+    }
+    window.nvReattemptUsed = nvReattemptUsed;
+    function nvReattemptDoneMsg(awb, used){
+      return used==="requested" ? awb+": a reattempt is already requested. Operations will act on it."
+                                : awb+" has already had its one reattempt. Ask for a return instead.";
+    }
+    window.nvReattemptDoneMsg = nvReattemptDoneMsg;
     function requestRedelivery(awb){
       // NovaX fix (item 2): this once "called the real
       // client_create_ops_request RPC" -- a function that has never existed
@@ -11089,6 +11111,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // callers (like Autopilot) can wait for the real result instead of
       // announcing success before the RPC resolves.
       const p=state.parcels.find(x=>x.awb===awb); if(!p) return Promise.reject(new Error("Parcel not found."));
+      const nvUsed=nvReattemptUsed(p);
+      if(nvUsed){ toast(nvReattemptDoneMsg(awb, nvUsed),"error"); return Promise.reject(new Error(nvReattemptDoneMsg(awb, nvUsed))); }
       const fb=document.getElementById("redeliveryFeedback")?.value.trim()||"Client requested redelivery.";
       if(!window.__nvSb){ toast("Cloud connection not ready yet, please try again in a moment."); return Promise.reject(new Error("Cloud connection not ready.")); }
       var __done = nvBusy("Sending\u2026");
@@ -11111,6 +11135,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             toast(`${awb}: reattempt requested. Operations will confirm in your ticket.`,"success");
           });
         }
+        var nvRes = r && r.data;
+        if(nvRes && nvRes.ok === false && (nvRes.reason === "already_requested" || nvRes.reason === "already_reattempted")){
+          if(nvRes.reason === "already_requested") p._meta = Object.assign({}, p._meta || {}, { reattemptRequestedAt: nvRes.at || new Date().toISOString() });
+          saveState(); try{ render(); }catch(e3){}
+          var nvMsg = nvReattemptDoneMsg(awb, nvRes.reason === "already_requested" ? "requested" : "used");
+          toast(nvMsg, "error");
+          throw new Error(nvMsg);
+        }
+        p._meta = Object.assign({}, p._meta || {}, { reattemptRequestedAt: new Date().toISOString() });
         p.clientFeedback = fb;
         saveState();
         try{ if(typeof window.__novaxReloadClientData==="function") window.__novaxReloadClientData(); }catch(e2){}
@@ -17088,12 +17121,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           return '<button class="nv-c-btn solid" data-nv-cock="editaddr" data-awb="'+awb+'">Change address</button>'+
                  '<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+awb+'">Ask for return</button>';
         }
+        var nvRaUsed = window.nvReattemptUsed ? window.nvReattemptUsed(awb) : "";
         if(NEEDS_ME.indexOf(st)>=0){
+          if(nvRaUsed) return '<span class="nv-c-note" style="align-self:center;font-size:12.5px;opacity:.75;padding:0 6px">'+(nvRaUsed==="requested"?"Reattempt requested":"Reattempted once")+'</span>'+
+                              '<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+awb+'">Ask for return</button>';
           return '<button class="nv-c-btn solid" data-nv-cock="reattempt" data-awb="'+awb+'">Re-attempt</button>';
         }
         /* #10. A parcel sitting at Reattempt for over a week offered nothing but
            "Report an issue". Re-delivery is the action it is waiting for. */
         if(st==="Reattempt"){
+          if(nvRaUsed) return '<span class="nv-c-note" style="align-self:center;font-size:12.5px;opacity:.75;padding:0 6px">Reattempt requested</span>'+
+                              '<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+awb+'">Chase it</button>';
           return '<button class="nv-c-btn solid" data-nv-cock="reattempt" data-awb="'+awb+'">Confirm re-delivery</button>'+
                  '<button class="nv-c-btn" data-nv-cock="ticket" data-awb="'+awb+'">Chase it</button>';
         }
@@ -17502,14 +17540,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          against the merchant's own account. */
       var NV_BULK_RULES={
         /* A re-attempt only means something after a delivery has FAILED. */
-        reattempt:function(p){ return NEEDS_ME.indexOf(String(p.status||""))>=0; },
+        reattempt:function(p){ return NEEDS_ME.indexOf(String(p.status||""))>=0 && !(window.nvReattemptUsed && window.nvReattemptUsed(p)); },
         /* Never put a label on a parcel the merchant has cancelled. */
         print:function(p){ return String(p.status||"")!=="Cancelled by client"; },
         message:function(p){ return !!String(p.phone||"").trim(); },
         export:function(){ return true; }
       };
       var NV_BULK_WHY={
-        reattempt:"Re-attempt only applies to parcels where a delivery already failed \u2014 refused, consignee unavailable, out of service area, or ready for return.",
+        reattempt:"Re-attempt only applies to parcels where a delivery already failed \u2014 refused, consignee unavailable, out of service area, or ready for return \u2014 and only once per parcel.",
         print:"Cancelled parcels cannot be printed.",
         message:"None of the selected parcels have a phone number saved."
       };
@@ -18417,6 +18455,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       row.className="nvauto-actions";
       actions.forEach(function(a){
         if(!a || !a.label) return;
+        if(a.type==="request_reattempt_awb" && a.awb && window.nvReattemptUsed && window.nvReattemptUsed(a.awb)) return;
         var b=document.createElement("button");
         b.type="button"; b.className="nvauto-action-btn"+(a.type==="confirm_action"?" nv-confirm":a.type==="cancel_confirm"?" nv-cancel":""); b.textContent=a.label;
         b.addEventListener("click",function(){ handleAction(a); });
@@ -18540,6 +18579,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       if(a.type==="request_reattempt_awb"){
         if(!a.awb){ addMsg("Which AWB needs a reattempt?","b"); return; }
+        var nvRaU = window.nvReattemptUsed ? window.nvReattemptUsed(a.awb) : "";
+        if(nvRaU){ addMsg(window.nvReattemptDoneMsg(a.awb, nvRaU),"b"); return; }
         var rac=buildReattemptConfirm(a.awb);
         setPendingAutopilotConfirm(rac.confirmAction);
         addMsg(rac.reply,"b",rac.actions);

@@ -15314,7 +15314,9 @@ html,body{ background:var(--bg); color:var(--ink); }
           <div class="inline-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
 
             <button class="ghost-btn" onclick="assignToBranchTeam('${nvEscAttrJs(r.awb)}')">Assign Branch/Team</button>
-            <button class="ghost-btn" onclick="requestReattemptAdmin('${nvEscAttrJs(r.awb)}')">Request Reattempt</button>
+            ${((state.parcels.find(x => x.awb === r.awb) || {}).steps || []).indexOf("Reattempt") >= 0
+              ? `<span class="chip" title="One reattempt per parcel. An admin can still set it from Order Processing.">Reattempted once</span>`
+              : `<button class="ghost-btn" onclick="requestReattemptAdmin('${nvEscAttrJs(r.awb)}')">Request Reattempt</button>`}
             <button class="ghost-btn" onclick="markReturnToOriginAdmin('${nvEscAttrJs(r.awb)}')">Mark Return to Origin</button>
             <button class="ghost-btn" onclick="requestClientDecisionAdmin('${nvEscAttrJs(r.awb)}')">Request Client Decision</button>
             <button class="ghost-btn" onclick="queueNotifyClientAdmin('${nvEscAttrJs(r.awb)}')">Queue Notification</button>
