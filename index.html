@@ -791,13 +791,18 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
 .lx{position:relative;z-index:2;width:min(430px,92vw);text-align:center;padding:0 14px}
 .lx h3{margin:0;font:800 clamp(20px,4vw,25px)/1.2 var(--display);letter-spacing:-.02em}
 .lx .lx-sub{color:var(--ink-2);font-size:13.5px;margin-top:5px;min-height:1.4em}
-.lx-slot{width:220px;height:8px;margin:0 auto;border-radius:4px;background:#0a2318;border:1px solid rgba(126,224,175,.25);position:relative}
+.lx-slot{width:calc(min(212px,64vw) + 18px);height:8px;margin:6px auto 0;border-radius:4px;background:#0a2318;border:1px solid rgba(126,224,175,.25);position:relative;z-index:4}
 .lx-slot i{position:absolute;left:8px;right:8px;top:2px;height:2px;background:var(--green-2);opacity:0;box-shadow:0 0 12px var(--green);transition:opacity .2s}
 .lx-slot.hot i{opacity:1}
-.lx-mach{font-family:var(--mono);font-size:10px;letter-spacing:.22em;color:var(--ink-3);margin-top:7px}
-.lx-stagearea{position:relative;width:min(212px,64vw);aspect-ratio:212/300;max-height:44svh;margin:14px auto 0;perspective:900px}
+.lx-mach{font-family:var(--mono);font-size:10px;letter-spacing:.22em;color:var(--ink-3);margin-top:22px}
+/* The label is clipped at the slot so it visibly feeds out of the printer;
+   only the top edge is clipped, so its shadow and the stamp still show. A
+   soft lip of shade sits where it exits. Released (.free) for the peel. */
+.lx-stagearea{position:relative;width:min(212px,64vw);aspect-ratio:212/300;max-height:44svh;margin:-3px auto 0;perspective:900px;clip-path:inset(0 -80px -120px -80px)}
+.lx-stagearea::before{content:"";position:absolute;left:-6px;right:-6px;top:0;height:16px;z-index:3;pointer-events:none;background:linear-gradient(rgba(4,16,11,.85),rgba(4,16,11,0))}
+.lx-stagearea.free{clip-path:none}.lx-stagearea.free::before{display:none}
 #lxLabel{position:absolute;inset:0;background:#f7f5ee;border-radius:3px;color:#11150f;padding:clamp(10px,3.2vw,14px) clamp(9px,3vw,13px);
-  transform:translate3d(0,-340px,0);transform-origin:top center;box-shadow:0 14px 30px rgba(0,0,0,.45);text-align:left;will-change:transform;backface-visibility:hidden}
+  transform:translate3d(0,-101%,0);transform-origin:top center;box-shadow:0 14px 30px rgba(0,0,0,.45);text-align:left;will-change:transform;backface-visibility:hidden}
 .lxl-top{display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #11150f;padding-bottom:7px}
 .lxl-top b{font-weight:800;font-size:13px;letter-spacing:-.01em}
 .lxl-top span{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em}
@@ -807,22 +812,38 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
 .lxl-row .lxl-k{margin-top:0;font-size:clamp(7px,2.2vw,8px)}
 .lxl-row div{min-width:0}
 .lxl-row div>div:last-child{font-size:clamp(10px,3.1vw,11.5px);font-weight:800;min-height:1.2em;overflow-wrap:anywhere}
-#lxBars{margin-top:clamp(8px,2.6vw,13px);height:clamp(38px,12vw,52px);display:flex;align-items:flex-end;gap:1.5px;
+#lxBars{margin-top:clamp(8px,2.6vw,13px);height:clamp(38px,12vw,52px);
   overflow:hidden;clip-path:inset(0 100% 0 0);transition:clip-path .58s linear;will-change:clip-path}
 #lxBars.drawn{clip-path:inset(0 0 0 0)}
-#lxBars i{display:block;background:#11150f;flex:0 0 auto}
+#lxBars svg{display:block;width:100%;height:100%}
 #lxNum{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-align:center;margin-top:5px;min-height:1.3em}
-#lxStamp{position:absolute;right:12px;bottom:14px;border:2.5px solid #1d9e75;color:#0f6e56;font-family:var(--mono);
-  font-size:11px;font-weight:800;letter-spacing:.1em;padding:5px 9px;border-radius:3px;
-  transform:rotate(-14deg) scale(2.4);opacity:0;transition:transform .32s cubic-bezier(.3,1.5,.4,1),opacity .2s}
-#lxStamp.on{opacity:1;transform:rotate(-14deg) scale(1)}
+.lxl-foot{position:absolute;left:clamp(9px,3vw,13px);right:clamp(9px,3vw,13px);bottom:clamp(10px,3.2vw,14px);
+  border-top:1.5px dashed #11150f;padding-top:6px;display:flex;flex-direction:column;gap:2px}
+.lxl-foot .lxl-k{margin-top:2px;font-size:clamp(7px,2.2vw,8px)}
+.lxl-foot div>div:last-child{font-size:clamp(10px,3.1vw,11.5px);font-weight:800;min-height:1.2em}
+/* Inked, fully inside the label, lands with a short thunk. */
+#lxStamp{position:absolute;right:clamp(12px,3.6vw,16px);bottom:clamp(16px,4.6vw,22px);border:2.5px solid #0f6e56;color:#0f6e56;
+  background:rgba(29,158,117,.07);font-family:var(--mono);font-size:12px;font-weight:800;letter-spacing:.12em;padding:5px 10px;border-radius:4px;
+  mix-blend-mode:multiply;transform:rotate(-9deg) scale(1.9);opacity:0;transition:transform .26s cubic-bezier(.2,1.6,.35,1),opacity .14s}
+#lxStamp.on{opacity:.92;transform:rotate(-9deg) scale(1)}
+@keyframes lxThunk{0%{translate:0 0}35%{translate:0 3px}100%{translate:0 0}}
+#lxLabel.thunk{animation:lxThunk .22s ease-out}
 .lx-cap{font-family:var(--mono);font-size:11.5px;color:var(--green-2);letter-spacing:.05em;margin-top:16px;min-height:1.4em;transition:opacity .25s}
 #lxWipe{position:absolute;left:50%;top:50%;width:240vmax;height:240vmax;border-radius:50%;background:var(--green);
   transform:translate3d(-50%,-50%,0) scale(0);opacity:.96;z-index:3;will-change:transform}
 #lxWipe.go{transition:transform .7s cubic-bezier(.7,0,.3,1);transform:translate3d(-50%,-50%,0) scale(1)}
 @media (hover:none){.lx-stagearea{perspective:none}#lxLabel{box-shadow:0 8px 18px rgba(0,0,0,.4)}#lxTitle{font-size:19px}}
 @media (max-height:680px){.lx-stagearea{max-height:38svh;margin-top:10px}.lx-cap{margin-top:10px}.lx .lx-sub{font-size:12.5px}}
-@media (prefers-reduced-motion:reduce){#lxLabel,#lxStamp,#lxWipe,#lxBars{transition:none!important}}
+@media (prefers-reduced-motion:reduce){#lxLabel,#lxStamp,#lxWipe,#lxBars{transition:none!important;animation:none!important}}
+/* Signed-in merchants: the name on the label glides into the portal's
+   greeting (cross-document view transition; Chrome, Edge, Safari 18+).
+   Elsewhere the green wipe below still carries the hand-off. */
+/* The @view-transition opt-in itself is added by launchWorkspace() only for
+   that navigation, so leaving this page any other way is untouched. */
+@media (prefers-reduced-motion:no-preference){
+  ::view-transition-group(nv-who){animation-duration:.6s;animation-timing-function:cubic-bezier(.2,.8,.2,1)}
+  ::view-transition-old(root),::view-transition-new(root){animation-duration:.38s}
+}
 </style>
 </head>
 <body>
@@ -1601,9 +1622,9 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
     <h3 id="lxTitle">Building your workspace</h3>
     <p class="lx-sub" id="lxSub">Setting things up…</p>
     <div aria-hidden="true">
-      <div class="lx-slot" id="lxSlot"><i></i></div>
       <div class="lx-mach">NOVAX THERMAL &middot; 4&times;6</div>
-      <div class="lx-stagearea">
+      <div class="lx-slot" id="lxSlot"><i></i></div>
+      <div class="lx-stagearea" id="lxStage">
         <div id="lxLabel">
           <div class="lxl-top"><b>NovaX</b><span>MERCHANT WORKSPACE</span></div>
           <div class="lxl-k">ACCOUNT</div>
@@ -1614,6 +1635,10 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
           </div>
           <div id="lxBars"></div>
           <div id="lxNum">&nbsp;</div>
+          <div class="lxl-foot">
+            <div><div class="lxl-k">ISSUED</div><div id="lxIssued">&nbsp;</div></div>
+            <div><div class="lxl-k">STATUS</div><div id="lxStatus">&nbsp;</div></div>
+          </div>
           <div id="lxStamp">READY</div>
         </div>
       </div>
@@ -2063,6 +2088,24 @@ function clearNovaxSession(){ try{ localStorage.removeItem("novaxSession"); }cat
    barcode draws bar by bar, a READY stamp lands, then the label peels
    away and a green wipe carries straight into client.html.
    `info` personalises the label: {who, city, plan}. */
+/* Code 128, set B: the table client-app.js prints every AWB label with.
+   The account code on the launch label is a real, scannable barcode. */
+var LX_C128=["212222","222122","222221","121223","121322","131222","122213","122312","132212","221213","221312","231212","112232","122132","122231","113222","123122","123221","223211","221132","221231","213212","223112","312131","311222","321122","321221","312212","322112","322211","212123","212321","232121","111323","131123","131321","112313","132113","132311","211313","231113","231311","112133","112331","132131","113123","113321","133121","313121","211331","231131","213113","213311","213131","311123","311321","331121","312113","312311","332111","314111","221411","431111","111224","111422","121124","121421","141122","141221","112214","112412","122114","122411","142112","142211","241211","221114","413111","241112","134111","111242","121142","121241","114212","124112","124211","411212","421112","421211","212141","214121","412121","111143","111341","131141","114113","114311","411113","411311","113141","114131","311141","411131","211412","211214","211232","2331112"];
+function lxCode128Svg(value){
+  var s=String(value==null?"":value).replace(/[^ -~]/g,"")||" ";
+  var codes=[104], sum=104, i, k;
+  for(i=0;i<s.length;i++){ var v=s.charCodeAt(i)-32; codes.push(v); sum+=v*(i+1); }
+  codes.push(sum%103); codes.push(106);
+  var pattern=""; for(i=0;i<codes.length;i++) pattern+=LX_C128[codes[i]];
+  var units=0; for(k=0;k<pattern.length;k++) units+=Number(pattern.charAt(k));
+  var x=0, rects="", bar=true;
+  for(k=0;k<pattern.length;k++){ var w=Number(pattern.charAt(k)); if(bar) rects+='<rect x="'+x+'" y="0" width="'+w+'" height="100"/>'; x+=w; bar=!bar; }
+  return '<svg viewBox="0 0 '+units+' 100" preserveAspectRatio="none" shape-rendering="crispEdges" aria-hidden="true"><g fill="#11150f">'+rects+'</g></svg>';
+}
+function lxGreetingPart(){
+  var h=12; try{ h=Number(new Intl.DateTimeFormat("en-GB",{hour:"numeric",hour12:false,timeZone:"Asia/Karachi"}).format(new Date())); }catch(e){}
+  return h<5?"Good evening":h<12?"Good morning":h<17?"Good afternoon":"Good evening";
+}
 function launchWorkspace(target,title,sub,info){
   var ov=$("launch");
   if(!ov){ window.location.href=target; return; }
@@ -2075,9 +2118,25 @@ function launchWorkspace(target,title,sub,info){
 
   var slot=$("lxSlot"), label=$("lxLabel"), whoEl=$("lxWho"), cityEl=$("lxCity"),
       planEl=$("lxPlan"), bars=$("lxBars"), num=$("lxNum"), stamp=$("lxStamp"),
-      cap=$("lxCap"), wipe=$("lxWipe");
+      cap=$("lxCap"), wipe=$("lxWipe"), stage=$("lxStage"), issuedEl=$("lxIssued"), statusEl=$("lxStatus");
   var timers=[], gone=false;
-  function go(){ if(gone) return; gone=true; window.location.href=target; }
+  /* Cross-document view transition only into the merchant portal, which is
+     the page that opts in and has the greeting to land on. */
+  var VT=!RMx && ("onpagereveal" in window) && /^client\.html/.test(String(target||""));
+  try{ sessionStorage.setItem("nvLaunchWho",who); }catch(e){}
+  function go(){
+    if(gone) return; gone=true;
+    if(VT && whoEl){
+      try{
+        var vt=document.createElement("style"); vt.textContent="@view-transition{navigation:auto}";
+        document.head.appendChild(vt);
+        whoEl.style.viewTransitionName="nv-who";
+        void getComputedStyle(whoEl).viewTransitionName;   /* applied before we leave */
+      }catch(e){}
+    }
+    window.location.href=target;
+  }
+  var issued=""; try{ issued=new Intl.DateTimeFormat("en-GB",{day:"numeric",month:"short",year:"numeric",timeZone:"Asia/Karachi"}).format(new Date()); }catch(e){}
   function at(fn,ms){ timers.push(setTimeout(fn,ms)); }
   function type(el,txt,speed){
     if(!el) return;
@@ -2101,18 +2160,16 @@ function launchWorkspace(target,title,sub,info){
   if(RMx){
     /* Reduced motion: show the finished label, then go. */
     if(label) label.style.transform="translate3d(0,0,0)";
-    if(bars){
-      var bh="", BW=[1.5,2,3.5];
-      for(var bi=0;bi<44;bi++) bh+='<i style="width:'+BW[bi%3]+'px;height:'+(38+((bi*7)%14))+'%"></i>';
-      bars.innerHTML=bh; bars.classList.add("drawn");
-    }
+    if(bars){ bars.innerHTML=lxCode128Svg(code()); bars.classList.add("drawn"); }
+    if(issuedEl) issuedEl.textContent=issued;
+    if(statusEl) statusEl.textContent="Active";
     if(whoEl) whoEl.textContent=who;
     if(cityEl) cityEl.textContent=city;
     if(planEl) planEl.textContent=plan;
     if(num) num.textContent=code();
     if(stamp) stamp.classList.add("on");
     if(cap) cap.textContent="Workspace ready";
-    setTimeout(go,800);
+    setTimeout(go,400);
     return;
   }
 
@@ -2126,7 +2183,7 @@ function launchWorkspace(target,title,sub,info){
   },160);
   /* 2. merchant's own details print onto it */
   at(function(){ type(whoEl,who,42); },620);
-  at(function(){ if(cityEl) cityEl.textContent=city; if(planEl) planEl.textContent=plan; },1050);
+  at(function(){ if(cityEl) cityEl.textContent=city; if(planEl) planEl.textContent=plan; if(issuedEl) issuedEl.textContent=issued; },1050);
   /* 3. barcode: built in ONE DOM write, then revealed with a clip-path
         transition. The old version appended 44 bars on 44 separate
         timers, which meant 44 reflows inside the label -- the reason the
@@ -2134,11 +2191,7 @@ function launchWorkspace(target,title,sub,info){
   at(function(){
     if(cap) cap.textContent="Generating your account code…";
     if(!bars) return;
-    var W=[1.5,2,3.5], html="";
-    for(var i=0;i<44;i++){
-      html+='<i style="width:'+W[i%3]+'px;height:'+(38+((i*7)%14))+'%"></i>';
-    }
-    bars.innerHTML=html;
+    bars.innerHTML=lxCode128Svg(code());
     /* next frame, so the browser paints the clipped state first */
     requestAnimationFrame(function(){ requestAnimationFrame(function(){ bars.classList.add("drawn"); }); });
   },1250);
@@ -2146,11 +2199,24 @@ function launchWorkspace(target,title,sub,info){
   /* 4. READY stamp lands */
   at(function(){
     if(slot) slot.classList.remove("hot");
+    if(statusEl) statusEl.textContent="Active";
     if(stamp) stamp.classList.add("on");
     if(cap) cap.textContent="Workspace ready";
   },2280);
+  /* the label takes the stamp's weight; a short tick on phones that allow it */
+  at(function(){
+    if(label){ label.classList.remove("thunk"); void label.offsetWidth; label.classList.add("thunk"); }
+    try{ if(TOUCH_LX && navigator.vibrate) navigator.vibrate(14); }catch(e){}
+  },2420);
+  if(VT){
+    /* The name glides into the portal's greeting; no peel, no wipe. */
+    at(go,2900);
+    at(go,8000);
+    return;
+  }
   /* 5. label peels away, wipe carries into the portal */
   at(function(){
+    if(stage) stage.classList.add("free");
     if(label){
       label.style.transition="transform .6s cubic-bezier(.5,0,.75,0)";
       /* Touch devices skip the rotateX peel -- a 3D transform on an
@@ -2457,7 +2523,7 @@ $("fSignin").addEventListener("submit",function(e){
         client_id:p.data.client_id||null,rider_id:p.data.rider_id||null,at:Date.now()})); }catch(e){}
       renderDone("mdlSignin","g","Signed In","Opening your NovaX workspace…",true);
       launchWorkspace(target,
-        target==="admin.html"?"Opening ops console":target==="rider.html"?"Opening rider app":target==="sales.html"?"Opening your sales page":"Opening your workspace",
+        target==="admin.html"?"Opening ops console":target==="rider.html"?"Opening rider app":target==="sales.html"?"Opening your sales page":lxGreetingPart(),
         "Signed in as "+email,
         { who:(meta.business_name||meta.full_name||email.split("@")[0]),
           city:(meta.city||"Pakistan"),
