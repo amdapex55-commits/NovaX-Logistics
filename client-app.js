@@ -421,7 +421,7 @@
     function nvObWhere(nav){
       var tabs = (typeof NV_BOTTOM_TABS !== "undefined" && NV_BOTTOM_TABS) ? NV_BOTTOM_TABS : [
         { id:"dashboard", label:"Home", ico:"\u2302" }, { id:"newBooking", label:"Book", ico:"\u002B" },
-        { id:"money", label:"Money", ico:"\u20A8" }, { id:"tickets", label:"Support", ico:"\u263A" }];
+        { id:"money", label:"NovaX Wallet", ico:"\u20A8" }, { id:"tickets", label:"Support", ico:"\u263A" }];
       var items = tabs.map(function(t){ return { id:t.id, label:t.label, ico:t.ico }; });
       items.push({ id:"more", label:"More", ico:"\u2261" });
       if (nav === "fab") {
@@ -4723,7 +4723,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     var NV_BOTTOM_TABS = [
       { id:"dashboard",  label:"Home",    ico:"\u2302" },
       { id:"newBooking", label:"Book",    ico:"\u002B" },
-      { id:"money",      label:"Money",   ico:"\u20A8" },
+      { id:"money",      label:"NovaX Wallet", ico:"\u20A8" },
       { id:"tickets",    label:"Support", ico:"\u263A" }
     ];
 
@@ -16775,7 +16775,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           /* Payments and Wallet were separate steps; both now alias to Money,
              so the tour showed the same tab twice and neither step highlighted
              anything. One step for the one tab that exists. */
-          { tab:"money", title:"Money", text:"Delivered parcels become payable invoices here, alongside your balance \u2014 and you can request a payout in a few taps." },
+          { tab:"money", title:"NovaX Wallet", text:"Delivered parcels become payable invoices here, alongside your balance \u2014 and you can request a payout in a few taps." },
           { tab:"subAccounts", title:"Sub Accounts", text:"Invite your team, finance, warehouse, or support, with their own scoped logins." },
           { tab:"support", title:"Talk To Your AI", text:"Tap the Autopilot button in the corner anytime. I read your live data and answer instantly." }
         ];
