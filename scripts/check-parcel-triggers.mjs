@@ -1,4 +1,4 @@
-// Drift check for the 22 triggers on public.parcels (2 Oct 2026).
+// Drift check for the 23 triggers on public.parcels (2 Oct 2026).
 // Fails if any trigger is renamed, added, removed, disabled or pointed at a
 // different function. Postgres fires triggers of the same timing in NAME
 // order, so a rename can silently reorder them -- that is why names matter.
@@ -28,6 +28,7 @@ import { execFileSync } from 'node:child_process';
    AFTER INSERT/UPDATE trg_nv_api_enqueue_status -> nv_api_enqueue_status
    AFTER INSERT trg_nv_log_cod_expected -> nv_log_cod_expected
    AFTER UPDATE trg_nv_log_parcel_contact -> nv_log_parcel_contact
+   AFTER INSERT/UPDATE trg_nv_woo_enqueue_status -> nv_woo_enqueue_status
    AFTER INSERT/UPDATE trg_parcel_status_log -> nv_log_parcel_status
    AFTER UPDATE zz_nv_swap_sync -> nv_swap_sync
 */
@@ -52,6 +53,7 @@ const EXPECTED = [
   "AFTER INSERT/UPDATE trg_nv_api_enqueue_status -> nv_api_enqueue_status",
   "AFTER INSERT trg_nv_log_cod_expected -> nv_log_cod_expected",
   "AFTER UPDATE trg_nv_log_parcel_contact -> nv_log_parcel_contact",
+  "AFTER INSERT/UPDATE trg_nv_woo_enqueue_status -> nv_woo_enqueue_status",
   "AFTER INSERT/UPDATE trg_parcel_status_log -> nv_log_parcel_status",
   "AFTER UPDATE zz_nv_swap_sync -> nv_swap_sync"
 ];
