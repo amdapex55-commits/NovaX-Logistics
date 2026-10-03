@@ -15,7 +15,9 @@ async function scenario({ loseInsertReply = false, loseFirstLookup = false, init
   let stored = null, insertCount = 0, lookupCount = 0, releaseCount = 0;
   const toasts = [], insertedIds = [];
   const fields = {
-    pickupAddress: { value: "Test warehouse" }, pickupRequestedFor: { value: "" },
+    /* The day/slot picker writes this hidden field (nvPkSync); since e116d8a a
+       pickup with no time is refused before anything is inserted. */
+    pickupAddress: { value: "Test warehouse" }, pickupRequestedFor: { value: "Mon 5 Oct, 10 AM - 12 PM (PKT)" },
     pickupNote: { value: "" }, requestPickupBtn: { disabled: false, textContent: "Request Pickup" },
   };
   const state = { pickupRequests: [] };
@@ -53,7 +55,7 @@ async function scenario({ loseInsertReply = false, loseFirstLookup = false, init
       querySelectorAll: () => [{ checked: true, value: "N9000005" }],
       getElementById: key => fields[key] || null,
     },
-    activePickupAwbs: () => new Set(), activeClientId: () => "merchant-1",
+    activePickupAwbs: () => new Set(), activeClientId: () => "merchant-1", nvPkSync: () => {},
     renderPickupEligibleList: () => {}, renderPickupRequestList: () => {},
     saveState: () => {}, toast: (message, kind) => toasts.push({ message, kind }),
     Date, Set, Promise, JSON, String, Array, Error,
@@ -61,6 +63,7 @@ async function scenario({ loseInsertReply = false, loseFirstLookup = false, init
   vm.runInContext(handler, context, { filename: "client-app.js:requestPickup" });
   context.requestPickup();
   await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(insertCount > 0, true, "the handler reached the insert (validation toast: " + JSON.stringify(toasts[0]?.message) + ")");
   if (loseFirstLookup) {
     assert.equal(toasts[0]?.kind, "error", "uncertain first attempt is not called a failure");
     assert.equal(releaseCount, 0, "uncertain request retains its durable key");
