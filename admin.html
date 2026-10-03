@@ -4455,6 +4455,47 @@ html,body{ background:var(--bg); color:var(--ink); }
     .nv-st-n{border-radius:10px;padding:8px;background:rgba(127,127,127,.08);text-align:center}
     .nv-st-n b{display:block;font-size:20px}.nv-st-n span{font-size:11px;color:var(--muted)}
     .nv-st-n.warn b{color:#c07a00}
+    .nv-st-n.good b{color:var(--green-ink)}
+    .nv-st-blk{color:var(--red);font-size:11.5px}
+    .nv-rb-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:2px 0 12px}
+    .nv-rb-bar .ghost-btn.is-on{border-color:var(--green-ink);color:var(--green-ink);font-weight:800}
+    .nv-rb-pick{min-height:38px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:0 10px}
+    .nv-rb-line{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:8px 0}
+    .nv-rb-top{margin:0 0 14px}
+    .nv-rb-stat{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--panel-soft)}
+    .nv-rb-stat b{display:block;font-size:20px;line-height:1.2;color:var(--ink)}
+    .nv-rb-stat span{font-size:12px;color:var(--muted)}
+    .nv-rb-stat.good b{color:var(--green-ink)}.nv-rb-stat.warn b{color:var(--amber)}.nv-rb-stat.bad b{color:var(--red)}
+    .nv-rb-card{border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 0 12px;background:var(--panel)}
+    .nv-rb-card-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+    .nv-rb-card-head b{font-size:16px}
+    .nv-rb-meta{margin:2px 0 8px}
+    .nv-rb-table td.num,.nv-rb-table th.num{text-align:right;white-space:nowrap}
+    .nv-rb-table td{vertical-align:top}
+    .nv-rb-addr{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .nv-rb-total td{font-weight:800;border-top:2px solid var(--line-strong)}
+    .nv-rb-dep{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:6px 0;border-bottom:1px dashed var(--line);min-width:190px}
+    .nv-rb-dep .ghost-btn{white-space:nowrap;padding:5px 10px;font-size:12.5px}
+    .nv-rb-table td .footer-note{margin-top:2px;line-height:1.35}
+    .nv-rb-dep:last-child{border-bottom:0}
+    .nv-rb-sm{padding:4px 9px;font-size:12px;margin-top:4px}
+    @media (max-width:600px){ .nv-rb-addr{max-width:150px} }
+    /* Phones: each rider row becomes a card, label on the left. */
+    @media (max-width:700px){
+      .nv-rb-cards thead{display:none}
+      .nv-rb-cards, .nv-rb-cards tbody, .nv-rb-cards tr, .nv-rb-cards td{display:block;width:100%}
+      .nv-rb-cards tr{border-bottom:1px solid var(--line);padding:10px 12px}
+      .nv-rb-cards td{border:0;padding:4px 0}
+      .nv-rb-cards td[data-l]{display:grid;grid-template-columns:auto 1fr;column-gap:12px;row-gap:3px;text-align:right;align-items:start}
+      .nv-rb-cards td[data-l]::before{content:attr(data-l);color:var(--muted);font-size:12px;text-align:left;grid-column:1;grid-row:1 / span 6}
+      .nv-rb-cards td[data-l] > *{grid-column:2;justify-self:end;text-align:right}
+      .nv-rb-cards .nv-rb-dep{align-items:flex-end;min-width:0}
+      .nv-rb-route th:nth-child(3), .nv-rb-route td:nth-child(3), .nv-rb-route th:nth-child(5), .nv-rb-route td:nth-child(5){display:none}
+      .nv-rb-route{min-width:0 !important;width:100%}
+      .nv-rb-route .nv-rb-addr{max-width:34vw}
+      .nv-rb-route td:nth-child(4){font-size:12.5px}
+      .nv-rb-route th, .nv-rb-route td{padding-left:8px;padding-right:8px}
+    }
     .nv-st-chk{display:inline-flex;align-items:center;gap:5px;margin:0 12px 4px 0;font-size:13px;white-space:nowrap}
 </style>
   <!-- NovaX (admin AWB parity): AWB print modes, identical to client.html.
@@ -5979,56 +6020,18 @@ html,body{ background:var(--bg); color:var(--ink); }
                  app; this is head office's view of every city at once. -->
             <section class="admin-module" id="admin-riders-stations">
               <div class="panel">
-                <div class="section-head"><div><h3>Stations</h3><p>Every city at a glance: waiting for pickup, coming in, at the station, out for delivery and waiting to be sent on. Updated by the riders' app, no WhatsApp needed.</p></div>
-                  <div class="inline-actions"><button class="ghost-btn" type="button" onclick="nvStLoad()">Refresh</button></div></div>
+                <div class="section-head"><div><h3>Stations</h3><p>Each city's parcels right now, who covers it, and what is travelling between cities. Updated by the riders' app.</p></div>
+                  <div class="inline-actions"><button class="ghost-btn" type="button" id="syncDestinationRoutesBtn">Sync Destination Routes</button><button class="ghost-btn" type="button" onclick="nvStLoad()">Refresh</button></div></div>
                 <div id="nvStRoot"><p class="footer-note">Loading…</p></div>
               </div>
             </section>
             <section class="admin-module" id="admin-riders">
               <div class="panel">
-                <div class="section-head">
-                  <div>
-                    <h3>Riders & Cash</h3>
-                    <p>Cash exposure, fake-attempt risk, scan count, and assignment block controls.</p>
-                  </div>
-                  <div class="inline-actions">
-                    <button class="ghost-btn" id="syncDestinationRoutesBtn">Sync Destination Routes</button>
-                    <button class="action-btn" id="addRiderBtn">Add Rider</button>
-                  </div>
-                </div>
-                <div class="rider-form">
-                  <div class="mini-form rider-mini">
-                    <div class="field"><label>Rider Name</label><input id="newRiderName" value="New Rider"></div>
-                    <div class="field"><label>Username</label><input id="newRiderUser" value="rider.login"></div>
-                    <div class="field"><label>Password</label><input id="newRiderPassword" value="rider123"></div>
-                    <div class="field"><label>Branch</label><select id="newRiderBranch"><option>Karachi Hub</option><option>Lahore Hub</option><option>Islamabad Hub</option><option>Rawalpindi Hub</option></select></div>
-                    <div class="field"><label>Wallet Limit (cash)</label><input id="newRiderLimit" type="number" value="75000"></div>
-                    <div class="field"><label>Manager</label><select id="newRiderManager"><option>Karachi Hub Manager</option><option>Lahore Hub Manager</option><option>Islamabad Hub Manager</option></select></div>
-                  </div>
-                  <div class="mini-form mt-10">
-                    <div class="field"><label>Active Rider</label><select id="riderCashSelect"></select></div>
-                    <div class="field"><label>Expense Type</label><select id="riderExpenseType"><option>Fuel</option><option>Bike repair</option><option>Mobile load</option><option>Route toll</option></select></div>
-                    <div class="field"><label>Expense Amount</label><input id="riderExpenseAmount" type="number" value="1500"></div>
-                    <div class="field"><label>Bike Average (km/L)</label><input id="riderFuelAverage" type="number" min="10" max="100" value="40"></div>
-                    <div class="inline-actions">
-                      <button class="ghost-btn" id="saveRiderFuelAverageBtn">Save Bike Average</button>
-                      <button class="ghost-btn" id="riderExpenseBtn">Deduct Expense First</button>
-                      <button class="action-btn" id="collectRiderCashBtn">Collect Cash</button>
-                    </div>
-                  </div>
-                  <div class="footer-note mt-8" id="riderCashPreview"></div>
-                </div>
-                <div class="table-wrap">
-                  <div class="wide-scroll">
-                    <table>
-                      <thead><tr><th>Rider</th><th>Credentials</th><th>Receivable</th><th>Cash Held</th><th>Limit</th><th>Scans</th><th>Fake Risk</th><th>Access</th></tr></thead>
-                      <tbody id="adminRiderRows"></tbody>
-                    </table>
-                  </div>
-                </div>
+                <div class="section-head"><div><h3>Rider On Route</h3><p>Who is out right now, what each rider is carrying, and how today is going.</p></div>
+                  <div class="inline-actions"><button class="ghost-btn" type="button" onclick="nvRbLoad(true)">Refresh</button></div></div>
+                <div id="nvRbRoute"><p class="footer-note">Loading riders…</p></div>
               </div>
             </section>
-
             <section class="admin-module" id="admin-payments">
               <div class="grid two">
                 <div class="panel">
@@ -6396,15 +6399,16 @@ html,body{ background:var(--bg); color:var(--ink); }
 
             <section class="admin-module" id="admin-riders-report">
               <div class="panel">
-                <div class="section-head"><div><h3>Rider Report</h3><p>Branch-wise rider productivity: delivered, returned, route time, cash handled, and fuel cost compared across riders.</p></div></div>
-                <div class="grid metrics mt-6" id="riderReportMetrics"></div>
-                <div id="riderReportContent" class="mt-14"></div>
+                <div class="section-head"><div><h3>Rider Report</h3><p>Pickups, deliveries, failed attempts, returns and cash per rider, for today or a recent period.</p></div>
+                  <div class="inline-actions"><button class="ghost-btn" type="button" onclick="nvRbLoad(true)">Refresh</button></div></div>
+                <div id="nvRbReport"><p class="footer-note">Loading riders…</p></div>
               </div>
             </section>
-
             <section class="admin-module" id="admin-riders-summary">
               <div class="panel">
-                <div class="section-head"><div><h3>Rider Summary</h3><p>Rider summary is ready for branch-wise rider health, cash risk, productivity, and breach history.</p></div></div>
+                <div class="section-head"><div><h3>Rider Summary</h3><p>Every rider, their login, cities, status and the cash they hold. Confirm handovers here once the money is in.</p></div>
+                  <div class="inline-actions"><button class="ghost-btn" type="button" onclick="nvRbLoad(true)">Refresh</button></div></div>
+                <div id="nvRbSummary"><p class="footer-note">Loading riders…</p></div>
               </div>
             </section>
 
@@ -11021,30 +11025,6 @@ html,body{ background:var(--bg); color:var(--ink); }
         </div>
       `).join("") || `<div class="ops-card"><strong>No completed evaluations yet</strong><p>Resolved alerts will collect here for end-of-day review.</p></div>`;
 
-      document.getElementById("adminRiderRows").innerHTML = state.riders.map(r => {
-        const receivable = riderReceivable(r.id);
-        const exposureAmount = r.cashHeld + receivable;
-        const exposure = percent(exposureAmount, r.cashLimit);
-        const blocked = exposureAmount > r.cashLimit;
-        return `
-          <tr>
-            <td><strong>${escLabelText(r.name)}</strong><br><span class="footer-note">${escLabelText(r.username || "no username set")}</span></td>
-            <td>${escLabelText(r.username || "pending")}<br><span class="footer-note">Pass: hidden | ${escLabelText(r.manager || "No manager")}</span></td>
-            <td><strong>${money(receivable)}</strong><br><span class="footer-note">Delivered COD not collected by branch</span></td>
-            <td>${money(r.cashHeld)}<br><span class="footer-note">Expenses deducted ${money(r.expenses)}</span></td>
-            <td>${money(r.cashLimit)}</td>
-            <td>${r.scans}</td>
-            <td>
-              <div class="meter ${meterClass(r.fakeRisk)}"><span style="width:${r.fakeRisk}%"></span></div>
-              <div class="meter-caption"><span>fake attempt risk</span><span>${r.fakeRisk}%</span></div>
-            </td>
-            <td><span class="chip ${blocked ? "bad" : "good"}">${blocked ? "app blocked" : "active"}</span><br><span class="footer-note">${exposure}% cash exposure. ${blocked ? "No rider app or portal access." : "Credentials valid."}</span></td>
-          </tr>
-        `;
-      }).join("");
-      document.getElementById("riderCashSelect").innerHTML = state.riders.map(r => `<option value="${r.id}">${escLabelText(r.name)}</option>`).join("");
-      updateRiderCashPreview();
-      renderRiderReport();
 
       document.getElementById("barometerList").innerHTML = state.branches.map(b => {
         const health = Math.round((b.scanHealth + b.cashHealth) / 2) - (b.discrepancy * 3);
@@ -11329,116 +11309,6 @@ html,body{ background:var(--bg); color:var(--ink); }
           <span class="chip ${row[2] ? "good" : "bad"}">${row[2] ? "ok" : "act"}</span>
         </div>
       `).join("");
-    }
-
-    function updateRiderCashPreview() {
-      const el = document.getElementById("riderCashPreview");
-      const sel = document.getElementById("riderCashSelect");
-      if (!el || !sel) return;
-      const rider = riderById(sel.value);
-      const amount = rider ? riderReceivable(rider.id) : 0;
-      const pending = rider ? state.parcels.filter(p => p.rider === rider.id && isDeliveredLedgerParcel(p) && !p.cashReceived && p._meta && p._meta.cashDepositStatus === "pending_confirmation") : [];
-      const batches = [...new Set(pending.map(p => p._meta.cashDepositBatchId).filter(Boolean))];
-      const pendingNet = batches.reduce((sum, id) => {
-        const parcel = pending.find(p => p._meta.cashDepositBatchId === id);
-        return sum + Number(parcel && parcel._meta.cashDepositNet || 0);
-      }, 0);
-      el.textContent = rider ? (pending.length
-        ? `${rider.name} reported ${money(pendingNet)} deposited to Karachi (${pending.length} parcels, ${batches.length} batch${batches.length === 1 ? "" : "es"}). Confirm only after cash is physically received.`
-        : `No rider-declared deposit is awaiting confirmation. Total uncollected delivered COD: ${money(amount)}. Wallet limit ${money(rider.cashLimit)}.`) : "Select a rider to collect cash.";
-      const avg = document.getElementById("riderFuelAverage");
-      if (avg && rider) avg.value = Number(rider.fuelEfficiencyKmL || 40);
-    }
-
-    function nvRiderGpsToday(riderId) {
-      const pkDay = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
-      const points = state.parcels.filter(p => p.rider === riderId && p.status === "Delivered").map(p => {
-        const loc = p._meta && p._meta.deliveryLocation;
-        if (!loc || !Number.isFinite(Number(loc.lat)) || !Number.isFinite(Number(loc.lng)) || !loc.at) return null;
-        const locDay = new Date(loc.at).toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
-        return locDay === pkDay ? { lat:Number(loc.lat), lng:Number(loc.lng), at:loc.at, awb:p.awb, address:p.address } : null;
-      }).filter(Boolean).sort((a,b) => new Date(a.at) - new Date(b.at));
-      let km = 0;
-      for (let i=1; i<points.length; i++) {
-        const a=points[i-1], b=points[i], R=6371;
-        const dLat=(b.lat-a.lat)*Math.PI/180, dLng=(b.lng-a.lng)*Math.PI/180;
-        const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
-        km += 2*R*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
-      }
-      return { stops:points.length, km, liters:km/40 };
-    }
-
-    function saveRiderFuelAverage() {
-      const rider = riderById((document.getElementById("riderCashSelect") || {}).value);
-      const value = Number((document.getElementById("riderFuelAverage") || {}).value);
-      if (!rider || !Number.isFinite(value) || value < 10 || value > 100) { toast("Enter a bike average between 10 and 100 km/L.", "error"); return; }
-      rider.fuelEfficiencyKmL = value;
-      saveState();
-      renderRiderReport();
-      toast(`${rider.name} bike average saved at ${value} km/L.`, "success");
-    }
-
-    function riderReportStats(riderId) {
-      const delivered = state.parcels.filter(p => p.rider === riderId && p.status === "Delivered");
-      const returned = state.parcels.filter(p => p.rider === riderId && ["Return to shipper", "Refused", "Consignee not available"].includes(p.status));
-      const cashHandled = delivered.reduce((s, p) => s + Number(p.cod || 0), 0);
-      const fuel = state.expenses.filter(e => e.riderId === riderId && /fuel/i.test(e.type || e.name || "")).reduce((s, e) => s + Number(e.amount || 0), 0);
-      const allExp = state.expenses.filter(e => e.riderId === riderId).reduce((s, e) => s + Number(e.amount || 0), 0);
-      const stops = delivered.length + returned.length;
-      const routeMins = stops * 24;
-      const routeTime = routeMins ? `${Math.floor(routeMins / 60)}h ${routeMins % 60}m` : "0h";
-      const success = stops ? Math.round((delivered.length / stops) * 100) : 0;
-      const gps = nvRiderGpsToday(riderId);
-      const rider = riderById(riderId);
-      const fuelAverage = Number((rider && rider.fuelEfficiencyKmL) || 40);
-      gps.liters = gps.km / fuelAverage;
-      return { delivered: delivered.length, returned: returned.length, cashHandled, fuel, allExp, routeTime, success, stops, gpsStops:gps.stops, routeKm:gps.km, fuelLiters:gps.liters, fuelAverage };
-    }
-
-    function renderRiderReport() {
-      const metricsEl = document.getElementById("riderReportMetrics");
-      const contentEl = document.getElementById("riderReportContent");
-      if (!contentEl) return;
-      const stats = state.riders.map(r => ({ r, s: riderReportStats(r.id) }));
-      const totalDelivered = stats.reduce((a, x) => a + Number(x.s.delivered || 0), 0);
-      const totalReturned = stats.reduce((a, x) => a + Number(x.s.returned || 0), 0);
-      const totalCash = stats.reduce((a, x) => a + Number(x.s.cashHandled || 0), 0);
-      const totalFuel = stats.reduce((a, x) => a + Number(x.s.fuel || 0), 0);
-      const totalRouteKm = stats.reduce((a, x) => a + Number(x.s.routeKm || 0), 0);
-      const totalFuelLiters = stats.reduce((a, x) => a + Number(x.s.fuelLiters || 0), 0);
-      if (metricsEl) {
-        metricsEl.innerHTML = [
-          metricCard("Total Delivered", totalDelivered, Math.min(100, totalDelivered * 4), "all riders", "good"),
-          metricCard("Total Returned", totalReturned, Math.min(100, totalReturned * 8), "refused / returned / no-response", totalReturned ? "amber" : "good"),
-          metricCard("Cash Handled", money(totalCash), Math.min(100, percent(totalCash, 500000)), "delivered COD", "blue"),
-          metricCard("Distance Today", `${totalRouteKm.toFixed(1)} km`, Math.min(100, totalRouteKm), `${totalFuelLiters.toFixed(2)} L estimated at 40 km/L`, "amber")
-        ].join("");
-      }
-      const maxDelivered = Math.max(1, ...stats.map(x => x.s.delivered));
-      const branches = {};
-      stats.forEach(x => { const b = x.r.branch || "Unassigned"; (branches[b] = branches[b] || []).push(x); });
-      contentEl.innerHTML = Object.entries(branches).map(([branch, rows]) => `
-        <div class="panel soft-panel" style="margin-bottom:14px">
-          <div class="section-head"><div><h3>${branch}</h3><p>${rows.length} rider(s) \u00b7 compare delivered, returned, cash and fuel.</p></div></div>
-          <div class="table-wrap"><div class="wide-scroll"><table>
-            <thead><tr><th>Rider</th><th>Delivered</th><th>Returned</th><th>Success</th><th>GPS Stops Today</th><th>Distance Today</th><th>Est. Fuel</th><th>Cash Handled</th><th>Fuel Cost</th><th>Vs Others</th></tr></thead>
-            <tbody>
-            ${rows.map(({ r, s }) => `<tr>
-              <td><strong>${escLabelText(r.name)}</strong><br><span class="footer-note">${r.username || "no username set"}</span></td>
-              <td><strong>${s.delivered}</strong></td>
-              <td>${s.returned}</td>
-              <td><span class="chip ${s.success >= 80 ? "good" : s.success >= 50 ? "warn" : "bad"}">${s.success}%</span></td>
-              <td>${s.gpsStops}</td>
-              <td><strong>${s.routeKm.toFixed(1)} km</strong></td>
-              <td>${s.fuelLiters.toFixed(2)} L<br><span class="footer-note">at ${s.fuelAverage} km/L</span></td>
-              <td>${money(s.cashHandled)}</td>
-              <td>${money(s.fuel)}</td>
-              <td><div class="meter ${s.delivered >= maxDelivered ? "" : "blue"}"><span style="width:${percent(s.delivered, maxDelivered)}%"></span></div></td>
-            </tr>`).join("")}
-            </tbody>
-          </table></div></div>
-        </div>
-      `).join("") || `<div class="ops-card"><strong>No riders yet</strong><p>Add a rider or create a rider user to see branch-wise reports.</p></div>`;
     }
 
     function renderRider() {
@@ -12057,6 +11927,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (state.activeAdminTab === "ai-answers") { try { nvAbLoad(); } catch(e){} }
       if (state.activeAdminTab === "clients-profile-changes") { try { nvPcLoad(); } catch(e){} }
       if (state.activeAdminTab === "riders-stations") { try { nvStLoad(); } catch(e){} }
+      if (["riders-route", "riders-report", "riders-summary"].indexOf(state.activeAdminTab) >= 0) { try { nvRbLoad(); } catch(e){} }
     }
 
     // NovaX fix (Order Processing RPC scope bug): rParcel() is defined much
@@ -15465,111 +15336,6 @@ html,body{ background:var(--bg); color:var(--ink); }
       renderAdmin();
     }
 
-    function addRider() {
-      // NovaX fix: this used to store a plaintext password on the rider/user
-      // record and tell admin the rider "can log in" -- but unlike
-      // createRiderUser(), it never called Supabase Auth, so no real login
-      // was ever created. That could send ops staff to a rider in the field
-      // with credentials that don't actually work anywhere. addRider() now
-      // only creates the roster/profile entry (name, branch, manager, cash
-      // limit) and explicitly tells admin to use "Create Rider Login" for a
-      // real, working account.
-      const name = document.getElementById("newRiderName").value.trim();
-      const username = document.getElementById("newRiderUser").value.trim();
-      const branch = document.getElementById("newRiderBranch").value;
-      const cashLimit = Number(document.getElementById("newRiderLimit").value);
-      if (!name || !username || !cashLimit || cashLimit < 1) {
-        toast("Rider name, username, and cash limit are mandatory.");
-        return;
-      }
-      const id = nextId("R", state.riders);
-      state.riders.push({
-        id,
-        name,
-        username,
-        branch,
-        manager: document.getElementById("newRiderManager").value,
-        cashHeld: 0,
-        cashLimit,
-        scans: 0,
-        fakeRisk: 5,
-        access: "Active",
-        expenses: 0
-      });
-      saveState();
-      render();
-      showAdminTab("riders-summary");
-      toast(`${id} roster profile created for ${branch}. This rider cannot log in yet -- go to Users > Create Users, set Access Side to "Rider App" and link this rider to give them a working account.`, "success");
-    }
-
-    function addRiderExpense() {
-      const rider = riderById(document.getElementById("riderCashSelect").value);
-      const amount = Number(document.getElementById("riderExpenseAmount").value);
-      const type = document.getElementById("riderExpenseType").value;
-      if (!rider || !amount || amount < 1) {
-        toast("Expense amount is mandatory.");
-        return;
-      }
-      rider.expenses = (rider.expenses || 0) + amount;
-      rider.cashHeld = Math.max(0, rider.cashHeld - amount);
-      const id = nextId("EXP", state.expenses);
-      state.expenses.unshift({
-        id,
-        name: `${type} - ${escLabelText(rider.name)}`,
-        type,
-        amount,
-        owner: rider.manager || rider.name,
-        status: "Pending cash deduction",
-        date: nvKarachiToday(),
-        riderId: rider.id
-      });
-      saveState();
-      render();
-      toast(`${money(amount)} ${type} expense logged for ${rider.name}. Added to the expense tab and finance summary.`);
-    }
-
-    function collectRiderCash() {
-      const rider = riderById(document.getElementById("riderCashSelect").value);
-      if (!rider) { toast("Select a rider first.", "error"); return; }
-      const allPending = state.parcels.filter(p => p.rider === rider.id && isDeliveredLedgerParcel(p) && !p.cashReceived);
-      const declared = allPending.filter(p => p._meta && p._meta.cashDepositStatus === "pending_confirmation");
-      const parcels = declared.length ? declared : allPending;
-      const batches = [...new Set(parcels.map(p => p._meta && p._meta.cashDepositBatchId).filter(Boolean))];
-      const amount = declared.length && batches.length ? batches.reduce((sum, id) => {
-        const parcel = parcels.find(p => p._meta && p._meta.cashDepositBatchId === id);
-        return sum + Number(parcel && parcel._meta.cashDepositNet || 0);
-      }, 0) : parcels.reduce((sum, p) => sum + Number(p.cod || 0), 0);
-      if (!parcels.length) {
-        toast("No delivered COD parcels are pending cash collection for this rider.");
-        return;
-      }
-      parcels.forEach(parcel => {
-        parcel.cashReceived = true;
-        parcel._meta = Object.assign({}, parcel._meta || {}, {
-          cashReceived: true,
-          cashDepositStatus: "confirmed",
-          cashConfirmedAt: new Date().toISOString(),
-          cashConfirmedBy: "Karachi head office"
-        });
-        parcel.exception = parcel.exception.replace("Cash above rider limit", "");
-        if (!parcel.steps.includes("Branch cash received")) parcel.steps.push("Branch cash received");
-      });
-      rider.cashHeld = Math.max(0, rider.cashHeld - amount);
-      state.paymentLogs.unshift({
-        id: nextId("PAY", state.paymentLogs),
-        clientId: parcels[0].clientId,
-        type: "Rider cash received",
-        amount,
-        status: "Cash in hand true",
-        ref: `${rider.id} | ${parcels.map(p => p.awb).join(", ")}`
-      });
-      syncRiderAccess();
-      saveState();
-      render();
-      toast(`${money(amount)} cash confirmed from ${rider.name}. The rider is no longer liable for ${parcels.length} parcel(s).`);
-    }
-
-
     function createInvoice(clientId, selectedParcels = null) {
       const parcels = selectedParcels || clientInvoiceParcels(clientId);
       if (!parcels.length) {
@@ -16940,8 +16706,244 @@ html,body{ background:var(--bg); color:var(--ink); }
       var b = document.getElementById("nvPcBadge"); if (!b) return;
       b.textContent = n; b.style.display = n > 0 ? "" : "none";
     }
-    /* ═══ Stations (29 Sep 2026) ═══════════════════════════════════════════ */
+    /* ═══ Riders: Stations, On Route, Report, Summary (rebuilt 3 Oct 2026) ═══
+       All four screens read the server, never browser state: stations from
+       admin_station_overview(), riders from admin_rider_board(). Cash is
+       confirmed, collected and limited through admin_* functions, which also
+       re-apply the block rule (undeposited COD over the limit = blocked). */
     var NV_ST_CITIES = ["Karachi", "Lahore", "Islamabad", "Rawalpindi"];
+    var NV_RB = { data: null, days: 7, city: "", busy: false, at: 0, showAllBatches: false };
+
+    function nvRbAgo(iso){
+      if (!iso) return "never";
+      var m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+      if (!isFinite(m)) return "—";
+      if (m < 1) return "just now";
+      if (m < 60) return m + " min ago";
+      var h = Math.round(m / 60);
+      if (h < 48) return h + " h ago";
+      return Math.round(h / 24) + " days ago";
+    }
+    function nvRbCityOk(r){
+      if (!NV_RB.city) return true;
+      var c = NV_RB.city.toLowerCase();
+      return (r.cities || []).some(function(x){ return String(x).toLowerCase() === c; }) ||
+             String(r.branch || "").toLowerCase().indexOf(c) === 0;
+    }
+    function nvRbDupes(riders){
+      var n = {}; (riders || []).forEach(function(r){ var k = String(r.name || "").trim().toLowerCase(); n[k] = (n[k] || 0) + 1; });
+      return n;
+    }
+    function nvRbCityPicker(){
+      return '<select class="nv-rb-pick" aria-label="City" onchange="NV_RB.city=this.value;nvRbRender()"><option value="">All cities</option>' +
+        NV_ST_CITIES.map(function(c){ return '<option' + (NV_RB.city === c ? ' selected' : '') + '>' + c + '</option>'; }).join("") + '</select>';
+    }
+    function nvRbStat(n, label, tone){
+      return '<div class="nv-rb-stat' + (tone ? ' ' + tone : '') + '"><b>' + n + '</b><span>' + label + '</span></div>';
+    }
+
+    async function nvRbLoad(force){
+      if (NV_RB.busy) return;
+      if (!force && NV_RB.data && Date.now() - NV_RB.at < 20000) { nvRbRender(); return; }
+      var sb = window.__nvSb; if (!sb) return;
+      NV_RB.busy = true;
+      ["nvRbRoute", "nvRbReport", "nvRbSummary"].forEach(function(id){
+        var el = document.getElementById(id); if (el && !NV_RB.data) el.innerHTML = '<p class="footer-note">Loading riders…</p>';
+      });
+      try {
+        var r = await sb.rpc("admin_rider_board", { p_days: NV_RB.days });
+        if (r.error) throw r.error;
+        NV_RB.data = r.data || {}; NV_RB.at = Date.now();
+      } catch (e) {
+        ["nvRbRoute", "nvRbReport", "nvRbSummary"].forEach(function(id){
+          var el = document.getElementById(id);
+          if (el) el.innerHTML = '<p class="footer-note">Could not load riders: ' + escLabelText((e && e.message) || e) + '. <button class="ghost-btn" type="button" onclick="nvRbLoad(true)">Try again</button></p>';
+        });
+        NV_RB.busy = false; return;
+      }
+      NV_RB.busy = false;
+      nvRbRender();
+    }
+    function nvRbRender(){
+      var t = state.activeAdminTab;
+      if (t === "riders-route") nvRbRenderRoute();
+      else if (t === "riders-report") nvRbRenderReport();
+      else if (t === "riders-summary") nvRbRenderSummary();
+    }
+
+    /* ── Rider On Route ─────────────────────────────────────────────────── */
+    function nvRbRenderRoute(){
+      var el = document.getElementById("nvRbRoute"); if (!el || !NV_RB.data) return;
+      var riders = (NV_RB.data.riders || []).filter(nvRbCityOk);
+      var out = 0, del = 0, fail = 0, cod = 0, onRoute = 0;
+      riders.forEach(function(r){
+        var n = (r.out_now || []).length; out += n; if (n) onRoute++;
+        del += Number(r.today && r.today.delivered || 0); fail += Number(r.today && r.today.failed || 0); cod += Number(r.today && r.today.cod || 0);
+      });
+      var active = riders.filter(function(r){ return (r.out_now || []).length || Number(r.today && (r.today.delivered + r.today.failed) || 0); });
+      var idle = riders.filter(function(r){ return active.indexOf(r) < 0; });
+      active.sort(function(a, b){ return (b.out_now || []).length - (a.out_now || []).length; });
+      var cards = active.map(function(r){
+        var list = r.out_now || [], shown = list.slice(0, 25);
+        var gps = r.last_gps && r.last_gps.lat != null
+          ? '<a href="https://www.google.com/maps?q=' + encodeURIComponent(r.last_gps.lat + ',' + r.last_gps.lng) + '" target="_blank" rel="noopener">Last GPS ' + escLabelText(nvRbAgo(r.last_gps.at)) + '</a>'
+          : '<span>No GPS yet</span>';
+        var rows = shown.map(function(p){
+          return '<tr><td><b>' + escLabelText(p.awb) + '</b>' + (p.status === "Return out for delivery" ? ' <span class="chip warn">return</span>' : '') +
+            '</td><td>' + escLabelText(p.consignee || "—") + '<div class="footer-note nv-rb-addr">' + escLabelText(p.address || "") + '</div></td><td>' + escLabelText(p.city || "") +
+            '</td><td class="num">' + (Number(p.cod) ? money(p.cod) : '<span class="footer-note">prepaid</span>') + '</td><td>' + escLabelText(nvRbAgo(p.since)) + '</td></tr>';
+        }).join("");
+        return '<div class="nv-rb-card">' +
+          '<div class="nv-rb-card-head"><div><b>' + escLabelText(r.name) + '</b> <span class="footer-note">' + escLabelText((r.cities || []).join(", ") || r.branch || "") + '</span></div>' +
+          '<span class="chip ' + (r.access === "Blocked" ? 'bad">Blocked' : list.length ? 'good">On route' : 'info">Back') + '</span></div>' +
+          '<div class="nv-rb-line">' + nvRbStat(list.length, "out now") + nvRbStat(Number(r.today.delivered || 0), "delivered today", "good") +
+          nvRbStat(Number(r.today.failed || 0), "failed today", Number(r.today.failed) ? "warn" : "") + nvRbStat(money(r.today.cod || 0), "COD today") + '</div>' +
+          '<div class="footer-note nv-rb-meta">Last scan ' + escLabelText(nvRbAgo(r.last_scan)) + ' · ' + gps + '</div>' +
+          (list.length ? '<div class="table-wrap"><table class="nv-rb-table nv-rb-route"><thead><tr><th>AWB</th><th>Customer</th><th>City</th><th class="num">COD</th><th>Out since</th></tr></thead><tbody>' + rows +
+            (list.length > shown.length ? '<tr><td colspan="5" class="footer-note">+' + (list.length - shown.length) + ' more parcels</td></tr>' : '') + '</tbody></table></div>' : '') +
+          '</div>';
+      }).join("");
+      el.innerHTML = '<div class="nv-rb-bar">' + nvRbCityPicker() + '<span class="footer-note">Updated ' + escLabelText(nvRbAgo(new Date(NV_RB.at).toISOString())) + '</span></div>' +
+        '<div class="nv-rb-line nv-rb-top">' + nvRbStat(onRoute, "riders out now") + nvRbStat(out, "parcels out now") + nvRbStat(del, "delivered today", "good") +
+        nvRbStat(fail, "failed today", fail ? "warn" : "") + nvRbStat(money(cod), "COD collected today") + '</div>' +
+        (cards || '<div class="ops-card"><strong>No rider is out right now</strong><p>Parcels marked "Parcel out for delivery" show here under the rider carrying them.</p></div>') +
+        (idle.length ? '<p class="footer-note mt-10">Not on route today: ' + idle.map(function(r){ return escLabelText(r.name) + (r.access === "Blocked" ? " (blocked)" : ""); }).join(", ") + '</p>' : '');
+    }
+
+    /* ── Rider Report ───────────────────────────────────────────────────── */
+    function nvRbSetDays(d){ NV_RB.days = d; NV_RB.data = null; nvRbLoad(true); }
+    function nvRbRenderReport(){
+      var el = document.getElementById("nvRbReport"); if (!el || !NV_RB.data) return;
+      var riders = (NV_RB.data.riders || []).filter(nvRbCityOk).slice();
+      riders.sort(function(a, b){ return Number(b.period.delivered || 0) - Number(a.period.delivered || 0); });
+      var T = { picked: 0, delivered: 0, failed: 0, returned: 0, cod: 0, confirmed: 0 };
+      var rows = riders.map(function(r){
+        var p = r.period || {}, tries = Number(p.delivered || 0) + Number(p.failed || 0);
+        var rate = tries ? Math.round(Number(p.delivered || 0) * 100 / tries) : null;
+        T.picked += Number(p.picked || 0); T.delivered += Number(p.delivered || 0); T.failed += Number(p.failed || 0);
+        T.returned += Number(p.returned || 0); T.cod += Number(p.cod || 0); T.confirmed += Number(r.cash && r.cash.confirmed_period || 0);
+        return '<tr><td><b>' + escLabelText(r.name) + '</b><div class="footer-note">' + escLabelText(r.branch || "") + '</div></td>' +
+          '<td class="num" data-l="Picked up">' + Number(p.picked || 0) + '</td><td class="num" data-l="Delivered"><b>' + Number(p.delivered || 0) + '</b></td><td class="num" data-l="Failed">' + Number(p.failed || 0) +
+          '</td><td class="num" data-l="Returned">' + Number(p.returned || 0) + '</td><td class="num" data-l="Success">' + (rate == null ? '—' : '<span class="chip ' + (rate >= 80 ? 'good' : rate >= 60 ? 'warn' : 'bad') + '">' + rate + '%</span>') +
+          '</td><td class="num" data-l="COD delivered">' + money(p.cod || 0) + '</td><td class="num" data-l="Cash confirmed">' + money(r.cash && r.cash.confirmed_period || 0) + '</td></tr>';
+      }).join("");
+      var tt = T.delivered + T.failed, trate = tt ? Math.round(T.delivered * 100 / tt) + '%' : '—';
+      var label = NV_RB.days === 1 ? "Today" : "Last " + NV_RB.days + " days";
+      el.innerHTML = '<div class="nv-rb-bar">' + [1, 7, 30].map(function(d){
+          return '<button type="button" class="ghost-btn' + (NV_RB.days === d ? ' is-on' : '') + '" onclick="nvRbSetDays(' + d + ')">' + (d === 1 ? "Today" : d + " days") + '</button>';
+        }).join("") + nvRbCityPicker() + '</div>' +
+        '<div class="nv-rb-line nv-rb-top">' + nvRbStat(T.delivered, "delivered", "good") + nvRbStat(T.failed, "failed attempts", T.failed ? "warn" : "") +
+        nvRbStat(trate, "success rate") + nvRbStat(money(T.cod), "COD delivered") + nvRbStat(money(T.confirmed), "cash confirmed in") + '</div>' +
+        '<div class="table-wrap"><table class="nv-rb-table nv-rb-cards"><thead><tr><th>Rider · ' + escLabelText(label) + '</th><th class="num">Picked up</th><th class="num">Delivered</th><th class="num">Failed</th><th class="num">Returned</th><th class="num">Success</th><th class="num">COD delivered</th><th class="num">Cash confirmed</th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="8">No riders.</td></tr>') +
+        '<tr class="nv-rb-total"><td>Total</td><td class="num" data-l="Picked up">' + T.picked + '</td><td class="num" data-l="Delivered">' + T.delivered + '</td><td class="num" data-l="Failed">' + T.failed + '</td><td class="num" data-l="Returned">' + T.returned + '</td><td class="num" data-l="Success">' + trate + '</td><td class="num" data-l="COD delivered">' + money(T.cod) + '</td><td class="num" data-l="Cash confirmed">' + money(T.confirmed) + '</td></tr>' +
+        '</tbody></table></div>' +
+        '<p class="footer-note mt-8">Counted from each parcel\'s status history, credited to the rider who holds the parcel now. Failed = refused, customer not available or sent for reattempt. Success = delivered ÷ (delivered + failed).</p>';
+    }
+
+    /* ── Rider Summary: roster and cash ─────────────────────────────────── */
+    function nvRbRenderSummary(){
+      var el = document.getElementById("nvRbSummary"); if (!el || !NV_RB.data) return;
+      var all = NV_RB.data.riders || [], riders = all.filter(nvRbCityOk), dup = nvRbDupes(all);
+      var holding = 0, pending = 0, blocked = 0;
+      riders.forEach(function(r){
+        holding += Number(r.cash.holding || 0);
+        (r.cash.pending || []).forEach(function(d){ pending += Number(d.net || 0); });
+        if (r.access === "Blocked") blocked++;
+      });
+      var rows = riders.map(function(r){
+        var c = r.cash || {}, owed = Number(c.holding || 0) + (c.pending || []).reduce(function(s, d){ return s + Number(d.net || 0); }, 0) + Number(r.cash_held || 0);
+        var over = owed > Number(r.cash_limit || 0);
+        var status = r.access === "Blocked"
+          ? '<span class="chip bad">Blocked</span><div class="footer-note">' + (over ? 'Owes ' + money(owed) + ', over the ' + money(r.cash_limit) + ' limit. Confirm handovers or collect cash to unblock.' : 'Blocked. It clears on the next cash update.') + '</div>'
+          : '<span class="chip good">Active</span>' + (over ? '<div class="footer-note">Over the limit; blocks on the next update.</div>' : '');
+        var pend = (c.pending || []).map(function(d){
+          return '<div class="nv-rb-dep"><div><b>' + money(d.net) + '</b> · ' + Number(d.parcels || 0) + ' parcel' + (Number(d.parcels) === 1 ? '' : 's') +
+            '<div class="footer-note">' + escLabelText(d.method || "Method not given") + (d.reference ? ' · ' + escLabelText(d.reference) : '') + ' · ' + escLabelText(nvDateTimeA(d.at)) + '</div></div>' +
+            '<button type="button" class="ghost-btn" onclick="nvRbConfirm(\'' + nvEscAttrJs(d.batch) + '\',\'' + nvEscAttrJs(r.id) + '\')">Confirm received</button></div>';
+        }).join("");
+        var login = r.login ? escLabelText(r.login) : '<span class="chip warn">No login</span><div class="footer-note"><a href="#" onclick="event.preventDefault();showAdminTab(\'users-create\')">Create it in Users</a></div>';
+        return '<tr><td><b>' + escLabelText(r.name) + '</b>' + (dup[String(r.name || "").trim().toLowerCase()] > 1 ? ' <span class="chip warn" title="Two roster rows have this name. Keep the one with the login.">duplicate name</span>' : '') +
+          '<div class="footer-note">' + escLabelText(r.branch || "") + (r.phone ? ' · ' + escLabelText(r.phone) : '') + '</div></td>' +
+          '<td data-l="Login">' + login + '</td><td data-l="Cities">' + escLabelText((r.cities || []).join(", ") || "—") + '</td><td data-l="Status">' + status + '</td>' +
+          '<td class="num" data-l="Holding"><b>' + money(c.holding || 0) + '</b><div class="footer-note">' + Number(c.holding_n || 0) + ' parcel' + (Number(c.holding_n) === 1 ? '' : 's') + (c.oldest && Number(c.holding || 0) ? ' · oldest ' + escLabelText(nvRbAgo(c.oldest)) : '') + '</div>' +
+          (Number(c.holding || 0) ? '<button type="button" class="ghost-btn nv-rb-sm" onclick="nvRbCollect(\'' + nvEscAttrJs(r.id) + '\')">Collect at office</button>' : '') + '</td>' +
+          '<td data-l="Handed over">' + (pend || '<span class="footer-note">Nothing waiting</span>') + '</td>' +
+          '<td class="num" data-l="Cash limit">' + money(r.cash_limit || 0) + '<div><button type="button" class="ghost-btn nv-rb-sm" onclick="nvRbLimit(\'' + nvEscAttrJs(r.id) + '\')">Change</button></div></td></tr>';
+      }).join("");
+      el.innerHTML = '<div class="nv-rb-bar">' + nvRbCityPicker() + '<button type="button" class="action-btn" onclick="nvRbAdd()">Add rider</button></div>' +
+        '<div class="nv-rb-line nv-rb-top">' + nvRbStat(riders.length, "riders") + nvRbStat(blocked, "blocked", blocked ? "bad" : "") +
+        nvRbStat(money(holding), "cash with riders", holding ? "warn" : "") + nvRbStat(money(pending), "handed over, to confirm", pending ? "warn" : "") + '</div>' +
+        '<div class="table-wrap"><table class="nv-rb-table nv-rb-cards"><thead><tr><th>Rider</th><th>Login</th><th>Cities</th><th>Status</th><th class="num">Holding</th><th>Handed over, to confirm</th><th class="num">Cash limit</th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="7">No riders.</td></tr>') + '</tbody></table></div>' +
+        '<p class="footer-note mt-8">Holding = delivered COD the rider has not handed over yet. Handed over = the rider recorded a handover in the app; confirm it only once the money is in the bank or in your hand. A rider is blocked while what they owe is over their limit, and unblocked as soon as it is under.</p>';
+    }
+
+    function nvRbAfter(riderId, data, msg){
+      try {
+        var lr = (state.riders || []).find(function(x){ return x._uuid === riderId || x.id === riderId; });
+        if (lr && data && data.access) lr.access = data.access;
+        if (lr && data && data.cash_limit) lr.cashLimit = data.cash_limit;
+      } catch (e) {}
+      toast(msg, "success");
+      nvRbLoad(true);
+      try { if (typeof window.nvRefresh === "function") window.nvRefresh(["parcels", "riders"]); } catch (e) {}
+    }
+    async function nvRbConfirm(batch, riderId){
+      var r = ((NV_RB.data && NV_RB.data.riders) || []).find(function(x){ return x.id === riderId; }) || {};
+      var d = ((r.cash && r.cash.pending) || []).find(function(x){ return x.batch === batch; }) || {};
+      var ok = await window.nvAsk({ title: "Confirm " + money(d.net || 0) + " from " + (r.name || "this rider") + "?",
+        body: Number(d.parcels || 0) + " parcels, handed over " + nvDateTimeA(d.at) + (d.method ? " by " + d.method : "") + (d.reference ? " (ref " + d.reference + ")" : "") +
+              ". Confirm only once the money is in the bank or in your hand. The rider is then no longer responsible for this cash.",
+        ok: "Confirm received" });
+      if (!ok) return;
+      var res = await window.__nvSb.rpc("admin_confirm_rider_deposit", { p_batch_key: batch });
+      if (res.error) { toast("Could not confirm: " + res.error.message, "error"); return; }
+      var x = res.data || {};
+      nvRbAfter(riderId, x, x.already ? "That handover was already confirmed." : money(x.net || 0) + " confirmed from " + (r.name || "the rider") + "." + (x.access === "Active" ? " Rider is active." : ""));
+    }
+    async function nvRbCollect(riderId){
+      var r = ((NV_RB.data && NV_RB.data.riders) || []).find(function(x){ return x.id === riderId; }) || {};
+      var c = r.cash || {};
+      var v = await window.nvAsk({ title: "Collect " + money(c.holding || 0) + " from " + (r.name || "this rider") + "?",
+        body: "For cash the rider hands in without recording it in the app. All " + Number(c.holding_n || 0) + " delivered COD parcels they hold are marked as received.",
+        fields: [
+          { name: "method", label: "Received by", options: ["Cash to office", "Bank transfer", "Easypaisa", "JazzCash"], value: "Cash to office" },
+          { name: "ref", label: "Transaction ID (not needed for cash)", required: false }
+        ], ok: "Record cash received" });
+      if (!v) return;
+      if (v.method !== "Cash to office" && String(v.ref || "").trim().length < 4) { toast("Enter the transaction ID from the " + v.method + " receipt.", "error"); return; }
+      var res = await window.__nvSb.rpc("admin_collect_rider_cash", { p_rider: riderId, p_method: v.method, p_reference: v.ref || "" });
+      if (res.error) { toast("Could not record: " + res.error.message, "error"); return; }
+      var x = res.data || {};
+      nvRbAfter(riderId, x, money(x.net || 0) + " collected from " + (r.name || "the rider") + " for " + Number(x.parcels || 0) + " parcels." + (x.access === "Active" ? " Rider is active." : ""));
+    }
+    async function nvRbLimit(riderId){
+      var r = ((NV_RB.data && NV_RB.data.riders) || []).find(function(x){ return x.id === riderId; }) || {};
+      var v = await window.nvAsk({ title: "Cash limit for " + (r.name || "this rider"), body: "The rider is blocked while the cash they owe is over this amount.",
+        input: { label: "Limit (Rs)", type: "number", value: String(r.cash_limit || 75000), required: true }, ok: "Save limit" });
+      if (!v) return;
+      var res = await window.__nvSb.rpc("admin_set_rider_limit", { p_rider: riderId, p_limit: Number(v) });
+      if (res.error) { toast("Could not save: " + res.error.message, "error"); return; }
+      nvRbAfter(riderId, Object.assign({ cash_limit: Number(v) }, res.data || {}), "Limit saved: " + money(Number(v)) + ".");
+    }
+    async function nvRbAdd(){
+      var v = await window.nvAsk({ title: "Add a rider", body: "Adds the rider to the roster. Then create their login in Users → Create Users and link it to this rider.",
+        fields: [
+          { name: "name", label: "Name", required: true },
+          { name: "phone", label: "Phone", required: false },
+          { name: "branch", label: "Hub", options: ["Karachi Hub", "Lahore Hub", "Islamabad Hub", "Rawalpindi Hub"], value: "Karachi Hub" },
+          { name: "cities", label: "Cities covered (comma separated)", value: "Karachi", required: true },
+          { name: "limit", label: "Cash limit (Rs)", type: "number", value: "75000", required: true }
+        ], ok: "Add rider" });
+      if (!v) return;
+      var res = await window.__nvSb.rpc("admin_add_rider", { p_name: v.name, p_branch: v.branch,
+        p_cities: String(v.cities || "").split(",").map(function(s){ return s.trim(); }).filter(Boolean), p_phone: v.phone || "", p_limit: Number(v.limit) });
+      if (res.error) { toast("Could not add: " + res.error.message, "error"); return; }
+      nvRbAfter(null, null, v.name + " added. Create their login in Users → Create Users.");
+    }
+
+    /* ── Stations ───────────────────────────────────────────────────────── */
     async function nvStLoad(){
       const root = document.getElementById("nvStRoot"); if (!root) return;
       const sb = window.__nvSb; if (!sb) { root.innerHTML = '<p class="footer-note">Not connected.</p>'; return; }
@@ -16950,29 +16952,33 @@ html,body{ background:var(--bg); color:var(--ink); }
       catch (e) { root.innerHTML = '<p class="footer-note">Could not load stations: ' + escLabelText(e && e.message || e) + '</p>'; return; }
       if (ov.error) { root.innerHTML = '<p class="footer-note">Could not load stations: ' + escLabelText(ov.error.message) + '</p>'; return; }
       const d = ov.data || {}, riders = (rd && !rd.error && rd.data) || [];
+      const cell = (n, l, tone) => `<div class="nv-st-n${tone && Number(n) ? " " + tone : ""}"><b>${Number(n || 0)}</b><span>${l}</span></div>`;
       const cityCards = (d.cities || []).map(c => {
-        const names = (c.riders || []).filter(r => r.access === "Active").map(r => r.name).join(", ") || "No active rider";
-        const cell = (n, l, warn) => `<div class="nv-st-n${warn && n ? " warn" : ""}"><b>${Number(n || 0)}</b><span>${l}</span></div>`;
-        return `<div class="nv-st-city"><div class="nv-st-head"><b>${escLabelText(c.city)}</b><small>${escLabelText(names)}</small></div>
-          <div class="nv-st-grid">${cell(c.to_pickup, "to pick up", true)}${cell(c.incoming, "coming in")}${cell(c.at_station, "at station", true)}${cell(c.out_now, "out now")}${cell(c.to_send, "to send on", true)}${cell(c.delivered_today, "delivered today")}${cell(c.no_gps_7d, "delivered without GPS, 7 days", true)}</div></div>`;
+        const act = (c.riders || []).filter(r => r.access === "Active").map(r => r.name);
+        const blk = (c.riders || []).filter(r => r.access !== "Active").map(r => r.name);
+        return `<div class="nv-st-city"><div class="nv-st-head"><b>${escLabelText(c.city)}</b>
+            <small>${act.length ? escLabelText([...new Set(act)].join(", ")) : '<span class="chip bad">No active rider</span>'}${blk.length ? '<br><span class="nv-st-blk">Blocked: ' + escLabelText([...new Set(blk)].join(", ")) + '</span>' : ""}</small></div>
+          <div class="nv-st-grid">${cell(c.to_pickup, "to pick up", "warn")}${cell(c.incoming, "coming in")}${cell(c.at_station, "at station", "warn")}${cell(c.out_now, "out now")}${cell(c.to_send, "to send on", "warn")}${cell(c.delivered_today, "delivered today", "good")}</div>
+          ${Number(c.no_gps_7d) ? `<div class="footer-note mt-8">${Number(c.no_gps_7d)} delivered in 7 days without a GPS point.</div>` : ""}</div>`;
       }).join("");
-      const riderRows = riders.filter(r => r.access !== "Blocked").map(r => {
+      const riderRows = riders.map(r => {
         const mine = (r.cities || []).map(x => String(x).toLowerCase());
-        return `<tr><td><b>${escLabelText(r.name)}</b><br><span class="footer-note">${escLabelText(r.branch || "")}</span></td><td>${NV_ST_CITIES.map(c =>
+        return `<tr><td><b>${escLabelText(r.name)}</b> ${r.access === "Blocked" ? '<span class="chip bad">blocked</span>' : ""}<br><span class="footer-note">${escLabelText(r.branch || "")}</span></td><td>${NV_ST_CITIES.map(c =>
           `<label class="nv-st-chk"><input type="checkbox" data-st-rider="${escLabelText(r.id)}" value="${c}"${mine.includes(c.toLowerCase()) ? " checked" : ""}> ${c}</label>`).join("")}</td>
           <td><button class="ghost-btn" type="button" onclick="nvStSaveCities('${nvEscAttrJs(r.id)}', this)">Save</button></td></tr>`;
       }).join("");
-      const batchRows = (d.batches || []).map(b => `<tr><td><b>${escLabelText(b.code)}</b>${b.kind === "return" ? ' <span class="chip warn">return</span>' : ""}</td><td>${escLabelText(b.from)} → ${escLabelText(b.to)}</td><td>${escLabelText(b.reference || "")}</td>
-          <td>${Number(b.received)} / ${Number(b.sent)}</td><td><span class="chip ${b.status === "Received" ? "good" : b.status === "Sent" ? "info" : "warn"}">${escLabelText(b.status)}</span></td>
-          <td>${(b.missing || []).length && b.status !== "Sent" ? '<span class="chip bad">Missing: ' + escLabelText((b.missing || []).join(", ")) + '</span>' : ""}</td><td>${escLabelText(nvDateTimeA(b.sent_at))}</td></tr>`).join("");
-      const depRows = (d.deposits || []).map(x => `<tr><td>${escLabelText(x.rider)}</td><td>${money(x.net)}</td><td>${escLabelText(x.method || "—")}</td><td>${escLabelText(x.reference || "—")}</td><td>${escLabelText(nvDateTimeA(x.at))}</td></tr>`).join("");
+      const batches = d.batches || [];
+      const open = batches.filter(b => b.status !== "Received"), done = batches.filter(b => b.status === "Received");
+      const bRow = b => `<tr><td><b>${escLabelText(b.code)}</b>${b.kind === "return" ? ' <span class="chip warn">return</span>' : ""}</td><td>${escLabelText(b.from)} → ${escLabelText(b.to)}</td>
+          <td class="num">${Number(b.received)} / ${Number(b.sent)}</td><td><span class="chip ${b.status === "Received" ? "good" : b.status === "Sent" ? "info" : "warn"}">${b.status === "Sent" ? "On the way" : escLabelText(b.status)}</span></td>
+          <td>${(b.missing || []).length && b.status !== "Received" ? '<span class="footer-note">' + escLabelText((b.missing || []).join(", ")) + '</span>' : ""}</td><td>${escLabelText(nvDateTimeA(b.sent_at))}</td></tr>`;
+      const bHead = '<thead><tr><th>Batch</th><th>Route</th><th class="num">Arrived</th><th>Status</th><th>Not arrived yet</th><th>Sent</th></tr></thead>';
       root.innerHTML = `<div class="nv-st-cities">${cityCards}</div>
-        <h4 class="mt-10">Riders and their cities</h4><p class="footer-note">A rider sees and works every parcel picked up in, or going to, the cities ticked here.</p>
-        <div class="table-wrap"><table><thead><tr><th>Rider</th><th>Cities</th><th></th></tr></thead><tbody>${riderRows || '<tr><td colspan="3">No riders.</td></tr>'}</tbody></table></div>
-        <h4 class="mt-10">Transit batches (14 days)</h4>
-        <div class="table-wrap"><table><thead><tr><th>Batch</th><th>Route</th><th>Bilty</th><th>Received</th><th>Status</th><th></th><th>Sent</th></tr></thead><tbody>${batchRows || '<tr><td colspan="7">No batches yet.</td></tr>'}</tbody></table></div>
-        <h4 class="mt-10">Cash handovers (14 days)</h4>
-        <div class="table-wrap"><table><thead><tr><th>Rider</th><th>Amount</th><th>Method</th><th>Reference</th><th>When</th></tr></thead><tbody>${depRows || '<tr><td colspan="5">None yet.</td></tr>'}</tbody></table></div>`;
+        <h4 class="mt-14">Between cities</h4><p class="footer-note">Batches close by themselves as their parcels arrive.</p>
+        <div class="table-wrap"><div class="wide-scroll"><table class="nv-rb-table">${bHead}<tbody>${open.map(bRow).join("") || '<tr><td colspan="6">Nothing on the way.</td></tr>'}</tbody></table></div></div>
+        ${done.length ? `<details class="mt-8"><summary class="footer-note">Arrived batches (${done.length}, last 14 days)</summary><div class="table-wrap"><div class="wide-scroll"><table class="nv-rb-table">${bHead}<tbody>${done.map(bRow).join("")}</tbody></table></div></div></details>` : ""}
+        <h4 class="mt-14">Riders and their cities</h4><p class="footer-note">A rider sees and works every parcel picked up in, or going to, the cities ticked here.</p>
+        <div class="table-wrap"><table class="nv-rb-table"><thead><tr><th>Rider</th><th>Cities</th><th></th></tr></thead><tbody>${riderRows || '<tr><td colspan="3">No riders.</td></tr>'}</tbody></table></div>`;
     }
     async function nvStSaveCities(riderId, btn){
       const cities = Array.from(document.querySelectorAll(`[data-st-rider="${CSS.escape(riderId)}"]:checked`)).map(x => x.value);
@@ -16981,9 +16987,13 @@ html,body{ background:var(--bg); color:var(--ink); }
       btn.disabled = false;
       if (r.error) { toast("Could not save: " + r.error.message, "error"); return; }
       toast("Cities saved: " + ((r.data || []).join(", ") || "none"), "success");
+      NV_RB.data = null;
       nvStLoad();
     }
     window.nvStLoad = nvStLoad; window.nvStSaveCities = nvStSaveCities;
+    window.nvRbLoad = nvRbLoad; window.nvRbRender = nvRbRender; window.nvRbSetDays = nvRbSetDays;
+    window.nvRbConfirm = nvRbConfirm; window.nvRbCollect = nvRbCollect; window.nvRbLimit = nvRbLimit; window.nvRbAdd = nvRbAdd;
+    window.NV_RB = NV_RB;
 
     function nvPcLoad(){
       var sb = window.__nvSb, host = document.getElementById("nvPcList");
@@ -18055,12 +18065,7 @@ html,body{ background:var(--bg); color:var(--ink); }
     document.getElementById("sackModeDemanifestBtn").addEventListener("click", () => setSackMode("demanifest"));
     document.getElementById("createSackBtn").addEventListener("click", createSack);
     document.getElementById("demanifestSackBtn").addEventListener("click", demanifestSack);
-    document.getElementById("addRiderBtn").addEventListener("click", addRider);
     document.getElementById("syncDestinationRoutesBtn").addEventListener("click", syncDestinationRoutes);
-    document.getElementById("riderExpenseBtn").addEventListener("click", addRiderExpense);
-    document.getElementById("collectRiderCashBtn").addEventListener("click", collectRiderCash);
-    document.getElementById("riderCashSelect").addEventListener("change", updateRiderCashPreview);
-    document.getElementById("saveRiderFuelAverageBtn").addEventListener("click", saveRiderFuelAverage);
     document.getElementById("invoiceSelectAllBtn").addEventListener("click", selectAllInvoiceParcels);
     document.getElementById("invoiceClearBtn").addEventListener("click", clearInvoiceSelection);
     document.getElementById("addExpenseBtn").addEventListener("click", addExpense);
@@ -18620,6 +18625,10 @@ html,body{ background:var(--bg); color:var(--ink); }
           q: function(){ return nvAllRows(sb.from("withdrawals").select("*").order("created_at",{ascending:false}), 3000); },
           set: function(d){ state.walletWithdrawals = d.map(rWd); }
         },
+        riders: {
+          q: function(){ return nvAllRows(sb.from("riders").select("*").order("created_at",{ascending:false}), 5000); },
+          set: function(d){ state.riders = d.map(rRider); }
+        },
         parcels: {
           q: function(){ return nvAllRows(function(){ return sb.from("parcels").select("*").gte("booked_at",NV_ADMIN_WINDOW()).order("booked_at",{ascending:false}); }, 20000); },
           set: function(d){ state.parcels = d.map(rParcel); }
@@ -18661,7 +18670,8 @@ html,body{ background:var(--bg); color:var(--ink); }
         wallet_ledger: ["financeWallet","wallets"],
         payment_logs:  ["financeWallet"],
         withdrawals:   ["financeWallet","wallets","admin"],
-        parcels:       ["metrics","admin","clientParcels"]
+        parcels:       ["metrics","admin","clientParcels"],
+        riders:        ["metrics","admin"]
       };
 
       function nvRenderFor(tables){
@@ -20388,8 +20398,9 @@ html,body{ background:var(--bg); color:var(--ink); }
       ["clients-profile-changes","Clients — Profile Changes","Business names, phones and logos merchants changed"],
       ["riders-stations","Riders — Stations","Every city: to pick up, at station, out, in transit; rider cities"],
       ["ai-chats","NovaX AI — Merchant Conversations","Read what merchants ask the AI"],
-      ["riders-route","Riders — On Route","Live rider routes"],
-      ["riders-report","Riders — Report","Rider performance and cash"],
+      ["riders-route","Riders — On Route","Who is out now, parcels each rider carries, today's results"],
+      ["riders-report","Riders — Report","Deliveries, failed attempts, returns and cash per rider"],
+      ["riders-summary","Riders — Summary","Rider roster, logins, cash held, confirm handovers, limits, add rider"],
       ["finance-invoices","Finance — Invoices","Generate and settle invoices"],
       ["finance-wallets","Finance — Wallets","Payout queue, reconciliation"],
       ["finance-topup","Finance — Add to Wallet","Credit or reverse a client wallet"],
