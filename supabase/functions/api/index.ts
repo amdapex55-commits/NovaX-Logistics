@@ -366,13 +366,22 @@ Deno.serve(async (req) => {
       const idemHeader = (req.headers.get("idempotency-key") || "").trim().slice(0, 150);
       const orderRef = String(b.order_id ?? "").trim();
       const idemKey = idemHeader ? `api:${idemHeader}` : (orderRef ? `order:${orderRef}` : "");
+      /* Without pickup_city the parcel used to be recorded as collected in
+         Karachi, so a Lahore merchant's parcels routed Karachi -> Lahore
+         (3 Oct 2026). Default to the merchant's own pickup city, as the
+         portal does. */
+      let pickupCity = String(b.pickup_city ?? "").trim();
+      if (!pickupCity) {
+        const cl = await table(`clients?id=eq.${clientId}&select=meta&limit=1`);
+        pickupCity = String((Array.isArray(cl.data) && cl.data[0]?.meta?.pickupCity) || "Karachi");
+      }
       const bookStartedAt = Date.now();
       const booked = await rpc("nv_book_parcel_api_idem", {
         p_client_id: clientId,
         p_idem_key: idemKey,
         p_consignee: String(b.consignee).trim(),
         p_phone: String(b.phone).trim(),
-        p_pickup_city: String(b.pickup_city ?? "Karachi").trim(),
+        p_pickup_city: pickupCity,
         p_city: String(b.city).trim(),
         p_address: String(b.address).trim(),
         p_cod: cod,
