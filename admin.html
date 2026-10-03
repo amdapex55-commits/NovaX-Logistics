@@ -19121,7 +19121,43 @@ html,body{ background:var(--bg); color:var(--ink); }
       window.nvLinkSeller=function(email, clientUuid){ if(!email||!clientUuid){ console.warn("usage: nvLinkSeller('seller@email.com','<client uuid>')"); return; } sb.from("profiles").update({ client_id:clientUuid }).eq("email",email).select("id").then(function(r){ if(r&&r.error){ console.warn("link failed",r.error.message); return; } if(!r||!r.data||r.data.length===0){ console.warn("No profile row found for",email,"- run novax_profile_autocreate_fix.sql, then retry."); try{ alert("No profile row exists yet for "+email+". Run the profile auto-create fix first."); }catch(e){} return; } try{ alert("Linked "+email+" to client "+clientUuid); }catch(e){} console.log("Linked",email,"->",clientUuid); }); };
       window.nvListRiders=function(){ sb.from("riders").select("id,name,branch").then(function(r){ if(r&&r.error){ console.warn(r.error.message); return; } console.table((r&&r.data)||[]); }); };
       window.nvLinkRider=function(email, riderUuid){ if(!email||!riderUuid){ console.warn("usage: nvLinkRider('rider@email.com','<rider uuid>')"); return; } sb.from("profiles").update({ role:"rider", rider_id:riderUuid }).eq("email",email).select("id").then(function(r){ if(r&&r.error){ console.warn("link failed",r.error.message); return; } if(!r||!r.data||r.data.length===0){ console.warn("No profile row found for",email,"- run novax_profile_autocreate_fix.sql, then retry."); try{ alert("No profile row exists yet for "+email+". Run the profile auto-create fix first."); }catch(e){} return; } try{ alert("Linked "+email+" to rider "+riderUuid); }catch(e){} console.log("Linked",email,"->",riderUuid); }); };
-      if(sb.auth){ sb.auth.getSession().then(function(r){ var s=r&&r.data&&r.data.session; if(!s){ return; } ADMIN_UID=s.user.id; loadAll();
+      /* 3 Oct 2026: every NovaX page shares one sign-in in this browser. When
+         another tab signed out, or signed in as a merchant, this page carried
+         on as that account -- the database answered with only what that
+         account may see (empty lists, no error) and the dashboard read all
+         zeros. Stop instead, say why, and refuse every database call so
+         nothing is saved under the wrong account. */
+      function nvSessionLost(why){
+        if(window.__nvSessionLost) return;
+        window.__nvSessionLost = true;
+        window.__nvLeaving = true;   // __nvLeavingFetch answers DB calls locally from here on
+        var el = document.createElement("div");
+        el.id = "nvSessionLost"; el.setAttribute("role", "alertdialog"); el.setAttribute("aria-modal", "true");
+        el.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px";
+        el.innerHTML = '<div style="max-width:440px;background:#10231c;color:#fff;border:1px solid #2a5a47;border-radius:14px;padding:22px;font:15px/1.5 system-ui,sans-serif">' +
+          '<strong style="font-size:18px">Admin sign-in changed</strong><p style="margin:10px 0 16px"></p>' +
+          '<button type="button" style="background:#1fd18f;color:#04140d;border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer">Reload and sign in again</button></div>';
+        el.querySelector("p").textContent = why + " This page has stopped so nothing is saved under the wrong account.";
+        el.querySelector("button").onclick = function(){ location.reload(); };
+        document.body.appendChild(el);
+        try { el.querySelector("button").focus(); } catch(e){}
+      }
+      function nvCheckSession(s){
+        if(!s || !s.user) { nvSessionLost("This browser is no longer signed in."); return false; }
+        if(ADMIN_UID && s.user.id !== ADMIN_UID) { nvSessionLost("Another account (" + (s.user.email || "unknown") + ") signed in on this browser, probably in another tab."); return false; }
+        return true;
+      }
+      if(sb.auth){ sb.auth.getSession().then(function(r){ var s=r&&r.data&&r.data.session; if(!s){ nvSessionLost("This browser is no longer signed in."); return; } ADMIN_UID=s.user.id; loadAll();
+        try{
+          sb.auth.onAuthStateChange(function(ev, sess){
+            if(ev === "SIGNED_OUT") nvSessionLost("You were signed out, probably in another tab.");
+            else if(sess) nvCheckSession(sess);
+          });
+          document.addEventListener("visibilitychange", function(){
+            if(document.hidden || window.__nvSessionLost) return;
+            sb.auth.getSession().then(function(x){ nvCheckSession(x && x.data && x.data.session); }, function(){});
+          });
+        }catch(e){ console.warn("NovaX session watch", e); }
         if(!liveSubscribed){
           liveSubscribed=true;
           try{
