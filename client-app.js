@@ -3132,7 +3132,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            rather than invented. */
         metricCard("Delivery Charges",money(cm.deliveryCharges),null,"courier charges on delivered parcels","amber","💳","filter:Delivered"),
         metricCard("Invoice Payable Pending",money(cm.payable),null,"net to you \u2014 COD minus delivery charges","good","🧾","tab:payments"),
-        metricCard("Wallet Balance",money(Number((state.client&&state.client.walletBalance)||0)),null,"ready to withdraw","blue","💰","tab:wallet"),
+        /* Wallet Balance tile removed 3 Oct 2026: the wallet card at the top
+           of the dashboard shows the same figure. */
         '<button type="button" id="nvMetricsToggle" class="ghost-btn nv-metrics-toggle" style="display:none" onclick="var g=document.getElementById(&quot;clientMetrics&quot;); g.classList.toggle(&quot;nv-show-all&quot;); this.textContent=g.classList.contains(&quot;nv-show-all&quot;)?&quot;Show fewer metrics&quot;:&quot;Show all metrics&quot;;">Show all metrics</button>'
       ].join("");
       if(wasExpanded){ document.getElementById("clientMetrics").classList.add("nv-show-all"); var nvT=document.getElementById("nvMetricsToggle"); if(nvT) nvT.textContent="Show fewer metrics"; }
@@ -14202,7 +14203,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ if(typeof nvLoadInsights==="function") nvLoadInsights(); }catch(e){}
       tickMeters();
     }
-    function tickMeters(){ requestAnimationFrame(()=>{ document.querySelectorAll(".meter>span").forEach(s=>{ const w=s.style.width; s.style.width="0"; requestAnimationFrame(()=>{ s.style.width=w; }); }); }); }
+    /* Grow each bar from 0 to its width. Two overlapping calls used to save
+       the first call's "0" as the width and restore 0, so the dashboard bars
+       sat empty beside "68%" (3 Oct 2026). A bar mid-animation is skipped,
+       and nothing animates for reduced motion. */
+    function tickMeters(){
+      try{ if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return; }catch(e){}
+      requestAnimationFrame(()=>{ document.querySelectorAll(".meter>span").forEach(s=>{
+        if(s._nvTick) return;
+        const w=s.style.width;
+        if(!w || w==="0" || w==="0px" || w==="0%") return;
+        s._nvTick=true; s.style.width="0";
+        requestAnimationFrame(()=>{ requestAnimationFrame(()=>{ s.style.width=w; s._nvTick=false; }); });
+      }); });
+    }
     /* ═══ Tab identity ═══════════════════════════════════════════════════
        Payments and Wallet merged into one "Money" tab. state.activeClientTab
        is persisted to localStorage and was only ever defaulted with
@@ -16723,6 +16737,31 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(bBook && !bBook._nvWired){ bBook._nvWired=true; bBook.addEventListener("click",function(){ if(window.novaxFocusFirstBookingField) window.novaxFocusFirstBookingField(); else if(typeof showClientTab==="function") showClientTab("newBooking"); }); }
       }catch(e){}
     }
+    /* Header greeting and actions (3 Oct 2026). The buttons click the command
+       strip's own buttons, so Book and Print behave exactly as before. */
+    function nvRenderPortalHead(ctx){
+      try{
+        var h=document.getElementById("nvPortalGreeting"), sub=document.getElementById("nvPortalSub");
+        if(!h) return;
+        var name="";
+        try{ name=String((typeof clientDisplayState==="function" && clientDisplayState().label) || (state.client && state.client.name) || "").trim(); }catch(e){}
+        if(/^(client|loading)/i.test(name)) name="";
+        var now=new Date();
+        var hr=Number(new Intl.DateTimeFormat("en-GB",{ hour:"numeric", hour12:false, timeZone:"Asia/Karachi" }).format(now));
+        var part=hr<5?"Good evening":hr<12?"Good morning":hr<17?"Good afternoon":"Good evening";
+        h.textContent=name ? part+", "+name : "Client Portal";
+        if(sub){
+          var day=new Intl.DateTimeFormat("en-GB",{ weekday:"long", day:"numeric", month:"long", timeZone:"Asia/Karachi" }).format(now);
+          var n=ctx && Number(ctx.issueCount||0);
+          sub.textContent=day+(n ? " \u00b7 "+n+" parcel"+(n===1?" needs":"s need")+" you" : "");
+        }
+        var cp=document.getElementById("nvCsPrint"), pp=document.getElementById("nvPhPrint");
+        if(pp) pp.hidden=!(cp && cp.style.display!=="none");
+        var pb=document.getElementById("nvPhBook");
+        if(pb && !pb._nvWired){ pb._nvWired=true; pb.addEventListener("click",function(){ wireCommandStripButtons(); var b=document.getElementById("nvCsBook"); if(b) b.click(); else if(typeof showClientTab==="function") showClientTab("newBooking"); }); }
+        if(pp && !pp._nvWired){ pp._nvWired=true; pp.addEventListener("click",function(){ wireCommandStripButtons(); var b=document.getElementById("nvCsPrint"); if(b) b.click(); else if(typeof showClientTab==="function") showClientTab("awbLabel"); }); }
+      }catch(e){}
+    }
     function renderDailyCommandCenter(){ return nvKeepPlace(function(){ return __renderDailyCommandCenter(); }); }
     function __renderDailyCommandCenter(){
       try{
@@ -16730,7 +16769,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var strip=document.getElementById("nvCommandStrip");
         if(!strip) return;
         var ctx=typeof getClientContext==="function"?getClientContext():null;
-        if(ctx && typeof canShowDailyCommandCenter==="function" && !canShowDailyCommandCenter(ctx)){ strip.style.display="none"; return; }
+        if(ctx && typeof canShowDailyCommandCenter==="function" && !canShowDailyCommandCenter(ctx)){ strip.style.display="none"; nvRenderPortalHead(ctx); return; }
         strip.style.display="";
         var data=dailyCommandData();
         var briefEl=document.getElementById("nvCsBrief");
@@ -16749,6 +16788,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(bPrint) bPrint.style.display=unprintedCount>0?"":"none";
         if(bWallet) bWallet.style.display=walletBalanceForStrip>0?"":"none";
         wireCommandStripButtons();
+        nvRenderPortalHead(ctx);
       }catch(e){}
     }
     (function(){
