@@ -181,6 +181,9 @@ try {
      insert into public.nv_parcel_status_log(parcel_id, client_id, from_status, to_status, changed_at) values ('${id(902)}', '${C.two}', 'Arrived at warehouse', 'Refused', now() - interval '8 days');
      select public.sales_refresh();`);
   assert.match(rw(), /Kids Corner:first_pickup:Waiting/);
+  // ...and neither does a later parcel that is DELIVERED (2 Oct: it used to pay).
+  q(`update public.parcels set status = 'Delivered' where id = '${id(903)}'; select public.sales_refresh();`);
+  assert.match(rw(), /Kids Corner:first_pickup:Waiting/);
   assert.equal(q(`select amount from public.sales_rewards w join public.clients c on c.id = w.client_id where c.name = 'Glow Cosmetics' and kind = 'first_pickup'`), '500');
   q(`update public.sales_settings set value = '500' where key = 'reward_first_pickup'`);
   console.log('PASS: Rs 500 once the CNIC is verified; Rs 500 for the first pickup once delivered; a refused first pickup never pays through another parcel; amounts are the terms frozen at crediting.');

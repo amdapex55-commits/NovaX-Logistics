@@ -426,7 +426,11 @@ begin
                     and l.to_status in ('Refused', 'Return to shipper', 'Cancelled by client'))
         or exists (select 1 from public.parcels p where p.id = v_first
                     and p.status in ('Refused', 'Return to shipper', 'Cancelled by client'));
-      if r.delivered or (v_first is not null and v_picked_at < now() - make_interval(days => v_hold) and not v_first_bad) then
+      -- Paid for the FIRST pickup only: delivered, or held N days without a
+      -- refusal or return. Another parcel's delivery never pays for it (2 Oct).
+      if v_first is not null and not v_first_bad
+         and (exists (select 1 from public.parcels p where p.id = v_first and p.status = 'Delivered')
+              or v_picked_at < now() - make_interval(days => v_hold)) then
         update public.sales_rewards set status = 'Earned', earned_at = now()
          where client_id = r.client_id and rep_id = r.rep_id and kind = 'first_pickup' and status = 'Waiting';
         if found then v_earned := v_earned + 1; end if;
