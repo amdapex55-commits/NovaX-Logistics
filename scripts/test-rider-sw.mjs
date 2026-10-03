@@ -19,7 +19,7 @@ async function request(path,method='GET',accept='text/html'){
 }
 assert.match(await(await request('/rider.html?reload=1')).text(),/NovaX \| Rider/);
 assert.match(await(await request('/client.html?reload=1')).text(),/client-app/);
-assert.equal((await request('/tracking.html?uncached=1')).status,503);
+{const r=await request('/tracking.html?uncached=1');assert.equal(r.status,503);assert.match(await r.text(),/offline\.html|asset|Offline/);}
 assert.equal(await request('https://api.example.com/data'),null);
 assert.equal(await request('/rider.html','POST'),null);
 offline=false;assert.equal(await(await request('/rider.html?fresh=1')).text(),'network HTML');

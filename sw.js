@@ -22,8 +22,8 @@
  *   way. That is the kill switch, and it is the reason it is safe to ship
  *   this at all.
  */
-var CACHE = "novax-v153";
-var PRECACHE = ["/client.html", "/rider.html", "/assets/favicon.svg"];
+var CACHE = "novax-v154";
+var PRECACHE = ["/client.html", "/rider.html", "/assets/favicon.svg", "/offline.html"];
 
 self.addEventListener("install", function (event) {
   self.skipWaiting();
@@ -115,9 +115,19 @@ self.addEventListener("fetch", function (event) {
       }).catch(function () {
         return caches.match(req).then(function (hit) {
           if (hit) return hit;
-          var shell = url.pathname === "/rider.html" ? "/rider.html" : url.pathname === "/client.html" ? "/client.html" : null;
-          return (shell ? caches.match(shell) : Promise.resolve(null)).then(function (cached) {
-            return cached || new Response("Offline. Reconnect to open this page.", { status: 503, headers: { "Content-Type": "text/plain" } });
+          var shell = url.pathname === "/rider.html" ? "/rider.html" : url.pathname === "/client.html" ? "/client.html" :
+                      (url.pathname === "/" || url.pathname === "/index.html") ? "/index.html" : null;
+          var saved = shell ? caches.match(shell).then(function (c) { return c || (shell === "/index.html" ? caches.match("/") : null); }) : Promise.resolve(null);
+          return saved.then(function (cached) {
+            if (cached) return cached;
+            /* No saved copy: the NovaX offline page (it retries by itself and
+               reloads once the site answers). Status stays 503. */
+            return caches.match("/offline.html").then(function (page) {
+              if (page) return page.text().then(function (html) {
+                return new Response(html, { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } });
+              });
+              return new Response("Offline. Reconnect to open this page.", { status: 503, headers: { "Content-Type": "text/plain" } });
+            });
           });
         });
       })
