@@ -9068,9 +9068,11 @@ html,body{ background:var(--bg); color:var(--ink); }
 
     function agingLabel(hours = 0) {
       if (hours < 1) return "just now";
-      if (hours < 24) return `${Math.max(0, Math.round(hours))}h`;
-      const days = Math.floor(hours / 24);
-      const remaining = Math.round(hours % 24);
+      /* Round the total first: 95.6 h used to print "3d 24h". */
+      const h = Math.max(0, Math.round(hours));
+      if (h < 24) return `${h}h`;
+      const days = Math.floor(h / 24);
+      const remaining = h % 24;
       return remaining ? `${days}d ${remaining}h` : `${days}d`;
     }
 
@@ -10517,8 +10519,11 @@ html,body{ background:var(--bg); color:var(--ink); }
         processingRiderField.style.display = riderPushStatuses.includes(processingStatusSelect.value) ? "grid" : "none";
       }
 
+      /* All-time totals: the parcels this page loads (last 120 days, live)
+         plus the server's count of older ones (3 Oct 2026). */
+      const nvOld = window.__nvOldStatusCounts || {};
       const queueCounts = STATUS_TAGS.reduce((acc, status) => {
-        acc[status] = state.parcels.filter(p => p.status === status).length;
+        acc[status] = state.parcels.filter(p => p.status === status).length + Number(nvOld[status] || 0);
         return acc;
       }, {});
       document.getElementById("statusQueueTabs").innerHTML = STATUS_TAGS.map(status => `
@@ -15166,7 +15171,12 @@ html,body{ background:var(--bg); color:var(--ink); }
         if (p.status === "Return in transit") cats.push("Return in transit");
         if (/fake|dispute/i.test(p.exception || "")) cats.push("Fake attempt / proof dispute");
         if (/cash/i.test(p.exception || "")) cats.push("Rider cash holding");
-        if (p.status === "Delivered" && !p.proofPhoto && !p.signature) cats.push("Proof missing");
+        /* Proof missing: only a delivery in the last 72 hours with no photo,
+           signature or GPS point. The rider app records GPS, not photos, so
+           the old rule flagged every delivery ever made (826 open alerts).
+           nv_ops_issues_autoclose() closes these on the same rule. */
+        if (p.status === "Delivered" && !p.proofPhoto && !p.signature && !(p._meta && p._meta.deliveryLocation) &&
+            p.deliveredAt && (Date.now() - new Date(p.deliveredAt).getTime()) < 72 * 3600 * 1000) cats.push("Proof missing");
         if (p._clientDecisionRequestedAt) cats.push("Client decision needed");
         cats.forEach(issueType => {
           rows.push({ awb: p.awb, clientId: p.clientId, clientName: client ? client.name : "Unknown", consignee: p.consignee || "", phone: p.phone || "", city: p.city, branch: p.branch, status: p.status, agingHours: aging, issueType, exception: p.exception || "", lastNote: p.resolutionRemark || p.returnProof || (p.proofPhoto ? "Proof photo on file" : "") || (p.signature ? "Signature on file" : ""), urgency: alertForParcel(p).level === "critical" ? "critical" : "normal" });
@@ -18490,7 +18500,20 @@ html,body{ background:var(--bg); color:var(--ink); }
       // of the old shape; it is no longer called anywhere.
       var SETS=[["clients",fClient,"clients"],["riders",fRider,"riders"],["parcels",fParcel,"parcels"],["expenses",fExpense,"expenses"],["paymentLogs",fPl,"payment_logs"],["operationsIssues",fOpsIssue,"operations_issues"],["resolvedAlerts",fResolvedAlert,"resolved_alerts"],["transit",fManifest,"manifest_logs"],["completedSacks",fManifest,"manifest_logs"],["users",fStaffUser,"staff_users"],["staffActivity",fStaffActivity,"staff_activity"],["pickupRequests",fPickup,"pickup_requests"]];
       function scheduleResync(){ clearTimeout(resyncT); resyncT=setTimeout(function(){ try{ syncAll(); }catch(e){} },700); }
+      /* Counts for parcels older than the 120-day window, added to the Status
+         Control Queue so its totals are all-time. Once per full load. */
+      function nvLoadOldStatusCounts(){
+        try{
+          Promise.resolve(sb.rpc("admin_status_counts_before",{ p_before: NV_ADMIN_WINDOW() })).then(function(r){
+            if(!r || r.error) return;
+            var prev = JSON.stringify(window.__nvOldStatusCounts || {});
+            window.__nvOldStatusCounts = r.data || {};
+            if(prev !== JSON.stringify(window.__nvOldStatusCounts)){ try{ renderAdmin(); }catch(e){} }
+          }, function(){});
+        }catch(e){}
+      }
       function loadAll(){
+        nvLoadOldStatusCounts();
         /* NOTE: every query below now has an explicit .limit(). Supabase's own
            server already silently caps unbounded selects (commonly at 1000 rows)
            with no warning, so without an explicit limit + correct ordering, the

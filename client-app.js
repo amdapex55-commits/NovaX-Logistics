@@ -2447,7 +2447,8 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
       var ms=end-start;
       return Number.isFinite(ms)?Math.max(0,ms/3600000):null;
     }
-    function agingLabel(h){ if(h==null||!Number.isFinite(Number(h))) return "\u2014"; h=Number(h); if(h<1) return "just now"; if(h<24) return `${Math.max(0,Math.round(h))}h`; const d=Math.floor(h/24); const r=Math.round(h%24); return r?`${d}d ${r}h`:`${d}d`; }
+    /* Round the total first: 95.6 h used to print "3d 24h" (3 Oct 2026). */
+    function agingLabel(h){ if(h==null||!Number.isFinite(Number(h))) return "\u2014"; h=Number(h); if(h<1) return "just now"; const t=Math.max(0,Math.round(h)); if(t<24) return `${t}h`; const d=Math.floor(t/24); const r=t%24; return r?`${d}d ${r}h`:`${d}d`; }
     /* Merchant view exposes destination aging only; SLA urgency remains internal. */
     /* #26 + #27. agingHours() measures two DIFFERENT things depending on the
        parcel, and both were printed under one word, "Destination age":
