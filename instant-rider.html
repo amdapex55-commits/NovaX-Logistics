@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://rhzunbzbdzicajqtohwp.supabase.co" crossorigin>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Nova Instant rider | NovaX</title>
+<link rel="icon" href="/assets/favicon.ico" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+<meta name="theme-color" content="#0d2920">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#10221a; --ink-2:#33463c; --muted:#5d6e65;
+  --green:#0fbf78; --green-h:#14cf86; --green-2:#087c55; --green-3:#06603f;
+  --mint:#eafbf3; --mint-line:#c6ebd8; --lime:#d9ff74;
+  --paper:#fbfcf8; --paper-2:#f3f5ee; --card:#ffffff;
+  --line:#dce7df; --line-2:#c4d6ca;
+  --navy:#0d2920; --navy-line:#2a5242; --navy-ink:#e8f5ee; --navy-muted:#a9c5b8; --navy-green:#7be8b4;
+  --amber:#fff4da; --amber-ink:#7a5500; --red-bg:#fdecea; --red-ink:#9b1c13;
+  --sa-b:env(safe-area-inset-bottom,0px);
+  --display:Manrope,"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --body:"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.5 var(--body);overflow-x:clip}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+.wrap{max-width:560px;margin:0 auto;padding:0 14px}
+.top{background:var(--navy);color:var(--navy-ink);position:sticky;top:0;z-index:50}
+.top .wrap{display:flex;align-items:center;gap:10px;min-height:58px}
+.brand{display:flex;align-items:center;gap:9px;min-width:0}
+.brand img{width:28px;height:28px;border-radius:8px;flex:none}
+.brand b{font:800 15px/1.15 var(--display);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand small{display:block;font:700 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--navy-green);margin-top:3px}
+.top-r{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
+.linkbtn{background:none;border:0;color:var(--navy-muted);font-size:14px;min-height:44px;padding:0 6px;white-space:nowrap}
+/* Online switch: the one control a rider uses most */
+.sw{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 4px 0 10px;border-radius:999px;border:1px solid var(--navy-line);background:none;color:var(--navy-ink);font-weight:700;font-size:14px}
+.sw i{width:38px;height:24px;border-radius:999px;background:var(--navy-line);position:relative;flex:none}
+.sw i::after{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .15s}
+.sw[aria-checked="true"]{border-color:var(--navy-green)}
+.sw[aria-checked="true"] i{background:var(--green)}
+.sw[aria-checked="true"] i::after{transform:translateX(14px)}
+@media (prefers-reduced-motion:reduce){ .sw i::after{transition:none} }
+
+main{padding:14px 0 calc(28px + var(--sa-b))}
+h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6px}
+.sub{color:var(--muted);font-size:14.5px;margin:0 0 14px}
+.ur{color:var(--muted);font-weight:400;font-size:max(12px,.86em)}   /* Roman Urdu helper line */
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+.card + .card{margin-top:12px}
+.stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.stat span{display:block;font-size:12px;color:var(--muted);white-space:nowrap}
+.stat b{font:800 19px/1.2 var(--display);font-variant-numeric:tabular-nums}
+.note{padding:11px 13px;border-radius:12px;font-size:14px;line-height:1.45;margin-bottom:12px}
+.note.warn{background:var(--amber);color:var(--amber-ink)}
+.note.bad{background:var(--red-bg);color:var(--red-ink)}
+.empty{text-align:center;color:var(--muted);padding:34px 14px;font-size:15px}
+.empty b{display:block;color:var(--ink);font:800 18px/1.3 var(--display);margin-bottom:4px}
+
+/* A job */
+.job-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.code{font:700 13px/1 var(--mono);letter-spacing:.1em;color:var(--muted)}
+.fare{font:800 24px/1 var(--display);font-variant-numeric:tabular-nums}
+.fare small{font:700 13px/1 var(--display);color:var(--green-2);margin-right:3px}
+.leg{position:relative;display:grid;grid-template-columns:26px minmax(0,1fr);gap:10px;padding-bottom:12px}
+.leg + .leg{padding-bottom:0}
+.leg::before{content:"";position:absolute;left:12px;top:28px;bottom:0;border-left:2px dashed var(--line-2)}
+.leg + .leg::before{display:none}
+.mk{width:26px;height:26px;display:grid;place-items:center;font:800 12px/1 var(--display);margin-top:1px}
+.mk.a{background:var(--green);color:#04170e;border-radius:50%}
+.mk.b{background:var(--navy);color:#fff;border-radius:8px 8px 8px 2px}
+.leg p{margin:0;font-size:15px;line-height:1.4;overflow-wrap:anywhere}
+.leg p small{display:block;color:var(--muted);font-size:13px}
+.leg.dim p{color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0}
+.chip{font-size:13px;border:1px solid var(--line-2);border-radius:999px;padding:4px 10px;color:var(--ink-2);background:#fff}
+.chip.pay{background:var(--mint);border-color:var(--mint-line);color:var(--green-3);font-weight:700}
+.step{background:var(--navy);color:var(--navy-ink);border-radius:16px;padding:16px;margin-bottom:12px}
+.step .k{font:700 12px/1.3 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--navy-green)}
+.step h2{font:800 22px/1.15 var(--display);letter-spacing:-.02em;margin:8px 0 4px;color:#fff}
+.step p{margin:0;font-size:14.5px;color:var(--navy-muted)}
+.cash{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(123,232,180,.12);border:1px solid var(--navy-line);font-size:14.5px;color:var(--navy-ink)}
+.cash b{color:var(--lime)}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:11px 14px;border-radius:12px;border:1.5px solid transparent;font-weight:700;font-size:16px;text-decoration:none;text-align:center;line-height:1.2}
+.btn-primary{background:var(--green);border-color:var(--green);color:#04170e}
+.btn-plain{background:#fff;border-color:var(--line-2);color:var(--ink)}
+.btn-dark{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn-quiet{background:none;border-color:transparent;color:var(--muted);font-weight:500;font-size:14.5px;min-height:44px}
+.btn-danger{background:#fff;border-color:#e5b9b3;color:var(--red-ink)}
+.btn[disabled]{opacity:.6;cursor:default}
+.wide{width:100%}
+.big{min-height:58px;font-size:18px}
+.fld{margin-top:12px}
+.fld label{display:block;font-size:13px;font-weight:700;color:var(--ink-2);margin-bottom:5px}
+.inp{width:100%;min-height:48px;padding:11px 13px;border:1.5px solid var(--line-2);border-radius:12px;background:#fff;font-size:16px;outline:none}
+.inp:focus{border-color:var(--green-2);box-shadow:0 0 0 3px rgba(15,191,120,.18)}
+.pinin{font:800 28px/1 var(--mono);letter-spacing:.4em;text-align:center;padding-left:.4em}
+.msg{font-size:14px;margin-top:10px;color:var(--red-ink)}
+.msg.ok{color:var(--green-3)}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px;border:1px solid var(--line-2);border-radius:12px;margin-bottom:12px}
+.seg button{min-height:44px;border:0;border-radius:9px;background:none;font-weight:700;color:var(--muted)}
+.seg button[aria-selected="true"]{background:var(--navy);color:#fff}
+.sheet{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--paper-2)}
+.sheet h3{font:800 16px/1.2 var(--display);margin:0 0 4px}
+.toast{position:fixed;left:50%;bottom:calc(20px + var(--sa-b));transform:translateX(-50%);z-index:300;background:var(--navy);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;max-width:calc(100vw - 28px);text-align:center}
+:focus-visible{outline:2px solid var(--green-2);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><img src="/assets/favicon.svg" alt="" width="28" height="28"><div><b id="whoName">Nova Instant</b><small>Rider</small></div></div>
+    <div class="top-r">
+      <button class="sw" id="onSw" type="button" role="switch" aria-checked="false" hidden><span id="onLbl">Offline</span><i aria-hidden="true"></i></button>
+      <button class="linkbtn" id="signOut" type="button" hidden>Sign out</button>
+    </div>
+  </div>
+</header>
+
+<main><div class="wrap" id="main"><div class="empty">Loading&hellip;</div></div></main>
+
+<script src="/assets/vendor/supabase-2.117.2.js"></script>
+<script>
+(function(){
+  "use strict";
+  var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
+  var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+  var $=function(id){ return document.getElementById(id); };
+  var sb=null;
+  try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){}
+  var S={ me:null, feed:null, busy:false, sheet:null, timer:null, openCount:0 };
+
+  /* supabase-js resolves with {error}; this turns it into a rejection. */
+  function rpc(name,args){
+    return Promise.resolve(sb.rpc(name,args||{})).then(function(r){
+      if(r&&r.error) throw new Error(r.error.message||"Request failed");
+      return r?r.data:null;
+    });
+  }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"'`]/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;","`":"&#96;"}[c]; }); }
+  function rs(n){ return "Rs "+Number(n||0).toLocaleString("en-PK"); }
+  function toast(t){ var el=document.createElement("div"); el.className="toast"; el.setAttribute("role","status"); el.textContent=t; document.body.appendChild(el); setTimeout(function(){ el.remove(); },2800); }
+  function ago(iso){
+    var m=Math.max(0,Math.round((Date.now()-new Date(iso).getTime())/60000));
+    return m<1?"just now":m<60?m+" min ago":Math.floor(m/60)+" h "+(m%60)+" min ago";
+  }
+  function friendly(m){
+    m=String(m||"");
+    if(/Invalid login credentials/i.test(m)) return "Wrong email or password.";
+    if(/Email not confirmed/i.test(m)) return "Confirm your email first: open the link NovaX emailed you.";
+    if(/already belongs to a NovaX account/i.test(m)) return m;
+    if(/fetch|network|Failed/i.test(m)) return "No connection. Check your internet and try again.";
+    return m||"Something went wrong. Try again.";
+  }
+  function mapsUrl(pt){ return "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination="+pt[0]+","+pt[1]; }
+  function hourLabel(h){ return (h%12||12)+(h<12?" am":" pm"); }
+
+  /* ───── boot ───── */
+  function boot(){
+    if(!sb){ $("main").innerHTML='<div class="empty"><b>NovaX could not load</b>Check your internet and refresh.</div>'; return; }
+    sb.auth.getSession().then(function(r){
+      if(!(r&&r.data&&r.data.session)) return renderAuth("signin");
+      return loadMe();
+    }).catch(function(){ renderAuth("signin"); });
+  }
+  function loadMe(){
+    return rpc("nvi_rider_me").then(function(me){
+      S.me=me||{};
+      $("signOut").hidden=false;
+      var r=S.me.rider;
+      if(r&&r.status==="Active"){ $("whoName").textContent=r.full_name; return start(); }
+      renderNotRider();
+    }).catch(function(e){
+      $("main").innerHTML='<div class="empty"><b>Could not open</b>'+esc(friendly(e.message))+'<div style="margin-top:14px"><button class="btn btn-plain" type="button" data-act="reload">Try again</button></div></div>';
+    });
+  }
+  function renderNotRider(){
+    stop(); $("onSw").hidden=true;
+    var r=S.me.rider, st=r&&r.status;
+    $("main").innerHTML='<h1 class="page">'+(st==="Blocked"?"Your access is on hold":st==="Removed"?"Access closed":"Not a Nova Instant rider yet")+'</h1><p class="sub">'+
+      (st==="Blocked"?"NovaX has paused this rider login. Call the NovaX office.":
+       st==="Removed"?"This rider login has been closed. Call the NovaX office if that is a mistake.":
+       "You are signed in as <b>"+esc(S.me.email||"")+"</b>, but NovaX has not added this email as a Nova Instant rider. Ask NovaX to add it, then sign in again.")+"</p>";
+  }
+
+  /* ───── sign in / join ───── */
+  function renderAuth(view){
+    stop(); $("onSw").hidden=true; $("signOut").hidden=true; $("whoName").textContent="Nova Instant";
+    $("main").innerHTML=
+      '<h1 class="page">Nova Instant rider</h1><p class="sub">For NovaX bike riders. <span class="ur">NovaX ke bike riders ke liye.</span></p>'+
+      '<div class="seg" role="tablist"><button type="button" role="tab" data-auth="signin" aria-selected="'+(view==="signin")+'">Sign in</button>'+
+      '<button type="button" role="tab" data-auth="join" aria-selected="'+(view==="join")+'">First time</button></div>'+
+      (view==="signin"?
+        '<form id="fIn" class="card" novalidate><div class="fld" style="margin-top:0"><label for="inEmail">Email</label><input class="inp" id="inEmail" type="email" autocomplete="email" inputmode="email" maxlength="254"></div>'+
+        '<div class="fld"><label for="inPass">Password</label><input class="inp" id="inPass" type="password" autocomplete="current-password" maxlength="72"></div>'+
+        '<div class="fld"><button class="btn btn-dark wide" id="inBtn" type="submit">Sign in</button></div>'+
+        '<button type="button" class="btn btn-quiet wide" id="forgot">Forgot your password?</button><div class="msg" id="inMsg" role="alert"></div></form>'
+      :
+        '<form id="fJoin" class="card" novalidate><p class="sub" style="margin-bottom:0">NovaX adds your email first. Use that same email here and choose your own password. <span class="ur">Wohi email likhein jo NovaX ko di thi.</span></p>'+
+        '<div class="fld"><label for="jName">Your full name</label><input class="inp" id="jName" autocomplete="name" maxlength="80"></div>'+
+        '<div class="fld"><label for="jEmail">Email</label><input class="inp" id="jEmail" type="email" autocomplete="email" inputmode="email" maxlength="254"></div>'+
+        '<div class="fld"><label for="jPass">Choose a password (8 or more characters)</label><input class="inp" id="jPass" type="password" autocomplete="new-password" maxlength="72"></div>'+
+        '<div class="fld"><label for="jPass2">Password again</label><input class="inp" id="jPass2" type="password" autocomplete="new-password" maxlength="72"></div>'+
+        '<div class="fld"><button class="btn btn-primary wide" id="jBtn" type="submit">Create my rider login</button></div><div class="msg" id="jMsg" role="alert"></div></form>');
+  }
+  function say(el,text,ok){ el.textContent=text; el.className="msg"+(ok?" ok":""); }
+  function busyBtn(b,on,label){ if(!b) return; if(on){ b.dataset.l=b.textContent; b.disabled=true; b.textContent=label||"Working…"; } else { b.disabled=false; if(b.dataset.l) b.textContent=b.dataset.l; } }
+  function doSignIn(e){
+    e.preventDefault();
+    var email=$("inEmail").value.trim().toLowerCase(), pass=$("inPass").value, btn=$("inBtn"), msg=$("inMsg");
+    if(!/^\S+@\S+\.\S+$/.test(email)||!pass) return say(msg,"Enter your email and password.");
+    busyBtn(btn,true,"Signing in…");
+    sb.auth.signInWithPassword({ email:email, password:pass }).then(function(r){
+      busyBtn(btn,false);
+      if(r.error) return say(msg,friendly(r.error.message));
+      loadMe();
+    }).catch(function(err){ busyBtn(btn,false); say(msg,friendly(err&&err.message)); });
+  }
+  function doForgot(){
+    var email=($("inEmail").value||"").trim().toLowerCase(), msg=$("inMsg");
+    if(!/^\S+@\S+\.\S+$/.test(email)){ $("inEmail").focus(); return say(msg,"Type your email above first, then press Forgot your password."); }
+    Promise.resolve(sb.auth.resetPasswordForEmail(email,{ redirectTo:location.origin+"/new-password.html" })).catch(function(){}).then(function(){
+      say(msg,"If "+email+" has a login, a reset link is on its way. Check your inbox and spam.",true);
+    });
+  }
+  function doJoin(e){
+    e.preventDefault();
+    var name=$("jName").value.trim(), email=$("jEmail").value.trim().toLowerCase(), p1=$("jPass").value, p2=$("jPass2").value, btn=$("jBtn"), msg=$("jMsg");
+    if(name.length<2) return say(msg,"Enter your full name.");
+    if(!/^\S+@\S+\.\S+$/.test(email)) return say(msg,"Enter the email NovaX has for you.");
+    if(p1.length<8) return say(msg,"Your password needs at least 8 characters.");
+    if(p1!==p2) return say(msg,"The two passwords do not match.");
+    busyBtn(btn,true,"Creating your login…");
+    sb.auth.signUp({ email:email, password:p1, options:{ data:{ role:"instant", full_name:name } } }).then(function(r){
+      if(r.error) throw new Error(r.error.message);
+      var u=r.data&&r.data.user;
+      if(u&&Array.isArray(u.identities)&&u.identities.length===0) throw new Error("This email already has a login. Sign in instead.");
+      busyBtn(btn,false);
+      if(!r.data.session) return say(msg,"Check your email to confirm it, then come back and sign in.",true);
+      return loadMe();
+    }).catch(function(err){ busyBtn(btn,false); say(msg,friendly(err&&err.message)); });
+  }
+
+  /* ───── the rider's day ───── */
+  function start(){
+    $("onSw").hidden=false;
+    refresh(true);
+    stop();
+    /* Never repaint under the rider's thumb: not while a sheet is open, and
+       not while they are typing the PIN. */
+    S.timer=setInterval(function(){ if(!document.hidden&&!S.sheet&&!S.busy&&!typing()) refresh(false); },12000);
+  }
+  function stop(){ if(S.timer){ clearInterval(S.timer); S.timer=null; } }
+  function typing(){ var a=document.activeElement; return !!(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))||!!document.querySelector('[data-sure="1"]'); }
+  document.addEventListener("visibilitychange",function(){ if(!document.hidden&&S.timer&&!S.sheet&&!S.busy&&!typing()) refresh(false); });
+
+  function refresh(first){
+    return rpc("nvi_rider_feed").then(function(f){
+      var before=S.openCount;
+      S.feed=f||{}; S.openCount=(S.feed.open||[]).length;
+      /* A new job arrived while the rider was waiting. */
+      if(!first&&S.openCount>before&&!S.feed.active){ try{ navigator.vibrate&&navigator.vibrate([180,90,180]); }catch(e){} }
+      paint();
+    }).catch(function(e){
+      if(/not an active Nova Instant rider/i.test(e.message||"")) return loadMe();
+      if(first) $("main").innerHTML='<div class="empty"><b>Could not load your jobs</b>'+esc(friendly(e.message))+'<div style="margin-top:14px"><button class="btn btn-plain" type="button" data-act="reload">Try again</button></div></div>';
+    });
+  }
+
+  function paintSwitch(){
+    var on=!!(S.feed&&S.feed.rider&&S.feed.rider.online);
+    $("onSw").setAttribute("aria-checked",String(on)); $("onLbl").textContent=on?"Online":"Offline";
+  }
+  function jobLegs(j,full,dimDrop){
+    return '<div class="leg"><span class="mk a" aria-hidden="true">A</span><p>'+(full?'<small>Pickup: '+esc(j.sender_name)+'</small>':'<small>Pickup</small>')+esc(j.pickup_address)+'</p></div>'+
+           '<div class="leg'+(dimDrop?' dim':'')+'"><span class="mk b" aria-hidden="true">B</span><p>'+(full?'<small>Deliver to: '+esc(j.receiver_name)+'</small>':'<small>Deliver to</small>')+esc(j.drop_address)+'</p></div>';
+  }
+  function paint(){
+    var f=S.feed, h="";
+    paintSwitch();
+    var t=f.today||{};
+    h+='<div class="stats"><div class="stat"><span>Done</span><b>'+esc(t.done||0)+'</b></div><div class="stat"><span>Fares</span><b>'+esc(rs(t.fares))+'</b></div><div class="stat"><span>Cash held</span><b>'+esc(rs(t.cash_in_hand))+'</b></div></div>';
+    if(f.active) h+=activeHtml(f.active);
+    else if(!f.rider.online) h+='<div class="card empty"><b>You are offline</b>Turn on Online at the top to see jobs.<br><span class="ur">Jobs dekhne ke liye upar Online karein.</span></div>';
+    else {
+      if(!f.hours_open) h+='<div class="note warn">Nova Instant takes bookings from '+hourLabel(f.open_hour)+' to '+hourLabel(f.close_hour)+'. New jobs start again then.</div>';
+      var open=f.open||[];
+      if(!open.length) h+='<div class="card empty"><b>No jobs right now</b>Stay online. New jobs appear here by themselves.<br><span class="ur">Online rahein, naya job khud aa jayega.</span></div>';
+      else h+=open.map(function(j){
+        return '<div class="card"><div class="job-top"><span class="code">'+esc(j.code)+' &middot; '+esc(ago(j.created_at))+'</span><span class="fare"><small>Rs</small>'+esc(Number(j.fare).toLocaleString("en-PK"))+'</span></div>'+
+          jobLegs(j,false)+
+          '<div class="chips"><span class="chip">'+esc(j.km)+' km</span><span class="chip">'+esc(j.item)+'</span><span class="chip pay">'+(j.payer==="sender"?"Cash at pickup":"Cash at delivery")+'</span></div>'+
+          '<div style="margin-top:12px"><button class="btn btn-primary wide" type="button" data-accept="'+esc(j.id)+'">Accept this job <span class="ur" style="color:inherit;opacity:.75">Qabool karein</span></button></div></div>';
+      }).join("");
+    }
+    $("main").innerHTML=h;
+  }
+  function activeHtml(j){
+    var toPickup=j.status==="Rider assigned";
+    var cashNow = toPickup ? j.payer==="sender" : j.payer==="receiver";
+    var h='<div class="step"><div class="k">'+esc(j.code)+' &middot; step '+(toPickup?"1":"2")+' of 2</div>'+
+      '<h2>'+(toPickup?"Go to the pickup":"Deliver the parcel")+'</h2>'+
+      '<p>'+(toPickup?'Collect: '+esc(j.item):'Hand over: '+esc(j.item))+' <span class="ur" style="color:inherit;opacity:.8">'+(toPickup?"Parcel uthayein":"Parcel pohnchayein")+'</span></p>'+
+      '<div class="cash">'+(cashNow?'Collect <b>'+esc(rs(j.fare))+'</b> in cash from the '+(toPickup?"sender":"receiver")+'.':
+        (toPickup?'No cash here. The receiver pays <b>'+esc(rs(j.fare))+'</b> at delivery.':'No cash here. The sender already paid.'))+'</div></div>';
+    h+='<div class="card">'+jobLegs(j,true,toPickup)+
+      (j.rider_note?'<div class="chips"><span class="chip">Note: '+esc(j.rider_note)+'</span></div>':'')+
+      '<div class="acts"><a class="btn btn-plain" href="'+esc(mapsUrl(toPickup?j.p:j.d))+'" target="_blank" rel="noopener">Open in Maps</a>'+
+      '<a class="btn btn-plain" href="tel:'+esc(toPickup?j.sender_phone:j.receiver_phone)+'">Call '+(toPickup?"sender":"receiver")+'</a></div>'+
+      (toPickup?'':'<div class="acts" style="grid-template-columns:1fr"><a class="btn btn-quiet" href="tel:'+esc(j.sender_phone)+'">Call the sender ('+esc(j.sender_name)+')</a></div>')+
+      '</div>';
+    if(toPickup){
+      h+='<div class="card"><button class="btn btn-primary wide big" type="button" id="pickBtn">I have the parcel <span class="ur" style="color:inherit;opacity:.75">Parcel le liya</span></button>'+
+         '<button class="btn btn-quiet wide" type="button" data-sheet="release">I cannot do this job</button>'+sheetHtml(j)+'</div>';
+    } else {
+      var locked=Number(j.pin_tries)>=5;
+      h+='<div class="card"><div class="fld" style="margin-top:0"><label for="pin">Delivery PIN from the receiver <span class="ur">Receiver se 4 number ka PIN lein</span></label>'+
+         '<input class="inp pinin" id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" placeholder="0000"'+(locked?" disabled":"")+'></div>'+
+         '<div class="fld"><button class="btn btn-primary wide big" type="button" id="dropBtn"'+(locked?" disabled":"")+'>Delivered <span class="ur" style="color:inherit;opacity:.75">Parcel de diya</span></button></div>'+
+         '<div class="msg" id="pinMsg" role="alert">'+(locked?"The PIN is locked after five wrong tries. Call the NovaX office to close this job.":"")+'</div>'+
+         '<button class="btn btn-quiet wide" type="button" data-sheet="problem">There is a problem</button>'+sheetHtml(j)+'</div>';
+    }
+    if(j.problem_note) h+='<div class="note warn" style="margin-top:12px">You told the office: '+esc(j.problem_note)+'</div>';
+    return h;
+  }
+  var RELEASE=["Bike problem","Too far from me","Sender not answering","Sender cancelled","Other"];
+  var PROBLEM=["Receiver not answering","Receiver refuses the parcel","Wrong address","Receiver has no PIN","Other"];
+  function sheetHtml(j){
+    if(!S.sheet) return "";
+    var rel=S.sheet==="release", list=rel?RELEASE:PROBLEM;
+    return '<div class="sheet"><h3>'+(rel?"Give this job back":"Tell the office")+'</h3><p class="sub" style="margin:0">'+(rel?"It goes back to the list for another rider.":"The job stays with you. The office will call you.")+'</p>'+
+      '<div class="fld"><label for="shWhy">What happened?</label><select class="inp" id="shWhy">'+list.map(function(x){ return '<option>'+esc(x)+'</option>'; }).join("")+'</select></div>'+
+      '<div class="fld"><label for="shNote">More detail (optional)</label><input class="inp" id="shNote" maxlength="200"></div>'+
+      '<div class="acts"><button class="btn btn-plain" type="button" data-sheet="">Back</button><button class="btn '+(rel?"btn-danger":"btn-dark")+'" type="button" id="shGo">'+(rel?"Give it back":"Send to office")+'</button></div></div>';
+  }
+
+  var SAY={ offline:"Go online first.", busy:"Finish the job you have first.", taken:"Another rider took that job.",
+    not_yours:"This job is no longer with you.", need_reason:"Choose a reason.", need_note:"Say what happened.",
+    wrong_pin:"That PIN is not right.", pin_locked:"The PIN is locked after five wrong tries. Call the NovaX office." };
+  function act(name,args,okText){
+    if(S.busy) return Promise.resolve(false);
+    S.busy=true;
+    return rpc(name,args).then(function(r){
+      S.busy=false;
+      if(r&&r.ok===false){ toast(SAY[r.reason]||"That did not work. Try again."); return refresh(false).then(function(){ return r; }); }
+      if(okText) toast(okText);
+      S.sheet=null;
+      return refresh(false).then(function(){ return r||{ ok:true }; });
+    }).catch(function(e){ S.busy=false; toast(friendly(e.message)); return false; });
+  }
+
+  document.addEventListener("click",function(e){
+    var t=e.target.closest("[data-auth],[data-act],[data-accept],[data-sheet],#forgot,#pickBtn,#dropBtn,#shGo,#onSw,#signOut");
+    if(!t) return;
+    if(t.dataset.auth) return renderAuth(t.dataset.auth);
+    if(t.dataset.act==="reload") return boot();
+    if(t.id==="forgot") return doForgot();
+    if(t.id==="signOut"){ stop(); return Promise.resolve(sb.auth.signOut()).catch(function(){}).then(function(){ S.me=null; S.feed=null; renderAuth("signin"); }); }
+    if(t.id==="onSw"){
+      var on=t.getAttribute("aria-checked")!=="true";
+      if(!on&&S.feed&&S.feed.active){ toast("Finish the job you have before going offline."); return; }
+      return act("nvi_rider_online",{ p_on:on },on?"You are online.":"You are offline.");
+    }
+    if(t.dataset.accept){ t.disabled=true; return act("nvi_rider_accept",{ p_job:t.dataset.accept },"Job accepted. Go to the pickup."); }
+    if(t.hasAttribute("data-sheet")){ S.sheet=t.dataset.sheet||null; return paint(); }
+    var j=S.feed&&S.feed.active; if(!j) return;
+    if(t.id==="pickBtn"){
+      /* Two presses: a pocket tap must not mark a parcel collected. */
+      if(t.dataset.sure!=="1"){ t.dataset.sure="1"; t.textContent="Press again to confirm"; setTimeout(function(){ if(t.isConnected){ t.dataset.sure="0"; paint(); } },4000); return; }
+      t.disabled=true; return act("nvi_rider_picked",{ p_job:j.id },"Picked up. Now deliver it.");
+    }
+    if(t.id==="dropBtn"){
+      var pin=($("pin").value||"").replace(/\D/g,"");
+      if(pin.length!==4){ say($("pinMsg"),"Type the 4-digit PIN the receiver shows you."); $("pin").focus(); return; }
+      t.disabled=true;
+      return act("nvi_rider_delivered",{ p_job:j.id, p_pin:pin },"Delivered. Well done.").then(function(r){
+        if(r&&r.ok===false&&r.reason==="wrong_pin"&&$("pinMsg")) say($("pinMsg"),"That PIN is not right. "+r.left+" "+(r.left===1?"try":"tries")+" left. Ask the receiver to open their tracking link.");
+      });
+    }
+    if(t.id==="shGo"){
+      var why=$("shWhy").value, note=($("shNote").value||"").trim(), text=why+(note?": "+note:"");
+      t.disabled=true;
+      if(S.sheet==="release") return act("nvi_rider_release",{ p_job:j.id, p_reason:text },"Job given back.");
+      return act("nvi_rider_problem",{ p_job:j.id, p_note:text },"Sent to the office.");
+    }
+  });
+  document.addEventListener("submit",function(e){
+    if(e.target.id==="fIn") return doSignIn(e);
+    if(e.target.id==="fJoin") return doJoin(e);
+  });
+
+  boot();
+})();
+</script>
+</body>
+</html>
