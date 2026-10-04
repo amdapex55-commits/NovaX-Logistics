@@ -9,10 +9,12 @@
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
 <meta name="theme-color" content="#0d2920">
-<!-- Not linked from the site and not indexed until launch. The tracking token
-     lives in this page's URL, so no referrer leaves it. -->
+<!-- Not indexed until launch: removing this line is a launch decision. The
+     tracking token lives in this page's URL, so only the site's address is
+     ever sent as the referrer, never the path. The map needs that much: a
+     Mapbox token restricted to novaxlogistics.com is refused with none. -->
 <meta name="robots" content="noindex,nofollow">
-<meta name="referrer" content="no-referrer">
+<meta name="referrer" content="origin">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet">
@@ -66,9 +68,9 @@ button{cursor:pointer}
 .note.prev{background:var(--mint);color:var(--green-3);border:1px solid var(--mint-line)}
 
 /* Layout */
-.book{display:grid;gap:16px;padding-top:18px;padding-bottom:150px}
+.book{display:grid;gap:16px;padding-top:18px;padding-bottom:18px}
 @media (min-width:920px){
-  .book{grid-template-columns:minmax(0,480px) minmax(0,1fr);gap:28px;padding-top:28px;padding-bottom:60px;align-items:start}
+  .book{grid-template-columns:minmax(0,480px) minmax(0,1fr);gap:28px;padding-top:28px;padding-bottom:24px;align-items:start}
   .mapcol{position:sticky;top:16px}
 }
 /* Phones: the map sits straight under the two stops, before the fare. */
@@ -214,6 +216,21 @@ body.pinning .leaflet-bottom{bottom:118px}
 .rowbtns{display:grid;gap:10px;margin-top:16px}
 @media (min-width:420px){ .rowbtns.two{grid-template-columns:1fr 1fr} }
 .fine{font-size:13px;color:var(--muted);margin:14px 0 0;line-height:1.5}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.agree{display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;align-items:start;margin-top:16px;padding:12px;border:1.5px solid var(--line-2);border-radius:12px;font-size:14px;line-height:1.45;color:var(--ink-2);cursor:pointer}
+.agree input{width:22px;height:22px;margin:1px 0 0;accent-color:var(--green-2)}
+.agree.bad{border-color:#c0392b;box-shadow:0 0 0 3px rgba(192,57,43,.12)}
+.agree a,.fine a,.help a{color:var(--green-2);font-weight:700}
+.next{margin:14px 0 0;padding:0 0 0 18px;font-size:13.5px;color:var(--muted);line-height:1.5}
+.next li + li{margin-top:3px}
+.help{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;font-size:14px;color:var(--ink-2)}
+.help .btn{min-height:44px;padding:8px 14px;font-size:15px}
+.helpwrap{max-width:520px;margin:0 auto;padding:6px 16px 150px}
+@media (min-width:920px){ .helpwrap{padding-bottom:60px} }
+.findform{display:grid;gap:10px;margin-top:10px}
+@media (min-width:480px){ .findform{grid-template-columns:1fr 1fr auto;align-items:end} }
+.findform label{display:block;font-size:13px;font-weight:700;color:var(--ink-2);margin-bottom:5px}
+#capBox{margin-top:14px;min-height:0}
 .toast{position:fixed;left:50%;bottom:calc(90px + var(--sa-b));transform:translateX(-50%);z-index:3000;background:var(--navy);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;max-width:calc(100vw - 32px)}
 .spin{width:16px;height:16px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:sp .7s linear infinite;display:inline-block}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -291,7 +308,7 @@ body.pinning .leaflet-bottom{bottom:118px}
         </div>
       </section>
 
-      <section class="meter" aria-live="polite">
+      <section class="meter" aria-label="Fare">
         <div class="meter-top">
           <div>
             <div class="meter-k">Fare</div>
@@ -340,6 +357,17 @@ body.pinning .leaflet-bottom{bottom:118px}
           <label for="note">Note for the rider (optional)</label>
           <input class="inp" id="note" maxlength="240" placeholder="e.g. call on arrival, gate 2">
         </div>
+        <label class="agree" id="agreeBox" for="agree">
+          <input type="checkbox" id="agree">
+          <span>The parcel fits on a motorbike, weighs <b id="maxKg">10 kg</b> or less, is worth <b id="maxVal">Rs 10,000</b> or less, and holds nothing on the not-allowed list. I agree to the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</span>
+        </label>
+        <div id="capBox"></div>
+        <ul class="next" id="nextList">
+          <li id="nextRiders" hidden></li>
+          <li id="nextCall" hidden>First booking from this number? NovaX phones the sender to confirm it, then sends a rider.</li>
+          <li>You get a tracking link and a 4-digit PIN. The receiver gives the PIN to the rider.</li>
+          <li>Free to cancel until the rider has the parcel.</li>
+        </ul>
       </section>
 
       <div class="bar">
@@ -378,7 +406,7 @@ body.pinning .leaflet-bottom{bottom:118px}
         <div class="tk-body">
           <div id="tPinBox" hidden>
             <div class="pinrow">
-              <div><b>Delivery PIN</b>The receiver gives this to the rider at the door.</div>
+              <div><b>Delivery PIN</b><span id="tPinSay">The receiver gives this to the rider at the door.</span></div>
               <span class="pin" id="tPin"></span>
             </div>
             <div class="tear"></div>
@@ -387,20 +415,41 @@ body.pinning .leaflet-bottom{bottom:118px}
           <ol class="steps" id="tSteps"></ol>
           <div class="tear"></div>
           <dl class="kv" id="tKv"></dl>
-          <div class="rowbtns two">
+          <div class="rowbtns two" id="tActs">
             <button class="btn btn-primary" type="button" id="tShare">Share on WhatsApp</button>
             <button class="btn btn-plain" type="button" id="tCopy">Copy tracking link</button>
           </div>
           <div class="rowbtns">
             <button class="btn btn-danger" type="button" id="tCancel" hidden>Cancel this booking</button>
-            <a class="btn btn-plain" href="instant.html">Book another delivery</a>
+            <a class="btn btn-plain" href="instant.html" id="tAgain">Book another delivery</a>
           </div>
-          <p class="fine" id="tFine">This page updates by itself. Keep the link: it is the only way back to this booking.</p>
+          <p class="fine" id="tFine">This page shows the status of the delivery, not the rider's live location. It updates by itself. Save the link, or note the booking number: with it and either phone number you can find this booking again.</p>
         </div>
       </div>
     </div>
   </div>
 </main>
+
+<!-- Help, on both views: the NovaX number, and the way back to a lost booking -->
+<div class="helpwrap" id="helpWrap">
+  <section class="card" aria-labelledby="hHelp">
+    <h2 id="hHelp">Need help?<small>A person at NovaX answers during Nova Instant hours.</small></h2>
+    <div class="help">
+      <a class="btn btn-plain" id="helpCall" href="tel:+923123922558">Call 0312 3922558</a>
+      <a class="btn btn-plain" id="helpWa" href="https://wa.me/923123922558" target="_blank" rel="noopener">WhatsApp NovaX</a>
+    </div>
+  </section>
+  <section class="card" aria-labelledby="hFind">
+    <h2 id="hFind">Lost your tracking link?<small>Enter the booking number and the sender's or receiver's mobile.</small></h2>
+    <form class="findform" id="findForm" novalidate>
+      <div><label for="fCode">Booking number</label><input class="inp" id="fCode" maxlength="12" autocomplete="off" autocapitalize="characters" placeholder="NI100001"></div>
+      <div><label for="fPhone">Mobile on the booking</label><input class="inp" id="fPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="03XX XXXXXXX"></div>
+      <button class="btn btn-plain" type="submit" id="fBtn">Find it</button>
+    </form>
+    <p class="err" id="fMsg" role="alert" hidden></p>
+  </section>
+</div>
+<p class="sr" id="srLive" role="status" aria-live="polite"></p>
 
 <script src="/assets/vendor/supabase-2.117.2.js"></script>
 <script src="/assets/vendor/leaflet-1.9.4/leaflet.js"></script>
@@ -443,6 +492,41 @@ body.pinning .leaflet-bottom{bottom:118px}
   }
   function inBox(lat,lng){ return lat>=BOX.s&&lat<=BOX.n&&lng>=BOX.w&&lng<=BOX.e; }
   function trackUrl(token){ return location.origin+location.pathname+"?t="+encodeURIComponent(token); }
+
+  /* One quiet line for screen readers: the fare when it is worked out, the
+     status when it changes. Said once, not on every repaint. */
+  var lastSaid="";
+  function announce(t){ if(!t||t===lastSaid) return; lastSaid=t; var el=$("srLive"); el.textContent=""; setTimeout(function(){ el.textContent=t; },60); }
+  /* The NovaX number comes with nvi_status()/nvi_track(); this is the stand-in. */
+  function setSupport(ph){
+    var d=pkPhone(ph); if(!d) return;
+    $("helpCall").href="tel:+92"+d.slice(1); $("helpCall").textContent="Call "+d.slice(0,4)+" "+d.slice(4);
+    $("helpWa").href="https://wa.me/92"+d.slice(1);
+  }
+  /* A random name for this browser, so one browser cannot flood bookings
+     behind many phone numbers. It identifies nobody. */
+  function deviceId(){
+    try{
+      var d=localStorage.getItem("nvi_dev");
+      if(!d){ var a=new Uint8Array(12); crypto.getRandomValues(a); d=Array.prototype.map.call(a,function(x){ return ("0"+x.toString(16)).slice(-2); }).join(""); localStorage.setItem("nvi_dev",d); }
+      return d;
+    }catch(e){ return null; }
+  }
+  $("findForm").addEventListener("submit",function(e){
+    e.preventDefault();
+    var msg=$("fMsg"), btn=$("fBtn"), code=$("fCode").value.trim(), ph=pkPhone($("fPhone").value);
+    function say(t){ msg.textContent=t; msg.hidden=false; }
+    msg.hidden=true;
+    if(code.replace(/[^A-Za-z0-9]/g,"").length<6){ $("fCode").focus(); return say("Enter the booking number, like NI100001."); }
+    if(!ph){ $("fPhone").focus(); return say("Enter the mobile like 0300 1234567."); }
+    btn.disabled=true;
+    rpc("nvi_find",{ p_code:code, p_phone:ph }).then(function(r){
+      btn.disabled=false;
+      if(r.error||!r.data) return say("Could not look that up. Check your connection and try again.");
+      if(!r.data.ok) return say(r.data.reason==="slow_down"?"Too many tries. Wait ten minutes, or call NovaX.":"No booking matches that number and mobile.");
+      location.href="instant.html?t="+encodeURIComponent(r.data.token);
+    });
+  });
 
   var token=new URLSearchParams(location.search).get("t");
   if(token){ startTrack(token); return; }
@@ -564,6 +648,30 @@ body.pinning .leaflet-bottom{bottom:118px}
           .then(function(r){ return r.ok?r.json():{}; }).then(function(j){ var f=(j.features||[])[0]; return f?mbLabel(f.properties||{}):null; }).catch(function(){ return null; });
       });
     }
+    /* Photon answers "Dolmen Mall Clifton" with fifteen shops inside the mall
+       and never the mall: the mall is named "Dolmen Mall" and Clifton is its
+       area. So a query of three or more words is also asked without its last
+       word, and everything is ranked here: a place that matches every word
+       (name, street or area) and is a landmark or an area comes first; a shop
+       inside something else ("Habitt - Dolmen Mall Clifton") goes last. */
+    var phCache={};
+    function photon(q){
+      if(phCache[q]) return Promise.resolve(phCache[q]);
+      var u=PHOTON+"/api/?q="+encodeURIComponent(q)+"&limit=12&lang=en&lat="+CENTER[0]+"&lon="+CENTER[1]+"&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n;
+      return fetch(u).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){ phCache[q]=j.features||[]; return phCache[q]; });
+    }
+    var LANDMARK=/^(mall|marketplace|supermarket|hospital|university|college|station|stadium|park|neighbourhood|suburb|quarter|town|city|village|residential|commercial|retail|hotel|aerodrome|bus_station|administrative)$/;
+    function placeScore(toks,pr){
+      var name=String(pr.name||"").toLowerCase();
+      var all=[pr.name,pr.street,pr.locality,pr.district,pr.suburb].join(" ").toLowerCase();
+      var sc=0;
+      if(toks.length&&toks.every(function(w){ return all.indexOf(w)>-1; })) sc+=2;
+      if(pr.osm_key==="place"||LANDMARK.test(String(pr.osm_value||""))) sc+=3;
+      if(pr.osm_key==="highway") sc+=1;
+      if(/ - /.test(String(pr.name||""))) sc-=2;
+      if(toks.length&&name.indexOf(toks[0])===0) sc+=1;
+      return sc;
+    }
     function bindSearch(k){
       var inp=$(k+"Search"), list=$(k+"Sug"), items=[], active=-1, t=null, seq=0;
       function close(){ list.hidden=true; inp.setAttribute("aria-expanded","false"); inp.removeAttribute("aria-activedescendant"); active=-1; }
@@ -576,15 +684,23 @@ body.pinning .leaflet-bottom{bottom:118px}
       }
       function search(q){
         var my=++seq;
-        var u=PHOTON+"/api/?q="+encodeURIComponent(q)+"&limit=6&lang=en&lat="+CENTER[0]+"&lon="+CENTER[1]+"&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n;
-        fetch(u).then(function(r){ return r.ok?r.json():{ features:[] }; }).then(function(j){
+        var words=q.split(/\s+/).filter(Boolean), asks=[q];
+        if(words.length>=3) asks.push(words.slice(0,-1).join(" "));
+        var toks=q.toLowerCase().split(/[^a-z0-9]+/).filter(function(w){ return w.length>1; });
+        /* The search service takes a second or two. Say so at once, so the
+           box does not look dead. */
+        if(list.hidden||!items.length){ list.innerHTML='<li class="none">Searching…</li>'; list.hidden=false; inp.setAttribute("aria-expanded","true"); }
+        Promise.all(asks.map(function(a){ return photon(a).catch(function(){ return null; }); })).then(function(sets){
           if(my!==seq) return;
-          var seen={};
-          items=(j.features||[]).map(function(f){
-            var c=f.geometry&&f.geometry.coordinates; if(!c) return null;
-            var it={ lat:c[1], lng:c[0], label:placeLabel(f.properties||{}) };
-            if(!inBox(it.lat,it.lng)||seen[it.label.full]) return null; seen[it.label.full]=1; return it;
-          }).filter(Boolean).slice(0,5);
+          if(sets.every(function(x){ return x===null; })) throw 0;
+          var seen={}, all=[];
+          sets.forEach(function(feats){ (feats||[]).forEach(function(f){
+            var c=f.geometry&&f.geometry.coordinates; if(!c) return;
+            var pr=f.properties||{}, it={ lat:c[1], lng:c[0], label:placeLabel(pr), sc:placeScore(toks,pr) };
+            if(!inBox(it.lat,it.lng)||seen[it.label.full]) return; seen[it.label.full]=1; all.push(it);
+          }); });
+          all.sort(function(a,b){ return b.sc-a.sc; });
+          items=all.slice(0,5);
           if(items.length){ active=0; render(); return; }
           return mbSearch(q).then(function(more){ if(my!==seq) return; items=more.slice(0,5); active=items.length?0:-1; render(); });
         }).catch(function(){
@@ -605,7 +721,7 @@ body.pinning .leaflet-bottom{bottom:118px}
         if(st[k]){ st[k]=null; $(k==="p"?"stopP":"stopD").classList.remove("set"); st.quote=null; st.quoting=false; ++qSeq; paintMap(); paintFare(); }
         clearTimeout(t); var q=inp.value.trim();
         if(q.length<3){ seq++; close(); return; }
-        t=setTimeout(function(){ search(q); },320);
+        t=setTimeout(function(){ search(q); },250);
       });
       inp.addEventListener("keydown",function(e){
         if(list.hidden) return;
@@ -693,11 +809,12 @@ body.pinning .leaflet-bottom{bottom:118px}
       drop_outside:"The delivery point is outside Karachi. Nova Instant runs inside Karachi only.",
       too_close:"Those two pins are almost the same spot. Move one of them.",
       pickup_off_road:"A rider cannot reach the pickup pin: it is not near a road. Move it onto the street.",
-      drop_off_road:"A rider cannot reach the delivery pin: it is not near a road. Move it onto the street." };
+      drop_off_road:"A rider cannot reach the delivery pin: it is not near a road. Move it onto the street.",
+      slow_down:"Too many fare checks from this connection. Wait a few minutes and try again." };
     /* When neither router answers the server prices from an estimate. The
-       page asks again by itself, twice, so the customer books a measured fare
-       whenever one can be had. The first answer stays hidden meanwhile: a
-       fare that changes in front of the customer reads as a trick. */
+       page asks again by itself, twice. If the road still cannot be measured
+       the estimate is shown as a guide only: it cannot be booked, because an
+       unmeasured pin may be somewhere no rider can reach. */
     function quote(tries){
       tries=tries||0;
       if(!tries){ st.quote=null; st.quoteErr=""; }
@@ -722,10 +839,13 @@ body.pinning .leaflet-bottom{bottom:118px}
         dist.lastChild.textContent = st.quote.source==="road" ? "by road" : "estimated";
         say.textContent = Number(st.quote.fare)<=Number(st.quote.min_fare)
           ? "Minimum fare. Trips up to "+Math.floor(st.quote.min_fare/st.quote.rate_per_km)+" km cost "+money(st.quote.min_fare)+"."
-          : st.quote.km+" km at Rs "+st.quote.rate_per_km+" per km."+(st.quote.source==="road"?"":" The road could not be measured just now, so this uses an estimate.");
+          : st.quote.km+" km at Rs "+st.quote.rate_per_km+" per km.";
+        if(st.quote.bookable===false) say.textContent="About "+money(st.quote.fare)+". The road could not be measured just now, so this is only a guide. Press the button below to measure it again; booking needs the measured fare.";
+        else announce("Fare "+money(st.quote.fare)+", "+st.quote.km+" kilometres by road.");
       } else {
         fare.className="fare idle"; fare.innerHTML="<small>Rs</small>&mdash;"; dist.hidden=true;
         say.textContent = st.quoting ? "Measuring the road between your pins…" : (st.p&&st.d&&st.quoteErr) ? st.quoteErr : st.p ? "Now set where it is going." : "Set both pins to see the fare.";
+        if(!st.quoting&&st.p&&st.d&&st.quoteErr) announce(st.quoteErr);
       }
       paintBtn();
     }
@@ -745,6 +865,7 @@ body.pinning .leaflet-bottom{bottom:118px}
       if(s && !s.open && !s.preview){ b.disabled=true; b.textContent = st.quote ? "Booking opens soon · "+money(st.quote.fare) : "Booking opens soon"; return; }
       if(s && !s.hours_open && !s.preview){ b.disabled=true; b.textContent="Riders are back at "+hourLabel(s.open_hour); return; }
       if(!st.quote){ b.disabled=true; b.textContent = st.quoting ? "Working out the fare…" : "Set both pins to see the fare"; return; }
+      if(st.quote.bookable===false){ b.disabled=false; b.textContent="Measure the road again"; return; }
       b.disabled=false; b.textContent="Book a rider · "+money(st.quote.fare);
     }
     rpc("nvi_status").then(function(r){
@@ -753,6 +874,18 @@ body.pinning .leaflet-bottom{bottom:118px}
       if(s&&s.mapbox&&!tilesOn) MAPBOX=String(s.mapbox);
       setTiles();
       if(s){
+        setSupport(s.support);
+        if(s.max_kg) $("maxKg").textContent=s.max_kg+" kg";
+        if(s.max_value) $("maxVal").textContent=money(s.max_value);
+        $("nextCall").hidden=!s.confirm_first;
+        /* An honest expectation, not a promise of minutes: how many riders
+           could take the job this moment. */
+        if(s.open||s.preview){
+          var nr=$("nextRiders"), n=Number(s.riders_online||0); nr.hidden=false;
+          nr.textContent = n>0 ? (n===1?"1 rider is":n+" riders are")+" online now. The first to accept comes to the pickup."
+                               : "No rider is online right now. Your booking waits for the next rider, and NovaX assigns one by hand if needed.";
+        }
+        if(s.turnstile) loadCaptcha(String(s.turnstile));
         if(!s.open && !s.preview) $("noteSoon").hidden=false;
         else if(s.preview) $("notePrev").hidden=false;
         else if(!s.hours_open){ $("noteSoon").hidden=false; $("noteSoonText").textContent="Riders are on from "+hourLabel(s.open_hour)+" to "+hourLabel(s.close_hour)+". You can check a fare now and book when they are back."; }
@@ -760,13 +893,32 @@ body.pinning .leaflet-bottom{bottom:118px}
       paintBtn();
     });
 
+    /* CAPTCHA (Cloudflare Turnstile), only when NovaX has set one up. The
+       answer is single-use: after any failed booking it is asked for again. */
+    var cap={ on:false, id:null, token:"" };
+    function loadCaptcha(siteKey){
+      if(cap.on) return; cap.on=true;
+      window.nviCapReady=function(){
+        try{ cap.id=window.turnstile.render("#capBox",{ sitekey:siteKey, callback:function(t){ cap.token=t; $("formMsg").hidden=true; },
+          "expired-callback":function(){ cap.token=""; }, "error-callback":function(){ cap.token=""; } }); }catch(e){}
+      };
+      var sc=document.createElement("script"); sc.src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=nviCapReady"; sc.async=true; sc.defer=true;
+      document.head.appendChild(sc);
+    }
+    function resetCaptcha(){ if(!cap.on) return; cap.token=""; try{ window.turnstile.reset(cap.id); }catch(e){} }
+
     /* Book */
     var BOOK_SAY={ not_open:"Nova Instant is not open for booking yet.", closed_now:"Riders are off right now. Booking opens again at 10 am.",
       pickup_address:"Add the exact pickup address.", drop_address:"Add the exact delivery address.",
       sender_name:"Add the sender's name.", receiver_name:"Add the receiver's name.",
       sender_phone:"The sender's mobile number is not valid.", receiver_phone:"The receiver's mobile number is not valid.",
       item:"Say what you are sending.", payer:"Choose who pays the rider.",
-      too_many_open:"This number already has three deliveries in progress. Wait for one to finish." };
+      too_many_open:"This number already has three deliveries in progress. Wait for one to finish.",
+      no_route:"The road between your pins has not been measured yet. Press Measure the road again.",
+      terms:"Tick the box to agree to the Nova Instant rules.",
+      slow_down:"Too many bookings from this phone or connection. Wait a while, or call NovaX.",
+      awaiting_call:"This number already has a booking waiting for NovaX's confirmation call. Answer that call first.",
+      captcha:"Complete the \"I am human\" check above, then press Book again." };
     function fail(id,msg){
       var m=$("formMsg"); m.textContent=msg; m.hidden=false;
       /* Straight to the field, not a smooth scroll: on a phone the smooth one
@@ -785,16 +937,22 @@ body.pinning .leaflet-bottom{bottom:118px}
       if($("rName").value.trim().length<2) return fail("rName",BOOK_SAY.receiver_name);
       if(!pkPhone($("rPhone").value)) return fail("rPhone","Enter the receiver's mobile like 0300 1234567.");
       if($("item").value.trim().length<2) return fail("item",BOOK_SAY.item);
+      if(!$("agree").checked){ $("agreeBox").classList.add("bad"); try{ $("agree").focus({ preventScroll:true }); $("agreeBox").scrollIntoView({ block:"center", behavior:"smooth" }); }catch(e){} return fail(null,BOOK_SAY.terms); }
+      if(cap.on&&!cap.token) return fail(null,BOOK_SAY.captcha);
       return true;
     }
     function send(retried){
       st.busy=true; paintBtn();
       rpc("nvi_book",{ p_quote:st.quote.quote, p_pickup_address:$("pAddr").value, p_drop_address:$("dAddr").value,
         p_sender_name:$("sName").value, p_sender_phone:$("sPhone").value, p_receiver_name:$("rName").value, p_receiver_phone:$("rPhone").value,
-        p_item:$("item").value, p_payer:st.payer, p_rider_note:$("note").value||null }).then(function(r){
+        p_item:$("item").value, p_payer:st.payer, p_rider_note:$("note").value||null,
+        p_terms:$("agree").checked, p_device:deviceId(), p_captcha:cap.token||null }).then(function(r){
         st.busy=false;
-        if(r.error||!r.data){ paintBtn(); fail(null,"The booking did not go through. Check your connection and press Book again."); return; }
+        /* Pressing again is safe: the same fare can only become one booking. */
+        if(r.error||!r.data){ paintBtn(); fail(null,"The booking did not go through. Check your connection and press Book again. You will not be booked twice."); return; }
         var d=r.data;
+        if(!d.ok) resetCaptcha();
+        if(d.reason==="no_route"){ paintBtn(); fail(null,BOOK_SAY.no_route); quote(); return; }
         if(d.ok){
           try{
             localStorage.setItem("nvi_last",JSON.stringify({ token:d.token, code:d.code, at:Date.now() }));
@@ -821,14 +979,19 @@ body.pinning .leaflet-bottom{bottom:118px}
         fail(map2[d.reason]||null, BOOK_SAY[d.reason]||"The booking could not be made.");
       });
     }
-    $("bookBtn").addEventListener("click",function(){ if(st.busy||!canBook()) return; if(check()) send(false); });
+    $("agree").addEventListener("change",function(){ $("agreeBox").classList.remove("bad"); $("formMsg").hidden=true; });
+    $("bookBtn").addEventListener("click",function(){
+      if(st.busy||!canBook()) return;
+      if(st.quote&&st.quote.bookable===false){ quote(); return; }
+      if(check()) send(false);
+    });
 
     paintFare(); paySay();
   }
 
   /* ───────────────────────── TRACK ───────────────────────── */
   function startTrack(token){
-    $("viewBook").hidden=true; $("viewTrack").hidden=false;
+    $("viewBook").hidden=true; $("viewTrack").hidden=false; $("helpWrap").style.paddingBottom="48px";
     var fresh=new URLSearchParams(location.search).get("new")==="1";
     /* Drop "&new=1" so a shared or reloaded link reads as tracking. */
     try{ history.replaceState(null,"","instant.html?t="+encodeURIComponent(token)); }catch(e){}
@@ -838,29 +1001,72 @@ body.pinning .leaflet-bottom{bottom:118px}
     var manage=null;
     try{ var mine=JSON.parse(localStorage.getItem("nvi_mine")||"{}"); manage=(mine[token]&&mine[token].m)||null; }catch(e){}
     var ORDER=["Booked","Rider assigned","Picked up","Delivered"];
-    var SAY={ "Booked":["Finding a rider","We are assigning a rider to your pickup."],
+    var FAIL={ receiver_unavailable:"the receiver could not be reached", refused:"the receiver refused the parcel",
+      wrong_address:"the address could not be found", damaged:"the parcel was damaged", payment_refused:"the receiver did not pay the fare" };
+    var SAY={ "Awaiting confirmation":["NovaX will call to confirm","This is the first booking from the sender's number, so NovaX phones the sender before a rider is sent. Keep that phone near."],
+      "Booked":["Finding a rider",""],
       "Rider assigned":["A rider is on the way to pickup","Keep the parcel ready."],
       "Picked up":["Your parcel is on the bike","The rider is heading to the delivery address."],
+      "Failed delivery":["The delivery could not be made","NovaX and the rider are sorting it out."],
+      "Returning":["The parcel is coming back to the sender","The sender gives the rider the PIN below when it arrives."],
+      "Returned":["Returned to the sender","The parcel was handed back."],
       "Delivered":["Delivered","The parcel was handed over."],
       "Cancelled":["Booking cancelled","No rider will come for this booking."] };
-    var STEP={ "Booked":"Booked", "Rider assigned":"Rider assigned", "Picked up":"Picked up", "Delivered":"Delivered" };
-    var WHEN={ "Booked":"created_at", "Rider assigned":"assigned_at", "Picked up":"picked_at", "Delivered":"delivered_at" };
     function when(v){
       if(!v) return "";
       try{ return new Date(v).toLocaleString("en-GB",{ timeZone:"Asia/Karachi", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; }
     }
+    function li(cls,label,at){ return '<li class="'+cls+'">'+esc(label)+(at?'<time>'+esc(when(at))+'</time>':'')+'</li>'; }
+    function subFor(j){
+      if(j.status==="Booked"){
+        var n=Number(j.riders_online||0), mins=Math.round((Date.now()-new Date(j.created_at).getTime())/60000);
+        var t = n>0 ? (n===1?"1 rider is":n+" riders are")+" online. The first to accept comes to the pickup."
+                    : "No rider is online right now. NovaX assigns one as soon as a rider is on.";
+        if(mins>=10) t+=" This has waited "+mins+" minutes: call or WhatsApp NovaX below.";
+        return t;
+      }
+      if(j.status==="Failed delivery") return "Not delivered because "+(FAIL[j.fail_reason]||"of a problem at the address")+". NovaX and the rider are sorting it out; call NovaX below if you can help.";
+      if(j.status==="Returning") return "The rider is bringing the parcel back to the pickup address. The sender gives the rider the PIN below"+(Number(j.return_due)>0?" and pays "+money(j.return_due)+" in cash.":".");
+      if(j.status==="Cancelled"&&j.cancel_reason&&j.cancel_reason!=="Cancelled by customer") return "Cancelled by NovaX: "+j.cancel_reason;
+      return (SAY[j.status]||["",""])[1];
+    }
+    /* Not a booking this link can show: only the way out is offered. */
+    function bare(title,sub){
+      clearInterval(timer); timer=null;
+      $("tTitle").textContent=title; $("tSub").textContent=sub;
+      ["tPinBox","tRider","tSteps","tKv","tActs","tCancel","tFine"].forEach(function(id){ $(id).hidden=true; });
+      document.querySelectorAll("#viewTrack .tear").forEach(function(el){ el.hidden=true; });
+      var again=$("tAgain"); again.textContent="Book a delivery"; again.className="btn btn-primary";
+    }
     function paint(j){
+      var changed=cur&&cur.status!==j.status;
       cur=j;
+      setSupport(j.support);
       $("tCode").textContent=j.code;
       var s=SAY[j.status]||[j.status,""];
+      if(j.expired){
+        bare(s[0],"This booking closed more than a week ago, so its names and addresses are no longer shown. Call NovaX if you need the record.");
+        $("tSteps").hidden=false;
+        $("tSteps").innerHTML=li("done","Booked",j.created_at)+li(j.status==="Cancelled"?"off":"done",j.status,j.delivered_at||j.returned_at||j.cancelled_at);
+        return;
+      }
       $("tTitle").textContent = (fresh&&j.status==="Booked") ? "Booked. Finding a rider" : s[0];
-      $("tSub").textContent=s[1];
+      $("tSub").textContent=subFor(j);
+      if(changed) announce("Update: "+s[0]+".");
       $("tPinBox").hidden=!j.pin; if(j.pin) $("tPin").textContent=j.pin;
+      $("tPinSay").textContent = j.status==="Returning" ? "The sender gives this to the rider when the parcel comes back." : "The receiver gives this to the rider at the door.";
       var idx=ORDER.indexOf(j.status), html="";
       if(j.status==="Cancelled"){
-        html='<li class="done">Booked<time>'+esc(when(j.created_at))+'</time></li><li class="off">Cancelled<time>'+esc(when(j.cancelled_at))+'</time></li>';
+        html=li("done","Booked",j.created_at)+li("off","Cancelled",j.cancelled_at);
+      } else if(j.status==="Awaiting confirmation"){
+        html=li("now","Waiting for NovaX's confirmation call",j.created_at)+li("","Rider assigned")+li("","Picked up")+li("","Delivered");
+      } else if(j.failed_at&&j.status!=="Picked up"&&j.status!=="Delivered"){
+        html=li("done","Booked",j.created_at)+li("done","Rider assigned",j.assigned_at)+li("done","Picked up",j.picked_at)+
+          li(j.status==="Failed delivery"?"off":"done","Delivery not made",j.failed_at)+
+          li(j.status==="Returning"?"now":j.status==="Returned"?"done":"","Coming back to the sender",j.returning_at)+
+          li(j.status==="Returned"?"done":"","Returned to the sender",j.returned_at);
       } else ORDER.forEach(function(k,i){
-        html+='<li class="'+(i<idx||j.status==="Delivered"?"done":i===idx?"now":"")+'">'+esc(STEP[k])+(j[WHEN[k]]&&i<=idx?'<time>'+esc(when(j[WHEN[k]]))+'</time>':'')+'</li>';
+        html+=li(i<idx||j.status==="Delivered"?"done":i===idx?"now":"",k,i<=idx?j[{ "Booked":"created_at","Rider assigned":"assigned_at","Picked up":"picked_at","Delivered":"delivered_at" }[k]]:null);
       });
       $("tSteps").innerHTML=html;
       $("tKv").innerHTML=
@@ -868,19 +1074,22 @@ body.pinning .leaflet-bottom{bottom:118px}
         '<dt>To</dt><dd>'+esc(j.receiver_name)+'<br>'+esc(j.drop_address)+'</dd>'+
         '<dt>Parcel</dt><dd>'+esc(j.item)+'</dd>'+
         '<dt>Fare</dt><dd>'+esc(money(j.fare))+' &middot; '+esc(j.km)+' km &middot; '+(j.payer==="sender"?"sender pays at pickup":"receiver pays at delivery")+'</dd>';
-      $("tCancel").hidden=!(manage&&(j.status==="Booked"||j.status==="Rider assigned"));
+      $("tCancel").hidden=!(manage&&(j.status==="Awaiting confirmation"||j.status==="Booked"||j.status==="Rider assigned"));
       var rb=$("tRider");
       if(j.rider&&j.rider.name){
         rb.hidden=false;
         rb.innerHTML='<div><b>'+esc(j.rider.name)+'</b>Your rider'+(j.rider.plate?' &middot; bike '+esc(j.rider.plate):'')+'</div>'+
           (j.rider.phone?'<a class="btn btn-plain" href="tel:'+esc(j.rider.phone)+'">Call rider</a>':'');
       } else rb.hidden=true;
-      if(j.status==="Delivered"||j.status==="Cancelled"){ clearInterval(timer); timer=null; $("tFine").textContent="This booking is closed."; }
+      if(j.status==="Delivered"||j.status==="Cancelled"||j.status==="Returned"){
+        clearInterval(timer); timer=null;
+        $("tFine").textContent="This booking is closed. Its details stay on this link for "+(j.track_days||7)+" days.";
+      }
     }
     function load(first){
       rpc("nvi_track",{ p_token:token }).then(function(r){
         if(r.error||!r.data){ if(first){ $("tTitle").textContent="Could not load this booking"; $("tSub").textContent="Check your connection. The page will try again."; } return; }
-        if(!r.data.ok){ clearInterval(timer); $("tTitle").textContent="Booking not found"; $("tSub").textContent="Check the link, or book a new delivery."; $("tSteps").innerHTML=""; return; }
+        if(!r.data.ok){ bare("Booking not found","This link does not match a booking. Check it, find your booking below, or book a new delivery."); announce("Booking not found."); return; }
         paint(r.data);
       });
     }
@@ -903,7 +1112,7 @@ body.pinning .leaflet-bottom{bottom:118px}
       rpc("nvi_cancel",{ p_token:token, p_manage:manage }).then(function(r){
         b.disabled=false; b.dataset.sure="0"; b.textContent="Cancel this booking";
         if(r.error||!r.data){ toast("Could not cancel. Check your connection and try again."); return; }
-        if(!r.data.ok){ toast(r.data.reason==="too_late"?"The rider already has the parcel, so it can no longer be cancelled.":"Could not cancel this booking."); }
+        if(!r.data.ok){ toast(r.data.reason==="too_late"?"The rider already has the parcel, so it can no longer be cancelled. Call NovaX below.":"Could not cancel this booking."); }
         load(false);
       });
     });

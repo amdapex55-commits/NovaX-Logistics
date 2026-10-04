@@ -51,8 +51,9 @@ button{cursor:pointer}
 .sw[aria-checked="true"] i::after{transform:translateX(14px)}
 
 main{padding:16px 0 60px}
-.stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}
-@media (max-width:760px){ .stats{grid-template-columns:repeat(2,minmax(0,1fr))} .stats .stat:last-child{grid-column:1/-1} }
+.stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:14px}
+@media (max-width:900px){ .stats{grid-template-columns:repeat(2,minmax(0,1fr))} }
+.stat.alert{border-color:#e0b25a;background:var(--amber)}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
 .stat span{display:block;font-size:12.5px;color:var(--muted)}
 .stat b{font:800 20px/1.25 var(--display);font-variant-numeric:tabular-nums}
@@ -65,7 +66,9 @@ main{padding:16px 0 60px}
 .note.warn{background:var(--amber);color:var(--amber-ink)}
 .note.info{background:var(--blue);color:var(--blue-ink)}
 .cols{display:grid;gap:14px}
-@media (min-width:900px){ .cols{grid-template-columns:repeat(3,minmax(0,1fr));align-items:start} }
+@media (min-width:700px){ .cols{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start} }
+.inline .inp + label,.inline select + label{margin-top:8px}
+.hint{font-size:12.5px;color:var(--muted);margin-top:6px}
 .col h2{font:800 14px/1.2 var(--display);margin:0 0 8px;display:flex;align-items:center;gap:8px}
 .col h2 span{font:700 12px/1 var(--mono);background:var(--paper-2);border-radius:999px;padding:3px 7px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
@@ -206,21 +209,45 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
   document.addEventListener("visibilitychange",function(){ if(!document.hidden&&S.timer&&!S.busy&&!S.open&&!typing()) load(false); });
 
   /* ───── painting ───── */
+  var LIVE_COLS=[["Awaiting confirmation","Call the sender to confirm"],["Booked","Needs a rider"],["Rider assigned","Rider on the way to pickup"],
+                 ["Picked up","On the bike"],["Failed delivery","Not delivered: decide"],["Returning","Going back to the sender"]];
+  var FAILED={ receiver_unavailable:"Receiver not reachable", refused:"Receiver refused the parcel", wrong_address:"Wrong address",
+    damaged:"Parcel damaged", payment_refused:"Receiver would not pay" };
+  var CARRY={ "Picked up":1, "Failed delivery":1, "Returning":1 };
+  /* A new booking, a failed delivery or a rider's note: ring once and count it
+     in the tab title, so ops does not have to stare at the board. */
+  var seen=null, actx=null;
+  function unlockSound(){ try{ if(!actx){ var C=window.AudioContext||window.webkitAudioContext; if(C) actx=new C(); } if(actx&&actx.state==="suspended") actx.resume(); }catch(e){} }
+  function beep(){ try{ if(!actx||actx.state!=="running") return; [0,.25].forEach(function(d){ var o=actx.createOscillator(), g=actx.createGain(); o.frequency.value=660; g.gain.value=.25; o.connect(g); g.connect(actx.destination); o.start(actx.currentTime+d); o.stop(actx.currentTime+d+.18); }); }catch(e){} }
+  function watch(live){
+    var now={}, fresh=0;
+    live.forEach(function(j){
+      var k=j.id+"|"+(j.status==="Awaiting confirmation"||j.status==="Booked"||j.status==="Failed delivery"?j.status:"")+"|"+(j.problem_at||"");
+      now[k]=1; if(seen&&!seen[k]&&(j.status==="Awaiting confirmation"||j.status==="Booked"||j.status==="Failed delivery"||j.problem_at)) fresh++;
+    });
+    if(seen&&fresh) beep();
+    seen=now;
+    var need=live.filter(function(j){ return j.status==="Awaiting confirmation"||j.status==="Booked"||j.status==="Failed delivery"; }).length;
+    document.title=(need?"("+need+") ":"")+"Nova Instant ops | NovaX";
+  }
   function paint(){
     var b=S.b, c=b.config||{}, t=b.today||{}, live=b.live||[], riders=b.riders||[], closed=b.closed||[];
+    watch(live);
     $("openSw").hidden=false; $("bookLink").hidden=false;
-    $("openSw").setAttribute("aria-checked",String(!!c.open)); $("openLbl").textContent="Booking: "+(c.open?"on":"off");
+    $("openSw").setAttribute("aria-checked",String(!!c.open)); $("openLbl").textContent="Public booking: "+(c.open?"on":"off");
     var h='<div class="stats">'+
-      '<div class="stat"><span>Booked</span><b>'+esc(t.booked||0)+'</b></div>'+
-      '<div class="stat"><span>Delivered</span><b>'+esc(t.delivered||0)+'</b></div>'+
-      '<div class="stat"><span>Cancelled</span><b>'+esc(t.cancelled||0)+'</b></div>'+
-      '<div class="stat"><span>Fares today</span><b>'+esc(rs(t.fares))+'</b></div>'+
-      '<div class="stat"><span>Cash with riders</span><b>'+esc(rs(t.cash_out))+'</b></div></div>';
+      '<div class="stat"><span>Booked today</span><b>'+esc(t.booked||0)+'</b></div>'+
+      '<div class="stat"><span>Delivered today</span><b>'+esc(t.delivered||0)+'</b></div>'+
+      '<div class="stat"><span>Returned / cancelled today</span><b>'+esc(t.returned||0)+' / '+esc(t.cancelled||0)+'</b></div>'+
+      '<div class="stat"><span>Fares delivered today</span><b>'+esc(rs(t.fares))+'</b></div>'+
+      '<div class="stat"><span>Cash with riders</span><b>'+esc(rs(t.cash_out))+'</b></div>'+
+      '<div class="stat'+(Number(t.disputed)>0?' alert':'')+'"><span>Payments in dispute</span><b>'+esc(t.disputed||0)+'</b></div></div>';
     var free=riders.filter(function(r){ return r.status==="Active"&&!r.active_code; });
     var online=riders.filter(function(r){ return r.status==="Active"&&r.online; }).length;
-    if(!c.open) h+='<div class="note info">Public booking is off: the public sees fares only. A signed-in admin can still book from the customer page to test. Turn it on with the switch at the top.</div>';
+    if(!c.open) h+='<div class="note info">Public booking is off: the public sees fares only. A signed-in admin can still book from the customer page to test. It can be turned on once a rider is online.</div>';
     else if(!c.hours_open) h+='<div class="note warn">Outside booking hours ('+hourLabel(c.open_hour)+' to '+hourLabel(c.close_hour)+'). Customers cannot book until '+hourLabel(c.open_hour)+'.</div>';
-    if(c.open&&c.hours_open&&!online) h+='<div class="note warn">Booking is open and no rider is online. New jobs will wait until you assign one.</div>';
+    if(c.open&&c.hours_open&&!online) h+='<div class="note warn">Booking is open and no rider is online. New jobs will wait until you assign one. Call a rider, or turn public booking off.</div>';
+    if(Number(t.disputed)>0) h+='<div class="note warn">'+esc(t.disputed)+' payment'+(Number(t.disputed)===1?" is":"s are")+' in dispute: the cash a rider received does not match what was due. Settle '+(Number(t.disputed)===1?"it":"them")+' in the job (Live jobs or Closed).</div>';
     h+='<div class="tabs" role="tablist">'+[["live","Live jobs",live.length],["riders","Riders",riders.length],["closed","Closed",closed.length]].map(function(x){
       return '<button type="button" role="tab" data-tab="'+x[0]+'" aria-selected="'+(S.tab===x[0])+'">'+x[1]+'<span>'+x[2]+'</span></button>'; }).join("")+'</div>';
     if(S.tab==="live") h+=liveHtml(live,free);
@@ -228,40 +255,87 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     else h+=closedHtml(closed);
     $("main").innerHTML=h;
   }
+  function waLink(phone,text){ return "https://wa.me/92"+String(phone||"").replace(/\D/g,"").replace(/^0/,"")+"?text="+encodeURIComponent(text); }
+  function trackLink(j){ return location.origin+"/instant.html?t="+encodeURIComponent(j.token); }
+  function riderSelect(j,free,label){
+    return '<select class="inp" data-pick="'+esc(j.id)+'" aria-label="Rider for '+esc(j.code)+'"><option value="">'+(free.length?label:"No free rider")+'</option>'+
+      free.map(function(r){ return '<option value="'+esc(r.id)+'">'+esc(r.full_name)+(r.online?"":" (not online)")+'</option>'; }).join("")+'</select>';
+  }
+  function payChip(j){
+    if(j.pay_state==="Disputed") return '<span class="chip bad">Payment in dispute</span>';
+    if(j.pay_state==="Written off") return '<span class="chip warn">Written off</span>';
+    return "";
+  }
+  /* The inline form under a job. kind: cancel | picked | delivered | failed |
+     retry | returning | returned | transfer | pay */
+  var FORM={ cancel:["Why is it being cancelled?","e.g. customer asked, no rider available","Cancel the job"],
+    picked:["Why is ops closing this step? (kept on the job)","e.g. rider phone off, confirmed by call","Mark picked up"],
+    delivered:["Why is ops closing this step? (kept on the job)","e.g. PIN locked, receiver confirmed by call","Mark delivered"],
+    failed:["What happened? (kept on the job)","e.g. receiver's phone off, rider waited 15 min","Mark not delivered"],
+    retry:["Why is it being tried again?","e.g. receiver is home now, address corrected","Try delivery again"],
+    returning:["Why is it going back?","e.g. sender asked for it back","Send back to the sender"],
+    returned:["Why is ops closing this step? (kept on the job)","e.g. sender confirmed by call","Mark returned"],
+    transfer:["Why is the parcel changing riders?","e.g. bike broke down at Shahrah-e-Faisal","Move to this rider"],
+    pay:["How was it settled?","e.g. rider collected the rest on a second visit",""] };
+  function formHtml(j,free){
+    var k=S.open.kind, f=FORM[k], due=Number(j.due_now||0), h='<div class="inline">';
+    if(k==="failed") h+='<label for="fReason">Reason</label><select class="inp" id="fReason">'+Object.keys(FAILED).map(function(c){ return '<option value="'+c+'">'+esc(FAILED[c])+'</option>'; }).join("")+'</select>';
+    if(k==="transfer") h+='<label>New rider (the first rider hands the parcel over in person and keeps any cash they took)</label>'+riderSelect(j,free.filter(function(r){ return r.id!==j.rider_id; }),"Choose the new rider");
+    if((k==="picked"||k==="delivered"||k==="returned")&&due>0)
+      h+='<label for="fCash">Cash the rider received at this step (Rs '+esc(due)+' is due)</label><input class="inp" id="fCash" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="'+esc(due)+'">'+
+         '<div class="hint">Type what the rider really has. Less than Rs '+esc(due)+' puts the payment in dispute.</div>';
+    if(k==="pay") h+='<label for="fCash">Total cash received for this job, counting any already handed in (Rs)</label><input class="inp" id="fCash" inputmode="numeric" pattern="[0-9]*" maxlength="6" value="'+esc(j.cash_collected||0)+'">'+
+         (j.pay_note?'<div class="hint">'+esc(j.pay_note)+'</div>':'');
+    h+='<label for="fNote">'+f[0]+'</label><input class="inp" id="fNote" maxlength="200" placeholder="'+f[1]+'"><div class="row"><button class="btn btn-plain" type="button" data-form="" data-job="">Back</button>';
+    if(k==="pay") h+='<button class="btn btn-dark" type="button" data-do="pay-received" data-job="'+esc(j.id)+'">This is what was received</button><button class="btn btn-danger" type="button" data-do="pay-writeoff" data-job="'+esc(j.id)+'">Write off the shortfall</button>';
+    else h+='<button class="btn '+(k==="cancel"||k==="failed"?"btn-danger":"btn-dark")+'" type="button" data-do="'+k+'" data-job="'+esc(j.id)+'">'+f[2]+'</button>';
+    return h+'</div></div>';
+  }
+  function fbtn(kind,j,label,cls){ return '<button class="btn '+(cls||"btn-plain")+'" type="button" data-form="'+kind+'" data-job="'+esc(j.id)+'">'+label+'</button>'; }
   function jobCard(j,free){
-    var age=mins(j.created_at), late=(j.status==="Booked"&&age>=10)||(j.status==="Rider assigned"&&mins(j.assigned_at)>=30);
-    var isOpen=S.open&&S.open.job===j.id;
-    var h='<div class="card'+(j.problem_note||late?' flag':'')+'"><div class="jt"><span class="code">'+esc(j.code)+'</span><span class="age'+(late?' late':'')+'">'+
-      (j.status==="Booked"?"waiting "+age+" min":j.status==="Rider assigned"?"assigned "+esc(ago(j.assigned_at)):"picked up "+esc(ago(j.picked_at)))+'</span></div>'+
-      '<div class="legs"><div><b>A</b><span><small>'+esc(j.sender_name)+' &middot; <a href="tel:'+esc(j.sender_phone)+'">'+esc(j.sender_phone)+'</a></small>'+esc(j.pickup_address)+'</span></div>'+
-      '<div><b>B</b><span><small>'+esc(j.receiver_name)+' &middot; <a href="tel:'+esc(j.receiver_phone)+'">'+esc(j.receiver_phone)+'</a></small>'+esc(j.drop_address)+'</span></div></div>'+
+    var st=j.status, age=mins(j.created_at);
+    var late=(st==="Awaiting confirmation"&&age>=5)||(st==="Booked"&&mins(j.confirmed_at||j.created_at)>=10)||(st==="Rider assigned"&&mins(j.assigned_at)>=30)||(st==="Failed delivery"&&mins(j.failed_at)>=10);
+    var isOpen=S.open&&S.open.job===j.id, due=Number(j.due_now||0);
+    var ageTxt = st==="Awaiting confirmation"?"booked "+age+" min ago":st==="Booked"?"waiting "+mins(j.confirmed_at||j.created_at)+" min":st==="Rider assigned"?"assigned "+ago(j.assigned_at):
+                 st==="Picked up"?"picked up "+ago(j.picked_at):st==="Failed delivery"?"failed "+ago(j.failed_at):"returning since "+ago(j.returning_at);
+    var msg="Nova Instant "+j.code+": track your parcel here, and give the rider the PIN on that page. "+trackLink(j);
+    var h='<div class="card'+(j.problem_note||late||st==="Failed delivery"||j.pay_state==="Disputed"?' flag':'')+'"><div class="jt"><span class="code">'+esc(j.code)+'</span><span class="age'+(late?' late':'')+'">'+esc(ageTxt)+'</span></div>'+
+      '<div class="legs"><div><b>A</b><span><small>'+esc(j.sender_name)+' &middot; <a href="tel:'+esc(j.sender_phone)+'">'+esc(j.sender_phone)+'</a> &middot; <a href="'+esc(waLink(j.sender_phone,msg))+'" target="_blank" rel="noopener">WhatsApp link</a></small>'+esc(j.pickup_address)+'</span></div>'+
+      '<div><b>B</b><span><small>'+esc(j.receiver_name)+' &middot; <a href="tel:'+esc(j.receiver_phone)+'">'+esc(j.receiver_phone)+'</a> &middot; <a href="'+esc(waLink(j.receiver_phone,msg))+'" target="_blank" rel="noopener">WhatsApp link</a></small>'+esc(j.drop_address)+'</span></div></div>'+
       '<div class="meta"><span class="chip">'+esc(j.km)+' km</span><span class="chip good">'+esc(rs(j.fare))+' &middot; '+(j.payer==="sender"?"sender pays":"receiver pays")+'</span><span class="chip">'+esc(j.item)+'</span>'+
       '<span class="chip">PIN '+esc(j.delivery_pin)+'</span>'+(j.rider_name?'<span class="chip">Rider: '+esc(j.rider_name)+'</span>':'')+
-      (j.distance_source==="estimate"?'<span class="chip warn">fare estimated</span>':'')+(Number(j.pin_tries)>=5?'<span class="chip bad">PIN locked</span>':'')+'</div>'+
+      (due>0&&CARRY[st]?'<span class="chip warn">'+esc(rs(due))+' to collect</span>':'')+
+      (Number(j.attempts)>1?'<span class="chip warn">try '+esc(j.attempts)+'</span>':'')+
+      (Number(j.same_ip)>1?'<span class="chip warn">'+esc(j.same_ip)+' bookings from this connection today</span>':'')+
+      (Number(j.pin_tries)>=5?'<span class="chip bad">PIN locked</span>':'')+payChip(j)+'</div>'+
       (j.rider_note?'<div class="age" style="margin-top:6px">Note for rider: '+esc(j.rider_note)+'</div>':'')+
+      (st==="Failed delivery"||st==="Returning"?'<div class="prob"><b>Not delivered:</b> '+esc(FAILED[j.fail_reason]||"")+(j.fail_note?'. '+esc(j.fail_note):'')+'</div>':'')+
+      (j.pay_state==="Disputed"?'<div class="prob"><b>Cash:</b> '+esc(j.pay_note||"")+'</div>':'')+
       (j.problem_note?'<div class="prob"><b>Rider says:</b> '+esc(j.problem_note)+' <span class="age">'+esc(ago(j.problem_at))+'</span></div>':'');
-    h+='<div class="row">';
-    if(j.status!=="Picked up"){
-      h+='<select class="inp" data-pick="'+esc(j.id)+'" aria-label="Rider for '+esc(j.code)+'"><option value="">'+(free.length?"Choose a rider":"No free rider")+'</option>'+
-         free.map(function(r){ return '<option value="'+esc(r.id)+'">'+esc(r.full_name)+(r.online?"":" (offline)")+'</option>'; }).join("")+'</select>'+
-         '<button class="btn btn-primary" type="button" data-do="assign" data-job="'+esc(j.id)+'">'+(j.status==="Booked"?"Assign":"Reassign")+'</button>';
-      if(j.status==="Rider assigned") h+='<button class="btn btn-plain" type="button" data-do="unassign" data-job="'+esc(j.id)+'">Back to open</button>';
+    if(st==="Awaiting confirmation"){
+      h+='<div class="hint">First booking from this sender. Call '+esc(j.sender_phone)+', check the pickup and the parcel, then confirm. Riders cannot see it until you do.</div>'+
+         '<div class="row"><button class="btn btn-primary" type="button" data-do="confirm" data-job="'+esc(j.id)+'">Confirmed by phone</button>'+fbtn("cancel",j,"Cancel","btn-danger");
+    } else if(st==="Booked"||st==="Rider assigned"){
+      h+='<div class="row">'+riderSelect(j,free,"Choose a rider")+
+         '<button class="btn btn-primary" type="button" data-do="assign" data-job="'+esc(j.id)+'">'+(st==="Booked"?"Assign":"Reassign")+'</button>'+
+         (st==="Rider assigned"?'<button class="btn btn-plain" type="button" data-do="unassign" data-job="'+esc(j.id)+'">Back to open</button>':'')+'</div><div class="row">'+
+         (st==="Rider assigned"?fbtn("picked",j,"Mark picked up"):'')+fbtn("cancel",j,"Cancel","btn-danger");
+    } else if(st==="Picked up"){
+      h+='<div class="row">'+fbtn("delivered",j,"Mark delivered")+fbtn("failed",j,"Not delivered","btn-danger")+fbtn("transfer",j,"Change rider");
+    } else if(st==="Failed delivery"){
+      h+='<div class="hint">The rider still has the parcel. Call the receiver and the sender, then choose.</div>'+
+         '<div class="row">'+fbtn("retry",j,"Try again","btn-primary")+fbtn("returning",j,"Send back to sender")+fbtn("delivered",j,"Mark delivered")+fbtn("transfer",j,"Change rider");
+    } else {
+      h+='<div class="row">'+fbtn("returned",j,"Mark returned")+fbtn("transfer",j,"Change rider");
     }
-    h+='</div><div class="row">';
-    if(j.status==="Rider assigned") h+='<button class="btn btn-plain" type="button" data-form="picked" data-job="'+esc(j.id)+'">Mark picked up</button>';
-    if(j.status==="Picked up") h+='<button class="btn btn-plain" type="button" data-form="delivered" data-job="'+esc(j.id)+'">Mark delivered</button>';
-    h+='<button class="btn btn-danger" type="button" data-form="cancel" data-job="'+esc(j.id)+'">Cancel</button>'+
-       '<a class="btn btn-plain" href="instant.html?t='+encodeURIComponent(j.token)+'" target="_blank" rel="noopener">Tracking</a></div>';
-    if(isOpen){
-      var k=S.open.kind, lab=k==="cancel"?"Why is it being cancelled?":"Why is ops closing this step? (kept on the job)";
-      h+='<div class="inline"><label for="fNote">'+lab+'</label><input class="inp" id="fNote" maxlength="200" placeholder="'+(k==="cancel"?"e.g. customer asked, no rider available":"e.g. rider phone off, PIN locked, confirmed by call")+'">'+
-         '<div class="row"><button class="btn btn-plain" type="button" data-form="" data-job="">Back</button><button class="btn '+(k==="cancel"?"btn-danger":"btn-dark")+'" type="button" data-do="'+k+'" data-job="'+esc(j.id)+'">'+
-         (k==="cancel"?"Cancel the job":k==="picked"?"Mark picked up":"Mark delivered")+'</button></div></div>';
-    }
+    if(j.pay_state==="Disputed") h+=fbtn("pay",j,"Settle the cash","btn-dark");
+    h+='<a class="btn btn-plain" href="instant.html?t='+encodeURIComponent(j.token)+'" target="_blank" rel="noopener">Tracking</a></div>';
+    if(CARRY[st]) h+='<div class="hint">The rider holds this parcel, so it cannot be cancelled: it is delivered, or marked not delivered and taken back.</div>';
+    if(isOpen) h+=formHtml(j,free);
     return h+'</div>';
   }
   function liveHtml(live,free){
-    var cols=[["Booked","Needs a rider"],["Rider assigned","Rider on the way to pickup"],["Picked up","On the bike"]];
+    var cols=LIVE_COLS.filter(function(c){ return c[0]==="Booked"||c[0]==="Rider assigned"||c[0]==="Picked up"||live.some(function(j){ return j.status===c[0]; }); });
     return '<div class="cols">'+cols.map(function(c){
       var list=live.filter(function(j){ return j.status===c[0]; });
       return '<section class="col"><h2>'+c[1]+'<span>'+list.length+'</span></h2>'+(list.length?list.map(function(j){ return jobCard(j,free); }).join(""):'<div class="empty">Nothing here.</div>')+'</section>';
@@ -277,35 +351,49 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       '<p class="age" style="margin:10px 0 0">Then send them <b>novaxlogistics.com/instant-rider.html</b>. They press First time, use this email and choose their own password. NovaX never sets a password for them.</p></div>';
     if(!riders.length) return h+'<div class="empty">No Instant riders yet.</div>';
     h+='<div class="tblwrap"><table><thead><tr><th>Rider</th><th>Status</th><th>Now</th><th>Done today</th><th>Cash with rider</th><th></th></tr></thead><tbody>'+riders.map(function(r){
+      var busy=!!r.active_code;
       return '<tr><td><b>'+esc(r.full_name)+'</b><br><span class="age"><a href="tel:'+esc(r.phone)+'">'+esc(r.phone)+'</a>'+(r.bike_plate?' &middot; '+esc(r.bike_plate):'')+'<br>'+esc(r.email)+'</span></td>'+
-        '<td data-l="Status"><span class="chip '+(r.status==="Active"?"good":r.status==="Blocked"?"bad":"warn")+'">'+esc(r.status==="Invited"?"Invited, not joined":r.status)+'</span></td>'+
-        '<td data-l="Now">'+(r.status==="Active"?'<span class="dot'+(r.online?' on':'')+'"></span>'+(r.online?"Online":"Offline")+(r.active_code?' &middot; on '+esc(r.active_code):'')+'<br><span class="age">seen '+esc(ago(r.last_seen))+'</span>':'<span class="age">&ndash;</span>')+'</td>'+
-        '<td data-l="Done today">'+esc(r.done_today||0)+'</td><td data-l="Cash with rider"><b>'+esc(rs(r.cash_in_hand))+'</b></td>'+
+        '<td><span class="chip '+(r.status==="Active"?"good":r.status==="Blocked"?"bad":"warn")+'">'+esc(r.status==="Invited"?"Invited, not joined":r.status)+'</span></td>'+
+        '<td>'+(r.status==="Active"?'<span class="dot'+(r.online?' on':'')+'"></span>'+(r.online?"Online":r.stale?"App closed (switch left on)":"Offline")+(busy?' &middot; on '+esc(r.active_code):'')+'<br><span class="age">seen '+esc(ago(r.last_seen))+'</span>':'<span class="age">&ndash;</span>')+'</td>'+
+        '<td>'+esc(r.done_today||0)+'</td><td><b>'+esc(rs(r.cash_in_hand))+'</b></td>'+
         '<td><div class="row" style="margin:0">'+
           (Number(r.cash_in_hand)>0?'<button class="btn btn-primary" type="button" data-do="handover" data-rider="'+esc(r.id)+'" data-amt="'+esc(r.cash_in_hand)+'">Cash received</button>':'')+
           (r.status==="Blocked"?'<button class="btn btn-plain" type="button" data-do="setrider" data-rider="'+esc(r.id)+'" data-st="Active">Unblock</button>'
-                               :'<button class="btn btn-plain" type="button" data-do="setrider" data-rider="'+esc(r.id)+'" data-st="Blocked">Block</button>')+
-          '<button class="btn btn-danger" type="button" data-do="setrider" data-rider="'+esc(r.id)+'" data-st="Removed">Remove</button></div></td></tr>';
+                               :'<button class="btn btn-plain" type="button" data-do="setrider" data-rider="'+esc(r.id)+'" data-st="Blocked"'+(busy?' disabled title="This rider has a job"':'')+'>Block</button>')+
+          '<button class="btn btn-danger" type="button" data-do="setrider" data-rider="'+esc(r.id)+'" data-st="Removed"'+(busy||Number(r.cash_in_hand)>0?' disabled title="This rider has a job or holds cash"':'')+'>Remove</button></div>'+
+          (busy?'<div class="hint">On '+esc(r.active_code)+': change the rider on that job, or let it finish, before blocking.</div>':Number(r.cash_in_hand)>0?'<div class="hint">Take the cash in before removing.</div>':'')+'</td></tr>';
     }).join("")+'</tbody></table></div>';
     return h;
   }
   function closedHtml(closed){
     if(!closed.length) return '<div class="empty">No finished or cancelled jobs yet.</div>';
-    return '<div class="tblwrap"><table><thead><tr><th>Job</th><th>Result</th><th>From &rarr; to</th><th>Fare</th><th>Rider</th></tr></thead><tbody>'+closed.map(function(j){
-      var del=j.status==="Delivered";
+    return '<div class="tblwrap"><table><thead><tr><th>Job</th><th>Result</th><th>From &rarr; to</th><th>Fare and cash</th><th>Rider</th></tr></thead><tbody>'+closed.map(function(j){
+      var st=j.status, at=st==="Delivered"?j.delivered_at:st==="Returned"?j.returned_at:j.cancelled_at;
+      var cash = j.cash_handed==null ? (st==="Cancelled"?"":"no cash taken") : rs(j.cash_collected)+(j.cash_handed?" handed in":" with rider");
+      var isOpen=S.open&&S.open.job===j.id;
       return '<tr><td><span class="code">'+esc(j.code)+'</span><br><span class="age">booked '+esc(when(j.created_at))+'</span></td>'+
-        '<td data-l="Result"><span class="chip '+(del?"good":"bad")+'">'+esc(j.status)+'</span><br><span class="age">'+esc(when(del?j.delivered_at:j.cancelled_at))+(j.cancel_reason?'<br>'+esc(j.cancel_reason):'')+'</span></td>'+
-        '<td data-l="From, to">'+esc(j.pickup_address)+'<br><span class="age">&rarr; '+esc(j.drop_address)+'</span></td>'+
-        '<td data-l="Fare">'+esc(rs(j.fare))+'<br><span class="age">'+esc(j.km)+' km &middot; '+(j.payer==="sender"?"sender":"receiver")+' paid'+(j.cash_collected!=null?(j.handover_id?" &middot; cash handed in":" &middot; cash with rider"):"")+'</span></td>'+
-        '<td data-l="Rider">'+esc(j.rider_name||"–")+'</td></tr>';
+        '<td><span class="chip '+(st==="Delivered"?"good":st==="Returned"?"warn":"bad")+'">'+esc(st)+'</span><br><span class="age">'+esc(when(at))+
+          (st==="Returned"&&j.fail_reason?'<br>'+esc(FAILED[j.fail_reason]||""):'')+(j.cancel_reason?'<br>'+esc(j.cancel_reason):'')+'</span></td>'+
+        '<td>'+esc(j.pickup_address)+'<br><span class="age">&rarr; '+esc(j.drop_address)+'</span></td>'+
+        '<td>'+esc(rs(j.fare))+(Number(j.return_fee)>0?' + '+esc(rs(j.return_fee))+' return':'')+'<br><span class="age">'+esc(j.km)+' km &middot; '+(j.payer==="sender"?"sender":"receiver")+' pays'+(cash?' &middot; '+esc(cash):'')+'</span>'+
+          (j.pay_state==="Disputed"?'<br>'+payChip(j)+'<div class="age">'+esc(j.pay_note||"")+'</div><div class="row">'+fbtn("pay",j,"Settle the cash","btn-dark")+'</div>'+(isOpen?formHtml(j,[]):''):j.pay_state==="Written off"?'<br>'+payChip(j):'')+'</td>'+
+        '<td>'+esc(j.rider_name||"–")+'</td></tr>';
     }).join("")+'</tbody></table></div>';
   }
 
   /* ───── actions ───── */
   var SAY={ not_found:"That job no longer exists.", too_late:"The parcel is already picked up, so the rider cannot be changed.", rider_inactive:"That rider is not active.",
-    rider_busy:"That rider already has a job.", need_reason:"Write a reason first.", need_note:"Write a note first.", closed:"That job is already closed.",
+    rider_busy:"That rider already has a job.", need_reason:"Choose or write a reason first.", need_note:"Write a note first.", closed:"That job is already closed.",
     no_rider:"Assign a rider first.", wrong_step:"The job is not at that step any more.", nothing:"That rider holds no cash.",
-    name:"Enter the rider's full name.", email:"Enter a valid email.", phone:"Enter a Pakistani mobile like 0300 1234567.", exists:"That email is already a rider.", status:"Unknown status." };
+    name:"Enter the rider's full name.", email:"Enter a valid email.", phone:"Enter a Pakistani mobile like 0300 1234567.", exists:"That email is already a rider.", status:"Unknown status.",
+    has_parcel:"A rider holds this parcel, so it cannot be cancelled or left without a rider. Mark it not delivered and send it back instead.",
+    unconfirmed:"Confirm this booking by phone first.",
+    rider_has_job:"That rider has a job. Change the rider on the job, or let it finish, first.",
+    rider_has_cash:"That rider still holds cash. Take it in with Cash received first.",
+    no_rider_online:"No rider is online and free, so public booking stays off. Ask a rider to go online in their app first.",
+    cash_needed:"Type the cash the rider received at this step (0 if none).", cash_mismatch:"That is more cash than was due.",
+    short_note:"Say in the note why the cash is short.", not_disputed:"That payment is no longer in dispute.", amount:"Enter a sensible amount.",
+    handed_over:"More than that was already handed to the office for this job. Check the amount.", key:"Press the button again." };
   function run(name,args,okText){
     if(S.busy) return;
     S.busy=true;
@@ -313,8 +401,8 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       S.busy=false;
       if(r&&r.ok===false){ toast(SAY[r.reason]||"That did not work."); return load(false); }
       S.open=null; if(okText) toast(typeof okText==="function"?okText(r):okText);
-      return load(false);
-    }).catch(function(e){ S.busy=false; toast(e.message||"That did not work."); });
+      return load(false).then(function(){ return r; });
+    }).catch(function(e){ S.busy=false; toast(/fetch|network|Failed/i.test(e.message||"")?"No connection. Nothing changed that you can see: press again.":(e.message||"That did not work.")); });
   }
   /* A second press within 5 s confirms; nothing destructive on one tap. */
   function twice(btn,label){
@@ -323,9 +411,15 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     setTimeout(function(){ if(btn.isConnected){ btn.dataset.sure="0"; btn.textContent=was; } },5000);
     return false;
   }
+  function newKey(){
+    try{ if(crypto.randomUUID) return crypto.randomUUID(); }catch(e){}
+    return "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g,function(){ return (Math.random()*16|0).toString(16); });
+  }
+  var HKEY={};   /* one handover key per rider, kept until the handover answers */
   document.addEventListener("click",function(e){
+    unlockSound();
     var t=e.target.closest("[data-tab],[data-do],[data-form],[data-act],#openSw,#signOut");
-    if(!t) return;
+    if(!t||t.disabled) return;
     if(t.dataset.tab){ S.tab=t.dataset.tab; S.open=null; return paint(); }
     if(t.dataset.act==="reload") return boot();
     if(t.id==="signOut") return Promise.resolve(sb.auth.signOut()).catch(function(){}).then(function(){ renderAuth(); });
@@ -334,7 +428,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       if(!twice(t.querySelector("span"),on?"Press again: open to the public":"Press again: stop public booking")) return;
       return run("nvi_admin_set_open",{ p_open:on },on?"Public booking is on.":"Public booking is off.");
     }
-    if(t.hasAttribute("data-form")){ S.open=t.dataset.form?{ job:t.dataset.job, kind:t.dataset.form }:null; paint(); var f=$("fNote"); if(f) f.focus(); return; }
+    if(t.hasAttribute("data-form")){ S.open=t.dataset.form?{ job:t.dataset.job, kind:t.dataset.form }:null; paint(); var f=$("fCash")||$("fNote"); if(f) f.focus(); return; }
     var d=t.dataset["do"], job=t.dataset.job;
     if(d==="assign"){
       var sel=document.querySelector('select[data-pick="'+job+'"]'), rid=sel&&sel.value;
@@ -342,16 +436,38 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       return run("nvi_admin_assign",{ p_job:job, p_rider:rid },"Rider assigned.");
     }
     if(d==="unassign"){ if(!twice(t,"Press again to unassign")) return; return run("nvi_admin_assign",{ p_job:job, p_rider:null },"Job is back in the open list."); }
-    if(d==="cancel"||d==="picked"||d==="delivered"){
+    if(d==="confirm"){ if(!twice(t,"Press again: I phoned the sender")) return; return run("nvi_admin_confirm",{ p_job:job },"Confirmed. Riders can see it now."); }
+    var MARK={ picked:"Picked up", delivered:"Delivered", failed:"Failed delivery", retry:"Picked up", returning:"Returning", returned:"Returned" };
+    if(d==="cancel"||MARK[d]||d==="transfer"||d==="pay-received"||d==="pay-writeoff"){
       var note=($("fNote")&&$("fNote").value||"").trim();
       if(note.length<3){ toast("Write a short reason first."); if($("fNote")) $("fNote").focus(); return; }
+      var cashEl=$("fCash"), cash=cashEl?cashEl.value.replace(/\D/g,""):"";
       if(d==="cancel") return run("nvi_admin_cancel",{ p_job:job, p_reason:note },"Job cancelled.");
-      return run("nvi_admin_mark",{ p_job:job, p_status:d==="picked"?"Picked up":"Delivered", p_note:note },"Job updated.");
+      if(d==="transfer"){
+        var s2=document.querySelector('.inline select[data-pick="'+job+'"]'), r2=s2&&s2.value;
+        if(!r2){ toast("Choose the new rider first."); if(s2) s2.focus(); return; }
+        return run("nvi_admin_assign",{ p_job:job, p_rider:r2, p_note:note },"Parcel moved to the new rider.");
+      }
+      if(d==="pay-writeoff"){ if(!twice(t,"Press again to write it off")) return; return run("nvi_admin_pay",{ p_job:job, p_action:"writeoff", p_amount:null, p_note:note },"Shortfall written off."); }
+      if(d==="pay-received"){
+        if(cash===""){ toast("Type the total cash received for this job."); cashEl.focus(); return; }
+        return run("nvi_admin_pay",{ p_job:job, p_action:"received", p_amount:Number(cash), p_note:note },"Payment settled.");
+      }
+      if(cashEl&&cash===""){ toast(SAY.cash_needed); cashEl.focus(); return; }
+      return run("nvi_admin_mark",{ p_job:job, p_status:MARK[d], p_note:note, p_cash:cashEl?Number(cash):null, p_reason:d==="failed"?$("fReason").value:null },"Job updated.");
     }
     if(d==="invite"){
       return run("nvi_admin_invite_rider",{ p_name:$("rName").value, p_email:$("rEmail").value, p_phone:$("rPhone").value, p_plate:$("rPlate").value||null },"Rider added. Send them the rider link.");
     }
-    if(d==="handover"){ if(!twice(t,"Press again: "+rs(t.dataset.amt)+" received")) return; return run("nvi_admin_handover",{ p_rider:t.dataset.rider },function(r){ return rs(r.amount)+" received from "+r.jobs+" job"+(r.jobs===1?"":"s")+"."; }); }
+    if(d==="handover"){
+      if(!twice(t,"Press again: "+rs(t.dataset.amt)+" received")) return;
+      /* The same key goes with every retry of this handover, so a lost reply
+         followed by a second press cannot record the cash twice. */
+      var rider=t.dataset.rider; HKEY[rider]=HKEY[rider]||newKey();
+      var p=run("nvi_admin_handover",{ p_rider:rider, p_key:HKEY[rider] },function(r){ return rs(r.amount)+" received from "+r.jobs+" job"+(r.jobs===1?"":"s")+"."; });
+      if(p) p.then(function(r){ if(r) delete HKEY[rider]; });
+      return p;
+    }
     if(d==="setrider"){
       var st=t.dataset.st;
       if(st!=="Active"&&!twice(t,st==="Removed"?"Press again to remove":"Press again to block")) return;

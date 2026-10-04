@@ -22,8 +22,11 @@
  *   way. That is the kill switch, and it is the reason it is safe to ship
  *   this at all.
  */
-var CACHE = "novax-v177";
-var PRECACHE = ["/client.html", "/rider.html", "/assets/favicon.svg", "/offline.html"];
+var CACHE = "novax-v178";
+/* The two Nova Instant pages a phone on a weak connection must still be able
+   to open: the customer's booking/tracking page and the Instant rider's page. */
+var SHELLS = ["/client.html", "/rider.html", "/instant.html", "/instant-rider.html"];
+var PRECACHE = SHELLS.concat(["/assets/favicon.svg", "/offline.html"]);
 
 self.addEventListener("install", function (event) {
   self.skipWaiting();
@@ -41,7 +44,7 @@ self.addEventListener("install", function (event) {
            "one file did not arrive" with a Reload that changes nothing.
            Read the scripts the shell actually asks for and cache them with it,
            so the pair is always coherent. */
-        return Promise.all(["/client.html", "/rider.html"].map(function (shell) { return c.match(shell).then(function (res) {
+        return Promise.all(SHELLS.map(function (shell) { return c.match(shell).then(function (res) {
           if (!res) return;
           return res.clone().text().then(function (html) {
             var urls = [], re = /<script[^>]+src="([^"]+)"/g, m;
@@ -115,7 +118,10 @@ self.addEventListener("fetch", function (event) {
       }).catch(function () {
         return caches.match(req).then(function (hit) {
           if (hit) return hit;
-          var shell = url.pathname === "/rider.html" ? "/rider.html" : url.pathname === "/client.html" ? "/client.html" :
+          /* A tracking link (instant.html?t=...) has never been cached under
+             its own address, so it falls back to the saved page, which then
+             says the booking could not be loaded and tries again. */
+          var shell = SHELLS.indexOf(url.pathname) > -1 ? url.pathname :
                       (url.pathname === "/" || url.pathname === "/index.html") ? "/index.html" : null;
           var saved = shell ? caches.match(shell).then(function (c) { return c || (shell === "/index.html" ? caches.match("/") : null); }) : Promise.resolve(null);
           return saved.then(function (cached) {

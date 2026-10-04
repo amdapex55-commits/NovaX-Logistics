@@ -93,6 +93,13 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
 .step p{margin:0;font-size:14.5px;color:var(--navy-muted)}
 .cash{margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(123,232,180,.12);border:1px solid var(--navy-line);font-size:14.5px;color:var(--navy-ink)}
 .cash b{color:var(--lime)}
+.step.warn{background:#4a3200}
+.step.warn .k{color:#ffd98a}
+.step.warn p{color:#f1e2bd}
+/* The line a rider ticks to say the cash is in their hand */
+.tick{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;align-items:center;padding:12px;border:1.5px solid var(--green-2);background:var(--mint);border-radius:12px;font-size:15.5px;line-height:1.35;cursor:pointer;margin-bottom:12px}
+.tick input{width:26px;height:26px;margin:0;accent-color:var(--green-2)}
+.tick b{font-weight:800}
 .acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:11px 14px;border-radius:12px;border:1.5px solid transparent;font-weight:700;font-size:16px;text-decoration:none;text-align:center;line-height:1.2}
 .btn-primary{background:var(--green);border-color:var(--green);color:#04170e}
@@ -142,7 +149,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   var $=function(id){ return document.getElementById(id); };
   var sb=null;
   try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){}
-  var S={ me:null, feed:null, busy:false, sheet:null, timer:null, openCount:0 };
+  var S={ me:null, feed:null, busy:false, sheet:null, timer:null, openCount:0, key:"", cashOk:false };
 
   /* supabase-js resolves with {error}; this turns it into a rejection. */
   function rpc(name,args){
@@ -260,21 +267,49 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     $("onSw").hidden=false;
     refresh(true);
     stop();
-    /* Never repaint under the rider's thumb: not while a sheet is open, and
-       not while they are typing the PIN. */
-    S.timer=setInterval(function(){ if(!document.hidden&&!S.sheet&&!S.busy&&!typing()) refresh(false); },12000);
+    /* The feed is asked every 12 s while this screen is showing. That is also
+       what tells NovaX the rider is really online: a switch left on in a
+       closed app stops counting after a minute. */
+    S.timer=setInterval(function(){ if(!document.hidden&&!S.busy) refresh(false); },12000);
   }
-  function stop(){ if(S.timer){ clearInterval(S.timer); S.timer=null; } }
+  function stop(){ if(S.timer){ clearInterval(S.timer); S.timer=null; } keepAwake(false); }
+  /* Typing, or between the two presses of a confirm button. */
   function typing(){ var a=document.activeElement; return !!(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))||!!document.querySelector('[data-sure="1"]'); }
-  document.addEventListener("visibilitychange",function(){ if(!document.hidden&&S.timer&&!S.sheet&&!S.busy&&!typing()) refresh(false); });
+  document.addEventListener("visibilitychange",function(){ if(!document.hidden&&S.timer&&!S.busy) refresh(false); });
+
+  /* While the rider is online or on a job the screen stays on, so the page
+     keeps asking for jobs. Phones drop this when the page is hidden; it is
+     asked for again each time the feed is painted. */
+  var wake=null;
+  function keepAwake(on){
+    try{
+      if(on&&!wake&&navigator.wakeLock&&!document.hidden){
+        navigator.wakeLock.request("screen").then(function(w){ wake=w; w.addEventListener("release",function(){ if(wake===w) wake=null; }); }).catch(function(){});
+      } else if(!on&&wake){ wake.release().catch(function(){}); wake=null; }
+    }catch(e){}
+  }
+  /* A sound for a new job. Browsers only allow it after the rider has
+     touched the page, so the first tap unlocks it. */
+  var actx=null;
+  function unlockSound(){ try{ if(!actx){ var C=window.AudioContext||window.webkitAudioContext; if(C) actx=new C(); } if(actx&&actx.state==="suspended") actx.resume(); }catch(e){} }
+  function beep(){
+    try{
+      if(!actx||actx.state!=="running") return;
+      [0,.24,.48].forEach(function(d){ var o=actx.createOscillator(), g=actx.createGain(); o.frequency.value=880; g.gain.value=.3; o.connect(g); g.connect(actx.destination); o.start(actx.currentTime+d); o.stop(actx.currentTime+d+.16); });
+    }catch(e){}
+  }
 
   function refresh(first){
     return rpc("nvi_rider_feed").then(function(f){
       var before=S.openCount;
       S.feed=f||{}; S.openCount=(S.feed.open||[]).length;
+      var a=S.feed.active, key=a?a.id+"|"+a.status:"";
+      if(key!==S.key){ S.key=key; S.cashOk=false; S.sheet=null; }
       /* A new job arrived while the rider was waiting. */
-      if(!first&&S.openCount>before&&!S.feed.active){ try{ navigator.vibrate&&navigator.vibrate([180,90,180]); }catch(e){} }
-      paint();
+      if(!first&&S.openCount>before&&!a){ beep(); try{ navigator.vibrate&&navigator.vibrate([180,90,180,90,180]); }catch(e){} }
+      /* Never repaint under the rider's thumb: not while a sheet is open, and
+         not while they are typing the PIN. The switch is still kept right. */
+      if(first||(!S.sheet&&!typing())) paint(); else paintSwitch();
     }).catch(function(e){
       if(/not an active Nova Instant rider/i.test(e.message||"")) return loadMe();
       if(first) $("main").innerHTML='<div class="empty"><b>Could not load your jobs</b>'+esc(friendly(e.message))+'<div style="margin-top:14px"><button class="btn btn-plain" type="button" data-act="reload">Try again</button></div></div>';
@@ -284,22 +319,26 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   function paintSwitch(){
     var on=!!(S.feed&&S.feed.rider&&S.feed.rider.online);
     $("onSw").setAttribute("aria-checked",String(on)); $("onLbl").textContent=on?"Online":"Offline";
+    keepAwake(on||!!(S.feed&&S.feed.active));
   }
-  function jobLegs(j,full,dimDrop){
-    return '<div class="leg"><span class="mk a" aria-hidden="true">A</span><p>'+(full?'<small>Pickup: '+esc(j.sender_name)+'</small>':'<small>Pickup</small>')+esc(j.pickup_address)+'</p></div>'+
-           '<div class="leg'+(dimDrop?' dim':'')+'"><span class="mk b" aria-hidden="true">B</span><p>'+(full?'<small>Deliver to: '+esc(j.receiver_name)+'</small>':'<small>Deliver to</small>')+esc(j.drop_address)+'</p></div>';
+  function officeTel(){ var d=String((S.feed&&S.feed.support)||"03123922558").replace(/\D/g,""); return "tel:+92"+d.replace(/^0/,""); }
+  function jobLegs(j,full,dim){
+    return '<div class="leg'+(dim==="a"?' dim':'')+'"><span class="mk a" aria-hidden="true">A</span><p>'+(full?'<small>Pickup: '+esc(j.sender_name)+'</small>':'<small>Pickup</small>')+esc(j.pickup_address)+'</p></div>'+
+           '<div class="leg'+(dim==="b"?' dim':'')+'"><span class="mk b" aria-hidden="true">B</span><p>'+(full?'<small>Deliver to: '+esc(j.receiver_name)+'</small>':'<small>Deliver to</small>')+esc(j.drop_address)+'</p></div>';
   }
   function paint(){
     var f=S.feed, h="";
+    /* A PIN typed and then left (a tap elsewhere) survives the repaint. */
+    var pinWas=$("pin")?$("pin").value:"";
     paintSwitch();
     var t=f.today||{};
-    h+='<div class="stats"><div class="stat"><span>Done</span><b>'+esc(t.done||0)+'</b></div><div class="stat"><span>Fares</span><b>'+esc(rs(t.fares))+'</b></div><div class="stat"><span>Cash held</span><b>'+esc(rs(t.cash_in_hand))+'</b></div></div>';
+    h+='<div class="stats"><div class="stat"><span>Done today</span><b>'+esc(t.done||0)+'</b></div><div class="stat"><span>Fares today</span><b>'+esc(rs(t.fares))+'</b></div><div class="stat"><span>Cash with you</span><b>'+esc(rs(t.cash_in_hand))+'</b></div></div>';
     if(f.active) h+=activeHtml(f.active);
     else if(!f.rider.online) h+='<div class="card empty"><b>You are offline</b>Turn on Online at the top to see jobs.<br><span class="ur">Jobs dekhne ke liye upar Online karein.</span></div>';
     else {
       if(!f.hours_open) h+='<div class="note warn">Nova Instant takes bookings from '+hourLabel(f.open_hour)+' to '+hourLabel(f.close_hour)+'. New jobs start again then.</div>';
       var open=f.open||[];
-      if(!open.length) h+='<div class="card empty"><b>No jobs right now</b>Stay online. New jobs appear here by themselves.<br><span class="ur">Online rahein, naya job khud aa jayega.</span></div>';
+      if(!open.length) h+='<div class="card empty"><b>No jobs right now</b>Keep this screen open. A new job rings and appears here by itself. If you close this page or lock the phone, NovaX sees you as offline.<br><span class="ur">Yeh screen khuli rakhein, naya job khud aa jayega.</span></div>';
       else h+=open.map(function(j){
         return '<div class="card"><div class="job-top"><span class="code">'+esc(j.code)+' &middot; '+esc(ago(j.created_at))+'</span><span class="fare"><small>Rs</small>'+esc(Number(j.fare).toLocaleString("en-PK"))+'</span></div>'+
           jobLegs(j,false)+
@@ -308,63 +347,141 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       }).join("");
     }
     $("main").innerHTML=h;
+    if(pinWas&&$("pin")) $("pin").value=pinWas;
+  }
+  var FAILED={ receiver_unavailable:"Receiver not answering or not there", refused:"Receiver refuses the parcel", wrong_address:"Wrong address, cannot find it",
+    damaged:"Parcel is damaged", payment_refused:"Receiver will not pay the fare" };
+  function tickHtml(due,who){
+    return '<label class="tick" for="cashOk"><input type="checkbox" id="cashOk"'+(S.cashOk?" checked":"")+'><span>I have received <b>'+esc(rs(due))+'</b> in cash from the '+who+'. <span class="ur">'+esc(rs(due))+' naqad mil gaye.</span></span></label>';
+  }
+  function pinHtml(label,locked){
+    return '<div class="fld" style="margin-top:0"><label for="pin">'+label+'</label>'+
+      '<input class="inp pinin" id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" placeholder="0000"'+(locked?" disabled":"")+'></div>';
   }
   function activeHtml(j){
-    var toPickup=j.status==="Rider assigned";
-    var cashNow = toPickup ? j.payer==="sender" : j.payer==="receiver";
-    var h='<div class="step"><div class="k">'+esc(j.code)+' &middot; step '+(toPickup?"1":"2")+' of 2</div>'+
-      '<h2>'+(toPickup?"Go to the pickup":"Deliver the parcel")+'</h2>'+
-      '<p>'+(toPickup?'Collect: '+esc(j.item):'Hand over: '+esc(j.item))+' <span class="ur" style="color:inherit;opacity:.8">'+(toPickup?"Parcel uthayein":"Parcel pohnchayein")+'</span></p>'+
-      '<div class="cash">'+(cashNow?'Collect <b>'+esc(rs(j.fare))+'</b> in cash from the '+(toPickup?"sender":"receiver")+'.':
-        (toPickup?'No cash here. The receiver pays <b>'+esc(rs(j.fare))+'</b> at delivery.':'No cash here. The sender already paid.'))+'</div></div>';
-    h+='<div class="card">'+jobLegs(j,true,toPickup)+
-      (j.rider_note?'<div class="chips"><span class="chip">Note: '+esc(j.rider_note)+'</span></div>':'')+
-      '<div class="acts"><a class="btn btn-plain" href="'+esc(mapsUrl(toPickup?j.p:j.d))+'" target="_blank" rel="noopener">Open in Maps</a>'+
-      '<a class="btn btn-plain" href="tel:'+esc(toPickup?j.sender_phone:j.receiver_phone)+'">Call '+(toPickup?"sender":"receiver")+'</a></div>'+
-      (toPickup?'':'<div class="acts" style="grid-template-columns:1fr"><a class="btn btn-quiet" href="tel:'+esc(j.sender_phone)+'">Call the sender ('+esc(j.sender_name)+')</a></div>')+
-      '</div>';
-    if(toPickup){
-      h+='<div class="card"><button class="btn btn-primary wide big" type="button" id="pickBtn">I have the parcel <span class="ur" style="color:inherit;opacity:.75">Parcel le liya</span></button>'+
+    var st=j.status, due=Number(j.due_now||0), locked=Number(j.pin_tries)>=5, h;
+    var office='<a class="btn btn-quiet" href="'+esc(officeTel())+'">Call the NovaX office</a>';
+    if(st==="Rider assigned"){
+      h='<div class="step"><div class="k">'+esc(j.code)+' &middot; step 1 of 2</div><h2>Go to the pickup</h2>'+
+        '<p>Collect: '+esc(j.item)+' <span class="ur" style="color:inherit;opacity:.8">Parcel uthayein</span></p>'+
+        '<div class="cash">'+(due>0?'Collect <b>'+esc(rs(due))+'</b> in cash from the sender before you take the parcel.':'No cash here. The receiver pays <b>'+esc(rs(j.fare))+'</b> at delivery.')+'</div></div>';
+      h+='<div class="card">'+jobLegs(j,true,"b")+
+        (j.rider_note?'<div class="chips"><span class="chip">Note: '+esc(j.rider_note)+'</span></div>':'')+
+        '<div class="acts"><a class="btn btn-plain" href="'+esc(mapsUrl(j.p))+'" target="_blank" rel="noopener">Open in Maps</a>'+
+        '<a class="btn btn-plain" href="tel:'+esc(j.sender_phone)+'">Call sender</a></div></div>';
+      h+='<div class="card">'+(due>0?tickHtml(due,"sender"):'')+
+         '<button class="btn btn-primary wide big" type="button" id="pickBtn"'+(due>0&&!S.cashOk?" disabled":"")+'>I have the parcel <span class="ur" style="color:inherit;opacity:.75">Parcel le liya</span></button>'+
          '<button class="btn btn-quiet wide" type="button" data-sheet="release">I cannot do this job</button>'+sheetHtml(j)+'</div>';
-    } else {
-      var locked=Number(j.pin_tries)>=5;
-      h+='<div class="card"><div class="fld" style="margin-top:0"><label for="pin">Delivery PIN from the receiver <span class="ur">Receiver se 4 number ka PIN lein</span></label>'+
-         '<input class="inp pinin" id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" placeholder="0000"'+(locked?" disabled":"")+'></div>'+
-         '<div class="fld"><button class="btn btn-primary wide big" type="button" id="dropBtn"'+(locked?" disabled":"")+'>Delivered <span class="ur" style="color:inherit;opacity:.75">Parcel de diya</span></button></div>'+
+    } else if(st==="Picked up"){
+      h='<div class="step"><div class="k">'+esc(j.code)+' &middot; step 2 of 2'+(Number(j.attempts)>1?' &middot; try '+esc(j.attempts):'')+'</div><h2>Deliver the parcel</h2>'+
+        '<p>Hand over: '+esc(j.item)+' <span class="ur" style="color:inherit;opacity:.8">Parcel pohnchayein</span></p>'+
+        '<div class="cash">'+(due>0?'Collect <b>'+esc(rs(due))+'</b> in cash from the receiver. No cash, no parcel.':'No cash here. The sender already paid.')+'</div></div>';
+      h+='<div class="card">'+jobLegs(j,true,"a")+
+        (j.rider_note?'<div class="chips"><span class="chip">Note: '+esc(j.rider_note)+'</span></div>':'')+
+        '<div class="acts"><a class="btn btn-plain" href="'+esc(mapsUrl(j.d))+'" target="_blank" rel="noopener">Open in Maps</a>'+
+        '<a class="btn btn-plain" href="tel:'+esc(j.receiver_phone)+'">Call receiver</a></div>'+
+        '<div class="acts" style="grid-template-columns:1fr"><a class="btn btn-quiet" href="tel:'+esc(j.sender_phone)+'">Call the sender ('+esc(j.sender_name)+')</a></div></div>';
+      h+='<div class="card">'+pinHtml('Delivery PIN from the receiver <span class="ur">Receiver se 4 number ka PIN lein</span>',locked)+
+         '<div class="fld">'+(due>0?tickHtml(due,"receiver"):'')+
+         '<button class="btn btn-primary wide big" type="button" id="dropBtn"'+(locked?" disabled":"")+'>Delivered <span class="ur" style="color:inherit;opacity:.75">Parcel de diya</span></button></div>'+
          '<div class="msg" id="pinMsg" role="alert">'+(locked?"The PIN is locked after five wrong tries. Call the NovaX office to close this job.":"")+'</div>'+
-         '<button class="btn btn-quiet wide" type="button" data-sheet="problem">There is a problem</button>'+sheetHtml(j)+'</div>';
+         '<button class="btn btn-danger wide" type="button" data-sheet="failed" style="margin-top:8px">Could not deliver <span class="ur" style="color:inherit;opacity:.75">Delivery nahi hui</span></button>'+
+         (due>0?'<button class="btn btn-quiet wide" type="button" data-sheet="short">Handed over, but paid less than '+esc(rs(due))+'</button>':'')+
+         '<button class="btn btn-quiet wide" type="button" data-sheet="problem">Tell the office something</button>'+sheetHtml(j)+'</div>';
+    } else if(st==="Failed delivery"){
+      h='<div class="step warn"><div class="k">'+esc(j.code)+' &middot; not delivered</div><h2>Keep the parcel with you</h2>'+
+        '<p>'+esc(FAILED[j.fail_reason]||"Delivery not made")+(j.fail_note?': '+esc(j.fail_note):'')+'. The NovaX office will call you. <span class="ur" style="color:inherit;opacity:.8">Parcel apne paas rakhein, office call karega.</span></p></div>';
+      h+='<div class="card">'+jobLegs(j,true)+
+        '<div class="acts"><a class="btn btn-plain" href="tel:'+esc(j.receiver_phone)+'">Call receiver</a><a class="btn btn-plain" href="tel:'+esc(j.sender_phone)+'">Call sender</a></div>'+
+        '<div class="acts" style="grid-template-columns:1fr">'+office+'</div></div>';
+      h+='<div class="card"><button class="btn btn-primary wide big" type="button" id="retryBtn">Try the delivery again <span class="ur" style="color:inherit;opacity:.75">Dobara koshish</span></button>'+
+         '<button class="btn btn-dark wide" type="button" id="returnBtn" style="margin-top:10px">Take it back to the sender <span class="ur" style="color:inherit;opacity:.75">Wapas le jayein</span></button>'+
+         '<button class="btn btn-quiet wide" type="button" data-sheet="problem">Tell the office something</button>'+sheetHtml(j)+'</div>';
+    } else {
+      h='<div class="step warn"><div class="k">'+esc(j.code)+' &middot; return</div><h2>Take the parcel back to the sender</h2>'+
+        '<p>Hand back: '+esc(j.item)+' <span class="ur" style="color:inherit;opacity:.8">Parcel sender ko wapas dein</span></p>'+
+        '<div class="cash">'+(due>0?'Collect <b>'+esc(rs(due))+'</b> in cash from the sender when you hand it back.':'No cash to collect.')+'</div></div>';
+      h+='<div class="card">'+jobLegs(j,true,"b")+
+        '<div class="acts"><a class="btn btn-plain" href="'+esc(mapsUrl(j.p))+'" target="_blank" rel="noopener">Open in Maps</a>'+
+        '<a class="btn btn-plain" href="tel:'+esc(j.sender_phone)+'">Call sender</a></div>'+
+        '<div class="acts" style="grid-template-columns:1fr">'+office+'</div></div>';
+      h+='<div class="card">'+pinHtml('PIN from the sender\'s booking page <span class="ur">Sender se 4 number ka PIN lein</span>',locked)+
+         '<div class="fld">'+(due>0?tickHtml(due,"sender"):'')+
+         '<button class="btn btn-primary wide big" type="button" id="backBtn"'+(locked?" disabled":"")+'>Returned to the sender <span class="ur" style="color:inherit;opacity:.75">Wapas de diya</span></button></div>'+
+         '<div class="msg" id="pinMsg" role="alert">'+(locked?"The PIN is locked after five wrong tries. Call the NovaX office to close this job.":"")+'</div>'+
+         (due>0?'<button class="btn btn-quiet wide" type="button" data-sheet="short">Handed back, but paid less than '+esc(rs(due))+'</button>':'')+
+         '<button class="btn btn-quiet wide" type="button" data-sheet="problem">Tell the office something</button>'+sheetHtml(j)+'</div>';
     }
     if(j.problem_note) h+='<div class="note warn" style="margin-top:12px">You told the office: '+esc(j.problem_note)+'</div>';
     return h;
   }
-  var RELEASE=["Bike problem","Too far from me","Sender not answering","Sender cancelled","Other"];
-  var PROBLEM=["Receiver not answering","Receiver refuses the parcel","Wrong address","Receiver has no PIN","Other"];
+  var RELEASE=["Bike problem","Too far from me","Sender not answering","Sender did not pay","Sender cancelled","Other"];
+  var PROBLEM=["Receiver has no PIN","Sender has no PIN","Bike problem, I need another rider","Accident or emergency","Other"];
   function sheetHtml(j){
-    if(!S.sheet) return "";
-    var rel=S.sheet==="release", list=rel?RELEASE:PROBLEM;
-    return '<div class="sheet"><h3>'+(rel?"Give this job back":"Tell the office")+'</h3><p class="sub" style="margin:0">'+(rel?"It goes back to the list for another rider.":"The job stays with you. The office will call you.")+'</p>'+
-      '<div class="fld"><label for="shWhy">What happened?</label><select class="inp" id="shWhy">'+list.map(function(x){ return '<option>'+esc(x)+'</option>'; }).join("")+'</select></div>'+
+    var k=S.sheet; if(!k) return "";
+    var back='<button class="btn btn-plain" type="button" data-sheet="">Back</button>';
+    if(k==="short"){
+      var due=Number(j.due_now||0);
+      return '<div class="sheet"><h3>Paid less than '+esc(rs(due))+'</h3><p class="sub" style="margin:0">Only if the parcel is already handed over. If they will not pay, keep the parcel and press Could not deliver. Type the PIN above first.</p>'+
+        '<div class="fld"><label for="shAmt">Cash you actually received (Rs)</label><input class="inp" id="shAmt" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="0"></div>'+
+        '<div class="fld"><label for="shNote">What happened?</label><input class="inp" id="shNote" maxlength="200" placeholder="e.g. receiver only had Rs 200"></div>'+
+        '<div class="acts">'+back+'<button class="btn btn-dark" type="button" id="shGo">Send to office</button></div></div>';
+    }
+    var rel=k==="release", fail=k==="failed";
+    var opts = fail ? Object.keys(FAILED).map(function(c){ return '<option value="'+esc(c)+'">'+esc(FAILED[c])+'</option>'; }).join("")
+                    : (rel?RELEASE:PROBLEM).map(function(x){ return '<option>'+esc(x)+'</option>'; }).join("");
+    return '<div class="sheet"><h3>'+(rel?"Give this job back":fail?"Could not deliver":"Tell the office")+'</h3><p class="sub" style="margin:0">'+
+      (rel?"It goes back to the list for another rider.":fail?"You keep the parcel. The office calls the receiver and the sender, then you try again or take it back.":"The job stays with you. The office will call you.")+'</p>'+
+      '<div class="fld"><label for="shWhy">What happened?</label><select class="inp" id="shWhy">'+opts+'</select></div>'+
       '<div class="fld"><label for="shNote">More detail (optional)</label><input class="inp" id="shNote" maxlength="200"></div>'+
-      '<div class="acts"><button class="btn btn-plain" type="button" data-sheet="">Back</button><button class="btn '+(rel?"btn-danger":"btn-dark")+'" type="button" id="shGo">'+(rel?"Give it back":"Send to office")+'</button></div></div>';
+      '<div class="acts">'+back+'<button class="btn '+(rel||fail?"btn-danger":"btn-dark")+'" type="button" id="shGo">'+(rel?"Give it back":fail?"Mark not delivered":"Send to office")+'</button></div></div>';
   }
 
   var SAY={ offline:"Go online first.", busy:"Finish the job you have first.", taken:"Another rider took that job.",
     not_yours:"This job is no longer with you.", need_reason:"Choose a reason.", need_note:"Say what happened.",
-    wrong_pin:"That PIN is not right.", pin_locked:"The PIN is locked after five wrong tries. Call the NovaX office." };
-  function act(name,args,okText){
-    if(S.busy) return Promise.resolve(false);
+    wrong_pin:"That PIN is not right.", pin_locked:"The PIN is locked after five wrong tries. Call the NovaX office.",
+    has_job:"Finish the job you have before going offline.", cash_needed:"Take the cash first, then tick the cash line.",
+    cash_mismatch:"That amount is not right. It cannot be more than the fare.", short_note:"Say why the cash is short." };
+  function netFail(e){ return /fetch|network|Failed|timeout|Load failed/i.test(String((e&&e.message)||e)); }
+  /* Every rider step answers "already done" when it is sent twice, so a press
+     lost on a weak connection is simply sent again, up to three times. */
+  function act(name,args,okText,tries){
+    tries=tries||0;
+    if(S.busy&&!tries) return Promise.resolve(false);
     S.busy=true;
     return rpc(name,args).then(function(r){
       S.busy=false;
       if(r&&r.ok===false){ toast(SAY[r.reason]||"That did not work. Try again."); return refresh(false).then(function(){ return r; }); }
       if(okText) toast(okText);
-      S.sheet=null;
-      return refresh(false).then(function(){ return r||{ ok:true }; });
-    }).catch(function(e){ S.busy=false; toast(friendly(e.message)); return false; });
+      S.sheet=null; S.cashOk=false;
+      return refresh(true).then(function(){ return r||{ ok:true }; });
+    }).catch(function(e){
+      if(netFail(e)&&tries<3){
+        toast("Weak connection. Sending again…");
+        return new Promise(function(res){ setTimeout(res,1500*(tries+1)); }).then(function(){ return act(name,args,okText,tries+1); });
+      }
+      S.busy=false; S.sheet=null; paint();
+      toast(netFail(e)?"No connection. Nothing is lost: press again when you have signal.":friendly(e.message));
+      return false;
+    });
+  }
+  /* Two presses: a pocket tap must not move a parcel. */
+  function sure(t){
+    if(t.dataset.sure==="1") return true;
+    t.dataset.sure="1"; t.textContent="Press again to confirm";
+    setTimeout(function(){ if(t.isConnected&&!S.busy){ t.dataset.sure="0"; paint(); } },4000);
+    return false;
   }
 
+  document.addEventListener("change",function(e){
+    if(e.target.id!=="cashOk") return;
+    S.cashOk=e.target.checked;
+    var pb=$("pickBtn"); if(pb) pb.disabled=!S.cashOk;
+    if($("pinMsg")&&S.cashOk) say($("pinMsg"),"");
+  });
   document.addEventListener("click",function(e){
-    var t=e.target.closest("[data-auth],[data-act],[data-accept],[data-sheet],#forgot,#pickBtn,#dropBtn,#shGo,#onSw,#signOut");
+    unlockSound();
+    var t=e.target.closest("[data-auth],[data-act],[data-accept],[data-sheet],#forgot,#pickBtn,#dropBtn,#backBtn,#retryBtn,#returnBtn,#shGo,#onSw,#signOut");
     if(!t) return;
     if(t.dataset.auth) return renderAuth(t.dataset.auth);
     if(t.dataset.act==="reload") return boot();
@@ -372,28 +489,43 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     if(t.id==="signOut"){ stop(); return Promise.resolve(sb.auth.signOut()).catch(function(){}).then(function(){ S.me=null; S.feed=null; renderAuth("signin"); }); }
     if(t.id==="onSw"){
       var on=t.getAttribute("aria-checked")!=="true";
-      if(!on&&S.feed&&S.feed.active){ toast("Finish the job you have before going offline."); return; }
+      if(!on&&S.feed&&S.feed.active){ toast(SAY.has_job); return; }
       return act("nvi_rider_online",{ p_on:on },on?"You are online.":"You are offline.");
     }
     if(t.dataset.accept){ t.disabled=true; return act("nvi_rider_accept",{ p_job:t.dataset.accept },"Job accepted. Go to the pickup."); }
     if(t.hasAttribute("data-sheet")){ S.sheet=t.dataset.sheet||null; return paint(); }
     var j=S.feed&&S.feed.active; if(!j) return;
+    var due=Number(j.due_now||0);
     if(t.id==="pickBtn"){
-      /* Two presses: a pocket tap must not mark a parcel collected. */
-      if(t.dataset.sure!=="1"){ t.dataset.sure="1"; t.textContent="Press again to confirm"; setTimeout(function(){ if(t.isConnected){ t.dataset.sure="0"; paint(); } },4000); return; }
-      t.disabled=true; return act("nvi_rider_picked",{ p_job:j.id },"Picked up. Now deliver it.");
+      if(due>0&&!S.cashOk){ toast(SAY.cash_needed); return; }
+      if(!sure(t)) return;
+      t.disabled=true; return act("nvi_rider_picked",{ p_job:j.id, p_cash:due>0?due:null },"Picked up. Now deliver it.");
     }
-    if(t.id==="dropBtn"){
-      var pin=($("pin").value||"").replace(/\D/g,"");
-      if(pin.length!==4){ say($("pinMsg"),"Type the 4-digit PIN the receiver shows you."); $("pin").focus(); return; }
+    if(t.id==="dropBtn"||t.id==="backBtn"){
+      var back=t.id==="backBtn", pin=($("pin").value||"").replace(/\D/g,"");
+      if(pin.length!==4){ say($("pinMsg"),"Type the 4-digit PIN the "+(back?"sender":"receiver")+" shows you."); $("pin").focus(); return; }
+      if(due>0&&!S.cashOk){ say($("pinMsg"),"Take "+rs(due)+" in cash, then tick the cash line above."); return; }
       t.disabled=true;
-      return act("nvi_rider_delivered",{ p_job:j.id, p_pin:pin },"Delivered. Well done.").then(function(r){
-        if(r&&r.ok===false&&r.reason==="wrong_pin"&&$("pinMsg")) say($("pinMsg"),"That PIN is not right. "+r.left+" "+(r.left===1?"try":"tries")+" left. Ask the receiver to open their tracking link.");
+      return act(back?"nvi_rider_returned":"nvi_rider_delivered",{ p_job:j.id, p_pin:pin, p_cash:due>0?due:null },back?"Returned. Thank you.":"Delivered. Well done.").then(function(r){
+        if(r&&r.ok===false&&r.reason==="wrong_pin"&&$("pinMsg")) say($("pinMsg"),"That PIN is not right. "+r.left+" "+(r.left===1?"try":"tries")+" left. Ask the "+(back?"sender":"receiver")+" to open their tracking link.");
       });
     }
+    if(t.id==="retryBtn"){ t.disabled=true; return act("nvi_rider_retry",{ p_job:j.id },"Go to the delivery address again."); }
+    if(t.id==="returnBtn"){ if(!sure(t)) return; t.disabled=true; return act("nvi_rider_return",{ p_job:j.id },"Take the parcel back to the sender."); }
     if(t.id==="shGo"){
-      var why=$("shWhy").value, note=($("shNote").value||"").trim(), text=why+(note?": "+note:"");
+      var note=($("shNote").value||"").trim();
+      if(S.sheet==="short"){
+        var pin2=(($("pin")&&$("pin").value)||"").replace(/\D/g,""), amt=($("shAmt").value||"").replace(/\D/g,"");
+        if(pin2.length!==4){ toast("Type the 4-digit PIN above first."); return; }
+        if(amt===""||Number(amt)>=due){ toast("Enter the cash you received. It must be less than "+rs(due)+"."); $("shAmt").focus(); return; }
+        if(note.length<3){ toast(SAY.short_note); $("shNote").focus(); return; }
+        t.disabled=true;
+        return act(j.status==="Returning"?"nvi_rider_returned":"nvi_rider_delivered",{ p_job:j.id, p_pin:pin2, p_cash:Number(amt), p_note:note },"Sent. The office will settle the cash.");
+      }
+      var why=$("shWhy").value;
       t.disabled=true;
+      if(S.sheet==="failed") return act("nvi_rider_failed",{ p_job:j.id, p_reason:why, p_note:note||null },"Marked not delivered. Keep the parcel safe.");
+      var text=why+(note?": "+note:"");
       if(S.sheet==="release") return act("nvi_rider_release",{ p_job:j.id, p_reason:text },"Job given back.");
       return act("nvi_rider_problem",{ p_job:j.id, p_note:text },"Sent to the office.");
     }
