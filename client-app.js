@@ -10403,18 +10403,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       return out;
     }
-    function applyPastedOrder(){
+    function applyPastedOrder(opts){
+      var keepTyped=!!(opts && opts.keepTyped);
       var input=document.getElementById("nvPasteInput");
       var summary=document.getElementById("nvPasteSummary");
       if(!input||!summary) return;
       var parsed=parsePastedOrder(input.value);
-      var filled=[], missing=[];
+      var filled=[], missing=[], kept=[];
       document.querySelectorAll("#client-newBooking .field.nvfield-missing").forEach(function(f){ f.classList.remove("nvfield-missing"); });
 
       function setField(id,val,label){
         var el=document.getElementById(id);
         if(!el) return;
-        if(val){ el.value=val; filled.push(label); }
+        if(keepTyped && String(el.value||"").trim()){ kept.push(label); return; }
+        if(val){ el.value=val; filled.push(label); try{ el.dispatchEvent(new Event("input",{bubbles:true})); }catch(e){} }
         else{ missing.push(label); var field=el.closest(".field"); if(field) field.classList.add("nvfield-missing"); }
       }
       setField("bookingName",parsed.name,"name");
@@ -10427,13 +10429,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var citySel=document.getElementById("bookingCity");
         if(citySel){
           for(var i=0;i<citySel.options.length;i++){ if(citySel.options[i].text.toLowerCase()===parsed.city.toLowerCase()){ citySel.selectedIndex=i; break; } }
+          try{ citySel.dispatchEvent(new Event("change",{bubbles:true})); citySel.dispatchEvent(new Event("input",{bubbles:true})); }catch(e){}
         }
         filled.push("city");
         try{ updateZoneRateHint(); }catch(e){}
       } else { missing.push("city"); }
 
       summary.style.display="block";
-      var msg="I filled "+filled.length+" field"+(filled.length===1?"":"s")+".";
+      var msg="I filled "+filled.length+" field"+(filled.length===1?"":"s")+"."+(kept.length?" Kept what you had typed in "+kept.join(", ")+".":"");
       if(missing.length){ msg+=" Please confirm "+missing.join(", ")+" before booking."; }
       else{ msg+=" Please double-check everything before booking."; }
       summary.textContent=msg;
@@ -14495,6 +14498,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
     })();
     (function(){ var b=document.getElementById("nvPasteFillBtn"); if(b) b.addEventListener("click",applyPastedOrder); })();
+    /* 4 Oct 2026: pasting an order fills the form straight away when the
+       paste carries at least a phone number and one more detail. Fields the
+       merchant already typed are kept; the button still re-fills on demand. */
+    (function(){
+      var input=document.getElementById("nvPasteInput"); if(!input) return;
+      input.addEventListener("paste",function(){
+        setTimeout(function(){
+          try{
+            var p=parsePastedOrder(input.value||"");
+            var found=["name","phone","cod","product","address","city"].filter(function(k){ return p && p[k]; }).length;
+            if(p && p.phone && found>=2) applyPastedOrder({ keepTyped:true });
+          }catch(e){}
+        },60);
+      });
+    })();
     document.getElementById("downloadBulkTemplateBtn").addEventListener("click",downloadBulkTemplate);
     /* BUG: this bound Upload with no disable, and importBulkRows walks the
        rows one RPC at a time with no in-flight flag. On Karachi mobile data a
