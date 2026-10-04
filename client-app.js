@@ -10141,7 +10141,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           else if(/delivery address is required/i.test(msg)) nvFlagField("bookingAddress");
         }catch(_e){}
       }finally{
-        __bookingInFlight=false; if(btn){ btn.disabled=false; btn.textContent=oldBtnText||"Create Booking"; }
+        __bookingInFlight=false; if(btn){ btn.disabled=false; btn.textContent=oldBtnText||"Create booking"; }
       }
     }
     function pollBookingConfirmation(awb, isFirstParcel, tries){
@@ -20159,13 +20159,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 (function(){
   if(window.__novaxMobileBookBarLoaded) return; window.__novaxMobileBookBarLoaded=true;
   var style=document.createElement("style");
-  style.textContent='.nv-mobile-book-bar{position:fixed;left:0;right:0;bottom:0;z-index:var(--z-bottombar);display:none;background:var(--nvu-bg);border-top:1px solid #d7ede1;padding:10px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:var(--sh-1);box-sizing:border-box}.nv-mobile-book-bar.show{display:block}.nv-mobile-book-risk{font-size:12px;font-weight:700;color:#a15c00;background:var(--nvu-warn-bg);border:1px solid #f0d6a0;border-radius:var(--r-md);padding:6px 9px;margin-bottom:8px}.nv-mobile-book-bar button{width:100%;min-height:46px;border-radius:var(--r-lg);background:var(--nvu-accent);color:#fff;font-weight:800;font-size:14px;border:0}.nv-mobile-book-bar button[disabled]{opacity:.65}@media (min-width:761px){.nv-mobile-book-bar{display:none!important}}';
+  style.textContent='.nv-mobile-book-bar{position:fixed;left:0;right:0;bottom:0;z-index:var(--z-bottombar);display:none;background:var(--nvu-bg);border-top:1px solid #d7ede1;padding:10px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:var(--sh-1);box-sizing:border-box}.nv-mobile-book-bar.show{display:block}.nv-mobile-book-risk{font-size:12px;font-weight:700;color:#a15c00;background:var(--nvu-warn-bg);border:1px solid #f0d6a0;border-radius:var(--r-md);padding:6px 9px;margin-bottom:8px}.nv-mobile-book-bar button{width:100%;min-height:46px;border-radius:var(--r-lg);background:var(--nvu-accent);color:#fff;font-weight:800;font-size:14px;border:0}.nv-mobile-book-bar button[disabled]{opacity:.65}@media (min-width:761px){.nv-mobile-book-bar{right:auto;bottom:18px;width:520px;border:1px solid var(--nvu-line,#23342d);border-radius:16px;padding:10px 12px}}';
   document.head.appendChild(style);
 
   var bar=document.createElement("div");
   bar.className="nv-mobile-book-bar";
   bar.id="nvMobileBookBar";
-  bar.innerHTML='<div class="nv-mobile-book-risk" id="nvMobileRiskMirror" style="display:none"></div><button type="button" id="nvStickyBookBtn">Create Booking</button>';
+  bar.innerHTML='<div class="nv-mobile-book-risk" id="nvMobileRiskMirror" style="display:none"></div><button type="button" id="nvStickyBookBtn">Create booking</button>';
   document.body.appendChild(bar);
 
   function realBtn(){ return document.getElementById("quickBookingBtn"); }
@@ -20200,7 +20200,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       sticky.dataset.nvMode="";
       var nvCharge=(!real.disabled && typeof window.nvBookReviewCharge==="function")?window.nvBookReviewCharge():null;
-      sticky.textContent=(real.textContent||"Create Booking")+(nvCharge!=null?(" · Rs "+Number(nvCharge).toLocaleString("en-PK")):"");
+      sticky.textContent=(real.textContent||"Create booking")+(nvCharge!=null?(" · Rs "+Number(nvCharge).toLocaleString("en-PK")):"");
       sticky.disabled=!!real.disabled;
     }catch(e){}
   }
@@ -20230,12 +20230,28 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return false;
     }catch(e){ return false; }
   }
+  /* 4 Oct 2026: the same bar now serves desktop too, as a dock under the
+     booking form, in place of the top "Create Booking" button and the
+     floating "+ Book Parcel". It sits inside the form's column and stops
+     short of the Autopilot launcher in the bottom-right corner. */
+  function placeDesktop(){
+    try{
+      if(window.innerWidth<=760){ bar.style.left=""; bar.style.width=""; return; }
+      var panel=document.getElementById("client-newBooking"); if(!panel) return;
+      var pr=panel.getBoundingClientRect(); if(!pr.width) return;
+      var limit=pr.right, launch=document.getElementById("nvautoLauncher");
+      if(launch){ var lr=launch.getBoundingClientRect(); if(lr.width && lr.left<limit) limit=lr.left-14; }
+      var w=Math.max(260,Math.min(520,limit-pr.left));
+      var left=Math.max(pr.left,Math.min(pr.left+(pr.width-w)/2,limit-w));
+      bar.style.left=Math.round(left)+"px"; bar.style.width=Math.round(w)+"px";
+    }catch(e){}
+  }
   function refreshVisibility(){
     try{
       var isMobile=window.innerWidth<=760;
       var onBooking=(typeof state!=="undefined") && state.activeClientTab==="newBooking";
       var blocked=anyBlockingOverlayOpen();
-      var visible=!!(isMobile && onBooking && !blocked);
+      var visible=!!(onBooking && !blocked);
       bar.classList.toggle("show", visible);
       /* The in-page Create Booking button and this sticky bar say the same
          thing 113px apart on a phone. Mark the body so CSS can hide the
@@ -20244,7 +20260,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ document.body.classList.toggle("nv-has-book-bar", visible); }catch(e){}
       var bookingPanel=document.getElementById("client-newBooking");
       if(bookingPanel) bookingPanel.classList.toggle("nv-sticky-pad", visible);
-      if(isMobile && onBooking){ syncButton(); syncRisk(); }
+      if(onBooking){ placeDesktop(); syncButton(); syncRisk(); }
     }catch(e){}
   }
   bar.querySelector("#nvStickyBookBtn").addEventListener("click",function(){
