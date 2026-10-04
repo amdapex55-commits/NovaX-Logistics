@@ -707,6 +707,9 @@
           "box-shadow:0 0 0 0 rgba(20,199,123,.6);animation:nvdPulse 2.2s ease-in-out infinite}",
         ".nvd-bar b{color:#fff;font-weight:750}",
         ".nvd-bar .nvd-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+        /* The short label used to be hidden by an inline style, which beat the
+           phone rule below: phones showed a green dot and no words. */
+        ".nvd-txt-short{display:none}",
         ".nvd-cta{position:relative;overflow:hidden;flex:0 0 auto;background:linear-gradient(135deg,#14c77b,#0fa968);",
           "color:#04140c;border:0;border-radius:999px;padding:7px 15px;font:inherit;font-weight:800;",
           "font-size:12px;cursor:pointer;text-decoration:none;white-space:nowrap;",
@@ -777,7 +780,7 @@
           '<span class="nvd-dot" aria-hidden="true"></span>' +
           '<span class="nvd-txt">' +
             '<span class="nvd-txt-long">You are exploring a <b>live demo</b> with sample parcels. Nothing here is real.</span>' +
-            '<span class="nvd-txt-short" style="display:none"><b>Live demo</b> · sample data</span>' +
+            '<span class="nvd-txt-short"><b>Live demo</b> · sample data</span>' +
           '</span>' +
           '<a class="nvd-cta" href="' + SIGNUP + '">Start shipping free</a>' +
           '<a class="nvd-exit" href="index.html">Exit demo</a>';
@@ -3317,6 +3320,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         (p.orderId?'<dt>Your order</dt><dd>'+escLabelText(p.orderId)+'</dd>':'')+
         '<dt>Booked</dt><dd>'+escLabelText(p.date?nvDate(p.date):"—")+'</dd>'+
       '</dl></div>'+
+      /* The decision card (Reattempt / Return / Wrong address) used to live only
+         in the dashboard's "Selected parcel status" panel. The drawer owns
+         parcel detail now, so it sits here, above the journey. Only for a
+         parcel the portal holds: its buttons look the parcel up in state. */
+      ((typeof hasResolvableException==="function" && hasResolvableException(p) && (state.parcels||[]).some(x=>x&&x.awb===p.awb))
+        ? '<div class="nvdr-sec nvdr-decide">'+renderExceptionCard(p)+'</div>' : '')+
       '<div class="nvdr-sec"><h4>Journey</h4>'+nvJourneyHtml(p,rows)+'</div>'+
       '<div class="nvdr-actions">'+
         (tel?'<a href="tel:'+escLabelText(tel)+'">Call consignee</a>':'')+
@@ -3536,6 +3545,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         +'</div>';
     }
 
+    /* The parcel the drawer is showing. It is the selection only while the
+       drawer is open: it used to stay in state (and local storage) after the
+       drawer closed, and the next render drew the old "Selected parcel status"
+       panel under the dashboard, about 800px of a journey the merchant had
+       already closed, still there after a reload. */
+    var nvDrawerAwb="";
     function openClientParcelJourney(awb){
       state.selectedAwb=awb; saveState();
       const p=(state.parcels||[]).find(x=>x&&x.awb===awb);
@@ -3548,10 +3563,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{
         U.openDrawer('<span>'+escLabelText(p.awb)+'</span><small>'+escLabelText(p.consignee||"")+
           (p.city?" · "+escLabelText(p.city):"")+'</small>', nvParcelDrawerHtml(p));
+        nvDrawerAwb=awb;
       }catch(e){
         state.activeClientTab="dashboard"; render();
       }
     }
+    document.addEventListener("nv:drawer-close",function(){
+      const awb=nvDrawerAwb; nvDrawerAwb="";
+      if(awb && state.selectedAwb===awb){ state.selectedAwb=""; saveState(); }
+    });
+    /* A reattempt or return asked for from the drawer closes it: the request
+       is sent, and the card inside would still be offering the same button. */
+    document.addEventListener("click",function(e){
+      const b=e.target&&e.target.closest?e.target.closest("#nvdrawer #clientExceptionCard button"):null;
+      if(!b) return;
+      if(/requestRedelivery|requestReturnToOrigin/.test(b.getAttribute("onclick")||"")){
+        try{ window.NovaXUI.closeDrawer(); }catch(_){}
+      }
+    });
     /* Empty-state CTAs route through the same delegated pattern as the rest. */
     document.addEventListener("click",function(e){
       const b=e.target&&e.target.closest?e.target.closest("[data-nv-empty-action]"):null;
@@ -3830,7 +3859,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const cardsOnScreen=NV_CARDS_MQ.matches;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
-      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note" title="Last status update">${p.updated?"Updated "+escLabelText(p.updated):""}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${nvCodCell(p)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
+      /* The row is clickable with a mouse, but it is not a button: it holds a
+         checkbox and action buttons, and a screen reader read the whole row as
+         one "Open journey" button with controls inside it. The AWB is the
+         real, focusable button; its click bubbles to the row. */
+      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><button type="button" class="nv-awb-open" aria-label="Open journey for ${escLabelText(p.awb)}">${escLabelText(p.awb)}</button> ${nvPaidPill(p)}<br><span class="footer-note" title="Last status update">${p.updated?"Updated "+escLabelText(p.updated):""}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${nvCodCell(p)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
       /* 4 Oct 2026: phone cards are two lines now. Each was ~240px tall --
          checkbox, a centred AWB, a four-cell grid, a progress bar and a
          full-width "Report an issue" on every card -- so five parcels made a
@@ -4046,11 +4079,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const selected=state.parcels.find(x=>x.awb===state.selectedAwb)||null;
       const panelHost=document.getElementById("clientSelectedPanel");
       const textEl=document.getElementById("selectedParcelText");
-      if(!selected){
+      /* The drawer shows a parcel's journey and its decision card. This panel
+         is only the fallback for a page where the drawer could not load, so
+         the same journey is never drawn twice. */
+      const drawerOwns=!!(window.NovaXUI && window.NovaXUI.openDrawer);
+      if(!selected || drawerOwns){
         if(panelHost) panelHost.style.display="none";
         if(textEl) textEl.textContent="Pick a parcel to see its journey.";
         const jEmpty=document.getElementById("clientJourney");
         if(jEmpty) jEmpty.innerHTML="";
+        const rEmpty=document.getElementById("refusalReview");
+        if(rEmpty) rEmpty.innerHTML="";
         return;
       }
       if(panelHost) panelHost.style.display="";
@@ -10448,13 +10487,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var summary=document.getElementById("nvPasteSummary");
       if(!input||!summary) return;
       var parsed=parsePastedOrder(input.value);
-      var filled=[], missing=[], kept=[];
+      var filled=[], missing=[], kept=[], same=[];
       document.querySelectorAll("#client-newBooking .field.nvfield-missing").forEach(function(f){ f.classList.remove("nvfield-missing"); });
 
       function setField(id,val,label){
         var el=document.getElementById(id);
         if(!el) return;
-        if(keepTyped && String(el.value||"").trim()){ kept.push(label); return; }
+        var had=String(el.value||"").trim();
+        if(keepTyped && had){ kept.push(label); return; }
+        /* Re-reading the same paste used to count every field as filled again. */
+        if(val && had===String(val).trim()){ same.push(label); return; }
         if(val){ el.value=val; filled.push(label); try{ el.dispatchEvent(new Event("input",{bubbles:true})); }catch(e){} }
         else{ missing.push(label); var field=el.closest(".field"); if(field) field.classList.add("nvfield-missing"); }
       }
@@ -10466,16 +10508,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
       if(parsed.city){
         var citySel=document.getElementById("bookingCity");
+        var cityWas=citySel?citySel.selectedIndex:-1;
         if(citySel){
           for(var i=0;i<citySel.options.length;i++){ if(citySel.options[i].text.toLowerCase()===parsed.city.toLowerCase()){ citySel.selectedIndex=i; break; } }
-          try{ citySel.dispatchEvent(new Event("change",{bubbles:true})); citySel.dispatchEvent(new Event("input",{bubbles:true})); }catch(e){}
+          if(citySel.selectedIndex!==cityWas){ try{ citySel.dispatchEvent(new Event("change",{bubbles:true})); citySel.dispatchEvent(new Event("input",{bubbles:true})); }catch(e){} }
         }
-        filled.push("city");
+        /* The city only counts as filled when the paste actually changed it. */
+        if(citySel && citySel.selectedIndex!==cityWas) filled.push("city"); else same.push("city");
         try{ updateZoneRateHint(); }catch(e){}
       } else { missing.push("city"); }
 
       summary.style.display="block";
-      var msg="I filled "+filled.length+" field"+(filled.length===1?"":"s")+"."+(kept.length?" Kept what you had typed in "+kept.join(", ")+".":"");
+      var msg=filled.length ? "I filled "+filled.length+" field"+(filled.length===1?"":"s")+": "+filled.join(", ")+"."
+                            : (same.length ? "The form already matches this order. Nothing changed." : "I could not read any details from that text.");
+      if(kept.length) msg+=" Kept the existing "+kept.join(", ")+".";
       if(missing.length){ msg+=" Please confirm "+missing.join(", ")+" before booking."; }
       else{ msg+=" Please double-check everything before booking."; }
       summary.textContent=msg;
@@ -20903,15 +20949,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     host = document.createElement("div");
     host.id = "nvck";
     host.setAttribute("role", "dialog");
-    host.setAttribute("aria-label", "NovaX command palette");
+    host.setAttribute("aria-modal", "true");
+    host.setAttribute("aria-label", "Search NovaX");
     host.innerHTML =
       '<div class="nvck-box">' +
         '<div class="nvck-top">' +
           '<span class="nvck-mag" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7" cy="7" r="4.6"/><path d="M10.5 10.5 L14 14" stroke-linecap="round"/></svg></span>' +
-          '<input type="text" autocomplete="off" spellcheck="false" placeholder="Search NovaX — AWB, client, rider, invoice, or a command…">' +
-          '<span class="nvck-esc">ESC</span>' +
+          '<input type="text" autocomplete="off" spellcheck="false" aria-label="Search NovaX" role="combobox" aria-expanded="true" aria-controls="nvckList" aria-autocomplete="list" placeholder="Search NovaX — AWB, client, rider, invoice, or a command…">' +
+          '<span class="nvck-esc" aria-hidden="true">ESC</span>' +
         '</div>' +
-        '<div class="nvck-list"></div>' +
+        '<div class="nvck-list" id="nvckList" role="listbox" aria-label="Results"></div>' +
+        '<div class="nvck-live" role="status" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap"></div>' +
         '<div class="nvck-foot"><span><b>&uarr;&darr;</b> move</span><span><b>&crarr;</b> open</span>' +
           '<span><b>esc</b> close</span><span style="margin-left:auto"><b>&#8984;K</b> anytime</span></div>' +
       '</div>';
@@ -20959,28 +21007,34 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   }
 
   function render() {
+    /* A screen reader gets the result count, and the highlighted row is
+       announced through aria-activedescendant while focus stays in the box. */
+    var live = host && host.querySelector(".nvck-live");
+    if (live) live.textContent = items.length ? (items.length + (items.length === 1 ? " result" : " results")) : "No results";
     if (!items.length) {
       list.innerHTML = '<div class="nvck-empty">No matches yet. Try an AWB, a phone number, a customer name or an order number.</div>';
+      if (input) input.removeAttribute("aria-activedescendant");
       return;
     }
     var html = "", lastGroup = null;
     items.forEach(function (it, i) {
       if (it.group !== lastGroup) {
-        html += '<div class="nvck-group">' + esc(it.group || "Results") + "</div>";
+        html += '<div class="nvck-group" role="presentation">' + esc(it.group || "Results") + "</div>";
         lastGroup = it.group;
       }
       html +=
-        '<div class="nvck-row" data-i="' + i + '" aria-selected="' + (i === active) + '">' +
-          '<span class="nvck-ic">' + esc(it.icon || "•") + "</span>" +
+        '<div class="nvck-row" role="option" id="nvckOpt' + i + '" data-i="' + i + '" aria-selected="' + (i === active) + '">' +
+          '<span class="nvck-ic" aria-hidden="true">' + esc(it.icon || "•") + "</span>" +
           '<span class="nvck-tx">' +
             '<span class="nvck-t">' + esc(it.title) + "</span>" +
             (it.subtitle ? '<span class="nvck-s">' + esc(it.subtitle) + "</span>" : "") +
           "</span>" +
-          '<span class="nvck-go">&crarr;</span>' +
+          '<span class="nvck-go" aria-hidden="true">&crarr;</span>' +
         "</div>";
     });
     list.innerHTML = html;
     var sel = list.querySelector('[aria-selected="true"]');
+    if (input) { if (sel) input.setAttribute("aria-activedescendant", sel.id); else input.removeAttribute("aria-activedescendant"); }
     if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: "nearest" });
   }
 
@@ -21003,6 +21057,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
     else if (e.key === "Enter") { e.preventDefault(); run(active); }
     else if (e.key === "Escape") { e.preventDefault(); close(); }
+    /* The search box is the only focusable thing in the dialog, so Tab stays
+       on it instead of walking into the page behind. */
+    else if (e.key === "Tab") { e.preventDefault(); try { input.focus(); } catch (e2) {} }
   }
 
   function open_() {
@@ -21330,6 +21387,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }, 320);
     document.body.style.overflow = "";
     try { if (drawerLast && drawerLast.focus) drawerLast.focus(); } catch (e) {}
+    try { document.dispatchEvent(new CustomEvent("nv:drawer-close")); } catch (e) {}
   }
 
   /* ---- 4. TIMELINE -------------------------------------------------------
