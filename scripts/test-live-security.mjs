@@ -11,16 +11,26 @@ const checks = [
 ];
 
 let failed = false;
-for (const check of checks) {
+const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function checkPath(check) {
   const allowed = check.statuses || [check.status];
   let status = 0;
   // GitHub Pages can take a few seconds to swap a newly deployed artifact.
-  // Retry only status mismatches; network/configuration errors still fail.
-  for (let attempt = 1; attempt <= 10; attempt += 1) {
-    const response = await fetch(new URL(check.path, origin), { redirect: "manual" });
-    status = response.status;
-    if (allowed.includes(status)) break;
-    if (attempt < 10) await new Promise((resolve) => setTimeout(resolve, 5_000));
+  // Bound every request so a slow edge cannot hang the security workflow.
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      const response = await fetch(new URL(check.path, origin), {
+        redirect: "manual",
+        signal: AbortSignal.timeout(5_000),
+      });
+      status = response.status;
+      if (allowed.includes(status)) break;
+      console.log(`retry ${check.path}: got ${status}, attempt ${attempt}/5`);
+    } catch (error) {
+      console.log(`retry ${check.path}: ${error.name}, attempt ${attempt}/5`);
+    }
+    if (attempt < 5) await sleep(1_000);
   }
   if (!allowed.includes(status)) {
     console.error(`${check.path}: expected ${allowed.join(" or ")}, got ${status}`);
@@ -30,7 +40,9 @@ for (const check of checks) {
   }
 }
 
-const response = await fetch(new URL("/", origin));
+await Promise.all(checks.map(checkPath));
+
+const response = await fetch(new URL("/", origin), { signal: AbortSignal.timeout(5_000) });
 const requiredHeaders = new Map([
   ["strict-transport-security", /max-age=[1-9]/],
   ["x-content-type-options", /^nosniff$/i],
