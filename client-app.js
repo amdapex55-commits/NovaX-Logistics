@@ -3552,6 +3552,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        already closed, still there after a reload. */
     var nvDrawerAwb="";
     function openClientParcelJourney(awb){
+      /* A parcel already picked elsewhere (the AWB tab's label preview) stays
+         picked after the drawer closes; only a selection the drawer made is
+         dropped with it. */
+      const nvWasPicked=state.selectedAwb===awb && nvDrawerAwb!==awb;
       state.selectedAwb=awb; saveState();
       const p=(state.parcels||[]).find(x=>x&&x.awb===awb);
       const U=window.NovaXUI;
@@ -3563,7 +3567,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{
         U.openDrawer('<span>'+escLabelText(p.awb)+'</span><small>'+escLabelText(p.consignee||"")+
           (p.city?" · "+escLabelText(p.city):"")+'</small>', nvParcelDrawerHtml(p));
-        nvDrawerAwb=awb;
+        nvDrawerAwb=nvWasPicked?"":awb;
       }catch(e){
         state.activeClientTab="dashboard"; render();
       }
@@ -3993,21 +3997,21 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var cls=classifyParcelException(p);
         var hideDeliveryActions=(cls.key==="cash"||cls.key==="delayed"||cls.key==="return");
         var btns="";
-        btns+=`<button class="ghost-btn" type="button" onclick="copyExceptionMessage('${p.awb}')">Copy Message</button>`;
+        btns+=`<button class="ghost-btn" type="button" onclick="copyExceptionMessage('${p.awb}')">Copy message</button>`;
         if(!hideDeliveryActions){
           var nvRaUsed=nvReattemptUsed(p);
           btns+=(nvRaUsed ? `<span class="chip" title="${escLabelText(nvReattemptDoneMsg(p.awb,nvRaUsed))}">${nvRaUsed==="requested"?"Reattempt requested":"Reattempted once"}</span>`
                           : `<button class="action-btn" type="button" onclick="requestRedelivery('${p.awb}')">Reattempt</button>`) +
                 `<button class="ghost-btn" type="button" onclick="requestReturnToOrigin('${p.awb}')">Return</button>`;
         }
-        btns+=`<button class="ghost-btn" type="button" onclick="messageCustomerException('${p.awb}')">Message Customer</button>`;
+        btns+=`<button class="ghost-btn" type="button" onclick="messageCustomerException('${p.awb}')">Message customer</button>`;
         /* Admin can correct a mis-typed city on a booked parcel; a merchant
            previously had to phone support. This gives them the same route
            without letting them re-zone their own parcel unilaterally --
            changing the destination city changes the zone and therefore the
            price, so it goes to ops as a request rather than a direct edit. */
         btns+=`<button class="ghost-btn" type="button" onclick="requestAddressFix('${p.awb}')">Wrong address / city</button>`;
-        return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>AI exception resolution</h3><p>Deterministic read of this parcel's issue and the fastest next step.</p></div><span class="chip warn">review needed</span></div><div class="money-grid">${moneyBox("Problem",cls.problem,"")}${moneyBox("Likely cause",cls.cause,"")}${moneyBox("Recommended action",cls.action,"")}</div>${hideDeliveryActions?"":'<label for="redeliveryFeedback" class="footer-note">Reattempt instructions for operations</label><input id="redeliveryFeedback" maxlength="400" placeholder="Optional customer feedback or delivery instructions" style="width:100%;box-sizing:border-box;margin-top:6px" />'}<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
+        return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>What to do next</h3><p>What went wrong with this parcel, the likely cause and the fastest fix.</p></div><span class="chip warn">Needs your decision</span></div><div class="money-grid">${moneyBox("Problem",cls.problem,"")}${moneyBox("Likely cause",cls.cause,"")}${moneyBox("Recommended action",cls.action,"")}</div>${hideDeliveryActions?"":'<label for="redeliveryFeedback" class="footer-note">Reattempt instructions for operations</label><input id="redeliveryFeedback" maxlength="400" placeholder="Optional customer feedback or delivery instructions" style="width:100%;box-sizing:border-box;margin-top:6px" />'}<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
       }catch(e){ return ""; }
     }
     function copyExceptionMessage(awb){
@@ -4202,10 +4206,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var waitAwbs={}; waiting.forEach(function(x){ waitAwbs[x.awb]=1; });
         var recent=__all.filter(function(x){ return !waitAwbs[x.awb]; }).sort(__byNewest).slice(0,4);
         function pickBtn(x){
-          return '<button type="button" class="ghost-btn" style="width:100%;justify-content:flex-start;padding:10px 12px;min-height:44px"'
+          /* The status, name and city ran out past the button's border on a
+             phone. They now end in an ellipsis inside it. */
+          return '<button type="button" class="ghost-btn" style="width:100%;justify-content:flex-start;padding:10px 12px;min-height:44px;overflow:hidden"'
             +' onclick="selectParcel(\''+escLabelText(x.awb)+'\')">'
-            +'<strong>'+escLabelText(x.awb)+'</strong>'
-            +'<span class="footer-note" style="margin-left:8px">'
+            +'<strong style="flex:none">'+escLabelText(x.awb)+'</strong>'
+            +'<span class="footer-note" style="margin-left:8px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
             +escLabelText([nvStatusLabel(x.status),x.consignee,x.city].filter(Boolean).join(" \u00b7 "))+'</span>'
             +'</button>';
         }
@@ -19626,7 +19632,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       if(action.type==="message_customer_awb"){
         if(typeof messageCustomer==="function"){ var opened=messageCustomer(action.awb); addMsg(opened?(action.resultMsg||("Opened a WhatsApp draft for "+action.awb+".")):("Could not open WhatsApp for "+action.awb+". Check the phone number or allow pop-ups."),"b"); }
-        else addMsg("I couldn't open WhatsApp locally \u2014 use Message Customer on the parcel journey.","b");
+        else addMsg("I couldn't open WhatsApp locally \u2014 use Message customer on the parcel.","b");
         return;
       }
       if(action.type==="bulk_print_awbs"){
@@ -19771,7 +19777,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     if(has(["copy customer message","copy message"])){
       if(!targetAwb) return { reply:"Which AWB's customer message should I copy? Please share the tracking ID.", actions:[{ label:"Open AWB Tab", kind:"local", type:"go_awb_label" }] };
-      return { reply:"Copying the customer message for "+targetAwb+".", actions:[{ label:"Copy Message", kind:"local", type:"copy_customer_message", awb:targetAwb }] };
+      return { reply:"Copying the customer message for "+targetAwb+".", actions:[{ label:"Copy message", kind:"local", type:"copy_customer_message", awb:targetAwb }] };
     }
 
     return null;
@@ -20955,7 +20961,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       '<div class="nvck-box">' +
         '<div class="nvck-top">' +
           '<span class="nvck-mag" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7" cy="7" r="4.6"/><path d="M10.5 10.5 L14 14" stroke-linecap="round"/></svg></span>' +
-          '<input type="text" autocomplete="off" spellcheck="false" aria-label="Search NovaX" role="combobox" aria-expanded="true" aria-controls="nvckList" aria-autocomplete="list" placeholder="Search NovaX — AWB, client, rider, invoice, or a command…">' +
+          '<input type="text" autocomplete="off" spellcheck="false" aria-label="Search NovaX" role="combobox" aria-expanded="true" aria-controls="nvckList" aria-autocomplete="list" placeholder="Search: AWB, customer, phone or order number">' +
           '<span class="nvck-esc" aria-hidden="true">ESC</span>' +
         '</div>' +
         '<div class="nvck-list" id="nvckList" role="listbox" aria-label="Results"></div>' +
