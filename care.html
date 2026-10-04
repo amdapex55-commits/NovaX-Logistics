@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NovaX Support Desk</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#fbfcf8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>if(window.top!==window.self){document.documentElement.style.display="none";try{window.top.location.replace(window.location.href);}catch(e){}}</script>
+<meta name="format-detection" content="telephone=no">
+<link rel="icon" href="/assets/favicon.ico" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://rhzunbzbdzicajqtohwp.supabase.co" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet">
+<style>
+/* NovaX Support Desk (4 Oct 2026). Styles shared with sales.html. */
+:root{
+  --ink:#10221a; --ink-2:#33463c; --muted:#5d6e65; --green:#0fbf78; --green-h:#14cf86; --green-2:#087c55; --green-3:#06603f;
+  --mint:#eafbf3; --mint-line:#c6ebd8; --lime:#d9ff74; --paper:#fbfcf8; --paper-2:#f3f5ee; --card:#fff;
+  --line:#dce7df; --line-2:#c4d6ca; --amber:#fff4da; --amber-ink:#7a5500; --blue:#eaf3ff; --blue-ink:#235c93;
+  --red-bg:#fdecea; --red-ink:#9b1c13; --navy:#0d2920;
+  --sa-b:env(safe-area-inset-bottom,0px); --sa-t:env(safe-area-inset-top,0px);
+  --display:Manrope,"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --body:"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.5 var(--body);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+[hidden]{display:none!important}
+h1,h2,h3,p{margin:0}
+a{color:var(--green-2)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--green-2);outline-offset:2px}
+.wrap{width:100%;max-width:1100px;margin:0 auto;padding:0 16px}
+@media (min-width:700px){.wrap{padding:0 24px}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:10px 18px;border-radius:12px;border:1.5px solid transparent;
+  font:700 15.5px/1.2 var(--body);text-decoration:none;cursor:pointer;transition:background-color .15s,border-color .15s}
+.btn[disabled]{opacity:.6;cursor:default}
+.btn-primary{background:var(--green);border-color:var(--green);color:#04170e}
+.btn-primary:hover:not([disabled]){background:var(--green-h);border-color:var(--green-h)}
+.btn-dark{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn-plain{background:var(--card);border-color:var(--line-2);color:var(--ink)}
+.btn-plain:hover:not([disabled]){border-color:var(--ink-2)}
+.btn-danger{background:var(--card);border-color:#e7b1ab;color:var(--red-ink)}
+.btn-sm{min-height:40px;padding:6px 12px;font-size:14px;border-radius:10px}
+.btn-block{width:100%}
+
+/* forms */
+.fld{margin-bottom:12px}
+.fld label{display:block;margin-bottom:6px;font-size:13px;font-weight:700;color:var(--ink-2)}
+.fld input,.fld select,.fld textarea{width:100%;min-height:48px;padding:0 13px;border:1.5px solid var(--line-2);border-radius:12px;background:#fff;font:500 16px var(--body)}
+.fld textarea{min-height:84px;padding:11px 13px;resize:vertical;line-height:1.45}
+.fld input:focus,.fld select:focus,.fld textarea:focus{outline:0;border-color:var(--green-2);box-shadow:0 0 0 3px rgba(15,191,120,.18)}
+.hint{font-size:12.5px;color:var(--muted);margin-top:5px}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.msg{display:none;margin-top:10px;padding:11px 13px;border-radius:11px;font-size:14px;font-weight:600;line-height:1.45;overflow-wrap:anywhere}
+.msg.err{display:block;background:var(--red-bg);color:var(--red-ink);border:1px solid #f0c4bf}
+.msg.ok{display:block;background:var(--mint);color:var(--green-3);border:1px solid var(--mint-line)}
+
+/* header and tabs */
+.top{position:sticky;top:0;z-index:30;background:var(--paper);border-bottom:1px solid var(--line);padding-top:var(--sa-t)}
+.top .wrap{display:flex;align-items:center;gap:12px;min-height:60px}
+.brand{display:flex;align-items:center;gap:9px;text-decoration:none;color:var(--ink)}
+.brand img{width:32px;height:32px;border-radius:9px}
+.brand b{font:800 16px/1 var(--display)}
+.brand small{display:block;font:700 10px/1 var(--mono);letter-spacing:.18em;color:var(--green-2);margin-top:3px}
+.who{margin-left:auto;text-align:right;font-size:13px;line-height:1.3;min-width:0;overflow:hidden}
+.who span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
+.who b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
+.who span{color:var(--muted);font-family:var(--mono);font-size:11.5px}
+.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;border-top:1px solid var(--line)}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:none;min-height:46px;padding:0 14px;border:0;background:none;font-weight:700;font-size:14.5px;color:var(--muted);border-bottom:3px solid transparent}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--green)}
+/* reps: thumb tabs at the bottom on phones */
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:#fff;border-top:1px solid var(--line);padding-bottom:var(--sa-b)}
+.bnav button{min-height:58px;border:0;background:none;font-size:11.5px;white-space:nowrap;font-weight:700;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.bnav button i{font-style:normal;font-size:18px;line-height:1}
+.bnav button[aria-selected="true"]{color:var(--green-2)}
+.has-bnav main{padding-bottom:calc(84px + var(--sa-b))}
+@media (min-width:900px){.bnav{display:none}.has-bnav main{padding-bottom:40px}}
+/* Existing NovaX accounts (4 Oct 2026): never mistaken for a new lead. */
+.exist-banner{border-radius:12px;padding:12px 14px;margin:12px 0;background:#fff7e6;border:1.5px solid #f0c36d;color:#6b4300;font-size:14px;line-height:1.5}
+.exist-banner b{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px}
+.chip.exist{background:#fff1d6;color:#7a4b00;border-color:#f0c36d}
+@media (max-width:899px){.rep .tabs{display:none}}
+
+main{padding:18px 0 40px}
+h1.page{font:800 clamp(24px,5vw,30px)/1.15 var(--display);letter-spacing:-.02em;margin-bottom:4px}
+.sub{color:var(--muted);font-size:15px}
+.sec{margin-top:22px}
+.sec>h2{font:800 18px/1.25 var(--display);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;overflow-wrap:anywhere}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+@media (min-width:760px){.stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px}
+.stat small{display:block;font:700 11.5px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.stat b{display:block;font:800 26px/1.1 var(--display);margin-top:5px;font-variant-numeric:tabular-nums}
+.stat.go{background:var(--mint);border-color:var(--mint-line)}
+.chip{display:inline-flex;align-items:center;padding:4px 8px;border-radius:7px;font-size:12px;font-weight:700;white-space:nowrap;background:var(--paper-2);color:var(--ink-2)}
+.chip.good{background:var(--mint);color:var(--green-3)}
+.chip.warn{background:var(--amber);color:var(--amber-ink)}
+.chip.info{background:var(--blue);color:var(--blue-ink)}
+.chip.bad{background:var(--red-bg);color:var(--red-ink)}
+.list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;min-height:64px}
+button.item:hover{border-color:var(--line-2)}
+.item .grow{flex:1;min-width:0}
+.item b{display:block;font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item span.meta{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:13px;color:var(--muted);overflow:hidden}
+/* team rows: on a phone the name and email get the full width, the chip and buttons go under them */
+@media (max-width:519px){.item.team{flex-wrap:wrap}.item.team .grow{flex-basis:100%}}
+.empty{padding:22px;text-align:center;color:var(--muted);background:#fff;border:1px dashed var(--line-2);border-radius:14px}
+.filters{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px;margin:12px 0 10px}
+.filters::-webkit-scrollbar{display:none}
+.filters button{flex:none;min-height:40px;padding:0 13px;border-radius:999px;border:1.5px solid var(--line-2);background:#fff;font-weight:700;font-size:13.5px;color:var(--ink-2)}
+.filters button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.search{width:100%;min-height:48px;padding:0 14px;border:1.5px solid var(--line-2);border-radius:12px;background:#fff;font-size:16px}
+.steps{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.loading{padding:30px;text-align:center;color:var(--muted)}
+.copybox{display:flex;gap:8px;align-items:stretch}
+.copybox input{flex:1;min-width:0;min-height:48px;padding:0 12px;border:1.5px solid var(--line-2);border-radius:12px;font:600 16px var(--mono);background:var(--paper-2)}
+.tpl{white-space:pre-wrap;font-size:14.5px;line-height:1.5;background:var(--paper-2);border-radius:12px;padding:12px;margin:8px 0}
+
+/* lead sheet: bottom sheet on phones, side panel on desktop */
+.scrim{position:fixed;inset:0;z-index:40;background:rgba(13,41,32,.45)}
+.sheet{position:fixed;z-index:41;left:0;right:0;bottom:0;max-height:92vh;max-height:92dvh;overflow-y:auto;overscroll-behavior:contain;background:#fff;
+  border-radius:20px 20px 0 0;padding:18px 16px calc(18px + var(--sa-b));box-shadow:0 -20px 60px rgba(13,41,32,.25)}
+@media (min-width:900px){.sheet{left:auto;top:0;bottom:0;width:440px;max-height:none;border-radius:0;padding:22px}}
+.sheet-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
+.sheet-head h2{font:800 20px/1.25 var(--display);flex:1;min-width:0}
+.x{flex:none;width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--paper-2);font-size:22px;line-height:1}
+.contact{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:8px;margin:12px 0}
+.contact .btn{white-space:nowrap;padding-left:10px;padding-right:10px}
+.outcomes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.outcomes button{min-height:48px;border-radius:12px;border:1.5px solid var(--line-2);background:#fff;font-weight:700;font-size:14.5px}
+.outcomes button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.quick button{min-height:38px;padding:0 12px;border-radius:999px;border:1.5px solid var(--line-2);background:#fff;font-weight:700;font-size:13px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+
+/* tables (admin, desktop) collapse into cards on phones */
+.tbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:14px}
+.tbl th,.tbl td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl th{font:700 11px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:var(--paper-2)}
+.tbl td.num,.tbl th.num{text-align:right;font-variant-numeric:tabular-nums}
+@media (max-width:759px){
+  .tbl,.tbl tbody,.tbl tr,.tbl td{display:block;width:100%}
+  .tbl thead{display:none}
+  .tbl{border:0;background:none}
+  .tbl tr{background:#fff;border:1px solid var(--line);border-radius:14px;margin-bottom:8px;padding:6px 0}
+  /* A cell can hold several parts (code, name, payout account). As a flex row
+     each part became its own column and ran off the card; a floated label
+     keeps the value in one block that wraps. */
+  .tbl td{border:0;padding:5px 14px;display:block;text-align:right;overflow-wrap:anywhere}
+  .tbl td::after{content:"";display:block;clear:both}
+  .tbl td::before{content:attr(data-l);float:left;margin-right:12px;font:700 11px/1.6 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .tbl td .hint{display:inline-block}
+  .tbl td.num{text-align:right}
+}
+.toast{position:fixed;left:50%;bottom:calc(96px + var(--sa-b));transform:translateX(-50%);z-index:60;max-width:calc(100vw - 32px);
+  background:var(--ink);color:#fff;padding:12px 16px;border-radius:12px;font-weight:600;font-size:14.5px;box-shadow:0 10px 30px rgba(0,0,0,.25);pointer-events:none}
+@media (min-width:900px){.toast{bottom:28px}}
+.auth{max-width:440px;margin:28px auto}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--paper-2);border-radius:12px;padding:4px;margin:16px 0}
+.seg button{min-height:44px;border:0;border-radius:9px;background:none;font-weight:700;color:var(--muted)}
+.seg button[aria-selected="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.pre{font:500 12.5px/1.5 var(--mono);background:var(--navy);color:#e8f5ee;border-radius:12px;padding:14px;overflow:auto;max-height:340px;white-space:pre}
+.split{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.split>*,.list>*{min-width:0}
+@media (min-width:900px){.split{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.check{width:28px;height:28px;flex:none}
+
+/* ── Support Desk additions ── */
+.clockbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--mint);border:1px solid var(--mint-line);border-radius:14px;padding:10px 14px;margin-top:12px;font-size:14px}
+.clockbar.off{background:var(--amber);border-color:#f0d6a0}
+.clockbar .dot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(15,191,120,.18);flex:none}
+.clockbar.off .dot{background:#c88a00;box-shadow:none}
+.clockbar .grow{flex:1;min-width:0}
+.clockbar b{font-weight:800}
+.clockcard{max-width:520px;margin:28px auto;text-align:center}
+.clockcard .big{font:800 26px/1.2 var(--display);margin:6px 0 8px}
+.qsum{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
+@media (min-width:760px){.qsum{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.qsum button{text-align:left;background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:11px 13px;min-height:64px}
+.qsum button[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink) inset}
+.qsum small{display:block;font:700 11px/1.3 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.qsum b{display:block;font:800 24px/1.1 var(--display);margin-top:4px}
+.toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:12px}
+.toolbar select{min-height:48px;border:1.5px solid var(--line-2);border-radius:12px;background:#fff;padding:0 10px;font-size:16px}
+.reason{border-radius:12px;padding:11px 13px;margin:10px 0;background:var(--red-bg);color:var(--red-ink);font-size:14px;line-height:1.45}
+.reason b{display:block;font:700 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px}
+.box{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:10px 0;background:#fff}
+.box h3{font:800 13px/1.3 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.verdict{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.verdict button{min-height:56px;border-radius:12px;border:1.5px solid var(--line-2);background:#fff;font-weight:800;font-size:14px;line-height:1.25;padding:6px 8px}
+.verdict button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.verdict button small{display:block;font-weight:600;font-size:12px;opacity:.75;margin-top:2px}
+.wa{background:#1f9e55;border-color:#1f9e55;color:#fff}
+.wa:hover:not([disabled]){background:#24b061}
+.tblwrap{overflow-x:auto}
+.tblwrap .tbl{min-width:760px}
+@media (max-width:759px){.tblwrap .tbl{min-width:0}}
+.ranges{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+.ranges button{min-height:40px;padding:0 14px;border-radius:999px;border:1.5px solid var(--line-2);background:#fff;font-weight:700;font-size:13.5px}
+.ranges button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.has-bnav .tabs{display:none}@media (min-width:900px){.has-bnav .tabs{display:flex}}
+.live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:6px;vertical-align:middle}
+</style>
+</head>
+<body>
+<header class="top" id="top">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="NovaX home"><img src="/assets/icon-192.png" alt="" width="32" height="32"><span><b>NovaX</b><small>SUPPORT</small></span></a>
+    <div class="who" id="who" hidden><b id="whoName"></b><span id="whoSub"></span></div>
+    <button class="btn btn-plain btn-sm" id="signOut" type="button" hidden>Sign out</button>
+  </div>
+  <div class="wrap"><nav class="tabs" id="tabs" role="tablist" aria-label="Sections" hidden></nav></div>
+</header>
+
+<main id="main" class="wrap" tabindex="-1">
+  <div class="loading">Loading…</div>
+</main>
+<nav class="bnav" id="bnav" role="tablist" aria-label="Sections" hidden></nav>
+<div id="sheetRoot"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="/assets/vendor/supabase-2.117.2.js"></script>
+<script>
+(function(){
+"use strict";
+/* Support Desk. Agents (working from home) clock in, call the customer on
+   every Refused / Consignee not available parcel, and record what the
+   customer said: true -> WhatsApp the merchant; false -> a re-delivery
+   ticket for ops; no answer -> try again later. The page beats every
+   minute while a shift is open so the shift records active and idle time.
+   Every rule (who may see what, the clock, the ticket) is enforced by the
+   cs_* database functions; this page only draws. */
+var SB_URL = "https://rhzunbzbdzicajqtohwp.supabase.co";
+var SB_KEY = "sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
+var SITE = "https://novaxlogistics.com";
+var PORTAL = SITE + "/client.html";
+
+function timedFetch(input, init){
+  if (typeof AbortController === "undefined") return fetch(input, init);
+  var ctl = new AbortController(), t = setTimeout(function(){ ctl.abort(); }, 45000);
+  init = Object.assign({}, init || {}); init.signal = ctl.signal;
+  return fetch(input, init).finally(function(){ clearTimeout(t); });
+}
+var sb = null;
+try { sb = window.supabase.createClient(SB_URL, SB_KEY, { global: { fetch: timedFetch } }); } catch (e) {}
+
+function $(id){ return document.getElementById(id); }
+function esc(v){ return String(v == null ? "" : v).replace(/[&<>"'`]/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;", "`":"&#96;" }[c]; }); }
+function rs(n){ return "Rs " + Math.round(Number(n) || 0).toLocaleString("en-US"); }
+function pkt(iso, withTime){
+  if (!iso) return "";
+  var d = new Date(iso); if (isNaN(d)) return String(iso);
+  var o = { timeZone: "Asia/Karachi", day: "numeric", month: "short" };
+  if (withTime) { o.hour = "numeric"; o.minute = "2-digit"; }
+  return d.toLocaleString("en-GB", o);
+}
+function clock(iso){ return new Date(iso).toLocaleTimeString("en-GB", { timeZone: "Asia/Karachi", hour: "numeric", minute: "2-digit", hour12: true }); }
+function todayPk(add){
+  var p = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  var d = new Date(p + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + (add || 0));
+  return d.toISOString().slice(0, 10);
+}
+function ago(iso){
+  var m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (m < 60) return m + " min ago";
+  var h = Math.round(m / 60); if (h < 48) return h + "h ago";
+  return Math.round(h / 24) + " days ago";
+}
+function hm(sec){ sec = Math.max(0, Math.round(Number(sec) || 0)); var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60); return h ? h + "h " + m + "m" : m + "m"; }
+/* Pakistani mobiles arrive as 03xx..., 3xx... (no leading 0) or 92...; dial and WhatsApp both want 92. */
+function pkNum(phone){
+  var d = String(phone || "").replace(/\D/g, "");
+  if (/^0092/.test(d)) d = d.slice(2);
+  if (/^03\d{9}$/.test(d)) return "92" + d.slice(1);
+  if (/^3\d{9}$/.test(d)) return "92" + d;
+  return d;
+}
+function showPhone(phone){ var n = pkNum(phone); return /^92\d{10}$/.test(n) ? "0" + n.slice(2, 5) + " " + n.slice(5) : String(phone || ""); }
+function friendly(m){
+  var s = String(m || "");
+  if (/invalid login credentials/i.test(s)) return "Wrong email or password.";
+  if (/already (been )?registered|already exists/i.test(s)) return "This email already has a login. Sign in instead.";
+  if (/rate limit|too many requests|over_email/i.test(s)) return "Too many tries. Wait a minute and try again.";
+  if (/password should|weak password/i.test(s)) return "Choose a stronger password: at least 8 characters.";
+  if (/failed to fetch|networkerror|load failed|abort|timed? ?out/i.test(s)) return "We couldn't reach NovaX. Check your internet and try again.";
+  if (/jwt|pgrst|\bfunction\b|\brelation\b|\bcolumn\b|violates|syntax error|permission denied for/i.test(s)) { console.warn("NovaX Support:", s); return "Something went wrong on our side. Try again, or tell NovaX on WhatsApp."; }
+  return s;
+}
+function rpc(name, args){
+  if (!sb) return Promise.reject(new Error("We couldn't reach NovaX. Refresh the page."));
+  return Promise.resolve(sb.rpc(name, args || {})).then(function(r){
+    if (r && r.error) throw new Error(friendly(r.error.message));
+    return r ? r.data : null;
+  }, function(e){ throw new Error(friendly(e && e.message)); });
+}
+var toastT = null;
+function toast(t){ var el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(function(){ el.hidden = true; }, 3200); }
+function showMsg(el, text, ok){ el.className = "msg " + (ok ? "ok" : "err"); el.textContent = text; }
+function busy(btn, on, label){ if (!btn) return; if (on) { btn.dataset.label = btn.textContent; btn.textContent = label || "Please wait…"; btn.disabled = true; } else { btn.textContent = btn.dataset.label || btn.textContent; btn.disabled = false; } }
+function copy(text){
+  var done = function(){ toast("Copied"); };
+  if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text).then(done, function(){ fallback(); });
+  fallback();
+  function fallback(){ var a = document.createElement("textarea"); a.value = text; document.body.appendChild(a); a.select(); try { document.execCommand("copy"); done(); } catch (e) {} a.remove(); }
+}
+
+var S = { me: null, mode: null, tab: null, queue: [], bucket: "call", q: "", city: "", open: null, admin: { range: 7 } };
+var BUCKETS = [["call", "To call"], ["notify", "Tell merchant"], ["ops", "With ops"], ["done", "Done"]];
+var CATS = {
+  valid: {
+    "Refused": ["Changed their mind", "Ordered by mistake", "Price or COD too high", "Wrong or damaged item", "Says they never ordered", "Bought elsewhere"],
+    "Consignee not available": ["Out of town", "Asked for a later day", "Phone was off", "Wrong address", "Not at home at the time"]
+  },
+  "false": ["Rider never called", "Rider never came", "Customer was available", "Customer still wants it"]
+};
+var SLOTS = ["10 am – 2 pm", "2 pm – 6 pm", "6 pm – 9 pm", "Any time"];
+
+/* ═════ boot ═════ */
+function boot(){
+  if (!sb) { $("main").innerHTML = '<div class="empty">NovaX could not load. Check your internet and refresh.</div>'; return; }
+  sb.auth.getSession().then(function(r){
+    if (!(r && r.data && r.data.session)) return renderAuth();
+    return loadMe();
+  }).catch(function(){ renderAuth(); });
+}
+function loadMe(){
+  return rpc("cs_me").then(function(me){
+    S.me = me || {};
+    if (S.me.agent && S.me.agent.status === "Active") return startApp("agent");
+    if (S.me.is_admin) return startApp("admin");
+    renderNotOnTeam();
+  }).catch(function(e){ $("main").innerHTML = '<div class="empty">' + esc(e.message) + ' <button class="btn btn-plain btn-sm" type="button" data-act="reload">Try again</button></div>'; });
+}
+var AGENT_TABS = [["desk", "Desk", "☎"], ["day", "My day", "◷"]];
+var ADMIN_TABS = [["desk", "Desk", "☎"], ["analytics", "Analytics", "▤"], ["team", "Team", "☺"]];
+function startApp(mode){
+  S.mode = mode;
+  var tabs = mode === "agent" ? AGENT_TABS : ADMIN_TABS;
+  $("who").hidden = false; $("signOut").hidden = false;
+  $("whoName").textContent = mode === "agent" ? S.me.agent.full_name : "Support HQ";
+  $("whoSub").textContent = mode === "agent" ? "Support agent" : (S.me.email || "admin");
+  $("tabs").innerHTML = tabs.map(function(t){ return '<button type="button" role="tab" data-tab="' + t[0] + '" aria-selected="false">' + esc(t[1]) + "</button>"; }).join("");
+  $("tabs").hidden = false;
+  $("bnav").innerHTML = tabs.map(function(t){ return '<button type="button" role="tab" data-tab="' + t[0] + '" aria-selected="false"><i aria-hidden="true">' + t[2] + "</i>" + esc(t[1]) + "</button>"; }).join("");
+  $("bnav").hidden = false; document.body.classList.add("has-bnav");
+  var want = (location.hash || "").replace("#", "");
+  go(tabs.some(function(t){ return t[0] === want; }) ? want : "desk");
+  startBeat();
+}
+function go(tab){
+  S.tab = tab;
+  [].forEach.call(document.querySelectorAll("[data-tab]"), function(b){ b.setAttribute("aria-selected", b.getAttribute("data-tab") === tab ? "true" : "false"); });
+  if (history.replaceState) history.replaceState(null, "", "#" + tab);
+  $("main").innerHTML = '<div class="loading">Loading…</div>';
+  var f = VIEWS[tab];
+  Promise.resolve().then(f).catch(function(e){ $("main").innerHTML = '<div class="empty">' + esc(e.message) + ' <button class="btn btn-plain btn-sm" type="button" data-act="retab">Try again</button></div>'; });
+}
+
+/* ═════ sign in / join ═════ */
+function renderAuth(view){
+  view = view || "signin";
+  $("tabs").hidden = true; $("bnav").hidden = true; $("who").hidden = true; $("signOut").hidden = true;
+  document.body.classList.remove("has-bnav");
+  $("main").innerHTML =
+    '<div class="auth"><h1 class="page">NovaX Support Desk</h1><p class="sub">For the NovaX support team: refused and undelivered parcels, one call at a time.</p>' +
+    '<div class="seg" role="tablist"><button type="button" role="tab" data-auth="signin" aria-selected="' + (view === "signin") + '">Sign in</button>' +
+    '<button type="button" role="tab" data-auth="join" aria-selected="' + (view === "join") + '">Join the team</button></div>' +
+    (view === "signin" ?
+      '<form id="fIn" class="card" novalidate><div class="fld"><label for="inEmail">Email</label><input id="inEmail" type="email" autocomplete="email" inputmode="email" maxlength="254" required></div>' +
+      '<div class="fld"><label for="inPass">Password</label><input id="inPass" type="password" autocomplete="current-password" maxlength="72" required></div>' +
+      '<button class="btn btn-dark btn-block" id="inBtn" type="submit">Sign in</button>' +
+      '<div style="text-align:center;margin-top:8px"><button type="button" class="btn btn-plain btn-sm" id="forgot" style="border:0">Forgot your password?</button></div>' +
+      '<div class="msg" id="inMsg" role="alert"></div></form>'
+    :
+      '<form id="fJoin" class="card" novalidate><p class="sub" style="margin-bottom:12px">NovaX adds your email to the support team first. Use exactly that email and choose your own password.</p>' +
+      '<div class="fld"><label for="jName">Your full name</label><input id="jName" autocomplete="name" maxlength="80" required></div>' +
+      '<div class="fld"><label for="jEmail">Email</label><input id="jEmail" type="email" autocomplete="email" inputmode="email" maxlength="254" required></div>' +
+      '<div class="row2"><div class="fld"><label for="jPass">Password</label><input id="jPass" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></div>' +
+      '<div class="fld"><label for="jPass2">Again</label><input id="jPass2" type="password" autocomplete="new-password" minlength="8" maxlength="72" required></div></div>' +
+      '<button class="btn btn-primary btn-block" id="jBtn" type="submit">Create my support login</button><div class="msg" id="jMsg" role="alert"></div></form>') +
+    "</div>";
+}
+function renderNotOnTeam(){
+  $("tabs").hidden = true; $("bnav").hidden = true; $("who").hidden = true; $("signOut").hidden = false;
+  var removed = S.me.agent && S.me.agent.status === "Removed";
+  $("main").innerHTML = '<div class="auth"><h1 class="page">' + (removed ? "Access closed" : "Not on the support team yet") + '</h1><p class="sub">' +
+    (removed ? "Your support access has been closed. Talk to NovaX if this is a mistake."
+      : "You are signed in as <b>" + esc(S.me.email || "") + "</b>, but this email is not on the NovaX support team. Ask NovaX to add it, then sign in again.") + "</p></div>";
+}
+function doSignIn(e){
+  e.preventDefault();
+  var email = $("inEmail").value.trim().toLowerCase(), pass = $("inPass").value, btn = $("inBtn"), msg = $("inMsg");
+  if (!/^\S+@\S+\.\S+$/.test(email) || !pass) return showMsg(msg, "Enter your email and password.");
+  busy(btn, true, "Signing in…");
+  sb.auth.signInWithPassword({ email: email, password: pass }).then(function(r){
+    busy(btn, false);
+    if (r.error) return showMsg(msg, friendly(r.error.message));
+    loadMe();
+  }).catch(function(err){ busy(btn, false); showMsg(msg, friendly(err && err.message)); });
+}
+function doForgot(){
+  var email = ($("inEmail").value || "").trim().toLowerCase(), msg = $("inMsg");
+  if (!/^\S+@\S+\.\S+$/.test(email)) { $("inEmail").focus(); return showMsg(msg, "Type your email above first, then tap Forgot your password."); }
+  Promise.resolve(sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + "/new-password.html" })).catch(function(){}).then(function(){
+    showMsg(msg, "If " + email + " has a login, a reset link is on its way. Check your inbox and spam.", true);
+  });
+}
+function doJoin(e){
+  e.preventDefault();
+  var name = $("jName").value.trim(), email = $("jEmail").value.trim().toLowerCase(), p1 = $("jPass").value, p2 = $("jPass2").value, btn = $("jBtn"), msg = $("jMsg");
+  if (name.length < 2) return showMsg(msg, "Enter your full name.");
+  if (!/^\S+@\S+\.\S+$/.test(email)) return showMsg(msg, "Enter the email NovaX has for you.");
+  if (p1.length < 8) return showMsg(msg, "Your password needs at least 8 characters.");
+  if (p1 !== p2) return showMsg(msg, "The two passwords don't match.");
+  busy(btn, true, "Creating your login…");
+  sb.auth.signUp({ email: email, password: p1, options: { data: { role: "support", full_name: name } } }).then(function(r){
+    if (r.error) throw new Error(r.error.message);
+    var u = r.data && r.data.user;
+    if (u && Array.isArray(u.identities) && u.identities.length === 0) throw new Error("This email already has a login. Sign in instead.");
+    if (!r.data.session) { busy(btn, false); return showMsg(msg, "Check your email to confirm it, then come back and sign in.", true); }
+    busy(btn, false); return loadMe();
+  }).catch(function(err){ busy(btn, false); showMsg(msg, friendly(err && err.message)); });
+}
+
+/* ═════ the clock ═════ */
+var lastInput = Date.now(), onCallUntil = 0, beatT = null;
+["pointerdown", "keydown", "scroll", "touchstart"].forEach(function(ev){ document.addEventListener(ev, function(){ lastInput = Date.now(); }, { passive: true, capture: true }); });
+function isActive(){
+  if (Date.now() < onCallUntil) return true;     /* on a call the screen sits still */
+  return document.visibilityState === "visible" && Date.now() - lastInput < 120000;
+}
+function startBeat(){
+  clearInterval(beatT);
+  if (S.mode !== "agent") return;
+  beatT = setInterval(function(){
+    if (!S.me || !S.me.shift) return;
+    rpc("cs_heartbeat", { p_active: isActive() }).then(function(r){
+      if (r && r.open === false) {
+        S.me.shift = null; clearInterval(timerT);
+        toast(r.auto_closed ? "Your shift closed after 15 minutes without activity." : "You are clocked out.");
+        if (S.tab === "desk") go("desk");
+      }
+    }).catch(function(){});
+  }, 60000);
+}
+var timerT = null;
+function clockBar(){
+  if (S.mode !== "agent") return "";
+  var sh = S.me.shift;
+  if (!sh) return "";
+  return '<div class="clockbar" id="clockbar"><span class="dot" aria-hidden="true"></span><span class="grow">On shift since <b>' + esc(clock(sh.clock_in)) +
+    '</b> · <span id="shiftLen">' + esc(hm((Date.now() - new Date(sh.clock_in).getTime()) / 1000)) + "</span></span>" +
+    '<button class="btn btn-plain btn-sm" type="button" id="clockOut">Clock out</button></div>';
+}
+function tickShift(){
+  clearInterval(timerT);
+  timerT = setInterval(function(){ var el = $("shiftLen"); if (el && S.me.shift) el.textContent = hm((Date.now() - new Date(S.me.shift.clock_in).getTime()) / 1000); }, 30000);
+}
+function clockedOutCard(){
+  return '<div class="clockcard card"><p class="sub">You are clocked out</p><div class="big">Ready to start?</div>' +
+    '<p class="sub" style="margin-bottom:16px">Clock in to open the desk. Your time and calls are recorded while you are on shift; if the desk sits without activity for 15 minutes, your shift closes by itself.</p>' +
+    '<button class="btn btn-primary btn-block" type="button" id="clockIn">Clock in</button></div>';
+}
+
+/* ═════ the desk ═════ */
+var VIEWS = {};
+VIEWS.desk = function(){
+  if (S.mode === "agent" && !S.me.shift) { $("main").innerHTML = clockedOutCard(); return Promise.resolve(); }
+  return rpc("cs_queue").then(function(rows){
+    S.queue = rows || [];
+    if (S.tab !== "desk") return;
+    var n = {}; BUCKETS.forEach(function(b){ n[b[0]] = 0; });
+    S.queue.forEach(function(x){ n[x.bucket] = (n[x.bucket] || 0) + 1; });
+    var cities = Array.from(new Set(S.queue.map(function(x){ return x.city; }).filter(Boolean))).sort();
+    $("main").innerHTML = clockBar() +
+      '<h1 class="page" style="margin-top:14px">Refused and not delivered</h1><p class="sub">Call the customer, check the rider\'s reason, then tell the merchant or send it to ops.</p>' +
+      '<div class="qsum">' + BUCKETS.map(function(b){ return '<button type="button" data-bucket="' + b[0] + '" aria-pressed="' + (S.bucket === b[0]) + '"><small>' + esc(b[1]) + "</small><b>" + n[b[0]] + "</b></button>"; }).join("") + "</div>" +
+      '<div class="toolbar"><label class="sr" for="q">Search</label><input class="search" id="q" type="search" placeholder="AWB, customer, phone or merchant" value="' + esc(S.q) + '">' +
+      '<label class="sr" for="city">City</label><select id="city"><option value="">All cities</option>' + cities.map(function(c){ return "<option" + (S.city === c ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("") + "</select></div>" +
+      '<div id="qList" class="sec"></div>';
+    drawQueue(); tickShift();
+  });
+};
+function filtered(){
+  var q = S.q.trim().toLowerCase(), qd = q.replace(/\D/g, "");
+  return S.queue.filter(function(x){
+    if (x.bucket !== S.bucket) return false;
+    if (S.city && x.city !== S.city) return false;
+    if (!q) return true;
+    return [x.awb, x.consignee, x.merchant].some(function(v){ return String(v || "").toLowerCase().indexOf(q) > -1; }) ||
+      (qd.length >= 4 && String(x.phone || "").replace(/\D/g, "").indexOf(qd) > -1);
+  });
+}
+function statusChip(st){ return '<span class="chip ' + (st === "Refused" ? "bad" : "warn") + '">' + esc(st === "Consignee not available" ? "Not available" : st) + "</span>"; }
+function drawQueue(){
+  var el = $("qList"); if (!el) return;
+  var rows = filtered();
+  var empty = { call: "Nobody waiting for a call. Well done.", notify: "No merchant waiting to hear from you.", ops: "Nothing waiting on ops.", done: "Nothing finished yet." }[S.bucket];
+  el.innerHTML = rows.length ? '<div class="list">' + rows.map(function(x){
+    var last = x.last ? (x.last.outcome === "no_answer" ? "No answer ×" + x.tries : "") : "";
+    return '<button class="item" type="button" data-parcel="' + esc(x.parcel_id) + '"><span class="grow"><b>' + esc(x.awb) + " · " + esc(x.consignee || "") + '</b><span class="meta">' +
+      esc([x.city, rs(x.cod), x.merchant, (x.status === "Refused" ? "refused " : "not delivered ") + ago(x.status_since)].filter(Boolean).join(" · ")) +
+      (x.reason ? " · rider: " + esc(x.reason) : "") + '</span></span><span style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">' + statusChip(x.status) +
+      (last ? '<span class="chip warn">' + esc(last) + "</span>" : x.merchant_decided ? '<span class="chip good">Merchant decided</span>' : "") + "</span></button>";
+  }).join("") + "</div>" : '<div class="empty">' + esc(empty) + "</div>";
+}
+
+/* ── one parcel ── */
+function merchantMessage(x, r){
+  var hi = "Assalam o Alaikum" + (x.merchant_owner ? " " + String(x.merchant_owner).split(" ")[0] : "") + ", NovaX Support here about parcel " + x.awb +
+    " for " + (x.consignee || "your customer") + " (" + [x.city, "COD " + rs(x.cod)].filter(Boolean).join(", ") + ").";
+  var said = [r.category, r.note ? "“" + r.note + "”" : ""].filter(Boolean).join(": ");
+  if (r.outcome === "wrong_number") return hi + "\n\nWe could not reach the customer on " + showPhone(x.phone) + ": the number seems wrong or switched off. Please send us the correct number on this chat so we can deliver it.";
+  if (r.outcome === "false") return hi + "\n\nThe rider marked it " + (x.status === "Refused" ? "Refused" : "Customer not available") + ", but we called the customer and they still want it. We have asked our team to deliver it again" +
+    (r.preferred_date ? " on " + pkt(r.preferred_date + "T12:00:00Z") + (r.preferred_slot ? " (" + r.preferred_slot + ")" : "") : "") + ". Nothing needed from you.";
+  return hi + "\n\n" + (x.status === "Refused" ? "The customer refused it. " : "The customer was not available. ") + "We called them and they confirmed" + (said ? ": " + said : "") +
+    ".\n\nPlease open your NovaX portal and choose: deliver it again, or return it to you.\n" + PORTAL;
+}
+function customerMessage(x){
+  return "Assalam o Alaikum " + (x.consignee || "") + ", NovaX Logistics se. Aap ka " + (x.merchant || "online") + " ka parcel (COD " + rs(x.cod) + ") deliver nahi ho saka. Kya aap ko yeh parcel chahiye? Hum dobara bhej sakte hain.";
+}
+function openParcel(id){
+  var x = S.queue.filter(function(r){ return r.parcel_id === id; })[0]; if (!x) return;
+  S.open = { id: id, at: new Date().toISOString(), verdict: null };
+  var last = x.last;
+  var waitingNotify = x.bucket === "notify" && last;
+  var html = '<div class="sheet-head"><h2 id="sheetTitle">' + esc(x.awb) + " " + statusChip(x.status) + '</h2><button class="x" type="button" data-act="close" aria-label="Close">×</button></div>' +
+    '<div class="reason"><b>Rider says</b>' + esc(x.reason || "No reason written") + (x.rider ? " · " + esc(x.rider) : "") + " · " + esc(ago(x.status_since)) + (x.attempts > 1 ? " · attempt " + x.attempts : "") + "</div>";
+  /* Waiting on the merchant: that message is the job, so it comes first. */
+  if (waitingNotify) {
+    html += '<div class="box"><h3>Next step</h3><p class="sub" style="margin-bottom:10px">Send the merchant what the customer said.</p>' +
+      '<a class="btn wa btn-block" data-notify="' + esc(last.id) + '" target="_blank" rel="noopener" href="https://wa.me/' + esc(pkNum(x.merchant_phone)) + "?text=" + encodeURIComponent(merchantMessage(x, last)) + '">WhatsApp the merchant</a></div>';
+  }
+  html +=
+    '<div class="box"><h3>Customer</h3><dl class="kv"><dt>Name</dt><dd>' + esc(x.consignee || "—") + "</dd><dt>Phone</dt><dd>" + esc(showPhone(x.phone)) + "</dd>" +
+      "<dt>Address</dt><dd>" + esc(x.address || "—") + "</dd><dt>City</dt><dd>" + esc(x.city || "—") + "</dd><dt>COD</dt><dd>" + esc(rs(x.cod)) + "</dd></dl>" +
+      '<div class="contact"><a class="btn btn-primary" data-call="1" href="tel:+' + esc(pkNum(x.phone)) + '">Call customer</a>' +
+      '<a class="btn btn-plain" data-call="1" target="_blank" rel="noopener" href="https://wa.me/' + esc(pkNum(x.phone)) + "?text=" + encodeURIComponent(customerMessage(x)) + '">WhatsApp</a></div></div>' +
+    '<div class="box"><h3>Merchant</h3><dl class="kv"><dt>Store</dt><dd>' + esc(x.merchant || "—") + "</dd>" + (x.merchant_owner ? "<dt>Owner</dt><dd>" + esc(x.merchant_owner) + "</dd>" : "") +
+      "<dt>Phone</dt><dd>" + esc(showPhone(x.merchant_phone)) + "</dd></dl>" + (x.merchant_decided ? '<div class="msg ok" style="display:block">The merchant already chose what to do with this parcel.</div>' : "") + "</div>" +
+    (last ? '<div class="box"><h3>Last call</h3><p style="font-size:14px">' + esc({ valid: "Reason confirmed", "false": "Customer still wants it", no_answer: "No answer", wrong_number: "Wrong number" }[last.outcome] || last.outcome) +
+      (last.category ? " · " + esc(last.category) : "") + (last.note ? " · “" + esc(last.note) + "”" : "") + '</p><p class="hint">' + esc(last.by) + " · " + esc(pkt(last.at, true)) +
+      (x.tries > 1 ? " · tried " + x.tries + "×" : "") + (last.merchant_notified_at ? " · merchant told " + esc(pkt(last.merchant_notified_at, true)) : "") +
+      (last.outcome === "false" ? " · ops ticket " + (x.ops_resolved ? "closed" : "open") : "") + "</p></div>" : "");
+  if (x.bucket === "call" || x.bucket === "notify" || x.bucket === "ops") {
+    html += '<form id="fReview" class="box" novalidate><h3>' + (last ? "Called again?" : "What did the customer say?") + "</h3>" +
+      '<div class="verdict"><button type="button" data-verdict="valid">Reason is true<small>Customer confirms</small></button>' +
+      '<button type="button" data-verdict="false">Reason is false<small>Customer wants it</small></button>' +
+      '<button type="button" data-verdict="no_answer">No answer<small>Try again later</small></button>' +
+      '<button type="button" data-verdict="wrong_number">Wrong number<small>Ask the merchant</small></button></div>' +
+      '<div id="vMore"></div><div class="msg" id="rMsg" role="alert"></div></form>';
+  }
+  html += '<div id="after"></div>';
+  openSheet(html, "sheetTitle");
+}
+function verdictForm(v, x){
+  if (v === "valid") {
+    var list = CATS.valid[x.status] || CATS.valid.Refused;
+    return '<div class="fld" style="margin-top:12px"><label for="rCat">Why</label><select id="rCat"><option value="">Pick one</option>' + list.map(function(c){ return "<option>" + esc(c) + "</option>"; }).join("") + "<option>Other</option></select></div>" +
+      '<div class="fld"><label for="rNote">What the customer said</label><textarea id="rNote" maxlength="600" placeholder="In their words"></textarea></div>' +
+      '<button class="btn btn-dark btn-block" id="rBtn" type="submit">Save, then WhatsApp the merchant</button>';
+  }
+  if (v === "false") {
+    return '<div class="fld" style="margin-top:12px"><label for="rCat">What happened</label><select id="rCat"><option value="">Pick one</option>' + CATS["false"].map(function(c){ return "<option>" + esc(c) + "</option>"; }).join("") + "<option>Other</option></select></div>" +
+      '<div class="row2"><div class="fld"><label for="rDate">Deliver on</label><input id="rDate" type="date" min="' + todayPk(0) + '" max="' + todayPk(14) + '" value="' + todayPk(1) + '"></div>' +
+      '<div class="fld"><label for="rSlot">Time</label><select id="rSlot">' + SLOTS.map(function(s){ return "<option>" + esc(s) + "</option>"; }).join("") + "</select></div></div>" +
+      '<div class="fld"><label for="rAddr">Address correction (optional)</label><input id="rAddr" maxlength="300" placeholder="Only if the customer gave a better address"></div>' +
+      '<div class="fld"><label for="rNote">What the customer said</label><textarea id="rNote" maxlength="600" placeholder="e.g. I was home all day, nobody called"></textarea></div>' +
+      '<button class="btn btn-dark btn-block" id="rBtn" type="submit">Send to ops for re-delivery</button>';
+  }
+  return '<div class="fld" style="margin-top:12px"><label for="rNote">Note (optional)</label><textarea id="rNote" maxlength="600" placeholder="' + (v === "no_answer" ? "e.g. Rang twice, no answer" : "e.g. Number not in service") + '"></textarea></div>' +
+    '<button class="btn btn-dark btn-block" id="rBtn" type="submit">' + (v === "no_answer" ? "Save, try again later" : "Save, then ask the merchant") + "</button>";
+}
+function saveReview(e){
+  e.preventDefault();
+  var x = S.queue.filter(function(r){ return r.parcel_id === S.open.id; })[0], v = S.open.verdict, msg = $("rMsg"), btn = $("rBtn");
+  if (!v) return showMsg(msg, "Tap what the customer said.");
+  var cat = ($("rCat") || {}).value || null, note = (($("rNote") || {}).value || "").trim();
+  if ((v === "valid" || v === "false") && !cat && !note) return showMsg(msg, "Pick a reason or write what the customer said.");
+  var args = { p_parcel: x.parcel_id, p_outcome: v, p_category: cat, p_note: note || null, p_opened_at: S.open.at,
+    p_preferred_date: v === "false" ? ($("rDate").value || null) : null, p_preferred_slot: v === "false" ? $("rSlot").value : null,
+    p_address_fix: v === "false" ? ($("rAddr").value.trim() || null) : null };
+  if (v === "false" && !args.p_preferred_date) return showMsg(msg, "Pick the day to deliver it again.");
+  busy(btn, true, "Saving…");
+  rpc("cs_log_review", args).then(function(r){
+    var rec = { id: r.id, outcome: v, category: cat, note: note, preferred_date: args.p_preferred_date, preferred_slot: args.p_preferred_slot };
+    $("fReview").remove();
+    if (v === "no_answer") { closeSheet(); toast("Saved. It stays in To call."); return refresh(); }
+    var label = v === "false" ? "Sent to ops for re-delivery." : "Saved.";
+    $("after").innerHTML = '<div class="box"><h3>Done: ' + esc(label) + '</h3><p class="sub" style="margin-bottom:10px">' +
+      (v === "false" ? "Optional: let the merchant know you have sorted it." : "Now send the merchant what the customer said.") + "</p>" +
+      '<a class="btn wa btn-block" data-notify="' + esc(r.id) + '" target="_blank" rel="noopener" href="https://wa.me/' + esc(pkNum(x.merchant_phone)) + "?text=" + encodeURIComponent(merchantMessage(x, rec)) + '">WhatsApp the merchant</a>' +
+      '<button class="btn btn-plain btn-block" style="margin-top:8px" type="button" data-act="close">Close</button></div>';
+    refresh();
+  }).catch(function(err){ busy(btn, false); showMsg(msg, err.message); });
+}
+function refresh(){ return rpc("cs_queue").then(function(rows){ S.queue = rows || []; if (S.tab === "desk" && !$("sheet")) go("desk"); }).catch(function(){}); }
+
+/* ═════ my day ═════ */
+VIEWS.day = function(){
+  return rpc("cs_me").then(function(me){
+    S.me = me; var t = me.today || {};
+    if (S.tab !== "day") return;
+    $("main").innerHTML = clockBar() + '<h1 class="page" style="margin-top:14px">My day</h1><p class="sub">Today, Pakistan time.</p>' +
+      '<div class="stats"><div class="stat"><small>Clocked</small><b>' + hm(t.clocked_seconds) + '</b></div><div class="stat"><small>Active</small><b>' + hm(t.active_seconds) + "</b></div>" +
+      '<div class="stat go"><small>Calls logged</small><b>' + (t.calls || 0) + '</b></div><div class="stat"><small>Merchants told</small><b>' + (t.notified || 0) + "</b></div>" +
+      '<div class="stat"><small>Reason confirmed</small><b>' + (t.valid || 0) + '</b></div><div class="stat"><small>Sent to ops</small><b>' + (t.to_ops || 0) + "</b></div>" +
+      '<div class="stat"><small>No answer</small><b>' + (t.no_answer || 0) + "</b></div></div>" +
+      (me.shift ? "" : '<div class="sec">' + clockedOutCard() + "</div>");
+  });
+};
+
+/* ═════ admin: team ═════ */
+VIEWS.team = function(){
+  return rpc("cs_admin_agents").then(function(list){
+    if (S.tab !== "team") return;
+    $("main").innerHTML = '<h1 class="page">Support team</h1><p class="sub">Add an agent with the email they will use. They open novaxlogistics.com/care.html, tap Join the team and choose their own password.</p>' +
+      '<div class="split sec"><form id="fInvite" class="card" novalidate><h2 style="font:800 18px var(--display);margin-bottom:10px">Add an agent</h2>' +
+        '<div class="fld"><label for="aName">Full name</label><input id="aName" maxlength="80" autocomplete="off"></div>' +
+        '<div class="fld"><label for="aEmail">Email they will sign in with</label><input id="aEmail" type="email" inputmode="email" maxlength="254" autocomplete="off"></div>' +
+        '<div class="fld"><label for="aPhone">Phone (optional)</label><input id="aPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="off"></div>' +
+        '<button class="btn btn-primary btn-block" id="aBtn" type="submit">Add agent</button><div class="msg" id="aMsg" role="alert"></div><div id="aJoin"></div></form>' +
+      '<div><h2 style="font:800 18px var(--display);margin-bottom:10px">Team</h2>' + ((list || []).length ? '<div class="list">' + list.map(function(a){
+        return '<div class="item team"><span class="grow"><b>' + (a.on_shift ? '<span class="live" aria-label="On shift"></span>' : "") + esc(a.full_name) + '</b><span class="meta">' + esc(a.email) +
+          (a.last_seen ? " · last active " + esc(pkt(a.last_seen, true)) : a.status === "Invited" ? " · has not joined yet" : "") + "</span></span>" +
+          '<span class="chip ' + (a.status === "Active" ? "good" : a.status === "Invited" ? "warn" : "bad") + '">' + esc(a.on_shift ? "On shift" : a.status) + "</span>" +
+          '<button class="btn btn-plain btn-sm" type="button" data-shifts="' + esc(a.id) + '" data-name="' + esc(a.full_name) + '">Shifts</button>' +
+          (a.status === "Removed" ? '<button class="btn btn-plain btn-sm" type="button" data-agent-status="Active" data-agent="' + esc(a.id) + '">Restore</button>'
+            : '<button class="btn btn-danger btn-sm" type="button" data-agent-status="Removed" data-agent="' + esc(a.id) + '" data-name="' + esc(a.full_name) + '">Remove</button>') + "</div>";
+      }).join("") + "</div>" : '<div class="empty">No agents yet.</div>') + "</div></div>";
+  });
+};
+function doInvite(e){
+  e.preventDefault();
+  var btn = $("aBtn"), msg = $("aMsg"), name = $("aName").value.trim(), email = $("aEmail").value.trim().toLowerCase();
+  if (name.length < 2) return showMsg(msg, "Enter the agent's full name.");
+  if (!/^\S+@\S+\.\S+$/.test(email)) return showMsg(msg, "Enter the email they will sign in with.");
+  busy(btn, true);
+  rpc("cs_admin_invite", { p_name: name, p_email: email, p_phone: $("aPhone").value.trim() || null }).then(function(){
+    busy(btn, false);
+    var t = "Assalam o Alaikum " + name.split(" ")[0] + "! NovaX support team mein khush aamdeed.\n1. Kholiye: " + SITE + "/care.html\n2. \"Join the team\" dabayein\n3. Email: " + email + "\n4. Apna password khud banayein.\nShift shuru karte waqt \"Clock in\" aur khatam par \"Clock out\" zaroor dabayein.";
+    VIEWS.team().then(function(){ showMsg($("aMsg"), "Added. Send them this message:", true);
+      $("aJoin").innerHTML = '<div class="tpl">' + esc(t) + '</div><button class="btn btn-dark btn-sm" type="button" data-copy="' + esc(t) + '">Copy message</button>'; });
+  }).catch(function(err){ busy(btn, false); showMsg(msg, err.message); });
+}
+function openShifts(id, name){
+  rpc("cs_admin_shifts", { p_agent: id, p_from: todayPk(-13), p_to: todayPk(0) }).then(function(rows){
+    openSheet('<div class="sheet-head"><h2 id="sheetTitle">' + esc(name) + ": shifts, last 14 days</h2>" + '<button class="x" type="button" data-act="close" aria-label="Close">×</button></div>' +
+      ((rows || []).length ? '<div class="list">' + rows.map(function(s){
+        var len = (new Date(s.clock_out || s.last_beat).getTime() - new Date(s.clock_in).getTime()) / 1000;
+        return '<div class="item" style="display:block"><b>' + esc(pkt(s.clock_in)) + " · " + esc(clock(s.clock_in)) + " – " + esc(s.clock_out ? clock(s.clock_out) : "now") + '</b><span class="meta">' +
+          esc(hm(len)) + " clocked · " + esc(hm(s.active_seconds)) + " active · " + esc(hm(s.idle_seconds)) + " idle · " + s.calls + " call" + (s.calls === 1 ? "" : "s") +
+          (s.closed_by === "auto" ? " · closed for inactivity" : s.closed_by === "admin" ? " · closed by admin" : "") + (s.ip ? " · IP " + esc(s.ip) : "") + "</span></div>";
+      }).join("") + "</div>" : '<div class="empty">No shifts in the last 14 days.</div>'), "sheetTitle");
+  }).catch(function(err){ toast(err.message); });
+}
+
+/* ═════ admin: analytics ═════ */
+VIEWS.analytics = function(){
+  var days = S.admin.range;
+  return rpc("cs_admin_stats", { p_from: todayPk(-(days - 1)), p_to: todayPk(0) }).then(function(st){
+    if (S.tab !== "analytics") return;
+    var q = st.queue || {}, rsp = st.response || {};
+    var agents = (st.agents || []).filter(function(a){ return a.status !== "Removed" || a.calls || a.shifts; });
+    var perHour = function(a){ return a.active_seconds > 0 ? (a.calls / (a.active_seconds / 3600)).toFixed(1) : "—"; };
+    var idlePct = function(a){ var t = a.active_seconds + a.idle_seconds; return t ? Math.round(a.idle_seconds * 100 / t) + "%" : "—"; };
+    $("main").innerHTML = '<h1 class="page">Support analytics</h1><p class="sub">Who worked, how long, and what they got done. Pakistan time.</p>' +
+      '<div class="ranges">' + [[1, "Today"], [7, "7 days"], [30, "30 days"]].map(function(r){ return '<button type="button" data-range="' + r[0] + '" aria-pressed="' + (days === r[0]) + '">' + r[1] + "</button>"; }).join("") + "</div>" +
+      '<div class="stats"><div class="stat' + (q.never_called ? " go" : "") + '"><small>Waiting for a first call</small><b>' + (q.never_called || 0) + '</b></div><div class="stat"><small>Open now</small><b>' + (q.open || 0) + "</b></div>" +
+        '<div class="stat"><small>Median first call</small><b>' + (rsp.median_minutes != null ? hm(rsp.median_minutes * 60) : "—") + '</b></div><div class="stat"><small>First call within 2h</small><b>' +
+        (rsp.first_calls ? Math.round(rsp.within_2h * 100 / rsp.first_calls) + "%" : "—") + "</b></div></div>" +
+      (q.oldest_uncalled ? '<p class="hint" style="margin-top:8px">Oldest parcel never called: ' + esc(ago(q.oldest_uncalled)) + ".</p>" : "") +
+      '<section class="sec"><h2>Agents</h2>' + (agents.length ? '<div class="tblwrap"><table class="tbl"><thead><tr><th>Agent</th><th class="num">Shifts</th><th class="num">Clocked</th><th class="num">Active</th><th class="num">Idle</th><th class="num">Calls</th><th class="num">Calls / active hr</th><th class="num">Confirmed</th><th class="num">To ops</th><th class="num">No answer</th><th class="num">Wrong no.</th><th class="num">Merchants told</th><th class="num">Avg time / parcel</th></tr></thead><tbody>' +
+        agents.map(function(a){ return '<tr><td data-l="Agent"><b>' + esc(a.full_name) + "</b>" + (a.auto_closed ? '<br><span class="hint">' + a.auto_closed + " shift" + (a.auto_closed === 1 ? "" : "s") + " closed for inactivity</span>" : "") + "</td>" +
+          '<td class="num" data-l="Shifts">' + a.shifts + '</td><td class="num" data-l="Clocked">' + hm(a.clocked_seconds) + '</td><td class="num" data-l="Active">' + hm(a.active_seconds) + '</td><td class="num" data-l="Idle">' + idlePct(a) +
+          '</td><td class="num" data-l="Calls"><b>' + a.calls + '</b></td><td class="num" data-l="Calls / active hr">' + perHour(a) + '</td><td class="num" data-l="Confirmed">' + a.valid + '</td><td class="num" data-l="To ops">' + a.to_ops +
+          '</td><td class="num" data-l="No answer">' + a.no_answer + '</td><td class="num" data-l="Wrong no.">' + a.wrong_number + '</td><td class="num" data-l="Merchants told">' + a.notified +
+          '</td><td class="num" data-l="Avg time / parcel">' + (a.avg_handle_seconds ? hm(a.avg_handle_seconds) : "—") + "</td></tr>"; }).join("") + "</tbody></table></div>"
+        : '<div class="empty">No agents yet. Add one under Team.</div>') + "</section>" +
+      '<section class="sec"><h2>Day by day</h2><div class="tblwrap"><table class="tbl"><thead><tr><th>Day</th><th class="num">New in queue</th><th class="num">Calls</th><th class="num">Confirmed</th><th class="num">To ops</th><th class="num">Active time</th></tr></thead><tbody>' +
+        (st.daily || []).slice().reverse().map(function(d){ return '<tr><td data-l="Day">' + esc(pkt(d.day + "T12:00:00Z")) + '</td><td class="num" data-l="New in queue">' + d.entered_queue + '</td><td class="num" data-l="Calls"><b>' + d.calls +
+          '</b></td><td class="num" data-l="Confirmed">' + d.valid + '</td><td class="num" data-l="To ops">' + d.to_ops + '</td><td class="num" data-l="Active time">' + hm(d.active_seconds) + "</td></tr>"; }).join("") + "</tbody></table></div></section>";
+  });
+};
+
+/* ═════ sheet + events ═════ */
+var sheetReturn = null;
+function openSheet(html, labelId){
+  sheetReturn = document.activeElement;
+  $("sheetRoot").innerHTML = '<div class="scrim" data-act="close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="' + labelId + '" id="sheet">' + html + "</div>";
+  document.body.style.overflow = "hidden";
+  [].forEach.call(document.querySelectorAll("main,.top,.bnav"), function(el){ el.setAttribute("inert", ""); });
+  setTimeout(function(){ var x = document.querySelector("#sheet .x"); if (x) x.focus(); }, 30);
+}
+function closeSheet(){
+  var wasOpen = !!$("sheet");
+  $("sheetRoot").innerHTML = ""; document.body.style.overflow = "";
+  [].forEach.call(document.querySelectorAll("[inert]"), function(el){ el.removeAttribute("inert"); });
+  if (sheetReturn && sheetReturn.focus) try { sheetReturn.focus(); } catch (e) {}
+  if (wasOpen && S.tab === "desk") { S.open = null; drawQueue(); go("desk"); }
+}
+document.addEventListener("click", function(e){
+  var t = e.target, el;
+  if ((el = t.closest("[data-tab]"))) return go(el.getAttribute("data-tab"));
+  if ((el = t.closest("[data-auth]"))) return renderAuth(el.getAttribute("data-auth"));
+  if ((el = t.closest("[data-bucket]"))) { S.bucket = el.getAttribute("data-bucket"); [].forEach.call(document.querySelectorAll("[data-bucket]"), function(b){ b.setAttribute("aria-pressed", b === el ? "true" : "false"); }); return drawQueue(); }
+  if ((el = t.closest("[data-parcel]"))) return openParcel(el.getAttribute("data-parcel"));
+  if ((el = t.closest("[data-call]"))) { onCallUntil = Date.now() + 10 * 60000; return; }
+  if ((el = t.closest("[data-verdict]"))) {
+    var v = el.getAttribute("data-verdict"), x = S.queue.filter(function(r){ return r.parcel_id === S.open.id; })[0];
+    S.open.verdict = v;
+    [].forEach.call(document.querySelectorAll("[data-verdict]"), function(b){ b.setAttribute("aria-pressed", b === el ? "true" : "false"); });
+    $("vMore").innerHTML = verdictForm(v, x); $("rMsg").className = "msg";
+    return;
+  }
+  if ((el = t.closest("[data-notify]"))) { var id = el.getAttribute("data-notify"); rpc("cs_mark_notified", { p_review: Number(id) }).then(function(){ toast("Marked: merchant told"); refresh(); }).catch(function(err){ toast(err.message); }); return; }
+  if ((el = t.closest("[data-range]"))) { S.admin.range = Number(el.getAttribute("data-range")); return go("analytics"); }
+  if ((el = t.closest("[data-shifts]"))) return openShifts(el.getAttribute("data-shifts"), el.getAttribute("data-name"));
+  if ((el = t.closest("[data-agent-status]"))) {
+    var to = el.getAttribute("data-agent-status");
+    if (to === "Removed" && !confirm("Remove " + el.getAttribute("data-name") + "? They lose access at once and any open shift is closed. Their history stays.")) return;
+    el.disabled = true;
+    return rpc("cs_admin_set_agent", { p_agent: el.getAttribute("data-agent"), p_status: to }).then(function(){ toast(to === "Removed" ? "Removed" : "Restored"); go("team"); })
+      .catch(function(err){ el.disabled = false; toast(err.message); });
+  }
+  if ((el = t.closest("[data-copy]"))) return copy(el.getAttribute("data-copy"));
+  if (t.closest("#clockIn")) { var cb = t.closest("#clockIn"); busy(cb, true, "Clocking in…");
+    return rpc("cs_clock_in", { p_user_agent: navigator.userAgent }).then(function(me){ S.me = me; lastInput = Date.now(); toast("Clocked in. Have a good shift."); go(S.tab || "desk"); }).catch(function(err){ busy(cb, false); toast(err.message); }); }
+  if (t.closest("#clockOut")) { if (!confirm("Clock out now?")) return;
+    return rpc("cs_clock_out").then(function(me){ S.me = me; clearInterval(timerT); toast("Clocked out."); go(S.tab || "desk"); }).catch(function(err){ toast(err.message); }); }
+  if (t.closest("#forgot")) return doForgot();
+  if (t.closest("#signOut")) {
+    var out = function(){ return Promise.resolve(sb.auth.signOut()).catch(function(){}).then(function(){ clearInterval(beatT); clearInterval(timerT); S = { me: null, mode: null, tab: null, queue: [], bucket: "call", q: "", city: "", open: null, admin: { range: 7 } }; location.hash = ""; renderAuth(); }); };
+    if (S.mode === "agent" && S.me && S.me.shift) { if (!confirm("You are still clocked in. Clock out and sign out?")) return; return rpc("cs_clock_out").catch(function(){}).then(out); }
+    return out();
+  }
+  if ((el = t.closest("[data-act]"))) {
+    var act = el.getAttribute("data-act");
+    if (act === "close") return closeSheet();
+    if (act === "reload") return location.reload();
+    if (act === "retab") return go(S.tab);
+  }
+});
+document.addEventListener("submit", function(e){
+  var id = e.target.id;
+  if (id === "fIn") return doSignIn(e);
+  if (id === "fJoin") return doJoin(e);
+  if (id === "fReview") return saveReview(e);
+  if (id === "fInvite") return doInvite(e);
+});
+document.addEventListener("input", function(e){
+  if (e.target.id === "q") { S.q = e.target.value; drawQueue(); }
+});
+document.addEventListener("change", function(e){
+  if (e.target.id === "city") { S.city = e.target.value; drawQueue(); }
+});
+document.addEventListener("keydown", function(e){ if (e.key === "Escape" && $("sheet")) closeSheet(); });
+/* Back to the tab after a call: refresh the clock and the list. */
+document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible" && S.mode === "agent" && S.me && S.me.shift) rpc("cs_heartbeat", { p_active: true }).catch(function(){}); });
+boot();
+})();
+</script>
+</body>
+</html>

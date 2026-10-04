@@ -938,6 +938,7 @@
       if(__ADMIN_ROLES.indexOf(__metaRole)>-1){ redirectAway("admin.html"); return; }
       if(__metaRole==="rider"){ redirectAway("rider.html"); return; }
       if(__metaRole==="sales"){ redirectAway("sales.html"); return; }
+      if(__metaRole==="support"){ redirectAway("care.html"); return; }
       __gsb.from("profiles").select("role,status,client_id").eq("id",session.user.id).single().then(function(p){
         if(p&&p.error){
           console.warn("NovaX auth gate: profile lookup failed",p.error.message);
@@ -969,6 +970,7 @@
         if(__ADMIN_ROLES.indexOf(role)>-1){ redirectAway("admin.html"); return; }
         if(role==="rider"){ redirectAway("rider.html"); return; }
         if(role==="sales"){ redirectAway("sales.html"); return; }
+        if(role==="support"){ redirectAway("care.html"); return; }
         if(role!=="client"){
           // Unrecognized/invalid role that isn't admin-like, rider, or
           // client -- treat as an error rather than guessing a portal.
