@@ -199,7 +199,15 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
   function load(first){
     return rpc("nvi_admin_board").then(function(b){
       S.b=b||{}; paint();
-      if(first){ stop(); S.timer=setInterval(function(){ if(!document.hidden&&!S.busy&&!S.open&&!typing()) load(false); },15000); }
+      if(first){ stop(); S.timer=setInterval(function(){ if(!document.hidden&&!S.busy&&!S.open&&!typing()) load(false); },15000);
+        /* Live: a new booking or a rider's step shows at once, not at the next
+           15-second check. The signal carries no data. */
+        if(!S.ch){ try{
+          var liveT=null;
+          S.ch=sb.channel("nvi").on("broadcast",{ event:"changed" },function(){
+            clearTimeout(liveT); liveT=setTimeout(function(){ if(S.timer&&!document.hidden&&!S.busy&&!S.open&&!typing()) load(false); },350);
+          }).subscribe();
+        }catch(e){} } }
     }).catch(function(e){
       if(/Admins only/i.test(e.message||"")){ stop(); $("main").innerHTML='<div class="auth"><h1>Admins only</h1><p style="color:var(--muted)">This login is not a NovaX admin. <button class="btn btn-plain" type="button" id="signOut">Sign out</button></p></div>'; return; }
       if(first) $("main").innerHTML='<div class="empty">'+esc(e.message||"Could not load.")+' <button class="btn btn-plain" type="button" data-act="reload">Try again</button></div>';
@@ -350,10 +358,16 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       '<div><button class="btn btn-primary" type="button" data-do="invite" style="width:100%">Add rider</button></div></div>'+
       '<p class="age" style="margin:10px 0 0">Then send them <b>novaxlogistics.com/instant-rider.html</b>. They press First time, use this email and choose their own password. NovaX never sets a password for them.</p></div>';
     if(!riders.length) return h+'<div class="empty">No Instant riders yet.</div>';
-    h+='<div class="tblwrap"><table><thead><tr><th>Rider</th><th>Status</th><th>Now</th><th>Done today</th><th>Cash with rider</th><th></th></tr></thead><tbody>'+riders.map(function(r){
+    h+='<div class="tblwrap"><table><thead><tr><th>Rider</th><th>Status</th><th>Documents</th><th>Now</th><th>Done today</th><th>Cash with rider</th><th></th></tr></thead><tbody>'+riders.map(function(r){
       var busy=!!r.active_code;
       return '<tr><td><b>'+esc(r.full_name)+'</b><br><span class="age"><a href="tel:'+esc(r.phone)+'">'+esc(r.phone)+'</a>'+(r.bike_plate?' &middot; '+esc(r.bike_plate):'')+'<br>'+esc(r.email)+'</span></td>'+
         '<td><span class="chip '+(r.status==="Active"?"good":r.status==="Blocked"?"bad":"warn")+'">'+esc(r.status==="Invited"?"Invited, not joined":r.status)+'</span></td>'+
+        '<td data-l="Documents">'+(r.docs_at
+          ? '<div class="row" style="margin:0"><button class="btn btn-plain" type="button" data-doc="'+esc(r.cnic_path)+'">CNIC</button><button class="btn btn-plain" type="button" data-doc="'+esc(r.bill_path)+'">Home bill</button></div>'+
+            '<span class="age">Emergency: '+esc(r.emergency_name||"")+' &middot; <a href="tel:'+esc(r.emergency_phone||"")+'">'+esc(r.emergency_phone||"")+'</a></span><br>'+
+            (r.docs_checked_at?'<span class="chip good">Checked</span> <button class="btn btn-plain" type="button" data-do="docs" data-rider="'+esc(r.id)+'" data-ok="0">Undo</button>'
+                              :'<button class="btn btn-primary" type="button" data-do="docs" data-rider="'+esc(r.id)+'" data-ok="1">Mark as checked</button>')
+          : '<span class="chip warn">'+(r.status==="Invited"?"After they join":"Not sent yet")+'</span>'+(r.status==="Active"?'<br><span class="age">Cannot go online until sent.</span>':''))+'</td>'+
         '<td>'+(r.status==="Active"?'<span class="dot'+(r.online?' on':'')+'"></span>'+(r.online?"Online":r.stale?"App closed (switch left on)":"Offline")+(busy?' &middot; on '+esc(r.active_code):'')+'<br><span class="age">seen '+esc(ago(r.last_seen))+'</span>':'<span class="age">&ndash;</span>')+'</td>'+
         '<td>'+esc(r.done_today||0)+'</td><td><b>'+esc(rs(r.cash_in_hand))+'</b></td>'+
         '<td><div class="row" style="margin:0">'+
@@ -384,7 +398,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
   /* ───── actions ───── */
   var SAY={ not_found:"That job no longer exists.", too_late:"The parcel is already picked up, so the rider cannot be changed.", rider_inactive:"That rider is not active.",
     rider_busy:"That rider already has a job.", need_reason:"Choose or write a reason first.", need_note:"Write a note first.", closed:"That job is already closed.",
-    no_rider:"Assign a rider first.", wrong_step:"The job is not at that step any more.", nothing:"That rider holds no cash.",
+    no_rider:"Assign a rider first.", no_docs:"That rider has not sent documents yet.", wrong_step:"The job is not at that step any more.", nothing:"That rider holds no cash.",
     name:"Enter the rider's full name.", email:"Enter a valid email.", phone:"Enter a Pakistani mobile like 0300 1234567.", exists:"That email is already a rider.", status:"Unknown status.",
     has_parcel:"A rider holds this parcel, so it cannot be cancelled or left without a rider. Mark it not delivered and send it back instead.",
     unconfirmed:"Confirm this booking by phone first.",
@@ -416,6 +430,17 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     return "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g,function(){ return (Math.random()*16|0).toString(16); });
   }
   var HKEY={};   /* one handover key per rider, kept until the handover answers */
+  /* A rider's document opens through a link that works for five minutes. The
+     photos are private: there is no permanent address for them. */
+  document.addEventListener("click",function(e){
+    var b=e.target.closest&&e.target.closest("[data-doc]"); if(!b) return;
+    var w=window.open("about:blank","_blank");
+    Promise.resolve(sb.storage.from("nvi-rider-docs").createSignedUrl(b.getAttribute("data-doc"),300)).then(function(r){
+      var u=r&&r.data&&r.data.signedUrl;
+      if(!u){ if(w) w.close(); toast("That photo could not be opened."); return; }
+      if(w) w.location=u; else location.href=u;
+    }).catch(function(){ if(w) w.close(); toast("That photo could not be opened."); });
+  });
   document.addEventListener("click",function(e){
     unlockSound();
     var t=e.target.closest("[data-tab],[data-do],[data-form],[data-act],#openSw,#signOut");
@@ -468,6 +493,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       if(p) p.then(function(r){ if(r) delete HKEY[rider]; });
       return p;
     }
+    if(d==="docs") return run("nvi_admin_check_docs",{ p_rider:t.dataset.rider, p_ok:t.dataset.ok==="1" },t.dataset.ok==="1"?"Documents marked as checked.":"Check removed.");
     if(d==="setrider"){
       var st=t.dataset.st;
       if(st!=="Active"&&!twice(t,st==="Removed"?"Press again to remove":"Press again to block")) return;

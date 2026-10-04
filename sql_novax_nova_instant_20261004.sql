@@ -153,6 +153,39 @@ create table if not exists public.nvi_riders (
   joined_at    timestamptz
 );
 
+-- What NovaX collects before a rider can go online (5 Oct 2026): a photo of
+-- their CNIC, a photo of a home utility bill, and an emergency contact. The
+-- photos live in the private bucket nvi-rider-docs under the rider's own
+-- login id; only that rider and NovaX admins can read them.
+alter table public.nvi_riders add column if not exists emergency_name  text;
+alter table public.nvi_riders add column if not exists emergency_phone text;
+alter table public.nvi_riders add column if not exists cnic_path       text;
+alter table public.nvi_riders add column if not exists bill_path       text;
+alter table public.nvi_riders add column if not exists docs_at         timestamptz;
+alter table public.nvi_riders add column if not exists docs_checked_at timestamptz;
+alter table public.nvi_riders add column if not exists docs_checked_by uuid;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('nvi-rider-docs', 'nvi-rider-docs', false, 3145728, array['image/jpeg', 'image/png'])
+on conflict (id) do nothing;
+
+-- Is the caller on the Instant rider roster (any status)? Used by the storage rules.
+create or replace function public.nvi_is_rider()
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.nvi_riders r where r.auth_user_id = (select auth.uid()))
+$$;
+
+drop policy if exists nvi_rider_docs_insert on storage.objects;
+create policy nvi_rider_docs_insert on storage.objects for insert to authenticated
+  with check (bucket_id = 'nvi-rider-docs'
+              and split_part(name, '/', 1) = ((select auth.uid()))::text
+              and name ~ '^[0-9a-f-]{36}/(cnic|bill)-[0-9]{10,16}-[0-9a-f]{8}\.jpg$'
+              and (select public.nvi_is_rider()));
+drop policy if exists nvi_rider_docs_select on storage.objects;
+create policy nvi_rider_docs_select on storage.objects for select to authenticated
+  using (bucket_id = 'nvi-rider-docs'
+         and ((select public.is_admin()) or split_part(name, '/', 1) = ((select auth.uid()))::text));
+
 -- Cash a rider handed to the office, confirmed by an admin.
 create table if not exists public.nvi_handovers (
   id           bigserial primary key,
@@ -764,7 +797,55 @@ begin
     'email', (select lower(u.email) from auth.users u where u.id = auth.uid()),
     'is_admin', coalesce((select public.is_admin()), false),
     'rider', case when r.id is null then null else
-      jsonb_build_object('id', r.id, 'full_name', r.full_name, 'status', r.status, 'online', r.online) end);
+      jsonb_build_object('id', r.id, 'full_name', r.full_name, 'status', r.status, 'online', r.online,
+        'docs', r.docs_at is not null, 'docs_checked', r.docs_checked_at is not null,
+        'emergency_name', r.emergency_name, 'emergency_phone', r.emergency_phone) end);
+end $$;
+
+-- The rider's CNIC photo, home bill photo and emergency contact. The two
+-- photos must already be in the rider's own folder of nvi-rider-docs.
+create or replace function public.nvi_rider_docs(p_cnic text, p_bill text, p_em_name text, p_em_phone text)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  r public.nvi_riders; v_uid text := (select auth.uid())::text;
+  v_ph text := public.nvi_pk_phone(p_em_phone);
+begin
+  select * into r from public.nvi_riders where auth_user_id = (select auth.uid()) for update;
+  if r.id is null or r.status not in ('Active', 'Blocked') then
+    raise exception 'This login is not a Nova Instant rider.' using errcode = '42501';
+  end if;
+  if length(btrim(coalesce(p_em_name, ''))) < 2 then return jsonb_build_object('ok', false, 'reason', 'em_name'); end if;
+  if v_ph = '' then return jsonb_build_object('ok', false, 'reason', 'em_phone'); end if;
+  if v_ph = public.nvi_pk_phone(r.phone) then return jsonb_build_object('ok', false, 'reason', 'em_same'); end if;
+  if coalesce(p_cnic, '') !~ ('^' || v_uid || '/cnic-[0-9]{10,16}-[0-9a-f]{8}\.jpg$')
+     or not exists (select 1 from storage.objects o where o.bucket_id = 'nvi-rider-docs' and o.name = p_cnic) then
+    return jsonb_build_object('ok', false, 'reason', 'cnic');
+  end if;
+  if coalesce(p_bill, '') !~ ('^' || v_uid || '/bill-[0-9]{10,16}-[0-9a-f]{8}\.jpg$')
+     or not exists (select 1 from storage.objects o where o.bucket_id = 'nvi-rider-docs' and o.name = p_bill) then
+    return jsonb_build_object('ok', false, 'reason', 'bill');
+  end if;
+  update public.nvi_riders set cnic_path = p_cnic, bill_path = p_bill,
+         emergency_name = left(btrim(p_em_name), 80), emergency_phone = v_ph,
+         docs_at = now(), docs_checked_at = null, docs_checked_by = null
+   where id = r.id;
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- Ops ticks the documents as checked (or un-ticks them).
+create or replace function public.nvi_admin_check_docs(p_rider uuid, p_ok boolean)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare r public.nvi_riders;
+begin
+  perform public.nvi_require_admin();
+  select * into r from public.nvi_riders where id = p_rider for update;
+  if r.id is null then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
+  if r.docs_at is null then return jsonb_build_object('ok', false, 'reason', 'no_docs'); end if;
+  update public.nvi_riders
+     set docs_checked_at = case when coalesce(p_ok, false) then now() end,
+         docs_checked_by = case when coalesce(p_ok, false) then (select auth.uid()) end
+   where id = r.id;
+  return jsonb_build_object('ok', true);
 end $$;
 
 -- The signed-in, Active Instant rider, or an error.
@@ -832,6 +913,9 @@ begin
   if not coalesce(p_on, false)
      and exists (select 1 from public.nvi_jobs where rider_id = r.id and status in ('Rider assigned', 'Picked up', 'Failed delivery', 'Returning')) then
     return jsonb_build_object('ok', false, 'reason', 'has_job', 'online', r.online);
+  end if;
+  if coalesce(p_on, false) and r.docs_at is null then
+    return jsonb_build_object('ok', false, 'reason', 'docs', 'online', false);
   end if;
   update public.nvi_riders set online = coalesce(p_on, false), last_seen = now() where id = r.id;
   return jsonb_build_object('ok', true, 'online', coalesce(p_on, false));
@@ -1059,6 +1143,8 @@ begin
         -- The switch is on but the app has stopped answering.
         'stale', r.status = 'Active' and r.online and not public.nvi_rider_fresh(r),
         'last_seen', r.last_seen, 'joined_at', r.joined_at,
+        'emergency_name', r.emergency_name, 'emergency_phone', r.emergency_phone,
+        'cnic_path', r.cnic_path, 'bill_path', r.bill_path, 'docs_at', r.docs_at, 'docs_checked_at', r.docs_checked_at,
         'active_code', (select j.code from public.nvi_jobs j where j.rider_id = r.id and j.status in ('Rider assigned', 'Picked up', 'Failed delivery', 'Returning')),
         'done_today', (select count(*) from public.nvi_jobs j where j.rider_id = r.id and j.status = 'Delivered'
                         and (j.delivered_at at time zone 'Asia/Karachi')::date = v_day),
@@ -1334,6 +1420,28 @@ begin
 end $$;
 
 
+-- ═══════════════════ Live screens ═══════════════════
+-- Every change to a job, and a rider going on or off, sends one small signal
+-- on the public Realtime channel "nvi". It carries no data: a screen that
+-- hears it asks for its own data again through the usual functions. A rider's
+-- "still here" beat (last_seen) does not send one, or every screen would
+-- answer every other screen for ever.
+create or replace function public.nvi_ping()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  begin
+    perform realtime.send(jsonb_build_object('at', (extract(epoch from clock_timestamp()) * 1000)::bigint), 'changed', 'nvi', false);
+  exception when others then null;   -- a signal that fails must never fail the booking
+  end;
+  return null;
+end $$;
+drop trigger if exists nvi_jobs_ping on public.nvi_jobs;
+create trigger nvi_jobs_ping after insert or update or delete on public.nvi_jobs
+  for each statement execute function public.nvi_ping();
+drop trigger if exists nvi_riders_ping on public.nvi_riders;
+create trigger nvi_riders_ping after insert or delete or update of status, online, docs_at, docs_checked_at on public.nvi_riders
+  for each statement execute function public.nvi_ping();
+
 -- ═══════════════════ Who may call what ═══════════════════
 do $$
 declare f text;
@@ -1361,7 +1469,8 @@ begin
                          'nvi_rider_retry', 'nvi_rider_return', 'nvi_rider_returned',
                          'nvi_admin_board', 'nvi_admin_job', 'nvi_admin_confirm', 'nvi_admin_assign', 'nvi_admin_cancel',
                          'nvi_admin_mark', 'nvi_admin_pay', 'nvi_admin_invite_rider', 'nvi_admin_set_rider',
-                         'nvi_admin_handover', 'nvi_admin_set_open')
+                         'nvi_admin_handover', 'nvi_admin_set_open',
+                         'nvi_rider_docs', 'nvi_admin_check_docs', 'nvi_is_rider')
   loop
     execute 'grant execute on function ' || f || ' to authenticated';
   end loop;

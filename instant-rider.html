@@ -116,6 +116,12 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
 .inp:focus{border-color:var(--green-2);box-shadow:0 0 0 3px rgba(15,191,120,.18)}
 .pinin{font:800 28px/1 var(--mono);letter-spacing:.4em;text-align:center;padding-left:.4em}
 .msg{font-size:14px;margin-top:10px;color:var(--red-ink)}
+.lbl2{display:block;font-size:13px;font-weight:700;color:var(--ink-2);margin-bottom:6px}
+.docpick{position:relative}
+.docstate{font-size:13.5px;color:var(--muted);margin-top:6px;min-height:0;display:flex;align-items:center;gap:10px}
+.docstate img{width:64px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.docstate.ok{color:var(--green-3)}
+.docstate.bad{color:var(--red-ink)}
 .msg.ok{color:var(--green-3)}
 .seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px;border:1px solid var(--line-2);border-radius:12px;margin-bottom:12px}
 .seg button{min-height:44px;border:0;border-radius:9px;background:none;font-weight:700;color:var(--muted)}
@@ -189,11 +195,100 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       S.me=me||{};
       $("signOut").hidden=false;
       var r=S.me.rider;
-      if(r&&r.status==="Active"){ $("whoName").textContent=r.full_name; return start(); }
+      if(r&&r.status==="Active"){
+        $("whoName").textContent=r.full_name;
+        /* First time: CNIC photo, home bill photo and an emergency contact, before any job. */
+        if(!r.docs) return renderDocs();
+        return start();
+      }
       renderNotRider();
     }).catch(function(e){
       $("main").innerHTML='<div class="empty"><b>Could not open</b>'+esc(friendly(e.message))+'<div style="margin-top:14px"><button class="btn btn-plain" type="button" data-act="reload">Try again</button></div></div>';
     });
+  }
+  /* ───── first time: documents and emergency contact ───── */
+  var D={ cnic:null, bill:null };
+  function renderDocs(){
+    stop(); $("onSw").hidden=true; D={ cnic:null, bill:null };
+    $("main").innerHTML=
+      '<h1 class="page">One step before your first job</h1>'+
+      '<p class="sub">NovaX needs these once. Only the NovaX office can see them. <span class="ur">Yeh sirf aik dafa. Sirf NovaX office dekh sakta hai.</span></p>'+
+      '<form id="fDocs" class="card" novalidate>'+
+        docPick("cnic","Photo of your CNIC (front side)","Shanakhti card ki tasveer")+
+        docPick("bill","Photo of a home electricity or gas bill","Ghar ke bijli ya gas bill ki tasveer")+
+        '<div class="fld"><label for="emName">Emergency contact: name <span class="ur">Emergency mein kis ko call karein</span></label><input class="inp" id="emName" maxlength="80" autocomplete="off" placeholder="e.g. your father, brother or wife"></div>'+
+        '<div class="fld"><label for="emPhone">Emergency contact: mobile</label><input class="inp" id="emPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="off" placeholder="03XX XXXXXXX"></div>'+
+        '<div class="fld"><button class="btn btn-primary wide" id="dBtn" type="submit">Save and continue</button></div>'+
+        '<div class="msg" id="dMsg" role="alert"></div></form>';
+  }
+  function docPick(k,label,ur){
+    return '<div class="fld docpick" data-k="'+k+'"><span class="lbl2">'+label+' <span class="ur">'+ur+'</span></span>'+
+      '<label class="btn btn-plain wide" for="f_'+k+'">Take or choose a photo</label>'+
+      '<input type="file" id="f_'+k+'" data-doc="'+k+'" accept="image/jpeg,image/png,image/*" style="position:absolute;width:1px;height:1px;opacity:0">'+
+      '<div class="docstate" id="st_'+k+'"></div></div>';
+  }
+  /* A phone photo is redrawn smaller (about 200 KB): quicker to send on mobile
+     data, and it drops the location a phone hides inside a photo. */
+  function shrinkPhoto(file){
+    return new Promise(function(resolve,reject){
+      if(!file) return reject(new Error("Choose a photo."));
+      if(file.size>25*1024*1024) return reject(new Error("That photo is too large. Take a new one with the camera."));
+      var url=URL.createObjectURL(file), img=new Image();
+      img.onload=function(){
+        var w=img.naturalWidth, h=img.naturalHeight, long=Math.max(w,h);
+        if(long<500){ URL.revokeObjectURL(url); return reject(new Error("That photo is too small to read. Take a closer one.")); }
+        var k=Math.min(1,1600/long), c=document.createElement("canvas"); c.width=Math.round(w*k); c.height=Math.round(h*k);
+        var g=c.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height); g.drawImage(img,0,0,c.width,c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob(function(b){
+          if(!b) return reject(new Error("That photo could not be read. Try another."));
+          if(b.size>2.8*1024*1024) return c.toBlob(function(b2){ b2&&b2.size<=2.9*1024*1024?resolve({ blob:b2, thumb:c.toDataURL("image/jpeg",0.4) }):reject(new Error("That photo is too large. Take it from a little further away.")); },"image/jpeg",0.6);
+          resolve({ blob:b, thumb:c.toDataURL("image/jpeg",0.4) });
+        },"image/jpeg",0.82);
+      };
+      img.onerror=function(){ URL.revokeObjectURL(url); reject(new Error("This photo format cannot be opened here. Use the camera, or choose a JPG.")); };
+      img.src=url;
+    });
+  }
+  function hex8(){ var a=new Uint8Array(4); crypto.getRandomValues(a); return Array.prototype.map.call(a,function(x){ return ("0"+x.toString(16)).slice(-2); }).join(""); }
+  function pkPhone(raw){
+    var d=String(raw==null?"":raw).replace(/[^\d]/g,"");
+    if(d.length===14&&d.slice(0,4)==="0092") d=d.slice(4); else if(d.length===13&&d.slice(0,3)==="092") d=d.slice(3);
+    else if(d.length===12&&d.slice(0,2)==="92") d=d.slice(2); else if(d.length===11&&d.charAt(0)==="0") d=d.slice(1);
+    return /^3\d{9}$/.test(d)?("0"+d):"";
+  }
+  document.addEventListener("change",function(e){
+    var k=e.target.getAttribute&&e.target.getAttribute("data-doc"); if(!k) return;
+    var st=$("st_"+k), f=e.target.files&&e.target.files[0]; if(!f) return;
+    st.className="docstate"; st.textContent="Preparing the photo\u2026";
+    shrinkPhoto(f).then(function(ph){
+      D[k]=ph; st.className="docstate ok";
+      st.innerHTML='<img alt="" src="'+ph.thumb+'"><span>Photo ready. Tap the button to change it.</span>';
+      $("dMsg").textContent="";
+    }).catch(function(err){ D[k]=null; st.className="docstate bad"; st.textContent=err.message; });
+  });
+  var DOC_SAY={ em_name:"Enter the emergency contact's name.", em_phone:"Enter the emergency contact's mobile like 0300 1234567.",
+    em_same:"The emergency contact must be a different number from your own.", cnic:"The CNIC photo did not arrive. Choose it again.", bill:"The bill photo did not arrive. Choose it again." };
+  function doDocs(e){
+    e.preventDefault();
+    var msg=$("dMsg"), btn=$("dBtn"), name=$("emName").value.trim(), ph=pkPhone($("emPhone").value);
+    if(!D.cnic) return say(msg,"Add a photo of your CNIC.");
+    if(!D.bill) return say(msg,"Add a photo of a home electricity or gas bill.");
+    if(name.length<2) return say(msg,DOC_SAY.em_name);
+    if(!ph) return say(msg,DOC_SAY.em_phone);
+    busyBtn(btn,true,"Sending the photos\u2026");
+    Promise.resolve(sb.auth.getUser()).then(function(u){
+      var uid=u&&u.data&&u.data.user&&u.data.user.id; if(!uid) throw new Error("Sign in again.");
+      var ms=Date.now(), pc=uid+"/cnic-"+ms+"-"+hex8()+".jpg", pb=uid+"/bill-"+ms+"-"+hex8()+".jpg";
+      var up=function(path,blob){ return Promise.resolve(sb.storage.from("nvi-rider-docs").upload(path,blob,{ contentType:"image/jpeg", upsert:false })).then(function(r){ if(r&&r.error) throw new Error(r.error.message||"Upload failed"); }); };
+      return up(pc,D.cnic.blob).then(function(){ return up(pb,D.bill.blob); }).then(function(){
+        return rpc("nvi_rider_docs",{ p_cnic:pc, p_bill:pb, p_em_name:name, p_em_phone:ph });
+      });
+    }).then(function(r){
+      busyBtn(btn,false);
+      if(r&&r.ok===false) return say(msg,DOC_SAY[r.reason]||"That did not save. Try again.");
+      toast("Saved. You can go online now."); return loadMe();
+    }).catch(function(err){ busyBtn(btn,false); say(msg,friendly(err&&err.message)); });
   }
   function renderNotRider(){
     stop(); $("onSw").hidden=true;
@@ -271,6 +366,14 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
        what tells NovaX the rider is really online: a switch left on in a
        closed app stops counting after a minute. */
     S.timer=setInterval(function(){ if(!document.hidden&&!S.busy) refresh(false); },12000);
+    /* Live: a new booking, or ops changing a job, arrives at once instead of
+       at the next 12-second check. The signal carries no data. */
+    if(!S.ch){ try{
+      var liveT=null;
+      S.ch=sb.channel("nvi").on("broadcast",{ event:"changed" },function(){
+        clearTimeout(liveT); liveT=setTimeout(function(){ if(S.timer&&!document.hidden&&!S.busy&&!typing()) refresh(false); },350);
+      }).subscribe();
+    }catch(e){} }
   }
   function stop(){ if(S.timer){ clearInterval(S.timer); S.timer=null; } keepAwake(false); }
   /* Typing, or between the two presses of a confirm button. */
@@ -440,7 +543,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   var SAY={ offline:"Go online first.", busy:"Finish the job you have first.", taken:"Another rider took that job.",
     not_yours:"This job is no longer with you.", need_reason:"Choose a reason.", need_note:"Say what happened.",
     wrong_pin:"That PIN is not right.", pin_locked:"The PIN is locked after five wrong tries. Call the NovaX office.",
-    has_job:"Finish the job you have before going offline.", cash_needed:"Take the cash first, then tick the cash line.",
+    has_job:"Finish the job you have before going offline.", docs:"Add your CNIC photo, home bill photo and emergency contact first.", cash_needed:"Take the cash first, then tick the cash line.",
     cash_mismatch:"That amount is not right. It cannot be more than the fare.", short_note:"Say why the cash is short." };
   function netFail(e){ return /fetch|network|Failed|timeout|Load failed/i.test(String((e&&e.message)||e)); }
   /* Every rider step answers "already done" when it is sent twice, so a press
@@ -533,6 +636,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   document.addEventListener("submit",function(e){
     if(e.target.id==="fIn") return doSignIn(e);
     if(e.target.id==="fJoin") return doJoin(e);
+    if(e.target.id==="fDocs") return doDocs(e);
   });
 
   boot();

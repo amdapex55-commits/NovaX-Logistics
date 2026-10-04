@@ -9,9 +9,16 @@
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
 <meta name="theme-color" content="#0B2A20">
-<!-- Preview: not linked from the site and not indexed until launch. The
-     tracking token lives in this page's URL, so only the origin is sent on. -->
-<meta name="robots" content="noindex,nofollow">
+<meta name="description" content="Nova Instant: send one parcel across Karachi by bike. Upfront fare of Rs 25 per km (Rs 100 minimum), no account needed, sender or receiver pays, live tracking link with a delivery PIN.">
+<link rel="canonical" href="https://novaxlogistics.com/instant.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="NovaX Logistics">
+<meta property="og:title" content="Nova Instant · Send a parcel across Karachi">
+<meta property="og:description" content="One parcel, one bike. Upfront fare, no account needed, delivered against a PIN.">
+<meta property="og:image" content="https://novaxlogistics.com/assets/og-image.png">
+<!-- The tracking token lives in this page's URL, so only the origin is sent
+     on to other sites. A tracking link itself is marked noindex in script. -->
+<meta name="robots" content="index,follow">
 <meta name="referrer" content="origin">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -48,9 +55,10 @@ svg.ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-wid
 .hdr{position:fixed;inset:0 0 auto 0;height:var(--hdr);z-index:60;background:var(--forest);color:var(--forest-ink);display:flex;align-items:center;gap:10px;padding:0 6px 0 14px}
 .hdr a.brand{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;min-height:48px}
 .hdr .brand img{width:28px;height:28px;border-radius:8px}
-.hdr .brand b{font:800 17px/1 var(--display);letter-spacing:-.01em}
+.hdr .brand b{font:800 17px/1 var(--display);letter-spacing:-.01em;white-space:nowrap}
+@media (max-width:400px){ #helpBtn{font-size:0;gap:0;padding:0 8px} #histBtn{font-size:14px;padding:0 6px} .hdr{padding-left:10px;gap:4px} }
 .hdr .brand b i{font-style:normal;color:var(--emerald)}
-.hbtn{margin-left:auto;display:inline-flex;align-items:center;gap:7px;min-height:48px;padding:0 12px;border:0;background:none;color:var(--forest-ink);font-weight:700;font-size:15px}
+.hbtn{margin-left:auto;display:inline-flex;align-items:center;gap:7px;min-height:48px;padding:0 10px;white-space:nowrap;border:0;background:none;color:var(--forest-ink);font-weight:700;font-size:15px}
 
 /* Map: the stage everything else sits on */
 /* On a phone the map is the strip above the sheet (plus a little that the
@@ -237,6 +245,19 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
 .ban{margin:0;padding:0 0 0 20px;font-size:15px;line-height:1.55;color:var(--ink-2)}
 .ban li{margin-bottom:6px}
 
+/* My deliveries */
+.hcard{margin-top:12px}
+.hhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}
+.hrow{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:12px;align-items:center;min-height:60px;padding:8px 0;border-top:1px solid var(--line);color:inherit;text-decoration:none}
+.hhead + .hrow,.hcard > .hrow:first-child{border-top:0}
+.hdot{width:10px;height:10px;border-radius:50%;background:var(--emerald);justify-self:center}
+.hdot.off{background:var(--line-2)}
+.hmain{min-width:0}
+.hmain b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hmain small{display:block;font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hst{font-size:12.5px;font-weight:700;color:var(--muted);white-space:nowrap}
+.hst.live{color:var(--emerald-deep)}
+.hst.bad{color:var(--red-ink)}
 /* Tracking */
 .status{background:var(--forest);color:var(--forest-ink);border-radius:var(--r);padding:18px}
 .status .k{font:700 12px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--forest-muted)}
@@ -283,7 +304,10 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
 
 <header class="hdr">
   <a class="brand" href="/" aria-label="NovaX Logistics home"><img src="/assets/favicon.svg" alt="" width="28" height="28"><b>Nova <i>Instant</i></b></a>
-  <button class="hbtn" type="button" id="helpBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.300a2.500 2.500 0 1 1 3.600 2.300c-.800.400-1.200 1-1.200 1.900M12 17h.010"/></svg>Help</button>
+  <div style="margin-left:auto;display:flex;align-items:center">
+  <button class="hbtn" type="button" id="histBtn" hidden style="margin-left:0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>My deliveries</button>
+  <button class="hbtn" type="button" id="helpBtn" style="margin-left:0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.300a2.500 2.500 0 1 1 3.600 2.300c-.800.400-1.200 1-1.200 1.900M12 17h.010"/></svg>Help</button>
+  </div>
 </header>
 
 <div class="mapwrap" aria-label="Map">
@@ -584,6 +608,64 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     var label=pinPlace?pinPlace.full:"Pinned spot"; leavePin(false); setPoint(k,{ lat:c.lat, lng:c.lng, label:label });
   });
 
+  /* ───────── my deliveries ─────────
+     Every booking has its own tracking link. With no account, the list of a
+     customer's bookings is kept in this browser; on another phone a booking is
+     found again with its number and a mobile (Help). */
+  var CLOSED=["Delivered","Cancelled","Returned"];
+  function hist(){ var a=store("nvi_hist"); return Array.isArray(a)?a:[]; }
+  function histPut(e){
+    if(!e||!e.token) return;
+    var a=hist(), i=-1; a.forEach(function(x,k){ if(x.token===e.token) i=k; });
+    var cur=i>-1?a.splice(i,1)[0]:{ at:Date.now() };
+    Object.keys(e).forEach(function(k){ if(e[k]!==undefined&&e[k]!==null) cur[k]=e[k]; });
+    a.push(cur); a.sort(function(x,y){ return (y.at||0)-(x.at||0); });
+    a=a.filter(function(x){ return Date.now()-(x.at||0)<90*86400000; }).slice(0,40);
+    store("nvi_hist",a); paintHistBtn();
+  }
+  function paintHistBtn(){ var b=$("histBtn"); if(b) b.hidden=!hist().length; }
+  function shortPlace(t){ return String(t||"").split(",")[0].trim()||"Karachi"; }
+  function whenShort(ms){ try{ return new Date(ms).toLocaleString("en-GB",{ timeZone:"Asia/Karachi", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; } }
+  var HSAY={ "Awaiting confirmation":"Waiting for NovaX's call", "Booked":"Finding a rider", "Rider assigned":"Rider on the way", "Picked up":"On the bike",
+    "Failed delivery":"Not delivered", "Returning":"Coming back", "Returned":"Returned", "Delivered":"Delivered", "Cancelled":"Cancelled" };
+  function histRow(e){
+    var st=e.status||"Booked", closed=CLOSED.indexOf(st)>-1;
+    return '<a class="hrow" href="'+esc(selfUrl(e.token))+'" data-track="'+esc(e.token)+'"><span class="hdot'+(closed?" off":"")+'" aria-hidden="true"></span>'+
+      '<span class="hmain"><b>'+esc(shortPlace(e.from))+' &rarr; '+esc(shortPlace(e.to))+'</b><small>'+esc(e.code||"")+' &middot; '+esc(whenShort(e.at))+(e.fare?' &middot; '+esc(money(e.fare)):'')+'</small></span>'+
+      '<span class="hst'+(closed?"":" live")+(st==="Cancelled"||st==="Failed delivery"?" bad":"")+'">'+esc(HSAY[st]||st)+'</span></a>';
+  }
+  /* The stored status of open deliveries is brought up to date, a few at a time. */
+  var histBusy=false;
+  function histRefresh(done){
+    var open=hist().filter(function(e){ return CLOSED.indexOf(e.status||"Booked")<0; }).slice(0,6);
+    if(!open.length||histBusy){ if(done) done(); return; }
+    histBusy=true;
+    Promise.all(open.map(function(e){ return rpc("nvi_track",{ p_token:e.token }).then(function(r){
+      if(r&&r.data&&r.data.ok) histPut({ token:e.token, status:r.data.status, code:r.data.code, fare:r.data.fare });
+    }); })).then(function(){ histBusy=false; if(done) done(); },function(){ histBusy=false; if(done) done(); });
+  }
+  function histCard(){
+    var a=hist(); if(!a.length) return "";
+    return '<section class="card hcard" aria-labelledby="hH"><div class="hhead"><p class="eyebrow" id="hH" style="margin:0">Your deliveries</p>'+
+      (a.length>3?'<button class="linkish" type="button" data-hist style="min-height:0;padding:12px 4px;margin:-12px -4px">See all '+a.length+'</button>':'')+'</div>'+
+      a.slice(0,3).map(histRow).join("")+'</section>';
+  }
+  function openHist(){
+    var body=function(){ var a=hist(); return (a.length?'<div class="card hcard" style="padding:6px 14px">'+a.map(histRow).join("")+'</div>':'<p class="empty">No deliveries on this phone yet.</p>')+
+      '<p class="fine">These are the deliveries booked or opened on this phone. Each one has its own tracking link. Booked on another phone? Open Help and find it with the booking number.</p>'; };
+    var p=openPanel("My deliveries",'<div id="histBody">'+body()+'</div>');
+    histRefresh(function(){ var hb=panel&&panel.querySelector("#histBody"); if(hb) hb.innerHTML=body(); });
+  }
+  $("histBtn").addEventListener("click",openHist);
+  /* A delivery in the list opens in place, without loading the page again. */
+  document.addEventListener("click",function(e){
+    var a=e.target.closest&&e.target.closest("[data-track]"); if(!a||e.metaKey||e.ctrlKey) return;
+    e.preventDefault(); var tk=a.getAttribute("data-track");
+    if(panel){ closePanelDom(); S.ov=false; try{ history.replaceState(null,"",selfUrl(tk)); }catch(_){} }
+    else { try{ history.pushState(null,"",selfUrl(tk)); }catch(_){} }
+    startTrack(tk,false);
+  });
+
   /* ───────── fare ───────── */
   var QUOTE_SAY={ pickup_outside:"The pickup is outside Karachi. Nova Instant runs inside Karachi only.",
     drop_outside:"The delivery point is outside Karachi. Nova Instant runs inside Karachi only.",
@@ -628,7 +710,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
 
   /* ───────── steps ───────── */
   var TYPES=[["Documents","doc"],["Small parcel","box"],["Food","food"],["Clothing","shirt"],["Other","more"]];
-  var BANNED=["Cash, cheques, prize bonds or other money","Gold, silver and precious-stone jewellery (fashion jewellery is fine)","Weapons, ammunition and replicas","Drugs, alcohol and prescription-only medicine","Fireworks, gas cylinders, flammable liquids and other dangerous goods","Live animals and plants","Food that needs refrigeration","Counterfeit goods, and anything illegal to carry in Pakistan"];
+  /* The same list as the Nova Instant rules (instant-terms.html). */
+  var BANNED=["Cash, jewellery, gold, prize bonds or cheques","Anything illegal","Weapons","Alcohol or drugs","Fuel, gas cylinders, fireworks or anything that can burn or explode","Live animals","Liquids that are not sealed"];
   var ITEM_PH={ "Documents":"e.g. signed papers, a passport copy", "Small parcel":"e.g. a phone charger, a gift box", "Food":"e.g. a birthday cake, home-cooked lunch",
     "Clothing":"e.g. two stitched suits", "Other":"Say what it is" };
   function maxKg(){ return Number(S.status&&S.status.max_kg)||10; }
@@ -646,8 +729,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   }
   function notice(){
     var s=S.status; if(!s) return "";
-    if(!s.open&&!s.preview) return '<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>Nova Instant opens soon. You can check the fare for your trip now; booking opens at launch.</span></div>';
-    if(s.preview) return '<div class="note info" style="margin-top:12px">'+IC.info+'<span>Preview: Nova Instant is not open to the public yet. You can book because you are signed in as a NovaX admin.</span></div>';
+    if(!s.open&&!s.preview) return '<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>Booking is paused for a moment. You can still check the fare for your trip.</span></div>';
+    if(s.preview) return '<div class="note info" style="margin-top:12px">'+IC.info+'<span>Public booking is switched off on the ops board. You can still book because you are signed in as a NovaX admin.</span></div>';
     if(!s.hours_open) return '<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>Riders are on from '+hourLabel(s.open_hour)+' to '+hourLabel(s.close_hour)+'. You can check a fare now and book when they are back.</span></div>';
     return "";
   }
@@ -673,6 +756,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     }
     var est2=S.quote&&S.quote.bookable===false;
     h+=notice();
+    if(!(S.p&&S.d)) h+=histCard();
     /* One primary action at every moment, never a dead button. */
     var lab = !S.p?"Set the pickup":!S.d?"Set the delivery":S.quoting?"Working out the fare…":est2?"Measure the road again":(!S.quote&&S.quoteErr)?"Try again":"Continue";
     return h+cta(lab, S.quoting);
@@ -734,7 +818,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         '<p style="margin:0">The receiver gets a tracking link with a delivery PIN. The rider hands over only against that PIN.</p></section>'+
       '<label class="agree" id="agreeBox" for="agree"><input type="checkbox" id="agree"'+(S.agree?" checked":"")+'><span>The parcel weighs '+maxKg()+' kg or less'+(maxVal()?", is worth "+money(maxVal())+" or less":"")+', and holds nothing on the <button class="linkish" type="button" data-banned style="min-height:0;display:inline;font-size:inherit">not-allowed list</button>. I agree to the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</span></label>'+
       '<div id="capBox"></div>'+
-      cta(S.busy?'<span class="spin" aria-hidden="true"></span> Booking…':canBookNow()?"Book rider · "+esc(money(q.fare)):(s.open||s.preview)?"Riders are back at "+hourLabel(s.open_hour):"Booking opens soon", S.busy||!canBookNow());
+      cta(S.busy?'<span class="spin" aria-hidden="true"></span> Booking…':canBookNow()?"Book rider · "+esc(money(q.fare)):(s.open||s.preview)?"Riders are back at "+hourLabel(s.open_hour):"Booking is paused", S.busy||!canBookNow());
   }
   function render(focusTitle){
     if(document.body.getAttribute("data-view")!=="book") return;
@@ -794,7 +878,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     try{ S.cap.id=window.turnstile.render("#capBox",{ sitekey:S.cap.key, callback:function(t){ S.cap.token=t; }, "expired-callback":function(){ S.cap.token=""; }, "error-callback":function(){ S.cap.token=""; } }); }catch(e){}
   }
 
-  var BOOK_SAY={ not_open:"Nova Instant is not open for booking yet.", closed_now:"Riders are off right now. Booking opens again in the morning.",
+  var BOOK_SAY={ not_open:"Booking is paused for a moment. Try again shortly, or call NovaX.", closed_now:"Riders are off right now. Booking opens again in the morning.",
     pickup_address:["pDet",3,"Add the house or shop number and a landmark for the pickup."], drop_address:["dDet",3,"Add the house or flat number and a landmark for the delivery."],
     sender_name:["sName",3,"Add the sender's name."], receiver_name:["rName",3,"Add the receiver's name."],
     sender_phone:["sPhone",3,"The sender's mobile number is not valid."], receiver_phone:["rPhone",3,"The receiver's mobile number is not valid."],
@@ -819,6 +903,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         var mine=store("nvi_mine")||{}; mine[d.token]={ m:d.manage, at:Date.now() };
         Object.keys(mine).forEach(function(k){ if(Date.now()-mine[k].at>8*86400000) delete mine[k]; }); store("nvi_mine",mine);
         store("nvi_last",{ token:d.token, code:d.code, at:Date.now() });
+        histPut({ token:d.token, code:d.code, status:d.status||"Booked", from:S.p.label!=="Pinned spot"?S.p.label:S.pDet, to:S.d.label!=="Pinned spot"?S.d.label:S.dDet, fare:d.fare, at:Date.now(), mine:true });
         store("nvi_me",{ n:S.sName.trim(), p:pkPhone(S.sPhone) });
         var rc=store("nvi_rcp"); rc=(Array.isArray(rc)?rc:[]).filter(function(x){ return x.p!==pkPhone(S.rPhone); }); rc.unshift({ n:S.rName.trim(), p:pkPhone(S.rPhone) }); store("nvi_rcp",rc.slice(0,5));
         buzz([12,60,18]);
@@ -856,6 +941,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     if(t.dataset.pay){ S.payer=t.dataset.pay; press(t,"[data-pay]"); var ps=$("paySay");
       if(ps) ps.textContent=S.payer==="sender"?"Cash to the rider when the parcel is collected.":"Cash to the rider at the door. Tell the receiver the fare is "+money(S.quote?S.quote.fare:0)+".";
       saveDraft(); return; }
+    if(t.hasAttribute("data-hist")) return openHist();
     if(t.hasAttribute("data-me")){ var me=store("nvi_me"); if(me){ S.sName=me.n||""; S.sPhone=me.p||""; render(); } return; }
     if(t.dataset.rcp){ var r=(store("nvi_rcp")||[])[Number(t.dataset.rcp)]; if(r){ S.rName=r.n||""; S.rPhone=r.p||""; render(); } return; }
     if(t.hasAttribute("data-banned")){ e.preventDefault(); return openPanel("What cannot be sent",'<ul class="ban">'+BANNED.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join("")+'</ul><p class="fine">A rider may refuse a parcel that looks unsafe to carry. The full list is in the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</p>'); }
@@ -954,6 +1040,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   function paintTrack(j){
     var changed=T.cur&&T.cur.status!==j.status; T.cur=j;
     if(j.support) S.support=j.support;
+    if(!j.expired) histPut({ token:T.token, code:j.code, status:j.status, from:j.pickup_address, to:j.drop_address, fare:j.fare });
+    else histPut({ token:T.token, code:j.code, status:j.status });
     var s=SAY[j.status]||[j.status,""];
     if(j.expired){
       bare(s[0],"This booking closed a while ago, so its names and addresses are no longer shown. Call NovaX if you need the record.");
@@ -991,7 +1079,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     h+='<p class="fine">'+(closed?"This booking is closed. Its details stay on this link for "+(j.track_days||7)+" days."
         :"This page shows each step of the delivery as it happens. It does not show the rider's live position. Keep the link: it is the way back to this booking.")+'</p>'+
        (closed?'<div class="cta"><a class="btn btn-primary wide" href="'+esc(selfUrl(null))+'">Book another delivery</a></div>'
-              :'<div style="padding:16px 0 calc(22px + var(--sa-b))"><a class="btn btn-plain wide sm" href="'+esc(selfUrl(null))+'">Book another delivery</a></div>');
+              :'<div class="row2" style="padding:4px 0 calc(22px + var(--sa-b))"><a class="btn btn-plain sm" href="'+esc(selfUrl(null))+'">Book another</a><button class="btn btn-plain sm" type="button" data-hist2>My deliveries</button></div>');
     /* Do not repaint under a finger mid-confirm. */
     if(document.querySelector('#pane [data-sure="1"]')) return;
     trackShell(h);
@@ -1017,9 +1105,20 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     setTimeout(refit,340);
     clearInterval(T.timer); loadTrack(true);
     T.timer=setInterval(function(){ if(!document.hidden) loadTrack(false); },20000);
+    /* A tracking link is private to the people it was sent to. */
+    try{ var mr=document.querySelector('meta[name="robots"]'); if(mr) mr.setAttribute("content","noindex,nofollow"); }catch(e){}
+    /* Live: the page hears when any delivery changes and asks for its own
+       again. The signal carries no data. */
+    if(!T.ch&&sb){ try{
+      var liveT=null;
+      T.ch=sb.channel("nvi").on("broadcast",{ event:"changed" },function(){
+        clearTimeout(liveT); liveT=setTimeout(function(){ if(T.timer&&!document.hidden) loadTrack(false); },400+Math.random()*600);
+      }).subscribe();
+    }catch(e){} }
   }
   document.addEventListener("visibilitychange",function(){ if(!document.hidden&&T.timer) loadTrack(false); });
   $("pane").addEventListener("click",function(e){
+    if(e.target.closest("[data-hist2]")) return openHist();
     var t=e.target.closest("#tShare,#tCopy,#tCancel"); if(!t||!T.token) return;
     var url=selfUrl(T.token);
     if(t.id==="tCopy"){ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function(){ toast("Tracking link copied."); },function(){ toast(url); }); else toast(url); return; }
@@ -1073,7 +1172,9 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     setTiles();
     if(document.body.getAttribute("data-view")==="book") render();
   });
+  paintHistBtn();
   var token=new URLSearchParams(location.search).get("t");
+  if(!token) histRefresh(function(){ if(document.body.getAttribute("data-view")==="book"&&S.step===1&&!(S.p&&S.d)&&!panel&&!S.pinFor) render(); });
   if(token) startTrack(token,false);
   else if(restoreDraft()){ render(); setTimeout(function(){ if(map){ map.invalidateSize(); paintMap(S.p,S.d,null); } },200); quote(); toast("We kept the details you had typed."); }
   else render();
