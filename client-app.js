@@ -15017,7 +15017,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(d) d.addEventListener("click",nvHideStaleBanner);
     }
     function nvHideStaleBanner(){ var b=document.getElementById("nvStaleBanner"); if(b&&b.parentNode) b.parentNode.removeChild(b); }
-    window.__novaxMarkDataFresh=function(){ window.__novaxRealDataArrived=true; nvHideStaleBanner(); };
+    window.__novaxMarkDataFresh=function(){ window.__novaxRealDataArrived=true; nvHideStaleBanner(); try{ document.body.classList.remove("nv-booting"); }catch(e){} };
     /* __novaxRealDataArrived was a one-way latch: the first successful load set
        it true and nvShowStaleBanner() then returned immediately forever. So a
        merchant whose connection died AFTER that first load kept looking at
@@ -15969,6 +15969,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           /* Only claim the view is current when every read actually came back.
              Marking fresh after a partial failure is what let an empty screen
              look up to date. */
+          try{ document.body.classList.remove("nv-booting"); }catch(e){}
           if(window.__nvLoadFailed){
             window.__novaxClientDataReady=false;
             try{ render(); }catch(e){}
@@ -15982,6 +15983,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             try{ window.__novaxMarkDataFresh(); }catch(e){}
           }
         }).catch(function(e){
+          try{ document.body.classList.remove("nv-booting"); }catch(err){}
           if(e && e.__nvAuth){ try{ nvSessionExpired(e.at); }catch(err){} window.__novaxClientDataReady=true; return; }
           console.warn("NovaX load failed",e);
           if(thisLoad!==__nvLoadSeq) return;

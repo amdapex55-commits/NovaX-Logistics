@@ -2293,6 +2293,21 @@ try{
 </head>
 <!-- AUTH_GATE_VERSION: 2026-07-16-auth-flow-v3 -->
 <body>
+<script>
+/* 4 Oct 2026: loading placeholders. While the first data load is in flight
+   the dashboard's empty boxes show a soft shimmer instead of blank space.
+   Only EMPTY containers shimmer (:empty), so real content -- including a
+   cached workspace drawn instantly -- is never hidden or delayed. The class
+   comes off when data arrives (__novaxMarkDataFresh), on a failed load, or
+   after 15 s whatever happens. Not in the demo, whose data is local. */
+(function(){
+  try{
+    if(/[?&]demo(=|&|$)/.test(location.search)) return;
+    document.body.classList.add("nv-booting");
+    setTimeout(function(){ document.body.classList.remove("nv-booting"); },15000);
+  }catch(e){}
+})();
+</script>
   <div id="nvAuthGate" style="position:fixed;inset:0;z-index:999999;background:#f4f8f6;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#10201b;">
     <div style="width:34px;height:34px;border-radius:50%;border:3px solid #cfe4da;border-top-color:#0c7c59;animation:nvGateSpin .8s linear infinite;"></div>
     <div style="font-size:15px;font-weight:700;">Checking account&hellip;</div>
@@ -2651,7 +2666,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=17d48378" defer></script>
+  <script src="client-app.min.js?v=7ba644d2" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -6184,6 +6199,15 @@ body.nv-has-book-bar #quickBookingBtn{display:none}
   .nv-pf-link{padding:12px 4px;margin:-12px -4px}
   .nv-cod-recent>span,.nv-cod-r .nvst,.nvst>i,.nvw-day,.nvw-tag,.nvr-kl,.nvr-ct-v>em,.nvr-tab>span,.nv-bp-t>span,#client-swap label>small,#client-money li>span{font-size:12px}
 }
+/* (7) Loading placeholders: see the nv-booting note after <body>. */
+@keyframes nvSkel{0%{background-position:100% 0}100%{background-position:-100% 0}}
+body.nv-booting #nvCodHero:empty,body.nv-booting #clientMetrics:empty,body.nv-booting #clientParcelCards:empty,body.nv-booting #walletLedgerList:empty{
+  display:block;min-height:150px;border-radius:16px;margin-bottom:14px;
+  background:linear-gradient(90deg,var(--panel,#11151a) 0%,var(--panel-soft,#161b21) 40%,var(--panel,#11151a) 80%);
+  background-size:200% 100%;animation:nvSkel 1.3s linear infinite;box-shadow:inset 0 0 0 1px var(--line,#1d232a)}
+body.nv-booting #clientMetrics:empty{min-height:96px}
+body.nv-booting #clientParcelCards:empty,body.nv-booting #walletLedgerList:empty{min-height:220px}
+@media (prefers-reduced-motion:reduce){body.nv-booting #nvCodHero:empty,body.nv-booting #clientMetrics:empty,body.nv-booting #clientParcelCards:empty,body.nv-booting #walletLedgerList:empty{animation:none}}
 @media (min-width:761px) and (max-width:1100px){.topbar-inner .brand-text span{display:none}.topbar-inner .nav-tabs{flex:none;overflow:visible}}
 </style>
 
