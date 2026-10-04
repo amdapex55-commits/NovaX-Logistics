@@ -3134,7 +3134,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const nvMetricsEl0=document.getElementById("clientMetrics");
       const wasExpanded=nvMetricsEl0 && nvMetricsEl0.classList.contains("nv-show-all");
       document.getElementById("clientMetrics").innerHTML=[
-        metricCard("My Parcels",cm.total,ops,"in selected range \u00b7 bar = average journey progress","blue","📦","clear"),
+        metricCard("Parcels",cm.total,ops,"in selected range \u00b7 bar = average journey progress","blue","📦","clear"),
         metricCard("Delivered",
           rateKnown?`${cm.delivered}/${rated}`:"\u2014",
           rate,
@@ -3145,8 +3145,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            and read them as progress toward something. There is no denominator
            that makes a delivery-charge total a percentage, so the bar is gone
            rather than invented. */
-        metricCard("Delivery Charges",money(cm.deliveryCharges),null,"courier charges on delivered parcels","amber","💳","filter:Delivered"),
-        metricCard("Invoice Payable Pending",money(cm.payable),null,"net to you \u2014 COD minus delivery charges","good","🧾","tab:payments"),
+        metricCard("Delivery charges",money(cm.deliveryCharges),null,"courier charges on delivered parcels","amber","💳","filter:Delivered"),
+        metricCard("Awaiting invoice",money(cm.payable),null,"collected COD owed to you, minus delivery charges","good","🧾","tab:payments"),
         /* Wallet Balance tile removed 3 Oct 2026: the wallet card at the top
            of the dashboard shows the same figure. */
         '<button type="button" id="nvMetricsToggle" class="ghost-btn nv-metrics-toggle" style="display:none" onclick="var g=document.getElementById(&quot;clientMetrics&quot;); g.classList.toggle(&quot;nv-show-all&quot;); this.textContent=g.classList.contains(&quot;nv-show-all&quot;)?&quot;Show fewer metrics&quot;:&quot;Show all metrics&quot;;">Show all metrics</button>'
@@ -3972,7 +3972,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            changing the destination city changes the zone and therefore the
            price, so it goes to ops as a request rather than a direct edit. */
         btns+=`<button class="ghost-btn" type="button" onclick="requestAddressFix('${p.awb}')">Wrong address / city</button>`;
-        return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>AI Exception Resolution</h3><p>Deterministic read of this parcel's issue and the fastest next step.</p></div><span class="chip warn">review needed</span></div><div class="money-grid">${moneyBox("Problem",cls.problem,"")}${moneyBox("Likely cause",cls.cause,"")}${moneyBox("Recommended action",cls.action,"")}</div>${hideDeliveryActions?"":'<label for="redeliveryFeedback" class="footer-note">Reattempt instructions for operations</label><input id="redeliveryFeedback" maxlength="400" placeholder="Optional customer feedback or delivery instructions" style="width:100%;box-sizing:border-box;margin-top:6px" />'}<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
+        return `<div class="review-panel" id="clientExceptionCard"><div class="section-head" style="margin-bottom:8px"><div><h3>AI exception resolution</h3><p>Deterministic read of this parcel's issue and the fastest next step.</p></div><span class="chip warn">review needed</span></div><div class="money-grid">${moneyBox("Problem",cls.problem,"")}${moneyBox("Likely cause",cls.cause,"")}${moneyBox("Recommended action",cls.action,"")}</div>${hideDeliveryActions?"":'<label for="redeliveryFeedback" class="footer-note">Reattempt instructions for operations</label><input id="redeliveryFeedback" maxlength="400" placeholder="Optional customer feedback or delivery instructions" style="width:100%;box-sizing:border-box;margin-top:6px" />'}<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap">${btns}</div></div>`;
       }catch(e){ return ""; }
     }
     function copyExceptionMessage(awb){
@@ -4182,12 +4182,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +'<button type="button" class="ghost-btn" onclick="nvAwbFindOpen()">Load label</button></div>'
           +'<div class="footer-note" id="awbFindMsg" style="margin-top:6px"></div>';
         var picker=__all.length
-          ? pickGroup("Waiting for pickup \u2014 these still need a label:",waiting)
-            +pickGroup(waiting.length?"Recently booked:":"Pick a parcel to load its label:",recent)
+          /* The parcels still waiting for a label are listed in "Labels to
+             print" right above this preview (4 Oct 2026), so the preview no
+             longer repeats them. */
+          ? pickGroup(waiting.length?"Or preview a recent parcel:":"Pick a parcel to load its label:",recent)
             +findBox
           : '<div class="footer-note">Book a parcel and its label appears here, ready to print.</div>';
         host.innerHTML='<div class="nv-c-empty" style="padding:22px 16px;text-align:center">'
-          +'<div style="font-weight:800;margin-bottom:4px">No air waybill to show yet</div>'
+          +'<div style="font-weight:800;margin-bottom:4px">'+(waiting.length?"Tick a parcel above, or pick one here":"No label to show yet")+'</div>'
           +picker
           +'</div>';
       }
@@ -4202,6 +4204,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(!b) return;
         b.disabled=!real;
         b.setAttribute("aria-disabled", real?"false":"true");
+        /* Four dead buttons over an empty preview read as broken; they
+           appear once a label is loaded. */
+        b.hidden=!real;
         if(id==="awbJourneyBtn") b.title=real?("Open the journey for "+p.awb):"Load a label first";
       });
     }
@@ -4410,6 +4415,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // from clientDisplayState(), the same source used by the sidebar/wallet/
       // reports, so it can never show a stale/demo/first-client name.
       const _acc=document.getElementById("topAccountName"); if(_acc) _acc.textContent=clientDisplayState().label;
+      const _ts=document.getElementById("nvTopStore"); if(_ts) _ts.textContent=clientDisplayState().label;
       /* The report figures that used to be computed here now live in
          renderReportSummaries(), because they have to be recomputed whenever a
          report filter changes and this function is not called then. */
@@ -13685,11 +13691,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const list=document.getElementById("newBookedList"); if(!list) return;
       const selected=new Set(Array.from(list.querySelectorAll(".newbooked-check:checked")).map(b=>b.value));
       const items=newBookedParcels();
+      /* A label that has never been printed arrives ticked, once; after that
+         the merchant's own ticks are kept across redraws (4 Oct 2026). */
+      const nbSeen=window.__nvNbSeen||(window.__nvNbSeen=new Set());
+      /* The queue says how long it is (4 Oct 2026). */
+      try{ var qt=document.getElementById("nvLabelsQueueTitle"); if(qt) qt.textContent=items.length?(items.length+" label"+(items.length===1?"":"s")+" to print"):"Labels to print"; }catch(e){}
       if(!items.length){ list.innerHTML=`<div class="ops-card"><strong>No new booked parcels yet</strong><p class="footer-note">Printable AWB labels appear here the moment a parcel is booked.</p><div class="inline-actions" style="margin-top:8px;flex-wrap:wrap;gap:6px"><button class="action-btn" data-nv-cock="tab" data-tab="newBooking">Book a parcel</button><button class="ghost-btn" data-nv-cock="tab" data-tab="bulkBooking">Upload bulk CSV</button><button class="ghost-btn" data-nv-cock="tab" data-tab="integrations">Sync your store</button></div></div>`; return; }
       /* ?awb= arrived from the Shopify app's Label button. Highlight it once,
          then forget it, so a later re-render does not keep jumping the page. */
       var focusAwb=state.nvFocusAwb; if(focusAwb) state.nvFocusAwb=null;
-      list.innerHTML=items.map(p=>`<label class="ops-card"${p.awb===focusAwb?' data-nv-focus="1" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer;outline:2px solid var(--nvu-good-ln);outline-offset:2px"':' style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"'}><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}"${selected.has(p.awb)?" checked":""}><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${nvSourceChip(p.source)}${nvPrintedMark(p)}</span><button class="ghost-btn nv-nb-act" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn nv-nb-act" title="Cancel this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:var(--nvu-bad-fg);border-color:var(--nvu-bad-ln)">Cancel booking</button></label>`).join("");
+      list.innerHTML=items.map(p=>`<label class="ops-card"${p.awb===focusAwb?' data-nv-focus="1" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer;outline:2px solid var(--nvu-good-ln);outline-offset:2px"':' style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"'}><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}"${(selected.has(p.awb)||(!nbSeen.has(p.awb)&&!(p.awbPrinted||p.labelPrinted)))?" checked":""}><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${nvSourceChip(p.source)}${nvPrintedMark(p)}</span><button class="ghost-btn nv-nb-act" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn nv-nb-act" title="Cancel this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:var(--nvu-bad-fg);border-color:var(--nvu-bad-ln)">Cancel booking</button></label>`).join("");
+      items.forEach(function(p){ nbSeen.add(p.awb); });
       if(focusAwb){ try{ var n=list.querySelector('[data-nv-focus="1"]'); if(n) n.scrollIntoView({block:"center",behavior:"smooth"}); }catch(e){} }
       nvSyncSelectAllNewBookedLabel();
     }
@@ -13761,7 +13773,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           pb.title=anyOn?"":"Select at least one AWB";
           if(!pb.dataset.nvLabel) pb.dataset.nvLabel=pb.textContent;
           var nOn=Array.prototype.filter.call(boxes,function(b){ return b.checked; }).length;
-          pb.textContent=anyOn?(pb.dataset.nvLabel+" ("+nOn+")"):pb.dataset.nvLabel;
+          pb.textContent=anyOn?("Print "+nOn+" label"+(nOn===1?"":"s")):"Print labels";
         }
       }catch(e){}
     }
@@ -15062,7 +15074,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(d) d.addEventListener("click",nvHideStaleBanner);
     }
     function nvHideStaleBanner(){ var b=document.getElementById("nvStaleBanner"); if(b&&b.parentNode) b.parentNode.removeChild(b); }
-    window.__novaxMarkDataFresh=function(){ window.__novaxRealDataArrived=true; nvHideStaleBanner(); try{ document.body.classList.remove("nv-booting"); }catch(e){} };
+    window.__novaxMarkDataFresh=function(){ window.__novaxRealDataArrived=true; window.__nvLastFresh=Date.now(); nvHideStaleBanner(); try{ document.body.classList.remove("nv-booting"); }catch(e){} try{ nvPaintUpdated(); }catch(e){} };
     /* __novaxRealDataArrived was a one-way latch: the first successful load set
        it true and nvShowStaleBanner() then returned immediately forever. So a
        merchant whose connection died AFTER that first load kept looking at
@@ -15074,7 +15086,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ console.warn("NovaX: data marked stale --", reason||"refresh failed"); }catch(e){}
       try{ nvShowStaleBanner(); }catch(e){}
     };
-    nvInterval(()=>{ const el=document.getElementById("clockB"); if(el) el.textContent=`Live ${time()} PKT`; },1000);
+    /* 4 Oct 2026: was "Live 06:39:33 PM PKT", ticking every second -- a clock
+       that told the merchant nothing about their data. It now says how fresh
+       the numbers are: stamped whenever a load or a live update lands. */
+    window.__nvLastFresh = window.__nvLastFresh || Date.now();
+    function nvUpdatedText(){
+      var s=Math.max(0,Math.round((Date.now()-window.__nvLastFresh)/1000));
+      if(s<60) return "Updated just now";
+      var m=Math.round(s/60);
+      if(m<60) return "Updated "+m+" min ago";
+      try{ return "Updated "+new Intl.DateTimeFormat("en-GB",{hour:"numeric",minute:"2-digit",hour12:true,timeZone:"Asia/Karachi"}).format(new Date(window.__nvLastFresh)); }catch(e){ return "Updated earlier"; }
+    }
+    function nvPaintUpdated(){ const el=document.getElementById("clockB"); if(el) el.textContent=nvUpdatedText(); }
+    nvPaintUpdated();
+    nvInterval(nvPaintUpdated,15000);
 
     // NovaX fix (withdrawal UX v3): saveBankDetails/editBankDetails/
     // cancelBankDetailsEdit/requestWalletWithdrawal were missing from this
@@ -16864,7 +16889,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var now=new Date();
         var hr=Number(new Intl.DateTimeFormat("en-GB",{ hour:"numeric", hour12:false, timeZone:"Asia/Karachi" }).format(now));
         var part=hr<5?"Good evening":hr<12?"Good morning":hr<17?"Good afternoon":"Good evening";
-        h.textContent=name ? part+", "+name : "Client Portal";
+        h.textContent=name ? part+", "+name : "Client portal";
         if(sub){
           var day=new Intl.DateTimeFormat("en-GB",{ weekday:"long", day:"numeric", month:"long", timeZone:"Asia/Karachi" }).format(now);
           var n=ctx && Number(ctx.issueCount||0);
@@ -16944,16 +16969,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
         var STEPS=[
           { tab:"dashboard", title:"Your Dashboard", text:"Everything starts here: live parcel counts, COD totals, and delivery health at a glance." },
-          { tab:"newBooking", title:"New Booking", text:"Tap Create AWB here to book a single parcel. Add the consignee, city, and COD amount, and you are done." },
-          { tab:"awbLabel", title:"AWB Label", text:"Every booking instantly generates a printable AWB with QR and barcode. Hand it to your rider or print it." },
-          { tab:"bulkBooking", title:"Bulk Booking", text:"Shipping many orders at once? Download the CSV format, fill it in, and upload it here to create AWBs in bulk." },
+          { tab:"newBooking", title:"New booking", text:"Tap Create AWB here to book a single parcel. Add the consignee, city, and COD amount, and you are done." },
+          { tab:"awbLabel", title:"AWB label", text:"Every booking instantly generates a printable AWB with QR and barcode. Hand it to your rider or print it." },
+          { tab:"bulkBooking", title:"Bulk booking", text:"Shipping many orders at once? Download the CSV format, fill it in, and upload it here to create AWBs in bulk." },
           { tab:"integrations", title:"Store Integrations", text:"Connect Shopify, WooCommerce, or your own website here so new orders import automatically." },
           { tab:"reports", title:"Reports", text:"How your deliveries and COD are doing, with every parcel filterable and exportable as CSV or PDF." },
           /* Payments and Wallet were separate steps; both now alias to Money,
              so the tour showed the same tab twice and neither step highlighted
              anything. One step for the one tab that exists. */
           { tab:"money", title:"NovaX Wallet", text:"Delivered parcels become payable invoices here, alongside your balance \u2014 and you can request a payout in a few taps." },
-          { tab:"subAccounts", title:"Sub Accounts", text:"Invite your team, finance, warehouse, or support, with their own scoped logins." },
+          { tab:"subAccounts", title:"Sub accounts", text:"Invite your team, finance, warehouse, or support, with their own scoped logins." },
           { tab:"support", title:"Talk To Your AI", text:"Tap the NovaX AI button in the corner anytime. I read your live data and answer instantly." }
         ];
         var idx=-1;
@@ -17548,6 +17573,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            it cannot be hit by accident. */
         (function(){
           if(menu.querySelector("#nvMoreLogout")) return;
+          /* 4 Oct 2026: the phone header card that held the theme switch is
+             gone, so the switch lives here, above Log out. Phones only. */
+          if(!menu.querySelector("#nvMoreTheme")){
+            var th=document.createElement("button");
+            th.type="button"; th.className="client-tab nv-more-theme"; th.id="nvMoreTheme";
+            var thLabel=function(){ th.textContent=document.documentElement.getAttribute("data-theme")==="dark"?"Light mode":"Dark mode"; };
+            thLabel();
+            th.addEventListener("click",function(ev){ ev.stopPropagation(); try{ toggleNovaxTheme(); }catch(e){} thLabel(); });
+            try{ new MutationObserver(thLabel).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]}); }catch(e){}
+            menu.appendChild(th);
+          }
           var out=document.createElement("button");
           out.type="button"; out.className="client-tab nv-more-logout"; out.id="nvMoreLogout";
           out.textContent="Log out";
@@ -20007,10 +20043,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(pct<100) return { h:(pct<10?"Enter the shipment details.":"Almost there."), a:"Fill the remaining booking fields, then submit.", key:"nb_"+pct, go:"newBooking" };
       return { h:"Looks complete.", a:"Review the details, then submit the booking.", key:"nb_100", go:"newBooking" };
     }
-    if(tab==="awbLabel"){
-      if(unprintedCount>0) return { h:"Print labels before pickup.", a:unprintedCount+" AWB label(s) are waiting.", key:"awb_"+unprintedCount, go:"awbLabel" };
-      return { h:"Labels are clear.", a:"All AWBs are printed. Nothing waiting on this tab.", key:"awb_clear", go:"awbLabel" };
-    }
+    /* The AWB tab's own heading now counts the labels to print (4 Oct
+       2026), so the tips bar no longer repeats it. */
+    if(tab==="awbLabel") return null;
     if(tab==="bulkBooking") return { h:"Upload many orders in one sheet.", a:"Download CSV format, fill it, then upload.", key:"bulk_default", go:"bulkBooking" };
     if(tab==="integrations") return { h:"Connect your store when ready.", a:"WooCommerce and custom API can send orders automatically.", key:"int_default", go:"integrations" };
     if(tab==="reports") return { h:"Find any parcel fast.", a:"Search by AWB, city, consignee or status.", key:"rep_default", go:"reports" };
@@ -21050,16 +21085,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     var TABS=[
       ["dashboard","Dashboard","Overview, alerts and today's cockpit"],
-      ["newBooking","New Booking","Book a single parcel"],
-      ["awbLabel","AWB Label","Print labels, request a pickup"],
-      ["bulkBooking","Bulk Booking","Import a CSV of orders"],
+      ["newBooking","New booking","Book a single parcel"],
+      ["awbLabel","AWB label","Print labels, request a pickup"],
+      ["bulkBooking","Bulk booking","Import a CSV of orders"],
       ["swap","Nova Swap","Exchange an item: new one out, old one back"],
       ["reports","Reports","Performance, COD and every parcel"],
       ["profile","Profile","Business name, logo, phone and address"],
       ["money","NovaX Wallet","Balance, payments, invoices, withdrawals and ledger"],
       ["integrations","Integrations","Shopify, WooCommerce, API"],
-      ["tickets","Support Tickets","Raise and track issues"],
-      ["subAccounts","Sub Accounts","Team access"]
+      ["tickets","Support tickets","Raise and track issues"],
+      ["subAccounts","Sub accounts","Team access"]
     ];
     window.NovaXCmdK.init({
       accent:"var(--nvu-accent)",

@@ -159,9 +159,11 @@ function page(body = '') {
   assert.match(html, /<input id="webKey" type="password"/);
   assert.match(html, /<label for="bulkCsvInput">/);
   assert.match(html, /<b>payment_mode<\/b>: COD or Prepaid/);
-  assert.match(html, /<div class="panel mt-14" hidden aria-hidden="true">\s*<div class="section-head"><div><h3>Withdraw Funds/);
+  assert.match(html, /<div class="panel mt-14" hidden aria-hidden="true">\s*<div class="section-head"><div><h3>Withdraw funds/);
   assert.match(html, /#nvdrawer\[hidden\]\{display:none!important;\}/);
-  assert.match(app, /Live \$\{time\(\)\} PKT/);
+  /* 4 Oct 2026: the ticking PKT clock became a data-freshness label. */
+  assert.match(app, /function nvUpdatedText\(\)/);
+  assert.match(app, /"Updated just now"/);
   assert.match(readFileSync(new URL('../sw.js', import.meta.url), 'utf8'), /fetch\(req, \{ cache: "no-cache" \}\)/);
   ok('badge dates old prints and names their status; the device copy keeps no customer names and expires in a week; guards and labels are in the pages');
 }

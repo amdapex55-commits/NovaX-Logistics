@@ -2666,7 +2666,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=b48159d6" defer></script>
+  <script src="client-app.min.js?v=1322902b" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2744,6 +2744,7 @@ try{
           <div class="brand-text">
             <strong>NovaX Logistics</strong>
             <span>E-commerce logistics, COD, and seller payouts</span>
+            <small id="nvTopStore" class="nv-top-store"></small>
           </div>
         </div>
         <nav class="nav-tabs" aria-label="Primary">
@@ -2754,8 +2755,19 @@ try{
         <div class="auth-actions">
           <!-- Search from anywhere (29 Sep 2026): AWB, phone, customer name or order number. -->
           <button type="button" class="nv-search-btn" id="nvSearchBtn" aria-label="Search parcels" onclick="if(window.NovaXCmdK)NovaXCmdK.open()"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="9" cy="9" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m14 14 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="nv-search-txt">Search AWB, phone, name</span><kbd>/</kbd></button>
-          <span class="account-pill"><span class="account-dot"></span><span id="topAccountName">Client</span></span>
-          <a class="ghost-btn" href="index.html">Sign Out</a>
+          <!-- 4 Oct 2026: the store name opens an account menu (Profile, team,
+               store connections, theme, Log out). -->
+          <div class="nv-acct">
+            <button type="button" class="account-pill" id="nvAcctBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="nvAcctMenu"><span class="account-dot"></span><span id="topAccountName">Client</span><svg class="nv-acct-chev" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path d="m5 8 5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <div class="nv-acct-menu" id="nvAcctMenu" role="menu" hidden>
+              <button type="button" role="menuitem" data-acct="profile">Profile</button>
+              <button type="button" role="menuitem" data-acct="subAccounts">Team and sub accounts</button>
+              <button type="button" role="menuitem" data-acct="integrations">Store connections and API</button>
+              <button type="button" role="menuitem" data-acct="theme" id="nvAcctTheme">Dark mode</button>
+              <button type="button" role="menuitem" data-acct="logout" class="nv-acct-out">Log out</button>
+            </div>
+          </div>
+          <a class="ghost-btn" id="nvTopLogout" href="index.html">Sign Out</a>
         </div>
       </div>
     </header>
@@ -2763,7 +2775,7 @@ try{
       <section class="view active" id="client">
         <div class="portal-title">
           <div>
-            <h2 id="nvPortalGreeting">Client Portal</h2>
+            <h2 id="nvPortalGreeting">Client portal</h2>
             <p id="nvPortalSub">Your parcels, payouts and invoices in one place.</p>
           </div>
           <script>
@@ -2819,17 +2831,17 @@ try{
                    into the "More" group by nvGroupRareTabs(), which adds the
                    Account and Help labels; Log out follows on its own row. -->
               <button class="client-tab active nv-on-nav" data-client-tab="dashboard">Dashboard</button>
-              <button class="client-tab nv-on-nav" data-client-tab="newBooking">New Booking</button>
+              <button class="client-tab nv-on-nav" data-client-tab="newBooking">New booking</button>
               <button class="client-tab nv-on-nav" data-client-tab="money">NovaX Wallet</button>
-              <button class="client-tab nv-on-nav" data-client-tab="tickets">Support Tickets</button>
+              <button class="client-tab nv-on-nav" data-client-tab="tickets">Support tickets</button>
               <p class="nv-menu-h">Shipping</p>
-              <button class="client-tab" data-client-tab="awbLabel">AWB Label</button>
-              <button class="client-tab" data-client-tab="loadSheet">Load Sheet</button>
-              <button class="client-tab" data-client-tab="bulkBooking">Bulk Booking</button>
+              <button class="client-tab" data-client-tab="awbLabel">AWB label</button>
+              <button class="client-tab" data-client-tab="loadSheet">Load sheet</button>
+              <button class="client-tab" data-client-tab="bulkBooking">Bulk booking</button>
               <button class="client-tab" data-client-tab="swap">Nova Swap</button>
               <button class="client-tab" data-client-tab="reports">Reports</button>
               <button class="client-tab" data-client-tab="profile">Profile</button>
-              <button class="client-tab" data-client-tab="subAccounts">Sub Accounts</button>
+              <button class="client-tab" data-client-tab="subAccounts">Sub accounts</button>
               <button class="client-tab" data-client-tab="integrations">API</button>
               <!-- The "support" tab is where the Autopilot console lives, and it
                    had no entry in this menu at all: the only ways in were the
@@ -2885,7 +2897,7 @@ try{
               <div id="nvInsightCards" style="display:none"></div>
               <div class="nv-onboarding" id="nvOnboardingChecklist" style="display:none"></div>
               <div class="panel" id="clientAccountHistoryPanel">
-                <div class="section-head" id="accountHistoryHead" role="button" tabindex="0" aria-expanded="false" aria-controls="accountHistoryBody" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="toggleAccountHistoryFilters()" style="cursor:pointer;user-select:none"><div><h3>Account History <span id="accountHistoryChevron" style="font-size:13px;color:var(--green-ink)">▸</span></h3><p>Tap to change the date range.</p></div></div>
+                <div class="section-head" id="accountHistoryHead" role="button" tabindex="0" aria-expanded="false" aria-controls="accountHistoryBody" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="toggleAccountHistoryFilters()" style="cursor:pointer;user-select:none"><div><h3>Date range <span id="accountHistoryChevron" style="font-size:13px;color:var(--green-ink)">▸</span></h3><p>Tap to change the dates for the figures below.</p></div></div>
                 <div class="date-range" id="accountHistoryBody" style="display:none">
                   <div class="field"><label for="clientDateFrom">From</label><input type="date" id="clientDateFrom"></div>
                   <div class="field"><label for="clientDateTo">To</label><input type="date" id="clientDateTo"></div>
@@ -2924,7 +2936,7 @@ try{
                 <aside class="grid" id="clientSelectedPanel" style="display:none">
                   <div class="panel">
                     <div class="section-head">
-                      <div><h3>Selected Parcel Status</h3><p id="selectedParcelText">Pick a parcel to see its journey.</p></div>
+                      <div><h3>Selected parcel status</h3><p id="selectedParcelText">Pick a parcel to see its journey.</p></div>
                       
                     </div>
                     <div class="journey" id="clientJourney"></div>
@@ -2936,7 +2948,7 @@ try{
             <!-- NEW BOOKING -->
             <section class="client-module" id="client-newBooking">
               <div class="panel">
-                <div class="section-head"><div><h3>New Booking</h3><p>Create one AWB with COD, consignee, address, service type, and pickup instructions. Submitting writes to the same parcel ledger and opens the printable AWB.</p></div><button class="action-btn" id="quickBookingBtn" type="submit" form="nvBookingForm">Create booking</button></div>
+                <div class="section-head"><div><h3>New booking</h3><p>Create one AWB with COD, consignee, address, service type, and pickup instructions. Submitting writes to the same parcel ledger and opens the printable AWB.</p></div><button class="action-btn" id="quickBookingBtn" type="submit" form="nvBookingForm">Create booking</button></div>
                 <form id="nvBookingForm">
                 <div id="nvPasteBox" style="background:var(--panel-soft);border:1px solid #d8ece3;border-radius:var(--radius);padding:12px 14px;margin-bottom:14px">
                   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
@@ -2999,13 +3011,15 @@ try{
             </section>
             <!-- AWB LABEL -->
             <section class="client-module" id="client-awbLabel">
+              <!-- 4 Oct 2026: the print queue comes first; the single-label
+                   preview follows it. -->
               <div class="panel">
-                <div class="section-head"><div><h3>Generated Air Way Bill</h3><p>QR and barcode both carry the assigned tracking ID.</p></div><div class="inline-actions"><button class="action-btn" id="printAwbBtn">Print now</button><button class="ghost-btn" id="savePdfAwbBtn">Download PDF</button><button class="ghost-btn" id="waAwbBtn">Send details on WhatsApp</button><button class="ghost-btn" id="awbJourneyBtn" onclick="nvAwbOpenJourney()">View journey</button></div></div>
-                <div id="awbLabelPreview"></div>
+                <div class="section-head"><div><h3 id="nvLabelsQueueTitle">Labels to print</h3><p>Booked parcels waiting for a rider. Labels not printed yet are ticked; untick any you do not want, then print them together.</p></div><div class="inline-actions"><button class="ghost-btn" id="newBookedSelectAllBtn">Select all</button><button class="action-btn" id="newBookedPrintBtn">Print labels</button><button class="ghost-btn" id="newBookedPdfBtn">Download PDF</button></div></div>
+                <div id="newBookedList"></div>
               </div>
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>New Booked AWBs &mdash; Bulk Print</h3><p>Freshly booked parcels awaiting rider pickup. Select and print labels together.</p></div><div class="inline-actions"><button class="ghost-btn" id="newBookedSelectAllBtn">Select all</button><button class="action-btn" id="newBookedPrintBtn">Print selected AWBs</button><button class="ghost-btn" id="newBookedPdfBtn">Download PDF</button></div></div>
-                <div id="newBookedList"></div>
+                <div class="section-head"><div><h3>Label preview</h3><p>Pick a parcel to see, print or share its label. QR and barcode both carry its tracking ID.</p></div><div class="inline-actions"><button class="action-btn" id="printAwbBtn">Print now</button><button class="ghost-btn" id="savePdfAwbBtn">Download PDF</button><button class="ghost-btn" id="waAwbBtn">Send details on WhatsApp</button><button class="ghost-btn" id="awbJourneyBtn" onclick="nvAwbOpenJourney()">View journey</button></div></div>
+                <div id="awbLabelPreview"></div>
               </div>
               <div class="panel mt-14">
                 <div class="section-head"><div><h3>Request pickup</h3><p>Select unpicked New booked AWBs and ask a rider to collect them.</p></div></div>
@@ -3031,14 +3045,14 @@ try{
                   <div class="field"><label for="pickupNote">Note / Instructions</label><input id="pickupNote" placeholder="Optional instructions for the rider"></div>
                 </div>
                 <div class="inline-actions mt-10"><button class="action-btn" id="requestPickupBtn" aria-describedby="pickupBtnHint">Request pickup</button><span class="footer-note" id="pickupBtnHint" role="status"></span></div>
-                <div class="mt-16"><h4 style="margin:0 0 8px">Your Pickup Requests</h4><div id="pickupRequestList"></div></div>
+                <div class="mt-16"><h4 style="margin:0 0 8px">Your pickup requests</h4><div id="pickupRequestList"></div></div>
               </div>
             </section>
             <!-- LOAD SHEET -->
             <section class="client-module" id="client-loadSheet">
               <div class="panel">
                 <div class="section-head">
-                  <div><h3>Load Sheet</h3><p>Tick the parcels you are handing to the rider, then print one sheet you both sign.</p></div>
+                  <div><h3>Load sheet</h3><p>Tick the parcels you are handing to the rider, then print one sheet you both sign.</p></div>
                   <div class="inline-actions">
                     <button class="ghost-btn" id="loadSheetSelectAllBtn">Select all</button>
                     <button class="action-btn" id="loadSheetPrintBtn">Print load sheet</button>
@@ -3058,7 +3072,7 @@ try{
             <section class="client-module" id="client-bulkBooking">
               <div class="grid two">
                 <div class="panel">
-                  <div class="section-head"><div><h3>Bulk Booking</h3><p>Download the accepted CSV format, fill it, then upload. No demo parcels are generated.</p></div><button class="action-btn" id="downloadBulkTemplateBtn">Download CSV format</button></div>
+                  <div class="section-head"><div><h3>Bulk booking</h3><p>Download the accepted CSV format, fill it, then upload. No demo parcels are generated.</p></div><button class="action-btn" id="downloadBulkTemplateBtn">Download CSV format</button></div>
                   <div class="bulk-drop"><div><label for="bulkCsvInput"><strong>Upload completed CSV here</strong></label><p class="footer-note" id="bulkCsvHelp">Accepted values — <b>city</b>: Karachi, Lahore, Islamabad, Rawalpindi · <b>payment_mode</b>: COD or Prepaid · <b>fragile</b>: yes or no · <b>weight</b>: 0.1–70 kg, like 1.5 kg or 500 g. Required columns: consignee, phone, city, address, cod, weight, order_id, product, payment_mode. Optional: reference, reference_no, fragile. Checking a file books nothing: you confirm the bookings after.</p><input id="bulkCsvInput" type="file" accept=".csv,text/csv" class="mt-12" aria-describedby="bulkCsvHelp"><button class="ghost-btn mt-12" id="bulkUploadBtn">Check CSV</button></div></div>
                 </div>
                 <div class="panel">
@@ -3067,14 +3081,14 @@ try{
                 </div>
               </div>
               <div class="panel" id="bulkPreviewPanel" style="display:none;margin-top:14px">
-                <div class="section-head"><div><h3>Bulk Booking Preview</h3><p>All AWBs created. Print them individually or all at once.</p></div><button class="action-btn" id="bulkPrintAllBtn">Print all AWBs</button></div>
+                <div class="section-head"><div><h3>Bulk booking preview</h3><p>All AWBs created. Print them individually or all at once.</p></div><button class="action-btn" id="bulkPrintAllBtn">Print all AWBs</button></div>
                 <div id="bulkPreviewList"></div>
               </div>
             </section>
             <!-- STORE INTEGRATIONS -->
             <section class="client-module" id="client-integrations">
               <div class="panel">
-                <div class="section-head"><div><h3>Store Integrations</h3><p>Connect your online store to auto-import orders as new bookings. Each imported order starts its journey when a rider scans it for pickup.</p></div></div>
+                <div class="section-head"><div><h3>Store integrations</h3><p>Connect your online store to auto-import orders as new bookings. Each imported order starts its journey when a rider scans it for pickup.</p></div></div>
                 <p class="footer-note">Live order sync for real Shopify, WooCommerce, and website orders activates once the backend is connected. Connection details you save here are kept and reused at go-live.</p>
               </div>
               <div class="panel mt-14" id="nvShopifyAppPanel">
@@ -3113,7 +3127,7 @@ try{
                 </div>
               </div>
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>Custom Web / API</h3><p>For your own custom-built store (not Shopify/WooCommerce). Your site pushes orders to us, and we push status updates back to your site.</p></div><span class="chip" id="webStatusChip">Not connected</span></div>
+                <div class="section-head"><div><h3>Custom web / API</h3><p>For your own custom-built store (not Shopify/WooCommerce). Your site pushes orders to us, and we push status updates back to your site.</p></div><span class="chip" id="webStatusChip">Not connected</span></div>
                 <div class="grid two">
                   <div class="field"><label for="webEndpoint">Status Update URL (we POST status changes here)</label><input id="webEndpoint" placeholder="https://yourstore.com/api/novax-status"></div>
                   <div class="field"><label for="webKey">API Key (optional, sent as Bearer token)</label><div class="nv-secret-row"><input id="webKey" type="password" autocomplete="off" spellcheck="false" placeholder="api key or bearer token" style="flex:1"><button type="button" class="ghost-btn nv-reveal" data-nv-reveal="webKey" aria-pressed="false">Show</button></div></div>
@@ -3137,11 +3151,11 @@ try{
               <div id="nvReport2"></div>
               <div id="nvReportLegacy" hidden>
               <div class="panel">
-                <div class="section-head"><div><h3>Full Report</h3><p>Full account parcel history. The filters below apply to the parcel table, the summaries and the downloads. The wallet and payout figures are whole-account totals and do not change with the filters.</p></div><div class="inline-actions"><button class="ghost-btn" id="reportCsvBtn">Export CSV</button><button class="ghost-btn" id="reportPdfBtn">Print or save as PDF</button></div></div>
+                <div class="section-head"><div><h3>Full report</h3><p>Full account parcel history. The filters below apply to the parcel table, the summaries and the downloads. The wallet and payout figures are whole-account totals and do not change with the filters.</p></div><div class="inline-actions"><button class="ghost-btn" id="reportCsvBtn">Export CSV</button><button class="ghost-btn" id="reportPdfBtn">Print or save as PDF</button></div></div>
                 <div class="grid metrics" id="clientReportMetrics"></div>
               </div>
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>All Parcels</h3><p>Filter the full parcel list by search, status, and date range.</p></div></div>
+                <div class="section-head"><div><h3>All parcels</h3><p>Filter the full parcel list by search, status, and date range.</p></div></div>
                 <div class="filter-bar">
                   <div class="field"><label for="repSearch">Search</label><input id="repSearch" placeholder="AWB, consignee, city, status"></div>
                   <div class="field"><label for="repStatus">Status</label><select id="repStatus"></select></div>
@@ -3157,7 +3171,7 @@ try{
                 </div>
               </div>
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>City Summary</h3></div></div>
+                <div class="section-head"><div><h3>City summary</h3></div></div>
                 <div class="wide-scroll">
                   <table id="clientReportTable">
                     <!-- These two money columns are computed on DIFFERENT pools and used to
@@ -3249,7 +3263,7 @@ try{
               <div id="nvWalletForms" class="nv-w2-forms" hidden>
 <div id="nvWithdrawZone">
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>Bank Account / IBAN</h3><p>Add your payout bank details anytime, even before you have any wallet balance.</p></div></div>
+                <div class="section-head"><div><h3>Bank account / IBAN</h3><p>Add your payout bank details anytime, even before you have any wallet balance.</p></div></div>
                 <div id="bankDetailsSection"></div>
               </div>
               <!-- The Withdraw buttons open the transfer sheet (Wallet v3). This
@@ -3257,7 +3271,7 @@ try{
                    IBAN and a Rs 0.01 amount it previewed as Rs 0. Hidden, not
                    removed: its handlers still bind to these ids. -->
               <div class="panel mt-14" hidden aria-hidden="true">
-                <div class="section-head"><div><h3>Withdraw Funds</h3><p>Choose an amount, payout speed and destination IBAN. Your saved bank details are prefilled.</p></div></div>
+                <div class="section-head"><div><h3>Withdraw funds</h3><p>Choose an amount, payout speed and destination IBAN. Your saved bank details are prefilled.</p></div></div>
                 <div class="field" style="max-width:280px"><label for="withdrawAmount">Amount to withdraw</label><input id="withdrawAmount" type="number" min="1"></div>
                 <div class="field" style="max-width:380px;margin-top:10px"><label for="withdrawIbanInput">Payout IBAN</label><input id="withdrawIbanInput" placeholder="PK00 BANK 0000 0000 0000 0000"></div>
                 <div class="tier-grid">
@@ -3289,7 +3303,7 @@ try{
               <div id="withdrawHistory" hidden></div>
 
               <div class="panel mt-14" id="nvInvoicePanel">
-                <div class="section-head"><div><h3>Your Invoices</h3><p>Every invoice NovaX has issued you. Open one to see exactly what was collected, what we charged, and what was deducted.</p></div></div>
+                <div class="section-head"><div><h3>Your invoices</h3><p>Every invoice NovaX has issued you. Open one to see exactly what was collected, what we charged, and what was deducted.</p></div></div>
                 <div class="ops-list" id="clientInvoiceList"></div>
               </div>
 
@@ -3399,11 +3413,11 @@ try{
             <section class="client-module" id="client-subAccounts">
               <div class="grid two">
                 <div class="panel">
-                  <div class="section-head"><div><h3>Sub Accounts</h3><p>Owners, finance, warehouse staff, and support users get separate permissions.</p></div><button class="action-btn" id="inviteUserBtn">Invite user</button></div>
+                  <div class="section-head"><div><h3>Sub accounts</h3><p>Owners, finance, warehouse staff, and support users get separate permissions.</p></div><button class="action-btn" id="inviteUserBtn">Invite user</button></div>
                   <div class="ops-list" id="subAccountList"></div>
                 </div>
                 <div class="panel">
-                  <div class="section-head"><div><h3>Permission Rules</h3><p>Finance can see settlements. Warehouse can book. Support can track.</p></div></div>
+                  <div class="section-head"><div><h3>Permission rules</h3><p>Finance can see settlements. Warehouse can book. Support can track.</p></div></div>
                   <div class="money-grid">
                     <div class="money-box"><span>Maker Checker</span><strong>On</strong><div class="footer-note">Payouts require approval.</div></div>
                     <div class="money-box"><span>Manual Status Edit</span><strong>Blocked</strong><div class="footer-note">Only reversal entries allowed.</div></div>
@@ -3415,7 +3429,7 @@ try{
             <section class="client-module" id="client-tickets">
               <div class="panel">
                 <div class="section-head">
-                  <div><h3>Support Tickets</h3><p>Raise an issue with a human. You can open one here, and NovaX AI can open one for you when it cannot resolve something itself.</p></div>
+                  <div><h3>Support tickets</h3><p>Raise an issue with a human. You can open one here, and NovaX AI can open one for you when it cannot resolve something itself.</p></div>
                   <span class="chip info" id="nvTkOpenCount">0 open</span>
                 </div>
                 <!-- Filled by nv_support_desk_meta(): real opening hours and the
@@ -3436,7 +3450,7 @@ try{
                 <div class="inline-actions mt-12"><button class="action-btn" id="nvTkSubmit">Open ticket</button></div>
               </div>
               <div class="panel mt-14">
-                <div class="section-head"><div><h3>Your Tickets</h3><p>Newest first. Open one to read replies and respond.</p></div>
+                <div class="section-head"><div><h3>Your tickets</h3><p>Newest first. Open one to read replies and respond.</p></div>
                   <div class="inline-actions"><button class="ghost-btn nv-tkf action-btn" data-nv-tkf="open">Open</button><button class="ghost-btn nv-tkf" data-nv-tkf="resolved">Resolved</button><button class="ghost-btn nv-tkf" data-nv-tkf="all">All</button></div>
                 </div>
                 <div id="nvTkList"></div>
@@ -3633,7 +3647,7 @@ try{
 
   <div class="modal-overlay" id="awbModal" role="dialog" aria-modal="true" aria-label="AWB created">
     <div class="modal-card">
-      <div class="modal-head"><h3>AWB Created</h3><button class="modal-close" aria-label="Close" onclick="closeAwbModal()">&times;</button></div>
+      <div class="modal-head"><h3>AWB created</h3><button class="modal-close" aria-label="Close" onclick="closeAwbModal()">&times;</button></div>
       <div id="awbModalBody"></div>
       <div id="awbPrintModeToggle" class="inline-actions mt-12"></div>
       <div id="awbShareActions" class="inline-actions" style="margin-top:10px;flex-wrap:wrap;gap:6px"></div>
@@ -3669,7 +3683,7 @@ try{
   <div class="modal-overlay" id="walletDoneModal" role="dialog" aria-modal="true" aria-label="Withdrawal requested">
     <div class="modal-card" style="text-align:center;max-width:460px">
       <div class="done-check"><svg viewBox="0 0 64 64"><path class="tick" d="M18 33 L28 43 L46 22"/></svg></div>
-      <h3>Withdrawal Requested</h3>
+      <h3>Withdrawal requested</h3>
       <p class="footer-note" id="walletDoneText"></p>
       <button class="action-btn mt-10" onclick="closeWalletDone()">Done</button>
     </div>
@@ -6225,6 +6239,43 @@ body.nv-has-book-bar #quickBookingBtn{display:none}
    and the menu item opens the full page. */
 #nvAiEntry{display:none!important}
 .nv-sub-link{background:none;border:0;padding:12px 2px;margin:-12px -2px;font:inherit;color:var(--green-ink,#14c77b);font-weight:700;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+/* Polish 5 + 6 (4 Oct 2026).
+   Top bar: "Home" sent a signed-in merchant to the marketing site and
+   "Seller Suite" was the page they were on; both go, and the store name
+   opens an account menu. The separate Log out link stays in the page (the
+   auth gate and the More menu click it) but moves into that menu.
+   Phones: the "Client Menu / workspace" card repeated the bottom bar's More,
+   so it goes; the store name sits under the NovaX wordmark and the theme
+   switch moves into More. */
+.topbar .nav-tabs a.tab-btn[href]{display:none}
+#nvTopLogout{display:none!important}
+.nv-acct{position:relative}
+#nvAcctBtn{cursor:pointer;font:inherit;font-weight:760;font-size:13px;min-height:36px}
+#nvAcctBtn .nv-acct-chev{opacity:.7;transition:transform .15s}
+#nvAcctBtn[aria-expanded="true"] .nv-acct-chev{transform:rotate(180deg)}
+.nv-acct-menu{position:absolute;right:0;top:calc(100% + 8px);min-width:240px;z-index:200;padding:6px;border-radius:14px;background:var(--panel,#11151a);border:1px solid var(--line,#1d232a);box-shadow:0 18px 40px rgba(0,0,0,.28);display:flex;flex-direction:column}
+.nv-acct-menu[hidden]{display:none}
+.nv-acct-menu button{all:unset;box-sizing:border-box;display:flex;align-items:center;min-height:42px;padding:0 12px;border-radius:10px;font-size:14px;font-weight:650;color:var(--ink);cursor:pointer;white-space:nowrap}
+.nv-acct-menu button:hover,.nv-acct-menu button:focus-visible{background:var(--panel-soft,#161b21)}
+.nv-acct-menu .nv-acct-out{color:#d4574e;border-top:1px solid var(--line,#1d232a);border-radius:0 0 10px 10px;margin-top:4px}
+.nv-top-store{display:none}
+#nvMoreTheme{display:none}
+@media (max-width:760px){
+  .client-side .client-menu-head{display:none}
+  .nv-top-store{display:block;font-size:12px;font-weight:650;color:var(--muted);margin-top:1px;max-width:52vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #clientMenu.open #nvMoreTheme{display:flex}
+}
+#clientMenu #nvMoreTheme::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M20%2014.5A8%208%200%201%201%209.5%204a6.5%206.5%200%200%200%2010.5%2010.5z%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M20%2014.5A8%208%200%201%201%209.5%204a6.5%206.5%200%200%200%2010.5%2010.5z%22%2F%3E%3C%2Fsvg%3E")}
+/* Polish 8 (4 Oct 2026): the print button leads the queue's actions on a phone. */
+@media (max-width:760px){ #newBookedPrintBtn{order:-1} }
+/* Polish 7 (4 Oct 2026): on desktop the date range and the figures it
+   controls sat under the parcel table, cut off from what they describe.
+   They now follow the wallet card, above "Your parcels". Phones keep their
+   order. */
+@media (min-width:761px){
+  #client-dashboard #clientAccountHistoryPanel{order:2;margin-bottom:10px}
+  #client-dashboard #clientMetrics{order:2;margin-bottom:16px}
+}
 /* (7) Loading placeholders: see the nv-booting note after <body>. */
 @keyframes nvSkel{0%{background-position:100% 0}100%{background-position:-100% 0}}
 body.nv-booting #nvCodHero:empty,body.nv-booting #clientMetrics:empty,body.nv-booting #clientParcelCards:empty,body.nv-booting #walletLedgerList:empty{
@@ -6237,6 +6288,45 @@ body.nv-booting #clientParcelCards:empty,body.nv-booting #walletLedgerList:empty
 @media (min-width:761px) and (max-width:1100px){.topbar-inner .brand-text span{display:none}.topbar-inner .nav-tabs{flex:none;overflow:visible}}
 </style>
 
+<script>
+/* Account menu (4 Oct 2026). Items mirror the side menu: a tab the role
+   filter has hidden there is hidden here too, so a seat never sees a door
+   the server would refuse. */
+(function(){
+  function start(){
+    var btn=document.getElementById("nvAcctBtn"), menu=document.getElementById("nvAcctMenu");
+    if(!btn||!menu) return;
+    function themeLabel(){ var t=document.getElementById("nvAcctTheme"); if(t) t.textContent=document.documentElement.getAttribute("data-theme")==="dark"?"Light mode":"Dark mode"; }
+    function sync(){
+      menu.querySelectorAll("[data-acct]").forEach(function(b){
+        var tab=b.getAttribute("data-acct");
+        if(tab==="theme"||tab==="logout") return;
+        var side=document.querySelector('#clientMenu .client-tab[data-client-tab="'+tab+'"]');
+        b.hidden=!!(side && (side.style.display==="none" || side.hidden));
+      });
+      themeLabel();
+    }
+    function close(){ menu.hidden=true; btn.setAttribute("aria-expanded","false"); }
+    function open(){ sync(); menu.hidden=false; btn.setAttribute("aria-expanded","true"); var f=menu.querySelector("button:not([hidden])"); if(f) try{ f.focus({preventScroll:true}); }catch(e){} }
+    btn.addEventListener("click",function(e){ e.stopPropagation(); if(menu.hidden) open(); else close(); });
+    document.addEventListener("click",function(e){ if(!menu.hidden && !menu.contains(e.target) && e.target!==btn) close(); });
+    document.addEventListener("keydown",function(e){ if(e.key==="Escape" && !menu.hidden){ close(); try{ btn.focus(); }catch(_){} } });
+    menu.addEventListener("click",function(e){
+      var b=e.target.closest && e.target.closest("[data-acct]"); if(!b) return;
+      var act=b.getAttribute("data-acct");
+      if(act==="theme"){ try{ toggleNovaxTheme(); }catch(_){} themeLabel(); return; }
+      close();
+      if(act==="logout"){
+        var real=document.getElementById("nvTopLogout") || document.getElementById("nvLogoutBtn");
+        if(real) real.click(); else location.href="index.html";
+        return;
+      }
+      if(typeof window.showClientTab==="function") window.showClientTab(act);
+    });
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",start); else start();
+})();
+</script>
 <script>
 /* 2 Oct 2026. (1) A More-menu group heading hides when every item under it
    is hidden (seats see only the tabs their role allows). (2) On a phone the
