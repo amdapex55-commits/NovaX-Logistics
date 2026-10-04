@@ -5192,6 +5192,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                               "bookingPickupCity","bookingCategory"];
     var NV_DRAFT_T = null;
 
+    window.nvSaveBookingDraftNow = function(){ try{ clearTimeout(NV_DRAFT_T); }catch(e){} try{ nvSaveBookingDraft(); }catch(e){} };
     function nvSaveBookingDraft(){
       try{
         var d = {}, any = false;
@@ -13499,6 +13500,19 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        do. nv_terms_status() also records a signup acceptance stamped in the
        account's metadata, so a merchant who verified by email is not asked
        twice. The banner never blocks the portal. */
+    /* Return a merchant to the tab they were on when their sign-in ended
+       (set by nvSessionExpired), once, within two hours. */
+    var NV_RESUMED=false;
+    function nvResumeEnsure(){
+      if(NV_RESUMED || !state.identityVerified || window.__NOVAX_DEMO) return;
+      NV_RESUMED=true;
+      try{
+        var r=JSON.parse(localStorage.getItem("nvResumeTab")||"null");
+        localStorage.removeItem("nvResumeTab");
+        if(r && r.tab && (Date.now()-Number(r.at||0))<7200000 && document.getElementById("client-"+r.tab) &&
+           (typeof nvCanUseTab!=="function" || nvCanUseTab(r.tab))) showClientTab(r.tab);
+      }catch(e){}
+    }
     var NV_TERMS={ tried:false, busy:false };
     function nvTermsEnsure(){
       if(NV_TERMS.tried || !state.identityVerified || window.__NOVAX_DEMO) return;
@@ -14232,6 +14246,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ nvPfEnsureHeader(); }catch(e){}
       try{ nvKycEnsure(); }catch(e){}
       try{ nvTermsEnsure(); }catch(e){}
+      try{ nvResumeEnsure(); }catch(e){}
       try{ if(typeof renderDashboardEmptyState==="function") renderDashboardEmptyState(); }catch(e){}
       try{ if(typeof renderDailyCommandCenter==="function") renderDailyCommandCenter(); }catch(e){}
       /* NovaX new (Smart Portal E): once-per-session insight fetch. Guarded
@@ -15244,12 +15259,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           return nvBookSend(1);
         }).then(function(ri){
           var mi = (ri && ri.error && ri.error.message) || "";
-          if (ri && ri.error && String(ri.error.code || "") !== "P0001") {
+          if (ri && ri.error && String(ri.error.code || "") !== "P0001" && !nvBookAuthLost(ri)) {
             try { window.__nvSb && window.__nvSb.rpc("log_portal_error", { p_source:"client", p_rpc_name:"client_book_parcel_idem", p_page:"booking", p_message:(String(ri.error.code || "") + " " + (ri.status || "") + " " + mi).slice(0,300), p_severity:"error" }).then(function(){}, function(){}); } catch(e) {}
           }
           if (nvBookAuthLost(ri)) {
             if (nvPendingKey && nvPendingKey.slot) window.__novaxIdemKeys.release(String(MY), nvPendingKey.slot, nvPendingKey.key);
-            throw new Error("Your sign-in has expired, so this parcel was not booked and nothing was charged. Sign in again, then press Book.");
+            try { setTimeout(function(){ try { if (window.nvSessionExpired) window.nvSessionExpired("booking"); } catch(e) {} }, 1500); } catch(e) {}
+            throw new Error("Your sign-in has expired, so this parcel was not booked and nothing was charged. Your booking is saved; sign in again to send it.");
           }
           if (nvBookMissing(ri) || (mi && nvBookTransient(ri) && !/timeout|fetch|network|Load failed/i.test(mi))) {
             if (nvPendingKey && nvPendingKey.slot) window.__novaxIdemKeys.release(String(MY), nvPendingKey.slot, nvPendingKey.key);
@@ -15577,6 +15593,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                code==="PGRST301" || code==="PGRST302" || code==="401" ||
                /jwt|token|expired|not authenticated|invalid claim|unauthorized/.test(msg);
       }
+      window.nvSessionExpired = function(where){ return nvSessionExpired(where); };
       function nvSessionExpired(where){
         if(window.__nvSessionExpiredShown) return;
         window.__nvSessionExpiredShown=true;
@@ -15584,10 +15601,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         /* Deliberately does NOT touch state or localStorage. The cached
            account stays exactly as it was; the merchant signs in and finds
            it intact. */
+        /* 4 Oct 2026. Keep the merchant's place: the booking they were
+           writing is saved now (not after the input debounce), and the tab
+           they were on is remembered so signing back in returns them there.
+           "Sign in again" pointed at index.html#login, which the homepage
+           never handled -- it opened the homepage with no sign-in box. */
+        var hadDraft=false;
+        try{ if(window.nvSaveBookingDraftNow) window.nvSaveBookingDraftNow(); }catch(e){}
+        try{
+          for(var k=0;k<localStorage.length;k++){ var key=localStorage.key(k)||""; if(key.indexOf("novaxBookingDraft:")===0 && key.slice(-5)!==":anon"){ hadDraft=true; break; } }
+          var tab=(typeof state!=="undefined" && state.activeClientTab)||"";
+          if(tab && tab!=="dashboard") localStorage.setItem("nvResumeTab",JSON.stringify({ tab:tab, at:Date.now() }));
+        }catch(e){}
         var gateEl=document.getElementById("nvAuthGate");
         if(gateEl){
-          gateEl.innerHTML='<div style="max-width:400px;text-align:center;font-size:15px;font-weight:700;line-height:1.6;">Your session expired.<br><span style="font-weight:500;opacity:.85">Your account and parcels are safe &mdash; please sign in again.</span></div>'+
-            '<a href="index.html#login" style="margin-top:14px;display:inline-block;background:var(--nvu-accent,#14c77b);color:#04140d;padding:11px 20px;border-radius:12px;font-weight:700;text-decoration:none;font-size:14px;">Sign in again</a>';
+          gateEl.innerHTML='<div style="max-width:400px;text-align:center;line-height:1.55;padding:0 16px">'+
+            '<div style="font-size:18px;font-weight:800">Your sign-in has ended</div>'+
+            '<div style="font-size:14px;font-weight:500;opacity:.88;margin-top:8px">Your account, parcels and wallet are safe. Sign in again to carry on'+(hadDraft?' &mdash; the booking you were writing is saved and will be filled in for you.':' where you left off.')+'</div>'+
+            '<a href="index.html#signin" style="margin-top:16px;display:inline-flex;align-items:center;justify-content:center;min-height:46px;background:var(--nvu-accent,#14c77b);color:#04140d;padding:0 22px;border-radius:12px;font-weight:800;text-decoration:none;font-size:15px;white-space:nowrap">Sign in again</a></div>';
           gateEl.style.display="flex";
         }
         try{ if(window.__nvSb&&window.__nvSb.auth) window.__nvSb.auth.signOut(); }catch(e){}
