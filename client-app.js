@@ -421,7 +421,7 @@
     function nvObWhere(nav){
       var tabs = (typeof NV_BOTTOM_TABS !== "undefined" && NV_BOTTOM_TABS) ? NV_BOTTOM_TABS : [
         { id:"dashboard", label:"Home", ico:"\u2302" }, { id:"newBooking", label:"Book", ico:"\u002B" },
-        { id:"money", label:"NovaX Wallet", ico:"\u20A8" }, { id:"tickets", label:"Support", ico:"\u263A" }];
+        { id:"money", label:"Wallet", ico:"\u20A8" }, { id:"tickets", label:"Support", ico:"\u263A" }];
       var items = tabs.map(function(t){ return { id:t.id, label:t.label, ico:t.ico }; });
       items.push({ id:"more", label:"More", ico:"\u2261" });
       if (nav === "fab") {
@@ -4725,7 +4725,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     var NV_BOTTOM_TABS = [
       { id:"dashboard",  label:"Home",    ico:"\u2302" },
       { id:"newBooking", label:"Book",    ico:"\u002B" },
-      { id:"money",      label:"NovaX Wallet", ico:"\u20A8" },
+      { id:"money",      label:"Wallet", aria:"NovaX Wallet", ico:"\u20A8" },
       { id:"tickets",    label:"Support", ico:"\u263A" }
     ];
 
@@ -4745,6 +4745,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          this rebuilt the whole nav seven times even when nothing changed. */
       nvSetHtml(host, allowed.map(function(t){
         return '<button type="button" data-nvbn="' + t.id + '"' +
+               (t.aria ? ' aria-label="' + t.aria + '"' : '') +
                (t.id === active ? ' class="is-active" aria-current="page"' : '') + '>' +
                '<span class="nvbn-ico" aria-hidden="true">' + t.ico + '</span>' +
                '<span>' + t.label + '</span></button>';
