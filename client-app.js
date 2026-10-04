@@ -1794,7 +1794,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
         var walletBalance=(ctx&&ctx.walletBalance)||0;
         var totalAllTime=(ctx&&ctx.totalAllTime)||0;
         var firstIssueAwb=(ctx&&ctx.firstIssueAwb)||null;
-        if(issueCount>0) return { key:"issues", label:"Review Issues", detail:issueCount+" parcel"+(issueCount===1?"":"s")+" need"+(issueCount===1?"s":"")+" attention.", tab:"dashboard", awb:firstIssueAwb };
+        if(issueCount>0) return { key:"issues", label:"Review issues", detail:issueCount+" parcel"+(issueCount===1?"":"s")+" need"+(issueCount===1?"s":"")+" attention.", tab:"dashboard", awb:firstIssueAwb };
         if(unprintedCount>0) return { key:"print", label:"Print Pending AWBs", detail:unprintedCount+" label"+(unprintedCount===1?"":"s")+" not printed yet.", tab:"awbLabel" };
         // NovaX fix: only the real wallet balance can be withdrawn -- the
         // invoice-payable-pending amount is not yet in the wallet.
@@ -4177,7 +4177,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +picker
           +'</div>';
       }
-      /* #43. "View Journey" carried data-client-tab="dashboard" and nothing
+      /* #43. "View journey" carried data-client-tab="dashboard" and nothing
          else -- it was never wired to a parcel. With no label loaded it was
          still fully enabled, and pressing it silently dumped the merchant on
          the Dashboard with no explanation, which reads as the portal losing
@@ -4209,7 +4209,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       selectParcel(hit.awb);
     }
     window.nvAwbFindOpen=nvAwbFindOpen;
-    /* #43: the AWB tab's own "View Journey", opening the parcel whose label is
+    /* #43: the AWB tab's own "View journey", opening the parcel whose label is
        actually displayed rather than navigating away from it. */
     function nvAwbOpenJourney(){
       var awb=state.lastGeneratedAwb||state.selectedAwb;
@@ -6583,7 +6583,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!b) return;
       var boxes=document.querySelectorAll(".loadsheet-check");
       var all=boxes.length>0 && Array.from(boxes).every(function(x){ return x.checked; });
-      b.textContent = all ? "Clear All" : "Select All";
+      b.textContent = all ? "Clear all" : "Select all";
       b.disabled = boxes.length===0;
     }
     function toggleSelectAllLoadSheet(){
@@ -7484,7 +7484,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         <div class="field" style="max-width:380px;margin-top:10px"><label>IBAN</label><input id="bankIbanInput" placeholder="PK00 BANK 0000 0000 0000 0000" value="${bd?escLabelText(bd.iban||""):""}"></div>
         <div class="field" style="max-width:380px;margin-top:10px"><label>Bank name (optional)</label><input id="bankNameInput" value="${bd?escLabelText(bd.bankName||""):""}"></div>
         <div id="bankDetailsError" class="footer-note" style="display:none;background:#fff2f0;border:1px solid #f3b7ad;color:#a3271b;margin-top:10px"></div>
-        <button class="action-btn" id="saveBankDetailsBtn" style="margin-top:12px" onclick="saveBankDetails()">Save Bank Details</button>
+        <button class="action-btn" id="saveBankDetailsBtn" style="margin-top:12px" onclick="saveBankDetails()">Save bank details</button>
         ${bd?`<button class="action-btn" style="margin-top:12px;margin-left:8px;background:#eef2f5;color:#333" onclick="cancelBankDetailsEdit()">Cancel</button>`:""}`;
     }
     /* NovaX new (deferred bank details): offer to remember the IBAN the
@@ -7533,7 +7533,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!sbClient){ err.style.display="block"; err.textContent="Cloud connection not ready yet, please try again in a moment."; toast("Bank details not saved: cloud connection not ready yet.","error"); return; }
       if(btn){ btn.disabled=true; btn.textContent="Saving..."; }
       sbClient.rpc("save_client_bank_details",{ p_holder_name:holderName, p_iban:iban, p_bank_name:bankName }).then(function(r){
-        if(btn){ btn.disabled=false; btn.textContent="Save Bank Details"; }
+        if(btn){ btn.disabled=false; btn.textContent="Save bank details"; }
         if(r&&r.error){
           err.style.display="block"; err.textContent=r.error.message||"Could not save bank details.";
           toast("Bank details not saved: "+(r.error.message||"server declined the request."),"error");
@@ -7545,7 +7545,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         saveState(); renderClientWallet();
         toast("Bank details saved.","success");
       }).catch(function(e){
-        if(btn){ btn.disabled=false; btn.textContent="Save Bank Details"; }
+        if(btn){ btn.disabled=false; btn.textContent="Save bank details"; }
         err.style.display="block"; err.textContent=(e&&e.message)||"Network error, please try again.";
         toast("Bank details not saved: "+((e&&e.message)||"network error, please try again."),"error");
       });
@@ -8804,7 +8804,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       document.querySelectorAll(".tier-card").forEach(t=>t.classList.toggle("active",t.dataset.speed===speed));
       const summary=document.getElementById("withdrawSummary");
       // NovaX fix (withdrawal UX v2): the Withdraw Funds card must always show
-      // the fee/net preview, saved bank preview, and a "Request Withdrawal"
+      // the fee/net preview, saved bank preview, and a "Request withdrawal"
       // button -- never hidden, only disabled with an exact visible reason.
       const rawAmt=Number(amtInput?.value||0);
       const amountTooHigh=rawAmt>serverBalance;
@@ -8836,7 +8836,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       summary.style.display="block";
       summary.innerHTML=`<div class="money-grid">${moneyBox("Withdraw amount",money(useAmt),"selected")}${moneyBox("Fee "+walletFeePct(speed),money(fee),walletSpeedLabel(speed))}${moneyBox("You receive",money(net),"net to your bank")}</div>`+
         `<div class="footer-note" style="margin-top:12px">${(!typedIbanErr&&typedIban)?("Payout goes to <b>"+escLabelText(maskIban(typedIban))+"</b>"+(bd&&bd.holderName?(" for "+escLabelText(bd.holderName)):"")+". "):""}${canConfirm?"":("<b>"+escLabelText(blockReason)+"</b>")}</div>`+
-        `<button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="requestWalletWithdrawal()" ${canConfirm?"":"disabled"} title="${canConfirm?"Request Withdrawal":escLabelText(blockReason)}">${state.__withdrawInFlight?"Submitting...":"Request Withdrawal"}</button>`;
+        `<button class="action-btn" id="confirmWithdrawBtn" style="margin-top:12px" onclick="requestWalletWithdrawal()" ${canConfirm?"":"disabled"} title="${canConfirm?"Request withdrawal":escLabelText(blockReason)}">${state.__withdrawInFlight?"Submitting...":"Request withdrawal"}</button>`;
       /* Kept hidden rather than deleted: this writer is unconditional, and the
          receipts it builds now hang off the ledger rows instead. */
       const __wdHost=document.getElementById("withdrawHistory");
@@ -9008,7 +9008,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const btn=document.getElementById("confirmWithdrawBtn");
       if(btn){ btn.disabled=true; btn.textContent="Submitting..."; }
       nvWithdrawCore(amt, iban, speed).then(function(res){
-        if(btn){ btn.disabled=false; btn.textContent="Request Withdrawal"; }
+        if(btn){ btn.disabled=false; btn.textContent="Request withdrawal"; }
         if(!res.ok){ toast(res.message,"error"); renderClientWallet(); return; }
         // The hand-off plays only after the server has created the withdrawal.
         try{ nvMoneySentAnimation(amt); }catch(e){}
@@ -12116,7 +12116,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                                       p_awb: awb.trim().toUpperCase(), p_priority: pri })
       ).catch(function(e){ return { error: { message: String((e && e.message) || e) } }; })
        .then(function(r){
-        if (btn){ btn.disabled = false; btn.textContent = "Open Ticket"; }
+        if (btn){ btn.disabled = false; btn.textContent = "Open ticket"; }
         nvTkSubmit.__confirmedDup = false;
         if (r && r.error){
           var m = String(r.error.message || "");
@@ -13729,14 +13729,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         try{ if(typeof window.__novaxReloadClientData==="function") window.__novaxReloadClientData(); }catch(e){}
       }).catch(function(e){ toast("Could not delete: "+((e&&e.message)||e),"error"); });
     }
-    /* Every row renders pre-checked, so the button said "Select All" while its
+    /* Every row renders pre-checked, so the button said "Select all" while its
        only effect was to clear the lot. It now names the action it performs. */
     function nvSyncSelectAllNewBookedLabel(){
       const btn=document.getElementById("newBookedSelectAllBtn"); if(!btn) return;
       const boxes=document.querySelectorAll(".newbooked-check");
       const allOn=boxes.length>0 && Array.prototype.every.call(boxes,function(b){ return b.checked; });
-      btn.textContent=allOn?"Clear selection":"Select All";
-      /* "Print Selected AWBs" looked actionable with nothing selected -- the
+      btn.textContent=allOn?"Clear selection":"Select all";
+      /* "Print selected AWBs" looked actionable with nothing selected -- the
          merchant pressed it and got a toast telling them off. A control that
          cannot do anything should not invite the tap. */
       try{
@@ -14181,7 +14181,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return r;
       })().then(function(r){
         requestPickup._busy=false;
-        if(btn){ btn.disabled=false; btn.textContent=btnText||"Request Pickup"; }
+        if(btn){ btn.disabled=false; btn.textContent=btnText||"Request pickup"; }
         state.pickupRequests=state.pickupRequests||[];
         /* _uuid marks it as already stored, so the background sync never
            inserts it a second time. */
@@ -14197,7 +14197,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         toast(`Pickup requested for ${awbs.length} AWB(s). We will confirm scheduling shortly.`,"success");
       }).catch(function(e){
         requestPickup._busy=false;
-        if(btn){ btn.disabled=false; btn.textContent=btnText||"Request Pickup"; }
+        if(btn){ btn.disabled=false; btn.textContent=btnText||"Request pickup"; }
         toast("Pickup status could not be confirmed. Check Pickup requests; retrying with the same details will use the same request ID. "+String((e&&e.message)||e),"error");
       });
     }
@@ -14676,7 +14676,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        Deleted from this spot: a global document.querySelectorAll("button")
        listener that attached a click handler to EVERY button on the page and
        faked an "Invite user flow opened" toast for anything whose label text
-       happened to read "Invite User".
+       happened to read "Invite user".
 
        Sub accounts are now read from the RLS-scoped public.staff_users table
        and invites/revokes go through real server calls that report failure
@@ -16406,7 +16406,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(/how many|count|summary|overview|total|delivered|status of my/.test(low)){ var ps=myParcels(); var del=ps.filter(function(p){return p.status==='Delivered';}).length; var exn=ps.filter(function(p){return p.status!=='Delivered'&&(p.exception||/refus|return|not available|reattempt/i.test(p.status||'')||(typeof isDelayed==='function'&&isDelayed(p)));}).length; var tr=Math.max(0,ps.length-del-exn); return {text:'You have <b>'+ps.length+'</b> parcels - <b>'+del+'</b> delivered, <b>'+tr+'</b> in progress, <b>'+exn+'</b> with issues.'}; }
           if(/list|show|recent|latest|all my|my parcels|my orders/.test(low)){ var ps3=myParcels(); if(!ps3.length) return {text:'You have no parcels yet.'}; return {text:'Your recent parcels:<br>'+ps3.slice(0,8).map(pLine).join('<br><br>')+(ps3.length>8?'<br><span class=nvai-dim>+'+(ps3.length-8)+' more.</span>':'')}; }
           if(/rate|price|pricing|cost|tariff|fee|per parcel|per shipment|how much/.test(low)){ var c=clientById(cid()); var rc=normalizeRateCard(c&&c.rateCard, c&&c.rate); return {text:'Your delivery rate depends on destination: <b>Zone A (Karachi) Rs '+fmt(rc.A.overnight)+'</b> and <b>Zone B (Lahore / Islamabad / Rawalpindi) Rs '+fmt(rc.B.overnight)+'</b> per shipment (COD standard). Charges are deducted from COD before your wallet payout.'}; }
-          if(/book|create|new parcel|new order|how.*(book|ship|send)|pickup|schedule/.test(low)) return {text:'To book a parcel, tap <b>Book New Parcel</b> on your dashboard, then add the consignee, city, COD and weight. Once a rider collects it I can track it live - just give me the AWB.'};
+          if(/book|create|new parcel|new order|how.*(book|ship|send)|pickup|schedule/.test(low)) return {text:'To book a parcel, tap <b>Book new parcel</b> on your dashboard, then add the consignee, city, COD and weight. Once a rider collects it I can track it live - just give me the AWB.'};
           if(/help|what can you|capabilit|how.*(use|work)|guide|menu|options|commands|what do you do/.test(low)) return {text:'I can track parcels (give an AWB like <b>SAMPLE-AWB-1</b>), show invoices and payable, wallet balance and withdrawals, exceptions and delays, your rate, and a full summary. Ask in plain words.'};
           if(/track|where|status|location/.test(low)) return {text:'Share the tracking ID (e.g. <b>SAMPLE-AWB-1</b>) and I will give you the exact live status.'};
           return {text:'I want to get this right. Ask me anything about <b>your</b> account - try <i>where is SAMPLE-AWB-1</i>, <i>my invoices</i>, <i>wallet balance</i>, <i>any delays?</i>, <i>my summary</i>, or <i>my rate</i>.'};
@@ -16504,9 +16504,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             var mine=ctxD?(ctxD.hasParcels?[1]:[]):(typeof getCurrentClientParcels==="function"?getCurrentClientParcels():[]);
             if(mine.length>0){
               if(window.novaxAutopilotSay) window.novaxAutopilotSay("Welcome back. Your workspace is ready.",[
-                { label:"Review Issues", kind:"local", type:"nv_review_issues" },
+                { label:"Review issues", kind:"local", type:"nv_review_issues" },
                 { label:"Print Pending AWBs", kind:"local", type:"go_awb_label" },
-                { label:"Book Orders", kind:"local", type:"go_booking" }
+                { label:"Book orders", kind:"local", type:"go_booking" }
               ]);
               return;
             }
@@ -16775,7 +16775,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvReviewIssues(){
       try{
         if(typeof showClientTab==="function") showClientTab("dashboard");
-        /* "Review Issues" said "17 parcels need attention" and then opened ONE
+        /* "Review issues" said "17 parcels need attention" and then opened ONE
            parcel's journey drawer -- ctx.firstIssueAwb -- and returned before it
            could ever reach the list below. Worse, firstIssueAwb is whichever
            parcel sorts first, so clicking again reopened the same card instead
@@ -17396,8 +17396,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
         nextHtml+='<div class="nv-c-item"><strong>Book more</strong><span>Single, pasted WhatsApp order, or bulk CSV</span><div class="nv-c-acts"><button class="nv-c-btn solid" data-nv-cock="tab" data-tab="newBooking">New booking</button><button class="nv-c-btn" data-nv-cock="tab" data-tab="bulkBooking">Bulk upload</button></div></div>';
         if(b.delivered.length){
-          nextHtml+='<div class="nv-c-item"><strong>'+b.delivered.length+' parcel'+(b.delivered.length===1?"":"s")+' delivered</strong><span>Check what you are owed in Payments</span><div class="nv-c-acts"><button class="nv-c-btn" data-nv-cock="tab" data-tab="payments">Open Payments</button>'
-            +(nvIsOwner()?'<button class="nv-c-btn" data-nv-cock="tab" data-tab="wallet">Open Wallet</button>':"")+"</div></div>";
+          nextHtml+='<div class="nv-c-item"><strong>'+b.delivered.length+' parcel'+(b.delivered.length===1?"":"s")+' delivered</strong><span>Check what you are owed in your NovaX Wallet</span><div class="nv-c-acts">'
+            /* "Open Payments" and "Open Wallet" sat side by side and both opened
+               the NovaX Wallet tab. One button, shown to every seat that can use it. */
+            +((typeof nvCanUseTab!=="function" || nvCanUseTab("money"))?'<button class="nv-c-btn" data-nv-cock="tab" data-tab="money">Open NovaX Wallet</button>':"")+"</div></div>";
         }
         /* This panel counts the merchant's WHOLE book -- July, August and
            September bookings alike -- under a heading that said "Today". It is
@@ -18862,10 +18864,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       function briefingActions(data){
         var actions=[];
-        if(data.issues.length) actions.push({ label:"Review Issues", kind:"local", type:"nv_review_issues" });
+        if(data.issues.length) actions.push({ label:"Review issues", kind:"local", type:"nv_review_issues" });
         if(data.unprinted.length) actions.push({ label:"Print Pending AWBs", kind:"local", type:"go_awb_label" });
         if(nvLiveWalletBalance()>0) actions.push({ label:"Withdraw Wallet", kind:"local", type:"go_wallet" });
-        actions.push({ label:"Book Orders", kind:"local", type:"go_booking" });
+        actions.push({ label:"Book orders", kind:"local", type:"go_booking" });
         return actions;
       }
       function tryDailyBriefing(force){
@@ -19246,7 +19248,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     if(has(["any issue","koi issue","masla hai","issues today","problem today","which parcels need my attention","parcels need my attention","need my attention","need attention","show action needed","action needed","action center"])){
       if(ctx && ctx.issueCount>0) return { reply:"You have "+ctx.issueCount+" parcel"+(ctx.issueCount===1?"":"s")+" needing attention. First one: "+ctx.firstIssueAwb+".", actions:[
-        { label:"Review Issues", kind:"local", type:"nv_review_issues" },
+        { label:"Review issues", kind:"local", type:"nv_review_issues" },
         { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:ctx.firstIssueAwb }
       ] };
       return { reply:"No open issues right now \u2014 everything looks on track.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
@@ -19257,18 +19259,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!delayedList.length) return { reply:"No delayed parcels right now \u2014 everything is moving on time.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
       var names=delayedList.slice(0,5).map(function(x){ return x.awb; }).join(", ");
       return { reply:"You have "+delayedList.length+" delayed parcel"+(delayedList.length===1?"":"s")+": "+names+(delayedList.length>5?" and more":"")+".", actions:[
-        { label:"Review Issues", kind:"local", type:"nv_review_issues" },
+        { label:"Review issues", kind:"local", type:"nv_review_issues" },
         { label:"Track Journey", kind:"local", type:"show_journey_awb", awb:delayedList[0].awb }
       ] };
     }
     if(has(["reattempt this","reattempt it","redeliver this"])){
       var reAwb=awb||(typeof state!=="undefined"&&state.selectedAwb)||(ctx&&ctx.firstIssueAwb);
-      if(!reAwb) return { reply:"Which AWB should I reattempt? Share the tracking ID and I'll prepare the request.", actions:[{ label:"Review Issues", kind:"local", type:"nv_review_issues" }] };
+      if(!reAwb) return { reply:"Which AWB should I reattempt? Share the tracking ID and I'll prepare the request.", actions:[{ label:"Review issues", kind:"local", type:"nv_review_issues" }] };
       return buildReattemptConfirm(reAwb);
     }
     if(has(["return this parcel","return this","return it"])){
       var rtAwb=awb||(typeof state!=="undefined"&&state.selectedAwb)||(ctx&&ctx.firstIssueAwb);
-      if(!rtAwb) return { reply:"Which AWB should I return? Share the tracking ID and I'll prepare the request.", actions:[{ label:"Review Issues", kind:"local", type:"nv_review_issues" }] };
+      if(!rtAwb) return { reply:"Which AWB should I return? Share the tracking ID and I'll prepare the request.", actions:[{ label:"Review issues", kind:"local", type:"nv_review_issues" }] };
       return buildReturnConfirm(rtAwb);
     }
     if(has(["why was it refused","why refused","why was this refused","reason for refusal","refuse kyun"])){
@@ -19295,7 +19297,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     if(has(NV_KW.codWallet)){
       var payable=ctx?ctx.payableBalance:0;
-      return { reply:"Your current payable balance is "+fmtMoney(payable)+". Delivered COD moves to your wallet for withdrawal.", actions:[{ label:"Open Wallet", kind:"local", type:"go_wallet" }] };
+      return { reply:"Your current payable balance is "+fmtMoney(payable)+". Delivered COD moves to your wallet for withdrawal.", actions:[{ label:"Open wallet", kind:"local", type:"go_wallet" }] };
     }
     if(has(NV_KW.booking)){
       return { reply:"To book: open New Booking, or paste the WhatsApp order text and I'll fill the form for you.", actions:[
@@ -19305,7 +19307,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
     if(has(NV_KW.refusalReturn)){
       return { reply:"For a refused or returned parcel I can start a reattempt or a return.", actions:[
-        { label:"Review Issues", kind:"local", type:"nv_review_issues" },
+        { label:"Review issues", kind:"local", type:"nv_review_issues" },
         ] };
     }
     if(has(NV_KW.riderPickup)){
@@ -19546,12 +19548,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // be withdrawn -- invoice-payable-pending amounts are not in the
       // wallet yet, so they must not be offered/prefilled here.
       var wallet=ctx?ctx.walletBalance:0;
-      if(!(wallet>0)) return { reply:"There's no wallet balance ready to withdraw right now.", actions:[{ label:"Open Wallet", kind:"local", type:"go_wallet" }] };
+      if(!(wallet>0)) return { reply:"There's no wallet balance ready to withdraw right now.", actions:[{ label:"Open wallet", kind:"local", type:"go_wallet" }] };
       var amtMatch=msg.match(/\b\d{2,7}\b/);
       var reqAmt=amtMatch?Number(amtMatch[0]):null;
       var amtForPrefill=(reqAmt && reqAmt>0 && reqAmt<=wallet)?reqAmt:null;
       return { reply:"I can open your Wallet to withdraw"+(amtForPrefill?(" Rs "+amtForPrefill):"")+" \u2014 please confirm the amount and your bank (IBAN) details there before submitting.", actions:[
-        { label:"Open Wallet", kind:"local", type:"open_wallet_withdraw", amount:amtForPrefill }
+        { label:"Open wallet", kind:"local", type:"open_wallet_withdraw", amount:amtForPrefill }
       ] };
     }
 
@@ -19610,7 +19612,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     if(has(["delayed parcel","problem parcel","issues today","show delayed","koi issue","masla hai","any issue"])){
       var issueCount=ctx?ctx.issueCount:0;
-      if(issueCount>0) return { reply:"I found "+issueCount+" parcel"+(issueCount===1?"":"s")+" needing attention. Opening the first one.", actions:[{ label:"Review Issues", kind:"local", type:"nv_review_issues" }] };
+      if(issueCount>0) return { reply:"I found "+issueCount+" parcel"+(issueCount===1?"":"s")+" needing attention. Opening the first one.", actions:[{ label:"Review issues", kind:"local", type:"nv_review_issues" }] };
       return { reply:"No delayed or problem parcels right now \u2014 everything looks on track.", actions:[{ label:"View Dashboard", kind:"local", type:"go_dashboard" }] };
     }
 
@@ -19636,7 +19638,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     if(has(["wallet kholo","open wallet","show wallet"])){
-      return { reply:"Opening Wallet.", actions:[{ label:"Open Wallet", kind:"local", type:"go_wallet" }] };
+      return { reply:"Opening Wallet.", actions:[{ label:"Open wallet", kind:"local", type:"go_wallet" }] };
     }
 
     if(has(["report dikhao","open report","show report","full report"])){
@@ -19644,7 +19646,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     if(has(["open payments","show payments","payments dikhao"])){
-      return { reply:"Opening Payments.", actions:[{ label:"Open Payments", kind:"local", type:"open_payments" }] };
+      return { reply:"Opening your NovaX Wallet.", actions:[{ label:"Open NovaX Wallet", kind:"local", type:"open_payments" }] };
     }
 
     if(has(["copy customer message","copy message"])){
@@ -21018,8 +21020,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ["swap","Nova Swap","Exchange an item: new one out, old one back"],
       ["reports","Reports","Performance, COD and every parcel"],
       ["profile","Profile","Business name, logo, phone and address"],
-      ["payments","Payments","Invoices and settlement"],
-      ["wallet","Wallet","Balance, withdrawals, ledger"],
+      ["money","NovaX Wallet","Balance, payments, invoices, withdrawals and ledger"],
       ["integrations","Integrations","Shopify, WooCommerce, API"],
       ["tickets","Support Tickets","Raise and track issues"],
       ["subAccounts","Sub Accounts","Team access"]
@@ -21032,7 +21033,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // Commands first when the query is short -- they are what a merchant
         // reaches for most, and they are cheap to scan.
         TABS.forEach(function(t){
-          if(!q || t[1].toLowerCase().indexOf(q)>-1 || t[0].toLowerCase().indexOf(q)>-1){
+          if(!q || t[1].toLowerCase().indexOf(q)>-1 || t[0].toLowerCase().indexOf(q)>-1 || String(t[2]||"").toLowerCase().indexOf(q)>-1){
             out.push({group:"Go to",icon:"→",title:t[1],subtitle:t[2],
               run:function(){ if(typeof showClientTab==="function") showClientTab(t[0]); }});
           }
@@ -22193,7 +22194,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
      so the launcher can say "3 need you" before anyone opens anything. */
   /* The badge used to take its number from the ai_context_digest RPC while
      every other surface -- the dashboard, the Daily Command Center, the
-     "Review Issues" action -- counted with nvAttentionParcels() in the
+     "Review issues" action -- counted with nvAttentionParcels() in the
      browser. The two rules disagreed, so seven parcels needing attention
      showed as "4 need you", and tapping through listed seven. One rule,
      one place: the local list is authoritative because it is the same list
