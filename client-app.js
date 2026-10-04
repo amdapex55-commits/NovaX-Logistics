@@ -1600,6 +1600,19 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
       return Number.isFinite(hrs) && hrs>24;
     }
     window.nvParcelDelayed=nvParcelDelayed;
+    /* 4 Oct 2026: out for delivery or waiting on a reattempt for over 48
+       hours. nv_stuck_parcel_alerts() raises these to NovaX Ops every hour,
+       so the merchant is told it is being checked rather than left guessing. */
+    function nvOpsChecking(p){
+      try{
+        var st=String((p&&p.status)||"");
+        if(st!=="Parcel out for delivery" && st!=="Reattempt") return false;
+        var t=Date.parse(p.statusSince||"");
+        var hrs=Number.isFinite(t) ? (Date.now()-t)/3600000 : Number(p.statusAgeHours);
+        return Number.isFinite(hrs) && hrs>48;
+      }catch(e){ return false; }
+    }
+    window.nvOpsChecking=nvOpsChecking;
     /* A parcel booked sixty seconds ago is the next STEP, not a problem. It
        appeared under "Needs you now" the instant it was created, which buries
        the genuinely stuck parcels underneath routine new work. Grace period
@@ -1693,6 +1706,7 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
     function nvAttentionReason(p){
       var st=String((p&&p.status)||"");
       if(nvMissingDeliveryInfo(p)) return "Missing address or phone";
+      if(nvOpsChecking(p)) return "NovaX is checking (2+ days)";
       if(st==="Refused") return "Refused \u2014 your decision";
       if(st==="Out of service area") return "Outside service area";
       if(st==="Consignee not available") return "Nobody available";
@@ -3290,6 +3304,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         (p.exception?'<div class="nvdr-why"><span>'+
             (/return|refus|cancel/i.test(String(p.status||"")) ? "Why it came back" : "What happened")+
           '</span>'+escLabelText(p.exception)+'</div>':'')+
+        ((typeof nvOpsChecking==="function" && nvOpsChecking(p))?'<div class="nvdr-why is-calm"><span>NovaX is checking</span>No movement for over two days, so NovaX Ops is following this parcel up with the rider. You do not need to do anything.</div>':'')+
       '</div>'+
       '<div class="nvdr-sec"><h4>Shipment</h4><dl class="nvdr-kv">'+
         '<dt>Consignee</dt><dd>'+escLabelText(p.consignee||"—")+'</dd>'+
@@ -4024,7 +4039,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }
       if(panelHost) panelHost.style.display="";
       const p=selected;
-      if(textEl) textEl.textContent=`${p.awb} \u00b7 ${p.consignee}. Current status: ${p.status}.`;
+      if(textEl) textEl.textContent=`${p.awb} \u00b7 ${p.consignee}. Current status: ${p.status}.`+
+        (nvOpsChecking(p)?" No movement for over two days, so NovaX Ops is checking this parcel with the rider. You do not need to do anything.":"");
       // NovaX (Client Tracking Timeline Polish): friendly client-facing
       // sentence per status -- never a staff name, only status/branch/city/time.
       const FRIENDLY_STEP_NOTE={
