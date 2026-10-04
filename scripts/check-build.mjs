@@ -127,7 +127,7 @@ for (const f of readdirSync(root).filter(f => f.endsWith(".html"))) checkHtml(f)
    parse, client.html renders as a dead shell -- markup with no behaviour and
    no error the merchant can see. nv-codegen.js and nv3d-hero.js were deleted
    on 25 Aug and are gone from this list with them. */
-for (const f of ["sw.js", "client-app.js", "rider-app.js", "rider-core.js", "nv-cnic.js"]) {
+for (const f of ["sw.js", "client-app.js", "client-app.min.js", "rider-app.js", "rider-core.js", "nv-cnic.js"]) {
   try { checkJs(f); } catch { /* file may not exist; not a failure */ }
 }
 
@@ -156,21 +156,34 @@ for (const file of ["rider-app.js", "rider-core.js", "rider.css"]) {
    fixes shipped with a stale ?v= and reached nobody who had visited before.
    Nothing caught it, so this does. */
 try {
+  /* 4 Oct 2026: browsers load client-app.min.js, built from client-app.js by
+     scripts/build-client.mjs (comments and whitespace stripped, nothing
+     else). Two guards: the page must name the built file's own hash, and the
+     built file must come from the current source, or a fix made in
+     client-app.js would never reach a merchant. */
   const clientHtml = readFileSync(join(root, "client.html"), "utf8");
-  const ref = clientHtml.match(/client-app\.js\?v=([a-f0-9]+)/);
-  if (!ref) {
-    problems.push("client.html does not reference client-app.js?v=<hash>; the bundle would never cache-bust.");
+  const ref = clientHtml.match(/client-app\.min\.js\?v=([a-f0-9]+)/);
+  const srcHash = execFileSync("git", ["hash-object", join(root, "client-app.js")]).toString().trim().slice(0, 8);
+  const minHead = readFileSync(join(root, "client-app.min.js"), "utf8").slice(0, 200);
+  const built = (minHead.match(/client-app\.js@([a-f0-9]{8})/) || [])[1];
+  if (built !== srcHash) {
+    problems.push(`client-app.min.js was built from client-app.js@${built || "?"} but the source is @${srcHash}. Run node scripts/build-client.mjs.`);
   } else {
-    const actual = execFileSync("git", ["hash-object", join(root, "client-app.js")])
+    notes.push(`client-app.min.js is built from the current client-app.js@${srcHash}`);
+  }
+  if (!ref) {
+    problems.push("client.html does not reference client-app.min.js?v=<hash>; the bundle would never cache-bust.");
+  } else {
+    const actual = execFileSync("git", ["hash-object", join(root, "client-app.min.js")])
       .toString().trim().slice(0, 8);
     if (ref[1] !== actual) {
       problems.push(
-        `client-app.js?v=${ref[1]} but the file hashes to ${actual}. ` +
+        `client-app.min.js?v=${ref[1]} but the file hashes to ${actual}. ` +
         `Returning merchants would be served the OLD cached bundle. ` +
         `Set ?v=${actual} in client.html and bump CACHE in sw.js.`
       );
     } else {
-      notes.push(`client-app.js?v=${actual} matches the file`);
+      notes.push(`client-app.min.js?v=${actual} matches the file`);
     }
   }
 } catch (e) {
