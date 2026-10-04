@@ -382,7 +382,7 @@
           b:"Consignee, address, COD amount. That is the whole form — we generate the tracking number for you.",
           v: m.form([["Consignee","Hina Raza"],["City","Karachi"],["Address","Flat 3B, Gulshan-e-Iqbal"],["COD","Rs 3,450"]]) },
         { t:"Got the order on WhatsApp?", nav:"newBooking",
-          b:"Paste the message and Autopilot fills the form for you. No retyping an address off a phone screen.",
+          b:"Paste the message and NovaX AI fills the form for you. No retyping an address off a phone screen.",
           v: '<div class="nvob-paste">"Hina Raza, Flat 3B Gulshan-e-Iqbal Karachi, 0300‑…, COD 3450"</div>' +
              '<div class="nvob-arrow">↓</div>' + m.form([["Consignee","Hina Raza ✓"],["COD","Rs 3,450 ✓"]]) },
         { t:"Print the label", nav:"more",
@@ -406,7 +406,7 @@
           b:"Request a withdrawal to your own bank account whenever the balance suits you.",
           v: m.form([["To","PK… · your bank"],["Amount","Rs 3,425"]]) +
              '<div class="nvob-btns">'+m.chip("Request withdrawal","go")+'</div>' },
-        { t:"Ask Autopilot anything", nav:"fab",
+        { t:"Ask NovaX AI anything", nav:"fab",
           b:"“Where is N9000002?” — it answers from your own parcels, in your own words.",
           v: '<div class="nvob-chat"><div class="nvob-q">mera parcel kahan hai?</div>' +
              '<div class="nvob-a">N9000002 is out for delivery in DHA Phase 5 today.</div></div>' }
@@ -429,7 +429,7 @@
           '<div class="nvob-w-nav">' + items.map(function(t){
             return '<span class="nvob-w-i"><i>'+t.ico+'</i>'+t.label+'</span>'; }).join("") +
           '<span class="nvob-w-fab" aria-hidden="true">\u25CF</span></div>' +
-          '<span class="nvob-w-note">The floating Autopilot button, on every screen</span></div>';
+          '<span class="nvob-w-note">The floating NovaX AI button, on every screen</span></div>';
       }
       return '<div class="nvob-where"><span class="nvob-w-lbl">Find it here</span>' +
         '<div class="nvob-w-nav">' + items.map(function(t){
@@ -3338,6 +3338,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            two reach a merchant on a laptop. Same gates as the mobile card. */
         (isEditableBooking(p)
           ? '<button type="button" data-nv-drawer-act="edit" data-awb="'+escLabelText(p.awb)+'">Edit booking</button>' : '')+
+        /* The phone card no longer carries Cancel booking (4 Oct 2026). */
+        ((typeof isCancellableBooking==="function" && isCancellableBooking(p))
+          ? '<button type="button" data-nv-drawer-act="cancel" data-awb="'+escLabelText(p.awb)+'">Cancel booking</button>' : '')+
         (nvCanRaiseTicket(p) && (typeof nvCanUseTab!=="function" || nvCanUseTab("tickets"))
           ? '<button type="button" data-nv-drawer-act="ticket" data-awb="'+escLabelText(p.awb)+'">Report an issue</button>' : '')+
       '</div>';
@@ -3570,6 +3573,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         nvOpenEditParcel(awb, e);
       } else if(act==="ticket"){
         nvRaiseTicketFor(awb, e);
+      } else if(act==="cancel"){
+        try{ window.NovaXUI.closeDrawer(); }catch(_){}
+        cancelClientBooking(awb, e);
       } else if(act==="track" || act==="copytrack" || act==="sharetrack"){
         /* Prefer the tokenised link: it resolves to the FULL journey via
            public_track_parcel(). The ?awb= form only ever returns a status
@@ -3728,13 +3734,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        had no way to cancel a booking at all -- the feature existed only if
        you happened to be on a phone. The table now carries an Actions column
        fed by this same function, so the two views cannot diverge again. */
-    function nvParcelCardActions(p){
+    function nvParcelCardActions(p, opts){
       var btns=[];
       var a=escLabelText(p.awb);
-      if(isEditableBooking(p)){
+      var decisionsOnly=!!(opts && opts.decisionsOnly);
+      if(!decisionsOnly && isEditableBooking(p)){
         btns.push('<button class="ghost-btn" type="button" onclick="nvOpenEditParcel(\''+a+'\',event)">Edit</button>');
       }
-      if(isCancellableBooking(p)){
+      if(!decisionsOnly && isCancellableBooking(p)){
         btns.push('<button class="ghost-btn nv-cancel-booking" type="button" onclick="cancelClientBooking(\''+a+'\',event)">Cancel booking</button>');
       }
       /* #10. N8530083 has sat at Reattempt for 8d18h and this row offered one
@@ -3748,7 +3755,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(__st==="Out of service area" && typeof nvOpenEditParcel==="function"){
         btns.push('<button class="action-btn" type="button" onclick="nvOpenEditParcel(\''+a+'\',event)">Change address</button>');
       }
-      if(nvCanRaiseTicket(p) && (typeof nvCanUseTab!=="function" || nvCanUseTab("tickets"))){
+      if(!decisionsOnly && nvCanRaiseTicket(p) && (typeof nvCanUseTab!=="function" || nvCanUseTab("tickets"))){
         btns.push('<button class="ghost-btn" type="button" onclick="nvRaiseTicketFor(\''+a+'\',event)">Report an issue</button>');
       }
       if(!btns.length) return "";
@@ -3822,7 +3829,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const rowsHost=document.getElementById("clientParcelRows");
       const cardsHost=document.getElementById("clientParcelCards");
       if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" role="button" tabindex="0" aria-label="Open journey for ${escLabelText(p.awb)}" onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();this.click();}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><strong>${escLabelText(p.awb)}</strong> ${nvPaidPill(p)}<br><span class="footer-note" title="Last status update">${p.updated?"Updated "+escLabelText(p.updated):""}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${nvCodCell(p)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
-      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')">${nvPaidRibbon(p)}<div class="top"><label style="display:inline-flex;align-items:center;min-width:44px;min-height:44px;margin:-10px 0 -10px -6px;padding:10px 6px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong>${escLabelText(p.awb)}</strong><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span></div>${pickupNotice(p)}<dl><div><dt>Consignee</dt><dd>${escLabelText(p.consignee)}</dd></div><div><dt>City</dt><dd>${escLabelText(p.city)}</dd></div><div><dt>COD</dt><dd>${nvCodCell(p)}${nvPayConflictChip(p)}</dd></div><div><dt>Updated</dt><dd>${escLabelText(p.updated)}</dd></div></dl>${nvCardJourney(p,pr)}${nvPickupChipHtml(p)}${nvParcelCardActions(p)}</article>`; }).join("")) : "";
+      /* 4 Oct 2026: phone cards are two lines now. Each was ~240px tall --
+         checkbox, a centred AWB, a four-cell grid, a progress bar and a
+         full-width "Report an issue" on every card -- so five parcels made a
+         3,667px dashboard. Line 1: select, AWB, status. Line 2: consignee,
+         city, COD. A slim bar and the ETA follow; only buttons that need the
+         merchant (confirm re-delivery, change address) stay on the card.
+         Edit, Cancel booking and Report an issue live in the drawer a tap away. */
+      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card nv-pc ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><div class="nv-pc-l1"><label class="nv-pc-sel" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong class="nv-pc-awb">${escLabelText(p.awb)}</strong>${nvPaidPill(p)}<span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span></div><div class="nv-pc-l2"><span class="nv-pc-who">${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)}</span><span class="nv-pc-cod">${nvCodCell(p)}</span></div>${nvPayConflictChip(p)}${pickupNotice(p)}<div class="nv-pc-l3">${nvCardJourney(p,pr)}</div>${nvPickupChipHtml(p)}${nvParcelCardActions(p,{ decisionsOnly:true })}</article>`; }).join("")) : "";
       /* "Showing 25 of 189" with one control to load more. Without this the
          merchant cannot tell whether the list ended or was truncated. */
       (function(){
@@ -16578,7 +16592,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           +'<button id="nvfbEmptyPaste" style="border:1px solid #bfe8d7;border-radius:var(--r-lg);background:var(--nvu-bg);color:var(--nvu-accent);padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer">Paste WhatsApp Order</button>'
           +'<button id="nvfbEmptyCsv" style="border:1px solid #bfe8d7;border-radius:var(--r-lg);background:var(--nvu-bg);color:var(--nvu-accent);padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer">Upload Bulk CSV</button>'
           +'<button id="nvfbEmptyStore" style="border:1px solid #bfe8d7;border-radius:var(--r-lg);background:var(--nvu-bg);color:var(--nvu-accent);padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer">Connect Store</button>'
-          +'<button id="nvfbEmptyAsk" style="border:1px solid #bfe8d7;border-radius:var(--r-lg);background:var(--nvu-bg);color:var(--nvu-accent);padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer">Ask Autopilot</button>'
+          +'<button id="nvfbEmptyAsk" style="border:1px solid #bfe8d7;border-radius:var(--r-lg);background:var(--nvu-bg);color:var(--nvu-accent);padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer">Ask NovaX AI</button>'
           +'</div>';
         host.insertBefore(box, host.firstChild);
         document.getElementById("nvfbEmptyBtn").addEventListener("click",function(){ if(window.novaxFocusFirstBookingField) window.novaxFocusFirstBookingField(); else if(typeof showClientTab==="function") showClientTab("newBooking"); });
@@ -16854,7 +16868,20 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         if(sub){
           var day=new Intl.DateTimeFormat("en-GB",{ weekday:"long", day:"numeric", month:"long", timeZone:"Asia/Karachi" }).format(now);
           var n=ctx && Number(ctx.issueCount||0);
-          sub.textContent=day+(n ? " \u00b7 "+n+" parcel"+(n===1?" needs":"s need")+" you" : "");
+          /* On the dashboard the cockpit's "Needs you now" already says this;
+             on any other tab it is the way back to those parcels. */
+          var onDash=(state.activeClientTab||"dashboard")==="dashboard";
+          sub.textContent=day;
+          if(n && !onDash){
+            var link=document.createElement("button");
+            link.type="button"; link.className="nv-sub-link";
+            link.textContent=n+" parcel"+(n===1?" needs":"s need")+" you";
+            link.addEventListener("click",function(){
+              try{ showClientTab("dashboard"); }catch(e){}
+              setTimeout(function(){ try{ var c=document.getElementById("nvCockpit"); if(c) c.scrollIntoView({behavior:"smooth",block:"start"}); }catch(e){} },150);
+            });
+            sub.appendChild(document.createTextNode(" \u00b7 ")); sub.appendChild(link);
+          }
         }
         var cp=document.getElementById("nvCsPrint"), pp=document.getElementById("nvPhPrint");
         if(pp) pp.hidden=!(cp && cp.style.display!=="none");
@@ -16896,6 +16923,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       nvInterval(function(){ if(!document.hidden) renderDailyCommandCenter(); },20000);
       setTimeout(renderDailyCommandCenter,400);
       document.addEventListener("DOMContentLoaded",renderDailyCommandCenter);
+      /* The header's "N parcels need you" link shows only off the dashboard,
+         so it has to follow tab changes, not just the 20 s refresh. */
+      try{
+        var host=document.querySelector(".client-content"), lastTab=null;
+        if(host) new MutationObserver(function(){
+          var t=(typeof state!=="undefined" && state.activeClientTab)||"";
+          if(t===lastTab) return; lastTab=t; renderDailyCommandCenter();
+        }).observe(host,{ attributes:true, attributeFilter:["class"], subtree:true });
+      }catch(e){}
     })();
 
     /* ===== NovaX AI Onboarding Tour (post-signup welcome + guided walkthrough) ===== */
@@ -16918,7 +16954,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              anything. One step for the one tab that exists. */
           { tab:"money", title:"NovaX Wallet", text:"Delivered parcels become payable invoices here, alongside your balance \u2014 and you can request a payout in a few taps." },
           { tab:"subAccounts", title:"Sub Accounts", text:"Invite your team, finance, warehouse, or support, with their own scoped logins." },
-          { tab:"support", title:"Talk To Your AI", text:"Tap the Autopilot button in the corner anytime. I read your live data and answer instantly." }
+          { tab:"support", title:"Talk To Your AI", text:"Tap the NovaX AI button in the corner anytime. I read your live data and answer instantly." }
         ];
         var idx=-1;
 
@@ -18453,8 +18489,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   document.head.appendChild(style);
 
   var btn=document.createElement("button");
-  btn.className="nvauto-btn"; btn.setAttribute("aria-label","Open NovaX Autopilot assistant");
-  btn.innerHTML='<span class="nvauto-btn-icon" aria-hidden="true"><svg viewBox="0 0 32 32" width="20" height="20" fill="none"><circle cx="16" cy="16" r="13" stroke="rgba(255,255,255,.55)" stroke-width="1.6"/><path d="M16 6.5 L20.6 20.4 L16 17.6 L11.4 20.4 Z" fill="#fff"/><circle cx="16" cy="16" r="1.7" fill="var(--nvu-accent)"/></svg></span><span class="nvauto-btn-text"><b>Autopilot</b><small>Ask anything</small></span>';
+  btn.className="nvauto-btn"; btn.setAttribute("aria-label","Open NovaX AI");
+  btn.innerHTML='<span class="nvauto-btn-icon" aria-hidden="true"><svg viewBox="0 0 32 32" width="20" height="20" fill="none"><circle cx="16" cy="16" r="13" stroke="rgba(255,255,255,.55)" stroke-width="1.6"/><path d="M16 6.5 L20.6 20.4 L16 17.6 L11.4 20.4 Z" fill="#fff"/><circle cx="16" cy="16" r="1.7" fill="var(--nvu-accent)"/></svg></span><span class="nvauto-btn-text"><b>NovaX AI</b><small>Ask anything</small></span>';
 
   /* The Autopilot button is fixed bottom-right, so on a phone it permanently
      sits on top of whatever has scrolled under it -- on the dashboard, the
@@ -18508,7 +18544,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   var panel=document.createElement("div");
   panel.className="nvauto-panel";
   panel.innerHTML=''
-    +'<div class="nvauto-head"><div class="nvauto-avatar"><svg viewBox="0 0 32 32" width="19" height="19" fill="none"><circle cx="16" cy="16" r="13" stroke="rgba(255,255,255,.6)" stroke-width="1.6"/><path d="M16 6.5 L20.6 20.4 L16 17.6 L11.4 20.4 Z" fill="#fff"/></svg></div><div><b>NovaX Autopilot</b><small><span class="nvauto-live-dot" aria-hidden="true"></span>Live account-aware assistant</small></div><button class="nvauto-x" aria-label="Close">&times;</button></div>'
+    +'<div class="nvauto-head"><div class="nvauto-avatar"><svg viewBox="0 0 32 32" width="19" height="19" fill="none"><circle cx="16" cy="16" r="13" stroke="rgba(255,255,255,.6)" stroke-width="1.6"/><path d="M16 6.5 L20.6 20.4 L16 17.6 L11.4 20.4 Z" fill="#fff"/></svg></div><div><b>NovaX AI</b><small><span class="nvauto-live-dot" aria-hidden="true"></span>Live account-aware assistant</small></div><button class="nvauto-x" aria-label="Close">&times;</button></div>'
     +'<div class="nvauto-chips">'
       +'<button data-q="mera parcel kahan hai?"><span class="cl-full">Track Parcel</span><span class="cl-short">Track</span></button>'
       +'<button data-local="go_booking"><span class="cl-full">Book Order</span><span class="cl-short">Book</span></button>'
@@ -18527,7 +18563,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   panel.id="nvautoDialog";
   panel.setAttribute("role","dialog");
   panel.setAttribute("aria-modal","true");
-  panel.setAttribute("aria-label","NovaX Autopilot assistant");
+  panel.setAttribute("aria-label","NovaX AI assistant");
   new MutationObserver(function(){
     var open=panel.classList.contains("open");
     btn.setAttribute("aria-expanded",String(open));
@@ -18818,7 +18854,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   }
 
   function showIntro(force){
-    addMsg("Assalam o Alaikum, I'm NovaX Autopilot \u2014 your NovaX assistant.\n\nMain aapka NovaX assistant hoon. Aap bas normal message likhein, main tracking, COD, return aur support ka kaam handle kar dunga.\n\nI can help you:\n1. Track any parcel by AWB\n2. Check COD / wallet questions\n3. Start return or reattempt requests\n4. Explain what needs your attention today\n\nJust type like WhatsApp:\n\"mera parcel kahan hai?\"\n\"COD kab milega?\"\n\"return karwana hai\"\n\"rider ne call nahi ki\"","b",[
+    addMsg("Assalam o Alaikum, I'm NovaX AI \u2014 your NovaX assistant.\n\nMain aapka NovaX assistant hoon. Aap bas normal message likhein, main tracking, COD, return aur support ka kaam handle kar dunga.\n\nI can help you:\n1. Track any parcel by AWB\n2. Check COD / wallet questions\n3. Start return or reattempt requests\n4. Explain what needs your attention today\n\nJust type like WhatsApp:\n\"mera parcel kahan hai?\"\n\"COD kab milega?\"\n\"return karwana hai\"\n\"rider ne call nahi ki\"","b",[
       { label:"Take Quick Tour", kind:"local", type:"start_tour" },
       { label:"Start Booking", kind:"local", type:"go_booking" }
     ]);
@@ -18831,7 +18867,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     greeted=true;
     if(PORTAL==="client" && hasClientIdentity() && !localStorage.getItem(INTRO_KEY)){ showIntro(); return; }
     if(PORTAL==="client"){ greetWithBriefing(); return; }
-    addMsg("Hi, I'm NovaX Autopilot. I only answer from your real account data \u2014 ask me to track an AWB, start a return, check your COD/wallet, or talk to a human.","b");
+    addMsg("Hi, I'm NovaX AI. I only answer from your real account data \u2014 ask me to track an AWB, start a return, check your COD/wallet, or talk to a human.","b");
   }
 
   window.novaxOpenAutopilot=function(){ panel.classList.add("open"); openPanel(); try{ window.novaxFlushPending(); }catch(e){} };
@@ -18917,11 +18953,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       });
       var out=null; try{ out=await res.json(); }catch(e){}
       loadingEl.remove();
-      if(!res.ok || !out || !out.reply){ addMsg("Hi, I'm NovaX Autopilot. Ask me to track an AWB, start a return, check your COD/wallet, or ask for a human.","b"); return; }
+      if(!res.ok || !out || !out.reply){ addMsg("Hi, I'm NovaX AI. Ask me to track an AWB, start a return, check your COD/wallet, or ask for a human.","b"); return; }
       addMsg(out.reply,"b",out.actions);
     }catch(e){
       loadingEl.remove();
-      addMsg("Hi, I'm NovaX Autopilot. Ask me to track an AWB, start a return, check your COD/wallet, or ask for a human.","b");
+      addMsg("Hi, I'm NovaX AI. Ask me to track an AWB, start a return, check your COD/wallet, or ask for a human.","b");
     }
   }
   btn.addEventListener("click",function(){
@@ -19213,7 +19249,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     var isGreeting=!msg || lower==="help" || lower==="start" || /(^|\s)(hi|hello|hey|salam|assalam|aoa|asalam|slam)(\s|$|[!.,])/i.test(lower);
     if(isGreeting){
-      return { reply:"Hi"+(clientName?" "+clientName:"")+", I'm NovaX Autopilot.\nI can track parcels, handle COD/wallet questions, and start returns.\nAsk me like WhatsApp \u2014 e.g. \"mera parcel kahan hai?\"", actions:[
+      return { reply:"Hi"+(clientName?" "+clientName:"")+", I'm NovaX AI.\nI can track parcels, handle COD/wallet questions, and start returns.\nAsk me like WhatsApp \u2014 e.g. \"mera parcel kahan hai?\"", actions:[
         { label:"Track Parcel", kind:"send", message:"track my parcel" },
         { label:"Book Order", kind:"local", type:"go_booking" },
         { label:"Talk to Human", kind:"send", message:"support se baat karni hai" }
@@ -19949,11 +19985,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       /* WAS delayed+refused -- two SUBSETS of the attention set -- so the coach
          said "20 aging, 13 refused" (33) beside a dashboard reporting 50 need
          attention, with no account of the other 17. One predicate, one number. */
-      var attnN=(typeof nvAttentionParcels==="function") ? nvAttentionParcels().length : (delayed+refused);
-      if(attnN>0) return { h:"Some parcels need attention.", a:attnN+" parcel"+(attnN===1?"":"s")+" \u2014 aging, refused, exceptions or missing details. Review them first.", key:"dash_attn_"+attnN, go:"dashboard" };
-      /* This said "Today's focus: check parcels needing attention" directly
-         under "Nothing needs you right now". Nothing does -- say so. */
-      return { h:"All clear.", a:"No parcel needs you right now. Tap any AWB to see its full journey.", key:"dash_default", go:"dashboard" };
+      /* 4 Oct 2026: the dashboard said "needs attention" three times -- the
+         header, this tips bar and the cockpit's "Needs you now". The cockpit
+         owns it now (it lists and groups the parcels), so on a dashboard with
+         parcels the tips bar stays quiet. It still guides the first booking. */
+      return null;
     }
     if(tab==="newBooking"){
       var pct=bookingFormPercent();
