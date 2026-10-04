@@ -160,6 +160,11 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
 .rs span{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:700}
 .rs .inp{padding-left:44px}
 
+.place{display:flex;align-items:flex-start;gap:8px;margin:0 0 8px;font-size:14.5px;line-height:1.4;color:var(--ink-2)}
+.place svg{color:var(--emerald-deep);margin-top:1px}
+.place span{flex:1;min-width:0;overflow-wrap:anywhere}
+.place .linkish{min-height:0;padding:14px 4px;margin:-14px -4px;font-size:14px}
+.ferr{color:var(--red-ink)}
 /* Parcel type tiles */
 .types{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .type{min-height:84px;border:1.5px solid var(--line);border-radius:16px;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;font-weight:700;font-size:14px;color:var(--ink-2);padding:8px 4px;text-align:center;line-height:1.15;transition:transform .08s}
@@ -356,7 +361,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   /* ───────── shared state ───────── */
   var S={ status:null, support:"03123922558", p:null, d:null, quote:null, quoting:false, quoteErr:"",
     type:"", item:"", weight:"", fragile:false, value:"", note:"",
-    sName:"", sPhone:"", pAddr:"", rName:"", rPhone:"", dAddr:"", payer:"sender", agree:false,
+    sName:"", sPhone:"", pDet:"", rName:"", rPhone:"", dDet:"", payer:"sender", agree:false, ov:false, skipPop:false, resume:0,
     step:1, busy:false, pinFor:null, msg:"", cap:{ on:false, id:null, token:"" } };
   var qSeq=0;
 
@@ -425,8 +430,9 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   /* ───────── places: search, recents, pin, GPS ───────── */
   function placeLabel(pr){
     var latin=function(s){ return s&&/[A-Za-z]/.test(s)?s:""; };
-    var name=latin(pr.name), street=latin(pr.street), hn=latin(pr.housenumber);
-    var area=latin(pr.locality)||latin(pr.district)||latin(pr.suburb)||"";
+    var tidy=function(t){ return String(t||"").replace(/\b([a-z])([A-Z]{2,})\b/g,function(m,a,b){ return a.toUpperCase()+b.toLowerCase(); }); };
+    var name=tidy(latin(pr.name)), street=tidy(latin(pr.street)), hn=latin(pr.housenumber);
+    var area=tidy(latin(pr.locality)||latin(pr.district)||latin(pr.suburb)||"");
     var main=name||[hn,street].filter(Boolean).join(" ")||area||"Pinned spot";
     var rest=[name?street:"", area&&area!==main?area:""].filter(Boolean).join(", ");
     return { main:main, rest:rest, full:[main,rest].filter(Boolean).join(", ") };
@@ -472,22 +478,30 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   }
   function setPoint(k,pt){
     S[k]=pt; remember(pt);
-    var addr=k==="p"?"pAddr":"dAddr";
-    if(!S[addr]||S[addr+"Auto"]){ S[addr]=pt.label==="Pinned spot"?"":pt.label; S[addr+"Auto"]=true; }
     closePanel(); window.scrollTo(0,0); render(); paintMap(S.p,S.d,null,k); quote();
     say((k==="p"?"Pickup":"Delivery")+" set: "+pt.label+".");
+    /* One motion: once the pickup is chosen, the delivery is asked for next. */
+    if(k==="p"&&!S.d) setTimeout(function(){ if(!S.d&&!panel&&!S.pinFor&&S.step===1) openPicker("d"); },380);
+  }
+  /* What the rider reads: the door detail the customer typed, then the place. */
+  function addrOf(k){
+    var det=String(k==="p"?S.pDet:S.dDet).trim(), pt=S[k], lab=pt&&pt.label!=="Pinned spot"?pt.label:"";
+    return [det,lab].filter(Boolean).join(", ");
   }
 
   var panel=null;
-  function closePanel(){ if(panel){ panel.remove(); panel=null; document.body.style.overflow=""; } }
+  function closePanelDom(){ if(panel){ panel.remove(); panel=null; document.body.style.overflow=""; } }
+  function ovOpen(){ if(!S.ov){ S.ov=true; try{ history.pushState({ nvi:"ov" },""); }catch(e){} } }
+  function ovClose(fromPop){ if(S.ov){ S.ov=false; if(!fromPop){ S.skipPop=true; try{ history.back(); }catch(e){ S.skipPop=false; } } } }
+  function closePanel(){ if(panel){ closePanelDom(); if(!S.pinFor) ovClose(false); } }
   function openPanel(title,bodyHtml){
-    closePanel();
+    closePanelDom(); ovOpen();
     panel=document.createElement("section"); panel.className="panel"; panel.setAttribute("role","dialog"); panel.setAttribute("aria-modal","true"); panel.setAttribute("aria-label",title);
     panel.innerHTML='<header><button class="x" type="button" data-close aria-label="Close">'+IC.back+'</button><b>'+esc(title)+'</b></header><div class="body">'+bodyHtml+'</div>';
     document.body.appendChild(panel); document.body.style.overflow="hidden";
     return panel;
   }
-  document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ if(S.pinFor) leavePin(); else closePanel(); } });
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ if(S.pinFor) leavePin(false); else closePanel(); } });
 
   function openPicker(k){
     var isP=k==="p";
@@ -530,7 +544,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
       var b=e.target.closest("button"); if(!b) return;
       if(b.hasAttribute("data-i")){ var it=items[Number(b.getAttribute("data-i"))]; if(it) setPoint(k,{ lat:it.lat, lng:it.lng, label:it.label.full }); }
       else if(b.hasAttribute("data-rc")){ var r=recents()[Number(b.getAttribute("data-rc"))]; if(r) setPoint(k,{ lat:r.lat, lng:r.lng, label:r.label }); }
-      else if(b.hasAttribute("data-pin")){ closePanel(); enterPin(k); }
+      else if(b.hasAttribute("data-pin")){ closePanelDom(); enterPin(k); }
       else if(b.hasAttribute("data-gps")){ useGps(b); }
     });
     setTimeout(function(){ try{ q.focus(); }catch(e){} },60);
@@ -548,14 +562,14 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   var revT=null, revSeq=0, pinPlace=null;
   function enterPin(k){
     if(!map){ toast("The map did not load. Use search instead."); return; }
-    S.pinFor=k; pinPlace=null; document.body.classList.add("pinning");
+    S.pinFor=k; pinPlace=null; document.body.classList.add("pinning"); ovOpen();
     $("pinSet").textContent=k==="p"?"Set pickup here":"Set delivery here"; $("pinSet").disabled=false;
     $("pinLabel").textContent="Move the map until the pin is on the spot.";
     map.invalidateSize(); var o=S[k]||S.p||S.d; map.setView(o?[o.lat,o.lng]:CENTER,o?16:13,{ animate:false });
     setTimeout(function(){ map.invalidateSize(); onMapMove(); },80);
     setTimeout(function(){ if(S.pinFor===k) onMapMove(); },700);
   }
-  function leavePin(){ S.pinFor=null; document.body.classList.remove("pinning"); if(map){ map.invalidateSize(); setTimeout(function(){ map.invalidateSize(); paintMap(S.p,S.d,S.quote&&S.quote.line); },80); } }
+  function leavePin(fromPop){ if(!S.pinFor) return; S.pinFor=null; document.body.classList.remove("pinning"); ovClose(fromPop===true); if(map){ map.invalidateSize(); setTimeout(function(){ map.invalidateSize(); paintMap(S.p,S.d,S.quote&&S.quote.line); },80); } }
   function onMapMove(){
     if(!S.pinFor) return;
     var c=map.getCenter(), my=++revSeq;
@@ -563,11 +577,11 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     $("pinSet").disabled=false; clearTimeout(revT);
     revT=setTimeout(function(){ reverseLabel(c.lat,c.lng).then(function(lb){ if(my!==revSeq||!S.pinFor) return; pinPlace=lb; $("pinLabel").innerHTML=lb?"Near <b>"+esc(lb.full)+"</b>":"Pin placed."; }); },350);
   }
-  $("pinCancel").addEventListener("click",leavePin);
+  $("pinCancel").addEventListener("click",function(){ leavePin(false); });
   $("pinSet").addEventListener("click",function(){
     var k=S.pinFor; if(!k||!map) return; var c=map.getCenter();
     if(!inBox(c.lat,c.lng)) return;
-    var label=pinPlace?pinPlace.full:"Pinned spot"; leavePin(); setPoint(k,{ lat:c.lat, lng:c.lng, label:label });
+    var label=pinPlace?pinPlace.full:"Pinned spot"; leavePin(false); setPoint(k,{ lat:c.lat, lng:c.lng, label:label });
   });
 
   /* ───────── fare ───────── */
@@ -592,6 +606,12 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
       if(r.error||!r.data) S.quoteErr="The fare could not be worked out. Check your connection.";
       else if(!r.data.ok) S.quoteErr=QUOTE_SAY[r.data.reason]||"That trip cannot be priced.";
       else { S.quote=r.data; S.quoteErr=""; }
+      if(S.resume>1&&S.quote&&S.quote.bookable!==false){
+        var n=S.resume; S.resume=0;
+        for(var i=2;i<=n;i++){ try{ history.pushState({ nvi:"step", step:i },""); }catch(e){} }
+        S.step=n; render(true); paintMap(S.p,S.d,S.quote.line); return;
+      }
+      S.resume=0;
       render(); paintMap(S.p,S.d,S.quote&&S.quote.line);
       if(S.quote){ say("Fare "+money(S.quote.fare)+" for "+S.quote.km+" kilometres."); countUp(); }
       else say(S.quoteErr);
@@ -609,6 +629,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   /* ───────── steps ───────── */
   var TYPES=[["Documents","doc"],["Small parcel","box"],["Food","food"],["Clothing","shirt"],["Other","more"]];
   var BANNED=["Cash, cheques, prize bonds or other money","Gold, silver and precious-stone jewellery (fashion jewellery is fine)","Weapons, ammunition and replicas","Drugs, alcohol and prescription-only medicine","Fireworks, gas cylinders, flammable liquids and other dangerous goods","Live animals and plants","Food that needs refrigeration","Counterfeit goods, and anything illegal to carry in Pakistan"];
+  var ITEM_PH={ "Documents":"e.g. signed papers, a passport copy", "Small parcel":"e.g. a phone charger, a gift box", "Food":"e.g. a birthday cake, home-cooked lunch",
+    "Clothing":"e.g. two stitched suits", "Other":"Say what it is" };
   function maxKg(){ return Number(S.status&&S.status.max_kg)||10; }
   function maxVal(){ return Number(S.status&&S.status.max_value)||0; }
   function weights(){ var m=maxKg(); return m>5?["Up to 1 kg","1 to 5 kg","5 to "+m+" kg"]:["Up to 1 kg","1 to "+m+" kg"]; }
@@ -659,7 +681,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     var w=weights();
     return head(2,"What are you sending?","")+
       '<div class="types" role="group" aria-label="Kind of parcel">'+TYPES.map(function(t){ return '<button class="type" type="button" data-type="'+t[0]+'" aria-pressed="'+(S.type===t[0])+'">'+IC[t[1]]+t[0]+'</button>'; }).join("")+'</div>'+
-      '<div class="fld"><label class="lbl" for="item">What exactly is inside?</label><input class="inp" id="item" data-f="item" maxlength="80" value="'+esc(S.item)+'" placeholder="e.g. two stitched suits, a birthday cake"></div>'+
+      '<div class="fld"><label class="lbl" for="item">What exactly is inside?</label><input class="inp" id="item" data-f="item" maxlength="80" value="'+esc(S.item)+'" enterkeyhint="next" placeholder="'+esc(ITEM_PH[S.type]||"e.g. two stitched suits, a birthday cake")+'"></div>'+
       '<div class="fld"><span class="lbl" id="wLbl">About how heavy?</span><div class="seg" role="group" aria-labelledby="wLbl">'+w.map(function(x){ return '<button type="button" data-w="'+x+'" aria-pressed="'+(S.weight===x)+'">'+x+'</button>'; }).join("")+'</div></div>'+
       '<div class="fld"><button class="tog" type="button" role="switch" id="fragile" aria-checked="'+S.fragile+'"><span><b>Fragile</b><small>The rider is told to carry it with care</small></span><i aria-hidden="true"></i></button></div>'+
       (maxVal()?'<div class="fld"><label class="lbl" for="value">Value of the contents (optional)</label><div class="rs"><span>Rs</span><input class="inp" id="value" data-f="value" inputmode="numeric" maxlength="7" value="'+esc(S.value)+'" placeholder="0"></div><div class="hint">Nova Instant carries parcels worth up to '+money(maxVal())+'.</div></div>':'')+
@@ -674,14 +696,16 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     return head(3,"Who is it from, and who gets it?","The rider calls these numbers and follows these addresses.")+
       '<section class="card"><div class="who"><span class="dot" aria-hidden="true"></span><b>Pickup contact</b></div>'+
         (me&&me.n&&!S.sName?'<div class="chips" style="margin-bottom:10px"><button class="chip" type="button" data-me>Use my details: '+esc(me.n)+'</button></div>':'')+
-        '<div class="two"><div><label class="lbl" for="sName">Name</label><input class="inp" id="sName" data-f="sName" maxlength="80" autocomplete="name" value="'+esc(S.sName)+'"></div>'+
-        '<div><label class="lbl" for="sPhone">Mobile</label><input class="inp" id="sPhone" data-f="sPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="03XX XXXXXXX" value="'+esc(S.sPhone)+'"></div></div>'+
-        '<div class="fld"><label class="lbl" for="pAddr">Exact pickup address</label><textarea class="inp" id="pAddr" data-f="pAddr" maxlength="300" placeholder="House or shop number, street, nearest landmark">'+esc(S.pAddr)+'</textarea></div></section>'+
+        '<div class="two"><div><label class="lbl" for="sName">Name</label><input class="inp" id="sName" data-f="sName" maxlength="80" autocomplete="name" enterkeyhint="next" value="'+esc(S.sName)+'"></div>'+
+        '<div><label class="lbl" for="sPhone">Mobile</label><input class="inp" id="sPhone" data-f="sPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" enterkeyhint="next" placeholder="03XX XXXXXXX" value="'+esc(S.sPhone)+'"><div class="hint ferr" hidden>Enter a mobile like 0300 1234567.</div></div></div>'+
+        '<div class="fld"><span class="lbl">Pickup address</span><div class="place">'+IC.pin+'<span>'+esc(S.p&&S.p.label!=="Pinned spot"?S.p.label:"The pin you set on the map")+'</span><button class="linkish" type="button" data-edit="1">Change</button></div>'+
+          '<label class="sr" for="pDet">House or shop number, floor and a landmark for the pickup</label><input class="inp" id="pDet" data-f="pDet" maxlength="160" enterkeyhint="next" placeholder="House or shop number, floor, a landmark" value="'+esc(S.pDet)+'"></div></section>'+
       '<section class="card"><div class="who"><span class="sq" aria-hidden="true"></span><b>Receiver</b></div>'+
         (rcp.length&&!S.rName?'<div class="chips" style="margin-bottom:10px" aria-label="Recent receivers">'+rcp.map(function(r,i){ return '<button class="chip" type="button" data-rcp="'+i+'">'+esc(r.n)+'</button>'; }).join("")+'</div>':'')+
-        '<div class="two"><div><label class="lbl" for="rName">Name</label><input class="inp" id="rName" data-f="rName" maxlength="80" autocomplete="off" value="'+esc(S.rName)+'"></div>'+
-        '<div><label class="lbl" for="rPhone">Mobile</label><input class="inp" id="rPhone" data-f="rPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="off" placeholder="03XX XXXXXXX" value="'+esc(S.rPhone)+'"></div></div>'+
-        '<div class="fld"><label class="lbl" for="dAddr">Exact delivery address</label><textarea class="inp" id="dAddr" data-f="dAddr" maxlength="300" placeholder="House or flat number, street, nearest landmark">'+esc(S.dAddr)+'</textarea></div></section>'+
+        '<div class="two"><div><label class="lbl" for="rName">Name</label><input class="inp" id="rName" data-f="rName" maxlength="80" autocomplete="off" enterkeyhint="next" value="'+esc(S.rName)+'"></div>'+
+        '<div><label class="lbl" for="rPhone">Mobile</label><input class="inp" id="rPhone" data-f="rPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="off" enterkeyhint="next" placeholder="03XX XXXXXXX" value="'+esc(S.rPhone)+'"><div class="hint ferr" hidden>Enter a mobile like 0300 1234567.</div></div></div>'+
+        '<div class="fld"><span class="lbl">Delivery address</span><div class="place">'+IC.pin+'<span>'+esc(S.d&&S.d.label!=="Pinned spot"?S.d.label:"The pin you set on the map")+'</span><button class="linkish" type="button" data-edit="1">Change</button></div>'+
+          '<label class="sr" for="dDet">House or flat number, floor and a landmark for the delivery</label><input class="inp" id="dDet" data-f="dDet" maxlength="160" enterkeyhint="done" placeholder="House or flat number, floor, a landmark" value="'+esc(S.dDet)+'"></div></section>'+
       '<section class="card"><span class="lbl" id="payLbl" style="font-size:16px;color:var(--ink)">Who will pay '+esc(money(S.quote?S.quote.fare:0))+'?</span>'+
         '<div class="seg" role="group" aria-labelledby="payLbl"><button type="button" data-pay="sender" aria-pressed="'+(S.payer==="sender")+'">Sender at pickup</button><button type="button" data-pay="receiver" aria-pressed="'+(S.payer==="receiver")+'">Receiver at delivery</button></div>'+
         '<p class="fine" id="paySay">'+(S.payer==="sender"?"Cash to the rider when the parcel is collected.":"Cash to the rider at the door. Tell the receiver the fare is "+esc(money(S.quote?S.quote.fare:0))+".")+'</p></section>'+
@@ -696,12 +720,13 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     var ret=Number(s.return_fee_pct||0);
     return head(4,"Check and book","")+
       '<section class="card"><dl class="rv">'+
-        '<dt>Pickup</dt><dd>'+esc(S.sName)+' &middot; '+esc(pkPhone(S.sPhone))+'<small>'+esc(S.pAddr)+'</small></dd>'+
-        '<dt>Delivery</dt><dd>'+esc(S.rName)+' &middot; '+esc(pkPhone(S.rPhone))+'<small>'+esc(S.dAddr)+'</small></dd>'+
+        '<dt>Pickup</dt><dd>'+esc(S.sName)+' &middot; '+esc(pkPhone(S.sPhone))+'<small>'+esc(addrOf("p"))+'</small></dd>'+
+        '<dt>Delivery</dt><dd>'+esc(S.rName)+' &middot; '+esc(pkPhone(S.rPhone))+'<small>'+esc(addrOf("d"))+'</small></dd>'+
         '<dt>Parcel</dt><dd>'+esc(S.item)+'<small>'+esc([S.type,S.weight,S.fragile?"fragile":"",S.value?("worth "+money(S.value)):""].filter(Boolean).join(" · "))+'</small>'+(S.note?'<small>Rider note: '+esc(S.note)+'</small>':'')+'</dd>'+
         '<dt>Pays</dt><dd>'+(S.payer==="sender"?"Sender, in cash at pickup":"Receiver, in cash at delivery")+'</dd></dl>'+
         '<div class="total" style="font-weight:400;border-top-style:solid"><span>'+(min?"Minimum fare":esc(q.km)+" km × Rs "+esc(q.rate_per_km))+'</span><span>'+esc(money(q.fare))+'</span></div>'+
         '<div class="total"><span>Total, nothing added later</span><b>'+esc(money(q.fare))+'</b></div></section>'+
+      '<div class="chips" style="margin-top:10px" aria-label="Change something"><button class="chip" type="button" data-edit="1">Edit route</button><button class="chip" type="button" data-edit="2">Edit parcel</button><button class="chip" type="button" data-edit="3">Edit people</button></div>'+
       '<section class="card" style="font-size:14.5px;color:var(--ink-2);line-height:1.5"><p class="eyebrow">Good to know</p>'+
         '<p style="margin:0 0 8px">Free to cancel until the rider has picked up the parcel.</p>'+
         '<p style="margin:0 0 8px">If the delivery cannot be made, the parcel comes back to the sender'+(ret>0?", and the return costs "+ret+"% of the fare.":" at no extra charge.")+'</p>'+
@@ -720,35 +745,40 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
       setTimeout(function(){ if(map){ map.invalidateSize(); paintMap(S.p,S.d,S.quote&&S.quote.line); } },320); }
     $("pane").innerHTML='<div class="pane'+(focusTitle?" enter":"")+'">'+[null,step1,step2,step3,step4][S.step]()+'</div>';
     if(S.step===4&&S.cap.on) mountCaptcha();
+    saveDraft();
     if(focusTitle){ window.scrollTo(0,0); var t=$("stepTitle"); if(t){ try{ t.focus({ preventScroll:true }); }catch(e){} } say("Step "+S.step+" of 4."); setTimeout(function(){ if(map){ map.invalidateSize(); paintMap(S.p,S.d,S.quote&&S.quote.line); } },320); }
   }
   function fail(id,msg){ S.msg=msg; var m=document.querySelector(".cta .msg"); if(m) m.textContent=msg; else { render(); }
     /* The caret goes to the end: on a half-filled address the customer adds
        to what is there instead of typing in front of it. */
     if(id){ var el=$(id); if(el){ el.classList.add("bad"); try{ el.scrollIntoView({ block:"center" }); el.focus({ preventScroll:true }); var n=el.value.length; el.setSelectionRange(n,n); }catch(e){} } } say(msg); buzz(30); return false; }
+  /* Each step is a history entry, so the phone's Back button goes one step
+     back instead of leaving the page. */
+  function go(n){ S.step=n; try{ history.pushState({ nvi:"step", step:n },""); }catch(e){} render(true); }
+  function setStep(n){ S.step=n; try{ history.replaceState({ nvi:"step", step:n },""); }catch(e){} render(true); }
   function next(){
     S.msg="";
     if(S.step===1){
       if(!S.p) return openPicker("p");
       if(!S.d) return openPicker("d");
       if(!S.quote||S.quote.bookable===false) return quote();
-      S.step=2; return render(true);
+      return go(2);
     }
     if(S.step===2){
       if(!S.type){ S.msg="Choose the kind of parcel."; render(); say(S.msg); return; }
       if(S.item.trim().length<2) return fail("item","Say what is inside the parcel.");
       if(!S.weight){ S.msg="Choose about how heavy it is."; render(); say(S.msg); return; }
       if(S.value&&maxVal()&&Number(S.value)>maxVal()) return fail("value","Nova Instant carries parcels worth up to "+money(maxVal())+".");
-      S.step=3; return render(true);
+      return go(3);
     }
     if(S.step===3){
       if(S.sName.trim().length<2) return fail("sName","Add the sender's name.");
       if(!pkPhone(S.sPhone)) return fail("sPhone","Enter the sender's mobile like 0300 1234567.");
-      if(S.pAddr.trim().length<8) return fail("pAddr","Add the exact pickup address: house or shop number, street, landmark.");
+      if(S.pDet.trim().length<3||addrOf("p").length<8) return fail("pDet","Add the house or shop number and a landmark for the pickup.");
       if(S.rName.trim().length<2) return fail("rName","Add the receiver's name.");
       if(!pkPhone(S.rPhone)) return fail("rPhone","Enter the receiver's mobile like 0300 1234567.");
-      if(S.dAddr.trim().length<8) return fail("dAddr","Add the exact delivery address: house or flat number, street, landmark.");
-      S.step=4; return render(true);
+      if(S.dDet.trim().length<3||addrOf("d").length<8) return fail("dDet","Add the house or flat number and a landmark for the delivery.");
+      return go(4);
     }
     if(S.step===4) return book(false);
   }
@@ -765,7 +795,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   }
 
   var BOOK_SAY={ not_open:"Nova Instant is not open for booking yet.", closed_now:"Riders are off right now. Booking opens again in the morning.",
-    pickup_address:["pAddr",3,"Add the exact pickup address."], drop_address:["dAddr",3,"Add the exact delivery address."],
+    pickup_address:["pDet",3,"Add the house or shop number and a landmark for the pickup."], drop_address:["dDet",3,"Add the house or flat number and a landmark for the delivery."],
     sender_name:["sName",3,"Add the sender's name."], receiver_name:["rName",3,"Add the receiver's name."],
     sender_phone:["sPhone",3,"The sender's mobile number is not valid."], receiver_phone:["rPhone",3,"The receiver's mobile number is not valid."],
     item:["item",2,"Say what is inside the parcel."],
@@ -779,7 +809,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     if(S.busy||!S.quote) return;
     if(!S.agree){ fail(null,BOOK_SAY.terms); var ab=$("agreeBox"); if(ab){ ab.classList.add("bad"); try{ ab.scrollIntoView({ block:"center" }); }catch(e){} } return; }
     S.busy=true; S.msg=""; render();
-    rpc("nvi_book",{ p_quote:S.quote.quote, p_pickup_address:S.pAddr, p_drop_address:S.dAddr, p_sender_name:S.sName, p_sender_phone:S.sPhone,
+    rpc("nvi_book",{ p_quote:S.quote.quote, p_pickup_address:addrOf("p"), p_drop_address:addrOf("d"), p_sender_name:S.sName, p_sender_phone:S.sPhone,
       p_receiver_name:S.rName, p_receiver_phone:S.rPhone, p_item:itemText(), p_payer:S.payer, p_rider_note:S.note||null,
       p_terms:true, p_device:deviceId(), p_captcha:S.cap.token||null }).then(function(r){
       S.busy=false;
@@ -790,16 +820,17 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         Object.keys(mine).forEach(function(k){ if(Date.now()-mine[k].at>8*86400000) delete mine[k]; }); store("nvi_mine",mine);
         store("nvi_last",{ token:d.token, code:d.code, at:Date.now() });
         store("nvi_me",{ n:S.sName.trim(), p:pkPhone(S.sPhone) });
-        var rc=store("nvi_rcp"); rc=(Array.isArray(rc)?rc:[]).filter(function(x){ return x.p!==pkPhone(S.rPhone); }); rc.unshift({ n:S.rName.trim(), p:pkPhone(S.rPhone), a:S.dAddr.trim() }); store("nvi_rcp",rc.slice(0,5));
+        var rc=store("nvi_rcp"); rc=(Array.isArray(rc)?rc:[]).filter(function(x){ return x.p!==pkPhone(S.rPhone); }); rc.unshift({ n:S.rName.trim(), p:pkPhone(S.rPhone) }); store("nvi_rcp",rc.slice(0,5));
         buzz([12,60,18]);
-        try{ history.pushState(null,"",selfUrl(d.token)); }catch(e){}
+        try{ sessionStorage.removeItem("nvi_draft"); }catch(e){}
+        try{ history.replaceState(null,"",selfUrl(d.token)); }catch(e){}
         return startTrack(d.token,true);      /* the sheet becomes "Finding your rider": no page load */
       }
       if(d.reason==="quote_expired"&&!retried){
         var was=S.quote.fare, my=++qSeq;
         return rpc("nvi_quote",{ p_plat:S.p.lat, p_plng:S.p.lng, p_dlat:S.d.lat, p_dlng:S.d.lng }).then(function(q){
           if(my!==qSeq) return;
-          if(q.error||!q.data||!q.data.ok||q.data.bookable===false){ S.quote=null; S.step=1; S.msg="The fare needs working out again."; return render(true); }
+          if(q.error||!q.data||!q.data.ok||q.data.bookable===false){ S.quote=null; S.msg="The fare needs working out again."; return setStep(1); }
           S.quote=q.data;
           if(Number(q.data.fare)===Number(was)) return book(true);
           S.msg="The fare is now "+money(q.data.fare)+". Check it and press Book again."; render(); say(S.msg);
@@ -807,7 +838,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
       }
       if(S.cap.on){ S.cap.token=""; try{ window.turnstile.reset(S.cap.id); }catch(e){} }
       var m=BOOK_SAY[d.reason];
-      if(Array.isArray(m)){ S.step=m[1]; S.msg=m[2]; render(true); var el=$(m[0]); if(el){ el.classList.add("bad"); try{ el.scrollIntoView({ block:"center" }); }catch(e){} } say(S.msg); return; }
+      if(Array.isArray(m)){ S.msg=m[2]; setStep(m[1]); var el=$(m[0]); if(el){ el.classList.add("bad"); try{ el.scrollIntoView({ block:"center" }); }catch(e){} } say(S.msg); return; }
       S.msg=m||"The booking could not be made."; render(); say(S.msg);
     });
   }
@@ -816,21 +847,39 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   $("pane").addEventListener("click",function(e){
     var t=e.target.closest("button,[data-banned]"); if(!t) return;
     if(t.id==="go") return next();
-    if(t.hasAttribute("data-back")){ S.msg=""; S.step=Math.max(1,S.step-1); return render(true); }
+    if(t.hasAttribute("data-back")){ S.msg=""; if(history.state&&history.state.nvi==="step"&&history.state.step===S.step){ history.back(); return; } S.step=Math.max(1,S.step-1); return render(true); }
+    if(t.dataset.edit){ var to=Number(t.dataset.edit), cur=S.step; S.msg=""; if(to<cur&&history.state&&history.state.nvi==="step"&&history.state.step===cur){ history.go(to-cur); return; } S.step=to; return render(true); }
     if(t.dataset.pick) return openPicker(t.dataset.pick);
-    if(t.dataset.type){ S.type=t.dataset.type; S.msg=""; return render(); }
-    if(t.dataset.w){ S.weight=t.dataset.w; S.msg=""; return render(); }
-    if(t.id==="fragile"){ S.fragile=!S.fragile; t.setAttribute("aria-checked",String(S.fragile)); return; }
-    if(t.dataset.pay){ S.payer=t.dataset.pay; return render(); }
+    if(t.dataset.type){ S.type=t.dataset.type; press(t,"[data-type]"); var it=$("item"); if(it) it.placeholder=ITEM_PH[S.type]||it.placeholder; clearMsg(); saveDraft(); return; }
+    if(t.dataset.w){ S.weight=t.dataset.w; press(t,"[data-w]"); clearMsg(); saveDraft(); return; }
+    if(t.id==="fragile"){ S.fragile=!S.fragile; t.setAttribute("aria-checked",String(S.fragile)); saveDraft(); return; }
+    if(t.dataset.pay){ S.payer=t.dataset.pay; press(t,"[data-pay]"); var ps=$("paySay");
+      if(ps) ps.textContent=S.payer==="sender"?"Cash to the rider when the parcel is collected.":"Cash to the rider at the door. Tell the receiver the fare is "+money(S.quote?S.quote.fare:0)+".";
+      saveDraft(); return; }
     if(t.hasAttribute("data-me")){ var me=store("nvi_me"); if(me){ S.sName=me.n||""; S.sPhone=me.p||""; render(); } return; }
-    if(t.dataset.rcp){ var r=(store("nvi_rcp")||[])[Number(t.dataset.rcp)]; if(r){ S.rName=r.n||""; S.rPhone=r.p||""; if(!S.dAddr||S.dAddrAuto) { S.dAddr=r.a||S.dAddr; S.dAddrAuto=false; } render(); } return; }
+    if(t.dataset.rcp){ var r=(store("nvi_rcp")||[])[Number(t.dataset.rcp)]; if(r){ S.rName=r.n||""; S.rPhone=r.p||""; render(); } return; }
     if(t.hasAttribute("data-banned")){ e.preventDefault(); return openPanel("What cannot be sent",'<ul class="ban">'+BANNED.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join("")+'</ul><p class="fine">A rider may refuse a parcel that looks unsafe to carry. The full list is in the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</p>'); }
+  });
+  function press(t,sel){ [].forEach.call(t.parentElement.querySelectorAll(sel),function(b){ b.setAttribute("aria-pressed",String(b===t)); }); }
+  function clearMsg(){ if(S.msg){ S.msg=""; var m=document.querySelector(".cta .msg"); if(m) m.remove(); } }
+  /* Enter moves to the next field; on the last one it presses the main button. */
+  $("pane").addEventListener("keydown",function(e){
+    if(e.key!=="Enter"||!e.target.matches||!e.target.matches("input.inp")) return;
+    e.preventDefault();
+    var all=[].slice.call($("pane").querySelectorAll("input.inp")), nx=all[all.indexOf(e.target)+1];
+    if(nx){ try{ nx.focus(); }catch(_){} } else { try{ e.target.blur(); }catch(_){} var g=$("go"); if(g&&!g.disabled) g.click(); }
+  });
+  /* A mobile number is checked as soon as the customer leaves the field. */
+  $("pane").addEventListener("focusout",function(e){
+    var f=e.target.getAttribute&&e.target.getAttribute("data-f"); if(f!=="sPhone"&&f!=="rPhone") return;
+    var bad=!!e.target.value.trim()&&!pkPhone(e.target.value), h=e.target.parentElement.querySelector(".ferr");
+    e.target.classList.toggle("bad",bad); if(h) h.hidden=!bad;
   });
   $("pane").addEventListener("input",function(e){
     var f=e.target.getAttribute&&e.target.getAttribute("data-f"); if(!f) return;
     var v=e.target.value; if(f==="value") v=v.replace(/[^\d]/g,"");
-    S[f]=v; if(f==="pAddr"||f==="dAddr") S[f+"Auto"]=false;
-    e.target.classList.remove("bad"); if(S.msg){ S.msg=""; var m=document.querySelector(".cta .msg"); if(m) m.remove(); }
+    S[f]=v; saveDraft();
+    e.target.classList.remove("bad"); var fe=e.target.parentElement.querySelector(".ferr"); if(fe) fe.hidden=true; if(S.msg){ S.msg=""; var m=document.querySelector(".cta .msg"); if(m) m.remove(); }
   });
   $("pane").addEventListener("change",function(e){ if(e.target.id==="agree"){ S.agree=e.target.checked; var ab=$("agreeBox"); if(ab) ab.classList.remove("bad"); if(S.msg){ S.msg=""; var m=document.querySelector(".cta .msg"); if(m) m.remove(); } } });
   document.addEventListener("click",function(e){ if(e.target.closest("[data-close]")) closePanel(); });
@@ -861,7 +910,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         btn.disabled=false;
         if(r.error||!r.data) return tell("Could not look that up. Check your connection and try again.");
         if(!r.data.ok) return tell(r.data.reason==="slow_down"?"Too many tries. Wait ten minutes, or call NovaX.":"No booking matches that number and mobile.");
-        closePanel(); try{ history.pushState(null,"",selfUrl(r.data.token)); }catch(e2){} startTrack(r.data.token,false);
+        /* The help panel's history entry becomes the tracking page's. */
+        closePanelDom(); S.ov=false; try{ history.replaceState(null,"",selfUrl(r.data.token)); }catch(e2){} startTrack(r.data.token,false);
       });
     });
     p.querySelector("[data-banned2]").addEventListener("click",function(){ openPanel("What cannot be sent",'<ul class="ban">'+BANNED.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join("")+'</ul>'); });
@@ -989,7 +1039,31 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
       });
     }
   });
-  window.addEventListener("popstate",function(){ location.reload(); });
+  window.addEventListener("popstate",function(e){
+    if(S.skipPop){ S.skipPop=false; return; }
+    if(S.ov){ S.ov=false; closePanelDom(); if(S.pinFor) leavePin(true); return; }
+    if(document.body.getAttribute("data-view")!=="book"){ location.reload(); return; }
+    var st=e.state, n=(st&&st.nvi==="step")?st.step:1;
+    if(n>1&&!(S.quote&&S.quote.bookable!==false)) n=1;
+    S.msg=""; S.step=n; render(true);
+  });
+  /* What the customer has typed survives a reload or an accidental close of
+     the tab, for 45 minutes, in this browser only. */
+  var draftT=null;
+  var DRAFT=["p","d","type","item","weight","fragile","value","note","sName","sPhone","pDet","rName","rPhone","dDet","payer","step"];
+  function saveDraft(){
+    clearTimeout(draftT);
+    draftT=setTimeout(function(){ try{ var o={ at:Date.now() }; DRAFT.forEach(function(k){ o[k]=S[k]; }); sessionStorage.setItem("nvi_draft",JSON.stringify(o)); }catch(e){} },300);
+  }
+  function restoreDraft(){
+    try{
+      var o=JSON.parse(sessionStorage.getItem("nvi_draft")||"null");
+      if(!o||Date.now()-o.at>45*60000||!o.p||!o.d) return false;
+      DRAFT.forEach(function(k){ if(k!=="step"&&o[k]!==undefined) S[k]=o[k]; });
+      S.resume=Math.min(Number(o.step)||1,3); S.step=1;
+      return true;
+    }catch(e){ return false; }
+  }
 
   /* ───────── boot ───────── */
   rpc("nvi_status").then(function(r){
@@ -1000,7 +1074,9 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     if(document.body.getAttribute("data-view")==="book") render();
   });
   var token=new URLSearchParams(location.search).get("t");
-  if(token) startTrack(token,false); else render();
+  if(token) startTrack(token,false);
+  else if(restoreDraft()){ render(); setTimeout(function(){ if(map){ map.invalidateSize(); paintMap(S.p,S.d,null); } },200); quote(); toast("We kept the details you had typed."); }
+  else render();
 })();
 </script>
 </body>
