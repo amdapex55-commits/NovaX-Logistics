@@ -96,7 +96,6 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
       title: 'Your first parcel is booked.',
       intro: `Your first booking${forBiz} is recorded. This tracking number connects its label, every status update and its delivery.`,
       fact: { label: 'TRACKING NUMBER', value: awb, caption: 'Booked ' + date(data.booked_at), size: 28 },
-      rows: [['Tracking number', awb], ['Booked on', date(data.booked_at)]],
       cta: 'Print the label', destination: PORTAL + '?tab=awbLabel&awb=' + encodeURIComponent(awb),
       stepsTitle: 'What happens next',
       steps: [
@@ -291,7 +290,7 @@ ${s.signoff ? `<p style="margin:16px 0 0;font-size:15px;line-height:1.6;color:${
 </table></td></tr></table></body></html>`;
   // Keep "Rs 250" on one line in the reminders' prices.
   const html = reminder ? page.replace(/Rs (\d)/g, 'Rs&nbsp;$1') : page;
-  const text = [s.title, s.intro, s.fact ? `${s.fact.label}: ${s.fact.value}` : '',
+  const text = [s.title, s.intro, s.fact ? `${s.fact.label}: ${s.fact.value}${s.fact.caption ? ' (' + s.fact.caption + ')' : ''}` : '',
     ...(s.rows ?? []).map(([key, value]) => `${key}: ${value}`),
     `${s.cta}: ${s.destination}`, s.extraLink ? `${s.extraLink[0]}: ${s.extraLink[1]}` : '',
     s.stepsTitle, ...s.steps.map(([heading, copy]) => `${heading}\n${copy}`), s.note,
