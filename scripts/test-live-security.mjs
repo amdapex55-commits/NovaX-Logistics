@@ -12,13 +12,21 @@ const checks = [
 
 let failed = false;
 for (const check of checks) {
-  const response = await fetch(new URL(check.path, origin), { redirect: "manual" });
   const allowed = check.statuses || [check.status];
-  if (!allowed.includes(response.status)) {
-    console.error(`${check.path}: expected ${allowed.join(" or ")}, got ${response.status}`);
+  let status = 0;
+  // GitHub Pages can take a few seconds to swap a newly deployed artifact.
+  // Retry only status mismatches; network/configuration errors still fail.
+  for (let attempt = 1; attempt <= 10; attempt += 1) {
+    const response = await fetch(new URL(check.path, origin), { redirect: "manual" });
+    status = response.status;
+    if (allowed.includes(status)) break;
+    if (attempt < 10) await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
+  if (!allowed.includes(status)) {
+    console.error(`${check.path}: expected ${allowed.join(" or ")}, got ${status}`);
     failed = true;
   } else {
-    console.log(`ok ${check.path}: ${response.status}`);
+    console.log(`ok ${check.path}: ${status}`);
   }
 }
 
