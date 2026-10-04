@@ -13490,6 +13490,37 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       NV_KYC.tried=true;
       nvKycLoad();
     }
+    /* Merchant Agreement (4 Oct 2026). New merchants accept at signup; anyone
+       who has not accepted the current version sees this banner until they
+       do. nv_terms_status() also records a signup acceptance stamped in the
+       account's metadata, so a merchant who verified by email is not asked
+       twice. The banner never blocks the portal. */
+    var NV_TERMS={ tried:false, busy:false };
+    function nvTermsEnsure(){
+      if(NV_TERMS.tried || !state.identityVerified || window.__NOVAX_DEMO) return;
+      var sb=window.__nvSb, ban=document.getElementById("nvTermsBanner");
+      if(!sb||!sb.rpc||!ban) return;
+      NV_TERMS.tried=true;
+      Promise.resolve(sb.rpc("nv_terms_status")).then(function(r){
+        if(!r||r.error||!r.data) return;
+        if(r.data.accepted) return;
+        var v=document.getElementById("nvTermsVer"); if(v) v.textContent=r.data.current||"1.0";
+        ban.dataset.version=r.data.current||"1.0";
+        ban.hidden=false;
+      }).catch(function(){ NV_TERMS.tried=false; });
+      var go=document.getElementById("nvTermsAccept");
+      if(go && !go._nvWired){ go._nvWired=true; go.addEventListener("click",function(){
+        if(NV_TERMS.busy) return; NV_TERMS.busy=true; go.disabled=true; go.textContent="Saving…";
+        Promise.resolve(sb.rpc("nv_accept_terms",{ p_version:ban.dataset.version||"1.0", p_source:"portal",
+          p_user_agent:String(navigator.userAgent||"").slice(0,300) })).then(function(r){
+          if(r&&r.error) throw r.error;
+          ban.hidden=true; toast("Thanks. Your acceptance is recorded.","success");
+        }).catch(function(e){
+          go.disabled=false; go.textContent="I accept";
+          toast(/permission denied|JWT/i.test((e&&e.message)||"")?"Your sign-in has ended. Refresh and sign in again.":"Could not save that. Please try again.","error");
+        }).then(function(){ NV_TERMS.busy=false; });
+      }); }
+    }
     function nvKycSendState(){
       var b=nvKycEl("nvKycSend");
       if(b && !NV_KYC.sending) b.disabled=!(NV_KYC.pick && NV_KYC.pick.ready());
@@ -14196,6 +14227,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if (workspaceName) { const cds=clientDisplayState(); workspaceName.textContent = cds.showWorkspaceSuffix ? `${cds.label} workspace` : cds.label; }
       try{ nvPfEnsureHeader(); }catch(e){}
       try{ nvKycEnsure(); }catch(e){}
+      try{ nvTermsEnsure(); }catch(e){}
       try{ if(typeof renderDashboardEmptyState==="function") renderDashboardEmptyState(); }catch(e){}
       try{ if(typeof renderDailyCommandCenter==="function") renderDailyCommandCenter(); }catch(e){}
       /* NovaX new (Smart Portal E): once-per-session insight fetch. Guarded

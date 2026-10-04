@@ -2218,10 +2218,12 @@ button.action-btn[aria-disabled="true"],button.ghost-btn[aria-disabled="true"]{
     .nv-pf-facts span{min-width:110px;color:var(--nvu-ink-2);font-size:13px}.nv-pf-facts b{font-size:14.5px}
     .nv-pf-hist{display:grid;gap:8px}
     /* Owner's CNIC (30 Sep 2026): Profile panel + dashboard reminder */
-    #nvKycBanner[hidden],#nvKycChip[hidden],#nvKycView[hidden],#nvKycEdit[hidden],#nvKycActs[hidden],#nvKycCancel[hidden],.cnic-tile img[hidden]{display:none!important}
+    #nvTermsBanner[hidden],#nvKycBanner[hidden],#nvKycChip[hidden],#nvKycView[hidden],#nvKycEdit[hidden],#nvKycActs[hidden],#nvKycCancel[hidden],.cnic-tile img[hidden]{display:none!important}
     .nv-pf-note.is-ok{background:var(--nvu-good-bg);color:var(--nvu-good-fg)}
     .nv-pf-note.is-info{background:var(--nvu-info-bg);color:var(--nvu-info-fg)}
     .nv-kyc-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 14px;padding:14px 16px;border-radius:16px;background:var(--nvu-warn-bg);color:var(--nvu-warn-fg);box-shadow:inset 0 0 0 1px var(--nvu-warn-ln)}
+    .nv-terms-banner{background:var(--nvu-info-bg);color:var(--nvu-info-fg);box-shadow:inset 0 0 0 1px var(--nvu-info-ln,var(--nvu-line))}
+    .nv-terms-banner a{color:inherit;font-weight:700;text-decoration:underline;text-underline-offset:2px}
     .nv-kyc-banner.is-bad{background:var(--nvu-bad-bg);color:var(--nvu-bad-fg);box-shadow:inset 0 0 0 1px var(--nvu-bad-ln)}
     .nv-kyc-banner>div{flex:1 1 240px;min-width:0}
     .nv-kyc-banner b{display:block;font-size:15px}.nv-kyc-banner span{display:block;font-size:13px;margin-top:2px}
@@ -2649,7 +2651,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.js?v=8df33a5b" defer></script>
+  <script src="client-app.js?v=72167930" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2664,7 +2666,7 @@ try{
 (function(){
   /* SELF-HEALING, because "Reload" could not fix the thing it was offered for.
      The service worker precaches /client.html, and that HTML hardcodes one
-     bundle URL (client-app.js?v=8df33a5b<hash>). Assets are cache-first and activate
+     bundle URL (client-app.js?v=72167930<hash>). Assets are cache-first and activate
      DELETES older caches, so a merchant can end up holding a cached shell
      whose bundle is in no cache and, on a dropped connection, cannot be
      fetched either. Pressing Reload served the same dead shell again -- the
@@ -2839,6 +2841,10 @@ try{
                    renderCodHero() from the same server-computed figures the
                    Wallet tab uses -- this panel never does its own arithmetic. -->
               <div id="nvCodHero"></div>
+              <div class="nv-kyc-banner nv-terms-banner" id="nvTermsBanner" role="status" hidden>
+                <div><b>Please accept the NovaX Merchant Agreement</b><span>Version <span id="nvTermsVer" style="display:inline;margin:0">1.0</span> covers COD payouts, holds, lost-parcel claims and returns. <a href="/terms.html" target="_blank" rel="noopener">Read it</a></span></div>
+                <button type="button" class="action-btn" id="nvTermsAccept">I accept</button>
+              </div>
               <div class="nv-kyc-banner" id="nvKycBanner" role="status" hidden>
                 <div><b id="nvKycBannerT">Add the owner's CNIC</b><span id="nvKycBannerB">A photo of the front and the back. Only NovaX staff can see it.</span></div>
                 <button type="button" class="action-btn" id="nvKycBannerGo">Add CNIC</button>
