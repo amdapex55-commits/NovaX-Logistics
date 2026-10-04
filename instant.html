@@ -4,15 +4,13 @@
 <meta charset="utf-8">
 <link rel="preconnect" href="https://rhzunbzbdzicajqtohwp.supabase.co" crossorigin>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Nova Instant &middot; Bike parcel delivery in Karachi | NovaX</title>
+<title>Nova Instant &middot; Send a parcel across Karachi</title>
 <link rel="icon" href="/assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
-<meta name="theme-color" content="#0d2920">
-<!-- Not indexed until launch: removing this line is a launch decision. The
-     tracking token lives in this page's URL, so only the site's address is
-     ever sent as the referrer, never the path. The map needs that much: a
-     Mapbox token restricted to novaxlogistics.com is refused with none. -->
+<meta name="theme-color" content="#0B2A20">
+<!-- Preview: not linked from the site and not indexed until launch. The
+     tracking token lives in this page's URL, so only the origin is sent on. -->
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="origin">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -20,15 +18,17 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/vendor/leaflet-1.9.4/leaflet.css">
 <style>
+/* Nova Instant: its own product inside NovaX. Deep forest, emerald, warm
+   off-white; lime only as a small highlight. Calm, few borders, wide soft
+   shadows, one primary button per screen. */
 :root{
-  --ink:#10221a; --ink-2:#33463c; --muted:#5d6e65;
-  --green:#0fbf78; --green-h:#14cf86; --green-2:#087c55; --green-3:#06603f;
-  --mint:#eafbf3; --mint-line:#c6ebd8; --lime:#d9ff74;
-  --paper:#fbfcf8; --paper-2:#f3f5ee; --card:#ffffff;
-  --line:#dce7df; --line-2:#c4d6ca;
-  --navy:#0d2920; --navy-line:#2a5242; --navy-ink:#e8f5ee; --navy-muted:#a9c5b8; --navy-green:#7be8b4;
+  --forest:#0B2A20; --forest-2:#123a2d; --forest-line:#24503f; --forest-ink:#e9f4ee; --forest-muted:#9fbfb1;
+  --emerald:#12C77C; --emerald-h:#19d688; --emerald-ink:#06301f; --emerald-deep:#0a7a4f;
+  --paper:#F7F6F1; --card:#ffffff; --ink:#10221a; --ink-2:#3a4b42; --muted:#62736a;
+  --line:#e3e8e2; --line-2:#cfd9d2; --mint:#e9f9f1; --lime:#d9ff74;
   --amber:#fff4da; --amber-ink:#7a5500; --red-bg:#fdecea; --red-ink:#9b1c13;
-  --sa-b:env(safe-area-inset-bottom,0px);
+  --r:18px; --shadow:0 18px 50px rgba(11,42,32,.10), 0 2px 8px rgba(11,42,32,.05);
+  --hdr:56px; --sa-b:env(safe-area-inset-bottom,0px);
   --display:Manrope,"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --body:"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",monospace;
@@ -37,419 +37,262 @@
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.5 var(--body);overflow-x:clip}
-button,input,textarea{font:inherit;color:inherit}
-button{cursor:pointer}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
-.wrap{max-width:1120px;margin:0 auto;padding:0 16px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+:focus-visible{outline:2px solid var(--emerald-deep);outline-offset:2px}
+svg.ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
 /* Header */
-.top{background:var(--navy);color:var(--navy-ink)}
-.top .wrap{display:flex;align-items:center;gap:12px;min-height:60px}
-.brand{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;min-height:44px}
-.brand img{width:30px;height:30px;border-radius:8px}
-.brand b{font:800 16px/1 var(--display);letter-spacing:-.01em}
-.brand i{font-style:normal;font:700 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--navy);
-  background:var(--lime);padding:5px 7px;border-radius:4px}
-.top-r{margin-left:auto;display:flex;gap:6px}
-.top a.tl{color:var(--navy-muted);text-decoration:none;font-size:14px;font-weight:500;min-height:44px;display:inline-flex;align-items:center;padding:0 8px}
-.top a.tl:hover{color:#fff}
+.hdr{position:fixed;inset:0 0 auto 0;height:var(--hdr);z-index:60;background:var(--forest);color:var(--forest-ink);display:flex;align-items:center;gap:10px;padding:0 6px 0 14px}
+.hdr a.brand{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;min-height:48px}
+.hdr .brand img{width:28px;height:28px;border-radius:8px}
+.hdr .brand b{font:800 17px/1 var(--display);letter-spacing:-.01em}
+.hdr .brand b i{font-style:normal;color:var(--emerald)}
+.hbtn{margin-left:auto;display:inline-flex;align-items:center;gap:7px;min-height:48px;padding:0 12px;border:0;background:none;color:var(--forest-ink);font-weight:700;font-size:15px}
 
-/* Opening line */
-.intro{background:var(--navy);color:var(--navy-ink);padding:6px 0 26px}
-.intro h1{font:800 clamp(26px,7.4vw,40px)/1.08 var(--display);letter-spacing:-.025em;margin:8px 0 10px;max-width:16ch}
-.intro h1 span{color:var(--navy-green)}
-.facts{display:flex;flex-wrap:wrap;gap:6px 8px;margin:0;padding:0;list-style:none}
-.facts li{font-size:13.5px;color:var(--navy-ink);border:1px solid var(--navy-line);border-radius:999px;padding:5px 11px;white-space:nowrap}
-.facts li b{font-weight:700;color:#fff}
-
-.note{display:flex;gap:10px;align-items:flex-start;margin:14px 0 0;padding:11px 13px;border-radius:12px;font-size:14px;line-height:1.45}
-.note svg{flex:none;margin-top:2px}
-.note.soon{background:var(--amber);color:var(--amber-ink)}
-.note.prev{background:var(--mint);color:var(--green-3);border:1px solid var(--mint-line)}
-
-/* Layout */
-.book{display:grid;gap:16px;padding-top:18px;padding-bottom:18px}
-@media (min-width:920px){
-  .book{grid-template-columns:minmax(0,480px) minmax(0,1fr);gap:28px;padding-top:28px;padding-bottom:24px;align-items:start}
-  .mapcol{position:sticky;top:16px}
-}
-/* Phones: the map sits straight under the two stops, before the fare. */
-@media (max-width:919px){
-  .formcol{display:contents}
-  #cardRoute{order:1}.mapcol{order:2}.meter{order:3;margin-top:0!important}#cardDet{order:4;margin-top:0!important}
-}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
-.card + .card{margin-top:14px}
-.card h2{font:800 17px/1.2 var(--display);letter-spacing:-.01em;margin:0 0 12px}
-.card h2 small{display:block;font:400 13.5px/1.4 var(--body);color:var(--muted);margin-top:3px;letter-spacing:0}
-
-/* The route: two stops joined by the line a rider rides */
-.route{position:relative}
-.stop{position:relative;display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;padding-bottom:16px}
-.stop:last-child{padding-bottom:0}
-.stop::before{content:"";position:absolute;left:13px;top:30px;bottom:-2px;border-left:2px dashed var(--line-2)}
-.stop:last-child::before{display:none}
-.mark{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font:800 12px/1 var(--display);margin-top:24px;position:relative;z-index:1}
-.mark.a{background:var(--green);color:#04170e}
-.mark.b{background:var(--navy);color:#fff;border-radius:8px 8px 8px 2px}
-.stop label,.f label{display:block;font-size:13px;font-weight:700;color:var(--ink-2);margin-bottom:5px}
-.inp{width:100%;min-height:48px;padding:11px 13px;border:1.5px solid var(--line-2);border-radius:12px;background:#fff;font-size:16px;outline:none;-webkit-appearance:none;appearance:none}
-textarea.inp{min-height:76px;resize:vertical;line-height:1.4}
-.inp::placeholder{color:#8a9a91}
-.inp:focus{border-color:var(--green-2);box-shadow:0 0 0 3px rgba(15,191,120,.18)}
-.inp.bad{border-color:#c0392b;box-shadow:0 0 0 3px rgba(192,57,43,.12)}
-.stop.set .inp{border-color:var(--green-2);background:var(--mint)}
-.sugwrap{position:relative}
-.sug{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:1200;margin:0;padding:4px;list-style:none;background:#fff;border:1px solid var(--line-2);
-  border-radius:12px;box-shadow:0 14px 34px rgba(13,41,32,.16);max-height:260px;overflow:auto}
-.sug li{padding:10px 11px;border-radius:9px;cursor:pointer;min-height:44px;display:flex;flex-direction:column;justify-content:center}
-.sug li b{font-weight:700;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sug li span{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sug li[aria-selected="true"],.sug li:hover{background:var(--mint)}
-.sug li.none{color:var(--muted);font-size:13.5px;cursor:default;background:none}
-.acts{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px}
-.lnk{background:none;border:0;padding:0;min-height:44px;display:inline-flex;align-items:center;gap:6px;color:var(--green-2);font-weight:700;font-size:14px}
-.lnk:hover{text-decoration:underline}
-.lnk[disabled]{opacity:.55;cursor:default;text-decoration:none}
-
-/* Map */
-.mapbox{position:relative;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--paper-2)}
-#map{height:260px;width:100%;z-index:0}
-@media (min-width:920px){ #map{height:min(620px,calc(100vh - 150px))} }
-.maphint{position:absolute;right:10px;top:10px;z-index:500;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:12.5px;color:var(--ink-2);pointer-events:none}
-.leaflet-container{font:inherit;background:var(--paper-2)}
+/* Map: the stage everything else sits on */
+/* On a phone the map is the strip above the sheet (plus a little that the
+   sheet's rounded corners overlap), so a route always fits what is visible. */
+body{--peek:38vh}
+body[data-step="1"][data-ready]{--peek:24vh}   /* both places set: room for the fare without scrolling */
+body[data-step="2"],body[data-step="3"],body[data-step="4"]{--peek:15vh}
+body[data-view="track"]{--peek:24vh}
+.mapwrap{position:fixed;top:var(--hdr);left:0;right:0;height:calc(var(--peek) + 26px);z-index:1;background:#e8ede9;transition:height .26s cubic-bezier(.2,.8,.2,1)}
+#map{position:absolute;inset:0}
+.leaflet-container{font:inherit;background:#e8ede9}
 .leaflet-control-attribution{font-size:10px}
-.pm{width:30px;height:30px;display:grid;place-items:center;font:800 12px/1 var(--display);box-shadow:0 3px 10px rgba(13,41,32,.35);border:2px solid #fff}
-.pm.a{background:var(--green);color:#04170e;border-radius:50%}
-.pm.b{background:var(--navy);color:#fff;border-radius:9px 9px 9px 2px}
-/* Pin mode: the map takes the screen and the pin stays in the middle */
-.cross{display:none;position:absolute;left:50%;top:50%;z-index:600;width:36px;height:46px;margin:-46px 0 0 -18px;pointer-events:none}
-.pinbar{display:none;position:absolute;left:0;right:0;bottom:0;z-index:650;background:#fff;border-top:1px solid var(--line);padding:12px 14px calc(12px + var(--sa-b))}
-.pinbar p{margin:0 0 10px;font-size:14px;color:var(--ink-2);min-height:21px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.leaflet-top.leaflet-left{top:8px;left:6px}
+.pm{width:32px;height:32px;display:grid;place-items:center;font:800 13px/1 var(--display);border:2.5px solid #fff;box-shadow:0 6px 16px rgba(11,42,32,.35)}
+.pm.a{background:var(--emerald);color:var(--emerald-ink);border-radius:50%}
+.pm.b{background:var(--forest);color:#fff;border-radius:10px 10px 10px 3px}
+.pm.drop{animation:drop .32s cubic-bezier(.2,.9,.3,1.25)}
+@keyframes drop{from{transform:translateY(-22px)}to{transform:none}}
+.cross{display:none;position:absolute;left:50%;top:50%;z-index:600;width:38px;height:48px;margin:-48px 0 0 -19px;pointer-events:none}
+.pinbar{display:none;position:absolute;left:0;right:0;bottom:0;z-index:650;background:var(--card);border-radius:22px 22px 0 0;box-shadow:var(--shadow);padding:16px 16px calc(16px + var(--sa-b))}
+.pinbar p{margin:0 0 12px;font-size:15px;color:var(--ink-2);min-height:22px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pinbar p b{color:var(--ink)}
 .pinbar div{display:flex;gap:10px}
 body.pinning{overflow:hidden}
-body.pinning .mapbox{position:fixed;inset:0;z-index:2000;border-radius:0;border:0}
-body.pinning #map{height:100%}
+body.pinning .mapwrap{z-index:80;top:0;left:0;height:100dvh;transition:none}
 body.pinning .cross,body.pinning .pinbar{display:block}
-body.pinning .maphint{display:none}
-body.pinning .leaflet-bottom{bottom:118px}
+body.pinning .leaflet-bottom{bottom:124px}
 
-/* Fare meter */
-.meter{background:var(--navy);color:var(--navy-ink);border-radius:16px;padding:16px;margin-top:14px}
-.meter-top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
-.meter-k{font:700 12px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--navy-muted)}
-.fare{font:800 40px/1 var(--display);letter-spacing:-.03em;margin-top:8px;font-variant-numeric:tabular-nums;color:#fff}
-.fare small{font:700 18px/1 var(--display);color:var(--navy-green);margin-right:4px;letter-spacing:0}
-.fare.idle{color:var(--navy-line)}
-.dist{text-align:right;font-size:13.5px;color:var(--navy-muted);line-height:1.4}
-.dist b{display:block;font:800 18px/1.1 var(--display);color:#fff;font-variant-numeric:tabular-nums}
-.meter-say{margin:10px 0 0;font-size:13.5px;color:var(--navy-muted);min-height:20px}
-.pay{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:14px;padding:4px;border:1px solid var(--navy-line);border-radius:12px}
-.pay button{min-height:44px;border:0;border-radius:9px;background:none;color:var(--navy-muted);font-weight:700;font-size:14.5px}
-.pay button[aria-pressed="true"]{background:var(--navy-green);color:var(--navy)}
-.pay-say{margin:8px 2px 0;font-size:13px;color:var(--navy-muted)}
+/* The sheet */
+.stage{position:relative;z-index:10;pointer-events:none;padding-top:calc(var(--hdr) + var(--peek));transition:padding-top .26s cubic-bezier(.2,.8,.2,1);min-height:100dvh;display:flex;flex-direction:column}
+.sheet{pointer-events:auto;flex:1;background:var(--paper);border-radius:22px 22px 0 0;box-shadow:0 -14px 40px rgba(11,42,32,.14);padding:10px 16px 0;display:flex;flex-direction:column}
+.grab{width:38px;height:4px;border-radius:99px;background:var(--line-2);margin:0 auto 12px}
+/* Entrances move, they never fade from nothing: content is readable even
+   if an animation is paused or never runs. */
+.pane.enter{animation:pane .24s ease-out}
+@keyframes pane{from{transform:translateY(12px)}to{transform:none}}
+@media (min-width:920px){
+  .mapwrap{left:460px;height:calc(100dvh - var(--hdr));transition:none}
+  .stage{padding-top:var(--hdr)!important;width:460px;min-height:100dvh}
+  .sheet{border-radius:0;box-shadow:8px 0 40px rgba(11,42,32,.08);padding:22px 28px 0}
+  .grab{display:none}
+}
+@media (prefers-reduced-motion:reduce){ .stage,.mapwrap{transition:none} .pane.enter,.pm.drop,.panel{animation:none} }
 
-/* Details */
-.grid2{display:grid;gap:12px}
-@media (min-width:520px){ .grid2{grid-template-columns:1fr 1fr} }
-.f{margin-top:12px}
-.f:first-child{margin-top:0}
-.f .hint{font-size:12.5px;color:var(--muted);margin-top:4px}
-.err{color:var(--red-ink);font-size:13px;margin-top:4px}
-.sub{font:700 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:18px 0 10px;display:flex;align-items:center;gap:8px}
-.sub i{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font:800 12px/1 var(--display);font-style:normal;letter-spacing:0}
-.sub i.a{background:var(--green);color:#04170e}
-.sub i.b{background:var(--navy);color:#fff;border-radius:5px 5px 5px 1px}
+.steps{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+.back{width:48px;height:48px;margin:-6px 0 -6px -12px;border:0;background:none;display:grid;place-items:center;color:var(--ink);border-radius:50%}
+.bars{display:flex;gap:5px;flex:1}
+.bars i{height:4px;flex:1;border-radius:99px;background:var(--line-2)}
+.bars i.on{background:var(--emerald)}
+.stepn{font:700 12px/1 var(--mono);letter-spacing:.08em;color:var(--muted);white-space:nowrap}
+h1,h2{font-family:var(--display);letter-spacing:-.02em;margin:0}
+h1{font-size:24px;line-height:1.15;font-weight:800}
+h2{font-size:22px;line-height:1.2;font-weight:800}
+.lead{margin:6px 0 16px;color:var(--muted);font-size:15px;line-height:1.45}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.card + .card,.card + .note,.note + .card{margin-top:12px}
+.lbl{display:block;font-size:13px;font-weight:700;color:var(--ink-2);margin:0 0 6px}
+.eyebrow{font:700 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.note{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:14px;font-size:14px;line-height:1.45}
+.note svg{margin-top:1px}
+.note.info{background:var(--mint);color:var(--emerald-deep)}
+.note.warn{background:var(--amber);color:var(--amber-ink)}
+.note.bad{background:var(--red-bg);color:var(--red-ink)}
+.fine{font-size:13px;color:var(--muted);line-height:1.5;margin:12px 2px 0}
+.fine a,.agree a,.linkish{color:var(--emerald-deep);font-weight:700}
+/* A link inside a sentence gets a larger invisible hit area; the line keeps its height. */
+.fine a,.agree a,.agree .linkish{display:inline-block;padding:14px 4px!important;margin:-14px -4px}
+.linkish{background:none;border:0;padding:0;min-height:48px;display:inline-flex;align-items:center;gap:6px;font-size:14.5px;text-decoration:underline;text-underline-offset:3px}
 
-/* Buttons */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:12px 18px;border-radius:12px;border:1.5px solid transparent;font-weight:700;font-size:16px;text-decoration:none;white-space:nowrap}
-.btn-primary{background:var(--green);border-color:var(--green);color:#04170e}
-.btn-primary:hover{background:var(--green-h)}
-.btn-plain{background:#fff;border-color:var(--line-2);color:var(--ink)}
-.btn-danger{background:#fff;border-color:#e5b9b3;color:var(--red-ink)}
-.btn[disabled]{opacity:.6;cursor:default}
+/* Route rows */
+.route{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.loc{position:relative;width:100%;display:grid;grid-template-columns:30px minmax(0,1fr) 20px;gap:12px;align-items:center;min-height:64px;padding:10px 14px;border:0;background:none;text-align:left}
+.loc + .loc{border-top:1px solid var(--line)}
+.loc .dot{width:14px;height:14px;border-radius:50%;background:var(--emerald);justify-self:center;box-shadow:0 0 0 4px var(--mint)}
+.loc .sq{width:13px;height:13px;border-radius:3px;background:var(--forest);justify-self:center;box-shadow:0 0 0 4px #e3e9e5}
+.loc small{display:block;font-size:12.5px;color:var(--muted);font-weight:500}
+.loc b{display:block;font-weight:700;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.loc.empty b{color:var(--muted);font-weight:500}
+.loc svg{color:var(--line-2)}
+
+/* Fare summary */
+.farecard{margin-top:12px;background:var(--forest);color:var(--forest-ink);border-radius:var(--r);padding:16px 18px;display:flex;align-items:flex-end;justify-content:space-between;gap:14px}
+.farecard .k{font:700 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--forest-muted)}
+.farecard .amt{font:800 38px/1 var(--display);letter-spacing:-.03em;color:#fff;margin-top:8px;font-variant-numeric:tabular-nums}
+.farecard .amt small{font:700 17px/1 var(--display);color:var(--emerald);margin-right:4px;letter-spacing:0}
+.farecard .meta{text-align:right;font-size:13.5px;color:var(--forest-muted);line-height:1.45}
+.farecard .meta b{display:block;font:800 18px/1.1 var(--display);color:#fff;font-variant-numeric:tabular-nums}
+.sk{display:inline-block;border-radius:8px;background:linear-gradient(90deg,rgba(255,255,255,.08) 25%,rgba(255,255,255,.2) 50%,rgba(255,255,255,.08) 75%);background-size:200% 100%;animation:sk 1.1s linear infinite}
+@keyframes sk{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){ .sk{animation:none} }
+.avail{display:flex;align-items:center;gap:8px;margin:12px 2px 0;font-size:14px;color:var(--ink-2)}
+.avail i{width:9px;height:9px;border-radius:50%;background:var(--emerald);flex:none}
+.avail.none i{background:var(--line-2)}
+
+/* Fields */
+.fld{margin-top:14px}
+.fld:first-child{margin-top:0}
+.inp{width:100%;min-height:52px;padding:13px 14px;border:1.5px solid var(--line-2);border-radius:14px;background:var(--card);font-size:16px;outline:none;-webkit-appearance:none;appearance:none}
+textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
+.inp::placeholder{color:#8d9c94}
+.inp:focus{border-color:var(--emerald-deep);box-shadow:0 0 0 3px rgba(18,199,124,.18)}
+.inp.bad,.agree.bad{border-color:#c0392b;box-shadow:0 0 0 3px rgba(192,57,43,.12)}
+.hint{font-size:13px;color:var(--muted);margin-top:5px}
+.two{display:grid;gap:12px}
+@media (min-width:420px){ .two{grid-template-columns:1fr 1fr} }
+.rs{position:relative}
+.rs span{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:700}
+.rs .inp{padding-left:44px}
+
+/* Parcel type tiles */
+.types{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.type{min-height:84px;border:1.5px solid var(--line);border-radius:16px;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;font-weight:700;font-size:14px;color:var(--ink-2);padding:8px 4px;text-align:center;line-height:1.15;transition:transform .08s}
+.type svg{width:26px;height:26px;color:var(--emerald-deep)}
+.type[aria-pressed="true"]{border-color:var(--emerald-deep);background:var(--mint);color:var(--ink)}
+.type:active,.btn:active,.seg button:active{transform:scale(.98)}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px;padding:5px;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.seg button{min-height:48px;border:0;border-radius:10px;background:none;font-weight:700;font-size:14.5px;color:var(--muted);padding:4px 6px;line-height:1.2}
+.seg button[aria-pressed="true"]{background:var(--forest);color:#fff}
+.tog{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;width:100%;padding:8px 14px;border:1px solid var(--line);border-radius:14px;background:var(--card);text-align:left}
+.tog b{display:block;font-size:15px}
+.tog small{display:block;font-size:13px;color:var(--muted)}
+.tog i{width:46px;height:28px;border-radius:99px;background:var(--line-2);position:relative;flex:none;transition:background .15s}
+.tog i::after{content:"";position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .15s}
+.tog[aria-checked="true"] i{background:var(--emerald)}
+.tog[aria-checked="true"] i::after{transform:translateX(18px)}
+.limit{display:flex;gap:12px;align-items:center;margin-top:14px;padding:12px 14px;border-radius:14px;background:var(--mint);color:var(--emerald-deep);font-size:14px;line-height:1.4}
+.limit svg{width:44px;height:44px;flex:none}
+
+/* People */
+.chips{display:flex;gap:8px;overflow-x:auto;margin:0 -16px 0;padding:2px 16px 4px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;min-height:48px;padding:6px 14px;border:1px solid var(--line-2);border-radius:99px;background:var(--card);font-size:14px;font-weight:700;color:var(--ink-2);white-space:nowrap}
+.who{display:flex;align-items:center;gap:10px;margin:0 0 12px}
+.who .dot{width:12px;height:12px;border-radius:50%;background:var(--emerald)}
+.who .sq{width:11px;height:11px;border-radius:3px;background:var(--forest)}
+.who b{font:800 16px/1 var(--display)}
+
+/* Review */
+.rv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 16px;margin:0;font-size:15px}
+.rv dt{color:var(--muted)}
+.rv dd{margin:0;font-weight:500;overflow-wrap:anywhere}
+.rv dd small{display:block;color:var(--muted);font-weight:400;font-size:13.5px}
+.total{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;padding-top:14px;border-top:1px dashed var(--line-2);font-weight:700}
+.total b{font:800 24px/1 var(--display);font-variant-numeric:tabular-nums}
+.calc{display:flex;justify-content:space-between;font-size:14px;color:var(--ink-2);margin-top:6px}
+.agree{display:grid;grid-template-columns:26px minmax(0,1fr);gap:12px;align-items:start;margin-top:12px;padding:14px;border:1.5px solid var(--line-2);border-radius:14px;font-size:14.5px;line-height:1.45;color:var(--ink-2);background:var(--card);cursor:pointer}
+.agree input{width:24px;height:24px;margin:0;accent-color:var(--emerald-deep)}
+
+/* Buttons and the CTA bar */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:54px;padding:12px 18px;border-radius:16px;border:1.5px solid transparent;font-weight:700;font-size:17px;text-decoration:none;white-space:nowrap;transition:transform .08s,background .15s}
+.btn-primary{background:var(--emerald);border-color:var(--emerald);color:var(--emerald-ink)}
+.btn-primary:hover{background:var(--emerald-h)}
+.btn-plain{background:var(--card);border-color:var(--line-2);color:var(--ink)}
+.btn-dark{background:var(--forest);border-color:var(--forest);color:#fff}
+.btn-danger{background:var(--card);border-color:#e7c4bf;color:var(--red-ink)}
+.btn[disabled]{background:#dfe6e1;border-color:#dfe6e1;color:#7c8a83;cursor:default}
 .btn.wide{width:100%}
-
-/* Sticky book bar on phones; inline on desktop */
-.bar{position:fixed;left:0;right:0;bottom:0;z-index:900;background:rgba(251,252,248,.96);backdrop-filter:blur(8px);border-top:1px solid var(--line);
-  padding:10px 16px calc(10px + var(--sa-b))}
-.bar .msg{font-size:13px;color:var(--red-ink);margin:0 0 8px}
-@media (min-width:920px){ .bar{position:static;background:none;border:0;padding:14px 0 0;backdrop-filter:none} }
-
-/* Ticket: the booking, and the tracking view */
-.ticket{max-width:520px;margin:22px auto 60px}
-.tk{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden}
-.tk-head{background:var(--navy);color:var(--navy-ink);padding:18px 18px 16px}
-.tk-head .k{font:700 12px/1.3 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--navy-muted)}
-.tk-head h1{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:8px 0 4px;color:#fff}
-.tk-head p{margin:0;font-size:14.5px;color:var(--navy-muted)}
-.tk-code{font:700 14px/1 var(--mono);letter-spacing:.1em;color:var(--navy-green)}
-.tk-body{padding:16px 18px 18px}
-.tear{height:0;border-top:2px dashed var(--line-2);margin:16px -18px;position:relative}
-.tear::before,.tear::after{content:"";position:absolute;top:-10px;width:18px;height:18px;border-radius:50%;background:var(--paper);border:1px solid var(--line)}
-.tear::before{left:-10px}.tear::after{right:-10px}
-.pinrow{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.pinrow div{font-size:14px;color:var(--ink-2);line-height:1.4}
-.pinrow div b{display:block;color:var(--ink)}
-.pin{font:800 30px/1 var(--mono);letter-spacing:.18em;background:var(--mint);border:1px dashed var(--green-2);color:var(--green-3);padding:10px 8px 10px 14px;border-radius:10px}
-.riderrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 16px;padding:12px 14px;border:1px solid var(--mint-line);background:var(--mint);border-radius:12px;font-size:13.5px;color:var(--ink-2)}
-.riderrow b{display:block;font-size:16px;color:var(--ink)}
-.riderrow .btn{min-height:44px;padding:8px 14px;font-size:15px}
-.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 14px;margin:0;font-size:14.5px}
-.kv dt{color:var(--muted)}
-.kv dd{margin:0;font-weight:500;overflow-wrap:anywhere}
-.steps{list-style:none;margin:0;padding:0}
-.steps li{position:relative;padding:0 0 16px 30px;color:var(--muted);font-size:15px}
-.steps li:last-child{padding-bottom:0}
-.steps li::before{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;border:2px solid var(--line-2);background:#fff}
-.steps li::after{content:"";position:absolute;left:10px;top:21px;bottom:1px;border-left:2px solid var(--line)}
-.steps li:last-child::after{display:none}
-.steps li.done{color:var(--ink)}
-.steps li.done::before{background:var(--green);border-color:var(--green)}
-.steps li.done::after{border-color:var(--green)}
-.steps li.now{color:var(--ink);font-weight:700}
-.steps li.now::before{border-color:var(--green-2);box-shadow:0 0 0 4px rgba(15,191,120,.2)}
-.steps li.off{color:var(--red-ink);font-weight:700}
-.steps li.off::before{background:var(--red-ink);border-color:var(--red-ink)}
-.steps li time{display:block;font-size:12.5px;font-weight:400;color:var(--muted)}
-.rowbtns{display:grid;gap:10px;margin-top:16px}
-@media (min-width:420px){ .rowbtns.two{grid-template-columns:1fr 1fr} }
-.fine{font-size:13px;color:var(--muted);margin:14px 0 0;line-height:1.5}
-.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
-.agree{display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;align-items:start;margin-top:16px;padding:12px;border:1.5px solid var(--line-2);border-radius:12px;font-size:14px;line-height:1.45;color:var(--ink-2);cursor:pointer}
-.agree input{width:22px;height:22px;margin:1px 0 0;accent-color:var(--green-2)}
-.agree.bad{border-color:#c0392b;box-shadow:0 0 0 3px rgba(192,57,43,.12)}
-.agree a,.fine a,.help a{color:var(--green-2);font-weight:700}
-.next{margin:14px 0 0;padding:0 0 0 18px;font-size:13.5px;color:var(--muted);line-height:1.5}
-.next li + li{margin-top:3px}
-.help{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;font-size:14px;color:var(--ink-2)}
-.help .btn{min-height:44px;padding:8px 14px;font-size:15px}
-.helpwrap{max-width:520px;margin:0 auto;padding:6px 16px 150px}
-@media (min-width:920px){ .helpwrap{padding-bottom:60px} }
-.findform{display:grid;gap:10px;margin-top:10px}
-@media (min-width:480px){ .findform{grid-template-columns:1fr 1fr auto;align-items:end} }
-.findform label{display:block;font-size:13px;font-weight:700;color:var(--ink-2);margin-bottom:5px}
-#capBox{margin-top:14px;min-height:0}
-.toast{position:fixed;left:50%;bottom:calc(90px + var(--sa-b));transform:translateX(-50%);z-index:3000;background:var(--navy);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;max-width:calc(100vw - 32px)}
-.spin{width:16px;height:16px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:sp .7s linear infinite;display:inline-block}
+.btn.sm{min-height:48px;font-size:15px;padding:8px 14px;border-radius:14px}
+.cta{position:sticky;bottom:0;margin:auto -16px 0;padding:14px 16px calc(14px + var(--sa-b));background:linear-gradient(to bottom,rgba(247,246,241,0),var(--paper) 26%);z-index:5}
+@media (min-width:920px){ .cta{margin:auto -28px 0;padding:18px 28px 22px} }
+.cta .msg{margin:0 0 10px;padding:10px 12px;border-radius:12px;background:var(--red-bg);color:var(--red-ink);font-size:14px}
+.spin{width:18px;height:18px;border-radius:50%;border:2.5px solid currentColor;border-right-color:transparent;animation:sp .7s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){ .spin{animation-duration:2s} }
-:focus-visible{outline:2px solid var(--green-2);outline-offset:2px}
+
+/* Full-screen panels: place picker, help, prohibited list */
+.panel{position:fixed;inset:0;z-index:90;background:var(--paper);display:flex;flex-direction:column;animation:pane .22s ease-out}
+.panel header{display:flex;align-items:center;gap:6px;min-height:56px;padding:0 10px 0 4px;background:var(--card);border-bottom:1px solid var(--line)}
+.panel header b{font:800 17px/1 var(--display)}
+.panel .x{width:48px;height:48px;border:0;background:none;display:grid;place-items:center;border-radius:50%}
+.panel .body{flex:1;overflow:auto;padding:14px 16px calc(24px + var(--sa-b))}
+@media (min-width:920px){ .panel{right:auto;width:460px;box-shadow:8px 0 40px rgba(11,42,32,.12)} }
+.opt{width:100%;display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;align-items:center;min-height:60px;padding:8px 6px;border:0;background:none;text-align:left;border-radius:14px}
+.opt:hover,.opt[aria-selected="true"]{background:var(--mint)}
+.opt .ico{width:40px;height:40px;border-radius:50%;background:var(--card);border:1px solid var(--line);display:grid;place-items:center;color:var(--emerald-deep)}
+.opt b{display:block;font-size:15.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.opt small{display:block;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.opt[disabled]{opacity:.55}
+.empty{padding:18px 6px;color:var(--muted);font-size:14.5px}
+.ban{margin:0;padding:0 0 0 20px;font-size:15px;line-height:1.55;color:var(--ink-2)}
+.ban li{margin-bottom:6px}
+
+/* Tracking */
+.status{background:var(--forest);color:var(--forest-ink);border-radius:var(--r);padding:18px}
+.status .k{font:700 12px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--forest-muted)}
+.status .k b{color:var(--emerald);font-weight:700}
+.status h1{color:#fff;margin:8px 0 6px}
+.status p{margin:0;font-size:15px;color:var(--forest-muted);line-height:1.45}
+.pulse{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--emerald);flex:none;animation:pulse 1.6s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(18,199,124,.6)}100%{box-shadow:0 0 0 12px rgba(18,199,124,0)}}
+@media (prefers-reduced-motion:reduce){ .pulse{animation:none} }
+.rider{display:flex;align-items:center;gap:12px}
+.rider .av{width:48px;height:48px;border-radius:50%;background:var(--mint);color:var(--emerald-deep);display:grid;place-items:center;font:800 18px/1 var(--display);flex:none}
+.rider div{flex:1;min-width:0}
+.rider b{display:block;font-size:17px}
+.rider small{display:block;color:var(--muted);font-size:13.5px}
+.pincard{display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--forest);color:var(--forest-ink);border-radius:var(--r);padding:16px 18px;margin-top:12px}
+.pincard div{font-size:14px;color:var(--forest-muted);line-height:1.4}
+.pincard div b{display:block;color:#fff;font-size:15px}
+.pincard .pin{font:800 30px/1 var(--mono);letter-spacing:.2em;color:var(--lime);padding-left:.2em;white-space:nowrap}
+.tl{list-style:none;margin:0;padding:0}
+.tl li{position:relative;padding:0 0 18px 32px;color:var(--muted);font-size:15px}
+.tl li:last-child{padding-bottom:0}
+.tl li::before{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;border:2px solid var(--line-2);background:var(--card)}
+.tl li::after{content:"";position:absolute;left:10px;top:22px;bottom:2px;border-left:2px solid var(--line)}
+.tl li:last-child::after{display:none}
+.tl li.done{color:var(--ink)}
+.tl li.done::before{background:var(--emerald);border-color:var(--emerald)}
+.tl li.done::after{border-color:var(--emerald)}
+.tl li.now{color:var(--ink);font-weight:700}
+.tl li.now::before{border-color:var(--emerald-deep);box-shadow:0 0 0 4px rgba(18,199,124,.2)}
+.tl li.off{color:var(--red-ink);font-weight:700}
+.tl li.off::before{background:var(--red-ink);border-color:var(--red-ink)}
+.tl li time{display:block;font-size:13px;font-weight:400;color:var(--muted)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.status .top{display:flex;align-items:center;gap:10px}
+.done-mark{width:30px;height:30px;border-radius:50%;background:var(--emerald);display:grid;place-items:center;flex:none;animation:pop .4s cubic-bezier(.2,.9,.3,1.4)}
+.done-mark svg{width:17px;height:17px;stroke:var(--emerald-ink);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round}
+@keyframes pop{from{transform:scale(.6)}to{transform:none}}
+@media (prefers-reduced-motion:reduce){ .done-mark{animation:none} }
+.toast{position:fixed;left:50%;bottom:calc(96px + var(--sa-b));transform:translateX(-50%);z-index:200;background:var(--forest);color:#fff;padding:11px 18px;border-radius:99px;font-size:14.5px;max-width:calc(100vw - 32px);text-align:center;box-shadow:var(--shadow)}
+#capBox{margin-top:12px;min-height:0}
 </style>
 </head>
-<body>
+<body data-view="book" data-step="1">
 
-<header class="top">
-  <div class="wrap">
-    <a class="brand" href="/" aria-label="NovaX Logistics home">
-      <img src="/assets/favicon.svg" alt="" width="30" height="30"><b>NovaX</b><i>Nova Instant</i>
-    </a>
-    <div class="top-r">
-      <a class="tl" id="lastLink" href="#" hidden>Your last booking</a>
-    </div>
-  </div>
+<header class="hdr">
+  <a class="brand" href="/" aria-label="NovaX Logistics home"><img src="/assets/favicon.svg" alt="" width="28" height="28"><b>Nova <i>Instant</i></b></a>
+  <button class="hbtn" type="button" id="helpBtn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.300a2.500 2.500 0 1 1 3.600 2.300c-.800.400-1.200 1-1.200 1.900M12 17h.010"/></svg>Help</button>
 </header>
 
-<!-- ============ BOOK ============ -->
-<main id="viewBook">
-  <section class="intro">
-    <div class="wrap">
-      <h1>A bike rider for one parcel, <span>across Karachi.</span></h1>
-      <ul class="facts">
-        <li><b>Rs 25</b> per km</li>
-        <li><b>Rs 100</b> minimum</li>
-        <li><b>10 am to 1 am</b></li>
-        <li>No account needed</li>
-      </ul>
-      <div class="note soon" id="noteSoon" hidden>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-        <span id="noteSoonText">Nova Instant opens soon. You can check the fare for your trip now; booking opens at launch.</span>
-      </div>
-      <div class="note prev" id="notePrev" hidden>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
-        <span>Preview. Nova Instant is not open to the public yet; you can book because you are signed in as a NovaX admin.</span>
-      </div>
-    </div>
-  </section>
-
-  <div class="wrap book">
-    <div class="formcol">
-      <section class="card" id="cardRoute" aria-labelledby="hRoute">
-        <h2 id="hRoute">Where is it going?<small>Search a place, or drop a pin on the map. The fare is measured by road between the two pins.</small></h2>
-        <div class="route">
-          <div class="stop" id="stopP">
-            <span class="mark a" aria-hidden="true">A</span>
-            <div>
-              <label for="pSearch">Pick up from</label>
-              <div class="sugwrap">
-                <input class="inp" id="pSearch" type="text" inputmode="search" autocomplete="off" spellcheck="false" placeholder="e.g. Tariq Road, Dolmen Mall, DHA Phase 5" role="combobox" aria-expanded="false" aria-controls="pSug" aria-autocomplete="list">
-                <ul class="sug" id="pSug" role="listbox" aria-label="Pickup places" hidden></ul>
-              </div>
-              <div class="acts">
-                <button class="lnk" type="button" data-pin="p"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.500C5 14.800 12 21 12 21z"/><circle cx="12" cy="9.500" r="2.500"/></svg>Pin on map</button>
-                <button class="lnk" type="button" id="useLoc"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3.500"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>Use my location</button>
-              </div>
-            </div>
-          </div>
-          <div class="stop" id="stopD">
-            <span class="mark b" aria-hidden="true">B</span>
-            <div>
-              <label for="dSearch">Deliver to</label>
-              <div class="sugwrap">
-                <input class="inp" id="dSearch" type="text" inputmode="search" autocomplete="off" spellcheck="false" placeholder="e.g. Gulshan-e-Iqbal Block 5, Saddar" role="combobox" aria-expanded="false" aria-controls="dSug" aria-autocomplete="list">
-                <ul class="sug" id="dSug" role="listbox" aria-label="Delivery places" hidden></ul>
-              </div>
-              <div class="acts">
-                <button class="lnk" type="button" data-pin="d"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.500C5 14.800 12 21 12 21z"/><circle cx="12" cy="9.500" r="2.500"/></svg>Pin on map</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="meter" aria-label="Fare">
-        <div class="meter-top">
-          <div>
-            <div class="meter-k">Fare</div>
-            <div class="fare idle" id="fare"><small>Rs</small>&mdash;</div>
-          </div>
-          <div class="dist" id="dist" hidden><b id="distKm"></b>by road</div>
-        </div>
-        <p class="meter-say" id="meterSay">Set both pins to see the fare.</p>
-        <div class="pay" role="group" aria-label="Who pays the rider">
-          <button type="button" id="paySender" aria-pressed="true">Sender pays</button>
-          <button type="button" id="payReceiver" aria-pressed="false">Receiver pays</button>
-        </div>
-        <p class="pay-say" id="paySay">Cash to the rider at pickup.</p>
-      </section>
-
-      <section class="card" id="cardDet" aria-labelledby="hDet" style="margin-top:14px">
-        <h2 id="hDet">The details<small>The rider calls these numbers and follows these addresses.</small></h2>
-
-        <div class="sub"><i class="a">A</i>Pickup</div>
-        <div class="f">
-          <label for="pAddr">Exact pickup address</label>
-          <textarea class="inp" id="pAddr" maxlength="300" placeholder="House or shop number, street, nearest landmark"></textarea>
-        </div>
-        <div class="grid2 f">
-          <div><label for="sName">Sender's name</label><input class="inp" id="sName" maxlength="80" autocomplete="name"></div>
-          <div><label for="sPhone">Sender's mobile</label><input class="inp" id="sPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="03XX XXXXXXX"></div>
-        </div>
-
-        <div class="sub"><i class="b">B</i>Delivery</div>
-        <div class="f">
-          <label for="dAddr">Exact delivery address</label>
-          <textarea class="inp" id="dAddr" maxlength="300" placeholder="House or flat number, street, nearest landmark"></textarea>
-        </div>
-        <div class="grid2 f">
-          <div><label for="rName">Receiver's name</label><input class="inp" id="rName" maxlength="80" autocomplete="off"></div>
-          <div><label for="rPhone">Receiver's mobile</label><input class="inp" id="rPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="off" placeholder="03XX XXXXXXX"></div>
-        </div>
-
-        <div class="sub">The parcel</div>
-        <div class="f">
-          <label for="item">What are you sending?</label>
-          <input class="inp" id="item" maxlength="160" placeholder="e.g. documents, a cake, two suits">
-          <div class="hint">It has to fit on a motorbike.</div>
-        </div>
-        <div class="f">
-          <label for="note">Note for the rider (optional)</label>
-          <input class="inp" id="note" maxlength="240" placeholder="e.g. call on arrival, gate 2">
-        </div>
-        <label class="agree" id="agreeBox" for="agree">
-          <input type="checkbox" id="agree">
-          <span>The parcel fits on a motorbike, weighs <b id="maxKg">10 kg</b> or less, is worth <b id="maxVal">Rs 10,000</b> or less, and holds nothing on the not-allowed list. I agree to the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</span>
-        </label>
-        <div id="capBox"></div>
-        <ul class="next" id="nextList">
-          <li id="nextRiders" hidden></li>
-          <li id="nextCall" hidden>First booking from this number? NovaX phones the sender to confirm it, then sends a rider.</li>
-          <li>You get a tracking link and a 4-digit PIN. The receiver gives the PIN to the rider.</li>
-          <li>Free to cancel until the rider has the parcel.</li>
-        </ul>
-      </section>
-
-      <div class="bar">
-        <p class="msg" id="formMsg" role="alert" hidden></p>
-        <button class="btn btn-primary wide" id="bookBtn" type="button" disabled>Set both pins to see the fare</button>
-      </div>
-    </div>
-
-    <aside class="mapcol" aria-label="Map">
-      <div class="mapbox">
-        <div id="map"></div>
-        <div class="maphint" id="mapHint">Karachi</div>
-        <svg class="cross" viewBox="0 0 36 46" aria-hidden="true"><path d="M18 45S33 30.500 33 17A15 15 0 0 0 3 17c0 13.500 15 28 15 28z" fill="#0d2920" stroke="#fff" stroke-width="2"/><circle cx="18" cy="17" r="5.500" fill="#7be8b4"/></svg>
-        <div class="pinbar">
-          <p id="pinLabel">Move the map until the pin is on the spot.</p>
-          <div>
-            <button class="btn btn-plain" type="button" id="pinCancel">Cancel</button>
-            <button class="btn btn-primary" type="button" id="pinSet" style="flex:1">Set pickup here</button>
-          </div>
-        </div>
-      </div>
-    </aside>
+<div class="mapwrap" aria-label="Map">
+  <div id="map"></div>
+  <svg class="cross" viewBox="0 0 38 48" aria-hidden="true"><path d="M19 47S35 32 35 18A16 16 0 0 0 3 18c0 14 16 29 16 29z" fill="#0B2A20" stroke="#fff" stroke-width="2.200"/><circle cx="19" cy="18" r="6" fill="#12C77C"/></svg>
+  <div class="pinbar">
+    <p id="pinLabel">Move the map until the pin is on the spot.</p>
+    <div><button class="btn btn-plain" type="button" id="pinCancel">Back</button><button class="btn btn-primary" type="button" id="pinSet" style="flex:1">Set pickup here</button></div>
   </div>
-</main>
-
-<!-- ============ BOOKED / TRACK ============ -->
-<main id="viewTrack" hidden>
-  <div class="wrap">
-    <div class="ticket">
-      <div class="tk">
-        <div class="tk-head">
-          <div class="k">Nova Instant &middot; <span class="tk-code" id="tCode"></span></div>
-          <h1 id="tTitle">Loading&hellip;</h1>
-          <p id="tSub"></p>
-        </div>
-        <div class="tk-body">
-          <div id="tPinBox" hidden>
-            <div class="pinrow">
-              <div><b>Delivery PIN</b><span id="tPinSay">The receiver gives this to the rider at the door.</span></div>
-              <span class="pin" id="tPin"></span>
-            </div>
-            <div class="tear"></div>
-          </div>
-          <div class="riderrow" id="tRider" hidden></div>
-          <ol class="steps" id="tSteps"></ol>
-          <div class="tear"></div>
-          <dl class="kv" id="tKv"></dl>
-          <div class="rowbtns two" id="tActs">
-            <button class="btn btn-primary" type="button" id="tShare">Share on WhatsApp</button>
-            <button class="btn btn-plain" type="button" id="tCopy">Copy tracking link</button>
-          </div>
-          <div class="rowbtns">
-            <button class="btn btn-danger" type="button" id="tCancel" hidden>Cancel this booking</button>
-            <a class="btn btn-plain" href="instant.html" id="tAgain">Book another delivery</a>
-          </div>
-          <p class="fine" id="tFine">This page shows the status of the delivery, not the rider's live location. It updates by itself. Save the link, or note the booking number: with it and either phone number you can find this booking again.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</main>
-
-<!-- Help, on both views: the NovaX number, and the way back to a lost booking -->
-<div class="helpwrap" id="helpWrap">
-  <section class="card" aria-labelledby="hHelp">
-    <h2 id="hHelp">Need help?<small>A person at NovaX answers during Nova Instant hours.</small></h2>
-    <div class="help">
-      <a class="btn btn-plain" id="helpCall" href="tel:+923123922558">Call 0312 3922558</a>
-      <a class="btn btn-plain" id="helpWa" href="https://wa.me/923123922558" target="_blank" rel="noopener">WhatsApp NovaX</a>
-    </div>
-  </section>
-  <section class="card" aria-labelledby="hFind">
-    <h2 id="hFind">Lost your tracking link?<small>Enter the booking number and the sender's or receiver's mobile.</small></h2>
-    <form class="findform" id="findForm" novalidate>
-      <div><label for="fCode">Booking number</label><input class="inp" id="fCode" maxlength="12" autocomplete="off" autocapitalize="characters" placeholder="NI100001"></div>
-      <div><label for="fPhone">Mobile on the booking</label><input class="inp" id="fPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="03XX XXXXXXX"></div>
-      <button class="btn btn-plain" type="submit" id="fBtn">Find it</button>
-    </form>
-    <p class="err" id="fMsg" role="alert" hidden></p>
-  </section>
 </div>
-<p class="sr" id="srLive" role="status" aria-live="polite"></p>
+
+<div class="stage"><main class="sheet" id="sheet"><div class="grab" aria-hidden="true"></div><div id="pane"></div></main></div>
+
+<p class="sr" id="live" role="status" aria-live="polite"></p>
 
 <script src="/assets/vendor/supabase-2.117.2.js"></script>
 <script src="/assets/vendor/leaflet-1.9.4/leaflet.js"></script>
@@ -458,30 +301,24 @@ body.pinning .leaflet-bottom{bottom:118px}
   "use strict";
   var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
   var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
-  /* Greater Karachi: the same box the server checks. */
-  var BOX={ s:24.74, n:25.20, w:66.80, e:67.55 };
+  var BOX={ s:24.74, n:25.20, w:66.80, e:67.55 };          /* the same box the server checks */
   var CENTER=[24.8800,67.0650];
   var PHOTON="https://photon.komoot.io";
-  /* Mapbox PUBLIC token (pk.). It arrives with nvi_status() and is never
-     written in this file. Until it arrives, and if it never does, the map
-     uses OpenStreetMap tiles and the backup search is skipped. */
-  var MAPBOX="";
+  var MAPBOX="";                                            /* public token; arrives with nvi_status(), never written here */
+  var REDUCED=!!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   var $=function(id){ return document.getElementById(id); };
-  var sb=null;
-  try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){}
+  var sb=null; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){}
 
+  /* supabase-js resolves with {error}: every caller checks it. */
   function rpc(name,args){
     if(!sb) return Promise.resolve({ error:{ message:"offline" } });
-    /* supabase-js resolves with {error}: every caller checks it. */
     return Promise.resolve(sb.rpc(name,args||{})).catch(function(e){ return { error:{ message:String((e&&e.message)||e) } }; });
   }
-  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"'`]/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;","`":"&#96;"}[c]; }); }
   function money(n){ return "Rs "+Number(n||0).toLocaleString("en-PK"); }
-  function toast(t){
-    var el=document.createElement("div"); el.className="toast"; el.setAttribute("role","status"); el.textContent=t;
-    document.body.appendChild(el); setTimeout(function(){ el.remove(); },2600);
-  }
-  /* 03XXXXXXXXX or "": the same rule the server applies. */
+  function say(t){ var l=$("live"); l.textContent=""; setTimeout(function(){ l.textContent=t; },30); }
+  function toast(t){ var el=document.createElement("div"); el.className="toast"; el.textContent=t; document.body.appendChild(el); say(t); setTimeout(function(){ el.remove(); },2800); }
+  function buzz(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
   function pkPhone(raw){
     var d=String(raw==null?"":raw).replace(/[^\d]/g,"");
     if(d.length===14&&d.slice(0,4)==="0092") d=d.slice(4);
@@ -491,632 +328,679 @@ body.pinning .leaflet-bottom{bottom:118px}
     return /^3\d{9}$/.test(d)?("0"+d):"";
   }
   function inBox(lat,lng){ return lat>=BOX.s&&lat<=BOX.n&&lng>=BOX.w&&lng<=BOX.e; }
-  function trackUrl(token){ return location.origin+location.pathname+"?t="+encodeURIComponent(token); }
-
-  /* One quiet line for screen readers: the fare when it is worked out, the
-     status when it changes. Said once, not on every repaint. */
-  var lastSaid="";
-  function announce(t){ if(!t||t===lastSaid) return; lastSaid=t; var el=$("srLive"); el.textContent=""; setTimeout(function(){ el.textContent=t; },60); }
-  /* The NovaX number comes with nvi_status()/nvi_track(); this is the stand-in. */
-  function setSupport(ph){
-    var d=pkPhone(ph); if(!d) return;
-    $("helpCall").href="tel:+92"+d.slice(1); $("helpCall").textContent="Call "+d.slice(0,4)+" "+d.slice(4);
-    $("helpWa").href="https://wa.me/92"+d.slice(1);
-  }
-  /* A random name for this browser, so one browser cannot flood bookings
-     behind many phone numbers. It identifies nobody. */
+  function hourLabel(h){ return (h%12||12)+(h<12?" am":" pm"); }
+  function store(k,v){ try{ if(v===undefined) return JSON.parse(localStorage.getItem(k)||"null"); localStorage.setItem(k,JSON.stringify(v)); }catch(e){ return null; } }
   function deviceId(){
-    try{
-      var d=localStorage.getItem("nvi_dev");
+    try{ var d=localStorage.getItem("nvi_dev");
       if(!d){ var a=new Uint8Array(12); crypto.getRandomValues(a); d=Array.prototype.map.call(a,function(x){ return ("0"+x.toString(16)).slice(-2); }).join(""); localStorage.setItem("nvi_dev",d); }
-      return d;
-    }catch(e){ return null; }
+      return d; }catch(e){ return null; }
   }
-  $("findForm").addEventListener("submit",function(e){
-    e.preventDefault();
-    var msg=$("fMsg"), btn=$("fBtn"), code=$("fCode").value.trim(), ph=pkPhone($("fPhone").value);
-    function say(t){ msg.textContent=t; msg.hidden=false; }
-    msg.hidden=true;
-    if(code.replace(/[^A-Za-z0-9]/g,"").length<6){ $("fCode").focus(); return say("Enter the booking number, like NI100001."); }
-    if(!ph){ $("fPhone").focus(); return say("Enter the mobile like 0300 1234567."); }
-    btn.disabled=true;
-    rpc("nvi_find",{ p_code:code, p_phone:ph }).then(function(r){
-      btn.disabled=false;
-      if(r.error||!r.data) return say("Could not look that up. Check your connection and try again.");
-      if(!r.data.ok) return say(r.data.reason==="slow_down"?"Too many tries. Wait ten minutes, or call NovaX.":"No booking matches that number and mobile.");
-      location.href="instant.html?t="+encodeURIComponent(r.data.token);
+  function selfUrl(token){ var u=new URL(location.href); if(token) u.searchParams.set("t",token); else u.searchParams.delete("t"); u.searchParams.delete("new"); u.hash=""; return u.toString(); }
+  var IC={
+    pin:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-6.200 7-11.500A7 7 0 0 0 5 9.500C5 14.800 12 21 12 21z"/><circle cx="12" cy="9.500" r="2.500"/></svg>',
+    gps:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.500"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
+    clock:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    chev:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
+    back:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>',
+    x:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    info:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.500h.010"/></svg>',
+    phone:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l2 5-2.500 1.500a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>',
+    share:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.500"/><circle cx="6" cy="12" r="2.500"/><circle cx="18" cy="19" r="2.500"/><path d="M8.200 10.800l7.600-4.500M8.200 13.200l7.600 4.500"/></svg>',
+    doc:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg>',
+    box:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.500 7.500L12 3l8.500 4.500v9L12 21l-8.500-4.500z"/><path d="M3.500 7.500L12 12l8.500-4.500M12 12v9"/></svg>',
+    food:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11h16a8 8 0 0 1-16 0z"/><path d="M8 7c0-1.500 1.500-1.500 1.500-3M12 7c0-1.500 1.500-1.500 1.500-3M16 7c0-1.500 1.500-1.500 1.500-3M7 21h10"/></svg>',
+    shirt:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3l4 3 4-3 5 4-3 4-2-1.500V21H8V9.500L6 11 3 7z"/></svg>',
+    more:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="12" r="1.600"/><circle cx="12" cy="12" r="1.600"/><circle cx="19" cy="12" r="1.600"/></svg>'
+  };
+
+  /* ───────── shared state ───────── */
+  var S={ status:null, support:"03123922558", p:null, d:null, quote:null, quoting:false, quoteErr:"",
+    type:"", item:"", weight:"", fragile:false, value:"", note:"",
+    sName:"", sPhone:"", pAddr:"", rName:"", rPhone:"", dAddr:"", payer:"sender", agree:false,
+    step:1, busy:false, pinFor:null, msg:"", cap:{ on:false, id:null, token:"" } };
+  var qSeq=0;
+
+  /* ───────── map ───────── */
+  var map=null, mk={ p:null, d:null }, routeLine=null, tilesOn=false;
+  function icon(k,drop){ return L.divIcon({ className:"", html:'<div class="pm '+(k==="p"?"a":"b")+(drop&&!REDUCED?" drop":"")+'">'+(k==="p"?"A":"B")+'</div>', iconSize:[32,32], iconAnchor:[16,k==="p"?16:30] }); }
+  try{
+    map=L.map("map",{ zoomControl:window.innerWidth>=920, attributionControl:true, maxBounds:[[BOX.s-.15,BOX.w-.2],[BOX.n+.15,BOX.e+.2]], minZoom:10, zoomSnap:0.25 }).setView(CENTER,11);
+    map.attributionControl.setPrefix('<a href="https://leafletjs.com" rel="noopener">Leaflet</a>');
+    map.on("moveend",onMapMove);
+  }catch(e){}
+  /* Tiles go on once the Mapbox token has arrived, or after 2.5 s without it.
+     OpenStreetMap is the stand-in with no token or if Mapbox stops serving. */
+  function setTiles(){
+    if(!map||tilesOn) return; tilesOn=true;
+    var osmAttr='&copy; <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a>';
+    function osm(){ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{ maxZoom:19, attribution:osmAttr }).addTo(map); }
+    if(!MAPBOX){ osm(); return; }
+    var conn=navigator.connection||{}, slow=!!conn.saveData||/(^|-)(2g|3g)$/.test(String(conn.effectiveType||""));
+    var sharp=(window.devicePixelRatio||1)>=1.5&&!slow;
+    var mb=L.tileLayer("https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/512/{z}/{x}/{y}"+(sharp?"@2x":"")+"?access_token="+MAPBOX,{ tileSize:512, zoomOffset:-1, maxZoom:19,
+      attribution:'&copy; <a href="https://www.mapbox.com/about/maps/" rel="noopener">Mapbox</a> '+osmAttr+' <a href="https://www.mapbox.com/map-feedback/" rel="noopener">Improve this map</a>' }).addTo(map);
+    var fails=0, swapped=false;
+    mb.on("tileerror",function(){ if(swapped||++fails<3) return; swapped=true; map.removeLayer(mb); osm(); });
+  }
+  setTimeout(setTiles,2500);
+  function decodeLine(str){
+    var i=0, lat=0, lng=0, out=[];
+    while(i<str.length){
+      var b, shift=0, res=0;
+      do{ b=str.charCodeAt(i++)-63; res|=(b&31)<<shift; shift+=5; }while(b>=32);
+      lat+=(res&1)?~(res>>1):(res>>1); shift=0; res=0;
+      do{ b=str.charCodeAt(i++)-63; res|=(b&31)<<shift; shift+=5; }while(b>=32);
+      lng+=(res&1)?~(res>>1):(res>>1);
+      out.push([lat/1e5,lng/1e5]);
+    }
+    return out;
+  }
+  function pad(){ return window.innerWidth>=920 ? { tl:[50,50], br:[50,50] } : { tl:[30,26], br:[30,44] }; }
+  function paintMap(p,d,line,dropKey){
+    if(!map) return;
+    [["p",p],["d",d]].forEach(function(x){
+      var k=x[0], pt=x[1];
+      if(pt){ if(!mk[k]) mk[k]=L.marker([pt.lat,pt.lng],{ icon:icon(k,dropKey===k), keyboard:false }).addTo(map);
+              else { mk[k].setLatLng([pt.lat,pt.lng]); if(dropKey===k) mk[k].setIcon(icon(k,true)); } }
+      else if(mk[k]){ map.removeLayer(mk[k]); mk[k]=null; }
     });
+    if(routeLine){ map.removeLayer(routeLine); routeLine=null; }
+    var pd=pad(), pts=null;
+    if(p&&d&&line){ try{ pts=decodeLine(line); }catch(e){ pts=null; } }
+    if(pts&&pts.length>1){
+      pts=[[p.lat,p.lng]].concat(pts,[[d.lat,d.lng]]);
+      routeLine=L.polyline(pts,{ color:"#0a7a4f", weight:5, opacity:.95, lineCap:"round", lineJoin:"round", interactive:false }).addTo(map);
+      /* The route draws itself from pickup to destination. */
+      try{ var el=routeLine.getElement(); if(el&&!REDUCED){ var len=el.getTotalLength(); el.style.strokeDasharray=len; el.style.strokeDashoffset=len; el.getBoundingClientRect();
+        el.style.transition="stroke-dashoffset .7s ease-out"; el.style.strokeDashoffset="0"; setTimeout(function(){ el.style.strokeDasharray=""; el.style.transition=""; },800); } }catch(e){}
+      map.fitBounds(routeLine.getBounds(),{ paddingTopLeft:pd.tl, paddingBottomRight:pd.br, maxZoom:16 });
+    }
+    else if(p&&d){
+      routeLine=L.polyline([[p.lat,p.lng],[d.lat,d.lng]],{ color:"#0B2A20", weight:2, opacity:.35, dashArray:"4 8", interactive:false }).addTo(map);
+      map.fitBounds([[p.lat,p.lng],[d.lat,d.lng]],{ paddingTopLeft:pd.tl, paddingBottomRight:pd.br, maxZoom:15 });
+    }
+    else if(p||d){ var o=p||d; map.setView([o.lat,o.lng],15); }
+  }
+
+  /* ───────── places: search, recents, pin, GPS ───────── */
+  function placeLabel(pr){
+    var latin=function(s){ return s&&/[A-Za-z]/.test(s)?s:""; };
+    var name=latin(pr.name), street=latin(pr.street), hn=latin(pr.housenumber);
+    var area=latin(pr.locality)||latin(pr.district)||latin(pr.suburb)||"";
+    var main=name||[hn,street].filter(Boolean).join(" ")||area||"Pinned spot";
+    var rest=[name?street:"", area&&area!==main?area:""].filter(Boolean).join(", ");
+    return { main:main, rest:rest, full:[main,rest].filter(Boolean).join(", ") };
+  }
+  function mbLabel(pr){
+    var main=pr.name||pr.name_preferred||"Pinned spot";
+    var rest=String(pr.place_formatted||"").replace(/,?\s*(Karachi[^,]*|Sindh|Pakistan)\b/gi,"").replace(/^[,\s]+|[,\s]+$/g,"");
+    return { main:main, rest:rest, full:[main,rest].filter(Boolean).join(", ") };
+  }
+  function mbSearch(q){
+    if(!MAPBOX) return Promise.resolve([]);
+    return fetch("https://api.mapbox.com/search/geocode/v6/forward?q="+encodeURIComponent(q)+"&country=pk&language=en&limit=5&autocomplete=true&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n+"&proximity="+CENTER[1]+","+CENTER[0]+"&access_token="+MAPBOX)
+      .then(function(r){ return r.ok?r.json():{ features:[] }; }).then(function(j){
+        return (j.features||[]).map(function(f){ var c=f.geometry&&f.geometry.coordinates; return c?{ lat:c[1], lng:c[0], label:mbLabel(f.properties||{}) }:null; }).filter(function(it){ return it&&inBox(it.lat,it.lng); });
+      }).catch(function(){ return []; });
+  }
+  function photon(q){
+    return fetch(PHOTON+"/api/?q="+encodeURIComponent(q)+"&limit=7&lang=en&lat="+CENTER[0]+"&lon="+CENTER[1]+"&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n)
+      .then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
+        var seen={};
+        return (j.features||[]).map(function(f){ var c=f.geometry&&f.geometry.coordinates; if(!c) return null;
+          var it={ lat:c[1], lng:c[0], label:placeLabel(f.properties||{}) };
+          if(!inBox(it.lat,it.lng)||seen[it.label.full]) return null; seen[it.label.full]=1; return it; }).filter(Boolean);
+      });
+  }
+  function searchPlaces(q){
+    return photon(q).then(function(a){ return a.length?a:mbSearch(q); }).catch(function(){ return mbSearch(q).then(function(a){ if(!a.length) throw new Error("down"); return a; }); });
+  }
+  function reverseLabel(lat,lng){
+    return fetch(PHOTON+"/reverse?lat="+lat+"&lon="+lng+"&lang=en").then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
+      var f=(j.features||[])[0]; if(!f) throw 0; return placeLabel(f.properties||{});
+    }).catch(function(){
+      if(!MAPBOX) return null;
+      return fetch("https://api.mapbox.com/search/geocode/v6/reverse?longitude="+lng+"&latitude="+lat+"&language=en&limit=1&access_token="+MAPBOX)
+        .then(function(r){ return r.ok?r.json():{}; }).then(function(j){ var f=(j.features||[])[0]; return f?mbLabel(f.properties||{}):null; }).catch(function(){ return null; });
+    });
+  }
+  /* Recent places stay in this browser only; nothing needs an account. */
+  function recents(){ var a=store("nvi_places"); return Array.isArray(a)?a:[]; }
+  function remember(pt){
+    if(!pt||pt.label==="Pinned spot") return;
+    var a=recents().filter(function(x){ return x.label!==pt.label; }); a.unshift({ label:pt.label, lat:pt.lat, lng:pt.lng }); store("nvi_places",a.slice(0,6));
+  }
+  function setPoint(k,pt){
+    S[k]=pt; remember(pt);
+    var addr=k==="p"?"pAddr":"dAddr";
+    if(!S[addr]||S[addr+"Auto"]){ S[addr]=pt.label==="Pinned spot"?"":pt.label; S[addr+"Auto"]=true; }
+    closePanel(); window.scrollTo(0,0); render(); paintMap(S.p,S.d,null,k); quote();
+    say((k==="p"?"Pickup":"Delivery")+" set: "+pt.label+".");
+  }
+
+  var panel=null;
+  function closePanel(){ if(panel){ panel.remove(); panel=null; document.body.style.overflow=""; } }
+  function openPanel(title,bodyHtml){
+    closePanel();
+    panel=document.createElement("section"); panel.className="panel"; panel.setAttribute("role","dialog"); panel.setAttribute("aria-modal","true"); panel.setAttribute("aria-label",title);
+    panel.innerHTML='<header><button class="x" type="button" data-close aria-label="Close">'+IC.back+'</button><b>'+esc(title)+'</b></header><div class="body">'+bodyHtml+'</div>';
+    document.body.appendChild(panel); document.body.style.overflow="hidden";
+    return panel;
+  }
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ if(S.pinFor) leavePin(); else closePanel(); } });
+
+  function openPicker(k){
+    var isP=k==="p";
+    var p=openPanel(isP?"Where should we pick it up?":"Where is it going?",
+      '<label class="sr" for="pkQ">'+(isP?"Search the pickup place":"Search the delivery place")+'</label>'+
+      '<input class="inp" id="pkQ" type="text" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search a place, street or area" role="combobox" aria-expanded="true" aria-controls="pkList" aria-autocomplete="list">'+
+      '<div id="pkList" role="listbox" aria-label="Places" style="margin-top:10px"></div>');
+    var q=p.querySelector("#pkQ"), list=p.querySelector("#pkList"), items=[], seq=0, t=null, active=-1;
+    function base(){
+      var h="";
+      if(isP) h+='<button class="opt" type="button" data-gps><span class="ico">'+IC.gps+'</span><span><b>Use my current location</b><small>Needs location access on this phone</small></span></button>';
+      h+='<button class="opt" type="button" data-pin><span class="ico">'+IC.pin+'</span><span><b>Set on the map</b><small>Drop a pin on the exact spot</small></span></button>';
+      var rc=recents();
+      if(rc.length) h+='<p class="eyebrow" style="margin:16px 6px 6px">Recent</p>'+rc.map(function(r,i){ return '<button class="opt" type="button" data-rc="'+i+'"><span class="ico">'+IC.clock+'</span><span><b>'+esc(r.label.split(", ")[0])+'</b><small>'+esc(r.label.split(", ").slice(1).join(", ")||"Karachi")+'</small></span></button>'; }).join("");
+      list.innerHTML=h; items=[]; active=-1; q.removeAttribute("aria-activedescendant");
+    }
+    function results(){
+      list.innerHTML = items.length ? items.map(function(it,i){ return '<button class="opt" type="button" role="option" id="pkO'+i+'" data-i="'+i+'" aria-selected="'+(i===active)+'"><span class="ico">'+IC.pin+'</span><span><b>'+esc(it.label.main)+'</b><small>'+esc(it.label.rest||"Karachi")+'</small></span></button>'; }).join("")
+        : '<p class="empty">No match. Try a nearby landmark or a main road, or set it on the map.</p><button class="opt" type="button" data-pin><span class="ico">'+IC.pin+'</span><span><b>Set on the map</b><small>Drop a pin on the exact spot</small></span></button>';
+      if(active>=0) q.setAttribute("aria-activedescendant","pkO"+active); else q.removeAttribute("aria-activedescendant");
+      say(items.length?items.length+" places found.":"No places found.");
+    }
+    base();
+    q.addEventListener("input",function(){
+      clearTimeout(t); var v=q.value.trim(); var my=++seq;
+      if(v.length<3){ base(); return; }
+      t=setTimeout(function(){
+        list.innerHTML='<p class="empty">Searching…</p>';
+        searchPlaces(v).then(function(a){ if(my!==seq) return; items=a.slice(0,6); active=items.length?0:-1; results(); })
+          .catch(function(){ if(my!==seq) return; items=[]; list.innerHTML='<p class="empty">Search is not answering. Check your connection, or set it on the map.</p><button class="opt" type="button" data-pin><span class="ico">'+IC.pin+'</span><span><b>Set on the map</b><small>Drop a pin on the exact spot</small></span></button>'; });
+      },300);
+    });
+    q.addEventListener("keydown",function(e){
+      if(!items.length) return;
+      if(e.key==="ArrowDown"){ e.preventDefault(); active=(active+1)%items.length; results(); }
+      else if(e.key==="ArrowUp"){ e.preventDefault(); active=(active-1+items.length)%items.length; results(); }
+      else if(e.key==="Enter"&&active>=0){ e.preventDefault(); var it=items[active]; setPoint(k,{ lat:it.lat, lng:it.lng, label:it.label.full }); }
+    });
+    p.addEventListener("click",function(e){
+      var b=e.target.closest("button"); if(!b) return;
+      if(b.hasAttribute("data-i")){ var it=items[Number(b.getAttribute("data-i"))]; if(it) setPoint(k,{ lat:it.lat, lng:it.lng, label:it.label.full }); }
+      else if(b.hasAttribute("data-rc")){ var r=recents()[Number(b.getAttribute("data-rc"))]; if(r) setPoint(k,{ lat:r.lat, lng:r.lng, label:r.label }); }
+      else if(b.hasAttribute("data-pin")){ closePanel(); enterPin(k); }
+      else if(b.hasAttribute("data-gps")){ useGps(b); }
+    });
+    setTimeout(function(){ try{ q.focus(); }catch(e){} },60);
+  }
+  function useGps(btn){
+    if(!navigator.geolocation){ toast("This phone does not share its location. Search or set it on the map."); return; }
+    btn.disabled=true; btn.querySelector("small").textContent="Finding you…";
+    navigator.geolocation.getCurrentPosition(function(pos){
+      var lat=pos.coords.latitude, lng=pos.coords.longitude;
+      if(!inBox(lat,lng)){ btn.disabled=false; btn.querySelector("small").textContent="You are outside Karachi"; toast("Nova Instant runs inside Karachi only."); return; }
+      reverseLabel(lat,lng).then(function(lb){ setPoint("p",{ lat:lat, lng:lng, label:lb?lb.full:"Pinned spot" }); });
+    },function(){ btn.disabled=false; btn.querySelector("small").textContent="Location was not shared. Search or set it on the map."; },{ enableHighAccuracy:true, timeout:10000, maximumAge:60000 });
+  }
+  /* Pin mode: the map takes the screen and the pin stays in the middle. */
+  var revT=null, revSeq=0, pinPlace=null;
+  function enterPin(k){
+    if(!map){ toast("The map did not load. Use search instead."); return; }
+    S.pinFor=k; pinPlace=null; document.body.classList.add("pinning");
+    $("pinSet").textContent=k==="p"?"Set pickup here":"Set delivery here"; $("pinSet").disabled=false;
+    $("pinLabel").textContent="Move the map until the pin is on the spot.";
+    map.invalidateSize(); var o=S[k]||S.p||S.d; map.setView(o?[o.lat,o.lng]:CENTER,o?16:13,{ animate:false });
+    setTimeout(function(){ map.invalidateSize(); onMapMove(); },80);
+    setTimeout(function(){ if(S.pinFor===k) onMapMove(); },700);
+  }
+  function leavePin(){ S.pinFor=null; document.body.classList.remove("pinning"); if(map){ map.invalidateSize(); setTimeout(function(){ map.invalidateSize(); paintMap(S.p,S.d,S.quote&&S.quote.line); },80); } }
+  function onMapMove(){
+    if(!S.pinFor) return;
+    var c=map.getCenter(), my=++revSeq;
+    if(!inBox(c.lat,c.lng)){ pinPlace=null; $("pinLabel").textContent="Nova Instant runs inside Karachi only."; $("pinSet").disabled=true; return; }
+    $("pinSet").disabled=false; clearTimeout(revT);
+    revT=setTimeout(function(){ reverseLabel(c.lat,c.lng).then(function(lb){ if(my!==revSeq||!S.pinFor) return; pinPlace=lb; $("pinLabel").innerHTML=lb?"Near <b>"+esc(lb.full)+"</b>":"Pin placed."; }); },350);
+  }
+  $("pinCancel").addEventListener("click",leavePin);
+  $("pinSet").addEventListener("click",function(){
+    var k=S.pinFor; if(!k||!map) return; var c=map.getCenter();
+    if(!inBox(c.lat,c.lng)) return;
+    var label=pinPlace?pinPlace.full:"Pinned spot"; leavePin(); setPoint(k,{ lat:c.lat, lng:c.lng, label:label });
   });
 
+  /* ───────── fare ───────── */
+  var QUOTE_SAY={ pickup_outside:"The pickup is outside Karachi. Nova Instant runs inside Karachi only.",
+    drop_outside:"The delivery point is outside Karachi. Nova Instant runs inside Karachi only.",
+    too_close:"Those two places are almost the same spot. Move one of them.",
+    pickup_off_road:"A rider cannot reach the pickup pin: it is not near a road. Move it onto the street.",
+    drop_off_road:"A rider cannot reach the delivery pin: it is not near a road. Move it onto the street.",
+    slow_down:"Too many fare checks from this connection. Wait a minute and try again." };
+  function quote(tries){
+    tries=tries||0;
+    if(!tries){ S.quote=null; S.quoteErr=""; }
+    if(!S.p||!S.d){ render(); return; }
+    var my=tries?qSeq:++qSeq; S.quoting=true; if(!tries) render();
+    rpc("nvi_quote",{ p_plat:S.p.lat, p_plng:S.p.lng, p_dlat:S.d.lat, p_dlng:S.d.lng }).then(function(r){
+      if(my!==qSeq) return;
+      /* An estimate cannot be booked, so the page asks again by itself before
+         showing one. */
+      if(r.data&&r.data.ok&&r.data.bookable===false&&tries<2){ setTimeout(function(){ if(my===qSeq) quote(tries+1); },900); return; }
+      if((r.error||!r.data)&&tries<1){ setTimeout(function(){ if(my===qSeq) quote(tries+1); },700); return; }
+      S.quoting=false;
+      if(r.error||!r.data) S.quoteErr="The fare could not be worked out. Check your connection.";
+      else if(!r.data.ok) S.quoteErr=QUOTE_SAY[r.data.reason]||"That trip cannot be priced.";
+      else { S.quote=r.data; S.quoteErr=""; }
+      render(); paintMap(S.p,S.d,S.quote&&S.quote.line);
+      if(S.quote){ say("Fare "+money(S.quote.fare)+" for "+S.quote.km+" kilometres."); countUp(); }
+      else say(S.quoteErr);
+    });
+  }
+  /* The fare counts gently up to its final number. */
+  function countUp(){
+    var el=$("fareNum"); if(!el||!S.quote) return; var to=Number(S.quote.fare);
+    if(REDUCED){ el.textContent=to.toLocaleString("en-PK"); return; }
+    var t0=performance.now(), from=Math.round(to*0.6);
+    (function tick(now){ var k=Math.min(1,(now-t0)/480), v=Math.round(from+(to-from)*(1-Math.pow(1-k,3)));
+      var e=$("fareNum"); if(!e) return; e.textContent=v.toLocaleString("en-PK"); if(k<1) requestAnimationFrame(tick); })(t0);
+  }
+
+  /* ───────── steps ───────── */
+  var TYPES=[["Documents","doc"],["Small parcel","box"],["Food","food"],["Clothing","shirt"],["Other","more"]];
+  var BANNED=["Cash, cheques, prize bonds or other money","Gold, silver and precious-stone jewellery (fashion jewellery is fine)","Weapons, ammunition and replicas","Drugs, alcohol and prescription-only medicine","Fireworks, gas cylinders, flammable liquids and other dangerous goods","Live animals and plants","Food that needs refrigeration","Counterfeit goods, and anything illegal to carry in Pakistan"];
+  function maxKg(){ return Number(S.status&&S.status.max_kg)||10; }
+  function maxVal(){ return Number(S.status&&S.status.max_value)||0; }
+  function weights(){ var m=maxKg(); return m>5?["Up to 1 kg","1 to 5 kg","5 to "+m+" kg"]:["Up to 1 kg","1 to "+m+" kg"]; }
+  function canBookNow(){ var s=S.status; return !s||((s.open||s.preview)&&(s.hours_open||s.preview)); }
+  function head(n,title,lead){
+    return '<div class="steps">'+(n>1?'<button class="back" type="button" data-back aria-label="Back to the previous step">'+IC.back+'</button>':'')+
+      '<div class="bars" aria-hidden="true">'+[1,2,3,4].map(function(i){ return '<i class="'+(i<=n?"on":"")+'"></i>'; }).join("")+'</div><span class="stepn">Step '+n+' of 4</span></div>'+
+      '<h2 id="stepTitle" tabindex="-1">'+title+'</h2>'+(lead?'<p class="lead">'+lead+'</p>':'<div style="height:14px"></div>');
+  }
+  function cta(label,disabled,extra){
+    return '<div class="cta">'+(S.msg?'<p class="msg" role="alert">'+esc(S.msg)+'</p>':'')+(extra||"")+
+      '<button class="btn btn-primary wide" type="button" id="go"'+(disabled?" disabled":"")+'>'+label+'</button></div>';
+  }
+  function notice(){
+    var s=S.status; if(!s) return "";
+    if(!s.open&&!s.preview) return '<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>Nova Instant opens soon. You can check the fare for your trip now; booking opens at launch.</span></div>';
+    if(s.preview) return '<div class="note info" style="margin-top:12px">'+IC.info+'<span>Preview: Nova Instant is not open to the public yet. You can book because you are signed in as a NovaX admin.</span></div>';
+    if(!s.hours_open) return '<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>Riders are on from '+hourLabel(s.open_hour)+' to '+hourLabel(s.close_hour)+'. You can check a fare now and book when they are back.</span></div>';
+    return "";
+  }
+  function step1(){
+    var h='<h1 id="stepTitle" tabindex="-1">Send a parcel across Karachi</h1>'+(S.p&&S.d?'<div style="height:12px"></div>':'<p class="lead">Door-to-door delivery. Upfront fare. No account needed.</p>')+
+      '<div class="route">'+
+        '<button class="loc'+(S.p?"":" empty")+'" type="button" data-pick="p"><span class="dot" aria-hidden="true"></span><span><small>Pickup</small><b>'+esc(S.p?S.p.label:"Where should we pick it up?")+'</b></span>'+IC.chev+'</button>'+
+        '<button class="loc'+(S.d?"":" empty")+'" type="button" data-pick="d"><span class="sq" aria-hidden="true"></span><span><small>Delivery</small><b>'+esc(S.d?S.d.label:"Where is it going?")+'</b></span>'+IC.chev+'</button>'+
+      '</div>';
+    if(S.p&&S.d){
+      if(S.quoting) h+='<div class="farecard" aria-busy="true"><div><div class="k">Fare</div><div class="amt"><span class="sk" style="width:128px;height:36px"></span></div></div><div class="meta"><span class="sk" style="width:72px;height:18px"></span><br><span class="sk" style="width:54px;height:13px;margin-top:6px"></span></div></div>';
+      else if(S.quote){
+        var est=S.quote.bookable===false;
+        h+='<div class="farecard"><div><div class="k">'+(est?"Estimated fare":"Fare")+'</div><div class="amt"><small>Rs</small><span id="fareNum">'+esc(Number(S.quote.fare).toLocaleString("en-PK"))+'</span></div></div>'+
+           '<div class="meta"><b>'+esc(S.quote.km)+' km</b>'+(est?"estimated":"by road")+'</div></div>'+
+           (est?'<div class="note warn" style="margin-top:12px">'+IC.info+'<span>The road between your two places could not be measured just now, so this is only an estimate. Measure it again to book.</span></div>'
+               :'<p class="fine" style="margin-top:10px">'+(Number(S.quote.fare)<=Number(S.quote.min_fare)?"Minimum fare. Trips up to "+Math.floor(S.quote.min_fare/S.quote.rate_per_km)+" km cost "+money(S.quote.min_fare)+".":esc(S.quote.km)+" km at Rs "+esc(S.quote.rate_per_km)+" per km. This is the full fare, fixed before you book.")+'</p>');
+        var s=S.status, n=s?Number(s.riders_online||0):0;
+        /* Said only when it is true. */
+        if(!est&&s&&(s.open||s.preview)) h+='<p class="avail'+(n>0?"":" none")+'"><i aria-hidden="true"></i>'+(n>0?(n===1?"1 rider is":n+" riders are")+" online now.":"No rider is online right now. Your booking waits for the next one.")+'</p>';
+      }
+      else h+='<div class="note bad" style="margin-top:12px">'+IC.info+'<span>'+esc(S.quoteErr||"That trip cannot be priced.")+'</span></div>';
+    }
+    var est2=S.quote&&S.quote.bookable===false;
+    h+=notice();
+    /* One primary action at every moment, never a dead button. */
+    var lab = !S.p?"Set the pickup":!S.d?"Set the delivery":S.quoting?"Working out the fare…":est2?"Measure the road again":(!S.quote&&S.quoteErr)?"Try again":"Continue";
+    return h+cta(lab, S.quoting);
+  }
+  function step2(){
+    var w=weights();
+    return head(2,"What are you sending?","")+
+      '<div class="types" role="group" aria-label="Kind of parcel">'+TYPES.map(function(t){ return '<button class="type" type="button" data-type="'+t[0]+'" aria-pressed="'+(S.type===t[0])+'">'+IC[t[1]]+t[0]+'</button>'; }).join("")+'</div>'+
+      '<div class="fld"><label class="lbl" for="item">What exactly is inside?</label><input class="inp" id="item" data-f="item" maxlength="80" value="'+esc(S.item)+'" placeholder="e.g. two stitched suits, a birthday cake"></div>'+
+      '<div class="fld"><span class="lbl" id="wLbl">About how heavy?</span><div class="seg" role="group" aria-labelledby="wLbl">'+w.map(function(x){ return '<button type="button" data-w="'+x+'" aria-pressed="'+(S.weight===x)+'">'+x+'</button>'; }).join("")+'</div></div>'+
+      '<div class="fld"><button class="tog" type="button" role="switch" id="fragile" aria-checked="'+S.fragile+'"><span><b>Fragile</b><small>The rider is told to carry it with care</small></span><i aria-hidden="true"></i></button></div>'+
+      (maxVal()?'<div class="fld"><label class="lbl" for="value">Value of the contents (optional)</label><div class="rs"><span>Rs</span><input class="inp" id="value" data-f="value" inputmode="numeric" maxlength="7" value="'+esc(S.value)+'" placeholder="0"></div><div class="hint">Nova Instant carries parcels worth up to '+money(maxVal())+'.</div></div>':'')+
+      '<div class="fld"><label class="lbl" for="note">Instructions for the rider (optional)</label><input class="inp" id="note" data-f="note" maxlength="120" value="'+esc(S.note)+'" placeholder="e.g. call on arrival, gate 2"></div>'+
+      '<div class="limit"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="12" y="8" width="24" height="20" rx="3"/><path d="M12 15h24M24 8v7"/><circle cx="12" cy="38" r="5"/><circle cx="36" cy="38" r="5"/><path d="M12 38h10l5-10h6l3 10"/></svg>'+
+        '<span>One parcel, up to <b>'+maxKg()+' kg</b>, that a rider can carry on a motorbike.</span></div>'+
+      '<button class="linkish" type="button" data-banned>'+IC.info+'What cannot be sent?</button>'+
+      cta("Continue",false);
+  }
+  function step3(){
+    var me=store("nvi_me"), rcp=store("nvi_rcp"); rcp=Array.isArray(rcp)?rcp:[];
+    return head(3,"Who is it from, and who gets it?","The rider calls these numbers and follows these addresses.")+
+      '<section class="card"><div class="who"><span class="dot" aria-hidden="true"></span><b>Pickup contact</b></div>'+
+        (me&&me.n&&!S.sName?'<div class="chips" style="margin-bottom:10px"><button class="chip" type="button" data-me>Use my details: '+esc(me.n)+'</button></div>':'')+
+        '<div class="two"><div><label class="lbl" for="sName">Name</label><input class="inp" id="sName" data-f="sName" maxlength="80" autocomplete="name" value="'+esc(S.sName)+'"></div>'+
+        '<div><label class="lbl" for="sPhone">Mobile</label><input class="inp" id="sPhone" data-f="sPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="03XX XXXXXXX" value="'+esc(S.sPhone)+'"></div></div>'+
+        '<div class="fld"><label class="lbl" for="pAddr">Exact pickup address</label><textarea class="inp" id="pAddr" data-f="pAddr" maxlength="300" placeholder="House or shop number, street, nearest landmark">'+esc(S.pAddr)+'</textarea></div></section>'+
+      '<section class="card"><div class="who"><span class="sq" aria-hidden="true"></span><b>Receiver</b></div>'+
+        (rcp.length&&!S.rName?'<div class="chips" style="margin-bottom:10px" aria-label="Recent receivers">'+rcp.map(function(r,i){ return '<button class="chip" type="button" data-rcp="'+i+'">'+esc(r.n)+'</button>'; }).join("")+'</div>':'')+
+        '<div class="two"><div><label class="lbl" for="rName">Name</label><input class="inp" id="rName" data-f="rName" maxlength="80" autocomplete="off" value="'+esc(S.rName)+'"></div>'+
+        '<div><label class="lbl" for="rPhone">Mobile</label><input class="inp" id="rPhone" data-f="rPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="off" placeholder="03XX XXXXXXX" value="'+esc(S.rPhone)+'"></div></div>'+
+        '<div class="fld"><label class="lbl" for="dAddr">Exact delivery address</label><textarea class="inp" id="dAddr" data-f="dAddr" maxlength="300" placeholder="House or flat number, street, nearest landmark">'+esc(S.dAddr)+'</textarea></div></section>'+
+      '<section class="card"><span class="lbl" id="payLbl" style="font-size:16px;color:var(--ink)">Who will pay '+esc(money(S.quote?S.quote.fare:0))+'?</span>'+
+        '<div class="seg" role="group" aria-labelledby="payLbl"><button type="button" data-pay="sender" aria-pressed="'+(S.payer==="sender")+'">Sender at pickup</button><button type="button" data-pay="receiver" aria-pressed="'+(S.payer==="receiver")+'">Receiver at delivery</button></div>'+
+        '<p class="fine" id="paySay">'+(S.payer==="sender"?"Cash to the rider when the parcel is collected.":"Cash to the rider at the door. Tell the receiver the fare is "+esc(money(S.quote?S.quote.fare:0))+".")+'</p></section>'+
+      cta("Review booking",false);
+  }
+  function itemText(){
+    var parts=[S.type, S.weight?S.weight.toLowerCase():"", S.fragile?"FRAGILE":"", S.value?("value Rs "+Number(S.value).toLocaleString("en-PK")):""].filter(Boolean).join(" · ");
+    return (parts+": "+S.item).slice(0,160);
+  }
+  function step4(){
+    var s=S.status||{}, q=S.quote||{}, min=Number(q.fare)<=Number(q.min_fare);
+    var ret=Number(s.return_fee_pct||0);
+    return head(4,"Check and book","")+
+      '<section class="card"><dl class="rv">'+
+        '<dt>Pickup</dt><dd>'+esc(S.sName)+' &middot; '+esc(pkPhone(S.sPhone))+'<small>'+esc(S.pAddr)+'</small></dd>'+
+        '<dt>Delivery</dt><dd>'+esc(S.rName)+' &middot; '+esc(pkPhone(S.rPhone))+'<small>'+esc(S.dAddr)+'</small></dd>'+
+        '<dt>Parcel</dt><dd>'+esc(S.item)+'<small>'+esc([S.type,S.weight,S.fragile?"fragile":"",S.value?("worth "+money(S.value)):""].filter(Boolean).join(" · "))+'</small>'+(S.note?'<small>Rider note: '+esc(S.note)+'</small>':'')+'</dd>'+
+        '<dt>Pays</dt><dd>'+(S.payer==="sender"?"Sender, in cash at pickup":"Receiver, in cash at delivery")+'</dd></dl>'+
+        '<div class="total" style="font-weight:400;border-top-style:solid"><span>'+(min?"Minimum fare":esc(q.km)+" km × Rs "+esc(q.rate_per_km))+'</span><span>'+esc(money(q.fare))+'</span></div>'+
+        '<div class="total"><span>Total, nothing added later</span><b>'+esc(money(q.fare))+'</b></div></section>'+
+      '<section class="card" style="font-size:14.5px;color:var(--ink-2);line-height:1.5"><p class="eyebrow">Good to know</p>'+
+        '<p style="margin:0 0 8px">Free to cancel until the rider has picked up the parcel.</p>'+
+        '<p style="margin:0 0 8px">If the delivery cannot be made, the parcel comes back to the sender'+(ret>0?", and the return costs "+ret+"% of the fare.":" at no extra charge.")+'</p>'+
+        (s.confirm_first?'<p style="margin:0 0 8px">First booking from a number? NovaX phones the sender to confirm before a rider is sent.</p>':'')+
+        '<p style="margin:0">The receiver gets a tracking link with a delivery PIN. The rider hands over only against that PIN.</p></section>'+
+      '<label class="agree" id="agreeBox" for="agree"><input type="checkbox" id="agree"'+(S.agree?" checked":"")+'><span>The parcel weighs '+maxKg()+' kg or less'+(maxVal()?", is worth "+money(maxVal())+" or less":"")+', and holds nothing on the <button class="linkish" type="button" data-banned style="min-height:0;display:inline;font-size:inherit">not-allowed list</button>. I agree to the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</span></label>'+
+      '<div id="capBox"></div>'+
+      cta(S.busy?'<span class="spin" aria-hidden="true"></span> Booking…':canBookNow()?"Book rider · "+esc(money(q.fare)):(s.open||s.preview)?"Riders are back at "+hourLabel(s.open_hour):"Booking opens soon", S.busy||!canBookNow());
+  }
+  function render(focusTitle){
+    if(document.body.getAttribute("data-view")!=="book") return;
+    document.body.setAttribute("data-step",String(S.step));
+    var ready=!!(S.p&&S.d), was=document.body.hasAttribute("data-ready");
+    if(ready!==was){ if(ready) document.body.setAttribute("data-ready",""); else document.body.removeAttribute("data-ready");
+      /* The map strip changes height: fit the route to it once it has settled. */
+      setTimeout(function(){ if(map){ map.invalidateSize(); paintMap(S.p,S.d,S.quote&&S.quote.line); } },320); }
+    $("pane").innerHTML='<div class="pane'+(focusTitle?" enter":"")+'">'+[null,step1,step2,step3,step4][S.step]()+'</div>';
+    if(S.step===4&&S.cap.on) mountCaptcha();
+    if(focusTitle){ window.scrollTo(0,0); var t=$("stepTitle"); if(t){ try{ t.focus({ preventScroll:true }); }catch(e){} } say("Step "+S.step+" of 4."); setTimeout(function(){ if(map){ map.invalidateSize(); paintMap(S.p,S.d,S.quote&&S.quote.line); } },320); }
+  }
+  function fail(id,msg){ S.msg=msg; var m=document.querySelector(".cta .msg"); if(m) m.textContent=msg; else { render(); }
+    /* The caret goes to the end: on a half-filled address the customer adds
+       to what is there instead of typing in front of it. */
+    if(id){ var el=$(id); if(el){ el.classList.add("bad"); try{ el.scrollIntoView({ block:"center" }); el.focus({ preventScroll:true }); var n=el.value.length; el.setSelectionRange(n,n); }catch(e){} } } say(msg); buzz(30); return false; }
+  function next(){
+    S.msg="";
+    if(S.step===1){
+      if(!S.p) return openPicker("p");
+      if(!S.d) return openPicker("d");
+      if(!S.quote||S.quote.bookable===false) return quote();
+      S.step=2; return render(true);
+    }
+    if(S.step===2){
+      if(!S.type){ S.msg="Choose the kind of parcel."; render(); say(S.msg); return; }
+      if(S.item.trim().length<2) return fail("item","Say what is inside the parcel.");
+      if(!S.weight){ S.msg="Choose about how heavy it is."; render(); say(S.msg); return; }
+      if(S.value&&maxVal()&&Number(S.value)>maxVal()) return fail("value","Nova Instant carries parcels worth up to "+money(maxVal())+".");
+      S.step=3; return render(true);
+    }
+    if(S.step===3){
+      if(S.sName.trim().length<2) return fail("sName","Add the sender's name.");
+      if(!pkPhone(S.sPhone)) return fail("sPhone","Enter the sender's mobile like 0300 1234567.");
+      if(S.pAddr.trim().length<8) return fail("pAddr","Add the exact pickup address: house or shop number, street, landmark.");
+      if(S.rName.trim().length<2) return fail("rName","Add the receiver's name.");
+      if(!pkPhone(S.rPhone)) return fail("rPhone","Enter the receiver's mobile like 0300 1234567.");
+      if(S.dAddr.trim().length<8) return fail("dAddr","Add the exact delivery address: house or flat number, street, landmark.");
+      S.step=4; return render(true);
+    }
+    if(S.step===4) return book(false);
+  }
+
+  /* CAPTCHA (Cloudflare Turnstile), only when NovaX has set one up. */
+  function loadCaptcha(siteKey){
+    if(S.cap.on) return; S.cap.on=true; S.cap.key=siteKey;
+    window.nviCapReady=function(){ S.cap.ready=true; if(S.step===4) mountCaptcha(); };
+    var sc=document.createElement("script"); sc.src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=nviCapReady"; sc.async=true; sc.defer=true; document.head.appendChild(sc);
+  }
+  function mountCaptcha(){
+    if(!S.cap.ready||!$("capBox")) return; S.cap.token="";
+    try{ S.cap.id=window.turnstile.render("#capBox",{ sitekey:S.cap.key, callback:function(t){ S.cap.token=t; }, "expired-callback":function(){ S.cap.token=""; }, "error-callback":function(){ S.cap.token=""; } }); }catch(e){}
+  }
+
+  var BOOK_SAY={ not_open:"Nova Instant is not open for booking yet.", closed_now:"Riders are off right now. Booking opens again in the morning.",
+    pickup_address:["pAddr",3,"Add the exact pickup address."], drop_address:["dAddr",3,"Add the exact delivery address."],
+    sender_name:["sName",3,"Add the sender's name."], receiver_name:["rName",3,"Add the receiver's name."],
+    sender_phone:["sPhone",3,"The sender's mobile number is not valid."], receiver_phone:["rPhone",3,"The receiver's mobile number is not valid."],
+    item:["item",2,"Say what is inside the parcel."],
+    too_many_open:"This number already has three deliveries in progress. Wait for one to finish.",
+    no_route:"The road between your two places has not been measured. Go back to step 1 and measure it again.",
+    terms:"Tick the box to agree to the Nova Instant rules.",
+    slow_down:"Too many bookings from this phone or connection. Wait a while, or call NovaX.",
+    awaiting_call:"This number already has a booking waiting for NovaX's confirmation call. Answer that call first.",
+    captcha:"Complete the \"I am human\" check, then press Book again." };
+  function book(retried){
+    if(S.busy||!S.quote) return;
+    if(!S.agree){ fail(null,BOOK_SAY.terms); var ab=$("agreeBox"); if(ab){ ab.classList.add("bad"); try{ ab.scrollIntoView({ block:"center" }); }catch(e){} } return; }
+    S.busy=true; S.msg=""; render();
+    rpc("nvi_book",{ p_quote:S.quote.quote, p_pickup_address:S.pAddr, p_drop_address:S.dAddr, p_sender_name:S.sName, p_sender_phone:S.sPhone,
+      p_receiver_name:S.rName, p_receiver_phone:S.rPhone, p_item:itemText(), p_payer:S.payer, p_rider_note:S.note||null,
+      p_terms:true, p_device:deviceId(), p_captcha:S.cap.token||null }).then(function(r){
+      S.busy=false;
+      if(r.error||!r.data){ S.msg="The booking did not go through. Check your connection and press Book again; you will not be booked twice."; render(); say(S.msg); return; }
+      var d=r.data;
+      if(d.ok){
+        var mine=store("nvi_mine")||{}; mine[d.token]={ m:d.manage, at:Date.now() };
+        Object.keys(mine).forEach(function(k){ if(Date.now()-mine[k].at>8*86400000) delete mine[k]; }); store("nvi_mine",mine);
+        store("nvi_last",{ token:d.token, code:d.code, at:Date.now() });
+        store("nvi_me",{ n:S.sName.trim(), p:pkPhone(S.sPhone) });
+        var rc=store("nvi_rcp"); rc=(Array.isArray(rc)?rc:[]).filter(function(x){ return x.p!==pkPhone(S.rPhone); }); rc.unshift({ n:S.rName.trim(), p:pkPhone(S.rPhone), a:S.dAddr.trim() }); store("nvi_rcp",rc.slice(0,5));
+        buzz([12,60,18]);
+        try{ history.pushState(null,"",selfUrl(d.token)); }catch(e){}
+        return startTrack(d.token,true);      /* the sheet becomes "Finding your rider": no page load */
+      }
+      if(d.reason==="quote_expired"&&!retried){
+        var was=S.quote.fare, my=++qSeq;
+        return rpc("nvi_quote",{ p_plat:S.p.lat, p_plng:S.p.lng, p_dlat:S.d.lat, p_dlng:S.d.lng }).then(function(q){
+          if(my!==qSeq) return;
+          if(q.error||!q.data||!q.data.ok||q.data.bookable===false){ S.quote=null; S.step=1; S.msg="The fare needs working out again."; return render(true); }
+          S.quote=q.data;
+          if(Number(q.data.fare)===Number(was)) return book(true);
+          S.msg="The fare is now "+money(q.data.fare)+". Check it and press Book again."; render(); say(S.msg);
+        });
+      }
+      if(S.cap.on){ S.cap.token=""; try{ window.turnstile.reset(S.cap.id); }catch(e){} }
+      var m=BOOK_SAY[d.reason];
+      if(Array.isArray(m)){ S.step=m[1]; S.msg=m[2]; render(true); var el=$(m[0]); if(el){ el.classList.add("bad"); try{ el.scrollIntoView({ block:"center" }); }catch(e){} } say(S.msg); return; }
+      S.msg=m||"The booking could not be made."; render(); say(S.msg);
+    });
+  }
+
+  /* One listener for the whole sheet. */
+  $("pane").addEventListener("click",function(e){
+    var t=e.target.closest("button,[data-banned]"); if(!t) return;
+    if(t.id==="go") return next();
+    if(t.hasAttribute("data-back")){ S.msg=""; S.step=Math.max(1,S.step-1); return render(true); }
+    if(t.dataset.pick) return openPicker(t.dataset.pick);
+    if(t.dataset.type){ S.type=t.dataset.type; S.msg=""; return render(); }
+    if(t.dataset.w){ S.weight=t.dataset.w; S.msg=""; return render(); }
+    if(t.id==="fragile"){ S.fragile=!S.fragile; t.setAttribute("aria-checked",String(S.fragile)); return; }
+    if(t.dataset.pay){ S.payer=t.dataset.pay; return render(); }
+    if(t.hasAttribute("data-me")){ var me=store("nvi_me"); if(me){ S.sName=me.n||""; S.sPhone=me.p||""; render(); } return; }
+    if(t.dataset.rcp){ var r=(store("nvi_rcp")||[])[Number(t.dataset.rcp)]; if(r){ S.rName=r.n||""; S.rPhone=r.p||""; if(!S.dAddr||S.dAddrAuto) { S.dAddr=r.a||S.dAddr; S.dAddrAuto=false; } render(); } return; }
+    if(t.hasAttribute("data-banned")){ e.preventDefault(); return openPanel("What cannot be sent",'<ul class="ban">'+BANNED.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join("")+'</ul><p class="fine">A rider may refuse a parcel that looks unsafe to carry. The full list is in the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</p>'); }
+  });
+  $("pane").addEventListener("input",function(e){
+    var f=e.target.getAttribute&&e.target.getAttribute("data-f"); if(!f) return;
+    var v=e.target.value; if(f==="value") v=v.replace(/[^\d]/g,"");
+    S[f]=v; if(f==="pAddr"||f==="dAddr") S[f+"Auto"]=false;
+    e.target.classList.remove("bad"); if(S.msg){ S.msg=""; var m=document.querySelector(".cta .msg"); if(m) m.remove(); }
+  });
+  $("pane").addEventListener("change",function(e){ if(e.target.id==="agree"){ S.agree=e.target.checked; var ab=$("agreeBox"); if(ab) ab.classList.remove("bad"); if(S.msg){ S.msg=""; var m=document.querySelector(".cta .msg"); if(m) m.remove(); } } });
+  document.addEventListener("click",function(e){ if(e.target.closest("[data-close]")) closePanel(); });
+
+  /* ───────── help ───────── */
+  function supportBtns(){
+    var d=pkPhone(S.support)||"03123922558";
+    return '<div class="row2"><a class="btn btn-plain sm" href="tel:+92'+d.slice(1)+'">'+IC.phone+'Call NovaX</a><a class="btn btn-plain sm" href="https://wa.me/92'+d.slice(1)+'" target="_blank" rel="noopener">WhatsApp</a></div>';
+  }
+  $("helpBtn").addEventListener("click",function(){
+    var last=store("nvi_last");
+    var p=openPanel("Help",
+      '<section class="card"><p class="eyebrow">Talk to NovaX</p><p style="margin:0;color:var(--ink-2);font-size:15px">A person answers during rider hours.</p>'+supportBtns()+'</section>'+
+      (last&&last.token&&Date.now()-last.at<8*86400000?'<section class="card"><p class="eyebrow">Your last booking</p><a class="btn btn-plain sm wide" href="'+esc(selfUrl(last.token))+'">Open '+esc(last.code||"tracking")+'</a></section>':'')+
+      '<section class="card"><p class="eyebrow">Lost your tracking link?</p><form id="findForm" novalidate><label class="lbl" for="fCode">Booking number</label><input class="inp" id="fCode" maxlength="12" autocomplete="off" autocapitalize="characters" placeholder="NI100001">'+
+        '<div class="fld"><label class="lbl" for="fPhone">Sender\'s or receiver\'s mobile</label><input class="inp" id="fPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="03XX XXXXXXX"></div>'+
+        '<div class="fld"><button class="btn btn-dark sm wide" type="submit" id="fBtn">Find my booking</button></div><p class="fine" id="fMsg" role="alert" hidden style="color:var(--red-ink)"></p></form></section>'+
+      '<section class="card"><p class="eyebrow">Sending something?</p><button class="linkish" type="button" data-banned2>'+IC.info+'What cannot be sent</button></section>');
+    p.querySelector("#findForm").addEventListener("submit",function(e){
+      e.preventDefault();
+      var msg=p.querySelector("#fMsg"), btn=p.querySelector("#fBtn"), code=p.querySelector("#fCode").value.trim(), ph=pkPhone(p.querySelector("#fPhone").value);
+      function tell(t){ msg.textContent=t; msg.hidden=false; }
+      msg.hidden=true;
+      if(code.replace(/[^A-Za-z0-9]/g,"").length<6) return tell("Enter the booking number, like NI100001.");
+      if(!ph) return tell("Enter the mobile like 0300 1234567.");
+      btn.disabled=true;
+      rpc("nvi_find",{ p_code:code, p_phone:ph }).then(function(r){
+        btn.disabled=false;
+        if(r.error||!r.data) return tell("Could not look that up. Check your connection and try again.");
+        if(!r.data.ok) return tell(r.data.reason==="slow_down"?"Too many tries. Wait ten minutes, or call NovaX.":"No booking matches that number and mobile.");
+        closePanel(); try{ history.pushState(null,"",selfUrl(r.data.token)); }catch(e2){} startTrack(r.data.token,false);
+      });
+    });
+    p.querySelector("[data-banned2]").addEventListener("click",function(){ openPanel("What cannot be sent",'<ul class="ban">'+BANNED.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join("")+'</ul>'); });
+  });
+
+  /* ───────── tracking ───────── */
+  var T={ token:null, cur:null, timer:null, fresh:false };
+  var ORDER=["Booked","Rider assigned","Picked up","Delivered"];
+  var FAIL={ receiver_unavailable:"the receiver could not be reached", refused:"the receiver refused the parcel", wrong_address:"the address could not be found", damaged:"the parcel was damaged", payment_refused:"the receiver did not pay the fare" };
+  var SAY={ "Awaiting confirmation":["NovaX will call to confirm","This is the first booking from the sender's number, so NovaX phones the sender before a rider is sent. Keep that phone near."],
+    "Booked":["Finding the best rider for your pickup",""], "Rider assigned":["Your rider is on the way to the pickup","Keep the parcel ready."],
+    "Picked up":["Your parcel is on the bike","The rider is heading to the delivery address."],
+    "Failed delivery":["The delivery could not be made","NovaX and the rider are sorting it out."],
+    "Returning":["The parcel is coming back to the sender","The sender gives the rider the PIN when it arrives."],
+    "Returned":["Returned to the sender","The parcel was handed back."], "Delivered":["Delivered","The parcel was handed over against the PIN."],
+    "Cancelled":["Booking cancelled","No rider will come for this booking."] };
+  function when(v){ if(!v) return ""; try{ return new Date(v).toLocaleString("en-GB",{ timeZone:"Asia/Karachi", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; } }
+  function li(cls,label,at){ return '<li class="'+cls+'">'+esc(label)+(at?'<time>'+esc(when(at))+'</time>':'')+'</li>'; }
+  function waited(j){ return Math.round((Date.now()-new Date(j.created_at).getTime())/60000); }
+  function subFor(j){
+    if(j.status==="Booked"){
+      var n=Number(j.riders_online||0);
+      return n>0?(n===1?"1 rider is":n+" riders are")+" online. The first to accept comes to the pickup. This usually takes a few minutes."
+                :"No rider is online right now. NovaX assigns one as soon as a rider is on.";
+    }
+    if(j.status==="Failed delivery") return "Not delivered because "+(FAIL[j.fail_reason]||"of a problem at the address")+". NovaX and the rider are sorting it out.";
+    if(j.status==="Returning") return "The rider is bringing the parcel back to the pickup address. The sender gives the rider the PIN"+(Number(j.return_due)>0?" and pays "+money(j.return_due)+" in cash.":".");
+    if(j.status==="Cancelled"&&j.cancel_reason&&j.cancel_reason!=="Cancelled by customer") return "Cancelled by NovaX: "+j.cancel_reason;
+    return (SAY[j.status]||["",""])[1];
+  }
+  function trackShell(inner){ $("pane").innerHTML='<div class="pane">'+inner+'</div>'; }
+  function refit(){ if(!map) return; map.invalidateSize(); var j=T.cur; if(j&&Array.isArray(j.p)&&Array.isArray(j.d)) paintMap({ lat:j.p[0], lng:j.p[1] },{ lat:j.d[0], lng:j.d[1] },null); }
+  function bare(title,sub){
+    clearInterval(T.timer); T.timer=null;
+    trackShell('<div class="status"><div class="k">Nova Instant</div><h1 id="stepTitle" tabindex="-1">'+esc(title)+'</h1><p>'+esc(sub)+'</p></div>'+
+      '<section class="card"><p class="eyebrow">Need help?</p>'+supportBtns()+'</section>'+
+      '<div class="cta"><a class="btn btn-primary wide" href="'+esc(selfUrl(null))+'">Book a delivery</a></div>');
+    say(title+".");
+  }
+  function paintTrack(j){
+    var changed=T.cur&&T.cur.status!==j.status; T.cur=j;
+    if(j.support) S.support=j.support;
+    var s=SAY[j.status]||[j.status,""];
+    if(j.expired){
+      bare(s[0],"This booking closed a while ago, so its names and addresses are no longer shown. Call NovaX if you need the record.");
+      return;
+    }
+    var live=["Awaiting confirmation","Booked","Rider assigned","Picked up","Failed delivery","Returning"].indexOf(j.status)>-1;
+    var closed=!live, manage=null; try{ var mine=store("nvi_mine")||{}; manage=(mine[T.token]&&mine[T.token].m)||null; }catch(e){}
+    var canCancel=manage&&["Awaiting confirmation","Booked","Rider assigned"].indexOf(j.status)>-1;
+    var stuck=j.status==="Booked"&&waited(j)>=10;
+    var idx=ORDER.indexOf(j.status), tl="";
+    if(j.status==="Cancelled") tl=li("done","Booked",j.created_at)+li("off","Cancelled",j.cancelled_at);
+    else if(j.status==="Awaiting confirmation") tl=li("now","Waiting for NovaX's confirmation call",j.created_at)+li("","Rider assigned")+li("","Picked up")+li("","Delivered");
+    else if(j.failed_at&&j.status!=="Picked up"&&j.status!=="Delivered")
+      tl=li("done","Booked",j.created_at)+li("done","Rider assigned",j.assigned_at)+li("done","Picked up",j.picked_at)+li(j.status==="Failed delivery"?"off":"done","Delivery not made",j.failed_at)+
+         li(j.status==="Returning"?"now":j.status==="Returned"?"done":"","Coming back to the sender",j.returning_at)+li(j.status==="Returned"?"done":"","Returned to the sender",j.returned_at);
+    else ORDER.forEach(function(k,i){ tl+=li(i<idx||j.status==="Delivered"?"done":i===idx?"now":"",k,i<=idx?j[{ "Booked":"created_at","Rider assigned":"assigned_at","Picked up":"picked_at","Delivered":"delivered_at" }[k]]:null); });
+
+    var h='<div class="status"><div class="top">'+(T.fresh&&j.status!=="Cancelled"?'<span class="done-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.500l4.500 4.500L19 7.500"/></svg></span>'
+        :(j.status==="Booked"?'<span class="pulse" aria-hidden="true"></span>':''))+
+      '<div class="k">Nova Instant &middot; <b>'+esc(j.code)+'</b></div></div><h1 id="stepTitle" tabindex="-1">'+esc(T.fresh&&j.status==="Booked"?"Booked. Finding your rider":s[0])+'</h1><p>'+esc(subFor(j))+'</p></div>';
+    /* If it has waited too long, help comes to the customer. */
+    if(stuck) h+='<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>This has waited '+waited(j)+' minutes. Call or WhatsApp NovaX and we will assign a rider by hand.</span></div><div style="margin-top:0">'+supportBtns()+'</div>';
+    if(j.rider&&j.rider.name) h+='<section class="card" style="margin-top:12px"><div class="rider"><span class="av" aria-hidden="true">'+esc(j.rider.name.charAt(0).toUpperCase())+'</span><div><b>'+esc(j.rider.name)+'</b><small>Your rider'+(j.rider.plate?' &middot; bike '+esc(j.rider.plate):'')+'</small></div>'+
+      (j.rider.phone?'<a class="btn btn-plain sm" href="tel:'+esc(j.rider.phone)+'">'+IC.phone+'Call</a>':'')+'</div></section>';
+    if(j.pin) h+='<div class="pincard"><div><b>Delivery PIN</b>'+(j.status==="Returning"?"The sender gives this to the rider when the parcel comes back.":"The receiver gives this to the rider at the door.")+'</div><span class="pin" aria-label="PIN '+esc(j.pin.split("").join(" "))+'">'+esc(j.pin)+'</span></div>';
+    if(live) h+='<div class="row2"><button class="btn btn-plain sm" type="button" id="tShare">'+IC.share+'Share</button><button class="btn btn-plain sm" type="button" id="tCopy">Copy link</button></div>';
+    h+='<section class="card" style="margin-top:12px"><p class="eyebrow">Journey</p><ol class="tl">'+tl+'</ol></section>'+
+       '<section class="card"><p class="eyebrow">Details</p><dl class="rv">'+
+         '<dt>From</dt><dd>'+esc(j.sender_name)+'<small>'+esc(j.pickup_address)+'</small></dd>'+
+         '<dt>To</dt><dd>'+esc(j.receiver_name)+'<small>'+esc(j.drop_address)+'</small></dd>'+
+         '<dt>Parcel</dt><dd>'+esc(j.item)+'</dd>'+
+         '<dt>Fare</dt><dd>'+esc(money(j.fare))+'<small>'+esc(j.km)+' km &middot; '+(j.payer==="sender"?"sender pays at pickup":"receiver pays at delivery")+'</small></dd></dl></section>';
+    if(!stuck) h+='<section class="card"><p class="eyebrow">Need help?</p>'+supportBtns()+'</section>';
+    if(canCancel) h+='<button class="btn btn-danger wide sm" type="button" id="tCancel" style="margin-top:12px">Cancel this booking</button>';
+    h+='<p class="fine">'+(closed?"This booking is closed. Its details stay on this link for "+(j.track_days||7)+" days."
+        :"This page shows each step of the delivery as it happens. It does not show the rider's live position. Keep the link: it is the way back to this booking.")+'</p>'+
+       (closed?'<div class="cta"><a class="btn btn-primary wide" href="'+esc(selfUrl(null))+'">Book another delivery</a></div>'
+              :'<div style="padding:16px 0 calc(22px + var(--sa-b))"><a class="btn btn-plain wide sm" href="'+esc(selfUrl(null))+'">Book another delivery</a></div>');
+    /* Do not repaint under a finger mid-confirm. */
+    if(document.querySelector('#pane [data-sure="1"]')) return;
+    trackShell(h);
+    if(changed) say("Update: "+s[0]+".");
+    /* Fitted once, and again only when the status changes: a customer who
+       has moved the map keeps their view between refreshes. */
+    if(Array.isArray(j.p)&&Array.isArray(j.d)&&(!T.fitted||changed)){ T.fitted=true; paintMap({ lat:j.p[0], lng:j.p[1] },{ lat:j.d[0], lng:j.d[1] },null); }
+    if(closed){ clearInterval(T.timer); T.timer=null; }
+  }
+  function loadTrack(first){
+    rpc("nvi_track",{ p_token:T.token }).then(function(r){
+      if(r.error||!r.data){ if(first) trackShell('<div class="status"><div class="k">Nova Instant</div><h1>Could not load this booking</h1><p>Check your connection. The page tries again by itself.</p></div>'); return; }
+      if(!r.data.ok){ bare("Booking not found","This link does not match a booking. Check it, find your booking under Help, or book a new delivery."); return; }
+      paintTrack(r.data);
+      if(first){ var t=$("stepTitle"); if(t){ try{ t.focus({ preventScroll:true }); }catch(e){} } say((SAY[r.data.status]||[r.data.status])[0]+"."); }
+    });
+  }
+  function startTrack(token,fresh){
+    T.token=token; T.fresh=!!fresh; T.cur=null; T.fitted=false;
+    document.body.setAttribute("data-view","track"); document.body.removeAttribute("data-step");
+    window.scrollTo(0,0);
+    trackShell('<div class="status" aria-busy="true"><div class="k">Nova Instant</div><h1>'+(fresh?"Booked. Finding your rider":"Loading your delivery…")+'</h1><p><span class="sk" style="width:70%;height:14px"></span></p></div>');
+    setTimeout(refit,340);
+    clearInterval(T.timer); loadTrack(true);
+    T.timer=setInterval(function(){ if(!document.hidden) loadTrack(false); },20000);
+  }
+  document.addEventListener("visibilitychange",function(){ if(!document.hidden&&T.timer) loadTrack(false); });
+  $("pane").addEventListener("click",function(e){
+    var t=e.target.closest("#tShare,#tCopy,#tCancel"); if(!t||!T.token) return;
+    var url=selfUrl(T.token);
+    if(t.id==="tCopy"){ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function(){ toast("Tracking link copied."); },function(){ toast(url); }); else toast(url); return; }
+    if(t.id==="tShare"){
+      var msg="Your parcel is coming by Nova Instant"+(T.cur?" ("+T.cur.code+")":"")+". Track it here, and give the rider the delivery PIN shown on the page: "+url;
+      if(navigator.share){ navigator.share({ title:"Nova Instant delivery", text:msg }).catch(function(){}); return; }
+      try{ window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank","noopener"); }catch(e2){ toast(url); } return;
+    }
+    if(t.id==="tCancel"){
+      if(t.dataset.sure!=="1"){ t.dataset.sure="1"; t.textContent="Press again to cancel the booking"; setTimeout(function(){ if(t.isConnected){ t.dataset.sure="0"; t.textContent="Cancel this booking"; } },5000); return; }
+      t.disabled=true; var mine=store("nvi_mine")||{}, mg=(mine[T.token]&&mine[T.token].m)||null;
+      rpc("nvi_cancel",{ p_token:T.token, p_manage:mg }).then(function(r){
+        t.dataset.sure="0";
+        if(r.error||!r.data){ t.disabled=false; t.textContent="Cancel this booking"; toast("Could not cancel. Check your connection and try again."); return; }
+        if(!r.data.ok) toast(r.data.reason==="too_late"?"The rider already has the parcel, so it can no longer be cancelled.":"Could not cancel this booking.");
+        loadTrack(false);
+      });
+    }
+  });
+  window.addEventListener("popstate",function(){ location.reload(); });
+
+  /* ───────── boot ───────── */
+  rpc("nvi_status").then(function(r){
+    S.status=(r&&!r.error&&r.data)?r.data:null;
+    var s=S.status;
+    if(s){ if(s.mapbox&&!tilesOn) MAPBOX=String(s.mapbox); if(s.support) S.support=s.support; if(s.turnstile) loadCaptcha(String(s.turnstile)); }
+    setTiles();
+    if(document.body.getAttribute("data-view")==="book") render();
+  });
   var token=new URLSearchParams(location.search).get("t");
-  if(token){ startTrack(token); return; }
-  startBook();
-
-  /* ───────────────────────── BOOK ───────────────────────── */
-  function startBook(){
-    var st={ p:null, d:null, quote:null, payer:"sender", status:null, busy:false, pinFor:null };
-    var qSeq=0;
-
-    try{
-      var last=JSON.parse(localStorage.getItem("nvi_last")||"null");
-      if(last&&last.token&&Date.now()-last.at<36*3600*1000){ var ll=$("lastLink"); ll.href="instant.html?t="+encodeURIComponent(last.token); ll.hidden=false; }
-    }catch(e){}
-
-    /* Map */
-    var map=null, mk={ p:null, d:null }, routeLine=null;
-    /* The router's road, as an encoded polyline (precision 5). */
-    function decodeLine(str){
-      var i=0, lat=0, lng=0, out=[];
-      while(i<str.length){
-        var b, shift=0, res=0;
-        do{ b=str.charCodeAt(i++)-63; res|=(b&31)<<shift; shift+=5; }while(b>=32);
-        lat+=(res&1)?~(res>>1):(res>>1);
-        shift=0; res=0;
-        do{ b=str.charCodeAt(i++)-63; res|=(b&31)<<shift; shift+=5; }while(b>=32);
-        lng+=(res&1)?~(res>>1):(res>>1);
-        out.push([lat/1e5,lng/1e5]);
-      }
-      return out;
-    }
-    function icon(k){ return L.divIcon({ className:"", html:'<div class="pm '+(k==="p"?"a":"b")+'">'+(k==="p"?"A":"B")+'</div>', iconSize:[30,30], iconAnchor:[15,k==="p"?15:28] }); }
-    try{
-      map=L.map("map",{ zoomControl:true, attributionControl:true, maxBounds:[[BOX.s-.15,BOX.w-.2],[BOX.n+.15,BOX.e+.2]], minZoom:10, zoomSnap:0.25 }).setView(CENTER,11);
-      map.attributionControl.setPrefix('<a href="https://leafletjs.com" rel="noopener">Leaflet</a>');
-      map.on("moveend",onMapMove);
-    }catch(e){ $("mapHint").textContent="The map could not load. Search still works."; }
-    /* Tiles go on once the Mapbox token has arrived with nvi_status(), or
-       after 2.5 s without it. Mapbox draws Karachi with English street names;
-       OpenStreetMap is the stand-in if there is no token, or if Mapbox stops
-       serving (allowance used up, token restricted to another address). */
-    var tilesOn=false;
-    function setTiles(){
-      if(!map||tilesOn) return; tilesOn=true;
-      var osmAttr='&copy; <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a>';
-      function osm(){ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{ maxZoom:19, attribution:osmAttr }).addTo(map); }
-      if(!MAPBOX){ osm(); return; }
-      /* Sharp (2x) tiles are about three times the download. Phones on a slow
-         or data-saving connection, and low-density screens, get the 1x tile. */
-      var conn=navigator.connection||{}, slow=!!conn.saveData||/(^|-)(2g|3g)$/.test(String(conn.effectiveType||""));
-      var sharp=(window.devicePixelRatio||1)>=1.5 && !slow;
-      var mbTiles=L.tileLayer("https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/512/{z}/{x}/{y}"+(sharp?"@2x":"")+"?access_token="+MAPBOX,{
-        tileSize:512, zoomOffset:-1, maxZoom:19,
-        attribution:'&copy; <a href="https://www.mapbox.com/about/maps/" rel="noopener">Mapbox</a> '+osmAttr+' <a href="https://www.mapbox.com/map-feedback/" rel="noopener">Improve this map</a>' }).addTo(map);
-      var tileFails=0, swapped=false;
-      mbTiles.on("tileerror",function(){
-        if(swapped||++tileFails<3) return;
-        swapped=true; map.removeLayer(mbTiles); osm();
-      });
-    }
-    setTimeout(setTiles,2500);
-
-    function paintMap(){
-      if(!map) return;
-      ["p","d"].forEach(function(k){
-        if(st[k]){ if(!mk[k]) mk[k]=L.marker([st[k].lat,st[k].lng],{ icon:icon(k), keyboard:false }).addTo(map); else mk[k].setLatLng([st[k].lat,st[k].lng]); }
-        else if(mk[k]){ map.removeLayer(mk[k]); mk[k]=null; }
-      });
-      if(routeLine){ map.removeLayer(routeLine); routeLine=null; }
-      var pts=null;
-      if(st.p&&st.d&&st.quote&&st.quote.line){ try{ pts=decodeLine(st.quote.line); }catch(e){ pts=null; } }
-      if(pts&&pts.length>1){
-        /* Drawn from the pins themselves, so the line meets both markers. */
-        pts=[[st.p.lat,st.p.lng]].concat(pts,[[st.d.lat,st.d.lng]]);
-        routeLine=L.polyline(pts,{ color:"#087c55", weight:5, opacity:.9, lineCap:"round", lineJoin:"round", interactive:false }).addTo(map);
-        map.fitBounds(routeLine.getBounds(),{ padding:[26,26], maxZoom:16 });
-      }
-      else if(st.p&&st.d) map.fitBounds([[st.p.lat,st.p.lng],[st.d.lat,st.d.lng]],{ padding:[46,46], maxZoom:15 });
-      else if(st.p||st.d){ var o=st.p||st.d; map.setView([o.lat,o.lng],15); }
-      /* With both pins set the fare card below carries the distance; the
-         label would only sit on top of a marker. */
-      $("mapHint").hidden = !!(st.p&&st.d);
-      $("mapHint").textContent = st.p ? "Now set where it is going" : st.d ? "Now set the pickup" : "Karachi";
-    }
-
-    /* Place search (Photon: free OpenStreetMap search, kept inside Karachi) */
-    function placeLabel(pr){
-      var latin=function(s){ return s&&/[A-Za-z]/.test(s)?s:""; };
-      var name=latin(pr.name), street=latin(pr.street), hn=latin(pr.housenumber);
-      var area=latin(pr.locality)||latin(pr.district)||latin(pr.suburb)||"";
-      var main=name||[hn,street].filter(Boolean).join(" ")||area||"Pinned spot";
-      var rest=[name?street:"", area&&area!==main?area:""].filter(Boolean).join(", ");
-      return { main:main, rest:rest, full:[main,rest].filter(Boolean).join(", ") };
-    }
-    /* Backup search and reverse lookup (Mapbox), used only when the first
-       one finds nothing or does not answer. */
-    function mbLabel(pr){
-      var main=pr.name||pr.name_preferred||"Pinned spot";
-      var rest=String(pr.place_formatted||"").replace(/,?\s*(Karachi[^,]*|Sindh|Pakistan)\b/gi,"").replace(/^[,\s]+|[,\s]+$/g,"");
-      return { main:main, rest:rest, full:[main,rest].filter(Boolean).join(", ") };
-    }
-    function mbSearch(q){
-      if(!MAPBOX) return Promise.resolve([]);
-      var u="https://api.mapbox.com/search/geocode/v6/forward?q="+encodeURIComponent(q)+"&country=pk&language=en&limit=5&autocomplete=true"+
-            "&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n+"&proximity="+CENTER[1]+","+CENTER[0]+"&access_token="+MAPBOX;
-      return fetch(u).then(function(r){ return r.ok?r.json():{ features:[] }; }).then(function(j){
-        return (j.features||[]).map(function(f){
-          var c=f.geometry&&f.geometry.coordinates; if(!c) return null;
-          return { lat:c[1], lng:c[0], label:mbLabel(f.properties||{}) };
-        }).filter(function(it){ return it&&inBox(it.lat,it.lng); });
-      }).catch(function(){ return []; });
-    }
-    function reverseLabel(lat,lng){
-      return fetch(PHOTON+"/reverse?lat="+lat+"&lon="+lng+"&lang=en").then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
-        var f=(j.features||[])[0]; if(!f) throw 0; return placeLabel(f.properties||{});
-      }).catch(function(){
-        if(!MAPBOX) return null;
-        return fetch("https://api.mapbox.com/search/geocode/v6/reverse?longitude="+lng+"&latitude="+lat+"&language=en&limit=1&access_token="+MAPBOX)
-          .then(function(r){ return r.ok?r.json():{}; }).then(function(j){ var f=(j.features||[])[0]; return f?mbLabel(f.properties||{}):null; }).catch(function(){ return null; });
-      });
-    }
-    /* Photon answers "Dolmen Mall Clifton" with fifteen shops inside the mall
-       and never the mall: the mall is named "Dolmen Mall" and Clifton is its
-       area. So a query of three or more words is also asked without its last
-       word, and everything is ranked here: a place that matches every word
-       (name, street or area) and is a landmark or an area comes first; a shop
-       inside something else ("Habitt - Dolmen Mall Clifton") goes last. */
-    var phCache={};
-    function photon(q){
-      if(phCache[q]) return Promise.resolve(phCache[q]);
-      var u=PHOTON+"/api/?q="+encodeURIComponent(q)+"&limit=12&lang=en&lat="+CENTER[0]+"&lon="+CENTER[1]+"&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n;
-      return fetch(u).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){ phCache[q]=j.features||[]; return phCache[q]; });
-    }
-    var LANDMARK=/^(mall|marketplace|supermarket|hospital|university|college|station|stadium|park|neighbourhood|suburb|quarter|town|city|village|residential|commercial|retail|hotel|aerodrome|bus_station|administrative)$/;
-    function placeScore(toks,pr){
-      var name=String(pr.name||"").toLowerCase();
-      var all=[pr.name,pr.street,pr.locality,pr.district,pr.suburb].join(" ").toLowerCase();
-      var sc=0;
-      if(toks.length&&toks.every(function(w){ return all.indexOf(w)>-1; })) sc+=2;
-      if(pr.osm_key==="place"||LANDMARK.test(String(pr.osm_value||""))) sc+=3;
-      if(pr.osm_key==="highway") sc+=1;
-      if(/ - /.test(String(pr.name||""))) sc-=2;
-      if(toks.length&&name.indexOf(toks[0])===0) sc+=1;
-      return sc;
-    }
-    function bindSearch(k){
-      var inp=$(k+"Search"), list=$(k+"Sug"), items=[], active=-1, t=null, seq=0;
-      function close(){ list.hidden=true; inp.setAttribute("aria-expanded","false"); inp.removeAttribute("aria-activedescendant"); active=-1; }
-      function render(){
-        if(!items.length){ list.innerHTML='<li class="none">No match. Try a nearby landmark, or use Pin on map.</li>'; }
-        else list.innerHTML=items.map(function(it,i){
-          return '<li role="option" id="'+k+'Opt'+i+'" data-i="'+i+'" aria-selected="'+(i===active)+'"><b>'+esc(it.label.main)+'</b>'+(it.label.rest?'<span>'+esc(it.label.rest)+'</span>':'')+'</li>'; }).join("");
-        list.hidden=false; inp.setAttribute("aria-expanded","true");
-        if(active>=0) inp.setAttribute("aria-activedescendant",k+"Opt"+active); else inp.removeAttribute("aria-activedescendant");
-      }
-      function search(q){
-        var my=++seq;
-        var words=q.split(/\s+/).filter(Boolean), asks=[q];
-        if(words.length>=3) asks.push(words.slice(0,-1).join(" "));
-        var toks=q.toLowerCase().split(/[^a-z0-9]+/).filter(function(w){ return w.length>1; });
-        /* The search service takes a second or two. Say so at once, so the
-           box does not look dead. */
-        if(list.hidden||!items.length){ list.innerHTML='<li class="none">Searching…</li>'; list.hidden=false; inp.setAttribute("aria-expanded","true"); }
-        Promise.all(asks.map(function(a){ return photon(a).catch(function(){ return null; }); })).then(function(sets){
-          if(my!==seq) return;
-          if(sets.every(function(x){ return x===null; })) throw 0;
-          var seen={}, all=[];
-          sets.forEach(function(feats){ (feats||[]).forEach(function(f){
-            var c=f.geometry&&f.geometry.coordinates; if(!c) return;
-            var pr=f.properties||{}, it={ lat:c[1], lng:c[0], label:placeLabel(pr), sc:placeScore(toks,pr) };
-            if(!inBox(it.lat,it.lng)||seen[it.label.full]) return; seen[it.label.full]=1; all.push(it);
-          }); });
-          all.sort(function(a,b){ return b.sc-a.sc; });
-          items=all.slice(0,5);
-          if(items.length){ active=0; render(); return; }
-          return mbSearch(q).then(function(more){ if(my!==seq) return; items=more.slice(0,5); active=items.length?0:-1; render(); });
-        }).catch(function(){
-          return mbSearch(q).then(function(more){
-            if(my!==seq) return; items=more.slice(0,5); active=items.length?0:-1;
-            if(items.length) render();
-            else { list.innerHTML='<li class="none">Search is not answering. Use Pin on map instead.</li>'; list.hidden=false; }
-          });
-        });
-      }
-      function pick(i){
-        var it=items[i]; if(!it) return;
-        inp.value=it.label.full; close();
-        setPoint(k,{ lat:it.lat, lng:it.lng, label:it.label.full });
-      }
-      inp.addEventListener("input",function(){
-        /* Typing over a chosen place un-sets it: the pin no longer matches the words. */
-        if(st[k]){ st[k]=null; $(k==="p"?"stopP":"stopD").classList.remove("set"); st.quote=null; st.quoting=false; ++qSeq; paintMap(); paintFare(); }
-        clearTimeout(t); var q=inp.value.trim();
-        if(q.length<3){ seq++; close(); return; }
-        t=setTimeout(function(){ search(q); },250);
-      });
-      inp.addEventListener("keydown",function(e){
-        if(list.hidden) return;
-        if(e.key==="ArrowDown"){ e.preventDefault(); if(items.length){ active=(active+1)%items.length; render(); } }
-        else if(e.key==="ArrowUp"){ e.preventDefault(); if(items.length){ active=(active-1+items.length)%items.length; render(); } }
-        else if(e.key==="Enter"){ if(active>=0){ e.preventDefault(); pick(active); } }
-        else if(e.key==="Escape"){ close(); }
-      });
-      list.addEventListener("pointerdown",function(e){ e.preventDefault(); });
-      list.addEventListener("click",function(e){ var li=e.target.closest("li[data-i]"); if(li) pick(Number(li.getAttribute("data-i"))); });
-      inp.addEventListener("blur",function(){ setTimeout(close,150); });
-    }
-    bindSearch("p"); bindSearch("d");
-
-    function setPoint(k,pt){
-      st[k]=pt;
-      $(k+"Search").value=pt.label;
-      $(k==="p"?"stopP":"stopD").classList.add("set");
-      /* The typed address starts from the place name; the customer adds the door. */
-      var addr=$(k==="p"?"pAddr":"dAddr");
-      if(!addr.value.trim()||addr.dataset.auto==="1"){ addr.value=pt.label==="Pinned spot"?"":pt.label; addr.dataset.auto="1"; }
-      paintMap(); quote();
-    }
-    ["pAddr","dAddr"].forEach(function(id){ $(id).addEventListener("input",function(){ this.dataset.auto="0"; }); });
-
-    /* Pin mode: the map fills the screen, the pin stays centred */
-    var revT=null, revSeq=0, pinPlace=null;
-    function enterPin(k){
-      if(!map){ toast("The map did not load. Use search instead."); return; }
-      st.pinFor=k; pinPlace=null;
-      document.body.classList.add("pinning");
-      $("pinSet").textContent = k==="p" ? "Set pickup here" : "Set delivery here";
-      $("pinLabel").textContent="Move the map until the pin is on the spot.";
-      map.invalidateSize();
-      var o=st[k]||st.p||st.d;
-      map.setView(o?[o.lat,o.lng]:CENTER, o?16:13);
-      setTimeout(function(){ map.invalidateSize(); onMapMove(); },80);
-      /* Again once the map has settled, so the place under the pin is named
-         even if the customer never moves it. */
-      setTimeout(function(){ if(st.pinFor===k) onMapMove(); },700);
-    }
-    function leavePin(){
-      st.pinFor=null; document.body.classList.remove("pinning");
-      if(map){ map.invalidateSize(); setTimeout(function(){ map.invalidateSize(); paintMap(); },80); }
-    }
-    function onMapMove(){
-      if(!st.pinFor) return;
-      var c=map.getCenter(), my=++revSeq;
-      if(!inBox(c.lat,c.lng)){ pinPlace=null; $("pinLabel").textContent="Nova Instant runs inside Karachi only."; $("pinSet").disabled=true; return; }
-      $("pinSet").disabled=false;
-      clearTimeout(revT);
-      revT=setTimeout(function(){
-        reverseLabel(c.lat,c.lng).then(function(lb){
-          if(my!==revSeq||!st.pinFor) return;
-          pinPlace=lb;
-          $("pinLabel").innerHTML = pinPlace ? "Near <b>"+esc(pinPlace.full)+"</b>" : "Pin placed.";
-        });
-      },350);
-    }
-    document.querySelectorAll("[data-pin]").forEach(function(b){ b.addEventListener("click",function(){ enterPin(b.getAttribute("data-pin")); }); });
-    $("pinCancel").addEventListener("click",leavePin);
-    $("pinSet").addEventListener("click",function(){
-      var k=st.pinFor; if(!k||!map) return;
-      var c=map.getCenter();
-      if(!inBox(c.lat,c.lng)){ toast("Nova Instant runs inside Karachi only."); return; }
-      var label=pinPlace?pinPlace.full:"Pinned spot";
-      leavePin(); setPoint(k,{ lat:c.lat, lng:c.lng, label:label });
-    });
-    document.addEventListener("keydown",function(e){ if(e.key==="Escape"&&st.pinFor) leavePin(); });
-
-    $("useLoc").addEventListener("click",function(){
-      var b=this;
-      if(!navigator.geolocation){ toast("This phone does not share its location. Use Pin on map."); return; }
-      b.disabled=true;
-      navigator.geolocation.getCurrentPosition(function(pos){
-        b.disabled=false;
-        var lat=pos.coords.latitude, lng=pos.coords.longitude;
-        if(!inBox(lat,lng)){ toast("You are outside Karachi. Nova Instant runs inside Karachi only."); return; }
-        reverseLabel(lat,lng).then(function(lb){ setPoint("p",{ lat:lat, lng:lng, label:lb?lb.full:"Pinned spot" }); });
-      },function(){ b.disabled=false; toast("Location was not shared. Use search or Pin on map."); },{ enableHighAccuracy:true, timeout:10000, maximumAge:60000 });
-    });
-
-    /* Fare */
-    var QUOTE_SAY={ pickup_outside:"The pickup is outside Karachi. Nova Instant runs inside Karachi only.",
-      drop_outside:"The delivery point is outside Karachi. Nova Instant runs inside Karachi only.",
-      too_close:"Those two pins are almost the same spot. Move one of them.",
-      pickup_off_road:"A rider cannot reach the pickup pin: it is not near a road. Move it onto the street.",
-      drop_off_road:"A rider cannot reach the delivery pin: it is not near a road. Move it onto the street.",
-      slow_down:"Too many fare checks from this connection. Wait a few minutes and try again." };
-    /* When neither router answers the server prices from an estimate. The
-       page asks again by itself, twice. If the road still cannot be measured
-       the estimate is shown as a guide only: it cannot be booked, because an
-       unmeasured pin may be somewhere no rider can reach. */
-    function quote(tries){
-      tries=tries||0;
-      if(!tries){ st.quote=null; st.quoteErr=""; }
-      if(!st.p||!st.d){ paintFare(); paintMap(); return; }
-      var my=tries?qSeq:++qSeq; st.quoting=true; paintFare();
-      rpc("nvi_quote",{ p_plat:st.p.lat, p_plng:st.p.lng, p_dlat:st.d.lat, p_dlng:st.d.lng }).then(function(r){
-        if(my!==qSeq) return;
-        if(r.data&&r.data.ok&&r.data.source==="estimate"&&tries<2){ setTimeout(function(){ if(my===qSeq) quote(tries+1); },900); return; }
-        if((r.error||!r.data)&&tries<1){ setTimeout(function(){ if(my===qSeq) quote(tries+1); },700); return; }
-        st.quoting=false;
-        if(r.error||!r.data){ st.quoteErr="The fare could not be worked out. Check your connection and set a pin again."; }
-        else if(!r.data.ok){ st.quoteErr=QUOTE_SAY[r.data.reason]||"That trip cannot be priced."; }
-        else { st.quoteErr=""; st.quote=r.data; st.quote.at=Date.now(); }
-        paintFare(); paintMap();
-      });
-    }
-    function paintFare(){
-      var fare=$("fare"), say=$("meterSay"), dist=$("dist");
-      if(st.quote){
-        fare.className="fare"; fare.innerHTML="<small>Rs</small>"+esc(Number(st.quote.fare).toLocaleString("en-PK"));
-        dist.hidden=false; $("distKm").textContent=st.quote.km+" km";
-        dist.lastChild.textContent = st.quote.source==="road" ? "by road" : "estimated";
-        say.textContent = Number(st.quote.fare)<=Number(st.quote.min_fare)
-          ? "Minimum fare. Trips up to "+Math.floor(st.quote.min_fare/st.quote.rate_per_km)+" km cost "+money(st.quote.min_fare)+"."
-          : st.quote.km+" km at Rs "+st.quote.rate_per_km+" per km.";
-        if(st.quote.bookable===false) say.textContent="About "+money(st.quote.fare)+". The road could not be measured just now, so this is only a guide. Press the button below to measure it again; booking needs the measured fare.";
-        else announce("Fare "+money(st.quote.fare)+", "+st.quote.km+" kilometres by road.");
-      } else {
-        fare.className="fare idle"; fare.innerHTML="<small>Rs</small>&mdash;"; dist.hidden=true;
-        say.textContent = st.quoting ? "Measuring the road between your pins…" : (st.p&&st.d&&st.quoteErr) ? st.quoteErr : st.p ? "Now set where it is going." : "Set both pins to see the fare.";
-        if(!st.quoting&&st.p&&st.d&&st.quoteErr) announce(st.quoteErr);
-      }
-      paintBtn();
-    }
-    function paySay(){ $("paySay").textContent = st.payer==="sender" ? "Cash to the rider at pickup." : "Cash to the rider at delivery. Tell the receiver the fare."; }
-    function setPayer(p){ st.payer=p; $("paySender").setAttribute("aria-pressed",String(p==="sender")); $("payReceiver").setAttribute("aria-pressed",String(p==="receiver")); paySay(); }
-    $("paySender").addEventListener("click",function(){ setPayer("sender"); });
-    $("payReceiver").addEventListener("click",function(){ setPayer("receiver"); });
-
-    /* Is the desk open? */
-    /* If the open/closed check did not load, the button still works and the
-       server decides: it used to look enabled and do nothing. */
-    function canBook(){ var s=st.status; return !s || !!((s.open||s.preview) && (s.hours_open||s.preview)); }
-    function hourLabel(h){ return (h%12||12)+(h<12?" am":" pm"); }
-    function paintBtn(){
-      var b=$("bookBtn"), s=st.status;
-      if(st.busy){ b.disabled=true; b.innerHTML='<span class="spin" aria-hidden="true"></span> Booking…'; return; }
-      if(s && !s.open && !s.preview){ b.disabled=true; b.textContent = st.quote ? "Booking opens soon · "+money(st.quote.fare) : "Booking opens soon"; return; }
-      if(s && !s.hours_open && !s.preview){ b.disabled=true; b.textContent="Riders are back at "+hourLabel(s.open_hour); return; }
-      if(!st.quote){ b.disabled=true; b.textContent = st.quoting ? "Working out the fare…" : "Set both pins to see the fare"; return; }
-      if(st.quote.bookable===false){ b.disabled=false; b.textContent="Measure the road again"; return; }
-      b.disabled=false; b.textContent="Book a rider · "+money(st.quote.fare);
-    }
-    rpc("nvi_status").then(function(r){
-      st.status = (r&&!r.error&&r.data) ? r.data : null;
-      var s=st.status;
-      if(s&&s.mapbox&&!tilesOn) MAPBOX=String(s.mapbox);
-      setTiles();
-      if(s){
-        setSupport(s.support);
-        if(s.max_kg) $("maxKg").textContent=s.max_kg+" kg";
-        if(s.max_value) $("maxVal").textContent=money(s.max_value);
-        $("nextCall").hidden=!s.confirm_first;
-        /* An honest expectation, not a promise of minutes: how many riders
-           could take the job this moment. */
-        if(s.open||s.preview){
-          var nr=$("nextRiders"), n=Number(s.riders_online||0); nr.hidden=false;
-          nr.textContent = n>0 ? (n===1?"1 rider is":n+" riders are")+" online now. The first to accept comes to the pickup."
-                               : "No rider is online right now. Your booking waits for the next rider, and NovaX assigns one by hand if needed.";
-        }
-        if(s.turnstile) loadCaptcha(String(s.turnstile));
-        if(!s.open && !s.preview) $("noteSoon").hidden=false;
-        else if(s.preview) $("notePrev").hidden=false;
-        else if(!s.hours_open){ $("noteSoon").hidden=false; $("noteSoonText").textContent="Riders are on from "+hourLabel(s.open_hour)+" to "+hourLabel(s.close_hour)+". You can check a fare now and book when they are back."; }
-      }
-      paintBtn();
-    });
-
-    /* CAPTCHA (Cloudflare Turnstile), only when NovaX has set one up. The
-       answer is single-use: after any failed booking it is asked for again. */
-    var cap={ on:false, id:null, token:"" };
-    function loadCaptcha(siteKey){
-      if(cap.on) return; cap.on=true;
-      window.nviCapReady=function(){
-        try{ cap.id=window.turnstile.render("#capBox",{ sitekey:siteKey, callback:function(t){ cap.token=t; $("formMsg").hidden=true; },
-          "expired-callback":function(){ cap.token=""; }, "error-callback":function(){ cap.token=""; } }); }catch(e){}
-      };
-      var sc=document.createElement("script"); sc.src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=nviCapReady"; sc.async=true; sc.defer=true;
-      document.head.appendChild(sc);
-    }
-    function resetCaptcha(){ if(!cap.on) return; cap.token=""; try{ window.turnstile.reset(cap.id); }catch(e){} }
-
-    /* Book */
-    var BOOK_SAY={ not_open:"Nova Instant is not open for booking yet.", closed_now:"Riders are off right now. Booking opens again at 10 am.",
-      pickup_address:"Add the exact pickup address.", drop_address:"Add the exact delivery address.",
-      sender_name:"Add the sender's name.", receiver_name:"Add the receiver's name.",
-      sender_phone:"The sender's mobile number is not valid.", receiver_phone:"The receiver's mobile number is not valid.",
-      item:"Say what you are sending.", payer:"Choose who pays the rider.",
-      too_many_open:"This number already has three deliveries in progress. Wait for one to finish.",
-      no_route:"The road between your pins has not been measured yet. Press Measure the road again.",
-      terms:"Tick the box to agree to the Nova Instant rules.",
-      slow_down:"Too many bookings from this phone or connection. Wait a while, or call NovaX.",
-      awaiting_call:"This number already has a booking waiting for NovaX's confirmation call. Answer that call first.",
-      captcha:"Complete the \"I am human\" check above, then press Book again." };
-    function fail(id,msg){
-      var m=$("formMsg"); m.textContent=msg; m.hidden=false;
-      /* Straight to the field, not a smooth scroll: on a phone the smooth one
-         could stop short and leave the field under the fixed Book bar. */
-      if(id){ var el=$(id); el.classList.add("bad"); try{ el.scrollIntoView({ block:"center" }); el.focus({ preventScroll:true }); }catch(e){} }
-      return false;
-    }
-    document.querySelectorAll(".inp").forEach(function(el){ el.addEventListener("input",function(){ el.classList.remove("bad"); $("formMsg").hidden=true; }); });
-    function check(){
-      $("formMsg").hidden=true;
-      if(!st.quote) return fail(st.p?"dSearch":"pSearch","Set both pins first.");
-      if($("pAddr").value.trim().length<8) return fail("pAddr",BOOK_SAY.pickup_address);
-      if($("sName").value.trim().length<2) return fail("sName",BOOK_SAY.sender_name);
-      if(!pkPhone($("sPhone").value)) return fail("sPhone","Enter the sender's mobile like 0300 1234567.");
-      if($("dAddr").value.trim().length<8) return fail("dAddr",BOOK_SAY.drop_address);
-      if($("rName").value.trim().length<2) return fail("rName",BOOK_SAY.receiver_name);
-      if(!pkPhone($("rPhone").value)) return fail("rPhone","Enter the receiver's mobile like 0300 1234567.");
-      if($("item").value.trim().length<2) return fail("item",BOOK_SAY.item);
-      if(!$("agree").checked){ $("agreeBox").classList.add("bad"); try{ $("agree").focus({ preventScroll:true }); $("agreeBox").scrollIntoView({ block:"center", behavior:"smooth" }); }catch(e){} return fail(null,BOOK_SAY.terms); }
-      if(cap.on&&!cap.token) return fail(null,BOOK_SAY.captcha);
-      return true;
-    }
-    function send(retried){
-      st.busy=true; paintBtn();
-      rpc("nvi_book",{ p_quote:st.quote.quote, p_pickup_address:$("pAddr").value, p_drop_address:$("dAddr").value,
-        p_sender_name:$("sName").value, p_sender_phone:$("sPhone").value, p_receiver_name:$("rName").value, p_receiver_phone:$("rPhone").value,
-        p_item:$("item").value, p_payer:st.payer, p_rider_note:$("note").value||null,
-        p_terms:$("agree").checked, p_device:deviceId(), p_captcha:cap.token||null }).then(function(r){
-        st.busy=false;
-        /* Pressing again is safe: the same fare can only become one booking. */
-        if(r.error||!r.data){ paintBtn(); fail(null,"The booking did not go through. Check your connection and press Book again. You will not be booked twice."); return; }
-        var d=r.data;
-        if(!d.ok) resetCaptcha();
-        if(d.reason==="no_route"){ paintBtn(); fail(null,BOOK_SAY.no_route); quote(); return; }
-        if(d.ok){
-          try{
-            localStorage.setItem("nvi_last",JSON.stringify({ token:d.token, code:d.code, at:Date.now() }));
-            var mine=JSON.parse(localStorage.getItem("nvi_mine")||"{}"); mine[d.token]={ m:d.manage, at:Date.now() };
-            Object.keys(mine).forEach(function(k){ if(Date.now()-mine[k].at>3*86400000) delete mine[k]; });
-            localStorage.setItem("nvi_mine",JSON.stringify(mine));
-          }catch(e){}
-          location.href="instant.html?t="+encodeURIComponent(d.token)+"&new=1"; return;
-        }
-        if(d.reason==="quote_expired" && !retried){
-          /* The fare is held for 20 minutes. Price it again; book only if it is the same. */
-          var was=st.quote.fare, my=++qSeq;
-          rpc("nvi_quote",{ p_plat:st.p.lat, p_plng:st.p.lng, p_dlat:st.d.lat, p_dlng:st.d.lng }).then(function(q){
-            if(my!==qSeq) return;
-            if(q.error||!q.data||!q.data.ok){ st.quote=null; paintFare(); fail(null,"The fare needs working out again. Check the pins."); return; }
-            st.quote=q.data; paintFare();
-            if(Number(q.data.fare)===Number(was)) send(true);
-            else fail(null,"The fare is now "+money(q.data.fare)+". Press Book to confirm.");
-          });
-          return;
-        }
-        paintBtn();
-        var map2={ pickup_address:"pAddr", drop_address:"dAddr", sender_name:"sName", receiver_name:"rName", sender_phone:"sPhone", receiver_phone:"rPhone", item:"item" };
-        fail(map2[d.reason]||null, BOOK_SAY[d.reason]||"The booking could not be made.");
-      });
-    }
-    $("agree").addEventListener("change",function(){ $("agreeBox").classList.remove("bad"); $("formMsg").hidden=true; });
-    $("bookBtn").addEventListener("click",function(){
-      if(st.busy||!canBook()) return;
-      if(st.quote&&st.quote.bookable===false){ quote(); return; }
-      if(check()) send(false);
-    });
-
-    paintFare(); paySay();
-  }
-
-  /* ───────────────────────── TRACK ───────────────────────── */
-  function startTrack(token){
-    $("viewBook").hidden=true; $("viewTrack").hidden=false; $("helpWrap").style.paddingBottom="48px";
-    var fresh=new URLSearchParams(location.search).get("new")==="1";
-    /* Drop "&new=1" so a shared or reloaded link reads as tracking. */
-    try{ history.replaceState(null,"","instant.html?t="+encodeURIComponent(token)); }catch(e){}
-    var url=trackUrl(token), cur=null, timer=null;
-    /* Set only in the browser that made the booking. The receiver opens the
-       same link and must not be able to cancel it. */
-    var manage=null;
-    try{ var mine=JSON.parse(localStorage.getItem("nvi_mine")||"{}"); manage=(mine[token]&&mine[token].m)||null; }catch(e){}
-    var ORDER=["Booked","Rider assigned","Picked up","Delivered"];
-    var FAIL={ receiver_unavailable:"the receiver could not be reached", refused:"the receiver refused the parcel",
-      wrong_address:"the address could not be found", damaged:"the parcel was damaged", payment_refused:"the receiver did not pay the fare" };
-    var SAY={ "Awaiting confirmation":["NovaX will call to confirm","This is the first booking from the sender's number, so NovaX phones the sender before a rider is sent. Keep that phone near."],
-      "Booked":["Finding a rider",""],
-      "Rider assigned":["A rider is on the way to pickup","Keep the parcel ready."],
-      "Picked up":["Your parcel is on the bike","The rider is heading to the delivery address."],
-      "Failed delivery":["The delivery could not be made","NovaX and the rider are sorting it out."],
-      "Returning":["The parcel is coming back to the sender","The sender gives the rider the PIN below when it arrives."],
-      "Returned":["Returned to the sender","The parcel was handed back."],
-      "Delivered":["Delivered","The parcel was handed over."],
-      "Cancelled":["Booking cancelled","No rider will come for this booking."] };
-    function when(v){
-      if(!v) return "";
-      try{ return new Date(v).toLocaleString("en-GB",{ timeZone:"Asia/Karachi", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; }
-    }
-    function li(cls,label,at){ return '<li class="'+cls+'">'+esc(label)+(at?'<time>'+esc(when(at))+'</time>':'')+'</li>'; }
-    function subFor(j){
-      if(j.status==="Booked"){
-        var n=Number(j.riders_online||0), mins=Math.round((Date.now()-new Date(j.created_at).getTime())/60000);
-        var t = n>0 ? (n===1?"1 rider is":n+" riders are")+" online. The first to accept comes to the pickup."
-                    : "No rider is online right now. NovaX assigns one as soon as a rider is on.";
-        if(mins>=10) t+=" This has waited "+mins+" minutes: call or WhatsApp NovaX below.";
-        return t;
-      }
-      if(j.status==="Failed delivery") return "Not delivered because "+(FAIL[j.fail_reason]||"of a problem at the address")+". NovaX and the rider are sorting it out; call NovaX below if you can help.";
-      if(j.status==="Returning") return "The rider is bringing the parcel back to the pickup address. The sender gives the rider the PIN below"+(Number(j.return_due)>0?" and pays "+money(j.return_due)+" in cash.":".");
-      if(j.status==="Cancelled"&&j.cancel_reason&&j.cancel_reason!=="Cancelled by customer") return "Cancelled by NovaX: "+j.cancel_reason;
-      return (SAY[j.status]||["",""])[1];
-    }
-    /* Not a booking this link can show: only the way out is offered. */
-    function bare(title,sub){
-      clearInterval(timer); timer=null;
-      $("tTitle").textContent=title; $("tSub").textContent=sub;
-      ["tPinBox","tRider","tSteps","tKv","tActs","tCancel","tFine"].forEach(function(id){ $(id).hidden=true; });
-      document.querySelectorAll("#viewTrack .tear").forEach(function(el){ el.hidden=true; });
-      var again=$("tAgain"); again.textContent="Book a delivery"; again.className="btn btn-primary";
-    }
-    function paint(j){
-      var changed=cur&&cur.status!==j.status;
-      cur=j;
-      setSupport(j.support);
-      $("tCode").textContent=j.code;
-      var s=SAY[j.status]||[j.status,""];
-      if(j.expired){
-        bare(s[0],"This booking closed more than a week ago, so its names and addresses are no longer shown. Call NovaX if you need the record.");
-        $("tSteps").hidden=false;
-        $("tSteps").innerHTML=li("done","Booked",j.created_at)+li(j.status==="Cancelled"?"off":"done",j.status,j.delivered_at||j.returned_at||j.cancelled_at);
-        return;
-      }
-      $("tTitle").textContent = (fresh&&j.status==="Booked") ? "Booked. Finding a rider" : s[0];
-      $("tSub").textContent=subFor(j);
-      if(changed) announce("Update: "+s[0]+".");
-      $("tPinBox").hidden=!j.pin; if(j.pin) $("tPin").textContent=j.pin;
-      $("tPinSay").textContent = j.status==="Returning" ? "The sender gives this to the rider when the parcel comes back." : "The receiver gives this to the rider at the door.";
-      var idx=ORDER.indexOf(j.status), html="";
-      if(j.status==="Cancelled"){
-        html=li("done","Booked",j.created_at)+li("off","Cancelled",j.cancelled_at);
-      } else if(j.status==="Awaiting confirmation"){
-        html=li("now","Waiting for NovaX's confirmation call",j.created_at)+li("","Rider assigned")+li("","Picked up")+li("","Delivered");
-      } else if(j.failed_at&&j.status!=="Picked up"&&j.status!=="Delivered"){
-        html=li("done","Booked",j.created_at)+li("done","Rider assigned",j.assigned_at)+li("done","Picked up",j.picked_at)+
-          li(j.status==="Failed delivery"?"off":"done","Delivery not made",j.failed_at)+
-          li(j.status==="Returning"?"now":j.status==="Returned"?"done":"","Coming back to the sender",j.returning_at)+
-          li(j.status==="Returned"?"done":"","Returned to the sender",j.returned_at);
-      } else ORDER.forEach(function(k,i){
-        html+=li(i<idx||j.status==="Delivered"?"done":i===idx?"now":"",k,i<=idx?j[{ "Booked":"created_at","Rider assigned":"assigned_at","Picked up":"picked_at","Delivered":"delivered_at" }[k]]:null);
-      });
-      $("tSteps").innerHTML=html;
-      $("tKv").innerHTML=
-        '<dt>From</dt><dd>'+esc(j.sender_name)+'<br>'+esc(j.pickup_address)+'</dd>'+
-        '<dt>To</dt><dd>'+esc(j.receiver_name)+'<br>'+esc(j.drop_address)+'</dd>'+
-        '<dt>Parcel</dt><dd>'+esc(j.item)+'</dd>'+
-        '<dt>Fare</dt><dd>'+esc(money(j.fare))+' &middot; '+esc(j.km)+' km &middot; '+(j.payer==="sender"?"sender pays at pickup":"receiver pays at delivery")+'</dd>';
-      $("tCancel").hidden=!(manage&&(j.status==="Awaiting confirmation"||j.status==="Booked"||j.status==="Rider assigned"));
-      var rb=$("tRider");
-      if(j.rider&&j.rider.name){
-        rb.hidden=false;
-        rb.innerHTML='<div><b>'+esc(j.rider.name)+'</b>Your rider'+(j.rider.plate?' &middot; bike '+esc(j.rider.plate):'')+'</div>'+
-          (j.rider.phone?'<a class="btn btn-plain" href="tel:'+esc(j.rider.phone)+'">Call rider</a>':'');
-      } else rb.hidden=true;
-      if(j.status==="Delivered"||j.status==="Cancelled"||j.status==="Returned"){
-        clearInterval(timer); timer=null;
-        $("tFine").textContent="This booking is closed. Its details stay on this link for "+(j.track_days||7)+" days.";
-      }
-    }
-    function load(first){
-      rpc("nvi_track",{ p_token:token }).then(function(r){
-        if(r.error||!r.data){ if(first){ $("tTitle").textContent="Could not load this booking"; $("tSub").textContent="Check your connection. The page will try again."; } return; }
-        if(!r.data.ok){ bare("Booking not found","This link does not match a booking. Check it, find your booking below, or book a new delivery."); announce("Booking not found."); return; }
-        paint(r.data);
-      });
-    }
-    load(true);
-    timer=setInterval(function(){ if(!document.hidden) load(false); },20000);
-    document.addEventListener("visibilitychange",function(){ if(!document.hidden&&timer) load(false); });
-
-    $("tCopy").addEventListener("click",function(){
-      if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function(){ toast("Tracking link copied."); },function(){ toast(url); });
-      else toast(url);
-    });
-    $("tShare").addEventListener("click",function(){
-      var msg="Your parcel is coming by Nova Instant"+(cur?" ("+cur.code+")":"")+". Track it here, and give the rider the delivery PIN shown on this page: "+url;
-      try{ window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank","noopener"); }catch(e){ toast(url); }
-    });
-    $("tCancel").addEventListener("click",function(){
-      var b=this;
-      if(b.dataset.sure!=="1"){ b.dataset.sure="1"; b.textContent="Press again to cancel the booking"; setTimeout(function(){ b.dataset.sure="0"; b.textContent="Cancel this booking"; },5000); return; }
-      b.disabled=true;
-      rpc("nvi_cancel",{ p_token:token, p_manage:manage }).then(function(r){
-        b.disabled=false; b.dataset.sure="0"; b.textContent="Cancel this booking";
-        if(r.error||!r.data){ toast("Could not cancel. Check your connection and try again."); return; }
-        if(!r.data.ok){ toast(r.data.reason==="too_late"?"The rider already has the parcel, so it can no longer be cancelled. Call NovaX below.":"Could not cancel this booking."); }
-        load(false);
-      });
-    });
-  }
+  if(token) startTrack(token,false); else render();
 })();
 </script>
 </body>
