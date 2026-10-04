@@ -85,12 +85,16 @@ button{cursor:pointer}
 .tabs button{flex:none;min-height:46px;padding:0 14px;border:0;background:none;font-weight:700;font-size:14.5px;color:var(--muted);border-bottom:3px solid transparent}
 .tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--green)}
 /* reps: thumb tabs at the bottom on phones */
-.bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-top:1px solid var(--line);padding-bottom:var(--sa-b)}
-.bnav button{min-height:58px;border:0;background:none;font-size:11.5px;font-weight:700;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:#fff;border-top:1px solid var(--line);padding-bottom:var(--sa-b)}
+.bnav button{min-height:58px;border:0;background:none;font-size:11.5px;white-space:nowrap;font-weight:700;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
 .bnav button i{font-style:normal;font-size:18px;line-height:1}
 .bnav button[aria-selected="true"]{color:var(--green-2)}
 .has-bnav main{padding-bottom:calc(84px + var(--sa-b))}
 @media (min-width:900px){.bnav{display:none}.has-bnav main{padding-bottom:40px}}
+/* Existing NovaX accounts (4 Oct 2026): never mistaken for a new lead. */
+.exist-banner{border-radius:12px;padding:12px 14px;margin:12px 0;background:#fff7e6;border:1.5px solid #f0c36d;color:#6b4300;font-size:14px;line-height:1.5}
+.exist-banner b{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px}
+.chip.exist{background:#fff1d6;color:#7a4b00;border-color:#f0c36d}
 @media (max-width:899px){.rep .tabs{display:none}}
 
 main{padding:18px 0 40px}
@@ -138,7 +142,8 @@ button.item:hover{border-color:var(--line-2)}
 .sheet-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
 .sheet-head h2{font:800 20px/1.25 var(--display);flex:1;min-width:0}
 .x{flex:none;width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--paper-2);font-size:22px;line-height:1}
-.contact{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:12px 0}
+.contact{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:8px;margin:12px 0}
+.contact .btn{white-space:nowrap;padding-left:10px;padding-right:10px}
 .outcomes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .outcomes button{min-height:48px;border-radius:12px;border:1.5px solid var(--line-2);background:#fff;font-weight:700;font-size:14.5px}
 .outcomes button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
@@ -332,7 +337,7 @@ function copy(text){
 
 var S = { me: null, mode: null, tab: null, leads: [], stores: [], earnings: null, filter: "todo", q: "", admin: {} };
 var STATUS_TONE = { "Not called": "info", "No answer": "warn", "Busy": "warn", "Call back": "warn", "Demo booked": "good", "Interested": "good",
-  "Not interested": "bad", "Wrong number": "bad", "Signed up": "good" };
+  "Not interested": "bad", "Wrong number": "bad", "Signed up": "good", "Shipped": "good" };
 var OUTCOMES = ["No answer", "Busy", "Interested", "Call back", "Demo booked", "Not interested", "Wrong number"];
 function chip(status){ return '<span class="chip ' + (STATUS_TONE[status] || "") + '">' + esc(status) + "</span>"; }
 
@@ -353,8 +358,8 @@ function loadMe(){
     renderJoin();
   }).catch(function(e){ $("main").innerHTML = '<div class="empty">' + esc(e.message) + ' <button class="btn btn-plain btn-sm" type="button" data-act="reload">Try again</button></div>'; });
 }
-var REP_TABS = [["today", "Today", "⌂"], ["leads", "Leads", "☎"], ["stores", "Stores", "▣"], ["earnings", "Earnings", "₨"], ["link", "My link", "↗"]];
-var ADMIN_TABS = [["overview", "Overview"], ["reps", "Reps"], ["leads", "Leads"], ["approvals", "Approvals"], ["rewards", "Rewards"], ["sheet", "Google Sheet"]];
+var REP_TABS = [["today", "Today", "⌂"], ["leads", "Leads", "☎"], ["existing", "Existing", "↺"], ["stores", "Stores", "▣"], ["earnings", "Earnings", "₨"], ["link", "My link", "↗"]];
+var ADMIN_TABS = [["overview", "Overview"], ["reps", "Reps"], ["leads", "Leads"], ["existing", "Existing accounts"], ["approvals", "Approvals"], ["rewards", "Rewards"], ["sheet", "Google Sheet"]];
 function startApp(mode){
   S.mode = mode;
   document.body.classList.toggle("rep", mode === "rep");
@@ -673,8 +678,9 @@ function openAdminFile(id){
 var REP = {};
 function loadLeads(){ return rpc("sales_my_leads").then(function(d){ S.leads = d || []; return S.leads; }); }
 REP.today = function(){
-  return Promise.all([loadLeads(), rpc("sales_my_earnings"), rpc("sales_my_stores")]).then(function(res){
+  return Promise.all([loadLeads(), rpc("sales_my_earnings"), rpc("sales_my_stores"), loadExisting().catch(function(){ return []; })]).then(function(res){
     var leads = res[0], earn = res[1] || { totals: {} }, stores = res[2] || [];
+    var exToday = existingTodo(res[3] || []);
     S.stores = stores;
     var today = todayPk(0);
     var due = leads.filter(function(l){ return l.next_followup_on && l.next_followup_on <= today && l.status !== "Signed up"; });
@@ -687,6 +693,8 @@ REP.today = function(){
       '<div class="stats"><div class="stat go"><small>Follow-ups due</small><b>' + due.length + '</b></div><div class="stat"><small>Leads called today</small><b>' + callsToday + "</b></div>" +
         '<div class="stat"><small>Stores signed up</small><b>' + stores.length + '</b></div><div class="stat"><small>Earned so far</small><b>' + rs((t.earned || 0) + (t.approved || 0) + (t.paid || 0)) + "</b></div></div>" +
       '<section class="sec"><h2>Call these first</h2>' + leadList(due, "Nothing due. Call a new lead.") + "</section>" +
+      (exToday.length ? '<section class="sec"><h2>Existing NovaX accounts to call</h2><p class="hint" style="margin:-4px 0 8px">They already have an account but have never sent a parcel. Help them book the first one.</p>' +
+        existingList(exToday.slice(0, 5), "") + (exToday.length > 5 ? '<button class="btn btn-plain btn-block" style="margin-top:8px" type="button" data-tab="existing">See all ' + exToday.length + "</button>" : "") + "</section>" : "") +
       '<section class="sec"><h2>New leads</h2>' + leadList(fresh.slice(0, 8), "No new leads. NovaX will give you more.") +
         (fresh.length > 8 ? '<button class="btn btn-plain btn-block" style="margin-top:8px" type="button" data-act="goleads">See all ' + fresh.length + " new leads</button>" : "") + "</section>";
   });
@@ -756,6 +764,90 @@ function saveCall(e){
     go(S.tab);
   }).catch(function(err){ busy(btn, false); showMsg(msg, err.message); });
 }
+/* ── Existing NovaX accounts (4 Oct 2026) ──
+   Only the accounts NovaX pushes to this rep. They signed up long ago and
+   have never sent a parcel: the call is about booking the first parcel, never
+   about signing up, and every screen says so. */
+function loadExisting(){ return rpc("sales_my_existing").then(function(d){ S.existing = d || []; return S.existing; }); }
+function existingTodo(rows){
+  var today = todayPk(0);
+  return rows.filter(function(x){ return x.status !== "Shipped" && x.status !== "Not interested" && x.status !== "Wrong number" &&
+    (x.status === "Not called" || (x.next_followup_on && x.next_followup_on <= today) || x.status === "No answer" || x.status === "Busy"); });
+}
+function sinceLabel(iso){
+  var d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  return "signed up " + pkt(iso) + (d >= 2 ? " (" + d + " days ago)" : "");
+}
+function existingList(rows, empty){
+  if (!rows.length) return empty ? '<div class="empty">' + esc(empty) + "</div>" : "";
+  return '<div class="list">' + rows.map(function(x){
+    var when = x.status === "Shipped" ? " · first parcel " + pkt(x.shipped_at) : x.next_followup_on ? " · follow up " + dayLabel(x.next_followup_on) : (x.last_called_at ? " · called " + pkt(x.last_called_at) : "");
+    return '<button class="item" type="button" data-existing="' + esc(x.client_id) + '"><span class="grow"><b>' + esc(x.store_name) + '</b><span class="meta">' +
+      esc([sinceLabel(x.signed_up_at), x.city, x.product].filter(Boolean).join(" · ")) + esc(when) + "</span></span>" +
+      '<span style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><span class="chip exist">Existing account</span>' + chip(x.status) + "</span></button>";
+  }).join("") + "</div>";
+}
+var EX_FILTERS = [["todo", "To call"], ["followup", "Follow up"], ["Interested", "Interested"], ["Shipped", "Shipped"], ["closed", "Closed"], ["all", "All"]];
+function filterExisting(){
+  var f = S.exFilter || "todo", today = todayPk(0);
+  return (S.existing || []).filter(function(x){
+    if (f === "all") return true;
+    if (f === "todo") return existingTodo([x]).length > 0;
+    if (f === "followup") return !!x.next_followup_on && x.status !== "Shipped";
+    if (f === "closed") return x.status === "Not interested" || x.status === "Wrong number";
+    return x.status === f;
+  });
+}
+REP.existing = function(){
+  return loadExisting().then(function(rows){
+    if (S.tab !== "existing") return;
+    var shipped = rows.filter(function(x){ return x.status === "Shipped"; }).length;
+    $("main").innerHTML = '<h1 class="page">Existing NovaX accounts</h1><p class="sub">' + rows.length + " account" + (rows.length === 1 ? "" : "s") + " NovaX gave you" + (shipped ? " · " + shipped + " shipped" : "") + ".</p>" +
+      '<div class="exist-banner"><b>These are not new leads</b>Every store here already has a NovaX account. They signed up but have never sent a parcel. Do not ask them to sign up again: find out what stopped them and help them book their first parcel.</div>' +
+      '<p class="hint">You earn the first-pickup reward (' + rs(500) + ') when their first parcel is picked up within 30 days of your first call and is delivered. Log every call, or it does not count.</p>' +
+      '<div class="filters" id="exf" style="margin-top:12px">' + EX_FILTERS.map(function(f){ return '<button type="button" data-exfilter="' + esc(f[0]) + '" aria-pressed="' + ((S.exFilter || "todo") === f[0]) + '">' + esc(f[1]) + "</button>"; }).join("") + "</div>" +
+      '<div id="exList">' + existingList(filterExisting(), rows.length ? "Nothing here. Try another filter." : "No existing accounts yet. NovaX will send you some.") + "</div>";
+  });
+};
+function openExisting(id){
+  var x = (S.existing || []).filter(function(r){ return r.client_id === id; })[0];
+  if (!x) return;
+  var first = S.me.rep.full_name.split(" ")[0], owner = (x.owner || "").split(" ")[0];
+  var intro = "Assalam o Alaikum" + (owner ? " " + owner : "") + "! Main " + first + " NovaX Logistics se. Aap ka NovaX account " + pkt(x.signed_up_at) + " se bana hua hai (" + x.store_name +
+    "). Pehla parcel book karne mein koi masla aa raha hai? Main abhi step by step help kar sakta/sakti hoon. Sign in: " + SITE;
+  var shipped = x.status === "Shipped";
+  openSheet('<div class="sheet-head"><h2 id="sheetTitle">' + esc(x.store_name) + '</h2><button class="x" type="button" data-act="close" aria-label="Close">×</button></div>' +
+    '<div class="exist-banner" style="margin-top:4px"><b>Existing NovaX account</b>Signed up ' + esc(pkt(x.signed_up_at)) + ", never sent a parcel" +
+      (Number(x.booked) ? " (booked " + Number(x.booked) + ", none picked up)" : "") + ". Don't ask them to sign up; help them book the first parcel.</div>" +
+    '<div>' + chip(x.status) + (x.call_count ? ' <span class="chip">Called ' + x.call_count + "×</span>" : "") + (x.credited ? ' <span class="chip good">Credited to you</span>' : "") + "</div>" +
+    '<div class="contact"><a class="btn btn-primary" href="tel:+' + esc(waNum(x.phone)) + '">Call ' + esc(x.phone) + '</a>' +
+      '<a class="btn btn-plain" target="_blank" rel="noopener" href="https://wa.me/' + esc(waNum(x.phone)) + "?text=" + encodeURIComponent(intro) + '">WhatsApp</a></div>' +
+    '<dl class="kv">' + (x.owner ? "<dt>Owner</dt><dd>" + esc(x.owner) + "</dd>" : "") + "<dt>Signed up</dt><dd>" + esc(pkt(x.signed_up_at)) + "</dd>" +
+      (x.city ? "<dt>City</dt><dd>" + esc(x.city) + "</dd>" : "") + (x.product ? "<dt>Sells</dt><dd>" + esc(x.product) + "</dd>" : "") +
+      (x.website && /^https?:\/\//i.test(x.website) ? '<dt>Website</dt><dd><a href="' + esc(x.website) + '" target="_blank" rel="noopener noreferrer">Open website</a></dd>' : "") +
+      (x.last_note ? "<dt>Last note</dt><dd>" + esc(x.last_note) + "</dd>" : "") + (x.next_followup_on ? "<dt>Follow up</dt><dd>" + esc(dayLabel(x.next_followup_on)) + "</dd>" : "") + "</dl>" +
+    (shipped ? '<div class="msg ok" style="display:block;margin-top:14px">Their first parcel was picked up on ' + esc(pkt(x.shipped_at)) + "." + (x.credited ? " It is credited to you; see Stores." : "") + "</div>" :
+    '<form id="fExCall" style="margin-top:16px" novalidate><fieldset style="border:0;margin:0;padding:0"><legend class="fld" style="font-size:13px;font-weight:700;color:var(--ink-2);margin-bottom:6px;padding:0">What happened on the call?</legend>' +
+      '<div class="outcomes">' + EX_OUTCOMES.map(function(o){ return '<button type="button" data-outcome="' + esc(o) + '" aria-pressed="false">' + esc(o) + "</button>"; }).join("") + "</div></fieldset>" +
+      '<div class="fld" style="margin-top:12px"><label for="fu">Follow up on <span id="fuReq" class="hint" style="display:inline"></span></label>' +
+        '<div class="quick"><button type="button" data-fu="1">Tomorrow</button><button type="button" data-fu="3">In 3 days</button><button type="button" data-fu="7">Next week</button><button type="button" data-fu="">No date</button></div>' +
+        '<input id="fu" type="date" min="' + todayPk(0) + '" max="' + todayPk(60) + '" value="' + esc(x.next_followup_on || "") + '"></div>' +
+      '<div class="fld"><label for="note">Note (what stopped them)</label><textarea id="note" maxlength="500" placeholder="e.g. Didn\'t know how to book. Will send 5 parcels Monday."></textarea></div>' +
+      '<input type="hidden" id="exId" value="' + esc(x.client_id) + '"><button class="btn btn-dark btn-block" id="exBtn" type="submit">Save call</button><div class="msg" id="exMsg" role="alert"></div></form>'), "sheetTitle");
+}
+var EX_OUTCOMES = ["No answer", "Busy", "Interested", "Call back", "Not interested", "Wrong number"];
+function saveExistingCall(e){
+  e.preventDefault();
+  var pressed = document.querySelector("[data-outcome][aria-pressed='true']"), msg = $("exMsg"), btn = $("exBtn");
+  if (!pressed) return showMsg(msg, "Tap what happened on the call.");
+  var outcome = pressed.getAttribute("data-outcome"), fu = $("fu").value || null, note = $("note").value.trim();
+  if (outcome === "Call back" && !fu) return showMsg(msg, "Pick the follow-up date.");
+  busy(btn, true, "Saving…");
+  rpc("sales_log_existing_call", { p_client: $("exId").value, p_outcome: outcome, p_note: note || null, p_followup: fu }).then(function(){
+    closeSheet(); toast("Saved: " + outcome);
+    go(S.tab);
+  }).catch(function(err){ busy(btn, false); showMsg(msg, err.message); });
+}
 REP.stores = function(){
   return rpc("sales_my_stores").then(function(stores){
     S.stores = stores || [];
@@ -767,8 +859,9 @@ REP.stores = function(){
           '<div class="steps"><span class="chip bad">Not credited to you</span></div><p class="hint" style="margin-top:6px">' + esc(s.note ? "NovaX: " + s.note : "NovaX did not credit this store to you.") +
           " If you have new details (when and how you reached them), send the claim again below.</p></div>";
         return '<div class="item" style="display:block"><b>' + esc(s.store_name) + '</b><span class="meta">' + esc([s.city, "signed up " + pkt(s.signed_up_at)].filter(Boolean).join(" · ")) + "</span>" +
-          '<div class="steps">' + (s.status === "Pending" ? '<span class="chip warn">Waiting for NovaX to confirm</span>' : '<span class="chip good">✓ Account opened</span>') +
-          '<span class="chip ' + (m.cnic_verified ? "good" : "") + '">' + (m.cnic_verified ? "✓ CNIC verified" : "CNIC not verified yet") + "</span>" +
+          '<div class="steps">' + (s.method === "reactivation" ? '<span class="chip exist">Existing account you brought back</span>' :
+            (s.status === "Pending" ? '<span class="chip warn">Waiting for NovaX to confirm</span>' : '<span class="chip good">✓ Account opened</span>') +
+          '<span class="chip ' + (m.cnic_verified ? "good" : "") + '">' + (m.cnic_verified ? "✓ CNIC verified" : "CNIC not verified yet") + "</span>") +
           '<span class="chip ' + (m.picked_up ? "good" : "") + '">' + (m.picked_up ? "✓ First pickup" : "No pickup yet") + "</span></div>" +
           '<div class="steps">' + ["account_opened", "first_pickup"].filter(function(k){ return w[k]; }).map(function(k){
             return '<span class="chip ' + (REW[w[k]] || "") + '">' + (k === "account_opened" ? "Account" : "Pickup") + " " + rs(amt[k] != null ? amt[k] : 500) + " · " + esc(w[k]) + "</span>"; }).join("") + "</div></div>";
@@ -936,6 +1029,60 @@ ADMIN.leads = function(){
     loadAdminLeads();
   });
 };
+/* ── Existing accounts: NovaX decides who calls whom (4 Oct 2026) ── */
+ADMIN.existing = function(){
+  return loadOverview().then(function(){
+    if (S.tab !== "existing") return;
+    var ready = (S.admin.reps || []).filter(function(r){ return r.status === "Active"; });
+    $("main").innerHTML = '<h1 class="page">Existing accounts</h1><p class="sub">Merchants who signed up but never had a parcel picked up. Tick the ones to call and push them to a rep. A rep sees only what you push here, marked as an existing NovaX account.</p>' +
+      '<div class="card sec"><div class="row2"><div class="fld"><label for="exRep">Push to</label><select id="exRep">' + repOptions() + "</select></div>" +
+        '<div class="fld"><label for="exShow">Show</label><select id="exShow"><option value="open">Not pushed yet</option><option value="pushed">Pushed</option><option value="all">All</option></select></div></div>' +
+        '<div class="row2"><div class="fld"><label for="exCity">City</label><select id="exCity"><option value="">Any city</option><option>Karachi</option><option>Lahore</option><option>Islamabad</option><option>Rawalpindi</option></select></div>' +
+        '<div class="fld"><label for="exQ">Search</label><input id="exQ" type="search" placeholder="Store or number"></div></div>' +
+        '<button class="btn btn-primary btn-block" id="exPush" type="button" disabled>Push ticked accounts</button><div class="msg" id="exMsg" role="alert"></div>' +
+        '<p class="hint" style="margin-top:8px">A rep is credited only if they log a call before the store\'s first pickup and that pickup comes within 30 days of their first call. These stores earn the first-pickup reward only.' +
+        (ready.length ? "" : " No rep has finished joining yet, so nobody can receive accounts.") + "</p></div>" +
+      '<div id="exAdmin"><div class="loading">Loading…</div></div>';
+    loadAdminExisting();
+  });
+};
+var exT = null;
+function loadAdminExisting(){
+  var city = ($("exCity") || {}).value || null, q = (($("exQ") || {}).value || "").trim() || null, show = ($("exShow") || {}).value || "open";
+  return rpc("sales_admin_existing_candidates", { p_city: city, p_search: q }).then(function(rows){
+    var el = $("exAdmin"); if (!el) return;
+    rows = (rows || []).filter(function(x){ return show === "all" ? true : show === "pushed" ? x.pushed : (!x.pushed && !x.credited_to); });
+    S.admin.exRows = rows;
+    el.innerHTML = rows.length ? '<p class="hint" style="margin-bottom:6px">' + rows.length + " account" + (rows.length === 1 ? "" : "s") + '</p><table class="tbl"><thead><tr><th><label class="sr" for="exAll">Tick all</label><input type="checkbox" id="exAll"></th><th>Store</th><th>Phone</th><th>City</th><th>Sells</th><th>Signed up</th><th>Booked</th><th>Rep</th></tr></thead><tbody>' +
+      rows.map(function(x){
+        var locked = !!x.credited_to;
+        var repCell = locked ? '<span class="chip good">Credited to ' + esc(x.credited_to) + "</span>"
+          : x.pushed ? esc(x.pushed_rep || "No rep") + " " + chip(x.pushed_status) + (x.calls ? ' <span class="hint">' + x.calls + " call" + (x.calls === 1 ? "" : "s") + "</span>" : "") +
+            (x.pushed_status !== "Shipped" ? ' <button class="btn btn-plain btn-sm" type="button" data-unpush="' + esc(x.client_id) + '">Take back</button>' : "")
+          : '<span class="hint">Not pushed</span>';
+        return "<tr><td data-l=\"Tick\">" + (locked || x.pushed_status === "Shipped" ? "" : '<input type="checkbox" data-exsel="' + esc(x.client_id) + '" aria-label="Tick ' + esc(x.store_name) + '">') + "</td>" +
+          '<td data-l="Store"><b>' + esc(x.store_name) + "</b>" + (x.owner ? '<br><span class="hint">' + esc(x.owner) + "</span>" : "") + '</td><td data-l="Phone">' + esc(x.phone || "") +
+          '</td><td data-l="City">' + esc(x.city || "") + '</td><td data-l="Sells">' + esc(x.product || "") + '</td><td data-l="Signed up">' + esc(pkt(x.signed_up_at)) +
+          '</td><td data-l="Booked" class="num">' + Number(x.booked || 0) + '</td><td data-l="Rep">' + repCell + "</td></tr>";
+      }).join("") + "</tbody></table>" : '<div class="empty">No accounts match.</div>';
+    syncExPush();
+  }).catch(function(e){ var el = $("exAdmin"); if (el) el.innerHTML = '<div class="empty">' + esc(e.message) + "</div>"; });
+}
+function syncExPush(){
+  var n = document.querySelectorAll("[data-exsel]:checked").length, b = $("exPush");
+  if (b) { b.disabled = !n; b.textContent = n ? "Push " + n + " account" + (n === 1 ? "" : "s") : "Push ticked accounts"; }
+}
+function doExPush(){
+  var rep = $("exRep").value, ids = [].map.call(document.querySelectorAll("[data-exsel]:checked"), function(c){ return c.getAttribute("data-exsel"); }), msg = $("exMsg"), btn = $("exPush");
+  if (!rep) return showMsg(msg, "Choose the rep.");
+  if (!ids.length) return showMsg(msg, "Tick at least one account.");
+  busy(btn, true, "Pushing…");
+  rpc("sales_admin_existing_push", { p_clients: ids, p_rep: rep }).then(function(r){
+    busy(btn, false);
+    showMsg(msg, (r.pushed ? r.pushed + " pushed. " : "") + (r.moved ? r.moved + " moved from another rep. " : "") + (r.skipped ? r.skipped + " skipped (already shipped or credited)." : "") || "Nothing changed.", true);
+    loadAdminExisting();
+  }).catch(function(err){ busy(btn, false); showMsg(msg, err.message); });
+}
 var leadsT = null;
 function loadAdminLeads(){
   var repv = ($("lfRep") || {}).value || "", st = ($("lfStatus") || {}).value || "", q = (($("lfQ") || {}).value || "").trim();
@@ -1122,6 +1269,12 @@ document.addEventListener("click", function(e){
   if ((el = t.closest("[data-tab]"))) return go(el.getAttribute("data-tab"));
   if ((el = t.closest("[data-auth]"))) return renderAuth(el.getAttribute("data-auth"));
   if ((el = t.closest("[data-lead]"))) return openLead(el.getAttribute("data-lead"));
+  if ((el = t.closest("[data-existing]"))) return openExisting(el.getAttribute("data-existing"));
+  if ((el = t.closest("[data-exfilter]"))) { S.exFilter = el.getAttribute("data-exfilter"); [].forEach.call(document.querySelectorAll("[data-exfilter]"), function(b){ b.setAttribute("aria-pressed", b === el ? "true" : "false"); });
+    var xl = $("exList"); if (xl) xl.innerHTML = existingList(filterExisting(), "Nothing here. Try another filter."); return; }
+  if (t.closest("#exPush")) return doExPush();
+  if ((el = t.closest("[data-unpush]"))) { if (!confirm("Take this account back from the rep? Their call notes stay with NovaX.")) return; el.disabled = true;
+    return rpc("sales_admin_existing_unpush", { p_client: el.getAttribute("data-unpush") }).then(function(){ toast("Taken back"); loadAdminExisting(); }).catch(function(err){ el.disabled = false; toast(err.message); }); }
   if ((el = t.closest("[data-filter]"))) { S.filter = el.getAttribute("data-filter"); [].forEach.call(document.querySelectorAll("[data-filter]"), function(b){ b.setAttribute("aria-pressed", b === el ? "true" : "false"); }); return drawLeadList(); }
   if ((el = t.closest("[data-outcome]"))) {
     [].forEach.call(document.querySelectorAll("[data-outcome]"), function(b){ b.setAttribute("aria-pressed", b === el ? "true" : "false"); });
@@ -1197,6 +1350,7 @@ document.addEventListener("submit", function(e){
   if (id === "fProfile") return doProfile(e);
   if (id === "fSign") return doSign(e);
   if (id === "fCall") return saveCall(e);
+  if (id === "fExCall") return saveExistingCall(e);
   if (id === "fClaim") return doClaim(e);
   if (id === "fInvite") return doInvite(e);
   if (id === "fAssign") return doAssign(e);
@@ -1207,10 +1361,14 @@ document.addEventListener("submit", function(e){
 document.addEventListener("input", function(e){
   if (e.target.id === "q") { S.q = e.target.value; drawLeadList(); }
   if (e.target.id === "lfQ") { clearTimeout(leadsT); leadsT = setTimeout(loadAdminLeads, 350); }
+  if (e.target.id === "exQ") { clearTimeout(exT); exT = setTimeout(loadAdminExisting, 350); }
   if (e.target.id === "pCnic") { var cv = e.target.value, f = fmtCnic(cv); if (f !== cv) e.target.value = f; }
   if (e.target.id === "jCode" || e.target.id === "cCode" || e.target.id === "rCode") e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 });
 document.addEventListener("change", function(e){
+  if (e.target.id === "exCity" || e.target.id === "exShow") return loadAdminExisting();
+  if (e.target.id === "exAll") { [].forEach.call(document.querySelectorAll("[data-exsel]"), function(c){ c.checked = e.target.checked; }); return syncExPush(); }
+  if (e.target.getAttribute && e.target.hasAttribute("data-exsel")) return syncExPush();
   if (e.target.id === "poMethod") { poLabels(); $("poAcc").value = ""; return; }
   if (e.target.id === "lfRep" || e.target.id === "lfStatus") return loadAdminLeads();
   if (e.target.id === "selAll") { [].forEach.call(document.querySelectorAll("[data-rw]"), function(c){ c.checked = e.target.checked; }); return; }

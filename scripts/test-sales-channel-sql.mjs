@@ -294,6 +294,53 @@ try {
   assert.equal(ov.reps.find(r => r.code === 'BILAL').signups, 3);
   assert.equal(ov.settings.sheet_token_hash, undefined);
   console.log('PASS: tables are closed to the API; admin overview counts signups per rep and never returns the sheet key hash.');
+
+  // ── existing accounts NovaX pushes to a rep (4 Oct 2026) ──
+  q(`alter table public.clients add column if not exists owner text, add column if not exists business_type text, add column if not exists website text;`);
+  const existingSql = readFileSync(new URL('../sql_novax_sales_existing_accounts_20261004.sql', import.meta.url), 'utf8');
+  q(existingSql); q(existingSql);   // safe to run twice
+  const E = { a: id(201), b: id(202), c: id(203), shipped: id(204) };
+  q(`insert into public.clients(id, name, phone, city, created_at, owner, business_type) values
+       ('${E.a}', 'Dormant Shoes', '03110000001', 'Lahore', now() - interval '40 days', 'Sana', 'Shoes'),
+       ('${E.b}', 'Sleepy Scents', '03110000002', 'Karachi', now() - interval '20 days', 'Ali', 'Perfume'),
+       ('${E.c}', 'Late Starter', '03110000003', 'Karachi', now() - interval '10 days', 'Zara', 'Clothes'),
+       ('${E.shipped}', 'Busy Store', '03110000004', 'Karachi', now() - interval '50 days', 'Omar', 'Bags');
+     insert into public.parcels(id, client_id, status) values ('${id(950)}', '${E.shipped}', 'Delivered');`);
+  const cand = J(as('admin', `select public.sales_admin_existing_candidates()`)).map(x => x.store_name);
+  assert.ok(cand.includes('Dormant Shoes') && cand.includes('Late Starter') && !cand.includes('Busy Store'));
+  assert.equal(as('bilal', `select public.sales_admin_existing_candidates()::text`), '[]');
+  fails('bilal', `select public.sales_admin_existing_push(array['${E.a}']::uuid[], '${bilalId}')`, /Only NovaX admins/);
+  fails('admin', `select public.sales_admin_existing_push(array['${E.a}']::uuid[], '${ayeshaId}')`, /active rep/);
+  assert.deepEqual(J(as('admin', `select public.sales_admin_existing_push(array['${E.a}', '${E.b}', '${E.c}', '${E.shipped}']::uuid[], '${bilalId}')`)),
+    { pushed: 3, moved: 0, skipped: 1 });
+  let mine = J(as('bilal', `select public.sales_my_existing()`));
+  assert.equal(mine.length, 3);
+  assert.deepEqual(['product', 'city', 'status'].map(k => mine.find(x => x.store_name === 'Dormant Shoes')[k]), ['Shoes', 'Lahore', 'Not called']);
+  assert.ok(mine.every(x => x.signed_up_at));
+  fails('stranger', `select public.sales_my_existing()`, /for NovaX sales reps/);
+  as('admin', `select public.sales_admin_existing_unpush('${E.c}')`);
+  assert.equal(J(as('bilal', `select public.sales_my_existing()`)).length, 2);
+  fails('bilal', `select public.sales_log_existing_call('${E.c}', 'Interested')`, /not assigned to you/);
+  fails('bilal', `select public.sales_log_existing_call('${E.a}', 'Call back')`, /follow up/);
+  as('bilal', `select public.sales_log_existing_call('${E.a}', 'Interested', 'Will book tomorrow')`);
+  // Dormant Shoes ships after Bilal's call: credited, first-pickup reward only.
+  // Sleepy Scents ships without a call: closed as Shipped, nobody credited.
+  q(`insert into public.parcels(id, client_id, status) values ('${id(951)}', '${E.a}', 'Arrived at warehouse'), ('${id(952)}', '${E.b}', 'Arrived at warehouse');
+     insert into public.nv_parcel_status_log(parcel_id, client_id, from_status, to_status, changed_at) values
+       ('${id(951)}', '${E.a}', 'New booked', 'Arrived at warehouse', now() + interval '1 minute'),
+       ('${id(952)}', '${E.b}', 'New booked', 'Arrived at warehouse', now() + interval '1 minute');
+     select public.sales_refresh();`);
+  assert.equal(q(`select string_agg(status, ',' order by client_id) from public.sales_existing_accounts`), 'Shipped,Shipped');
+  assert.equal(q(`select method || ':' || status from public.sales_attributions where client_id = '${E.a}'`), 'reactivation:Approved');
+  assert.equal(q(`select count(*) from public.sales_attributions where client_id = '${E.b}'`), '0');
+  assert.equal(q(`select string_agg(kind || ':' || status, ',') from public.sales_rewards where client_id = '${E.a}'`), 'first_pickup:Waiting');
+  q(`update public.parcels set status = 'Delivered' where id = '${id(951)}'; select public.sales_refresh();`);
+  assert.equal(q(`select string_agg(kind || ':' || status, ',') from public.sales_rewards where client_id = '${E.a}'`), 'first_pickup:Earned');
+  fails('bilal', `select public.sales_log_existing_call('${E.a}', 'Interested')`, /already shipped/);
+  assert.equal(J(as('bilal', `select public.sales_my_existing()`)).find(x => x.store_name === 'Dormant Shoes').credited, true);
+  for (const who of [null, 'bilal']) fails(who, `select count(*) from public.sales_existing_accounts`, /permission denied/);
+  fails(null, `select public.sales_my_existing()`, /permission denied/);
+  console.log('PASS: only accounts NovaX pushes reach a rep; shipped or credited ones are skipped; a pickup after the rep\'s call credits them for the first pickup only; a pickup with no call credits nobody.');
 } finally {
   if (started) execFileSync(path.join(bin, 'pg_ctl'), ['-D', data, '-m', 'fast', '-w', 'stop'], { stdio: 'ignore' });
   rmSync(dir, { recursive: true, force: true });
