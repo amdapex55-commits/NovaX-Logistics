@@ -1274,7 +1274,9 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     else if(j.failed_at&&j.status!=="Picked up"&&j.status!=="Delivered")
       tl=li("done","Booked",j.created_at)+li("done","Rider assigned",j.assigned_at)+li("done","Picked up",j.picked_at)+li(j.status==="Failed delivery"?"off":"done","Delivery not made",j.failed_at)+
          li(j.status==="Returning"?"now":j.status==="Returned"?"done":"","Coming back to the sender",j.returning_at)+li(j.status==="Returned"?"done":"","Returned to the sender",j.returned_at);
-    else ORDER.forEach(function(k,i){ tl+=li(i<idx||j.status==="Delivered"?"done":i===idx?"now":"",k,i<=idx?j[{ "Booked":"created_at","Rider assigned":"assigned_at","Picked up":"picked_at","Delivered":"delivered_at" }[k]]:null); });
+    else ORDER.forEach(function(k,i){ tl+=li(i<idx||j.status==="Delivered"?"done":i===idx?"now":"",k,i<=idx?j[{ "Booked":"created_at","Rider assigned":"assigned_at","Picked up":"picked_at","Delivered":"delivered_at" }[k]]:null);
+      /* Two riders: the parcel was handed from the pickup rider to the delivery rider. */
+      if(k==="Picked up"&&j.handover_at) tl+=li("done","Handed to the delivery rider"+(j.handover_from?" by "+j.handover_from:""),j.handover_at); });
 
     var h='<div class="status"><div class="top">'+(T.fresh&&j.status!=="Cancelled"?'<span class="done-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.500l4.500 4.500L19 7.500"/></svg></span>'
         :(j.status==="Booked"?'<span class="pulse" aria-hidden="true"></span>':''))+

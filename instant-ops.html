@@ -413,7 +413,27 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     returned:["Why is ops closing this step? (kept on the job)","e.g. sender confirmed by call","Mark returned"],
     transfer:["Why is the parcel changing riders?","e.g. bike broke down at Shahrah-e-Faisal","Move to this rider"],
     pay:["How was it settled?","e.g. rider collected the rest on a second visit",""] };
+  /* ───── relays ───── */
+  var RSTATE={ planned:"planned", at_point:"the rider is at the handover spot", refused:"refused" };
+  function relayOpen(j){ return j.relay_state==="planned"||j.relay_state==="at_point"; }
+  function relayLine(j){
+    if(j.relay_state==="done"&&j.handover_name) return '<div class="hint">Handed over by '+esc(j.handover_name)+' '+esc(ago(j.handover_at))+'.</div>';
+    if(!j.relay_state||j.relay_state==="done") return "";
+    return '<div class="'+(j.relay_state==="refused"?"prob":"hint")+'"><b>Relay to '+esc(j.relay_name||"")+':</b> '+esc(RSTATE[j.relay_state]||j.relay_state)+
+      (j.relay_note?' &middot; '+esc(j.relay_note):'')+(Number(j.relay_tries)>=5?' &middot; <b>code locked</b>':'')+
+      ' <button class="btn btn-plain" type="button" data-do="relay-off" data-job="'+esc(j.id)+'" style="padding:2px 12px;margin-left:6px">Call it off</button></div>';
+  }
+  function relayForm(j){
+    var rs=(S.b.riders||[]).filter(function(r){ return r.id!==j.rider_id&&r.status==="Active"&&r.docs_checked_at; });
+    return '<div class="inline"><label for="rlRider">Who takes the parcel over (route riders first)</label><select class="inp" id="rlRider"><option value="">Choose a rider</option>'+
+      rs.sort(function(a,b){ return (b.kind==="route")-(a.kind==="route"); }).map(function(r){
+        return '<option value="'+esc(r.id)+'"'+(r.active_code?' disabled':'')+'>'+esc(r.full_name)+(r.kind==="route"?" (route rider)":"")+(r.active_code?" (busy on "+esc(r.active_code)+")":"")+'</option>'; }).join("")+'</select>'+
+      '<label for="rlNote">Where or when (optional, both riders see it)</label><input class="inp" id="rlNote" maxlength="160" placeholder="e.g. Usman passes Teen Talwar at 4:30">'+
+      '<div class="hint">The riders agree the spot by phone. The parcel moves only when the second rider types the code shown on the first rider\'s phone.</div>'+
+      '<div class="row"><button class="btn btn-plain" type="button" data-form="" data-job="">Back</button><button class="btn btn-dark" type="button" data-do="relay" data-job="'+esc(j.id)+'">Plan the relay</button></div></div>';
+  }
   function formHtml(j,free){
+    if(S.open.kind==="relay") return relayForm(j);
     var k=S.open.kind, f=FORM[k], due=Number(j.due_now||0), h='<div class="inline">';
     if(k==="failed") h+='<label for="fReason">Reason</label><select class="inp" id="fReason">'+Object.keys(FAILED).map(function(c){ return '<option value="'+c+'">'+esc(FAILED[c])+'</option>'; }).join("")+'</select>';
     if(k==="transfer") h+='<label>New rider (the first rider hands the parcel over in person and keeps any cash they took)</label>'+riderSelect(j,free.filter(function(r){ return r.id!==j.rider_id; }),"Choose the new rider");
@@ -444,7 +464,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       (Number(j.attempts)>1?'<span class="chip warn">try '+esc(j.attempts)+'</span>':'')+
       (Number(j.same_ip)>1?'<span class="chip warn">'+esc(j.same_ip)+' bookings from this connection today</span>':'')+
       (Number(j.pin_tries)>=5?'<span class="chip bad">PIN locked</span>':'')+srcChip(j)+payChip(j)+'</div>'+
-      (j.rider_note?'<div class="age" style="margin-top:6px">Note for rider: '+esc(j.rider_note)+'</div>':'')+
+      (j.rider_note?'<div class="age" style="margin-top:6px">Note for rider: '+esc(j.rider_note)+'</div>':'')+relayLine(j)+
       (st==="Failed delivery"||st==="Returning"?'<div class="prob"><b>Not delivered:</b> '+esc(FAILED[j.fail_reason]||"")+(j.fail_note?'. '+esc(j.fail_note):'')+'</div>':'')+
       (j.pay_state==="Disputed"?'<div class="prob"><b>Cash:</b> '+esc(j.pay_note||"")+'</div>':'')+
       (j.problem_note?'<div class="prob"><b>Rider says:</b> '+esc(j.problem_note)+' <span class="age">'+esc(ago(j.problem_at))+'</span></div>':'');
@@ -455,9 +475,9 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       h+='<div class="row">'+riderSelect(j,free,"Choose a rider")+
          '<button class="btn btn-primary" type="button" data-do="assign" data-job="'+esc(j.id)+'">'+(st==="Booked"?"Assign":"Reassign")+'</button>'+
          (st==="Rider assigned"?'<button class="btn btn-plain" type="button" data-do="unassign" data-job="'+esc(j.id)+'">Back to open</button>':'')+'</div><div class="row">'+
-         (st==="Rider assigned"?fbtn("picked",j,"Mark picked up"):'')+fbtn("cancel",j,"Cancel","btn-danger");
+         (st==="Rider assigned"?fbtn("picked",j,"Mark picked up"):'')+fbtn("relay",j,relayOpen(j)?"Change the relay":"Relay to another rider")+fbtn("cancel",j,"Cancel","btn-danger");
     } else if(st==="Picked up"){
-      h+='<div class="row">'+fbtn("delivered",j,"Mark delivered")+fbtn("failed",j,"Not delivered","btn-danger")+fbtn("transfer",j,"Change rider");
+      h+='<div class="row">'+fbtn("relay",j,relayOpen(j)?"Change the relay":"Relay to another rider")+fbtn("delivered",j,"Mark delivered")+fbtn("failed",j,"Not delivered","btn-danger")+fbtn("transfer",j,"Change rider");
     } else if(st==="Failed delivery"){
       h+='<div class="hint">The rider still has the parcel. Call the receiver and the sender, then choose.</div>'+
          '<div class="row">'+fbtn("retry",j,"Try again","btn-primary")+fbtn("returning",j,"Send back to sender")+fbtn("delivered",j,"Mark delivered")+fbtn("transfer",j,"Change rider");
@@ -478,7 +498,11 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     }).join("")+'</div>';
   }
   function ridersHtml(riders){
-    var h='<div class="card" style="margin-bottom:14px"><h3>Add a rider</h3><div class="form">'+
+    var h='<div class="card" style="margin-bottom:14px"><h3>NovaX route riders</h3><p class="age" style="margin:4px 0 10px">A NovaX rider on salary can take Nova Instant jobs and relays from the same login. All the money from their Instant jobs goes to NovaX. They get an Instant tab in the NovaX rider app.</p>'+
+      (S.cands?(S.cands.length?'<div class="row" style="margin:0"><select class="inp" id="lnRider" style="flex:1;min-width:200px"><option value="">Choose a NovaX rider</option>'+S.cands.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+(c.phone?' &middot; '+esc(c.phone):'')+(c.branch?' &middot; '+esc(c.branch):'')+'</option>'; }).join("")+'</select>'+
+        '<button class="btn btn-primary" type="button" data-do="link">Link to Nova Instant</button></div>':'<div class="hint">Every active NovaX rider is already linked.</div>')
+       :'<button class="btn btn-plain" type="button" data-do="link-load">Link a NovaX rider</button>')+'</div>'+
+      '<div class="card" style="margin-bottom:14px"><h3>Add a freelance rider</h3><div class="form">'+
       '<div><label for="rName">Full name</label><input class="inp" id="rName" maxlength="80"></div>'+
       '<div><label for="rEmail">Email (their login)</label><input class="inp" id="rEmail" type="email" inputmode="email" maxlength="254"></div>'+
       '<div><label for="rPhone">Mobile</label><input class="inp" id="rPhone" type="tel" inputmode="tel" maxlength="20" placeholder="03XX XXXXXXX"></div>'+
@@ -489,7 +513,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     h+='<div class="tblwrap"><table><thead><tr><th>Rider</th><th>Status</th><th>Documents</th><th>Now</th><th>Done today</th><th>Wallet</th><th></th></tr></thead><tbody>'+riders.map(function(r){
       var busy=!!r.active_code;
       return '<tr><td><b>'+esc(r.full_name)+'</b><br><span class="age"><a href="tel:'+esc(r.phone)+'">'+esc(r.phone)+'</a>'+(r.bike_plate?' &middot; '+esc(r.bike_plate):'')+'<br>'+esc(r.email)+'</span></td>'+
-        '<td><span class="chip '+(r.status==="Active"?"good":r.status==="Blocked"?"bad":"warn")+'">'+esc(r.status==="Invited"?"Invited, not joined":r.status)+'</span></td>'+
+        '<td><span class="chip '+(r.status==="Active"?"good":r.status==="Blocked"?"bad":"warn")+'">'+esc(r.status==="Invited"?"Invited, not joined":r.status)+'</span>'+(r.kind==="route"?'<br><span class="chip" style="margin-top:4px">Route rider, salary</span>':'')+'</td>'+
         '<td data-l="Documents">'+(r.docs_at
           ? '<div class="row" style="margin:0"><button class="btn btn-plain" type="button" data-doc="'+esc(r.cnic_path)+'">CNIC</button><button class="btn btn-plain" type="button" data-doc="'+esc(r.bill_path)+'">Home bill</button></div>'+
             '<span class="age">Emergency: '+esc(r.emergency_name||"")+' &middot; <a href="tel:'+esc(r.emergency_phone||"")+'">'+esc(r.emergency_phone||"")+'</a></span><br>'+
@@ -559,7 +583,8 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
   var SAY={ not_found:"That job no longer exists.", too_late:"The parcel is already picked up, so the rider cannot be changed.", rider_inactive:"That rider is not active.",
     rider_busy:"That rider already has a job.", need_reason:"Choose or write a reason first.", need_note:"Write a note first.", closed:"That job is already closed.",
     no_rider:"Assign a rider first.", no_docs:"That rider has not sent documents yet.", docs_unchecked:"Check that rider's documents first (Riders tab, Mark as checked).",
-    done:"Someone already dealt with that one.", need_ref:"Type the transaction ID first.", wrong_step:"The job is not at that step any more.", nothing:"That rider holds no cash.",
+    done:"Someone already dealt with that one.", relay_step:"A relay can be planned only before the parcel is delivered.", same_rider:"Choose a different rider from the one who has it.",
+    relay_busy:"That rider is already waiting for another relay.", no_login:"That NovaX rider has no login yet.", need_ref:"Type the transaction ID first.", wrong_step:"The job is not at that step any more.", nothing:"That rider holds no cash.",
     name:"Enter the rider's full name.", email:"Enter a valid email.", phone:"Enter a Pakistani mobile like 0300 1234567.", exists:"That email is already a rider.", status:"Unknown status.",
     has_parcel:"A rider holds this parcel, so it cannot be cancelled or left without a rider. Mark it not delivered and send it back instead.",
     unconfirmed:"Confirm this booking by phone first.",
@@ -666,6 +691,12 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       var wid=t.dataset.wallet; S.open={ job:wid, kind:"w-hist" }; paint();
       return rpc("nvi_admin_ledger",{ p_wallet:wid }).then(function(list){ S.hist[wid]=list||[]; if(S.open&&S.open.job===wid) paint(); }).catch(function(e){ toast(e.message||"Could not load the history."); });
     }
+    if(d==="relay"){ var rr=$("rlRider").value; if(!rr){ toast("Choose who takes the parcel over."); $("rlRider").focus(); return; }
+      return run("nvi_admin_relay",{ p_job:job, p_rider:rr, p_note:($("rlNote").value||"").trim()||null },"Relay planned. Both riders can see it."); }
+    if(d==="relay-off"){ if(!twice(t,"Press again to call it off")) return; return run("nvi_admin_relay",{ p_job:job, p_rider:null, p_note:null },"Relay called off."); }
+    if(d==="link"){ var nx=$("lnRider")&&$("lnRider").value; if(!nx){ toast("Choose the NovaX rider."); return; }
+      return run("nvi_admin_link_route_rider",{ p_novax_rider:nx },"Linked. They see an Instant tab in the NovaX rider app.").then(function(){ S.cands=null; }); }
+    if(d==="link-load"){ return rpc("nvi_admin_route_candidates").then(function(c){ S.cands=c||[]; paint(); }).catch(function(e){ toast(e.message||"Could not load NovaX riders."); }); }
     if(d==="c-hold"){ var hn=($("fNote").value||"").trim(); if(hn.length<5){ toast("Write why, so the client and the office can see it."); $("fNote").focus(); return; }
       if(!twice(t,"Press again to hold")) return; return run("nvi_admin_set_client",{ p_client:t.dataset.client, p_block:true, p_reason:hn },"Account on hold."); }
     if(d==="c-release"){ if(!twice(t,"Press again to release")) return; return run("nvi_admin_set_client",{ p_client:t.dataset.client, p_block:false, p_reason:null },"Hold released."); }
