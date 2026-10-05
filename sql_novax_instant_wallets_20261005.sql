@@ -218,50 +218,83 @@ begin
   return v_n;
 end $$;
 
+-- What a rider earns for a part of a fare: a freelance rider keeps it less
+-- their commission; a route rider is on salary and earns nothing per job.
+create or replace function public.nvi_rider_earning(p_rider uuid, p_part int)
+returns int language sql stable security definer set search_path = '' as $$
+  select case when r.kind = 'route' then 0
+              else greatest(0, p_part - round(p_part * coalesce(r.commission_pct, (select c.commission_pct from public.nvi_config c where c.id)) / 100.0)::int) end
+    from public.nvi_riders r where r.id = p_rider
+$$;
+
 -- A job delivered or returned books its money. Runs inside the rider's (or
 -- ops') own step, and is posted once per job and outcome.
 create or replace function public.nvi_ledger_job()
 returns trigger language plpgsql security definer set search_path = '' as $$
+-- One movement per finished job. Every rider is paid for their leg and owes
+-- the cash they took; NovaX keeps the rest.
+--   legs: one rider, or two (a relay or a moved parcel): the pickup rider's
+--         part is nvi_config.relay_pickup_pct of the fare, the delivery
+--         rider's part is the rest plus any return fee.
+--   pay:  a freelance rider earns their part less their commission; a route
+--         rider (salaried) earns nothing on the job.
+--   cash: whoever took the fare (at pickup, at the door or on the return)
+--         owes it; with cash on delivery the delivering rider owes it all,
+--         and the client is owed it less the fare and the COD fee.
 declare
-  c public.nvi_config; v_pct int; v_base int; v_c int; v_a int; v_rw uuid; v_cw uuid; v_hw uuid; v_collector uuid;
+  c public.nvi_config; v_base int; v_a int := 0; v_net int := 0; v_cw uuid; v_hw uuid;
+  v_first uuid; v_last uuid; v_s1 int := 0; v_s2 int; v_e1 int := 0; v_e2 int := 0;
+  v_fare_col uuid; v_ret_col uuid; v_lines jsonb := '[]'::jsonb; v_owed int := 0; v_cod boolean;
 begin
   if new.status not in ('Delivered', 'Returned') or old.status is not distinct from new.status
      or new.rider_id is null or new.ledger_at is not null then
     return null;
   end if;
   select * into c from public.nvi_config where id;
+  v_cod := new.status = 'Delivered' and new.cod_amount > 0;
   v_base := new.fare + coalesce(new.return_fee, 0);
-  v_hw := public.nvi_wallet_id('house', null, 'commission');
-  -- Commission is owed by the rider who took the fare in cash: at pickup, at
-  -- the door, or when a returned parcel came back. A parcel moved to another
-  -- rider stays charged to the one who took the money.
-  v_collector := case when new.cod_amount > 0 and new.status = 'Delivered' then new.rider_id
-    else coalesce((select k.rider_id from public.nvi_cash k where k.job_id = new.id and k.kind = 'fare' order by k.id limit 1),
-                  (select k.rider_id from public.nvi_cash k where k.job_id = new.id and k.kind = 'return' order by k.id limit 1),
-                  new.rider_id) end;
-  v_rw := public.nvi_wallet_id('rider', v_collector, null);
-  v_pct := coalesce((select r.commission_pct from public.nvi_riders r where r.id = v_collector), c.commission_pct);
-  v_c := round(v_base * v_pct / 100.0)::int;
-  if new.status = 'Delivered' and new.cod_amount > 0 then
-    v_a := least(new.cod_amount, coalesce(new.cash_collected, new.cod_amount));
-    v_cw := case when new.client_id is not null then public.nvi_wallet_id('client', new.client_id, null) end;
-    if v_cw is null then
-      -- No account behind it (should not happen): the COD stays with NovaX for ops to sort out.
-      v_cw := public.nvi_wallet_id('house', null, 'adjustments');
-    end if;
-    perform public.nvi_post('job:' || new.id || ':Delivered', 'cod_delivered', jsonb_build_array(
-      jsonb_build_object('w', v_rw, 'a', -v_a + new.fare - v_c),
-      jsonb_build_object('w', v_cw, 'b', 'pending', 'a', v_a - new.fare - new.cod_fee),
-      jsonb_build_object('w', v_hw, 'a', v_c + new.cod_fee)), new.id);
+  v_last := new.rider_id;
+  v_first := coalesce(new.pickup_rider,
+                      (select k.rider_id from public.nvi_cash k where k.job_id = new.id and k.kind = 'fare' and not v_cod order by k.id limit 1),
+                      v_last);
+  if v_first <> v_last then
+    v_s1 := round(new.fare * c.relay_pickup_pct / 100.0)::int;
+    v_s2 := v_base - v_s1;
+    v_e1 := public.nvi_rider_earning(v_first, v_s1);
   else
-    perform public.nvi_post('job:' || new.id || ':' || new.status, 'commission', jsonb_build_array(
-      jsonb_build_object('w', v_rw, 'a', -v_c),
-      jsonb_build_object('w', v_hw, 'a', v_c)), new.id);
+    v_s2 := v_base;
   end if;
-  update public.nvi_jobs set commission = v_c, commission_rider = v_collector, ledger_at = now(),
-         ledger_cod = case when new.status = 'Delivered' and new.cod_amount > 0 then v_a end where id = new.id;
+  v_e2 := public.nvi_rider_earning(v_last, v_s2);
+  v_hw := public.nvi_wallet_id('house', null, 'commission');
+
+  if v_cod then
+    v_a := least(new.cod_amount, coalesce(new.cash_collected, new.cod_amount));
+    v_net := v_a - new.fare - new.cod_fee;
+    v_cw := case when new.client_id is not null then public.nvi_wallet_id('client', new.client_id, null)
+                 else public.nvi_wallet_id('house', null, 'adjustments') end;   -- no account behind it: ops sorts it out
+    v_lines := jsonb_build_array(jsonb_build_object('w', public.nvi_wallet_id('rider', v_last, null), 'a', -v_a),
+                                 jsonb_build_object('w', v_cw, 'b', 'pending', 'a', v_net));
+    v_owed := v_a;
+  else
+    v_fare_col := coalesce((select k.rider_id from public.nvi_cash k where k.job_id = new.id and k.kind = 'fare' order by k.id limit 1),
+                           (select k.rider_id from public.nvi_cash k where k.job_id = new.id and k.kind = 'return' order by k.id limit 1), v_last);
+    v_ret_col := coalesce((select k.rider_id from public.nvi_cash k where k.job_id = new.id and k.kind = 'return' order by k.id limit 1), v_last);
+    v_lines := jsonb_build_array(jsonb_build_object('w', public.nvi_wallet_id('rider', v_fare_col, null), 'a', -new.fare));
+    if coalesce(new.return_fee, 0) > 0 then
+      v_lines := v_lines || jsonb_build_array(jsonb_build_object('w', public.nvi_wallet_id('rider', v_ret_col, null), 'a', -new.return_fee));
+    end if;
+    v_owed := v_base;
+  end if;
+  if v_e1 > 0 then v_lines := v_lines || jsonb_build_array(jsonb_build_object('w', public.nvi_wallet_id('rider', v_first, null), 'a', v_e1)); end if;
+  if v_e2 > 0 then v_lines := v_lines || jsonb_build_array(jsonb_build_object('w', public.nvi_wallet_id('rider', v_last, null), 'a', v_e2)); end if;
+  v_lines := v_lines || jsonb_build_array(jsonb_build_object('w', v_hw, 'a', v_owed - v_net - v_e1 - v_e2));
+
+  perform public.nvi_post('job:' || new.id || ':' || new.status, case when v_cod then 'cod_delivered' else 'commission' end, v_lines, new.id);
+  update public.nvi_jobs set commission = v_owed - v_net - v_e1 - v_e2, commission_rider = coalesce(v_fare_col, v_last),
+         pickup_rider = v_first, earn_pickup = case when v_first <> v_last then v_e1 else 0 end, earn_delivery = v_e2,
+         ledger_at = now(), ledger_cod = case when v_cod then v_a end where id = new.id;
   update public.nvi_cash set by_ledger = true where job_id = new.id;
-  if new.cod_amount > 0 and new.status = 'Delivered' then perform public.nvi_release_cod(new.rider_id); end if;
+  if v_cod then perform public.nvi_release_cod(v_last); end if;
   return null;
 end $$;
 drop trigger if exists nvi_jobs_ledger on public.nvi_jobs;
@@ -419,7 +452,7 @@ begin
   v_w := public.nvi_wallet_id('rider', r.id, null);
   return jsonb_build_object(
     'balance', public.nvi_avail(v_w),
-    'commission_pct', coalesce(r.commission_pct, c.commission_pct), 'cash_limit', c.rider_cash_limit, 'min_withdraw', c.min_withdraw,
+    'commission_pct', coalesce(r.commission_pct, c.commission_pct), 'cash_limit', c.rider_cash_limit, 'min_withdraw', c.min_withdraw, 'kind', r.kind,
     'today', jsonb_build_object(
       'jobs', (select count(*) from public.nvi_jobs where rider_id = r.id and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day),
       'fares', (select coalesce(sum(k.amount), 0) from public.nvi_cash k join public.nvi_jobs j on j.id = k.job_id
@@ -427,6 +460,9 @@ begin
              + (select coalesce(sum(fare), 0) from public.nvi_jobs where rider_id = r.id and cod_amount > 0 and status = 'Delivered'
                  and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day),
       'commission', (select coalesce(sum(commission), 0) from public.nvi_jobs where commission_rider = r.id and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day),
+      'earned', (select coalesce(sum(case when pickup_rider = r.id and pickup_rider <> rider_id then earn_pickup else 0 end)
+                                 + sum(case when rider_id = r.id then earn_delivery else 0 end), 0)
+                   from public.nvi_jobs where (rider_id = r.id or pickup_rider = r.id) and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day),
       'cod', (select coalesce(sum(cod_amount), 0) from public.nvi_jobs where rider_id = r.id and status = 'Delivered' and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day)),
     'entries', public.nvi_entries(v_w, 60),
     'deposits', coalesce((select jsonb_agg(jsonb_build_object('id', d.id, 'amount', d.amount, 'confirmed', d.confirmed_amount, 'method', d.method,
@@ -643,7 +679,7 @@ begin
     select p.oid::regprocedure::text from pg_proc p
      where p.pronamespace = 'public'::regnamespace
        and p.proname in ('nvi_wallet_id', 'nvi_post', 'nvi_balance', 'nvi_avail', 'nvi_entries', 'nvi_release_cod', 'nvi_ledger_job',
-                         'nvi_ledger_frozen', 'nvi_ledger_cod_fix', 'nvi_request_payout', 'nvi_client_save', 'nvi_client_me', 'nvi_client_jobs',
+                         'nvi_ledger_frozen', 'nvi_ledger_cod_fix', 'nvi_rider_earning', 'nvi_request_payout', 'nvi_client_save', 'nvi_client_me', 'nvi_client_jobs',
                          'nvi_client_ledger', 'nvi_client_withdraw', 'nvi_rider_wallet', 'nvi_rider_deposit', 'nvi_rider_payout',
                          'nvi_admin_wallets', 'nvi_admin_deposit', 'nvi_admin_payout', 'nvi_admin_adjust', 'nvi_admin_ledger', 'nvi_admin_money_check', 'nvi_admin_set_client')
   loop

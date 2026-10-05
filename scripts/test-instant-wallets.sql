@@ -82,14 +82,16 @@ select pg_temp.is('write off', public.nvi_admin_pay(:'j3', 'writeoff', null, 're
 reset role;
 select pg_temp.eq('written off: client pending', pg_temp.bal('client', :'k', 'pending'), 2742 + 1800 + 700);
 
--- 4. Cash fare picked up by A, parcel moved to B, delivered by B: A owes the commission.
+-- 4. Cash fare picked up by A, parcel moved to B, delivered by B: two legs.
+--    A took Rs 400: owes it, earns 40% (160) less 20% = 128. B earns 240 less 20% = 192. NovaX keeps 80.
 select pg_temp.job('T-MOVE', :'ra', 'sender', 400, 0, null, 'Rider assigned') as j4 \gset
 select public.nvi_settle(:'j4', :'ra', 400, 400, null, 'fare', 'rider');
 update public.nvi_jobs set status = 'Picked up', picked_at = now() where id = :'j4';
 update public.nvi_jobs set rider_id = :'rb' where id = :'j4';
 update public.nvi_jobs set status = 'Delivered', delivered_at = now() where id = :'j4';
-select pg_temp.eq('moved: rider A charged 80', pg_temp.bal('rider', :'ra'), -2794 - 80);
-select pg_temp.eq('moved: rider B not charged', pg_temp.bal('rider', :'rb'), -1840 - 720);
+select pg_temp.eq('moved: rider A owes the cash less his leg', pg_temp.bal('rider', :'ra'), -2794 - 400 + 128);
+select pg_temp.eq('moved: rider B paid for his leg', pg_temp.bal('rider', :'rb'), -1840 - 720 + 192);
+select pg_temp.eq('moved: NovaX keeps 80', (select commission from public.nvi_jobs where id = :'j4'), 80);
 select pg_temp.is('moved: commission rider recorded', (select commission_rider::text from public.nvi_jobs where id = :'j4'), :'ra');
 
 -- 5. Legacy cash only counts jobs the ledger has not booked.
@@ -113,7 +115,7 @@ reset role;
 select pg_temp.eq('partial: client still pending', pg_temp.bal('client', :'k', 'available'), 0);
 select pg_temp.as_user(:'ua');
 set local role authenticated;
-select public.nvi_rider_deposit(1874, 'Bank', 'TEST-IBFT-2', '33333333-3333-4333-8333-333333333333');
+select public.nvi_rider_deposit(2066, 'Bank', 'TEST-IBFT-2', '33333333-3333-4333-8333-333333333333');
 reset role;
 select id as d2 from public.nvi_deposits where req_key = '33333333-3333-4333-8333-333333333333' \gset
 select pg_temp.as_user(:'admin');
@@ -159,7 +161,7 @@ reset role;
 -- 10. Removing a rider: refused while owing, allowed once square.
 select pg_temp.as_user(:'admin');
 set local role authenticated;
-select pg_temp.is('owing rider not removed', public.nvi_admin_set_rider(:'rb', 'Removed')->>'reason', 'rider_owes');
+select pg_temp.is('owing rider not removed (B owes)', public.nvi_admin_set_rider(:'rb', 'Removed')->>'reason', 'rider_owes');
 select pg_temp.is('square rider removed', public.nvi_admin_set_rider(:'ra', 'Removed')->>'ok', 'true');
 reset role;
 
@@ -171,7 +173,94 @@ values ('T-OLD', 'Awaiting confirmation', 24.86, 67.06, 24.81, 67.03, 'Shop 1, T
 select public.nvi_expire_unconfirmed();
 select pg_temp.is('expired', (select status from public.nvi_jobs where id = :'j5'), 'Cancelled');
 
--- 12. The books balance: overall and per movement.
+-- 12. Route rider (on salary): everything goes to NovaX.
+insert into public.nvi_riders (full_name, email, phone, status, auth_user_id, docs_at, docs_checked_at, kind)
+values ('Test Route Rider', 'r@test.invalid', '03000000103', 'Active', gen_random_uuid(), now(), now(), 'route') returning id as rr, auth_user_id as ur \gset
+insert into public.nvi_riders (full_name, email, phone, status, auth_user_id, docs_at, docs_checked_at)
+values ('Test Rider C', 'c@test.invalid', '03000000104', 'Active', gen_random_uuid(), now(), now()) returning id as rc, auth_user_id as uc \gset
+select pg_temp.job('T-ROUTE', :'rr', 'sender', 300, 0, null, 'Rider assigned') as j6 \gset
+select public.nvi_settle(:'j6', :'rr', 300, 300, null, 'fare', 'rider');
+update public.nvi_jobs set status = 'Picked up', picked_at = now(), pickup_rider = :'rr' where id = :'j6';
+update public.nvi_jobs set status = 'Delivered', delivered_at = now() where id = :'j6';
+select pg_temp.eq('route rider owes the whole fare', pg_temp.bal('rider', :'rr'), -300);
+select pg_temp.eq('route rider earns nothing per job', (select earn_delivery from public.nvi_jobs where id = :'j6'), 0);
+
+-- 13. A relay through the rider functions: C picks up (sender pays 300), hands to the route rider.
+select pg_temp.job('T-RELAY', :'rc', 'sender', 300, 0, null, 'Rider assigned') as j7 \gset
+select pg_temp.as_user(:'uc');
+set local role authenticated;
+select pg_temp.is('C picks up', public.nvi_rider_picked(:'j7', 300)->>'ok', 'true');
+reset role;
+select pg_temp.as_user(:'admin');
+set local role authenticated;
+select pg_temp.is('relay to self refused', public.nvi_admin_relay(:'j7', :'rc', null)->>'reason', 'same_rider');
+select pg_temp.is('relay planned', public.nvi_admin_relay(:'j7', :'rr', 'near Teen Talwar')->>'ok', 'true');
+reset role;
+select pg_temp.as_user(:'ur');
+set local role authenticated;
+select pg_temp.eq('route rider sees it coming', jsonb_array_length(public.nvi_rider_feed()->'incoming'), 1);
+select pg_temp.is('no code yet', public.nvi_rider_relay_take(:'j7', '1234')->>'reason', 'code_old');
+reset role;
+select pg_temp.as_user(:'uc');
+set local role authenticated;
+select public.nvi_rider_relay_code(:'j7')->>'code' as code \gset
+reset role;
+select pg_temp.as_user(:'ur');
+set local role authenticated;
+select pg_temp.is('wrong code', public.nvi_rider_relay_take(:'j7', case when :'code' = '0000' then '1111' else '0000' end)->>'reason', 'wrong_code');
+select pg_temp.is('right code', public.nvi_rider_relay_take(:'j7', :'code')->>'ok', 'true');
+select pg_temp.is('second take is the same', public.nvi_rider_relay_take(:'j7', :'code')->>'already', 'true');
+reset role;
+select pg_temp.is('parcel is with the route rider', (select rider_id::text from public.nvi_jobs where id = :'j7'), :'rr');
+select pg_temp.is('handover recorded', (select handover_from::text from public.nvi_jobs where id = :'j7'), :'rc');
+select delivery_pin as pin7 from public.nvi_jobs where id = :'j7' \gset
+select pg_temp.as_user(:'ur');
+set local role authenticated;
+select pg_temp.is('route rider delivers', public.nvi_rider_delivered(:'j7', :'pin7', null, null)->>'ok', 'true');
+reset role;
+-- C took 300: owes it, earns 40% = 120 less 20% = 96. Route rider earns nothing. NovaX keeps 204.
+select pg_temp.eq('relay: C owes the cash less his leg', pg_temp.bal('rider', :'rc'), -300 + 96);
+select pg_temp.eq('relay: route rider unchanged', pg_temp.bal('rider', :'rr'), -300);
+select pg_temp.eq('relay: NovaX keeps 204', (select commission from public.nvi_jobs where id = :'j7'), 204);
+
+-- 14. A COD relay: C picks up, the route rider collects Rs 2,000 at the door (fare 200).
+select pg_temp.job('T-RELAYCOD', :'rc', 'receiver', 200, 2000, :'k', 'Rider assigned') as j8 \gset
+select pg_temp.as_user(:'uc');
+set local role authenticated;
+select public.nvi_rider_picked(:'j8', null);
+reset role;
+select pg_temp.as_user(:'admin');
+set local role authenticated;
+select public.nvi_admin_relay(:'j8', :'rr', null);
+reset role;
+select pg_temp.as_user(:'uc');
+set local role authenticated;
+select public.nvi_rider_relay_code(:'j8')->>'code' as code2 \gset
+reset role;
+select delivery_pin as pin8 from public.nvi_jobs where id = :'j8' \gset
+select pg_temp.as_user(:'ur');
+set local role authenticated;
+select public.nvi_rider_relay_take(:'j8', :'code2');
+select pg_temp.is('COD collected at the door', public.nvi_rider_delivered(:'j8', :'pin8', 2000, null)->>'ok', 'true');
+reset role;
+select pg_temp.eq('relay COD: route rider owes the COD', pg_temp.bal('rider', :'rr'), -300 - 2000);
+select pg_temp.eq('relay COD: C paid 80 less 20% = 64', pg_temp.bal('rider', :'rc'), -204 + 64);
+select pg_temp.eq('relay COD: NovaX keeps 136', (select commission from public.nvi_jobs where id = :'j8'), 136);
+
+-- 15. A refused relay stays with the giving rider.
+select pg_temp.job('T-REFUSE', :'rc', 'sender', 150, 0, null, 'Picked up') as j9 \gset
+select pg_temp.as_user(:'admin');
+set local role authenticated;
+select public.nvi_admin_relay(:'j9', :'rr', null);
+reset role;
+select pg_temp.as_user(:'ur');
+set local role authenticated;
+select pg_temp.is('refuse needs a note', public.nvi_rider_relay_refuse(:'j9', null)->>'reason', 'need_note');
+select pg_temp.is('refused', public.nvi_rider_relay_refuse(:'j9', 'Bike puncture, cannot come')->>'ok', 'true');
+reset role;
+select pg_temp.is('still with C', (select rider_id::text from public.nvi_jobs where id = :'j9'), :'rc');
+
+-- 16. The books balance: overall and per movement.
 select pg_temp.eq('ledger sums to zero', (select coalesce(sum(amount), 0) from public.nvi_ledger), 0);
 select pg_temp.eq('every movement balances', (select count(*) from (select txn_id from public.nvi_ledger group by txn_id having sum(amount) <> 0) x), 0);
 select pg_temp.is('entries cannot be edited', (select 'frozen'), 'frozen');

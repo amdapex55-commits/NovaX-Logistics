@@ -305,6 +305,29 @@ alter table public.nvi_jobs add column if not exists commission_rider uuid;
 -- Cash taken on a job the ledger has booked is settled through the wallet,
 -- not through the old office handover.
 alter table public.nvi_cash add column if not exists by_ledger boolean not null default false;
+-- ── Relays and route riders (5 Oct 2026) ──
+-- freelance: keeps cash fares, pays commission. route: a NovaX rider on salary; everything goes to NovaX.
+alter table public.nvi_riders add column if not exists kind text not null default 'freelance';
+alter table public.nvi_riders drop constraint if exists nvi_riders_kind_check;
+alter table public.nvi_riders add constraint nvi_riders_kind_check check (kind in ('freelance', 'route'));
+alter table public.nvi_riders add column if not exists novax_rider_id uuid;   -- public.riders.id for a route rider
+-- In a relay the pickup rider's part of the fare, before their commission.
+alter table public.nvi_config add column if not exists relay_pickup_pct int not null default 40;
+alter table public.nvi_jobs add column if not exists pickup_rider uuid;
+alter table public.nvi_jobs add column if not exists relay_rider uuid references public.nvi_riders(id);
+alter table public.nvi_jobs add column if not exists relay_state text;
+alter table public.nvi_jobs drop constraint if exists nvi_jobs_relay_state_check;
+alter table public.nvi_jobs add constraint nvi_jobs_relay_state_check check (relay_state is null or relay_state in ('planned', 'at_point', 'done', 'refused'));
+alter table public.nvi_jobs add column if not exists relay_note text;
+alter table public.nvi_jobs add column if not exists relay_code text;
+alter table public.nvi_jobs add column if not exists relay_code_at timestamptz;
+alter table public.nvi_jobs add column if not exists relay_tries int not null default 0;
+alter table public.nvi_jobs add column if not exists handover_from uuid;
+alter table public.nvi_jobs add column if not exists handover_at timestamptz;
+-- What the ledger paid each rider on the job (pickup leg, delivery leg).
+alter table public.nvi_jobs add column if not exists earn_pickup int;
+alter table public.nvi_jobs add column if not exists earn_delivery int;
+create index if not exists nvi_jobs_relay on public.nvi_jobs(relay_rider) where relay_state in ('planned', 'at_point');
 alter table public.nvi_riders add column if not exists commission_pct int;   -- null: nvi_config.commission_pct
 
 -- ═══════════════════ Clients ═══════════════════
@@ -784,6 +807,8 @@ begin
     'delivered_at', j.delivered_at, 'cancelled_at', j.cancelled_at,
     'failed_at', j.failed_at, 'returning_at', j.returning_at, 'returned_at', j.returned_at,
     'fail_reason', j.fail_reason, 'cancel_reason', j.cancel_reason,
+    'handover_at', j.handover_at,
+    'handover_from', case when j.handover_from is not null then (select split_part(f.full_name, ' ', 1) from public.nvi_riders f where f.id = j.handover_from) end,
     'return_due', case when j.status = 'Returning' then public.nvi_due_now(j) end,
     'riders_online', case when j.status = 'Booked' then public.nvi_riders_free() end,
     'support', c.support_phone, 'track_days', c.track_days);
@@ -1033,7 +1058,14 @@ returns jsonb language sql stable security definer set search_path = '' as $$
       'receiver_name', j.receiver_name, 'receiver_phone', j.receiver_phone,
       'rider_note', j.rider_note, 'pin_tries', j.pin_tries, 'problem_note', j.problem_note,
       'due_now', public.nvi_due_now(j), 'return_fee', j.return_fee, 'attempts', j.attempts,
-      'fail_reason', j.fail_reason, 'fail_note', j.fail_note, 'failed_at', j.failed_at) else '{}'::jsonb end
+      'fail_reason', j.fail_reason, 'fail_note', j.fail_note, 'failed_at', j.failed_at,
+      -- A relay this rider is handing on: who to, and whether a code is live.
+      'relay', case when j.relay_state in ('planned', 'at_point', 'refused') and j.relay_rider is not null then
+        (select jsonb_build_object('state', j.relay_state, 'note', j.relay_note, 'name', b.full_name, 'phone', b.phone,
+                'code_live', j.relay_code is not null and j.relay_code_at > now() - interval '10 minutes', 'locked', j.relay_tries >= 5)
+           from public.nvi_riders b where b.id = j.relay_rider) end,
+      'handover_from', case when j.handover_from is not null then (select split_part(f.full_name, ' ', 1) from public.nvi_riders f where f.id = j.handover_from) end)
+      else '{}'::jsonb end
 $$;
 
 -- Everything the rider screen shows, in one call. Phone numbers only come
@@ -1049,7 +1081,13 @@ begin
   select * into c from public.nvi_config where id;
   select * into a from public.nvi_jobs where rider_id = r.id and status in ('Rider assigned', 'Picked up', 'Failed delivery', 'Returning');
   return jsonb_build_object(
-    'rider', jsonb_build_object('full_name', r.full_name, 'online', r.online),
+    'rider', jsonb_build_object('full_name', r.full_name, 'online', r.online, 'kind', r.kind),
+    -- Parcels another rider is bringing to this one.
+    'incoming', coalesce((select jsonb_agg(jsonb_build_object('id', j.id, 'code', j.code, 'status', j.status, 'state', j.relay_state,
+        'note', j.relay_note, 'item', j.item, 'to', j.drop_address, 'cod', j.cod_amount, 'fare', j.fare, 'payer', j.payer,
+        'from_name', g.full_name, 'from_phone', g.phone, 'locked', j.relay_tries >= 5) order by j.created_at)
+      from public.nvi_jobs j join public.nvi_riders g on g.id = j.rider_id
+     where j.relay_rider = r.id and j.relay_state in ('planned', 'at_point') and j.status in ('Rider assigned', 'Picked up')), '[]'::jsonb),
     'hours_open', public.nvi_hours_open(c), 'open_hour', c.open_hour, 'close_hour', c.close_hour,
     'support', c.support_phone,
     'active', case when a.id is null then null else public.nvi_rider_job_json(a, true) end,
@@ -1064,13 +1102,11 @@ begin
       'fares', (select coalesce(sum(fare), 0) from public.nvi_jobs where rider_id = r.id and status = 'Delivered'
                 and (delivered_at at time zone 'Asia/Karachi')::date = v_day),
       'cash_in_hand', (select coalesce(sum(amount), 0) from public.nvi_cash where rider_id = r.id and handover_id is null and not by_ledger),
-      -- Cash fares this rider took, plus fares out of COD they delivered, less the commission charged to them.
-      'earned', (select coalesce(sum(k.amount), 0) from public.nvi_cash k join public.nvi_jobs j on j.id = k.job_id
-                  where k.rider_id = r.id and j.cod_amount = 0 and k.by_ledger and (j.ledger_at at time zone 'Asia/Karachi')::date = v_day)
-              + (select coalesce(sum(fare), 0) from public.nvi_jobs where rider_id = r.id and cod_amount > 0 and status = 'Delivered'
-                  and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day)
-              - (select coalesce(sum(commission), 0) from public.nvi_jobs where commission_rider = r.id
-                  and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day)),
+      -- What the ledger paid this rider today: their legs, less commission (route riders: nothing per job).
+      'earned', (select coalesce(sum(case when pickup_rider = r.id and pickup_rider <> rider_id then earn_pickup else 0 end)
+                                 + sum(case when rider_id = r.id then earn_delivery else 0 end), 0)
+                   from public.nvi_jobs where (rider_id = r.id or pickup_rider = r.id) and ledger_at is not null
+                    and (ledger_at at time zone 'Asia/Karachi')::date = v_day)),
     'wallet', public.nvi_avail(public.nvi_wallet_id('rider', r.id, null)),
     -- What this rider closed today, newest first: their own record of the day.
     'recent', coalesce((select jsonb_agg(jsonb_build_object('code', j.code, 'status', j.status, 'to', j.drop_address,
@@ -1170,7 +1206,7 @@ begin
   end if;
   v_why := public.nvi_settle(j.id, r.id, v_due, p_cash, null, 'fare', 'rider');
   if v_why is not null then return jsonb_build_object('ok', false, 'reason', v_why, 'due', v_due); end if;
-  update public.nvi_jobs set status = 'Picked up', picked_at = now() where id = j.id;
+  update public.nvi_jobs set status = 'Picked up', picked_at = now(), pickup_rider = r.id where id = j.id;
   perform public.nvi_event(j.id, 'rider', 'picked_up', case when v_due > 0 then 'Rs ' || v_due || ' cash received from the sender' end);
   return jsonb_build_object('ok', true);
 end $$;
@@ -1299,6 +1335,8 @@ returns jsonb language sql stable security definer set search_path = '' as $$
   select to_jsonb(j) - 'track_token' - 'manage_token' - 'booked_by' - 'ip' - 'device'
     || jsonb_build_object('km', round(j.distance_m / 1000.0, 1), 'token', j.track_token,
          'rider_name', (select r.full_name from public.nvi_riders r where r.id = j.rider_id),
+         'relay_name', (select r.full_name from public.nvi_riders r where r.id = j.relay_rider),
+         'handover_name', (select r.full_name from public.nvi_riders r where r.id = j.handover_from),
          'due_now', public.nvi_due_now(j),
          -- null: no cash taken. true: all of it is with the office.
          'cash_handed', (select bool_and(k.handover_id is not null) from public.nvi_cash k where k.job_id = j.id),
@@ -1325,7 +1363,7 @@ begin
                          where j.id in (select id from public.nvi_jobs where status in ('Delivered', 'Returned', 'Cancelled')
                                          order by (pay_state = 'Disputed') desc, coalesce(delivered_at, returned_at, cancelled_at) desc limit 60)), '[]'::jsonb),
     'riders', coalesce((select jsonb_agg(jsonb_build_object(
-        'id', r.id, 'full_name', r.full_name, 'email', r.email, 'phone', r.phone, 'bike_plate', r.bike_plate,
+        'id', r.id, 'full_name', r.full_name, 'email', r.email, 'phone', r.phone, 'bike_plate', r.bike_plate, 'kind', r.kind,
         'status', r.status, 'online', public.nvi_rider_fresh(r),
         -- The switch is on but the app has stopped answering.
         'stale', r.status = 'Active' and r.online and not public.nvi_rider_fresh(r),
@@ -1354,6 +1392,143 @@ begin
         'fare_fair', f.fare_fair, 'note', f.note, 'fare', f.fare, 'km', f.km,
         'code', (select j.code from public.nvi_jobs j where j.id = f.job_id)) order by f.at desc)
       from (select * from public.nvi_feedback order by at desc limit 40) f), '[]'::jsonb));
+end $$;
+
+-- ═══════════════════ Relays: two riders, one parcel ═══════════════════
+-- A local rider picks the parcel up and hands it to a route rider who is
+-- passing the delivery area; the route rider delivers. Ops plans the relay
+-- (nvi_admin_relay). The parcel changes hands only when the receiving rider
+-- types the 4-digit code shown on the giving rider's phone (10 minutes,
+-- five tries). Riders agree the meeting spot by phone.
+create or replace function public.nvi_admin_relay(p_job uuid, p_rider uuid, p_note text default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare j public.nvi_jobs; b public.nvi_riders;
+begin
+  perform public.nvi_require_admin();
+  select * into j from public.nvi_jobs where id = p_job for update;
+  if j.id is null then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
+  if p_rider is null then   -- call the relay off
+    if j.relay_state in ('planned', 'at_point', 'refused') then
+      update public.nvi_jobs set relay_state = null, relay_rider = null, relay_code = null, relay_code_at = null, relay_tries = 0 where id = j.id;
+      perform public.nvi_event(j.id, 'admin', 'relay_cancelled', p_note);
+    end if;
+    return jsonb_build_object('ok', true);
+  end if;
+  if j.status not in ('Rider assigned', 'Picked up') or j.rider_id is null then return jsonb_build_object('ok', false, 'reason', 'relay_step'); end if;
+  if p_rider = j.rider_id then return jsonb_build_object('ok', false, 'reason', 'same_rider'); end if;
+  select * into b from public.nvi_riders where id = p_rider;
+  if b.id is null or b.status <> 'Active' then return jsonb_build_object('ok', false, 'reason', 'rider_inactive'); end if;
+  if b.docs_checked_at is null then return jsonb_build_object('ok', false, 'reason', 'docs_unchecked'); end if;
+  if exists (select 1 from public.nvi_jobs where rider_id = b.id and status in ('Rider assigned', 'Picked up', 'Failed delivery', 'Returning')) then
+    return jsonb_build_object('ok', false, 'reason', 'rider_busy');
+  end if;
+  if exists (select 1 from public.nvi_jobs where relay_rider = b.id and relay_state in ('planned', 'at_point') and id <> j.id
+               and status in ('Rider assigned', 'Picked up')) then
+    return jsonb_build_object('ok', false, 'reason', 'relay_busy');
+  end if;
+  update public.nvi_jobs set relay_rider = b.id, relay_state = 'planned', relay_note = nullif(left(btrim(coalesce(p_note, '')), 160), ''),
+         relay_code = null, relay_code_at = null, relay_tries = 0 where id = j.id;
+  perform public.nvi_event(j.id, 'admin', 'relay_planned', b.full_name || coalesce(': ' || nullif(btrim(p_note), ''), ''));
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- The giving rider: "I am at the handover spot".
+create or replace function public.nvi_rider_relay_here(p_job uuid)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare r public.nvi_riders := public.nvi_require_rider(); j public.nvi_jobs;
+begin
+  select * into j from public.nvi_jobs where id = p_job and rider_id = r.id for update;
+  if j.id is null or j.relay_state not in ('planned', 'at_point') then return jsonb_build_object('ok', false, 'reason', 'no_relay'); end if;
+  if j.status <> 'Picked up' then return jsonb_build_object('ok', false, 'reason', 'relay_step'); end if;
+  update public.nvi_jobs set relay_state = 'at_point' where id = j.id;
+  perform public.nvi_event(j.id, 'rider', 'relay_at_point', null);
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- The giving rider shows this code to the receiving rider. A new press makes a new code.
+create or replace function public.nvi_rider_relay_code(p_job uuid)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare r public.nvi_riders := public.nvi_require_rider(); j public.nvi_jobs; v_code text;
+begin
+  select * into j from public.nvi_jobs where id = p_job and rider_id = r.id for update;
+  if j.id is null or j.relay_state not in ('planned', 'at_point') then return jsonb_build_object('ok', false, 'reason', 'no_relay'); end if;
+  if j.status <> 'Picked up' then return jsonb_build_object('ok', false, 'reason', 'relay_step'); end if;
+  if j.relay_tries >= 5 then return jsonb_build_object('ok', false, 'reason', 'relay_locked'); end if;
+  v_code := lpad((floor(random() * 10000))::int::text, 4, '0');
+  update public.nvi_jobs set relay_code = v_code, relay_code_at = now(), relay_state = 'at_point' where id = j.id;
+  return jsonb_build_object('ok', true, 'code', v_code, 'until', now() + interval '10 minutes');
+end $$;
+
+-- The receiving rider types the code: the parcel, the job and its cash duty are now theirs.
+create or replace function public.nvi_rider_relay_take(p_job uuid, p_code text)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare r public.nvi_riders := public.nvi_require_rider(); j public.nvi_jobs; v_from uuid;
+begin
+  select * into j from public.nvi_jobs where id = p_job for update;
+  if j.id is null or j.relay_rider is distinct from r.id then return jsonb_build_object('ok', false, 'reason', 'no_relay'); end if;
+  if j.relay_state = 'done' and j.rider_id = r.id then return jsonb_build_object('ok', true, 'already', true); end if;
+  if j.relay_state not in ('planned', 'at_point') or j.status <> 'Picked up' then return jsonb_build_object('ok', false, 'reason', 'relay_step'); end if;
+  if j.relay_tries >= 5 then return jsonb_build_object('ok', false, 'reason', 'relay_locked'); end if;
+  if j.relay_code is null or j.relay_code_at < now() - interval '10 minutes' then return jsonb_build_object('ok', false, 'reason', 'code_old'); end if;
+  if j.relay_code <> regexp_replace(coalesce(p_code, ''), '[^0-9]', '', 'g') then
+    update public.nvi_jobs set relay_tries = relay_tries + 1 where id = j.id;
+    return jsonb_build_object('ok', false, 'reason', 'wrong_code', 'left', greatest(0, 4 - j.relay_tries));
+  end if;
+  if exists (select 1 from public.nvi_jobs where rider_id = r.id and id <> j.id and status in ('Rider assigned', 'Picked up', 'Failed delivery', 'Returning')) then
+    return jsonb_build_object('ok', false, 'reason', 'busy');
+  end if;
+  v_from := j.rider_id;
+  update public.nvi_jobs set rider_id = r.id, handover_from = v_from, handover_at = now(), relay_state = 'done',
+         relay_code = null, pickup_rider = coalesce(pickup_rider, v_from) where id = j.id;
+  perform public.nvi_event(j.id, 'rider', 'handed_over', (select full_name from public.nvi_riders where id = v_from) || ' to ' || r.full_name);
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- The receiving rider will not take it (wrong or damaged parcel, cannot come).
+create or replace function public.nvi_rider_relay_refuse(p_job uuid, p_note text)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare r public.nvi_riders := public.nvi_require_rider(); j public.nvi_jobs;
+begin
+  if length(btrim(coalesce(p_note, ''))) < 3 then return jsonb_build_object('ok', false, 'reason', 'need_note'); end if;
+  select * into j from public.nvi_jobs where id = p_job and relay_rider = r.id for update;
+  if j.id is null or j.relay_state not in ('planned', 'at_point') then return jsonb_build_object('ok', false, 'reason', 'no_relay'); end if;
+  update public.nvi_jobs set relay_state = 'refused', relay_code = null, relay_note = left(btrim(p_note), 160) where id = j.id;
+  perform public.nvi_event(j.id, 'rider', 'relay_refused', btrim(p_note));
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- NovaX route riders (on salary) work Nova Instant from the same login. Ops
+-- links one; NovaX already holds their papers, so no documents are asked.
+create or replace function public.nvi_admin_route_candidates()
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+begin
+  perform public.nvi_require_admin();
+  return coalesce((select jsonb_agg(jsonb_build_object('id', x.id, 'name', x.name, 'phone', x.phone, 'branch', x.branch) order by x.name)
+    from public.riders x
+   where exists (select 1 from public.profiles p where p.rider_id = x.id and p.role::text = 'rider' and lower(coalesce(p.status::text, 'active')) = 'active')
+     and not exists (select 1 from public.nvi_riders n where n.novax_rider_id = x.id and n.status <> 'Removed')), '[]'::jsonb);
+end $$;
+
+create or replace function public.nvi_admin_link_route_rider(p_novax_rider uuid)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare x public.riders; v_uid uuid; v_email text; n public.nvi_riders;
+begin
+  perform public.nvi_require_admin();
+  select * into x from public.riders where id = p_novax_rider;
+  if x.id is null then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
+  select p.id, p.email into v_uid, v_email from public.profiles p where p.rider_id = x.id and p.role::text = 'rider' limit 1;
+  if v_uid is null then return jsonb_build_object('ok', false, 'reason', 'no_login'); end if;
+  select * into n from public.nvi_riders where auth_user_id = v_uid;
+  if n.id is not null then
+    update public.nvi_riders set kind = 'route', novax_rider_id = x.id, status = 'Active',
+           docs_at = coalesce(docs_at, now()), docs_checked_at = coalesce(docs_checked_at, now()), docs_checked_by = coalesce(docs_checked_by, (select auth.uid()))
+     where id = n.id;
+  else
+    insert into public.nvi_riders (full_name, email, phone, status, auth_user_id, kind, novax_rider_id, joined_at, docs_at, docs_checked_at, docs_checked_by)
+    values (coalesce(nullif(btrim(x.name), ''), 'NovaX rider'), coalesce(lower(v_email), ''), coalesce(public.nvi_pk_phone(x.phone), coalesce(x.phone, '')),
+            'Active', v_uid, 'route', x.id, now(), now(), now(), (select auth.uid()));
+  end if;
+  return jsonb_build_object('ok', true);
 end $$;
 
 -- Ops search: booking number, either phone (whole or part), a name, an
@@ -1505,7 +1680,7 @@ begin
   if p_status = 'Picked up' and j.status = 'Rider assigned' then
     v_why := public.nvi_settle(j.id, j.rider_id, v_due, p_cash, p_note, 'fare', 'admin');
     if v_why is not null then return jsonb_build_object('ok', false, 'reason', v_why, 'due', v_due); end if;
-    update public.nvi_jobs set status = 'Picked up', picked_at = now() where id = j.id;
+    update public.nvi_jobs set status = 'Picked up', picked_at = now(), pickup_rider = j.rider_id where id = j.id;
   elsif p_status = 'Picked up' and j.status = 'Failed delivery' then
     update public.nvi_jobs set status = 'Picked up', attempts = attempts + 1, pin_tries = 0 where id = j.id;
   elsif p_status = 'Delivered' and j.status in ('Picked up', 'Failed delivery') then
@@ -1812,7 +1987,9 @@ begin
                          'nvi_client_save', 'nvi_client_me', 'nvi_client_jobs', 'nvi_client_ledger', 'nvi_client_withdraw',
                          'nvi_rider_wallet', 'nvi_rider_deposit', 'nvi_rider_payout',
                          'nvi_admin_wallets', 'nvi_admin_deposit', 'nvi_admin_payout', 'nvi_admin_adjust', 'nvi_admin_ledger',
-                         'nvi_admin_money_check', 'nvi_admin_search', 'nvi_admin_set_client')
+                         'nvi_admin_money_check', 'nvi_admin_search', 'nvi_admin_set_client',
+                         'nvi_admin_relay', 'nvi_rider_relay_here', 'nvi_rider_relay_code', 'nvi_rider_relay_take', 'nvi_rider_relay_refuse',
+                         'nvi_admin_route_candidates', 'nvi_admin_link_route_rider')
   loop
     execute 'grant execute on function ' || f || ' to authenticated';
   end loop;
