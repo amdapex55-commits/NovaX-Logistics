@@ -72,7 +72,7 @@ body[data-view="track"]{--peek:24vh}
 .mapwrap{position:fixed;top:var(--hdr);left:0;right:0;height:calc(var(--peek) + 26px);z-index:1;background:#e8ede9;transition:height .26s cubic-bezier(.2,.8,.2,1)}
 #map{position:absolute;inset:0}
 .leaflet-container{font:inherit;background:#e8ede9}
-.leaflet-control-attribution{font-size:10px}
+.leaflet-control-attribution{font-size:12px;line-height:1.5}
 .leaflet-top.leaflet-left{top:8px;left:6px}
 .pm{width:32px;height:32px;display:grid;place-items:center;font:800 13px/1 var(--display);border:2.5px solid #fff;box-shadow:0 6px 16px rgba(11,42,32,.35)}
 .pm.a{background:var(--emerald);color:var(--emerald-ink);border-radius:50%}
@@ -472,7 +472,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     var tidy=function(t){ return String(t||"").replace(/\b([a-z])([A-Z]{2,})\b/g,function(m,a,b){ return a.toUpperCase()+b.toLowerCase(); }); };
     var name=tidy(latin(pr.name)), street=tidy(latin(pr.street)), hn=latin(pr.housenumber);
     var area=tidy(latin(pr.locality)||latin(pr.district)||latin(pr.suburb)||"");
-    var main=name||[hn,street].filter(Boolean).join(" ")||area||"Pinned spot";
+    /* English first, so riders can read it; a place known only by its Urdu name keeps that name. */
+    var main=name||[hn,street].filter(Boolean).join(" ")||area||String(pr.name||pr.street||pr.locality||pr.district||"").trim()||"Pinned spot";
     var rest=[name?street:"", area&&area!==main?area:""].filter(Boolean).join(", ");
     return { main:main, rest:rest, full:[main,rest].filter(Boolean).join(", ") };
   }
@@ -677,7 +678,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   function openHist(){
     var body=function(){ var a=hist(); return (a.length?'<div class="card hcard" style="padding:6px 14px">'+a.map(histRow).join("")+'</div>':'<p class="empty">No deliveries on this phone yet.</p>')+
       '<p class="fine">These are the deliveries booked or opened on this phone. Each one has its own tracking link. Booked on another phone? Open Help and find it with the booking number.</p>'; };
-    var p=openPanel("My deliveries",'<div id="histBody">'+body()+'</div>');
+    var p=openPanel("My deliveries on this phone",'<div id="histBody">'+body()+'</div>');
     histRefresh(function(){ var hb=panel&&panel.querySelector("#histBody"); if(hb) hb.innerHTML=body(); });
   }
   $("histBtn").addEventListener("click",openHist);
@@ -741,7 +742,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   function maxKg(){ return Number(S.status&&S.status.max_kg)||10; }
   function maxVal(){ return Number(S.status&&S.status.max_value)||0; }
   function weights(){ var m=maxKg(); return m>5?["Up to 1 kg","1 to 5 kg","5 to "+m+" kg"]:["Up to 1 kg","1 to "+m+" kg"]; }
-  function canBookNow(){ var s=S.status; return !s||((s.open||s.preview)&&(s.hours_open||s.preview)); }
+  function canBookNow(){ var s=S.status; return !s||((s.open||s.preview)&&(s.hours_open||s.preview)&&(s.preview||s.riders_on!==0)); }
   function head(n,title,lead){
     return '<div class="steps">'+(n>1?'<button class="back" type="button" data-back aria-label="Back to the previous step">'+IC.back+'</button>':'')+
       '<div class="bars" aria-hidden="true">'+[1,2,3,4].map(function(i){ return '<i class="'+(i<=n?"on":"")+'"></i>'; }).join("")+'</div><span class="stepn">Step '+n+' of 4</span></div>'+
@@ -756,10 +757,13 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     if(!s.open&&!s.preview) return '<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>Booking is paused for a moment. You can still check the fare for your trip.</span></div>';
     if(s.preview) return '<div class="note info" style="margin-top:12px">'+IC.info+'<span>Public booking is switched off on the ops board. You can still book because you are signed in as a NovaX admin.</span></div>';
     if(!s.hours_open) return '<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>Riders are on from '+hourLabel(s.open_hour)+' to '+hourLabel(s.close_hour)+'. You can check a fare now and book when they are back.</span></div>';
+    if(s.riders_on===0) return '<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>No rider is on duty right now. You can check a fare now and book as soon as one comes online.</span></div>';
     return "";
   }
   function step1(){
     var h='<h1 id="stepTitle" tabindex="-1">Send a parcel across Karachi</h1>'+(S.p&&S.d?'<div style="height:12px"></div>':'<p class="lead">Door-to-door delivery. Upfront fare. No account needed.</p>')+
+      /* Said before any typing: paused, out of hours or no rider on duty. */
+      notice().replace('margin-top:12px','margin:0 0 12px')+
       '<div class="route">'+
         '<button class="loc'+(S.p?"":" empty")+'" type="button" data-pick="p"><span class="dot" aria-hidden="true"></span><span><small>Pickup</small><b>'+esc(S.p?S.p.label:"Where should we pick it up?")+'</b></span>'+IC.chev+'</button>'+
         '<button class="loc'+(S.d?"":" empty")+'" type="button" data-pick="d"><span class="sq" aria-hidden="true"></span><span><small>Delivery</small><b>'+esc(S.d?S.d.label:"Where is it going?")+'</b></span>'+IC.chev+'</button>'+
@@ -775,12 +779,11 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         if(!est) h+=fbGiven("fare")?'':'<button class="linkish fbask" type="button" data-fb="fare">Does this fare feel fair? Tell NovaX</button>';
         var s=S.status, n=s?Number(s.riders_online||0):0;
         /* Said only when it is true. */
-        if(!est&&s&&(s.open||s.preview)) h+='<p class="avail'+(n>0?"":" none")+'"><i aria-hidden="true"></i>'+(n>0?(n===1?"1 rider is":n+" riders are")+" online now.":"No rider is online right now. Your booking waits for the next one.")+'</p>';
+        if(!est&&s&&(s.open||s.preview)) h+='<p class="avail'+(n>0?"":" none")+'"><i aria-hidden="true"></i>'+(n>0?(n===1?"1 rider is":n+" riders are")+" online now.":"All riders are on a delivery. Your booking goes to the next free one.")+'</p>';
       }
       else h+='<div class="note bad" style="margin-top:12px">'+IC.info+'<span>'+esc(S.quoteErr||"That trip cannot be priced.")+'</span></div>';
     }
     var est2=S.quote&&S.quote.bookable===false;
-    h+=notice();
     if(!(S.p&&S.d)) h+=histCard();
     /* One primary action at every moment, never a dead button. */
     var lab = !S.p?"Set the pickup":!S.d?"Set the delivery":S.quoting?"Working out the fare…":est2?"Measure the road again":(!S.quote&&S.quoteErr)?"Try again":"Continue";
@@ -843,7 +846,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         '<p style="margin:0">The receiver gets a tracking link with a delivery PIN. The rider hands over only against that PIN.</p></section>'+
       '<label class="agree" id="agreeBox" for="agree"><input type="checkbox" id="agree" aria-labelledby="agreeTxt"'+(S.agree?" checked":"")+'><span id="agreeTxt">The parcel weighs '+maxKg()+' kg or less'+(maxVal()?", is worth "+money(maxVal())+" or less":"")+', and holds nothing on the <button class="linkish" type="button" data-banned style="min-height:0;display:inline;font-size:inherit">not-allowed list</button>. I agree to the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</span></label>'+
       '<div id="capBox"></div>'+
-      cta(S.busy?'<span class="spin" aria-hidden="true"></span> Booking…':canBookNow()?"Book rider · "+esc(money(q.fare)):(s.open||s.preview)?"Riders are back at "+hourLabel(s.open_hour):"Booking is paused", S.busy||!canBookNow());
+      cta(S.busy?'<span class="spin" aria-hidden="true"></span> Booking…':canBookNow()?"Book delivery · "+esc(money(q.fare)):!(s.open||s.preview)?"Booking is paused":!s.hours_open?"Riders are back at "+hourLabel(s.open_hour):"No rider on duty right now", S.busy||!canBookNow());
   }
   function render(focusTitle){
     if(document.body.getAttribute("data-view")!=="book") return;
@@ -903,7 +906,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     try{ S.cap.id=window.turnstile.render("#capBox",{ sitekey:S.cap.key, callback:function(t){ S.cap.token=t; }, "expired-callback":function(){ S.cap.token=""; }, "error-callback":function(){ S.cap.token=""; } }); }catch(e){}
   }
 
-  var BOOK_SAY={ not_open:"Booking is paused for a moment. Try again shortly, or call NovaX.", closed_now:"Riders are off right now. Booking opens again in the morning.",
+  var BOOK_SAY={ not_open:"Booking is paused for a moment. Try again shortly, or call NovaX.", no_rider:"No rider is on duty right now. Try again in a little while, or call NovaX.", closed_now:"Riders are off right now. Booking opens again in the morning.",
     pickup_address:["pDet",3,"Add the house or shop number and a landmark for the pickup."], drop_address:["dDet",3,"Add the house or flat number and a landmark for the delivery."],
     sender_name:["sName",3,"Add the sender's name."], receiver_name:["rName",3,"Add the receiver's name."],
     sender_phone:["sPhone",3,"The sender's mobile number is not valid."], receiver_phone:["rPhone",3,"The receiver's mobile number is not valid."],
@@ -1072,6 +1075,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         '<div class="fld"><label class="lbl" for="fPhone">Sender\'s or receiver\'s mobile</label><input class="inp" id="fPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="03XX XXXXXXX"></div>'+
         '<div class="fld"><button class="btn btn-dark sm wide" type="submit" id="fBtn">Find my booking</button></div><p class="fine" id="fMsg" role="alert" hidden style="color:var(--red-ink)"></p></form></section>'+
       '<section class="card"><p class="eyebrow">Your opinion</p><p style="margin:0 0 12px;color:var(--ink-2);font-size:15px">Three short questions. They go straight to the NovaX team.</p><button class="btn btn-plain sm wide" type="button" data-fb="help">Give feedback</button></section>'+
+      '<section class="card"><p class="eyebrow">Saved on this phone</p><p style="margin:0 0 12px;color:var(--ink-2);font-size:15px">Recent places, your details and your bookings are kept on this phone only.</p><button class="btn btn-plain sm wide" type="button" id="clearSaved">Clear saved details</button></section>'+
       '<section class="card"><p class="eyebrow">Sending something?</p><button class="linkish" type="button" data-banned2>'+IC.info+'What cannot be sent</button></section>');
     p.querySelector("#findForm").addEventListener("submit",function(e){
       e.preventDefault();
@@ -1088,6 +1092,14 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         /* The help panel's history entry becomes the tracking page's. */
         closePanelDom(); S.ov=false; try{ history.replaceState(null,"",selfUrl(r.data.token)); }catch(e2){} startTrack(r.data.token,false);
       });
+    });
+    p.querySelector("#clearSaved").addEventListener("click",function(){
+      var b=this;
+      /* Two presses: it also forgets the links that let this phone cancel a booking. */
+      if(b.dataset.sure!=="1"){ b.dataset.sure="1"; b.textContent="Press again: also forgets your booking links"; return; }
+      ["nvi_places","nvi_me","nvi_rcp","nvi_hist","nvi_mine","nvi_last","nvi_fb"].forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
+      try{ sessionStorage.removeItem("nvi_draft"); }catch(e){}
+      b.disabled=true; b.textContent="Cleared from this phone"; paintHistBtn(); say("Saved details cleared from this phone.");
     });
     p.querySelector("[data-banned2]").addEventListener("click",function(){ openPanel("What cannot be sent",'<ul class="ban">'+BANNED.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join("")+'</ul>'); });
   });

@@ -376,7 +376,14 @@ end $$;
 -- on in a closed app does not count.
 create or replace function public.nvi_rider_fresh(r public.nvi_riders)
 returns boolean language sql stable set search_path = '' as $$
-  select (r).status = 'Active' and (r).online and (r).last_seen is not null and (r).last_seen > now() - interval '60 seconds'
+  select (r).status = 'Active' and (r).online and (r).docs_checked_at is not null
+     and (r).last_seen is not null and (r).last_seen > now() - interval '60 seconds'
+$$;
+
+-- Riders on duty this minute, busy or not. None on duty: no new bookings.
+create or replace function public.nvi_riders_on()
+returns int language sql stable security definer set search_path = '' as $$
+  select count(*)::int from public.nvi_riders r where public.nvi_rider_fresh(r)
 $$;
 
 -- Riders who could take a job this minute.
@@ -399,7 +406,7 @@ begin
     'hours_open', public.nvi_hours_open(c),
     'open_hour', c.open_hour, 'close_hour', c.close_hour,
     'rate_per_km', c.rate_per_km, 'min_fare', c.min_fare, 'mapbox', c.mapbox_token,
-    'riders_online', public.nvi_riders_free(),
+    'riders_online', public.nvi_riders_free(), 'riders_on', public.nvi_riders_on(),
     'confirm_first', c.confirm_first, 'return_fee_pct', c.return_fee_pct,
     'max_kg', c.max_kg, 'max_value', c.max_value,
     'support', c.support_phone, 'terms', c.terms_version, 'track_days', c.track_days,
@@ -570,6 +577,9 @@ begin
   end if;
   if not public.nvi_hours_open(c) and not v_admin then
     return jsonb_build_object('ok', false, 'reason', 'closed_now');
+  end if;
+  if not v_admin and public.nvi_riders_on() = 0 then
+    return jsonb_build_object('ok', false, 'reason', 'no_rider');
   end if;
   select * into q from public.nvi_quotes where id = p_quote for update;
   if found and q.job_id is not null then
@@ -946,7 +956,7 @@ begin
     'hours_open', public.nvi_hours_open(c), 'open_hour', c.open_hour, 'close_hour', c.close_hour,
     'support', c.support_phone,
     'active', case when a.id is null then null else public.nvi_rider_job_json(a, true) end,
-    'open', case when a.id is null and r.online then
+    'open', case when a.id is null and r.online and r.docs_checked_at is not null then
       coalesce((select jsonb_agg(public.nvi_rider_job_json(j, false) order by j.created_at)
                   from public.nvi_jobs j
                  where j.id in (select id from public.nvi_jobs where status = 'Booked' and rider_id is null
@@ -978,6 +988,10 @@ begin
   if coalesce(p_on, false) and r.docs_at is null then
     return jsonb_build_object('ok', false, 'reason', 'docs', 'online', false);
   end if;
+  -- Sent is not enough: NovaX checks the CNIC and the bill first.
+  if coalesce(p_on, false) and r.docs_checked_at is null then
+    return jsonb_build_object('ok', false, 'reason', 'docs_unchecked', 'online', false);
+  end if;
   update public.nvi_riders set online = coalesce(p_on, false), last_seen = now() where id = r.id;
   return jsonb_build_object('ok', true, 'online', coalesce(p_on, false));
 end $$;
@@ -991,6 +1005,7 @@ begin
     return jsonb_build_object('ok', true, 'already', true);
   end if;
   if not r.online then return jsonb_build_object('ok', false, 'reason', 'offline'); end if;
+  if r.docs_checked_at is null then return jsonb_build_object('ok', false, 'reason', 'docs_unchecked'); end if;
   if exists (select 1 from public.nvi_jobs where rider_id = r.id and status in ('Rider assigned', 'Picked up', 'Failed delivery', 'Returning')) then
     return jsonb_build_object('ok', false, 'reason', 'busy');
   end if;
@@ -1280,6 +1295,7 @@ begin
   if p_rider = j.rider_id then return jsonb_build_object('ok', true, 'already', true); end if;
   select * into r from public.nvi_riders where id = p_rider;
   if r.id is null or r.status <> 'Active' then return jsonb_build_object('ok', false, 'reason', 'rider_inactive'); end if;
+  if r.docs_checked_at is null then return jsonb_build_object('ok', false, 'reason', 'docs_unchecked'); end if;
   if exists (select 1 from public.nvi_jobs where rider_id = r.id and status in ('Rider assigned', 'Picked up', 'Failed delivery', 'Returning') and id <> j.id) then
     return jsonb_build_object('ok', false, 'reason', 'rider_busy');
   end if;

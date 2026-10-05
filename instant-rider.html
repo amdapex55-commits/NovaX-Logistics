@@ -287,6 +287,8 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
         $("whoName").textContent=r.full_name;
         /* First time: CNIC photo, home bill photo and an emergency contact, before any job. */
         if(!r.docs) return renderDocs();
+        /* Sent is not enough: NovaX checks them before the first job. */
+        if(!r.docs_checked) return renderChecking();
         return start();
       }
       renderNotRider();
@@ -380,6 +382,17 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       if(r&&r.ok===false) return say(msg,DOC_SAY[r.reason]||"That did not save. Try again.");
       toast("Saved. You can go online now."); return loadMe();
     }).catch(function(err){ busyBtn(btn,false); say(msg,friendly(err&&err.message)); });
+  }
+  var checkT=null;
+  function renderChecking(){
+    stop(); $("onSw").hidden=true; $("signOut").hidden=false;
+    $("main").innerHTML='<div class="steps2" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i></div>'+
+      '<div class="state"><div class="beacon" aria-hidden="true">'+IC.ok+'</div><h2>Documents received</h2>'+
+      '<p>NovaX is checking your CNIC and home bill. You can go online as soon as they are checked. <span class="ur">NovaX aap ke documents check kar raha hai.</span></p>'+
+      '<button class="btn btn-primary wide big" type="button" data-act="reload">Check again <span class="ur" style="color:inherit;opacity:.75">Dobara dekhein</span></button></div>'+
+      '<div class="foot"><a class="btn btn-plain wide" href="'+esc(officeTel())+'">'+IC.tel+'Call the NovaX office</a></div>';
+    /* Opens by itself once the office ticks the documents. */
+    clearInterval(checkT); checkT=setInterval(function(){ if(!document.hidden&&$("main").querySelector(".state h2")&&/Documents received/.test($("main").textContent)) loadMe(); else if(!/Documents received/.test($("main").textContent)) clearInterval(checkT); },30000);
   }
   function renderNotRider(){
     stop(); $("onSw").hidden=true; $("signOut").hidden=false;
@@ -529,7 +542,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     paintSwitch();
     var t=f.today||{};
     var owe=Number(t.cash_in_hand)>0;
-    h+='<div class="stats"><div class="stat"><span>Done today</span><b>'+esc(t.done||0)+'</b></div><div class="stat"><span>Fares today</span><b>'+esc(rs(t.fares))+'</b></div><div class="stat'+(owe?' owe':'')+'"><span>Cash with you</span><b>'+esc(rs(t.cash_in_hand))+'</b></div></div>';
+    h+='<div class="stats"><div class="stat"><span>Done today</span><b>'+esc(t.done||0)+'</b></div><div class="stat"><span>Fares delivered</span><b>'+esc(rs(t.fares))+'</b></div><div class="stat'+(owe?' owe':'')+'"><span>Cash with you</span><b>'+esc(rs(t.cash_in_hand))+'</b></div></div>';
     if(f.active) h+=activeHtml(f.active);
     else if(!f.rider.online) h+='<div class="state"><div class="beacon" aria-hidden="true">'+IC.moon+'</div><h2>You are offline</h2><p>No jobs come to you while you are offline. <span class="ur">Offline mein job nahi aata.</span></p>'+
       '<button class="btn btn-primary wide big" type="button" id="goOn">Go online <span class="ur" style="color:inherit;opacity:.75">Online ho jayein</span></button></div>';
@@ -650,7 +663,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   var SAY={ offline:"Go online first.", busy:"Finish the job you have first.", taken:"Another rider took that job.",
     not_yours:"This job is no longer with you.", need_reason:"Choose a reason.", need_note:"Say what happened.",
     wrong_pin:"That PIN is not right.", pin_locked:"The PIN is locked after five wrong tries. Call the NovaX office.",
-    has_job:"Finish the job you have before going offline.", docs:"Add your CNIC photo, home bill photo and emergency contact first.", cash_needed:"Take the cash first, then tick the cash line.",
+    has_job:"Finish the job you have before going offline.", docs:"Add your CNIC photo, home bill photo and emergency contact first.", docs_unchecked:"NovaX is still checking your documents. You can go online once they are checked.", cash_needed:"Take the cash first, then tick the cash line.",
     cash_mismatch:"That amount is not right. It cannot be more than the fare.", short_note:"Say why the cash is short." };
   function netFail(e){ return /fetch|network|Failed|timeout|Load failed/i.test(String((e&&e.message)||e)); }
   /* Every rider step answers "already done" when it is sent twice, so a press

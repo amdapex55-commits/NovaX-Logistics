@@ -61,6 +61,8 @@ main{padding:16px 0 60px}
 .tabs::-webkit-scrollbar{display:none}
 .tabs button{min-height:44px;padding:0 14px;border:0;background:none;font-weight:700;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap}
 .tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--green)}
+/* Phones: all four tabs in view, no hidden sideways scroll; inputs at 16px so the phone does not zoom. */
+@media (max-width:600px){ .tabs{display:grid;grid-template-columns:1fr 1fr;overflow:visible} .tabs button{text-align:left} .inp{font-size:16px} }
 .tabs button span{font:700 12px/1 var(--mono);background:var(--paper-2);border-radius:999px;padding:3px 7px;margin-left:6px;color:var(--ink-2)}
 .note{padding:11px 13px;border-radius:12px;font-size:14px;line-height:1.45;margin-bottom:14px}
 .note.warn{background:var(--amber);color:var(--amber-ink)}
@@ -93,14 +95,14 @@ main{padding:16px 0 60px}
 .chip.warn{background:var(--amber);border-color:#ecd9a5;color:var(--amber-ink)}
 .prob{margin-top:9px;padding:8px 10px;border-radius:9px;background:var(--amber);color:var(--amber-ink);font-size:13.5px}
 .row{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:7px 12px;border-radius:10px;border:1.5px solid transparent;font-weight:700;font-size:14px;text-decoration:none;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:7px 12px;border-radius:10px;border:1.5px solid transparent;font-weight:700;font-size:14px;text-decoration:none;white-space:nowrap}
 .btn-primary{background:var(--green);border-color:var(--green);color:#04170e}
 .btn-plain{background:#fff;border-color:var(--line-2);color:var(--ink)}
 .btn-dark{background:var(--navy);border-color:var(--navy);color:#fff}
 .btn-danger{background:#fff;border-color:#e5b9b3;color:var(--red-ink)}
 .btn[disabled]{opacity:.55;cursor:default}
 @media (pointer:coarse){ .btn{min-height:44px} }
-.inp{min-height:40px;padding:7px 10px;border:1.5px solid var(--line-2);border-radius:10px;background:#fff;font-size:15px;outline:none;max-width:100%}
+.inp{min-height:44px;padding:7px 10px;border:1.5px solid var(--line-2);border-radius:10px;background:#fff;font-size:15px;outline:none;max-width:100%}
 .inp:focus{border-color:var(--green-2);box-shadow:0 0 0 3px rgba(15,191,120,.18)}
 @media (pointer:coarse){ .inp{min-height:44px;font-size:16px} }
 .inline{margin-top:10px;padding:10px;border-radius:10px;background:var(--paper-2);border:1px solid var(--line)}
@@ -113,7 +115,7 @@ td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
 /* Phones: one line of header controls, and tables become stacked cards. */
 @media (max-width:760px){
   .top .wrap{gap:4px 10px}
-  .top-r{margin-left:0;width:100%;justify-content:space-between;flex-wrap:nowrap}
+  .top-r{margin-left:0;width:100%;justify-content:space-between;flex-wrap:wrap;row-gap:0}
   .top a.tl{padding:0 4px;white-space:nowrap}
   .tabs button{padding:0 8px;font-size:14px}
   .tabs button span{margin-left:4px}
@@ -250,9 +252,9 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       '<div class="stat"><span>Fares delivered today</span><b>'+esc(rs(t.fares))+'</b></div>'+
       '<div class="stat"><span>Cash with riders</span><b>'+esc(rs(t.cash_out))+'</b></div>'+
       '<div class="stat'+(Number(t.disputed)>0?' alert':'')+'"><span>Payments in dispute</span><b>'+esc(t.disputed||0)+'</b></div></div>';
-    var free=riders.filter(function(r){ return r.status==="Active"&&!r.active_code; });
+    var free=riders.filter(function(r){ return r.status==="Active"&&!r.active_code&&r.docs_checked_at; });
     var online=riders.filter(function(r){ return r.status==="Active"&&r.online; }).length;
-    if(!c.open) h+='<div class="note info">Public booking is off: the public sees fares only. A signed-in admin can still book from the customer page to test. It can be turned on once a rider is online.</div>';
+    if(!c.open) h+='<div class="note info">Public booking is off: the public sees fares only. A signed-in admin can still book from the customer page to test. It can be turned on once a rider with checked documents is online.</div>';
     else if(!c.hours_open) h+='<div class="note warn">Outside booking hours ('+hourLabel(c.open_hour)+' to '+hourLabel(c.close_hour)+'). Customers cannot book until '+hourLabel(c.open_hour)+'.</div>';
     if(c.open&&c.hours_open&&!online) h+='<div class="note warn">Booking is open and no rider is online. New jobs will wait until you assign one. Call a rider, or turn public booking off.</div>';
     if(Number(t.disputed)>0) h+='<div class="note warn">'+esc(t.disputed)+' payment'+(Number(t.disputed)===1?" is":"s are")+' in dispute: the cash a rider received does not match what was due. Settle '+(Number(t.disputed)===1?"it":"them")+' in the job (Live jobs or Closed).</div>';
@@ -385,7 +387,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
           ? '<div class="row" style="margin:0"><button class="btn btn-plain" type="button" data-doc="'+esc(r.cnic_path)+'">CNIC</button><button class="btn btn-plain" type="button" data-doc="'+esc(r.bill_path)+'">Home bill</button></div>'+
             '<span class="age">Emergency: '+esc(r.emergency_name||"")+' &middot; <a href="tel:'+esc(r.emergency_phone||"")+'">'+esc(r.emergency_phone||"")+'</a></span><br>'+
             (r.docs_checked_at?'<span class="chip good">Checked</span> <button class="btn btn-plain" type="button" data-do="docs" data-rider="'+esc(r.id)+'" data-ok="0">Undo</button>'
-                              :'<button class="btn btn-primary" type="button" data-do="docs" data-rider="'+esc(r.id)+'" data-ok="1">Mark as checked</button>')
+                              :'<button class="btn btn-primary" type="button" data-do="docs" data-rider="'+esc(r.id)+'" data-ok="1">Mark as checked</button><br><span class="age">Cannot go online or take jobs until checked.</span>')
           : '<span class="chip warn">'+(r.status==="Invited"?"After they join":"Not sent yet")+'</span>'+(r.status==="Active"?'<br><span class="age">Cannot go online until sent.</span>':''))+'</td>'+
         '<td>'+(r.status==="Active"?'<span class="dot'+(r.online?' on':'')+'"></span>'+(r.online?"Online":r.stale?"App closed (switch left on)":"Offline")+(busy?' &middot; on '+esc(r.active_code):'')+'<br><span class="age">seen '+esc(ago(r.last_seen))+'</span>':'<span class="age">&ndash;</span>')+'</td>'+
         '<td>'+esc(r.done_today||0)+'</td><td><b>'+esc(rs(r.cash_in_hand))+'</b></td>'+
@@ -417,7 +419,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
   /* ───── actions ───── */
   var SAY={ not_found:"That job no longer exists.", too_late:"The parcel is already picked up, so the rider cannot be changed.", rider_inactive:"That rider is not active.",
     rider_busy:"That rider already has a job.", need_reason:"Choose or write a reason first.", need_note:"Write a note first.", closed:"That job is already closed.",
-    no_rider:"Assign a rider first.", no_docs:"That rider has not sent documents yet.", wrong_step:"The job is not at that step any more.", nothing:"That rider holds no cash.",
+    no_rider:"Assign a rider first.", no_docs:"That rider has not sent documents yet.", docs_unchecked:"Check that rider's documents first (Riders tab, Mark as checked).", wrong_step:"The job is not at that step any more.", nothing:"That rider holds no cash.",
     name:"Enter the rider's full name.", email:"Enter a valid email.", phone:"Enter a Pakistani mobile like 0300 1234567.", exists:"That email is already a rider.", status:"Unknown status.",
     has_parcel:"A rider holds this parcel, so it cannot be cancelled or left without a rider. Mark it not delivered and send it back instead.",
     unconfirmed:"Confirm this booking by phone first.",
