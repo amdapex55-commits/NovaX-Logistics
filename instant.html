@@ -355,7 +355,14 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   var MAPBOX="";                                            /* public token; arrives with nvi_status(), never written here */
   var REDUCED=!!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   var $=function(id){ return document.getElementById(id); };
-  var sb=null; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){}
+  /* Two sign-ins, kept apart: a Nova Instant account lives under its own
+     storage key, so creating or leaving one never signs anyone out of NovaX
+     (admin, merchant) in the same browser. Without an Instant account the
+     page uses the NovaX sign-in, so an admin can still book to test. */
+  var INST_KEY="nvi-instant-auth", sb=null, sbMain=null, sbInst=null;
+  try{ sbMain=window.supabase.createClient(SB_URL,SB_KEY); sbInst=window.supabase.createClient(SB_URL,SB_KEY,{ auth:{ storageKey:INST_KEY } }); }catch(e){}
+  function hasInst(){ try{ return !!localStorage.getItem(INST_KEY); }catch(e){ return false; } }
+  sb=(hasInst()&&sbInst)?sbInst:sbMain;
 
   /* Where the visit began: the homepage button, the merchant portal, or neither. */
   var SRC=(function(){ var f=""; try{ f=new URLSearchParams(location.search).get("from")||""; }catch(e){}
@@ -813,6 +820,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
       cta("Continue",false);
   }
   function step3(){
+    if(S.payer==="cod"&&!codOn()) S.payer="sender";
     var me=store("nvi_me"), rcp=store("nvi_rcp"); rcp=Array.isArray(rcp)?rcp:[];
     return head(3,"Who is it from, and who gets it?","The rider calls these numbers and follows these addresses.")+
       '<section class="card"><div class="who"><span class="dot" aria-hidden="true"></span><b>Pickup contact</b></div>'+
@@ -828,7 +836,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         '<div class="fld"><span class="lbl">Delivery address</span><div class="place">'+IC.pin+'<span>'+esc(S.d&&S.d.label!=="Pinned spot"?S.d.label:"The pin you set on the map")+'</span><button class="linkish" type="button" data-edit="1" aria-label="Change delivery address">Change</button></div>'+
           '<label class="sr" for="dDet">House or flat number, floor and a landmark for the delivery</label><input class="inp" id="dDet" data-f="dDet" maxlength="160" enterkeyhint="done" placeholder="House or flat number, floor, a landmark" value="'+esc(S.dDet)+'"></div></section>'+
       '<section class="card"><span class="lbl" id="payLbl" style="font-size:16px;color:var(--ink)">Who will pay '+esc(money(S.quote?S.quote.fare:0))+'?</span>'+
-        '<div class="seg" role="group" aria-labelledby="payLbl"><button type="button" data-pay="sender" aria-pressed="'+(S.payer==="sender")+'">Sender pays</button><button type="button" data-pay="receiver" aria-pressed="'+(S.payer==="receiver")+'">Receiver pays</button><button type="button" data-pay="cod" aria-pressed="'+(S.payer==="cod")+'">Cash on delivery</button></div>'+
+        '<div class="seg" role="group" aria-labelledby="payLbl"><button type="button" data-pay="sender" aria-pressed="'+(S.payer==="sender")+'">Sender pays</button><button type="button" data-pay="receiver" aria-pressed="'+(S.payer==="receiver")+'">Receiver pays</button>'+(codOn()?'<button type="button" data-pay="cod" aria-pressed="'+(S.payer==="cod")+'">Cash on delivery</button>':'')+'</div>'+
         payBlock()+'</section>'+
       cta("Review booking",false);
   }
@@ -838,7 +846,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
      COD needs an account, so the money has somewhere to go. */
   function codNum(){ return Number(String(S.cod||"").replace(/[^\d]/g,""))||0; }
   function codFee(){ return Number((S.status&&S.status.cod_fee)||0); }
-  function codMax(){ return Number((S.status&&S.status.cod_max)||10000); }
+  function codMax(){ var m=S.status&&S.status.cod_max; return (m===0||m)?Number(m):10000; }
+  function codOn(){ return !(S.status&&S.status.cod_enabled===false); }
   function codSay(){
     var f=S.quote?Number(S.quote.fare):0, a=codNum(), fee=codFee();
     if(!a) return "The receiver pays this at the door. The fare of "+money(f)+(fee?" and a "+money(fee)+" COD fee":"")+" comes out of it, and the rest goes to your Nova Instant wallet. Up to "+money(codMax())+".";
@@ -850,6 +859,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     if(S.payer==="receiver") return '<p class="fine" id="paySay">Cash to the rider at the door. Tell the receiver the fare is '+esc(money(f))+'.</p>';
     if(!S.client) return '<div class="codacct"><b>Cash on delivery needs a free Nova Instant account</b><span>The receiver pays the rider, and your money goes to your account wallet. It takes a minute, and your booking stays as it is.</span>'+
       '<div class="row2"><button class="btn btn-primary sm" type="button" data-acct="join">Create account</button><button class="btn btn-plain sm" type="button" data-acct="signin">Sign in</button></div></div>';
+    if(S.client.client.status==="Blocked") return '<div class="codnote">'+IC.info+'<span><b>Your Nova Instant account is on hold'+(S.client.client.block_reason?': '+esc(S.client.client.block_reason):'')+'.</b> Cash on delivery is paused for it. Call NovaX, or choose who pays the fare.</span></div>';
     return '<div class="fld"><label class="lbl" for="cod">Cash to collect from the receiver (Rs)</label><input class="inp" id="cod" data-f="cod" inputmode="numeric" pattern="[0-9]*" maxlength="6" enterkeyhint="done" placeholder="e.g. 3500" value="'+esc(S.cod)+'"></div>'+
       '<p class="fine" id="paySay">'+esc(codSay())+'</p><p class="fine" style="margin-top:6px">Signed in as '+esc(S.client.client.name)+'. <a href="instant-account.html">Your account</a></p>';
   }
@@ -871,13 +881,6 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   function acctErr(m){ m=String(m||""); if(/Invalid login credentials/i.test(m)) return "Wrong email or password."; if(/already registered/i.test(m)) return "This email already has an account. Sign in instead.";
     if(/fetch|network|Failed|Load failed/i.test(m)) return "No connection. Check your internet and try again."; return m||"Something went wrong. Try again."; }
   function openAcct(view){
-    /* Someone already signed in with a NovaX staff or merchant login on this phone. */
-    if(S.session&&!S.client&&view!=="finish"){
-      var p0=openPanel("Cash on delivery",'<section class="card"><p style="margin:0 0 12px">This phone is signed in to NovaX as <b>'+esc(S.session.email)+'</b>. Cash on delivery needs a separate Nova Instant account.</p>'+
-        '<button class="btn btn-dark sm wide" type="button" id="acSignOut">Sign out of that and continue</button><p class="fine">Or choose who pays the fare instead.</p></section>');
-      p0.querySelector("#acSignOut").addEventListener("click",function(){ Promise.resolve(sb.auth.signOut()).catch(function(){}).then(function(){ S.session=null; openAcct(view); }); });
-      return;
-    }
     var join=view==="join", fin=view==="finish";
     var p=openPanel(fin?"Finish your account":join?"Create your Nova Instant account":"Sign in",
       '<form class="card" id="acForm" novalidate>'+
@@ -912,6 +915,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
       if(join&&pass.length<8) return tell("Choose a password of at least 8 characters.");
       if(!fin&&!pass) return tell("Enter your password.");
       btn.disabled=true; btn.textContent="Working\u2026";
+      if(!fin&&sbInst) sb=sbInst;   /* the account is made or opened under its own sign-in */
       var go=fin?save(name,phone):join?Promise.resolve(sb.auth.signUp({ email:email, password:pass, options:{ data:{ full_name:name, instant:true } } })).then(function(r){
           if(r.error) throw new Error(r.error.message);
           var u=r.data&&r.data.user; if(u&&Array.isArray(u.identities)&&u.identities.length===0) throw new Error("This email already has an account. Sign in instead.");
@@ -994,6 +998,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
       if(S.dDet.trim().length<3||addrOf("d").length<8) return fail("dDet","Add the house or flat number and a landmark for the delivery.");
       if(S.payer==="cod"){
         if(!S.client) return fail(null,"Cash on delivery needs a Nova Instant account. Create one above: it takes a minute.");
+        if(S.client.client.status==="Blocked") return fail(null,"Your account is on hold, so cash on delivery is paused. Choose who pays the fare instead.");
         var ca=codNum(), cf=(S.quote?Number(S.quote.fare):0)+codFee();
         if(!ca) return fail("cod","Enter the cash to collect from the receiver.");
         if(ca<cf) return fail("cod","Cash on delivery has to cover the fare: at least "+money(cf)+".");
@@ -1015,7 +1020,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     try{ S.cap.id=window.turnstile.render("#capBox",{ sitekey:S.cap.key, callback:function(t){ S.cap.token=t; }, "expired-callback":function(){ S.cap.token=""; }, "error-callback":function(){ S.cap.token=""; } }); }catch(e){}
   }
 
-  var BOOK_SAY={ need_account:["cod",3,"Cash on delivery needs a Nova Instant account. Create one here: it takes a minute."],
+  var BOOK_SAY={ cod_off:"Cash on delivery is paused at NovaX right now. Choose who pays the fare instead.", account_blocked:"Your Nova Instant account is on hold, so cash on delivery is paused. Call NovaX.", need_account:["cod",3,"Cash on delivery needs a Nova Instant account. Create one here: it takes a minute."],
     cod_low:["cod",3,"Cash on delivery has to cover the fare."], cod_max:["cod",3,"That is more cash on delivery than one parcel can carry."], not_open:"Booking is paused for a moment. Try again shortly, or call NovaX.", no_rider:"No rider is on duty right now. Try again in a little while, or call NovaX.", closed_now:"Riders are off right now. Booking opens again in the morning.",
     pickup_address:["pDet",3,"Add the house or shop number and a landmark for the pickup."], drop_address:["dDet",3,"Add the house or flat number and a landmark for the delivery."],
     sender_name:["sName",3,"Add the sender's name."], receiver_name:["rName",3,"Add the receiver's name."],

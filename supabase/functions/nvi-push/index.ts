@@ -11,10 +11,13 @@
 //     job becomes Booked with no rider (new, confirmed, or given back);
 //   - the rider app, with {"test": "<that phone's push address>"}, for the
 //     "Send me a test alert" button.
-// Why no login is needed: nvi_push_targets() alerts once per job (again only
-// after two minutes, and only while the job still waits), and a test only
-// reaches a phone whose secret push address the caller already holds. The
-// worst a stranger can do is ring riders about a job that is really waiting.
+// Who may call (5 Oct 2026 review):
+//   - a job alert must carry the x-nvi-key header, which only the database
+//     knows (nvi_config.push_key, read here once per instance through
+//     nvi_push_key()); anything else is refused before any database call;
+//   - a test alert must carry the rider's own login (Authorization: Bearer),
+//     and reaches only a phone registered to that rider.
+// nvi_push_targets() still alerts once per job (again only after two minutes).
 //
 // The alert is an empty Web Push: no payload means no message encryption,
 // only the VAPID signature below. The rider app's service worker (sw.js)
@@ -28,7 +31,7 @@ const SUBJECT = "https://novaxlogistics.com";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "content-type",
+  "Access-Control-Allow-Headers": "content-type, authorization, apikey",
 };
 
 function json(body: unknown, status = 200) {
@@ -76,6 +79,21 @@ async function rpc(name: string, args: Record<string, unknown>) {
   return r.status === 204 ? null : r.json();
 }
 
+let pushKey: Promise<string> | null = null;
+function dbKey(): Promise<string> {
+  if (!pushKey) pushKey = rpc("nvi_push_key", {}).then((k) => String(k || "")).catch((e) => { pushKey = null; throw e; });
+  return pushKey;
+}
+/* The rider's login, checked by Supabase Auth. Returns the user id or null. */
+async function riderId(req: Request): Promise<string | null> {
+  const auth = req.headers.get("authorization") || "";
+  if (!/^Bearer\s+\S+/.test(auth)) return null;
+  const r = await fetch(`${SB_URL}/auth/v1/user`, { headers: { apikey: SB_KEY, Authorization: auth } });
+  if (!r.ok) return null;
+  const u = await r.json().catch(() => null);
+  return u && typeof u.id === "string" ? u.id : null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   if (req.method !== "POST") return json({ ok: false, reason: "post_only" }, 405);
@@ -88,7 +106,15 @@ Deno.serve(async (req) => {
   if (!job && !test) return json({ ok: false, reason: "nothing" }, 400);
 
   try {
-    const targets = (await rpc("nvi_push_targets", { p_job: job, p_test: test })) as { id: number; endpoint: string }[];
+    let user: string | null = null;
+    if (job) {
+      const k = req.headers.get("x-nvi-key") || "";
+      if (!k || k !== await dbKey()) return json({ ok: false, reason: "key" }, 401);
+    } else {
+      user = await riderId(req);
+      if (!user) return json({ ok: false, reason: "signin" }, 401);
+    }
+    const targets = (await rpc("nvi_push_targets", { p_job: job, p_test: test, p_user: user })) as { id: number; endpoint: string }[];
     const ok: number[] = [], gone: number[] = [], fail: number[] = [];
     const tokens = new Map<string, Promise<string>>();
     await Promise.all((targets || []).map(async (t) => {

@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
 <meta name="theme-color" content="#0B2A20">
 <meta name="description" content="Your Nova Instant account: every delivery you booked, your cash-on-delivery wallet and withdrawals.">
-<meta name="robots" content="noindex,follow">
+<meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="origin">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -139,7 +139,12 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
   var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
   var $=function(id){ return document.getElementById(id); };
-  var sb=null; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){}
+  /* The Nova Instant sign-in has its own storage key, so it never signs
+     anyone out of NovaX. Someone who signed in on the NovaX homepage with an
+     Instant account is still let in through that sign-in. */
+  var INST_KEY="nvi-instant-auth", sb=null, sbMain=null, sbInst=null;
+  try{ sbMain=window.supabase.createClient(SB_URL,SB_KEY); sbInst=window.supabase.createClient(SB_URL,SB_KEY,{ auth:{ storageKey:INST_KEY } }); }catch(e){}
+  sb=sbInst||sbMain;
   var S={ me:null, jobs:null, ledger:null, tab:"jobs", form:null, busy:false };
 
   /* supabase-js resolves with {error}; this turns it into a rejection. */
@@ -170,10 +175,18 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   /* ───── start ───── */
   function boot(){
     if(!sb){ $("main").innerHTML='<div class="empty"><b>NovaX could not load</b>Check your internet and refresh.</div>'; return; }
-    Promise.resolve(sb.auth.getSession()).then(function(r){
-      if(!(r&&r.data&&r.data.session)) return renderAuth(/[?&]join=1/.test(location.search)?"join":"signin");
-      return load(true);
-    }).catch(function(){ renderAuth("signin"); });
+    var join=/[?&]join=1/.test(location.search);
+    Promise.resolve(sbInst.auth.getSession()).then(function(r){
+      if(r&&r.data&&r.data.session){ sb=sbInst; return load(true); }
+      /* No Instant sign-in here: a NovaX homepage sign-in that is an Instant account works too. */
+      return Promise.resolve(sbMain.auth.getSession()).then(function(m){
+        if(!(m&&m.data&&m.data.session)) return renderAuth(join?"join":"signin");
+        return Promise.resolve(sbMain.rpc("nvi_client_me")).then(function(x){
+          if(x&&!x.error&&x.data){ sb=sbMain; return load(true); }
+          sb=sbInst; renderAuth(join?"join":"signin");
+        });
+      });
+    }).catch(function(){ sb=sbInst; renderAuth("signin"); });
   }
   function load(first){
     return rpc("nvi_client_me").then(function(me){
@@ -243,6 +256,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     if(!/^\S+@\S+\.\S+$/.test(email)) return sayMsg(msg,"Enter your email.");
     if(pass.length<8) return sayMsg(msg,"Choose a password of at least 8 characters.");
     busyBtn(btn,true,"Creating your account…");
+    sb=sbInst;
     Promise.resolve(sb.auth.signUp({ email:email, password:pass, options:{ data:{ full_name:name, instant:true } } })).then(function(r){
       if(r.error) throw new Error(r.error.message);
       var u=r.data&&r.data.user;
@@ -256,6 +270,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     var email=$("inEmail").value.trim().toLowerCase(), pass=$("inPass").value, msg=$("inMsg"), btn=$("inBtn");
     if(!/^\S+@\S+\.\S+$/.test(email)||!pass) return sayMsg(msg,"Enter your email and password.");
     busyBtn(btn,true,"Signing in…");
+    sb=sbInst;
     Promise.resolve(sb.auth.signInWithPassword({ email:email, password:pass })).then(function(r){
       if(r.error) throw new Error(r.error.message);
       return load(true);
@@ -285,11 +300,13 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     payout_rejected:"Withdrawal returned", adjustment:"Correction by NovaX" };
   /* Withdraw is offered when enough is ready and no request is waiting. */
   function canW(){ var me=S.me||{}, av=Number((me.wallet||{}).available||0);
-    return av>0&&av>=Number(me.min_withdraw||0)&&!(me.payouts||[]).some(function(p){ return p.status==="Requested"; }); }
+    return me.withdrawals_enabled!==false&&av>0&&av>=Number(me.min_withdraw||0)&&!(me.payouts||[]).some(function(p){ return p.status==="Requested"; }); }
   function short(t){ return String(t||"").split(",")[0].trim()||"Karachi"; }
   function paint(){
     var me=S.me, w=me.wallet||{}, av=Number(w.available||0), pe=Number(w.pending||0);
     var h='<h1>Hello, '+esc(String(me.client.name).split(" ")[0])+'</h1><p class="lead" style="margin-bottom:12px">Your deliveries and your cash-on-delivery money, in one place.</p>';
+    if(me.client.status==="Blocked") h+='<div class="note warn"><span><b>Your account is on hold'+(me.client.block_reason?': '+esc(me.client.block_reason):'')+'.</b> New cash-on-delivery bookings are paused. You can still withdraw money that is ready. Call NovaX to sort it out.</span></div>';
+    if(me.withdrawals_enabled===false) h+='<div class="note warn"><span>Withdrawals are paused at NovaX for now. Your money is safe in your wallet.</span></div>';
     h+='<section class="bal"><small>Ready to withdraw</small><div class="amt"><span>Rs</span>'+esc(av.toLocaleString("en-PK"))+'</div>'+
        '<p class="pend">'+(pe>0?'<b>'+esc(rs(pe))+'</b> more is on its way: collected by riders, not yet paid in to NovaX.':'Cash on delivery you collect lands here once the rider has paid it in to NovaX.')+'</p>'+
        '<div class="row">'+(canW()?'<button class="btn btn-primary sm" type="button" data-wd="1">Withdraw</button>':'')+'<button class="btn btn-plain sm" type="button" data-tab="wallet"'+(canW()?'':' style="grid-column:1 / -1"')+'>Wallet history</button></div></section>';
@@ -326,7 +343,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         '<p class="fine">NovaX sends it and marks it paid with the transaction ID. The smallest withdrawal is '+esc(rs(min))+'.</p></form>';
     } else {
       h+='<section class="card"><p class="eyebrow"><span>Withdraw</span></p>'+
-        (open?'<p style="margin:0;color:var(--ink-2)">You have a withdrawal waiting. NovaX pays it, then you can ask for the next one.</p>':
+        (me.withdrawals_enabled===false?'<p style="margin:0;color:var(--ink-2)">Withdrawals are paused at NovaX for now.</p>':
+         open?'<p style="margin:0;color:var(--ink-2)">You have a withdrawal waiting. NovaX pays it, then you can ask for the next one.</p>':
          av>=min&&av>0?'<button class="btn btn-dark wide" type="button" data-form="withdraw">Withdraw '+esc(rs(av))+'</button>':
          '<p style="margin:0;color:var(--ink-2)">You can withdraw once '+esc(rs(min))+' or more is ready.</p>')+'</section>';
     }
@@ -355,7 +373,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
       '<button class="btn btn-quiet wide" type="button" data-act="signout" style="margin-top:8px">Sign out</button>';
   }
   var W_SAY={ min:"The smallest withdrawal is ", method:"Choose where to send it.", title:"Enter the account name.", number:"Enter a valid mobile account number or IBAN.",
-    open:"You already have a withdrawal waiting.", balance:"That is more than is ready to withdraw.", cnic:"Enter your 13-digit CNIC number.", signin:"Sign in again." };
+    open:"You already have a withdrawal waiting.", withdrawals_off:"Withdrawals are paused at NovaX for now.", balance:"That is more than is ready to withdraw.", cnic:"Enter your 13-digit CNIC number.", signin:"Sign in again." };
   function doWithdraw(e){
     e.preventDefault();
     var amt=Number(($("wAmt").value||"").replace(/\D/g,"")), msg=$("wMsg"), btn=$("wBtn");

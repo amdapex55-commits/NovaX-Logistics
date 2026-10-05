@@ -300,6 +300,10 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     bell:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.500 2h-15zM10 20.500a2 2 0 0 0 4 0"/></svg>',
     dl:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>'
   };
+  function newKey(){
+    try{ if(crypto.randomUUID) return crypto.randomUUID(); }catch(e){}
+    return "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g,function(){ return (Math.random()*16|0).toString(16); });
+  }
   function waUrl(phone){ return "https://wa.me/92"+String(phone||"").replace(/\D/g,"").replace(/^92/,"").replace(/^0/,""); }
   function clock(iso){ try{ return new Date(iso).toLocaleTimeString("en-GB",{ timeZone:"Asia/Karachi", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; } }
   function area(t){ return String(t||"").split(",").slice(-2).join(",").trim()||String(t||""); }
@@ -347,20 +351,28 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       P.sub=sub; return rpc("nvi_rider_push_save",{ p_endpoint:sub.endpoint });
     }).then(function(r){
       if(r&&r.ok===false) throw new Error("This browser cannot get job alerts. Open this page in Chrome.");
-      P.state="on"; P.saved=true; toast("Job alerts are on."); paint();
+      P.state="on"; P.saved=true; paint();
+      /* A first alert straight away: it proves this phone rings, and only a
+         phone that has rung keeps the rider on duty with the screen locked. */
+      toast("Job alerts are on. A test alert is on its way."); pushTest(null,true);
     }).catch(function(e){ busyBtn(btn,false); if(!e||e.message!=="perm") toast(friendly(e&&e.message)); paint(); });
   }
-  function pushTest(btn){
+  function pushTest(btn,quiet){
     if(!P.sub) return;
-    busyBtn(btn,true,"Sending\u2026");
+    if(btn) busyBtn(btn,true,"Sending\u2026");
     /* The note lets the service worker say "Test alert" instead of "New job". */
     Promise.resolve(window.caches?caches.open("nvi-flags").then(function(c){ return c.put("/__nvi_test",new Response(String(Date.now()))); }):null).catch(function(){}).then(function(){
-      return fetch(PUSH_FN,{ method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ test:P.sub.endpoint }) });
+      /* The rider's own login goes with a test: it can only ring this rider's phone. */
+      return Promise.resolve(sb.auth.getSession()).then(function(x){
+        var tok=x&&x.data&&x.data.session&&x.data.session.access_token;
+        return fetch(PUSH_FN,{ method:"POST", headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+(tok||"") }, body:JSON.stringify({ test:P.sub.endpoint }) });
+      });
     }).then(function(r){
-      busyBtn(btn,false);
-      if(r.status===404) return toast("Job alerts are not switched on at NovaX yet. Call the office.");
-      return r.json().then(function(d){ toast(d&&d.sent?"Sent. It should ring in a few seconds.":"It did not reach this phone. Turn job alerts off in Chrome, reload, and turn them on again."); });
-    }).catch(function(){ busyBtn(btn,false); toast("No connection. Try again."); });
+      if(btn) busyBtn(btn,false);
+      if(r.status===404){ if(!quiet) toast("Job alerts are not switched on at NovaX yet. Call the office."); return; }
+      return r.json().then(function(d){ if(quiet&&d&&d.sent) return;
+        toast(d&&d.sent?"Sent. It should ring in a few seconds.":"It did not reach this phone. Turn job alerts off in Chrome, reload, and turn them on again."); });
+    }).catch(function(){ if(btn) busyBtn(btn,false); if(!quiet) toast("No connection. Try again."); });
   }
   /* Signing out: this phone stops ringing for this rider. */
   function pushOff(){
@@ -370,7 +382,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   }
   function alertsHtml(){
     var st=P.state, h="";
-    if(st==="on") h='<div class="alerts on"><div><b>'+IC.bell+'Job alerts on</b><span>This phone rings for every new job, even when locked.</span></div><button class="btn btn-quiet" type="button" id="pushTest">Send me a test alert</button></div>';
+    if(st==="on") h='<div class="alerts on"><div><b>'+IC.bell+'Job alerts on</b><span>This phone rings for every new job, even when locked. Send a test at the start of each shift.</span></div><button class="btn btn-quiet" type="button" id="pushTest">Send me a test alert</button></div>';
     else if(st==="off") h='<div class="alerts"><div><b>'+IC.bell+'Turn on job alerts</b><span>Then a new job rings even with the phone locked. Without alerts, keep this screen open. <span class="ur">Job alerts on karein.</span></span></div><button class="btn btn-dark wide" type="button" id="pushOn">Turn on job alerts</button></div>';
     else if(st==="denied") h='<div class="alerts warn"><div><b>'+IC.bell+'Job alerts are blocked</b><span>In Chrome, tap the icon to the left of the web address, then Permissions, then Notifications, and allow them. Then reload this page.</span></div></div>';
     else if(st==="ios") h='<div class="alerts warn"><div><b>'+IC.bell+'Add this app to your Home Screen</b><span>On iPhone, job alerts work only from the Home Screen: tap Share, then Add to Home Screen, and open the app from there.</span></div></div>';
@@ -425,17 +437,21 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     $("main").innerHTML=h;
   }
   var WSAY={ amount:"Enter the amount.", method:"Choose how.", ref:"Enter the transaction ID from the SMS or receipt.", too_many:"You have three waiting already. NovaX checks them first.",
+    dup_ref:"That transaction ID was already sent. Check the list below.", withdrawals_off:"Payouts are paused at NovaX for now. Call the office.",
     min:"The smallest payout is ", title:"Enter the account name.", number:"Enter a valid mobile account number or IBAN.", open:"You already have a payout waiting.", balance:"That is more than NovaX owes you." };
   function walletGo(btn){
     var k=S.wsheet, amt=Number(($("wAmt").value||"").replace(/\D/g,"")), m=$("wMethod").value, msg=$("wMsg");
     if(!amt){ say(msg,WSAY.amount); return; }
     busyBtn(btn,true,"Sending…");
-    var call=k==="deposit"?rpc("nvi_rider_deposit",{ p_amount:amt, p_method:m, p_ref:($("wRef").value||"").trim()||null })
+    /* One key per claim, kept until it answers: a second tap or a retry after a lost reply is the same claim. */
+    S.depKey=S.depKey||newKey();
+    var call=k==="deposit"?rpc("nvi_rider_deposit",{ p_amount:amt, p_method:m, p_ref:($("wRef").value||"").trim()||null, p_key:S.depKey })
                           :rpc("nvi_rider_payout",{ p_amount:amt, p_method:m, p_title:($("wTitle").value||"").trim(), p_number:($("wNum").value||"").trim() });
     call.then(function(r){
       busyBtn(btn,false);
       if(r&&r.ok===false){ say(msg,(WSAY[r.reason]||"That did not work.")+(r.reason==="min"?rs(r.min)+".":"")); return; }
-      S.wsheet=null; toast(k==="deposit"?"Sent. NovaX will check it.":"Payout asked for."); renderWallet();
+      if(k==="deposit") S.depKey=null;
+      S.wsheet=null; toast(k==="deposit"?(r&&r.already?"Already sent. NovaX will check it.":"Sent. NovaX will check it."):"Payout asked for."); renderWallet();
     }).catch(function(e){ busyBtn(btn,false); say(msg,friendly(e&&e.message)); });
   }
   function mapsUrl(pt){ return "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination="+pt[0]+","+pt[1]; }
@@ -890,7 +906,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     if(t.dataset.act==="reload") return boot();
     if(t.dataset.act==="wallet"){ S.wsheet=null; return renderWallet(); }
     if(t.dataset.act==="home"){ S.view=null; S.wsheet=null; try{ scrollTo(0,0); }catch(e){} return paint(); }
-    if(t.hasAttribute("data-wsheet")){ S.wsheet=t.getAttribute("data-wsheet")||null; paintWallet(); var f1=$("wAmt"); if(f1) try{ f1.focus(); }catch(e){} return; }
+    if(t.hasAttribute("data-wsheet")){ S.wsheet=t.getAttribute("data-wsheet")||null; if(S.wsheet==="deposit") S.depKey=null; paintWallet(); var f1=$("wAmt"); if(f1) try{ f1.focus(); }catch(e){} return; }
     if(t.id==="wGo") return walletGo(t);
     if(t.id==="forgot") return doForgot();
     if(t.hasAttribute("data-show")){ var pi=$(t.getAttribute("data-show")); if(pi){ var sh=pi.type==="password"; pi.type=sh?"text":"password"; t.textContent=sh?"Hide":"Show"; t.setAttribute("aria-pressed",String(sh)); } return; }

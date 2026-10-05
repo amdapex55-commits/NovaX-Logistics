@@ -38,6 +38,8 @@
 -- inside function bodies, which Postgres does not read until they are called,
 -- so it no longer needs a separate run first.
 alter type public.novax_role add value if not exists 'instant';
+-- Nova Instant client accounts (instant-account.html), 5 Oct 2026.
+alter type public.novax_role add value if not exists 'instant_client';
 
 create table if not exists public.nvi_config (
   id          boolean primary key default true check (id),
@@ -59,7 +61,7 @@ alter table public.nvi_config add column if not exists return_fee_pct int not nu
 alter table public.nvi_config add column if not exists max_kg int not null default 10;
 alter table public.nvi_config add column if not exists max_value int not null default 10000;
 alter table public.nvi_config add column if not exists support_phone text not null default '03123922558';
-alter table public.nvi_config add column if not exists terms_version text not null default 'draft-2026-10-04';
+alter table public.nvi_config add column if not exists terms_version text not null default '1.1';
 -- Days a closed booking stays readable from its tracking link.
 alter table public.nvi_config add column if not exists track_days int not null default 7 check (track_days between 1 and 90);
 -- Cloudflare Turnstile (free). With no secret set, no CAPTCHA is asked for.
@@ -287,6 +289,22 @@ alter table public.nvi_config add column if not exists cod_fee int not null defa
 alter table public.nvi_config add column if not exists min_withdraw int not null default 500;
 -- When the ledger started: jobs finished before it were settled the old way.
 alter table public.nvi_config add column if not exists wallets_since timestamptz not null default now();
+-- Switches: ordinary deliveries can run with cash on delivery or withdrawals off.
+alter table public.nvi_config add column if not exists cod_enabled boolean not null default true;
+alter table public.nvi_config add column if not exists withdrawals_enabled boolean not null default true;
+-- An unconfirmed first booking is cancelled after this many hours.
+alter table public.nvi_config add column if not exists confirm_hours int not null default 2;
+-- Shared with the nvi-push function only: proves a call came from this database.
+alter table public.nvi_config add column if not exists push_key text not null default gen_random_uuid()::text;
+alter table public.nvi_clients add column if not exists block_reason text;
+alter table public.nvi_clients add column if not exists blocked_at timestamptz;
+alter table public.nvi_clients add column if not exists blocked_by uuid;
+-- The COD amount the ledger booked for a job, and who was charged its commission.
+alter table public.nvi_jobs add column if not exists ledger_cod int;
+alter table public.nvi_jobs add column if not exists commission_rider uuid;
+-- Cash taken on a job the ledger has booked is settled through the wallet,
+-- not through the old office handover.
+alter table public.nvi_cash add column if not exists by_ledger boolean not null default false;
 alter table public.nvi_riders add column if not exists commission_pct int;   -- null: nvi_config.commission_pct
 
 -- ═══════════════════ Clients ═══════════════════
@@ -434,7 +452,8 @@ returns boolean language sql stable security definer set search_path = '' as $$
   select (r).status = 'Active' and (r).online and (r).docs_checked_at is not null and (r).last_seen is not null
      and ((r).last_seen > now() - interval '60 seconds'
           or ((r).last_seen > now() - interval '12 hours'
-              and exists (select 1 from public.nvi_push_subs s where s.rider_id = (r).id and s.fails < 5)))
+              and exists (select 1 from public.nvi_push_subs s where s.rider_id = (r).id and s.fails < 3
+                           and s.last_ok > now() - interval '24 hours')))
 $$;
 
 -- Riders on duty this minute, busy or not. None on duty: no new bookings.
@@ -465,7 +484,7 @@ begin
     'rate_per_km', c.rate_per_km, 'min_fare', c.min_fare, 'mapbox', c.mapbox_token,
     'riders_online', public.nvi_riders_free(), 'riders_on', public.nvi_riders_on(),
     'confirm_first', c.confirm_first, 'return_fee_pct', c.return_fee_pct,
-    'max_kg', c.max_kg, 'max_value', c.max_value, 'cod_max', c.cod_max, 'cod_fee', c.cod_fee,
+    'max_kg', c.max_kg, 'max_value', c.max_value, 'cod_max', c.cod_max, 'cod_fee', c.cod_fee, 'cod_enabled', c.cod_enabled,
     'support', c.support_phone, 'terms', c.terms_version, 'track_days', c.track_days,
     'turnstile', case when c.turnstile_secret is not null then c.turnstile_site end);
 end $$;
@@ -610,7 +629,7 @@ end $$;
 drop function if exists public.nvi_book(uuid, text, text, text, text, text, text, text, text, text);
 create or replace function public.nvi_my_client()
 returns public.nvi_clients language sql stable security definer set search_path = '' as $$
-  select * from public.nvi_clients where auth_user_id = (select auth.uid()) and status = 'Active'
+  select * from public.nvi_clients where auth_user_id = (select auth.uid())
 $$;
 
 drop function if exists public.nvi_book(uuid, text, text, text, text, text, text, text, text, text, boolean, text, text);
@@ -630,6 +649,8 @@ declare
   -- A signed-in Nova Instant client: the booking goes in their history, and
   -- only they can book cash on delivery (the money goes to their wallet).
   v_client uuid := (select k.id from public.nvi_my_client() k);
+  v_blocked boolean := coalesce((select k.status = 'Blocked' from public.nvi_my_client() k), false);
+  v_k int := case when v_client is null then 1 else 3 end;   -- an account may book more, not without limit
   v_cod int := greatest(0, coalesce(p_cod, 0));
   v_admin boolean := coalesce((select public.is_admin()), false);
   v_sp text := public.nvi_pk_phone(p_sender_phone);
@@ -671,7 +692,9 @@ begin
   if length(btrim(coalesce(p_item, ''))) < 2 then return jsonb_build_object('ok', false, 'reason', 'item'); end if;
   if p_payer is null or p_payer not in ('sender', 'receiver') then return jsonb_build_object('ok', false, 'reason', 'payer'); end if;
   if v_cod > 0 then
+    if not c.cod_enabled then return jsonb_build_object('ok', false, 'reason', 'cod_off'); end if;
     if v_client is null then return jsonb_build_object('ok', false, 'reason', 'need_account'); end if;
+    if v_blocked then return jsonb_build_object('ok', false, 'reason', 'account_blocked'); end if;
     if v_cod > c.cod_max then return jsonb_build_object('ok', false, 'reason', 'cod_max', 'max', c.cod_max); end if;
     if v_cod < q.fare + c.cod_fee then return jsonb_build_object('ok', false, 'reason', 'cod_low', 'min', q.fare + c.cod_fee); end if;
   end if;
@@ -687,18 +710,18 @@ begin
   -- trusted; a new one is phoned first (nvi_config.confirm_first).
   v_first := not v_admin and c.confirm_first
              and not exists (select 1 from public.nvi_jobs where sender_phone = v_sp and status = 'Delivered');
-  if not v_admin and v_client is null then
+  if not v_admin then
     -- A fake number gets past the per-phone rule, so the address and the
-    -- browser are counted too. (A client account is accountable, so it is not.)
+    -- browser are counted too. A client account gets three times the room.
     if v_ip is not null and (
-         (select count(*) from public.nvi_jobs where ip = v_ip and created_at > now() - interval '1 hour') >= 6
-      or (select count(*) from public.nvi_jobs where ip = v_ip and created_at > now() - interval '1 day') >= 20
+         (select count(*) from public.nvi_jobs where ip = v_ip and created_at > now() - interval '1 hour') >= 6 * v_k
+      or (select count(*) from public.nvi_jobs where ip = v_ip and created_at > now() - interval '1 day') >= 20 * v_k
       or (select count(*) from public.nvi_jobs where ip = v_ip and status = 'Awaiting confirmation') >= 3) then
       return jsonb_build_object('ok', false, 'reason', 'slow_down');
     end if;
     if v_dev is not null and (
-         (select count(*) from public.nvi_jobs where device = v_dev and created_at > now() - interval '1 hour') >= 4
-      or (select count(*) from public.nvi_jobs where device = v_dev and created_at > now() - interval '1 day') >= 10
+         (select count(*) from public.nvi_jobs where device = v_dev and created_at > now() - interval '1 hour') >= 4 * v_k
+      or (select count(*) from public.nvi_jobs where device = v_dev and created_at > now() - interval '1 day') >= 10 * v_k
       or (select count(*) from public.nvi_jobs where device = v_dev and status = 'Awaiting confirmation') >= 2) then
       return jsonb_build_object('ok', false, 'reason', 'slow_down');
     end if;
@@ -1040,9 +1063,14 @@ begin
                 and (delivered_at at time zone 'Asia/Karachi')::date = v_day),
       'fares', (select coalesce(sum(fare), 0) from public.nvi_jobs where rider_id = r.id and status = 'Delivered'
                 and (delivered_at at time zone 'Asia/Karachi')::date = v_day),
-      'cash_in_hand', (select coalesce(sum(amount), 0) from public.nvi_cash where rider_id = r.id and handover_id is null),
-      'earned', (select coalesce(sum(fare + coalesce(return_fee, 0) - coalesce(commission, 0)), 0) from public.nvi_jobs
-                  where rider_id = r.id and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day)),
+      'cash_in_hand', (select coalesce(sum(amount), 0) from public.nvi_cash where rider_id = r.id and handover_id is null and not by_ledger),
+      -- Cash fares this rider took, plus fares out of COD they delivered, less the commission charged to them.
+      'earned', (select coalesce(sum(k.amount), 0) from public.nvi_cash k join public.nvi_jobs j on j.id = k.job_id
+                  where k.rider_id = r.id and j.cod_amount = 0 and k.by_ledger and (j.ledger_at at time zone 'Asia/Karachi')::date = v_day)
+              + (select coalesce(sum(fare), 0) from public.nvi_jobs where rider_id = r.id and cod_amount > 0 and status = 'Delivered'
+                  and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day)
+              - (select coalesce(sum(commission), 0) from public.nvi_jobs where commission_rider = r.id
+                  and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day)),
     'wallet', public.nvi_avail(public.nvi_wallet_id('rider', r.id, null)),
     -- What this rider closed today, newest first: their own record of the day.
     'recent', coalesce((select jsonb_agg(jsonb_build_object('code', j.code, 'status', j.status, 'to', j.drop_address,
@@ -1288,7 +1316,7 @@ begin
     'config', jsonb_build_object('open', c.open, 'hours_open', public.nvi_hours_open(c), 'open_hour', c.open_hour,
                                  'close_hour', c.close_hour, 'rate_per_km', c.rate_per_km, 'min_fare', c.min_fare,
                                  'confirm_first', c.confirm_first, 'return_fee_pct', c.return_fee_pct,
-                                 'captcha', c.turnstile_secret is not null, 'riders_free', public.nvi_riders_free()),
+                                 'captcha', c.turnstile_secret is not null, 'riders_free', public.nvi_riders_free(), 'riders_on', public.nvi_riders_on()),
     'live', coalesce((select jsonb_agg(public.nvi_admin_job_json(j) order by j.created_at)
                         from public.nvi_jobs j
                        where j.status in ('Awaiting confirmation', 'Booked', 'Rider assigned', 'Picked up', 'Failed delivery', 'Returning')), '[]'::jsonb),
@@ -1303,13 +1331,13 @@ begin
         'stale', r.status = 'Active' and r.online and not public.nvi_rider_fresh(r),
         'last_seen', r.last_seen, 'joined_at', r.joined_at,
         'emergency_name', r.emergency_name, 'emergency_phone', r.emergency_phone,
-        'alerts', exists (select 1 from public.nvi_push_subs s where s.rider_id = r.id and s.fails < 5),
+        'alerts', exists (select 1 from public.nvi_push_subs s where s.rider_id = r.id and s.fails < 3 and s.last_ok > now() - interval '24 hours'),
         'wallet', public.nvi_avail(public.nvi_wallet_id('rider', r.id, null)),
         'cnic_path', r.cnic_path, 'bill_path', r.bill_path, 'docs_at', r.docs_at, 'docs_checked_at', r.docs_checked_at,
         'active_code', (select j.code from public.nvi_jobs j where j.rider_id = r.id and j.status in ('Rider assigned', 'Picked up', 'Failed delivery', 'Returning')),
         'done_today', (select count(*) from public.nvi_jobs j where j.rider_id = r.id and j.status = 'Delivered'
                         and (j.delivered_at at time zone 'Asia/Karachi')::date = v_day),
-        'cash_in_hand', (select coalesce(sum(k.amount), 0) from public.nvi_cash k where k.rider_id = r.id and k.handover_id is null))
+        'cash_in_hand', (select coalesce(sum(k.amount), 0) from public.nvi_cash k where k.rider_id = r.id and k.handover_id is null and not k.by_ledger))
         order by (r.status = 'Active') desc, public.nvi_rider_fresh(r) desc, r.full_name)
       from public.nvi_riders r where r.status <> 'Removed'), '[]'::jsonb),
     'today', jsonb_build_object(
@@ -1319,7 +1347,7 @@ begin
       'cancelled', (select count(*) from public.nvi_jobs where status = 'Cancelled' and (cancelled_at at time zone 'Asia/Karachi')::date = v_day),
       'fares', (select coalesce(sum(fare), 0) from public.nvi_jobs where status = 'Delivered' and (delivered_at at time zone 'Asia/Karachi')::date = v_day),
       'disputed', (select count(*) from public.nvi_jobs where pay_state = 'Disputed'),
-      'cash_out', (select coalesce(sum(amount), 0) from public.nvi_cash where handover_id is null),
+      'cash_out', (select coalesce(sum(amount), 0) from public.nvi_cash where handover_id is null and not by_ledger),
       'from_home', (select count(*) from public.nvi_jobs where source = 'home' and (created_at at time zone 'Asia/Karachi')::date = v_day),
       'from_portal', (select count(*) from public.nvi_jobs where source = 'portal' and (created_at at time zone 'Asia/Karachi')::date = v_day)),
     'feedback', coalesce((select jsonb_agg(jsonb_build_object('at', f.at, 'source', f.source, 'would_use', f.would_use,
@@ -1349,6 +1377,30 @@ begin
         or j.pickup_address ilike v_like or j.drop_address ilike v_like
         or exists (select 1 from public.nvi_riders r where r.id = j.rider_id and r.full_name ilike v_like)
      order by j.created_at desc limit 40) j), '[]'::jsonb);
+end $$;
+
+-- A first booking nobody confirmed by phone is cancelled after
+-- nvi_config.confirm_hours (rules: "If the call is not answered the booking
+-- is cancelled"). Run every 10 minutes by pg_cron.
+create or replace function public.nvi_expire_unconfirmed()
+returns int language plpgsql security definer set search_path = '' as $$
+declare c public.nvi_config; j record; v_n int := 0;
+begin
+  select * into c from public.nvi_config where id;
+  for j in select id from public.nvi_jobs where status = 'Awaiting confirmation'
+             and created_at < now() - make_interval(hours => c.confirm_hours) for update skip locked loop
+    update public.nvi_jobs set status = 'Cancelled', cancelled_at = now(),
+           cancel_reason = 'Not confirmed by phone within ' || c.confirm_hours || ' hours' where id = j.id and status = 'Awaiting confirmation';
+    perform public.nvi_event(j.id, 'system', 'cancelled', 'Not confirmed by phone in time');
+    v_n := v_n + 1;
+  end loop;
+  return v_n;
+end $$;
+do $$ begin
+  if exists (select 1 from pg_extension where extname = 'pg_cron') then
+    perform cron.unschedule(jobid) from cron.job where jobname = 'nvi-expire-unconfirmed';
+    perform cron.schedule('nvi-expire-unconfirmed', '*/10 * * * *', 'select public.nvi_expire_unconfirmed()');
+  end if;
 end $$;
 
 create or replace function public.nvi_admin_job(p_job uuid)
@@ -1497,7 +1549,10 @@ begin
   if p_action = 'writeoff' then
     update public.nvi_jobs set pay_state = 'Written off', pay_note = left(coalesce(pay_note || ' | ', '') || 'Written off: ' || btrim(p_note), 300) where id = j.id;
   elsif p_action = 'received' then
-    if p_amount is null or p_amount < 0 or p_amount > j.fare * 3 then return jsonb_build_object('ok', false, 'reason', 'amount'); end if;
+    -- Cash on delivery settles up to the COD amount; a fare up to three times the fare.
+    if p_amount is null or p_amount < 0 or p_amount > (case when j.cod_amount > 0 then j.cod_amount else j.fare * 3 end) then
+      return jsonb_build_object('ok', false, 'reason', 'amount');
+    end if;
     if j.rider_id is null then return jsonb_build_object('ok', false, 'reason', 'no_rider'); end if;
     v_kind := case when j.status = 'Returned' then 'return' else 'fare' end;
     -- Cash already at the office is fixed; only what the rider still holds moves.
@@ -1508,7 +1563,7 @@ begin
       v_slot := case when not exists (select 1 from public.nvi_cash where job_id = j.id and kind = v_kind) then v_kind
                      when not exists (select 1 from public.nvi_cash where job_id = j.id and kind = 'topup') then 'topup' end;
       if v_slot is null then return jsonb_build_object('ok', false, 'reason', 'handed_over', 'handed', v_in); end if;
-      insert into public.nvi_cash (job_id, rider_id, amount, kind, noted_by) values (j.id, j.rider_id, p_amount - v_in, v_slot, 'admin');
+      insert into public.nvi_cash (job_id, rider_id, amount, kind, noted_by, by_ledger) values (j.id, j.rider_id, p_amount - v_in, v_slot, 'admin', j.ledger_at is not null);
     end if;
     update public.nvi_jobs set pay_state = 'Received',
            pay_note = left(coalesce(pay_note || ' | ', '') || 'Settled at Rs ' || p_amount || ': ' || btrim(p_note), 300),
@@ -1557,8 +1612,11 @@ begin
     select code into v_code from public.nvi_jobs where rider_id = r.id and status in ('Rider assigned', 'Picked up', 'Failed delivery', 'Returning');
     if v_code is not null then return jsonb_build_object('ok', false, 'reason', 'rider_has_job', 'code', v_code); end if;
   end if;
-  if p_status = 'Removed' and exists (select 1 from public.nvi_cash where rider_id = r.id and handover_id is null) then
+  if p_status = 'Removed' and exists (select 1 from public.nvi_cash where rider_id = r.id and handover_id is null and not by_ledger) then
     return jsonb_build_object('ok', false, 'reason', 'rider_has_cash');
+  end if;
+  if p_status = 'Removed' and public.nvi_avail(public.nvi_wallet_id('rider', r.id, null)) < 0 then
+    return jsonb_build_object('ok', false, 'reason', 'rider_owes');
   end if;
   update public.nvi_riders
      set status = case when p_status = 'Active' and auth_user_id is null then 'Invited' else p_status end,
@@ -1585,7 +1643,7 @@ begin
     return jsonb_build_object('ok', true, 'amount', h.amount, 'jobs', h.jobs, 'already', true);
   end if;
   select array_agg(s.id), coalesce(sum(s.amount), 0)::int, count(distinct s.job_id)::int into v_ids, v_amount, v_jobs
-    from (select id, amount, job_id from public.nvi_cash where rider_id = p_rider and handover_id is null for update) s;
+    from (select id, amount, job_id from public.nvi_cash where rider_id = p_rider and handover_id is null and not by_ledger for update) s;
   if v_ids is null then return jsonb_build_object('ok', false, 'reason', 'nothing'); end if;
   insert into public.nvi_handovers (rider_id, amount, jobs, confirmed_by, idem_key)
   values (p_rider, v_amount, v_jobs, (select auth.uid()), p_key) returning * into h;
@@ -1637,16 +1695,25 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
+create or replace function public.nvi_push_key()
+returns text language sql stable security definer set search_path = '' as $$
+  select push_key from public.nvi_config where id
+$$;
+
 -- For the nvi-push function only (service role). A job: marks it alerted and
 -- returns the phones of on-shift, checked, free riders; a second call within
 -- two minutes returns nothing, so the sender cannot be used to spam riders.
 -- A test: returns that one phone if it is registered.
-create or replace function public.nvi_push_targets(p_job uuid, p_test text default null)
+drop function if exists public.nvi_push_targets(uuid, text);
+create or replace function public.nvi_push_targets(p_job uuid, p_test text default null, p_user uuid default null)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare v_n int;
 begin
   if p_test is not null then
-    return coalesce((select jsonb_agg(jsonb_build_object('id', id, 'endpoint', endpoint)) from public.nvi_push_subs where endpoint = p_test), '[]'::jsonb);
+    -- A test reaches only a phone of the rider who is signed in and asking.
+    return coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'endpoint', s.endpoint)) from public.nvi_push_subs s
+                      join public.nvi_riders r on r.id = s.rider_id
+                     where s.endpoint = p_test and p_user is not null and r.auth_user_id = p_user), '[]'::jsonb);
   end if;
   update public.nvi_jobs set push_at = now()
    where id = p_job and status = 'Booked' and rider_id is null
@@ -1678,7 +1745,7 @@ begin
     begin
       perform net.http_post(url := 'https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/nvi-push',
                             body := jsonb_build_object('job', new.id),
-                            headers := '{"Content-Type":"application/json"}'::jsonb,
+                            headers := jsonb_build_object('Content-Type', 'application/json', 'x-nvi-key', (select c.push_key from public.nvi_config c where c.id)),
                             timeout_milliseconds := 5000);
     exception when others then null;   -- an alert that fails must never fail the booking
     end;
@@ -1745,13 +1812,13 @@ begin
                          'nvi_client_save', 'nvi_client_me', 'nvi_client_jobs', 'nvi_client_ledger', 'nvi_client_withdraw',
                          'nvi_rider_wallet', 'nvi_rider_deposit', 'nvi_rider_payout',
                          'nvi_admin_wallets', 'nvi_admin_deposit', 'nvi_admin_payout', 'nvi_admin_adjust', 'nvi_admin_ledger',
-                         'nvi_admin_money_check', 'nvi_admin_search')
+                         'nvi_admin_money_check', 'nvi_admin_search', 'nvi_admin_set_client')
   loop
     execute 'grant execute on function ' || f || ' to authenticated';
   end loop;
 end $$;
 
 -- The alert sender runs with the service role.
-grant execute on function public.nvi_push_targets(uuid, text), public.nvi_push_result(bigint[], bigint[], bigint[]) to service_role;
+grant execute on function public.nvi_push_targets(uuid, text, uuid), public.nvi_push_result(bigint[], bigint[], bigint[]), public.nvi_push_key() to service_role;
 
 notify pgrst, 'reload schema';

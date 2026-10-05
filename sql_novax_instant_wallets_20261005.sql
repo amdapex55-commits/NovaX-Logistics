@@ -91,6 +91,11 @@ create table if not exists public.nvi_payouts (
   done_by    uuid
 );
 create index if not exists nvi_payouts_open on public.nvi_payouts(status, at);
+-- A deposit claim sent twice (a lost reply, a second tap) is the same claim.
+alter table public.nvi_deposits add column if not exists req_key uuid;
+create unique index if not exists nvi_deposits_key on public.nvi_deposits(req_key) where req_key is not null;
+-- One transaction ID can be claimed once per method (a rejected claim frees it).
+create unique index if not exists nvi_deposits_ref on public.nvi_deposits(method, lower(ref)) where ref is not null and status <> 'Rejected';
 create index if not exists nvi_deposits_open on public.nvi_deposits(status, at);
 
 -- Entries and transactions are permanent.
@@ -218,21 +223,25 @@ end $$;
 create or replace function public.nvi_ledger_job()
 returns trigger language plpgsql security definer set search_path = '' as $$
 declare
-  c public.nvi_config; v_pct int; v_base int; v_c int; v_a int; v_rw uuid; v_cw uuid; v_hw uuid;
+  c public.nvi_config; v_pct int; v_base int; v_c int; v_a int; v_rw uuid; v_cw uuid; v_hw uuid; v_collector uuid;
 begin
   if new.status not in ('Delivered', 'Returned') or old.status is not distinct from new.status
      or new.rider_id is null or new.ledger_at is not null then
     return null;
   end if;
   select * into c from public.nvi_config where id;
-  v_pct := coalesce((select r.commission_pct from public.nvi_riders r where r.id = new.rider_id), c.commission_pct);
   v_base := new.fare + coalesce(new.return_fee, 0);
-  v_c := round(v_base * v_pct / 100.0)::int;
   v_hw := public.nvi_wallet_id('house', null, 'commission');
-  -- Commission is owed by the rider who took the fare in cash. A parcel moved
-  -- to another rider after a sender paid at pickup stays with the first one.
-  v_rw := public.nvi_wallet_id('rider', case when new.cod_amount > 0 and new.status = 'Delivered' then new.rider_id
-            else coalesce((select k.rider_id from public.nvi_cash k where k.job_id = new.id and k.kind = 'fare' order by k.id limit 1), new.rider_id) end, null);
+  -- Commission is owed by the rider who took the fare in cash: at pickup, at
+  -- the door, or when a returned parcel came back. A parcel moved to another
+  -- rider stays charged to the one who took the money.
+  v_collector := case when new.cod_amount > 0 and new.status = 'Delivered' then new.rider_id
+    else coalesce((select k.rider_id from public.nvi_cash k where k.job_id = new.id and k.kind = 'fare' order by k.id limit 1),
+                  (select k.rider_id from public.nvi_cash k where k.job_id = new.id and k.kind = 'return' order by k.id limit 1),
+                  new.rider_id) end;
+  v_rw := public.nvi_wallet_id('rider', v_collector, null);
+  v_pct := coalesce((select r.commission_pct from public.nvi_riders r where r.id = v_collector), c.commission_pct);
+  v_c := round(v_base * v_pct / 100.0)::int;
   if new.status = 'Delivered' and new.cod_amount > 0 then
     v_a := least(new.cod_amount, coalesce(new.cash_collected, new.cod_amount));
     v_cw := case when new.client_id is not null then public.nvi_wallet_id('client', new.client_id, null) end;
@@ -249,13 +258,42 @@ begin
       jsonb_build_object('w', v_rw, 'a', -v_c),
       jsonb_build_object('w', v_hw, 'a', v_c)), new.id);
   end if;
-  update public.nvi_jobs set commission = v_c, ledger_at = now() where id = new.id;
+  update public.nvi_jobs set commission = v_c, commission_rider = v_collector, ledger_at = now(),
+         ledger_cod = case when new.status = 'Delivered' and new.cod_amount > 0 then v_a end where id = new.id;
+  update public.nvi_cash set by_ledger = true where job_id = new.id;
   if new.cod_amount > 0 and new.status = 'Delivered' then perform public.nvi_release_cod(new.rider_id); end if;
   return null;
 end $$;
 drop trigger if exists nvi_jobs_ledger on public.nvi_jobs;
 create trigger nvi_jobs_ledger after update of status on public.nvi_jobs
   for each row execute function public.nvi_ledger_job();
+
+-- A short COD payment settled later (nvi_admin_pay) changes cash_collected
+-- after the ledger booked the job. The difference is posted as its own
+-- movement: the rider owes it, the client is owed it.
+create or replace function public.nvi_ledger_cod_fix()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare v_new int; v_d int; v_cw uuid;
+begin
+  if new.ledger_at is null or new.cod_amount = 0 or new.status <> 'Delivered' or new.ledger_cod is null
+     or new.cash_collected is not distinct from old.cash_collected then
+    return null;
+  end if;
+  v_new := least(new.cod_amount, coalesce(new.cash_collected, new.cod_amount));
+  v_d := v_new - new.ledger_cod;
+  if v_d = 0 then return null; end if;
+  v_cw := case when new.client_id is not null then public.nvi_wallet_id('client', new.client_id, null)
+               else public.nvi_wallet_id('house', null, 'adjustments') end;
+  perform public.nvi_post('cod_fix:' || new.id || ':' || new.ledger_cod || ':' || v_new, 'cod_correction', jsonb_build_array(
+    jsonb_build_object('w', public.nvi_wallet_id('rider', new.rider_id, null), 'a', -v_d),
+    jsonb_build_object('w', v_cw, 'b', case when new.cod_released_at is null then 'pending' else 'available' end, 'a', v_d)),
+    new.id, null, 'Cash on delivery settled at Rs ' || v_new);
+  update public.nvi_jobs set ledger_cod = v_new where id = new.id;
+  return null;
+end $$;
+drop trigger if exists nvi_jobs_cod_fix on public.nvi_jobs;
+create trigger nvi_jobs_cod_fix after update of cash_collected on public.nvi_jobs
+  for each row execute function public.nvi_ledger_cod_fix();
 
 -- ═══════════════════ Clients ═══════════════════
 
@@ -298,12 +336,14 @@ begin
   select id into v_w from public.nvi_wallets where kind = 'client' and owner = k.id;
   return jsonb_build_object(
     'client', jsonb_build_object('name', k.full_name, 'phone', k.phone, 'email', k.email, 'address', k.address,
-                                 'cnic', case when k.cnic is not null then '•••••' || right(k.cnic, 4) end, 'since', k.created_at),
+                                 'cnic', case when k.cnic is not null then '•••••' || right(k.cnic, 4) end, 'since', k.created_at,
+                                 'status', k.status, 'block_reason', k.block_reason),
     'wallet', case when v_w is null then jsonb_build_object('available', 0, 'pending', 0) else public.nvi_balance(v_w) end,
     'payouts', coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'amount', p.amount, 'method', p.method,
                  'number', '•••' || right(p.account_number, 4), 'status', p.status, 'at', p.at, 'done_at', p.done_at, 'ref', p.ref, 'note', p.note) order by p.at desc)
                  from (select * from public.nvi_payouts where wallet_id = v_w order by at desc limit 20) p), '[]'::jsonb),
-    'min_withdraw', c.min_withdraw, 'cod_max', c.cod_max, 'cod_fee', c.cod_fee, 'support', c.support_phone);
+    'min_withdraw', c.min_withdraw, 'cod_max', c.cod_max, 'cod_fee', c.cod_fee, 'support', c.support_phone,
+    'cod_enabled', c.cod_enabled, 'withdrawals_enabled', c.withdrawals_enabled);
 end $$;
 
 create or replace function public.nvi_client_jobs(p_limit int default 100)
@@ -336,6 +376,7 @@ returns jsonb language plpgsql security definer set search_path = '' as $$
 declare c public.nvi_config; v_num text := regexp_replace(coalesce(p_number, ''), '[^0-9A-Za-z]', '', 'g'); v_id bigint;
 begin
   select * into c from public.nvi_config where id;
+  if not c.withdrawals_enabled then return jsonb_build_object('ok', false, 'reason', 'withdrawals_off'); end if;
   if p_amount is null or p_amount < c.min_withdraw then return jsonb_build_object('ok', false, 'reason', 'min', 'min', c.min_withdraw); end if;
   if p_method not in ('JazzCash', 'Easypaisa', 'Bank') then return jsonb_build_object('ok', false, 'reason', 'method'); end if;
   if length(btrim(coalesce(p_title, ''))) < 2 then return jsonb_build_object('ok', false, 'reason', 'title'); end if;
@@ -381,8 +422,11 @@ begin
     'commission_pct', coalesce(r.commission_pct, c.commission_pct), 'cash_limit', c.rider_cash_limit, 'min_withdraw', c.min_withdraw,
     'today', jsonb_build_object(
       'jobs', (select count(*) from public.nvi_jobs where rider_id = r.id and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day),
-      'fares', (select coalesce(sum(fare + coalesce(return_fee, 0)), 0) from public.nvi_jobs where rider_id = r.id and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day),
-      'commission', (select coalesce(sum(commission), 0) from public.nvi_jobs where rider_id = r.id and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day),
+      'fares', (select coalesce(sum(k.amount), 0) from public.nvi_cash k join public.nvi_jobs j on j.id = k.job_id
+                 where k.rider_id = r.id and j.cod_amount = 0 and k.by_ledger and (j.ledger_at at time zone 'Asia/Karachi')::date = v_day)
+             + (select coalesce(sum(fare), 0) from public.nvi_jobs where rider_id = r.id and cod_amount > 0 and status = 'Delivered'
+                 and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day),
+      'commission', (select coalesce(sum(commission), 0) from public.nvi_jobs where commission_rider = r.id and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day),
       'cod', (select coalesce(sum(cod_amount), 0) from public.nvi_jobs where rider_id = r.id and status = 'Delivered' and ledger_at is not null and (ledger_at at time zone 'Asia/Karachi')::date = v_day)),
     'entries', public.nvi_entries(v_w, 60),
     'deposits', coalesce((select jsonb_agg(jsonb_build_object('id', d.id, 'amount', d.amount, 'confirmed', d.confirmed_amount, 'method', d.method,
@@ -393,17 +437,29 @@ begin
                    from (select * from public.nvi_payouts where wallet_id = v_w order by at desc limit 15) p), '[]'::jsonb));
 end $$;
 
-create or replace function public.nvi_rider_deposit(p_amount int, p_method text, p_ref text)
+drop function if exists public.nvi_rider_deposit(int, text, text);
+create or replace function public.nvi_rider_deposit(p_amount int, p_method text, p_ref text, p_key uuid default null)
 returns jsonb language plpgsql security definer set search_path = '' as $$
-declare r public.nvi_riders := public.nvi_require_rider();
+declare r public.nvi_riders := public.nvi_require_rider(); d public.nvi_deposits;
 begin
+  if p_key is not null then
+    select * into d from public.nvi_deposits where req_key = p_key;
+    if d.id is not null then
+      if d.rider_id <> r.id then return jsonb_build_object('ok', false, 'reason', 'key'); end if;
+      return jsonb_build_object('ok', true, 'already', true);
+    end if;
+  end if;
   if p_amount is null or p_amount < 1 or p_amount > 500000 then return jsonb_build_object('ok', false, 'reason', 'amount'); end if;
   if p_method not in ('JazzCash', 'Easypaisa', 'Bank', 'Office') then return jsonb_build_object('ok', false, 'reason', 'method'); end if;
   if p_method <> 'Office' and length(btrim(coalesce(p_ref, ''))) < 4 then return jsonb_build_object('ok', false, 'reason', 'ref'); end if;
   if (select count(*) from public.nvi_deposits where rider_id = r.id and status = 'Claimed') >= 3 then
     return jsonb_build_object('ok', false, 'reason', 'too_many');
   end if;
-  insert into public.nvi_deposits (rider_id, amount, method, ref) values (r.id, p_amount, p_method, nullif(left(btrim(coalesce(p_ref, '')), 60), ''));
+  if p_ref is not null and length(btrim(p_ref)) > 0 and exists (select 1 from public.nvi_deposits
+       where method = p_method and lower(ref) = lower(left(btrim(p_ref), 60)) and status <> 'Rejected') then
+    return jsonb_build_object('ok', false, 'reason', 'dup_ref');
+  end if;
+  insert into public.nvi_deposits (rider_id, amount, method, ref, req_key) values (r.id, p_amount, p_method, nullif(left(btrim(coalesce(p_ref, '')), 60), ''), p_key);
   return jsonb_build_object('ok', true);
 end $$;
 
@@ -436,7 +492,7 @@ begin
                  order by public.nvi_avail(w.id))
                from public.nvi_riders r join public.nvi_wallets w on w.kind = 'rider' and w.owner = r.id), '[]'::jsonb),
     'clients', coalesce((select jsonb_agg(jsonb_build_object('id', k.id, 'wallet', w.id, 'name', k.full_name, 'phone', k.phone, 'email', k.email,
-                 'cnic', k.cnic is not null, 'status', k.status, 'since', k.created_at,
+                 'cnic', k.cnic is not null, 'status', k.status, 'block_reason', k.block_reason, 'since', k.created_at,
                  'available', (public.nvi_balance(w.id)->>'available')::int, 'pending', (public.nvi_balance(w.id)->>'pending')::int,
                  'jobs', (select count(*) from public.nvi_jobs j where j.client_id = k.id)) order by k.created_at desc)
                from public.nvi_clients k join public.nvi_wallets w on w.kind = 'client' and w.owner = k.id), '[]'::jsonb),
@@ -451,7 +507,7 @@ begin
                                                  (select k.full_name from public.nvi_clients k where w.kind = 'client' and k.id = w.owner)),
                  'phone', coalesce((select r.phone from public.nvi_riders r where w.kind = 'rider' and r.id = w.owner),
                                    (select k.phone from public.nvi_clients k where w.kind = 'client' and k.id = w.owner)),
-                 'cnic', (select k.cnic from public.nvi_clients k where w.kind = 'client' and k.id = w.owner))
+                 'cnic', (select '•••••' || right(k.cnic, 4) from public.nvi_clients k where w.kind = 'client' and k.id = w.owner and k.cnic is not null))
                  order by (p.status = 'Requested') desc, p.at desc)
                from (select * from public.nvi_payouts order by (status = 'Requested') desc, at desc limit 60) p
                join public.nvi_wallets w on w.id = p.wallet_id), '[]'::jsonb));
@@ -524,6 +580,23 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
+-- Hold a client account: no new cash on delivery, but money that is theirs
+-- can still be withdrawn. Always with a reason.
+create or replace function public.nvi_admin_set_client(p_client uuid, p_block boolean, p_reason text)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare k public.nvi_clients;
+begin
+  perform public.nvi_require_admin();
+  select * into k from public.nvi_clients where id = p_client for update;
+  if k.id is null then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
+  if coalesce(p_block, false) and length(btrim(coalesce(p_reason, ''))) < 5 then return jsonb_build_object('ok', false, 'reason', 'need_note'); end if;
+  update public.nvi_clients set status = case when p_block then 'Blocked' else 'Active' end,
+         block_reason = case when p_block then left(btrim(p_reason), 200) end,
+         blocked_at = case when p_block then now() end, blocked_by = case when p_block then (select auth.uid()) end
+   where id = k.id;
+  return jsonb_build_object('ok', true);
+end $$;
+
 -- The money check on the Wallets tab: anything that needs a person. The
 -- ledger must add up to zero overall and per movement, every job finished
 -- since wallets started must be booked, and nothing should sit too long.
@@ -570,9 +643,9 @@ begin
     select p.oid::regprocedure::text from pg_proc p
      where p.pronamespace = 'public'::regnamespace
        and p.proname in ('nvi_wallet_id', 'nvi_post', 'nvi_balance', 'nvi_avail', 'nvi_entries', 'nvi_release_cod', 'nvi_ledger_job',
-                         'nvi_ledger_frozen', 'nvi_request_payout', 'nvi_client_save', 'nvi_client_me', 'nvi_client_jobs',
+                         'nvi_ledger_frozen', 'nvi_ledger_cod_fix', 'nvi_request_payout', 'nvi_client_save', 'nvi_client_me', 'nvi_client_jobs',
                          'nvi_client_ledger', 'nvi_client_withdraw', 'nvi_rider_wallet', 'nvi_rider_deposit', 'nvi_rider_payout',
-                         'nvi_admin_wallets', 'nvi_admin_deposit', 'nvi_admin_payout', 'nvi_admin_adjust', 'nvi_admin_ledger', 'nvi_admin_money_check')
+                         'nvi_admin_wallets', 'nvi_admin_deposit', 'nvi_admin_payout', 'nvi_admin_adjust', 'nvi_admin_ledger', 'nvi_admin_money_check', 'nvi_admin_set_client')
   loop
     execute 'revoke all on function ' || f || ' from public, anon, authenticated';
   end loop;
@@ -582,7 +655,7 @@ begin
      where p.pronamespace = 'public'::regnamespace
        and p.proname in ('nvi_client_save', 'nvi_client_me', 'nvi_client_jobs', 'nvi_client_ledger', 'nvi_client_withdraw',
                          'nvi_rider_wallet', 'nvi_rider_deposit', 'nvi_rider_payout',
-                         'nvi_admin_wallets', 'nvi_admin_deposit', 'nvi_admin_payout', 'nvi_admin_adjust', 'nvi_admin_ledger', 'nvi_admin_money_check')
+                         'nvi_admin_wallets', 'nvi_admin_deposit', 'nvi_admin_payout', 'nvi_admin_adjust', 'nvi_admin_ledger', 'nvi_admin_money_check', 'nvi_admin_set_client')
   loop
     execute 'grant execute on function ' || f || ' to authenticated';
   end loop;

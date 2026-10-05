@@ -261,7 +261,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     var b=S.b, c=b.config||{}, t=b.today||{}, live=b.live||[], riders=b.riders||[], closed=b.closed||[], fb=b.feedback||[];
     watch(live);
     $("openSw").hidden=false; $("bookLink").hidden=false; $("srchBar").hidden=false;
-    $("openSw").setAttribute("aria-checked",String(!!c.open)); $("openLbl").textContent="Public booking: "+(c.open?"on":"off");
+    $("openSw").setAttribute("aria-checked",String(!!c.open)); $("openLbl").textContent="Public booking: "+(c.open?(Number(c.riders_on)===0?"on, paused (no rider on duty)":"on"):"off");
     var h='<div class="stats">'+
       '<div class="stat"><span>Booked today</span><b>'+esc(t.booked||0)+'</b>'+(Number(t.from_home)||Number(t.from_portal)?'<span>'+esc(t.from_home||0)+' homepage &middot; '+esc(t.from_portal||0)+' portal</span>':'')+'</div>'+
       '<div class="stat"><span>Delivered today</span><b>'+esc(t.delivered||0)+'</b></div>'+
@@ -386,7 +386,11 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     h+='<h2 class="wh">Clients <span>'+clients.length+'</span></h2>';
     h+=clients.length?'<div class="tblwrap"><table><thead><tr><th>Client</th><th>Can withdraw</th><th>With riders</th><th>Bookings</th><th></th></tr></thead><tbody>'+clients.map(function(c){
       return '<tr><td><b>'+esc(c.name)+'</b><br><span class="age"><a href="tel:'+esc(c.phone)+'">'+esc(c.phone)+'</a> &middot; '+esc(c.email||"")+(c.cnic?' &middot; CNIC on file':'')+'</span></td><td data-l="Can withdraw"><b>'+esc(rs(c.available))+'</b></td><td data-l="With riders">'+esc(rs(c.pending))+'</td><td data-l="Bookings">'+esc(c.jobs)+'</td>'+
-        '<td><div class="row" style="margin:0"><button class="btn btn-plain" type="button" data-do="w-hist" data-wallet="'+esc(c.wallet)+'">History</button><button class="btn btn-plain" type="button" data-form="w-adj" data-job="'+esc(c.wallet)+'">Correct</button></div>'+
+        '<td><div class="row" style="margin:0"><button class="btn btn-plain" type="button" data-do="w-hist" data-wallet="'+esc(c.wallet)+'">History</button><button class="btn btn-plain" type="button" data-form="w-adj" data-job="'+esc(c.wallet)+'">Correct</button>'+
+          (c.status==="Blocked"?'<button class="btn btn-plain" type="button" data-do="c-release" data-client="'+esc(c.id)+'">Release hold</button>':'<button class="btn btn-danger" type="button" data-form="c-hold" data-job="'+esc(c.id)+'">Hold account</button>')+'</div>'+
+          (c.status==="Blocked"?'<div class="hint">On hold'+(c.block_reason?': '+esc(c.block_reason):'')+'. No new cash on delivery; they can still withdraw.</div>':'')+
+          (wForm("c-hold",c.id)?'<div class="inline"><label for="fNote">Why (the client sees this)</label><input class="inp" id="fNote" maxlength="200" placeholder="e.g. three refused COD parcels this week">'+
+            '<div class="row"><button class="btn btn-plain" type="button" data-form="" data-job="">Back</button><button class="btn btn-danger" type="button" data-do="c-hold" data-client="'+esc(c.id)+'">Hold the account</button></div></div>':'')+
         (wForm("w-hist",c.wallet)?histHtml(c.wallet):wForm("w-adj",c.wallet)?adjustHtml(c.wallet):'')+'</td></tr>'; }).join("")+'</tbody></table></div>':'<div class="empty">No client accounts yet. Clients make one when they book cash on delivery.</div>';
     var doneD=deps.filter(function(d){ return d.status!=="Claimed"; }).slice(0,10), doneP=pays.filter(function(p){ return p.status!=="Requested"; }).slice(0,10);
     if(doneD.length||doneP.length) h+='<h2 class="wh">Recently done</h2><div class="card">'+doneD.map(function(d){ return '<div class="age" style="padding:4px 0">'+esc(when(d.done_at))+' &middot; '+esc(d.rider)+' sent '+esc(rs(d.confirmed||d.amount))+' by '+esc(d.method)+': <b>'+esc(d.status)+'</b>'+(d.note?' ('+esc(d.note)+')':'')+'</div>'; }).join("")+
@@ -495,6 +499,8 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
         '<td>'+(r.status==="Active"?'<span class="dot'+(r.online?' on':'')+'"></span>'+(r.online?"Online":r.stale?"App closed (switch left on)":"Offline")+(busy?' &middot; on '+esc(r.active_code):'')+'<br><span class="age">seen '+esc(ago(r.last_seen))+' &middot; '+(r.alerts?'job alerts on':'<b>no job alerts</b>')+'</span>':'<span class="age">&ndash;</span>')+'</td>'+
         '<td>'+esc(r.done_today||0)+'</td><td data-l="Wallet">'+balTxt(r.wallet)+'</td>'+
         '<td><div class="row" style="margin:0">'+
+          /* Cash from jobs before wallets started is still handed in the old way. */
+          (Number(r.cash_in_hand)>0?'<button class="btn btn-primary" type="button" data-do="handover" data-rider="'+esc(r.id)+'" data-amt="'+esc(r.cash_in_hand)+'">Old cash received ('+esc(rs(r.cash_in_hand))+')</button>':'')+
           (Number(r.wallet)<0?'<button class="btn btn-plain" type="button" data-tab="wallets">Wallet</button>':'')+
           (r.status==="Blocked"?'<button class="btn btn-plain" type="button" data-do="setrider" data-rider="'+esc(r.id)+'" data-st="Active">Unblock</button>'
                                :'<button class="btn btn-plain" type="button" data-do="setrider" data-rider="'+esc(r.id)+'" data-st="Blocked"'+(busy?' disabled title="This rider has a job"':'')+'>Block</button>')+
@@ -558,7 +564,8 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     has_parcel:"A rider holds this parcel, so it cannot be cancelled or left without a rider. Mark it not delivered and send it back instead.",
     unconfirmed:"Confirm this booking by phone first.",
     rider_has_job:"That rider has a job. Change the rider on the job, or let it finish, first.",
-    rider_has_cash:"That rider still holds cash. Take it in with Cash received first.",
+    rider_has_cash:"That rider still holds cash from before wallets. Take it in with Old cash received first.",
+    rider_owes:"That rider owes NovaX money. Settle their wallet (Wallets tab) before removing them.",
     no_rider_online:"No rider is online and free, so public booking stays off. Ask a rider to go online in their app first.",
     cash_needed:"Type the cash the rider received at this step (0 if none).", cash_mismatch:"That is more cash than was due.",
     short_note:"Say in the note why the cash is short.", not_disputed:"That payment is no longer in dispute.", amount:"Enter a sensible amount.",
@@ -659,6 +666,9 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       var wid=t.dataset.wallet; S.open={ job:wid, kind:"w-hist" }; paint();
       return rpc("nvi_admin_ledger",{ p_wallet:wid }).then(function(list){ S.hist[wid]=list||[]; if(S.open&&S.open.job===wid) paint(); }).catch(function(e){ toast(e.message||"Could not load the history."); });
     }
+    if(d==="c-hold"){ var hn=($("fNote").value||"").trim(); if(hn.length<5){ toast("Write why, so the client and the office can see it."); $("fNote").focus(); return; }
+      if(!twice(t,"Press again to hold")) return; return run("nvi_admin_set_client",{ p_client:t.dataset.client, p_block:true, p_reason:hn },"Account on hold."); }
+    if(d==="c-release"){ if(!twice(t,"Press again to release")) return; return run("nvi_admin_set_client",{ p_client:t.dataset.client, p_block:false, p_reason:null },"Hold released."); }
     if(d==="w-adjust"){
       var am=Number(String($("aAmt").value||"").replace(/[^\d-]/g,"")), an=($("fNote").value||"").trim();
       if(!am){ toast("Type the amount, with a minus to take money off."); $("aAmt").focus(); return; }
