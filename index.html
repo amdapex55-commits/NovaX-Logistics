@@ -328,7 +328,7 @@ h2{font:800 clamp(30px,6.4vw,50px)/1.06 var(--display);letter-spacing:-.035em;ma
   :root{--hdr:72px}
   .nav{gap:30px}
   .nav-links{display:flex;gap:22px;font-weight:600;font-size:14.5px;color:var(--ink-2)}
-  .nav-links>a{padding:6px 0;border-bottom:2px solid transparent}
+  .nav-links>a{padding:6px 0;border-bottom:2px solid transparent;white-space:nowrap}
   .nav-links>a:hover{color:var(--ink);border-bottom-color:var(--green)}
   .m-ctas,.burger{display:none}
   .nav-track{display:inline-flex}
@@ -342,6 +342,9 @@ h2{font:800 clamp(30px,6.4vw,50px)/1.06 var(--display);letter-spacing:-.035em;ma
 .kicker{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:var(--mint);border:1px solid var(--mint-line);
   font-size:13px;font-weight:700;color:var(--green-3);line-height:1.3}
 .kicker i{width:7px;height:7px;border-radius:50%;background:var(--green);flex:none}
+@media (min-width:1100px) and (max-width:1279px){ .nav{gap:18px} .nav-links{gap:15px;font-size:14px} .nav-links>a[href="#faq"]{display:none} }
+.nav-instant{color:var(--green-3)}
+.nav-instant::after{content:"New";margin-left:7px;padding:3px 6px;border-radius:6px;background:var(--mint);border:1px solid var(--mint-line);font:700 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--green-3)}
 /* Nova Instant: the announcement above the headline, and its own band. */
 .nvi-pill{display:inline-flex;align-items:center;gap:10px;max-width:100%;min-height:44px;margin:0 0 12px;padding:5px 14px 5px 6px;border-radius:999px;background:var(--navy);color:var(--navy-ink);text-decoration:none;font-size:14px;line-height:1.25}
 .nvi-pill b{flex:none;font:700 11.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;background:var(--lime);color:var(--navy);padding:7px 9px;border-radius:999px}
@@ -881,12 +884,11 @@ footer{background:var(--card);border-top:1px solid var(--line);padding:44px 0 ca
   <div class="wrap nav">
     <a class="brand" href="#hero" aria-label="NovaX Logistics, back to top"><img src="/assets/icon-192.png" alt="" width="36" height="36"><span><b>NovaX</b><small>LOGISTICS</small></span></a>
     <nav class="nav-links" id="navLinks" aria-label="Main">
-      <a href="#how">How it works</a><a href="#rates">Rates</a><a href="#payouts">COD payouts</a><a href="#portal">Portal</a><a href="#autopilot">Autopilot AI</a><a href="#faq">FAQ</a>
+      <a class="nav-instant" href="instant.html?from=home">Nova Instant</a><a href="#how">How it works</a><a href="#rates">Rates</a><a href="#payouts">COD payouts</a><a href="#portal">Portal</a><a href="#autopilot">Autopilot AI</a><a href="#faq">FAQ</a>
       <div class="m-ctas">
         <a class="btn btn-primary" href="#signup" data-mdl="signup">Sign up free</a>
         <a class="btn btn-outline" href="client.html?demo=1" data-demo-cta>See the portal — no signup</a>
         <a href="#track">Track a parcel</a>
-        <a href="instant.html">Book Nova Instant: one parcel by bike</a>
         <a href="#contact-sales" data-mdl="sales">Talk to sales</a>
         <a href="https://wa.me/923123922558?text=Assalam%20o%20Alaikum%20NovaX%2C%20I%20want%20to%20start%20shipping%20with%20you." target="_blank" rel="noopener">WhatsApp 0312 3922558</a>
         <a href="#signin" data-mdl="signin" id="menuSignin">Sign in</a>
@@ -1890,12 +1892,12 @@ function nvFriendly(t){
     var s=r&&r.data&&r.data.session;
     if(!s||!s.user) return;
     var stored=""; try{ stored=String((JSON.parse(localStorage.getItem("novaxSession")||"{}")||{}).role||""); }catch(e){}
-    var target=stored==="admin"?"admin.html":stored==="rider"?"rider.html":stored==="sales"?"sales.html":stored==="support"?"care.html":"client.html";
+    var target=stored==="admin"?"admin.html":stored==="rider"?"rider.html":stored==="instant-rider"?"instant-rider.html":stored==="sales"?"sales.html":stored==="support"?"care.html":"client.html";
     /* The note in this browser can be stale; the profile decides. */
     Promise.resolve(__nvSb.from("profiles").select("role").eq("id",s.user.id).maybeSingle()).then(function(p){
       if(!p||p.error||!p.data) return;
       var r=String(p.data.role||"client").toLowerCase();
-      var t2=r==="rider"?"rider.html":r==="sales"?"sales.html":r==="support"?"care.html":(ADMIN_ROLES.indexOf(r)>-1?"admin.html":"client.html");
+      var t2=r==="rider"?"rider.html":r==="instant"?"instant-rider.html":r==="sales"?"sales.html":r==="support"?"care.html":(ADMIN_ROLES.indexOf(r)>-1?"admin.html":"client.html");
       ["hdrSignin","menuSignin","ftSignin","heroSignin","barSignin"].forEach(function(id){ var a=$(id); if(a&&!a.hasAttribute("data-mdl")) a.setAttribute("href",t2); });
     }).catch(function(){});
     /* Merchants look for "Sign in", so the label never changes; for someone
@@ -2567,6 +2569,7 @@ $("fSignin").addEventListener("submit",function(e){
       var role=String(p.data.role||"client").toLowerCase(), target;
       if(ADMIN_ROLES.indexOf(role)>-1) target="admin.html";
       else if(role==="rider") target="rider.html";
+      else if(role==="instant") target="instant-rider.html";
       else if(role==="sales") target="sales.html";
       else if(role==="support") target="care.html";
       else if(role==="client"){
@@ -2589,11 +2592,11 @@ $("fSignin").addEventListener("submit",function(e){
         client_id:p.data.client_id||null,rider_id:p.data.rider_id||null,at:Date.now()})); }catch(e){}
       renderDone("mdlSignin","g","Signed In","Opening your NovaX workspace…",true);
       launchWorkspace(target,
-        target==="admin.html"?"Opening ops console":target==="rider.html"?"Opening rider app":target==="sales.html"?"Opening your sales page":target==="care.html"?"Opening the support desk":lxGreetingPart(),
+        target==="admin.html"?"Opening ops console":(target==="rider.html"||target==="instant-rider.html")?"Opening rider app":target==="sales.html"?"Opening your sales page":target==="care.html"?"Opening the support desk":lxGreetingPart(),
         "Signed in as "+email,
         { who:(meta.business_name||meta.full_name||email.split("@")[0]),
           city:(meta.city||"Pakistan"),
-          plan:(target==="admin.html"?"Ops console":target==="rider.html"?"Rider app":"Merchant"),
+          plan:(target==="admin.html"?"Ops console":target==="rider.html"?"Rider app":target==="instant-rider.html"?"Nova Instant rider":"Merchant"),
           seed:email });
     }).catch(function(){
       btn.disabled=false; btn.textContent=oldTxt;

@@ -291,6 +291,12 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
 .tl li.off::before{background:var(--red-ink);border-color:var(--red-ink)}
 .tl li time{display:block;font-size:13px;font-weight:400;color:var(--muted)}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.fbask{margin-top:2px}
+.fbseg button[aria-pressed="true"]{background:var(--forest);color:#fff}
+.fbdone{text-align:center;padding:28px 6px 8px}
+.fbdone .done-mark{margin:0 auto 14px}
+.fbdone h2{margin:0 0 6px;font-size:24px;letter-spacing:-.02em}
+.fbdone p{margin:0 0 22px;color:var(--ink-2)}
 .status .top{display:flex;align-items:center;gap:10px}
 .done-mark{width:30px;height:30px;border-radius:50%;background:var(--emerald);display:grid;place-items:center;flex:none;animation:pop .4s cubic-bezier(.2,.9,.3,1.4)}
 .done-mark svg{width:17px;height:17px;stroke:var(--emerald-ink);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round}
@@ -337,6 +343,11 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   var REDUCED=!!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   var $=function(id){ return document.getElementById(id); };
   var sb=null; try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){}
+
+  /* Where the visit began: the homepage button, the merchant portal, or neither. */
+  var SRC=(function(){ var f=""; try{ f=new URLSearchParams(location.search).get("from")||""; }catch(e){}
+    if(f==="home"||f==="portal"){ try{ sessionStorage.setItem("nvi_src",f); }catch(e){} return f; }
+    try{ return sessionStorage.getItem("nvi_src")||""; }catch(e){ return ""; } })();
 
   /* supabase-js resolves with {error}: every caller checks it. */
   function rpc(name,args){
@@ -757,6 +768,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
            '<div class="meta"><b>'+esc(S.quote.km)+' km</b>'+(est?"estimated":"by road")+'</div></div>'+
            (est?'<div class="note warn" style="margin-top:12px">'+IC.info+'<span>The road between your two places could not be measured just now, so this is only an estimate. Measure it again to book.</span></div>'
                :'<p class="fine" style="margin-top:10px">'+(Number(S.quote.fare)<=Number(S.quote.min_fare)?"Minimum fare. Trips up to "+Math.floor(S.quote.min_fare/S.quote.rate_per_km)+" km cost "+money(S.quote.min_fare)+".":esc(S.quote.km)+" km at Rs "+esc(S.quote.rate_per_km)+" per km. This is the full fare, fixed before you book.")+'</p>');
+        if(!est) h+=fbGiven("fare")?'':'<button class="linkish fbask" type="button" data-fb="fare">Does this fare feel fair? Tell NovaX</button>';
         var s=S.status, n=s?Number(s.riders_online||0):0;
         /* Said only when it is true. */
         if(!est&&s&&(s.open||s.preview)) h+='<p class="avail'+(n>0?"":" none")+'"><i aria-hidden="true"></i>'+(n>0?(n===1?"1 rider is":n+" riders are")+" online now.":"No rider is online right now. Your booking waits for the next one.")+'</p>';
@@ -904,7 +916,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     S.busy=true; S.msg=""; render();
     rpc("nvi_book",{ p_quote:S.quote.quote, p_pickup_address:addrOf("p"), p_drop_address:addrOf("d"), p_sender_name:S.sName, p_sender_phone:S.sPhone,
       p_receiver_name:S.rName, p_receiver_phone:S.rPhone, p_item:itemText(), p_payer:S.payer, p_rider_note:S.note||null,
-      p_terms:true, p_device:deviceId(), p_captcha:S.cap.token||null }).then(function(r){
+      p_terms:true, p_device:deviceId(), p_captcha:S.cap.token||null, p_source:SRC||null }).then(function(r){
       S.busy=false;
       if(r.error||!r.data){ S.msg="The booking did not go through. Check your connection and press Book again; you will not be booked twice."; render(); say(S.msg); return; }
       var d=r.data;
@@ -979,6 +991,69 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   $("pane").addEventListener("change",function(e){ if(e.target.id==="agree"){ S.agree=e.target.checked; var ab=$("agreeBox"); if(ab) ab.classList.remove("bad"); if(S.msg){ S.msg=""; var m=document.querySelector(".cta .msg"); if(m) m.remove(); } } });
   document.addEventListener("click",function(e){ if(e.target.closest("[data-close]")) closePanel(); });
 
+  /* ───────── feedback ─────────
+     Three questions, none required. Saved with NovaX, and the customer may
+     also send the same words on WhatsApp. */
+  function fbGiven(k){ var m=store("nvi_fb")||{}; return !!(k&&m[k]&&Date.now()-m[k]<30*86400000); }
+  function fbMark(k){ var m=store("nvi_fb")||{}; m[k]=Date.now(); var ks=Object.keys(m); if(ks.length>60) delete m[ks[0]]; store("nvi_fb",m); }
+  function openFeedback(kind){
+    var job=kind==="job"&&T.cur&&!T.cur.expired?T.cur:null, token=job?T.token:null;
+    var fare=job?job.fare:(S.quote&&S.quote.bookable!==false?S.quote.fare:null), km=job?job.km:(S.quote?S.quote.km:null);
+    var A={ use:null, fair:null };
+    function pick(name,opts){ return '<div class="seg fbseg" data-q="'+name+'">'+opts.map(function(o){ return '<button type="button" aria-pressed="false" data-v="'+o[0]+'">'+o[1]+'</button>'; }).join("")+'</div>'; }
+    var p=openPanel("Your feedback",
+      '<form id="fbForm" novalidate>'+
+      (fare?'<div class="note" style="margin-bottom:14px">'+IC.info+'<span>'+(job?"Booking "+esc(job.code)+" &middot; ":"")+esc(money(fare))+(km?" for "+esc(km)+" km":"")+'</span></div>':'')+
+      '<section class="card"><span class="lbl" id="fbQ1">'+(job?"Would you use Nova Instant again?":"Would you use this service?")+'</span>'+pick("use",[["yes","Yes"],["maybe","Maybe"],["no","No"]])+
+      '<div class="fld"><span class="lbl" id="fbQ2">Does the fare feel fair?</span>'+pick("fair",[["fair","Fair"],["bit_high","A bit high"],["too_high","Too high"]])+'</div>'+
+      '<div class="fld"><label class="lbl" for="fbNote">'+(job?"What should NovaX do better?":"What would stop you from booking?")+'</label><textarea class="inp" id="fbNote" maxlength="500" rows="3" placeholder="Optional"></textarea></div></section>'+
+      '<p class="fine" id="fbMsg" role="alert" hidden style="color:var(--red-ink)"></p>'+
+      '<div class="fld"><button class="btn btn-primary wide" type="submit" id="fbSend">Send to NovaX</button></div>'+
+      '<div class="fld" style="margin-top:10px"><button class="btn btn-plain sm wide" type="button" id="fbWa">Send feedback on WhatsApp</button></div>'+
+      '</form>');
+    p.addEventListener("click",function(e){
+      var b=e.target.closest(".fbseg button"); if(!b) return;
+      var q=b.parentElement.getAttribute("data-q"), on=b.getAttribute("aria-pressed")==="true";
+      [].forEach.call(b.parentElement.children,function(x){ x.setAttribute("aria-pressed","false"); });
+      if(!on) b.setAttribute("aria-pressed","true"); A[q]=on?null:b.getAttribute("data-v");
+      p.querySelector("#fbMsg").hidden=true;
+    });
+    function note(){ return p.querySelector("#fbNote").value.trim(); }
+    function empty(){ return !A.use&&!A.fair&&!note(); }
+    function tell(t){ var m=p.querySelector("#fbMsg"); m.textContent=t; m.hidden=false; say(t); }
+    function save(){
+      return rpc("nvi_feedback",{ p_use:A.use, p_fair:A.fair, p_note:note()||null, p_source:SRC||null, p_token:token, p_quote:(!job&&S.quote&&S.quote.quote)||null });
+    }
+    function thanks(){
+      fbMark(token||"fare"); if(kind==="help") fbMark("fare");
+      p.querySelector(".body").innerHTML='<div class="fbdone"><span class="done-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.500l4.500 4.500L19 7.500"/></svg></span><h2>Thank you</h2><p>Your answer is with the NovaX team.</p><button class="btn btn-primary wide" type="button" data-close>Done</button></div>';
+      say("Thank you. Your answer is with the NovaX team.");
+      var ask=document.querySelector("#pane .fbask"); if(ask) ask.remove(); var card=document.querySelector("#pane .fbcard"); if(card&&token) card.remove();
+    }
+    p.querySelector("#fbForm").addEventListener("submit",function(e){
+      e.preventDefault(); if(empty()) return tell("Answer at least one question first.");
+      var btn=p.querySelector("#fbSend"); btn.disabled=true; btn.textContent="Sending…";
+      save().then(function(r){
+        if(r.error||!r.data||(!r.data.ok&&r.data.reason!=="slow_down")){ btn.disabled=false; btn.textContent="Send to NovaX"; return tell("That did not send. Check your connection and try again, or send it on WhatsApp."); }
+        thanks();
+      });
+    });
+    p.querySelector("#fbWa").addEventListener("click",function(){
+      if(empty()) return tell("Answer at least one question first.");
+      var U={ yes:"Yes", maybe:"Maybe", no:"No" }, F={ fair:"Fair", bit_high:"A bit high", too_high:"Too high" };
+      var lines=["Nova Instant feedback"+(job?" for "+job.code:"")];
+      if(fare) lines.push("Fare: "+money(fare)+(km?" for "+km+" km":""));
+      if(A.use) lines.push("Would use it: "+U[A.use]);
+      if(A.fair) lines.push("Fare feels: "+F[A.fair]);
+      if(note()) lines.push(note());
+      var d=pkPhone(S.support)||"03123922558";
+      /* Opened inside the tap, or a phone browser blocks the new window. */
+      try{ window.open("https://wa.me/92"+d.slice(1)+"?text="+encodeURIComponent(lines.join("\n")),"_blank","noopener"); }catch(e2){}
+      save(); thanks();
+    });
+  }
+  document.addEventListener("click",function(e){ var b=e.target.closest("[data-fb]"); if(b){ e.preventDefault(); openFeedback(b.getAttribute("data-fb")); } });
+
   /* ───────── help ───────── */
   function supportBtns(){
     var d=pkPhone(S.support)||"03123922558";
@@ -992,6 +1067,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
       '<section class="card"><p class="eyebrow">Lost your tracking link?</p><form id="findForm" novalidate><label class="lbl" for="fCode">Booking number</label><input class="inp" id="fCode" maxlength="12" autocomplete="off" autocapitalize="characters" placeholder="NI100001">'+
         '<div class="fld"><label class="lbl" for="fPhone">Sender\'s or receiver\'s mobile</label><input class="inp" id="fPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="03XX XXXXXXX"></div>'+
         '<div class="fld"><button class="btn btn-dark sm wide" type="submit" id="fBtn">Find my booking</button></div><p class="fine" id="fMsg" role="alert" hidden style="color:var(--red-ink)"></p></form></section>'+
+      '<section class="card"><p class="eyebrow">Your opinion</p><p style="margin:0 0 12px;color:var(--ink-2);font-size:15px">Three short questions. They go straight to the NovaX team.</p><button class="btn btn-plain sm wide" type="button" data-fb="help">Give feedback</button></section>'+
       '<section class="card"><p class="eyebrow">Sending something?</p><button class="linkish" type="button" data-banned2>'+IC.info+'What cannot be sent</button></section>');
     p.querySelector("#findForm").addEventListener("submit",function(e){
       e.preventDefault();
@@ -1083,6 +1159,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
          '<dt>To</dt><dd>'+esc(j.receiver_name)+'<small>'+esc(j.drop_address)+'</small></dd>'+
          '<dt>Parcel</dt><dd>'+esc(j.item)+'</dd>'+
          '<dt>Fare</dt><dd>'+esc(money(j.fare))+'<small>'+esc(j.km)+' km &middot; '+(j.payer==="sender"?"sender pays at pickup":"receiver pays at delivery")+'</small></dd></dl></section>';
+    if((j.status==="Delivered"||j.status==="Returned")&&!fbGiven(T.token))
+      h+='<section class="card fbcard"><p class="eyebrow">How did it go?</p><p style="margin:0 0 12px;color:var(--ink-2);font-size:15px">Three short questions about this delivery. Your answer goes straight to the NovaX team.</p><button class="btn btn-dark sm wide" type="button" data-fb="job">Give feedback</button></section>';
     if(!stuck) h+='<section class="card"><p class="eyebrow">Need help?</p>'+supportBtns()+'</section>';
     if(canCancel) h+='<button class="btn btn-danger wide sm" type="button" id="tCancel" style="margin-top:12px">Cancel this booking</button>';
     h+='<p class="fine">'+(closed?"This booking is closed. Its details stay on this link for "+(j.track_days||7)+" days."

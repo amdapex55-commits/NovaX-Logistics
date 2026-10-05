@@ -260,6 +260,26 @@ alter table public.nvi_jobs add column if not exists returned_at timestamptz;
 alter table public.nvi_jobs add column if not exists return_fee int not null default 0;
 alter table public.nvi_jobs add column if not exists pay_state text not null default 'Due';
 alter table public.nvi_jobs add column if not exists pay_note text;
+-- Where the booking started: the homepage, the merchant portal, or a direct visit.
+alter table public.nvi_jobs add column if not exists source text;
+
+-- What customers tell NovaX about the service. Written only by nvi_feedback().
+create table if not exists public.nvi_feedback (
+  id        bigserial primary key,
+  at        timestamptz not null default now(),
+  job_id    uuid references public.nvi_jobs(id) on delete set null,
+  source    text,
+  would_use text check (would_use is null or would_use in ('yes', 'maybe', 'no')),
+  fare_fair text check (fare_fair is null or fare_fair in ('fair', 'bit_high', 'too_high')),
+  note      text,
+  fare      int,
+  km        numeric(6,1),
+  ip        text
+);
+create index if not exists nvi_feedback_at on public.nvi_feedback(at desc);
+alter table public.nvi_feedback enable row level security;
+revoke all on public.nvi_feedback from public, anon, authenticated;
+revoke all on sequence public.nvi_feedback_id_seq from public, anon, authenticated;
 alter table public.nvi_jobs drop constraint if exists nvi_jobs_status_check;
 alter table public.nvi_jobs add constraint nvi_jobs_status_check check (status in
   ('Awaiting confirmation', 'Booked', 'Rider assigned', 'Picked up', 'Failed delivery', 'Returning', 'Returned', 'Delivered', 'Cancelled'));
@@ -524,16 +544,19 @@ begin
 end $$;
 
 drop function if exists public.nvi_book(uuid, text, text, text, text, text, text, text, text, text);
+drop function if exists public.nvi_book(uuid, text, text, text, text, text, text, text, text, text, boolean, text, text);
 create or replace function public.nvi_book(
   p_quote uuid,
   p_pickup_address text, p_drop_address text,
   p_sender_name text, p_sender_phone text,
   p_receiver_name text, p_receiver_phone text,
   p_item text, p_payer text, p_rider_note text default null,
-  p_terms boolean default false, p_device text default null, p_captcha text default null)
+  p_terms boolean default false, p_device text default null, p_captcha text default null,
+  p_source text default null)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   c public.nvi_config; q public.nvi_quotes; j public.nvi_jobs;
+  v_src text := case when p_source in ('home', 'portal') then p_source else 'direct' end;
   v_admin boolean := coalesce((select public.is_admin()), false);
   v_sp text := public.nvi_pk_phone(p_sender_phone);
   v_rp text := public.nvi_pk_phone(p_receiver_phone);
@@ -609,13 +632,13 @@ begin
   v_code := 'NI' || nextval('public.nvi_job_seq')::text;
   insert into public.nvi_jobs (code, status, p_lat, p_lng, d_lat, d_lng, pickup_address, drop_address,
     sender_name, sender_phone, receiver_name, receiver_phone, item, rider_note, payer,
-    distance_m, distance_source, fare, booked_by, ip, device, terms_version, confirmed_at)
+    distance_m, distance_source, fare, booked_by, ip, device, terms_version, source, confirmed_at)
   values (v_code, case when v_first then 'Awaiting confirmation' else 'Booked' end,
     q.p_lat, q.p_lng, q.d_lat, q.d_lng,
     left(btrim(p_pickup_address), 300), left(btrim(p_drop_address), 300),
     left(btrim(p_sender_name), 80), v_sp, left(btrim(p_receiver_name), 80), v_rp,
     left(btrim(p_item), 160), nullif(left(btrim(coalesce(p_rider_note, '')), 240), ''), p_payer,
-    q.distance_m, q.source, q.fare, (select auth.uid()), v_ip, v_dev, c.terms_version,
+    q.distance_m, q.source, q.fare, (select auth.uid()), v_ip, v_dev, c.terms_version, v_src,
     case when v_first then null else now() end)
   returning * into j;
   update public.nvi_quotes set job_id = j.id where id = q.id;
@@ -703,6 +726,37 @@ end $$;
 
 
 -- ═══════════════════ Shared rules: cash and the PIN ═══════════════════
+
+-- Three short answers from a customer. Nothing is required except one of them.
+-- p_token ties the answer to a booking; p_quote ties it to a fare that was shown.
+create or replace function public.nvi_feedback(p_use text, p_fair text, p_note text,
+  p_source text default null, p_token text default null, p_quote uuid default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_ip text := public.nvi_client_ip();
+  v_note text := nullif(left(btrim(coalesce(p_note, '')), 500), '');
+  v_use text := case when p_use in ('yes', 'maybe', 'no') then p_use end;
+  v_fair text := case when p_fair in ('fair', 'bit_high', 'too_high') then p_fair end;
+  v_job uuid; v_fare int; v_m int;
+begin
+  if v_use is null and v_fair is null and v_note is null then
+    return jsonb_build_object('ok', false, 'reason', 'empty');
+  end if;
+  if (select count(*) from public.nvi_hits where kind = 'feedback' and ip is not distinct from v_ip and at > now() - interval '1 hour') >= 5 then
+    return jsonb_build_object('ok', false, 'reason', 'slow_down');
+  end if;
+  insert into public.nvi_hits (kind, ip) values ('feedback', v_ip);
+  if coalesce(p_token, '') <> '' then
+    select id, fare, distance_m into v_job, v_fare, v_m from public.nvi_jobs where track_token = p_token;
+  end if;
+  if v_job is null and p_quote is not null then
+    select fare, distance_m into v_fare, v_m from public.nvi_quotes where id = p_quote;
+  end if;
+  insert into public.nvi_feedback (job_id, source, would_use, fare_fair, note, fare, km, ip)
+  values (v_job, case when p_source in ('home', 'portal') then p_source else 'direct' end,
+          v_use, v_fair, v_note, v_fare, round(v_m / 1000.0, 1), v_ip);
+  return jsonb_build_object('ok', true);
+end $$;
 
 create or replace function public.nvi_event(p_job uuid, p_actor text, p_kind text, p_note text default null)
 returns void language sql security definer set search_path = '' as $$
@@ -902,7 +956,14 @@ begin
                 and (delivered_at at time zone 'Asia/Karachi')::date = v_day),
       'fares', (select coalesce(sum(fare), 0) from public.nvi_jobs where rider_id = r.id and status = 'Delivered'
                 and (delivered_at at time zone 'Asia/Karachi')::date = v_day),
-      'cash_in_hand', (select coalesce(sum(amount), 0) from public.nvi_cash where rider_id = r.id and handover_id is null)));
+      'cash_in_hand', (select coalesce(sum(amount), 0) from public.nvi_cash where rider_id = r.id and handover_id is null)),
+    -- What this rider closed today, newest first: their own record of the day.
+    'recent', coalesce((select jsonb_agg(jsonb_build_object('code', j.code, 'status', j.status, 'to', j.drop_address,
+        'fare', j.fare, 'cash', j.cash_collected, 'at', coalesce(j.delivered_at, j.returned_at))
+        order by coalesce(j.delivered_at, j.returned_at) desc)
+      from public.nvi_jobs j
+     where j.rider_id = r.id and j.status in ('Delivered', 'Returned')
+       and (coalesce(j.delivered_at, j.returned_at) at time zone 'Asia/Karachi')::date = v_day), '[]'::jsonb));
 end $$;
 
 -- A rider holding a parcel stays reachable: they cannot go offline with it.
@@ -1158,7 +1219,13 @@ begin
       'cancelled', (select count(*) from public.nvi_jobs where status = 'Cancelled' and (cancelled_at at time zone 'Asia/Karachi')::date = v_day),
       'fares', (select coalesce(sum(fare), 0) from public.nvi_jobs where status = 'Delivered' and (delivered_at at time zone 'Asia/Karachi')::date = v_day),
       'disputed', (select count(*) from public.nvi_jobs where pay_state = 'Disputed'),
-      'cash_out', (select coalesce(sum(amount), 0) from public.nvi_cash where handover_id is null)));
+      'cash_out', (select coalesce(sum(amount), 0) from public.nvi_cash where handover_id is null),
+      'from_home', (select count(*) from public.nvi_jobs where source = 'home' and (created_at at time zone 'Asia/Karachi')::date = v_day),
+      'from_portal', (select count(*) from public.nvi_jobs where source = 'portal' and (created_at at time zone 'Asia/Karachi')::date = v_day)),
+    'feedback', coalesce((select jsonb_agg(jsonb_build_object('at', f.at, 'source', f.source, 'would_use', f.would_use,
+        'fare_fair', f.fare_fair, 'note', f.note, 'fare', f.fare, 'km', f.km,
+        'code', (select j.code from public.nvi_jobs j where j.id = f.job_id)) order by f.at desc)
+      from (select * from public.nvi_feedback order by at desc limit 40) f), '[]'::jsonb));
 end $$;
 
 create or replace function public.nvi_admin_job(p_job uuid)
@@ -1456,7 +1523,7 @@ begin
   for f in
     select p.oid::regprocedure::text from pg_proc p
      where p.pronamespace = 'public'::regnamespace
-       and p.proname in ('nvi_status', 'nvi_quote', 'nvi_book', 'nvi_track', 'nvi_find', 'nvi_cancel')
+       and p.proname in ('nvi_status', 'nvi_quote', 'nvi_book', 'nvi_track', 'nvi_find', 'nvi_cancel', 'nvi_feedback')
   loop
     execute 'grant execute on function ' || f || ' to anon, authenticated';
   end loop;

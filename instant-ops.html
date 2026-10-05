@@ -239,12 +239,12 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     document.title=(need?"("+need+") ":"")+"Nova Instant ops | NovaX";
   }
   function paint(){
-    var b=S.b, c=b.config||{}, t=b.today||{}, live=b.live||[], riders=b.riders||[], closed=b.closed||[];
+    var b=S.b, c=b.config||{}, t=b.today||{}, live=b.live||[], riders=b.riders||[], closed=b.closed||[], fb=b.feedback||[];
     watch(live);
     $("openSw").hidden=false; $("bookLink").hidden=false;
     $("openSw").setAttribute("aria-checked",String(!!c.open)); $("openLbl").textContent="Public booking: "+(c.open?"on":"off");
     var h='<div class="stats">'+
-      '<div class="stat"><span>Booked today</span><b>'+esc(t.booked||0)+'</b></div>'+
+      '<div class="stat"><span>Booked today</span><b>'+esc(t.booked||0)+'</b>'+(Number(t.from_home)||Number(t.from_portal)?'<span>'+esc(t.from_home||0)+' homepage &middot; '+esc(t.from_portal||0)+' portal</span>':'')+'</div>'+
       '<div class="stat"><span>Delivered today</span><b>'+esc(t.delivered||0)+'</b></div>'+
       '<div class="stat"><span>Returned / cancelled today</span><b>'+esc(t.returned||0)+' / '+esc(t.cancelled||0)+'</b></div>'+
       '<div class="stat"><span>Fares delivered today</span><b>'+esc(rs(t.fares))+'</b></div>'+
@@ -256,10 +256,11 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     else if(!c.hours_open) h+='<div class="note warn">Outside booking hours ('+hourLabel(c.open_hour)+' to '+hourLabel(c.close_hour)+'). Customers cannot book until '+hourLabel(c.open_hour)+'.</div>';
     if(c.open&&c.hours_open&&!online) h+='<div class="note warn">Booking is open and no rider is online. New jobs will wait until you assign one. Call a rider, or turn public booking off.</div>';
     if(Number(t.disputed)>0) h+='<div class="note warn">'+esc(t.disputed)+' payment'+(Number(t.disputed)===1?" is":"s are")+' in dispute: the cash a rider received does not match what was due. Settle '+(Number(t.disputed)===1?"it":"them")+' in the job (Live jobs or Closed).</div>';
-    h+='<div class="tabs" role="tablist">'+[["live","Live jobs",live.length],["riders","Riders",riders.length],["closed","Closed",closed.length]].map(function(x){
+    h+='<div class="tabs" role="tablist">'+[["live","Live jobs",live.length],["riders","Riders",riders.length],["closed","Closed",closed.length],["feedback","Feedback",fb.length]].map(function(x){
       return '<button type="button" role="tab" data-tab="'+x[0]+'" aria-selected="'+(S.tab===x[0])+'">'+x[1]+'<span>'+x[2]+'</span></button>'; }).join("")+'</div>';
     if(S.tab==="live") h+=liveHtml(live,free);
     else if(S.tab==="riders") h+=ridersHtml(riders);
+    else if(S.tab==="feedback") h+=feedbackHtml(fb);
     else h+=closedHtml(closed);
     $("main").innerHTML=h;
   }
@@ -268,6 +269,24 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
   function riderSelect(j,free,label){
     return '<select class="inp" data-pick="'+esc(j.id)+'" aria-label="Rider for '+esc(j.code)+'"><option value="">'+(free.length?label:"No free rider")+'</option>'+
       free.map(function(r){ return '<option value="'+esc(r.id)+'">'+esc(r.full_name)+(r.online?"":" (not online)")+'</option>'; }).join("")+'</select>';
+  }
+  var SRCSAY={ home:"From the homepage", portal:"From the merchant portal" };
+  function srcChip(j){ return SRCSAY[j.source]?'<span class="chip">'+SRCSAY[j.source]+'</span>':''; }
+  /* What customers answered on the booking and tracking pages. */
+  function feedbackHtml(list){
+    if(!list.length) return '<div class="empty">No feedback yet. Customers are asked after a fare is shown and after a delivery.</div>';
+    var U={ yes:["Would use it","good"], maybe:["Might use it","warn"], no:["Would not use it","bad"] }, F={ fair:["Fare feels fair","good"], bit_high:["Fare a bit high","warn"], too_high:["Fare too high","bad"] };
+    function n(k,v){ return list.filter(function(x){ return x[k]===v; }).length; }
+    var asked=list.filter(function(x){ return x.fare_fair; }).length;
+    return '<div class="stats"><div class="stat"><span>Answers shown</span><b>'+list.length+'</b></div>'+
+      '<div class="stat"><span>Would use it</span><b style="font-size:15px;line-height:1.5">'+n("would_use","yes")+' yes &middot; '+n("would_use","maybe")+' maybe &middot; '+n("would_use","no")+' no</b></div>'+
+      '<div class="stat'+(asked&&n("fare_fair","too_high")*2>=asked?' alert':'')+'"><span>Fare</span><b style="font-size:15px;line-height:1.5">'+n("fare_fair","fair")+' fair &middot; '+n("fare_fair","bit_high")+' a bit high &middot; '+n("fare_fair","too_high")+' too high</b></div></div>'+
+      list.map(function(x){
+        return '<div class="card" style="margin-bottom:10px"><div class="jt"><span class="code">'+esc(x.code||"Fare check")+'</span><span class="age">'+esc(when(x.at))+'</span></div>'+
+          '<div class="meta">'+(U[x.would_use]?'<span class="chip '+U[x.would_use][1]+'">'+U[x.would_use][0]+'</span>':'')+(F[x.fare_fair]?'<span class="chip '+F[x.fare_fair][1]+'">'+F[x.fare_fair][0]+'</span>':'')+
+          (x.fare?'<span class="chip">'+esc(rs(x.fare))+(x.km?' &middot; '+esc(x.km)+' km':'')+'</span>':'')+(SRCSAY[x.source]?'<span class="chip">'+SRCSAY[x.source]+'</span>':'')+'</div>'+
+          (x.note?'<p style="margin:10px 0 0;font-size:15px;line-height:1.5;overflow-wrap:anywhere">'+esc(x.note)+'</p>':'')+'</div>';
+      }).join("");
   }
   function payChip(j){
     if(j.pay_state==="Disputed") return '<span class="chip bad">Payment in dispute</span>';
@@ -315,7 +334,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       (due>0&&CARRY[st]?'<span class="chip warn">'+esc(rs(due))+' to collect</span>':'')+
       (Number(j.attempts)>1?'<span class="chip warn">try '+esc(j.attempts)+'</span>':'')+
       (Number(j.same_ip)>1?'<span class="chip warn">'+esc(j.same_ip)+' bookings from this connection today</span>':'')+
-      (Number(j.pin_tries)>=5?'<span class="chip bad">PIN locked</span>':'')+payChip(j)+'</div>'+
+      (Number(j.pin_tries)>=5?'<span class="chip bad">PIN locked</span>':'')+srcChip(j)+payChip(j)+'</div>'+
       (j.rider_note?'<div class="age" style="margin-top:6px">Note for rider: '+esc(j.rider_note)+'</div>':'')+
       (st==="Failed delivery"||st==="Returning"?'<div class="prob"><b>Not delivered:</b> '+esc(FAILED[j.fail_reason]||"")+(j.fail_note?'. '+esc(j.fail_note):'')+'</div>':'')+
       (j.pay_state==="Disputed"?'<div class="prob"><b>Cash:</b> '+esc(j.pay_note||"")+'</div>':'')+
@@ -385,7 +404,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       var st=j.status, at=st==="Delivered"?j.delivered_at:st==="Returned"?j.returned_at:j.cancelled_at;
       var cash = j.cash_handed==null ? (st==="Cancelled"?"":"no cash taken") : rs(j.cash_collected)+(j.cash_handed?" handed in":" with rider");
       var isOpen=S.open&&S.open.job===j.id;
-      return '<tr><td><span class="code">'+esc(j.code)+'</span><br><span class="age">booked '+esc(when(j.created_at))+'</span></td>'+
+      return '<tr><td><span class="code">'+esc(j.code)+'</span><br><span class="age">booked '+esc(when(j.created_at))+(SRCSAY[j.source]?'<br>'+SRCSAY[j.source].toLowerCase():'')+'</span></td>'+
         '<td><span class="chip '+(st==="Delivered"?"good":st==="Returned"?"warn":"bad")+'">'+esc(st)+'</span><br><span class="age">'+esc(when(at))+
           (st==="Returned"&&j.fail_reason?'<br>'+esc(FAILED[j.fail_reason]||""):'')+(j.cancel_reason?'<br>'+esc(j.cancel_reason):'')+'</span></td>'+
         '<td>'+esc(j.pickup_address)+'<br><span class="age">&rarr; '+esc(j.drop_address)+'</span></td>'+
