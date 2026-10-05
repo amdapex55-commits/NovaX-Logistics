@@ -57,6 +57,8 @@ svg.ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-wid
 .hdr .brand img{width:28px;height:28px;border-radius:8px}
 .hdr .brand b{font:800 17px/1 var(--display);letter-spacing:-.01em;white-space:nowrap}
 @media (max-width:400px){ #helpBtn{font-size:0;gap:0;padding:0 8px} #histBtn{font-size:14px;padding:0 6px} .hdr{padding-left:10px;gap:4px} }
+/* The smallest phones: both header buttons become icons, so Help never falls off the edge. */
+@media (max-width:340px){ #histBtn{font-size:0;gap:0;padding:0 10px;min-width:44px} }
 .hdr .brand b i{font-style:normal;color:var(--emerald)}
 .hbtn{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:48px;min-height:48px;padding:0 10px;white-space:nowrap;border:0;background:none;color:var(--forest-ink);font-weight:700;font-size:15px}
 
@@ -258,6 +260,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
 .hst{font-size:12.5px;font-weight:700;color:var(--muted);white-space:nowrap}
 .hst.live{color:var(--emerald-deep)}
 .hst.bad{color:var(--red-ink)}
+/* Narrow phones: the status drops under the trip, so the route, date and fare are not cut off. */
+@media (max-width:400px){ .hrow{grid-template-columns:12px minmax(0,1fr);row-gap:2px;padding:10px 0} .hrow .hdot{align-self:start;margin-top:6px} .hst{grid-column:2} .hmain small{white-space:normal} }
 /* Tracking */
 .status{background:var(--forest);color:var(--forest-ink);border-radius:var(--r);padding:18px}
 .status .k{font:700 12px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--forest-muted)}
@@ -311,7 +315,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
 <header class="hdr">
   <a class="brand" href="/" aria-label="NovaX Logistics home"><img src="/assets/favicon.svg" alt="" width="28" height="28"><b>Nova <i>Instant</i></b></a>
   <div style="margin-left:auto;display:flex;align-items:center">
-  <button class="hbtn" type="button" id="histBtn" hidden style="margin-left:0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>My deliveries</button>
+  <button class="hbtn" type="button" id="histBtn" hidden style="margin-left:0" aria-label="My deliveries"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>My deliveries</button>
   <button class="hbtn" type="button" id="helpBtn" style="margin-left:0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.300a2.500 2.500 0 1 1 3.600 2.300c-.800.400-1.200 1-1.200 1.900M12 17h.010"/></svg>Help</button>
   </div>
 </header>
@@ -837,7 +841,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         '<p style="margin:0 0 8px">If the delivery cannot be made, the parcel comes back to the sender'+(ret>0?", and the return costs "+ret+"% of the fare.":" at no extra charge.")+'</p>'+
         (s.confirm_first?'<p style="margin:0 0 8px">First booking from a number? NovaX phones the sender to confirm before a rider is sent.</p>':'')+
         '<p style="margin:0">The receiver gets a tracking link with a delivery PIN. The rider hands over only against that PIN.</p></section>'+
-      '<label class="agree" id="agreeBox" for="agree"><input type="checkbox" id="agree"'+(S.agree?" checked":"")+'><span>The parcel weighs '+maxKg()+' kg or less'+(maxVal()?", is worth "+money(maxVal())+" or less":"")+', and holds nothing on the <button class="linkish" type="button" data-banned style="min-height:0;display:inline;font-size:inherit">not-allowed list</button>. I agree to the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</span></label>'+
+      '<label class="agree" id="agreeBox" for="agree"><input type="checkbox" id="agree" aria-labelledby="agreeTxt"'+(S.agree?" checked":"")+'><span id="agreeTxt">The parcel weighs '+maxKg()+' kg or less'+(maxVal()?", is worth "+money(maxVal())+" or less":"")+', and holds nothing on the <button class="linkish" type="button" data-banned style="min-height:0;display:inline;font-size:inherit">not-allowed list</button>. I agree to the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</span></label>'+
       '<div id="capBox"></div>'+
       cta(S.busy?'<span class="spin" aria-hidden="true"></span> Booking…':canBookNow()?"Book rider · "+esc(money(q.fare)):(s.open||s.preview)?"Riders are back at "+hourLabel(s.open_hour):"Booking is paused", S.busy||!canBookNow());
   }
