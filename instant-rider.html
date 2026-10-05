@@ -253,6 +253,10 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
 .rcode b{display:block;font:800 44px/1.1 var(--mono);letter-spacing:.2em;margin:6px 0}
 .rcode span{font-size:13.5px}
 .tip{margin-top:8px;font-size:14px;color:var(--muted)}
+.embed .top .brand,.embed #signOut,.embed #signOut2,.embed .foot .who{display:none!important}
+.embed .top{position:static}
+.embed main{padding-top:10px}
+.navx{color:var(--navy-ink);font-weight:700;font-size:14px;min-height:44px;display:inline-flex;align-items:center;padding:0 8px;text-decoration:none}
 .tip summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:700;color:var(--ink-2)}
 .tip p{margin:0 0 6px;line-height:1.5}
 @media (prefers-reduced-motion:reduce){ .state.on .beacon::before,.state.on .beacon::after{animation:none;opacity:0} }
@@ -282,6 +286,9 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   var $=function(id){ return document.getElementById(id); };
   var sb=null;
   try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){}
+  /* Inside the NovaX rider app (rider.html, Instant tab): that app owns the brand and sign-out. */
+  var EMBED=/[?&]embed=1/.test(location.search);
+  if(EMBED) document.documentElement.classList.add("embed");
   var S={ me:null, feed:null, busy:false, sheet:null, timer:null, openCount:0, key:"", cashOk:false, fails:0, okAt:0 };
 
   /* supabase-js resolves with {error}; this turns it into a rejection. */
@@ -745,6 +752,11 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   function start(){
     $("onSw").hidden=false; $("signOut").hidden=true;
     pushCheck().then(function(){ if(S.feed&&!S.busy&&!typing()) paint(); });
+    /* A NovaX route rider who opened this page on its own: one tap back to the full rider app. */
+    if(!EMBED&&S.me&&S.me.rider&&S.me.rider.kind==="route"&&!$("navX")){
+      var ax=document.createElement("a"); ax.id="navX"; ax.className="navx"; ax.href="rider.html#instant"; ax.textContent="NovaX app";
+      $("onSw").parentNode.insertBefore(ax,$("onSw"));
+    }
     refresh(true);
     stop();
     /* The feed is asked every 12 s while this screen is showing. That is also

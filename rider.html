@@ -25,7 +25,7 @@
   </script>
   <title>NovaX | Rider</title>
   <link rel="icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="rider.css?v=6dc11fa6">
+  <link rel="stylesheet" href="rider.css?v=835b515e">
   <script defer src="assets/vendor/supabase-2.117.2.js"></script>
   <script defer src="nv-payment.js"></script>
   <script defer src="nv-journey.js?v=77db2b46"></script>
@@ -92,6 +92,8 @@
         <label class="wide">Note or receipt reference<input id="expenseNote" maxlength="160"></label><button class="btn wide" id="expenseBtn" data-write>Add expense</button>
       </form><div class="notice" id="expenseResult" role="status"></div><div class="list" id="expenseList"></div>
     </section>
+    <!-- Nova Instant jobs, for NovaX riders who also do Instant (route riders): the Instant rider screens, same sign-in. -->
+    <section class="view hidden" id="view-instant"><iframe id="instantFrame" title="Nova Instant jobs" loading="lazy"></iframe></section>
   </main>
   <div class="actionbar hidden" id="actionBar"><span id="actionInfo"></span><button class="btn" id="actionGo" data-write></button><button class="btn secondary" id="actionClear" type="button" data-t="clear">Clear</button></div>
   <nav aria-label="Rider navigation">
@@ -100,6 +102,7 @@
     <button class="navbtn" data-view="delivery"><b aria-hidden="true">&#8594;</b><span data-t="navDelivery">Delivery</span></button>
     <button class="navbtn" data-view="transit"><b aria-hidden="true">&#8646;</b><span data-t="navTransit">Transit</span></button>
     <button class="navbtn" data-view="cash"><b aria-hidden="true">Rs</b><span data-t="navCash">Cash</span></button>
+    <button class="navbtn" data-view="instant" id="navInstant" hidden><b aria-hidden="true">&#9889;</b><span>Instant</span></button>
   </nav>
   <input class="hidden" id="scanFile" type="file" accept="image/*" capture="environment">
   <dialog id="actionDialog" aria-labelledby="dialogTitle"><form method="dialog">
@@ -118,6 +121,34 @@
         document.getElementById("loginLink").classList.remove("hidden");
       }
     }, 25000);
+  </script>
+  <script>
+    /* One rider app: the Instant tab appears for a NovaX rider who is also a
+       Nova Instant rider. The Instant screens load inside it on first open
+       and keep running (alerts, live updates) when another tab is showing. */
+    (function () {
+      var btn = document.getElementById("navInstant"), frame = document.getElementById("instantFrame");
+      function size() { var h = document.querySelector("header"), n = document.querySelector("nav");
+        frame.style.height = Math.max(320, window.innerHeight - (h ? h.offsetHeight : 0) - (n ? n.offsetHeight : 0)) + "px"; }
+      function open() { if (!frame.getAttribute("src")) frame.setAttribute("src", "instant-rider.html?embed=1"); size(); }
+      btn.addEventListener("click", open);
+      window.addEventListener("resize", function () { if (frame.getAttribute("src")) size(); });
+      /* A tapped job alert brings this app forward and opens the Instant tab. */
+      if (navigator.serviceWorker) navigator.serviceWorker.addEventListener("message", function (e) {
+        if (e.data && e.data.nvi === "open-instant" && !btn.hidden) btn.click();
+      });
+      window.addEventListener("load", function () {
+        var tries = 0;
+        (function check() {
+          if (!window.supabase) { if (++tries < 40) setTimeout(check, 250); return; }
+          var sb; try { sb = window.supabase.createClient("https://rhzunbzbdzicajqtohwp.supabase.co", "sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA"); } catch (e) { return; }
+          Promise.resolve(sb.rpc("nvi_rider_me")).then(function (r) {
+            var x = r && !r.error && r.data && r.data.rider;
+            if (x && x.status === "Active") { btn.hidden = false; btn.parentNode.classList.add("six"); if (location.hash === "#instant") btn.click(); }
+          }).catch(function () {});
+        })();
+      });
+    })();
   </script>
   <noscript><div class="gate"><p>JavaScript is required. Enable it and reload the rider portal.</p></div></noscript>
 </body></html>

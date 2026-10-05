@@ -22,7 +22,7 @@
  *   way. That is the kill switch, and it is the reason it is safe to ship
  *   this at all.
  */
-var CACHE = "novax-v192";
+var CACHE = "novax-v193";
 /* The two Nova Instant pages a phone on a weak connection must still be able
    to open: the customer's booking/tracking page and the Instant rider's page. */
 var SHELLS = ["/client.html", "/rider.html", "/instant.html", "/instant-rider.html", "/instant-account.html"];
@@ -186,8 +186,17 @@ self.addEventListener("notificationclick", function (event) {
   var url = (event.notification.data && event.notification.data.url) || "/instant-rider.html";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
-      for (var i = 0; i < list.length; i++) {
-        if (list[i].url.indexOf("/instant-rider.html") > -1 && "focus" in list[i]) return list[i].focus();
+      var i;
+      /* The Instant rider page on its own. */
+      for (i = 0; i < list.length; i++) {
+        if (list[i].frameType !== "nested" && list[i].url.indexOf("/instant-rider.html") > -1 && "focus" in list[i]) return list[i].focus();
+      }
+      /* The NovaX rider app, which has Nova Instant as a tab: bring it forward on that tab. */
+      for (i = 0; i < list.length; i++) {
+        if (list[i].frameType !== "nested" && list[i].url.indexOf("/rider.html") > -1 && "focus" in list[i]) {
+          list[i].postMessage({ nvi: "open-instant" });
+          return list[i].focus();
+        }
       }
       return self.clients.openWindow(url);
     })

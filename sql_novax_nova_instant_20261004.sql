@@ -985,7 +985,7 @@ begin
     'rider', case when r.id is null then null else
       jsonb_build_object('id', r.id, 'full_name', r.full_name, 'status', r.status, 'online', r.online,
         'docs', r.docs_at is not null, 'docs_checked', r.docs_checked_at is not null,
-        'emergency_name', r.emergency_name, 'emergency_phone', r.emergency_phone) end);
+        'emergency_name', r.emergency_name, 'emergency_phone', r.emergency_phone, 'kind', r.kind) end);
 end $$;
 
 -- The rider's CNIC photo, home bill photo and emergency contact. The two
