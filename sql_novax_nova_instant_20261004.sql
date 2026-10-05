@@ -816,7 +816,8 @@ begin
     'payer', j.payer, 'fare', j.fare, 'km', round(j.distance_m / 1000.0, 1), 'cod', j.cod_amount,
     'pin', case when j.status in ('Delivered', 'Cancelled', 'Returned') then null else j.delivery_pin end,
     'rider', case when j.rider_id is not null and j.status in ('Rider assigned', 'Picked up', 'Failed delivery', 'Returning') then
-      (select jsonb_build_object('name', split_part(r.full_name, ' ', 1), 'phone', r.phone, 'plate', r.bike_plate)
+      (select jsonb_build_object('name', split_part(r.full_name, ' ', 1), 'phone', r.phone, 'plate', r.bike_plate,
+                                 'checked', r.docs_checked_at is not null)
          from public.nvi_riders r where r.id = j.rider_id) end,
     'p', jsonb_build_array(j.p_lat, j.p_lng), 'd', jsonb_build_array(j.d_lat, j.d_lng),
     'created_at', j.created_at, 'assigned_at', j.assigned_at, 'picked_at', j.picked_at,
@@ -825,6 +826,8 @@ begin
     'fail_reason', j.fail_reason, 'cancel_reason', j.cancel_reason,
     'handover_at', j.handover_at,
     'handover_from', case when j.handover_from is not null then (select split_part(f.full_name, ' ', 1) from public.nvi_riders f where f.id = j.handover_from) end,
+    -- The rider who took the parcel over, named to the customer even after delivery.
+    'handover_to', case when j.handover_at is not null then (select split_part(t.full_name, ' ', 1) from public.nvi_riders t where t.id = j.rider_id) end,
     'return_due', case when j.status = 'Returning' then public.nvi_due_now(j) end,
     'riders_online', case when j.status = 'Booked' then public.nvi_riders_free() end,
     'support', c.support_phone, 'track_days', c.track_days);

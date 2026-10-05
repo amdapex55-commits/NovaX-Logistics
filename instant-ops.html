@@ -64,6 +64,21 @@ main{padding:16px 0 60px}
 /* Phones: all four tabs in view, no hidden sideways scroll; inputs at 16px so the phone does not zoom. */
 @media (max-width:600px){ .tabs{display:grid;grid-template-columns:1fr 1fr;overflow:visible} .tabs button{text-align:left} .inp{font-size:16px} }
 .tabs button span{font:700 12px/1 var(--mono);background:var(--paper-2);border-radius:999px;padding:3px 7px;margin-left:6px;color:var(--ink-2)}
+.attn{background:#fff8ea;border:1.5px solid #e0b25a;border-radius:14px;padding:12px 14px;margin-bottom:14px}
+.attn h2{font:800 16px/1.2 var(--display);margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.attn h2 span{background:#c0392b;color:#fff;border-radius:99px;font:700 12px/1 var(--body, system-ui);padding:4px 8px}
+.attn-row{display:grid;grid-template-columns:200px minmax(0,1fr);gap:10px;align-items:start;padding:8px 0;border-top:1px solid #f0dcae}
+.attn-row:first-of-type{border-top:0}
+.attn-row > b{font-size:14px;padding-top:11px}
+.attn-row > div{display:flex;flex-wrap:wrap;gap:6px}
+.attn-job{display:inline-flex;align-items:center;gap:8px;min-height:44px;max-width:100%;padding:0 12px;border:1px solid #e6c98a;border-radius:10px;background:#fff;font-size:13.5px;color:var(--ink-2);cursor:pointer;text-align:left}
+.attn-job .code{font-weight:800;color:var(--ink);white-space:nowrap}
+.attn-job:hover{border-color:#c98a10}
+.attn.ok{background:var(--card);border:1px solid var(--line);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;font-size:14px}
+.attn.ok span{color:var(--muted)}
+.card.hl{animation:hl 1.6s ease-out}
+@keyframes hl{0%{box-shadow:0 0 0 4px #e0a030}100%{box-shadow:0 0 0 0 transparent}}
+@media (max-width:640px){.attn-row{grid-template-columns:1fr;gap:6px}.attn-row > b{padding-top:0}.attn-job{width:100%}}
 .note{padding:11px 13px;border-radius:12px;font-size:14px;line-height:1.45;margin-bottom:14px}
 .note.warn{background:var(--amber);color:var(--amber-ink)}
 .note.info{background:var(--blue);color:var(--blue-ink)}
@@ -278,6 +293,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     h+='<div class="tabs" role="tablist">'+[["live","Live jobs",live.length],["riders","Riders",riders.length],["wallets","Wallets",(S.w?((S.w.deposits||[]).filter(function(d){ return d.status==="Claimed"; }).length+(S.w.payouts||[]).filter(function(p){ return p.status==="Requested"; }).length):0)+(S.mc&&!S.mc.clear?1:0)],["closed","Closed",closed.length],["feedback","Feedback",fb.length]].map(function(x){
       return '<button type="button" role="tab" data-tab="'+x[0]+'" aria-selected="'+(S.tab===x[0])+'">'+x[1]+'<span>'+x[2]+'</span></button>'; }).join("")+'</div>';
     if(S.q){ $("main").innerHTML=searchHtml(free); return; }
+    h=attnHtml(live,riders)+h;
     if(S.tab==="live") h+=liveHtml(live,free);
     else if(S.tab==="riders") h+=ridersHtml(riders);
     else if(S.tab==="feedback") h+=feedbackHtml(fb);
@@ -449,6 +465,26 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     return h+'</div></div>';
   }
   function fbtn(kind,j,label,cls){ return '<button class="btn '+(cls||"btn-plain")+'" type="button" data-form="'+kind+'" data-job="'+esc(j.id)+'">'+label+'</button>'; }
+  /* Exceptions first: everything a person must act on, worst first. Each code jumps to its job. */
+  function attnHtml(live,riders){
+    var byId={}; riders.forEach(function(r){ byId[r.id]=r; });
+    var rows=[
+      ["Rider refused a relay",live.filter(function(j){ return j.relay_state==="refused"; }),function(j){ return "to "+(j.relay_name||"rider"); }],
+      ["Payment in dispute",live.filter(function(j){ return j.pay_state==="Disputed"; }),function(){ return "cash does not match"; }],
+      ["Failed delivery",live.filter(function(j){ return j.status==="Failed delivery"; }),function(j){ return ago(j.failed_at); }],
+      ["Rider offline with a parcel",live.filter(function(j){ var r=byId[j.rider_id]; return j.status!=="Rider assigned"&&r&&(!r.online||r.stale); }),function(j){ var r=byId[j.rider_id]; return (r.full_name||"").split(" ")[0]+", seen "+ago(r.last_seen); }],
+      ["Problem reported",live.filter(function(j){ return !!j.problem_note; }),function(j){ return j.problem_note; }],
+      ["No rider yet",live.filter(function(j){ return j.status==="Booked"; }),function(j){ return "waiting "+mins(j.confirmed_at||j.created_at)+" min"; }],
+      ["Late pickup",live.filter(function(j){ return j.status==="Rider assigned"&&mins(j.assigned_at)>=30; }),function(j){ return "assigned "+ago(j.assigned_at); }],
+      ["Confirmation call due",live.filter(function(j){ return j.status==="Awaiting confirmation"; }),function(j){ return "booked "+mins(j.created_at)+" min ago"; }]
+    ].filter(function(r){ return r[1].length; });
+    if(!rows.length) return '<div class="attn ok"><b>Nothing needs you right now.</b><span>New problems show up here first.</span></div>';
+    var n=rows.reduce(function(a,r){ return a+r[1].length; },0);
+    return '<section class="attn" aria-label="Needs attention"><h2>Needs attention<span>'+n+'</span></h2>'+rows.map(function(r){
+      return '<div class="attn-row"><b>'+esc(r[0])+'</b><div>'+r[1].map(function(j){
+        return '<button type="button" class="attn-job" data-jump="'+esc(j.id)+'"><span class="code">'+esc(j.code)+'</span>'+esc(String(r[2](j)||"").slice(0,60))+'</button>'; }).join("")+'</div></div>';
+    }).join("")+'</section>';
+  }
   function jobCard(j,free){
     var st=j.status, age=mins(j.created_at);
     var late=(st==="Awaiting confirmation"&&age>=5)||(st==="Booked"&&mins(j.confirmed_at||j.created_at)>=10)||(st==="Rider assigned"&&mins(j.assigned_at)>=30)||(st==="Failed delivery"&&mins(j.failed_at)>=10);
@@ -456,7 +492,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     var ageTxt = st==="Awaiting confirmation"?"booked "+age+" min ago":st==="Booked"?"waiting "+mins(j.confirmed_at||j.created_at)+" min":st==="Rider assigned"?"assigned "+ago(j.assigned_at):
                  st==="Picked up"?"picked up "+ago(j.picked_at):st==="Failed delivery"?"failed "+ago(j.failed_at):"returning since "+ago(j.returning_at);
     var msg="Nova Instant "+j.code+": track your parcel here, and give the rider the PIN on that page. "+trackLink(j);
-    var h='<div class="card'+(j.problem_note||late||st==="Failed delivery"||j.pay_state==="Disputed"?' flag':'')+'"><div class="jt"><span class="code">'+esc(j.code)+'</span><span class="age'+(late?' late':'')+'">'+esc(ageTxt)+'</span></div>'+
+    var h='<div id="jc-'+esc(j.id)+'" class="card'+(j.problem_note||late||st==="Failed delivery"||j.pay_state==="Disputed"?' flag':'')+'"><div class="jt"><span class="code">'+esc(j.code)+'</span><span class="age'+(late?' late':'')+'">'+esc(ageTxt)+'</span></div>'+
       '<div class="legs"><div><b>A</b><span><small>'+esc(j.sender_name)+' &middot; <a href="tel:'+esc(j.sender_phone)+'">'+esc(j.sender_phone)+'</a> &middot; <a href="'+esc(waLink(j.sender_phone,msg))+'" target="_blank" rel="noopener">WhatsApp link</a></small>'+esc(j.pickup_address)+'</span></div>'+
       '<div><b>B</b><span><small>'+esc(j.receiver_name)+' &middot; <a href="tel:'+esc(j.receiver_phone)+'">'+esc(j.receiver_phone)+'</a> &middot; <a href="'+esc(waLink(j.receiver_phone,msg))+'" target="_blank" rel="noopener">WhatsApp link</a></small>'+esc(j.drop_address)+'</span></div></div>'+
       '<div class="meta"><span class="chip">'+esc(j.km)+' km</span><span class="chip good">'+esc(rs(j.fare))+' &middot; '+(Number(j.cod_amount)>0?"from the COD":j.payer==="sender"?"sender pays":"receiver pays")+'</span>'+(Number(j.cod_amount)>0?'<span class="chip warn">COD '+esc(rs(j.cod_amount))+' &middot; client account</span>':'')+'<span class="chip">'+esc(j.item)+'</span>'+
@@ -631,9 +667,14 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
   });
   document.addEventListener("click",function(e){
     unlockSound();
-    var t=e.target.closest("[data-tab],[data-do],[data-form],[data-act],#openSw,#signOut");
+    var t=e.target.closest("[data-tab],[data-jump],[data-do],[data-form],[data-act],#openSw,#signOut");
     if(!t||t.disabled) return;
     if(t.dataset.tab){ S.tab=t.dataset.tab; S.open=null; return paint(); }
+    if(t.dataset.jump){
+      S.tab="live"; S.q=""; if($("srch")) $("srch").value=""; paint();
+      var el=$("jc-"+t.dataset.jump); if(el){ el.scrollIntoView({ behavior:"smooth", block:"center" }); el.classList.remove("hl"); void el.offsetWidth; el.classList.add("hl"); }
+      return;
+    }
     if(t.dataset.act==="reload") return boot();
     if(t.id==="signOut") return Promise.resolve(sb.auth.signOut()).catch(function(){}).then(function(){ renderAuth(); });
     if(t.id==="openSw"){

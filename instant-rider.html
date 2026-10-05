@@ -104,6 +104,35 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
 .tick{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;align-items:center;padding:12px;border:1.5px solid var(--green-2);background:var(--mint);border-radius:12px;font-size:15.5px;line-height:1.35;cursor:pointer;margin-bottom:12px}
 .tick input{width:26px;height:26px;margin:0;accent-color:var(--green-2)}
 .tick b{font-weight:800}
+.collect{margin:0 0 10px;padding:14px 16px;border-radius:14px;background:#fff4d6;border:2px solid #e0a100;color:#4a3200;transition:background .2s,border-color .2s}
+.collect small{display:block;font:700 12px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.collect b{display:block;font:800 34px/1.1 var(--display);letter-spacing:-.02em;margin:4px 0 2px;color:#2b1d00}
+.collect span{font-size:14.5px;line-height:1.4}
+.collect .ur{color:inherit;opacity:.8}
+.collect.ok{background:var(--mint);border-color:var(--green-2);color:var(--emerald-deep, #0b5d3b)}
+.collect.ok b{color:inherit}
+/* full-screen handover */
+.rfull{position:fixed;inset:0;z-index:200;background:var(--navy);color:var(--navy-ink);display:flex;flex-direction:column;padding:max(20px,env(safe-area-inset-top)) 20px max(20px,env(safe-area-inset-bottom));overflow-y:auto;animation:rfIn .22s ease-out}
+.rfull .rf-k{font:700 12px/1.3 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--navy-green)}
+.rfull h2{font:800 26px/1.15 var(--display);letter-spacing:-.02em;color:#fff;margin:10px 0 6px}
+.rfull p{margin:0;font-size:15.5px;line-height:1.45;color:var(--navy-muted)}
+.rfull .rf-mid{flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;padding:20px 0}
+.rfull .rf-who{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--navy-line);border-radius:14px}
+.rfull .rf-av{width:48px;height:48px;border-radius:50%;background:var(--navy-green);color:var(--navy);display:grid;place-items:center;font:800 20px/1 var(--display);flex:none}
+.rfull .rf-who b{display:block;color:#fff;font-size:17px}
+.rfull .rf-who small{color:var(--navy-muted);font-size:13.5px}
+.rfull .rf-code{padding:22px 12px;border-radius:18px;background:var(--lime);color:#243300;text-align:center}
+.rfull .rf-code b{display:block;font:800 64px/1 var(--mono);letter-spacing:.18em;margin-left:.18em}
+.rfull .rf-code span{display:block;margin-top:10px;font-size:14px}
+.rfull .rf-done{width:88px;height:88px;border-radius:50%;background:var(--navy-green);display:grid;place-items:center;margin:0 auto;animation:rfPop .35s cubic-bezier(.2,1.4,.4,1)}
+.rfull .rf-done svg{width:46px;height:46px;stroke:var(--navy);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:30;stroke-dashoffset:30;animation:rfTick .35s .2s ease-out forwards}
+.rfull .rf-center{text-align:center}
+.rfull .rf-acts{display:grid;gap:10px}
+.rfull .btn-plain{background:transparent;border-color:var(--navy-line);color:#fff}
+@keyframes rfIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes rfPop{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+@keyframes rfTick{to{stroke-dashoffset:0}}
+@media (prefers-reduced-motion:reduce){.rfull,.rfull .rf-done,.rfull .rf-done svg{animation:none;stroke-dashoffset:0}}
 /* .fld label is a small bold caption; the cash line inside a field is not one. */
 .fld label.tick{display:grid;font-size:15.5px;font-weight:400;color:var(--ink);margin-bottom:10px}
 .acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
@@ -498,7 +527,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       if(x.locked) h+='<p class="msg">The handover code is locked after five wrong tries. Call the office.</p>';
       else if(S.rcode&&S.rcode.job===j.id&&Date.now()<S.rcode.until)
         h+='<div class="rcode" aria-live="polite"><small>Show '+esc(first)+' this code</small><b>'+esc(S.rcode.code.split("").join(" "))+'</b><span>Works until '+esc(clock(new Date(S.rcode.until).toISOString()))+'. '+esc(first)+' types it to take the parcel.</span></div>'+
-           '<button class="btn btn-quiet wide" type="button" data-relay="code" data-job="'+esc(j.id)+'">Make a new code</button>';
+           '<button class="btn btn-primary wide" type="button" data-rf="open">Show the code full screen</button>';
       else h+=(x.state==="planned"?'<button class="btn btn-plain wide" type="button" data-relay="here" data-job="'+esc(j.id)+'" style="margin-top:10px">I am at the handover spot</button>':'')+
               '<button class="btn btn-primary wide big" type="button" data-relay="code" data-job="'+esc(j.id)+'" style="margin-top:10px">Show the handover code</button>';
     }
@@ -525,6 +554,27 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   }
   var RSAY={ no_relay:"This handover was called off. Check with the office.", relay_step:"The parcel is not at that step any more.", relay_locked:"The code is locked after five wrong tries. Call the office.",
     code_old:"Ask for a new code: that one has run out.", busy:"Finish the job you have first.", need_note:"Say what is wrong." };
+  /* Full-screen handover. Lives outside #main, so a feed repaint never closes it. */
+  function rfull(html){
+    var el=$("rfull");
+    if(!html){ if(el) el.remove(); document.body.style.overflow=""; return; }
+    if(!el){ el=document.createElement("div"); el.id="rfull"; el.className="rfull"; el.setAttribute("role","dialog"); el.setAttribute("aria-modal","true"); document.body.appendChild(el); }
+    el.innerHTML=html; document.body.style.overflow="hidden";
+    var f=el.querySelector("[data-rf-focus]"); if(f) try{ f.focus(); }catch(e){}
+  }
+  function rfCode(){
+    var c=S.rcode; if(!c) return rfull(null);
+    rfull('<div class="rf-k">Handover &middot; '+esc(c.code_job||"")+'</div><h2>Show '+esc(c.to)+' this code</h2><p>'+esc(c.to)+' types it on their phone. The parcel becomes theirs the moment it is right.</p>'+
+      '<div class="rf-mid"><div class="rf-who"><span class="rf-av" aria-hidden="true">'+esc(c.to.charAt(0).toUpperCase())+'</span><div><b>'+esc(c.toFull||c.to)+'</b><small>Takes the parcel from you</small></div></div>'+
+      '<div class="rf-code" aria-live="polite"><b aria-label="Code '+esc(c.code.split("").join(" "))+'">'+esc(c.code)+'</b><span>Works until '+esc(clock(new Date(c.until).toISOString()))+'</span></div></div>'+
+      '<div class="rf-acts"><button class="btn btn-plain wide" type="button" data-relay="code" data-job="'+esc(c.job)+'">Make a new code</button><button class="btn btn-quiet wide" type="button" data-rf="close" data-rf-focus style="color:var(--navy-muted)">Close</button></div>');
+  }
+  function rfDone(title,line,sub,btn){
+    buzz([20,60,20]);
+    rfull('<div class="rf-mid rf-center"><span class="rf-done" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.500l4.500 4.500L19 7.500"/></svg></span>'+
+      '<div><h2>'+esc(title)+'</h2><p>'+esc(line)+'</p>'+(sub?'<p style="margin-top:8px;color:var(--lime);font-weight:700">'+esc(sub)+'</p>':'')+'</div></div>'+
+      '<div class="rf-acts"><button class="btn btn-primary wide big" type="button" data-rf="close" data-rf-focus>'+esc(btn)+'</button></div>');
+  }
   function relayAct(t){
     var k=t.getAttribute("data-relay"), id=t.getAttribute("data-job");
     if(k==="refuse-open"){ S.refuseFor=id; S.sheet="relay"; return paint(); }
@@ -534,7 +584,8 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       t.disabled=true;
       return rpc("nvi_rider_relay_code",{ p_job:id }).then(function(r){
         if(r&&r.ok===false){ t.disabled=false; toast(RSAY[r.reason]||"That did not work."); return refresh(false); }
-        S.rcode={ job:id, code:String(r.code), until:new Date(r.until).getTime() }; buzz(30); paint();
+        var aj=S.feed&&S.feed.active, rn=aj&&aj.relay&&aj.relay.name||"the other rider";
+        S.rcode={ job:id, code:String(r.code), until:new Date(r.until).getTime(), to:String(rn).split(" ")[0], toFull:rn, code_job:aj&&aj.code||"" }; buzz(30); paint(); rfCode();
       }).catch(function(e){ t.disabled=false; toast(friendly(e&&e.message)); });
     }
     if(k==="take"){
@@ -544,7 +595,10 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       return rpc("nvi_rider_relay_take",{ p_job:id, p_code:code }).then(function(r){
         if(r&&r.ok===false){ t.disabled=false; var msg=r.reason==="wrong_code"?"That code is not right. "+r.left+" "+(r.left===1?"try":"tries")+" left.":(RSAY[r.reason]||"That did not work.");
           if($("rcm_"+id)) say($("rcm_"+id),msg); else toast(msg); return; }
-        toast("The parcel is yours now. Deliver it."); buzz([20,60,20]); return refresh(true);
+        var x=((S.feed&&S.feed.incoming)||[]).filter(function(q){ return q.id===id; })[0]||{};
+        rfDone("The parcel is yours now",(x.code?x.code+" · ":"")+"Deliver it to "+area(x.to)+".",Number(x.cod)>0?"Collect "+rs(x.cod)+" in cash at the door.":x.payer==="receiver"?"Collect "+rs(x.fare)+" at the door.":"",
+               "Start the delivery");
+        return refresh(true);
       }).catch(function(e){ t.disabled=false; toast(friendly(e&&e.message)); });
     }
     if(k==="refuse"){
@@ -805,7 +859,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       S.fails=0; S.okAt=Date.now(); paintNet();
       S.feed=f||{}; S.openCount=(S.feed.open||[]).length;
       var a=S.feed.active, key=a?a.id+"|"+a.status:"";
-      if(key!==S.key){ if(S.key&&!a&&S.rcode&&S.key.indexOf(S.rcode.job)===0) toast("Handed over. The parcel is with the other rider now."); S.key=key; S.cashOk=false; S.sheet=null; S.rcode=null; }
+      if(key!==S.key){ if(S.key&&!a&&S.rcode&&S.key.indexOf(S.rcode.job)===0) rfDone("Handed over",S.rcode.toFull+" has "+(S.rcode.code_job||"the parcel")+" now. It is their delivery from here.","You are free for new jobs.","Done"); else if(S.rcode) rfull(null); S.key=key; S.cashOk=false; S.sheet=null; S.rcode=null; }
       /* A new job arrived while the rider was waiting. */
       if(!first&&S.openCount>before&&!a){ beep(); try{ navigator.vibrate&&navigator.vibrate([180,90,180,90,180]); }catch(e){} }
       /* Never repaint under the rider's thumb: not while a sheet is open, and
@@ -874,8 +928,11 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   }
   var FAILED={ receiver_unavailable:"Receiver not answering or not there", refused:"Receiver refuses the parcel", wrong_address:"Wrong address, cannot find it",
     damaged:"Parcel is damaged", payment_refused:"Receiver will not pay the fare" };
+  function collectHtml(due,who){
+    return '<div class="collect'+(S.cashOk?' ok':'')+'" id="collectBox" data-due="'+esc(due)+'" data-who="'+esc(who)+'"><small>'+(S.cashOk?'Cash received':'Collect first')+'</small><b>'+esc(rs(due))+'</b><span>in cash from the '+esc(who)+(S.cashOk?'. Now finish the step below.':' before you go on. <span class="ur">Pehle '+esc(rs(due))+' naqad lein.</span>')+'</span></div>';
+  }
   function tickHtml(due,who){
-    return '<label class="tick" for="cashOk"><input type="checkbox" id="cashOk"'+(S.cashOk?" checked":"")+'><span>I have received <b>'+esc(rs(due))+'</b> in cash from the '+who+'. <span class="ur">'+esc(rs(due))+' naqad mil gaye.</span></span></label>';
+    return collectHtml(due,who)+'<label class="tick" for="cashOk"><input type="checkbox" id="cashOk"'+(S.cashOk?" checked":"")+'><span>I have received <b>'+esc(rs(due))+'</b> in cash from the '+who+'. <span class="ur">'+esc(rs(due))+' naqad mil gaye.</span></span></label>';
   }
   function pinHtml(label,locked){
     return '<div class="fld" style="margin-top:0"><label for="pin">'+label+'</label>'+
@@ -906,7 +963,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
         '<div class="acts" style="grid-template-columns:1fr"><a class="btn btn-quiet" href="tel:'+esc(j.sender_phone)+'">Call the sender ('+esc(j.sender_name)+')</a></div></div>';
       h+='<div class="card">'+pinHtml('Delivery PIN from the receiver <span class="ur">Receiver se 4 number ka PIN lein</span>',locked)+
          '<div class="fld">'+(due>0?tickHtml(due,"receiver"):'')+
-         '<button class="btn btn-primary wide big" type="button" id="dropBtn"'+(locked?" disabled":"")+'>Delivered <span class="ur" style="color:inherit;opacity:.75">Parcel de diya</span></button></div>'+
+         '<button class="btn btn-primary wide big" type="button" id="dropBtn"'+(locked||(due>0&&!S.cashOk)?" disabled":"")+'>Delivered <span class="ur" style="color:inherit;opacity:.75">Parcel de diya</span></button></div>'+
          '<div class="msg" id="pinMsg" role="alert">'+(locked?"The PIN is locked after five wrong tries. Call the NovaX office to close this job.":"")+'</div>'+
          '<button class="btn btn-danger wide" type="button" data-sheet="failed" style="margin-top:8px">Could not deliver <span class="ur" style="color:inherit;opacity:.75">Delivery nahi hui</span></button>'+
          (due>0?'<button class="btn btn-quiet wide" type="button" data-sheet="short">Handed over, but paid less than '+esc(rs(due))+'</button>':'')+
@@ -930,7 +987,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
         '<div class="acts" style="grid-template-columns:1fr">'+office+'</div></div>';
       h+='<div class="card">'+pinHtml('PIN from the sender\'s booking page <span class="ur">Sender se 4 number ka PIN lein</span>',locked)+
          '<div class="fld">'+(due>0?tickHtml(due,"sender"):'')+
-         '<button class="btn btn-primary wide big" type="button" id="backBtn"'+(locked?" disabled":"")+'>Returned to the sender <span class="ur" style="color:inherit;opacity:.75">Wapas de diya</span></button></div>'+
+         '<button class="btn btn-primary wide big" type="button" id="backBtn"'+(locked||(due>0&&!S.cashOk)?" disabled":"")+'>Returned to the sender <span class="ur" style="color:inherit;opacity:.75">Wapas de diya</span></button></div>'+
          '<div class="msg" id="pinMsg" role="alert">'+(locked?"The PIN is locked after five wrong tries. Call the NovaX office to close this job.":"")+'</div>'+
          (due>0?'<button class="btn btn-quiet wide" type="button" data-sheet="short">Handed back, but paid less than '+esc(rs(due))+'</button>':'')+
          '<button class="btn btn-quiet wide" type="button" data-sheet="problem">Tell the office something</button>'+sheetHtml(j)+'</div>';
@@ -1001,11 +1058,14 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   document.addEventListener("change",function(e){
     if(e.target.id!=="cashOk") return;
     S.cashOk=e.target.checked;
-    var pb=$("pickBtn"); if(pb) pb.disabled=!S.cashOk;
+    var cb=$("collectBox"); if(cb) cb.outerHTML=collectHtml(Number(cb.dataset.due),cb.dataset.who);
+    ["pickBtn","dropBtn","backBtn"].forEach(function(id){ var b=$(id); if(b&&!(S.feed&&S.feed.active&&Number(S.feed.active.pin_tries)>=5&&id!=="pickBtn")) b.disabled=!S.cashOk; });
     if($("pinMsg")&&S.cashOk) say($("pinMsg"),"");
   });
   document.addEventListener("click",function(e){
     unlockSound();
+    var rf=e.target.closest("[data-rf]");
+    if(rf){ if(rf.dataset.rf==="open") rfCode(); else rfull(null); return; }
     var t=e.target.closest("[data-auth],[data-act],[data-accept],[data-sheet],[data-show],[data-wsheet],#wGo,#forgot,#pickBtn,#dropBtn,#backBtn,#retryBtn,#returnBtn,#shGo,#onSw,#goOn,#signOut,#signOut2,#pushOn,#pushTest,#install,[data-relay]");
     if(!t) return;
     if(t.dataset.auth) return renderAuth(t.dataset.auth);
