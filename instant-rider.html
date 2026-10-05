@@ -9,6 +9,10 @@
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
 <meta name="theme-color" content="#0d2920">
+<link rel="manifest" href="/assets/instant-rider.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="NI Rider">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -193,6 +197,19 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
 .pwrap{position:relative}
 .pwrap .inp{padding-right:74px}
 .pwrap button{position:absolute;right:4px;top:2px;min-height:44px;min-width:60px;border:0;background:none;font-weight:700;font-size:14px;color:var(--green-2)}
+.alerts{display:grid;gap:12px;margin-top:12px;padding:14px 16px;border-radius:16px;border:1px solid var(--line);background:var(--card)}
+.alerts b{display:flex;align-items:center;gap:8px;font:800 16px/1.3 var(--display)}
+.alerts b svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.alerts span{display:block;font-size:14px;line-height:1.45;color:var(--muted);margin-top:3px}
+.alerts.on{grid-template-columns:minmax(0,1fr) auto;align-items:center;background:var(--mint);border-color:var(--mint-line)}
+.alerts.on b{color:var(--green-3)}
+.alerts.on .btn{min-height:44px;padding:6px 8px;color:var(--green-3);text-decoration:underline;text-underline-offset:3px}
+.alerts.warn{background:var(--amber);border-color:#ecd69a}
+.alerts.warn b,.alerts.warn span{color:var(--amber-ink)}
+@media (max-width:380px){ .alerts.on{grid-template-columns:1fr} .alerts.on .btn{justify-self:start;padding-left:0} }
+.tip{margin-top:8px;font-size:14px;color:var(--muted)}
+.tip summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:700;color:var(--ink-2)}
+.tip p{margin:0 0 6px;line-height:1.5}
 @media (prefers-reduced-motion:reduce){ .state.on .beacon::before,.state.on .beacon::after{animation:none;opacity:0} }
 </style>
 </head>
@@ -251,7 +268,9 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     cam:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.500-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.500"/></svg>',
     ok:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.500l4.500 4.500L19 7.500"/></svg>',
     bike:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.500" cy="17" r="3.500"/><circle cx="18.500" cy="17" r="3.500"/><path d="M5.500 17l4-8h5l4 8M9.500 9l2 8M13 6h3"/></svg>',
-    moon:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z"/></svg>'
+    moon:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z"/></svg>',
+    bell:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.500 2h-15zM10 20.500a2 2 0 0 0 4 0"/></svg>',
+    dl:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>'
   };
   function waUrl(phone){ return "https://wa.me/92"+String(phone||"").replace(/\D/g,"").replace(/^92/,"").replace(/^0/,""); }
   function clock(iso){ try{ return new Date(iso).toLocaleTimeString("en-GB",{ timeZone:"Asia/Karachi", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; } }
@@ -267,11 +286,77 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     el.className="chk"+(late?" late":""); el.lastChild.textContent=late?"Last checked "+(sec<90?sec+" s":Math.round(sec/60)+" min")+" ago":"Checked just now";
   }
   setInterval(paintChk,5000);
+  /* ───── job alerts and the home-screen app ─────
+     A rider with alerts on can lock the phone: nvi-push rings it when a job
+     waits, and nvi_rider_fresh() keeps them on duty for the shift. */
+  var VAPID="BNeQnig_SliKQeCXdWRh1Qo1VYCZT1ThMf9xjnZEyS73vUbH6Ycq4lurSef9fGCTW-aekdwgjVamODugtVy8gYQ", PUSH_FN=SB_URL+"/functions/v1/nvi-push";
+  var P={ sub:null, state:"", saved:false }, installEvt=null, swReady=null;
+  window.addEventListener("beforeinstallprompt",function(e){ e.preventDefault(); installEvt=e; if(S.feed&&!S.feed.active&&!typing()) paint(); });
+  function standalone(){ try{ return matchMedia("(display-mode: standalone)").matches||navigator.standalone===true; }catch(e){ return false; } }
+  function isIOS(){ return /iPhone|iPad|iPod/.test(navigator.userAgent); }
+  function sw(){
+    if(!swReady){ swReady=("serviceWorker" in navigator)?navigator.serviceWorker.register("/sw.js").then(function(){ return navigator.serviceWorker.ready; }):Promise.reject(new Error("no sw")); swReady.catch(function(){}); }
+    return swReady;
+  }
+  function keyBytes(k){ var b=atob(k.replace(/-/g,"+").replace(/_/g,"/")+"===".slice((k.length+3)%4)); return Uint8Array.from(b,function(c){ return c.charCodeAt(0); }); }
+  function pushCheck(){
+    if(!("serviceWorker" in navigator)||!("PushManager" in window)||!("Notification" in window)){ P.state=isIOS()&&!standalone()?"ios":"unsupported"; return Promise.resolve(); }
+    if(Notification.permission==="denied"){ P.state="denied"; return Promise.resolve(); }
+    return sw().then(function(reg){ return reg.pushManager.getSubscription(); }).then(function(sub){
+      P.sub=sub; P.state=sub&&Notification.permission==="granted"?"on":"off";
+      /* Told again on every start: the server drops a phone that stopped answering. */
+      if(sub&&!P.saved){ P.saved=true; return rpc("nvi_rider_push_save",{ p_endpoint:sub.endpoint }).catch(function(){ P.saved=false; }); }
+    }).catch(function(){ P.state="unsupported"; });
+  }
+  function pushOn(btn){
+    busyBtn(btn,true,"Turning on\u2026");
+    Promise.resolve(Notification.requestPermission()).then(function(perm){
+      if(perm!=="granted"){ P.state=perm==="denied"?"denied":"off"; throw new Error("perm"); }
+      return sw();
+    }).then(function(reg){
+      return reg.pushManager.getSubscription().then(function(old){ return old||reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:keyBytes(VAPID) }); });
+    }).then(function(sub){
+      P.sub=sub; return rpc("nvi_rider_push_save",{ p_endpoint:sub.endpoint });
+    }).then(function(r){
+      if(r&&r.ok===false) throw new Error("This browser cannot get job alerts. Open this page in Chrome.");
+      P.state="on"; P.saved=true; toast("Job alerts are on."); paint();
+    }).catch(function(e){ busyBtn(btn,false); if(!e||e.message!=="perm") toast(friendly(e&&e.message)); paint(); });
+  }
+  function pushTest(btn){
+    if(!P.sub) return;
+    busyBtn(btn,true,"Sending\u2026");
+    /* The note lets the service worker say "Test alert" instead of "New job". */
+    Promise.resolve(window.caches?caches.open("nvi-flags").then(function(c){ return c.put("/__nvi_test",new Response(String(Date.now()))); }):null).catch(function(){}).then(function(){
+      return fetch(PUSH_FN,{ method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ test:P.sub.endpoint }) });
+    }).then(function(r){
+      busyBtn(btn,false);
+      if(r.status===404) return toast("Job alerts are not switched on at NovaX yet. Call the office.");
+      return r.json().then(function(d){ toast(d&&d.sent?"Sent. It should ring in a few seconds.":"It did not reach this phone. Turn job alerts off in Chrome, reload, and turn them on again."); });
+    }).catch(function(){ busyBtn(btn,false); toast("No connection. Try again."); });
+  }
+  /* Signing out: this phone stops ringing for this rider. */
+  function pushOff(){
+    var sub=P.sub; P.sub=null; P.saved=false; P.state="";
+    if(!sub) return Promise.resolve();
+    return rpc("nvi_rider_push_drop",{ p_endpoint:sub.endpoint }).catch(function(){}).then(function(){ return sub.unsubscribe().catch(function(){}); });
+  }
+  function alertsHtml(){
+    var st=P.state, h="";
+    if(st==="on") h='<div class="alerts on"><div><b>'+IC.bell+'Job alerts on</b><span>This phone rings for every new job, even when locked.</span></div><button class="btn btn-quiet" type="button" id="pushTest">Send me a test alert</button></div>';
+    else if(st==="off") h='<div class="alerts"><div><b>'+IC.bell+'Turn on job alerts</b><span>Then a new job rings even with the phone locked. Without alerts, keep this screen open. <span class="ur">Job alerts on karein.</span></span></div><button class="btn btn-dark wide" type="button" id="pushOn">Turn on job alerts</button></div>';
+    else if(st==="denied") h='<div class="alerts warn"><div><b>'+IC.bell+'Job alerts are blocked</b><span>In Chrome, tap the icon to the left of the web address, then Permissions, then Notifications, and allow them. Then reload this page.</span></div></div>';
+    else if(st==="ios") h='<div class="alerts warn"><div><b>'+IC.bell+'Add this app to your Home Screen</b><span>On iPhone, job alerts work only from the Home Screen: tap Share, then Add to Home Screen, and open the app from there.</span></div></div>';
+    else if(st==="unsupported") h='<div class="alerts warn"><div><b>'+IC.bell+'Job alerts need Chrome</b><span>This browser cannot show job alerts. Open this page in Chrome on your phone.</span></div></div>';
+    if(st==="on") h+='<details class="tip"><summary>Alerts late or silent?</summary><p>Some phones (Xiaomi, Tecno, Infinix, Oppo, Vivo) hold back alerts to save battery. Open Settings, then Apps, then Chrome, then Battery, and choose No restrictions. Keep the notification sound on for Chrome.</p></details>';
+    if(installEvt&&!standalone()) h+='<button class="btn btn-plain wide" type="button" id="install" style="margin-top:10px">'+IC.dl+'Add the rider app to your home screen</button>';
+    return h;
+  }
   function mapsUrl(pt){ return "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination="+pt[0]+","+pt[1]; }
   function hourLabel(h){ return (h%12||12)+(h<12?" am":" pm"); }
 
   /* ───── boot ───── */
   function boot(){
+    sw();   /* the home-screen app and job alerts both need it */
     if(!sb){ $("main").innerHTML='<div class="empty"><b>NovaX could not load</b>Check your internet and refresh.</div>'; return; }
     sb.auth.getSession().then(function(r){
       if(!(r&&r.data&&r.data.session)) return renderAuth("signin");
@@ -464,6 +549,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   /* ───── the rider's day ───── */
   function start(){
     $("onSw").hidden=false; $("signOut").hidden=true;
+    pushCheck().then(function(){ if(S.feed&&!S.busy&&!typing()) paint(); });
     refresh(true);
     stop();
     /* The feed is asked every 12 s while this screen is showing. That is also
@@ -543,15 +629,17 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     var t=f.today||{};
     var owe=Number(t.cash_in_hand)>0;
     h+='<div class="stats"><div class="stat"><span>Done today</span><b>'+esc(t.done||0)+'</b></div><div class="stat"><span>Fares delivered</span><b>'+esc(rs(t.fares))+'</b></div><div class="stat'+(owe?' owe':'')+'"><span>Cash with you</span><b>'+esc(rs(t.cash_in_hand))+'</b></div></div>';
+    var alertsFirst=!f.active&&P.state&&P.state!=="on";
+    if(alertsFirst) h+=alertsHtml();
     if(f.active) h+=activeHtml(f.active);
     else if(!f.rider.online) h+='<div class="state"><div class="beacon" aria-hidden="true">'+IC.moon+'</div><h2>You are offline</h2><p>No jobs come to you while you are offline. <span class="ur">Offline mein job nahi aata.</span></p>'+
       '<button class="btn btn-primary wide big" type="button" id="goOn">Go online <span class="ur" style="color:inherit;opacity:.75">Online ho jayein</span></button></div>';
     else {
       if(!f.hours_open) h+='<div class="note warn">Nova Instant takes bookings from '+hourLabel(f.open_hour)+' to '+hourLabel(f.close_hour)+'. New jobs start again then.</div>';
       var open=f.open||[];
-      if(!open.length) h+='<div class="state on"><div class="beacon" aria-hidden="true">'+IC.bike+'</div><h2>Looking for a job</h2><p>Keep this screen open. A new job rings and appears here by itself. <span class="ur" style="color:inherit">Yeh screen khuli rakhein.</span></p>'+
+      if(!open.length) h+='<div class="state on"><div class="beacon" aria-hidden="true">'+IC.bike+'</div><h2>Looking for a job</h2><p>'+(P.state==="on"?'You can lock the phone. A new job rings as a notification. <span class="ur" style="color:inherit">Phone lock kar sakte hain.</span>':'Keep this screen open. A new job rings and appears here by itself. <span class="ur" style="color:inherit">Yeh screen khuli rakhein.</span>')+'</p>'+
         '<div class="chk" id="chk"><i aria-hidden="true"></i><span>Checked just now</span></div></div>'+
-        '<p class="sub" style="margin:10px 4px 0;font-size:13.5px">If you close this page or lock the phone, NovaX sees you as offline after a minute.</p>';
+        (P.state==="on"?'':'<p class="sub" style="margin:10px 4px 0;font-size:13.5px">Without job alerts, closing this page or locking the phone takes you off duty after a minute.</p>');
       else h+='<div class="sect"><span>'+(open.length===1?"1 job waiting":open.length+" jobs waiting")+'</span><span class="chk" id="chk" style="margin:0"><i aria-hidden="true"></i><span>Checked just now</span></span></div>'+open.map(function(j){
         var fresh=Date.now()-new Date(j.created_at).getTime()<120000;
         return '<div class="card job'+(fresh?' fresh':'')+'"><div class="job-top"><span class="code">'+esc(j.code)+' &middot; '+esc(ago(j.created_at))+(fresh?'<span class="newtag">New</span>':'')+'</span><span class="fare"><small>Rs</small>'+esc(Number(j.fare).toLocaleString("en-PK"))+'</span></div>'+
@@ -560,6 +648,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
           '<div style="margin-top:12px"><button class="btn btn-primary wide" type="button" data-accept="'+esc(j.id)+'">Accept this job <span class="ur" style="color:inherit;opacity:.75">Qabool karein</span></button></div></div>';
       }).join("");
     }
+    if(!f.active&&!alertsFirst) h+=alertsHtml();
     if(owe&&!f.active) h+='<div class="note warn" style="margin:12px 0 0">You are holding <b>'+esc(rs(t.cash_in_hand))+'</b> of NovaX cash. Hand it in at the office; the office then marks it received. <span class="ur" style="color:inherit">Yeh cash office mein jama karwayein.</span></div>';
     var rec=f.recent||[];
     if(rec.length&&!f.active) h+='<div class="sect"><span>Finished today</span><span>'+rec.length+'</span></div><div class="card"><ul class="done">'+rec.map(function(x){
@@ -704,7 +793,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   });
   document.addEventListener("click",function(e){
     unlockSound();
-    var t=e.target.closest("[data-auth],[data-act],[data-accept],[data-sheet],[data-show],#forgot,#pickBtn,#dropBtn,#backBtn,#retryBtn,#returnBtn,#shGo,#onSw,#goOn,#signOut,#signOut2");
+    var t=e.target.closest("[data-auth],[data-act],[data-accept],[data-sheet],[data-show],#forgot,#pickBtn,#dropBtn,#backBtn,#retryBtn,#returnBtn,#shGo,#onSw,#goOn,#signOut,#signOut2,#pushOn,#pushTest,#install");
     if(!t) return;
     if(t.dataset.auth) return renderAuth(t.dataset.auth);
     if(t.dataset.act==="reload") return boot();
@@ -714,7 +803,10 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       if(S.feed&&S.feed.active){ toast("Finish the job you have before signing out."); return; }
       if(t.dataset.sure!=="1"){ t.dataset.sure="1"; t.textContent="Press again to sign out"; setTimeout(function(){ if(t.isConnected){ t.dataset.sure="0"; t.textContent="Sign out"; } },4000); return; }
     }
-    if(t.id==="signOut"||t.id==="signOut2"){ stop(); return Promise.resolve(sb.auth.signOut()).catch(function(){}).then(function(){ S.me=null; S.feed=null; renderAuth("signin"); }); }
+    if(t.id==="pushOn") return pushOn(t);
+    if(t.id==="pushTest") return pushTest(t);
+    if(t.id==="install"){ var ev=installEvt; if(ev){ ev.prompt(); Promise.resolve(ev.userChoice).catch(function(){}).then(function(){ installEvt=null; paint(); }); } return; }
+    if(t.id==="signOut"||t.id==="signOut2"){ stop(); return pushOff().then(function(){ return sb.auth.signOut(); }).catch(function(){}).then(function(){ S.me=null; S.feed=null; renderAuth("signin"); }); }
     if(t.id==="goOn"){ t.disabled=true; try{ navigator.vibrate&&navigator.vibrate(40); }catch(e2){} return act("nvi_rider_online",{ p_on:true },"You are online."); }
     if(t.id==="onSw"){
       var on=t.getAttribute("aria-checked")!=="true";

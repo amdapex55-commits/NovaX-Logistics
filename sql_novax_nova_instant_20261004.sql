@@ -240,6 +240,21 @@ create table if not exists public.nvi_hits (
 );
 create index if not exists nvi_hits_kind_ip on public.nvi_hits(kind, ip, at);
 
+-- Job alerts: one row per rider phone that allowed notifications. Only the
+-- known push services are accepted, so the sender never posts anywhere else.
+create table if not exists public.nvi_push_subs (
+  id         bigserial primary key,
+  rider_id   uuid not null references public.nvi_riders(id) on delete cascade,
+  endpoint   text not null unique,
+  created_at timestamptz not null default now(),
+  last_ok    timestamptz,
+  fails      int not null default 0
+);
+create index if not exists nvi_push_subs_rider on public.nvi_push_subs(rider_id);
+alter table public.nvi_push_subs enable row level security;
+revoke all on public.nvi_push_subs from public, anon, authenticated;
+revoke all on sequence public.nvi_push_subs_id_seq from public, anon, authenticated;
+
 alter table public.nvi_jobs add column if not exists cash_collected int;
 alter table public.nvi_jobs add column if not exists cash_at timestamptz;
 alter table public.nvi_jobs drop column if exists handover_id;   -- moved to nvi_cash
@@ -262,6 +277,8 @@ alter table public.nvi_jobs add column if not exists pay_state text not null def
 alter table public.nvi_jobs add column if not exists pay_note text;
 -- Where the booking started: the homepage, the merchant portal, or a direct visit.
 alter table public.nvi_jobs add column if not exists source text;
+-- When riders were last alerted about this job (one alert per job, again if it comes back).
+alter table public.nvi_jobs add column if not exists push_at timestamptz;
 
 -- What customers tell NovaX about the service. Written only by nvi_feedback().
 create table if not exists public.nvi_feedback (
@@ -374,10 +391,15 @@ end $$;
 
 -- "Online" means the rider's app answered in the last minute. A switch left
 -- on in a closed app does not count.
+-- On duty: switched on and checked, and either the app answered in the last
+-- minute, or the phone has working job alerts and the app was opened in the
+-- last 12 hours (a shift). With alerts the phone can be locked.
 create or replace function public.nvi_rider_fresh(r public.nvi_riders)
-returns boolean language sql stable set search_path = '' as $$
-  select (r).status = 'Active' and (r).online and (r).docs_checked_at is not null
-     and (r).last_seen is not null and (r).last_seen > now() - interval '60 seconds'
+returns boolean language sql stable security definer set search_path = '' as $$
+  select (r).status = 'Active' and (r).online and (r).docs_checked_at is not null and (r).last_seen is not null
+     and ((r).last_seen > now() - interval '60 seconds'
+          or ((r).last_seen > now() - interval '12 hours'
+              and exists (select 1 from public.nvi_push_subs s where s.rider_id = (r).id and s.fails < 5)))
 $$;
 
 -- Riders on duty this minute, busy or not. None on duty: no new bookings.
@@ -1220,6 +1242,7 @@ begin
         'stale', r.status = 'Active' and r.online and not public.nvi_rider_fresh(r),
         'last_seen', r.last_seen, 'joined_at', r.joined_at,
         'emergency_name', r.emergency_name, 'emergency_phone', r.emergency_phone,
+        'alerts', exists (select 1 from public.nvi_push_subs s where s.rider_id = r.id and s.fails < 5),
         'cnic_path', r.cnic_path, 'bill_path', r.bill_path, 'docs_at', r.docs_at, 'docs_checked_at', r.docs_checked_at,
         'active_code', (select j.code from public.nvi_jobs j where j.rider_id = r.id and j.status in ('Rider assigned', 'Picked up', 'Failed delivery', 'Returning')),
         'done_today', (select count(*) from public.nvi_jobs j where j.rider_id = r.id and j.status = 'Delivered'
@@ -1503,6 +1526,84 @@ begin
 end $$;
 
 
+-- ═══════════════════ Job alerts ═══════════════════
+create or replace function public.nvi_rider_push_save(p_endpoint text)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare r public.nvi_riders := public.nvi_require_rider();
+begin
+  if p_endpoint is null or length(p_endpoint) > 1000 or p_endpoint !~
+     '^https://(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9.-]+\.push\.apple\.com|[a-z0-9.-]+\.notify\.windows\.com)/' then
+    return jsonb_build_object('ok', false, 'reason', 'endpoint');
+  end if;
+  insert into public.nvi_push_subs (rider_id, endpoint) values (r.id, p_endpoint)
+  on conflict (endpoint) do update set rider_id = excluded.rider_id, fails = 0;
+  -- A rider uses one or two phones; older ones drop off.
+  delete from public.nvi_push_subs where rider_id = r.id
+     and id not in (select id from public.nvi_push_subs where rider_id = r.id order by created_at desc limit 3);
+  update public.nvi_riders set last_seen = now() where id = r.id;
+  return jsonb_build_object('ok', true);
+end $$;
+
+create or replace function public.nvi_rider_push_drop(p_endpoint text)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare r public.nvi_riders := public.nvi_require_rider();
+begin
+  delete from public.nvi_push_subs where rider_id = r.id and endpoint = p_endpoint;
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- For the nvi-push function only (service role). A job: marks it alerted and
+-- returns the phones of on-shift, checked, free riders; a second call within
+-- two minutes returns nothing, so the sender cannot be used to spam riders.
+-- A test: returns that one phone if it is registered.
+create or replace function public.nvi_push_targets(p_job uuid, p_test text default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_n int;
+begin
+  if p_test is not null then
+    return coalesce((select jsonb_agg(jsonb_build_object('id', id, 'endpoint', endpoint)) from public.nvi_push_subs where endpoint = p_test), '[]'::jsonb);
+  end if;
+  update public.nvi_jobs set push_at = now()
+   where id = p_job and status = 'Booked' and rider_id is null
+     and coalesce(confirmed_at, created_at) > now() - interval '2 hours'
+     and (push_at is null or push_at < now() - interval '2 minutes');
+  get diagnostics v_n = row_count;
+  if v_n = 0 then return '[]'::jsonb; end if;
+  return coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'endpoint', s.endpoint))
+    from public.nvi_push_subs s join public.nvi_riders r on r.id = s.rider_id
+   where r.status = 'Active' and r.online and r.docs_checked_at is not null and s.fails < 5
+     and not exists (select 1 from public.nvi_jobs j where j.rider_id = r.id
+                      and j.status in ('Rider assigned', 'Picked up', 'Failed delivery', 'Returning'))), '[]'::jsonb);
+end $$;
+
+create or replace function public.nvi_push_result(p_ok bigint[], p_gone bigint[], p_fail bigint[])
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  update public.nvi_push_subs set last_ok = now(), fails = 0 where id = any(coalesce(p_ok, '{}'));
+  delete from public.nvi_push_subs where id = any(coalesce(p_gone, '{}'));
+  update public.nvi_push_subs set fails = fails + 1 where id = any(coalesce(p_fail, '{}'));
+end $$;
+
+-- A job waiting for a rider (new, confirmed, or given back) asks the sender
+-- to ring the riders. pg_net posts after commit and never blocks the booking.
+create or replace function public.nvi_push_trigger()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.status = 'Booked' and new.rider_id is null and (tg_op = 'INSERT' or old.status is distinct from 'Booked') then
+    begin
+      perform net.http_post(url := 'https://rhzunbzbdzicajqtohwp.supabase.co/functions/v1/nvi-push',
+                            body := jsonb_build_object('job', new.id),
+                            headers := '{"Content-Type":"application/json"}'::jsonb,
+                            timeout_milliseconds := 5000);
+    exception when others then null;   -- an alert that fails must never fail the booking
+    end;
+  end if;
+  return null;
+end $$;
+drop trigger if exists nvi_jobs_push on public.nvi_jobs;
+create trigger nvi_jobs_push after insert or update of status on public.nvi_jobs
+  for each row execute function public.nvi_push_trigger();
+
 -- ═══════════════════ Live screens ═══════════════════
 -- Every change to a job, and a rider going on or off, sends one small signal
 -- on the public Realtime channel "nvi". It carries no data: a screen that
@@ -1553,10 +1654,14 @@ begin
                          'nvi_admin_board', 'nvi_admin_job', 'nvi_admin_confirm', 'nvi_admin_assign', 'nvi_admin_cancel',
                          'nvi_admin_mark', 'nvi_admin_pay', 'nvi_admin_invite_rider', 'nvi_admin_set_rider',
                          'nvi_admin_handover', 'nvi_admin_set_open',
-                         'nvi_rider_docs', 'nvi_admin_check_docs', 'nvi_is_rider')
+                         'nvi_rider_docs', 'nvi_admin_check_docs', 'nvi_is_rider',
+                         'nvi_rider_push_save', 'nvi_rider_push_drop')
   loop
     execute 'grant execute on function ' || f || ' to authenticated';
   end loop;
 end $$;
+
+-- The alert sender runs with the service role.
+grant execute on function public.nvi_push_targets(uuid, text), public.nvi_push_result(bigint[], bigint[], bigint[]) to service_role;
 
 notify pgrst, 'reload schema';

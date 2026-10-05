@@ -22,7 +22,7 @@
  *   way. That is the kill switch, and it is the reason it is safe to ship
  *   this at all.
  */
-var CACHE = "novax-v186";
+var CACHE = "novax-v187";
 /* The two Nova Instant pages a phone on a weak connection must still be able
    to open: the customer's booking/tracking page and the Instant rider's page. */
 var SHELLS = ["/client.html", "/rider.html", "/instant.html", "/instant-rider.html"];
@@ -152,6 +152,44 @@ self.addEventListener("fetch", function (event) {
         return res;
       }).catch(function () { return hit; });
       return hit || net;
+    })
+  );
+});
+
+/* ── Nova Instant job alerts ──
+   nvi-push sends an empty push (no payload), so the words are fixed here.
+   The rider app's "Send me a test alert" leaves a note in the cache first,
+   so a test says it is a test. Tapping opens (or brings back) the rider app. */
+self.addEventListener("push", function (event) {
+  event.waitUntil(
+    caches.open("nvi-flags").then(function (c) {
+      return c.match("/__nvi_test").then(function (hit) {
+        if (!hit) return false;
+        return hit.text().then(function (t) { c.delete("/__nvi_test"); return Date.now() - Number(t) < 120000; });
+      });
+    }).catch(function () { return false; }).then(function (isTest) {
+      return self.registration.showNotification(isTest ? "Test alert: job alerts work" : "New Nova Instant job", {
+        body: isTest ? "New jobs will ring like this, even with the phone locked." : "A parcel is waiting for a rider. Open the app to see it and accept.",
+        tag: "nvi-job",
+        renotify: true,
+        requireInteraction: !isTest,
+        icon: "/assets/icon-192.png",
+        badge: "/assets/icon-192.png",
+        vibrate: [300, 120, 300, 120, 300],
+        data: { url: "/instant-rider.html" }
+      });
+    })
+  );
+});
+self.addEventListener("notificationclick", function (event) {
+  event.notification.close();
+  var url = (event.notification.data && event.notification.data.url) || "/instant-rider.html";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].url.indexOf("/instant-rider.html") > -1 && "focus" in list[i]) return list[i].focus();
+      }
+      return self.clients.openWindow(url);
     })
   );
 });
