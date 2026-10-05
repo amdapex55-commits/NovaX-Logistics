@@ -260,7 +260,55 @@ select pg_temp.is('refused', public.nvi_rider_relay_refuse(:'j9', 'Bike puncture
 reset role;
 select pg_temp.is('still with C', (select rider_id::text from public.nvi_jobs where id = :'j9'), :'rc');
 
--- 16. The books balance: overall and per movement.
+-- 16. Relay reservations are real reservations, and every escape path cleans them up.
+insert into public.nvi_riders (full_name, email, phone, status, auth_user_id, docs_at, docs_checked_at, online)
+values ('Test Rider D', 'd@test.invalid', '03000000105', 'Active', gen_random_uuid(), now(), now(), true) returning id as rd, auth_user_id as ud \gset
+insert into public.nvi_riders (full_name, email, phone, status, auth_user_id, docs_at, docs_checked_at, online)
+values ('Test Rider E', 'e@test.invalid', '03000000106', 'Active', gen_random_uuid(), now(), now(), true) returning id as re, auth_user_id as ue \gset
+select pg_temp.job('T-RESERVE', :'rd', 'sender', 150, 0, null, 'Rider assigned') as j10 \gset
+select pg_temp.job('T-OPEN', null, 'sender', 150, 0, null, 'Booked') as j11 \gset
+select pg_temp.as_user(:'admin');
+set local role authenticated;
+select pg_temp.is('relay reserves receiver', public.nvi_admin_relay(:'j10', :'rr', null)->>'ok', 'true');
+select pg_temp.is('reserved rider cannot be assigned elsewhere', public.nvi_admin_assign(:'j11', :'rr', null)->>'reason', 'relay_busy');
+select pg_temp.is('cannot uncheck reserved rider documents', public.nvi_admin_check_docs(:'rr', false)->>'reason', 'rider_has_job');
+reset role;
+select pg_temp.as_user(:'ur');
+set local role authenticated;
+select pg_temp.is('reserved rider cannot go offline', public.nvi_rider_online(false)->>'reason', 'has_job');
+reset role;
+update public.nvi_riders set online = true where id = :'rr';
+select pg_temp.as_user(:'ur');
+set local role authenticated;
+select pg_temp.is('reserved rider cannot accept another job', public.nvi_rider_accept(:'j11')->>'reason', 'busy');
+reset role;
+select pg_temp.as_user(:'ud');
+set local role authenticated;
+select pg_temp.is('giving job back works', public.nvi_rider_release(:'j10', 'sender changed the time')->>'ok', 'true');
+reset role;
+select pg_temp.is('release clears relay rider', coalesce((select relay_rider::text from public.nvi_jobs where id = :'j10'), ''), '');
+select pg_temp.is('release clears relay state', coalesce((select relay_state from public.nvi_jobs where id = :'j10'), ''), '');
+select pg_temp.as_user(:'admin');
+set local role authenticated;
+select pg_temp.is('receiver is free after cleanup', public.nvi_admin_assign(:'j11', :'rr', null)->>'ok', 'true');
+select public.nvi_admin_assign(:'j11', null, null);
+reset role;
+select pg_temp.job('T-EMERGENCY', :'rd', 'sender', 200, 0, null, 'Picked up') as j12 \gset
+select pg_temp.as_user(:'admin');
+set local role authenticated;
+select pg_temp.is('emergency transfer', public.nvi_admin_assign(:'j12', :'rr', 'giving rider phone died')->>'ok', 'true');
+reset role;
+select pg_temp.is('emergency transfer records pickup rider', (select pickup_rider::text from public.nvi_jobs where id = :'j12'), :'rd');
+select pg_temp.is('emergency transfer records handover', (select handover_from::text from public.nvi_jobs where id = :'j12'), :'rd');
+update public.nvi_config set rider_cash_limit = 100 where id;
+select pg_temp.job('T-LIMIT', null, 'receiver', 100, 200, :'k', 'Booked') as j13 \gset
+select pg_temp.as_user(:'admin');
+set local role authenticated;
+select pg_temp.is('admin assignment enforces COD cash limit', public.nvi_admin_assign(:'j13', :'re', null)->>'reason', 'cash_limit');
+reset role;
+update public.nvi_config set rider_cash_limit = 15000 where id;
+
+-- 17. The books balance: overall and per movement.
 select pg_temp.eq('ledger sums to zero', (select coalesce(sum(amount), 0) from public.nvi_ledger), 0);
 select pg_temp.eq('every movement balances', (select count(*) from (select txn_id from public.nvi_ledger group by txn_id having sum(amount) <> 0) x), 0);
 select pg_temp.is('entries cannot be edited', (select 'frozen'), 'frozen');
