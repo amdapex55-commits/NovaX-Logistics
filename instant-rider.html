@@ -235,6 +235,23 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
 .req i.Rejected{background:var(--red-bg);color:var(--red-ink)}
 .backbar{display:flex;align-items:center;margin:4px 0 12px}
 .backbar button{min-height:44px;border:0;background:none;font-weight:700;color:var(--green-2);padding:0 6px 0 0}
+.relay{margin:0 0 12px;padding:16px;border-radius:16px;background:var(--navy);color:var(--navy-ink)}
+.relay small{display:block;font:700 12px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--navy-green)}
+.relay > b{display:block;font:800 19px/1.25 var(--display);color:#fff;margin:6px 0 4px}
+.relay p{margin:0;font-size:14.5px;color:var(--navy-muted);line-height:1.45}
+.relay .btn-plain{background:transparent;border-color:var(--navy-line);color:#fff}
+.relay .btn-quiet{color:var(--navy-muted)}
+.relay .chip{background:rgba(255,255,255,.08);border-color:var(--navy-line);color:var(--navy-ink)}
+.relay .chip.pay{background:var(--lime);border-color:var(--lime);color:#243300}
+.relay .fld label{color:var(--navy-ink)}
+.relay .msg{color:#ffb4a8}
+.relay .ur{color:var(--navy-muted)}
+.relay.in{background:#0f3a2c}
+.relay.warn{background:#4a3200}.relay.warn small{color:#ffd98a}
+.rcode{margin-top:12px;padding:14px;border-radius:14px;background:var(--lime);color:#243300;text-align:center}
+.rcode small{color:#3b4d00}
+.rcode b{display:block;font:800 44px/1.1 var(--mono);letter-spacing:.2em;margin:6px 0}
+.rcode span{font-size:13.5px}
 .tip{margin-top:8px;font-size:14px;color:var(--muted)}
 .tip summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:700;color:var(--ink-2)}
 .tip p{margin:0 0 6px;line-height:1.5}
@@ -305,6 +322,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     return "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g,function(){ return (Math.random()*16|0).toString(16); });
   }
   function waUrl(phone){ return "https://wa.me/92"+String(phone||"").replace(/\D/g,"").replace(/^92/,"").replace(/^0/,""); }
+  function buzz(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
   function clock(iso){ try{ return new Date(iso).toLocaleTimeString("en-GB",{ timeZone:"Asia/Karachi", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; } }
   function area(t){ return String(t||"").split(",").slice(-2).join(",").trim()||String(t||""); }
   /* The red strip under the header: the phone says it is offline, or the
@@ -411,10 +429,13 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     var w=S.wallet||{}, b=Number(w.balance||0), t=w.today||{}, k=S.wsheet, h=BACK;
     h+='<div class="wbal'+(b<0?' owe':'')+'"><small>'+(b<0?"You owe NovaX":b>0?"NovaX owes you":"Wallet")+'</small><b>'+esc(rs(Math.abs(b)))+'</b><p>'+
       (b<0?"Commission and cash-on-delivery money you hold. Send it by JazzCash, Easypaisa, bank or at the office, then press I sent money.":b>0?"Your earnings NovaX holds for you. Ask for a payout when you like.":"You are all square with NovaX.")+'</p></div>';
-    h+='<div class="wrow"><div><span>Fares today</span><b>'+esc(rs(t.fares))+'</b></div><div><span>Commission '+esc(w.commission_pct)+'%</span><b>'+esc(rs(t.commission))+'</b></div><div><span>COD today</span><b>'+esc(rs(t.cod))+'</b></div></div>';
+    var route=w.kind==="route";
+    h+=route?'<div class="wrow"><div><span>Jobs today</span><b>'+esc(t.jobs||0)+'</b></div><div><span>Fares today</span><b>'+esc(rs(t.fares))+'</b></div><div><span>COD today</span><b>'+esc(rs(t.cod))+'</b></div></div>'+
+       '<p class="sub" style="margin:10px 2px 0;font-size:13.5px">You are a NovaX route rider on salary: all Nova Instant cash goes to NovaX. Hand it in like your NovaX cash.</p>'
+      :'<div class="wrow"><div><span>Earned today</span><b>'+esc(rs(t.earned))+'</b></div><div><span>To NovaX ('+esc(w.commission_pct)+'%)</span><b>'+esc(rs(t.commission))+'</b></div><div><span>COD today</span><b>'+esc(rs(t.cod))+'</b></div></div>';
     h+='<div class="acts" style="margin-top:12px"><button class="btn '+(b<0?'btn-primary':'btn-plain')+'" type="button" data-wsheet="deposit">I sent money</button>'+
-       '<button class="btn '+(b>0?'btn-primary':'btn-plain')+'" type="button" data-wsheet="payout"'+(b<Number(w.min_withdraw||0)?' disabled':'')+'>Ask for payout</button></div>';
-    if(b<Number(w.min_withdraw||0)) h+='<p class="sub" style="margin:8px 2px 0;font-size:13.5px">Payouts open once NovaX owes you at least '+esc(rs(w.min_withdraw))+'.</p>';
+       (route?'':'<button class="btn '+(b>0?'btn-primary':'btn-plain')+'" type="button" data-wsheet="payout"'+(b<Number(w.min_withdraw||0)?' disabled':'')+'>Ask for payout</button>')+'</div>';
+    if(!route&&b<Number(w.min_withdraw||0)) h+='<p class="sub" style="margin:8px 2px 0;font-size:13.5px">Payouts open once NovaX owes you at least '+esc(rs(w.min_withdraw))+'.</p>';
     if(k==="deposit") h+='<div class="sheet"><h3>I sent money to NovaX</h3><p class="sub" style="margin:0">NovaX checks it and your wallet goes up. Keep the receipt.</p>'+
       '<div class="fld"><label for="wAmt">Amount (Rs)</label><input class="inp" id="wAmt" inputmode="numeric" pattern="[0-9]*" maxlength="7" value="'+(b<0?esc(-b):'')+'"></div>'+
       '<div class="fld"><label for="wMethod">How</label><select class="inp" id="wMethod"><option>JazzCash</option><option>Easypaisa</option><option value="Bank">Bank transfer</option><option value="Office">Cash at the NovaX office</option></select></div>'+
@@ -453,6 +474,77 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       if(k==="deposit") S.depKey=null;
       S.wsheet=null; toast(k==="deposit"?(r&&r.already?"Already sent. NovaX will check it.":"Sent. NovaX will check it."):"Payout asked for."); renderWallet();
     }).catch(function(e){ busyBtn(btn,false); say(msg,friendly(e&&e.message)); });
+  }
+  /* ───── relays: two riders, one parcel ─────
+     The giving rider shows a 4-digit code; the receiving rider types it. Only
+     then does the parcel (and its cash duty) move. Riders agree the spot by phone. */
+  function telBtn(phone,label){ return '<a class="btn btn-plain" href="tel:'+esc(phone)+'">'+IC.tel+esc(label)+'</a>'; }
+  function waBtn(phone){ return '<a class="btn btn-plain" href="'+esc(waUrl(phone))+'" target="_blank" rel="noopener">'+IC.wa+'WhatsApp</a>'; }
+  function relayHtml(j){
+    var x=j.relay; if(!x) return "";
+    var first=String(x.name||"").split(" ")[0];
+    if(x.state==="refused") return '<div class="relay warn"><b>'+esc(first)+' cannot take this parcel</b><p>'+esc(x.note||"")+'. Deliver it yourself, or call the office.</p></div>';
+    var h='<div class="relay"><small>Handover</small><b>Hand this parcel to '+esc(x.name)+'</b>'+
+      '<p>'+(j.status==="Picked up"?'Call '+esc(first)+' and agree where to meet.':'First pick it up, then you hand it to '+esc(first)+'.')+(x.note?' Office note: '+esc(x.note)+'.':'')+'</p>'+
+      '<div class="acts">'+telBtn(x.phone,"Call "+first)+waBtn(x.phone)+'</div>';
+    if(j.status==="Picked up"){
+      if(x.locked) h+='<p class="msg">The handover code is locked after five wrong tries. Call the office.</p>';
+      else if(S.rcode&&S.rcode.job===j.id&&Date.now()<S.rcode.until)
+        h+='<div class="rcode" aria-live="polite"><small>Show '+esc(first)+' this code</small><b>'+esc(S.rcode.code.split("").join(" "))+'</b><span>Works until '+esc(clock(new Date(S.rcode.until).toISOString()))+'. '+esc(first)+' types it to take the parcel.</span></div>'+
+           '<button class="btn btn-quiet wide" type="button" data-relay="code" data-job="'+esc(j.id)+'">Make a new code</button>';
+      else h+=(x.state==="planned"?'<button class="btn btn-plain wide" type="button" data-relay="here" data-job="'+esc(j.id)+'" style="margin-top:10px">I am at the handover spot</button>':'')+
+              '<button class="btn btn-primary wide big" type="button" data-relay="code" data-job="'+esc(j.id)+'" style="margin-top:10px">Show the handover code</button>';
+    }
+    return h+'</div>';
+  }
+  function incomingHtml(list){
+    if(!list||!list.length) return "";
+    return list.map(function(x){
+      var first=String(x.from_name||"").split(" ")[0], pay=Number(x.cod)>0?"COD "+rs(x.cod)+" at the door":x.payer==="receiver"?"Receiver pays "+rs(x.fare):"Fare already paid";
+      var h='<div class="relay in"><small>Parcel coming to you &middot; '+esc(x.code)+'</small><b>'+esc(x.from_name)+' is bringing you a parcel</b>'+
+        '<p>'+(x.status==="Picked up"?(x.state==="at_point"?esc(first)+' is at the handover spot.':'Call '+esc(first)+' and agree where to meet.'):esc(first)+' is on the way to the pickup.')+(x.note?' Office note: '+esc(x.note)+'.':'')+'</p>'+
+        '<div class="chips"><span class="chip">'+esc(x.item)+'</span><span class="chip">To '+esc(area(x.to))+'</span><span class="chip pay">'+esc(pay)+'</span></div>'+
+        '<div class="acts">'+telBtn(x.from_phone,"Call "+first)+waBtn(x.from_phone)+'</div>';
+      if(x.locked) h+='<p class="msg">The handover code is locked. Call the office.</p>';
+      else if(x.status==="Picked up") h+='<div class="fld"><label for="rc_'+esc(x.id)+'">Handover code from '+esc(first)+'\'s phone <span class="ur">'+esc(first)+' se code lein</span></label>'+
+        '<input class="inp pinin" id="rc_'+esc(x.id)+'" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" placeholder="0000"></div>'+
+        '<button class="btn btn-primary wide big" type="button" data-relay="take" data-job="'+esc(x.id)+'" style="margin-top:10px">I have the parcel <span class="ur" style="color:inherit;opacity:.75">Parcel le liya</span></button>'+
+        '<div class="msg" id="rcm_'+esc(x.id)+'" role="alert"></div>';
+      h+=(S.refuseFor===x.id?'<div class="sheet"><h3>Cannot take it</h3><div class="fld"><label for="rfNote">What is wrong?</label><input class="inp" id="rfNote" maxlength="160" placeholder="e.g. parcel damaged, bike broke down"></div>'+
+           '<div class="acts"><button class="btn btn-plain" type="button" data-relay="refuse-back">Back</button><button class="btn btn-danger" type="button" data-relay="refuse" data-job="'+esc(x.id)+'">Tell the office</button></div></div>'
+         :'<button class="btn btn-quiet wide" type="button" data-relay="refuse-open" data-job="'+esc(x.id)+'">I cannot take this parcel</button>');
+      return h+'</div>';
+    }).join("");
+  }
+  var RSAY={ no_relay:"This handover was called off. Check with the office.", relay_step:"The parcel is not at that step any more.", relay_locked:"The code is locked after five wrong tries. Call the office.",
+    code_old:"Ask for a new code: that one has run out.", busy:"Finish the job you have first.", need_note:"Say what is wrong." };
+  function relayAct(t){
+    var k=t.getAttribute("data-relay"), id=t.getAttribute("data-job");
+    if(k==="refuse-open"){ S.refuseFor=id; S.sheet="relay"; return paint(); }
+    if(k==="refuse-back"){ S.refuseFor=null; S.sheet=null; return paint(); }
+    if(k==="here") return act("nvi_rider_relay_here",{ p_job:id },"Told them you are there.");
+    if(k==="code"){
+      t.disabled=true;
+      return rpc("nvi_rider_relay_code",{ p_job:id }).then(function(r){
+        if(r&&r.ok===false){ t.disabled=false; toast(RSAY[r.reason]||"That did not work."); return refresh(false); }
+        S.rcode={ job:id, code:String(r.code), until:new Date(r.until).getTime() }; buzz(30); paint();
+      }).catch(function(e){ t.disabled=false; toast(friendly(e&&e.message)); });
+    }
+    if(k==="take"){
+      var inp=$("rc_"+id), code=(inp&&inp.value||"").replace(/\D/g,""), m=$("rcm_"+id);
+      if(code.length!==4){ if(m) say(m,"Type the 4-digit code from the other rider's phone."); if(inp) inp.focus(); return; }
+      t.disabled=true;
+      return rpc("nvi_rider_relay_take",{ p_job:id, p_code:code }).then(function(r){
+        if(r&&r.ok===false){ t.disabled=false; var msg=r.reason==="wrong_code"?"That code is not right. "+r.left+" "+(r.left===1?"try":"tries")+" left.":(RSAY[r.reason]||"That did not work.");
+          if($("rcm_"+id)) say($("rcm_"+id),msg); else toast(msg); return; }
+        toast("The parcel is yours now. Deliver it."); buzz([20,60,20]); return refresh(true);
+      }).catch(function(e){ t.disabled=false; toast(friendly(e&&e.message)); });
+    }
+    if(k==="refuse"){
+      var n=($("rfNote").value||"").trim(); if(n.length<3){ toast(RSAY.need_note); $("rfNote").focus(); return; }
+      t.disabled=true; S.refuseFor=null; S.sheet=null;
+      return act("nvi_rider_relay_refuse",{ p_job:id, p_note:n },"The office has been told.");
+    }
   }
   function mapsUrl(pt){ return "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination="+pt[0]+","+pt[1]; }
   function hourLabel(h){ return (h%12||12)+(h<12?" am":" pm"); }
@@ -701,7 +793,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       S.fails=0; S.okAt=Date.now(); paintNet();
       S.feed=f||{}; S.openCount=(S.feed.open||[]).length;
       var a=S.feed.active, key=a?a.id+"|"+a.status:"";
-      if(key!==S.key){ S.key=key; S.cashOk=false; S.sheet=null; }
+      if(key!==S.key){ if(S.key&&!a&&S.rcode&&S.key.indexOf(S.rcode.job)===0) toast("Handed over. The parcel is with the other rider now."); S.key=key; S.cashOk=false; S.sheet=null; S.rcode=null; }
       /* A new job arrived while the rider was waiting. */
       if(!first&&S.openCount>before&&!a){ beep(); try{ navigator.vibrate&&navigator.vibrate([180,90,180,90,180]); }catch(e){} }
       /* Never repaint under the rider's thumb: not while a sheet is open, and
@@ -736,6 +828,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
        '<button type="button" class="stat statbtn'+(owe?' owe':'')+'" data-act="wallet"><span>'+(owe?"You owe":"Wallet")+'</span><b>'+esc(rs(Math.abs(bal)))+'</b></button></div>';
     var alertsFirst=!f.active&&P.state&&P.state!=="on";
     if(alertsFirst) h+=alertsHtml();
+    h+=incomingHtml(f.incoming);
     if(f.active) h+=activeHtml(f.active);
     else if(!f.rider.online) h+='<div class="state"><div class="beacon" aria-hidden="true">'+IC.moon+'</div><h2>You are offline</h2><p>No jobs come to you while you are offline. <span class="ur">Offline mein job nahi aata.</span></p>'+
       '<button class="btn btn-primary wide big" type="button" id="goOn">Go online <span class="ur" style="color:inherit;opacity:.75">Online ho jayein</span></button></div>';
@@ -830,6 +923,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
          (due>0?'<button class="btn btn-quiet wide" type="button" data-sheet="short">Handed back, but paid less than '+esc(rs(due))+'</button>':'')+
          '<button class="btn btn-quiet wide" type="button" data-sheet="problem">Tell the office something</button>'+sheetHtml(j)+'</div>';
     }
+    if(j.relay&&(st==="Rider assigned"||st==="Picked up")) h=relayHtml(j)+h;
     if(j.problem_note) h+='<div class="note warn" style="margin-top:12px">You told the office: '+esc(j.problem_note)+'</div>';
     return h;
   }
@@ -900,7 +994,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   });
   document.addEventListener("click",function(e){
     unlockSound();
-    var t=e.target.closest("[data-auth],[data-act],[data-accept],[data-sheet],[data-show],[data-wsheet],#wGo,#forgot,#pickBtn,#dropBtn,#backBtn,#retryBtn,#returnBtn,#shGo,#onSw,#goOn,#signOut,#signOut2,#pushOn,#pushTest,#install");
+    var t=e.target.closest("[data-auth],[data-act],[data-accept],[data-sheet],[data-show],[data-wsheet],#wGo,#forgot,#pickBtn,#dropBtn,#backBtn,#retryBtn,#returnBtn,#shGo,#onSw,#goOn,#signOut,#signOut2,#pushOn,#pushTest,#install,[data-relay]");
     if(!t) return;
     if(t.dataset.auth) return renderAuth(t.dataset.auth);
     if(t.dataset.act==="reload") return boot();
@@ -914,6 +1008,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       if(S.feed&&S.feed.active){ toast("Finish the job you have before signing out."); return; }
       if(t.dataset.sure!=="1"){ t.dataset.sure="1"; t.textContent="Press again to sign out"; setTimeout(function(){ if(t.isConnected){ t.dataset.sure="0"; t.textContent="Sign out"; } },4000); return; }
     }
+    if(t.hasAttribute("data-relay")) return relayAct(t);
     if(t.id==="pushOn") return pushOn(t);
     if(t.id==="pushTest") return pushTest(t);
     if(t.id==="install"){ var ev=installEvt; if(ev){ ev.prompt(); Promise.resolve(ev.userChoice).catch(function(){}).then(function(){ installEvt=null; paint(); }); } return; }
