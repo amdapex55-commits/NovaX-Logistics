@@ -58,7 +58,7 @@ svg.ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-wid
 .hdr .brand b{font:800 17px/1 var(--display);letter-spacing:-.01em;white-space:nowrap}
 @media (max-width:400px){ #helpBtn{font-size:0;gap:0;padding:0 8px} #histBtn{font-size:14px;padding:0 6px} .hdr{padding-left:10px;gap:4px} }
 .hdr .brand b i{font-style:normal;color:var(--emerald)}
-.hbtn{margin-left:auto;display:inline-flex;align-items:center;gap:7px;min-height:48px;padding:0 10px;white-space:nowrap;border:0;background:none;color:var(--forest-ink);font-weight:700;font-size:15px}
+.hbtn{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:48px;min-height:48px;padding:0 10px;white-space:nowrap;border:0;background:none;color:var(--forest-ink);font-weight:700;font-size:15px}
 
 /* Map: the stage everything else sits on */
 /* On a phone the map is the strip above the sheet (plus a little that the
@@ -523,9 +523,18 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     panel=document.createElement("section"); panel.className="panel"; panel.setAttribute("role","dialog"); panel.setAttribute("aria-modal","true"); panel.setAttribute("aria-label",title);
     panel.innerHTML='<header><button class="x" type="button" data-close aria-label="Close">'+IC.back+'</button><b>'+esc(title)+'</b></header><div class="body">'+bodyHtml+'</div>';
     document.body.appendChild(panel); document.body.style.overflow="hidden";
+    setTimeout(function(){ if(panel&&!panel.contains(document.activeElement)){ var f=panel.querySelector("button,input,select,textarea,a[href]"); if(f) try{ f.focus(); }catch(e){} } },20);
     return panel;
   }
-  document.addEventListener("keydown",function(e){ if(e.key==="Escape"){ if(S.pinFor) leavePin(false); else closePanel(); } });
+  document.addEventListener("keydown",function(e){
+    if(e.key==="Escape"){ if(S.pinFor) leavePin(false); else closePanel(); return; }
+    if(e.key!=="Tab"||!panel) return;
+    var fs=[].slice.call(panel.querySelectorAll("button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href]")).filter(function(x){ return x.offsetParent!==null; });
+    if(!fs.length) return;
+    var first=fs[0], last=fs[fs.length-1];
+    if(e.shiftKey&&document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey&&document.activeElement===last){ e.preventDefault(); first.focus(); }
+  });
 
   function openPicker(k){
     var isP=k==="p";
@@ -780,15 +789,15 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     return head(3,"Who is it from, and who gets it?","The rider calls these numbers and follows these addresses.")+
       '<section class="card"><div class="who"><span class="dot" aria-hidden="true"></span><b>Pickup contact</b></div>'+
         (me&&me.n&&!S.sName?'<div class="chips" style="margin-bottom:10px"><button class="chip" type="button" data-me>Use my details: '+esc(me.n)+'</button></div>':'')+
-        '<div class="two"><div><label class="lbl" for="sName">Name</label><input class="inp" id="sName" data-f="sName" maxlength="80" autocomplete="name" enterkeyhint="next" value="'+esc(S.sName)+'"></div>'+
-        '<div><label class="lbl" for="sPhone">Mobile</label><input class="inp" id="sPhone" data-f="sPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" enterkeyhint="next" placeholder="03XX XXXXXXX" value="'+esc(S.sPhone)+'"><div class="hint ferr" hidden>Enter a mobile like 0300 1234567.</div></div></div>'+
-        '<div class="fld"><span class="lbl">Pickup address</span><div class="place">'+IC.pin+'<span>'+esc(S.p&&S.p.label!=="Pinned spot"?S.p.label:"The pin you set on the map")+'</span><button class="linkish" type="button" data-edit="1">Change</button></div>'+
+        '<div class="two"><div><label class="lbl" for="sName">Name</label><input class="inp" id="sName" data-f="sName" aria-label="Sender name" maxlength="80" autocomplete="name" enterkeyhint="next" value="'+esc(S.sName)+'"></div>'+
+        '<div><label class="lbl" for="sPhone">Mobile</label><input class="inp" id="sPhone" data-f="sPhone" aria-label="Sender mobile" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" enterkeyhint="next" placeholder="03XX XXXXXXX" value="'+esc(S.sPhone)+'"><div class="hint ferr" hidden>Enter a mobile like 0300 1234567.</div></div></div>'+
+        '<div class="fld"><span class="lbl">Pickup address</span><div class="place">'+IC.pin+'<span>'+esc(S.p&&S.p.label!=="Pinned spot"?S.p.label:"The pin you set on the map")+'</span><button class="linkish" type="button" data-edit="1" aria-label="Change pickup address">Change</button></div>'+
           '<label class="sr" for="pDet">House or shop number, floor and a landmark for the pickup</label><input class="inp" id="pDet" data-f="pDet" maxlength="160" enterkeyhint="next" placeholder="House or shop number, floor, a landmark" value="'+esc(S.pDet)+'"></div></section>'+
       '<section class="card"><div class="who"><span class="sq" aria-hidden="true"></span><b>Receiver</b></div>'+
         (rcp.length&&!S.rName?'<div class="chips" style="margin-bottom:10px" aria-label="Recent receivers">'+rcp.map(function(r,i){ return '<button class="chip" type="button" data-rcp="'+i+'">'+esc(r.n)+'</button>'; }).join("")+'</div>':'')+
-        '<div class="two"><div><label class="lbl" for="rName">Name</label><input class="inp" id="rName" data-f="rName" maxlength="80" autocomplete="off" enterkeyhint="next" value="'+esc(S.rName)+'"></div>'+
-        '<div><label class="lbl" for="rPhone">Mobile</label><input class="inp" id="rPhone" data-f="rPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="off" enterkeyhint="next" placeholder="03XX XXXXXXX" value="'+esc(S.rPhone)+'"><div class="hint ferr" hidden>Enter a mobile like 0300 1234567.</div></div></div>'+
-        '<div class="fld"><span class="lbl">Delivery address</span><div class="place">'+IC.pin+'<span>'+esc(S.d&&S.d.label!=="Pinned spot"?S.d.label:"The pin you set on the map")+'</span><button class="linkish" type="button" data-edit="1">Change</button></div>'+
+        '<div class="two"><div><label class="lbl" for="rName">Name</label><input class="inp" id="rName" data-f="rName" aria-label="Receiver name" maxlength="80" autocomplete="off" enterkeyhint="next" value="'+esc(S.rName)+'"></div>'+
+        '<div><label class="lbl" for="rPhone">Mobile</label><input class="inp" id="rPhone" data-f="rPhone" aria-label="Receiver mobile" type="tel" inputmode="tel" maxlength="20" autocomplete="off" enterkeyhint="next" placeholder="03XX XXXXXXX" value="'+esc(S.rPhone)+'"><div class="hint ferr" hidden>Enter a mobile like 0300 1234567.</div></div></div>'+
+        '<div class="fld"><span class="lbl">Delivery address</span><div class="place">'+IC.pin+'<span>'+esc(S.d&&S.d.label!=="Pinned spot"?S.d.label:"The pin you set on the map")+'</span><button class="linkish" type="button" data-edit="1" aria-label="Change delivery address">Change</button></div>'+
           '<label class="sr" for="dDet">House or flat number, floor and a landmark for the delivery</label><input class="inp" id="dDet" data-f="dDet" maxlength="160" enterkeyhint="done" placeholder="House or flat number, floor, a landmark" value="'+esc(S.dDet)+'"></div></section>'+
       '<section class="card"><span class="lbl" id="payLbl" style="font-size:16px;color:var(--ink)">Who will pay '+esc(money(S.quote?S.quote.fare:0))+'?</span>'+
         '<div class="seg" role="group" aria-labelledby="payLbl"><button type="button" data-pay="sender" aria-pressed="'+(S.payer==="sender")+'">Sender at pickup</button><button type="button" data-pay="receiver" aria-pressed="'+(S.payer==="receiver")+'">Receiver at delivery</button></div>'+
