@@ -228,8 +228,11 @@ begin
   v_pct := coalesce((select r.commission_pct from public.nvi_riders r where r.id = new.rider_id), c.commission_pct);
   v_base := new.fare + coalesce(new.return_fee, 0);
   v_c := round(v_base * v_pct / 100.0)::int;
-  v_rw := public.nvi_wallet_id('rider', new.rider_id, null);
   v_hw := public.nvi_wallet_id('house', null, 'commission');
+  -- Commission is owed by the rider who took the fare in cash. A parcel moved
+  -- to another rider after a sender paid at pickup stays with the first one.
+  v_rw := public.nvi_wallet_id('rider', case when new.cod_amount > 0 and new.status = 'Delivered' then new.rider_id
+            else coalesce((select k.rider_id from public.nvi_cash k where k.job_id = new.id and k.kind = 'fare' order by k.id limit 1), new.rider_id) end, null);
   if new.status = 'Delivered' and new.cod_amount > 0 then
     v_a := least(new.cod_amount, coalesce(new.cash_collected, new.cod_amount));
     v_cw := case when new.client_id is not null then public.nvi_wallet_id('client', new.client_id, null) end;
@@ -521,6 +524,37 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
+-- The money check on the Wallets tab: anything that needs a person. The
+-- ledger must add up to zero overall and per movement, every job finished
+-- since wallets started must be booked, and nothing should sit too long.
+create or replace function public.nvi_admin_money_check()
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare c public.nvi_config; v_total bigint; v_unbal int; v_unposted jsonb; v_overdue jsonb; v_dep int; v_pay int; v_cod jsonb;
+begin
+  perform public.nvi_require_admin();
+  select * into c from public.nvi_config where id;
+  select coalesce(sum(amount), 0) into v_total from public.nvi_ledger;
+  select count(*) into v_unbal from (select txn_id from public.nvi_ledger group by txn_id having sum(amount) <> 0) x;
+  select coalesce(jsonb_agg(code order by code), '[]'::jsonb) into v_unposted from public.nvi_jobs
+   where status in ('Delivered', 'Returned') and rider_id is not null and ledger_at is null
+     and coalesce(delivered_at, returned_at) > c.wallets_since;
+  -- A rider who has owed money for more than a day without paying any in.
+  select coalesce(jsonb_agg(jsonb_build_object('name', x.full_name, 'phone', x.phone, 'owes', -x.bal, 'since', x.since) order by x.bal), '[]'::jsonb) into v_overdue from (
+    select r.full_name, r.phone, public.nvi_avail(w.id) as bal,
+           (select min(l.at) from public.nvi_ledger l where l.wallet_id = w.id and l.amount < 0
+              and l.at > coalesce((select max(d.done_at) from public.nvi_deposits d where d.rider_id = r.id and d.status = 'Confirmed'), '-infinity'::timestamptz)) as since
+      from public.nvi_riders r join public.nvi_wallets w on w.kind = 'rider' and w.owner = r.id) x
+   where x.bal < 0 and x.since < now() - interval '24 hours';
+  select count(*) into v_dep from public.nvi_deposits where status = 'Claimed' and at < now() - interval '24 hours';
+  select count(*) into v_pay from public.nvi_payouts where status = 'Requested' and at < now() - interval '48 hours';
+  select jsonb_build_object('n', count(*), 'amount', coalesce(sum(cod_amount), 0)) into v_cod from public.nvi_jobs
+   where cod_amount > 0 and status = 'Delivered' and ledger_at is not null and cod_released_at is null and delivered_at < now() - interval '48 hours';
+  return jsonb_build_object(
+    'clear', v_total = 0 and v_unbal = 0 and jsonb_array_length(v_unposted) = 0 and jsonb_array_length(v_overdue) = 0 and v_dep = 0 and v_pay = 0 and (v_cod->>'n')::int = 0,
+    'ledger_total', v_total, 'unbalanced', v_unbal, 'unposted', v_unposted, 'overdue', v_overdue,
+    'stale_deposits', v_dep, 'stale_payouts', v_pay, 'cod_waiting', v_cod, 'at', now());
+end $$;
+
 create or replace function public.nvi_admin_ledger(p_wallet uuid)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 begin
@@ -538,7 +572,7 @@ begin
        and p.proname in ('nvi_wallet_id', 'nvi_post', 'nvi_balance', 'nvi_avail', 'nvi_entries', 'nvi_release_cod', 'nvi_ledger_job',
                          'nvi_ledger_frozen', 'nvi_request_payout', 'nvi_client_save', 'nvi_client_me', 'nvi_client_jobs',
                          'nvi_client_ledger', 'nvi_client_withdraw', 'nvi_rider_wallet', 'nvi_rider_deposit', 'nvi_rider_payout',
-                         'nvi_admin_wallets', 'nvi_admin_deposit', 'nvi_admin_payout', 'nvi_admin_adjust', 'nvi_admin_ledger')
+                         'nvi_admin_wallets', 'nvi_admin_deposit', 'nvi_admin_payout', 'nvi_admin_adjust', 'nvi_admin_ledger', 'nvi_admin_money_check')
   loop
     execute 'revoke all on function ' || f || ' from public, anon, authenticated';
   end loop;
@@ -548,7 +582,7 @@ begin
      where p.pronamespace = 'public'::regnamespace
        and p.proname in ('nvi_client_save', 'nvi_client_me', 'nvi_client_jobs', 'nvi_client_ledger', 'nvi_client_withdraw',
                          'nvi_rider_wallet', 'nvi_rider_deposit', 'nvi_rider_payout',
-                         'nvi_admin_wallets', 'nvi_admin_deposit', 'nvi_admin_payout', 'nvi_admin_adjust', 'nvi_admin_ledger')
+                         'nvi_admin_wallets', 'nvi_admin_deposit', 'nvi_admin_payout', 'nvi_admin_adjust', 'nvi_admin_ledger', 'nvi_admin_money_check')
   loop
     execute 'grant execute on function ' || f || ' to authenticated';
   end loop;

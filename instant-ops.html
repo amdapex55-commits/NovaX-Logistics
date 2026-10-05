@@ -105,6 +105,13 @@ h2.wh + .card,.card + .card{margin-top:10px}
 .btn-danger{background:#fff;border-color:#e5b9b3;color:var(--red-ink)}
 .btn[disabled]{opacity:.55;cursor:default}
 @media (pointer:coarse){ .btn{min-height:44px} }
+.srch{display:flex;gap:8px;margin:0 0 14px}
+.srch .inp{flex:1;min-width:0;font-size:16px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.check{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;margin:0 0 14px;font-size:14.5px;line-height:1.5}
+.check.ok{background:var(--mint);color:var(--green-3);border:1px solid var(--mint-line)}
+.check.bad{background:var(--amber);color:var(--amber-ink);border:1px solid #ecd9a5}
+.check ul{margin:4px 0 0;padding-left:18px}
 .inp{min-height:44px;padding:7px 10px;border:1.5px solid var(--line-2);border-radius:10px;background:#fff;font-size:15px;outline:none;max-width:100%}
 .inp:focus{border-color:var(--green-2);box-shadow:0 0 0 3px rgba(15,191,120,.18)}
 @media (pointer:coarse){ .inp{min-height:44px;font-size:16px} }
@@ -157,7 +164,12 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
   </div>
 </header>
 
-<main><div class="wrap" id="main"><div class="empty">Loading&hellip;</div></div></main>
+<main><div class="wrap">
+  <div class="srch" id="srchBar" role="search" hidden><label for="srch" class="sr">Search jobs</label>
+    <input class="inp" id="srch" type="search" maxlength="80" autocomplete="off" placeholder="Search: booking number, phone, name, address or rider">
+    <button class="btn btn-plain" type="button" id="srchX" hidden>Clear</button></div>
+  <div id="main"><div class="empty">Loading&hellip;</div></div>
+</div></main>
 
 <script src="/assets/vendor/supabase-2.117.2.js"></script>
 <script>
@@ -202,8 +214,10 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
       '<button class="btn btn-dark" style="width:100%;min-height:48px;margin-top:12px;font-size:16px" id="inBtn" type="submit">Sign in</button><div class="msg" id="inMsg" role="alert">'+esc(typeof msg==="string"?msg:"")+'</div></form></div>';
   }
   function load(first){
-    return Promise.all([rpc("nvi_admin_board"), rpc("nvi_admin_wallets").catch(function(){ return S.w; })]).then(function(x){
-      var b=x[0]; S.w=x[1]||S.w; S.b=b||{}; paint();
+    return Promise.all([rpc("nvi_admin_board"), rpc("nvi_admin_wallets").catch(function(){ return S.w; }), rpc("nvi_admin_money_check").catch(function(){ return S.mc; })]).then(function(x){
+      var b=x[0]; S.w=x[1]||S.w; S.mc=x[2]||S.mc; S.b=b||{}; paint();
+      /* Search results follow the board: a job changed from the results shows its new step. */
+      if(S.q&&S.qres){ var q0=S.q; rpc("nvi_admin_search",{ p_q:q0 }).then(function(list){ if(S.q===q0){ S.qres=list||[]; paint(); } }).catch(function(){}); }
       if(first){ stop(); S.timer=setInterval(function(){ if(!document.hidden&&!S.busy&&!S.open&&!typing()) load(false); },15000);
         /* Live: a new booking or a rider's step shows at once, not at the next
            15-second check. The signal carries no data. */
@@ -246,7 +260,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
   function paint(){
     var b=S.b, c=b.config||{}, t=b.today||{}, live=b.live||[], riders=b.riders||[], closed=b.closed||[], fb=b.feedback||[];
     watch(live);
-    $("openSw").hidden=false; $("bookLink").hidden=false;
+    $("openSw").hidden=false; $("bookLink").hidden=false; $("srchBar").hidden=false;
     $("openSw").setAttribute("aria-checked",String(!!c.open)); $("openLbl").textContent="Public booking: "+(c.open?"on":"off");
     var h='<div class="stats">'+
       '<div class="stat"><span>Booked today</span><b>'+esc(t.booked||0)+'</b>'+(Number(t.from_home)||Number(t.from_portal)?'<span>'+esc(t.from_home||0)+' homepage &middot; '+esc(t.from_portal||0)+' portal</span>':'')+'</div>'+
@@ -261,8 +275,9 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     else if(!c.hours_open) h+='<div class="note warn">Outside booking hours ('+hourLabel(c.open_hour)+' to '+hourLabel(c.close_hour)+'). Customers cannot book until '+hourLabel(c.open_hour)+'.</div>';
     if(c.open&&c.hours_open&&!online) h+='<div class="note warn">Booking is open and no rider is online. New jobs will wait until you assign one. Call a rider, or turn public booking off.</div>';
     if(Number(t.disputed)>0) h+='<div class="note warn">'+esc(t.disputed)+' payment'+(Number(t.disputed)===1?" is":"s are")+' in dispute: the cash a rider received does not match what was due. Settle '+(Number(t.disputed)===1?"it":"them")+' in the job (Live jobs or Closed).</div>';
-    h+='<div class="tabs" role="tablist">'+[["live","Live jobs",live.length],["riders","Riders",riders.length],["wallets","Wallets",S.w?((S.w.deposits||[]).filter(function(d){ return d.status==="Claimed"; }).length+(S.w.payouts||[]).filter(function(p){ return p.status==="Requested"; }).length):0],["closed","Closed",closed.length],["feedback","Feedback",fb.length]].map(function(x){
+    h+='<div class="tabs" role="tablist">'+[["live","Live jobs",live.length],["riders","Riders",riders.length],["wallets","Wallets",(S.w?((S.w.deposits||[]).filter(function(d){ return d.status==="Claimed"; }).length+(S.w.payouts||[]).filter(function(p){ return p.status==="Requested"; }).length):0)+(S.mc&&!S.mc.clear?1:0)],["closed","Closed",closed.length],["feedback","Feedback",fb.length]].map(function(x){
       return '<button type="button" role="tab" data-tab="'+x[0]+'" aria-selected="'+(S.tab===x[0])+'">'+x[1]+'<span>'+x[2]+'</span></button>'; }).join("")+'</div>';
+    if(S.q){ $("main").innerHTML=searchHtml(free); return; }
     if(S.tab==="live") h+=liveHtml(live,free);
     else if(S.tab==="riders") h+=ridersHtml(riders);
     else if(S.tab==="feedback") h+=feedbackHtml(fb);
@@ -320,7 +335,21 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     var hs=w.house||{}, cf=w.config||{}, riders=w.riders||[], clients=w.clients||[], deps=w.deposits||[], pays=w.payouts||[];
     var owe=0, owed=0; riders.forEach(function(r){ if(r.balance<0) owe-=r.balance; else owed+=r.balance; });
     var ready=0, coming=0; clients.forEach(function(c){ ready+=Number(c.available||0); coming+=Number(c.pending||0); });
-    var h='<div class="stats">'+
+    var mc=S.mc, h='';
+    if(mc){
+      if(mc.clear) h+='<div class="check ok"><span><b>Money check: all in order.</b> The ledger adds up to zero, every finished job is booked, and nothing is waiting too long. Checked '+esc(when(mc.at))+'.</span></div>';
+      else {
+        var items=[];
+        if(Number(mc.ledger_total)!==0||Number(mc.unbalanced)>0) items.push("The ledger does not add up ("+esc(mc.unbalanced)+" uneven movements, total "+esc(rs(mc.ledger_total))+"). Tell the developer today.");
+        if((mc.unposted||[]).length) items.push("Finished but not in the ledger: "+(mc.unposted||[]).map(esc).join(", ")+". Tell the developer.");
+        (mc.overdue||[]).forEach(function(o){ items.push(esc(o.name)+" has owed "+esc(rs(o.owes))+" since "+esc(when(o.since))+' without paying in. <a href="tel:'+esc(o.phone)+'">Call '+esc(o.phone)+'</a>'); });
+        if(Number(mc.stale_deposits)>0) items.push(esc(mc.stale_deposits)+" rider deposit"+(mc.stale_deposits==1?" has":"s have")+" waited over a day to be checked.");
+        if(Number(mc.stale_payouts)>0) items.push(esc(mc.stale_payouts)+" payout"+(mc.stale_payouts==1?" has":"s have")+" waited over two days.");
+        if(mc.cod_waiting&&Number(mc.cod_waiting.n)>0) items.push(esc(mc.cod_waiting.n)+" COD parcel"+(mc.cod_waiting.n==1?"":"s")+" ("+esc(rs(mc.cod_waiting.amount))+") delivered over two days ago, still not paid in by the rider.");
+        h+='<div class="check bad"><span><b>Money check: '+items.length+' thing'+(items.length===1?"":"s")+' to sort out.</b><ul>'+items.map(function(x){ return '<li>'+x+'</li>'; }).join("")+'</ul></span></div>';
+      }
+    }
+    h+='<div class="stats">'+
       '<div class="stat"><span>Commission earned</span><b>'+esc(rs(hs.commission))+'</b></div>'+
       '<div class="stat"><span>Cash NovaX holds</span><b>'+esc(rs(hs.cash))+'</b></div>'+
       '<div class="stat'+(owe>0?' alert':'')+'"><span>Riders owe NovaX</span><b>'+esc(rs(owe))+'</b></div>'+
@@ -474,6 +503,36 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     }).join("")+'</tbody></table></div>';
     return h;
   }
+  /* ───── search: any job, not only today's board ───── */
+  function searchHtml(free){
+    var list=S.qres;
+    var h='<div class="note info" style="display:flex;justify-content:space-between;gap:10px;align-items:center"><span>Search: <b>'+esc(S.q)+'</b>'+(list?' &middot; '+list.length+(list.length===40?'+':'')+' found':'')+'</span></div>';
+    if(!list) return h+'<div class="empty">Searching&hellip;</div>';
+    if(!list.length) return h+'<div class="empty">Nothing matches. Try the booking number, a mobile number or part of an address.</div>';
+    var LIVE=["Awaiting confirmation","Booked","Rider assigned","Picked up","Failed delivery","Returning"];
+    return h+list.map(function(j){
+      if(LIVE.indexOf(j.status)>-1) return jobCard(j,free);
+      var at=j.delivered_at||j.returned_at||j.cancelled_at;
+      return '<div class="card" style="margin-bottom:10px"><div class="jt"><span class="code">'+esc(j.code)+'</span><span class="chip '+(j.status==="Delivered"?"good":j.status==="Returned"?"warn":"bad")+'">'+esc(j.status)+'</span></div>'+
+        '<div style="margin-top:6px">'+esc(j.pickup_address)+' <span class="age">&rarr;</span> '+esc(j.drop_address)+'</div>'+
+        '<div class="age" style="margin-top:4px">'+esc(j.sender_name)+' '+esc(j.sender_phone)+' &rarr; '+esc(j.receiver_name)+' '+esc(j.receiver_phone)+'</div>'+
+        '<div class="meta"><span class="chip">'+esc(rs(j.fare))+'</span>'+(Number(j.cod_amount)>0?'<span class="chip warn">COD '+esc(rs(j.cod_amount))+'</span>':'')+(j.rider_name?'<span class="chip">Rider: '+esc(j.rider_name)+'</span>':'')+
+        '<span class="chip">booked '+esc(when(j.created_at))+'</span>'+(at?'<span class="chip">closed '+esc(when(at))+'</span>':'')+payChip(j)+'</div>'+
+        (j.cancel_reason?'<div class="age" style="margin-top:6px">'+esc(j.cancel_reason)+'</div>':'')+
+        '<div class="row"><a class="btn btn-plain" href="instant.html?t='+encodeURIComponent(j.token)+'" target="_blank" rel="noopener">Tracking</a></div></div>';
+    }).join("");
+  }
+  var srchT=null, srchSeq=0;
+  function runSearch(){
+    var q=$("srch").value.trim(); $("srchX").hidden=!q;
+    if(q.length<2){ if(S.q){ S.q=""; S.qres=null; paint(); } return; }
+    S.q=q; S.qres=null; paint();
+    var my=++srchSeq;
+    rpc("nvi_admin_search",{ p_q:q }).then(function(list){ if(my!==srchSeq) return; S.qres=list||[]; paint(); }).catch(function(e){ if(my!==srchSeq) return; S.qres=[]; paint(); toast(e.message||"Search failed."); });
+  }
+  document.addEventListener("input",function(e){ if(e.target.id==="srch"){ clearTimeout(srchT); srchT=setTimeout(runSearch,300); } });
+  document.addEventListener("keydown",function(e){ if(e.target.id==="srch"&&e.key==="Escape"){ e.target.value=""; runSearch(); } });
+  document.addEventListener("click",function(e){ if(e.target.id==="srchX"){ $("srch").value=""; runSearch(); try{ $("srch").focus(); }catch(e2){} } });
   function closedHtml(closed){
     if(!closed.length) return '<div class="empty">No finished or cancelled jobs yet.</div>';
     return '<div class="tblwrap"><table><thead><tr><th>Job</th><th>Result</th><th>From &rarr; to</th><th>Fare and cash</th><th>Rider</th></tr></thead><tbody>'+closed.map(function(j){

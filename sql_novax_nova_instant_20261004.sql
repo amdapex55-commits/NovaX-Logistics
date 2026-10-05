@@ -285,6 +285,8 @@ alter table public.nvi_config add column if not exists rider_cash_limit int not 
 alter table public.nvi_config add column if not exists cod_max int not null default 10000;
 alter table public.nvi_config add column if not exists cod_fee int not null default 0;
 alter table public.nvi_config add column if not exists min_withdraw int not null default 500;
+-- When the ledger started: jobs finished before it were settled the old way.
+alter table public.nvi_config add column if not exists wallets_since timestamptz not null default now();
 alter table public.nvi_riders add column if not exists commission_pct int;   -- null: nvi_config.commission_pct
 
 -- ═══════════════════ Clients ═══════════════════
@@ -1326,6 +1328,29 @@ begin
       from (select * from public.nvi_feedback order by at desc limit 40) f), '[]'::jsonb));
 end $$;
 
+-- Ops search: booking number, either phone (whole or part), a name, an
+-- address, or the rider's name. Newest first, 40 at most.
+create or replace function public.nvi_admin_search(p_q text)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v text := left(btrim(coalesce(p_q, '')), 80);
+  v_like text := '%' || replace(replace(replace(left(btrim(coalesce(p_q, '')), 80), '\', '\\'), '%', '\%'), '_', '\_') || '%';
+  v_d text := regexp_replace(coalesce(p_q, ''), '[^0-9]', '', 'g');
+  v_ph text := public.nvi_pk_phone(p_q);
+begin
+  perform public.nvi_require_admin();
+  if length(v) < 2 then return '[]'::jsonb; end if;
+  return coalesce((select jsonb_agg(public.nvi_admin_job_json(j) order by j.created_at desc) from (
+    select * from public.nvi_jobs j
+     where j.code ilike v_like
+        or (v_ph <> '' and (j.sender_phone = v_ph or j.receiver_phone = v_ph))
+        or (length(v_d) >= 4 and (j.sender_phone like '%' || v_d || '%' or j.receiver_phone like '%' || v_d || '%'))
+        or j.sender_name ilike v_like or j.receiver_name ilike v_like
+        or j.pickup_address ilike v_like or j.drop_address ilike v_like
+        or exists (select 1 from public.nvi_riders r where r.id = j.rider_id and r.full_name ilike v_like)
+     order by j.created_at desc limit 40) j), '[]'::jsonb);
+end $$;
+
 create or replace function public.nvi_admin_job(p_job uuid)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare j public.nvi_jobs;
@@ -1719,7 +1744,8 @@ begin
                          -- wallets (sql_novax_instant_wallets_20261005.sql)
                          'nvi_client_save', 'nvi_client_me', 'nvi_client_jobs', 'nvi_client_ledger', 'nvi_client_withdraw',
                          'nvi_rider_wallet', 'nvi_rider_deposit', 'nvi_rider_payout',
-                         'nvi_admin_wallets', 'nvi_admin_deposit', 'nvi_admin_payout', 'nvi_admin_adjust', 'nvi_admin_ledger')
+                         'nvi_admin_wallets', 'nvi_admin_deposit', 'nvi_admin_payout', 'nvi_admin_adjust', 'nvi_admin_ledger',
+                         'nvi_admin_money_check', 'nvi_admin_search')
   loop
     execute 'grant execute on function ' || f || ' to authenticated';
   end loop;
