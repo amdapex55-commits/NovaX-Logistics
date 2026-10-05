@@ -1997,12 +1997,12 @@ function nvFriendly(t){
     var s=r&&r.data&&r.data.session;
     if(!s||!s.user) return;
     var stored=""; try{ stored=String((JSON.parse(localStorage.getItem("novaxSession")||"{}")||{}).role||""); }catch(e){}
-    var target=stored==="admin"?"admin.html":stored==="rider"?"rider.html":stored==="instant-rider"?"instant-rider.html":stored==="sales"?"sales.html":stored==="support"?"care.html":"client.html";
+    var target=stored==="admin"?"admin.html":stored==="rider"?"rider.html":stored==="instant-rider"?"instant-rider.html":stored==="instant-account"?"instant-account.html":stored==="sales"?"sales.html":stored==="support"?"care.html":"client.html";
     /* The note in this browser can be stale; the profile decides. */
     Promise.resolve(__nvSb.from("profiles").select("role").eq("id",s.user.id).maybeSingle()).then(function(p){
       if(!p||p.error||!p.data) return;
       var r=String(p.data.role||"client").toLowerCase();
-      var t2=r==="rider"?"rider.html":r==="instant"?"instant-rider.html":r==="sales"?"sales.html":r==="support"?"care.html":(ADMIN_ROLES.indexOf(r)>-1?"admin.html":"client.html");
+      var t2=r==="rider"?"rider.html":r==="instant"?"instant-rider.html":r==="instant_client"?"instant-account.html":r==="sales"?"sales.html":r==="support"?"care.html":(ADMIN_ROLES.indexOf(r)>-1?"admin.html":"client.html");
       ["hdrSignin","menuSignin","ftSignin","heroSignin","barSignin"].forEach(function(id){ var a=$(id); if(a&&!a.hasAttribute("data-mdl")) a.setAttribute("href",t2); });
     }).catch(function(){});
     /* Merchants look for "Sign in", so the label never changes; for someone
@@ -2675,6 +2675,7 @@ $("fSignin").addEventListener("submit",function(e){
       if(ADMIN_ROLES.indexOf(role)>-1) target="admin.html";
       else if(role==="rider") target="rider.html";
       else if(role==="instant") target="instant-rider.html";
+      else if(role==="instant_client") target="instant-account.html";
       else if(role==="sales") target="sales.html";
       else if(role==="support") target="care.html";
       else if(role==="client"){

@@ -22,10 +22,10 @@
  *   way. That is the kill switch, and it is the reason it is safe to ship
  *   this at all.
  */
-var CACHE = "novax-v187";
+var CACHE = "novax-v188";
 /* The two Nova Instant pages a phone on a weak connection must still be able
    to open: the customer's booking/tracking page and the Instant rider's page. */
-var SHELLS = ["/client.html", "/rider.html", "/instant.html", "/instant-rider.html"];
+var SHELLS = ["/client.html", "/rider.html", "/instant.html", "/instant-rider.html", "/instant-account.html"];
 var PRECACHE = SHELLS.concat(["/assets/favicon.svg", "/offline.html"]);
 
 self.addEventListener("install", function (event) {

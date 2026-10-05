@@ -207,6 +207,34 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
 .alerts.warn{background:var(--amber);border-color:#ecd69a}
 .alerts.warn b,.alerts.warn span{color:var(--amber-ink)}
 @media (max-width:380px){ .alerts.on{grid-template-columns:1fr} .alerts.on .btn{justify-self:start;padding-left:0} }
+.statbtn{display:block;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;min-height:44px}
+.stats .stat b{white-space:nowrap}
+@media (max-width:400px){ .stats .stat b{font-size:16px} .stats .stat{padding:9px 10px} }
+.statbtn::after{content:"Open \203A";display:block;font-size:12px;font-weight:700;color:var(--green-2);margin-top:2px}
+.stat.owe.statbtn::after{color:var(--amber-ink)}
+.wbal{border-radius:18px;padding:20px 18px;background:var(--navy);color:var(--navy-ink)}
+.wbal small{display:block;font:700 12px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--navy-green)}
+.wbal b{display:block;font:800 40px/1.1 var(--display);letter-spacing:-.03em;color:#fff;margin:8px 0 4px;font-variant-numeric:tabular-nums}
+.wbal p{margin:0;font-size:14.5px;line-height:1.45;color:var(--navy-muted)}
+.wbal.owe{background:#4a3200}.wbal.owe small{color:#ffd98a}.wbal.owe p{color:#f1e2bd}
+.wrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.wrow div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}
+.wrow span{display:block;font-size:12px;color:var(--muted)}
+.wrow b{font:800 16px/1.3 var(--display);font-variant-numeric:tabular-nums}
+.ent{list-style:none;margin:0;padding:0}
+.ent li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:11px 0;border-top:1px solid var(--line)}
+.ent li:first-child{border-top:0;padding-top:0}
+.ent b{font-size:14.5px;font-weight:700;overflow-wrap:anywhere}
+.ent small{font-size:13px;color:var(--muted)}
+.ent .amt{font:800 15px/1.3 var(--display);font-variant-numeric:tabular-nums;text-align:right}
+.ent .plus{color:var(--green-3)}
+.req{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line);font-size:14px}
+.req:first-child{border-top:0}
+.req i{font-style:normal;font-weight:700;font-size:12.5px;padding:3px 8px;border-radius:99px;background:var(--paper-2);color:var(--ink-2);white-space:nowrap}
+.req i.Confirmed,.req i.Paid{background:var(--mint);color:var(--green-3)}
+.req i.Rejected{background:var(--red-bg);color:var(--red-ink)}
+.backbar{display:flex;align-items:center;margin:4px 0 12px}
+.backbar button{min-height:44px;border:0;background:none;font-weight:700;color:var(--green-2);padding:0 6px 0 0}
 .tip{margin-top:8px;font-size:14px;color:var(--muted)}
 .tip summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:700;color:var(--ink-2)}
 .tip p{margin:0 0 6px;line-height:1.5}
@@ -350,6 +378,65 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     if(st==="on") h+='<details class="tip"><summary>Alerts late or silent?</summary><p>Some phones (Xiaomi, Tecno, Infinix, Oppo, Vivo) hold back alerts to save battery. Open Settings, then Apps, then Chrome, then Battery, and choose No restrictions. Keep the notification sound on for Chrome.</p></details>';
     if(installEvt&&!standalone()) h+='<button class="btn btn-plain wide" type="button" id="install" style="margin-top:10px">'+IC.dl+'Add the rider app to your home screen</button>';
     return h;
+  }
+  /* ───── the rider's wallet ─────
+     Freelance riders keep the cash fares; NovaX takes its commission, and
+     cash-on-delivery money belongs to the client. Below zero the rider owes
+     NovaX; above zero NovaX owes the rider. */
+  var KIND={ commission:"Commission", cod_delivered:"Cash on delivery collected", deposit:"Money you sent, confirmed", payout_requested:"Payout asked for",
+    payout_rejected:"Payout returned to your wallet", adjustment:"Correction by NovaX" };
+  function whenAt(iso){ try{ return new Date(iso).toLocaleString("en-GB",{ timeZone:"Asia/Karachi", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; } }
+  var BACK='<div class="backbar"><button type="button" data-act="home">‹ Back to jobs</button></div>';
+  function renderWallet(){
+    S.view="wallet";
+    if(!S.wallet) $("main").innerHTML=BACK+'<div class="empty">Loading your wallet…</div>';
+    return rpc("nvi_rider_wallet").then(function(w){ S.wallet=w; if(S.view==="wallet") paintWallet(); }).catch(function(e){
+      if(S.view!=="wallet") return;
+      $("main").innerHTML=BACK+'<div class="empty"><b>Could not open your wallet</b>'+esc(friendly(e.message))+'<div style="margin-top:14px"><button class="btn btn-plain" type="button" data-act="wallet">Try again</button></div></div>';
+    });
+  }
+  function paintWallet(){
+    var w=S.wallet||{}, b=Number(w.balance||0), t=w.today||{}, k=S.wsheet, h=BACK;
+    h+='<div class="wbal'+(b<0?' owe':'')+'"><small>'+(b<0?"You owe NovaX":b>0?"NovaX owes you":"Wallet")+'</small><b>'+esc(rs(Math.abs(b)))+'</b><p>'+
+      (b<0?"Commission and cash-on-delivery money you hold. Send it by JazzCash, Easypaisa, bank or at the office, then press I sent money.":b>0?"Your earnings NovaX holds for you. Ask for a payout when you like.":"You are all square with NovaX.")+'</p></div>';
+    h+='<div class="wrow"><div><span>Fares today</span><b>'+esc(rs(t.fares))+'</b></div><div><span>Commission '+esc(w.commission_pct)+'%</span><b>'+esc(rs(t.commission))+'</b></div><div><span>COD today</span><b>'+esc(rs(t.cod))+'</b></div></div>';
+    h+='<div class="acts" style="margin-top:12px"><button class="btn '+(b<0?'btn-primary':'btn-plain')+'" type="button" data-wsheet="deposit">I sent money</button>'+
+       '<button class="btn '+(b>0?'btn-primary':'btn-plain')+'" type="button" data-wsheet="payout"'+(b<Number(w.min_withdraw||0)?' disabled':'')+'>Ask for payout</button></div>';
+    if(b<Number(w.min_withdraw||0)) h+='<p class="sub" style="margin:8px 2px 0;font-size:13.5px">Payouts open once NovaX owes you at least '+esc(rs(w.min_withdraw))+'.</p>';
+    if(k==="deposit") h+='<div class="sheet"><h3>I sent money to NovaX</h3><p class="sub" style="margin:0">NovaX checks it and your wallet goes up. Keep the receipt.</p>'+
+      '<div class="fld"><label for="wAmt">Amount (Rs)</label><input class="inp" id="wAmt" inputmode="numeric" pattern="[0-9]*" maxlength="7" value="'+(b<0?esc(-b):'')+'"></div>'+
+      '<div class="fld"><label for="wMethod">How</label><select class="inp" id="wMethod"><option>JazzCash</option><option>Easypaisa</option><option value="Bank">Bank transfer</option><option value="Office">Cash at the NovaX office</option></select></div>'+
+      '<div class="fld"><label for="wRef">Transaction ID (not needed for cash at the office)</label><input class="inp" id="wRef" maxlength="60" placeholder="From the SMS or receipt"></div>'+
+      '<div class="acts"><button class="btn btn-plain" type="button" data-wsheet="">Back</button><button class="btn btn-dark" type="button" id="wGo">Send to NovaX</button></div><div class="msg" id="wMsg" role="alert"></div></div>';
+    if(k==="payout") h+='<div class="sheet"><h3>Ask NovaX to pay you</h3><p class="sub" style="margin:0">NovaX sends it and marks it paid with the transaction ID.</p>'+
+      '<div class="fld"><label for="wAmt">Amount (Rs)</label><input class="inp" id="wAmt" inputmode="numeric" pattern="[0-9]*" maxlength="7" value="'+(b>0?esc(b):'')+'"></div>'+
+      '<div class="fld"><label for="wMethod">Pay me by</label><select class="inp" id="wMethod"><option>JazzCash</option><option>Easypaisa</option><option value="Bank">Bank transfer</option></select></div>'+
+      '<div class="fld"><label for="wTitle">Account name</label><input class="inp" id="wTitle" maxlength="80" autocomplete="name"></div>'+
+      '<div class="fld"><label for="wNum">Mobile account number or IBAN</label><input class="inp" id="wNum" maxlength="34" autocomplete="off"></div>'+
+      '<div class="acts"><button class="btn btn-plain" type="button" data-wsheet="">Back</button><button class="btn btn-dark" type="button" id="wGo">Ask for payout</button></div><div class="msg" id="wMsg" role="alert"></div></div>';
+    var reqs=(w.deposits||[]).map(function(d){ return '<div class="req"><span>'+esc(rs(d.confirmed||d.amount))+' by '+esc(d.method)+'<br><small class="sub" style="margin:0;font-size:12.5px">'+esc(whenAt(d.at))+(d.note?' &middot; '+esc(d.note):'')+'</small></span><i class="'+esc(d.status)+'">'+esc(d.status==="Claimed"?"Being checked":d.status)+'</i></div>'; })
+      .concat((w.payouts||[]).map(function(p){ return '<div class="req"><span>Payout '+esc(rs(p.amount))+' to '+esc(p.method)+' '+esc(p.number)+'<br><small class="sub" style="margin:0;font-size:12.5px">'+esc(whenAt(p.at))+(p.ref?' &middot; '+esc(p.ref):'')+(p.note?' &middot; '+esc(p.note):'')+'</small></span><i class="'+esc(p.status)+'">'+esc(p.status==="Requested"?"Waiting":p.status)+'</i></div>'; }));
+    if(reqs.length) h+='<div class="sect"><span>Money sent and payouts</span></div><div class="card">'+reqs.join("")+'</div>';
+    var ent=w.entries||[];
+    h+='<div class="sect"><span>History</span><span>'+ent.length+'</span></div><div class="card">'+(ent.length?'<ul class="ent">'+ent.map(function(x){
+      var a=Number(x.amount);
+      return '<li><b>'+esc(KIND[x.kind]||x.kind)+(x.code?' &middot; '+esc(x.code):'')+'</b><span class="amt'+(a>0?' plus':'')+'">'+(a>0?'+':'−')+esc(rs(Math.abs(a)))+'</span>'+
+        '<small>'+esc(whenAt(x.at))+(x.note?' &middot; '+esc(x.note):'')+'</small></li>'; }).join("")+'</ul>':'<p class="sub" style="margin:0">Nothing yet. Each job you finish adds a line here.</p>')+'</div>';
+    $("main").innerHTML=h;
+  }
+  var WSAY={ amount:"Enter the amount.", method:"Choose how.", ref:"Enter the transaction ID from the SMS or receipt.", too_many:"You have three waiting already. NovaX checks them first.",
+    min:"The smallest payout is ", title:"Enter the account name.", number:"Enter a valid mobile account number or IBAN.", open:"You already have a payout waiting.", balance:"That is more than NovaX owes you." };
+  function walletGo(btn){
+    var k=S.wsheet, amt=Number(($("wAmt").value||"").replace(/\D/g,"")), m=$("wMethod").value, msg=$("wMsg");
+    if(!amt){ say(msg,WSAY.amount); return; }
+    busyBtn(btn,true,"Sending…");
+    var call=k==="deposit"?rpc("nvi_rider_deposit",{ p_amount:amt, p_method:m, p_ref:($("wRef").value||"").trim()||null })
+                          :rpc("nvi_rider_payout",{ p_amount:amt, p_method:m, p_title:($("wTitle").value||"").trim(), p_number:($("wNum").value||"").trim() });
+    call.then(function(r){
+      busyBtn(btn,false);
+      if(r&&r.ok===false){ say(msg,(WSAY[r.reason]||"That did not work.")+(r.reason==="min"?rs(r.min)+".":"")); return; }
+      S.wsheet=null; toast(k==="deposit"?"Sent. NovaX will check it.":"Payout asked for."); renderWallet();
+    }).catch(function(e){ busyBtn(btn,false); say(msg,friendly(e&&e.message)); });
   }
   function mapsUrl(pt){ return "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination="+pt[0]+","+pt[1]; }
   function hourLabel(h){ return (h%12||12)+(h<12?" am":" pm"); }
@@ -603,7 +690,8 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       if(!first&&S.openCount>before&&!a){ beep(); try{ navigator.vibrate&&navigator.vibrate([180,90,180,90,180]); }catch(e){} }
       /* Never repaint under the rider's thumb: not while a sheet is open, and
          not while they are typing the PIN. The switch is still kept right. */
-      if(first||(!S.sheet&&!typing())) paint(); else paintSwitch();
+      if(S.view==="wallet") paintSwitch();
+      else if(first||(!S.sheet&&!typing())) paint(); else paintSwitch();
     }).catch(function(e){
       if(/not an active Nova Instant rider/i.test(e.message||"")) return loadMe();
       S.fails++; paintNet(); paintChk();
@@ -627,8 +715,9 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     var pinWas=$("pin")?$("pin").value:"";
     paintSwitch();
     var t=f.today||{};
-    var owe=Number(t.cash_in_hand)>0;
-    h+='<div class="stats"><div class="stat"><span>Done today</span><b>'+esc(t.done||0)+'</b></div><div class="stat"><span>Fares delivered</span><b>'+esc(rs(t.fares))+'</b></div><div class="stat'+(owe?' owe':'')+'"><span>Cash with you</span><b>'+esc(rs(t.cash_in_hand))+'</b></div></div>';
+    var bal=Number(f.wallet||0), owe=bal<0;
+    h+='<div class="stats"><div class="stat"><span>Done today</span><b>'+esc(t.done||0)+'</b></div><div class="stat"><span>Earned today</span><b>'+esc(rs(t.earned))+'</b></div>'+
+       '<button type="button" class="stat statbtn'+(owe?' owe':'')+'" data-act="wallet"><span>'+(owe?"You owe":"Wallet")+'</span><b>'+esc(rs(Math.abs(bal)))+'</b></button></div>';
     var alertsFirst=!f.active&&P.state&&P.state!=="on";
     if(alertsFirst) h+=alertsHtml();
     if(f.active) h+=activeHtml(f.active);
@@ -644,12 +733,13 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
         var fresh=Date.now()-new Date(j.created_at).getTime()<120000;
         return '<div class="card job'+(fresh?' fresh':'')+'"><div class="job-top"><span class="code">'+esc(j.code)+' &middot; '+esc(ago(j.created_at))+(fresh?'<span class="newtag">New</span>':'')+'</span><span class="fare"><small>Rs</small>'+esc(Number(j.fare).toLocaleString("en-PK"))+'</span></div>'+
           jobLegs(j,false)+
-          '<div class="chips"><span class="chip">'+esc(j.km)+' km</span><span class="chip">'+esc(j.item)+'</span><span class="chip pay">'+(j.payer==="sender"?"Cash at pickup":"Cash at delivery")+'</span></div>'+
+          '<div class="chips"><span class="chip">'+esc(j.km)+' km</span><span class="chip">'+esc(j.item)+'</span><span class="chip pay">'+(Number(j.cod)>0?"COD "+esc(rs(j.cod))+" at the door":j.payer==="sender"?"Cash at pickup":"Cash at delivery")+'</span></div>'+
           '<div style="margin-top:12px"><button class="btn btn-primary wide" type="button" data-accept="'+esc(j.id)+'">Accept this job <span class="ur" style="color:inherit;opacity:.75">Qabool karein</span></button></div></div>';
       }).join("");
     }
     if(!f.active&&!alertsFirst) h+=alertsHtml();
-    if(owe&&!f.active) h+='<div class="note warn" style="margin:12px 0 0">You are holding <b>'+esc(rs(t.cash_in_hand))+'</b> of NovaX cash. Hand it in at the office; the office then marks it received. <span class="ur" style="color:inherit">Yeh cash office mein jama karwayein.</span></div>';
+    if(owe&&!f.active) h+='<div class="note warn" style="margin:12px 0 0">You owe NovaX <b>'+esc(rs(-bal))+'</b>: commission and cash-on-delivery money. Send it, then tell NovaX in your wallet. <span class="ur" style="color:inherit">Yeh raqam jama karwayein.</span>'+
+      '<button class="btn btn-dark wide" type="button" data-act="wallet" style="margin-top:10px">Open my wallet</button></div>';
     var rec=f.recent||[];
     if(rec.length&&!f.active) h+='<div class="sect"><span>Finished today</span><span>'+rec.length+'</span></div><div class="card"><ul class="done">'+rec.map(function(x){
       var ret=x.status==="Returned";
@@ -676,7 +766,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     if(st==="Rider assigned"){
       h='<div class="step"><div class="k">'+esc(j.code)+' &middot; step 1 of 2</div><h2>Go to the pickup</h2>'+
         '<p>Collect: '+esc(j.item)+' <span class="ur" style="color:inherit;opacity:.8">Parcel uthayein</span></p>'+
-        '<div class="cash">'+(due>0?'Collect <b>'+esc(rs(due))+'</b> in cash from the sender before you take the parcel.':'No cash here. The receiver pays <b>'+esc(rs(j.fare))+'</b> at delivery.')+'</div><div class="prog" aria-hidden="true"><i class="now"></i><i></i></div></div>';
+        '<div class="cash">'+(due>0?'Collect <b>'+esc(rs(due))+'</b> in cash from the sender before you take the parcel.':Number(j.cod)>0?'No cash here. Cash on delivery: the receiver pays <b>'+esc(rs(j.cod))+'</b> at the door.':'No cash here. The receiver pays <b>'+esc(rs(j.fare))+'</b> at delivery.')+'</div><div class="prog" aria-hidden="true"><i class="now"></i><i></i></div></div>';
       h+='<div class="card">'+jobLegs(j,true,"b")+
         (j.rider_note?'<div class="chips"><span class="chip">Note: '+esc(j.rider_note)+'</span></div>':'')+
         '<div class="acts three"><a class="btn btn-dark" href="'+esc(mapsUrl(j.p))+'" target="_blank" rel="noopener">'+IC.nav+'Open the pickup in Maps</a>'+
@@ -687,7 +777,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     } else if(st==="Picked up"){
       h='<div class="step"><div class="k">'+esc(j.code)+' &middot; step 2 of 2'+(Number(j.attempts)>1?' &middot; try '+esc(j.attempts):'')+'</div><h2>Deliver the parcel</h2>'+
         '<p>Hand over: '+esc(j.item)+' <span class="ur" style="color:inherit;opacity:.8">Parcel pohnchayein</span></p>'+
-        '<div class="cash">'+(due>0?'Collect <b>'+esc(rs(due))+'</b> in cash from the receiver. No cash, no parcel.':'No cash here. The sender already paid.')+'</div><div class="prog" aria-hidden="true"><i class="on"></i><i class="now"></i></div></div>';
+        '<div class="cash">'+(due>0?(Number(j.cod)>0?'Cash on delivery: collect <b>'+esc(rs(due))+'</b> from the receiver. No cash, no parcel.':'Collect <b>'+esc(rs(due))+'</b> in cash from the receiver. No cash, no parcel.'):'No cash here. The sender already paid.')+'</div><div class="prog" aria-hidden="true"><i class="on"></i><i class="now"></i></div></div>';
       h+='<div class="card">'+jobLegs(j,true,"a")+
         (j.rider_note?'<div class="chips"><span class="chip">Note: '+esc(j.rider_note)+'</span></div>':'')+
         '<div class="acts three"><a class="btn btn-dark" href="'+esc(mapsUrl(j.d))+'" target="_blank" rel="noopener">'+IC.nav+'Open the delivery in Maps</a>'+
@@ -752,7 +842,8 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   var SAY={ offline:"Go online first.", busy:"Finish the job you have first.", taken:"Another rider took that job.",
     not_yours:"This job is no longer with you.", need_reason:"Choose a reason.", need_note:"Say what happened.",
     wrong_pin:"That PIN is not right.", pin_locked:"The PIN is locked after five wrong tries. Call the NovaX office.",
-    has_job:"Finish the job you have before going offline.", docs:"Add your CNIC photo, home bill photo and emergency contact first.", docs_unchecked:"NovaX is still checking your documents. You can go online once they are checked.", cash_needed:"Take the cash first, then tick the cash line.",
+    has_job:"Finish the job you have before going offline.", docs:"Add your CNIC photo, home bill photo and emergency contact first.", docs_unchecked:"NovaX is still checking your documents. You can go online once they are checked.",
+    cash_limit:"You are holding too much cash. Pay what you owe (open your wallet) before taking more cash-on-delivery jobs.", cash_needed:"Take the cash first, then tick the cash line.",
     cash_mismatch:"That amount is not right. It cannot be more than the fare.", short_note:"Say why the cash is short." };
   function netFail(e){ return /fetch|network|Failed|timeout|Load failed/i.test(String((e&&e.message)||e)); }
   /* Every rider step answers "already done" when it is sent twice, so a press
@@ -793,10 +884,14 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   });
   document.addEventListener("click",function(e){
     unlockSound();
-    var t=e.target.closest("[data-auth],[data-act],[data-accept],[data-sheet],[data-show],#forgot,#pickBtn,#dropBtn,#backBtn,#retryBtn,#returnBtn,#shGo,#onSw,#goOn,#signOut,#signOut2,#pushOn,#pushTest,#install");
+    var t=e.target.closest("[data-auth],[data-act],[data-accept],[data-sheet],[data-show],[data-wsheet],#wGo,#forgot,#pickBtn,#dropBtn,#backBtn,#retryBtn,#returnBtn,#shGo,#onSw,#goOn,#signOut,#signOut2,#pushOn,#pushTest,#install");
     if(!t) return;
     if(t.dataset.auth) return renderAuth(t.dataset.auth);
     if(t.dataset.act==="reload") return boot();
+    if(t.dataset.act==="wallet"){ S.wsheet=null; return renderWallet(); }
+    if(t.dataset.act==="home"){ S.view=null; S.wsheet=null; try{ scrollTo(0,0); }catch(e){} return paint(); }
+    if(t.hasAttribute("data-wsheet")){ S.wsheet=t.getAttribute("data-wsheet")||null; paintWallet(); var f1=$("wAmt"); if(f1) try{ f1.focus(); }catch(e){} return; }
+    if(t.id==="wGo") return walletGo(t);
     if(t.id==="forgot") return doForgot();
     if(t.hasAttribute("data-show")){ var pi=$(t.getAttribute("data-show")); if(pi){ var sh=pi.type==="password"; pi.type=sh?"text":"password"; t.textContent=sh?"Hide":"Show"; t.setAttribute("aria-pressed",String(sh)); } return; }
     if(t.id==="signOut2"){

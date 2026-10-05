@@ -20,6 +20,7 @@ const publicFiles = [
   "cod-delivery-cost-karachi-to-lahore.html",
   "customer-refused-cod-parcel.html",
   "index.html",
+  "instant-account.html",
   "instant-ops.html",
   "instant-rider.html",
   "instant-terms.html",

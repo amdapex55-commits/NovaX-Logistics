@@ -57,6 +57,14 @@ svg.ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-wid
 .hdr .brand img{width:28px;height:28px;border-radius:8px}
 .hdr .brand b{font:800 17px/1 var(--display);letter-spacing:-.01em;white-space:nowrap}
 @media (max-width:400px){ #helpBtn{font-size:0;gap:0;padding:0 8px} #histBtn{font-size:14px;padding:0 6px} .hdr{padding-left:10px;gap:4px} }
+a.hbtn{text-decoration:none;color:inherit}
+@media (max-width:480px){ #acctBtn,#histBtn{font-size:0;gap:0;padding:0 10px;min-width:44px} }
+.codacct{margin-top:12px;padding:14px;border-radius:14px;background:var(--mint);border:1px solid #cdeedd}
+.codacct b{display:block;font-size:15.5px}
+.codacct span{display:block;font-size:14px;color:var(--ink-2);line-height:1.45;margin-top:4px}
+.codacct .row2{margin-top:12px}
+.codnote{display:flex;gap:10px;align-items:flex-start;margin-top:12px;padding:12px 14px;border-radius:14px;background:var(--amber);color:var(--amber-ink);font-size:14.5px;line-height:1.45}
+.codnote b{color:inherit}
 /* The smallest phones: both header buttons become icons, so Help never falls off the edge. */
 @media (max-width:340px){ #histBtn{font-size:0;gap:0;padding:0 10px;min-width:44px} }
 .hdr .brand b i{font-style:normal;color:var(--emerald)}
@@ -316,6 +324,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   <a class="brand" href="/" aria-label="NovaX Logistics home"><img src="/assets/favicon.svg" alt="" width="28" height="28"><b>Nova <i>Instant</i></b></a>
   <div style="margin-left:auto;display:flex;align-items:center">
   <button class="hbtn" type="button" id="histBtn" hidden style="margin-left:0" aria-label="My deliveries"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>My deliveries</button>
+  <a class="hbtn" id="acctBtn" href="instant-account.html" style="margin-left:0" aria-label="My Nova Instant account"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.500-3.500 4.500-5 8-5s6.500 1.500 8 5"/></svg><span id="acctLbl">Account</span></a>
   <button class="hbtn" type="button" id="helpBtn" style="margin-left:0"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.300a2.500 2.500 0 1 1 3.600 2.300c-.800.400-1.200 1-1.200 1.900M12 17h.010"/></svg>Help</button>
   </div>
 </header>
@@ -400,7 +409,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   /* ───────── shared state ───────── */
   var S={ status:null, support:"03123922558", p:null, d:null, quote:null, quoting:false, quoteErr:"",
     type:"", item:"", weight:"", fragile:false, value:"", note:"",
-    sName:"", sPhone:"", pDet:"", rName:"", rPhone:"", dDet:"", payer:"sender", agree:false, ov:false, skipPop:false, resume:0,
+    sName:"", sPhone:"", pDet:"", rName:"", rPhone:"", dDet:"", payer:"sender", cod:"", client:null, agree:false, ov:false, skipPop:false, resume:0,
     step:1, busy:false, pinFor:null, msg:"", cap:{ on:false, id:null, token:"" } };
   var qSeq=0;
 
@@ -819,9 +828,102 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         '<div class="fld"><span class="lbl">Delivery address</span><div class="place">'+IC.pin+'<span>'+esc(S.d&&S.d.label!=="Pinned spot"?S.d.label:"The pin you set on the map")+'</span><button class="linkish" type="button" data-edit="1" aria-label="Change delivery address">Change</button></div>'+
           '<label class="sr" for="dDet">House or flat number, floor and a landmark for the delivery</label><input class="inp" id="dDet" data-f="dDet" maxlength="160" enterkeyhint="done" placeholder="House or flat number, floor, a landmark" value="'+esc(S.dDet)+'"></div></section>'+
       '<section class="card"><span class="lbl" id="payLbl" style="font-size:16px;color:var(--ink)">Who will pay '+esc(money(S.quote?S.quote.fare:0))+'?</span>'+
-        '<div class="seg" role="group" aria-labelledby="payLbl"><button type="button" data-pay="sender" aria-pressed="'+(S.payer==="sender")+'">Sender at pickup</button><button type="button" data-pay="receiver" aria-pressed="'+(S.payer==="receiver")+'">Receiver at delivery</button></div>'+
-        '<p class="fine" id="paySay">'+(S.payer==="sender"?"Cash to the rider when the parcel is collected.":"Cash to the rider at the door. Tell the receiver the fare is "+esc(money(S.quote?S.quote.fare:0))+".")+'</p></section>'+
+        '<div class="seg" role="group" aria-labelledby="payLbl"><button type="button" data-pay="sender" aria-pressed="'+(S.payer==="sender")+'">Sender pays</button><button type="button" data-pay="receiver" aria-pressed="'+(S.payer==="receiver")+'">Receiver pays</button><button type="button" data-pay="cod" aria-pressed="'+(S.payer==="cod")+'">Cash on delivery</button></div>'+
+        payBlock()+'</section>'+
       cta("Review booking",false);
+  }
+  /* ───── cash on delivery ─────
+     The receiver pays the rider the COD amount; the fare comes out of it and
+     the rest goes to the sender's Nova Instant wallet (instant-account.html).
+     COD needs an account, so the money has somewhere to go. */
+  function codNum(){ return Number(String(S.cod||"").replace(/[^\d]/g,""))||0; }
+  function codFee(){ return Number((S.status&&S.status.cod_fee)||0); }
+  function codMax(){ return Number((S.status&&S.status.cod_max)||10000); }
+  function codSay(){
+    var f=S.quote?Number(S.quote.fare):0, a=codNum(), fee=codFee();
+    if(!a) return "The receiver pays this at the door. The fare of "+money(f)+(fee?" and a "+money(fee)+" COD fee":"")+" comes out of it, and the rest goes to your Nova Instant wallet. Up to "+money(codMax())+".";
+    return "The receiver pays the rider "+money(a)+". The fare of "+money(f)+(fee?" and the "+money(fee)+" COD fee":"")+" comes out of it, so "+money(Math.max(0,a-f-fee))+" goes to your wallet once the rider pays it in.";
+  }
+  function payBlock(){
+    var f=S.quote?Number(S.quote.fare):0;
+    if(S.payer==="sender") return '<p class="fine" id="paySay">Cash to the rider when the parcel is collected.</p>';
+    if(S.payer==="receiver") return '<p class="fine" id="paySay">Cash to the rider at the door. Tell the receiver the fare is '+esc(money(f))+'.</p>';
+    if(!S.client) return '<div class="codacct"><b>Cash on delivery needs a free Nova Instant account</b><span>The receiver pays the rider, and your money goes to your account wallet. It takes a minute, and your booking stays as it is.</span>'+
+      '<div class="row2"><button class="btn btn-primary sm" type="button" data-acct="join">Create account</button><button class="btn btn-plain sm" type="button" data-acct="signin">Sign in</button></div></div>';
+    return '<div class="fld"><label class="lbl" for="cod">Cash to collect from the receiver (Rs)</label><input class="inp" id="cod" data-f="cod" inputmode="numeric" pattern="[0-9]*" maxlength="6" enterkeyhint="done" placeholder="e.g. 3500" value="'+esc(S.cod)+'"></div>'+
+      '<p class="fine" id="paySay">'+esc(codSay())+'</p><p class="fine" style="margin-top:6px">Signed in as '+esc(S.client.client.name)+'. <a href="instant-account.html">Your account</a></p>';
+  }
+  /* The account, read once at start: COD needs it, and it fills in the sender. */
+  function loadClient(){
+    if(!sb||!sb.auth) return Promise.resolve(null);
+    return Promise.resolve(sb.auth.getSession()).then(function(r){
+      var ses=r&&r.data&&r.data.session; S.session=ses?{ email:(ses.user&&ses.user.email)||"" }:null;
+      if(!ses) return null;
+      return rpc("nvi_client_me").then(function(x){
+        S.client=(x&&!x.error&&x.data)||null;
+        if(S.client){ if(!S.sName) S.sName=S.client.client.name; if(!S.sPhone) S.sPhone=S.client.client.phone; }
+        var l=$("acctLbl"); if(l) l.textContent=S.client?String(S.client.client.name).split(" ")[0]:"Account";
+        return S.client;
+      });
+    }).catch(function(){ return null; });
+  }
+  var ACCT_SAY={ novax_login:"This email is a NovaX Logistics login. Use a different email for Nova Instant.", name:"Enter your name.", phone:"Enter a mobile like 0300 1234567.", signin:"Sign in again." };
+  function acctErr(m){ m=String(m||""); if(/Invalid login credentials/i.test(m)) return "Wrong email or password."; if(/already registered/i.test(m)) return "This email already has an account. Sign in instead.";
+    if(/fetch|network|Failed|Load failed/i.test(m)) return "No connection. Check your internet and try again."; return m||"Something went wrong. Try again."; }
+  function openAcct(view){
+    /* Someone already signed in with a NovaX staff or merchant login on this phone. */
+    if(S.session&&!S.client&&view!=="finish"){
+      var p0=openPanel("Cash on delivery",'<section class="card"><p style="margin:0 0 12px">This phone is signed in to NovaX as <b>'+esc(S.session.email)+'</b>. Cash on delivery needs a separate Nova Instant account.</p>'+
+        '<button class="btn btn-dark sm wide" type="button" id="acSignOut">Sign out of that and continue</button><p class="fine">Or choose who pays the fare instead.</p></section>');
+      p0.querySelector("#acSignOut").addEventListener("click",function(){ Promise.resolve(sb.auth.signOut()).catch(function(){}).then(function(){ S.session=null; openAcct(view); }); });
+      return;
+    }
+    var join=view==="join", fin=view==="finish";
+    var p=openPanel(fin?"Finish your account":join?"Create your Nova Instant account":"Sign in",
+      '<form class="card" id="acForm" novalidate>'+
+      (join||fin?'<div class="fld"><label class="lbl" for="acName">Your name or shop name</label><input class="inp" id="acName" maxlength="80" autocomplete="name" value="'+esc(S.sName)+'"></div>'+
+        '<div class="fld"><label class="lbl" for="acPhone">Mobile</label><input class="inp" id="acPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="03XX XXXXXXX" value="'+esc(S.sPhone)+'"></div>':'')+
+      (fin?'':'<div class="fld"><label class="lbl" for="acEmail">Email</label><input class="inp" id="acEmail" type="email" inputmode="email" maxlength="254" autocomplete="email"></div>'+
+        '<div class="fld"><label class="lbl" for="acPass">'+(join?"Choose a password (8 or more characters)":"Password")+'</label><input class="inp" id="acPass" type="password" maxlength="72" autocomplete="'+(join?"new-password":"current-password")+'"></div>')+
+      '<div class="fld"><button class="btn btn-primary wide" type="submit" id="acBtn">'+(fin?"Finish":join?"Create account and continue":"Sign in and continue")+'</button></div>'+
+      '<p class="fine" id="acMsg" role="alert" hidden style="color:var(--red-ink)"></p>'+
+      (fin?'':'<p class="fine">'+(join?'Already have one? <button class="linkish" type="button" data-acct="signin">Sign in</button>':'New here? <button class="linkish" type="button" data-acct="join">Create an account</button>')+'</p>')+
+      (join?'<p class="fine">Free, and separate from NovaX merchant accounts. You agree to the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</p>':'')+'</form>');
+    var f=p.querySelector("#acForm"), btn=p.querySelector("#acBtn"), msg=p.querySelector("#acMsg");
+    function tell(t){ msg.textContent=t; msg.hidden=false; say(t); btn.disabled=false; btn.textContent=fin?"Finish":join?"Create account and continue":"Sign in and continue"; }
+    function done(){
+      closePanel(); render(); toast("Account ready. Cash on delivery goes to its wallet.");
+      var c=$("cod"); if(c) try{ c.focus(); }catch(e){}
+    }
+    function save(name,phone){
+      return rpc("nvi_client_save",{ p_name:name, p_phone:phone, p_address:null }).then(function(r){
+        if(r.error||!r.data) throw new Error(r.error&&r.error.message);
+        if(r.data.ok===false) return tell(ACCT_SAY[r.data.reason]||"That did not save.");
+        return loadClient().then(function(c){ if(c) done(); else tell("That did not save. Try again."); });
+      });
+    }
+    f.addEventListener("submit",function(e){
+      e.preventDefault(); msg.hidden=true;
+      var name=join||fin?p.querySelector("#acName").value.trim():"", phone=join||fin?pkPhone(p.querySelector("#acPhone").value):"";
+      var email=fin?"":p.querySelector("#acEmail").value.trim().toLowerCase(), pass=fin?"":p.querySelector("#acPass").value;
+      if((join||fin)&&name.length<2) return tell(ACCT_SAY.name);
+      if((join||fin)&&!phone) return tell(ACCT_SAY.phone);
+      if(!fin&&!/^\S+@\S+\.\S+$/.test(email)) return tell("Enter your email.");
+      if(join&&pass.length<8) return tell("Choose a password of at least 8 characters.");
+      if(!fin&&!pass) return tell("Enter your password.");
+      btn.disabled=true; btn.textContent="Working\u2026";
+      var go=fin?save(name,phone):join?Promise.resolve(sb.auth.signUp({ email:email, password:pass, options:{ data:{ full_name:name, instant:true } } })).then(function(r){
+          if(r.error) throw new Error(r.error.message);
+          var u=r.data&&r.data.user; if(u&&Array.isArray(u.identities)&&u.identities.length===0) throw new Error("This email already has an account. Sign in instead.");
+          if(!r.data.session) return tell("Check your email to confirm it, then sign in here. Your booking is kept.");
+          S.session={ email:email }; return save(name,phone);
+        })
+        :Promise.resolve(sb.auth.signInWithPassword({ email:email, password:pass })).then(function(r){
+          if(r.error) throw new Error(r.error.message);
+          return loadClient().then(function(c){ if(c) return done(); closePanelDom(); S.ov=false; openAcct("finish"); });
+        });
+      Promise.resolve(go).catch(function(err){ tell(acctErr(err&&err.message)); });
+    });
   }
   function itemText(){
     var parts=[S.type, S.weight?S.weight.toLowerCase():"", S.fragile?"FRAGILE":"", S.value?("value Rs "+Number(S.value).toLocaleString("en-PK")):""].filter(Boolean).join(" · ");
@@ -835,7 +937,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         '<dt>Pickup</dt><dd>'+esc(S.sName)+' &middot; '+esc(pkPhone(S.sPhone))+'<small>'+esc(addrOf("p"))+'</small></dd>'+
         '<dt>Delivery</dt><dd>'+esc(S.rName)+' &middot; '+esc(pkPhone(S.rPhone))+'<small>'+esc(addrOf("d"))+'</small></dd>'+
         '<dt>Parcel</dt><dd>'+esc(S.item)+'<small>'+esc([S.type,S.weight,S.fragile?"fragile":"",S.value?("worth "+money(S.value)):""].filter(Boolean).join(" · "))+'</small>'+(S.note?'<small>Rider note: '+esc(S.note)+'</small>':'')+'</dd>'+
-        '<dt>Pays</dt><dd>'+(S.payer==="sender"?"Sender, in cash at pickup":"Receiver, in cash at delivery")+'</dd></dl>'+
+        '<dt>Pays</dt><dd>'+(S.payer==="cod"?"Cash on delivery: the receiver pays "+esc(money(codNum()))+'<small>The fare comes out of it; '+esc(money(Math.max(0,codNum()-Number(q.fare)-codFee())))+' goes to your wallet</small>':S.payer==="sender"?"Sender, in cash at pickup":"Receiver, in cash at delivery")+'</dd></dl>'+
         '<div class="total" style="font-weight:400;border-top-style:solid"><span>'+(min?"Minimum fare":esc(q.km)+" km × Rs "+esc(q.rate_per_km))+'</span><span>'+esc(money(q.fare))+'</span></div>'+
         '<div class="total"><span>Total, nothing added later</span><b>'+esc(money(q.fare))+'</b></div></section>'+
       '<div class="chips" style="margin-top:10px" aria-label="Change something"><button class="chip" type="button" data-edit="1">Edit route</button><button class="chip" type="button" data-edit="2">Edit parcel</button><button class="chip" type="button" data-edit="3">Edit people</button></div>'+
@@ -846,7 +948,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
         '<p style="margin:0">The receiver gets a tracking link with a delivery PIN. The rider hands over only against that PIN.</p></section>'+
       '<label class="agree" id="agreeBox" for="agree"><input type="checkbox" id="agree" aria-labelledby="agreeTxt"'+(S.agree?" checked":"")+'><span id="agreeTxt">The parcel weighs '+maxKg()+' kg or less'+(maxVal()?", is worth "+money(maxVal())+" or less":"")+', and holds nothing on the <button class="linkish" type="button" data-banned style="min-height:0;display:inline;font-size:inherit">not-allowed list</button>. I agree to the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</span></label>'+
       '<div id="capBox"></div>'+
-      cta(S.busy?'<span class="spin" aria-hidden="true"></span> Booking…':canBookNow()?"Book delivery · "+esc(money(q.fare)):!(s.open||s.preview)?"Booking is paused":!s.hours_open?"Riders are back at "+hourLabel(s.open_hour):"No rider on duty right now", S.busy||!canBookNow());
+      cta(S.busy?'<span class="spin" aria-hidden="true"></span> Booking…':canBookNow()?(S.payer==="cod"?"Book delivery · COD "+esc(money(codNum())):"Book delivery · "+esc(money(q.fare))):!(s.open||s.preview)?"Booking is paused":!s.hours_open?"Riders are back at "+hourLabel(s.open_hour):"No rider on duty right now", S.busy||!canBookNow());
   }
   function render(focusTitle){
     if(document.body.getAttribute("data-view")!=="book") return;
@@ -890,6 +992,13 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
       if(S.rName.trim().length<2) return fail("rName","Add the receiver's name.");
       if(!pkPhone(S.rPhone)) return fail("rPhone","Enter the receiver's mobile like 0300 1234567.");
       if(S.dDet.trim().length<3||addrOf("d").length<8) return fail("dDet","Add the house or flat number and a landmark for the delivery.");
+      if(S.payer==="cod"){
+        if(!S.client) return fail(null,"Cash on delivery needs a Nova Instant account. Create one above: it takes a minute.");
+        var ca=codNum(), cf=(S.quote?Number(S.quote.fare):0)+codFee();
+        if(!ca) return fail("cod","Enter the cash to collect from the receiver.");
+        if(ca<cf) return fail("cod","Cash on delivery has to cover the fare: at least "+money(cf)+".");
+        if(ca>codMax()) return fail("cod","Cash on delivery can be up to "+money(codMax())+" per parcel.");
+      }
       return go(4);
     }
     if(S.step===4) return book(false);
@@ -906,7 +1015,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     try{ S.cap.id=window.turnstile.render("#capBox",{ sitekey:S.cap.key, callback:function(t){ S.cap.token=t; }, "expired-callback":function(){ S.cap.token=""; }, "error-callback":function(){ S.cap.token=""; } }); }catch(e){}
   }
 
-  var BOOK_SAY={ not_open:"Booking is paused for a moment. Try again shortly, or call NovaX.", no_rider:"No rider is on duty right now. Try again in a little while, or call NovaX.", closed_now:"Riders are off right now. Booking opens again in the morning.",
+  var BOOK_SAY={ need_account:["cod",3,"Cash on delivery needs a Nova Instant account. Create one here: it takes a minute."],
+    cod_low:["cod",3,"Cash on delivery has to cover the fare."], cod_max:["cod",3,"That is more cash on delivery than one parcel can carry."], not_open:"Booking is paused for a moment. Try again shortly, or call NovaX.", no_rider:"No rider is on duty right now. Try again in a little while, or call NovaX.", closed_now:"Riders are off right now. Booking opens again in the morning.",
     pickup_address:["pDet",3,"Add the house or shop number and a landmark for the pickup."], drop_address:["dDet",3,"Add the house or flat number and a landmark for the delivery."],
     sender_name:["sName",3,"Add the sender's name."], receiver_name:["rName",3,"Add the receiver's name."],
     sender_phone:["sPhone",3,"The sender's mobile number is not valid."], receiver_phone:["rPhone",3,"The receiver's mobile number is not valid."],
@@ -922,8 +1032,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     if(!S.agree){ fail(null,BOOK_SAY.terms); var ab=$("agreeBox"); if(ab){ ab.classList.add("bad"); try{ ab.scrollIntoView({ block:"center" }); }catch(e){} } return; }
     S.busy=true; S.msg=""; render();
     rpc("nvi_book",{ p_quote:S.quote.quote, p_pickup_address:addrOf("p"), p_drop_address:addrOf("d"), p_sender_name:S.sName, p_sender_phone:S.sPhone,
-      p_receiver_name:S.rName, p_receiver_phone:S.rPhone, p_item:itemText(), p_payer:S.payer, p_rider_note:S.note||null,
-      p_terms:true, p_device:deviceId(), p_captcha:S.cap.token||null, p_source:SRC||null }).then(function(r){
+      p_receiver_name:S.rName, p_receiver_phone:S.rPhone, p_item:itemText(), p_payer:S.payer==="cod"?"receiver":S.payer, p_rider_note:S.note||null,
+      p_terms:true, p_device:deviceId(), p_captcha:S.cap.token||null, p_source:SRC||null, p_cod:S.payer==="cod"?codNum():0 }).then(function(r){
       S.busy=false;
       if(r.error||!r.data){ S.msg="The booking did not go through. Check your connection and press Book again; you will not be booked twice."; render(); say(S.msg); return; }
       var d=r.data;
@@ -966,9 +1076,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     if(t.dataset.type){ S.type=t.dataset.type; press(t,"[data-type]"); var it=$("item"); if(it) it.placeholder=ITEM_PH[S.type]||it.placeholder; clearMsg(); saveDraft(); return; }
     if(t.dataset.w){ S.weight=t.dataset.w; press(t,"[data-w]"); clearMsg(); saveDraft(); return; }
     if(t.id==="fragile"){ S.fragile=!S.fragile; t.setAttribute("aria-checked",String(S.fragile)); saveDraft(); return; }
-    if(t.dataset.pay){ S.payer=t.dataset.pay; press(t,"[data-pay]"); var ps=$("paySay");
-      if(ps) ps.textContent=S.payer==="sender"?"Cash to the rider when the parcel is collected.":"Cash to the rider at the door. Tell the receiver the fare is "+money(S.quote?S.quote.fare:0)+".";
-      saveDraft(); return; }
+    if(t.dataset.pay){ S.payer=t.dataset.pay; clearMsg(); saveDraft(); var y=window.scrollY; render(); try{ window.scrollTo(0,y); }catch(e){} if(S.payer==="cod"){ var ci=$("cod"); if(ci) try{ ci.focus({ preventScroll:true }); }catch(e){} } return; }
+    if(t.dataset.acct){ return openAcct(t.dataset.acct); }
     if(t.hasAttribute("data-hist")) return openHist();
     if(t.hasAttribute("data-me")){ var me=store("nvi_me"); if(me){ S.sName=me.n||""; S.sPhone=me.p||""; render(); } return; }
     if(t.dataset.rcp){ var r=(store("nvi_rcp")||[])[Number(t.dataset.rcp)]; if(r){ S.rName=r.n||""; S.rPhone=r.p||""; render(); } return; }
@@ -991,8 +1100,10 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   });
   $("pane").addEventListener("input",function(e){
     var f=e.target.getAttribute&&e.target.getAttribute("data-f"); if(!f) return;
-    var v=e.target.value; if(f==="value") v=v.replace(/[^\d]/g,"");
+    var v=e.target.value; if(f==="value"||f==="cod") v=v.replace(/[^\d]/g,"");
+    if(f==="cod"&&v!==e.target.value) e.target.value=v;
     S[f]=v; saveDraft();
+    if(f==="cod"){ var cs=$("paySay"); if(cs) cs.textContent=codSay(); }
     e.target.classList.remove("bad"); var fe=e.target.parentElement.querySelector(".ferr"); if(fe) fe.hidden=true; if(S.msg){ S.msg=""; var m=document.querySelector(".cta .msg"); if(m) m.remove(); }
   });
   $("pane").addEventListener("change",function(e){ if(e.target.id==="agree"){ S.agree=e.target.checked; var ab=$("agreeBox"); if(ab) ab.classList.remove("bad"); if(S.msg){ S.msg=""; var m=document.querySelector(".cta .msg"); if(m) m.remove(); } } });
@@ -1167,6 +1278,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     if(stuck) h+='<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>This has waited '+waited(j)+' minutes. Call or WhatsApp NovaX and we will assign a rider by hand.</span></div><div style="margin-top:0">'+supportBtns()+'</div>';
     if(j.rider&&j.rider.name) h+='<section class="card" style="margin-top:12px"><div class="rider"><span class="av" aria-hidden="true">'+esc(j.rider.name.charAt(0).toUpperCase())+'</span><div><b>'+esc(j.rider.name)+'</b><small>Your rider'+(j.rider.plate?' &middot; bike '+esc(j.rider.plate):'')+'</small></div>'+
       (j.rider.phone?'<a class="btn btn-plain sm" href="tel:'+esc(j.rider.phone)+'">'+IC.phone+'Call</a>':'')+'</div></section>';
+    if(Number(j.cod)>0&&["Booked","Rider assigned","Picked up","Failed delivery","Awaiting confirmation"].indexOf(j.status)>-1)
+      h+='<div class="codnote">'+IC.info+'<span><b>Cash on delivery: '+esc(money(j.cod))+'.</b> The receiver pays this to the rider at the door, in cash. No cash, no parcel.</span></div>';
     if(j.pin) h+='<div class="pincard"><div><b>Delivery PIN</b>'+(j.status==="Returning"?"The sender gives this to the rider when the parcel comes back.":"The receiver gives this to the rider at the door.")+'</div><span class="pin" aria-label="PIN '+esc(j.pin.split("").join(" "))+'">'+esc(j.pin)+'</span></div>';
     if(live) h+='<div class="row2"><button class="btn btn-plain sm" type="button" id="tShare">'+IC.share+'Share</button><button class="btn btn-plain sm" type="button" id="tCopy">Copy link</button></div>';
     h+='<section class="card" style="margin-top:12px"><p class="eyebrow">Journey</p><ol class="tl">'+tl+'</ol></section>'+
@@ -1174,7 +1287,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
          '<dt>From</dt><dd>'+esc(j.sender_name)+'<small>'+esc(j.pickup_address)+'</small></dd>'+
          '<dt>To</dt><dd>'+esc(j.receiver_name)+'<small>'+esc(j.drop_address)+'</small></dd>'+
          '<dt>Parcel</dt><dd>'+esc(j.item)+'</dd>'+
-         '<dt>Fare</dt><dd>'+esc(money(j.fare))+'<small>'+esc(j.km)+' km &middot; '+(j.payer==="sender"?"sender pays at pickup":"receiver pays at delivery")+'</small></dd></dl></section>';
+         (Number(j.cod)>0?'<dt>Cash on delivery</dt><dd>'+esc(money(j.cod))+'<small>The receiver pays this to the rider at the door. The fare of '+esc(money(j.fare))+' is included.</small></dd>'
+           :'<dt>Fare</dt><dd>'+esc(money(j.fare))+'<small>'+esc(j.km)+' km &middot; '+(j.payer==="sender"?"sender pays at pickup":"receiver pays at delivery")+'</small></dd>')+'</dl></section>';
     if((j.status==="Delivered"||j.status==="Returned")&&!fbGiven(T.token))
       h+='<section class="card fbcard"><p class="eyebrow">How did it go?</p><p style="margin:0 0 12px;color:var(--ink-2);font-size:15px">Three short questions about this delivery. Your answer goes straight to the NovaX team.</p><button class="btn btn-dark sm wide" type="button" data-fb="job">Give feedback</button></section>';
     if(!stuck) h+='<section class="card"><p class="eyebrow">Need help?</p>'+supportBtns()+'</section>';
@@ -1252,7 +1366,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   /* What the customer has typed survives a reload or an accidental close of
      the tab, for 45 minutes, in this browser only. */
   var draftT=null;
-  var DRAFT=["p","d","type","item","weight","fragile","value","note","sName","sPhone","pDet","rName","rPhone","dDet","payer","step"];
+  var DRAFT=["p","d","type","item","weight","fragile","value","note","sName","sPhone","pDet","rName","rPhone","dDet","payer","cod","step"];
   function saveDraft(){
     clearTimeout(draftT);
     draftT=setTimeout(function(){ try{ var o={ at:Date.now() }; DRAFT.forEach(function(k){ o[k]=S[k]; }); sessionStorage.setItem("nvi_draft",JSON.stringify(o)); }catch(e){} },300);
@@ -1276,6 +1390,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     if(document.body.getAttribute("data-view")==="book") render();
   });
   paintHistBtn();
+  /* Signed in to a Nova Instant account? Fills the sender and allows COD. */
+  loadClient().then(function(c){ if(c&&document.body.getAttribute("data-view")==="book"&&S.step===3&&!panel) render(); });
   var token=new URLSearchParams(location.search).get("t");
   if(!token) histRefresh(function(){ if(document.body.getAttribute("data-view")==="book"&&S.step===1&&!(S.p&&S.d)&&!panel&&!S.pinFor) render(); });
   if(token) startTrack(token,false);
