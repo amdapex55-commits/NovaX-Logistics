@@ -860,7 +860,8 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
   function maxKg(){ return Number(S.status&&S.status.max_kg)||10; }
   function maxVal(){ return Number(S.status&&S.status.max_value)||0; }
   function weights(){ var m=maxKg(); return m>5?["Up to 1 kg","1 to 5 kg","5 to "+m+" kg"]:["Up to 1 kg","1 to "+m+" kg"]; }
-  function canBookNow(){ var s=S.status; return !s||((s.open||s.preview)&&(s.hours_open||s.preview)&&(s.preview||s.riders_on!==0)); }
+  /* Until NovaX has said riders are on, booking stays shut: no answer is not a yes. A fare can still be checked. */
+  function canBookNow(){ var s=S.status; return !!s&&((s.open||s.preview)&&(s.hours_open||s.preview)&&(s.preview||s.riders_on!==0)); }
   function head(n,title,lead){
     return '<div class="steps">'+(n>1?'<button class="back" type="button" data-back aria-label="Back to the previous step">'+IC.back+'</button>':'')+
       '<div class="bars" aria-hidden="true">'+[1,2,3,4].map(function(i){ return '<i class="'+(i<=n?"on":"")+'"></i>'; }).join("")+'</div><span class="stepn">Step '+n+' of 4</span></div>'+
@@ -871,7 +872,8 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
       '<button class="btn btn-primary wide" type="button" id="go"'+(disabled?" disabled":"")+'>'+label+'</button></div>';
   }
   function notice(){
-    var s=S.status; if(!s) return "";
+    var s=S.status;
+    if(!s) return S.statusErr?'<div class="note warn" style="margin-top:12px">'+IC.info+'<span>We could not check whether riders are available. You can still check a fare. <button class="linkish" type="button" data-restatus style="min-height:0;padding:12px 4px;margin:-12px -4px">Try again</button></span></div>':"";
     if(!s.open&&!s.preview) return '<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>Booking is paused for a moment. You can still check the fare for your trip.</span></div>';
     if(s.preview) return '<div class="note info" style="margin-top:12px">'+IC.info+'<span>Public booking is switched off on the ops board. You can still book because you are signed in as a NovaX admin.</span></div>';
     if(!s.hours_open) return '<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>Riders are on from '+hourLabel(s.open_hour)+' to '+hourLabel(s.close_hour)+'. You can check a fare now and book when they are back.</span></div>';
@@ -1057,7 +1059,8 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
         '<p style="margin:0">The receiver gets a tracking link with a delivery PIN. The rider hands over only against that PIN.</p></section>'+
       '<label class="agree" id="agreeBox" for="agree"><input type="checkbox" id="agree" aria-labelledby="agreeTxt"'+(S.agree?" checked":"")+'><span id="agreeTxt">The parcel weighs '+maxKg()+' kg or less'+(maxVal()?", is worth "+money(maxVal())+" or less":"")+', and holds nothing on the <button class="linkish" type="button" data-banned style="min-height:0;display:inline;font-size:inherit">not-allowed list</button>. I agree to the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</span></label>'+
       '<div id="capBox"></div>'+
-      cta(S.busy?'<span class="spin" aria-hidden="true"></span> Booking…':canBookNow()?(S.payer==="cod"?"Book delivery · COD "+esc(money(codNum())):"Book delivery · "+esc(money(q.fare))):!(s.open||s.preview)?"Booking is paused":!s.hours_open?"Riders are back at "+hourLabel(s.open_hour):"No rider on duty right now", S.busy||!canBookNow());
+      cta(S.busy?'<span class="spin" aria-hidden="true"></span> Booking…':canBookNow()?(S.payer==="cod"?"Book delivery · COD "+esc(money(codNum())):"Book delivery · "+esc(money(q.fare))):!S.status?(S.statusErr?"Could not check for riders":"Checking for riders…"):!(s.open||s.preview)?"Booking is paused":!s.hours_open?"Riders are back at "+hourLabel(s.open_hour):"No rider on duty right now", S.busy||!canBookNow(),
+          !S.status&&S.statusErr?'<p class="fine" style="margin:0 0 10px">We could not check whether riders are available. <button class="linkish" type="button" data-restatus style="min-height:0;padding:12px 4px;margin:-12px -4px">Try again</button></p>':"");
   }
   function render(focusTitle){
     if(document.body.getAttribute("data-view")!=="book") return;
@@ -1125,7 +1128,7 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
   }
   function mountCaptcha(){
     if(!S.cap.ready||!$("capBox")) return; S.cap.token="";
-    try{ S.cap.id=window.turnstile.render("#capBox",{ sitekey:S.cap.key, callback:function(t){ S.cap.token=t; }, "expired-callback":function(){ S.cap.token=""; }, "error-callback":function(){ S.cap.token=""; } }); }catch(e){}
+    try{ S.cap.id=window.turnstile.render("#capBox",{ sitekey:S.cap.key, action:"nvi_book", callback:function(t){ S.cap.token=t; }, "expired-callback":function(){ S.cap.token=""; }, "error-callback":function(){ S.cap.token=""; } }); }catch(e){}
   }
 
   var BOOK_SAY={ cod_off:"Cash on delivery is paused at NovaX right now. Choose who pays the fare instead.", account_blocked:"Your Nova Instant account is on hold, so cash on delivery is paused. Call NovaX.", need_account:["cod",3,"Cash on delivery needs a Nova Instant account. Create one here: it takes a minute."],
@@ -1192,6 +1195,7 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
     if(t.dataset.pay){ S.payer=t.dataset.pay; clearMsg(); saveDraft(); var y=window.scrollY; render(); try{ window.scrollTo(0,y); }catch(e){} if(S.payer==="cod"){ var ci=$("cod"); if(ci) try{ ci.focus({ preventScroll:true }); }catch(e){} } return; }
     if(t.dataset.acct){ return openAcct(t.dataset.acct); }
     if(t.hasAttribute("data-hist")) return openHist();
+    if(t.hasAttribute("data-restatus")){ e.preventDefault(); toast("Checking…"); return loadStatus(0); }
     if(t.hasAttribute("data-me")){ var me=store("nvi_me"); if(me){ S.sName=me.n||""; S.sPhone=me.p||""; render(); } return; }
     if(t.dataset.rcp){ var r=(store("nvi_rcp")||[])[Number(t.dataset.rcp)]; if(r){ S.rName=r.n||""; S.rPhone=r.p||""; render(); } return; }
     if(t.hasAttribute("data-banned")){ e.preventDefault(); return openPanel("What cannot be sent",'<ul class="ban">'+BANNED.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join("")+'</ul><p class="fine">A rider may refuse a parcel that looks unsafe to carry. The full list is in the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</p>'); }
@@ -1534,13 +1538,18 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
   }
 
   /* ───────── boot ───────── */
-  rpc("nvi_status").then(function(r){
-    S.status=(r&&!r.error&&r.data)?r.data:null;
-    var s=S.status;
-    if(s){ if(s.mapbox&&!tilesOn) MAPBOX=String(s.mapbox); if(s.support) S.support=s.support; if(s.turnstile) loadCaptcha(String(s.turnstile)); }
-    setTiles();
-    if(document.body.getAttribute("data-view")==="book") render();
-  });
+  /* Asked again by itself (2 s, 5 s, 12 s) if it does not answer, then left to the "Try again" link. */
+  function loadStatus(tries){
+    S.statusErr=false;
+    Promise.resolve(rpc("nvi_status")).catch(function(){ return null; }).then(function(r){
+      var s=(r&&!r.error&&r.data&&typeof r.data==="object")?r.data:null;
+      if(s){ S.status=s; if(s.mapbox&&!tilesOn) MAPBOX=String(s.mapbox); if(s.support) S.support=s.support; if(s.turnstile) loadCaptcha(String(s.turnstile)); }
+      else if(!S.status){ if(tries<3) setTimeout(function(){ if(!S.status) loadStatus(tries+1); },[2000,5000,12000][tries]); else S.statusErr=true; }
+      setTiles();
+      if(document.body.getAttribute("data-view")==="book"&&!panel&&!S.pinFor) render();
+    });
+  }
+  loadStatus(0);
   paintHistBtn();
   /* Signed in to a Nova Instant account? Fills the sender and allows COD. */
   loadClient().then(function(c){ if(c&&document.body.getAttribute("data-view")==="book"&&S.step===3&&!panel) render(); });

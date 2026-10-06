@@ -34,6 +34,8 @@
 -- rupees received; each receipt is a row in nvi_cash, and a shortfall puts the
 -- job's payment in 'Disputed' until ops settles it.
 --
+-- Later files (wallets 5 Oct, audit fixes 6 Oct) replace some functions made
+-- here: apply all three together and in order with scripts/instant-migrate.sh.
 -- This file can be run again at any time. The enum value below is only used
 -- inside function bodies, which Postgres does not read until they are called,
 -- so it no longer needs a separate run first.
@@ -296,9 +298,6 @@ alter table public.nvi_config add column if not exists withdrawals_enabled boole
 alter table public.nvi_config add column if not exists confirm_hours int not null default 2;
 -- Shared with the nvi-push function only: proves a call came from this database.
 alter table public.nvi_config add column if not exists push_key text not null default gen_random_uuid()::text;
-alter table public.nvi_clients add column if not exists block_reason text;
-alter table public.nvi_clients add column if not exists blocked_at timestamptz;
-alter table public.nvi_clients add column if not exists blocked_by uuid;
 -- The COD amount the ledger booked for a job, and who was charged its commission.
 alter table public.nvi_jobs add column if not exists ledger_cod int;
 alter table public.nvi_jobs add column if not exists commission_rider uuid;
@@ -348,6 +347,10 @@ create table if not exists public.nvi_clients (
   status        text not null default 'Active' check (status in ('Active', 'Blocked')),
   created_at    timestamptz not null default now()
 );
+-- A hold on an account (nvi_admin_set_client): why, when and by whom.
+alter table public.nvi_clients add column if not exists block_reason text;
+alter table public.nvi_clients add column if not exists blocked_at timestamptz;
+alter table public.nvi_clients add column if not exists blocked_by uuid;
 
 alter table public.nvi_jobs add column if not exists cod_amount int not null default 0;
 alter table public.nvi_jobs add column if not exists cod_fee int not null default 0;

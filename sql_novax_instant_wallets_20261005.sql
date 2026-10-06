@@ -1,5 +1,7 @@
 -- Nova Instant wallets: freelance riders on commission, client accounts, COD.
 -- 5 Oct 2026. Re-runnable. Apply AFTER sql_novax_nova_instant_20261004.sql.
+-- sql_novax_instant_audit_20261006.sql replaces some functions made here, so
+-- apply all three together and in order: scripts/instant-migrate.sh.
 -- Nothing here touches NovaX Logistics money (wallet, payouts, merchants):
 -- every table is nvi_*, and Instant clients have their own login role.
 --

@@ -369,6 +369,14 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     try{ if(crypto.randomUUID) return crypto.randomUUID(); }catch(e){}
     return "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g,function(){ return (Math.random()*16|0).toString(16); });
   }
+  var PAYKEY="nvi_po_key", payMem=null;
+  function payKey(sig){
+    var o=payMem; try{ o=o||JSON.parse(localStorage.getItem(PAYKEY)||"null"); }catch(e){}
+    if(!(o&&o.k&&o.sig===sig&&Date.now()-o.t<864e5)) o={ k:newKey(), sig:sig, t:Date.now() };
+    payMem=o; try{ localStorage.setItem(PAYKEY,JSON.stringify(o)); }catch(e){}
+    return o.k;
+  }
+  function payKeyDone(){ payMem=null; try{ localStorage.removeItem(PAYKEY); }catch(e){} }
   function waUrl(phone){ return "https://wa.me/92"+String(phone||"").replace(/\D/g,"").replace(/^92/,"").replace(/^0/,""); }
   function buzz(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
   function clock(iso){ try{ return new Date(iso).toLocaleTimeString("en-GB",{ timeZone:"Asia/Karachi", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; } }
@@ -461,7 +469,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
      Freelance riders keep the cash fares; NovaX takes its commission, and
      cash-on-delivery money belongs to the client. Below zero the rider owes
      NovaX; above zero NovaX owes the rider. */
-  var KIND={ commission:"Commission", cod_delivered:"Cash on delivery collected", deposit:"Money you sent, confirmed", payout_requested:"Payout asked for",
+  var KIND={ commission:"Commission", fare_correction:"Fare cash corrected", cod_correction:"Cash on delivery corrected", cod_delivered:"Cash on delivery collected", deposit:"Money you sent, confirmed", payout_requested:"Payout asked for",
     payout_rejected:"Payout returned to your wallet", adjustment:"Correction by NovaX" };
   function whenAt(iso){ try{ return new Date(iso).toLocaleString("en-GB",{ timeZone:"Asia/Karachi", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; } }
   var BACK='<div class="backbar"><button type="button" data-act="home">‹ Back to jobs</button></div>';
@@ -507,20 +515,24 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   }
   var WSAY={ amount:"Enter the amount.", method:"Choose how.", ref:"Enter the transaction ID from the SMS or receipt.", too_many:"You have three waiting already. NovaX checks them first.",
     dup_ref:"That transaction ID was already sent. Check the list below.", withdrawals_off:"Payouts are paused at NovaX for now. Call the office.",
-    min:"The smallest payout is ", title:"Enter the account name.", number:"Enter a valid mobile account number or IBAN.", open:"You already have a payout waiting.", balance:"That is more than NovaX owes you." };
+    min:"The smallest payout is ", title:"Enter the account name.", number:"Enter a valid mobile account number or IBAN.", open:"You already have a payout waiting.", balance:"That is more than NovaX owes you.",
+    recent:"You asked for this same payout a few minutes ago. Check the list below before asking again." };
   function walletGo(btn){
     var k=S.wsheet, amt=Number(($("wAmt").value||"").replace(/\D/g,"")), m=$("wMethod").value, msg=$("wMsg");
     if(!amt){ say(msg,WSAY.amount); return; }
     busyBtn(btn,true,"Sending…");
-    /* One key per claim, kept until it answers: a second tap or a retry after a lost reply is the same claim. */
+    /* One key per claim, kept until it answers: a second tap or a retry after a lost reply is the same claim.
+       A payout's key also stays on this phone, so the same payout sent again after a reload is still one payout. */
     S.depKey=S.depKey||newKey();
+    var num=k==="deposit"?"":($("wNum").value||"").trim();
     var call=k==="deposit"?rpc("nvi_rider_deposit",{ p_amount:amt, p_method:m, p_ref:($("wRef").value||"").trim()||null, p_key:S.depKey })
-                          :rpc("nvi_rider_payout",{ p_amount:amt, p_method:m, p_title:($("wTitle").value||"").trim(), p_number:($("wNum").value||"").trim() });
+                          :rpc("nvi_rider_payout",{ p_amount:amt, p_method:m, p_title:($("wTitle").value||"").trim(), p_number:num, p_key:payKey(amt+"|"+m+"|"+num.replace(/\W/g,"")) });
     call.then(function(r){
       busyBtn(btn,false);
+      if(k!=="deposit") payKeyDone();   /* NovaX answered: this payout is settled one way or the other */
       if(r&&r.ok===false){ say(msg,(WSAY[r.reason]||"That did not work.")+(r.reason==="min"?rs(r.min)+".":"")); return; }
       if(k==="deposit") S.depKey=null;
-      S.wsheet=null; toast(k==="deposit"?(r&&r.already?"Already sent. NovaX will check it.":"Sent. NovaX will check it."):"Payout asked for."); renderWallet();
+      S.wsheet=null; toast(k==="deposit"?(r&&r.already?"Already sent. NovaX will check it.":"Sent. NovaX will check it."):(r&&r.already?(r.status==="Paid"?"This payout was already asked for, and NovaX has paid it.":"This payout was already asked for. Nothing was sent twice."):"Payout asked for.")); renderWallet();
     }).catch(function(e){ busyBtn(btn,false); say(msg,friendly(e&&e.message)); });
   }
   /* ───── relays: two riders, one parcel ─────
@@ -662,6 +674,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
         docPick("bill","Photo of a home electricity or gas bill","Ghar ke bijli ya gas bill ki tasveer")+
         '<div class="fld"><label for="emName">Emergency contact: name <span class="ur">Emergency mein kis ko call karein</span></label><input class="inp" id="emName" maxlength="80" autocomplete="off" placeholder="e.g. your father, brother or wife"></div>'+
         '<div class="fld"><label for="emPhone">Emergency contact: mobile</label><input class="inp" id="emPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="off" placeholder="03XX XXXXXXX"></div>'+
+        '<p class="sub" style="margin:4px 0 12px">While you are on a job, the sender and receiver see your first name, bike number and mobile number on their tracking page so they can call you. It is removed when the job closes.</p>'+
         '<div class="fld"><button class="btn btn-primary wide" id="dBtn" type="submit">Save and continue</button></div>'+
         '<div class="msg" id="dMsg" role="alert"></div></form>';
   }
@@ -726,10 +739,15 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     Promise.resolve(sb.auth.getUser()).then(function(u){
       var uid=u&&u.data&&u.data.user&&u.data.user.id; if(!uid) throw new Error("Sign in again.");
       var ms=Date.now(), pc=uid+"/cnic-"+ms+"-"+hex8()+".jpg", pb=uid+"/bill-"+ms+"-"+hex8()+".jpg";
+      /* Older photos in this rider's folder that are no longer the ones on record. Best effort: a failure here never blocks the form. */
+      var tidy=function(){ var st=sb.storage.from("nvi-rider-docs");
+        return Promise.resolve(st.list(uid,{ limit:50 })).then(function(l){
+          var names=((l&&l.data)||[]).map(function(o){ return uid+"/"+o.name; }).filter(function(n){ return n!==pc&&n!==pb; });
+          return names.length?st.remove(names):null; }).catch(function(){ return null; }); };
       var up=function(path,blob){ return Promise.resolve(sb.storage.from("nvi-rider-docs").upload(path,blob,{ contentType:"image/jpeg", upsert:false })).then(function(r){ if(r&&r.error) throw new Error(r.error.message||"Upload failed"); }); };
-      return up(pc,D.cnic.blob).then(function(){ return up(pb,D.bill.blob); }).then(function(){
+      return tidy().then(function(){ return up(pc,D.cnic.blob); }).then(function(){ return up(pb,D.bill.blob); }).then(function(){
         return rpc("nvi_rider_docs",{ p_cnic:pc, p_bill:pb, p_em_name:name, p_em_phone:ph });
-      });
+      }).then(function(r){ if(!(r&&r.ok===false)) return tidy().then(function(){ return r; }); return r; });
     }).then(function(r){
       busyBtn(btn,false);
       if(r&&r.ok===false) return say(msg,DOC_SAY[r.reason]||"That did not save. Try again.");
