@@ -75,5 +75,21 @@ ok("a slow place search is waited for while Mapbox is asked as well", /photon\(q
 
 ok("the map never glides in a hidden tab, and refits on return", /glide=!\(document\.hidden\|\|REDUCED\)/.test(book) && /if\(document\.hidden\) return; if\(T\.timer\) loadTrack\(false\); refitSoon\(\);/.test(book));
 
+// Movement with meaning, and one way to wait.
+const riderPage = read("instant-rider.html");
+ok("steps slide the way they go", /S\.step>S\.shown\?" fwd":" back"/.test(book) && /@keyframes paneF/.test(book) && /@keyframes paneB/.test(book));
+ok("a booking grows into tracking where the phone can", /document\.startViewTransition\(function\(\)\{ startTrack\(d\.token,true\); \}\)/.test(book) && /view-transition-name:nvi-hero/.test(book));
+ok("movement is switched off for people who ask for less", /prefers-reduced-motion:reduce\)\{ \.pane\.enter\.fwd,\.pane\.enter\.back\{animation:none\}/.test(book));
+ok("a waiting button keeps its width and says what it is doing", /function hold\(btn,label\)/.test(book) && /btn\.style\.minWidth=btn\.offsetWidth\+"px"/.test(book));
+ok("no button just says Working, Sending or Booking", !/Working\\u2026|"Working…"\)|Booking…'|textContent="Sending…"/.test(book) && /Confirming booking…/.test(book) && /Sending withdrawal request…/.test(acct));
+ok("the rider's button says it is checking the PIN", /nvi_rider_delivered:"Checking delivery PIN…"/.test(riderPage));
+ok("toasts stay long enough to read", /Math\.min\(7000,Math\.max\(3200,/.test(book));
+
+// Tracking says what is next, when it last heard, and when a leg is late. No fake movement.
+ok("tracking says what happens next for every open state", ["Awaiting confirmation", "Booked", "Rider assigned", "Picked up", "Failed delivery", "Returning"].every((k) => new RegExp('"' + k + '":"[A-Z]').test(book.slice(book.indexOf("var NEXT="), book.indexOf("var NEXT=") + 700))));
+ok("tracking shows the last update and when it last checked", /Last update '\+esc\(timeOnly\(lastAt\(j\)\)\)/.test(book) && /checked '\+esc\(timeOnly\(Date\.now\(\)\)\)/.test(book));
+ok("a late leg is said plainly", /function lateBy\(j\)/.test(book) && /This is taking longer than usual/.test(book));
+ok("no countdowns", !/countdown|setInterval\(function\(\)\{[^}]*eta/i.test(book));
+
 console.log(bad ? `NOVA INSTANT PAGE CHECKS FAILED (${bad})` : "NOVA INSTANT PAGE CHECKS PASSED");
 process.exit(bad ? 1 : 0);

@@ -375,6 +375,25 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
 }
 .toast{position:fixed;left:50%;bottom:calc(96px + var(--sa-b));transform:translateX(-50%);z-index:200;background:var(--forest);color:#fff;padding:11px 18px;border-radius:99px;font-size:14.5px;max-width:calc(100vw - 32px);text-align:center;box-shadow:var(--shadow)}
 #capBox{margin-top:12px;min-height:0}
+.status .next{margin-top:10px;color:#fff;font-size:14.5px}
+.status .next b{color:var(--emerald)}
+.status .upd{margin-top:8px;font-size:13px}
+/* ── Movement that says where you are going ──
+   A step forward comes in from the right, a step back from the left, a new
+   screen rises. A finished booking's button grows into the tracking card
+   (phones that can; the rest simply change). The map never animates here. */
+.pane.enter.fwd{animation:paneF .2s ease-out}
+.pane.enter.back{animation:paneB .2s ease-out}
+@keyframes paneF{from{transform:translateX(18px)}to{transform:none}}
+@keyframes paneB{from{transform:translateX(-18px)}to{transform:none}}
+#go{view-transition-name:nvi-hero}
+.status{view-transition-name:nvi-hero}
+::view-transition-group(nvi-hero){animation-duration:.24s}
+::view-transition-old(root),::view-transition-new(root){animation-duration:.18s}
+@media (prefers-reduced-motion:reduce){ .pane.enter.fwd,.pane.enter.back{animation:none} ::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important} }
+/* A button that is waiting for NovaX keeps its size and says what it is doing. */
+.btn[aria-busy="true"]{cursor:progress}
+.btn .okmark{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
 /* ── The keyboard is part of the screen ──
    A panel is as tall as what is left above the keyboard, so the field being
    typed into and every search result stay in view. While typing, the bottom
@@ -495,7 +514,23 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
   function esc(s){ return String(s==null?"":s).replace(/[&<>"'`]/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;","`":"&#96;"}[c]; }); }
   function money(n){ return "Rs "+Number(n||0).toLocaleString("en-PK"); }
   function say(t){ var l=$("live"); l.textContent=""; setTimeout(function(){ l.textContent=t; },30); }
-  function toast(t){ var el=document.createElement("div"); el.className="toast"; el.textContent=t; document.body.appendChild(el); say(t); setTimeout(function(){ el.remove(); },2800); }
+  function toast(t){ var el=document.createElement("div"); el.className="toast"; el.textContent=t; document.body.appendChild(el); say(t);
+    /* Long enough to read: about 3 seconds for a few words, up to 7 for a sentence. */
+    setTimeout(function(){ el.remove(); },Math.min(7000,Math.max(3200,1600+String(t).length*55))); }
+  /* One way to wait. A button that is asking NovaX something locks at once,
+     keeps its width, says what it is doing and ignores more taps. It comes
+     back only on a definite answer; release(btn,"Done") shows a tick first. */
+  function hold(btn,label){
+    if(!btn||btn.hasAttribute("data-hold")) return false;
+    btn.setAttribute("data-hold",btn.innerHTML); btn.style.minWidth=btn.offsetWidth+"px"; btn.disabled=true; btn.setAttribute("aria-busy","true");
+    btn.innerHTML='<span class="spin" aria-hidden="true"></span> '+esc(label); return true;
+  }
+  function release(btn,doneText){
+    if(!btn||!btn.hasAttribute("data-hold")) return;
+    var was=btn.getAttribute("data-hold"); btn.removeAttribute("data-hold"); btn.removeAttribute("aria-busy");
+    var back=function(){ if(!btn.isConnected) return; btn.innerHTML=was; btn.disabled=false; btn.style.minWidth=""; };
+    if(doneText){ btn.innerHTML='<svg class="okmark" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.500l4.500 4.500L19 7.500"/></svg> '+esc(doneText); setTimeout(back,1100); } else back();
+  }
   function buzz(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
   function pkPhone(raw){
     var d=String(raw==null?"":raw).replace(/[^\d]/g,"");
@@ -844,7 +879,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
   $("pinSet").addEventListener("click",function(){
     var k=S.pinFor; if(!k||!map) return; var c=map.getCenter();
     if(!inBox(c.lat,c.lng)) return;
-    var label=pinPlace?pinPlace.full:"Pinned spot"; leavePin(false); setPoint(k,{ lat:c.lat, lng:c.lng, label:label });
+    var label=pinPlace?pinPlace.full:"Pinned spot"; buzz(10); leavePin(false); setPoint(k,{ lat:c.lat, lng:c.lng, label:label });
   });
 
   /* ───────── my deliveries ─────────
@@ -1008,6 +1043,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
   function viewUrl(v,tk){ var u=new URL(selfUrl(v==="track"?tk:null)); if(v==="list") u.searchParams.set("view","deliveries"); if(v==="acct") u.searchParams.set("view","account"); return u.toString(); }
   function setView(v){
     if(v!==view()) sheetReset();
+    if(v!=="book") S.shown=0;
     document.body.setAttribute("data-view",v);
     if(v!=="book") document.body.removeAttribute("data-step");
     [].forEach.call(document.querySelectorAll("#nav [data-nav]"),function(b){
@@ -1292,7 +1328,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
       (fin?'':'<p class="fine">'+(join?'Already have one? <button class="linkish" type="button" data-acct="signin">Sign in</button>':'New here? <button class="linkish" type="button" data-acct="join">Create an account</button>')+'</p>')+
       (join?'<p class="fine">Free, and separate from NovaX merchant accounts. You agree to the <a href="instant-terms.html" target="_blank" rel="noopener" data-rules>Nova Instant rules</a>.</p>':'')+'</form>');
     var f=p.querySelector("#acForm"), btn=p.querySelector("#acBtn"), msg=p.querySelector("#acMsg");
-    function tell(t){ msg.textContent=t; msg.hidden=false; say(t); btn.disabled=false; btn.textContent=fin?"Finish":join?"Create account and continue":"Sign in and continue"; }
+    function tell(t){ msg.textContent=t; msg.hidden=false; say(t); release(btn); }
     function done(){
       closePanel(); render(); toast("Account ready. Cash on delivery goes to its wallet.");
       var c=$("cod"); if(c) try{ c.focus(); }catch(e){}
@@ -1313,7 +1349,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
       if(!fin&&!/^\S+@\S+\.\S+$/.test(email)) return tell("Enter your email.");
       if(join&&pass.length<8) return tell("Choose a password of at least 8 characters.");
       if(!fin&&!pass) return tell("Enter your password.");
-      btn.disabled=true; btn.textContent="Working\u2026";
+      hold(btn,fin?"Saving your details…":join?"Creating your account…":"Signing in…");
       if(!fin&&sbInst) sb=sbInst;   /* the account is made or opened under its own sign-in */
       var go=fin?save(name,phone):join?Promise.resolve(sb.auth.signUp({ email:email, password:pass, options:{ data:{ full_name:name, instant:true } } })).then(function(r){
           if(r.error) throw new Error(r.error.message);
@@ -1354,7 +1390,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
         '<p style="margin:0">The receiver gets a tracking link with a delivery PIN. The rider hands over only against that PIN.</p></section>'+
       '<label class="agree" id="agreeBox" for="agree"><input type="checkbox" id="agree" aria-labelledby="agreeTxt"'+(S.agree?" checked":"")+'><span id="agreeTxt">The parcel weighs '+maxKg()+' kg or less'+(maxVal()?", is worth "+money(maxVal())+" or less":"")+', and holds nothing on the <button class="linkish" type="button" data-banned style="min-height:0;display:inline;font-size:inherit">not-allowed list</button>. I agree to the <a href="instant-terms.html" target="_blank" rel="noopener" data-rules>Nova Instant rules</a>.</span></label>'+
       '<div id="capBox"></div>'+
-      cta(S.busy?'<span class="spin" aria-hidden="true"></span> Booking…':canBookNow()?(S.payer==="cod"?"Book delivery · COD "+esc(money(codNum())):"Book delivery · "+esc(money(q.fare))):!S.status?(S.statusErr?"Could not check for riders":"Checking for riders…"):!(s.open||s.preview)?"Booking is paused":!s.hours_open?"Riders are back at "+hourLabel(s.open_hour):"No rider on duty right now", S.busy||!canBookNow(),
+      cta(S.busy?'<span class="spin" aria-hidden="true"></span> Confirming booking…':canBookNow()?(S.payer==="cod"?"Book delivery · COD "+esc(money(codNum())):"Book delivery · "+esc(money(q.fare))):!S.status?(S.statusErr?"Could not check for riders":"Checking for riders…"):!(s.open||s.preview)?"Booking is paused":!s.hours_open?"Riders are back at "+hourLabel(s.open_hour):"No rider on duty right now", S.busy||!canBookNow(),
           !S.status&&S.statusErr?'<p class="fine" style="margin:0 0 10px">We could not check whether riders are available. <button class="linkish" type="button" data-restatus style="min-height:0;padding:12px 4px;margin:-12px -4px">Try again</button></p>':"");
   }
   function render(focusTitle){
@@ -1365,7 +1401,9 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     if(ready!==was){ sheetReset(); if(ready) document.body.setAttribute("data-ready",""); else document.body.removeAttribute("data-ready");
       /* The map strip changes height: fit the route to it once it has settled. */
       setTimeout(function(){ if(map){ map.invalidateSize(); paintMap(S.p,S.d,S.quote&&S.quote.line); } },320); }
-    $("pane").innerHTML='<div class="pane'+(focusTitle?" enter":"")+'">'+[null,step1,step2,step3,step4][S.step]()+'</div>';
+    /* Forward comes in from the right, back from the left; arriving from another screen, it rises. */
+    var dir=!S.shown||S.shown===S.step?"":S.step>S.shown?" fwd":" back"; S.shown=S.step;
+    $("pane").innerHTML='<div class="pane'+(focusTitle?" enter"+dir:"")+'">'+[null,step1,step2,step3,step4][S.step]()+'</div>';
     if(S.step===4&&S.cap.on) mountCaptcha();
     saveDraft();
     if(focusTitle){ window.scrollTo(0,0); var t=$("stepTitle"); if(t){ try{ t.focus({ preventScroll:true }); }catch(e){} } say("Step "+S.step+" of 4."); setTimeout(function(){ if(map){ map.invalidateSize(); paintMap(S.p,S.d,S.quote&&S.quote.line); } },320); }
@@ -1460,7 +1498,9 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
         dropDraft();
         S.done=true;
         try{ history.replaceState({ nvi:"view", view:"track", tk:d.token },"",selfUrl(d.token)); }catch(e){}
-        return startTrack(d.token,true);      /* the sheet becomes "Finding your rider": no page load */
+        /* The sheet becomes "Finding your rider": no page load. Where the phone can, the Book button grows into the tracking card. */
+        if(document.startViewTransition&&!REDUCED&&!document.hidden){ try{ document.startViewTransition(function(){ startTrack(d.token,true); }); return; }catch(e){} }
+        return startTrack(d.token,true);
       }
       if(d.reason==="quote_expired"&&!retried){
         var was=S.quote.fare, my=++qSeq;
@@ -1564,9 +1604,9 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     }
     p.querySelector("#fbForm").addEventListener("submit",function(e){
       e.preventDefault(); if(empty()) return tell("Answer at least one question first.");
-      var btn=p.querySelector("#fbSend"); btn.disabled=true; btn.textContent="Sending…";
+      var btn=p.querySelector("#fbSend"); hold(btn,"Sending your answer…");
       save().then(function(r){
-        if(r.error||!r.data||(!r.data.ok&&r.data.reason!=="slow_down")){ btn.disabled=false; btn.textContent="Send to NovaX"; return tell("That did not send. Check your connection and try again, or send it on WhatsApp."); }
+        if(r.error||!r.data||(!r.data.ok&&r.data.reason!=="slow_down")){ release(btn); return tell("That did not send. Check your connection and try again, or send it on WhatsApp."); }
         thanks();
       });
     });
@@ -1609,9 +1649,9 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
       msg.hidden=true;
       if(code.replace(/[^A-Za-z0-9]/g,"").length<6) return tell("Enter the booking number, like NI100001.");
       if(!ph) return tell("Enter the mobile like 0300 1234567.");
-      btn.disabled=true;
+      hold(btn,"Finding your booking…");
       rpc("nvi_find",{ p_code:code, p_phone:ph }).then(function(r){
-        btn.disabled=false;
+        release(btn);
         if(r.error||!r.data) return tell("Could not look that up. Check your connection and try again.");
         if(!r.data.ok) return tell(r.data.reason==="slow_down"?"Too many tries. Wait ten minutes, or call NovaX.":"No booking matches that number and mobile.");
         /* The help panel's history entry becomes the tracking page's. */
@@ -1642,6 +1682,26 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     "Cancelled":["Booking cancelled","No rider will come for this booking."] };
   function when(v){ if(!v) return ""; try{ return new Date(v).toLocaleString("en-GB",{ timeZone:"Asia/Karachi", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; } }
   function li(cls,label,at){ return '<li class="'+cls+'">'+esc(label)+(at?'<time>'+esc(when(at))+'</time>':'')+'</li>'; }
+  /* What comes next, when NovaX last heard something, and whether a leg is
+     running late. All of it is read from the delivery's own events: nothing
+     moves on the screen unless something really happened. */
+  var NEXT={ "Awaiting confirmation":"NovaX phones the sender to confirm.", "Booked":"A rider accepts and heads to the pickup.",
+    "Rider assigned":"The rider collects the parcel at the pickup.", "Picked up":"The rider hands it over against the PIN.",
+    "Failed delivery":"NovaX calls the sender and the receiver.", "Returning":"The rider hands it back to the sender against the PIN." };
+  function lastAt(j){
+    var a=[j.created_at,j.assigned_at,j.picked_at,j.handover_at,j.failed_at,j.returning_at,j.delivered_at,j.returned_at,j.cancelled_at]
+      .map(function(x){ return x?new Date(x).getTime():NaN; }).filter(isFinite);
+    return a.length?Math.max.apply(null,a):null;
+  }
+  function timeOnly(ms){ try{ return new Date(ms).toLocaleTimeString("en-GB",{ timeZone:"Asia/Karachi", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; } }
+  /* A leg is late 15 minutes past its travel time at about 20 km/h (3 minutes
+     a kilometre); a rider who has not reached the pickup in 30 minutes is late. */
+  function lateBy(j){
+    var now=Date.now(), min=function(x){ return x?Math.round((now-new Date(x).getTime())/60000):0; }, allow=Math.round((Number(j.km)||0)*3)+15, m=0;
+    if(j.status==="Rider assigned") return min(j.assigned_at)>=30?min(j.assigned_at):0;
+    if(j.status==="Picked up") m=min(j.handover_at||j.picked_at); else if(j.status==="Returning") m=min(j.returning_at); else return 0;
+    return m>=allow?m:0;
+  }
   function waited(j){ return Math.round((Date.now()-new Date(j.created_at).getTime())/60000); }
   function subFor(j){
     if(j.status==="Booked"){
@@ -1715,7 +1775,11 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
 
     var h='<div class="status"><div class="top">'+((T.fresh&&j.status!=="Cancelled")||j.status==="Delivered"?'<span class="done-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.500l4.500 4.500L19 7.500"/></svg></span>'
         :(j.status==="Booked"?'<span class="pulse" aria-hidden="true"></span>':''))+
-      '<div class="k">Nova Instant &middot; <b>'+esc(j.code)+'</b></div></div><h1 id="stepTitle" tabindex="-1">'+esc(T.fresh&&j.status==="Booked"?"Booked. Finding your rider":s[0])+'</h1><p>'+esc(subFor(j))+'</p></div>';
+      '<div class="k">Nova Instant &middot; <b>'+esc(j.code)+'</b></div></div><h1 id="stepTitle" tabindex="-1">'+esc(T.fresh&&j.status==="Booked"?"Booked. Finding your rider":s[0])+'</h1><p>'+esc(subFor(j))+'</p>'+
+      (live&&NEXT[j.status]?'<p class="next"><b>Next:</b> '+esc(NEXT[j.status])+'</p>':'')+
+      (lastAt(j)?'<p class="upd">Last update '+esc(timeOnly(lastAt(j)))+(live?' &middot; checked '+esc(timeOnly(Date.now())):'')+'</p>':'')+'</div>';
+    var late=lateBy(j);
+    if(late) h+='<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>This is taking longer than usual: '+late+' minutes so far. '+(j.rider&&j.rider.phone?'Call the rider below, or NovaX.':'Call or WhatsApp NovaX.')+'</span></div>';
     /* If it has waited too long, help comes to the customer. */
     if(stuck) h+='<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>This has waited '+waited(j)+' minutes. Call or WhatsApp NovaX and we will assign a rider by hand.</span></div><div style="margin-top:0">'+supportBtns()+'</div>';
     if(j.rider&&j.rider.name){
@@ -1804,10 +1868,10 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     }
     if(t.id==="tCancel"){
       if(t.dataset.sure!=="1"){ t.dataset.sure="1"; t.textContent="Press again to cancel the booking"; setTimeout(function(){ if(t.isConnected){ t.dataset.sure="0"; t.textContent="Cancel this booking"; } },5000); return; }
-      t.disabled=true; var mine=store("nvi_mine")||{}, mg=(mine[T.token]&&mine[T.token].m)||null;
+      t.textContent="Cancel this booking"; hold(t,"Cancelling the booking…"); var mine=store("nvi_mine")||{}, mg=(mine[T.token]&&mine[T.token].m)||null;
       rpc("nvi_cancel",{ p_token:T.token, p_manage:mg }).then(function(r){
         t.dataset.sure="0";
-        if(r.error||!r.data){ t.disabled=false; t.textContent="Cancel this booking"; toast("Could not cancel. Check your connection and try again."); return; }
+        if(r.error||!r.data){ release(t); toast("Could not cancel. Check your connection and try again."); return; }
         if(!r.data.ok) toast(r.data.reason==="too_late"?"The rider already has the parcel, so it can no longer be cancelled.":"Could not cancel this booking.");
         loadTrack(false);
       });

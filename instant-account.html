@@ -185,7 +185,8 @@ html.embed main{padding-top:6px;padding-bottom:16px}
     return m||"Something went wrong. Try again.";
   }
   function sayMsg(el,t,ok){ if(!el) return; el.textContent=t; el.className="msg"+(ok?" ok":""); }
-  function busyBtn(b,on,label){ if(!b) return; if(on){ b.dataset.l=b.textContent; b.disabled=true; b.textContent=label||"Working…"; } else { b.disabled=false; if(b.dataset.l) b.textContent=b.dataset.l; } }
+  /* A waiting button keeps its width and says what it is doing; a second tap does nothing. */
+  function busyBtn(b,on,label){ if(!b) return; if(on){ if(b.disabled) return; b.dataset.l=b.textContent; b.style.minWidth=b.offsetWidth+"px"; b.disabled=true; b.setAttribute("aria-busy","true"); b.textContent=label||"Working…"; } else { b.disabled=false; b.removeAttribute("aria-busy"); b.style.minWidth=""; if(b.dataset.l) b.textContent=b.dataset.l; } }
 
   if(EMBED){
     var hT=null, sendH=function(){ clearTimeout(hT); hT=setTimeout(function(){ var m=$("main"); if(m) tell({ h:m.offsetTop+m.offsetHeight }); },40); };
@@ -423,7 +424,7 @@ html.embed main{padding-top:6px;padding-bottom:16px}
     var amt=Number(($("wAmt").value||"").replace(/\D/g,"")), msg=$("wMsg"), btn=$("wBtn");
     if(!amt) return sayMsg(msg,"Enter the amount.");
     var cn=$("wCnic"); if(cn&&cn.value.replace(/\D/g,"").length!==13) return sayMsg(msg,W_SAY.cnic);
-    busyBtn(btn,true,"Sending…");
+    busyBtn(btn,true,"Sending withdrawal request…");
     var num=$("wNum").value.trim(), method=$("wMethod").value, key=payKey(amt+"|"+method+"|"+num.replace(/\W/g,""));
     rpc("nvi_client_withdraw",{ p_amount:amt, p_method:method, p_title:$("wTitle").value.trim(), p_number:num, p_cnic:cn?cn.value:null, p_key:key }).then(function(r){
       payKeyDone();   /* NovaX answered: this withdrawal is settled one way or the other */

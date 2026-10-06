@@ -520,7 +520,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   function walletGo(btn){
     var k=S.wsheet, amt=Number(($("wAmt").value||"").replace(/\D/g,"")), m=$("wMethod").value, msg=$("wMsg");
     if(!amt){ say(msg,WSAY.amount); return; }
-    busyBtn(btn,true,"Sending…");
+    busyBtn(btn,true,k==="deposit"?"Telling NovaX…":"Sending payout request…");
     /* One key per claim, kept until it answers: a second tap or a retry after a lost reply is the same claim.
        A payout's key also stays on this phone, so the same payout sent again after a reload is still one payout. */
     S.depKey=S.depKey||newKey();
@@ -795,7 +795,8 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
         '<div class="fld"><button class="btn btn-primary wide" id="jBtn" type="submit">Create my rider login</button></div><div class="msg" id="jMsg" role="alert"></div></form>');
   }
   function say(el,text,ok){ el.textContent=text; el.className="msg"+(ok?" ok":""); }
-  function busyBtn(b,on,label){ if(!b) return; if(on){ b.dataset.l=b.textContent; b.disabled=true; b.textContent=label||"Working…"; } else { b.disabled=false; if(b.dataset.l) b.textContent=b.dataset.l; } }
+  /* A waiting button keeps its width and says what it is doing; a second tap does nothing. */
+  function busyBtn(b,on,label){ if(!b) return; if(on){ if(b.disabled) return; b.dataset.l=b.textContent; b.style.minWidth=b.offsetWidth+"px"; b.disabled=true; b.setAttribute("aria-busy","true"); b.textContent=label||"Working…"; } else { b.disabled=false; b.removeAttribute("aria-busy"); b.style.minWidth=""; if(b.dataset.l) b.textContent=b.dataset.l; } }
   function doSignIn(e){
     e.preventDefault();
     var email=$("inEmail").value.trim().toLowerCase(), pass=$("inPass").value, btn=$("inBtn"), msg=$("inMsg");
@@ -1059,12 +1060,18 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   function netFail(e){ return /fetch|network|Failed|timeout|Load failed/i.test(String((e&&e.message)||e)); }
   /* Every rider step answers "already done" when it is sent twice, so a press
      lost on a weak connection is simply sent again, up to three times. */
+  /* The button that was pressed says what it is waiting for and keeps its
+     width. The screen is drawn again when the answer comes, which resets it. */
+  var lastBtn=null, WAIT={ nvi_rider_delivered:"Checking delivery PIN…", nvi_rider_returned:"Checking the PIN…", nvi_rider_picked:"Confirming pickup…",
+    nvi_rider_accept:"Taking the job…", nvi_rider_online:"Telling NovaX…", nvi_rider_relay_here:"Telling the other rider…" };
+  document.addEventListener("click",function(e){ var b=e.target.closest&&e.target.closest("button.btn"); if(b) lastBtn=b; },true);
   function act(name,args,okText,tries){
     tries=tries||0;
     if(S.busy&&!tries) return Promise.resolve(false);
     S.busy=true;
+    if(!tries&&lastBtn&&lastBtn.isConnected&&!lastBtn.disabled) busyBtn(lastBtn,true,WAIT[name]||"Sending…");
     return rpc(name,args).then(function(r){
-      S.busy=false;
+      S.busy=false; if(lastBtn&&lastBtn.isConnected) busyBtn(lastBtn,false);
       if(r&&r.ok===false){ toast(SAY[r.reason]||"That did not work. Try again."); return refresh(false).then(function(){ return r; }); }
       if(okText) toast(okText);
       S.sheet=null; S.cashOk=false;
@@ -1074,7 +1081,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
         toast("Weak connection. Sending again…");
         return new Promise(function(res){ setTimeout(res,1500*(tries+1)); }).then(function(){ return act(name,args,okText,tries+1); });
       }
-      S.busy=false; S.sheet=null; paint();
+      S.busy=false; if(lastBtn&&lastBtn.isConnected) busyBtn(lastBtn,false); S.sheet=null; paint();
       toast(netFail(e)?"No connection. Nothing is lost: press again when you have signal.":friendly(e.message));
       return false;
     });
