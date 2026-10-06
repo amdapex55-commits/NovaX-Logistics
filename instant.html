@@ -575,8 +575,13 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
         return (j.features||[]).map(function(f){ var c=f.geometry&&f.geometry.coordinates; return c?{ lat:c[1], lng:c[0], label:mbLabel(f.properties||{}) }:null; }).filter(function(it){ return it&&inBox(it.lat,it.lng); });
       }).catch(function(){ return []; });
   }
+  /* The free search can stall for seconds; after 4.5 s it counts as down and Mapbox answers instead. */
+  function timed(url){
+    var ac=window.AbortController?new AbortController():null, t=ac?setTimeout(function(){ ac.abort(); },4500):null;
+    return fetch(url,ac?{ signal:ac.signal }:undefined).then(function(r){ clearTimeout(t); return r; },function(e){ clearTimeout(t); throw e; });
+  }
   function photon(q){
-    return fetch(PHOTON+"/api/?q="+encodeURIComponent(q)+"&limit=7&lang=en&lat="+CENTER[0]+"&lon="+CENTER[1]+"&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n)
+    return timed(PHOTON+"/api/?q="+encodeURIComponent(q)+"&limit=7&lang=en&lat="+CENTER[0]+"&lon="+CENTER[1]+"&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n)
       .then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
         var seen={};
         return (j.features||[]).map(function(f){ var c=f.geometry&&f.geometry.coordinates; if(!c) return null;
@@ -587,17 +592,23 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
   function searchPlaces(q){
     /* Few answers from the free search (common for Karachi landmarks): add
        Mapbox's, nearest-duplicate removed, so a customer is never left with one odd match. */
+    function merge(out,more){ more.forEach(function(x){ if(!out.some(function(y){ return Math.abs(y.lat-x.lat)<0.002&&Math.abs(y.lng-x.lng)<0.002; })) out.push(x); }); return out; }
     return photon(q).then(function(a){
       if(a.length>=3) return a;
-      return mbSearch(q).then(function(m){
-        var out=a.slice();
-        m.forEach(function(x){ if(!out.some(function(y){ return Math.abs(y.lat-x.lat)<0.002&&Math.abs(y.lng-x.lng)<0.002; })) out.push(x); });
-        return out.slice(0,8);
-      }).catch(function(){ return a; });
+      /* Customers add the area ("Sea View Clifton") while the map files the
+         place under another one, or split a name the map joins ("Seaview").
+         Ask again without the last word and with the words joined. */
+      var w=q.trim().split(/\s+/), base=w.length>2?w.slice(0,-1):w, alt=[];
+      if(w.length>2) alt.push(base.join(" "));
+      if(base.length>1&&base.length<4) alt.push(base.join(""));
+      if(w.length===2&&w[0].length>=5) alt.push(w[0]);
+      return Promise.all(alt.map(function(x){ return photon(x).catch(function(){ return []; }); }).concat([mbSearch(q).catch(function(){ return []; })])).then(function(r){
+        var out=a.slice(); r.forEach(function(m){ merge(out,m); }); return out.slice(0,8);
+      });
     }).catch(function(){ return mbSearch(q).then(function(a){ if(!a.length) throw new Error("down"); return a; }); });
   }
   function reverseLabel(lat,lng){
-    return fetch(PHOTON+"/reverse?lat="+lat+"&lon="+lng+"&lang=en").then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
+    return timed(PHOTON+"/reverse?lat="+lat+"&lon="+lng+"&lang=en").then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
       var f=(j.features||[])[0]; if(!f) throw 0; return placeLabel(f.properties||{});
     }).catch(function(){
       if(!MAPBOX) return null;
