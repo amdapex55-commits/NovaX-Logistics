@@ -375,6 +375,38 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
 }
 .toast{position:fixed;left:50%;bottom:calc(96px + var(--sa-b));transform:translateX(-50%);z-index:200;background:var(--forest);color:#fff;padding:11px 18px;border-radius:99px;font-size:14.5px;max-width:calc(100vw - 32px);text-align:center;box-shadow:var(--shadow)}
 #capBox{margin-top:12px;min-height:0}
+/* ── The shell: one page, and only the sheet changes ──
+   Header, map, sheet and (on a phone) the bottom bar stay where they are.
+   Book, Deliveries, Account and a tracked delivery are views of the sheet. */
+body{--nav:calc(58px + var(--sa-b))}
+/* First screen on a short phone: the map gives way so the pickup row shows above the button. */
+@media (max-width:919px){ body[data-view="book"][data-step="1"]:not([data-ready]){--peek:clamp(110px,calc(100dvh - 494px),38vh)} }
+body[data-view="book"][data-step="2"],body[data-view="book"][data-step="3"],body[data-view="book"][data-step="4"]{--nav:0px}
+body[data-view="list"]{--peek:14vh}
+body[data-view="acct"]{--peek:8vh}
+.stage{padding-bottom:var(--nav)}
+.cta{bottom:var(--nav)}
+.toast{bottom:calc(96px + max(var(--nav),var(--sa-b)))}
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:55;display:flex;height:var(--nav);padding-bottom:var(--sa-b);background:var(--card);border-top:1px solid var(--line)}
+body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"] .nav,body[data-view="book"][data-step="4"] .nav{display:none}
+.nav button{flex:1;border:0;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font:700 12px/1 var(--body);color:var(--muted)}
+.nav button svg.ic{width:22px;height:22px}
+.nav button[aria-current="page"]{color:var(--emerald-deep)}
+.nav button:active{transform:scale(.96)}
+@media (max-width:919px){ #histBtn,#acctBtn{display:none!important} }
+@media (min-width:920px){ body{--nav:0px!important} .nav{display:none} }
+/* Grey shapes that stand in for content on its way (light backgrounds). */
+.skl{display:block;border-radius:12px;margin:0 0 12px;background:linear-gradient(90deg,#e9ece6 25%,#f3f4ef 50%,#e9ece6 75%);background-size:200% 100%;animation:sk 1.1s linear infinite}
+@media (prefers-reduced-motion:reduce){ .skl{animation:none} }
+/* The account screens: their own page inside the sheet, as tall as it needs. */
+.acct{position:relative;margin:0 -16px;min-height:440px}
+.acct iframe{display:block;width:100%;height:440px;border:0;background:transparent}
+.acct .sks{position:absolute;inset:0;padding:16px;pointer-events:none}
+.acct.ready .sks{display:none}
+.rules h2{font:800 17px/1.25 var(--display);margin:22px 0 8px}
+.rules ul{margin:0;padding-left:20px}
+.rules li,.rules p{font-size:15px;line-height:1.5;margin:0 0 8px;color:var(--ink-2)}
+.rules .lede{color:var(--muted)}
 </style>
 </head>
 <body data-view="book" data-step="1">
@@ -398,6 +430,12 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
 </div>
 
 <div class="stage"><main class="sheet" id="sheet"><div class="grab" aria-hidden="true"></div><div id="pane"></div></main></div>
+
+<nav class="nav" id="nav" aria-label="Nova Instant">
+  <button type="button" data-nav="book" aria-current="page"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.500v9L12 21l-8-4.500v-9zM4 7.500l8 4.500 8-4.500M12 12v9"/></svg>Book</button>
+  <button type="button" data-nav="list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Deliveries</button>
+  <button type="button" data-nav="acct"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.500-3.500 4.500-5 8-5s6.500 1.500 8 5"/></svg>Account</button>
+</nav>
 
 <p class="sr" id="live" role="status" aria-live="polite"></p>
 
@@ -454,7 +492,7 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
       if(!d){ var a=new Uint8Array(12); crypto.getRandomValues(a); d=Array.prototype.map.call(a,function(x){ return ("0"+x.toString(16)).slice(-2); }).join(""); localStorage.setItem("nvi_dev",d); }
       return d; }catch(e){ return null; }
   }
-  function selfUrl(token){ var u=new URL(location.href); if(token) u.searchParams.set("t",token); else u.searchParams.delete("t"); u.searchParams.delete("new"); u.hash=""; return u.toString(); }
+  function selfUrl(token){ var u=new URL(location.href); if(token) u.searchParams.set("t",token); else u.searchParams.delete("t"); u.searchParams.delete("new"); u.searchParams.delete("view"); u.searchParams.delete("join"); u.hash=""; return u.toString(); }
   var IC={
     pin:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-6.200 7-11.500A7 7 0 0 0 5 9.500C5 14.800 12 21 12 21z"/><circle cx="12" cy="9.500" r="2.500"/></svg>',
     gps:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.500"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
@@ -790,21 +828,100 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
       (a.length>3?'<button class="linkish" type="button" data-hist style="min-height:0;padding:12px 4px;margin:-12px -4px">See all '+a.length+'</button>':'')+'</div>'+
       a.slice(0,3).map(histRow).join("")+'</section>';
   }
-  function openHist(){
-    var body=function(){ var a=hist(); return (a.length?'<div class="card hcard" style="padding:6px 14px">'+a.map(histRow).join("")+'</div>':'<p class="empty">No deliveries on this phone yet.</p>')+
-      '<p class="fine">These are the deliveries booked or opened on this phone. Each one has its own tracking link. Booked on another phone? Open Help and find it with the booking number.</p>'; };
-    var p=openPanel("My deliveries on this phone",'<div id="histBody">'+body()+'</div>');
-    histRefresh(function(){ var hb=panel&&panel.querySelector("#histBody"); if(hb) hb.innerHTML=body(); });
+  /* ───────── the shell: views ─────────
+     Book, Deliveries, Account and a tracked delivery are views of one page.
+     Going to one changes the sheet and adds one Back step. The page itself is
+     never loaded again, so the map, the header and a half-made booking stay. */
+  var BOOT={ view:"book", tk:null }, ROBOTS=(document.querySelector('meta[name="robots"]')||{}).content||"";
+  function view(){ return document.body.getAttribute("data-view"); }
+  function viewUrl(v,tk){ var u=new URL(selfUrl(v==="track"?tk:null)); if(v==="list") u.searchParams.set("view","deliveries"); if(v==="acct") u.searchParams.set("view","account"); return u.toString(); }
+  function setView(v){
+    document.body.setAttribute("data-view",v);
+    if(v!=="book") document.body.removeAttribute("data-step");
+    [].forEach.call(document.querySelectorAll("#nav [data-nav]"),function(b){
+      if(b.getAttribute("data-nav")===(v==="track"?"list":v)) b.setAttribute("aria-current","page"); else b.removeAttribute("aria-current"); });
   }
-  $("histBtn").addEventListener("click",openHist);
-  /* A delivery in the list opens in place, without loading the page again. */
-  document.addEventListener("click",function(e){
-    var a=e.target.closest&&e.target.closest("[data-track]"); if(!a||e.metaKey||e.ctrlKey) return;
-    e.preventDefault(); var tk=a.getAttribute("data-track");
-    if(panel){ closePanelDom(); S.ov=false; try{ history.replaceState(null,"",selfUrl(tk)); }catch(_){} }
-    else { try{ history.pushState(null,"",selfUrl(tk)); }catch(_){} }
-    startTrack(tk,false);
+  function focusTitle(){ var t=$("stepTitle"); if(t){ try{ t.focus({ preventScroll:true }); }catch(e){} } }
+  function refitSoon(){ setTimeout(function(){ if(!map) return; map.invalidateSize(); if(view()==="track") refit(); else paintMap(S.p,S.d,S.quote&&S.quote.line); },340); }
+  function stopTrack(){
+    clearInterval(T.timer); T.timer=null; T.token=null; T.cur=null; radar(null);
+    try{ var mr=document.querySelector('meta[name="robots"]'); if(mr&&ROBOTS) mr.setAttribute("content",ROBOTS); }catch(e){}
+  }
+  /* After a booking is made, the next one starts clean. */
+  function resetBooking(){
+    S.p=S.d=S.quote=null;
+    ["type","item","weight","value","note","sName","sPhone","pDet","rName","rPhone","dDet","cod","quoteErr","msg"].forEach(function(k){ S[k]=""; });
+    S.fragile=false; S.payer="sender"; S.agree=false; S.step=1; S.busy=false; S.quoting=false; S.resume=0; S.done=false; S.cap.token="";
+    if(S.client){ S.sName=S.client.client.name; S.sPhone=S.client.client.phone; }
+  }
+  function showBook(){
+    stopTrack(); if(S.done) resetBooking();
+    setView("book"); if(!(S.quote&&S.quote.bookable!==false)) S.step=1;
+    render(true);
+    if(S.p&&S.d&&!S.quote&&!S.quoting) quote();
+  }
+  function showList(){
+    stopTrack(); setView("list");
+    var body=function(){ var a=hist(); return (a.length?'<div class="card hcard" style="padding:6px 14px;margin-top:0">'+a.map(histRow).join("")+'</div>':'<div class="card"><b>No deliveries on this phone yet</b><p class="fine" style="margin:6px 0 0">Book one and it shows here with its tracking link.</p></div>')+
+      '<p class="fine">These are the deliveries booked or opened on this phone. Each one has its own tracking link. Booked on another phone? Open Help and find it with the booking number.</p>'; };
+    $("pane").innerHTML='<div class="pane enter"><h1 id="stepTitle" tabindex="-1">My deliveries</h1><p class="lead">Booked or opened on this phone.</p><div id="histBody">'+body()+'</div></div>';
+    window.scrollTo(0,0); focusTitle(); say("My deliveries."); refitSoon();
+    histRefresh(function(){ var hb=$("histBody"); if(hb&&view()==="list") hb.innerHTML=body(); });
+  }
+  /* The account screens are their own page (instant-account.html), fetched
+     only when asked for and shown inside the sheet. It tells this page how
+     tall it is, when the customer signs in or out, and when they want to book
+     or open a delivery. */
+  function showAcct(q){
+    stopTrack(); setView("acct");
+    $("pane").innerHTML='<div class="pane enter"><h1 class="sr" id="stepTitle" tabindex="-1">My Nova Instant account</h1><div class="acct" id="acct">'+
+      '<div class="sks" aria-hidden="true"><span class="skl" style="height:30px;width:62%"></span><span class="skl" style="height:18px;width:88%;margin-bottom:18px"></span><span class="skl" style="height:122px"></span><span class="skl" style="height:54px"></span><span class="skl" style="height:150px"></span></div>'+
+      '<iframe id="acctFrame" title="My Nova Instant account" src="instant-account.html?embed=1'+(q?"&"+q:"")+'"></iframe></div></div>';
+    window.scrollTo(0,0); focusTitle(); say("My Nova Instant account."); refitSoon();
+  }
+  window.addEventListener("message",function(e){
+    var f=$("acctFrame"), d=e.data; if(!f||e.origin!==location.origin||e.source!==f.contentWindow||!d||d.nvi!=="acct") return;
+    if(d.h){ f.style.height=Math.max(440,Math.ceil(Number(d.h)||0))+"px"; $("acct").classList.add("ready"); }
+    if(d.toast) toast(String(d.toast).slice(0,200));
+    if(d.auth){ S.client=null; var l=$("acctLbl"); if(l) l.textContent="Account"; loadClient(); }
+    if(d.go==="book") goView("book");
+    if(d.go==="track"&&d.tk) goView("track",String(d.tk));
   });
+  function applyView(v,tk){
+    if(v==="track"&&tk) startTrack(tk,false); else if(v==="list") showList(); else if(v==="acct") showAcct(); else showBook();
+  }
+  /* A new screen: one Back step. From inside a panel it takes the panel's place. */
+  function goView(v,tk){
+    if(v===view()&&(v!=="track"||tk===T.token)&&!panel) return;
+    var st={ nvi:"view", view:v, tk:tk||null };
+    if(panel||S.ov){ closePanelDom(); S.ov=false; try{ history.replaceState(st,"",viewUrl(v,tk)); }catch(e){} }
+    else { try{ history.pushState(st,"",viewUrl(v,tk)); }catch(e){} }
+    applyView(v,tk);
+  }
+  $("nav").addEventListener("click",function(e){ var b=e.target.closest("[data-nav]"); if(b) goView(b.getAttribute("data-nav")); });
+  $("histBtn").addEventListener("click",function(){ goView("list"); });
+  /* Links that used to load another page now change the sheet: a delivery in
+     a list, "Book another", the account, the rules. */
+  document.addEventListener("click",function(e){
+    var a=e.target.closest&&e.target.closest("a"); if(!a||e.metaKey||e.ctrlKey||e.shiftKey||e.defaultPrevented) return;
+    if(a.hasAttribute("data-track")){ e.preventDefault(); return goView("track",a.getAttribute("data-track")); }
+    if(a.hasAttribute("data-new")){ e.preventDefault(); return goView("book"); }
+    if(/^instant-account\.html/.test(a.getAttribute("href")||"")){ e.preventDefault(); return goView("acct"); }
+    /* Inside a panel (the sign-up form) the rules still open beside it, so nothing typed is lost. */
+    if(a.hasAttribute("data-rules")&&!panel){ e.preventDefault(); return openRules(); }
+  });
+  var rulesHtml=null;
+  function openRules(){
+    openPanel("Nova Instant rules",'<div class="rules" id="rulesBody" aria-busy="true"><span class="skl" style="height:20px;width:80%"></span><span class="skl" style="height:14px"></span><span class="skl" style="height:14px;width:92%"></span><span class="skl" style="height:14px;width:70%"></span><span class="skl" style="height:20px;width:50%;margin-top:22px"></span><span class="skl" style="height:14px"></span><span class="skl" style="height:14px;width:84%"></span></div>');
+    var put=function(h){ var b=panel&&panel.querySelector("#rulesBody"); if(b){ b.removeAttribute("aria-busy"); b.innerHTML=h; } };
+    if(rulesHtml) return put(rulesHtml);
+    fetch("instant-terms.html").then(function(r){ if(!r.ok) throw new Error("no"); return r.text(); }).then(function(t){
+      var w=new DOMParser().parseFromString(t,"text/html").querySelector("main .wrap"); if(!w) throw new Error("no");
+      [].forEach.call(w.querySelectorAll("script,style,h1"),function(x){ x.remove(); });
+      rulesHtml=w.innerHTML; put(rulesHtml);
+    }).catch(function(){ put('<p>The rules could not be loaded. Check your connection.</p><p><a class="btn btn-plain" href="instant-terms.html" target="_blank" rel="noopener">Open the rules page</a></p>'); });
+  }
+
 
   /* ───────── fare ───────── */
   var QUOTE_SAY={ pickup_outside:"The pickup is outside Karachi. Nova Instant runs inside Karachi only.",
@@ -995,7 +1112,7 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
       '<div class="fld"><button class="btn btn-primary wide" type="submit" id="acBtn">'+(fin?"Finish":join?"Create account and continue":"Sign in and continue")+'</button></div>'+
       '<p class="fine" id="acMsg" role="alert" hidden style="color:var(--red-ink)"></p>'+
       (fin?'':'<p class="fine">'+(join?'Already have one? <button class="linkish" type="button" data-acct="signin">Sign in</button>':'New here? <button class="linkish" type="button" data-acct="join">Create an account</button>')+'</p>')+
-      (join?'<p class="fine">Free, and separate from NovaX merchant accounts. You agree to the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</p>':'')+'</form>');
+      (join?'<p class="fine">Free, and separate from NovaX merchant accounts. You agree to the <a href="instant-terms.html" target="_blank" rel="noopener" data-rules>Nova Instant rules</a>.</p>':'')+'</form>');
     var f=p.querySelector("#acForm"), btn=p.querySelector("#acBtn"), msg=p.querySelector("#acMsg");
     function tell(t){ msg.textContent=t; msg.hidden=false; say(t); btn.disabled=false; btn.textContent=fin?"Finish":join?"Create account and continue":"Sign in and continue"; }
     function done(){
@@ -1057,7 +1174,7 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
           :'If the delivery cannot be made, the parcel comes back to the sender, who then pays the '+esc(money(q.fare))+' fare in cash'+(ret>0?" plus "+ret+"% for the return":"")+(S.payer==="cod"?". No cash on delivery is collected.":", because the receiver did not pay it."))+'</p>'+
         (s.confirm_first?'<p style="margin:0 0 8px">First booking from a number? NovaX phones the sender to confirm before a rider is sent.</p>':'')+
         '<p style="margin:0">The receiver gets a tracking link with a delivery PIN. The rider hands over only against that PIN.</p></section>'+
-      '<label class="agree" id="agreeBox" for="agree"><input type="checkbox" id="agree" aria-labelledby="agreeTxt"'+(S.agree?" checked":"")+'><span id="agreeTxt">The parcel weighs '+maxKg()+' kg or less'+(maxVal()?", is worth "+money(maxVal())+" or less":"")+', and holds nothing on the <button class="linkish" type="button" data-banned style="min-height:0;display:inline;font-size:inherit">not-allowed list</button>. I agree to the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</span></label>'+
+      '<label class="agree" id="agreeBox" for="agree"><input type="checkbox" id="agree" aria-labelledby="agreeTxt"'+(S.agree?" checked":"")+'><span id="agreeTxt">The parcel weighs '+maxKg()+' kg or less'+(maxVal()?", is worth "+money(maxVal())+" or less":"")+', and holds nothing on the <button class="linkish" type="button" data-banned style="min-height:0;display:inline;font-size:inherit">not-allowed list</button>. I agree to the <a href="instant-terms.html" target="_blank" rel="noopener" data-rules>Nova Instant rules</a>.</span></label>'+
       '<div id="capBox"></div>'+
       cta(S.busy?'<span class="spin" aria-hidden="true"></span> Booking…':canBookNow()?(S.payer==="cod"?"Book delivery · COD "+esc(money(codNum())):"Book delivery · "+esc(money(q.fare))):!S.status?(S.statusErr?"Could not check for riders":"Checking for riders…"):!(s.open||s.preview)?"Booking is paused":!s.hours_open?"Riders are back at "+hourLabel(s.open_hour):"No rider on duty right now", S.busy||!canBookNow(),
           !S.status&&S.statusErr?'<p class="fine" style="margin:0 0 10px">We could not check whether riders are available. <button class="linkish" type="button" data-restatus style="min-height:0;padding:12px 4px;margin:-12px -4px">Try again</button></p>':"");
@@ -1162,7 +1279,8 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
         var rc=store("nvi_rcp"); rc=(Array.isArray(rc)?rc:[]).filter(function(x){ return x.p!==pkPhone(S.rPhone); }); rc.unshift({ n:S.rName.trim(), p:pkPhone(S.rPhone) }); store("nvi_rcp",rc.slice(0,5));
         buzz([12,60,18]);
         try{ sessionStorage.removeItem("nvi_draft"); }catch(e){}
-        try{ history.replaceState(null,"",selfUrl(d.token)); }catch(e){}
+        S.done=true;
+        try{ history.replaceState({ nvi:"view", view:"track", tk:d.token },"",selfUrl(d.token)); }catch(e){}
         return startTrack(d.token,true);      /* the sheet becomes "Finding your rider": no page load */
       }
       if(d.reason==="quote_expired"&&!retried){
@@ -1194,11 +1312,11 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
     if(t.id==="fragile"){ S.fragile=!S.fragile; t.setAttribute("aria-checked",String(S.fragile)); saveDraft(); return; }
     if(t.dataset.pay){ S.payer=t.dataset.pay; clearMsg(); saveDraft(); var y=window.scrollY; render(); try{ window.scrollTo(0,y); }catch(e){} if(S.payer==="cod"){ var ci=$("cod"); if(ci) try{ ci.focus({ preventScroll:true }); }catch(e){} } return; }
     if(t.dataset.acct){ return openAcct(t.dataset.acct); }
-    if(t.hasAttribute("data-hist")) return openHist();
+    if(t.hasAttribute("data-hist")) return goView("list");
     if(t.hasAttribute("data-restatus")){ e.preventDefault(); toast("Checking…"); return loadStatus(0); }
     if(t.hasAttribute("data-me")){ var me=store("nvi_me"); if(me){ S.sName=me.n||""; S.sPhone=me.p||""; render(); } return; }
     if(t.dataset.rcp){ var r=(store("nvi_rcp")||[])[Number(t.dataset.rcp)]; if(r){ S.rName=r.n||""; S.rPhone=r.p||""; render(); } return; }
-    if(t.hasAttribute("data-banned")){ e.preventDefault(); return openPanel("What cannot be sent",'<ul class="ban">'+BANNED.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join("")+'</ul><p class="fine">A rider may refuse a parcel that looks unsafe to carry. The full list is in the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</p>'); }
+    if(t.hasAttribute("data-banned")){ e.preventDefault(); return openPanel("What cannot be sent",'<ul class="ban">'+BANNED.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join("")+'</ul><p class="fine">A rider may refuse a parcel that looks unsafe to carry. The full list is in the <a href="instant-terms.html" target="_blank" rel="noopener" data-rules>Nova Instant rules</a>.</p>'); }
   });
   function press(t,sel){ [].forEach.call(t.parentElement.querySelectorAll(sel),function(b){ b.setAttribute("aria-pressed",String(b===t)); }); }
   function clearMsg(){ if(S.msg){ S.msg=""; var m=document.querySelector(".cta .msg"); if(m) m.remove(); } }
@@ -1383,7 +1501,7 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
     clearInterval(T.timer); T.timer=null;
     trackShell('<div class="status"><div class="k">Nova Instant</div><h1 id="stepTitle" tabindex="-1">'+esc(title)+'</h1><p>'+esc(sub)+'</p></div>'+
       '<section class="card"><p class="eyebrow">Need help?</p>'+supportBtns()+'</section>'+
-      '<div class="cta"><a class="btn btn-primary wide" href="'+esc(selfUrl(null))+'">Book a delivery</a></div>');
+      '<div class="cta"><a class="btn btn-primary wide" href="'+esc(selfUrl(null))+'" data-new>Book a delivery</a></div>');
     say(title+".");
   }
   function paintTrack(j){
@@ -1427,7 +1545,7 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
     if(Number(j.cod)>0&&["Booked","Rider assigned","Picked up","Failed delivery","Awaiting confirmation"].indexOf(j.status)>-1)
       h+='<div class="codnote">'+IC.info+'<span><b>Cash on delivery: '+esc(money(j.cod))+'.</b> The receiver pays this to the rider at the door, in cash. No cash, no parcel.</span></div>';
     if(j.pin) h+='<div class="pincard"><div><b>Delivery PIN</b>'+(j.status==="Returning"?"The sender gives this to the rider when the parcel comes back.":"The receiver gives this to the rider at the door.")+'</div><span class="pin" aria-label="PIN '+esc(j.pin.split("").join(" "))+'">'+esc(j.pin)+'</span></div>';
-    if(j.status==="Delivered") h+='<div class="row2"><button class="btn btn-dark sm" type="button" id="tReceipt">'+IC.doc2+'Receipt</button><a class="btn btn-plain sm" href="'+esc(selfUrl(null))+'">Book another</a></div>';
+    if(j.status==="Delivered") h+='<div class="row2"><button class="btn btn-dark sm" type="button" id="tReceipt">'+IC.doc2+'Receipt</button><a class="btn btn-plain sm" href="'+esc(selfUrl(null))+'" data-new>Book another</a></div>';
     if(live) h+='<div class="row2"><button class="btn btn-plain sm" type="button" id="tShare">'+IC.share+'Share</button><button class="btn btn-plain sm" type="button" id="tCopy">Copy link</button></div>';
     h+='<section class="card" style="margin-top:12px"><p class="eyebrow">Journey</p><ol class="tl">'+tl+'</ol></section>'+
        '<section class="card"><p class="eyebrow">Details</p><dl class="rv">'+
@@ -1442,8 +1560,8 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
     if(canCancel) h+='<button class="btn btn-danger wide sm" type="button" id="tCancel" style="margin-top:12px">Cancel this booking</button>';
     h+='<p class="fine">'+(closed?"This booking is closed. Its details stay on this link for "+(j.track_days||7)+" days."
         :"This page shows each step of the delivery as it happens. It does not show the rider's live position. Keep the link: it is the way back to this booking.")+'</p>'+
-       (closed?'<div class="cta"><a class="btn btn-primary wide" href="'+esc(selfUrl(null))+'">Book another delivery</a></div>'
-              :'<div class="row2" style="padding:4px 0 calc(22px + var(--sa-b))"><a class="btn btn-plain sm" href="'+esc(selfUrl(null))+'">Book another</a><button class="btn btn-plain sm" type="button" data-hist2>My deliveries</button></div>');
+       (closed?'<div class="cta"><a class="btn btn-primary wide" href="'+esc(selfUrl(null))+'" data-new>Book another delivery</a></div>'
+              :'<div class="row2" style="padding:4px 0 calc(22px + var(--sa-b))"><a class="btn btn-plain sm" href="'+esc(selfUrl(null))+'" data-new>Book another</a><button class="btn btn-plain sm" type="button" data-hist2>My deliveries</button></div>');
     /* Do not repaint under a finger mid-confirm. */
     if(document.querySelector('#pane [data-sure="1"]')) return;
     trackShell(h);
@@ -1470,7 +1588,7 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
   }
   function startTrack(token,fresh){
     T.token=token; T.fresh=!!fresh; T.cur=null; T.fitted=false;
-    document.body.setAttribute("data-view","track"); document.body.removeAttribute("data-step");
+    setView("track");
     window.scrollTo(0,0);
     trackShell('<div class="status" aria-busy="true"><div class="k">Nova Instant</div><h1>'+(fresh?"Booked. Finding your rider":"Loading your delivery…")+'</h1><p><span class="sk" style="width:70%;height:14px"></span></p></div>');
     setTimeout(refit,340);
@@ -1489,7 +1607,7 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
   }
   document.addEventListener("visibilitychange",function(){ if(!document.hidden&&T.timer) loadTrack(false); });
   $("pane").addEventListener("click",function(e){
-    if(e.target.closest("[data-hist2]")) return openHist();
+    if(e.target.closest("[data-hist2]")) return goView("list");
     if(e.target.closest("#tHelp")) return $("helpBtn").click();
     if(e.target.closest("#tReceipt")) return openReceipt(T.cur);
     var t=e.target.closest("#tShare,#tCopy,#tCancel"); if(!t||!T.token) return;
@@ -1514,8 +1632,13 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
   window.addEventListener("popstate",function(e){
     if(S.skipPop){ S.skipPop=false; return; }
     if(S.ov){ S.ov=false; closePanelDom(); if(S.pinFor) leavePin(true); return; }
-    if(document.body.getAttribute("data-view")!=="book"){ location.reload(); return; }
-    var st=e.state, n=(st&&st.nvi==="step")?st.step:1;
+    var st=e.state;
+    if(st&&st.nvi==="view"){ applyView(st.view,st.tk); return; }
+    if(!st&&BOOT.view!=="book"){ applyView(BOOT.view,BOOT.tk); return; }
+    /* A booking step, or the first screen. Coming back to it from tracking,
+       the list or the account changes the sheet; the page is not loaded again. */
+    var n=(st&&st.nvi==="step")?st.step:1;
+    if(view()!=="book"){ stopTrack(); if(S.done) resetBooking(); setView("book"); }
     if(n>1&&!(S.quote&&S.quote.bookable!==false)) n=1;
     S.msg=""; S.step=n; render(true);
   });
@@ -1553,9 +1676,11 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
   paintHistBtn();
   /* Signed in to a Nova Instant account? Fills the sender and allows COD. */
   loadClient().then(function(c){ if(c&&document.body.getAttribute("data-view")==="book"&&S.step===3&&!panel) render(); });
-  var token=new URLSearchParams(location.search).get("t");
+  var q0=new URLSearchParams(location.search), token=q0.get("t"), v0=q0.get("view");
+  if(token) BOOT={ view:"track", tk:token }; else if(v0==="account") BOOT={ view:"acct", tk:null }; else if(v0==="deliveries") BOOT={ view:"list", tk:null };
   if(!token) histRefresh(function(){ if(document.body.getAttribute("data-view")==="book"&&S.step===1&&!(S.p&&S.d)&&!panel&&!S.pinFor) render(); });
   if(token) startTrack(token,false);
+  else if(BOOT.view!=="book"){ restoreDraft(); S.resume=0; if(BOOT.view==="acct") showAcct(q0.get("join")?"join=1":""); else showList(); }
   else if(restoreDraft()){ render(); setTimeout(function(){ if(map){ map.invalidateSize(); paintMap(S.p,S.d,null); } },200); quote(); toast("We kept the details you had typed."); }
   else render();
 })();

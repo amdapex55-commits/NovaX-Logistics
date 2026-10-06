@@ -118,6 +118,10 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
 .note.warn{background:var(--amber);color:var(--amber-ink)}
 .kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 16px;margin:0;font-size:15px}
 .kv dt{color:var(--muted)} .kv dd{margin:0;overflow-wrap:anywhere;font-weight:600}
+/* Inside the booking page: no header of its own, no page background. */
+html.embed .hdr{display:none}
+html.embed body{background:transparent}
+html.embed main{padding-top:6px;padding-bottom:16px}
 .toast{position:fixed;left:50%;bottom:calc(20px + var(--sa-b));transform:translateX(-50%);z-index:300;background:var(--forest);color:#fff;padding:11px 16px;border-radius:999px;font-size:14.5px;max-width:calc(100vw - 28px);text-align:center}
 .two{display:grid;gap:14px}
 @media (min-width:560px){ .two{grid-template-columns:1fr 1fr} }
@@ -136,6 +140,17 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
 <script>
 (function(){
   "use strict";
+  /* The booking page (instant.html) shows this page inside its sheet. There it
+     has no header, and it tells the page around it how tall it is, when the
+     sign-in changes, and when the customer wants to book or open a delivery.
+     Opened by itself it hands over to that same page, so there is one app.
+     (?standalone=1 keeps it by itself; a sign-in link from an email does too.) */
+  var EMBED=window.self!==window.top&&/[?&]embed=1/.test(location.search);
+  function tell(o){ if(!EMBED) return; try{ o.nvi="acct"; window.parent.postMessage(o,location.origin); }catch(e){} }
+  if(EMBED) document.documentElement.classList.add("embed");
+  else if(window.self===window.top&&!/[?&](standalone|code|token|type|error)=/.test(location.search)&&!/access_token|error=/.test(location.hash)){
+    try{ location.replace("instant.html?view=account"+(/[?&]join=1/.test(location.search)?"&join=1":"")); return; }catch(e){}
+  }
   var SB_URL="https://rhzunbzbdzicajqtohwp.supabase.co";
   var SB_KEY="sb_publishable_yH8i0Q43BAxXoExo95r0rQ_fCeRdHXA";
   var $=function(id){ return document.getElementById(id); };
@@ -153,7 +168,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"'`]/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;","`":"&#96;"}[c]; }); }
   function rs(n){ return "Rs "+Number(n||0).toLocaleString("en-PK"); }
-  function toast(t){ var el=document.createElement("div"); el.className="toast"; el.setAttribute("role","status"); el.textContent=t; document.body.appendChild(el); setTimeout(function(){ el.remove(); },3000); }
+  function toast(t){ if(EMBED) return tell({ toast:t }); var el=document.createElement("div"); el.className="toast"; el.setAttribute("role","status"); el.textContent=t; document.body.appendChild(el); setTimeout(function(){ el.remove(); },3000); }
   function when(iso){ try{ return new Date(iso).toLocaleString("en-GB",{ timeZone:"Asia/Karachi", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; } }
   function pkPhone(raw){
     var d=String(raw==null?"":raw).replace(/[^\d]/g,"");
@@ -171,6 +186,18 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   }
   function sayMsg(el,t,ok){ if(!el) return; el.textContent=t; el.className="msg"+(ok?" ok":""); }
   function busyBtn(b,on,label){ if(!b) return; if(on){ b.dataset.l=b.textContent; b.disabled=true; b.textContent=label||"Working…"; } else { b.disabled=false; if(b.dataset.l) b.textContent=b.dataset.l; } }
+
+  if(EMBED){
+    var hT=null, sendH=function(){ clearTimeout(hT); hT=setTimeout(function(){ var m=$("main"); if(m) tell({ h:m.offsetTop+m.offsetHeight }); },40); };
+    try{ new ResizeObserver(sendH).observe($("main")); }catch(e){ setInterval(sendH,700); }
+    window.addEventListener("load",sendH);
+    /* "Book a delivery" and a delivery in the list belong to the page around this one. */
+    document.addEventListener("click",function(e){
+      var a=e.target.closest&&e.target.closest('a[href^="instant.html"]'); if(!a||e.metaKey||e.ctrlKey) return;
+      e.preventDefault(); var m=/[?&]t=([^&#]+)/.exec(a.getAttribute("href"));
+      tell(m?{ go:"track", tk:decodeURIComponent(m[1]) }:{ go:"book" });
+    },true);
+  }
 
   /* ───── start ───── */
   function boot(){
@@ -191,7 +218,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   function load(first){
     return rpc("nvi_client_me").then(function(me){
       if(!me) return renderFinish();
-      S.me=me;
+      S.me=me; if(first) tell({ auth:1 });
       return Promise.all([rpc("nvi_client_jobs",{ p_limit:150 }), rpc("nvi_client_ledger",{ p_limit:120 })]).then(function(x){
         S.jobs=x[0]||[]; S.ledger=x[1]||[];
         if(!S.form&&!typing()) paint(); else if(first) paint();
@@ -425,7 +452,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     if(t.dataset.wd){ S.tab="wallet"; S.form="withdraw"; paint(); var wa=$("wAmt"); if(wa) try{ wa.focus(); }catch(e2){} return; }
     if(t.hasAttribute("data-form")){ S.form=t.getAttribute("data-form")||null; paint(); var f=document.querySelector("#main form .inp"); if(f&&S.form) try{ f.focus(); }catch(e2){} return; }
     if(t.dataset.act==="reload") return boot();
-    if(t.dataset.act==="signout"){ Promise.resolve(sb.auth.signOut()).catch(function(){}).then(function(){ S.me=null; S.jobs=null; S.ledger=null; renderAuth("signin"); }); }
+    if(t.dataset.act==="signout"){ Promise.resolve(sb.auth.signOut()).catch(function(){}).then(function(){ S.me=null; S.jobs=null; S.ledger=null; tell({ auth:1 }); renderAuth("signin"); }); }
   });
   document.addEventListener("submit",function(e){
     var id=e.target.id;

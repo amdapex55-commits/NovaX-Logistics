@@ -31,5 +31,17 @@ ok("rules say the rider's number is shown while on a job", /rider's first name, 
 // NVI-11: the rules no longer say every rider is a freelancer.
 ok("rules cover staff riders too", /rider on NovaX's own staff/.test(terms));
 
+// One shell: moving between booking, deliveries, the account and tracking never loads the page again.
+const acct = read("instant-account.html");
+const pop = book.slice(book.indexOf('addEventListener("popstate"'), book.indexOf('addEventListener("popstate"') + 1400);
+ok("the Back button never reloads the page", !/location\.reload\(/.test(book) && /nvi==="view"/.test(pop));
+ok("bottom bar has Book, Deliveries and Account", ["book", "list", "acct"].every((v) => book.includes('data-nav="' + v + '"')));
+ok("the bottom bar is hidden while a booking is being filled in", /\[data-step="2"\] \.nav[^{]*\{display:none\}/.test(book));
+ok("a finished booking becomes tracking as one Back step", /S\.done=true;\s*try\{ history\.replaceState\(\{ nvi:"view", view:"track"/.test(book));
+ok("the rules open inside the page", (book.match(/data-rules/g) || []).length >= 4 && book.includes("function openRules("));
+ok("the account opens inside the booking page", book.includes('src="instant-account.html?embed=1') && acct.includes('location.replace("instant.html?view=account"'));
+ok("the account page only talks to the page that holds it", /postMessage\(o,location\.origin\)/.test(acct) && /e\.origin!==location\.origin\|\|e\.source!==f\.contentWindow/.test(book));
+ok("a sign-in link from an email is not redirected", /standalone\|code\|token\|type\|error/.test(acct));
+
 console.log(bad ? `NOVA INSTANT PAGE CHECKS FAILED (${bad})` : "NOVA INSTANT PAGE CHECKS PASSED");
 process.exit(bad ? 1 : 0);
