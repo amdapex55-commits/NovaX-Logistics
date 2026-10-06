@@ -1,7 +1,8 @@
 // How fast does Nova Instant feel on a cheap phone?
 // Opens the booking page in headless Chrome as a 360x640 phone with the
 // processor slowed 6x on a slow connection, and reports:
-//   usable      when the booking button is on screen (first visit, repeat visit)
+//   shown       when the booking screen is on screen (first visit, repeat visit)
+//   ready       when the page's own script is running and every tap acts
 //   tap         how long a tap takes to show a result
 //   movement    how much the layout shifts by itself (0 is the goal)
 // Usage: node scripts/measure-instant.mjs [url] [--cpu=6] [--fast]
@@ -46,7 +47,8 @@ await send("Emulation.setCPUThrottlingRate", { rate: cpu });
 if (!fast) await send("Network.emulateNetworkConditions", { offline: false, latency: 150, downloadThroughput: 1.6e6 / 8, uploadThroughput: 7.5e5 / 8 });
 // Runs inside the page before anything else: stamps the moments that matter.
 await send("Page.addScriptToEvaluateOnNewDocument", { source: `(function(){
-  var m=window.__m={ shifts:[], usable:null, fcp:null, lcp:null, taps:[] };
+  var m=window.__m={ shifts:[], usable:null, ready:null, fcp:null, lcp:null, taps:[] };
+  var rt=setInterval(function(){ if(window.__nviReady){ m.ready=performance.now(); clearInterval(rt); } },10);
   try{ new PerformanceObserver(function(l){ l.getEntries().forEach(function(e){ m.shifts.push({ t:e.startTime, v:e.value, input:e.hadRecentInput }); }); }).observe({ type:"layout-shift", buffered:true }); }catch(e){}
   try{ new PerformanceObserver(function(l){ l.getEntries().forEach(function(e){ if(e.name==="first-contentful-paint") m.fcp=e.startTime; }); }).observe({ type:"paint", buffered:true }); }catch(e){}
   try{ new PerformanceObserver(function(l){ l.getEntries().forEach(function(e){ m.lcp=e.startTime; }); }).observe({ type:"largest-contentful-paint", buffered:true }); }catch(e){}
@@ -59,7 +61,7 @@ await send("Page.addScriptToEvaluateOnNewDocument", { source: `(function(){
 async function visit(label) {
   await send("Page.navigate", { url });
   let m = null;
-  for (let i = 0; i < 400; i++) { await sleep(100); try { m = await js("window.__m&&window.__m.usable!=null?JSON.stringify(window.__m):null"); } catch { m = null; } if (m) break; }
+  for (let i = 0; i < 400; i++) { await sleep(100); try { m = await js("window.__m&&window.__m.usable!=null&&window.__m.ready!=null?JSON.stringify(window.__m):null"); } catch { m = null; } if (m) break; }
   if (!m) { console.log(label + ": the booking button never appeared (40 s)."); return null; }
   await sleep(2500);   // let late shifts happen
   return JSON.parse(await js("JSON.stringify(window.__m)"));
@@ -82,11 +84,11 @@ if (again) {
   }
 }
 console.log(`\nNova Instant on a slow phone (360x640, processor ${cpu}x slower${fast ? "" : ", slow connection"})\n${url}\n`);
-if (first) console.log(`First visit    usable ${r(first.usable)}   first paint ${r(first.fcp)}   movement ${shift(first).toFixed(3)}`);
-if (again) console.log(`Repeat visit   usable ${r(again.usable)}   first paint ${r(again.fcp)}   movement ${shift(again).toFixed(3)}`);
+if (first) console.log(`First visit    shown ${r(first.fcp)}   ready ${r(first.ready)}   movement ${shift(first).toFixed(3)}`);
+if (again) console.log(`Repeat visit   shown ${r(again.fcp)}   ready ${r(again.ready)}   movement ${shift(again).toFixed(3)}`);
 if (tap && tap.clickAt != null) {
   const ev = tap.taps.filter((t) => t.name === "click").pop();
   console.log(`Tap on Pickup  screen starts to change ${r(tap.domAt != null ? tap.domAt - tap.clickAt : null)}   painted ${ev ? r(ev.total) : "under 16 ms"}   movement after the tap ${shift(tap, tap.clickAt).toFixed(3)}`);
 } else console.log("Tap on Pickup  could not be measured.");
-console.log("\nGoals: tap under 100 ms, screen change under 150 ms, usable under 1000 ms on a repeat visit, movement 0.");
+console.log("\nGoals: tap under 100 ms, screen change under 150 ms, ready under 1000 ms on a repeat visit, movement 0.");
 done(0);
