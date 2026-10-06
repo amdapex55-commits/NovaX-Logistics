@@ -104,5 +104,24 @@ for (const [f, page] of [["instant.html", book], ["instant-account.html", acct],
   ok(f + " hides technical error text", /A message written for programmers is never shown/.test(page));
 }
 
+// Second outside audit, 6 Oct (NI-21 to NI-33).
+const ops = read("instant-ops.html"), fixes = read("sql_novax_instant_fixes_20261006.sql");
+ok("ops is told when a transaction ID is already on a paid payout", /dup_ref:"That transaction ID is already on another paid payout/.test(ops) && /mc\.dup_payout_refs/.test(ops));
+ok("the database refuses a shared transaction ID", /create unique index if not exists nvi_payouts_paid_ref/.test(fixes) && /'reason', 'dup_ref'/.test(fixes));
+for (const [f, page] of [["instant-account.html", acct], ["instant-rider.html", riderPage]]) {
+  ok(f + " checks an IBAN before sending it", /function pkIban\(raw\)/.test(page) && /"Bank"\?!pkIban\(/.test(page));
+}
+ok("the database checks the IBAN too", /p_method = 'Bank' and public\.nvi_pk_iban\(v_num\) = ''/.test(fixes));
+ok("the 40 lookups a minute hold under load", /pg_try_advisory_xact_lock\(7461, v_i\)/.test(fixes) && /v_recent < 35/.test(fixes));
+ok("signing in then finishing an account is one Back step", !/closePanelDom\(\); S\.ov=false; openAcct\("finish"\)/.test(book) && /closePanelDom\(\); openAcct\("finish"\);/.test(book));
+ok("a failed account check is not taken for a missing account", /if\(!x\|\|x\.error\)\{ S\.clientErr=true; return null; \}/.test(book) && /if\(S\.clientErr\) return tell\(/.test(book));
+for (const f of ["sql_novax_nova_instant_20261004.sql", "sql_novax_instant_wallets_20261005.sql", "sql_novax_instant_audit_20261006.sql"]) {
+  ok(f + " refuses to run alone over a newer file", /A later Nova Instant database file is already applied/.test(read(f)));
+}
+ok("places leave this phone when they leave the tracking link", /function histTidy\(a\)/.test(book) && /delete x\.from; delete x\.to;/.test(book));
+ok("the customer page can be added to the home screen", /<link rel="manifest" href="\/assets\/instant\.webmanifest">/.test(book) && existsSync(new URL("../assets/instant.webmanifest", import.meta.url)));
+ok("no service worker on a local test address", /location\.protocol==="https:"\) window\.addEventListener\("load"/.test(book));
+ok("closing a panel returns the focus to what opened it", /function fromKey\(el\)/.test(book) && /panelFrom=from;/.test(book));
+
 console.log(bad ? `NOVA INSTANT PAGE CHECKS FAILED (${bad})` : "NOVA INSTANT PAGE CHECKS PASSED");
 process.exit(bad ? 1 : 0);

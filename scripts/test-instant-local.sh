@@ -1,7 +1,7 @@
 #!/bin/sh
 # Nova Instant database tests on a throwaway Postgres on this Mac: nothing
 # here can reach the live database. It builds an empty database, applies the
-# three Nova Instant files in order (proving they install from nothing), runs
+# Nova Instant files in order (proving they install from nothing), runs
 # the money tests and the audit tests, then deletes everything.
 # Needs Homebrew PostgreSQL (initdb, pg_ctl, psql). Usage: npm run test:instant
 cd "$(dirname "$0")/.." || exit 1
@@ -21,6 +21,11 @@ psql "$DB" -X -q -v ON_ERROR_STOP=1 -f scripts/instant-local-stubs.sql >/dev/nul
 sh scripts/instant-migrate.sh "$DB" || exit 1
 sh scripts/instant-migrate.sh "$DB" >/dev/null || { echo "FAILED: the files do not apply a second time."; exit 1; }
 echo "Applied twice from an empty database."
+# An older file run by itself must refuse: it would put older functions back over newer ones.
+if psql "$DB" -X -q -1 -v ON_ERROR_STOP=1 -f sql_novax_instant_wallets_20261005.sql >/dev/null 2>&1; then
+  echo "FAILED: an older file ran by itself over a newer one."; exit 1
+fi
+echo "An older file refuses to run alone."
 bad=0
 for t in scripts/test-instant-wallets.sql scripts/test-instant-audit.sql; do
   out=$(psql "$DB" -X -q -v ON_ERROR_STOP=1 -f "$t" 2>&1)

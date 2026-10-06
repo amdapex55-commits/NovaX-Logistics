@@ -101,6 +101,32 @@ reset role;
 select pg_temp.eq('rider: one payout', (select count(*) from public.nvi_payouts where wallet_id = :'wb'), 1);
 select pg_temp.eq('rider: charged once', pg_temp.bal('rider', :'rb'), 200);
 
+-- ═══ NI-21: one transaction ID pays one payout ═══
+-- The client's second withdrawal (Rs 1,000, JazzCash) is waiting; the first was paid with AUDIT-PAID-1.
+select id as p2 from public.nvi_payouts where wallet_id = :'wk' and status = 'Requested' \gset
+select pg_temp.as_user(:'admin');
+set local role authenticated;
+select pg_temp.is('the same transaction ID on a second payout: refused', public.nvi_admin_payout(:p2, true, 'audit-paid-1', null)->>'reason', 'dup_ref');
+select pg_temp.is('spaces and capitals do not make it new', public.nvi_admin_payout(:p2, true, ' Audit - Paid - 1 ', null)->>'reason', 'dup_ref');
+reset role;
+select pg_temp.is('the refused payout is still waiting', (select status from public.nvi_payouts where id = :p2), 'Requested');
+select pg_temp.eq('nothing was booked for it', (select count(*) from public.nvi_txns where key = 'payout:' || :p2 || ':paid'), 0);
+select pg_temp.as_user(:'admin');
+set local role authenticated;
+select pg_temp.is('its own transaction ID: paid', public.nvi_admin_payout(:p2, true, 'AUDIT-PAID-2', null)->>'ok', 'true');
+select pg_temp.eq('the money check finds no shared IDs', (public.nvi_admin_money_check()->>'dup_payout_refs')::bigint, 0);
+reset role;
+do $$ begin
+  begin update public.nvi_payouts set ref = 'AUDIT-PAID-1' where ref = 'AUDIT-PAID-2'; raise exception 'FAIL two paid payouts share a transaction ID';
+  exception when unique_violation then raise notice 'ok  the table itself refuses a shared transaction ID'; end;
+end $$;
+
+-- ═══ NI-24: a bank account is a valid Pakistani IBAN ═══
+select pg_temp.is('ten letters are not a bank account', public.nvi_request_payout(:'wk', 500, 'Bank', 'Audit Client', 'AAAAAAAAAA', 'cccccccc-0000-4000-8000-000000000001')->>'reason', 'number');
+select pg_temp.is('an IBAN with a wrong check digit: refused', public.nvi_request_payout(:'wk', 500, 'Bank', 'Audit Client', 'PK36SCBL0000001123456703', 'cccccccc-0000-4000-8000-000000000002')->>'reason', 'number');
+select pg_temp.is('a real IBAN, typed with spaces: accepted', public.nvi_request_payout(:'wk', 500, 'Bank', 'Audit Client', 'pk36 scbl 0000 0011 2345 6702', 'cccccccc-0000-4000-8000-000000000003')->>'ok', 'true');
+select pg_temp.is('and stored tidy', (select account_number from public.nvi_payouts where req_key = 'cccccccc-0000-4000-8000-000000000003'), 'PK36SCBL0000001123456702');
+
 -- ═══ NVI-02: a cash fare is booked at the cash taken ═══
 -- Nothing paid on a Rs 100 fare: the rider owes nothing, NovaX earned nothing.
 select pg_temp.job('T-ZERO', :'ra', 100) as z1 \gset
@@ -261,6 +287,28 @@ select pg_temp.as_user(:'uc');
 set local role authenticated;
 select pg_temp.is('paused rider: not counted as a rider for photos', public.nvi_is_rider()::text, 'false');
 reset role;
+
+-- ═══ NI-31: a job alert goes only to riders who can take the job ═══
+insert into public.nvi_riders (full_name, email, phone, status, auth_user_id, docs_at, docs_checked_at, online, last_seen)
+values ('Push Fresh', 'pf@audit.invalid', '03001110901', 'Active', gen_random_uuid(), now(), now(), true, now()) returning id as pf \gset
+insert into public.nvi_riders (full_name, email, phone, status, auth_user_id, docs_at, docs_checked_at, online, last_seen)
+values ('Push Stale', 'ps@audit.invalid', '03001110902', 'Active', gen_random_uuid(), now(), now(), true, now() - interval '3 days') returning id as ps \gset
+insert into public.nvi_riders (full_name, email, phone, status, auth_user_id, docs_at, docs_checked_at, online, last_seen)
+values ('Push Reserved', 'pr@audit.invalid', '03001110903', 'Active', gen_random_uuid(), now(), now(), true, now()) returning id as pr \gset
+insert into public.nvi_push_subs (rider_id, endpoint) values (:'pf', 'https://push.invalid/fresh'), (:'ps', 'https://push.invalid/stale'), (:'pr', 'https://push.invalid/reserved');
+select pg_temp.job('T-PUSHRELAY', :'ra', 150) as zr \gset
+update public.nvi_jobs set relay_rider = :'pr', relay_state = 'planned' where id = :'zr';
+insert into public.nvi_jobs (code, status, p_lat, p_lng, d_lat, d_lng, pickup_address, drop_address, sender_name, sender_phone,
+  receiver_name, receiver_phone, item, payer, distance_m, distance_source, fare, confirmed_at)
+values ('T-PUSH', 'Booked', 24.86, 67.06, 24.81, 67.03, 'Shop 1, Audit Road', 'House 2, Audit Street', 'Audit Sender', '03001119500',
+  'Audit Receiver', '03211119500', 'Audit parcel', 'sender', 5000, 'road', 125, now()) returning id as zp \gset
+update public.nvi_jobs set push_at = null where id = :'zp';
+select public.nvi_push_targets(:'zp') as targets \gset
+select pg_temp.is('the rider on duty and free is alerted', ((:'targets')::jsonb @> '[{"endpoint":"https://push.invalid/fresh"}]')::text, 'true');
+select pg_temp.is('a rider not seen for three days is not', ((:'targets')::jsonb @> '[{"endpoint":"https://push.invalid/stale"}]')::text, 'false');
+select pg_temp.is('a rider kept for a relay is not', ((:'targets')::jsonb @> '[{"endpoint":"https://push.invalid/reserved"}]')::text, 'false');
+update public.nvi_jobs set relay_rider = null, relay_state = null where id = :'zr';
+update public.nvi_riders set online = false where id in (:'pf', :'ps', :'pr');
 
 -- ═══ NVI-05: the rules version on record ═══
 select pg_temp.is('rules version', (select terms_version from public.nvi_config where id), '1.2');

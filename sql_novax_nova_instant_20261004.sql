@@ -39,6 +39,20 @@
 -- This file can be run again at any time. The enum value below is only used
 -- inside function bodies, which Postgres does not read until they are called,
 -- so it no longer needs a separate run first.
+-- Refuses to run by itself once a later Nova Instant file has been applied:
+-- alone, it would put older functions back over newer ones. The files are
+-- applied together and in order by scripts/instant-migrate.sh.
+do $$
+declare v_later boolean := false;
+begin
+  if to_regclass('public.nvi_schema') is not null and coalesce(current_setting('nvi.migrate', true), '') <> 'all' then
+    execute 'select exists (select 1 from public.nvi_schema where n > 1)' into v_later;
+    if v_later then
+      raise exception 'A later Nova Instant database file is already applied. Run scripts/instant-migrate.sh (every file, in order); this file alone would put older functions back.';
+    end if;
+  end if;
+end $$;
+
 alter type public.novax_role add value if not exists 'instant';
 -- Nova Instant client accounts (instant-account.html), 5 Oct 2026.
 alter type public.novax_role add value if not exists 'instant_client';
@@ -2131,5 +2145,11 @@ end $$;
 
 -- The alert sender runs with the service role.
 grant execute on function public.nvi_push_targets(uuid, text, uuid), public.nvi_push_result(bigint[], bigint[], bigint[]), public.nvi_push_key() to service_role;
+
+-- This file is now applied (see the note at the top about running it alone).
+create table if not exists public.nvi_schema (n int primary key, file text not null, applied_at timestamptz not null default now());
+alter table public.nvi_schema enable row level security;
+revoke all on public.nvi_schema from public, anon, authenticated;
+insert into public.nvi_schema (n, file) values (1, 'sql_novax_nova_instant_20261004.sql') on conflict (n) do update set file = excluded.file, applied_at = now();
 
 notify pgrst, 'reload schema';

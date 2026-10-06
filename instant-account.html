@@ -178,6 +178,13 @@ html.embed main{padding-top:6px;padding-bottom:16px}
     else if(d.length===12&&d.slice(0,2)==="92") d=d.slice(2); else if(d.length===11&&d.charAt(0)==="0") d=d.slice(1);
     return /^3\d{9}$/.test(d)?("0"+d):"";
   }
+  /* A Pakistani IBAN: PK, two check digits, four bank letters, sixteen digits, and the check digits must be right. Returns it tidied, or "". */
+  function pkIban(raw){
+    var v=String(raw==null?"":raw).replace(/[^0-9A-Za-z]/g,"").toUpperCase(); if(!/^PK\d{2}[A-Z]{4}\d{16}$/.test(v)) return "";
+    var r=v.slice(4)+v.slice(0,4), m=0;
+    for(var i=0;i<r.length;i++){ var c=r.charCodeAt(i), d=c>=65?String(c-55):r.charAt(i); for(var k=0;k<d.length;k++) m=(m*10+Number(d.charAt(k)))%97; }
+    return m===1?v:"";
+  }
   function friendly(m){
     m=String(m||"");
     if(/Invalid login credentials/i.test(m)) return "Wrong email or password.";
@@ -405,7 +412,7 @@ html.embed main{padding-top:6px;padding-bottom:16px}
       '<a class="btn btn-plain sm" href="https://wa.me/92'+esc(String(S.me.support||"03123922558").replace(/\D/g,"").replace(/^0/,""))+'" target="_blank" rel="noopener">WhatsApp</a></div></section>'+
       '<button class="btn btn-quiet wide" type="button" data-act="signout" style="margin-top:8px">Sign out</button>';
   }
-  var W_SAY={ min:"The smallest withdrawal is ", method:"Choose where to send it.", title:"Enter the account name.", number:"Enter a valid mobile account number or IBAN.",
+  var W_SAY={ min:"The smallest withdrawal is ", method:"Choose where to send it.", title:"Enter the account name.", number:"Enter a valid mobile account number or IBAN.", iban:"That is not a valid IBAN. It is 24 characters and starts with PK; copy it from your bank app.", mobile:"Enter the mobile account number like 0300 1234567.",
     open:"You already have a withdrawal waiting.", recent:"You asked for this same withdrawal a few minutes ago. Check the list below before asking again.", withdrawals_off:"Withdrawals are paused at NovaX for now.", balance:"That is more than is ready to withdraw.", cnic:"Enter your 13-digit CNIC number.", signin:"Sign in again." };
   /* One key for one withdrawal, kept on this phone until NovaX answers. If the
      answer is lost and the same withdrawal is sent again (even after a reload),
@@ -428,8 +435,11 @@ html.embed main{padding-top:6px;padding-bottom:16px}
     var amt=Number(($("wAmt").value||"").replace(/\D/g,"")), msg=$("wMsg"), btn=$("wBtn");
     if(!amt) return sayMsg(msg,"Enter the amount.");
     var cn=$("wCnic"); if(cn&&cn.value.replace(/\D/g,"").length!==13) return sayMsg(msg,W_SAY.cnic);
+    var num=$("wNum").value.trim(), method=$("wMethod").value;
+    /* Checked here before it is sent, and again by NovaX: one wrong character in an IBAN is caught, not paid to. */
+    if(method==="Bank"?!pkIban(num):!pkPhone(num)) return sayMsg(msg,method==="Bank"?W_SAY.iban:W_SAY.mobile);
     busyBtn(btn,true,"Sending withdrawal request…");
-    var num=$("wNum").value.trim(), method=$("wMethod").value, key=payKey(amt+"|"+method+"|"+num.replace(/\W/g,""));
+    var key=payKey(amt+"|"+method+"|"+num.replace(/\W/g,""));
     rpc("nvi_client_withdraw",{ p_amount:amt, p_method:method, p_title:$("wTitle").value.trim(), p_number:num, p_cnic:cn?cn.value:null, p_key:key }).then(function(r){
       payKeyDone();   /* NovaX answered: this withdrawal is settled one way or the other */
       if(r&&r.ok===false){ busyBtn(btn,false); return sayMsg(msg,(W_SAY[r.reason]||"That did not work.")+(r.reason==="min"?rs(r.min)+".":"")); }

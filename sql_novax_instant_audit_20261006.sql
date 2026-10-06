@@ -12,6 +12,20 @@
 -- NVI-07  one address cannot use up everybody's road lookups
 -- NVI-08  one login is a customer or a rider, never both
 -- NVI-09  only an active rider can add document photos, and only a few
+-- Refuses to run by itself once a later Nova Instant file has been applied:
+-- alone, it would put older functions back over newer ones. The files are
+-- applied together and in order by scripts/instant-migrate.sh.
+do $$
+declare v_later boolean := false;
+begin
+  if to_regclass('public.nvi_schema') is not null and coalesce(current_setting('nvi.migrate', true), '') <> 'all' then
+    execute 'select exists (select 1 from public.nvi_schema where n > 3)' into v_later;
+    if v_later then
+      raise exception 'A later Nova Instant database file is already applied. Run scripts/instant-migrate.sh (every file, in order); this file alone would put older functions back.';
+    end if;
+  end if;
+end $$;
+
 set local lock_timeout = '8s';
 
 -- ═══════════════════ NVI-01: withdrawals ═══════════════════
@@ -540,5 +554,11 @@ begin
     execute 'grant execute on function ' || f || ' to authenticated';
   end loop;
 end $$;
+
+-- This file is now applied (see the note at the top about running it alone).
+create table if not exists public.nvi_schema (n int primary key, file text not null, applied_at timestamptz not null default now());
+alter table public.nvi_schema enable row level security;
+revoke all on public.nvi_schema from public, anon, authenticated;
+insert into public.nvi_schema (n, file) values (3, 'sql_novax_instant_audit_20261006.sql') on conflict (n) do update set file = excluded.file, applied_at = now();
 
 notify pgrst, 'reload schema';

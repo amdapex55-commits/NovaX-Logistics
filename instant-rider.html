@@ -517,11 +517,12 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
   }
   var WSAY={ amount:"Enter the amount.", method:"Choose how.", ref:"Enter the transaction ID from the SMS or receipt.", too_many:"You have three waiting already. NovaX checks them first.",
     dup_ref:"That transaction ID was already sent. Check the list below.", withdrawals_off:"Payouts are paused at NovaX for now. Call the office.",
-    min:"The smallest payout is ", title:"Enter the account name.", number:"Enter a valid mobile account number or IBAN.", open:"You already have a payout waiting.", balance:"That is more than NovaX owes you.",
+    min:"The smallest payout is ", title:"Enter the account name.", number:"Enter a valid mobile account number or IBAN.", iban:"That is not a valid IBAN. It is 24 characters and starts with PK; copy it from your bank app.", mobile:"Enter the mobile account number like 0300 1234567.", open:"You already have a payout waiting.", balance:"That is more than NovaX owes you.",
     recent:"You asked for this same payout a few minutes ago. Check the list below before asking again." };
   function walletGo(btn){
     var k=S.wsheet, amt=Number(($("wAmt").value||"").replace(/\D/g,"")), m=$("wMethod").value, msg=$("wMsg");
     if(!amt){ say(msg,WSAY.amount); return; }
+    if(k!=="deposit"){ var numC=($("wNum").value||"").trim(); if(m==="Bank"?!pkIban(numC):!pkPhone(numC)){ say(msg,m==="Bank"?WSAY.iban:WSAY.mobile); return; } }
     busyBtn(btn,true,k==="deposit"?"Telling NovaX…":"Sending payout request…");
     /* One key per claim, kept until it answers: a second tap or a retry after a lost reply is the same claim.
        A payout's key also stays on this phone, so the same payout sent again after a reload is still one payout. */
@@ -710,6 +711,13 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     });
   }
   function hex8(){ var a=new Uint8Array(4); crypto.getRandomValues(a); return Array.prototype.map.call(a,function(x){ return ("0"+x.toString(16)).slice(-2); }).join(""); }
+  /* A Pakistani IBAN: PK, two check digits, four bank letters, sixteen digits, and the check digits must be right. Returns it tidied, or "". */
+  function pkIban(raw){
+    var v=String(raw==null?"":raw).replace(/[^0-9A-Za-z]/g,"").toUpperCase(); if(!/^PK\d{2}[A-Z]{4}\d{16}$/.test(v)) return "";
+    var r=v.slice(4)+v.slice(0,4), m=0;
+    for(var i=0;i<r.length;i++){ var c=r.charCodeAt(i), d=c>=65?String(c-55):r.charAt(i); for(var k=0;k<d.length;k++) m=(m*10+Number(d.charAt(k)))%97; }
+    return m===1?v:"";
+  }
   function pkPhone(raw){
     var d=String(raw==null?"":raw).replace(/[^\d]/g,"");
     if(d.length===14&&d.slice(0,4)==="0092") d=d.slice(4); else if(d.length===13&&d.slice(0,3)==="092") d=d.slice(3);

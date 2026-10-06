@@ -9,6 +9,7 @@
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
 <meta name="theme-color" content="#0B2A20">
+<link rel="manifest" href="/assets/instant.webmanifest">
 <meta name="description" content="Nova Instant: send one parcel across Karachi by bike. Upfront fare of Rs 25 per km (Rs 100 minimum), no account needed, sender or receiver pays, live tracking link with a delivery PIN.">
 <link rel="canonical" href="https://novaxlogistics.com/instant.html">
 <meta property="og:type" content="website">
@@ -783,13 +784,32 @@ document.addEventListener("click",function(e){ if(window.__nviReady) return; var
     return [det,lab].filter(Boolean).join(", ");
   }
 
-  var panel=null;
-  function closePanelDom(){ if(panel){ panel.remove(); panel=null; document.body.style.overflow=""; } }
+  var panel=null, panelFrom=null;
+  /* What opened a panel gets the focus back when it closes (found again by
+     name if the sheet was redrawn meanwhile), so a keyboard or screen-reader
+     user is not dropped at the top of the page. */
+  function fromKey(el){
+    if(!el||el===document.body||!el.getAttribute) return null; if(el.id) return "#"+el.id;
+    var a=["data-pick","data-nav","data-edit","data-fb","data-acct"], i;
+    for(i=0;i<a.length;i++) if(el.hasAttribute(a[i])) return "["+a[i]+'="'+el.getAttribute(a[i])+'"]';
+    return el.hasAttribute("data-banned")?"[data-banned]":el.hasAttribute("data-rules")?"a[data-rules]":null;
+  }
+  function closePanelDom(){
+    if(!panel) return;
+    panel.remove(); panel=null; document.body.style.overflow="";
+    var pf=panelFrom; panelFrom=null; if(!pf) return;
+    setTimeout(function(){
+      var a=document.activeElement; if(panel||S.pinFor||(a&&a!==document.body&&a.isConnected)) return;
+      var el=pf.el&&pf.el.isConnected?pf.el:(pf.key?document.querySelector(pf.key):null);
+      if(el) try{ el.focus({ preventScroll:true }); }catch(e){}
+    },60);
+  }
   function ovOpen(){ if(!S.ov){ S.ov=true; try{ history.pushState({ nvi:"ov" },""); }catch(e){} } }
   function ovClose(fromPop){ if(S.ov){ S.ov=false; if(!fromPop){ S.skipPop=true; try{ history.back(); }catch(e){ S.skipPop=false; } } } }
   function closePanel(){ if(panel){ closePanelDom(); if(!S.pinFor) ovClose(false); } }
   function openPanel(title,bodyHtml){
-    closePanelDom(); ovOpen();
+    var from=panel?panelFrom:{ el:document.activeElement, key:fromKey(document.activeElement) };   /* a panel that replaces another keeps the first one's opener */
+    closePanelDom(); ovOpen(); panelFrom=from;
     panel=document.createElement("section"); panel.className="panel"; panel.setAttribute("role","dialog"); panel.setAttribute("aria-modal","true"); panel.setAttribute("aria-label",title);
     panel.innerHTML='<header><button class="x" type="button" data-close aria-label="Close">'+IC.back+'</button><b>'+esc(title)+'</b></header><div class="body">'+bodyHtml+'</div>';
     document.body.appendChild(panel); document.body.style.overflow="hidden";
@@ -901,13 +921,21 @@ document.addEventListener("click",function(e){ if(window.__nviReady) return; var
      found again with its number and a mobile (Help). */
   var CLOSED=["Delivered","Cancelled","Returned"];
   function hist(){ var a=store("nvi_hist"); return Array.isArray(a)?a:[]; }
+  /* A week after a delivery closes, its tracking link stops showing the
+     addresses. This phone drops them then too: the row keeps the booking
+     number, the result and the date. */
+  function histTidy(a){
+    var days=Number(S.status&&S.status.track_days)||7;
+    a.forEach(function(x){ if(CLOSED.indexOf(x.status)>-1&&Date.now()-(x.at||0)>days*86400000){ delete x.from; delete x.to; } });
+    return a;
+  }
   function histPut(e){
     if(!e||!e.token) return;
     var a=hist(), i=-1; a.forEach(function(x,k){ if(x.token===e.token) i=k; });
     var cur=i>-1?a.splice(i,1)[0]:{ at:Date.now() };
     Object.keys(e).forEach(function(k){ if(e[k]!==undefined&&e[k]!==null) cur[k]=e[k]; });
     a.push(cur); a.sort(function(x,y){ return (y.at||0)-(x.at||0); });
-    a=a.filter(function(x){ return Date.now()-(x.at||0)<90*86400000; }).slice(0,40);
+    a=histTidy(a.filter(function(x){ return Date.now()-(x.at||0)<90*86400000; }).slice(0,40));
     store("nvi_hist",a); paintHistBtn();
   }
   function paintHistBtn(){ var b=$("histBtn"); if(b) b.hidden=!hist().length; }
@@ -919,7 +947,7 @@ document.addEventListener("click",function(e){ if(window.__nviReady) return; var
   function histRow(e){
     var st=e.status||"Booked", closed=CLOSED.indexOf(st)>-1;
     return '<a class="hrow" href="'+esc(selfUrl(e.token))+'" data-track="'+esc(e.token)+'"><span class="hdot'+(closed?" off":"")+'" aria-hidden="true"></span>'+
-      '<span class="hmain"><b>'+esc(shortPlace(e.from))+' &rarr; '+esc(shortPlace(e.to))+'</b><small>'+esc(e.code||"")+' &middot; '+esc(whenShort(e.at))+(e.fare?' &middot; '+esc(money(e.fare)):'')+'</small></span>'+
+      '<span class="hmain"><b>'+(e.from||e.to?esc(shortPlace(e.from))+' &rarr; '+esc(shortPlace(e.to)):'Delivery '+esc(e.code||""))+'</b><small>'+esc(e.code||"")+' &middot; '+esc(whenShort(e.at))+(e.fare?' &middot; '+esc(money(e.fare)):'')+'</small></span>'+
       '<span class="hst'+(closed?"":" live")+(st==="Cancelled"||st==="Failed delivery"?" bad":"")+'">'+esc(HSAY[st]||st)+'</span></a>';
   }
   /* The stored status of open deliveries is brought up to date, a few at a time. */
@@ -1312,18 +1340,23 @@ document.addEventListener("click",function(e){ if(window.__nviReady) return; var
       '<p class="fine" id="paySay">'+esc(codSay())+'</p><p class="fine" style="margin-top:6px">Signed in as '+esc(S.client.client.name)+'. <a href="instant-account.html">Your account</a></p>';
   }
   /* The account, read once at start: COD needs it, and it fills in the sender. */
+  /* Three answers, never mixed up: the account (returned), signed in with no
+     Nova Instant account yet (null), or it could not be checked (null and
+     S.clientErr): only the second asks the customer to finish an account. */
   function loadClient(){
+    S.clientErr=false;
     if(!sb||!sb.auth) return Promise.resolve(null);
     return Promise.resolve(sb.auth.getSession()).then(function(r){
       var ses=r&&r.data&&r.data.session; S.session=ses?{ email:(ses.user&&ses.user.email)||"" }:null;
       if(!ses) return null;
       return rpc("nvi_client_me").then(function(x){
-        S.client=(x&&!x.error&&x.data)||null;
+        if(!x||x.error){ S.clientErr=true; return null; }
+        S.client=x.data||null;
         if(S.client){ if(!S.sName) S.sName=S.client.client.name; if(!S.sPhone) S.sPhone=S.client.client.phone; }
         var l=$("acctLbl"); if(l) l.textContent=S.client?String(S.client.client.name).split(" ")[0]:"Account";
         return S.client;
       });
-    }).catch(function(){ return null; });
+    }).catch(function(){ S.clientErr=true; return null; });
   }
   var ACCT_SAY={ novax_login:"This email is a NovaX Logistics login. Use a different email for Nova Instant.", name:"Enter your name.", phone:"Enter a mobile like 0300 1234567.", signin:"Sign in again." };
   function acctErr(m){ m=String(m||""); if(/Invalid login credentials/i.test(m)) return "Wrong email or password."; if(/already registered/i.test(m)) return "This email already has an account. Sign in instead.";
@@ -1375,7 +1408,11 @@ document.addEventListener("click",function(e){ if(window.__nviReady) return; var
         })
         :Promise.resolve(sb.auth.signInWithPassword({ email:email, password:pass })).then(function(r){
           if(r.error) throw new Error(r.error.message);
-          return loadClient().then(function(c){ if(c) return done(); closePanelDom(); S.ov=false; openAcct("finish"); });
+          return loadClient().then(function(c){
+            if(c) return done();
+            if(S.clientErr) return tell("You are signed in, but your account could not be loaded. Check your connection and press Sign in again.");
+            /* Signed in, with no Nova Instant account yet. The Finish form takes this panel's place: one Back step, not two. */
+            closePanelDom(); openAcct("finish"); });
         });
       Promise.resolve(go).catch(function(err){ tell(acctErr(err&&err.message)); });
     });
@@ -1942,6 +1979,7 @@ document.addEventListener("click",function(e){ if(window.__nviReady) return; var
     });
   }
   loadStatus(0);
+  (function(){ var a=hist(), n=JSON.stringify(a); histTidy(a); if(JSON.stringify(a)!==n) store("nvi_hist",a); })();
   paintHistBtn();
   /* Signed in to a Nova Instant account? Fills the sender and allows COD. */
   loadClient().then(function(c){ if(c&&document.body.getAttribute("data-view")==="book"&&S.step===3&&!panel) render(); });
@@ -1952,6 +1990,10 @@ document.addEventListener("click",function(e){ if(window.__nviReady) return; var
   else if(BOOT.view!=="book"){ restoreDraft(); S.resume=0; if(BOOT.view==="acct") showAcct(q0.get("join")?"join=1":""); else showList(); }
   else if(restoreDraft()){ render(); setTimeout(function(){ if(map){ map.invalidateSize(); paintMap(S.p,S.d,null); } },200); quote(); toast("We kept the details you had typed."); }
   else render();
+  /* Can be added to the home screen (assets/instant.webmanifest), and the last
+     screen is kept for a moment with no signal. Pages are still always fetched
+     fresh (see sw.js). Not on a local test address. */
+  if("serviceWorker" in navigator&&location.protocol==="https:") window.addEventListener("load",function(){ setTimeout(function(){ navigator.serviceWorker.register("/sw.js").catch(function(){}); },1500); });
   /* The script is here. A tap that came before it is acted on now. */
   window.__nviReady=true;
   (function(t){ if(!t||view()!=="book"||S.step!==1||panel) return; if(t==="list"||t==="acct") return goView(t); if(t==="book") return;
