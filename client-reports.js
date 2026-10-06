@@ -140,9 +140,20 @@
       if (out.length >= CEILING) { truncated = true; break; }
       page++;
     }
+    /* An empty answer is not always "no parcels". NovaX hides a merchant's
+       parcels from everyone else without raising an error, so a page whose
+       sign-in has ended (or that is signed in as another account) is simply
+       told "nothing". Before an empty report is believed, the page checks it
+       can still see its own account. If it cannot, the report says so. */
+    if (!out.length && !(await canSeeAccount(sb, cid))) { var gone = new Error("signed_out"); gone.signedOut = true; throw gone; }
     var mapped = out.map(mapRow);
     mapped.truncated = truncated;
     return mapped;
+  }
+  /* The account row is readable only by that account's own logins. */
+  async function canSeeAccount(sb, cid){
+    try{ var r = await sb.from("clients").select("id").eq("id", cid).limit(1); return !r.error && Array.isArray(r.data) && r.data.length === 1; }
+    catch(e){ return true; }                       /* no connection is not "signed out": the offline note covers it */
   }
   function localRange(a, b){
     return B.parcels().filter(function(p){ var d = p.date || pktDay(p.bookedAt); return (!a || d >= a) && d <= b; });
@@ -167,9 +178,9 @@
     S.loading = true; S.err = ""; S.key = key;
     if (!S.rows) paint();                         /* skeleton only on the very first load */
     else if (!quiet) markBusy(true);
-    var fromA = (S.compare && R.pa) ? R.pa : R.a, all, partial = false, truncated = false;
+    var fromA = (S.compare && R.pa) ? R.pa : R.a, all, partial = false, truncated = false, signedOut = false;
     try { all = await fetchRange(fromA, R.b); truncated = !!all.truncated; }
-    catch(e){ all = localRange(fromA, R.b); partial = !B.demo(); }
+    catch(e){ all = localRange(fromA, R.b); partial = !B.demo(); signedOut = !!(e && e.signedOut); }
     if (S.key !== key) return;                    /* a newer request superseded this one */
     var rows = all.filter(function(p){ return (!R.a || p.date >= R.a) && p.date <= R.b; });
     var prev = (S.compare && R.pa) ? all.filter(function(p){ return p.date >= R.pa && p.date <= R.pb; }) : null;
@@ -181,8 +192,8 @@
       if ((!prev.length && first && R.pb < first) || (R.a && daysBetween(R.a, R.b) > 366)) prev = null;
     }
     S.loading = false; S.at = Date.now();
-    if (quiet && S.rows && sig(rows) === sig(S.rows) && sig(prev || []) === sig(S.prev || []) && partial === S.partial && truncated === !!S.truncated) return;
-    S.rows = rows; S.prev = prev; S.partial = partial; S.truncated = truncated;
+    if (quiet && S.rows && sig(rows) === sig(S.rows) && sig(prev || []) === sig(S.prev || []) && partial === S.partial && truncated === !!S.truncated && signedOut === !!S.signedOut) return;
+    S.rows = rows; S.prev = prev; S.partial = partial; S.truncated = truncated; S.signedOut = signedOut;
     if (!quiet) { S.counted = false; S.shown = 50; }
     var y = window.scrollY;
     paint();
@@ -386,6 +397,7 @@
 
   /* One wording for every place the data might be incomplete. */
   function incompleteNote(){
+    if (S.signedOut) return "this page is no longer signed in to this account: only the parcels it already had are included";
     if (S.partial) return "offline: only the parcels this page already had are included";
     if (S.truncated) return "very large account: only the most recent 200,000 parcels are included";
     return "";
@@ -587,7 +599,9 @@
     var small = m.total < 10;
     HOST.innerHTML = bar() +
       '<div class="nvr-body">' + scopeLine(m, R) +
-      (m.total === 0
+      (S.signedOut && m.total === 0
+        ? '<div class="nvr-card nvr-zero"><h4>Sign in again to see this report</h4><p>This page is no longer signed in to ' + esc(B.clientName() || "this account") + ', so NovaX did not send it any parcels. Nothing is wrong with the account or its parcels.</p><div><a class="nvr-btn is-primary" href="index.html#signin">Sign in again</a> <button type="button" class="nvr-btn" id="nvrRetry">Try again</button></div></div>'
+        : m.total === 0
         ? '<div class="nvr-card nvr-zero"><h4>No parcels booked ' + (S.period === "today" ? "today" : "in this period") + '</h4><p>Pick a longer period above, or book a parcel and it shows up here straight away.</p><div><button type="button" class="nvr-btn" data-period="all">Show all time</button> <button type="button" class="nvr-btn is-primary" data-go="newBooking">Book a parcel</button></div></div>'
         : kpis(m, pm, bk) + insightsHtml(INS) +
           '<div class="nvr-grid">' + moneyFlow(m) + (small ? '<div class="nvr-card nvr-note"><h4 class="nvr-h">Charts</h4><p class="nvr-empty">Charts appear once you have 10 or more parcels in the period. You have ' + m.total + ' so far.</p></div>' : trend(bk)) + '</div>' +
@@ -678,6 +692,7 @@
         paintExplorer(); jump(); return;
       }
       if (t.id === "nvrClear" || t.id === "nvrClear2") { S.q = ""; S.city = ""; S.group = "all"; S.shown = 50; paintExplorer(); return; }
+      if (t.id === "nvrRetry") { load(true); return; }
       if (t.id === "nvrMore") { S.shown += 50; paintExplorer(); return; }
       if (t.hasAttribute("data-awb")) { openAwb(t.getAttribute("data-awb")); return; }
     });
@@ -744,6 +759,7 @@
     '.nvr-toggle input:checked+span{background:var(--nvu-accent);border-color:var(--nvu-accent)}',
     '.nvr-toggle input:checked+span::after{transform:translateX(14px);background:var(--nvu-accent-ink)}',
     '.nvr-toggle input:focus-visible+span{outline:2px solid var(--nvu-accent);outline-offset:2px}',
+    'a.nvr-btn{text-decoration:none}' +
     '.nvr-btn{appearance:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--nvu-line-2);background:var(--nvu-bg-2);color:var(--nvu-ink);font:inherit;font-size:13px;font-weight:700;cursor:pointer}',
     '.nvr-btn:hover{border-color:var(--nvu-ink-3)}',
     '.nvr-btn.is-primary{background:var(--nvu-accent);color:var(--nvu-accent-ink);border-color:var(--nvu-accent)}',
