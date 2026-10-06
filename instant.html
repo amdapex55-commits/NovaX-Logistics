@@ -642,15 +642,15 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
         return (j.features||[]).map(function(f){ var c=f.geometry&&f.geometry.coordinates; return c?{ lat:c[1], lng:c[0], label:mbLabel(f.properties||{}) }:null; }).filter(function(it){ return it&&inBox(it.lat,it.lng); });
       }).catch(function(){ return []; });
   }
-  /* The free search can stall for seconds; after 4.5 s it counts as down and Mapbox answers instead. */
-  function timed(url,grp){
-    var ac=window.AbortController?new AbortController():null, t=ac?setTimeout(function(){ ac.abort(); },4500):null;
+  /* A request that is given up on after ms (4.5 s unless said). */
+  function timed(url,grp,ms){
+    var ac=window.AbortController?new AbortController():null, t=ac?setTimeout(function(){ ac.abort(); },ms||4500):null;
     /* grp: the search this belongs to. When the customer types again, it is cancelled with it. */
     if(ac&&grp){ if(grp.signal.aborted) ac.abort(); else grp.signal.addEventListener("abort",function(){ ac.abort(); }); }
     return fetch(url,ac?{ signal:ac.signal }:undefined).then(function(r){ clearTimeout(t); return r; },function(e){ clearTimeout(t); throw e; });
   }
-  function photon(q,grp){
-    return timed(PHOTON+"/api/?q="+encodeURIComponent(q)+"&limit=7&lang=en&lat="+CENTER[0]+"&lon="+CENTER[1]+"&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n,grp)
+  function photon(q,grp,ms){
+    return timed(PHOTON+"/api/?q="+encodeURIComponent(q)+"&limit=7&lang=en&lat="+CENTER[0]+"&lon="+CENTER[1]+"&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n,grp,ms)
       .then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
         var seen={};
         return (j.features||[]).map(function(f){ var c=f.geometry&&f.geometry.coordinates; if(!c) return null;
@@ -676,8 +676,14 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     /* Few answers from the free search (common for Karachi landmarks): add
        Mapbox's, nearest-duplicate removed, so a customer is never left with one odd match. */
     function merge(out,more){ more.forEach(function(x){ if(!out.some(function(y){ return Math.abs(y.lat-x.lat)<0.002&&Math.abs(y.lng-x.lng)<0.002; })) out.push(x); }); return out; }
-    return photon(q,grp).then(function(a){
-      if(a.length>=3) return a;
+    var mb=null, askMb=function(){ return mb||(mb=mbSearch(q,grp).catch(function(){ return []; })); };
+    /* The free search knows Karachi best but on a bad day takes 5 to 8
+       seconds, so it gets 10. After 2.5 s Mapbox is asked as well, and
+       whichever has places first is shown. If Mapbox has none, the free
+       search is still waited for. Typing again cancels all of it. */
+    var t0=Date.now(), main=photon(q,grp,10000).then(function(a){
+      /* Enough places, or some after a long wait: show them now rather than ask again. */
+      if(a.length>=3||(a.length&&Date.now()-t0>3000)) return a;
       /* Customers add the area ("Sea View Clifton") while the map files the
          place under another one, or split a name the map joins ("Seaview").
          Ask again without the last word and with the words joined. */
@@ -685,10 +691,18 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
       if(w.length>2) alt.push(base.join(" "));
       if(base.length>1&&base.length<4) alt.push(base.join(""));
       if(w.length===2&&w[0].length>=5) alt.push(w[0]);
-      return Promise.all(alt.map(function(x){ return photon(x,grp).catch(function(){ return []; }); }).concat([mbSearch(q,grp).catch(function(){ return []; })])).then(function(r){
+      return Promise.all(alt.map(function(x){ return photon(x,grp).catch(function(){ return []; }); }).concat([askMb()])).then(function(r){
         var out=a.slice(); r.forEach(function(m){ merge(out,m); }); return out.slice(0,8);
       });
-    }).catch(function(e){ if(grp&&grp.signal.aborted) throw e; return mbSearch(q,grp).then(function(a){ if(!a.length) throw new Error("down"); return a; }); });
+    });
+    return new Promise(function(res,rej){
+      var done=false, t=setTimeout(function(){ askMb().then(function(a){ if(!done&&a.length){ done=true; res(a); } }); },2500);
+      main.then(function(a){ clearTimeout(t); if(!done){ done=true; res(a); } },function(e){
+        clearTimeout(t); if(done) return;
+        if(grp&&grp.signal.aborted){ done=true; return rej(e); }
+        askMb().then(function(a){ if(done) return; done=true; if(a.length) res(a); else rej(new Error("down")); });
+      });
+    });
   }
   function reverseLabel(lat,lng){
     return timed(PHOTON+"/reverse?lat="+lat+"&lon="+lng+"&lang=en").then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){

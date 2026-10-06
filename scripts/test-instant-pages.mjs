@@ -71,5 +71,7 @@ ok("a newer fare check cancels the one before", /quoteAc\.abort\(\)/.test(book) 
 ok("an unchanged route is not redrawn", /rk===routeKey/.test(book));
 ok("the saved availability note never opens booking", /if\(!s&&!S\.statusErr&&S\.hint\) s=S\.hint;/.test(book) && /function canBookNow\(\)\{ var s=S\.status; return !!s&&/.test(book));
 
+ok("a slow place search is waited for while Mapbox is asked as well", /photon\(q,grp,10000\)/.test(book) && /askMb\(\)\.then\(function\(a\)\{ if\(!done&&a\.length\)/.test(book));
+
 console.log(bad ? `NOVA INSTANT PAGE CHECKS FAILED (${bad})` : "NOVA INSTANT PAGE CHECKS PASSED");
 process.exit(bad ? 1 : 0);
