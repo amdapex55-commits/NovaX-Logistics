@@ -195,7 +195,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
   var $=function(id){ return document.getElementById(id); };
   var sb=null;
   try{ sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){}
-  var S={ b:null, w:null, hist:{}, tab:"live", open:null, timer:null, busy:false };   /* open = {job, kind} for the inline form */
+  var S={ b:null, w:null, hist:{}, tab:"live", open:null, timer:null, busy:false, flash:{} };   /* open = {job, kind} for the inline form */
 
   function rpc(name,args){
     return Promise.resolve(sb.rpc(name,args||{})).then(function(r){
@@ -265,7 +265,7 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     var now={}, fresh=0;
     live.forEach(function(j){
       var k=j.id+"|"+(j.status==="Awaiting confirmation"||j.status==="Booked"||j.status==="Failed delivery"?j.status:"")+"|"+(j.problem_at||"");
-      now[k]=1; if(seen&&!seen[k]&&(j.status==="Awaiting confirmation"||j.status==="Booked"||j.status==="Failed delivery"||j.problem_at)) fresh++;
+      now[k]=1; if(seen&&!seen[k]&&(j.status==="Awaiting confirmation"||j.status==="Booked"||j.status==="Failed delivery"||j.problem_at)){ fresh++; S.flash[j.id]=1; }
     });
     if(seen&&fresh) beep();
     seen=now;
@@ -300,6 +300,9 @@ h3{font:800 16px/1.2 var(--display);margin:0 0 10px}
     else if(S.tab==="wallets") h+=walletsHtml();
     else h+=closedHtml(closed);
     $("main").innerHTML=h;
+    /* A job that just needs attention flashes once, then stays flagged. */
+    if(!document.hidden&&!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches)) Object.keys(S.flash).forEach(function(id){ var el=$("jc-"+id); if(el){ el.classList.add("hl"); setTimeout(function(){ el.classList.remove("hl"); },1700); } });
+    S.flash={};
   }
   function waLink(phone,text){ return "https://wa.me/92"+String(phone||"").replace(/\D/g,"").replace(/^0/,"")+"?text="+encodeURIComponent(text); }
   function trackLink(j){ return location.origin+"/instant.html?t="+encodeURIComponent(j.token); }

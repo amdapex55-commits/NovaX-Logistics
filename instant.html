@@ -345,6 +345,33 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
 .done-mark svg{width:17px;height:17px;stroke:var(--emerald-ink);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round}
 @keyframes pop{from{transform:scale(.6)}to{transform:none}}
 @media (prefers-reduced-motion:reduce){ .done-mark{animation:none} }
+/* ── motion: one-off, transform only, never hides content ── */
+.cross{transition:transform .28s cubic-bezier(.3,1.6,.5,1)}
+body.lifting .cross{transform:translateY(-12px);transition:transform .14s ease-out}
+body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
+.farecard.fresh{animation:fareIn .42s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes fareIn{from{transform:translateY(10px) scale(.96)}to{transform:none}}
+.status.bump{animation:stIn .45s cubic-bezier(.2,.9,.3,1.15)}
+@keyframes stIn{from{transform:translateY(-8px) scale(.98)}to{transform:none}}
+.rider.rin{animation:rIn .45s cubic-bezier(.2,.9,.3,1.15)}
+@keyframes rIn{from{transform:translateX(-16px)}to{transform:none}}
+.tl li.grow::after{transform-origin:top;animation:grow .6s ease-out}
+@keyframes grow{from{transform:scaleY(0)}to{transform:none}}
+.tl li.now::before{animation:nowRing 1.8s ease-out 3}
+@keyframes nowRing{0%{box-shadow:0 0 0 0 rgba(18,199,124,.45)}100%{box-shadow:0 0 0 10px rgba(18,199,124,0)}}
+.done-mark{position:relative}
+.done-mark.burst{animation:pop .5s cubic-bezier(.2,.9,.3,1.6)}
+.done-mark.burst::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:3px solid var(--emerald);animation:burst .8s ease-out forwards}
+@keyframes burst{from{transform:scale(.8);opacity:1}to{transform:scale(2.4);opacity:0}}
+.radar{pointer-events:none}
+.radar i{position:absolute;inset:0;border-radius:50%;background:rgba(18,199,124,.22);border:2px solid rgba(18,199,124,.5);transform:scale(.1);opacity:0;animation:radar 2.4s ease-out infinite}
+.radar i+i{animation-delay:1.2s}
+@keyframes radar{0%{transform:scale(.1);opacity:.9}100%{transform:scale(1);opacity:0}}
+@media (prefers-reduced-motion:reduce){
+  .cross{transition:none} body.lifting .cross{transform:none}
+  .farecard.fresh,.status.bump,.rider.rin,.tl li.grow::after,.tl li.now::before,.done-mark.burst,.done-mark.burst::after{animation:none}
+  .radar{display:none}
+}
 .toast{position:fixed;left:50%;bottom:calc(96px + var(--sa-b));transform:translateX(-50%);z-index:200;background:var(--forest);color:#fff;padding:11px 18px;border-radius:99px;font-size:14.5px;max-width:calc(100vw - 32px);text-align:center;box-shadow:var(--shadow)}
 #capBox{margin-top:12px;min-height:0}
 </style>
@@ -460,6 +487,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     map=L.map("map",{ zoomControl:window.innerWidth>=920, attributionControl:true, maxBounds:[[BOX.s-.15,BOX.w-.2],[BOX.n+.15,BOX.e+.2]], minZoom:10, zoomSnap:0.25 }).setView(CENTER,11);
     map.attributionControl.setPrefix('<a href="https://leafletjs.com" rel="noopener">Leaflet</a>');
     map.on("moveend",onMapMove);
+    map.on("movestart",function(){ if(S.pinFor) document.body.classList.add("lifting"); });
+    map.on("moveend",function(){ document.body.classList.remove("lifting"); });
   }catch(e){}
   /* Tiles go on once the Mapbox token has arrived, or after 2.5 s without it.
      OpenStreetMap is the stand-in with no token or if Mapbox stops serving. */
@@ -489,6 +518,13 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     return out;
   }
   function pad(){ return window.innerWidth>=920 ? { tl:[50,50], br:[50,50] } : { tl:[30,26], br:[30,44] }; }
+  var radarMk=null;
+  function radar(pt){
+    if(!map) return;
+    if(!pt){ if(radarMk){ map.removeLayer(radarMk); radarMk=null; } return; }
+    if(radarMk){ radarMk.setLatLng(pt); return; }
+    radarMk=L.marker(pt,{ icon:L.divIcon({ className:"radar", html:"<i></i><i></i>", iconSize:[120,120], iconAnchor:[60,60] }), keyboard:false, interactive:false, zIndexOffset:-1000 }).addTo(map);
+  }
   function paintMap(p,d,line,dropKey){
     if(!map) return;
     [["p",p],["d",d]].forEach(function(x){
@@ -777,11 +813,14 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
       }
       S.resume=0;
       render(); paintMap(S.p,S.d,S.quote&&S.quote.line);
-      if(S.quote){ say("Fare "+money(S.quote.fare)+" for "+S.quote.km+" kilometres."); countUp(); }
+      if(S.quote){ say("Fare "+money(S.quote.fare)+" for "+S.quote.km+" kilometres."); countUp(); anim(document.querySelector(".farecard"),"fresh"); }
       else say(S.quoteErr);
     });
   }
   /* The fare counts gently up to its final number. */
+  /* Plays a one-off entrance on an element that is already visible. Never hides
+     anything, and skips when motion is reduced or the tab is in the background. */
+  function anim(el,cls){ if(!el||REDUCED||document.hidden) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); setTimeout(function(){ if(el.isConnected) el.classList.remove(cls); },1200); }
   function countUp(){
     var el=$("fareNum"); if(!el||!S.quote) return; var to=Number(S.quote.fare);
     if(REDUCED){ el.textContent=to.toLocaleString("en-PK"); return; }
@@ -1340,7 +1379,7 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
       /* Two riders: the parcel was handed from the pickup rider to the delivery rider. */
       if(k==="Picked up"&&j.handover_at) tl+=li(j.status==="Picked up"?"now":"done","Securely handed to "+(j.handover_to||"the delivery rider")+" for the final delivery",j.handover_at); });
 
-    var h='<div class="status"><div class="top">'+(T.fresh&&j.status!=="Cancelled"?'<span class="done-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.500l4.500 4.500L19 7.500"/></svg></span>'
+    var h='<div class="status"><div class="top">'+((T.fresh&&j.status!=="Cancelled")||j.status==="Delivered"?'<span class="done-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.500l4.500 4.500L19 7.500"/></svg></span>'
         :(j.status==="Booked"?'<span class="pulse" aria-hidden="true"></span>':''))+
       '<div class="k">Nova Instant &middot; <b>'+esc(j.code)+'</b></div></div><h1 id="stepTitle" tabindex="-1">'+esc(T.fresh&&j.status==="Booked"?"Booked. Finding your rider":s[0])+'</h1><p>'+esc(subFor(j))+'</p></div>';
     /* If it has waited too long, help comes to the customer. */
@@ -1376,7 +1415,14 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
     /* Do not repaint under a finger mid-confirm. */
     if(document.querySelector('#pane [data-sure="1"]')) return;
     trackShell(h);
-    if(changed) say("Update: "+s[0]+".");
+    if(changed){
+      say("Update: "+s[0]+".");
+      anim(document.querySelector("#pane .status"),"bump");
+      var dn=document.querySelectorAll("#pane .tl li.done"); if(dn.length) anim(dn[dn.length-1],"grow");
+      if(j.status==="Rider assigned"||(j.status==="Picked up"&&j.handover_at)) anim(document.querySelector("#pane .rider"),"rin");
+      if(j.status==="Delivered"){ anim(document.querySelector("#pane .done-mark"),"burst"); try{ navigator.vibrate&&navigator.vibrate([30,60,30]); }catch(e){} }
+    }
+    radar(live&&(j.status==="Booked"||j.status==="Awaiting confirmation")&&Array.isArray(j.p)?j.p:null);
     /* Fitted once, and again only when the status changes: a customer who
        has moved the map keeps their view between refreshes. */
     if(Array.isArray(j.p)&&Array.isArray(j.d)&&(!T.fitted||changed)){ T.fitted=true; paintMap({ lat:j.p[0], lng:j.p[1] },{ lat:j.d[0], lng:j.d[1] },null); }

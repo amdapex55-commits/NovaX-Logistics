@@ -129,8 +129,8 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
 .rfull .rf-center{text-align:center}
 .rfull .rf-acts{display:grid;gap:10px}
 .rfull .btn-plain{background:transparent;border-color:var(--navy-line);color:#fff}
-@keyframes rfIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
-@keyframes rfPop{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+@keyframes rfIn{from{transform:translateY(24px)}to{transform:none}}
+@keyframes rfPop{from{transform:scale(.4)}to{transform:none}}
 @keyframes rfTick{to{stroke-dashoffset:0}}
 @media (prefers-reduced-motion:reduce){.rfull,.rfull .rf-done,.rfull .rf-done svg{animation:none;stroke-dashoffset:0}}
 /* .fld label is a small bold caption; the cash line inside a field is not one. */
@@ -190,7 +190,18 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
 .chk.late i{background:#d99a00}
 .sect{font:700 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:20px 2px 8px;display:flex;justify-content:space-between;gap:10px}
 .card.job{border-left:4px solid var(--green)}
-.card.job.fresh{box-shadow:0 0 0 3px rgba(15,191,120,.16)}
+.card.job.fresh{box-shadow:0 0 0 3px rgba(15,191,120,.16);animation:jobIn .45s cubic-bezier(.2,.9,.3,1.15)}
+@keyframes jobIn{from{transform:translateY(-14px) scale(.97)}to{transform:none}}
+.newtag{animation:tagPulse 1s ease-in-out 3}
+@keyframes tagPulse{50%{transform:scale(1.12)}}
+.btn{transition:transform .08s}
+.btn:active:not(:disabled){transform:scale(.98)}
+.step.stepin{animation:stepIn .45s cubic-bezier(.2,.9,.3,1.15)}
+@keyframes stepIn{from{transform:translateX(18px)}to{transform:none}}
+.toast{animation:toastIn .25s ease-out}
+@keyframes toastIn{from{transform:translate(-50%,14px)}to{transform:translateX(-50%)}}
+.prog i{transition:background .4s}
+@media (prefers-reduced-motion:reduce){ .card.job.fresh,.newtag,.step.stepin,.toast{animation:none} .btn{transition:none} .btn:active:not(:disabled){transform:none} }
 .newtag{font:700 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;background:var(--lime);color:#243300;border-radius:6px;padding:4px 6px;margin-left:6px}
 /* two steps, drawn */
 .prog{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:14px}
@@ -859,6 +870,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
       S.fails=0; S.okAt=Date.now(); paintNet();
       S.feed=f||{}; S.openCount=(S.feed.open||[]).length;
       var a=S.feed.active, key=a?a.id+"|"+a.status:"";
+      var stepChanged=!!(a&&S.key&&key!==S.key);
       if(key!==S.key){ if(S.key&&!a&&S.rcode&&S.key.indexOf(S.rcode.job)===0) rfDone("Handed over",S.rcode.toFull+" has "+(S.rcode.code_job||"the parcel")+" now. It is their delivery from here.","You are free for new jobs.","Done"); else if(S.rcode) rfull(null); S.key=key; S.cashOk=false; S.sheet=null; S.rcode=null; }
       /* A new job arrived while the rider was waiting. */
       if(!first&&S.openCount>before&&!a){ beep(); try{ navigator.vibrate&&navigator.vibrate([180,90,180,90,180]); }catch(e){} }
@@ -866,6 +878,7 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
          not while they are typing the PIN. The switch is still kept right. */
       if(S.view==="wallet") paintSwitch();
       else if(first||(!S.sheet&&!typing())) paint(); else paintSwitch();
+      if(stepChanged&&!document.hidden&&!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches)){ var st=$("main").querySelector(".step"); if(st){ st.classList.add("stepin"); setTimeout(function(){ st.classList.remove("stepin"); },600); } }
     }).catch(function(e){
       if(/not an active Nova Instant rider/i.test(e.message||"")) return loadMe();
       S.fails++; paintNet(); paintChk();
