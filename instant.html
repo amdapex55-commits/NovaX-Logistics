@@ -170,6 +170,7 @@ h2{font-size:22px;line-height:1.2;font-weight:800}
 textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
 .inp::placeholder{color:#8d9c94}
 .inp:focus{border-color:var(--emerald-deep);box-shadow:0 0 0 3px rgba(18,199,124,.18)}
+.gbad{border-radius:16px;box-shadow:0 0 0 2px #c0392b,0 0 0 6px rgba(192,57,43,.12)}
 .inp.bad,.agree.bad{border-color:#c0392b;box-shadow:0 0 0 3px rgba(192,57,43,.12)}
 .hint{font-size:13px;color:var(--muted);margin-top:5px}
 .two{display:grid;gap:12px}
@@ -584,7 +585,16 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
       });
   }
   function searchPlaces(q){
-    return photon(q).then(function(a){ return a.length?a:mbSearch(q); }).catch(function(){ return mbSearch(q).then(function(a){ if(!a.length) throw new Error("down"); return a; }); });
+    /* Few answers from the free search (common for Karachi landmarks): add
+       Mapbox's, nearest-duplicate removed, so a customer is never left with one odd match. */
+    return photon(q).then(function(a){
+      if(a.length>=3) return a;
+      return mbSearch(q).then(function(m){
+        var out=a.slice();
+        m.forEach(function(x){ if(!out.some(function(y){ return Math.abs(y.lat-x.lat)<0.002&&Math.abs(y.lng-x.lng)<0.002; })) out.push(x); });
+        return out.slice(0,8);
+      }).catch(function(){ return a; });
+    }).catch(function(){ return mbSearch(q).then(function(a){ if(!a.length) throw new Error("down"); return a; }); });
   }
   function reverseLabel(lat,lng){
     return fetch(PHOTON+"/reverse?lat="+lat+"&lon="+lng+"&lang=en").then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
@@ -742,7 +752,8 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
     store("nvi_hist",a); paintHistBtn();
   }
   function paintHistBtn(){ var b=$("histBtn"); if(b) b.hidden=!hist().length; }
-  function shortPlace(t){ return String(t||"").split(",")[0].trim()||"Karachi"; }
+  /* The area (last part of the address), not the house number typed first. */
+  function shortPlace(t){ var a=String(t||"").split(",").map(function(x){ return x.trim(); }).filter(Boolean); return a.length?a[a.length-1]:"Karachi"; }
   function whenShort(ms){ try{ return new Date(ms).toLocaleString("en-GB",{ timeZone:"Asia/Karachi", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true }); }catch(e){ return ""; } }
   var HSAY={ "Awaiting confirmation":"Waiting for NovaX's call", "Booked":"Finding a rider", "Rider assigned":"Rider on the way", "Picked up":"On the bike",
     "Failed delivery":"Not delivered", "Returning":"Coming back", "Returned":"Returned", "Delivered":"Delivered", "Cancelled":"Cancelled" };
@@ -1013,13 +1024,14 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
     var parts=[S.type, S.weight?S.weight.toLowerCase():"", S.fragile?"FRAGILE":"", S.value?("value Rs "+Number(S.value).toLocaleString("en-PK")):""].filter(Boolean).join(" · ");
     return (parts+": "+S.item).slice(0,160);
   }
+  function phSpaced(raw){ var d=pkPhone(raw); return d?d.slice(0,4)+" "+d.slice(4):""; }
   function step4(){
     var s=S.status||{}, q=S.quote||{}, min=Number(q.fare)<=Number(q.min_fare);
     var ret=Number(s.return_fee_pct||0);
     return head(4,"Check and book","")+
       '<section class="card"><dl class="rv">'+
-        '<dt>Pickup</dt><dd>'+esc(S.sName)+' &middot; '+esc(pkPhone(S.sPhone))+'<small>'+esc(addrOf("p"))+'</small></dd>'+
-        '<dt>Delivery</dt><dd>'+esc(S.rName)+' &middot; '+esc(pkPhone(S.rPhone))+'<small>'+esc(addrOf("d"))+'</small></dd>'+
+        '<dt>Pickup</dt><dd>'+esc(S.sName)+' &middot; '+esc(phSpaced(S.sPhone))+'<small>'+esc(addrOf("p"))+'</small></dd>'+
+        '<dt>Delivery</dt><dd>'+esc(S.rName)+' &middot; '+esc(phSpaced(S.rPhone))+'<small>'+esc(addrOf("d"))+'</small></dd>'+
         '<dt>Parcel</dt><dd>'+esc(S.item)+'<small>'+esc([S.type,S.weight,S.fragile?"fragile":"",S.value?("worth "+money(S.value)):""].filter(Boolean).join(" · "))+'</small>'+(S.note?'<small>Rider note: '+esc(S.note)+'</small>':'')+'</dd>'+
         '<dt>Pays</dt><dd>'+(S.payer==="cod"?"Cash on delivery: the receiver pays "+esc(money(codNum()))+'<small>The fare comes out of it; '+esc(money(Math.max(0,codNum()-Number(q.fare)-codFee())))+' goes to your wallet</small>':S.payer==="sender"?"Sender, in cash at pickup":"Receiver, in cash at delivery")+'</dd></dl>'+
         '<div class="total" style="font-weight:400;border-top-style:solid"><span>'+(min?"Minimum fare":esc(q.km)+" km × Rs "+esc(q.rate_per_km))+'</span><span>'+esc(money(q.fare))+'</span></div>'+
@@ -1027,7 +1039,9 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
       '<div class="chips" style="margin-top:10px" aria-label="Change something"><button class="chip" type="button" data-edit="1">Edit route</button><button class="chip" type="button" data-edit="2">Edit parcel</button><button class="chip" type="button" data-edit="3">Edit people</button></div>'+
       '<section class="card" style="font-size:14.5px;color:var(--ink-2);line-height:1.5"><p class="eyebrow">Good to know</p>'+
         '<p style="margin:0 0 8px">Free to cancel until the rider has picked up the parcel.</p>'+
-        '<p style="margin:0 0 8px">If the delivery cannot be made, the parcel comes back to the sender'+(ret>0?", and the return costs "+ret+"% of the fare.":" at no extra charge.")+'</p>'+
+        '<p style="margin:0 0 8px">'+(S.payer==="sender"
+          ?'If the delivery cannot be made, the parcel comes back to the sender'+(ret>0?", and the return costs "+ret+"% of the fare.":" at no extra charge.")
+          :'If the delivery cannot be made, the parcel comes back to the sender, who then pays the '+esc(money(q.fare))+' fare in cash'+(ret>0?" plus "+ret+"% for the return":"")+(S.payer==="cod"?". No cash on delivery is collected.":", because the receiver did not pay it."))+'</p>'+
         (s.confirm_first?'<p style="margin:0 0 8px">First booking from a number? NovaX phones the sender to confirm before a rider is sent.</p>':'')+
         '<p style="margin:0">The receiver gets a tracking link with a delivery PIN. The rider hands over only against that PIN.</p></section>'+
       '<label class="agree" id="agreeBox" for="agree"><input type="checkbox" id="agree" aria-labelledby="agreeTxt"'+(S.agree?" checked":"")+'><span id="agreeTxt">The parcel weighs '+maxKg()+' kg or less'+(maxVal()?", is worth "+money(maxVal())+" or less":"")+', and holds nothing on the <button class="linkish" type="button" data-banned style="min-height:0;display:inline;font-size:inherit">not-allowed list</button>. I agree to the <a href="instant-terms.html" target="_blank" rel="noopener">Nova Instant rules</a>.</span></label>'+
@@ -1053,6 +1067,9 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
   /* Each step is a history entry, so the phone's Back button goes one step
      back instead of leaving the page. */
   function go(n){ S.step=n; try{ history.pushState({ nvi:"step", step:n },""); }catch(e){} render(true); }
+  /* Shows the customer which question a step error is about. */
+  document.addEventListener("click",function(e){ var g=e.target.closest&&e.target.closest(".gbad"); if(g) g.classList.remove("gbad"); },true);
+  function markGroup(sel){ var g=document.querySelector("#pane "+sel); if(!g) return; g.classList.add("gbad"); try{ g.scrollIntoView({ block:"center", behavior:REDUCED?"auto":"smooth" }); }catch(e){} }
   function setStep(n){ S.step=n; try{ history.replaceState({ nvi:"step", step:n },""); }catch(e){} render(true); }
   function next(){
     S.msg="";
@@ -1063,9 +1080,9 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
       return go(2);
     }
     if(S.step===2){
-      if(!S.type){ S.msg="Choose the kind of parcel."; render(); say(S.msg); return; }
+      if(!S.type){ S.msg="Choose the kind of parcel."; render(); say(S.msg); return markGroup(".types"); }
       if(S.item.trim().length<2) return fail("item","Say what is inside the parcel.");
-      if(!S.weight){ S.msg="Choose about how heavy it is."; render(); say(S.msg); return; }
+      if(!S.weight){ S.msg="Choose about how heavy it is."; render(); say(S.msg); return markGroup('[aria-labelledby="wLbl"]'); }
       if(S.value&&maxVal()&&Number(S.value)>maxVal()) return fail("value","Nova Instant carries parcels worth up to "+money(maxVal())+".");
       return go(3);
     }

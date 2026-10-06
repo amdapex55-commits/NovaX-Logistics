@@ -301,7 +301,8 @@ textarea.inp{min-height:84px;resize:vertical;line-height:1.4}
   /* Withdraw is offered when enough is ready and no request is waiting. */
   function canW(){ var me=S.me||{}, av=Number((me.wallet||{}).available||0);
     return me.withdrawals_enabled!==false&&av>0&&av>=Number(me.min_withdraw||0)&&!(me.payouts||[]).some(function(p){ return p.status==="Requested"; }); }
-  function short(t){ return String(t||"").split(",")[0].trim()||"Karachi"; }
+  /* The area (last part of the address), not the house number typed first. */
+  function short(t){ var a=String(t||"").split(",").map(function(x){ return x.trim(); }).filter(Boolean); return a.length?a[a.length-1]:"Karachi"; }
   function paint(){
     var me=S.me, w=me.wallet||{}, av=Number(w.available||0), pe=Number(w.pending||0);
     var h='<h1>Hello, '+esc(String(me.client.name).split(" ")[0])+'</h1><p class="lead" style="margin-bottom:12px">Your deliveries and your cash-on-delivery money, in one place.</p>';
