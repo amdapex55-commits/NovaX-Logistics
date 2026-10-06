@@ -43,5 +43,17 @@ ok("the account opens inside the booking page", book.includes('src="instant-acco
 ok("the account page only talks to the page that holds it", /postMessage\(o,location\.origin\)/.test(acct) && /e\.origin!==location\.origin\|\|e\.source!==f\.contentWindow/.test(book));
 ok("a sign-in link from an email is not redirected", /standalone\|code\|token\|type\|error/.test(acct));
 
+// The sheet: only its handle moves it, and pulling the page down never reloads it.
+ok("the sheet handle is a real button", /<button class="grab" id="grab" type="button" aria-label=/.test(book));
+ok("only the handle drags the sheet", /g\.addEventListener\("pointerdown"/.test(book) && /\.grab\{[^}]*touch-action:none/.test(book));
+ok("pulling down on the page does not reload it", /html\{overscroll-behavior-y:contain\}/.test(book));
+ok("the sheet can be switched off", book.includes("[?&]sheet=0"));
+// The draft: kept on the phone for 45 minutes, back to the step it was on, without the rules tick.
+const draftKeys = (book.match(/var DRAFT=\[([^\]]*)\]/) || ["", ""])[1];
+ok("a half-made booking is kept on the phone", /localStorage\.setItem\("nvi_draft"/.test(book) && /45\*60000/.test(book));
+ok("it returns to the step it was on, the review included", /S\.resume=Math\.min\(Number\(o\.step\)\|\|1,4\)/.test(book));
+ok("the rules tick, CAPTCHA answer and PIN are never kept", !/"agree"|"cap"|pin|token/i.test(draftKeys));
+ok("a finished booking clears the draft", (book.match(/dropDraft\(\);/g) || []).length >= 3);
+
 console.log(bad ? `NOVA INSTANT PAGE CHECKS FAILED (${bad})` : "NOVA INSTANT PAGE CHECKS PASSED");
 process.exit(bad ? 1 : 0);

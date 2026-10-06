@@ -375,6 +375,17 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
 }
 .toast{position:fixed;left:50%;bottom:calc(96px + var(--sa-b));transform:translateX(-50%);z-index:200;background:var(--forest);color:#fff;padding:11px 18px;border-radius:99px;font-size:14.5px;max-width:calc(100vw - 32px);text-align:center;box-shadow:var(--shadow)}
 #capBox{margin-top:12px;min-height:0}
+/* ── The sheet can be pulled by its handle ──
+   Low shows more map, high covers it; between them is the usual place for
+   the screen. Pulling down on the page never reloads it. */
+html{overscroll-behavior-y:contain}
+.grab{display:block;position:relative;width:100%;height:26px;margin:-10px 0 0;padding:0;border:0;border-radius:0;background:none;touch-action:none;cursor:grab}
+.grab::before{content:"";position:absolute;left:50%;top:10px;width:38px;height:4px;margin-left:-19px;border-radius:99px;background:var(--line-2)}
+.grab::after{content:"";position:absolute;left:0;right:0;top:-14px;bottom:-6px}   /* a finger-sized target */
+.grab:active::before{background:var(--muted)}
+.stage.drag,.mapwrap.drag{transition:none}
+.stage.settle{transition:transform .22s cubic-bezier(.2,.8,.2,1)}
+@media (min-width:920px){ .grab{display:none} }
 /* ── The shell: one page, and only the sheet changes ──
    Header, map, sheet and (on a phone) the bottom bar stay where they are.
    Book, Deliveries, Account and a tracked delivery are views of the sheet. */
@@ -429,7 +440,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
   </div>
 </div>
 
-<div class="stage"><main class="sheet" id="sheet"><div class="grab" aria-hidden="true"></div><div id="pane"></div></main></div>
+<div class="stage"><main class="sheet" id="sheet"><button class="grab" id="grab" type="button" aria-label="Show more of the map"></button><div id="pane"></div></main></div>
 
 <nav class="nav" id="nav" aria-label="Nova Instant">
   <button type="button" data-nav="book" aria-current="page"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.500v9L12 21l-8-4.500v-9zM4 7.500l8 4.500 8-4.500M12 12v9"/></svg>Book</button>
@@ -828,6 +839,92 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
       (a.length>3?'<button class="linkish" type="button" data-hist style="min-height:0;padding:12px 4px;margin:-12px -4px">See all '+a.length+'</button>':'')+'</div>'+
       a.slice(0,3).map(histRow).join("")+'</section>';
   }
+  /* ───────── the sheet can be pulled ─────────
+     Three resting places: low (more map, to look at the route), the usual one
+     for the screen, and high (the sheet covers the map). Only the handle moves
+     it, so scrolling a form never does, and a finger on the map never reaches
+     it. While a finger is down the sheet moves by transform alone; the layout
+     changes once, when it lands. ?sheet=0 turns this off. */
+  var SHEET={ on:!/[?&]sheet=0/.test(location.search)&&!!window.PointerEvent, pos:"rest" };
+  var stageEl=document.querySelector(".stage"), mapWrap=document.querySelector(".mapwrap");
+  function hdrPx(){ var h=document.querySelector(".hdr"); return h?h.offsetHeight:56; }
+  function peekNow(){ return Math.max(0,parseFloat(getComputedStyle(stageEl).paddingTop)-hdrPx()); }
+  function peekRest(){
+    var b=document.body, cur=b.style.getPropertyValue("--peek"); if(!cur) return peekNow();
+    stageEl.classList.add("drag"); b.style.removeProperty("--peek"); var r=peekNow(); b.style.setProperty("--peek",cur); void stageEl.offsetHeight; stageEl.classList.remove("drag"); return r;
+  }
+  function peekLow(rest){
+    var n=$("nav"), navH=n&&getComputedStyle(n).display!=="none"?n.offsetHeight:0, H=window.innerHeight-hdrPx();
+    return Math.round(Math.max(rest,Math.min(H-navH-200,H*.62)));
+  }
+  function sheetLabel(){ var g=$("grab"); if(g) g.setAttribute("aria-label",SHEET.pos==="low"?"Show less of the map":"Show more of the map"); }
+  function sheetTo(pos,px){
+    if(pos==="rest") document.body.style.removeProperty("--peek"); else document.body.style.setProperty("--peek",Math.round(px)+"px");
+    SHEET.pos=pos; sheetLabel(); refitSoon();
+  }
+  /* A new step or screen starts at its usual place. */
+  function sheetReset(){ if(SHEET.pos!=="rest"||document.body.style.getPropertyValue("--peek")){ document.body.style.removeProperty("--peek"); SHEET.pos="rest"; sheetLabel(); } }
+  (function(){
+    var g=$("grab"); if(!g||!SHEET.on) return;
+    var d=null, skipClick=false;
+    g.addEventListener("pointerdown",function(e){
+      if(e.button||window.innerWidth>=920||S.pinFor) return;
+      var rest=peekRest();
+      d={ id:e.pointerId, y:e.clientY, start:peekNow(), rest:rest, low:peekLow(rest), dy:0, moved:false, lastY:e.clientY, lastT:e.timeStamp, v:0 };
+      try{ g.setPointerCapture(e.pointerId); }catch(_){}
+    });
+    g.addEventListener("pointermove",function(e){
+      if(!d||e.pointerId!==d.id) return;
+      var dy=e.clientY-d.y;
+      if(!d.moved){
+        if(Math.abs(dy)<6) return;
+        d.moved=true; stageEl.classList.add("drag"); mapWrap.classList.add("drag");
+        /* The map is made as tall as it can get once, so tiles are there before the sheet uncovers them. */
+        mapWrap.style.height=(Math.max(d.low,d.start)+26)+"px"; if(map) map.invalidateSize({ pan:false });
+      }
+      dy=Math.max(-d.start,Math.min(d.low-d.start,dy));
+      d.v=(e.clientY-d.lastY)/Math.max(1,e.timeStamp-d.lastT); d.lastY=e.clientY; d.lastT=e.timeStamp;
+      d.dy=dy; stageEl.style.transform="translateY("+dy+"px)";
+    });
+    function land(x,stop){
+      var to=stop[0]-x.start, ft=null;
+      var fin=function(){
+        stageEl.removeEventListener("transitionend",fin); clearTimeout(ft);
+        stageEl.classList.add("drag"); stageEl.classList.remove("settle"); stageEl.style.transform="";
+        if(stop[1]==="rest") document.body.style.removeProperty("--peek"); else document.body.style.setProperty("--peek",Math.round(stop[0])+"px");
+        mapWrap.style.height=""; void stageEl.offsetHeight; stageEl.classList.remove("drag"); mapWrap.classList.remove("drag");
+        SHEET.pos=stop[1]; sheetLabel(); refitSoon();
+      };
+      if(REDUCED||Math.abs(to-x.dy)<1) return fin();
+      ft=setTimeout(fin,320);
+      stageEl.classList.remove("drag"); stageEl.classList.add("settle"); stageEl.addEventListener("transitionend",fin);
+      stageEl.style.transform="translateY("+to+"px)";
+    }
+    function end(e){
+      if(!d||e.pointerId!==d.id) return; var x=d; d=null;
+      if(!x.moved) return;                       /* a tap: the click below handles it */
+      skipClick=true; setTimeout(function(){ skipClick=false; },350);
+      /* Where it was let go, carried a little by how fast it was moving. */
+      var at=x.start+x.dy+x.v*140, stops=[[0,"high"],[x.rest,"rest"],[x.low,"low"]], best=stops[0];
+      stops.forEach(function(s){ if(Math.abs(s[0]-at)<Math.abs(best[0]-at)) best=s; });
+      land(x,best);
+    }
+    g.addEventListener("pointerup",end); g.addEventListener("pointercancel",end);
+    /* A tap, Enter or Space: between the usual place and more map. */
+    g.addEventListener("click",function(){
+      if(skipClick){ skipClick=false; return; }
+      if(window.innerWidth>=920) return;
+      var rest=peekRest(); if(SHEET.pos==="rest") sheetTo("low",peekLow(rest)); else sheetTo("rest");
+      say(SHEET.pos==="low"?"More of the map is showing.":"The panel is back in place.");
+    });
+    g.addEventListener("keydown",function(e){
+      if(e.key!=="ArrowUp"&&e.key!=="ArrowDown") return; e.preventDefault();
+      var order=["low","rest","high"], i=order.indexOf(SHEET.pos)+(e.key==="ArrowUp"?1:-1); if(i<0||i>2) return;
+      var rest=peekRest(); sheetTo(order[i],order[i]==="low"?peekLow(rest):0);
+    });
+    sheetLabel();
+  })();
+
   /* ───────── the shell: views ─────────
      Book, Deliveries, Account and a tracked delivery are views of one page.
      Going to one changes the sheet and adds one Back step. The page itself is
@@ -836,6 +933,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
   function view(){ return document.body.getAttribute("data-view"); }
   function viewUrl(v,tk){ var u=new URL(selfUrl(v==="track"?tk:null)); if(v==="list") u.searchParams.set("view","deliveries"); if(v==="acct") u.searchParams.set("view","account"); return u.toString(); }
   function setView(v){
+    if(v!==view()) sheetReset();
     document.body.setAttribute("data-view",v);
     if(v!=="book") document.body.removeAttribute("data-step");
     [].forEach.call(document.querySelectorAll("#nav [data-nav]"),function(b){
@@ -1181,9 +1279,10 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
   }
   function render(focusTitle){
     if(document.body.getAttribute("data-view")!=="book") return;
+    if(document.body.getAttribute("data-step")!==String(S.step)) sheetReset();
     document.body.setAttribute("data-step",String(S.step));
     var ready=!!(S.p&&S.d), was=document.body.hasAttribute("data-ready");
-    if(ready!==was){ if(ready) document.body.setAttribute("data-ready",""); else document.body.removeAttribute("data-ready");
+    if(ready!==was){ sheetReset(); if(ready) document.body.setAttribute("data-ready",""); else document.body.removeAttribute("data-ready");
       /* The map strip changes height: fit the route to it once it has settled. */
       setTimeout(function(){ if(map){ map.invalidateSize(); paintMap(S.p,S.d,S.quote&&S.quote.line); } },320); }
     $("pane").innerHTML='<div class="pane'+(focusTitle?" enter":"")+'">'+[null,step1,step2,step3,step4][S.step]()+'</div>';
@@ -1278,7 +1377,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
         store("nvi_me",{ n:S.sName.trim(), p:pkPhone(S.sPhone) });
         var rc=store("nvi_rcp"); rc=(Array.isArray(rc)?rc:[]).filter(function(x){ return x.p!==pkPhone(S.rPhone); }); rc.unshift({ n:S.rName.trim(), p:pkPhone(S.rPhone) }); store("nvi_rcp",rc.slice(0,5));
         buzz([12,60,18]);
-        try{ sessionStorage.removeItem("nvi_draft"); }catch(e){}
+        dropDraft();
         S.done=true;
         try{ history.replaceState({ nvi:"view", view:"track", tk:d.token },"",selfUrl(d.token)); }catch(e){}
         return startTrack(d.token,true);      /* the sheet becomes "Finding your rider": no page load */
@@ -1444,7 +1543,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
       /* Two presses: it also forgets the links that let this phone cancel a booking. */
       if(b.dataset.sure!=="1"){ b.dataset.sure="1"; b.textContent="Press again: also forgets your booking links"; return; }
       ["nvi_places","nvi_me","nvi_rcp","nvi_hist","nvi_mine","nvi_last","nvi_fb"].forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
-      try{ sessionStorage.removeItem("nvi_draft"); }catch(e){}
+      dropDraft();
       b.disabled=true; b.textContent="Cleared from this phone"; paintHistBtn(); say("Saved details cleared from this phone.");
     });
     p.querySelector("[data-banned2]").addEventListener("click",function(){ openPanel("What cannot be sent",'<ul class="ban">'+BANNED.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join("")+'</ul>'); });
@@ -1642,20 +1741,23 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     if(n>1&&!(S.quote&&S.quote.bookable!==false)) n=1;
     S.msg=""; S.step=n; render(true);
   });
-  /* What the customer has typed survives a reload or an accidental close of
-     the tab, for 45 minutes, in this browser only. */
+  /* What the customer has typed survives a reload, a closed tab or a trip to
+     WhatsApp and back, for 45 minutes, on this phone only. It comes back on
+     the step they were on, with the fare checked again. Never kept: the rules
+     tick, the "I am human" answer, PINs or tracking links. */
   var draftT=null;
   var DRAFT=["p","d","type","item","weight","fragile","value","note","sName","sPhone","pDet","rName","rPhone","dDet","payer","cod","step"];
   function saveDraft(){
     clearTimeout(draftT);
-    draftT=setTimeout(function(){ try{ var o={ at:Date.now() }; DRAFT.forEach(function(k){ o[k]=S[k]; }); sessionStorage.setItem("nvi_draft",JSON.stringify(o)); }catch(e){} },300);
+    draftT=setTimeout(function(){ try{ var o={ at:Date.now() }; DRAFT.forEach(function(k){ o[k]=S[k]; }); localStorage.setItem("nvi_draft",JSON.stringify(o)); }catch(e){} },300);
   }
+  function dropDraft(){ clearTimeout(draftT); try{ localStorage.removeItem("nvi_draft"); sessionStorage.removeItem("nvi_draft"); }catch(e){} }
   function restoreDraft(){
     try{
-      var o=JSON.parse(sessionStorage.getItem("nvi_draft")||"null");
-      if(!o||Date.now()-o.at>45*60000||!o.p||!o.d) return false;
+      var o=JSON.parse(localStorage.getItem("nvi_draft")||sessionStorage.getItem("nvi_draft")||"null");
+      if(!o||Date.now()-o.at>45*60000||!o.p||!o.d){ if(o) dropDraft(); return false; }
       DRAFT.forEach(function(k){ if(k!=="step"&&o[k]!==undefined) S[k]=o[k]; });
-      S.resume=Math.min(Number(o.step)||1,3); S.step=1;
+      S.resume=Math.min(Number(o.step)||1,4); S.step=1;
       return true;
     }catch(e){ return false; }
   }
