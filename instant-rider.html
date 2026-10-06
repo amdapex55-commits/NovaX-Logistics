@@ -352,7 +352,9 @@ h1.page{font:800 24px/1.15 var(--display);letter-spacing:-.02em;margin:10px 0 6p
     if(/Email not confirmed/i.test(m)) return "Confirm your email first: open the link NovaX emailed you.";
     if(/already belongs to a NovaX account/i.test(m)) return m;
     if(/fetch|network|Failed/i.test(m)) return "No connection. Check your internet and try again.";
-    return m||"Something went wrong. Try again.";
+    /* A message written for programmers is never shown to a rider. */
+    if(!m||m.length>120||/\b(function|permission|denied|JWT|PGRST|schema|relation|violates|constraint|column|syntax|rpc|nvi_|sql|timeout|status \d{3}|\d{3} \(|undefined|null|TypeError|Error:)/i.test(m)) return "Something went wrong. Try again, or call the NovaX office.";
+    return m;
   }
   var IC={
     nav:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg>',

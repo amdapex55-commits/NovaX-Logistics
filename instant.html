@@ -20,11 +20,15 @@
      on to other sites. A tracking link itself is marked noindex in script. -->
 <meta name="robots" content="index,follow">
 <meta name="referrer" content="origin">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet">
+<link rel="preload" href="/assets/vendor/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/vendor/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/vendor/leaflet-1.9.4/leaflet.css">
 <style>
+/* The two fonts come from this site (SIL Open Font Licence, texts beside the
+   files), so the first screen never waits on another company's server. Text
+   shows at once in the phone's own font and changes when they arrive. */
+@font-face{font-family:"DM Sans";font-style:normal;font-weight:400 700;font-display:swap;src:url(/assets/vendor/fonts/dm-sans-latin.woff2) format("woff2")}
+@font-face{font-family:"Manrope";font-style:normal;font-weight:700 800;font-display:swap;src:url(/assets/vendor/fonts/manrope-latin.woff2) format("woff2")}
 /* Nova Instant: its own product inside NovaX. Deep forest, emerald, warm
    off-white; lime only as a small highlight. Calm, few borders, wide soft
    shadows, one primary button per screen. */
@@ -378,6 +382,7 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
 .status .next{margin-top:10px;color:#fff;font-size:14.5px}
 .status .next b{color:var(--emerald)}
 .status .upd{margin-top:8px;font-size:13px}
+.deep #pane>.pane.pre{display:none}
 /* ── Movement that says where you are going ──
    A step forward comes in from the right, a step back from the left, a new
    screen rises. A finished booking's button grows into the tracking card
@@ -448,6 +453,14 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
 </style>
 </head>
 <body data-view="book" data-step="1">
+<script>
+/* Before anything else. A tracking link, the account or the deliveries list
+   must not flash the booking screen, so its written-out copy is hidden for
+   them. And a tap made while the page's script is still arriving is kept,
+   and acted on the moment it is ready. */
+if(/[?&](t|view)=/.test(location.search)) document.documentElement.classList.add("deep");
+document.addEventListener("click",function(e){ if(window.__nviReady) return; var b=e.target.closest&&e.target.closest("[data-pick],#go,[data-nav]"); if(b) window.__nviTap=b.getAttribute("data-pick")||b.getAttribute("data-nav")||"p"; },true);
+</script>
 
 <header class="hdr">
   <a class="brand" href="/" aria-label="NovaX Logistics home"><img src="/assets/favicon.svg" alt="" width="28" height="28"><b>Nova <i>Instant</i></b></a>
@@ -467,7 +480,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
   </div>
 </div>
 
-<div class="stage"><main class="sheet" id="sheet"><button class="grab" id="grab" type="button" aria-label="Show more of the map"></button><div id="pane"></div></main></div>
+<div class="stage"><main class="sheet" id="sheet"><button class="grab" id="grab" type="button" aria-label="Show more of the map"></button><div id="pane"><!-- The first screen, written out so it is there before any script. The script draws the same thing over it. --><div class="pane pre"><h1 id="stepTitle" tabindex="-1">Send a parcel across Karachi</h1><p class="lead">Door-to-door delivery. Upfront fare. No account needed.</p><div class="route"><button class="loc empty" type="button" data-pick="p"><span class="dot" aria-hidden="true"></span><span><small>Pickup</small><b>Where should we pick it up?</b></span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button><button class="loc empty" type="button" data-pick="d"><span class="sq" aria-hidden="true"></span><span><small>Delivery</small><b>Where is it going?</b></span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></div><div class="cta"><button class="btn btn-primary wide" type="button" id="go">Set the pickup</button></div></div></div></main></div>
 
 <nav class="nav" id="nav" aria-label="Nova Instant">
   <button type="button" data-nav="book" aria-current="page"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.500v9L12 21l-8-4.500v-9zM4 7.500l8 4.500 8-4.500M12 12v9"/></svg>Book</button>
@@ -1314,7 +1327,10 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
   }
   var ACCT_SAY={ novax_login:"This email is a NovaX Logistics login. Use a different email for Nova Instant.", name:"Enter your name.", phone:"Enter a mobile like 0300 1234567.", signin:"Sign in again." };
   function acctErr(m){ m=String(m||""); if(/Invalid login credentials/i.test(m)) return "Wrong email or password."; if(/already registered/i.test(m)) return "This email already has an account. Sign in instead.";
-    if(/fetch|network|Failed|Load failed/i.test(m)) return "No connection. Check your internet and try again."; return m||"Something went wrong. Try again."; }
+    if(/fetch|network|Failed|Load failed/i.test(m)) return "No connection. Check your internet and try again.";
+    /* A message written for programmers is never shown to a customer. */
+    if(!m||m.length>120||/\b(function|permission|denied|JWT|PGRST|schema|relation|violates|constraint|column|syntax|rpc|nvi_|sql|timeout|status \d{3}|\d{3} \(|undefined|null|TypeError|Error:)/i.test(m)) return "Something went wrong. Try again, or call NovaX.";
+    return m; }
   function openAcct(view){
     var join=view==="join", fin=view==="finish";
     var p=openPanel(fin?"Finish your account":join?"Create your Nova Instant account":"Sign in",
@@ -1936,6 +1952,10 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
   else if(BOOT.view!=="book"){ restoreDraft(); S.resume=0; if(BOOT.view==="acct") showAcct(q0.get("join")?"join=1":""); else showList(); }
   else if(restoreDraft()){ render(); setTimeout(function(){ if(map){ map.invalidateSize(); paintMap(S.p,S.d,null); } },200); quote(); toast("We kept the details you had typed."); }
   else render();
+  /* The script is here. A tap that came before it is acted on now. */
+  window.__nviReady=true;
+  (function(t){ if(!t||view()!=="book"||S.step!==1||panel) return; if(t==="list"||t==="acct") return goView(t); if(t==="book") return;
+    openPicker(t==="d"&&S.p?"d":S.p&&S.d?"d":S.p?"d":"p"); })(window.__nviTap);
 })();
 </script>
 </body>

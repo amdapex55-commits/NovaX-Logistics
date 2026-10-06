@@ -1,6 +1,6 @@
 // Nova Instant page checks that need no browser and no database.
 // Run: node scripts/test-instant-pages.mjs   (part of npm run test:instant)
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 const read = (f) => readFileSync(new URL("../" + f, import.meta.url), "utf8");
 let bad = 0;
 const ok = (label, pass, why) => { console.log((pass ? "  ok  " : "  FAIL ") + label + (pass || !why ? "" : ": " + why)); if (!pass) bad++; };
@@ -90,6 +90,19 @@ ok("tracking says what happens next for every open state", ["Awaiting confirmati
 ok("tracking shows the last update and when it last checked", /Last update '\+esc\(timeOnly\(lastAt\(j\)\)\)/.test(book) && /checked '\+esc\(timeOnly\(Date\.now\(\)\)\)/.test(book));
 ok("a late leg is said plainly", /function lateBy\(j\)/.test(book) && /This is taking longer than usual/.test(book));
 ok("no countdowns", !/countdown|setInterval\(function\(\)\{[^}]*eta/i.test(book));
+
+// Speed: nothing on the first screen waits on another company, and it is there before any script.
+for (const [f, page] of [["instant.html", book], ["instant-account.html", acct]]) {
+  ok(f + " loads no fonts from Google", !/fonts\.googleapis|fonts\.gstatic/.test(page) && /@font-face\{font-family:"DM Sans"/.test(page));
+}
+ok("the font files and their licences are in the site", ["dm-sans-latin.woff2", "manrope-latin.woff2", "OFL-DM-Sans.txt", "OFL-Manrope.txt"].every((n) => existsSync(new URL("../assets/vendor/fonts/" + n, import.meta.url))));
+ok("the first screen is written into the page", /<div class="pane pre"><h1 id="stepTitle"/.test(book) && /data-pick="p"/.test(book.slice(book.indexOf('class="pane pre"'), book.indexOf('class="pane pre"') + 900)));
+ok("a tracking link never flashes the booking screen", /classList\.add\("deep"\)/.test(book) && /\.deep #pane>\.pane\.pre\{display:none\}/.test(book));
+ok("a tap made before the script arrives is kept", /window\.__nviTap=/.test(book) && /\}\)\(window\.__nviTap\);/.test(book));
+// No message written for programmers reaches a customer or a rider.
+for (const [f, page] of [["instant.html", book], ["instant-account.html", acct], ["instant-rider.html", riderPage]]) {
+  ok(f + " hides technical error text", /A message written for programmers is never shown/.test(page));
+}
 
 console.log(bad ? `NOVA INSTANT PAGE CHECKS FAILED (${bad})` : "NOVA INSTANT PAGE CHECKS PASSED");
 process.exit(bad ? 1 : 0);

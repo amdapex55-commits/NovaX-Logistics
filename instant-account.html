@@ -12,10 +12,12 @@
 <meta name="description" content="Your Nova Instant account: every delivery you booked, your cash-on-delivery wallet and withdrawals.">
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="origin">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet">
+<link rel="preload" href="/assets/vendor/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/vendor/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+/* The two fonts come from this site (SIL Open Font Licence, texts beside the files). */
+@font-face{font-family:"DM Sans";font-style:normal;font-weight:400 700;font-display:swap;src:url(/assets/vendor/fonts/dm-sans-latin.woff2) format("woff2")}
+@font-face{font-family:"Manrope";font-style:normal;font-weight:700 800;font-display:swap;src:url(/assets/vendor/fonts/manrope-latin.woff2) format("woff2")}
 /* Nova Instant client account. Same palette as instant.html: deep forest,
    emerald, warm off-white. Separate from the NovaX merchant portal. */
 :root{
@@ -182,7 +184,9 @@ html.embed main{padding-top:6px;padding-bottom:16px}
     if(/already registered|already been registered/i.test(m)) return "This email already has an account. Sign in instead.";
     if(/Password should be/i.test(m)) return "Choose a password of at least 8 characters.";
     if(/fetch|network|Failed|Load failed/i.test(m)) return "No connection. Check your internet and try again.";
-    return m||"Something went wrong. Try again.";
+    /* A message written for programmers is never shown to a customer. */
+    if(!m||m.length>120||/\b(function|permission|denied|JWT|PGRST|schema|relation|violates|constraint|column|syntax|rpc|nvi_|sql|timeout|status \d{3}|\d{3} \(|undefined|null|TypeError|Error:)/i.test(m)) return "Something went wrong. Try again, or call NovaX.";
+    return m;
   }
   function sayMsg(el,t,ok){ if(!el) return; el.textContent=t; el.className="msg"+(ok?" ok":""); }
   /* A waiting button keeps its width and says what it is doing; a second tap does nothing. */
