@@ -55,5 +55,21 @@ ok("it returns to the step it was on, the review included", /S\.resume=Math\.min
 ok("the rules tick, CAPTCHA answer and PIN are never kept", !/"agree"|"cap"|pin|token/i.test(draftKeys));
 ok("a finished booking clears the draft", (book.match(/dropDraft\(\);/g) || []).length >= 3);
 
+// The keyboard: panels fit above it, and every text field has the right key.
+ok("panels are sized to the space above the keyboard", /\.panel\{bottom:auto;height:var\(--vvh,100dvh\)/.test(book) && book.includes("window.visualViewport"));
+ok("Android shrinks the page for the keyboard", /interactive-widget=resizes-content/.test(book));
+const noHint = (book.match(/<input[^>]*>/g) || []).filter((i) => !/type="checkbox"|id="agree"/.test(i) && !/enterkeyhint=/.test(i));
+ok("every text field names its keyboard key", noHint.length === 0, noHint.map((i) => (i.match(/id="([^"]+)"/) || [])[1]).join(", "));
+ok("the bottom bar and map buttons hide while typing", /body\.kb \.nav,body\.kb \.leaflet-control-container\{display:none\}/.test(book));
+
+// Placeholders, and questions that a newer one replaces.
+ok("tracking draws its shape before the delivery arrives", book.includes("var TRACK_SK=") && /<\/div>'\+TRACK_SK\);/.test(book));
+ok("the account shows its shape while it loads", /class="sks" aria-hidden="true"/.test(book));
+ok("typing again cancels the search before it", /if\(searchGrp\)\{ try\{ searchGrp\.abort\(\)/.test(book));
+ok("search answers are kept for 10 minutes", /Date\.now\(\)-hit\.at<600000/.test(book));
+ok("a newer fare check cancels the one before", /quoteAc\.abort\(\)/.test(book) && /rpc\("nvi_quote",\{[^}]*\},quoteAc&&quoteAc\.signal\)/.test(book));
+ok("an unchanged route is not redrawn", /rk===routeKey/.test(book));
+ok("the saved availability note never opens booking", /if\(!s&&!S\.statusErr&&S\.hint\) s=S\.hint;/.test(book) && /function canBookNow\(\)\{ var s=S\.status; return !!s&&/.test(book));
+
 console.log(bad ? `NOVA INSTANT PAGE CHECKS FAILED (${bad})` : "NOVA INSTANT PAGE CHECKS PASSED");
 process.exit(bad ? 1 : 0);

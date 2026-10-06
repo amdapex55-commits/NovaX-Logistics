@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <link rel="preconnect" href="https://rhzunbzbdzicajqtohwp.supabase.co" crossorigin>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <title>Nova Instant &middot; Send a parcel across Karachi</title>
 <link rel="icon" href="/assets/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
@@ -375,6 +375,14 @@ body.lifting .cross{filter:drop-shadow(0 14px 5px rgba(6,48,31,.28))}
 }
 .toast{position:fixed;left:50%;bottom:calc(96px + var(--sa-b));transform:translateX(-50%);z-index:200;background:var(--forest);color:#fff;padding:11px 18px;border-radius:99px;font-size:14.5px;max-width:calc(100vw - 32px);text-align:center;box-shadow:var(--shadow)}
 #capBox{margin-top:12px;min-height:0}
+/* ── The keyboard is part of the screen ──
+   A panel is as tall as what is left above the keyboard, so the field being
+   typed into and every search result stay in view. While typing, the bottom
+   bar, the map's buttons and the sticky button get out of the way. */
+.panel{bottom:auto;height:var(--vvh,100dvh);transform:translateY(var(--vvt,0px))}
+body.kb{--nav:0px!important}
+body.kb .nav,body.kb .leaflet-control-container{display:none}
+body.kb .cta{position:static}
 /* ── The sheet can be pulled by its handle ──
    Low shows more map, high covers it; between them is the usual place for
    the screen. Pulling down on the page never reloads it. */
@@ -478,9 +486,11 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     try{ return sessionStorage.getItem("nvi_src")||""; }catch(e){ return ""; } })();
 
   /* supabase-js resolves with {error}: every caller checks it. */
-  function rpc(name,args){
+  /* signal: an AbortController's, for a question that a newer one replaces. */
+  function rpc(name,args,signal){
     if(!sb) return Promise.resolve({ error:{ message:"offline" } });
-    return Promise.resolve(sb.rpc(name,args||{})).catch(function(e){ return { error:{ message:String((e&&e.message)||e) } }; });
+    var call=sb.rpc(name,args||{}); if(signal&&call.abortSignal) call=call.abortSignal(signal);
+    return Promise.resolve(call).catch(function(e){ return { error:{ message:String((e&&e.message)||e) } }; });
   }
   function esc(s){ return String(s==null?"":s).replace(/[&<>"'`]/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;","`":"&#96;"}[c]; }); }
   function money(n){ return "Rs "+Number(n||0).toLocaleString("en-PK"); }
@@ -528,7 +538,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     type:"", item:"", weight:"", fragile:false, value:"", note:"",
     sName:"", sPhone:"", pDet:"", rName:"", rPhone:"", dDet:"", payer:"sender", cod:"", client:null, agree:false, ov:false, skipPop:false, resume:0,
     step:1, busy:false, pinFor:null, msg:"", cap:{ on:false, id:null, token:"" } };
-  var qSeq=0;
+  var qSeq=0, quoteAc=null;
 
   /* ───────── map ───────── */
   var map=null, mk={ p:null, d:null }, routeLine=null, tilesOn=false;
@@ -575,6 +585,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     if(radarMk){ radarMk.setLatLng(pt); return; }
     radarMk=L.marker(pt,{ icon:L.divIcon({ className:"radar", html:"<i></i><i></i>", iconSize:[120,120], iconAnchor:[60,60] }), keyboard:false, interactive:false, zIndexOffset:-1000 }).addTo(map);
   }
+  var routeKey="";
   function paintMap(p,d,line,dropKey){
     if(!map) return;
     [["p",p],["d",d]].forEach(function(x){
@@ -583,7 +594,14 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
               else { mk[k].setLatLng([pt.lat,pt.lng]); if(dropKey===k) mk[k].setIcon(icon(k,true)); } }
       else if(mk[k]){ map.removeLayer(mk[k]); mk[k]=null; }
     });
-    if(routeLine){ map.removeLayer(routeLine); routeLine=null; }
+    /* The same route again (the sheet moved, the screen turned): only the view is refitted. */
+    var rk=p&&d?[p.lat,p.lng,d.lat,d.lng,line||""].join("|"):"";
+    if(routeLine&&rk&&rk===routeKey){ try{ map.fitBounds(routeLine.getBounds(),{ paddingTopLeft:pad().tl, paddingBottomRight:pad().br, maxZoom:line?16:15 }); }catch(e){} return; }
+    /* A new route is drawn over the old one, which then fades away: the map is never left bare between them. */
+    if(routeLine){ (function(old){ var oe=null; try{ oe=old.getElement(); }catch(e){}
+      if(oe&&!REDUCED&&rk){ oe.style.transition="opacity .22s"; oe.style.opacity="0"; setTimeout(function(){ try{ map.removeLayer(old); }catch(e){} },240); }
+      else { try{ map.removeLayer(old); }catch(e){} } })(routeLine); routeLine=null; }
+    routeKey=rk;
     var pd=pad(), pts=null;
     if(p&&d&&line){ try{ pts=decodeLine(line); }catch(e){ pts=null; } }
     if(pts&&pts.length>1){
@@ -617,20 +635,22 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     var rest=String(pr.place_formatted||"").replace(/,?\s*(Karachi[^,]*|Sindh|Pakistan)\b/gi,"").replace(/^[,\s]+|[,\s]+$/g,"");
     return { main:main, rest:rest, full:[main,rest].filter(Boolean).join(", ") };
   }
-  function mbSearch(q){
+  function mbSearch(q,grp){
     if(!MAPBOX) return Promise.resolve([]);
-    return fetch("https://api.mapbox.com/search/geocode/v6/forward?q="+encodeURIComponent(q)+"&country=pk&language=en&limit=5&autocomplete=true&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n+"&proximity="+CENTER[1]+","+CENTER[0]+"&access_token="+MAPBOX)
+    return fetch("https://api.mapbox.com/search/geocode/v6/forward?q="+encodeURIComponent(q)+"&country=pk&language=en&limit=5&autocomplete=true&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n+"&proximity="+CENTER[1]+","+CENTER[0]+"&access_token="+MAPBOX,grp?{ signal:grp.signal }:undefined)
       .then(function(r){ return r.ok?r.json():{ features:[] }; }).then(function(j){
         return (j.features||[]).map(function(f){ var c=f.geometry&&f.geometry.coordinates; return c?{ lat:c[1], lng:c[0], label:mbLabel(f.properties||{}) }:null; }).filter(function(it){ return it&&inBox(it.lat,it.lng); });
       }).catch(function(){ return []; });
   }
   /* The free search can stall for seconds; after 4.5 s it counts as down and Mapbox answers instead. */
-  function timed(url){
+  function timed(url,grp){
     var ac=window.AbortController?new AbortController():null, t=ac?setTimeout(function(){ ac.abort(); },4500):null;
+    /* grp: the search this belongs to. When the customer types again, it is cancelled with it. */
+    if(ac&&grp){ if(grp.signal.aborted) ac.abort(); else grp.signal.addEventListener("abort",function(){ ac.abort(); }); }
     return fetch(url,ac?{ signal:ac.signal }:undefined).then(function(r){ clearTimeout(t); return r; },function(e){ clearTimeout(t); throw e; });
   }
-  function photon(q){
-    return timed(PHOTON+"/api/?q="+encodeURIComponent(q)+"&limit=7&lang=en&lat="+CENTER[0]+"&lon="+CENTER[1]+"&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n)
+  function photon(q,grp){
+    return timed(PHOTON+"/api/?q="+encodeURIComponent(q)+"&limit=7&lang=en&lat="+CENTER[0]+"&lon="+CENTER[1]+"&bbox="+BOX.w+","+BOX.s+","+BOX.e+","+BOX.n,grp)
       .then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
         var seen={};
         return (j.features||[]).map(function(f){ var c=f.geometry&&f.geometry.coordinates; if(!c) return null;
@@ -638,11 +658,25 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
           if(!inBox(it.lat,it.lng)||seen[it.label.full]) return null; seen[it.label.full]=1; return it; }).filter(Boolean);
       });
   }
+  /* One search at a time: typing again cancels the one before, so an old
+     answer can neither arrive late nor use the connection. Answers are kept
+     for 10 minutes, so deleting a letter shows the earlier list at once. */
+  var searchGrp=null, searchKept={};
   function searchPlaces(q){
+    var key=q.toLowerCase().replace(/\s+/g," "), hit=searchKept[key];
+    if(searchGrp){ try{ searchGrp.abort(); }catch(e){} }
+    if(hit&&Date.now()-hit.at<600000) return Promise.resolve(hit.a);
+    var grp=searchGrp=window.AbortController?new AbortController():null;
+    return searchFresh(q,grp).then(function(a){
+      if(!grp||!grp.signal.aborted){ var ks=Object.keys(searchKept); if(ks.length>40) delete searchKept[ks[0]]; searchKept[key]={ a:a, at:Date.now() }; }
+      return a;
+    });
+  }
+  function searchFresh(q,grp){
     /* Few answers from the free search (common for Karachi landmarks): add
        Mapbox's, nearest-duplicate removed, so a customer is never left with one odd match. */
     function merge(out,more){ more.forEach(function(x){ if(!out.some(function(y){ return Math.abs(y.lat-x.lat)<0.002&&Math.abs(y.lng-x.lng)<0.002; })) out.push(x); }); return out; }
-    return photon(q).then(function(a){
+    return photon(q,grp).then(function(a){
       if(a.length>=3) return a;
       /* Customers add the area ("Sea View Clifton") while the map files the
          place under another one, or split a name the map joins ("Seaview").
@@ -651,10 +685,10 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
       if(w.length>2) alt.push(base.join(" "));
       if(base.length>1&&base.length<4) alt.push(base.join(""));
       if(w.length===2&&w[0].length>=5) alt.push(w[0]);
-      return Promise.all(alt.map(function(x){ return photon(x).catch(function(){ return []; }); }).concat([mbSearch(q).catch(function(){ return []; })])).then(function(r){
+      return Promise.all(alt.map(function(x){ return photon(x,grp).catch(function(){ return []; }); }).concat([mbSearch(q,grp).catch(function(){ return []; })])).then(function(r){
         var out=a.slice(); r.forEach(function(m){ merge(out,m); }); return out.slice(0,8);
       });
-    }).catch(function(){ return mbSearch(q).then(function(a){ if(!a.length) throw new Error("down"); return a; }); });
+    }).catch(function(e){ if(grp&&grp.signal.aborted) throw e; return mbSearch(q,grp).then(function(a){ if(!a.length) throw new Error("down"); return a; }); });
   }
   function reverseLabel(lat,lng){
     return timed(PHOTON+"/reverse?lat="+lat+"&lon="+lng+"&lang=en").then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
@@ -711,7 +745,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     var isP=k==="p";
     var p=openPanel(isP?"Where should we pick it up?":"Where is it going?",
       '<label class="sr" for="pkQ">'+(isP?"Search the pickup place":"Search the delivery place")+'</label>'+
-      '<input class="inp" id="pkQ" type="text" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search a place, street or area" role="combobox" aria-expanded="true" aria-controls="pkList" aria-autocomplete="list">'+
+      '<input class="inp" id="pkQ" enterkeyhint="search" type="text" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Search a place, street or area" role="combobox" aria-expanded="true" aria-controls="pkList" aria-autocomplete="list">'+
       '<div id="pkList" role="listbox" aria-label="Places" style="margin-top:10px"></div>');
     var q=p.querySelector("#pkQ"), list=p.querySelector("#pkList"), items=[], seq=0, t=null, active=-1;
     function base(){
@@ -839,6 +873,29 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
       (a.length>3?'<button class="linkish" type="button" data-hist style="min-height:0;padding:12px 4px;margin:-12px -4px">See all '+a.length+'</button>':'')+'</div>'+
       a.slice(0,3).map(histRow).join("")+'</section>';
   }
+  /* ───────── the keyboard ─────────
+     Phones report the part of the screen the keyboard leaves free. A panel is
+     sized to it, and the field in use is brought to its middle. (Android is
+     also told, in the viewport line, to shrink the page for the keyboard, so
+     both kinds of phone behave the same.) */
+  (function(){
+    var vv=window.visualViewport, root=document.documentElement; if(!vv) return;
+    var tall=vv.height, t=null;
+    function fit(){
+      if(vv.height>tall) tall=vv.height;                    /* the screen with no keyboard */
+      var open=tall-vv.height>140&&vv.scale<1.05;            /* not a pinch-zoom */
+      root.style.setProperty("--vvh",Math.round(vv.height)+"px");
+      root.style.setProperty("--vvt",Math.round(vv.offsetTop)+"px");
+      if(open===document.body.classList.contains("kb")) return;
+      document.body.classList.toggle("kb",open);
+      var a=document.activeElement;
+      if(open&&a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)){ clearTimeout(t); t=setTimeout(function(){ if(document.activeElement===a){ try{ a.scrollIntoView({ block:"center" }); }catch(e){} } },80); }
+    }
+    vv.addEventListener("resize",fit); vv.addEventListener("scroll",fit); window.addEventListener("resize",fit);
+    window.addEventListener("orientationchange",function(){ tall=0; setTimeout(fit,400); });
+    fit();
+  })();
+
   /* ───────── the sheet can be pulled ─────────
      Three resting places: low (more map, to look at the route), the usual one
      for the screen, and high (the sheet covers the map). Only the handle moves
@@ -1033,7 +1090,9 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     if(!tries){ S.quote=null; S.quoteErr=""; }
     if(!S.p||!S.d){ render(); return; }
     var my=tries?qSeq:++qSeq; S.quoting=true; if(!tries) render();
-    rpc("nvi_quote",{ p_plat:S.p.lat, p_plng:S.p.lng, p_dlat:S.d.lat, p_dlng:S.d.lng }).then(function(r){
+    /* Moving a pin again cancels the fare check before it. */
+    if(!tries){ if(quoteAc){ try{ quoteAc.abort(); }catch(e){} } quoteAc=window.AbortController?new AbortController():null; }
+    rpc("nvi_quote",{ p_plat:S.p.lat, p_plng:S.p.lng, p_dlat:S.d.lat, p_dlng:S.d.lng },quoteAc&&quoteAc.signal).then(function(r){
       if(my!==qSeq) return;
       /* An estimate cannot be booked, so the page asks again by itself before
          showing one. */
@@ -1088,6 +1147,10 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
   }
   function notice(){
     var s=S.status;
+    /* Until NovaX answers, the note from the last visit (30 minutes at most)
+       holds its place, so the page does not move when the answer comes. It
+       only words the note: booking still waits for the real answer. */
+    if(!s&&!S.statusErr&&S.hint) s=S.hint;
     if(!s) return S.statusErr?'<div class="note warn" style="margin-top:12px">'+IC.info+'<span>We could not check whether riders are available. You can still check a fare. <button class="linkish" type="button" data-restatus style="min-height:0;padding:12px 4px;margin:-12px -4px">Try again</button></span></div>':"";
     if(!s.open&&!s.preview) return '<div class="note warn" style="margin-top:12px">'+IC.clock+'<span>Booking is paused for a moment. You can still check the fare for your trip.</span></div>';
     if(s.preview) return '<div class="note info" style="margin-top:12px">'+IC.info+'<span>Public booking is switched off on the ops board. You can still book because you are signed in as a NovaX admin.</span></div>';
@@ -1131,8 +1194,8 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
       '<div class="fld"><label class="lbl" for="item">What exactly is inside?</label><input class="inp" id="item" data-f="item" maxlength="80" value="'+esc(S.item)+'" enterkeyhint="next" placeholder="'+esc(ITEM_PH[S.type]||"e.g. two stitched suits, a birthday cake")+'"></div>'+
       '<div class="fld"><span class="lbl" id="wLbl">About how heavy?</span><div class="seg" role="group" aria-labelledby="wLbl">'+w.map(function(x){ return '<button type="button" data-w="'+x+'" aria-pressed="'+(S.weight===x)+'">'+x+'</button>'; }).join("")+'</div></div>'+
       '<div class="fld"><button class="tog" type="button" role="switch" id="fragile" aria-checked="'+S.fragile+'"><span><b>Fragile</b><small>The rider is told to carry it with care</small></span><i aria-hidden="true"></i></button></div>'+
-      (maxVal()?'<div class="fld"><label class="lbl" for="value">Value of the contents (optional)</label><div class="rs"><span>Rs</span><input class="inp" id="value" data-f="value" inputmode="numeric" maxlength="7" value="'+esc(S.value)+'" placeholder="0"></div><div class="hint">Nova Instant carries parcels worth up to '+money(maxVal())+'.</div></div>':'')+
-      '<div class="fld"><label class="lbl" for="note">Instructions for the rider (optional)</label><input class="inp" id="note" data-f="note" maxlength="120" value="'+esc(S.note)+'" placeholder="e.g. call on arrival, gate 2"></div>'+
+      (maxVal()?'<div class="fld"><label class="lbl" for="value">Value of the contents (optional)</label><div class="rs"><span>Rs</span><input class="inp" id="value" enterkeyhint="next" data-f="value" inputmode="numeric" maxlength="7" value="'+esc(S.value)+'" placeholder="0"></div><div class="hint">Nova Instant carries parcels worth up to '+money(maxVal())+'.</div></div>':'')+
+      '<div class="fld"><label class="lbl" for="note">Instructions for the rider (optional)</label><input class="inp" id="note" enterkeyhint="done" data-f="note" maxlength="120" value="'+esc(S.note)+'" placeholder="e.g. call on arrival, gate 2"></div>'+
       '<div class="limit"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="12" y="8" width="24" height="20" rx="3"/><path d="M12 15h24M24 8v7"/><circle cx="12" cy="38" r="5"/><circle cx="36" cy="38" r="5"/><path d="M12 38h10l5-10h6l3 10"/></svg>'+
         '<span>One parcel, up to <b>'+maxKg()+' kg</b>, that a rider can carry on a motorbike.</span></div>'+
       '<button class="linkish" type="button" data-banned>'+IC.info+'What cannot be sent?</button>'+
@@ -1203,10 +1266,10 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     var join=view==="join", fin=view==="finish";
     var p=openPanel(fin?"Finish your account":join?"Create your Nova Instant account":"Sign in",
       '<form class="card" id="acForm" novalidate>'+
-      (join||fin?'<div class="fld"><label class="lbl" for="acName">Your name or shop name</label><input class="inp" id="acName" maxlength="80" autocomplete="name" value="'+esc(S.sName)+'"></div>'+
-        '<div class="fld"><label class="lbl" for="acPhone">Mobile</label><input class="inp" id="acPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="03XX XXXXXXX" value="'+esc(S.sPhone)+'"></div>':'')+
-      (fin?'':'<div class="fld"><label class="lbl" for="acEmail">Email</label><input class="inp" id="acEmail" type="email" inputmode="email" maxlength="254" autocomplete="email"></div>'+
-        '<div class="fld"><label class="lbl" for="acPass">'+(join?"Choose a password (8 or more characters)":"Password")+'</label><input class="inp" id="acPass" type="password" maxlength="72" autocomplete="'+(join?"new-password":"current-password")+'"></div>')+
+      (join||fin?'<div class="fld"><label class="lbl" for="acName">Your name or shop name</label><input class="inp" id="acName" enterkeyhint="next" maxlength="80" autocomplete="name" value="'+esc(S.sName)+'"></div>'+
+        '<div class="fld"><label class="lbl" for="acPhone">Mobile</label><input class="inp" id="acPhone" enterkeyhint="next" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="03XX XXXXXXX" value="'+esc(S.sPhone)+'"></div>':'')+
+      (fin?'':'<div class="fld"><label class="lbl" for="acEmail">Email</label><input class="inp" id="acEmail" enterkeyhint="next" type="email" inputmode="email" maxlength="254" autocomplete="email"></div>'+
+        '<div class="fld"><label class="lbl" for="acPass">'+(join?"Choose a password (8 or more characters)":"Password")+'</label><input class="inp" id="acPass" enterkeyhint="go" type="password" maxlength="72" autocomplete="'+(join?"new-password":"current-password")+'"></div>')+
       '<div class="fld"><button class="btn btn-primary wide" type="submit" id="acBtn">'+(fin?"Finish":join?"Create account and continue":"Sign in and continue")+'</button></div>'+
       '<p class="fine" id="acMsg" role="alert" hidden style="color:var(--red-ink)"></p>'+
       (fin?'':'<p class="fine">'+(join?'Already have one? <button class="linkish" type="button" data-acct="signin">Sign in</button>':'New here? <button class="linkish" type="button" data-acct="join">Create an account</button>')+'</p>')+
@@ -1516,8 +1579,8 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     var p=openPanel("Help",
       '<section class="card"><p class="eyebrow">Talk to NovaX</p><p style="margin:0;color:var(--ink-2);font-size:15px">A person answers during rider hours.</p>'+supportBtns()+'</section>'+
       (last&&last.token&&Date.now()-last.at<8*86400000?'<section class="card"><p class="eyebrow">Your last booking</p><a class="btn btn-plain sm wide" href="'+esc(selfUrl(last.token))+'">Open '+esc(last.code||"tracking")+'</a></section>':'')+
-      '<section class="card"><p class="eyebrow">Lost your tracking link?</p><form id="findForm" novalidate><label class="lbl" for="fCode">Booking number</label><input class="inp" id="fCode" maxlength="12" autocomplete="off" autocapitalize="characters" placeholder="NI100001">'+
-        '<div class="fld"><label class="lbl" for="fPhone">Sender\'s or receiver\'s mobile</label><input class="inp" id="fPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="03XX XXXXXXX"></div>'+
+      '<section class="card"><p class="eyebrow">Lost your tracking link?</p><form id="findForm" novalidate><label class="lbl" for="fCode">Booking number</label><input class="inp" id="fCode" enterkeyhint="next" maxlength="12" autocomplete="off" autocapitalize="characters" placeholder="NI100001">'+
+        '<div class="fld"><label class="lbl" for="fPhone">Sender\'s or receiver\'s mobile</label><input class="inp" id="fPhone" enterkeyhint="search" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="03XX XXXXXXX"></div>'+
         '<div class="fld"><button class="btn btn-dark sm wide" type="submit" id="fBtn">Find my booking</button></div><p class="fine" id="fMsg" role="alert" hidden style="color:var(--red-ink)"></p></form></section>'+
       '<section class="card"><p class="eyebrow">Your opinion</p><p style="margin:0 0 12px;color:var(--ink-2);font-size:15px">Three short questions. They go straight to the NovaX team.</p><button class="btn btn-plain sm wide" type="button" data-fb="help">Give feedback</button></section>'+
       '<section class="card"><p class="eyebrow">Saved on this phone</p><p style="margin:0 0 12px;color:var(--ink-2);font-size:15px">Recent places, your details and your bookings are kept on this phone only.</p><button class="btn btn-plain sm wide" type="button" id="clearSaved">Clear saved details</button></section>'+
@@ -1594,6 +1657,11 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
       try{ window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank","noopener"); }catch(e){}
     });
   }
+  /* The shape of the tracking screen, drawn at once: the delivery then fills
+     it in without the page jumping. */
+  var TRACK_SK='<div aria-hidden="true"><div class="pincard"><div><span class="sk" style="width:120px;height:14px"></span><br><span class="sk" style="width:170px;height:12px;margin-top:8px"></span></div><span class="sk" style="width:96px;height:30px"></span></div>'+
+    '<section class="card" style="margin-top:12px"><span class="skl" style="height:12px;width:34%"></span><span class="skl" style="height:18px;width:72%"></span><span class="skl" style="height:18px;width:58%"></span><span class="skl" style="height:18px;width:66%"></span><span class="skl" style="height:18px;width:44%;margin-bottom:0"></span></section>'+
+    '<section class="card" style="margin-top:12px"><span class="skl" style="height:12px;width:30%"></span><span class="skl" style="height:40px"></span><span class="skl" style="height:40px;margin-bottom:0"></span></section></div>';
   function trackShell(inner){ $("pane").innerHTML='<div class="pane">'+inner+'</div>'; }
   function refit(){ if(!map) return; map.invalidateSize(); var j=T.cur; if(j&&Array.isArray(j.p)&&Array.isArray(j.d)) paintMap({ lat:j.p[0], lng:j.p[1] },{ lat:j.d[0], lng:j.d[1] },null); }
   function bare(title,sub){
@@ -1689,7 +1757,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     T.token=token; T.fresh=!!fresh; T.cur=null; T.fitted=false;
     setView("track");
     window.scrollTo(0,0);
-    trackShell('<div class="status" aria-busy="true"><div class="k">Nova Instant</div><h1>'+(fresh?"Booked. Finding your rider":"Loading your delivery…")+'</h1><p><span class="sk" style="width:70%;height:14px"></span></p></div>');
+    trackShell('<div class="status" aria-busy="true"><div class="k">Nova Instant</div><h1>'+(fresh?"Booked. Finding your rider":"Loading your delivery…")+'</h1><p><span class="sk" style="width:70%;height:14px"></span></p></div>'+TRACK_SK);
     setTimeout(refit,340);
     clearInterval(T.timer); loadTrack(true);
     T.timer=setInterval(function(){ if(!document.hidden) loadTrack(false); },20000);
@@ -1764,11 +1832,13 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
 
   /* ───────── boot ───────── */
   /* Asked again by itself (2 s, 5 s, 12 s) if it does not answer, then left to the "Try again" link. */
+  S.hint=(function(){ var o=store("nvi_st"); return o&&Date.now()-o.at<30*60000?o:null; })();
   function loadStatus(tries){
     S.statusErr=false;
     Promise.resolve(rpc("nvi_status")).catch(function(){ return null; }).then(function(r){
       var s=(r&&!r.error&&r.data&&typeof r.data==="object")?r.data:null;
-      if(s){ S.status=s; if(s.mapbox&&!tilesOn) MAPBOX=String(s.mapbox); if(s.support) S.support=s.support; if(s.turnstile) loadCaptcha(String(s.turnstile)); }
+      if(s){ S.status=s; store("nvi_st",{ open:!!s.open, hours_open:!!s.hours_open, riders_on:s.riders_on, open_hour:s.open_hour, close_hour:s.close_hour, at:Date.now() });
+        if(s.mapbox&&!tilesOn) MAPBOX=String(s.mapbox); if(s.support) S.support=s.support; if(s.turnstile) loadCaptcha(String(s.turnstile)); }
       else if(!S.status){ if(tries<3) setTimeout(function(){ if(!S.status) loadStatus(tries+1); },[2000,5000,12000][tries]); else S.statusErr=true; }
       setTiles();
       if(document.body.getAttribute("data-view")==="book"&&!panel&&!S.pinFor) render();
