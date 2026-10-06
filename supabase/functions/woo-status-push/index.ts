@@ -97,12 +97,31 @@ Deno.serve(async (req) => {
   const out = { done: 0, skipped: 0, failed: 0 };
 
   for (const row of rows) {
+    /* Claim the row first (6 Oct 2026 audit). Two drains running together both
+       read the same due row and both posted the note and the status change.
+       This conditional update is atomic: it moves next_attempt_at five minutes
+       on only if the row is still due, so exactly one drain gets it back. The
+       five minutes are a lease; a drain that dies mid-row is retried after it. */
+    const lease = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const claim = await rest(`nv_woo_push_queue?id=eq.${row.id}&done_at=is.null&dead=is.false&next_attempt_at=lte.${encodeURIComponent(now)}`, {
+      method: "PATCH", headers: { prefer: "return=representation" },
+      body: JSON.stringify({ next_attempt_at: lease }),
+    });
+    if (!claim.ok || !Array.isArray(claim.data) || !claim.data.length) continue;   // another drain has it
     try {
       const res = await pushOne(row);
-      await rest(`nv_woo_push_queue?id=eq.${row.id}`, {
-        method: "PATCH", headers: { prefer: "return=minimal" },
-        body: JSON.stringify({ done_at: new Date().toISOString(), last_error: res === "done" ? null : res }),
-      });
+      /* WooCommerce has the update now. If marking it done fails, the lease
+         would run out and the note would be posted again, so try harder. */
+      let marked = false;
+      for (let i = 0; i < 3 && !marked; i++) {
+        const m = await rest(`nv_woo_push_queue?id=eq.${row.id}`, {
+          method: "PATCH", headers: { prefer: "return=minimal" },
+          body: JSON.stringify({ done_at: new Date().toISOString(), last_error: res === "done" ? null : res }),
+        });
+        marked = m.ok;
+        if (!marked) await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+      }
+      if (!marked) console.error(`woo-status-push: sent row ${row.id} but could not mark it done`);
       if (res === "done") out.done++; else out.skipped++;
     } catch (e) {
       out.failed++;

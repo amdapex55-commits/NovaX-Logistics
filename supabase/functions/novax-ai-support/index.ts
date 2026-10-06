@@ -566,10 +566,24 @@ type Action = { label: string; kind: "send" | "local"; message?: string; type?: 
 // no normal reply processing — just records the signal so it can be reviewed
 // later; never blocks or errors out the widget. ----
 async function handleFeedback(req: Request, admin: SbAdmin, payload: any): Promise<Response> {
-  const value = String(payload?.feedback || "").slice(0, 20);
+  /* 6 Oct 2026 audit: this wrote through the service role before any rate
+     limit, with any 20 characters as the value, so a script could flood the
+     table. Only the three values the widget sends are kept, and at most 10
+     per address in 10 minutes. Over the limit the answer is still ok (the
+     widget must never error) but nothing is written. */
+  const value = String(payload?.feedback || "");
+  if (!["helpful", "not_helpful", "talk_to_human"].includes(value)) return json(req, { ok: true });
   const fwd = req.headers.get("x-forwarded-for") || "";
   const ip = (fwd.split(",")[0] || "").trim() || req.headers.get("cf-connecting-ip") || "unknown";
   try {
+    const since = new Date(Date.now() - 10 * 60_000).toISOString();
+    const { count, error } = await admin
+      .from("autopilot_events")
+      .select("id", { count: "exact", head: true })
+      .eq("identity", "ip:" + ip)
+      .like("kind", "feedback:%")
+      .gte("created_at", since);
+    if (error || (count || 0) >= 10) return json(req, { ok: true });
     await admin.from("autopilot_events").insert({ identity: "ip:" + ip, kind: "feedback:" + value });
   } catch {
     // Never let logging failures surface to the user.

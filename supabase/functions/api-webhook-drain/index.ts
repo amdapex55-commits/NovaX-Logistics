@@ -53,12 +53,22 @@ async function sign(secret: string, ts: string, body: string) {
    saves the URL; both now check the same way. */
 import { unsafeDestination } from "../_shared/destination.ts";
 
+/* Compared in constant time, so the token cannot be guessed a byte at a time. */
+function sameToken(a: string, b: string): boolean {
+  const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
 Deno.serve(async (req) => {
-  if (DRAIN_TOKEN && req.headers.get("x-novax-drain") !== DRAIN_TOKEN) {
-    return new Response(JSON.stringify({ ok: false, error: "forbidden" }), {
-      status: 403, headers: { "content-type": "application/json" },
-    });
-  }
+  const deny = (status: number, error: string) =>
+    new Response(JSON.stringify({ ok: false, error }), { status, headers: { "content-type": "application/json" } });
+  if (req.method !== "POST") return deny(405, "post_only");
+  /* Fails closed (6 Oct 2026 audit): with no DRAIN_TOKEN set this used to let
+     every caller through. A missing secret now stops the drain instead. */
+  if (!DRAIN_TOKEN) return deny(503, "drain_token_not_set");
+  if (!sameToken(req.headers.get("x-novax-drain") ?? "", DRAIN_TOKEN)) return deny(403, "forbidden");
 
   let claimed: Array<{
     id: string; url: string; secret: string; payload: unknown; attempts: number;

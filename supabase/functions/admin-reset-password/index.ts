@@ -101,19 +101,38 @@ Deno.serve(async (req) => {
     .from("profiles")
     .select("id, email, role, client_id, rider_id")
     .eq("client_id", clientId)
-    .limit(2);
+    .limit(50);
 
   if (profErr) return json({ error: "Lookup failed." }, 500);
   if (!prof || prof.length === 0) {
     await audit("reset_password", clientId, false, "no auth account linked to this client");
     return json({ error: "This client has no login account yet. Create one before resetting a password." }, 404);
   }
-  if (prof.length > 1) {
-    await audit("reset_password", clientId, false, "multiple profiles linked to this client");
-    return json({ error: "This client has more than one login account. Resolve that first — refusing to guess." }, 409);
+  /* 6 Oct 2026 audit. Every team login (Finance, Warehouse, Support) is a
+     profile on the same client, so "exactly one profile" stopped being true
+     the day a merchant added a sub-user, and this refused with 409 from then
+     on. The target is the OWNER: a profile with no seat row, or whose seat is
+     Owner. Team seats are never reset from here. */
+  const { data: seatRows, error: seatErr } = await asService
+    .from("staff_users").select("id, email, auth_user_id, role, status").eq("client_id", clientId);
+  if (seatErr) return json({ error: "Lookup failed." }, 500);
+  const seatOf = (p: { id: string; email: string | null }) => (seatRows ?? []).filter((r: any) =>
+    r.auth_user_id === p.id || (r.email && p.email && String(r.email).toLowerCase() === String(p.email).toLowerCase()));
+  const owners = prof.filter((p: any) => {
+    const mine = seatOf(p);
+    return mine.length === 0 || mine.some((r: any) =>
+      ["owner", "client"].includes(String(r.role ?? "").toLowerCase()) && String(r.status ?? "Active") !== "Revoked");
+  });
+  if (owners.length === 0) {
+    await audit("reset_password", clientId, false, "no owner login found among the client's profiles");
+    return json({ error: "No owner login was found for this client (only team seats). Resolve that first." }, 409);
+  }
+  if (owners.length > 1) {
+    await audit("reset_password", clientId, false, "multiple owner profiles linked to this client");
+    return json({ error: "This client has more than one owner login. Resolve that first — refusing to guess." }, 409);
   }
 
-  const target = prof[0];
+  const target = owners[0];
 
   if (target.rider_id) {
     await audit("reset_password", clientId, false, "target is a rider account");
@@ -145,7 +164,8 @@ Deno.serve(async (req) => {
       return json({ error: "That account has no email address, so a reset link cannot be sent. Set a password directly instead." }, 400);
     }
     const { error } = await asService.auth.resetPasswordForEmail(email, {
-      redirectTo: "https://novaxlogistics.com/client.html",
+      /* The page that actually has the new-password form (client.html has none). */
+      redirectTo: "https://novaxlogistics.com/new-password.html",
     });
     if (error) {
       await audit("reset_email", clientId, false, error.message);
@@ -194,27 +214,39 @@ Deno.serve(async (req) => {
       return json({ error: "Could not update the login: " + authErr.message }, 502);
     }
 
+    /* supabase-js answers with {error} instead of throwing, so each result is
+       checked; a copy that did not sync is reported, never silently dropped. */
+    const notSynced: string[] = [];
     if (attrs.email) {
-      try {
-        await asService.from("profiles").update({ email: attrs.email }).eq("id", target.id);
-      } catch { /* auth.users is the authority; profile sync failure is logged below */ }
+      const p1 = await asService.from("profiles").update({ email: attrs.email }).eq("id", target.id);
+      if (p1.error) notSynced.push("profile");
 
-      try {
-        const { data: clientRow } = await asService.from("clients").select("meta").eq("id", clientId).single();
+      const { data: clientRow, error: cErr } = await asService.from("clients").select("meta").eq("id", clientId).single();
+      if (cErr) notSynced.push("client record");
+      else {
         const existingMeta = clientRow && clientRow.meta && typeof clientRow.meta === "object" && !Array.isArray(clientRow.meta)
           ? clientRow.meta
           : {};
         const meta = { ...existingMeta, email: attrs.email };
-        await asService.from("clients").update({ meta }).eq("id", clientId);
-      } catch { /* non-authoritative display sync only */ }
+        const c2 = await asService.from("clients").update({ meta }).eq("id", clientId);
+        if (c2.error) notSynced.push("client record");
+      }
 
-      try {
-        await asService.from("staff_users").update({ email: attrs.email }).eq("client_id", clientId);
-      } catch { /* non-authoritative display sync only */ }
+      /* Only the owner's own seat. This used to update every seat on the
+         client, which gave each team member the owner's email address. */
+      const ownSeatIds = seatOf(target).map((r: any) => r.id);
+      if (ownSeatIds.length) {
+        const s1 = await asService.from("staff_users").update({ email: attrs.email }).in("id", ownSeatIds).eq("client_id", clientId);
+        if (s1.error) notSynced.push("owner seat");
+      }
     }
 
-    await audit("update_login", clientId, true, `updated ${changed.join("+")} for ${attrs.email ?? target.email ?? target.id}`);
-    return json({ ok: true, mode: "update", changed, email: attrs.email ?? target.email ?? null });
+    await audit("update_login", clientId, true, `updated ${changed.join("+")} for ${attrs.email ?? target.email ?? target.id}` +
+      (notSynced.length ? `; NOT synced: ${notSynced.join(", ")}` : ""));
+    return json({
+      ok: true, mode: "update", changed, email: attrs.email ?? target.email ?? null,
+      ...(notSynced.length ? { warning: `The login was changed, but these copies did not update: ${notSynced.join(", ")}. Check the client record.` } : {}),
+    });
   }
 
   // ── mode: set — admin sets the password directly ────────────────────

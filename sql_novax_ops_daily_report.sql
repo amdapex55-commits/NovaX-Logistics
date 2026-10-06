@@ -65,9 +65,11 @@ create table if not exists public.nv_ops_report_config (
 );
 alter table public.nv_ops_report_config enable row level security;
 
--- CHANGE THIS STRING before running, and paste the same value into Apps Script.
+-- A fresh install gets an unguessable random token (never a known default).
+-- Read it once as the database owner (select token from nv_ops_report_config)
+-- and paste it into Apps Script.
 insert into public.nv_ops_report_config (id, token)
-values (1, 'CHANGE-ME-TO-A-LONG-RANDOM-STRING')
+values (1, md5(random()::text || clock_timestamp()::text) || md5(random()::text || pg_backend_pid()::text))
 on conflict (id) do nothing;
 
 -- ─────────────────────── PART 2: THE REPORT FUNCTION ────────────────────────
@@ -104,7 +106,8 @@ declare
   v_today date := (now() at time zone 'Asia/Karachi')::date;
 begin
   select exists(select 1 from public.nv_ops_report_config c
-                where c.id = 1 and c.token = p_token) into v_ok;
+                where c.id = 1 and c.token = p_token
+                  and length(c.token) >= 32 and c.token not like 'CHANGE-ME%') into v_ok;
   if not v_ok then raise exception 'Invalid report token.'; end if;
 
   return query
@@ -175,4 +178,4 @@ revoke all on function public.ops_daily_report(text, int) from public;
 grant execute on function public.ops_daily_report(text, int) to anon, authenticated;
 
 -- ─────────────────────────── verify ─────────────────────────────────────────
-select * from public.ops_daily_report('CHANGE-ME-TO-A-LONG-RANDOM-STRING', 7);
+-- Verify with: select * from public.ops_daily_report('<the token>', 7);

@@ -99,18 +99,20 @@ Deno.serve(async (req) => {
      with "That email already has a NovaX seat" — reported by Hayat Scents, who
      revoked syedabdullah0420@gmail.com and could not reissue it. Revoking is
      how you take access away; it cannot also be how you burn the address. */
-  const { data: seats } = await asService
-    .from("staff_users").select("id, client_id, status").eq("email", email);
+  const { data: seats, error: seatsErr } = await asService
+    .from("staff_users").select("id, client_id, status, name, role, auth_user_id, permissions, invited_by, invited_at").eq("email", email);
+  if (seatsErr) return json({ error: "Could not check existing seats. Try again." }, 500);
   const live = (seats ?? []).filter((r: any) => String(r.status ?? "Active") !== "Revoked");
   if (live.length) {
     return json({ error: "That email already has an active NovaX seat. Revoke it first, or use a different address." }, 409);
   }
-  /* Only revoked rows remain. Clear them so the new seat is the only one and
-     nothing downstream has to work out which row is current. */
-  const staleIds = (seats ?? []).map((r: any) => r.id);
-  if (staleIds.length) {
-    await asService.from("staff_users").delete().in("id", staleIds);
-  }
+  /* 6 Oct 2026 audit. Only revoked rows remain, and only THIS workspace's are
+     ours to touch. This used to delete every revoked row for the address in
+     every workspace, before its own checks had run: inviting an address from
+     merchant B erased merchant A's revoked record even when B was then
+     refused. Other workspaces' rows are now left alone, and nothing is
+     changed until every check below has passed. */
+  const mine = (seats ?? []).filter((r: any) => String(r.client_id ?? "") === String(clientId));
 
   const { data: created, error: createErr } = await asService.auth.admin.createUser({
     email,
@@ -122,10 +124,11 @@ Deno.serve(async (req) => {
   /* A revoked seat can leave its auth user behind, so re-inviting that person
      hit the same dead end one layer down. With no live seat anywhere for this
      address (checked above), that login is an orphan and the owner is entitled
-     to re-issue it — reset the password and reuse it, rather than telling them
-     to invent a new email address. */
+     to re-issue it — reuse it, rather than telling them to invent a new email
+     address. Its password is reset LAST (see below). */
   let newId: string;
-  if (createErr || !created?.user) {
+  const reusedExisting = !!(createErr || !created?.user);
+  if (reusedExisting) {
     const msg = String(createErr?.message || "");
     if (!/already been registered|already exists/i.test(msg)) {
       return json({ error: "Could not create the login: " + (msg || "unknown error") }, 502);
@@ -145,33 +148,37 @@ Deno.serve(async (req) => {
        email would have taken over that account. */
     const { data: prof } = await asService
       .from("profiles").select("role, client_id").eq("id", existing.id).maybeSingle();
-    const revokedHere = (seats ?? []).some((r: any) => String(r.client_id ?? "") === String(clientId));
     const profRole = String(prof?.role ?? "client").toLowerCase();
     const profClient = prof?.client_id ? String(prof.client_id) : null;
-    if (!revokedHere || profRole !== "client" || (profClient !== null && profClient !== String(clientId))) {
+    if (!mine.length || profRole !== "client" || (profClient !== null && profClient !== String(clientId))) {
       return json({
         error: "That email already belongs to a NovaX account that this workspace cannot re-issue. Use a different address, or contact NovaX support.",
       }, 409);
     }
-    const { error: resetErr } = await asService.auth.admin.updateUserById(existing.id, {
-      password,
-      email_confirm: true,
-      user_metadata: { full_name: name, novax_role: role, reissued_by_owner: caller.id },
-    });
-    if (resetErr) {
-      return json({ error: "Could not re-issue that login: " + resetErr.message }, 502);
-    }
     newId = existing.id;
   } else {
-    newId = created.user.id;
+    newId = created!.user!.id;
   }
 
-  /* From here on, any failure must undo the auth user. */
-  const reusedExisting = !created?.user;
+  /* From here on, any failure must put everything back. */
+  let prevProfile: { client_id: string | null; full_name: string | null; email: string | null } | null = null;
+  let seatId: string | null = null;      // the seat row this request made Active
+  let seatWasInserted = false;
+  const prevSeat: any = mine[0] ?? null; // the revoked row being brought back, as it was
   const undo = async (why: string, status = 502) => {
-    /* Only delete a login this request actually created. A reused orphan
-       predates us; deleting it would destroy an account we were borrowing. */
-    if (!reusedExisting) {
+    try {
+      if (seatId && seatWasInserted) await asService.from("staff_users").delete().eq("id", seatId);
+      else if (seatId && prevSeat) {
+        await asService.from("staff_users").update({
+          name: prevSeat.name, role: prevSeat.role, status: prevSeat.status, auth_user_id: prevSeat.auth_user_id,
+          permissions: prevSeat.permissions, invited_by: prevSeat.invited_by, invited_at: prevSeat.invited_at,
+        }).eq("id", seatId);
+      }
+    } catch { /* keep undoing */ }
+    if (reusedExisting) {
+      /* A reused login predates us: never delete it, only restore its profile. */
+      if (prevProfile) { try { await asService.from("profiles").update(prevProfile).eq("id", newId); } catch { /* nothing better to do */ } }
+    } else {
       try { await asService.auth.admin.deleteUser(newId); } catch { /* nothing better to do */ }
     }
     return json({ error: why }, status);
@@ -183,6 +190,10 @@ Deno.serve(async (req) => {
      Inserting again fails on profiles_pkey — found by rehearsing this exact
      sequence against production inside a transaction. Without the client_id the
      person signs in successfully to an empty workspace. */
+  if (reusedExisting) {
+    const { data: was } = await asService.from("profiles").select("client_id, full_name, email").eq("id", newId).maybeSingle();
+    prevProfile = was ? { client_id: was.client_id ?? null, full_name: was.full_name ?? null, email: was.email ?? null } : null;
+  }
   const { data: linked, error: profErr } = await asService
     .from("profiles")
     .update({ client_id: clientId, full_name: name, email })
@@ -195,15 +206,41 @@ Deno.serve(async (req) => {
 
   /* The portal resolves a seat's ROLE from here, by session email. Without it
      they would default to Owner — which is the dangerous failure, not a
-     cosmetic one. */
-  const { error: staffErr } = await asService.from("staff_users").insert({
+     cosmetic one. A seat this workspace revoked earlier is brought back in
+     place (same row); only this workspace's rows are ever written. */
+  const seat = {
     name, email, role, access_side: "client", client_id: clientId,
     auth_user_id: newId, permissions: [], status: "Active",
     invited_by: caller.id, invited_at: new Date().toISOString(),
-  });
-  if (staffErr) {
-    /* deleteUser cascades the profile row, so no separate cleanup is needed. */
-    return await undo("Could not save the team member: " + staffErr.message);
+  };
+  if (prevSeat) {
+    const { data: up, error: upErr } = await asService.from("staff_users").update(seat)
+      .eq("id", prevSeat.id).eq("client_id", clientId).select("id");
+    if (upErr || !up || !up.length) return await undo("Could not save the team member: " + (upErr?.message || "the seat was not found"));
+    seatId = prevSeat.id;
+  } else {
+    const { data: ins, error: staffErr } = await asService.from("staff_users").insert(seat).select("id");
+    if (staffErr || !ins || !ins.length) return await undo("Could not save the team member: " + (staffErr?.message || "nothing was saved"));
+    seatId = ins[0].id; seatWasInserted = true;
+  }
+  /* Older duplicate revoked rows for this address IN THIS WORKSPACE would
+     still read as "revoked" to the permission checks, so they go. */
+  const extra = mine.filter((r: any) => r.id !== seatId).map((r: any) => r.id);
+  if (extra.length) {
+    const { error: delErr } = await asService.from("staff_users").delete().in("id", extra).eq("client_id", clientId);
+    if (delErr) return await undo("Could not tidy the old seat for that address: " + delErr.message);
+  }
+
+  /* Last of all, and only for a re-issued login: its password. It used to be
+     reset first, so a failure further down left the invitation refused but
+     the person's old password already dead. */
+  if (reusedExisting) {
+    const { error: resetErr } = await asService.auth.admin.updateUserById(newId, {
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: name, novax_role: role, reissued_by_owner: caller.id },
+    });
+    if (resetErr) return await undo("Could not re-issue that login: " + resetErr.message);
   }
 
   return json({

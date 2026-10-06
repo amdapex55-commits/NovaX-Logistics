@@ -14820,6 +14820,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           return;
         }
         if (!res.ok) { toast(out.error || `Login update failed (HTTP ${res.status}).`, "error"); return; }
+        if (out.warning) toast(out.warning, "error");
 
         const confirmedEmail = out.email || newLogin;
         if (!user) {
@@ -14870,14 +14871,25 @@ html,body{ background:var(--bg); color:var(--ink); }
         if (mode === "email") {
           let email = "";
           try {
-            const pr = await sb.from("profiles").select("email").eq("client_id", clientId).limit(2);
-            if (pr && !pr.error && pr.data && pr.data.length === 1) email = pr.data[0].email || "";
-            else if (pr && pr.data && pr.data.length > 1) { toast(`${label} has more than one login account — resolve that first.`); return; }
+            /* The owner's login: a profile with no team seat, or an Owner seat.
+               Team logins share the client, so "exactly one profile" broke as
+               soon as a merchant added a sub-user. */
+            const pr = await sb.from("profiles").select("id,email").eq("client_id", clientId).limit(50);
+            const st = await sb.from("staff_users").select("email,auth_user_id,role,status").eq("client_id", clientId);
+            if (pr && !pr.error && pr.data && st && !st.error) {
+              const seats = st.data || [];
+              const owners = pr.data.filter(function (p) {
+                const mine = seats.filter(function (r) { return r.auth_user_id === p.id || (r.email && p.email && String(r.email).toLowerCase() === String(p.email).toLowerCase()); });
+                return !mine.length || mine.some(function (r) { return ["owner", "client"].indexOf(String(r.role || "").toLowerCase()) > -1 && String(r.status || "Active") !== "Revoked"; });
+              });
+              if (owners.length === 1) email = owners[0].email || "";
+              else if (owners.length > 1) { toast(`${label} has more than one owner login — resolve that first.`); return; }
+            }
           } catch (e) { /* fall through to the record on file */ }
           if (!email && client) email = client.email || "";
           if (!email) { toast(`No email on file for ${label}, so a reset link cannot be sent. Use "Set a password now" instead.`); return; }
           toast(`Sending a reset link to ${email}...`);
-          const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: "https://novaxlogistics.com/client.html" });
+          const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: "https://novaxlogistics.com/new-password.html" });
           if (error) { toast("Could not send the reset link: " + error.message); return; }
           toast(`Reset link sent to ${email}. Tell them to check spam — it expires in 1 hour.`);
           return;
