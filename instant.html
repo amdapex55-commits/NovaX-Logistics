@@ -596,13 +596,16 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
     });
     /* The same route again (the sheet moved, the screen turned): only the view is refitted. */
     var rk=p&&d?[p.lat,p.lng,d.lat,d.lng,line||""].join("|"):"";
-    if(routeLine&&rk&&rk===routeKey){ try{ map.fitBounds(routeLine.getBounds(),{ paddingTopLeft:pad().tl, paddingBottomRight:pad().br, maxZoom:line?16:15 }); }catch(e){} return; }
+    if(routeLine&&rk&&rk===routeKey){ try{ map.fitBounds(routeLine.getBounds(),{ paddingTopLeft:pad().tl, paddingBottomRight:pad().br, maxZoom:line?16:15, animate:false }); }catch(e){} return; }
     /* A new route is drawn over the old one, which then fades away: the map is never left bare between them. */
     if(routeLine){ (function(old){ var oe=null; try{ oe=old.getElement(); }catch(e){}
       if(oe&&!REDUCED&&rk){ oe.style.transition="opacity .22s"; oe.style.opacity="0"; setTimeout(function(){ try{ map.removeLayer(old); }catch(e){} },240); }
       else { try{ map.removeLayer(old); }catch(e){} } })(routeLine); routeLine=null; }
     routeKey=rk;
-    var pd=pad(), pts=null;
+    /* The map glides to a new place only while the page is on screen. In a
+       hidden tab a glide never finishes and blocks every move after it, so
+       there it jumps; and coming back to the tab fits the view again. */
+    var pd=pad(), pts=null, glide=!(document.hidden||REDUCED);
     if(p&&d&&line){ try{ pts=decodeLine(line); }catch(e){ pts=null; } }
     if(pts&&pts.length>1){
       pts=[[p.lat,p.lng]].concat(pts,[[d.lat,d.lng]]);
@@ -610,13 +613,13 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
       /* The route draws itself from pickup to destination. */
       try{ var el=routeLine.getElement(); if(el&&!REDUCED){ var len=el.getTotalLength(); el.style.strokeDasharray=len; el.style.strokeDashoffset=len; el.getBoundingClientRect();
         el.style.transition="stroke-dashoffset .7s ease-out"; el.style.strokeDashoffset="0"; setTimeout(function(){ el.style.strokeDasharray=""; el.style.transition=""; },800); } }catch(e){}
-      map.fitBounds(routeLine.getBounds(),{ paddingTopLeft:pd.tl, paddingBottomRight:pd.br, maxZoom:16 });
+      map.fitBounds(routeLine.getBounds(),{ paddingTopLeft:pd.tl, paddingBottomRight:pd.br, maxZoom:16, animate:glide });
     }
     else if(p&&d){
       routeLine=L.polyline([[p.lat,p.lng],[d.lat,d.lng]],{ color:"#0B2A20", weight:2, opacity:.35, dashArray:"4 8", interactive:false }).addTo(map);
-      map.fitBounds([[p.lat,p.lng],[d.lat,d.lng]],{ paddingTopLeft:pd.tl, paddingBottomRight:pd.br, maxZoom:15 });
+      map.fitBounds([[p.lat,p.lng],[d.lat,d.lng]],{ paddingTopLeft:pd.tl, paddingBottomRight:pd.br, maxZoom:15, animate:glide });
     }
-    else if(p||d){ var o=p||d; map.setView([o.lat,o.lng],15); }
+    else if(p||d){ var o=p||d; map.setView([o.lat,o.lng],15,{ animate:glide }); }
   }
 
   /* ───────── places: search, recents, pin, GPS ───────── */
@@ -1786,7 +1789,7 @@ body[data-view="book"][data-step="2"] .nav,body[data-view="book"][data-step="3"]
       }).subscribe();
     }catch(e){} }
   }
-  document.addEventListener("visibilitychange",function(){ if(!document.hidden&&T.timer) loadTrack(false); });
+  document.addEventListener("visibilitychange",function(){ if(document.hidden) return; if(T.timer) loadTrack(false); refitSoon(); });
   $("pane").addEventListener("click",function(e){
     if(e.target.closest("[data-hist2]")) return goView("list");
     if(e.target.closest("#tHelp")) return $("helpBtn").click();

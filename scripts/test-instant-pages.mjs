@@ -73,5 +73,7 @@ ok("the saved availability note never opens booking", /if\(!s&&!S\.statusErr&&S\
 
 ok("a slow place search is waited for while Mapbox is asked as well", /photon\(q,grp,10000\)/.test(book) && /askMb\(\)\.then\(function\(a\)\{ if\(!done&&a\.length\)/.test(book));
 
+ok("the map never glides in a hidden tab, and refits on return", /glide=!\(document\.hidden\|\|REDUCED\)/.test(book) && /if\(document\.hidden\) return; if\(T\.timer\) loadTrack\(false\); refitSoon\(\);/.test(book));
+
 console.log(bad ? `NOVA INSTANT PAGE CHECKS FAILED (${bad})` : "NOVA INSTANT PAGE CHECKS PASSED");
 process.exit(bad ? 1 : 0);
