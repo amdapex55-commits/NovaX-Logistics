@@ -8458,7 +8458,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(document.getElementById("nvFreshBar")) return;
       var bar=document.createElement("div");
       bar.id="nvFreshBar"; bar.setAttribute("role","status");
-      bar.style.cssText="position:fixed;left:50%;transform:translateX(-50%);top:calc(10px + env(safe-area-inset-top));z-index:var(--z-toast,140);display:flex;align-items:center;gap:12px;max-width:calc(100vw - 24px);box-sizing:border-box;padding:9px 10px 9px 15px;border-radius:999px;background:var(--panel,#fff);color:var(--ink,#0b1f16);border:1px solid var(--line,#d9e5df);box-shadow:0 10px 30px rgba(0,0,0,.18);font-size:13.5px;font-weight:600;line-height:1.3";
+      var under=10;
+      try{ var tb=document.querySelector("header.topbar"); if(tb) under=Math.max(10,Math.round(tb.getBoundingClientRect().bottom)+8); }catch(e){}
+      bar.style.cssText="position:fixed;left:50%;transform:translateX(-50%);top:"+under+"px;z-index:var(--z-toast,140);display:flex;align-items:center;gap:12px;max-width:calc(100vw - 24px);box-sizing:border-box;padding:9px 10px 9px 15px;border-radius:999px;background:var(--panel,#fff);color:var(--ink,#0b1f16);border:1px solid var(--line,#d9e5df);box-shadow:0 10px 30px rgba(0,0,0,.18);font-size:13.5px;font-weight:600;line-height:1.3";
       bar.innerHTML='<span>NovaX was updated.</span><button type="button" style="border:0;border-radius:999px;min-height:36px;padding:0 16px;font:inherit;font-weight:800;cursor:pointer;background:var(--nvu-accent,#0f8a5f);color:#fff">Reload</button>';
       bar.querySelector("button").addEventListener("click",function(){
         try{ sessionStorage.setItem("nvw_reloaded_for",newer); }catch(e){}
@@ -19293,14 +19295,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
      and the spot was remembered. A small slip while clicking it was enough to
      park it on the NovaX name in the top bar for good (seen on a real
      account, 7 Oct 2026). It now moves only up and down the right-hand edge,
-     where the stylesheet puts it, and never over the top bar. A spot
-     remembered under the old rule is forgotten, so it returns to its corner. */
+     where the stylesheet puts it, and only in the lower part of the window,
+     so it cannot sit on the top bar or on the page's first buttons under it
+     ("Book parcel"). A spot remembered under the old rule is forgotten, so
+     it returns to its corner. */
   var nvHomeGap=22;
   try{ var g0=parseFloat(getComputedStyle(btn).bottom); if(g0>=0) nvHomeGap=g0; }catch(e){}
   function nvTopLimit(){
     var tb=document.querySelector("header.topbar"), b=0;
     try{ if(tb) b=tb.getBoundingClientRect().bottom; }catch(e){}
-    return Math.max(8,Math.min(b,window.innerHeight*0.4))+12;
+    return Math.max(b+12,window.innerHeight*0.4);
   }
   function nvApplyPos(x,y){
     var h=btn.offsetHeight||54, top=nvTopLimit();
