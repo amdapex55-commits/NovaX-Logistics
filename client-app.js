@@ -6361,8 +6361,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if (/^Return /.test(st))         return { key:"returning", label:"In return",  collected:false, tone:"warn" };
       return { key:"open", label:st || "In progress", collected:false, tone:"warn" };
     }
+    /* When this invoice was made, for one of its parcels. The parcel carries
+       the exact moment; the invoice's own date is Pakistan-time text. */
+    function nvInvoiceMadeMs(p,inv){
+      var t=Date.parse((p&&p.invoicedAt)||"");
+      if(!isNaN(t)) return t;
+      var m=String((inv&&inv.createdAt)||"").match(/^(\d{4}-\d\d-\d\d)[ T](\d\d:\d\d)/);
+      return m?Date.parse(m[1]+"T"+m[2]+":00+05:00"):NaN;
+    }
     function clientInvoiceLineItems(inv){
-      return (inv.parcelRefs||[]).map(awb=>{
+      const lines=(inv.parcelRefs||[]).map(awb=>{
         const p=state.parcels.find(x=>x.awb===awb);
         if(!p) return { awb, bookingDate:"-", destinationCity:"-", consignee:"-", paymentMode:"-", codAmount:0, deliveryCharge:0, netLineAmount:0, outcome:"Not on this account", outcomeKey:"unknown", outcomeTone:"warn", collected:false, prepaid:false };
         const nonCod=isNonCodParcel(p);
@@ -6377,8 +6385,37 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const plain=(v,fb)=>{ const t=(v===undefined||v===null)?"":String(v).trim(); return t||fb; };
         return { awb:p.awb, bookingDate:labelDate(p), destinationCity:plain(p.city,"-"), consignee:plain(p.consignee,"-"), paymentMode:plain(p.paymentMode||p.payment_mode,"COD"), codAmount, deliveryCharge, netLineAmount,
                  outcome:oc.label, outcomeKey:oc.key, outcomeTone:oc.tone, collected:oc.collected, prepaid:nonCod,
-                 distanceKm:(p.pricingMode==="distance" ? p.distanceKm : null) };
+                 distanceKm:(p.pricingMode==="distance" ? p.distanceKm : null),
+                 deliveredLate:(function(){
+                   if(oc.key!=="delivered") return false;
+                   var d=Date.parse(p.deliveredAt||""), made=nvInvoiceMadeMs(p,inv);
+                   return !isNaN(d) && !isNaN(made) && d>made+120000;
+                 })(),
+                 deliveredOn:(function(){ var d=new Date(p.deliveredAt||""); return isNaN(d)?"":d.toLocaleDateString("en-GB",{ day:"numeric", month:"short", timeZone:"Asia/Karachi" }); })() };
       });
+      /* How each parcel was billed on THIS invoice. The rows used to show the
+         parcel as it is today. So a parcel that was "Out of service area" when
+         the invoice was made -- billed as a return, charge only -- and was
+         delivered two days later read "Delivered, Rs 6,000" on an invoice
+         whose total had never counted that Rs 6,000 (INV-2610030d292, 7 Oct
+         2026). NovaX counts a parcel's COD only if it was delivered when the
+         invoice was made, and both moments are stored on the parcel. That
+         rule gives the stored COD total on 305 of 309 invoices; where it does
+         not, the rows are left as they were and the note above the table
+         still says the two differ. */
+      const late=lines.filter(l=>l.deliveredLate);
+      if(late.length){
+        const billed=lines.reduce((sum,l)=>sum+(l.deliveredLate?0:Number(l.codAmount||0)),0);
+        if(Math.abs(billed-Number(inv.cod||0))<=1){
+          late.forEach(l=>{
+            l.laterCod=Number(l.codAmount||0);
+            l.codAmount=0; l.netLineAmount=-Number(l.deliveryCharge||0); l.collected=false;
+            l.outcome="Billed as a return"; l.outcomeKey="returned"; l.outcomeTone="bad"; l.billedAsReturn=true;
+            l.billedNote="Delivered "+l.deliveredOn+", after this invoice was made."+(l.laterCod>0?" COD "+l.laterCod+" is not included in this invoice.":"");
+          });
+        } else late.forEach(l=>{ l.deliveredLate=false; });
+      }
+      return lines;
     }
     /* =====================================================================
        NovaX new -- WALLET RECEIPTS & STATEMENTS
@@ -6731,8 +6768,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const lines=clientInvoiceLineItems(inv);
       // parcel_outcome / cod_collected added so a merchant reconciling in
       // Excel can filter delivered vs returned without opening the portal.
-      const header=["invoice_id","invoice_type","client_name","status","awb","booking_date","destination_city","consignee","parcel_outcome","cod_collected","payment_mode","cod_amount","delivery_charge","net_line_amount","invoice_cod_total","invoice_delivery_charges","payable_to_client","due_to_novax","final_balance"];
-      const rows=lines.map(line=>[inv.id,inv.invoiceType||"COD Settlement",c.name,inv.status,line.awb,line.bookingDate,line.destinationCity,line.consignee,line.outcome,line.collected?"yes":"no",line.paymentMode,line.codAmount,line.deliveryCharge,line.netLineAmount,inv.cod,inv.charges,inv.payable,inv.dueToNovax||0,inv.finalBalance||0]);
+      const header=["invoice_id","invoice_type","client_name","status","awb","booking_date","destination_city","consignee","parcel_outcome","cod_collected","payment_mode","cod_amount","delivery_charge","net_line_amount","invoice_cod_total","invoice_delivery_charges","payable_to_client","due_to_novax","final_balance","note"];
+      const rows=lines.map(line=>[inv.id,inv.invoiceType||"COD Settlement",c.name,inv.status,line.awb,line.bookingDate,line.destinationCity,line.consignee,line.outcome,line.collected?"yes":"no",line.paymentMode,line.codAmount,line.deliveryCharge,line.netLineAmount,inv.cod,inv.charges,inv.payable,inv.dueToNovax||0,inv.finalBalance||0,line.billedNote||""]);
       const csv=[header,...rows].map(r=>r.map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(",")).join("\n");
       const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download=`${inv.id}.csv`; a.click(); toast(`${inv.id} CSV downloaded.`);
     }
@@ -7251,12 +7288,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              prepaid delivered -> cash was never due, the customer paid online
              not delivered     -> cash was due but never collected
              delivered COD     -> the real amount */
-        const codCell=line.prepaid
+        const laterLine=line.billedAsReturn?`<div style="font-size:10px;color:#8a8a8a;font-weight:600;margin-top:3px">delivered ${escLabelText(line.deliveredOn)}, after this invoice</div>`:"";
+        const codCell=line.billedAsReturn&&line.laterCod>0
+          ? `${money(0)}<div style="font-size:10px;color:#8a8a8a;font-weight:600">${escLabelText(money(line.laterCod))} collected later &mdash; not on this invoice</div>`
+          : line.prepaid
           ? `${money(0)}<div style="font-size:10px;color:#8a8a8a;font-weight:600">prepaid &mdash; no cash due</div>`
           : (line.collected
               ? money(line.codAmount)
               : `${money(0)}<div style="font-size:10px;color:#8a8a8a;font-weight:600">not collected</div>`);
-        return `<tr><td>${escLabelText(line.awb)}</td><td>${escLabelText(line.bookingDate)}</td><td>${escLabelText(line.destinationCity)}</td><td>${escLabelText(line.consignee)}</td><td>${pill}</td><td>${escLabelText(line.paymentMode)}</td><td style="text-align:right">${codCell}</td><td style="text-align:right">${money(line.deliveryCharge)}${line.distanceKm!=null?`<div style="font-size:10px;color:#8a8a8a;font-weight:600">${escLabelText(line.distanceKm)} km</div>`:""}</td><td style="text-align:right">${money(line.netLineAmount)}</td></tr>`;
+        return `<tr><td>${escLabelText(line.awb)}</td><td>${escLabelText(line.bookingDate)}</td><td>${escLabelText(line.destinationCity)}</td><td>${escLabelText(line.consignee)}</td><td>${pill}${laterLine}</td><td>${escLabelText(line.paymentMode)}</td><td style="text-align:right">${codCell}</td><td style="text-align:right">${money(line.deliveryCharge)}${line.distanceKm!=null?`<div style="font-size:10px;color:#8a8a8a;font-weight:600">${escLabelText(line.distanceKm)} km</div>`:""}</td><td style="text-align:right">${money(line.netLineAmount)}</td></tr>`;
       }).join("");
       const nDelivered=lines.filter(l=>l.outcomeKey==="delivered").length;
       const nReturned=lines.filter(l=>l.outcomeKey==="returned"||l.outcomeKey==="refused"||l.outcomeKey==="cancelled").length;
@@ -7276,6 +7316,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const driftNote=drift?`<div style="background:var(--nvu-warn-bg);border:1px solid var(--nvu-warn-ln);color:var(--nvu-warn-fg);border-radius:var(--r-md);padding:10px 12px;margin-bottom:14px;font-size:12px;line-height:1.5">
         <b>Note:</b> the per-parcel rows below add up to ${escLabelText(money(lineCod))} COD and ${escLabelText(money(lineFee))} in charges, which differs from the invoice totals shown in the summary. The <b>summary totals are the ones that settle</b> &mdash; they are calculated by NovaX at the moment the invoice is generated. A difference here usually means a parcel's status changed after invoicing. Please contact support if the gap looks wrong.
       </div>`:"";
+      const lateLines=lines.filter(l=>l.billedAsReturn), lateCod=lateLines.reduce((a,l)=>a+Number(l.laterCod||0),0);
+      const lateNote=lateLines.length?`<div style="background:var(--nvu-warn-bg);border:1px solid var(--nvu-warn-ln);color:var(--nvu-warn-fg);border-radius:var(--r-md);padding:10px 12px;margin-bottom:14px;font-size:12px;line-height:1.5">
+        <b>${lateLines.length} parcel${lateLines.length===1?" was":"s were"} delivered after this invoice was made</b> (${escLabelText(lateLines.map(l=>l.awb).join(", "))}). On this invoice ${lateLines.length===1?"it is":"they are"} billed as a return: delivery charge only.${lateCod>0?` The COD collected later, <b>${escLabelText(money(lateCod))}</b>, is not part of this invoice. If it is not on a later invoice or in your wallet, contact NovaX support.`:""}
+      </div>`:"";
       const balanceLabel=due>0?(nvInvTaken(inv)?"Taken from your wallet":"Amount Due to NovaX"):"Grand Total Payable";
       const balanceValue=due>0?money(due):money(inv.payable||0);
       return `<div class="nv-doc-paper" style="font-family:Arial,Helvetica,sans-serif;color:#0b1f16;background:var(--nvu-bg);padding:26px;max-width:820px;margin:0 auto;border-radius:var(--r-lg)">
@@ -7291,6 +7335,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         </div>
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#5b6b64;margin-bottom:6px">Tracking &amp; delivery charge breakdown</div>
         ${outcomeStrip}
+        ${lateNote}
         ${driftNote}
         <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:16px"><table style="width:100%;min-width:640px;border-collapse:collapse;font-size:12px"><thead><tr style="background:#eef7f2"><th style="text-align:left;padding:7px;border:1px solid var(--nvu-line-2)">Tracking ID / AWB</th><th style="text-align:left;padding:7px;border:1px solid var(--nvu-line-2)">Booking Date</th><th style="text-align:left;padding:7px;border:1px solid var(--nvu-line-2)">Destination City</th><th style="text-align:left;padding:7px;border:1px solid var(--nvu-line-2)">Consignee</th><th style="text-align:left;padding:7px;border:1px solid var(--nvu-line-2)">Outcome</th><th style="text-align:left;padding:7px;border:1px solid var(--nvu-line-2)">Payment Mode</th><th style="text-align:right;padding:7px;border:1px solid var(--nvu-line-2)">COD Amount</th><th style="text-align:right;padding:7px;border:1px solid var(--nvu-line-2)">Delivery Charge</th><th style="text-align:right;padding:7px;border:1px solid var(--nvu-line-2)">Net Line Amount</th></tr></thead><tbody>${rows}</tbody></table></div>
         ${paidEvent?`<div style="background:var(--nvu-bg-2);border:1px solid var(--nvu-line-2);border-radius:var(--r-md);padding:10px 12px;margin-bottom:16px;font-size:13px">Settled on <b>${escLabelText(nvNiceDate(paidEvent))}</b></div>`:""}
@@ -8379,6 +8424,74 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       setTimeout(function(){ location.reload(); },900);
       return true;
     }
+    /* The same check for the rest of the portal. It looks when the merchant
+       comes back to the tab and every few minutes while it is open. A reload
+       throws away anything half done, so it happens by itself only when
+       nothing is: no panel open, nothing typed in a visible field, and the
+       merchant either just came back or has not touched the page for a
+       minute. Otherwise a small bar offers "Reload" and the page waits. */
+    var NV_FRESH={ hiddenAt:0, lastTouch:Date.now(), timer:null };
+    function nvFreshShown(el){
+      try{
+        if(!el.getClientRects().length) return false;
+        var cs=getComputedStyle(el);
+        return cs.display!=="none" && cs.visibility!=="hidden" && cs.opacity!=="0";
+      }catch(e){ return true; }
+    }
+    function nvFreshSafe(){
+      try{
+        var a=document.activeElement;
+        if(a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return false;
+        var d=document.querySelectorAll('[role="dialog"],[aria-modal="true"],.nvw-back');
+        for(var i=0;i<d.length;i++){ if(nvFreshShown(d[i])) return false; }
+        var f=document.querySelectorAll("input,textarea");
+        for(var j=0;j<f.length;j++){
+          var el=f[j];
+          if(/^(hidden|checkbox|radio|button|submit|search|file|range)$/.test(String(el.type||"").toLowerCase())) continue;
+          if(el.readOnly || el.disabled) continue;
+          if(String(el.value||"").trim() && nvFreshShown(el)) return false;
+        }
+        return true;
+      }catch(e){ return false; }
+    }
+    function nvFreshBar(newer){
+      if(document.getElementById("nvFreshBar")) return;
+      var bar=document.createElement("div");
+      bar.id="nvFreshBar"; bar.setAttribute("role","status");
+      bar.style.cssText="position:fixed;left:50%;transform:translateX(-50%);top:calc(10px + env(safe-area-inset-top));z-index:var(--z-toast,140);display:flex;align-items:center;gap:12px;max-width:calc(100vw - 24px);box-sizing:border-box;padding:9px 10px 9px 15px;border-radius:999px;background:var(--panel,#fff);color:var(--ink,#0b1f16);border:1px solid var(--line,#d9e5df);box-shadow:0 10px 30px rgba(0,0,0,.18);font-size:13.5px;font-weight:600;line-height:1.3";
+      bar.innerHTML='<span>NovaX was updated.</span><button type="button" style="border:0;border-radius:999px;min-height:36px;padding:0 16px;font:inherit;font-weight:800;cursor:pointer;background:var(--nvu-accent,#0f8a5f);color:#fff">Reload</button>';
+      bar.querySelector("button").addEventListener("click",function(){
+        try{ sessionStorage.setItem("nvw_reloaded_for",newer); }catch(e){}
+        location.reload();
+      });
+      document.body.appendChild(bar);
+    }
+    function nvFreshAct(newer,cameBack){
+      if(!newer) return;
+      var already=false;
+      try{ already=sessionStorage.getItem("nvw_reloaded_for")===newer; }catch(e){ already=true; }
+      if(already) return;              // reloaded for this version once and still on the old one: leave it be
+      var quiet=cameBack || (Date.now()-NV_FRESH.lastTouch>60e3);
+      if(quiet && nvFreshSafe()){ nvwReloadIfStale(newer); return; }
+      nvFreshBar(newer);
+    }
+    function nvFreshLook(cameBack){
+      if(document.hidden) return;
+      nvwCheckStale().then(function(newer){ nvFreshAct(newer,cameBack); });
+    }
+    function nvFreshWatch(){
+      if(NV_FRESH.timer || !nvwRunningBundle()) return;
+      ["pointerdown","keydown"].forEach(function(ev){
+        document.addEventListener(ev,function(){ NV_FRESH.lastTouch=Date.now(); },{ capture:true, passive:true });
+      });
+      document.addEventListener("visibilitychange",function(){
+        if(document.hidden){ NV_FRESH.hiddenAt=Date.now(); return; }
+        var away=NV_FRESH.hiddenAt?Date.now()-NV_FRESH.hiddenAt:0;
+        nvFreshLook(away>30e3);
+      });
+      NV_FRESH.timer=setInterval(function(){ nvFreshLook(false); },60e3);
+    }
+    try{ nvFreshWatch(); }catch(e){}
     function nvwOpenWithdraw(){
       var newerBundle="";
       nvwCheckStale().then(function(n){ newerBundle=n; });
@@ -19176,12 +19289,24 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   /* ---- Draggable launcher -------------------------------------------- */
   var NV_POS_KEY="novaxAutopilotPos";
   var dragging=false, moved=false, sx=0, sy=0, ox=0, oy=0;
+  /* The launcher used to rest wherever it was dropped, anywhere on the page,
+     and the spot was remembered. A small slip while clicking it was enough to
+     park it on the NovaX name in the top bar for good (seen on a real
+     account, 7 Oct 2026). It now moves only up and down the right-hand edge,
+     where the stylesheet puts it, and never over the top bar. A spot
+     remembered under the old rule is forgotten, so it returns to its corner. */
+  var nvHomeGap=22;
+  try{ var g0=parseFloat(getComputedStyle(btn).bottom); if(g0>=0) nvHomeGap=g0; }catch(e){}
+  function nvTopLimit(){
+    var tb=document.querySelector("header.topbar"), b=0;
+    try{ if(tb) b=tb.getBoundingClientRect().bottom; }catch(e){}
+    return Math.max(8,Math.min(b,window.innerHeight*0.4))+12;
+  }
   function nvApplyPos(x,y){
-    var w=btn.offsetWidth||54, h=btn.offsetHeight||54;
-    x=Math.max(8,Math.min(x,window.innerWidth-w-8));
-    y=Math.max(8,Math.min(y,window.innerHeight-h-8));
-    btn.style.left=x+"px"; btn.style.top=y+"px";
-    btn.style.right="auto"; btn.style.bottom="auto";
+    var h=btn.offsetHeight||54, top=nvTopLimit();
+    y=Math.max(top,Math.min(y,window.innerHeight-h-Math.max(8,nvHomeGap)));
+    btn.style.top=y+"px"; btn.style.bottom="auto";
+    btn.style.left=""; btn.style.right="";
     nvPlacePanel();
   }
   function nvPlacePanel(){
@@ -19195,7 +19320,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   }
   try{
     var saved=JSON.parse(localStorage.getItem(NV_POS_KEY)||"null");
-    if(saved && typeof saved.x==="number") setTimeout(function(){ nvApplyPos(saved.x,saved.y); },0);
+    if(saved && saved.v===2 && typeof saved.y==="number") setTimeout(function(){ nvApplyPos(0,saved.y); },0);
+    else if(saved) localStorage.removeItem(NV_POS_KEY);
   }catch(e){}
 
   btn.style.touchAction="none";
@@ -19220,7 +19346,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     try{ btn.releasePointerCapture(e.pointerId); }catch(_){}
     if(moved){
       var r=btn.getBoundingClientRect();
-      try{ localStorage.setItem(NV_POS_KEY,JSON.stringify({x:r.left,y:r.top})); }catch(_){}
+      try{ localStorage.setItem(NV_POS_KEY,JSON.stringify({v:2,y:r.top})); }catch(_){}
     }
   }
   btn.addEventListener("pointerup",nvEndDrag);
@@ -19231,7 +19357,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
   },true);
   window.addEventListener("resize",function(){
     try{
-      if(btn.style.left){ nvApplyPos(parseFloat(btn.style.left),parseFloat(btn.style.top)); }
+      if(btn.style.top){ nvApplyPos(0,parseFloat(btn.style.top)); }
       if(panel.classList.contains("open")) nvPlacePanel();
     }catch(e){}
   });
