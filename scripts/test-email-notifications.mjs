@@ -14,7 +14,11 @@ const fixtures = {
   first_parcel_d1: { name: 'Aisha', business: 'Sample Store', token: '8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11', step: 1 },
   first_parcel_d3: { name: 'Aisha', business: 'Sample Store', token: '8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11', step: 3 },
   first_parcel_d7: { name: 'Aisha', business: 'Sample Store', token: '8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11', step: 7 },
+  back_quiet: { name: 'Aisha', business: 'Sample Store', token: '8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11', parcels: 12, last: '2026-08-30T09:00:00Z', wallet: 2845.5 },
+  back_tried: { name: '', business: 'Sample Store', token: '8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11', parcels: 1, last: '2026-08-02T21:30:00Z', wallet: 0 },
+  setup_ready: { name: 'Aisha', business: 'Sample Store', token: '8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11' },
 };
+const NUDGE_KINDS = ['back_quiet', 'back_tried', 'setup_ready'];
 const REMINDER_KINDS = ['first_parcel_d1', 'first_parcel_d3', 'first_parcel_d7'];
 for (const [kind, data] of Object.entries(fixtures)) {
   const message = buildEmail(kind, 'owner@example.com', data);
@@ -47,7 +51,7 @@ for (const [kind, data] of Object.entries(fixtures)) {
   for (const link of message.html.matchAll(/href="([^"]+)"/g)) {
     const url = new URL(link[1].replaceAll('&amp;', '&'));
     // The day-7 reminder's button opens NovaX's own WhatsApp support number, nothing else.
-    if (kind === 'first_parcel_d7' && url.origin === 'https://wa.me') {
+    if ((kind === 'first_parcel_d7' || NUDGE_KINDS.includes(kind)) && url.origin === 'https://wa.me') {
       assert.equal(url.pathname, '/923123922558');
       continue;
     }
@@ -202,3 +206,32 @@ if (previewFlag >= 0) {
     Object.entries(fixtures).map(([kind,data]) => [kind, buildEmail(kind,'preview@example.com',data)])), null, 2));
   console.log(`Sample email previews: ${directory}`);
 }
+
+// One-off emails to merchants who stopped, or set up and never shipped (8 Oct 2026).
+{
+  const quiet = buildEmail('back_quiet', 'owner@example.com', fixtures.back_quiet);
+  assert.equal(quiet.subject, 'Did something go wrong with your last parcels?');
+  assert.ok(quiet.text.includes('Hi Aisha, you sent 12 parcels with NovaX from Sample Store, the last on 30 August, and none since.'));
+  assert.ok(quiet.html.replaceAll('&nbsp;', ' ').includes('Rs 2,845'), 'the money still in the wallet is shown');
+  assert.ok(quiet.html.includes('href="https://wa.me/923123922558?text='));
+  const tried = buildEmail('back_tried', 'owner@example.com', fixtures.back_tried);
+  assert.equal(tried.subject, 'How was your first NovaX delivery?');
+  assert.ok(tried.text.includes('Hi there, you sent one parcel with NovaX, the last on 3 August, and none since.'), 'date is Pakistan time, one parcel reads as one');
+  assert.ok(!tried.html.includes('STILL IN YOUR NOVAX WALLET'), 'an empty wallet is not mentioned');
+  const ready = buildEmail('setup_ready', 'owner@example.com', fixtures.setup_ready);
+  assert.equal(ready.subject, 'Your NovaX account is ready. Send your first parcel');
+  assert.ok(ready.html.includes('href="https://novaxlogistics.com/client.html?tab=newBooking"'));
+  for (const kind of NUDGE_KINDS) {
+    const m = buildEmail(kind, 'owner@example.com', fixtures[kind]);
+    assert.ok(m.html.includes('href="https://novaxlogistics.com/unsubscribe.html?t=8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11"'), kind + ' carries the stop link');
+    assert.equal(m.headers['List-Unsubscribe'], '<https://novaxlogistics.com/unsubscribe.html?t=8f14e45f-ceea-4e7a-9c1b-2f6d8a0b3c11>');
+    assert.ok(m.text.includes('We send this email once.'));
+    assert.ok(!m.html.includes('three of these'), kind + ' does not claim to be one of three reminders');
+    assert.throws(() => buildEmail(kind, 'owner@example.com', { ...fixtures[kind], token: '' }), /missing_token/);
+    assert.ok(m.html.replaceAll('&nbsp;', ' ').includes('Rs 225 for the first kg to a Karachi address, Rs 250 to Lahore, Islamabad or Rawalpindi, plus Rs 85 per additional kg.'));
+  }
+  assert.throws(() => buildEmail('back_quiet', 'owner@example.com', { ...fixtures.back_quiet, parcels: 0 }), /invalid_parcel_count/);
+  assert.throws(() => buildEmail('back_quiet', 'owner@example.com', { ...fixtures.back_quiet, last: 'x' }), /invalid_event_date/);
+  console.log('ok - the three one-off emails: wording, wallet line, stop link, WhatsApp button');
+}
+

@@ -1,5 +1,6 @@
 export type EmailKind = 'welcome' | 'first_booking' | 'payout_paid' | 'cnic_verified' | 'cnic_rejected'
-  | 'first_parcel_d1' | 'first_parcel_d3' | 'first_parcel_d7';
+  | 'first_parcel_d1' | 'first_parcel_d3' | 'first_parcel_d7'
+  | 'back_quiet' | 'back_tried' | 'setup_ready';
 export type EmailPayload = Record<string, unknown>;
 const PORTAL = 'https://novaxlogistics.com/client.html';
 const WEBSITE = 'https://novaxlogistics.com/';
@@ -12,6 +13,20 @@ const LOGO = 'https://novaxlogistics.com/assets/icon-192.png';
 // Word for word from the site and Decisions. Do not reword.
 const PRICE = 'Rs 225 for the first kg to a Karachi address, Rs 250 to Lahore, Islamabad or Rawalpindi, plus Rs 85 per additional kg.';
 const REMINDERS = ['first_parcel_d1', 'first_parcel_d3', 'first_parcel_d7'];
+// One-off emails to merchants who stopped, or set up and never shipped (8 Oct
+// 2026). Sent once each, with the same private stop link as the reminders.
+const NUDGES = ['back_quiet', 'back_tried', 'setup_ready'];
+const HELP = WHATSAPP + '?text=' + encodeURIComponent('Hi NovaX, I got your email and want to talk about my parcels.');
+function count(value: unknown): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n < 1) throw new Error('invalid_parcel_count');
+  return n;
+}
+function day(value: unknown): string {
+  const parsed = new Date(String(value ?? ''));
+  if (!Number.isFinite(parsed.getTime())) throw new Error('invalid_event_date');
+  return parsed.toLocaleDateString('en-GB', { timeZone: 'Asia/Karachi', day: 'numeric', month: 'long' });
+}
 
 /* 4 Oct 2026 redesign. One layout for every NovaX email, built for Gmail
  * (web and app) first: tables and inline styles only, no web fonts, no
@@ -220,6 +235,52 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
       note: "This is our last reminder. Your account stays open, so you can book whenever you're ready.",
     };
   }
+  if (kind === 'back_quiet' || kind === 'back_tried') {
+    const n = count(data.parcels);
+    const sent = n === 1 ? 'one parcel' : `${n} parcels`;
+    const wallet = Number(data.wallet);
+    const quiet = kind === 'back_quiet';
+    return {
+      subject: quiet ? 'Did something go wrong with your last parcels?' : 'How was your first NovaX delivery?',
+      preheader: 'Tell us on WhatsApp. A person on our team will reply.',
+      pill: quiet ? "We haven't seen you" : 'Your first delivery', tone: 'info',
+      title: quiet ? 'Did something go wrong?' : 'How did it go?',
+      intro: quiet
+        ? `${hi}you sent ${sent} with NovaX${forBiz ? ' from ' + business : ''}, the last on ${day(data.last)}, and none since. If something went wrong with a parcel, a payout or a pickup, tell us. A person on our team will read it and sort it out.`
+        : `${hi}you sent ${sent} with NovaX, the last on ${day(data.last)}, and none since. Was anything not right? Tell us, and a person on our team will read it and sort it out.`,
+      ...(Number.isFinite(wallet) && wallet >= 1
+        ? { fact: { label: 'STILL IN YOUR NOVAX WALLET', value: 'Rs ' + Math.floor(wallet).toLocaleString('en-PK'),
+            caption: 'Withdraw it to your bank from your portal', size: 28 } }
+        : {}),
+      cta: 'Message us on WhatsApp', destination: HELP,
+      extraLink: ['Or book a parcel in your portal', BOOK],
+      stepsTitle: 'When you are ready to send again',
+      steps: [
+        ['Price', `${PRICE} Pickup is free in all four cities.`],
+        ['Delivery', 'Karachi same day or next day. Lahore, Islamabad and Rawalpindi in 2–3 working days.'],
+        ['COD', 'COD in your wallet the day it lands. Withdraw it to your bank from your NovaX Wallet.'],
+      ],
+      note: "We won't send this again. Your account stays open, so you can book whenever you're ready.",
+    };
+  }
+  if (kind === 'setup_ready') {
+    return {
+      subject: 'Your NovaX account is ready. Send your first parcel',
+      preheader: 'The setup is done. The only step left is your first booking.',
+      pill: 'Ready to send', tone: 'info',
+      title: 'The setup is done. Send your first parcel.',
+      intro: `${hi}you have already set up your NovaX account${forBiz}. The only step left is your first booking, and it takes about a minute.`,
+      cta: 'Book your first parcel', destination: BOOK,
+      extraLink: ['Stuck on something? Message us on WhatsApp', HELP],
+      stepsTitle: 'Three steps, start to finish',
+      steps: [
+        ['Book it.', "Enter your customer's name, phone, city, address and COD amount. Got the order on WhatsApp or Instagram? Tap Paste order and the form fills in for you."],
+        ['Print the label.', 'Print the AWB label from the AWB label tab and stick it on the parcel.'],
+        ['Request pickup.', 'In the same tab, choose the parcels, confirm your pickup address and pick a time. Riders collect between 11 am and 9 pm on working days.'],
+      ],
+      note: `Pickup is free in Karachi, Lahore, Islamabad and Rawalpindi. Price: ${PRICE}`,
+    };
+  }
   throw new Error('unknown_email_kind');
 }
 
@@ -233,8 +294,9 @@ export function buildEmail(kind: EmailKind, recipient: string, data: EmailPayloa
   }
   // First-parcel reminders carry a private link that switches them off.
   const reminder = REMINDERS.includes(kind);
+  const nudge = NUDGES.includes(kind);
   let stopUrl = '';
-  if (reminder) {
+  if (reminder || nudge) {
     const token = String(data.token ?? '');
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token)) {
       throw new Error('missing_token');
@@ -260,6 +322,8 @@ export function buildEmail(kind: EmailKind, recipient: string, data: EmailPayloa
 
   const footerWhy = reminder
     ? `You're getting this because you opened a NovaX account and haven't booked a parcel yet. We send three of these at most, and they stop once you book. <a href="${escape(stopUrl)}" style="color:${C.muted};text-decoration:underline">Stop these reminders</a>. Please do not reply to this email.`
+    : nudge
+    ? `You're getting this because you have a NovaX account. We send this email once. <a href="${escape(stopUrl)}" style="color:${C.muted};text-decoration:underline">Stop emails like this</a>. Please do not reply to this email; message us on WhatsApp instead.`
     : 'Automated account notification. Please do not reply to this email.';
 
   const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${escape(s.subject)}</title>
@@ -289,7 +353,7 @@ ${s.signoff ? `<p style="margin:16px 0 0;font-size:15px;line-height:1.6;color:${
 <tr><td align="center" style="padding:18px 16px 4px;${font};font-size:12px;line-height:1.7;color:${C.muted}"><b style="color:${C.body}">NovaX Logistics</b> &middot; COD courier for Karachi, Lahore, Islamabad and Rawalpindi &middot; <a href="${WEBSITE}" style="color:${C.muted};text-decoration:underline">novaxlogistics.com</a><br>${footerWhy}</td></tr>
 </table></td></tr></table></body></html>`;
   // Keep "Rs 250" on one line in the reminders' prices.
-  const html = reminder ? page.replace(/Rs (\d)/g, 'Rs&nbsp;$1') : page;
+  const html = (reminder || nudge) ? page.replace(/Rs (\d)/g, 'Rs&nbsp;$1') : page;
   const text = [s.title, s.intro, s.fact ? `${s.fact.label}: ${s.fact.value}${s.fact.caption ? ' (' + s.fact.caption + ')' : ''}` : '',
     ...(s.rows ?? []).map(([key, value]) => `${key}: ${value}`),
     `${s.cta}: ${s.destination}`, s.extraLink ? `${s.extraLink[0]}: ${s.extraLink[1]}` : '',
@@ -297,8 +361,9 @@ ${s.signoff ? `<p style="margin:16px 0 0;font-size:15px;line-height:1.6;color:${
     s.signoff ? "Here's to your next delivery, and everything after it.\nThe NovaX team" : '',
     `Need a hand? NovaX support: ${SUPPORT} · WhatsApp 0312 3922558`, `NovaX Logistics: ${WEBSITE}`,
     reminder ? `We send three of these reminders at most, and they stop once you book. Stop them: ${stopUrl}` : '',
+    nudge ? `We send this email once. Stop emails like this: ${stopUrl}` : '',
   ].filter(Boolean).join('\n\n');
   return { from: FROM, to: [recipient], subject: s.subject, html, text,
     tags: [{ name: 'notification', value: kind }],
-    ...(reminder ? { headers: { 'List-Unsubscribe': `<${stopUrl}>` } } : {}) };
+    ...((reminder || nudge) ? { headers: { 'List-Unsubscribe': `<${stopUrl}>` } } : {}) };
 }
