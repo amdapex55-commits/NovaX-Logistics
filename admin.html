@@ -8832,17 +8832,17 @@ html,body{ background:var(--bg); color:var(--ink); }
 
     /* 7 Oct 2026: the speeds got names and slower windows, fees unchanged.
        The stored codes stay "instant" / "12h" / "24h". A withdrawal requested
-       before the change keeps the name it was sold under, so staff still pay
-       it on the old promise: pass its request time (Pakistan time) as `at`. */
+       before the change shows today's name and what it was sold as, so staff
+       still pay it on that promise: pass its request time (Pakistan time,
+       which is what dtpart gives) as `at`. */
     function walletSpeedIsOld(at) {
       const t = String(at || "").replace("T", " ").slice(0, 16);
       return /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(t) && t < "2026-10-07 20:55";
     }
     function walletSpeedLabel(speed, at) {
-      if (walletSpeedIsOld(at)) return speed === "instant" ? "Instant 2-3 hours" : speed === "12h" ? "12 hours" : "24 hours";
-      if (speed === "instant") return "Express \u00b7 12 hours";
-      if (speed === "12h") return "Standard \u00b7 12-24 hours";
-      return "Saver \u00b7 24-48 hours";
+      const name = speed === "instant" ? "Express \u00b7 12 hours" : speed === "12h" ? "Standard \u00b7 12-24 hours" : "Saver \u00b7 24-48 hours";
+      if (!walletSpeedIsOld(at)) return name;
+      return name + ", sold as " + (speed === "instant" ? "Instant 2-3 hours" : speed === "12h" ? "12 hours" : "24 hours") + " before the 7 Oct change";
     }
 
     function walletBalance(clientId) {
@@ -18331,7 +18331,17 @@ html,body{ background:var(--bg); color:var(--ink); }
         }, 2000);
       }
       function isUuid(v){ return typeof v==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v); }
-      function dtpart(t){ return t?String(t).replace("T"," ").slice(0,16):""; }
+      /* The database answers in UTC. This used to cut that text at the minute,
+         so every time built from it (payout requests, invoices, ledger, leads)
+         read five hours behind Pakistan time: a payout requested at 9:29 pm
+         showed "Created 4:29 pm", and the risk windows measured from the wrong
+         moment. Convert to Pakistan time first. */
+      function dtpart(t){
+        if(!t) return "";
+        var p=(typeof nvDatePartsA==="function")?nvDatePartsA(t):null, z=function(n){ return String(n).padStart(2,"0"); };
+        if(p && p.mo && p.h!=null) return p.y+"-"+z(p.mo)+"-"+z(p.d)+" "+z(p.h)+":"+z(p.mi);
+        return String(t).replace("T"," ").slice(0,16);
+      }
       function dpart(t){ return t?String(t).slice(0,10):new Date().toISOString().slice(0,10); }
       function tpart(t){ return t?String(t).replace("T"," ").slice(11,16):""; }
       function sigOf(row){ return JSON.stringify(row,function(k,v){ return k==="updated_at"?undefined:v; }); }

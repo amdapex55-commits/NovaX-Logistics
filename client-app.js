@@ -8343,7 +8343,45 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var d=new Date();
       return d.toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" })+" "+d.toLocaleTimeString("en-GB",{ timeZone:"Asia/Karachi", hour:"2-digit", minute:"2-digit", hourCycle:"h23" });
     }
+    /* A portal tab left open keeps the code it loaded. On 7 Oct 2026 the
+       payout speeds changed, and a tab opened before that could go on
+       offering the old ones. When the withdraw sheet opens, ask for the page
+       afresh; if it names a newer bundle than the one running, the tab
+       reloads before any speed is shown. Once per newer bundle, and never
+       when the browser cannot remember that it did, so it cannot loop. */
+    var NVW_STALE={ at:0, newer:"" };
+    function nvwRunningBundle(){
+      var el=document.querySelector('script[src*="client-app.min.js?v="]');
+      var m=el&&/client-app\.min\.js\?v=([a-f0-9]{6,40})/.exec(el.getAttribute("src")||"");
+      return m?m[1]:"";
+    }
+    function nvwCheckStale(){
+      var mine=nvwRunningBundle();
+      if(!mine || typeof fetch!=="function") return Promise.resolve("");
+      if(Date.now()-NVW_STALE.at<5*60e3) return Promise.resolve(NVW_STALE.newer);
+      NVW_STALE.at=Date.now();
+      return fetch("client.html?fresh="+Date.now(),{ cache:"no-store", credentials:"omit" })
+        .then(function(r){ return r.ok?r.text():""; })
+        .then(function(html){
+          var m=/client-app\.min\.js\?v=([a-f0-9]{6,40})/.exec(html||"");
+          NVW_STALE.newer=(m&&m[1]!==mine)?m[1]:"";
+          return NVW_STALE.newer;
+        })
+        .catch(function(){ NVW_STALE.at=0; return ""; });
+    }
+    function nvwReloadIfStale(newer){
+      if(!newer) return false;
+      try{
+        if(sessionStorage.getItem("nvw_reloaded_for")===newer) return false;
+        sessionStorage.setItem("nvw_reloaded_for",newer);
+      }catch(e){ return false; }
+      try{ toast("NovaX was updated. Loading the new version\u2026"); }catch(e){}
+      setTimeout(function(){ location.reload(); },900);
+      return true;
+    }
     function nvwOpenWithdraw(){
+      var newerBundle="";
+      nvwCheckStale().then(function(n){ newerBundle=n; });
       var avail=nvwAvailable(), bd=state.clientBankDetails||null;
       var iban=bd&&bd.iban?String(bd.iban).replace(/\s+/g,"").toUpperCase():"";
       var S={ raw:"", speed:state.walletWithdrawSpeed||"24h", busy:false, hold:null, step:"amount" };
@@ -8508,7 +8546,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         nvwConfetti(sec); nvwBuzz(35);
       }
       function onAction(a, close){
-        if(a==="wd-next"){ if(value()>=1 && value()<=avail){ renderSpeed(); go("speed"); } return; }
+        if(a==="wd-next"){ if(value()>=1 && value()<=avail){ if(nvwReloadIfStale(newerBundle)) return; renderSpeed(); go("speed"); } return; }
         if(a==="wd-back"){ if(!S.busy){ cancelHold(); go("amount"); } return; }
         if(a==="wd-bank"){ close(); setTimeout(function(){ try{ nvOpenWalletForms("bankHolderName"); }catch(e){} },240); return; }
         if(a==="wd-receipt" && S.done){
