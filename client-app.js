@@ -6714,13 +6714,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         '</div>'+
         '<table><thead><tr><th>Description</th><th class="num">Amount</th></tr></thead><tbody>'+
           '<tr><td>Withdrawal requested</td><td class="num">'+escLabelText(money(w.amount))+'</td></tr>'+
-          '<tr><td>NovaX payout fee ('+escLabelText(walletSpeedLabel(w.speed))+')</td><td class="num">-'+escLabelText(money(w.fee))+'</td></tr>'+
+          '<tr><td>NovaX payout fee ('+escLabelText(walletSpeedLabel(w.speed,w.createdAt))+')</td><td class="num">-'+escLabelText(money(w.fee))+'</td></tr>'+
         '</tbody></table>'+
         '<div class="nv-doc-total"><span>Net transferred</span><span>'+escLabelText(money(w.net))+'</span></div>'+
         (w.paidTxnId?'<p style="font-size:11px;margin-top:10px">Bank reference: <strong>'+escLabelText(w.paidTxnId)+'</strong></p>':'')+
         nvDocFoot(paid?"Payment completed.":"This payout is still being verified by NovaX finance. The bank reference appears here once paid.");
       var csv=[["receipt_no","status","requested_on","paid_on","iban_masked","speed","amount","fee","net","bank_reference"],
-               [w.id,w.status,w.createdAt,w.paidAt||"",maskIban(w.iban),walletSpeedLabel(w.speed),w.amount,w.fee,w.net,w.paidTxnId||""]];
+               [w.id,w.status,w.createdAt,w.paidAt||"",maskIban(w.iban),walletSpeedLabel(w.speed,w.createdAt).replace(" \u00b7 "," "),w.amount,w.fee,w.net,w.paidTxnId||""]];
       nvOpenDoc("Payout receipt "+(w.id||""),html,csv,"NovaX-receipt-"+String(w.id||"payout").replace(/[^A-Za-z0-9_-]/g,"")+".csv");
     }
 
@@ -7064,7 +7064,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(note){
         note.textContent = live
           /* This promised 15 minutes while every selectable payout tier is
-             24 hours, 12 hours or 2-3 hours. The 15 minutes is how fast COD
+             12 hours at the fastest. The 15 minutes is how fast COD
              reaches the NovaX WALLET after delivery -- it is not a bank
              payout time, and conflating the two sets a financial expectation
              none of the options can meet. */
@@ -7476,7 +7476,22 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       return Math.round(Number(amount||0) * walletFeeRate(speed) * 100) / 100;
     }
 
-    function walletSpeedLabel(s){ return s==="instant"?"Instant 2-3 hours":s==="12h"?"12 hours":"24 hours"; }
+    /* 7 Oct 2026: the three speeds got names and slower windows; the fees
+       did not change. The stored codes are still "instant" / "12h" / "24h",
+       so only the wording moved. A withdrawal requested before the change
+       keeps the name it was sold under: pass its request time (Pakistan
+       time, "YYYY-MM-DD HH:MM") as `at`. With no time, the new name. */
+    function walletSpeedIsOld(at){
+      var t=String(at||"").replace("T"," ").slice(0,16);
+      return /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(t) && t<"2026-10-07 20:55";
+    }
+    function walletSpeedName(s){ return s==="instant"?"Express":s==="12h"?"Standard":"Saver"; }
+    function walletSpeedWindow(s){ return s==="instant"?"12 hours":s==="12h"?"12-24 hours":"24-48 hours"; }
+    function walletSpeedEta(s){ return s==="instant"?"within 12 hours":s==="12h"?"in 12-24 hours":"in 24-48 hours"; }
+    function walletSpeedLabel(s, at){
+      if(walletSpeedIsOld(at)) return s==="instant"?"Instant 2-3 hours":s==="12h"?"12 hours":"24 hours";
+      return walletSpeedName(s)+" \u00b7 "+walletSpeedWindow(s);
+    }
     function walletBalance(id){ return Number(clientById(id).walletBalance||0); }
     function selectWalletSpeed(s){ state.walletWithdrawSpeed=s; saveState(); renderClientWallet(); }
     // NovaX fix (wallet IBAN UX): shared IBAN validation + masking so bank
@@ -7948,12 +7963,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         var st=w?String(w.status||""):"", fee=w?Number(w.fee||0):Math.abs(Number(g&&g.payout_fee&&g.payout_fee.amount||0));
         x.kind="payout"; x.icon="out"; x.w=w;
         x.title="Payout to "+nvwBankLine(w&&w.iban);
-        x.sub=w?(walletSpeedLabel(w.speed)+" payout"):"Payout";
+        x.sub=w?((walletSpeedIsOld(w.createdAt)?walletSpeedLabel(w.speed,w.createdAt):walletSpeedName(w.speed))+" payout"):"Payout";
         var stage=w?nvwPayoutStage(st):"pending";
         x.tag=stage==="paid"?["Completed","good"]:stage==="returned"?["Returned","info"]:stage==="pending"?["Processing","warn"]:[st,""];
         x.rows=[["Amount",moneyExact(Math.abs(amt))], ["Payout fee"+(w?" ("+walletFeePct(w.speed)+")":""), fee>0?("− "+moneyExact(fee)):"None"],
                 ["You receive",moneyExact(w?Number(w.net||0):Math.abs(amt)-fee)], ["To",nvwBankLine(w&&w.iban)],
-                ["Speed",w?walletSpeedLabel(w.speed):"—"], ["Requested",nvNiceDate(l.createdAt)],
+                ["Speed",w?walletSpeedLabel(w.speed,w.createdAt):"—"], ["Requested",nvNiceDate(l.createdAt)],
                 (w&&w.paidAt)?["Paid",nvNiceDate(w.paidAt)]:null, (w&&w.paidTxnId)?["Bank reference",w.paidTxnId]:null,
                 w?["Receipt no.",w.id]:null];
       } else if(t==="payout_rejected"){
@@ -8320,9 +8335,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
 
     /* ── Withdraw, like a transfer ─────────────────────────────────────── */
     function nvwEta(speed){
-      var hours=speed==="instant"?3:speed==="12h"?12:24;
+      var hours=speed==="instant"?12:speed==="12h"?24:48;
       var by=new Date(Date.now()+hours*3600e3).toLocaleString("en-GB",{ weekday:"short", day:"numeric", month:"short", hour:"numeric", minute:"2-digit", hour12:true, timeZone:"Asia/Karachi" });
-      return (speed==="instant"?"usually within 2-3 hours":speed==="12h"?"within 12 hours":"within 24 hours")+" (by "+by+")";
+      return walletSpeedEta(speed)+" (by "+by+")";
     }
     function nvwPktNow(){
       var d=new Date();
@@ -8914,7 +8929,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const paidRef=(w.status==="Paid"&&w.paidTxnId)?` &middot; Paid with reference ${w.paidTxnId}`:"";
         // NovaX fix (wallet IBAN UX, item #10): history now shows a masked
         // IBAN (e.g. PK24****3344) instead of the full account number.
-        return `<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(w.id)}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${escLabelText(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${escLabelText(nvDateTime(w.createdAt))}${w.paidAt?(" &middot; Paid "+escLabelText(nvDateTime(w.paidAt))):""}${paidRef}</div><div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" style="padding:5px 11px;font-size:12px" onclick="nvWithdrawalReceipt('${escLabelText(w.id)}')">Receipt</button></div></div>`;
+        return `<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(w.id)}</strong><span class="chip ${w.status==="Paid"?"good":"warn"}">${friendlyStatus}</span></div><p>${money(w.net)} to ${escLabelText(maskIban(w.iban))} &middot; ${walletSpeedLabel(w.speed,w.createdAt)} &middot; fee ${money(w.fee)}</p><div class="footer-note">Requested ${escLabelText(nvDateTime(w.createdAt))}${w.paidAt?(" &middot; Paid "+escLabelText(nvDateTime(w.paidAt))):""}${paidRef}</div><div class="inline-actions" style="margin-top:8px"><button class="ghost-btn" style="padding:5px 11px;font-size:12px" onclick="nvWithdrawalReceipt('${escLabelText(w.id)}')">Receipt</button></div></div>`;
       }).join("")||`<div class="ops-card"><strong>No withdrawals yet</strong><p>Tap Withdraw to request your first payout.</p></div>`;
     }
     /* Durable, privacy-safe request identities shared by booking and payout.
@@ -9085,14 +9100,13 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             pct: walletFeePct(speed),
             speedLabel: walletSpeedLabel(speed),
             iban: (typeof maskIban==="function" ? maskIban(iban) : String(iban||"").slice(-6).padStart(10,"•")),
-            eta: (speed==="instant" ? "usually within 2-3 hours"
-                 : speed==="12h" ? "within 12 hours" : "within 24 hours")
+            eta: walletSpeedEta(speed)
           });
         }catch(e){ console.warn("NovaX withdraw drawer", e); }
         // Clear the amount; the next render refills it from the fresh balance.
         const amtInputEl=document.getElementById("withdrawAmount"); if(amtInputEl) amtInputEl.value="";
         const doneText=document.getElementById("walletDoneText");
-        if(doneText) doneText.textContent=`${money(res.net)} will reach ${maskIban(iban)} via ${walletSpeedLabel(speed)} payout. NovaX fee ${money(res.fee)}. Status: Pending admin payout.`;
+        if(doneText) doneText.textContent=`${money(res.net)} will reach ${maskIban(iban)} ${walletSpeedEta(speed)} (${walletSpeedName(speed)} payout). NovaX fee ${money(res.fee)}. Status: Pending admin payout.`;
         // Offer to remember a new IBAN once the payout has actually gone through.
         try{ nvOfferSaveIban(iban); }catch(e){}
         toast(`Payout requested. Status: Pending admin payout.`,"success");
@@ -22083,7 +22097,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       else if(/owe|owed|wallet|balance|paisa|paise|payout|withdraw|money|cod/.test(msg))
       { var moving = parcels.filter(function(p){ return /transit|out for delivery|received at destination|collected|warehouse/i.test(p.status); });
         var movingCod = moving.reduce(function(t,p){ return t + Number(p.cod_amount || 0); }, 0);
-        answer = rs(w.available_balance) + " is available to withdraw now. " + rs(movingCod) + " of COD is on " + moving.length + " parcel" + (moving.length === 1 ? "" : "s") + " still moving to customers. Instant payout reaches your bank in 2–3 hours for 0.7%."; }
+        answer = rs(w.available_balance) + " is available to withdraw now. " + rs(movingCod) + " of COD is on " + moving.length + " parcel" + (moving.length === 1 ? "" : "s") + " still moving to customers. The fastest payout, Express, reaches your bank within 12 hours for 0.7%."; }
       else if(/need|attention|problem|issue|refus|stuck|late/.test(msg)){
         var bad = parcels.filter(function(p){ return p.status === "Refused" || p.exception; });
         answer = bad.length ? bad.map(line).join(" ") : "Nothing needs you right now.";

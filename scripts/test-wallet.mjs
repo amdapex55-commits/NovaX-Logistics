@@ -42,7 +42,7 @@ function page(o={}){
     'var NV_KYC='+JSON.stringify(o.kyc?{data:{status:o.kyc}}:{data:null})+';',
     'const PKR=new Intl.NumberFormat("en-PK",{style:"currency",currency:"PKR",maximumFractionDigits:0});',
     'const WALLET_FEE={ "24h":0.001, "12h":0.003, "instant":0.007 };',
-    ...['money','moneyExact','walletFeeRate','nvPayoutFee','walletFeePct','walletSpeedLabel','nvIbanChecksumOk','validateIbanValue','maskIban','escLabelText'].map(fn),
+    ...['money','moneyExact','walletFeeRate','nvPayoutFee','walletFeePct','walletSpeedIsOld','walletSpeedName','walletSpeedWindow','walletSpeedEta','walletSpeedLabel','nvIbanChecksumOk','validateIbanValue','maskIban','escLabelText'].map(fn),
     'function nvNiceDate(v){return String(v||"");}',
     'function clientById(id){return {id:id,walletBalance:'+(o.balance!=null?o.balance:3425)+'};}',
     'function toast(m){window.__toasts.push(m);} function showClientTab(t){window.__tabs.push(t);} function nvOpenWalletForms(f){window.__forms.push(f);}',
@@ -145,7 +145,7 @@ const rpcCalls=p=>p.w.__calls.filter(c=>c[0]==='request_wallet_withdrawal_idem')
   await wait(100);
   assert.equal(sh.querySelector('[data-wd="done"]').hidden,false);
   assert.match(sh.querySelector('.nvw-done').textContent.replace(/\u00a0/g,' '),/Withdrawal requested/);
-  assert.match(sh.querySelector('.nvw-done-sub').textContent.replace(/\u00a0/g,' '),/Meezan ••6702 · usually within 2-3 hours \(by /);
+  assert.match(sh.querySelector('.nvw-done-sub').textContent.replace(/\u00a0/g,' '),/Meezan ••6702 · within 12 hours \(by /);
   const steps=[...sh.querySelectorAll('.nvw-track li')].map(l=>l.className);assert.deepEqual(steps,['is-done','is-now','is-next']);
   assert.ok(p.w.__calls.some(c=>c[0]==='reload'));assert.equal(p.w.eval('state.walletWithdrawals.length'),1);
   assert.equal(p.w.eval('state.walletWithdrawSpeed'),'instant');

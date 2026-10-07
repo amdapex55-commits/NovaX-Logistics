@@ -6442,7 +6442,7 @@ html,body{ background:var(--bg); color:var(--ink); }
                   <div class="field"><label>Client</label><select id="walletClientSelect"></select></div>
                   <div class="field"><label>Amount</label><input id="walletAmount" type="number" min="1"></div>
                   <div class="field"><label>IBAN</label><input id="walletIban" placeholder="PKxx xxxx xxxx xxxx xxxx xxxx"></div>
-                  <div class="field"><label>Speed</label><select id="walletSpeed"><option value="24h">24 hours (0.1% fee)</option><option value="12h">12 hours (0.3% fee)</option><option value="instant">Instant 2-3 hours (0.7% fee)</option></select></div>
+                  <div class="field"><label>Speed</label><select id="walletSpeed"><option value="24h">Saver · 24-48 hours (0.1% fee)</option><option value="12h">Standard · 12-24 hours (0.3% fee)</option><option value="instant">Express · 12 hours (0.7% fee)</option></select></div>
                 </div>
                 <div class="inline-actions mt-10"><button class="action-btn" onclick="requestWalletWithdrawal()">Request Withdrawal</button></div>
               </div>
@@ -8830,10 +8830,19 @@ html,body{ background:var(--bg); color:var(--ink); }
       return 0.001;
     }
 
-    function walletSpeedLabel(speed) {
-      if (speed === "instant") return "Instant 2-3 hours";
-      if (speed === "12h") return "12 hours";
-      return "24 hours";
+    /* 7 Oct 2026: the speeds got names and slower windows, fees unchanged.
+       The stored codes stay "instant" / "12h" / "24h". A withdrawal requested
+       before the change keeps the name it was sold under, so staff still pay
+       it on the old promise: pass its request time (Pakistan time) as `at`. */
+    function walletSpeedIsOld(at) {
+      const t = String(at || "").replace("T", " ").slice(0, 16);
+      return /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(t) && t < "2026-10-07 20:55";
+    }
+    function walletSpeedLabel(speed, at) {
+      if (walletSpeedIsOld(at)) return speed === "instant" ? "Instant 2-3 hours" : speed === "12h" ? "12 hours" : "24 hours";
+      if (speed === "instant") return "Express \u00b7 12 hours";
+      if (speed === "12h") return "Standard \u00b7 12-24 hours";
+      return "Saver \u00b7 24-48 hours";
     }
 
     function walletBalance(clientId) {
@@ -8877,7 +8886,7 @@ html,body{ background:var(--bg); color:var(--ink); }
         const now = Date.now();
         const recentInstant = rows.filter(w => w.speed === "instant" && (now - new Date(String(w.createdAt).replace(" ", "T")).getTime()) <= 7 * 24 * 3600 * 1000);
         if (recentInstant.length >= 3) {
-          alerts.push({ clientName, label: "Repeated instant withdrawals", detail: `${recentInstant.length} instant withdrawals in the last 7 days.` });
+          alerts.push({ clientName, label: "Repeated Express withdrawals", detail: `${recentInstant.length} Express (0.7%) withdrawals in the last 7 days.` });
         }
         rows.forEach(w => {
           if (w.balanceBefore > 0 && Number(w.amount) === Number(w.balanceBefore)) {
@@ -8951,7 +8960,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (previous && previous.iban && withdrawal.iban && previous.iban !== withdrawal.iban) softReasons.push("IBAN changed recently");
       const withdrawalTime = new Date(String(withdrawal.createdAt).replace(" ", "T")).getTime();
       const instantNearbyCount = siblingRows.filter(item => item.speed === "instant" && Math.abs(new Date(String(item.createdAt).replace(" ", "T")).getTime() - withdrawalTime) <= 24 * 3600 * 1000).length;
-      if (withdrawal.speed === "instant" && instantNearbyCount >= 2) softReasons.push("2+ instant withdrawals in 24 hours");
+      if (withdrawal.speed === "instant" && instantNearbyCount >= 2) softReasons.push("2+ Express (0.7%) withdrawals in 24 hours");
       const reasons = hardReasons.concat(softReasons);
       return { locked: reasons.length > 0, reasons, hardReasons, softReasons };
     }
@@ -11712,7 +11721,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           // before bank-details snapshotting existed.
           return `<div class="ops-card ${lock.locked ? "alert-row" : ""}">
             <div class="ops-card-head"><strong>${item.code || item.id} | ${escLabelText(client.name)}</strong><span class="chip ${statusChipClass}">${statusLabel}</span></div>
-            <p>Pay ${money(item.net)} to IBAN ${escLabelText(item.iban)}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed)}).</p>
+            <p>Pay ${money(item.net)} to IBAN ${escLabelText(item.iban)}. Client requested ${money(item.amount)}, NovaX fee ${money(item.fee)} (${walletSpeedLabel(item.speed, item.createdAt)}).</p>
             <div class="footer-note">Account holder: <b>${escLabelText(item.holderName || "Not saved")}</b>${item.bankName ? (" &middot; " + escLabelText(item.bankName)) : ""}</div>
             <div class="footer-note">Created ${nvDateTimeA(item.createdAt)}. Wallet reconciliation: ${recon.mismatch ? `mismatch of ${money(recon.difference)}` : "clean"}.</div>
             ${lock.reasons.length ? `<div class="footer-note" style="color:#b42318">Risk reasons: ${lock.reasons.join("; ")}${!hardBlocked ? " -- click Mark Paid to review and confirm" : ""}</div>` : ""}
@@ -11731,7 +11740,7 @@ html,body{ background:var(--bg); color:var(--ink); }
           const client = clientById(item.clientId);
           return `<div class="ops-card">
             <div class="ops-card-head"><strong>${item.code || item.id} | ${escLabelText(client.name)}</strong><span class="chip good">Paid</span></div>
-            <p>Paid ${money(item.net)} to IBAN ${escLabelText(item.iban)} (${walletSpeedLabel(item.speed)}, fee ${money(item.fee)}).</p>
+            <p>Paid ${money(item.net)} to IBAN ${escLabelText(item.iban)} (${walletSpeedLabel(item.speed, item.createdAt)}, fee ${money(item.fee)}).</p>
             <div class="footer-note">${item.paidTxnId ? `Paid with reference ${escLabelText(item.paidTxnId)}` : "Paid"}${item.paidBy ? ` by ${escLabelText(item.paidBy)}` : ""}${item.paidAt ? ` on ${escLabelText(nvDateTimeA(item.paidAt))}` : ""}.${item.paidProof ? ` Proof: ${escLabelText(item.paidProof)}` : ""}</div>
           </div>`;
         }).join("") || `<div class="ops-card"><strong>No paid payouts yet</strong><p>Settled withdrawals will show their bank transaction reference and paid-by staff name here.</p></div>`;
@@ -11790,7 +11799,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       if (revenueList) {
         revenueList.innerHTML = `
           <div class="ops-card"><div class="ops-card-head"><strong>Delivery charges earned</strong><span class="chip good">${money(deliveryRevenue)}</span></div><p>NovaX revenue comes from delivery charges on invoices, not client COD payable.</p></div>
-          <div class="ops-card"><div class="ops-card-head"><strong>Withdrawal speed fees</strong><span class="chip info">${money(feeRevenue)}</span></div><p>24h = 0.1%, 12h = 0.3%, instant = 0.7%. Fee is deducted from requested withdrawal amount.</p></div>
+          <div class="ops-card"><div class="ops-card-head"><strong>Withdrawal speed fees</strong><span class="chip info">${money(feeRevenue)}</span></div><p>Saver (24-48 hours) = 0.1%, Standard (12-24 hours) = 0.3%, Express (12 hours) = 0.7%. Fee is deducted from requested withdrawal amount.</p></div>
           <div class="ops-card"><div class="ops-card-head"><strong>Pending invoice charges</strong><span class="chip warn">${money(pendingInvoices.reduce((sum, invoice) => sum + Number(invoice.charges || 0), 0))}</span></div><p>These charges are known, but invoice is not wallet-active until pushed.</p></div>
         `;
       }
