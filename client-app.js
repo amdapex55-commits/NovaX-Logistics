@@ -452,7 +452,7 @@
       var items = tabs.map(function(t){ return { id:t.id, label:t.label, ico:t.ico }; });
       items.push({ id:"more", label:"More", ico:"≡" });
       var fab = nav === "fab";
-      return '<div class="nvob-where"><span class="nvob-w-lbl">' + (fab ? "NovaX AI is on every screen" : "Find it here") + '</span>' +
+      return '<div class="nvob-where' + (fab ? ' is-fab' : '') + '"><span class="nvob-w-lbl">' + (fab ? "NovaX AI is on every screen" : "Find it here") + '</span>' +
         '<div class="nvob-w-nav">' + items.map(function(t){
           return '<span class="nvob-w-i'+((!fab && t.id===nav)?' on':'')+'"><i>'+t.ico+'</i>'+t.label+'</span>'; }).join("") +
         (fab ? '<span class="nvob-w-fab" aria-hidden="true">AI</span>' : '') + '</div></div>';
@@ -575,6 +575,16 @@
           ".nvob-card h3{font-size:20px;margin-bottom:6px}.nvob-card p{font-size:14px;line-height:1.5;margin-bottom:12px}",
           ".nvob-where{padding-top:10px}.nvob-w-lbl{padding-top:9px;margin-bottom:6px}.nvob-stage{margin:4px 0 10px}",
           ".nvob-vis{padding:10px}.nvob-row{padding:7px 10px}.nvob-note{margin-top:8px}.nvob-btns{margin-top:8px}}",
+        /* A 360x640 phone with the browser's address bar showing has about 570px
+           of height. There the strip shrinks to one line of tab names (the lit
+           one still says where), so every card fits without scrolling. */
+        "@media (max-height:630px){.nvob-card{padding:14px 16px 12px}.nvob-eye{margin-bottom:7px}",
+          ".nvob-card p{margin-bottom:10px;line-height:1.45}.nvob-vis{padding:9px 10px}",
+          ".nvob-where{padding-top:8px}.nvob-w-nav{padding:4px}.nvob-w-i{padding:7px 2px}.nvob-w-i i{display:none}",
+          ".nvob-w-lbl{position:absolute;width:1px;height:1px;margin:0;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0)}",
+          ".nvob-where.is-fab .nvob-w-lbl{position:static;width:auto;height:auto;overflow:visible;clip:auto;",
+            "border-top:1px solid rgba(255,255,255,.08);padding-top:9px}",
+          ".nvob-where.is-fab .nvob-w-nav{display:none}}",
         /* Tablets and desktops: a centred card of a fixed height, with the keyboard hint. */
         "@media (min-width:600px) and (min-height:700px){.nvob-ov{align-items:center;padding:24px;background:rgba(3,10,7,.93)}",
           ".nvob-wrap{height:min(700px,100%)}}",
