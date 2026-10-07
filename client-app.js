@@ -348,68 +348,95 @@
       }catch(e){}
     };
 
-    /* The ten cards. Weighted toward the first parcel, because that is the
-       measured leak: 216 merchants have signed up and 46 have ever booked.
-       Each carries a CSS miniature rather than a screenshot -- ten PNGs would
-       add most of a megabyte in front of a merchant on patchy 4G, and a
-       screenshot starts lying the next time the UI moves. The landing page
-       already uses this technique in section 02. */
+    /* The cards a new merchant sees (rebuilt 8 Oct 2026).
+
+       Nine cards in the order a first parcel actually happens: the three
+       steps (book it, print the label, request pickup), then what follows
+       (tracking, a refusal), then the money (wallet, withdrawal), then what
+       is there for later. The first deck had ten cards and never mentioned
+       requesting a pickup, which is the step new merchants ask about most.
+
+       The facts are the portal's own: prices, pickup hours, delivery times
+       and the COD line are word for word what the reminder emails say, and
+       the three payout speeds are read from the wallet's own functions, so a
+       change there cannot leave this deck behind.
+
+       Each card carries a CSS miniature rather than a screenshot -- nine PNGs
+       would add most of a megabyte in front of a merchant on patchy 4G, and a
+       screenshot starts lying the next time the UI moves. */
     function nvOnboardCards(){
+      var demo = !!window.__NOVAX_DEMO;
       var m = {
         rows: function(items){ return '<div class="nvob-rows">' + items.map(function(r){
           return '<div class="nvob-row"><span class="nvob-r-l">'+r[0]+'</span><span class="nvob-r-r '+(r[2]||'')+'">'+r[1]+'</span></div>';
         }).join("") + '</div>'; },
-        big: function(label, value, sub){ return '<div class="nvob-big"><span>'+label+'</span><b>'+value+'</b>'+(sub?'<i>'+sub+'</i>':'')+'</div>'; },
+        list: function(items){ return '<div class="nvob-list">' + items.map(function(r){
+          return '<div class="nvob-li"><b>'+r[0]+'</b><span>'+r[1]+'</span></div>';
+        }).join("") + '</div>'; },
+        steps: function(items){ return '<div class="nvob-steps">' + items.map(function(r, n){
+          return '<div class="nvob-step"><i>'+(n+1)+'</i><div><b>'+r[0]+'</b><span>'+r[1]+'</span></div></div>';
+        }).join("") + '</div>'; },
         form: function(fields){ return '<div class="nvob-form">' + fields.map(function(f){
           return '<label>'+f[0]+'<span>'+(f[1]||'')+'</span></label>'; }).join("") + '</div>'; },
         chip: function(t, cls){ return '<span class="nvob-chip '+(cls||'')+'">'+t+'</span>'; }
       };
+      /* The wallet's own names and fees, with the 7 Oct 2026 values as the
+         fallback if the wallet code has not loaded. */
+      function speed(code, name, win, fee){
+        try{
+          if (typeof walletSpeedName === "function" && typeof walletSpeedWindow === "function" && typeof walletFeePct === "function") {
+            name = walletSpeedName(code); win = walletSpeedWindow(code); fee = walletFeePct(code);
+          }
+        }catch(e){}
+        return [name + " · " + win, "Fee " + fee, ""];
+      }
       /* The homepage sends visitors here with "See the portal, no signup", and
          they were greeted with "Your workspace is live" and an empty wallet
          over a demo full of sample parcels. In the demo the first card says
          what they are looking at. */
-      var first = window.__NOVAX_DEMO
-        ? { t:"This is the real portal, with sample parcels", nav:"dashboard",
+      var first = demo
+        ? { k:"Live demo", t:"This is the real portal, with sample parcels", nav:"dashboard",
             b:"Every tab works on example data, and nothing you do here is sent anywhere. Sign up and your own workspace opens straight away: no approval queue, no waiting.",
             v: m.rows([["Workspace","Demo","ok"],["Parcels","Samples","ok"],["Setup fee","None","ok"],["Contract","None","ok"]]) }
-        : { t:"Your workspace is live", nav:"dashboard",
-            b:"No approval queue, no waiting. You can book a parcel right now and we will collect it.",
-            v: m.big("Wallet", "Rs 0", "nothing owed, nothing owing") +
-               m.rows([["Account","Active","ok"],["Setup fee","None","ok"],["Contract","None","ok"]]) };
+        : { k:"Welcome", t:"Your workspace is live", nav:"dashboard",
+            b:"No approval queue, no waiting. Three steps send your first parcel, and the next three cards show each one.",
+            v: m.steps([["Book it","About a minute"],["Print the label","Stick it on the parcel"],["Request pickup","A rider collects it from you"]]),
+            n:"No setup fee, no monthly charge, no contract." };
       return [
         first,
-        { t:"Book your first parcel", nav:"newBooking",
-          b:"Consignee, address, COD amount. That is the whole form — we generate the tracking number for you.",
-          v: m.form([["Consignee","Hina Raza"],["City","Karachi"],["Address","Flat 3B, Gulshan-e-Iqbal"],["COD","Rs 3,450"]]) },
-        { t:"Got the order on WhatsApp?", nav:"newBooking",
-          b:"Paste the message and NovaX AI fills the form for you. No retyping an address off a phone screen.",
-          v: '<div class="nvob-paste">"Hina Raza, Flat 3B Gulshan-e-Iqbal Karachi, 0300‑…, COD 3450"</div>' +
-             '<div class="nvob-arrow">↓</div>' + m.form([["Consignee","Hina Raza ✓"],["COD","Rs 3,450 ✓"]]) },
-        { t:"Print the label", nav:"more",
-          b:"Every parcel gets an AWB. Print it, stick it on the box, hand it to the rider.",
-          v: '<div class="nvob-awb"><b>N9000001</b><div class="nvob-bars"></div><small>Karachi · COD Rs 3,450</small></div>' },
-        { t:"Follow every parcel", nav:"dashboard",
-          b:"Real status from our own riders — not a feed scraped from someone else's system.",
+        { k:"Step 1 of 3", t:"Book it", nav:"newBooking",
+          b:"Your customer’s name, phone, city, address and COD amount. Got the order on WhatsApp or Instagram? Tap Paste order and the form fills in for you.",
+          v: '<div class="nvob-paste">“Hina Raza, Flat 3B Gulshan-e-Iqbal Karachi, 0300‑…, COD 3450”</div>' +
+             '<div class="nvob-arrow" aria-hidden="true">↓</div>' +
+             m.form([["Consignee","Hina Raza ✓"],["City","Karachi ✓"],["COD","Rs 3,450 ✓"]]) },
+        { k:"Step 2 of 3", t:"Print the label", nav:"more",
+          b:"Open AWB label, print it and stick it on the parcel. It carries the tracking number, a barcode and a QR code.",
+          v: '<div class="nvob-awb"><b>N9000001</b><div class="nvob-bars"></div><small>Hina Raza · Karachi · COD Rs 3,450</small></div>' +
+             '<div class="nvob-btns">'+m.chip("Print","go")+m.chip("Download PDF")+'</div>' },
+        { k:"Step 3 of 3", t:"Request pickup", nav:"more",
+          b:"In the same tab, choose the parcels, confirm your pickup address and pick a day and time. Riders collect between 11 am and 9 pm on working days.",
+          v: m.rows([["Parcels","1 selected",""],["Pickup address","Your saved address",""],["Day and time","You choose",""]]) +
+             '<div class="nvob-btns">'+m.chip("Request pickup","go")+'</div>',
+          n:"Pickup is free in Karachi, Lahore, Islamabad and Rawalpindi." },
+        { k:"After pickup", t:"Follow every parcel", nav:"dashboard",
+          b:"Real status from our own riders, and a tracking link you can send your customer. Karachi same day or next day. Lahore, Islamabad and Rawalpindi in 2–3 working days.",
           v: m.rows([["Collected","✓","ok"],["In transit","✓","ok"],["Out for delivery","now","live"],["Delivered","—",""]]) },
-        { t:"What needs me", nav:"dashboard",
-          b:"Refusals and stuck parcels are surfaced before they turn into an angry customer message.",
-          v: '<div class="nvob-alert"><b>N9000004</b> · Refused<span>Consignee asked to reattempt Saturday</span></div>' +
-             '<div class="nvob-btns">'+m.chip("Re-attempt","go")+m.chip("Open journey")+'</div>' },
-        { t:"Your COD wallet", nav:"money",
-          b:"Every rupee collected on your behalf, and exactly what it is doing right now.",
-          v: m.big("COD balance","Rs 3,425") +
-             m.rows([["Available","Rs 3,425","ok"],["In transit","Rs 5,849",""],["Pending payout","Rs 0",""]]) },
-        { t:"How charges work", nav:"money",
-          b:"COD collected, minus delivery charges, on one invoice. Nothing is taken twice.",
-          v: m.rows([["COD collected","Rs 3,450",""],["Delivery charge","− Rs 225",""],["Paid to you","Rs 3,225","ok"]]) },
-        { t:"Get paid out", nav:"money",
-          b:"Request a withdrawal to your own bank account whenever the balance suits you.",
-          v: m.form([["To","PK… · your bank"],["Amount","Rs 3,425"]]) +
-             '<div class="nvob-btns">'+m.chip("Request withdrawal","go")+'</div>' },
-        { t:"Ask NovaX AI anything", nav:"fab",
-          b:"“Where is N9000002?” — it answers from your own parcels, in your own words.",
-          v: '<div class="nvob-chat"><div class="nvob-q">mera parcel kahan hai?</div>' +
-             '<div class="nvob-a">N9000002 is out for delivery in DHA Phase 5 today.</div></div>' }
+        { k:"After pickup", t:"If a customer refuses", nav:"dashboard",
+          b:"You choose what happens next: try again or bring it back. Home tells you which parcels need you, so nothing waits unseen.",
+          v: '<div class="nvob-alert"><b>N9000004</b> · Refused<span>Customer asked for delivery on Saturday</span></div>' +
+             '<div class="nvob-btns">'+m.chip("Try again","go")+m.chip("Bring it back")+'</div>' },
+        { k:"Your money", t:"COD in your wallet the day it lands", nav:"money",
+          b:"The delivery charge comes off on one invoice, and nothing is taken twice.",
+          v: m.rows([["COD collected","Rs 3,450",""],["Delivery charge","− Rs 225",""],["Into your wallet","Rs 3,225","ok"]]),
+          n:"Rs 225 for the first kg to a Karachi address, Rs 250 to Lahore, Islamabad or Rawalpindi, plus Rs 85 per additional kg." },
+        { k:"Your money", t:"Withdraw to your bank", nav:"money",
+          b:"Send your balance to your own bank account whenever it suits you. Choose how fast; the fee is shown before you confirm.",
+          v: m.rows([speed("24h","Saver","24-48 hours","0.1%"), speed("12h","Standard","12-24 hours","0.3%"), speed("instant","Express","12 hours","0.7%")]) },
+        { k:"When you need more", t:"It is all in the menu", nav:"fab",
+          b:"Stuck on anything? Tap NovaX AI on any screen, or message a person on WhatsApp 0312 3922558.",
+          v: m.list([["Bulk booking","Upload many orders together"],["Shopify · WooCommerce","Connect your store"],
+                     ["Sub accounts","Your team, with their own logins"],["Reports","Every parcel, as CSV or PDF"],
+                     ["Nova Swap","An exchange in one visit"]]) }
       ];
     }
 
@@ -420,161 +447,178 @@
        drift from the navigation it is describing. */
     function nvObWhere(nav){
       var tabs = (typeof NV_BOTTOM_TABS !== "undefined" && NV_BOTTOM_TABS) ? NV_BOTTOM_TABS : [
-        { id:"dashboard", label:"Home", ico:"\u2302" }, { id:"newBooking", label:"Book", ico:"\u002B" },
-        { id:"money", label:"Wallet", ico:"\u20A8" }, { id:"tickets", label:"Support", ico:"\u263A" }];
+        { id:"dashboard", label:"Home", ico:"⌂" }, { id:"newBooking", label:"Book", ico:"+" },
+        { id:"money", label:"Wallet", ico:"₨" }, { id:"tickets", label:"Support", ico:"☺" }];
       var items = tabs.map(function(t){ return { id:t.id, label:t.label, ico:t.ico }; });
-      items.push({ id:"more", label:"More", ico:"\u2261" });
-      if (nav === "fab") {
-        return '<div class="nvob-where"><span class="nvob-w-lbl">Find it here</span>' +
-          '<div class="nvob-w-nav">' + items.map(function(t){
-            return '<span class="nvob-w-i"><i>'+t.ico+'</i>'+t.label+'</span>'; }).join("") +
-          '<span class="nvob-w-fab" aria-hidden="true">\u25CF</span></div>' +
-          '<span class="nvob-w-note">The floating NovaX AI button, on every screen</span></div>';
-      }
-      return '<div class="nvob-where"><span class="nvob-w-lbl">Find it here</span>' +
+      items.push({ id:"more", label:"More", ico:"≡" });
+      var fab = nav === "fab";
+      return '<div class="nvob-where"><span class="nvob-w-lbl">' + (fab ? "NovaX AI is on every screen" : "Find it here") + '</span>' +
         '<div class="nvob-w-nav">' + items.map(function(t){
-          return '<span class="nvob-w-i'+(t.id===nav?' on':'')+'"><i>'+t.ico+'</i>'+t.label+'</span>'; }).join("") +
-        '</div></div>';
+          return '<span class="nvob-w-i'+((!fab && t.id===nav)?' on':'')+'"><i>'+t.ico+'</i>'+t.label+'</span>'; }).join("") +
+        (fab ? '<span class="nvob-w-fab" aria-hidden="true">AI</span>' : '') + '</div></div>';
     }
 
+    /* The deck itself. Built for a 360px phone first:
+         - it fills the screen, so the progress bar, the card and the two
+           buttons sit in the same place on every card (the old card grew and
+           shrank with its text, and Next moved by up to 66px between cards);
+         - every control is at least 44px, text is 12px or larger;
+         - a long card scrolls inside itself, and a sideways swipe still turns
+           the card (the old one blocked all touch scrolling);
+         - no blur and nothing animated but transform and opacity, so it stays
+           smooth on a budget Android. */
     function nvOnboardBuild(cid){
-      var cards = nvOnboardCards(), i = 0, deck, track, dots, done = false;
+      var cards = nvOnboardCards(), i = 0, deck, dots, count, done = false;
+      var demo = !!window.__NOVAX_DEMO;
+      var reduce = false;
+      try{ reduce = matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
 
+      var old = document.getElementById("nvObStyle"); if (old) old.remove();
       var css = document.createElement("style");
+      css.id = "nvObStyle";
       css.textContent = [
-        "@keyframes nvobIn{from{opacity:0;transform:translateY(26px) scale(.95)}to{opacity:1;transform:none}}",
         "@keyframes nvobFade{from{opacity:0}to{opacity:1}}",
-        ".nvob-ov{position:fixed;inset:0;z-index:100002;display:flex;align-items:center;justify-content:center;",
-          "padding:18px;background:rgba(3,10,7,.82);backdrop-filter:blur(5px);animation:nvobFade .3s ease both}",
-        ".nvob-wrap{width:100%;max-width:400px;animation:nvobIn .45s cubic-bezier(.2,.9,.25,1) both}",
-        ".nvob-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}",
-        ".nvob-dots{display:flex;gap:5px;flex:1}",
-        ".nvob-dot{height:3px;flex:1;border-radius:2px;background:rgba(255,255,255,.16);transition:background .3s}",
+        "@keyframes nvobEnterR{from{opacity:0;transform:translate3d(28px,0,0)}to{opacity:1;transform:none}}",
+        "@keyframes nvobEnterL{from{opacity:0;transform:translate3d(-28px,0,0)}to{opacity:1;transform:none}}",
+        "@keyframes nvobUp{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:none}}",
+        "body.nvob-lock{overflow:hidden;overscroll-behavior:none}",
+        ".nvob-ov{position:fixed;inset:0;z-index:100002;display:flex;justify-content:center;align-items:stretch;",
+          "background:rgba(3,10,7,.95);animation:nvobFade .2s ease both;box-sizing:border-box;",
+          "padding:calc(8px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));",
+          "font-family:inherit;-webkit-tap-highlight-color:transparent}",
+        ".nvob-ov *{box-sizing:border-box}",
+        ".nvob-wrap{width:100%;max-width:440px;height:100%;min-height:0;display:flex;flex-direction:column;animation:nvobUp .28s cubic-bezier(.2,.9,.25,1) both}",
+        /* head: progress, count, skip */
+        ".nvob-head{display:flex;align-items:center;gap:12px;flex:0 0 auto;min-height:44px}",
+        ".nvob-dots{display:flex;gap:4px;flex:1;min-width:0}",
+        ".nvob-dot{height:4px;flex:1;border-radius:2px;background:rgba(255,255,255,.16)}",
         ".nvob-dot.on{background:#14c77b}",
-        ".nvob-skip{background:none;border:0;color:#8fb3a3;font:inherit;font-size:12.5px;font-weight:650;cursor:pointer;padding:4px 2px}",
-        ".nvob-skip:hover{color:#dff3e9}",
-        ".nvob-stage{position:relative;touch-action:none;perspective:1200px}",
-        /* The page scrolled underneath while a card was being dragged: the
-           stage allowed pan-y, and the overlay never locked the body. Both
-           are closed here -- touch-action:none on the stage so a horizontal
-           drag is ours alone, and body.nvob-lock while the deck is open. */
-        "body.nvob-lock{overflow:hidden;touch-action:none;overscroll-behavior:none}",
-        ".nvob-card{background:linear-gradient(180deg,#11221b,#0b1712);border:1px solid rgba(20,199,123,.3);",
-          "touch-action:none;-webkit-user-select:none;user-select:none;cursor:grab;",
-          "transform:translate3d(0,0,0);backface-visibility:hidden;",
-          "border-radius:20px;padding:20px 20px 22px;color:#eaf7f0;box-shadow:0 34px 90px -30px rgba(0,0,0,.95);",
-          "will-change:transform,opacity}",
+        ".nvob-count{flex:0 0 auto;font-size:12.5px;font-weight:700;color:#8fb3a3;font-variant-numeric:tabular-nums}",
+        ".nvob-skip{flex:0 0 auto;min-width:52px;min-height:44px;margin-right:-8px;padding:0 8px;background:none;border:0;border-radius:10px;",
+          "color:#cfe6da;font:inherit;font-size:14px;font-weight:700;cursor:pointer}",
+        ".nvob-skip:hover{color:#fff}",
+        /* card */
+        ".nvob-stage{flex:1 1 auto;min-height:0;display:flex;margin:6px 0 12px}",
+        ".nvob-card{flex:1 1 auto;min-width:0;min-height:0;display:flex;flex-direction:column;overflow-x:hidden;overflow-y:auto;",
+          "overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;",
+          "-webkit-user-select:none;user-select:none;cursor:grab;outline:none;",
+          "background:linear-gradient(180deg,#11221b,#0b1712);border:1px solid rgba(20,199,123,.3);border-radius:20px;",
+          "padding:20px 18px 16px;color:#eaf7f0;transform:translate3d(0,0,0);will-change:transform,opacity}",
         ".nvob-card:active{cursor:grabbing}",
-        /* enter/exit -- transform+opacity only, so it stays on the compositor */
-        "@keyframes nvobEnterR{from{opacity:0;transform:translate3d(46%,0,0) rotate(7deg)}to{opacity:1;transform:none}}",
-        "@keyframes nvobEnterL{from{opacity:0;transform:translate3d(-46%,0,0) rotate(-7deg)}to{opacity:1;transform:none}}",
-        ".nvob-in-r{animation:nvobEnterR .34s cubic-bezier(.22,.9,.28,1) both}",
-        ".nvob-in-l{animation:nvobEnterL .34s cubic-bezier(.22,.9,.28,1) both}",
-        "@media (prefers-reduced-motion:reduce){.nvob-in-r,.nvob-in-l{animation:none}}",
-        ".nvob-card h3{margin:0 0 7px;font-size:19px;line-height:1.25;color:#fff;letter-spacing:-.012em}",
-        ".nvob-card p{margin:0 0 15px;font-size:13.5px;line-height:1.6;color:#a9c7ba}",
+        ".nvob-in-r{animation:nvobEnterR .24s cubic-bezier(.22,.9,.28,1) both}",
+        ".nvob-in-l{animation:nvobEnterL .24s cubic-bezier(.22,.9,.28,1) both}",
+        ".nvob-eye{align-self:flex-start;flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;",
+          "color:#7fe9b6;background:rgba(20,199,123,.14);border-radius:999px;padding:5px 10px;margin-bottom:12px}",
+        ".nvob-card h3{margin:0 0 8px;font-size:22px;line-height:1.2;font-weight:800;color:#fff;letter-spacing:-.015em;text-wrap:balance}",
+        ".nvob-card p{margin:0 0 16px;font-size:15px;line-height:1.55;color:#b9d4c8}",
         /* miniature */
-        ".nvob-vis{background:rgba(255,255,255,.032);border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:13px;min-height:132px}",
-        ".nvob-big{display:flex;flex-direction:column;gap:2px;margin-bottom:9px}",
-        ".nvob-big span{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#7fa694}",
-        ".nvob-big b{font-size:25px;font-weight:800;color:#fff;letter-spacing:-.02em}",
-        ".nvob-big i{font-style:normal;font-size:11px;color:#7fa694}",
+        ".nvob-vis{flex:0 0 auto;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px}",
+        ".nvob-note{flex:0 0 auto;margin:10px 2px 0;font-size:12.5px;line-height:1.5;color:#9dbfb0}",
         ".nvob-rows{display:grid;gap:6px}",
-        ".nvob-row{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;",
-          "padding:6px 9px;background:rgba(255,255,255,.028);border-radius:8px}",
-        ".nvob-r-l{color:#9dbfb0}.nvob-r-r{color:#dff3e9;font-weight:650}",
+        ".nvob-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:13.5px;line-height:1.35;",
+          "padding:8px 10px;background:rgba(255,255,255,.03);border-radius:9px}",
+        ".nvob-r-l{color:#b9d4c8;min-width:0}.nvob-r-r{color:#eaf7f0;font-weight:700;text-align:right;white-space:nowrap}",
         ".nvob-r-r.ok{color:#4ee6a5}.nvob-r-r.live{color:#ffd479}",
+        ".nvob-list{display:grid;gap:6px}",
+        ".nvob-li{display:flex;flex-direction:column;gap:1px;padding:7px 10px;background:rgba(255,255,255,.03);border-radius:9px}",
+        ".nvob-li b{font-size:13.5px;color:#eaf7f0}.nvob-li span{font-size:12.5px;line-height:1.4;color:#9dbfb0}",
+        ".nvob-steps{display:grid;gap:8px}",
+        ".nvob-step{display:flex;align-items:center;gap:11px}",
+        ".nvob-step i{flex:0 0 auto;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-style:normal;",
+          "font-size:14px;font-weight:800;color:#04140c;background:linear-gradient(135deg,#14c77b,#0fa968)}",
+        ".nvob-step div{display:flex;flex-direction:column;gap:1px;min-width:0}",
+        ".nvob-step b{font-size:14.5px;color:#fff}.nvob-step span{font-size:12.5px;color:#9dbfb0}",
         ".nvob-form{display:grid;gap:7px}",
-        ".nvob-form label{display:flex;flex-direction:column;gap:3px;font-size:9.5px;letter-spacing:.11em;",
-          "text-transform:uppercase;color:#7fa694}",
-        ".nvob-form label span{font-size:13px;letter-spacing:0;text-transform:none;color:#eaf7f0;font-weight:600;",
-          "background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:8px;padding:7px 9px}",
-        ".nvob-paste{font-size:11.5px;line-height:1.5;color:#cfe6da;background:rgba(255,255,255,.05);",
-          "border-radius:9px;padding:9px 10px;font-style:italic}",
-        ".nvob-arrow{text-align:center;color:#14c77b;font-size:15px;margin:5px 0}",
-        ".nvob-awb{text-align:center}.nvob-awb b{font-size:17px;letter-spacing:.06em;color:#fff}",
-        ".nvob-bars{height:38px;margin:9px 0;border-radius:3px;",
+        ".nvob-form label{display:flex;flex-direction:column;gap:3px;font-size:11px;font-weight:700;letter-spacing:.08em;",
+          "text-transform:uppercase;color:#8fb3a3}",
+        ".nvob-form label span{font-size:13.5px;letter-spacing:0;text-transform:none;color:#eaf7f0;font-weight:600;",
+          "background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:9px;padding:7px 10px}",
+        ".nvob-paste{font-size:13px;line-height:1.5;color:#cfe6da;background:rgba(255,255,255,.05);",
+          "border-radius:10px;padding:9px 11px;font-style:italic}",
+        ".nvob-arrow{text-align:center;color:#14c77b;font-size:16px;line-height:1;margin:6px 0}",
+        ".nvob-awb{text-align:center;padding:2px 0}.nvob-awb b{font-size:18px;letter-spacing:.06em;color:#fff}",
+        ".nvob-bars{height:40px;margin:9px 0;border-radius:3px;",
           "background:repeating-linear-gradient(90deg,#eaf7f0 0 2px,transparent 2px 4px,#eaf7f0 4px 7px,transparent 7px 10px)}",
-        ".nvob-awb small{font-size:11px;color:#9dbfb0}",
-        ".nvob-alert{background:rgba(224,96,75,.1);border:1px solid rgba(224,96,75,.34);border-radius:10px;padding:10px}",
-        ".nvob-alert b{font-size:13px;color:#fff}",
-        ".nvob-alert span{display:block;font-size:11.5px;color:#c9a9a2;margin-top:3px}",
-        ".nvob-btns{display:flex;gap:7px;margin-top:9px;flex-wrap:wrap}",
-        ".nvob-chip{font-size:11.5px;font-weight:700;padding:6px 11px;border-radius:999px;",
-          "border:1px solid rgba(255,255,255,.14);color:#cfe6da}",
+        ".nvob-awb small{font-size:12.5px;color:#9dbfb0}",
+        ".nvob-alert{background:rgba(224,96,75,.1);border:1px solid rgba(224,96,75,.34);border-radius:10px;padding:10px 11px;font-size:13.5px;color:#f3d6d0}",
+        ".nvob-alert b{color:#fff}",
+        ".nvob-alert span{display:block;font-size:12.5px;color:#d3b3ac;margin-top:3px}",
+        ".nvob-btns{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}",
+        ".nvob-chip{font-size:12.5px;font-weight:700;padding:7px 12px;border-radius:999px;",
+          "border:1px solid rgba(255,255,255,.16);color:#cfe6da}",
         ".nvob-chip.go{background:rgba(20,199,123,.16);border-color:rgba(20,199,123,.45);color:#7fe9b6}",
-        ".nvob-chat{display:grid;gap:7px}",
-        ".nvob-q{justify-self:end;max-width:82%;background:rgba(255,255,255,.06);border-radius:12px 12px 4px 12px;",
-          "padding:8px 11px;font-size:12.5px}",
-        ".nvob-a{justify-self:start;max-width:88%;border-left:2px solid #14c77b;padding:2px 0 2px 10px;",
-          "font-size:12.5px;color:#cfe6da}",
-        /* footer */
-        ".nvob-foot{display:flex;align-items:center;gap:10px;margin-top:14px}",
-        ".nvob-nav{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);color:#dff3e9;",
-          "width:42px;height:42px;border-radius:50%;font-size:17px;cursor:pointer;flex:0 0 auto}",
-        ".nvob-nav:disabled{opacity:.3;cursor:default}",
-        ".nvob-next{flex:1;background:linear-gradient(135deg,#14c77b,#0fa968);color:#04140c;border:0;",
-          "border-radius:13px;padding:13px;font:inherit;font-weight:800;font-size:14.5px;cursor:pointer}",
-        ".nvob-hint{text-align:center;font-size:11px;color:#6f9384;margin-top:9px}",
-        /* the "find it here" strip */
-        ".nvob-where{margin-top:12px;padding-top:11px;border-top:1px solid rgba(255,255,255,.08)}",
-        ".nvob-w-lbl{display:block;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#6f9384;margin-bottom:7px}",
+        /* the "find it here" strip, pinned to the bottom of the card */
+        ".nvob-where{flex:0 0 auto;margin-top:auto;padding-top:16px}",
+        ".nvob-w-lbl{display:block;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8fb3a3;",
+          "border-top:1px solid rgba(255,255,255,.08);padding-top:12px;margin-bottom:8px}",
         ".nvob-w-nav{position:relative;display:flex;gap:3px;background:rgba(255,255,255,.035);",
-          "border:1px solid rgba(255,255,255,.07);border-radius:11px;padding:5px}",
-        ".nvob-w-i{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 2px;",
-          "border-radius:8px;font-size:8.5px;font-weight:650;color:#7fa694;letter-spacing:.02em;transition:none}",
-        ".nvob-w-i i{font-style:normal;font-size:14px;line-height:1}",
+          "border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:5px}",
+        ".nvob-w-i{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;",
+          "border-radius:8px;font-size:11px;font-weight:700;color:#8fb3a3}",
+        ".nvob-w-i i{font-style:normal;font-size:15px;line-height:1}",
         ".nvob-w-i.on{background:rgba(20,199,123,.17);color:#7fe9b6;box-shadow:inset 0 0 0 1px rgba(20,199,123,.4)}",
-        ".nvob-w-fab{position:absolute;right:-4px;top:-11px;width:19px;height:19px;border-radius:50%;",
-          "display:grid;place-items:center;font-size:9px;color:#04140c;",
-          "background:linear-gradient(135deg,#14c77b,#0fa968);box-shadow:0 3px 10px rgba(20,199,123,.5)}",
-        ".nvob-w-note{display:block;margin-top:6px;font-size:10.5px;color:#7fa694}",
-        /* Small phones: the deck must fit 375x812 with the strip added, so the
-           card scrolls inside itself rather than pushing the footer off. */
-        "@media (max-width:420px){.nvob-card h3{font-size:17px;margin-bottom:5px}",
-          ".nvob-card p{font-size:12.5px;margin-bottom:11px}",
-          ".nvob-ov{padding:11px}.nvob-card{padding:16px 16px 18px;border-radius:17px}",
-          ".nvob-vis{min-height:0;padding:11px}.nvob-hint{font-size:10.5px;margin-top:7px}",
-          ".nvob-foot{margin-top:11px}.nvob-next{padding:12px;font-size:14px}",
-          ".nvob-nav{width:38px;height:38px}}",
-        "@media (max-height:720px){.nvob-card{max-height:calc(100vh - 168px);overflow-y:auto}}",
-        "@media (prefers-reduced-motion:reduce){.nvob-ov,.nvob-wrap{animation:none!important}",
+        ".nvob-w-fab{position:absolute;right:-6px;top:-14px;min-width:30px;height:30px;padding:0 6px;border-radius:15px;",
+          "display:grid;place-items:center;font-size:11px;font-weight:800;color:#04140c;",
+          "background:linear-gradient(135deg,#14c77b,#0fa968);box-shadow:0 3px 10px rgba(20,199,123,.45)}",
+        /* footer */
+        ".nvob-foot{display:flex;align-items:center;gap:10px;flex:0 0 auto}",
+        ".nvob-nav{flex:0 0 auto;width:52px;height:52px;border-radius:16px;background:rgba(255,255,255,.07);",
+          "border:1px solid rgba(255,255,255,.14);color:#eaf7f0;font:inherit;font-size:22px;line-height:1;cursor:pointer}",
+        ".nvob-nav:disabled{opacity:.28;cursor:default}",
+        ".nvob-next{flex:1;min-width:0;min-height:52px;padding:0 14px;border:0;border-radius:16px;cursor:pointer;",
+          "background:linear-gradient(135deg,#14c77b,#0fa968);color:#04140c;font:inherit;font-weight:800;font-size:16px}",
+        ".nvob-next:active{transform:scale(.985)}",
+        ".nvob-skip:focus-visible,.nvob-nav:focus-visible,.nvob-next:focus-visible{outline:2px solid #fff;outline-offset:2px}",
+        ".nvob-hint{display:none;flex:0 0 auto;text-align:center;font-size:12px;color:#7fa694;margin-top:10px}",
+        /* Short phones (640px and under): tighter, same structure. */
+        "@media (max-height:660px){.nvob-card{padding:16px 16px 12px}.nvob-eye{margin-bottom:9px}",
+          ".nvob-card h3{font-size:20px;margin-bottom:6px}.nvob-card p{font-size:14px;line-height:1.5;margin-bottom:12px}",
+          ".nvob-where{padding-top:12px}.nvob-w-lbl{padding-top:10px;margin-bottom:6px}.nvob-stage{margin:4px 0 10px}}",
+        /* Tablets and desktops: a centred card of a fixed height, with the keyboard hint. */
+        "@media (min-width:600px) and (min-height:700px){.nvob-ov{align-items:center;padding:24px}",
+          ".nvob-wrap{height:min(700px,100%)}}",
+        "@media (hover:hover) and (pointer:fine){.nvob-hint{display:block}}",
+        "@media (prefers-reduced-motion:reduce){.nvob-ov,.nvob-wrap,.nvob-in-r,.nvob-in-l{animation:none!important}",
           ".nvob-card{transition:none!important}}"
       ].join("");
       document.head.appendChild(css);
 
       var ov = document.createElement("div");
       ov.className = "nvob-ov"; ov.id = "nvObDeck";
-      ov.setAttribute("role","dialog"); ov.setAttribute("aria-modal","true");
+      ov.setAttribute("role","dialog"); ov.setAttribute("aria-modal","true"); ov.setAttribute("aria-labelledby","nvObTitle");
       ov.innerHTML =
         '<div class="nvob-wrap">' +
-          '<div class="nvob-head"><div class="nvob-dots" id="nvObDots"></div>' +
+          '<div class="nvob-head"><div class="nvob-dots" id="nvObDots" aria-hidden="true"></div>' +
+            '<span class="nvob-count" id="nvObCount" aria-live="polite"></span>' +
             '<button class="nvob-skip" type="button" id="nvObSkip">Skip</button></div>' +
           '<div class="nvob-stage" id="nvObStage"></div>' +
           '<div class="nvob-foot">' +
-            '<button class="nvob-nav" type="button" id="nvObPrev" aria-label="Previous">‹</button>' +
+            '<button class="nvob-nav" type="button" id="nvObPrev" aria-label="Previous card">‹</button>' +
             '<button class="nvob-next" type="button" id="nvObNext">Next</button>' +
           '</div>' +
-          '<div class="nvob-hint">Swipe left or right · or use the arrow keys</div>' +
+          '<div class="nvob-hint">Swipe, or use the arrow keys</div>' +
         '</div>';
       document.body.appendChild(ov);
 
       document.body.classList.add("nvob-lock");
       deck  = document.getElementById("nvObStage");
       dots  = document.getElementById("nvObDots");
+      count = document.getElementById("nvObCount");
       dots.innerHTML = cards.map(function(){ return '<span class="nvob-dot"></span>'; }).join("");
+      var lastLabel = demo ? "Explore the demo" : "Book your first parcel";
 
       function paint(dir){
         var c = cards[i];
-        var enter = dir === -1 ? " nvob-in-l" : (dir === 1 ? " nvob-in-r" : "");
-        deck.innerHTML = '<div class="nvob-card' + enter + '" id="nvObCard">' +
-          '<h3>' + c.t + '</h3><p>' + c.b + '</p><div class="nvob-vis">' + c.v + '</div>' +
+        var enter = reduce ? "" : (dir === -1 ? " nvob-in-l" : (dir === 1 ? " nvob-in-r" : ""));
+        deck.innerHTML = '<div class="nvob-card' + enter + '" id="nvObCard" tabindex="-1">' +
+          (c.k ? '<span class="nvob-eye">' + c.k + '</span>' : '') +
+          '<h3 id="nvObTitle">' + c.t + '</h3><p>' + c.b + '</p><div class="nvob-vis">' + c.v + '</div>' +
+          (c.n ? '<div class="nvob-note">' + c.n + '</div>' : '') +
           nvObWhere(c.nav) + '</div>';
-        Array.prototype.forEach.call(dots.children, function(d, n){
-          d.classList.toggle("on", n <= i); });
+        Array.prototype.forEach.call(dots.children, function(d, n){ d.classList.toggle("on", n <= i); });
+        count.textContent = (i + 1) + " / " + cards.length;
         document.getElementById("nvObPrev").disabled = (i === 0);
-        document.getElementById("nvObNext").textContent =
-          (i === cards.length - 1) ? "Book your first parcel" : "Next";
+        document.getElementById("nvObNext").textContent = (i === cards.length - 1) ? lastLabel : "Next";
         wireDrag();
       }
       function finish(goBook){
@@ -586,75 +630,100 @@
         document.removeEventListener("keydown", onKey);
         /* In demo the signup invitation waits for the deck, so a visitor is
            never shown two overlays at once. */
-        try{ if(window.__NOVAX_DEMO && typeof window.__nvDemoArmInvite === "function") window.__nvDemoArmInvite(); }catch(e){}
-        if (goBook) { try{ showClientTab("newBooking"); }catch(e){} }
+        try{ if(demo && typeof window.__nvDemoArmInvite === "function") window.__nvDemoArmInvite(); }catch(e){}
+        if (goBook && !demo) { try{ showClientTab("newBooking"); }catch(e){} }
       }
       var animating = false;
       function go(n, dir){
-        if (animating) return;
-        if (n < 0) { return; }
+        if (animating || n < 0) return;
         if (n >= cards.length) { finish(true); return; }
         var card = document.getElementById("nvObCard");
-        var reduce = false;
-        try{ reduce = matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
         if (!card || reduce || !dir) { i = n; paint(dir); return; }
-        /* Throw the old card out before the new one arrives, so the deck reads
+        /* Move the old card out before the new one arrives, so the deck reads
            as one continuous motion instead of a hard swap. */
         animating = true;
-        var away = dir === 1 ? 118 : -118;
-        card.style.transition = "transform .24s cubic-bezier(.4,0,1,1),opacity .24s";
-        card.style.transform  = "translate3d(" + away + "%,0,0) rotate(" + (dir * 11) + "deg)";
+        card.style.transition = "transform .15s cubic-bezier(.4,0,1,1),opacity .15s";
+        card.style.transform  = "translate3d(" + (dir === 1 ? -36 : 36) + "px,0,0)";
         card.style.opacity    = "0";
-        setTimeout(function(){ animating = false; i = n; paint(dir); }, 200);
+        setTimeout(function(){ animating = false; i = n; paint(dir); }, 140);
       }
       function onKey(e){
-        if (e.key === "Escape") finish(false);
-        else if (e.key === "ArrowRight") go(i + 1, 1);
-        else if (e.key === "ArrowLeft") go(i - 1, -1);
+        if (e.key === "Escape") { finish(false); return; }
+        if (e.key === "ArrowRight") { go(i + 1, 1); return; }
+        if (e.key === "ArrowLeft") { go(i - 1, -1); return; }
+        /* Keep Tab inside the deck: Skip, Back, Next. */
+        if (e.key === "Tab") {
+          var f = Array.prototype.filter.call(ov.querySelectorAll("button"), function(b){ return !b.disabled; });
+          if (!f.length) return;
+          var at = f.indexOf(document.activeElement);
+          if (e.shiftKey && at <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+          else if (!e.shiftKey && (at === -1 || at === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+        }
       }
       document.addEventListener("keydown", onKey);
       document.getElementById("nvObSkip").addEventListener("click", function(){ finish(false); });
       document.getElementById("nvObNext").addEventListener("click", function(){ go(i + 1, 1); });
       document.getElementById("nvObPrev").addEventListener("click", function(){ go(i - 1, -1); });
 
-      /* Drag: translate + a little rotation, commit past 90px or on a flick.
-         Right advances, left goes back -- both directions navigate, because
-         there is nothing here to accept or reject and a merchant who swipes
-         back expects the previous card. */
+      /* Swipe: left for the next card, right for the one before. The card may
+         also scroll up and down inside itself, so the first few pixels decide
+         which it is; only a sideways drag is ours. At either end the card
+         springs back instead of hanging off-centre. */
       function wireDrag(){
         var card = document.getElementById("nvObCard");
-        var x0 = null, t0 = 0, dx = 0, reduce = false;
-        try{ reduce = matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){}
+        var x0 = null, y0 = 0, t0 = 0, dx = 0, lock = null;
+        function back(){
+          card.style.transition = reduce ? "none" : "transform .22s cubic-bezier(.2,.9,.25,1),opacity .22s";
+          card.style.transform = ""; card.style.opacity = "";
+        }
         card.addEventListener("pointerdown", function(e){
-          x0 = e.clientX; t0 = Date.now(); dx = 0;
-          card.setPointerCapture && card.setPointerCapture(e.pointerId);
-          card.style.transition = "none";
+          if (e.pointerType === "mouse" && e.button !== 0) return;
+          x0 = e.clientX; y0 = e.clientY; t0 = Date.now(); dx = 0; lock = null;
         });
         card.addEventListener("pointermove", function(e){
           if (x0 === null) return;
-          if (e.cancelable) e.preventDefault();   // the gesture is ours, not the page's
-          dx = e.clientX - x0;
-          card.style.transform = reduce
-            ? "translateX(" + dx + "px)"
-            : "translateX(" + dx + "px) rotate(" + (dx / 26) + "deg)";
-          card.style.opacity = String(Math.max(.45, 1 - Math.abs(dx) / 420));
+          var mx = e.clientX - x0, my = e.clientY - y0;
+          if (lock === null) {
+            if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+            lock = Math.abs(mx) > Math.abs(my) * 1.2 ? "x" : "y";
+            if (lock === "x") {
+              try{ card.setPointerCapture(e.pointerId); }catch(_){}
+              card.style.transition = "none";
+            }
+          }
+          if (lock !== "x") return;
+          dx = mx;
+          /* Past either end, the card resists instead of following. */
+          var atEnd = (dx > 0 && i === 0);
+          card.style.transform = "translate3d(" + (atEnd ? dx / 4 : dx) + "px,0,0)";
+          card.style.opacity = String(Math.max(.5, 1 - Math.abs(dx) / 420));
         });
         function release(){
           if (x0 === null) return;
-          var fast = (Date.now() - t0) < 260 && Math.abs(dx) > 42;
-          var commit = Math.abs(dx) > 90 || fast;
-          x0 = null;
-          if (commit) { go(dx < 0 ? i + 1 : i - 1, dx < 0 ? 1 : -1); return; }
-          card.style.transition = reduce ? "none" : "transform .28s cubic-bezier(.2,.9,.25,1),opacity .28s";
-          card.style.transform = ""; card.style.opacity = "";
+          var wasX = lock === "x";
+          var fast = (Date.now() - t0) < 260 && Math.abs(dx) > 40;
+          var commit = wasX && (Math.abs(dx) > 70 || fast);
+          x0 = null; lock = null;
+          if (!wasX) return;
+          if (commit && !(dx > 0 && i === 0)) { go(dx < 0 ? i + 1 : i - 1, dx < 0 ? 1 : -1); return; }
+          back();
         }
         card.addEventListener("pointerup", release);
         card.addEventListener("pointercancel", release);
-        card.addEventListener("pointerleave", release);
       }
 
       paint();
+      try{ document.getElementById("nvObNext").focus({ preventScroll:true }); }catch(e){}
     }
+
+    /* "Show me around": the same deck, any time. */
+    window.nvOnboardReplay = function(){
+      try{
+        if (document.getElementById("nvObDeck")) return;
+        NV_ONBOARD_SHOWN = true;
+        nvOnboardBuild((window.__novaxVerifiedProfile || {}).clientId || null);
+      }catch(e){}
+    };
 
     if (NV_DEMO) {
       /* Installed BEFORE the gate reads window.__nvSb, so the gate never
@@ -16735,8 +16804,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             document.getElementById("nvfbManual").addEventListener("click",function(){ hideWelcomeStrip(); if(window.novaxFocusFirstBookingField) window.novaxFocusFirstBookingField(); });
             document.getElementById("nvfbTour").addEventListener("click",function(){
               hideWelcomeStrip();
-              try{ var u=new URL(location.href); u.searchParams.set("onboarding","1"); location.href=u.toString(); }
-              catch(e){ location.search=(location.search?location.search+"&":"?")+"onboarding=1"; }
+              if(typeof window.nvOnboardReplay==="function") window.nvOnboardReplay();
             });
             document.getElementById("nvfbPaste").addEventListener("click",function(){
               hideWelcomeStrip();
@@ -17180,128 +17248,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }catch(e){}
     })();
 
-    /* ===== NovaX AI Onboarding Tour (post-signup welcome + guided walkthrough) ===== */
+    /* ===== "Show me around" =====
+       ?onboarding=1 used to start a separate nine-step tour whose wording had
+       drifted from the portal ("Tap Create AWB", a Payments tab that no
+       longer exists). It now opens the same cards a new signup sees, so there
+       is one tutorial to keep true. */
     (function(){
       try{
-        if(window.__novaxTourLoaded) return; window.__novaxTourLoaded=true;
         var qp=new URLSearchParams(location.search);
-        var shouldRun = qp.get("onboarding")==="1";
-        if(!shouldRun) return;
-
-        var STEPS=[
-          { tab:"dashboard", title:"Your Dashboard", text:"Everything starts here: live parcel counts, COD totals, and delivery health at a glance." },
-          { tab:"newBooking", title:"New booking", text:"Tap Create AWB here to book a single parcel. Add the consignee, city, and COD amount, and you are done." },
-          { tab:"awbLabel", title:"AWB label", text:"Every booking instantly generates a printable AWB with QR and barcode. Hand it to your rider or print it." },
-          { tab:"bulkBooking", title:"Bulk booking", text:"Shipping many orders at once? Download the CSV format, fill it in, and upload it here to create AWBs in bulk." },
-          { tab:"integrations", title:"Store Integrations", text:"Connect Shopify, WooCommerce, or your own website here so new orders import automatically." },
-          { tab:"reports", title:"Reports", text:"How your deliveries and COD are doing, with every parcel filterable and exportable as CSV or PDF." },
-          /* Payments and Wallet were separate steps; both now alias to Money,
-             so the tour showed the same tab twice and neither step highlighted
-             anything. One step for the one tab that exists. */
-          { tab:"money", title:"NovaX Wallet", text:"Delivered parcels become payable invoices here, alongside your balance \u2014 and you can request a payout in a few taps." },
-          { tab:"subAccounts", title:"Sub accounts", text:"Invite your team, finance, warehouse, or support, with their own scoped logins." },
-          { tab:"support", title:"Talk To Your AI", text:"Tap the NovaX AI button in the corner anytime. I read your live data and answer instantly." }
-        ];
-        var idx=-1;
-
-        var style=document.createElement("style");
-        style.textContent=".nvtour-overlay{position:fixed;inset:0;z-index:999999;background:rgba(4,12,9,.55);display:flex;align-items:center;justify-content:center;padding:18px;opacity:0;transition:opacity .3s ease;-webkit-tap-highlight-color:transparent;}.nvtour-overlay.show{opacity:1;}.nvtour-overlay.closing{opacity:0;}.nvtour-card{position:relative;box-sizing:border-box;width:min(94vw,410px);max-height:82vh;overflow:auto;background:#0b1f18;color:#eafff5;border:1px solid rgba(24,199,122,.35);border-radius:20px;padding:28px 22px 22px;box-shadow:var(--sh-1);text-align:center;-webkit-overflow-scrolling:touch;}.nvtour-x{position:absolute;top:8px;right:10px;background:transparent;border:none;color:#8fd8b9;font-size:22px;line-height:1;cursor:pointer;padding:6px 9px;}.nvtour-avatar{width:64px;height:64px;border-radius:50%;background:linear-gradient(145deg,#0d6b4d,#18c77a);display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 14px;box-shadow:var(--glow-1);animation:nvtourFloat 2.6s ease-in-out infinite,nvtourPopIn .4s cubic-bezier(.34,1.56,.64,1);}.nvtour-avatar.sm{width:38px;height:38px;font-size:18px;margin:0;flex-shrink:0;}.nvtour-card h3{margin:0 0 8px;font-size:20px;animation:nvtourRise .3s ease both;}.nvtour-card p{margin:0 0 18px;color:#bfe9d8;font-size:15px;line-height:1.5;animation:nvtourRise .3s ease .05s both;}.nvtour-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}.nvtour-actions .nvtour-btn{animation:nvtourBtnIn .32s ease both;}.nvtour-actions .nvtour-btn:nth-child(2){animation-delay:.07s;}.nvtour-btn{box-sizing:border-box;min-height:46px;padding:0 18px;border-radius:var(--r-xl);font-weight:700;font-size:15px;border:none;cursor:pointer;flex:1;min-width:120px;transition:transform .15s ease;}.nvtour-btn:active{transform:scale(.96);}.nvtour-btn.primary{background:linear-gradient(145deg,#0d6b4d,#18c77a);color:#04130d;}.nvtour-btn.ghost{background:rgba(255,255,255,.08);color:#eafff5;}.nvtour-stephead{display:flex;align-items:center;gap:10px;text-align:left;margin-bottom:14px;animation:nvtourSlideL .3s ease both;}.nvtour-stephead b{font-size:13px;color:#8fd8b9;display:block;}.nvtour-dots{display:flex;gap:5px;margin-top:4px;}.nvtour-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.25);transition:all .2s ease;}.nvtour-dot.on{background:#18c77a;width:16px;border-radius:4px;animation:nvtourDotPop .3s ease;}.nvtour-glow{position:relative;z-index:2;border-radius:var(--r-lg);animation:nvtourGlowPulse 1s ease-in-out 2;}.nvtour-check{width:66px;height:66px;border-radius:50%;background:#18c77a;color:#04130d;font-size:32px;font-weight:900;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:var(--glow-1);animation:nvtourCheckPop .45s cubic-bezier(.34,1.56,.64,1);}@keyframes nvtourPop{0%{transform:scale(.9);}60%{transform:scale(1.03);}100%{transform:scale(1);}}@keyframes nvtourFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-5px);}}@keyframes nvtourPopIn{0%{transform:scale(.5);opacity:0;}100%{transform:scale(1);opacity:1;}}@keyframes nvtourRise{0%{opacity:0;transform:translateY(6px);}100%{opacity:1;transform:translateY(0);}}@keyframes nvtourBtnIn{0%{opacity:0;transform:translateY(8px);}100%{opacity:1;transform:translateY(0);}}@keyframes nvtourSlideL{0%{opacity:0;transform:translateX(-10px);}100%{opacity:1;transform:translateX(0);}}@keyframes nvtourDotPop{0%{transform:scale(.4);}70%{transform:scale(1.3);}100%{transform:scale(1);}}@keyframes nvtourGlowPulse{0%,100%{box-shadow:var(--ring);}50%{box-shadow:var(--ring);}}@keyframes nvtourCheckPop{0%{transform:scale(0);opacity:0;}60%{transform:scale(1.15);opacity:1;}100%{transform:scale(1);opacity:1;}}@media (max-width:760px){.nvtour-overlay{align-items:flex-end;padding:0;background:rgba(6,18,13,.4);}.nvtour-card{width:100%;max-width:100%;max-height:64vh;border-radius:20px 20px 0 0;box-shadow:var(--sh-1);}}@media (max-width:480px){.nvtour-card{padding:22px 16px 16px;}.nvtour-btn{min-width:0;}}@media (prefers-reduced-motion:reduce){.nvtour-avatar,.nvtour-card h3,.nvtour-card p,.nvtour-actions .nvtour-btn,.nvtour-stephead,.nvtour-glow,.nvtour-check,.nvtour-dot.on{animation:none!important;}}";
-        document.head.appendChild(style);
-
-        var overlay=document.createElement("div"); overlay.className="nvtour-overlay";
-        overlay.innerHTML='<div class="nvtour-card" id="nvtourCard"></div>';
-        document.body.appendChild(overlay);
-        var card=overlay.querySelector("#nvtourCard");
-
-        function paint(html, dir){
-          var fx = dir===1 ? 22 : (dir===-1 ? -22 : 0);
-          var fy = dir ? 0 : 14;
-          card.style.transition="none"; card.style.opacity="0"; card.style.transform="translate("+fx+"px,"+fy+"px) scale(.95)";
-          card.innerHTML=html;
-          void card.offsetWidth;
-          card.style.transition="opacity .3s ease, transform .38s cubic-bezier(.34,1.56,.64,1)";
-          card.style.opacity="1"; card.style.transform="translate(0,0) scale(1)";
-        }
-        function xBtn(){ return '<button class="nvtour-x" id="nvtourX" aria-label="Close">\u00d7</button>'; }
-        function bindX(){ var b=document.getElementById("nvtourX"); if(b) b.addEventListener("click",finish); }
-        function clearGlow(){ document.querySelectorAll(".nvtour-glow").forEach(function(el){ el.classList.remove("nvtour-glow"); }); }
-
-        function renderIntro(){
-          clearGlow();
-          paint(xBtn()+'<div class="nvtour-avatar">\ud83e\udd16</div><h3>Hi, I am Nova</h3><p>Your NovaX AI assistant. I can walk you through your new workspace, or you can dive in yourself.</p><div class="nvtour-actions"><button class="nvtour-btn primary" id="nvtourStart">Take the Tour</button><button class="nvtour-btn ghost" id="nvtourSkip">I will Surf Myself</button></div>', 0);
-          bindX();
-          document.getElementById("nvtourStart").addEventListener("click",startTour);
-          document.getElementById("nvtourSkip").addEventListener("click",renderSurf);
-        }
-
-        function renderSurf(){
-          clearGlow();
-          paint(xBtn()+'<div class="nvtour-avatar">\ud83e\udd16</div><h3>All yours</h3><p>Feel free to explore. You can reach me anytime from the green AI bubble in the corner.</p><div class="nvtour-actions"><button class="nvtour-btn primary" id="nvtourExit">Exit</button></div>', 0);
-          bindX();
-          document.getElementById("nvtourExit").addEventListener("click",finish);
-        }
-
-        function openMobileMenuForTour(){
-          try{
-            if(window.innerWidth<=760){
-              var menuEl=document.getElementById("clientMenu");
-              var toggleBtn=document.getElementById("clientMenuToggle");
-              if(menuEl) menuEl.classList.add("open");
-              if(toggleBtn) toggleBtn.setAttribute("aria-expanded","true");
-            }
-          }catch(e){}
-        }
-        function closeMobileMenuForTour(){
-          try{
-            if(window.innerWidth<=760){
-              var menuEl=document.getElementById("clientMenu");
-              var toggleBtn=document.getElementById("clientMenuToggle");
-              if(menuEl) menuEl.classList.remove("open");
-              if(toggleBtn) toggleBtn.setAttribute("aria-expanded","false");
-            }
-          }catch(e){}
-        }
-        function renderStep(dir){
-          var s=STEPS[idx];
-          try{ if(typeof showClientTab==="function") showClientTab(s.tab); }catch(e){}
-          openMobileMenuForTour();
-          try{ window.scrollTo({top:0,behavior:"smooth"}); }catch(e){ window.scrollTo(0,0); }
-          clearGlow();
-          var navBtn=document.querySelector('[data-client-tab="'+s.tab+'"]');
-          if(navBtn){
-            void navBtn.offsetWidth;
-            navBtn.classList.add("nvtour-glow");
-            if(window.innerWidth<=760){
-              try{ navBtn.scrollIntoView({behavior:"smooth",block:"center"}); }catch(e){}
-            }
-          }
-          var dots=STEPS.map(function(_,i){ return '<span class="nvtour-dot'+(i===idx?" on":"")+'"></span>'; }).join("");
-          var backHtml = idx>0 ? '<button class="nvtour-btn ghost" id="nvtourBack">Back</button>' : "";
-          var nextLabel = idx===STEPS.length-1 ? "Finish" : "Next";
-          paint(xBtn()+'<div class="nvtour-stephead"><span class="nvtour-avatar sm">\ud83e\udd16</span><div><b>Step '+(idx+1)+' of '+STEPS.length+'</b><div class="nvtour-dots">'+dots+'</div></div></div><h3>'+s.title+'</h3><p>'+s.text+'</p><div class="nvtour-actions">'+backHtml+'<button class="nvtour-btn primary" id="nvtourNext">'+nextLabel+'</button></div>', dir);
-          bindX();
-          var backBtn=document.getElementById("nvtourBack"); if(backBtn) backBtn.addEventListener("click",function(){ idx--; renderStep(-1); });
-          document.getElementById("nvtourNext").addEventListener("click",function(){ if(idx===STEPS.length-1){ renderDone(); return; } idx++; renderStep(1); });
-        }
-
-        function renderDone(){
-          clearGlow();
-          paint(xBtn()+'<div class="nvtour-check">\u2713</div><h3>You are all set</h3><p>Explore freely, and tap the green AI bubble anytime you need help.</p>', 0);
-          bindX();
-          setTimeout(finish,1300);
-        }
-
-        function startTour(){ idx=0; renderStep(1); }
-
-        function finish(){
-          clearGlow();
-          closeMobileMenuForTour();
-          overlay.classList.add("closing");
-          setTimeout(function(){ try{ overlay.remove(); }catch(e){} },300);
-          try{ var u=new URL(window.location.href); u.searchParams.delete("onboarding"); history.replaceState(null,"",u.pathname+(u.search||"")); }catch(e){}
-        }
-
-        requestAnimationFrame(function(){ overlay.classList.add("show"); renderIntro(); });
+        if(qp.get("onboarding")!=="1") return;
+        try{ var u=new URL(window.location.href); u.searchParams.delete("onboarding"); history.replaceState(null,"",u.toString()); }catch(e){}
+        if(typeof window.nvOnboardReplay==="function") window.nvOnboardReplay();
       }catch(e){ console.warn("NovaX tour init failed",e); }
     })();
     /* ================= NovaX PHASE 3 (Tasks 13-19) =================
@@ -18967,8 +18924,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         return;
       }
       if(a.type==="start_tour"){
-        try{ var u=new URL(location.href); u.searchParams.set("onboarding","1"); location.href=u.toString(); }
-        catch(e){ location.search=(location.search?location.search+"&":"?")+"onboarding=1"; }
+        if(typeof window.nvOnboardReplay==="function") window.nvOnboardReplay();
         return;
       }
       if(a.type==="prefill_booking"){
