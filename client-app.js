@@ -408,7 +408,7 @@
           b:"Your customer’s name, phone, city, address and COD amount. Got the order on WhatsApp or Instagram? Tap Paste order and the form fills in for you.",
           v: '<div class="nvob-paste">“Hina Raza, Flat 3B Gulshan-e-Iqbal Karachi, 0300‑…, COD 3450”</div>' +
              '<div class="nvob-arrow" aria-hidden="true">↓</div>' +
-             m.form([["Consignee","Hina Raza ✓"],["City","Karachi ✓"],["COD","Rs 3,450 ✓"]]) },
+             m.form([["Consignee","Hina Raza ✓"],["COD","Rs 3,450 ✓"]]) },
         { k:"Step 2 of 3", t:"Print the label", nav:"more",
           b:"Open AWB label, print it and stick it on the parcel. It carries the tracking number, a barcode and a QR code.",
           v: '<div class="nvob-awb"><b>N9000001</b><div class="nvob-bars"></div><small>Hina Raza · Karachi · COD Rs 3,450</small></div>' +
@@ -434,9 +434,9 @@
           v: m.rows([speed("24h","Saver","24-48 hours","0.1%"), speed("12h","Standard","12-24 hours","0.3%"), speed("instant","Express","12 hours","0.7%")]) },
         { k:"When you need more", t:"It is all in the menu", nav:"fab",
           b:"Stuck on anything? Tap NovaX AI on any screen, or message a person on WhatsApp 0312 3922558.",
-          v: m.list([["Bulk booking","Upload many orders together"],["Shopify · WooCommerce","Connect your store"],
-                     ["Sub accounts","Your team, with their own logins"],["Reports","Every parcel, as CSV or PDF"],
-                     ["Nova Swap","An exchange in one visit"]]) }
+          v: m.list([["Bulk booking","Many orders in one upload"],["Your store","Shopify or WooCommerce"],
+                     ["Sub accounts","Logins for your team"],["Reports","Every parcel, CSV or PDF"],
+                     ["Nova Swap","An exchange in one visit"],["API","For your own system"]]) }
       ];
     }
 
@@ -483,7 +483,7 @@
         "@keyframes nvobUp{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:none}}",
         "body.nvob-lock{overflow:hidden;overscroll-behavior:none}",
         ".nvob-ov{position:fixed;inset:0;z-index:100002;display:flex;justify-content:center;align-items:stretch;",
-          "background:rgba(3,10,7,.95);animation:nvobFade .2s ease both;box-sizing:border-box;",
+          "background:#040d09;animation:nvobFade .2s ease both;box-sizing:border-box;outline:none;",
           "padding:calc(8px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));",
           "font-family:inherit;-webkit-tap-highlight-color:transparent}",
         ".nvob-ov *{box-sizing:border-box}",
@@ -519,16 +519,16 @@
           "padding:8px 10px;background:rgba(255,255,255,.03);border-radius:9px}",
         ".nvob-r-l{color:#b9d4c8;min-width:0}.nvob-r-r{color:#eaf7f0;font-weight:700;text-align:right;white-space:nowrap}",
         ".nvob-r-r.ok{color:#4ee6a5}.nvob-r-r.live{color:#ffd479}",
-        ".nvob-list{display:grid;gap:6px}",
-        ".nvob-li{display:flex;flex-direction:column;gap:1px;padding:7px 10px;background:rgba(255,255,255,.03);border-radius:9px}",
-        ".nvob-li b{font-size:13.5px;color:#eaf7f0}.nvob-li span{font-size:12.5px;line-height:1.4;color:#9dbfb0}",
+        ".nvob-list{display:grid;grid-template-columns:1fr 1fr;gap:6px}",
+        ".nvob-li{display:flex;flex-direction:column;gap:2px;min-width:0;padding:8px 10px;background:rgba(255,255,255,.03);border-radius:9px}",
+        ".nvob-li b{font-size:13.5px;line-height:1.25;color:#eaf7f0}.nvob-li span{font-size:12px;line-height:1.35;color:#9dbfb0}",
         ".nvob-steps{display:grid;gap:8px}",
         ".nvob-step{display:flex;align-items:center;gap:11px}",
         ".nvob-step i{flex:0 0 auto;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-style:normal;",
           "font-size:14px;font-weight:800;color:#04140c;background:linear-gradient(135deg,#14c77b,#0fa968)}",
         ".nvob-step div{display:flex;flex-direction:column;gap:1px;min-width:0}",
         ".nvob-step b{font-size:14.5px;color:#fff}.nvob-step span{font-size:12.5px;color:#9dbfb0}",
-        ".nvob-form{display:grid;gap:7px}",
+        ".nvob-form{display:grid;grid-template-columns:1fr 1fr;gap:7px}",
         ".nvob-form label{display:flex;flex-direction:column;gap:3px;font-size:11px;font-weight:700;letter-spacing:.08em;",
           "text-transform:uppercase;color:#8fb3a3}",
         ".nvob-form label span{font-size:13.5px;letter-spacing:0;text-transform:none;color:#eaf7f0;font-weight:600;",
@@ -573,19 +573,22 @@
         /* Short phones (640px and under): tighter, same structure. */
         "@media (max-height:660px){.nvob-card{padding:16px 16px 12px}.nvob-eye{margin-bottom:9px}",
           ".nvob-card h3{font-size:20px;margin-bottom:6px}.nvob-card p{font-size:14px;line-height:1.5;margin-bottom:12px}",
-          ".nvob-where{padding-top:12px}.nvob-w-lbl{padding-top:10px;margin-bottom:6px}.nvob-stage{margin:4px 0 10px}}",
+          ".nvob-where{padding-top:10px}.nvob-w-lbl{padding-top:9px;margin-bottom:6px}.nvob-stage{margin:4px 0 10px}",
+          ".nvob-vis{padding:10px}.nvob-row{padding:7px 10px}.nvob-note{margin-top:8px}.nvob-btns{margin-top:8px}}",
         /* Tablets and desktops: a centred card of a fixed height, with the keyboard hint. */
-        "@media (min-width:600px) and (min-height:700px){.nvob-ov{align-items:center;padding:24px}",
+        "@media (min-width:600px) and (min-height:700px){.nvob-ov{align-items:center;padding:24px;background:rgba(3,10,7,.93)}",
           ".nvob-wrap{height:min(700px,100%)}}",
         "@media (hover:hover) and (pointer:fine){.nvob-hint{display:block}}",
+        ".nvob-still,.nvob-still .nvob-wrap{animation:none!important}",
         "@media (prefers-reduced-motion:reduce){.nvob-ov,.nvob-wrap,.nvob-in-r,.nvob-in-l{animation:none!important}",
           ".nvob-card{transition:none!important}}"
       ].join("");
       document.head.appendChild(css);
 
       var ov = document.createElement("div");
-      ov.className = "nvob-ov"; ov.id = "nvObDeck";
+      ov.className = "nvob-ov" + ((reduce || document.hidden) ? " nvob-still" : ""); ov.id = "nvObDeck";
       ov.setAttribute("role","dialog"); ov.setAttribute("aria-modal","true"); ov.setAttribute("aria-labelledby","nvObTitle");
+      ov.setAttribute("tabindex","-1");
       ov.innerHTML =
         '<div class="nvob-wrap">' +
           '<div class="nvob-head"><div class="nvob-dots" id="nvObDots" aria-hidden="true"></div>' +
@@ -713,7 +716,7 @@
       }
 
       paint();
-      try{ document.getElementById("nvObNext").focus({ preventScroll:true }); }catch(e){}
+      try{ ov.focus({ preventScroll:true }); }catch(e){}
     }
 
     /* "Show me around": the same deck, any time. */

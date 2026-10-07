@@ -52,7 +52,7 @@ function page({ demo=false, reduce=true } = {}){
   ok("the three payout speeds come from the wallet's own names and fees");
   assert.ok(!/instant|2-3 hours|15 minutes|Create AWB/i.test(all), "no stale wording");
   assert.ok(!/[<]script|undefined|NaN/.test(cards.map(c => c.v).join("")));
-  for (const s of ["Paste order","AWB label","Request pickup","Bulk booking","Shopify","WooCommerce","Sub accounts","Reports","Nova Swap","NovaX AI","0312 3922558","tracking link"]) assert.ok(all.includes(s), "mentions " + s);
+  for (const s of ["Paste order","AWB label","Request pickup","Bulk booking","Shopify","WooCommerce","Sub accounts","Reports","Nova Swap","API","NovaX AI","0312 3922558","tracking link"]) assert.ok(all.includes(s), "mentions " + s);
   ok("covers paste order, labels, pickup, tracking link, refusals, wallet, withdrawal, bulk, stores, team, reports, swap and help");
 }
 
@@ -131,6 +131,8 @@ function plain(x){ return JSON.parse(JSON.stringify(x)); }
 {
   const css = /css\.textContent = \[([\s\S]*?)\]\.join\(""\);/.exec(fn("nvOnboardBuild"))[1];
   assert.ok(!/backdrop-filter|blur\(/.test(css), "no blur");
+  assert.ok(/\.nvob-ov\{[^}]*background:#040d09/.test(css), "solid backdrop on phones");
+  assert.ok(!/getElementById\("nvObNext"\)\.focus/.test(fn("nvOnboardBuild")), "Next is not focused by script");
   assert.ok(!/touch-action:none/.test(css), "the card can scroll by touch");
   assert.ok(/touch-action:pan-y/.test(css) && /env\(safe-area-inset-bottom\)/.test(css));
   const sizes = [...css.matchAll(/font-size:([\d.]+)px/g)].map(m => Number(m[1]));
