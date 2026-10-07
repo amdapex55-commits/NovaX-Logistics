@@ -7826,7 +7826,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            genuinely differ. */
         const sameFigure = Math.round(Number(balance||0)) === Math.round(Number(available||0));
         host.innerHTML=
-          '<div class="nv-cod-hero"'+(sameFigure?' data-same="1"':'')+'>'+
+          '<div class="nv-cod-hero"'+(sameFigure?' data-same="1"':'')+(Number(balance||0)<0?' data-owe="1"':'')+'>'+
             '<div class="nv-cod-main">'+
               /* Was "COD balance", which this number is not. Verified against
                  KKM SWEETS & NIMCO's live wallet: Rs 21,660 is invoice credits
@@ -11326,7 +11326,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          again, and the next file starts from a clean check. */
       state.lastBulkValidation=null; NV_BULK_RAW=null;
       try{ var nvDone=document.getElementById("nvBulkConfirm"); if(nvDone) nvDone.remove(); }catch(e){}
-      try{ var nvIn=document.getElementById("bulkCsvInput"); if(nvIn) nvIn.value=""; }catch(e){}
+      try{ var nvIn=document.getElementById("bulkCsvInput"); if(nvIn) nvIn.value=""; if(typeof window.nvBulkFileSync==="function") window.nvBulkFileSync(); }catch(e){}
       if(el) el.dataset.nvBulk="1";
       if(el) el.insertAdjacentHTML("afterbegin", `<div class="ops-card" style="margin-bottom:10px"><strong>Import complete: ${awbs.length} AWB(s) created${skipped?`, ${skipped} row(s) skipped`:""}</strong><p>Booked rows are saved on the server now. New AWBs appear in "New Booked AWBs" for printing.</p></div>`);
       if(failed.length){
@@ -14003,7 +14003,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       /* ?awb= arrived from the Shopify app's Label button. Highlight it once,
          then forget it, so a later re-render does not keep jumping the page. */
       var focusAwb=state.nvFocusAwb; if(focusAwb) state.nvFocusAwb=null;
-      list.innerHTML=items.map(p=>`<label class="ops-card"${p.awb===focusAwb?' data-nv-focus="1" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer;outline:2px solid var(--nvu-good-ln);outline-offset:2px"':' style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"'}><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}"${(selected.has(p.awb)||(!nbSeen.has(p.awb)&&!(p.awbPrinted||p.labelPrinted)))?" checked":""}><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${nvSourceChip(p.source)}${nvPrintedMark(p)}</span><button class="ghost-btn nv-nb-act" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="ghost-btn nv-nb-act" title="Cancel this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')" style="color:var(--nvu-bad-fg);border-color:var(--nvu-bad-ln)">Cancel booking</button></label>`).join("");
+      /* 8 Oct 2026: tracking number on its own line, the customer under it,
+         then a small Print button and a quiet Cancel. They used to be two
+         full-width buttons of the same weight under every parcel. */
+      list.innerHTML=items.map(p=>`<label class="ops-card nvlb-row"${p.awb===focusAwb?' data-nv-focus="1"':''}><input type="checkbox" class="newbooked-check" value="${escLabelText(p.awb)}"${(selected.has(p.awb)||(!nbSeen.has(p.awb)&&!(p.awbPrinted||p.labelPrinted)))?" checked":""}><span class="nvlb-info"><strong>${escLabelText(p.awb)}</strong><span>${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)} &middot; ${money(p.cod)}${nvSourceChip(p.source)}${nvPrintedMark(p)}</span></span><span class="nvlb-do"><button class="ghost-btn nv-nb-act" onclick="printLabels(['${p.awb}'])">${(p.awbPrinted||p.labelPrinted)?"Re-print":"Print"}</button><button class="nvlb-cancel nv-nb-act" title="Cancel this booking" onclick="event.preventDefault();event.stopPropagation();deleteNewBooking('${escLabelText(p.awb)}')">Cancel booking</button></span></label>`).join("");
       items.forEach(function(p){ nbSeen.add(p.awb); });
       if(focusAwb){ try{ var n=list.querySelector('[data-nv-focus="1"]'); if(n) n.scrollIntoView({block:"center",behavior:"smooth"}); }catch(e){} }
       nvSyncSelectAllNewBookedLabel();
@@ -14447,8 +14450,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       nvPrefillPickupAddress();
       try{ nvPaEnsureLoaded(false); }catch(e){}
       const items=pickupEligibleParcels();
-      if(!items.length){ list.innerHTML=`<p class="footer-note">No New booked AWBs are available for pickup right now.</p>`; return; }
-      list.innerHTML=items.map(p=>`<label class="ops-card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer"><input type="checkbox" class="pickup-check" value="${escLabelText(p.awb)}"${selected.has(p.awb)?" checked":""}><span style="flex:1"><strong>${escLabelText(p.awb)}</strong> &middot; ${labelText(p.consignee)} &middot; ${labelText(p.city)} &middot; ${money(p.cod)}</span></label>`).join("");
+      if(!items.length){ list.innerHTML=`<p class="footer-note">No booked parcels are waiting for pickup. Book a parcel and it shows here.</p>`; return; }
+      list.innerHTML=items.map(p=>`<label class="ops-card nvlb-row"><input type="checkbox" class="pickup-check" value="${escLabelText(p.awb)}"${selected.has(p.awb)?" checked":""}><span class="nvlb-info"><strong>${escLabelText(p.awb)}</strong><span>${labelText(p.consignee)} &middot; ${labelText(p.city)} &middot; ${money(p.cod)}</span></span></label>`).join("");
     }
     function renderPickupRequestList(){
       const list=document.getElementById("pickupRequestList"); if(!list) return;
@@ -14461,7 +14464,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       list.innerHTML=items.map(pr=>{
         const cls=chipClass[pr.status]||"warn";
         const awbList=(pr.awbs||[]).map(a=>escLabelText(a)).join(", ");
-        return `<div class="ops-card" style="margin-bottom:8px"><div class="ops-card-head"><strong>${(pr.awbs||[]).length} AWB(s)</strong><span class="chip ${cls}">${escLabelText(pr.status)}</span></div><p class="footer-note">${awbList}</p><p class="footer-note">Pickup: ${labelText(pr.pickupAddress,"-")}${pr.requestedFor?(" &middot; "+labelText(nvDate(pr.requestedFor))):""}</p></div>`;
+        return `<div class="ops-card" style="margin-bottom:8px"><div class="ops-card-head"><strong>${(pr.awbs||[]).length} parcel${(pr.awbs||[]).length===1?"":"s"}</strong><span class="chip ${cls}">${escLabelText(pr.status)}</span></div><p class="footer-note">${awbList}</p><p class="footer-note">Pickup: ${labelText(pr.pickupAddress,"-")}${pr.requestedFor?(" &middot; "+labelText(nvDate(pr.requestedFor))):""}</p></div>`;
       }).join("");
     }
     function requestPickup(){
@@ -14884,7 +14887,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(btn.disabled || window.__nvBulkUploadInFlight) return;
       window.__nvBulkUploadInFlight=true;
       var label=btn.textContent;
-      btn.disabled=true; btn.textContent="Uploading\u2026";
+      btn.disabled=true; btn.textContent="Checking\u2026";
       Promise.resolve()
         .then(function(){ return uploadBulkCsv(); })
         .catch(function(e){ console.warn("NovaX bulk upload",e); })
@@ -14893,6 +14896,45 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           btn.disabled=false; btn.textContent=label;
         });
     });
+    /* The file control is the browser's own grey button no longer: the tile
+       names the chosen file, a file is checked the moment it is chosen
+       (checking books nothing), and on a computer it can be dropped on. */
+    window.nvBulkFileSync=function(){
+      try{
+        var inp=document.getElementById("bulkCsvInput"), nm=document.getElementById("bulkFileName"),
+            hint=document.getElementById("bulkFileHint"), tile=document.getElementById("bulkFileTile");
+        if(!inp || !nm) return;
+        var f=inp.files && inp.files[0];
+        nm.textContent=f?f.name:"Choose your CSV file";
+        if(hint){
+          var kb=f?Math.max(1,Math.round(f.size/1024)):0;
+          hint.textContent=f?((kb>=1024?(Math.round(kb/102.4)/10)+" MB":kb+" KB")+" \u00b7 tap to choose another file"):"Tap to pick it from your phone or computer";
+        }
+        if(tile) tile.classList.toggle("has-file",!!f);
+        var b=document.getElementById("bulkUploadBtn");
+        if(b && !b.disabled) b.textContent=f?"Check again":"Check CSV";
+      }catch(e){}
+    };
+    (function(){
+      var inp=document.getElementById("bulkCsvInput"), tile=document.getElementById("bulkFileTile");
+      if(!inp) return;
+      inp.addEventListener("change",function(){
+        window.nvBulkFileSync();
+        if(inp.files && inp.files[0]){ var b=document.getElementById("bulkUploadBtn"); if(b) b.click(); }
+      });
+      if(!tile) return;
+      ["dragenter","dragover"].forEach(function(ev){ tile.addEventListener(ev,function(e){ e.preventDefault(); tile.classList.add("is-over"); }); });
+      ["dragleave","drop"].forEach(function(ev){ tile.addEventListener(ev,function(){ tile.classList.remove("is-over"); }); });
+      tile.addEventListener("drop",function(e){
+        e.preventDefault();
+        try{
+          var files=e.dataTransfer && e.dataTransfer.files;
+          if(!files || !files.length) return;
+          inp.files=files;
+          inp.dispatchEvent(new Event("change",{ bubbles:true }));
+        }catch(_){ toast("Could not read that file. Tap to choose it instead.","error"); }
+      });
+    })();
     document.getElementById("bulkPrintAllBtn").addEventListener("click",()=>printLabels(state.lastBulkAwbs||[]));
     document.getElementById("printAwbBtn").addEventListener("click",printAwb);
     document.getElementById("newBookedSelectAllBtn")?.addEventListener("click",selectAllNewBooked);

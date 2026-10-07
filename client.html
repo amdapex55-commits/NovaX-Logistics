@@ -2666,7 +2666,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=95b64690" defer></script>
+  <script src="client-app.min.js?v=39deb2a5" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -3022,20 +3022,21 @@ try{
             <section class="client-module" id="client-awbLabel">
               <!-- 4 Oct 2026: the print queue comes first; the single-label
                    preview follows it. -->
-              <div class="panel">
-                <div class="section-head"><div><h3 id="nvLabelsQueueTitle">Labels to print</h3><p>Booked parcels waiting for a rider. Labels not printed yet are ticked; untick any you do not want, then print them together.</p></div><div class="inline-actions"><button class="ghost-btn" id="newBookedSelectAllBtn">Select all</button><button class="action-btn" id="newBookedPrintBtn">Print labels</button><button class="ghost-btn" id="newBookedPdfBtn">Download PDF</button></div></div>
+              <div class="panel nvlb">
+                <div class="section-head"><div><h3 id="nvLabelsQueueTitle">Labels to print</h3><p>Booked parcels waiting for a rider. Labels not printed yet are ticked; untick any you do not want, then print them together.</p></div><div class="inline-actions nvlb-acts"><button class="action-btn" id="newBookedPrintBtn">Print labels</button><button class="ghost-btn" id="newBookedPdfBtn">Download PDF</button><button class="ghost-btn" id="newBookedSelectAllBtn">Select all</button></div></div>
                 <div id="newBookedList"></div>
               </div>
-              <div class="panel mt-14">
-                <div class="section-head"><div><h3>Label preview</h3><p>Pick a parcel to see, print or share its label. QR and barcode both carry its tracking ID.</p></div><div class="inline-actions"><button class="action-btn" id="printAwbBtn">Print now</button><button class="ghost-btn" id="savePdfAwbBtn">Download PDF</button><button class="ghost-btn" id="waAwbBtn">Send details on WhatsApp</button><button class="ghost-btn" id="awbJourneyBtn" onclick="nvAwbOpenJourney()">View journey</button></div></div>
-                <div id="awbLabelPreview"></div>
-              </div>
-              <div class="panel mt-14">
-                <div class="section-head"><div><h3>Request pickup</h3><p>Select unpicked New booked AWBs and ask a rider to collect them.</p></div></div>
-                <div id="pickupEligibleList" style="margin-bottom:12px"></div>
+              <!-- 8 Oct 2026: pickup comes straight after printing, because it is
+                   the next thing a merchant does and the step new merchants ask
+                   about most. The single-label preview follows it. -->
+              <div class="panel mt-14 nvpk" id="nvPickupPanel">
+                <div class="section-head"><div><h3>Request pickup</h3><p>Tick the parcels a rider should collect, confirm where from and pick a time. Riders collect between 11 am and 9 pm on working days. Pickup is free in Karachi, Lahore, Islamabad and Rawalpindi.</p></div></div>
+                <div class="nvpk-step"><i aria-hidden="true">1</i><b>Which parcels?</b></div>
+                <div id="pickupEligibleList"></div>
+                <div class="nvpk-step"><i aria-hidden="true">2</i><b>Where from, and when?</b></div>
                 <div class="form-grid">
                   <div class="field" style="grid-column:1/-1">
-                    <div class="nv-pa-head"><label for="pickupAddress">Pickup Address</label><button type="button" class="nv-pa-manage" id="nvPaManageBtn" onclick="nvPaOpen()">Manage saved addresses</button></div>
+                    <div class="nv-pa-head"><label for="pickupAddress">Pickup address</label><button type="button" class="nv-pa-manage" id="nvPaManageBtn" onclick="nvPaOpen()">Manage saved addresses</button></div>
                     <!-- Saved pickup addresses. Choosing one fills the box below; the box stays the record that is sent. -->
                     <div class="nv-pa-chips" id="nvPaChips" role="group" aria-label="Saved pickup addresses" hidden></div>
                     <textarea id="pickupAddress" placeholder="Where should the rider collect these parcels from?"></textarea>
@@ -3050,11 +3051,15 @@ try{
                        collect. The chosen slot is written into #pickupRequestedFor,
                        which is what the request sends. -->
                   <div class="field nv-pk-when"><label for="pickupDay">Pickup day</label><select id="pickupDay"></select></div>
-                  <div class="field nv-pk-when"><label for="pickupSlot">Pickup time <span class="footer-note">(Pakistan time)</span></label><select id="pickupSlot"></select><input type="hidden" id="pickupRequestedFor"></div>
-                  <div class="field"><label for="pickupNote">Note / Instructions</label><input id="pickupNote" placeholder="Optional instructions for the rider"></div>
+                  <div class="field nv-pk-when"><label for="pickupSlot">Pickup time (Pakistan time)</label><select id="pickupSlot"></select><input type="hidden" id="pickupRequestedFor"></div>
+                  <div class="field"><label for="pickupNote">Note for the rider (optional)</label><input id="pickupNote" placeholder="Optional instructions for the rider"></div>
                 </div>
-                <div class="inline-actions mt-10"><button class="action-btn" id="requestPickupBtn" aria-describedby="pickupBtnHint">Request pickup</button><span class="footer-note" id="pickupBtnHint" role="status"></span></div>
-                <div class="mt-16"><h4 style="margin:0 0 8px">Your pickup requests</h4><div id="pickupRequestList"></div></div>
+                <div class="inline-actions mt-10 nvpk-go"><button class="action-btn" id="requestPickupBtn" aria-describedby="pickupBtnHint">Request pickup</button><span class="footer-note" id="pickupBtnHint" role="status"></span></div>
+                <div class="nvpk-past"><h4>Your pickup requests</h4><div id="pickupRequestList"></div></div>
+              </div>
+              <div class="panel mt-14 nvlb">
+                <div class="section-head"><div><h3>Label preview</h3><p>Pick a parcel to see, print or share its label. QR and barcode both carry its tracking ID.</p></div><div class="inline-actions nvlb-acts"><button class="action-btn" id="printAwbBtn">Print now</button><button class="ghost-btn" id="savePdfAwbBtn">Download PDF</button><button class="ghost-btn" id="awbJourneyBtn" onclick="nvAwbOpenJourney()">View journey</button><button class="ghost-btn is-wide" id="waAwbBtn">Send details on WhatsApp</button></div></div>
+                <div id="awbLabelPreview"></div>
               </div>
             </section>
             <!-- LOAD SHEET -->
@@ -3080,12 +3085,50 @@ try{
             <!-- BULK BOOKING -->
             <section class="client-module" id="client-bulkBooking">
               <div class="grid two">
-                <div class="panel">
-                  <div class="section-head"><div><h3>Bulk booking</h3><p>Download the accepted CSV format, fill it, then upload. No demo parcels are generated.</p></div><button class="action-btn" id="downloadBulkTemplateBtn">Download CSV format</button></div>
-                  <div class="bulk-drop"><div><label for="bulkCsvInput"><strong>Upload completed CSV here</strong></label><p class="footer-note" id="bulkCsvHelp">Accepted values — <b>city</b>: Karachi, Lahore, Islamabad, Rawalpindi · <b>payment_mode</b>: COD or Prepaid · <b>fragile</b>: yes or no · <b>weight</b>: 0.1–70 kg, like 1.5 kg or 500 g. Required columns: consignee, phone, city, address, cod, weight, order_id, product, payment_mode. Optional: reference, reference_no, fragile. Checking a file books nothing: you confirm the bookings after.</p><input id="bulkCsvInput" type="file" accept=".csv,text/csv" class="mt-12" aria-describedby="bulkCsvHelp"><button class="ghost-btn mt-12" id="bulkUploadBtn">Check CSV</button></div></div>
+                <div class="panel nvbk">
+                  <!-- 8 Oct 2026: three steps instead of a spec paragraph and the
+                       browser's own grey file control. Every id the importer uses
+                       is unchanged. -->
+                  <div class="section-head"><div><h3>Bulk booking</h3><p>Book many parcels from one spreadsheet, in three steps. Checking a file books nothing: you confirm the bookings after.</p></div></div>
+                  <ol class="nvbk-steps">
+                    <li class="nvbk-step"><i aria-hidden="true">1</i><div class="nvbk-body">
+                      <b>Download the format</b>
+                      <span>A CSV file with the right columns. It opens in Excel or Google Sheets.</span>
+                      <button class="ghost-btn nvbk-btn" id="downloadBulkTemplateBtn">Download CSV format</button>
+                    </div></li>
+                    <li class="nvbk-step"><i aria-hidden="true">2</i><div class="nvbk-body">
+                      <b>Fill in your orders</b>
+                      <span>One order on each row. Keep the column names as they are.</span>
+                      <details class="nvbk-cols"><summary>What goes in each column</summary>
+                        <div id="bulkCsvHelp">
+                          <p class="nvbk-k">Needed on every row</p>
+                          <div class="nvbk-chips"><span>consignee</span><span>phone</span><span>city</span><span>address</span><span>cod</span><span>weight</span><span>order_id</span><span>product</span><span>payment_mode</span></div>
+                          <p class="nvbk-k">Optional</p>
+                          <div class="nvbk-chips is-opt"><span>reference</span><span>reference_no</span><span>fragile</span></div>
+                          <p class="nvbk-k">Accepted values</p>
+                          <dl class="nvbk-vals">
+                            <div><dt>city</dt><dd>Karachi, Lahore, Islamabad or Rawalpindi</dd></div>
+                            <div><dt>payment_mode</dt><dd>COD or Prepaid</dd></div>
+                            <div><dt>weight</dt><dd>0.1–70 kg, like 1.5 kg or 500 g</dd></div>
+                            <div><dt>fragile</dt><dd>yes or no</dd></div>
+                          </dl>
+                        </div>
+                      </details>
+                    </div></li>
+                    <li class="nvbk-step"><i aria-hidden="true">3</i><div class="nvbk-body">
+                      <b>Upload and check</b>
+                      <span>Every row is checked as soon as you choose the file, and you see what would be booked.</span>
+                      <input id="bulkCsvInput" type="file" accept=".csv,text/csv" class="nvbk-input" aria-describedby="bulkCsvHelp">
+                      <label class="nvbk-file" for="bulkCsvInput" id="bulkFileTile">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>
+                        <span class="nvbk-file-t"><b id="bulkFileName">Choose your CSV file</b><small id="bulkFileHint">Tap to pick it from your phone or computer</small></span>
+                      </label>
+                      <button class="action-btn nvbk-btn" id="bulkUploadBtn">Check CSV</button>
+                    </div></li>
+                  </ol>
                 </div>
                 <div class="panel">
-                  <div class="section-head"><div><h3>Row checks</h3><p>Invalid city, duplicate order ID, missing phone, and impossible COD values are blocked before AWB generation.</p></div></div>
+                  <div class="section-head"><div><h3>Row checks</h3><p>A wrong city, a repeated order ID, a missing phone number or an impossible COD amount is stopped here, before anything is booked.</p></div></div>
                   <div class="ops-list" id="bulkValidationList"></div>
                 </div>
               </div>
@@ -6328,6 +6371,114 @@ body.nv-booting #clientParcelCards:empty,body.nv-booting #walletLedgerList:empty
 .nv-instant-menu:hover{border-color:var(--green-ink)}
 .nv-instant-menu b{display:block;font-size:14.5px;font-weight:800;color:var(--green-ink)}
 .nv-instant-menu span{display:block;font-size:12.5px;color:var(--nvu-ink-2);margin-top:1px}
+
+/* ═══ 8 Oct 2026: three screens brought up to the current look ══════════════
+   Bulk booking as three steps, labels and pickup with a clear order of
+   importance, and Home's wallet card in the same skin as the Wallet tab's.
+   Every colour is a theme token, except on the wallet card, which is the
+   same dark green in both themes exactly as the Wallet tab's card is. */
+
+/* ── Bulk booking ── */
+.nvbk-steps{list-style:none;margin:6px 0 0;padding:0}
+.nvbk-step{display:grid;grid-template-columns:32px minmax(0,1fr);gap:12px;padding:16px 0;border-top:1px solid var(--nvu-line)}
+.nvbk-step:first-child{border-top:0;padding-top:6px}
+.nvbk-step:last-child{padding-bottom:4px}
+.nvbk-step>i{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:14.5px;font-weight:800;background:var(--nvu-accent);color:var(--nvu-accent-ink)}
+.nvbk-body{display:grid;gap:6px;min-width:0;justify-items:start}
+.nvbk-body>b{font-size:15.5px;line-height:1.3;color:var(--ink);padding-top:5px}
+.nvbk-body>span{font-size:13.5px;line-height:1.5;color:var(--nvu-ink-2)}
+.nvbk-btn{margin-top:4px;min-height:46px}
+.nvbk-cols{width:100%;margin-top:2px;border:1px solid var(--nvu-line);border-radius:12px;background:var(--nvu-bg-2)}
+.nvbk-cols summary{cursor:pointer;list-style:none;min-height:46px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 12px;font-size:13.5px;font-weight:700;color:var(--ink);border-radius:12px}
+.nvbk-cols summary::-webkit-details-marker{display:none}
+.nvbk-cols summary::after{content:"+";font-size:19px;font-weight:600;line-height:1;color:var(--nvu-ink-2)}
+.nvbk-cols[open] summary::after{content:"\2212"}
+.nvbk-cols summary:focus-visible{outline:2px solid var(--nvu-accent);outline-offset:2px}
+.nvbk-cols>div{padding:0 12px 12px}
+.nvbk-k{margin:10px 0 6px;font-size:11.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--nvu-ink-2)}
+.nvbk-k:first-child{margin-top:2px}
+.nvbk-chips{display:flex;flex-wrap:wrap;gap:6px}
+.nvbk-chips span{font:600 12.5px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:7px 9px;border-radius:8px;background:var(--nvu-good-bg);color:var(--nvu-good-fg);border:1px solid var(--nvu-good-ln)}
+.nvbk-chips.is-opt span{background:transparent;color:var(--nvu-ink-2);border-color:var(--nvu-line-2)}
+.nvbk-vals{margin:0;display:grid;gap:7px}
+.nvbk-vals>div{display:grid;grid-template-columns:minmax(0,108px) minmax(0,1fr);gap:10px;font-size:13px;line-height:1.45}
+.nvbk-vals dt{font:600 12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--ink)}
+.nvbk-vals dd{margin:0;color:var(--nvu-ink-2)}
+.nvbk-input{position:absolute;width:1px;height:1px;margin:0;padding:0;opacity:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.nvbk-file{width:100%;box-sizing:border-box;display:flex;align-items:center;gap:12px;min-height:72px;margin-top:4px;padding:12px 14px;cursor:pointer;border:1.5px dashed var(--line-strong);border-radius:14px;background:var(--nvu-bg-2);color:var(--ink)}
+.nvbk-file svg{flex:0 0 auto;width:26px;height:26px;fill:none;stroke:var(--nvu-accent);stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.nvbk-file-t{display:grid;gap:2px;min-width:0}
+.nvbk-file-t b{font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nvbk-file-t small{font-size:12.5px;line-height:1.4;color:var(--nvu-ink-2)}
+.nvbk-file.has-file{border-style:solid;border-color:var(--nvu-good-ln);background:var(--nvu-good-bg)}
+.nvbk-file.is-over{border-color:var(--nvu-accent)}
+.nvbk-input:focus-visible+.nvbk-file{outline:2px solid var(--nvu-accent);outline-offset:2px}
+@media (max-width:760px){ .nvbk-btn{width:100%} }
+
+/* ── Labels and pickup ── */
+#client-awbLabel .nvlb-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px 12px;margin-bottom:8px;cursor:pointer}
+#client-awbLabel .nvlb-row[data-nv-focus="1"]{outline:2px solid var(--nvu-good-ln);outline-offset:2px}
+#client-awbLabel .nvlb-row input[type=checkbox]{width:22px;height:22px;margin:0;flex:none}
+.nvlb-info{display:grid;gap:2px;min-width:0}
+.nvlb-info strong{font-size:15px;letter-spacing:.01em;color:var(--ink)}
+.nvlb-info>span{font-size:13px;line-height:1.5;color:var(--nvu-ink-2);overflow-wrap:anywhere}
+.nvlb-do{display:flex;align-items:center;gap:6px}
+#client-awbLabel .nvlb-do .ghost-btn{width:auto;min-height:40px;padding:0 16px;margin:0}
+#client-awbLabel .nvlb-cancel{appearance:none;-webkit-appearance:none;width:auto;min-height:40px;margin:0;padding:0 8px;border:0;border-radius:8px;background:none;box-shadow:none;font:inherit;font-size:13px;font-weight:700;color:var(--nvu-bad-fg);cursor:pointer}
+#client-awbLabel .nvlb-cancel:hover{text-decoration:underline}
+#client-awbLabel .nvlb-cancel:focus-visible{outline:2px solid var(--nvu-bad-fg);outline-offset:2px}
+.nvpk-step{display:flex;align-items:center;gap:10px;margin:16px 0 9px}
+.nvpk-step i{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:13px;font-weight:800;background:var(--nvu-accent);color:var(--nvu-accent-ink)}
+.nvpk-step b{font-size:14.5px;color:var(--ink)}
+.nvpk-past{margin-top:18px;padding-top:14px;border-top:1px solid var(--nvu-line)}
+.nvpk-past h4{margin:0 0 8px;font-size:14.5px;color:var(--ink)}
+@media (max-width:760px){
+  /* !important because the phone layout forces every .inline-actions into one column the same way. */
+  #client-awbLabel .nvlb-acts{display:grid;grid-template-columns:1fr 1fr !important;gap:8px;width:100%}
+  #client-awbLabel .nvlb-acts .action-btn{grid-column:1/-1;width:100%;min-height:50px;font-size:15.5px;margin:0}
+  #client-awbLabel .nvlb-acts .ghost-btn{width:100%;min-height:44px;margin:0;padding-left:8px;padding-right:8px}
+  #client-awbLabel .nvlb-acts .ghost-btn.is-wide{grid-column:1/-1}
+  #client-awbLabel .nvlb-row{grid-template-columns:auto minmax(0,1fr)}
+  #client-awbLabel .nvlb-do{grid-column:1/-1;justify-content:space-between;border-top:1px solid var(--nvu-line);padding-top:8px}
+  #client-awbLabel .nvlb-do .ghost-btn{min-height:44px;min-width:112px}
+  #client-awbLabel .nvlb-cancel{min-height:44px}
+  #client-awbLabel .nvpk-go{display:grid;gap:8px}
+  #client-awbLabel .nvpk-go .action-btn{width:100%;min-height:50px;font-size:15.5px;margin:0}
+}
+
+/* ── Home: the wallet card, in the Wallet tab's skin ── */
+#nvCodHero .nv-cod-hero{position:relative;overflow:hidden;border:0;border-radius:20px;padding:18px 20px;color:#fff;
+  background:radial-gradient(120% 140% at 100% 0%,#1f8f63 0%,rgba(31,143,99,0) 55%),linear-gradient(135deg,#0b3a29 0%,#082418 60%,#06170f 100%);
+  box-shadow:0 14px 34px rgba(4,24,16,.28),inset 0 1px 0 rgba(255,255,255,.08)}
+#nvCodHero .nv-cod-hero[data-owe="1"]{background:radial-gradient(120% 140% at 100% 0%,#c98a12 0%,rgba(201,138,18,0) 55%),linear-gradient(135deg,#6f4700 0%,#523400 60%,#3d2600 100%);
+  box-shadow:0 14px 34px rgba(61,38,0,.3),inset 0 1px 0 rgba(255,255,255,.08)}
+#nvCodHero .nv-cod-hero::after{content:"";position:absolute;right:-70px;bottom:-90px;width:230px;height:230px;border-radius:50%;border:30px solid rgba(255,255,255,.045);pointer-events:none}
+#nvCodHero .nv-cod-hero>*{position:relative;z-index:1}
+#nvCodHero .nv-cod-l{font-size:12.5px;font-weight:700;letter-spacing:0;text-transform:none;color:rgba(255,255,255,.82)}
+#nvCodHero .nv-cod-v{margin-top:8px;font-size:clamp(34px,9vw,44px);font-weight:800;letter-spacing:-.02em;line-height:1.05;font-variant-numeric:tabular-nums;color:#fff}
+#nvCodHero .nv-cod-eye{top:-6px;right:-6px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.12);color:#fff}
+#nvCodHero .nv-cod-eye:hover{color:#fff;background:rgba(255,255,255,.18)}
+#nvCodHero .nv-cod-eye:focus-visible{outline:2px solid #fff;outline-offset:2px}
+#nvCodHero .nv-cod-spark svg *{stroke:rgba(255,255,255,.62)}
+#nvCodHero .nv-cod-b{border:1px solid rgba(255,255,255,.13);border-radius:14px;background:rgba(255,255,255,.07);box-shadow:none}
+#nvCodHero .nv-cod-b span{color:rgba(255,255,255,.78)}
+#nvCodHero .nv-cod-b strong{color:#fff}
+#nvCodHero .nv-cod-b i{color:rgba(255,255,255,.7)}
+#nvCodHero .nv-cod-b.tap:hover{border-color:rgba(255,255,255,.5)}
+#nvCodHero .nv-cod-b.tap:focus-visible{outline:2px solid #fff;outline-offset:2px}
+#nvCodHero .nv-cod-cta{min-height:48px;border:0;border-radius:14px;background:#fff;color:#06281b;font-size:15.5px;font-weight:800}
+#nvCodHero .nv-cod-cta:hover{filter:none;background:#eafff5}
+#nvCodHero .nv-cod-cta:focus-visible{outline:2px solid #fff;outline-offset:3px}
+#nvCodHero .nv-cod-recent>span{color:rgba(255,255,255,.72)}
+#nvCodHero .nv-cod-r b{color:#fff}
+#nvCodHero .nv-cod-r em{color:rgba(255,255,255,.78)}
+#nvCodHero .nv-cod-r .nvst{background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.2)}
+#nvCodHero .nv-cod-all{border:1px solid rgba(255,255,255,.22);border-radius:12px;background:transparent;color:#fff;min-height:44px}
+#nvCodHero .nv-cod-all:hover{background:rgba(255,255,255,.08)}
+@media (max-width:760px){ #nvCodHero .nv-cod-hero{padding:16px;border-radius:18px} }
+/* Nova Instant moves to the foot of Home: after the wallet come what needs
+   the merchant and their parcels, not a second service. */
+#client-dashboard .nv-instant{order:9}
 </style>
 
 <script>

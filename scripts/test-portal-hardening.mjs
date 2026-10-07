@@ -157,8 +157,9 @@ function page(body = '') {
   }
   assert.match(app, /id="nvInvitePass" type="password" autocomplete="new-password"/);
   assert.match(html, /<input id="webKey" type="password"/);
-  assert.match(html, /<label for="bulkCsvInput">/);
-  assert.match(html, /<b>payment_mode<\/b>: COD or Prepaid/);
+  // 8 Oct 2026: the label is now the file tile itself, so it carries a class and an id.
+  assert.match(html, /<label class="nvbk-file" for="bulkCsvInput"/);
+  assert.match(html, /<dt>payment_mode<\/dt><dd>COD or Prepaid<\/dd>/);
   assert.match(html, /<div class="panel mt-14" hidden aria-hidden="true">\s*<div class="section-head"><div><h3>Withdraw funds/);
   assert.match(html, /#nvdrawer\[hidden\]\{display:none!important;\}/);
   /* 4 Oct 2026: the ticking PKT clock became a data-freshness label. */
