@@ -4501,6 +4501,9 @@ html,body{ background:var(--bg); color:var(--ink); }
       .nv-rb-route th, .nv-rb-route td{padding-left:8px;padding-right:8px}
     }
     .nv-st-chk{display:inline-flex;align-items:center;gap:5px;margin:0 12px 4px 0;font-size:13px;white-space:nowrap}
+/* Limited staff login (9 Oct 2026) */
+.nv-limited-bar{margin:0 0 14px;padding:10px 14px;border:1px solid #c6ebd8;border-left:4px solid #0c7c59;border-radius:10px;background:#eafbf3;color:#10221a;font-size:13.5px;line-height:1.45}
+.nv-limited-bar a{color:#06603f;font-weight:700;text-decoration:underline;text-underline-offset:3px;margin-left:6px}
 </style>
   <!-- NovaX (admin AWB parity): AWB print modes, identical to client.html.
        Exactly one of these two is left enabled at a time -- JS toggles
@@ -5017,7 +5020,22 @@ html,body{ background:var(--bg); color:var(--ink); }
         if(role==="client"){ redirectAway("client.html"); return; }
         if(role==="rider"){ redirectAway("rider.html"); return; }
         if(role==="sales"){ redirectAway("sales.html"); return; }
-        if(role==="support"){ redirectAway("care.html"); return; }
+        if(role==="support"){
+          /* Limited staff (9 Oct 2026): a NovaX login that is NOT an admin.
+             The server (nv_staff_me) says whether an admin gave it sections
+             of this portal and which ones; the database enforces the same
+             list on every read and write. With no sections it belongs on the
+             Support Desk, as before. */
+          Promise.resolve(__gsb.rpc("nv_staff_me",{})).then(function(m){
+            var d=m&&!m.error?m.data:null, perms=d&&d.limited&&Array.isArray(d.permissions)?d.permissions:[];
+            var sections=perms.filter(function(x){ return x!=="support-desk"; });
+            if(!sections.length){ redirectAway("care.html"); return; }
+            window.__novaxVerifiedProfile={ role:"staff", status:status, limited:true, permissions:perms, supportDesk:!!(d&&d.support_desk) };
+            var g=document.getElementById("nvAuthGate"); if(g) g.style.display="none";
+            __resolveGate("staff");
+          },function(){ redirectAway("care.html"); });
+          return;
+        }
         if(__ALLOWED_ROLES.indexOf(role)===-1){ redirectAway("index.html"); return; }
         // Verified: real Supabase session + an allowed admin role. Only now is
         // it safe to reveal the Admin Portal.
@@ -6249,17 +6267,21 @@ html,body{ background:var(--bg); color:var(--ink); }
                     <div class="filter-bar perm-grid">
                       <label class="check-line"><input type="checkbox" data-user-permission value="dashboard" checked> Dashboard</label>
                       <label class="check-line"><input type="checkbox" data-user-permission value="orders-view" checked> Orders view all/report</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="orders-book"> Create booking</label>
                       <label class="check-line"><input type="checkbox" data-user-permission value="orders-processing"> Order processing</label>
                       <label class="check-line"><input type="checkbox" data-user-permission value="manifest"> Manifest</label>
                       <label class="check-line"><input type="checkbox" data-user-permission value="demanifest"> Demanifest</label>
-                      
-                      <label class="check-line"><input type="checkbox" data-user-permission value="finance-expense"> Expenses</label>
-                      <label class="check-line"><input type="checkbox" data-user-permission value="finance-invoices"> Invoices</label>
-                      <label class="check-line"><input type="checkbox" data-user-permission value="clients"> Clients</label>
-                      <label class="check-line"><input type="checkbox" data-user-permission value="users"> Users</label>
-                      <label class="check-line"><input type="checkbox" data-user-permission value="riders"> Riders</label>
-                      <label class="check-line"><input type="checkbox" data-user-permission value="api"> API</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="pickups"> Pickup requests</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="support-tickets"> Support tickets</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="clients"> Clients (view, CNIC review)</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="riders"> Riders (view only)</label>
+                      <label class="check-line"><input type="checkbox" data-user-permission value="support-desk"> Support Desk</label>
+                      <label class="check-line" data-admin-only-perm><input type="checkbox" data-user-permission value="finance-expense"> Expenses</label>
+                      <label class="check-line" data-admin-only-perm><input type="checkbox" data-user-permission value="finance-invoices"> Invoices</label>
+                      <label class="check-line" data-admin-only-perm><input type="checkbox" data-user-permission value="users"> Users</label>
+                      <label class="check-line" data-admin-only-perm><input type="checkbox" data-user-permission value="api"> API</label>
                     </div>
+                    <p class="footer-note" id="userPermNote" style="margin-top:10px"></p>
                   </div>
                 </div>
                 <div class="panel">
@@ -11931,7 +11953,65 @@ html,body{ background:var(--bg); color:var(--ink); }
     }
 
 
+    /* ═══ Limited staff (9 Oct 2026) ═══════════════════════════════════════
+       A login that is not an admin sees only the sections an admin ticked
+       for it in Create Users. This is the page's half; the database refuses
+       everything else by itself (sql_novax_staff_limits_20261009.sql), so
+       hiding a button here is for clarity, never the protection. */
+    const NV_STAFF_TABS = {
+      "dashboard": ["dashboard"],
+      "orders-view": ["orders-view-all", "orders-report"],
+      "orders-book": ["orders-book"],
+      "orders-processing": ["orders-processing"],
+      "manifest": ["orders-manifest", "manifest-summary", "manifest-transit", "manifest-reached", "manifest-dispute"],
+      "demanifest": ["orders-demanifest"],
+      "pickups": ["pickup-requests"],
+      "support-tickets": ["support-tickets"],
+      "clients": ["clients-summary", "clients-leads", "clients-clients", "clients-profile-changes"],
+      "riders": ["riders-stations", "riders-route", "riders-report", "riders-summary"]
+    };
+    function nvLimited(){ var p=window.__novaxVerifiedProfile; return !!(p && p.limited); }
+    function nvStaffPerms(){ var p=window.__novaxVerifiedProfile; return (p && p.limited && Array.isArray(p.permissions)) ? p.permissions : []; }
+    function nvAllowedTabs(){ var out=[]; nvStaffPerms().forEach(function(k){ (NV_STAFF_TABS[k]||[]).forEach(function(t){ if(out.indexOf(t)<0) out.push(t); }); }); return out; }
+    function nvTabAllowed(id){ return !nvLimited() || nvAllowedTabs().indexOf(normalizeAdminTab(id))>-1; }
+    function nvFirstAllowedTab(){ var a=nvAllowedTabs(); return a.indexOf("orders-view-all")>-1 ? "orders-view-all" : (a[0] || "dashboard"); }
+    window.nvTabAllowed = nvTabAllowed; window.nvLimited = nvLimited;
+    function nvApplyLimits(){
+      if(!nvLimited()) return;
+      document.body.classList.add("nv-limited");
+      var allowed=nvAllowedTabs();
+      document.querySelectorAll("[data-admin-tab]").forEach(function(b){
+        var ok=allowed.indexOf(b.getAttribute("data-admin-tab"))>-1;
+        b.hidden=!ok; b.disabled=!ok; if(!ok) b.style.display="none";
+      });
+      /* A group stays only if one of its sections does. Its own heading
+         button (data-admin-group-toggle, or the first button) follows. */
+      document.querySelectorAll(".admin-nav-group").forEach(function(g){
+        var any=[].some.call(g.querySelectorAll("[data-admin-tab]"), function(b){ return !b.hidden; });
+        g.hidden=!any; if(!any) g.style.display="none";
+      });
+      /* Links to other NovaX pages: each has its own door, but a link that
+         only leads to "no access" is noise. The Support Desk stays when it
+         was ticked. */
+      var desk=nvStaffPerms().indexOf("support-desk")>-1 || !!window.__novaxVerifiedProfile.supportDesk;
+      document.querySelectorAll('a[href="sales.html"], a[href="instant-ops.html"]' + (desk ? "" : ', a[href="care.html"]')).forEach(function(a){ a.hidden=true; a.style.display="none"; });
+      if(!document.getElementById("nvLimitedBar")){
+        var p=window.__novaxVerifiedProfile, bar=document.createElement("div");
+        bar.id="nvLimitedBar"; bar.className="nv-limited-bar"; bar.setAttribute("role","status");
+        bar.innerHTML="<b>Staff login.</b> You see the sections NovaX gave you. Money, users and settings are for admins."+
+          ((p.supportDesk || nvStaffPerms().indexOf("support-desk")>-1) ? ' <a href="care.html">Open the Support Desk</a>' : "");
+        var host=document.querySelector(".admin-content")||document.querySelector("main")||document.body;
+        host.insertBefore(bar, host.firstChild);
+      }
+      if(!nvTabAllowed(state.activeAdminTab)) showAdminTab(nvFirstAllowedTab());
+    }
+    try{ if(window.__novaxAuthGateReady) window.__novaxAuthGateReady.then(function(){ try{ nvApplyLimits(); }catch(e){ console.warn("NovaX limits", e); } }); }catch(e){}
+
     function showAdminTab(id) {
+      if (!nvTabAllowed(id)) {
+        try { toast("Your login does not have that section. Ask an admin if you need it.", "error"); } catch (e) {}
+        id = nvFirstAllowedTab();
+      }
       state.activeAdminTab = normalizeAdminTab(id);
       saveState();
       renderAdmin();
@@ -14080,9 +14160,20 @@ html,body{ background:var(--bg); color:var(--ink); }
         toast("Cloud connection not ready — wait a moment and try again.");
         return;
       }
-      const permissions = [...document.querySelectorAll("[data-user-permission]:checked")].map(item => item.value);
+      let permissions = [...document.querySelectorAll("[data-user-permission]:checked")].map(item => item.value);
       const role = document.getElementById("userRole").value;
       const accessSide = document.getElementById("userAccessSide").value;
+      const isLimitedStaff = /admin/i.test(accessSide) && !/^admin$/i.test(String(role).trim());
+      if (isLimitedStaff) {
+        /* Money, users and API are admin-only: never stored for a limited login. */
+        permissions = permissions.filter(p => ["finance-expense", "finance-invoices", "users", "api"].indexOf(p) < 0);
+        /* Moving parcels in or out of a manifest is order processing. */
+        if ((permissions.indexOf("manifest") > -1 || permissions.indexOf("demanifest") > -1) && permissions.indexOf("orders-processing") < 0) permissions.push("orders-processing");
+        if (!permissions.filter(p => p !== "support-desk" && p !== "dashboard").length && permissions.indexOf("support-desk") < 0) {
+          toast("Tick at least one section for this staff login.", "error");
+          return;
+        }
+      }
       // NovaX fix (rider logins were never linked): stop here rather than
       // create an account that can authenticate but has no rider identity --
       // rider.html will only ever show it the empty "no rider account" screen.
@@ -14130,7 +14221,13 @@ html,body{ background:var(--bg); color:var(--ink); }
         state.users.unshift(newUser);
         saveState();
         showAdminTab("users-edit");
-        const profileRole = /admin/i.test(accessSide) ? "admin" : (/rider/i.test(accessSide) ? "rider" : (/client/i.test(accessSide) ? "client" : "admin"));
+        /* 9 Oct 2026: only the role "Admin" makes a full admin. Every other
+           Admin Portal role is a limited staff login: profile role 'support',
+           which no admin-only rule accepts, plus the ticks above, which the
+           database reads. Until now every Admin Portal login was made a full
+           admin whatever was ticked. */
+        const fullAdmin = /admin/i.test(accessSide) && /^admin$/i.test(String(role).trim());
+        const profileRole = /admin/i.test(accessSide) ? (fullAdmin ? "admin" : "support") : (/rider/i.test(accessSide) ? "rider" : (/client/i.test(accessSide) ? "client" : "support"));
         const linkProfile = attemptsLeft => {
           const riderObj = newUser.riderId ? state.riders.find(r => r.id === newUser.riderId) : null;
           const riderUuid = riderObj && riderObj._uuid;
@@ -14152,7 +14249,18 @@ html,body{ background:var(--bg); color:var(--ink); }
               toast(`${name} account created, but no profile row was found to link yet. Run the profile auto-create fix, then re-open Users and save this account again.`);
               return;
             }
-            toast(`${name} created with a real, working ${accessSide} login.`);
+            if (isLimitedStaff) {
+              toast(`${name} created as a staff login (not an admin). They see only the ticked sections.`, "success");
+              if (permissions.indexOf("support-desk") > -1) {
+                /* The Support Desk has its own team list. Adding them there
+                   means care.html lets them in with this same login. */
+                Promise.resolve(window.__nvSb.rpc("cs_admin_invite", { p_name: name, p_email: email, p_phone: null })).then(function (x) {
+                  if (x && x.error && !/already/i.test(x.error.message || "")) toast("Staff login created, but the Support Desk invite failed: " + x.error.message + " Add them under Support Desk > Team.", "error");
+                }, function () {});
+              }
+            } else {
+              toast(`${name} created with a real, working ${accessSide} login.`);
+            }
           });
         };
         setTimeout(() => linkProfile(4), 900);
@@ -14166,7 +14274,24 @@ html,body{ background:var(--bg); color:var(--ink); }
       const side = (document.getElementById("userAccessSide") || {}).value || "";
       const field = document.getElementById("userRiderField");
       if (field) field.style.display = /rider/i.test(side) ? "" : "none";
+      nvUserPermNote();
     }
+    /* Says, before Create is pressed, what kind of login this will be. */
+    function nvUserPermNote() {
+      const note = document.getElementById("userPermNote"); if (!note) return;
+      const side = (document.getElementById("userAccessSide") || {}).value || "";
+      const role = (document.getElementById("userRole") || {}).value || "";
+      const adminSide = /admin/i.test(side), full = adminSide && /^admin$/i.test(role.trim());
+      document.querySelectorAll("[data-admin-only-perm]").forEach(function (l) {
+        const box = l.querySelector("input"); if (!box) return;
+        if (adminSide && !full) { box.checked = false; box.disabled = true; l.style.opacity = ".5"; }
+        else { box.disabled = false; l.style.opacity = ""; }
+      });
+      note.textContent = !adminSide ? ""
+        : full ? "Role Admin: a full admin. Sees and can do everything, including money, payouts and users, whatever is ticked."
+               : "A staff login, not an admin. They see only the ticked sections, and the database refuses money, payouts, users and settings for them. Manifest and Demanifest also need Order processing. Expenses, Invoices, Users and API are for admins only.";
+    }
+    window.nvUserPermNote = nvUserPermNote;
 
     /* NovaX cleanup: createRiderUser() removed. It was unreachable (no button,
        no binding, no window export) and structurally broken -- its three inputs
@@ -18155,6 +18280,8 @@ html,body{ background:var(--bg); color:var(--ink); }
     (function(){
       const side = document.getElementById("userAccessSide");
       if (side) side.addEventListener("change", toggleRiderPicker);
+      /* Role decides whether this is a full admin or a staff login: keep the note under the ticks true. */
+      try { var nvRoleSel = document.getElementById("userRole"); if (nvRoleSel) nvRoleSel.addEventListener("change", nvUserPermNote); nvUserPermNote(); } catch (e) {}
       try { toggleRiderPicker(); } catch(e){}
     })();
 
@@ -18997,7 +19124,42 @@ html,body{ background:var(--bg); color:var(--ink); }
           else { o._pending=true; sb.from(table).insert(row).select("id").maybeSingle().then(function(r){ o._pending=false; if(r&&r.error){ if(isMissingTableError(r.error)&&!missingTables[table]){ missingTables[table]=true; console.warn("NovaX "+table+" table missing -- pausing sync for this session",r.error.message); } else if(isDuplicateKeyError(r.error)){ adoptExistingRow(o,row,table,sig); } else { console.warn("NovaX "+table+" insert",r.error.message); } return; } if(r&&r.data){ o._uuid=r.data.id; shadow[o._uuid]=sig; shadowRow[o._uuid]=row; scheduleResync(); } }); }
         });
       }
-      function syncAll(){ if(!loaded) return; SETS.forEach(function(s){ syncEntity(state[s[0]], s[1], s[2]); }); }
+      /* Limited staff (9 Oct 2026): the page holds everything it loaded, but
+         a staff login may only save what its sections own. Anything else it
+         changed on screen would be refused by the database with no message
+         (a row rule answers "0 rows", not an error), so it is not sent, the
+         person is told once, and the data is read back from the server. */
+      function nvStaffMaySync(table){
+        var p=window.__novaxVerifiedProfile; if(!(p && p.limited)) return true;
+        var has=function(k){ return (p.permissions||[]).indexOf(k)>-1; };
+        if(table==="parcels") return has("orders-processing");
+        if(table==="manifest_logs") return has("manifest") || has("demanifest");
+        if(table==="operations_issues" || table==="resolved_alerts") return has("orders-processing") || has("manifest") || has("demanifest") || has("support-tickets");
+        if(table==="pickup_requests") return has("pickups");
+        return false;
+      }
+      var nvStaffToldAt=0;
+      function nvStaffBlockedChange(arr, build){
+        return (arr||[]).some(function(o){
+          if(!o || o._pending || o._syncBlocked) return false;
+          var row; try{ row=build(o); }catch(e){ return false; }
+          if(!row) return false;
+          return o._uuid ? (shadow[o._uuid]!==undefined && shadow[o._uuid]!==sigOf(row)) : true;
+        });
+      }
+      function syncAll(){
+        if(!loaded) return;
+        var refused=false;
+        SETS.forEach(function(s){
+          if(nvStaffMaySync(s[2])){ syncEntity(state[s[0]], s[1], s[2]); return; }
+          if(nvStaffBlockedChange(state[s[0]], s[1])) refused=true;
+        });
+        if(refused && Date.now()-nvStaffToldAt>8000){
+          nvStaffToldAt=Date.now();
+          try{ toast("That change was not saved: your login can view this, not change it. Ask an admin.", "error"); }catch(e){}
+          try{ if(typeof nvRefresh==="function") nvRefresh(["clients","riders","staff_users","pickup_requests","parcels"]); }catch(e){}
+        }
+      }
       /* Saves one object now and reports the real outcome, for admin actions
          that must not say "saved" before the server agrees. The row is marked
          synced first so the background loop does not send it again; if the
@@ -20506,6 +20668,7 @@ html,body{ background:var(--bg); color:var(--ink); }
       sources:function(q){
         var out=[];
         TABS.forEach(function(t){
+          if(typeof window.nvTabAllowed==="function" && !window.nvTabAllowed(t[0])) return;
           if(!q || t[1].toLowerCase().indexOf(q)>-1 || t[0].toLowerCase().indexOf(q)>-1){
             out.push({group:"Go to",icon:"→",title:t[1],subtitle:t[2],
               run:function(){ if(typeof showAdminTab==="function") showAdminTab(t[0]); }});
