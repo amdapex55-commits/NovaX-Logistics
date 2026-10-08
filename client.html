@@ -2667,7 +2667,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=f8b33767" defer></script>
+  <script src="client-app.min.js?v=681fb209" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2831,7 +2831,11 @@ try{
                    onto the tools. Profile, Sub Accounts, API and NovaX AI are moved
                    into the "More" group by nvGroupRareTabs(), which adds the
                    Account and Help labels; Log out follows on its own row. -->
-              <a class="nv-instant-menu" href="instant.html?from=portal" target="_blank" rel="noopener"><b>Nova Instant</b><span>One parcel across Karachi by bike</span></a>
+              <!-- Nova Recover takes the top-of-menu slot while Nova Instant is shelved
+                   (9 Oct 2026; the Instant link is kept in shelved/nova-instant/).
+                   Shown only to a merchant who has the tab and has not started:
+                   body.nv-rc-fresh, set by nvRcApply(). -->
+              <button type="button" class="nv-instant-menu nv-recover-promo" onclick="if(window.showClientTab)showClientTab('recover')"><b>Nova Recover <i>New</i></b><span>We phone refused customers and sell the order again</span></button>
               <button class="client-tab active nv-on-nav" data-client-tab="dashboard">Dashboard</button>
               <button class="client-tab nv-on-nav" data-client-tab="newBooking">New booking</button>
               <button class="client-tab nv-on-nav" data-client-tab="money">NovaX Wallet</button>
@@ -2873,14 +2877,15 @@ try{
                    renderCodHero() from the same server-computed figures the
                    Wallet tab uses -- this panel never does its own arithmetic. -->
               <div id="nvCodHero"></div>
-              <!-- Nova Instant (5 Oct 2026): one parcel across Karachi by bike.
-                   Its own product, opened in its own tab, so the portal and any
-                   half-filled booking here stay as they are. -->
-              <a class="nv-instant" href="instant.html?from=portal" target="_blank" rel="noopener">
+              <!-- Nova Recover on Home, in the slot Nova Instant had (shelved 9 Oct
+                   2026, kept in shelved/nova-instant/). For a merchant who has the
+                   tab and has not started (body.nv-rc-fresh); the "N orders came
+                   back" card replaces it when there is something to recover. -->
+              <button type="button" class="nv-instant nv-recover-promo" onclick="if(window.showClientTab)showClientTab('recover')">
                 <span class="nv-instant-new">New</span>
-                <span class="nv-instant-body"><b>Nova Instant</b><span>Need one parcel delivered across Karachi today? A bike rider, an upfront fare and no AWB. Rs 25 per km, Rs 100 minimum.</span></span>
-                <span class="nv-instant-go">Book Nova Instant</span>
-              </a>
+                <span class="nv-instant-body"><b>Nova Recover</b><span>A customer refused, or an order came back? Our agent phones them and sells it again. You pay only for each order we recover.</span></span>
+                <span class="nv-instant-go">Open Nova Recover</span>
+              </button>
               <div class="nv-kyc-banner nv-terms-banner" id="nvTermsBanner" role="status" hidden>
                 <div><b>Please accept the NovaX Merchant Agreement</b><span>Version <span id="nvTermsVer" style="display:inline;margin:0">1.0</span> covers COD payouts, holds, lost-parcel claims and returns. <a href="/terms.html" target="_blank" rel="noopener">Read it</a></span></div>
                 <button type="button" class="action-btn" id="nvTermsAccept">I accept</button>
@@ -6564,6 +6569,15 @@ body.nv-booting #clientParcelCards:empty,body.nv-booting #walletLedgerList:empty
 /* Nova Instant moves to the foot of Home: after the wallet come what needs
    the merchant and their parcels, not a second service. */
 #client-dashboard .nv-instant{order:9}
+/* Nova Recover in Nova Instant's two slots (9 Oct 2026). Same look, but a
+   button that opens the tab, straight after the wallet, and only for a
+   merchant who has the tab and has not started yet. */
+button.nv-recover-promo{width:100%;font:inherit;text-align:left;cursor:pointer;-webkit-appearance:none;appearance:none}
+#client-dashboard .nv-recover-promo{order:1}
+.nv-instant-menu.nv-recover-promo b i{font-style:normal;margin-left:6px;padding:2px 6px;border-radius:6px;border:1px solid var(--green-ink);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+body:not(.nv-rc-fresh) .nv-recover-promo,
+body:not(.nv-rc-fresh) #clientMenu .nv-recover-promo,
+#client-dashboard:has(#nvRcStart) > .nv-recover-promo{display:none!important}
 </style>
 
 <script>

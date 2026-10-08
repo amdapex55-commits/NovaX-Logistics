@@ -7759,6 +7759,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvRcApply(){
       var on=nvRcVisible();
       try{ document.body.classList.toggle("nv-rc-on", on); }catch(e){}
+      /* Has the tab and has never started: the Home card and menu line that
+         introduce Nova Recover show only then (.nv-recover-promo). */
+      try{ document.body.classList.toggle("nv-rc-fresh", on && (NV_RC.state||{}).accepted===false && (NV_RC.state||{}).may_push!==false); }catch(e){}
       try{
         var seen=false; try{ seen=localStorage.getItem("nvRcSeen")==="1"; }catch(e){}
         document.body.classList.toggle("nv-rc-new", on && !seen);
