@@ -57,3 +57,39 @@ const section = (id, next) => html.slice(html.indexOf('id="' + id + '"'), html.i
   ok("Home: the wallet card matches the Wallet tab, parcels follow it, Nova Instant comes last");
 }
 console.log("THREE SCREENS CHECKS PASSED");
+
+// ── Later on 8 Oct: the invoice document, Profile and the Wallet's invoice cards ──
+{
+  const fnSrc = (name) => { const a = app.indexOf("    function " + name + "("); assert.ok(a > -1, "missing fn " + name); let i = app.indexOf("{", a), d = 0; for (; i < app.length; i++) { if (app[i] === "{") d++; else if (app[i] === "}") { d--; if (!d) break; } } return app.slice(a, i + 1); };
+  // Invoice: the same parts, window and print path as receipts and statements.
+  const inv = fnSrc("clientInvoiceHtml");
+  assert.ok(inv.includes('return nvDocHead("Invoice", invType,') && inv.includes('class="nv-doc-grid"') && inv.includes('class="nv-doc-total"') && inv.includes('class="nv-doc-foot"'), "built from the shared document parts");
+  assert.ok(!/font-family:\s*Arial/i.test(inv) && !inv.includes("nv-doc-paper"), "no page style of its own");
+  assert.ok(!/var\(--nvu-/.test(inv), "white paper in both themes: no theme colours inside the document");
+  assert.match(fnSrc("viewInvoice"), /nvOpenDoc\("Invoice "\+inv\.id, clientInvoiceHtml\(inv\), nvInvoiceCsvRows\(inv\)/);
+  assert.match(fnSrc("printInvoice"), /nvPrintDoc\(clientInvoiceHtml\(inv\)\)/);
+  assert.ok(fnSrc("downloadInvoiceCsv").includes("nvInvoiceCsvRows(inv)") && fnSrc("nvInvoiceCsvRows").includes('"payment_mode"') && fnSrc("nvInvoiceCsvRows").includes('line.billedNote||""'), "one CSV for the card and the window, payment mode and the note kept");
+  for (const t of ["collected later &mdash; not on this invoice", "delivered after this invoice was made</b>", "summary totals are the ones that settle", "prepaid &mdash; no cash due", "not collected"]) assert.ok(inv.includes(t), t);
+  ok("invoice: drawn, opened and printed like receipts and statements; figures and notes unchanged");
+
+  // Wallet invoice cards.
+  assert.ok(app.includes(`<div class="inline-actions nvinv-acts" style="margin-top:10px"><button class="ghost-btn nvinv-view" onclick="viewInvoice('\${inv.id}')">View invoice</button><button class="ghost-btn" onclick="printInvoice('\${inv.id}')">Print</button><button class="ghost-btn" onclick="downloadInvoiceCsv('\${inv.id}')">CSV</button></div>`));
+  assert.ok(html.includes("#client-money .nvinv-acts{display:grid;grid-template-columns:minmax(0,1fr) auto auto !important"));
+  ok("wallet: each invoice card has one clear action and two lesser ones on the same row");
+
+  // Profile: sections that fold, nothing removed.
+  const p = section("client-profile", 'id="client-subAccounts"');
+  assert.equal((p.match(/<details class="panel[^"]* nv-pf-sec"/g) || []).length, 8, "seven sections and the preview");
+  assert.equal((p.match(/<\/details>/g) || []).length, 8);
+  assert.equal((p.match(/<summary class="section-head">/g) || []).length, 8);
+  assert.equal((p.match(/nv-pf-sec"[^>]* open>/g) || []).length, 8, "all open in the page itself, so nothing is hidden without the script");
+  assert.match(p, /<details class="panel nv-pf-sec" open>\s*<summary class="section-head"><div><h3>Business profile<\/h3>/, "the first section never starts shut");
+  assert.equal((p.match(/data-nv-fold="phone"/g) || []).length, 6);
+  assert.match(p, /id="nvKycPanel" data-nv-fold="phone-verified" open>/, "the CNIC section starts shut only once verified");
+  ["nvPfLogo","nvPfName","nvPfAccent","nvPfPhone","nvPfWa","nvPfEmail","nvPfWeb","nvPfType","nvPfAddr","nvPfTrackOn","nvPfCity","nvPfCityReq","nvKycPanel","nvKycSend","nvKycReplace","nvPfHistory","nvPfSaveBar","nvPfSave","nvPfDiscard","nvPfPvTrack"].forEach(once);
+  const fold = fnSrc("nvPfFoldOnce");
+  assert.ok(fold.includes('matchMedia("(max-width:760px)")') && fold.includes("if(NV_PF.folded) return; NV_PF.folded=true;"), "phones only, once per visit");
+  assert.ok(!/nvPfEl\("nvPf[A-Za-z]+"\)\.focus\(\)/.test(app) && fnSrc("nvPfShow").includes("d.open=true"), "a save that fails on a field opens its section");
+  ok("profile: eight folding sections, every field still in the page, phones start with the first one open");
+}
+console.log("INVOICE, PROFILE AND WALLET CARD CHECKS PASSED");

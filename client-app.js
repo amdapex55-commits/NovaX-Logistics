@@ -4619,7 +4619,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const absorbLine = clears>0
           ? `<p class="nv-inv-absorb">${money(clears)} of this clears the charges already on your account &mdash; <strong>${money(Math.max(0, Number(inv.payable||0)-clears))}</strong> reaches your wallet.</p>`
           : "";
-        return `<div class="invoice-card nv-inv-row" style="animation-delay:${Math.min(idx*70,560)}ms"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="footer-note" style="margin-left:auto">${escLabelText(nvDateTime(inv.createdAt))}</span></div><p style="margin:6px 0 0">${sum}</p>${absorbLine}${nvInvoiceSteps(nvInvTaken(inv)?"Taken from wallet":inv.status)}<div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="viewInvoice('${inv.id}')">View</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Print statement</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">CSV</button></div></div>`;
+        return `<div class="invoice-card nv-inv-row" style="animation-delay:${Math.min(idx*70,560)}ms"><div class="ops-card-head"><strong>${escLabelText(inv.id)}</strong><span class="chip ${invoiceTypeChipClass(invType)}">${escLabelText(invType)}</span><span class="footer-note" style="margin-left:auto">${escLabelText(nvDateTime(inv.createdAt))}</span></div><p style="margin:6px 0 0">${sum}</p>${absorbLine}${nvInvoiceSteps(nvInvTaken(inv)?"Taken from wallet":inv.status)}<div class="inline-actions nvinv-acts" style="margin-top:10px"><button class="ghost-btn nvinv-view" onclick="viewInvoice('${inv.id}')">View invoice</button><button class="ghost-btn" onclick="printInvoice('${inv.id}')">Print</button><button class="ghost-btn" onclick="downloadInvoiceCsv('${inv.id}')">CSV</button></div></div>`;
       }).join("")||`<div class="ops-card"><strong>No invoices yet</strong><p>Once a delivered parcel is invoiced it appears here with a full statement.</p></div>`;
       /* Order Logs tab removed 3 Sep 2026. It rendered one card per PARCEL --
          not per event -- showing the current status and "Last update", which
@@ -6844,15 +6844,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     /* ---- full wallet statement ---- */
-    function downloadInvoiceCsv(id){
-      const inv=state.invoices.find(i=>i.id===id); if(!inv) return;
-      const c=clientById(inv.clientId);
+    function nvInvoiceCsvRows(inv){
+      const c=clientById(inv.clientId)||{};
       const lines=clientInvoiceLineItems(inv);
       // parcel_outcome / cod_collected added so a merchant reconciling in
       // Excel can filter delivered vs returned without opening the portal.
       const header=["invoice_id","invoice_type","client_name","status","awb","booking_date","destination_city","consignee","parcel_outcome","cod_collected","payment_mode","cod_amount","delivery_charge","net_line_amount","invoice_cod_total","invoice_delivery_charges","payable_to_client","due_to_novax","final_balance","note"];
-      const rows=lines.map(line=>[inv.id,inv.invoiceType||"COD Settlement",c.name,inv.status,line.awb,line.bookingDate,line.destinationCity,line.consignee,line.outcome,line.collected?"yes":"no",line.paymentMode,line.codAmount,line.deliveryCharge,line.netLineAmount,inv.cod,inv.charges,inv.payable,inv.dueToNovax||0,inv.finalBalance||0,line.billedNote||""]);
-      const csv=[header,...rows].map(r=>r.map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(",")).join("\n");
+      return [header].concat(lines.map(line=>[inv.id,inv.invoiceType||"COD Settlement",c.name,inv.status,line.awb,line.bookingDate,line.destinationCity,line.consignee,line.outcome,line.collected?"yes":"no",line.paymentMode,line.codAmount,line.deliveryCharge,line.netLineAmount,inv.cod,inv.charges,inv.payable,inv.dueToNovax||0,inv.finalBalance||0,line.billedNote||""]));
+    }
+    function downloadInvoiceCsv(id){
+      const inv=state.invoices.find(i=>i.id===id); if(!inv) return;
+      const csv=nvInvoiceCsvRows(inv).map(r=>r.map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(",")).join("\n");
       const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download=`${inv.id}.csv`; a.click(); toast(`${inv.id} CSV downloaded.`);
     }
     // NovaX fix: replaced the old plain unbranded table (which just looked
@@ -7211,7 +7213,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
                    '<div><strong>' + money(i.dueToNovax) + '</strong>' +
                    '<div class="footer-note" style="margin-top:2px">' + escLabelText(nvDateTime(i.createdAt)) +
                    ' &middot; ' + ((i.parcelRefs||[]).length) + ' parcel' + ((i.parcelRefs||[]).length===1?'':'s') + '</div></div>' +
-                   '<button class="ghost-btn" onclick="printInvoice(&quot;' + i.id + '&quot;)">Print statement</button></div>';
+                   '<button class="ghost-btn" onclick="printInvoice(&quot;' + i.id + '&quot;)">Print invoice</button></div>';
           }).join("");
         }
       }
@@ -7346,48 +7348,57 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     }
 
     function clientInvoiceHtml(inv){
-      const c=clientById(inv.clientId);
       const lines=clientInvoiceLineItems(inv);
       const due=Number(inv.dueToNovax||0);
       const invType=inv.invoiceType||"COD Settlement";
-      const deliveredAt=(state.parcels.find(p=>p.awb===(inv.parcelRefs||[])[0])||{}).updated||inv.createdAt;
       // NovaX fix (dashboard/invoices/wallet desync): paidAt is populated from
       // settled_at for every closed status, not just literal "Paid" -- a
       // Settled or Paid-to-NovaX invoice was showing no paid date at all.
       const paidEvent=inv.status==="Pushed to wallet"?inv.walletPushedAt:(isInvoiceClosed(inv.status)?inv.paidAt:"");
-      // NovaX security fix: display-only escaping of every text cell on the
-      // invoice. Amounts still come from money() on the same numbers, so the
-      // invoice math, totals and settlement logic are byte-identical.
-      // Outcome pill colours are inline because this HTML is also used for
-      // print and for the PDF path, where the portal stylesheet is not applied.
-      const TONE={ good:"background:var(--nvu-good-bg);color:var(--nvu-accent);border:1px solid var(--nvu-good-ln)",
-                   bad:"background:var(--nvu-bad-bg);color:var(--nvu-bad-fg);border:1px solid var(--nvu-bad-ln)",
-                   warn:"background:var(--nvu-warn-bg);color:var(--nvu-warn-fg);border:1px solid var(--nvu-warn-ln)" };
+      /* 8 Oct 2026: the invoice is drawn with the same parts as receipts and
+         statements (nvDocHead, the .nv-doc tables, .nv-doc-total), so the three
+         documents a merchant keeps look like one family. It used to be its own
+         Arial page built from inline styles.
+
+         Nothing about the figures changed: every text cell is still escaped,
+         amounts still come from money() on the same numbers, and the totals
+         are the server's. The paper is white in both themes, so the outcome
+         colours are fixed values rather than theme tokens.
+
+         The parcel table has no Payment column: a prepaid parcel already says
+         "prepaid, no cash due" in its COD cell, and eight columns fit an A4
+         page and the document window without scrolling. The CSV keeps it. */
+      const TONE={ good:"background:#e6f6ee;color:#0c5f45;border:1px solid #b7e3ce",
+                   bad:"background:#fdecea;color:#a12a1d;border:1px solid #f3c0ba",
+                   warn:"background:#fdf1dc;color:#7a4a00;border:1px solid #f0d9a8" };
+      const SMALL="font-size:9.5px;color:#666;font-weight:600";
       const rows=lines.map(line=>{
-        const pill=`<span style="display:inline-block;padding:2px 8px;border-radius:var(--r-pill);font-size:11px;font-weight:800;white-space:nowrap;${TONE[line.outcomeTone]||TONE.warn}">${escLabelText(line.outcome)}</span>`;
+        const pill=`<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:9.5px;font-weight:800;white-space:nowrap;${TONE[line.outcomeTone]||TONE.warn}">${escLabelText(line.outcome)}</span>`;
+        const laterLine=line.billedAsReturn?`<div style="${SMALL};margin-top:3px">delivered ${escLabelText(line.deliveredOn)}, after this invoice</div>`:"";
         /* Three distinct cases, because "Rs 0" with no reason is exactly the
            ambiguity this column exists to remove:
              prepaid delivered -> cash was never due, the customer paid online
              not delivered     -> cash was due but never collected
              delivered COD     -> the real amount */
-        const laterLine=line.billedAsReturn?`<div style="font-size:10px;color:#8a8a8a;font-weight:600;margin-top:3px">delivered ${escLabelText(line.deliveredOn)}, after this invoice</div>`:"";
         const codCell=line.billedAsReturn&&line.laterCod>0
-          ? `${money(0)}<div style="font-size:10px;color:#8a8a8a;font-weight:600">${escLabelText(money(line.laterCod))} collected later &mdash; not on this invoice</div>`
+          ? `${money(0)}<div style="${SMALL}">${escLabelText(money(line.laterCod))} collected later &mdash; not on this invoice</div>`
           : line.prepaid
-          ? `${money(0)}<div style="font-size:10px;color:#8a8a8a;font-weight:600">prepaid &mdash; no cash due</div>`
+          ? `${money(0)}<div style="${SMALL}">prepaid &mdash; no cash due</div>`
           : (line.collected
               ? money(line.codAmount)
-              : `${money(0)}<div style="font-size:10px;color:#8a8a8a;font-weight:600">not collected</div>`);
-        return `<tr><td>${escLabelText(line.awb)}</td><td>${escLabelText(line.bookingDate)}</td><td>${escLabelText(line.destinationCity)}</td><td>${escLabelText(line.consignee)}</td><td>${pill}${laterLine}</td><td>${escLabelText(line.paymentMode)}</td><td style="text-align:right">${codCell}</td><td style="text-align:right">${money(line.deliveryCharge)}${line.distanceKm!=null?`<div style="font-size:10px;color:#8a8a8a;font-weight:600">${escLabelText(line.distanceKm)} km</div>`:""}</td><td style="text-align:right">${money(line.netLineAmount)}</td></tr>`;
+              : `${money(0)}<div style="${SMALL}">not collected</div>`);
+        return `<tr><td style="white-space:nowrap"><strong>${escLabelText(line.awb)}</strong></td><td style="white-space:nowrap">${escLabelText((typeof nvDate==="function"&&nvDate(line.bookingDate))||line.bookingDate)}</td><td style="white-space:nowrap">${escLabelText(line.destinationCity)}</td><td>${escLabelText(line.consignee)}</td><td>${pill}${laterLine}</td><td class="num">${codCell}</td><td class="num">${money(line.deliveryCharge)}${line.distanceKm!=null?`<div style="${SMALL}">${escLabelText(line.distanceKm)} km</div>`:""}</td><td class="num">${money(line.netLineAmount)}</td></tr>`;
       }).join("");
-      const nDelivered=lines.filter(l=>l.outcomeKey==="delivered").length;
-      const nReturned=lines.filter(l=>l.outcomeKey==="returned"||l.outcomeKey==="refused"||l.outcomeKey==="cancelled").length;
-      const nOther=lines.length-nDelivered-nReturned;
-      const outcomeStrip=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">
-        <span style="padding:5px 11px;border-radius:var(--r-md);${TONE.good}"><b>${nDelivered}</b> delivered &middot; COD collected</span>
-        <span style="padding:5px 11px;border-radius:var(--r-md);${TONE.bad}"><b>${nReturned}</b> returned / refused &middot; charge only</span>
-        ${nOther?`<span style="padding:5px 11px;border-radius:var(--r-md);${TONE.warn}"><b>${nOther}</b> still in progress</span>`:""}
+      const delivered=lines.filter(l=>l.outcomeKey==="delivered");
+      const returned=lines.filter(l=>l.outcomeKey==="returned"||l.outcomeKey==="refused"||l.outcomeKey==="cancelled");
+      const nOther=lines.length-delivered.length-returned.length;
+      const CHIP="display:inline-block;padding:4px 9px;border-radius:6px;font-size:10.5px;";
+      const outcomeStrip=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px">
+        <span style="${CHIP}${TONE.good}"><b>${delivered.length}</b> delivered &middot; COD collected</span>
+        <span style="${CHIP}${TONE.bad}"><b>${returned.length}</b> returned / refused &middot; charge only</span>
+        ${nOther?`<span style="${CHIP}${TONE.warn}"><b>${nOther}</b> still in progress</span>`:""}
       </div>`;
+      const NOTE=`${TONE.warn};border-radius:6px;padding:9px 11px;margin:0 0 12px;font-size:11px;line-height:1.5`;
       /* Reconciliation guard. The header figures are the server's
          (cod_total / fee_total / net_payable) and are what actually settles.
          If the per-line view disagrees, say so plainly instead of showing two
@@ -7395,48 +7406,40 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const lineCod=lines.reduce((s,l)=>s+Number(l.codAmount||0),0);
       const lineFee=lines.reduce((s,l)=>s+Number(l.deliveryCharge||0),0);
       const drift=(Math.abs(lineCod-Number(inv.cod||0))>1)||(Math.abs(lineFee-Number(inv.charges||0))>1);
-      const driftNote=drift?`<div style="background:var(--nvu-warn-bg);border:1px solid var(--nvu-warn-ln);color:var(--nvu-warn-fg);border-radius:var(--r-md);padding:10px 12px;margin-bottom:14px;font-size:12px;line-height:1.5">
-        <b>Note:</b> the per-parcel rows below add up to ${escLabelText(money(lineCod))} COD and ${escLabelText(money(lineFee))} in charges, which differs from the invoice totals shown in the summary. The <b>summary totals are the ones that settle</b> &mdash; they are calculated by NovaX at the moment the invoice is generated. A difference here usually means a parcel's status changed after invoicing. Please contact support if the gap looks wrong.
+      const driftNote=drift?`<div style="${NOTE}">
+        <b>Note:</b> the per-parcel rows below add up to ${escLabelText(money(lineCod))} COD and ${escLabelText(money(lineFee))} in charges, which differs from the invoice totals shown in the summary. The <b>summary totals are the ones that settle</b> &mdash; they are calculated by NovaX at the moment the invoice is generated. A parcel's status can change after that (for example a return completing), which is why a row can look different today.
       </div>`:"";
       const lateLines=lines.filter(l=>l.billedAsReturn), lateCod=lateLines.reduce((a,l)=>a+Number(l.laterCod||0),0);
-      const lateNote=lateLines.length?`<div style="background:var(--nvu-warn-bg);border:1px solid var(--nvu-warn-ln);color:var(--nvu-warn-fg);border-radius:var(--r-md);padding:10px 12px;margin-bottom:14px;font-size:12px;line-height:1.5">
+      const lateNote=lateLines.length?`<div style="${NOTE}">
         <b>${lateLines.length} parcel${lateLines.length===1?" was":"s were"} delivered after this invoice was made</b> (${escLabelText(lateLines.map(l=>l.awb).join(", "))}). On this invoice ${lateLines.length===1?"it is":"they are"} billed as a return: delivery charge only.${lateCod>0?` The COD collected later, <b>${escLabelText(money(lateCod))}</b>, is not part of this invoice. If it is not on a later invoice or in your wallet, contact NovaX support.`:""}
       </div>`:"";
-      const balanceLabel=due>0?(nvInvTaken(inv)?"Taken from your wallet":"Amount Due to NovaX"):"Grand Total Payable";
+      const balanceLabel=due>0?(nvInvTaken(inv)?"Taken from your wallet":"Amount due to NovaX"):"Payable to you";
       const balanceValue=due>0?money(due):money(inv.payable||0);
-      return `<div class="nv-doc-paper" style="font-family:Arial,Helvetica,sans-serif;color:#0b1f16;background:var(--nvu-bg);padding:26px;max-width:820px;margin:0 auto;border-radius:var(--r-lg)">
-        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid var(--nvu-accent);padding-bottom:14px;margin-bottom:18px">
-          <div><div style="font-size:24px;font-weight:800;color:var(--nvu-accent);letter-spacing:.5px">NovaX Logistics</div><div style="font-size:11px;color:#5b6b64">Courier &amp; COD Operating Account | novaxlogistics.com</div></div>
-          <div style="text-align:right"><div style="font-size:18px;font-weight:800">INVOICE</div><div style="font-size:13px">${escLabelText(inv.id)}</div></div>
+      const statusText=nvInvTaken(inv)?"Taken from wallet":inv.status;
+      const deliveredFee=delivered.reduce((a,l)=>a+Number(l.deliveryCharge||0),0);
+      const returnedFee=returned.reduce((a,l)=>a+Number(l.deliveryCharge||0),0);
+      return nvDocHead("Invoice", invType, ["Invoice no: "+inv.id, "Date: "+nvDateTime(inv.createdAt), "Status: "+statusText])+
+        `<div class="nv-doc-grid">
+          <div class="nv-doc-box big"><span>${escLabelText(balanceLabel)}</span><strong>${balanceValue}</strong></div>
+          <div class="nv-doc-box"><span>COD collected</span><strong>${money(inv.cod||0)}</strong></div>
+          <div class="nv-doc-box"><span>Charges</span><strong>${money(inv.charges||0)}</strong></div>
+          <div class="nv-doc-box"><span>Parcels</span><strong>${lines.length}</strong></div>
         </div>
-        <div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:16px;flex-wrap:wrap">
-          <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Billed to</div><div style="font-weight:700">${labelText(c&&c.name,inv.clientId)}</div><div style="font-size:12px">${labelText(c&&c.city)} ${labelText(c&&c.email,"")}</div></div>
-          <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Invoice date</div><div style="font-weight:700">${escLabelText(nvDateTime(inv.createdAt))}</div></div>
-          <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Invoice type</div><div style="font-weight:700">${escLabelText(invType)}</div></div>
-          <div><div style="font-size:11px;color:#5b6b64;text-transform:uppercase">Status</div><div style="font-weight:700">${escLabelText(nvInvTaken(inv)?"Taken from wallet":inv.status)}</div><div style="font-size:11px;color:#5b6b64">${escLabelText(invoiceSettlementNote(inv))}</div></div>
-        </div>
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#5b6b64;margin-bottom:6px">Tracking &amp; delivery charge breakdown</div>
+        <p style="font-size:11px;margin:0 0 14px;color:#444">${paidEvent?`Settled on <strong>${escLabelText(nvNiceDate(paidEvent))}</strong> &middot; `:""}${escLabelText(invoiceSettlementNote(inv))}</p>
         ${outcomeStrip}
         ${lateNote}
         ${driftNote}
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:16px"><table style="width:100%;min-width:640px;border-collapse:collapse;font-size:12px"><thead><tr style="background:#eef7f2"><th style="text-align:left;padding:7px;border:1px solid var(--nvu-line-2)">Tracking ID / AWB</th><th style="text-align:left;padding:7px;border:1px solid var(--nvu-line-2)">Booking Date</th><th style="text-align:left;padding:7px;border:1px solid var(--nvu-line-2)">Destination City</th><th style="text-align:left;padding:7px;border:1px solid var(--nvu-line-2)">Consignee</th><th style="text-align:left;padding:7px;border:1px solid var(--nvu-line-2)">Outcome</th><th style="text-align:left;padding:7px;border:1px solid var(--nvu-line-2)">Payment Mode</th><th style="text-align:right;padding:7px;border:1px solid var(--nvu-line-2)">COD Amount</th><th style="text-align:right;padding:7px;border:1px solid var(--nvu-line-2)">Delivery Charge</th><th style="text-align:right;padding:7px;border:1px solid var(--nvu-line-2)">Net Line Amount</th></tr></thead><tbody>${rows}</tbody></table></div>
-        ${paidEvent?`<div style="background:var(--nvu-bg-2);border:1px solid var(--nvu-line-2);border-radius:var(--r-md);padding:10px 12px;margin-bottom:16px;font-size:13px">Settled on <b>${escLabelText(nvNiceDate(paidEvent))}</b></div>`:""}
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#5b6b64;margin-bottom:6px">Summary</div>
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <tr><td colspan="2" style="padding:12px 8px 4px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--nvu-accent)">What we collected</td></tr>
-          <tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">COD collected on your behalf</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">${money(inv.cod||0)}</td></tr>
-          <tr><td colspan="2" style="padding:12px 8px 4px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--nvu-bad-fg)">What we deducted</td></tr>
-          <tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">Delivery charges &mdash; ${lines.filter(l=>l.outcomeKey==="delivered").length} delivered parcel${lines.filter(l=>l.outcomeKey==="delivered").length===1?"":"s"}</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">&minus; ${money(lines.filter(l=>l.outcomeKey==="delivered").reduce((a,l)=>a+Number(l.deliveryCharge||0),0))}</td></tr>
-          ${(function(){ const rl=lines.filter(l=>l.outcomeKey==="returned"||l.outcomeKey==="refused"||l.outcomeKey==="cancelled"); const rc=rl.reduce((a,l)=>a+Number(l.deliveryCharge||0),0); return rc>0?`<tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">Return charges &mdash; ${rl.length} returned / refused parcel${rl.length===1?"":"s"}, no COD collected</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">&minus; ${money(rc)}</td></tr>`:""; })()}
-          <tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">Total Parcels</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">${lines.length}</td></tr>
-          <tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">COD Subtotal</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">${money(inv.cod||0)}</td></tr>
-          <tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">Delivery Charges Subtotal</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">${money(inv.charges||0)}</td></tr>
-          <tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">Payable to Client</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">${money(inv.payable||0)}</td></tr>
-          <tr><td style="padding:8px;border-bottom:1px solid var(--nvu-line)">Amount Due to NovaX</td><td style="padding:8px;border-bottom:1px solid var(--nvu-line);text-align:right">${money(due)}</td></tr>
-          <tr><td style="padding:12px 8px;font-weight:800;font-size:16px;background:#eef7f2">${balanceLabel}</td><td style="padding:12px 8px;font-weight:800;font-size:16px;background:#eef7f2;text-align:right">${balanceValue}</td></tr>
-        </table>
-        <div style="margin-top:22px;font-size:11px;color:#5b6b64;border-top:1px solid var(--nvu-line);padding-top:12px">Generated by NovaX Logistics. This is a system-generated invoice, no tax/GST applied unless shown above. For questions, ask the in-app AI assistant. Parcels: ${escLabelText(inv.parcelRefs.join(", "))}.</div>
-      </div>`;
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table class="nv-doc-tight" style="min-width:500px"><thead><tr><th>Tracking no.</th><th>Booked</th><th>City</th><th>Customer</th><th>Outcome</th><th class="num">COD</th><th class="num">Charge</th><th class="num">Net</th></tr></thead><tbody>${rows}</tbody></table></div>
+        <table style="margin-top:16px"><thead><tr><th>Summary</th><th class="num">Amount</th></tr></thead><tbody>
+          <tr><td>COD collected on your behalf</td><td class="num">${money(inv.cod||0)}</td></tr>
+          <tr><td>Delivery charges &mdash; ${delivered.length} delivered parcel${delivered.length===1?"":"s"}</td><td class="num">&minus; ${money(deliveredFee)}</td></tr>
+          ${returnedFee>0?`<tr><td>Return charges &mdash; ${returned.length} returned / refused parcel${returned.length===1?"":"s"}, no COD collected</td><td class="num">&minus; ${money(returnedFee)}</td></tr>`:""}
+          <tr><td>Total charges on this invoice</td><td class="num">${money(inv.charges||0)}</td></tr>
+          <tr><td>Payable to you</td><td class="num">${money(inv.payable||0)}</td></tr>
+          <tr><td>Amount due to NovaX</td><td class="num">${money(due)}</td></tr>
+        </tbody></table>
+        <div class="nv-doc-total"><span>${escLabelText(balanceLabel)}</span><span>${balanceValue}</span></div>
+        <div class="nv-doc-foot">Generated by NovaX Logistics. This is a system-generated invoice, no tax/GST applied unless shown above. For questions, ask the in-app AI assistant.<br>Parcels: ${escLabelText((inv.parcelRefs||[]).join(", "))}.<br>novaxlogistics.com</div></div>`;
     }
     /* Shared print tail for the two plain-#printStage documents (invoice and
        report). Both used to do:
@@ -7468,21 +7471,17 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ window.print(); }catch(e){ done(); }
     }
 
+    /* 8 Oct 2026: the invoice opens in the same document window as receipts
+       and statements, and prints through the same path (nvPrintDoc), so it
+       lands on paper with the same margins. It had its own window and its own
+       print stage. */
     function printInvoice(id){
       const inv=state.invoices.find(i=>i.id===id); if(!inv) return;
-      const stage=document.getElementById("printStage"); if(!stage) return;
-      stage.innerHTML=clientInvoiceHtml(inv);
-      nvPrintStageNow();
+      nvPrintDoc(clientInvoiceHtml(inv));
     }
     function viewInvoice(id){
       const inv=state.invoices.find(i=>i.id===id); if(!inv){ toast("Invoice not found."); return; }
-      const modal=document.getElementById("invoiceViewModal");
-      const body=document.getElementById("invoiceViewBody");
-      if(!modal||!body) return;
-      body.innerHTML=clientInvoiceHtml(inv);
-      const printBtn=document.getElementById("invoiceViewPrintBtn"); if(printBtn) printBtn.setAttribute("onclick",`printInvoice('${inv.id}')`);
-      const csvBtn=document.getElementById("invoiceViewCsvBtn"); if(csvBtn) csvBtn.setAttribute("onclick",`downloadInvoiceCsv('${inv.id}')`);
-      modal.classList.add("show");
+      nvOpenDoc("Invoice "+inv.id, clientInvoiceHtml(inv), nvInvoiceCsvRows(inv), String(inv.id).replace(/[^A-Za-z0-9_-]/g,"")+".csv");
     }
     function closeInvoiceModal(){ const modal=document.getElementById("invoiceViewModal"); if(modal) modal.classList.remove("show"); }
     async function exportReportCsv(){
@@ -13700,7 +13699,30 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       NV_PF.headerTried=true;
       nvPfLoad(false);
     }
+    /* On a phone only the first section starts open, so the page is a short
+       list of sections to tap rather than one form about 2,750px long. The
+       CNIC section starts shut only once it is verified. This happens once
+       per visit; after that the merchant's own taps decide. Folding only
+       hides: every field is still in the page and saved by the same bar, and
+       a save that fails on a field opens the section it is in. */
+    function nvPfShow(id){
+      var e=nvPfEl(id); if(!e) return;
+      try{ var d=e.closest && e.closest("details"); if(d && !d.open) d.open=true; }catch(_){}
+      try{ e.focus(); }catch(_){}
+    }
+    function nvPfFoldOnce(){
+      try{
+        if(NV_PF.folded) return; NV_PF.folded=true;
+        if(!(window.matchMedia && matchMedia("(max-width:760px)").matches)) return;
+        var known=false; try{ known=(typeof nvwVerified==="function") && nvwVerified(); }catch(e){}
+        Array.prototype.forEach.call(document.querySelectorAll("#client-profile details[data-nv-fold]"),function(d){
+          var rule=d.getAttribute("data-nv-fold");
+          if(rule==="phone" || (rule==="phone-verified" && known)) d.open=false;
+        });
+      }catch(e){}
+    }
     function nvPfOpen(){
+      nvPfFoldOnce();
       if(window.__NOVAX_DEMO && !NV_PF.loaded){
         /* The demo has no real account behind it: show its sample shop so the
            tab can be explored; saving is intercepted by the demo prompt. */
@@ -13726,18 +13748,18 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!nvPfOwner()){ nvPfMsg("Only the account owner can change these details.", true); return; }
       var sb=window.__nvSb; if(!sb||!sb.rpc){ nvPfMsg("Still connecting — try again in a moment.", true); return; }
       var v=nvPfValues();
-      if(v.name.length<2){ nvPfMsg("Enter your business name.", true); nvPfEl("nvPfName").focus(); return; }
-      if(v.phone.replace(/\D/g,"").length<10){ nvPfMsg("Enter your business phone number.", true); nvPfEl("nvPfPhone").focus(); return; }
+      if(v.name.length<2){ nvPfMsg("Enter your business name.", true); nvPfShow("nvPfName"); return; }
+      if(v.phone.replace(/\D/g,"").length<10){ nvPfMsg("Enter your business phone number.", true); nvPfShow("nvPfPhone"); return; }
       /* The same rules nv_profile_save applies, checked here first so the
          merchant sees which field before anything is sent. */
       var nvPh=v.phone.replace(/\D/g,""); if(/^92/.test(nvPh)&&nvPh.length===12) nvPh="0"+nvPh.slice(2); if(/^3\d{9}$/.test(nvPh)) nvPh="0"+nvPh;
-      if(!/^0\d{9,10}$/.test(nvPh)){ nvPfMsg("Enter a Pakistani phone number, like 0300 1234567.", true); nvPfEl("nvPfPhone").focus(); return; }
+      if(!/^0\d{9,10}$/.test(nvPh)){ nvPfMsg("Enter a Pakistani phone number, like 0300 1234567.", true); nvPfShow("nvPfPhone"); return; }
       var nvEm=String(v.email||"").trim();
-      if(nvEm && (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(nvEm) || nvEm.length>120)){ nvPfMsg("That email address does not look right.", true); nvPfEl("nvPfEmail").focus(); return; }
+      if(nvEm && (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(nvEm) || nvEm.length>120)){ nvPfMsg("That email address does not look right.", true); nvPfShow("nvPfEmail"); return; }
       var nvWeb=String(v.website||"").trim(); if(nvWeb && !/^https?:\/\//i.test(nvWeb)) nvWeb="https://"+nvWeb;
-      if(nvWeb && (!/^https?:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+(\/[^\s<>"]*)?$/i.test(nvWeb) || nvWeb.length>200)){ nvPfMsg("That website address does not look right.", true); nvPfEl("nvPfWeb").focus(); return; }
+      if(nvWeb && (!/^https?:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+(\/[^\s<>"]*)?$/i.test(nvWeb) || nvWeb.length>200)){ nvPfMsg("That website address does not look right.", true); nvPfShow("nvPfWeb"); return; }
       var nvWa=String(v.whatsapp||"").replace(/\D/g,"");
-      if(nvWa && (nvWa.length<10 || nvWa.length>13)){ nvPfMsg("Enter the WhatsApp number with its area code, like 0300 1234567.", true); nvPfEl("nvPfWa").focus(); return; }
+      if(nvWa && (nvWa.length<10 || nvWa.length>13)){ nvPfMsg("Enter the WhatsApp number with its area code, like 0300 1234567.", true); nvPfShow("nvPfWa"); return; }
       var cid=activeClientId();
       if((NV_PF.logoBlob || NV_PF.removeLogo) && !/^[0-9a-f-]{36}$/i.test(String(cid||""))){ nvPfMsg("Your account is still loading. Try again in a moment.", true); return; }
       NV_PF.saving=true;

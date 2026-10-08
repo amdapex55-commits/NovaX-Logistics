@@ -238,7 +238,8 @@ async function signupPage(o={}){
 const clientHtml=read('client.html'),clientJs=read('client-app.js');
 function slice(src,from,to){const a=src.indexOf(from);assert.ok(a>-1,'missing '+from.slice(0,40));const b=src.indexOf(to,a);assert.ok(b>a,'missing end '+to.slice(0,40));return src.slice(a,b);}
 const bannerHtml=slice(clientHtml,'<div class="nv-kyc-banner"','<div class="nv-command-strip"');
-const panelHtml=slice(clientHtml,'<div class="panel mt-14" id="nvKycPanel">','<div class="panel mt-14">\n                    <div class="section-head"><div><h3>Recent changes');
+/* 8 Oct 2026: Profile's panels became folding sections (details/summary); the ids inside are unchanged. */
+const panelHtml=slice(clientHtml,'<details class="panel mt-14 nv-pf-sec" id="nvKycPanel" data-nv-fold="phone-verified" open>','<details class="panel mt-14 nv-pf-sec" data-nv-fold="phone" open>\n                    <summary class="section-head"><div><h3>Recent changes');
 const kycJs=slice(clientJs,"/* ═══ Owner's CNIC (30 Sep 2026)",'\n    function renderIntegrations(){');
 async function profile(status,o={}){
   const dom=new JSDOM('<!doctype html><body><section id="client-dashboard">'+bannerHtml+'</section><section id="client-profile"><div class="nv-pf-main">'+panelHtml+'</div></section></body>',
