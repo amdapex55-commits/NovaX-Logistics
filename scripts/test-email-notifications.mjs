@@ -142,11 +142,15 @@ for (const kind of ['welcome', 'first_booking', 'payout_paid', 'cnic_verified', 
 {
   const launch = buildEmail('recover_launch', 'owner@example.com', { business: 'Sample Store', count: 22, cod: 34977, recent: 22, fee: 100 });
   assert.equal(launch.subject, '22 orders came back. We can sell them again');
-  assert.ok(launch.html.includes('PKR 34,977.00') && launch.html.includes('client.html?tab=recover'));
+  /* 9 Oct 2026: the count only. The COD value is never shown, in the page or the plain text. */
+  assert.ok(launch.html.includes('22 orders') && launch.html.includes('client.html?tab=recover'));
+  assert.ok(!launch.html.includes('34,977') && !launch.text.includes('34,977') && !/COD ON/i.test(launch.html));
+  assert.ok(launch.html.includes('All of them came back in the last 30 days'));
   assert.ok(launch.html.replaceAll('&nbsp;', ' ').includes('PKR 100.00 only when it works.'));
   const one = buildEmail('recover_launch', 'owner@example.com', { count: 1, cod: 1200, fee: 0 });
   assert.equal(one.subject, 'An order came back. We can sell it again');
   assert.ok(one.html.includes('No fee for now.') && !one.html.includes('PKR 0.00 only'));
+  assert.ok(one.html.includes('1 order') && !one.html.includes('1,200') && !one.text.includes('1,200'));
   assert.throws(() => buildEmail('recover_launch', 'owner@example.com', { count: 0, cod: 0, fee: 100 }), /invalid_parcel_count/);
 }
 console.log('PASS: eleven templates, net payout, PKT dates, escaping, invalid-data guards, reminder stop links and the three Nova Recover emails.');

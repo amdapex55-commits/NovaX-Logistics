@@ -310,15 +310,20 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
   // Sent once, by an admin, to a merchant who has the Nova Recover tab,
   // has parcels that came back, and has not started.
   if (kind === 'recover_launch') {
-    const n = count(data.count), cod = currency(data.cod);
+    // 9 Oct 2026: the email shows how many parcels, never their COD value.
+    const n = count(data.count), recent = Number(data.recent);
     const free = !(Number(data.fee) > 0), fee = free ? '' : currency(data.fee);
+    const fresh = Number.isFinite(recent) && recent > 0
+      ? (recent >= n ? (n === 1 ? 'It came back in the last 30 days' : 'All of them came back in the last 30 days')
+                     : `${Math.round(recent)} of them came back in the last 30 days`)
+      : undefined;
     return {
       subject: n === 1 ? 'An order came back. We can sell it again' : `${n} orders came back. We can sell them again`,
-      preheader: `${n === 1 ? 'One order' : n + ' orders'} worth ${cod} came back. A NovaX agent can phone the customer and sell it again.`,
+      preheader: `${n === 1 ? 'One order came back. A NovaX agent can phone the customer and sell it again.' : n + ' orders came back. A NovaX agent can phone each customer and sell them again.'}`,
       pill: 'New: Nova Recover', tone: 'info',
       title: 'Let us sell your returned orders again.',
       intro: `${n === 1 ? 'One order' : n + ' orders'}${forBiz} came back from customers who refused them. With Nova Recover, a NovaX agent phones each customer and sells the order again.`,
-      fact: { label: n === 1 ? 'COD ON THAT ORDER' : 'COD ON THOSE ORDERS', value: cod, caption: n === 1 ? '1 order you can send us' : n + ' orders you can send us', size: 30 },
+      fact: { label: n === 1 ? 'ORDER YOU CAN SEND US' : 'ORDERS YOU CAN SEND US', value: n === 1 ? '1 order' : n + ' orders', caption: fresh, size: 30 },
       cta: 'Choose the orders', destination: PORTAL + '?tab=recover',
       stepsTitle: 'How it works',
       steps: [
