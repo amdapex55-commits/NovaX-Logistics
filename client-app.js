@@ -26,6 +26,13 @@
  * of the DOM than it used to, never less. Inline onclick handlers are
  * unaffected -- they resolve at click time, long after this has run.
  */
+/* "1 row", "2 rows": used wherever a message counts something, so nothing a
+   merchant reads has a plural in brackets (8 Oct 2026). On window because
+   this file is several separate closures and all of them count things. */
+window.nvCount=function(n,one,many){
+  var k=Number(n)||0;
+  return k.toLocaleString("en-PK")+" "+(k===1?one:(many||one+"s"));
+};
 
 /* ==== client.html inline block #5 ==== */
 
@@ -2474,6 +2481,20 @@ function loadState(){ try{ const s=localStorage.getItem(STORAGE_KEY); if(!s) ret
        toggleAccountHistoryFilters() did not exist -- so #accountHistoryBody
        stayed display:none forever and the date-range filter was
        permanently unreachable. */
+    /* "all time", or "3 Oct to 8 Oct": shown in the strip above Home's figures. */
+    function nvRangeLabel(){
+      try{
+        var f=String(state.clientDateFrom||"").slice(0,10), t=String(state.clientDateTo||"").slice(0,10);
+        var today=new Date().toLocaleDateString("en-CA",{ timeZone:"Asia/Karachi" });
+        if((!f || f<="2001-01-01") && (!t || t>=today)) return "all time";
+        var a=(!f || f<="2001-01-01")?"":nvDate(f), b=(!t || t>=today)?"today":nvDate(t);
+        if(!a) return "up to "+b;
+        return a===b?a:(a+" to "+b);
+      }catch(e){ return "all time"; }
+    }
+    function nvRangePaint(){
+      try{ var el=document.getElementById("nvRangeLabel"); if(el) el.textContent=nvRangeLabel(); }catch(e){}
+    }
     function toggleAccountHistoryFilters(){
       try{
         var body=document.getElementById("accountHistoryBody");
@@ -3217,11 +3238,12 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const rated=cm.settledTotal;
       const rate=rated?percent(cm.delivered,rated):0;
       const rateKnown=rated>0;
-      const ops=Math.round(cm.avgProgress*100);
       const nvMetricsEl0=document.getElementById("clientMetrics");
       const wasExpanded=nvMetricsEl0 && nvMetricsEl0.classList.contains("nv-show-all");
       document.getElementById("clientMetrics").innerHTML=[
-        metricCard("Parcels",cm.total,ops,"in selected range \u00b7 bar = average journey progress","blue","📦","clear"),
+        /* 8 Oct 2026: this card had a bar for "average journey progress" and a
+           caption that had to explain the bar. A count needs neither. */
+        metricCard("Parcels",cm.total,null,"booked in these dates","blue","📦","clear"),
         metricCard("Delivered",
           rateKnown?`${cm.delivered}/${rated}`:"\u2014",
           rate,
@@ -4549,6 +4571,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          renderReportSummaries(), because they have to be recomputed whenever a
          report filter changes and this function is not called then. */
       const fromI=document.getElementById("clientDateFrom"), toI=document.getElementById("clientDateTo");
+      nvRangePaint();
       if(fromI && fromI.value!==state.clientDateFrom) fromI.value=state.clientDateFrom||"";
       if(toI && toI.value!==state.clientDateTo) toI.value=state.clientDateTo||"";
       /* NovaX fix (fabricated validation figures): this panel rendered a
@@ -6111,7 +6134,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function nvReportScopeNote(n, complete){
       const any=["repSearch","repStatus","repFrom","repTo"]
         .some(id=>String(document.getElementById(id)?.value||"").trim());
-      return n + " row(s) exported" + (any ? " — the filters you have applied." : " — your full history.")
+      return nvCount(n,"row") + " exported" + (any ? " — the filters you have applied." : " — your full history.")
         + (complete===false ? " WARNING: only what this page had already loaded — the server could not be reached, so older parcels may be missing." : "");
     }
 
@@ -11093,49 +11116,45 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       if(!el) return;
       if(!parsed){ el.innerHTML=`<div class="ops-card"><strong>Waiting for CSV</strong><p>Download the template, fill it, and upload it here.</p></div>`; return; }
       if(parsed.missingColumns&&parsed.missingColumns.length){
-        el.innerHTML=`<div class="ops-card alert-row"><strong>Blocked</strong><p>Missing required column(s): ${escLabelText(parsed.missingColumns.join(", "))}.</p></div>`;
+        el.innerHTML=`<div class="ops-card alert-row"><strong>This file cannot be checked yet</strong><p>${parsed.missingColumns.length===1?"It is missing the column":"It is missing the columns"} ${escLabelText(parsed.missingColumns.join(", "))}. Add ${parsed.missingColumns.length===1?"it":"them"} to the first row and choose the file again.</p></div>`;
         return;
       }
       const results=parsed.results||[];
       const validRows=results.filter(r=>r.ok);
       const invalidRows=results.filter(r=>!r.ok);
-      const summary=[
-        ["Total rows",results.length,""],
-        ["Valid rows",validRows.length,"good"],
-        ["Rejected rows",invalidRows.length,invalidRows.length?"bad":"good"],
-        ["Duplicate order IDs",bulkProblemCount(parsed,"dup_order"),bulkProblemCount(parsed,"dup_order")?"warn":"good"],
-        ["Duplicate reference numbers",bulkProblemCount(parsed,"dup_ref"),bulkProblemCount(parsed,"dup_ref")?"warn":"good"],
-        ["Invalid phone numbers",bulkProblemCount(parsed,"phone"),bulkProblemCount(parsed,"phone")?"warn":"good"],
-        ["Invalid/unsupported cities",bulkProblemCount(parsed,"city"),bulkProblemCount(parsed,"city")?"warn":"good"],
-        ["Missing address",bulkProblemCount(parsed,"address"),bulkProblemCount(parsed,"address")?"warn":"good"],
-        ["Missing product details",bulkProblemCount(parsed,"product"),bulkProblemCount(parsed,"product")?"warn":"good"],
-        ["Invalid COD",bulkProblemCount(parsed,"cod"),bulkProblemCount(parsed,"cod")?"warn":"good"],
-        ["Invalid/missing weight",bulkProblemCount(parsed,"weight"),bulkProblemCount(parsed,"weight")?"warn":"good"]
-      ];
+      /* 8 Oct 2026: this used to be eleven boxes, one per kind of problem,
+         nine of them usually reading 0. It now says what was checked and how
+         many rows are ready, then names only the problems this file has. */
+      const why=[["dup_order","Repeated order ID"],["dup_ref","Repeated reference number"],["phone","Phone number"],["city","City"],
+                 ["address","Missing address"],["product","Missing product"],["cod","COD amount"],["weight","Weight"]]
+        .map(k=>[k[1],bulkProblemCount(parsed,k[0])]).filter(k=>k[1]>0);
       /* Distance pricing coverage. Nothing here rejects a row -- a row with no
          area still books at the flat rate exactly as before. It just makes
          visible how many parcels are getting the cheaper distance price, and
          how many are not, which is the difference between "the price looks
          wrong" and "I can see why". */
+      let geoNote="";
       try{
         if(typeof nvGeoActive==="function" && nvGeoActive()){
           var khi=validRows.filter(function(r){
             return String((r.record&&r.record.city)||"").toLowerCase()==="karachi"; });
           var priced=khi.filter(function(r){ return r.record && r.record.destAreaId; });
-          if(khi.length){
-            summary.push(["Karachi rows priced by distance", priced.length+"/"+khi.length,
-                          priced.length===khi.length ? "good" : "warn"]);
-          }
+          if(khi.length) geoNote=`<span class="chip ${priced.length===khi.length?"good":"warn"}">${priced.length} of ${nvCount(khi.length,"Karachi row")} priced by distance</span>`;
         }
       }catch(e){}
-      let html=`<div class="grid metrics" style="margin-bottom:12px">${summary.map(s=>`<div class="ops-card"><div class="ops-card-head"><strong>${escLabelText(s[0])}</strong><span class="chip ${s[2]}">${s[1]}</span></div></div>`).join("")}</div>`;
+      let html=`<div class="nvbr ${invalidRows.length?"is-bad":"is-ok"}">`+
+        `<strong>${nvCount(results.length,"row")} checked</strong>`+
+        `<div class="nvbr-nums"><span class="ok"><b>${validRows.length}</b> ready to book</span>`+
+          (invalidRows.length?`<span class="bad"><b>${invalidRows.length}</b> ${invalidRows.length===1?"needs":"need"} a fix</span>`:"")+`</div>`+
+        ((why.length||geoNote)?`<div class="nvbr-why">${why.map(k=>`<span class="chip warn">${escLabelText(k[0])}: ${nvCount(k[1],"row")}</span>`).join("")}${geoNote}</div>`:"")+
+        `</div>`;
       try{
         if(typeof nvGeoActive==="function" && nvGeoActive()){
           var unpriced=validRows.filter(function(r){
             return r.record && String(r.record.city||"").toLowerCase()==="karachi" && !r.record.destAreaId; });
           if(unpriced.length){
             html+='<div class="ops-card" style="margin-bottom:12px">'+
-              '<div class="ops-card-head"><strong>'+unpriced.length+' Karachi row(s) will book at the flat rate</strong>'+
+              '<div class="ops-card-head"><strong>'+nvCount(unpriced.length,"Karachi row")+' will book at the flat rate</strong>'+
               '<span class="chip warn">no area matched</span></div>'+
               '<p>These import fine &mdash; we just could not read a delivery area from the address, so they are priced flat instead of by distance. '+
               'Add an <b>area</b> column to your sheet, or write the area into the address (for example &ldquo;DHA Phase 5&rdquo;), and they will price by the kilometres actually covered.</p>'+
@@ -11157,7 +11176,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
            used everywhere else -- there is deliberately no second copy of
            the validation rules, so the grid can never disagree with what
            actually gets imported. */
-        html+=`<div class="ops-card" style="margin-bottom:10px;background:var(--nvu-warn-bg);border-color:#f0d6a0"><strong>${invalidRows.length} row(s) need a fix</strong><p class="footer-note">Correct the highlighted fields below and press Re-check. Nothing is uploaded until you import.</p></div>`;
+        html+=`<div class="ops-card" style="margin-bottom:10px;background:var(--nvu-warn-bg);border-color:#f0d6a0"><strong>${nvCount(invalidRows.length,"row")} ${invalidRows.length===1?"needs":"need"} a fix</strong><p class="footer-note">Correct the highlighted fields below and press Re-check. Nothing is booked until you import.</p></div>`;
         html+=invalidRows.map(r=>{
           const bad=new Set(r.problems.map(p=>p.code));
           const f=(key,label,val,ph)=>{
@@ -11168,7 +11187,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           };
           const rec=r.record||{};
           return `<div class="ops-card alert-row" style="margin-bottom:10px">
-            <div class="ops-card-head"><strong>Row ${r.line}</strong><span class="chip bad">${r.problems.length} issue(s)</span></div>
+            <div class="ops-card-head"><strong>Row ${r.line}</strong><span class="chip bad">${nvCount(r.problems.length,"issue")}</span></div>
             ${r.problems.map(p=>`<p class="footer-note" style="color:#a1230e">${escLabelText(p.message)} <em>Fix: ${escLabelText(p.fix)}</em></p>`).join("")}
             <div class="form-grid" style="margin-top:10px;gap:8px">
               ${f("consignee","Consignee",rec.consignee,"Full name")}
@@ -11185,7 +11204,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             <div class="inline-actions" style="margin-top:10px"><button class="ghost-btn" onclick="nvRecheckBulkRow(${r.line})">Re-check row ${r.line}</button></div>
           </div>`;
         }).join("");
-        html+=`<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap;gap:8px"><button class="action-btn" onclick="nvRecheckAllBulk()">Re-check all rows</button>${validRows.length?`<button class="ghost-btn" id="importValidOnlyBtn" onclick="importValidBulkRowsOnly()">Import ${validRows.length} valid row(s) only</button>`:`<span class="footer-note">No valid rows to import yet.</span>`}</div>`;
+        html+=`<div class="inline-actions" style="margin-top:10px;flex-wrap:wrap;gap:8px"><button class="action-btn" onclick="nvRecheckAllBulk()">Re-check all rows</button>${validRows.length?`<button class="ghost-btn" id="importValidOnlyBtn" onclick="importValidBulkRowsOnly()">Import the ${nvCount(validRows.length,"valid row")} only</button>`:`<span class="footer-note">No valid rows to import yet.</span>`}</div>`;
       } else if(results.length){
         /* Import button matters here now: after fixing rows in place the
            user needs a way to book them, since the auto-import only runs on
@@ -11243,7 +11262,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       renderBulkValidation(parsed);
       const bad=(parsed.results||[]).filter(r=>!r.ok).length;
       const good=(parsed.results||[]).length-bad;
-      if(!bad) toast(msgIfClean||`All ${good} row(s) valid now. Ready to import.`,"success");
+      if(!bad) toast(msgIfClean||(good===1?"The row is valid now. Ready to import.":`All ${good} rows are valid now. Ready to import.`),"success");
       else toast(`${good} valid, ${bad} still need a fix.`, bad?"error":"success");
     }
     function nvRecheckBulkRow(){ nvRevalidateBulk(); }
@@ -11264,15 +11283,15 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       const parsed=validateBulkRows(NV_BULK_RAW);
       state.lastBulkValidation=parsed;
       renderBulkValidation(parsed);
-      if(parsed.missingColumns&&parsed.missingColumns.length){ toast("CSV blocked: missing required column(s).","error"); return; }
+      if(parsed.missingColumns&&parsed.missingColumns.length){ toast(parsed.missingColumns.length===1?"This file is missing a column. See below.":"This file is missing some columns. See below.","error"); return; }
       if(!parsed.results.length){ toast("No data rows found in this CSV.","error"); return; }
       const invalidCount=parsed.results.filter(r=>!r.ok).length;
-      if(invalidCount>0){ toast(`${invalidCount} row(s) blocked. Fix them or use "Import valid rows only".`,"error"); return; }
+      if(invalidCount>0){ toast(`${nvCount(invalidCount,"row")} ${invalidCount===1?"needs":"need"} a fix. Correct ${invalidCount===1?"it":"them"} below, or import only the valid rows.`,"error"); return; }
       /* Uploading used to book every row the moment a valid file was picked:
          the wrong (valid) file meant real AWBs. Now it only checks. The
          summary below says what would be booked, and "Create N bookings"
          does it. */
-      toast(`${parsed.results.length} row(s) checked. Review the summary, then press Create ${parsed.results.length} booking${parsed.results.length===1?"":"s"}.`,"success");
+      toast(`${nvCount(parsed.results.length,"row")} checked. Review the summary, then press Create ${nvCount(parsed.results.length,"booking")}.`,"success");
       try{ var bl=document.getElementById("bulkValidationList"); if(bl) bl.scrollIntoView({behavior:"smooth",block:"start"}); }catch(e){}
     }
     async function importValidBulkRowsOnly(){
@@ -11327,7 +11346,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       try{ var nvDone=document.getElementById("nvBulkConfirm"); if(nvDone) nvDone.remove(); }catch(e){}
       try{ var nvIn=document.getElementById("bulkCsvInput"); if(nvIn) nvIn.value=""; if(typeof window.nvBulkFileSync==="function") window.nvBulkFileSync(); }catch(e){}
       if(el) el.dataset.nvBulk="1";
-      if(el) el.insertAdjacentHTML("afterbegin", `<div class="ops-card" style="margin-bottom:10px"><strong>Import complete: ${awbs.length} AWB(s) created${skipped?`, ${skipped} row(s) skipped`:""}</strong><p>Booked rows are saved on the server now. New AWBs appear in "New Booked AWBs" for printing.</p></div>`);
+      if(el) el.insertAdjacentHTML("afterbegin", `<div class="ops-card" style="margin-bottom:10px"><strong>Import complete: ${nvCount(awbs.length,"parcel")} booked${skipped?`, ${nvCount(skipped,"row")} skipped`:""}</strong><p>Booked rows are saved on the server now. New AWBs appear in "New Booked AWBs" for printing.</p></div>`);
       if(failed.length){
         /* Bulk import is deliberately NOT transactional -- a rejected row must
            never undo parcels the server already accepted. But the merchant was
@@ -11344,16 +11363,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           }).join("");
           if(el) el.insertAdjacentHTML("afterbegin",
             '<div class="ops-card alert-row" style="margin-bottom:10px">'+
-            '<div class="ops-card-head"><strong>'+failed.length+' row(s) were not booked</strong>'+
+            '<div class="ops-card-head"><strong>'+nvCount(failed.length,"row")+(failed.length===1?" was":" were")+' not booked</strong>'+
             '<span class="chip bad">action needed</span></div>'+
             '<p>Everything else imported and is already live. These rows were rejected by the server and no AWB was created for them &mdash; fix and re-upload just these.</p>'+
             '<div class="inline-actions" style="margin:8px 0 10px"><button class="ghost-btn" onclick="nvDownloadFailedBulk()">Download failed rows as CSV</button></div>'+
             '<div class="log-feed">'+rows+'</div></div>');
           window.__nvBulkFailed=failed;
         }catch(e){ console.warn("NovaX bulk failure report", e); }
-        toast(`${awbs.length} AWB(s) booked. ${failed.length} row(s) failed \u2014 see the list above.`,"error");
+        toast(`${nvCount(awbs.length,"parcel")} booked. ${nvCount(failed.length,"row")} failed \u2014 see the list above.`,"error");
       } else {
-        nvClearBookingDraft(); toast(`${awbs.length} AWB(s) booked and synced to NovaX.`,"success");
+        nvClearBookingDraft(); toast(`${nvCount(awbs.length,"parcel")} booked and synced to NovaX.`,"success");
       }
     }
     /* Re-exports only the rejected rows, in the same column order as the
@@ -12967,7 +12986,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         }
         if(out){
           var bits=[];
-          if(d.bulk_total_imported) bits.push("<b>"+escLabelText(String(d.bulk_total_imported))+"</b> order(s) imported in total");
+          if(d.bulk_total_imported) bits.push("<b>"+escLabelText(String(d.bulk_total_imported))+"</b> "+(Number(d.bulk_total_imported)===1?"order":"orders")+" imported in total");
           if(d.bulk_last_run_at){
             var when=""; try{ when=new Date(d.bulk_last_run_at).toLocaleString(); }catch(e){}
             bits.push("last run "+escLabelText(when)+" &middot; "+escLabelText(String(d.bulk_last_count||0))+" new, "+escLabelText(String(d.bulk_last_skipped||0))+" already there");
@@ -13013,8 +13032,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           return;
         }
         var b=r.body||{};
-        var msg="Imported "+(b.imported||0)+" order(s)"+(b.skipped?(", "+b.skipped+" already in NovaX"):"")+".";
-        if(out) out.innerHTML=escLabelText(msg)+(b.failed?('<br><span style="color:#b45309">'+escLabelText(String(b.failed))+" order(s) could not be imported.</span>"):"");
+        var msg="Imported "+nvCount(b.imported||0,"order")+(b.skipped?(", "+b.skipped+" already in NovaX"):"")+".";
+        if(out) out.innerHTML=escLabelText(msg)+(b.failed?('<br><span style="color:#b45309">'+escLabelText(nvCount(b.failed,"order"))+" could not be imported.</span>"):"");
         toast(msg);
         shopifyLoadBulkState();
         try{ if(typeof window.__novaxReloadClientData==="function") window.__novaxReloadClientData(); }catch(e){}
@@ -13104,7 +13123,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(row.disabled) detail.textContent="This integration was disabled by NovaX admin.";
           else if(row.connection_status==="Signature failed") detail.textContent="Signature failed -- the signing secret NovaX has doesn't match what Shopify is sending. Re-copy it from Shopify exactly and save it again.";
           else if(row.connection_status==="Import failed") detail.textContent="The last order's signature verified fine, but the import still failed: "+(row.last_error||"unknown error")+". Open the troubleshooting list below.";
-          else if(row.imported_count>0) detail.textContent="Live. Last order received "+new Date(row.last_order_at).toLocaleString()+". "+row.imported_count+" order(s) imported so far.";
+          else if(row.imported_count>0) detail.textContent="Live. Last order received "+new Date(row.last_order_at).toLocaleString()+". "+nvCount(row.imported_count,"order")+" imported so far.";
           else if(row.has_secret) detail.textContent="Webhook ready / waiting for first order -- create one test order in Shopify and NovaX will import it automatically.";
           else detail.textContent="Your NovaX webhook URL is ready. Add it in Shopify, then paste the Shopify signing secret below.";
         }
@@ -13144,7 +13163,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       var n=0;
       try{ n=(state.parcels||[]).filter(function(p){
         return p && p.clientId===activeClientId() && String(p.source||"")==="shopify"; }).length; }catch(e){}
-      toast(n ? (n+" Shopify order(s) are on your dashboard.")
+      toast(n ? (nvCount(n,"Shopify order")+(n===1?" is":" are")+" on your dashboard.")
               : "No Shopify-imported orders yet.");
     }
     function shopifyCopySetupInstructions(){
@@ -14548,7 +14567,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         const notedEl=document.getElementById("pickupNote"); if(notedEl) notedEl.value="";
         const forEl=document.getElementById("pickupRequestedFor"); if(forEl) forEl.value="";
         renderPickupEligibleList(); renderPickupRequestList();
-        toast(`Pickup requested for ${awbs.length} AWB(s). We will confirm scheduling shortly.`,"success");
+        toast(`Pickup requested for ${nvCount(awbs.length,"parcel")}. We will confirm scheduling shortly.`,"success");
       }).catch(function(e){
         requestPickup._busy=false;
         if(btn){ btn.disabled=false; btn.textContent=btnText||"Request pickup"; }
@@ -16806,8 +16825,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(awb){ var p=myParcels().find(function(x){return String(x.awb||'').toUpperCase()===awb.toUpperCase();}); if(p) return {text:pLine(p)+(p.steps&&p.steps.length?'<br><span class=nvai-dim>Journey: '+esc(p.steps.join(' to '))+'</span>':'')}; return {text:'I could not find <b>'+esc(awb.toUpperCase())+'</b> under your account.'}; }
           var invId=(q.match(/INV-\d+/i)||[])[0];
           if(invId){ var iv=myInvoices().find(function(i){return String(i.id||'').toUpperCase()===invId.toUpperCase();}); if(iv) return {text:invLine(iv)}; return {text:'I could not find invoice <b>'+esc(invId.toUpperCase())+'</b> on your account.'}; }
-          if(/wallet|balance|payout|withdraw|cash ?out|money|payment/.test(low)){ var bal=walletBalance(cid()); var w=myWithdrawals(); var pend=w.filter(function(x){return /pending|process/i.test(x.status||'');}); if(/last|recent|history|withdraw/.test(low)&&w.length){ var lw=w[0]; return {text:'Your wallet balance is <b>Rs '+fmt(bal)+'</b>.<br>Last withdrawal <b>'+esc(lw.id||'')+'</b>: Rs '+fmt(lw.net||lw.amount)+' - <b>'+esc(lw.status||'')+'</b>.'+(pend.length?'<br>'+pend.length+' still in progress.':'')}; } return {text:'Your wallet balance is <b>Rs '+fmt(bal)+'</b>.'+(pend.length?' '+pend.length+' withdrawal(s) in progress.':' No withdrawals in progress.')}; }
-          if(/invoice|payable|bill|statement/.test(low)){ var ivs=myInvoices(); if(!ivs.length) return {text:'You have no invoices yet. Invoices are generated once parcels are delivered.'}; return {text:invLine(ivs[0])+(ivs.length>1?'<br><span class=nvai-dim>'+(ivs.length-1)+' older invoice(s) on file.</span>':'')}; }
+          if(/wallet|balance|payout|withdraw|cash ?out|money|payment/.test(low)){ var bal=walletBalance(cid()); var w=myWithdrawals(); var pend=w.filter(function(x){return /pending|process/i.test(x.status||'');}); if(/last|recent|history|withdraw/.test(low)&&w.length){ var lw=w[0]; return {text:'Your wallet balance is <b>Rs '+fmt(bal)+'</b>.<br>Last withdrawal <b>'+esc(lw.id||'')+'</b>: Rs '+fmt(lw.net||lw.amount)+' - <b>'+esc(lw.status||'')+'</b>.'+(pend.length?'<br>'+pend.length+' still in progress.':'')}; } return {text:'Your wallet balance is <b>Rs '+fmt(bal)+'</b>.'+(pend.length?' '+nvCount(pend.length,'withdrawal')+' in progress.':' No withdrawals in progress.')}; }
+          if(/invoice|payable|bill|statement/.test(low)){ var ivs=myInvoices(); if(!ivs.length) return {text:'You have no invoices yet. Invoices are generated once parcels are delivered.'}; return {text:invLine(ivs[0])+(ivs.length>1?'<br><span class=nvai-dim>'+nvCount(ivs.length-1,'older invoice')+' on file.</span>':'')}; }
           if(/exception|refus|delay|stuck|problem|fail|issue|return/.test(low)){ var ex=myParcels().filter(function(p){return p.exception||/refus|return|not available|reattempt/i.test(p.status||'')||(typeof isDelayed==='function'&&isDelayed(p));}); if(!ex.length) return {text:'Good news - no parcels with exceptions right now. ✅'}; return {text:'You have <b>'+ex.length+'</b> parcel'+(ex.length===1?'':'s')+' needing attention:<br>'+ex.slice(0,5).map(pLine).join('<br><br>')}; }
           if(/how many|count|summary|overview|total|delivered|status of my/.test(low)){ var ps=myParcels(); var del=ps.filter(function(p){return p.status==='Delivered';}).length; var exn=ps.filter(function(p){return p.status!=='Delivered'&&(p.exception||/refus|return|not available|reattempt/i.test(p.status||'')||(typeof isDelayed==='function'&&isDelayed(p)));}).length; var tr=Math.max(0,ps.length-del-exn); return {text:'You have <b>'+ps.length+'</b> parcels - <b>'+del+'</b> delivered, <b>'+tr+'</b> in progress, <b>'+exn+'</b> with issues.'}; }
           if(/list|show|recent|latest|all my|my parcels|my orders/.test(low)){ var ps3=myParcels(); if(!ps3.length) return {text:'You have no parcels yet.'}; return {text:'Your recent parcels:<br>'+ps3.slice(0,8).map(pLine).join('<br><br>')+(ps3.length>8?'<br><span class=nvai-dim>+'+(ps3.length-8)+' more.</span>':'')}; }
@@ -18124,7 +18143,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
              body:(skipped?(skipped+" of the "+list.length+" selected will be skipped: a re-attempt only applies after a delivery has failed."):"Operations will send a rider again."),
              ok:"Request re-attempt" }).then(function(yes){ if(!yes) return;
           Promise.allSettled(eligible.map(function(a){ return Promise.resolve().then(function(){return requestRedelivery(a);}); }))
-            .then(function(results){ var ok=results.filter(function(r){return r.status==="fulfilled";}).length; toast(ok+" reattempt request(s) sent; "+(results.length-ok)+" failed.",ok===results.length?"success":"error"); });
+            .then(function(results){ var ok=results.filter(function(r){return r.status==="fulfilled";}).length; toast(nvCount(ok,"reattempt request")+" sent; "+(results.length-ok)+" failed.",ok===results.length?"success":"error"); });
           });
         }
         else if(act==="message"){
@@ -18139,9 +18158,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
           if(rest>0){
             openedAwbs.forEach(function(a){ delete nvSel[a]; });
             nvSafeCall(function(){ nvBarSync(); });
-            nvSafeCall(function(){ toast(opened+" WhatsApp draft(s) opened. "+rest+" still selected.",opened===batch.length?"success":"error"); });
+            nvSafeCall(function(){ toast(nvCount(opened,"WhatsApp draft")+" opened. "+rest+" still selected.",opened===batch.length?"success":"error"); });
           } else {
-            toast(opened+" of "+batch.length+" WhatsApp draft(s) opened.",opened===batch.length?"success":"error");
+            toast(opened+" of "+nvCount(batch.length,"WhatsApp draft")+" opened.",opened===batch.length?"success":"error");
           }
         }
         else if(act==="export"){
@@ -18215,7 +18234,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         (parsed.results||[]).forEach(function(r,i){ if(!r.ok) invalid.push({ r:r, i:i }); });
         if(!invalid.length) return "";
         return '<div class="ops-card" id="nvBulkFixCard" style="margin-top:12px">'
-          +'<div class="ops-card-head"><strong>Fix rejected rows here</strong><span class="chip warn">'+invalid.length+" row(s)</span></div>"
+          +'<div class="ops-card-head"><strong>Fix rejected rows here</strong><span class="chip warn">'+nvCount(invalid.length,"row")+"</span></div>"
           +'<p class="footer-note">Edit a cell and it is re-validated instantly. Highlighted cells are the ones that failed. When rows turn valid, use the import button above.</p>'
           +invalid.map(function(o){
             var codes=(o.r.problems||[]).map(function(p){ return p.code; });
@@ -18225,7 +18244,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
               return '<div><label>'+nvEsc(h)+'</label><input class="nv-bulkfix'+(bad?" bad":"")+'" data-nv-fix-row="'+o.i+'" data-nv-fix-col="'+c+'" value="'+nvEsc(val)+'"></div>';
             }).join("");
             return '<div style="border:1px solid var(--nvu-good-bg);border-radius:var(--r-lg);padding:10px;margin-top:8px">'
-              +'<div class="ops-card-head"><strong>Row '+nvEsc(o.r.line)+'</strong><span class="chip bad">'+(o.r.problems||[]).length+" issue(s)</span></div>"
+              +'<div class="ops-card-head"><strong>Row '+nvEsc(o.r.line)+'</strong><span class="chip bad">'+nvCount((o.r.problems||[]).length,"issue")+"</span></div>"
               +(o.r.problems||[]).map(function(p){ return '<p class="footer-note">'+nvEsc(p.message)+" <em>Fix: "+nvEsc(p.fix)+"</em></p>"; }).join("")
               +'<div class="nv-bulkgrid">'+cells+"</div></div>";
           }).join("")
@@ -18795,7 +18814,43 @@ Track your parcel: ${trackingUrl(p.awb)}`;
      merchant has not yet scrolled. */
   (function nvFabAutoHide(){
     var lastY = 0, hidden = false, idle = null;
+    /* 8 Oct 2026: the button also never RESTS on something you can tap. It
+       came back 0.9s after scrolling stopped wherever the page had stopped,
+       so on a short screen it sat on "Cancel booking" at the end of a label
+       row. Before it returns it now looks at what lies under its own spot;
+       if that is a button, a link or a field, it stays tucked away and looks
+       again the next time the page moves. Only real controls count -- a
+       tappable card or row does not -- so it is not hidden all the time, and
+       NovaX AI is always in the More menu as well. */
+    var covers = function(){
+      try{
+        if(document.querySelector(".nvauto-panel.open")) return false;
+        var was={ t:btn.style.transform, o:btn.style.opacity, p:btn.style.pointerEvents, v:btn.style.visibility };
+        /* Measure the resting spot without flashing the button into view. */
+        /* "translate" is what the phone stylesheet uses to slide the button
+           away while the page scrolls; cancel it too, or the spot measured
+           would be off the bottom of the screen. */
+        btn.style.transform=""; btn.style.translate="none"; btn.style.pointerEvents="none"; if(hidden) btn.style.visibility="hidden";
+        var r=btn.getBoundingClientRect(), hit=false;
+        if(r.width && r.height){
+          var pts=[[r.left+r.width/2,r.top+r.height/2],[r.left+7,r.top+r.height/2],[r.right-7,r.top+r.height/2],
+                   [r.left+r.width/2,r.top+7],[r.left+r.width/2,r.bottom-7]];
+          for(var i=0;i<pts.length && !hit;i++){
+            var el=document.elementFromPoint(pts[i][0],pts[i][1]);
+            if(el && el!==btn && !btn.contains(el) && el.closest && el.closest("button,a[href],input,select,textarea,summary")) hit=true;
+          }
+        }
+        btn.style.transform=was.t; btn.style.translate=""; btn.style.opacity=was.o; btn.style.pointerEvents=was.p; btn.style.visibility=was.v;
+        return hit;
+      }catch(e){ return false; }
+    };
+    var tuck = function(){
+      hidden = true;
+      btn.style.transform = "scale(.6)"; btn.style.opacity = "0";
+      btn.style.pointerEvents = "none"; btn.style.visibility = "hidden";
+    };
     var show = function(){
+      if(covers()){ tuck(); return; }
       hidden = false;
       btn.style.transform = ""; btn.style.opacity = "";
       btn.style.pointerEvents = ""; btn.style.visibility = "";
@@ -18830,6 +18885,16 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     addEventListener("click", function(){ setTimeout(function(){
       if(document.querySelector(".nvauto-panel.open")) show();
     }, 60); }, true);
+    /* The page also changes without scrolling: a tab opens, a list redraws,
+       the window turns. Look again shortly after each of those. */
+    var again = null;
+    var recheck = function(){ clearTimeout(again); again = setTimeout(function(){
+      if(document.querySelector(".nvauto-panel.open")) return;
+      show();
+    }, 350); };
+    addEventListener("click", recheck, true);
+    addEventListener("resize", recheck);
+    setTimeout(recheck, 1500);
   })();
 
   var panel=document.createElement("div");

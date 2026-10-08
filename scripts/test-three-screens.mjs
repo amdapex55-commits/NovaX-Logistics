@@ -93,3 +93,39 @@ console.log("THREE SCREENS CHECKS PASSED");
   ok("profile: eight folding sections, every field still in the page, phones start with the first one open");
 }
 console.log("INVOICE, PROFILE AND WALLET CARD CHECKS PASSED");
+
+// ── Later again on 8 Oct: bulk results, Home's figures, "(s)" wording, heading chips, the AI button ──
+{
+  // Wording: nothing a merchant reads counts with "(s)".
+  const left = [...app.matchAll(/\b(rows?|AWBs?|orders?|issues?|columns?|drafts?|requests?|invoices?|withdrawals?|parcels?|labels?|bookings?)\(s\)/g)].map((m) => m[0]);
+  assert.deepEqual(left, [], "messages still written with (s): " + left.join(", "));
+  assert.ok(!/\(s\)/.test(html.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<style[\s\S]*?<\/style>/g, "")), "no (s) in the page's own text");
+  const win = {}; new Function("window", /window\.nvCount=function\(n,one,many\)\{[\s\S]*?\n\};/.exec(app)[0])(win);
+  assert.equal(win.nvCount(1, "row"), "1 row"); assert.equal(win.nvCount(2, "row"), "2 rows"); assert.equal(win.nvCount(0, "row"), "0 rows");
+  assert.equal(win.nvCount(1, "city", "cities"), "1 city"); assert.equal(win.nvCount(3, "city", "cities"), "3 cities"); assert.equal(win.nvCount(1200, "parcel"), "1,200 parcels");
+  ok('wording: one counting helper, and no "row(s)", "AWB(s)" or "order(s)" left');
+
+  // Bulk results: a verdict and only the problems that exist.
+  assert.ok(app.includes('<div class="nvbr ${invalidRows.length?"is-bad":"is-ok"}">') && app.includes("ready to book</span>"));
+  assert.ok(!app.includes('["Total rows",results.length,""]') && !app.includes("Duplicate reference numbers"), "the eleven count boxes are gone");
+  assert.ok(app.includes(".filter(k=>k[1]>0)"), "a problem is named only when the file has it");
+  assert.ok(html.includes(".nvbr{margin-bottom:12px"));
+  ok("bulk results: rows checked, ready, needing a fix, and only the problems this file has");
+
+  // Home's figures.
+  assert.ok(html.includes('<h3>Figures for <span id="nvRangeLabel">all time</span></h3>') && !html.includes("Tap to change the dates for the figures below"));
+  ["accountHistoryHead", "accountHistoryChevron", "accountHistoryBody", "clientDateFrom", "clientDateTo", "applyDateRangeBtn", "nvRangeLabel"].forEach(once);
+  assert.ok(app.includes('metricCard("Parcels",cm.total,null,"booked in these dates"') && !app.includes("bar = average journey progress"));
+  assert.ok(app.includes("function nvRangeLabel(){") && app.includes("nvRangePaint();"));
+  ok("home: the strip names the dates the figures cover, and Parcels is a count with no bar to explain");
+
+  // A chip in a heading is a pill, not a bar.
+  assert.ok(html.includes(".section-head>.chip{justify-self:start;align-self:flex-start;width:auto"));
+  ok('headings: a count or status chip ("0 open", "Live") keeps its own width on phones');
+
+  // The AI button never rests on a control.
+  assert.ok(app.includes("var covers = function(){") && app.includes('el.closest("button,a[href],input,select,textarea,summary")'));
+  assert.ok(app.includes("if(covers()){ tuck(); return; }") && app.includes('btn.style.translate="none"'));
+  ok("AI button: before it returns it checks what lies under its spot, and stays tucked over a button, link or field");
+}
+console.log("BULK RESULTS, HOME FIGURES, WORDING, CHIPS AND AI BUTTON CHECKS PASSED");

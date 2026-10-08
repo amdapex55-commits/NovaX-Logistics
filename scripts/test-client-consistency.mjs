@@ -58,6 +58,8 @@ async function scenario({ loseInsertReply = false, loseFirstLookup = false, init
     activePickupAwbs: () => new Set(), activeClientId: () => "merchant-1", nvPkSync: () => {},
     renderPickupEligibleList: () => {}, renderPickupRequestList: () => {},
     saveState: () => {}, toast: (message, kind) => toasts.push({ message, kind }),
+    /* The portal's own counting helper ("1 parcel", "2 parcels"); the handler's messages use it. */
+    nvCount: (n, one, many) => Number(n).toLocaleString("en-PK") + " " + (Number(n) === 1 ? one : (many || one + "s")),
     Date, Set, Promise, JSON, String, Array, Error,
   });
   vm.runInContext(handler, context, { filename: "client-app.js:requestPickup" });
