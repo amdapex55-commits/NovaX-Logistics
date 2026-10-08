@@ -15,6 +15,9 @@
 
    It reaches the portal through window.__nvRcBridge (client-app.js).
 
+   Published through scripts/build-public.mjs: a new file like this one is
+   only on the live site once it is in that list.
+
    In the demo portal there is no backend, so the same five calls are
    answered from this browser's storage. That copy exists for previewing on
    localhost; the tab is not shown in the public demo.

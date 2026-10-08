@@ -39,6 +39,7 @@ const publicFiles = [
   "when-is-cod-paid.html",
   "client-app.js",
   "client-app.min.js",
+  "client-recover.js",
   "client-reports.js",
   "nv-cnic.js",
   "nv-journey.js",

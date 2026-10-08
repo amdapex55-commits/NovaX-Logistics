@@ -32,6 +32,24 @@ async function walk(directory, relative = "") {
 await access(output);
 for (const file of requiredFiles) await access(path.join(output, file));
 
+/* Every script a published page or bundle loads by a versioned address
+   ("name.js?v=<hash>") must itself be published. On 8 Oct 2026 the portal
+   bundle went live pointing at client-recover.js, which was not in
+   build-public.mjs's list: the address answered 404 on the live site. */
+const missingScripts = [];
+for (const page of ["client.html", "client-app.js", "rider.html", "care.html", "admin.html", "index.html"]) {
+  let text = "";
+  try { text = await readFile(path.join(output, page), "utf8"); } catch { continue; }
+  for (const m of text.matchAll(/["'(]([A-Za-z0-9_-]+\.js)\?v=[0-9a-f]{8}/g)) {
+    try { await access(path.join(output, m[1])); } catch { missingScripts.push(`${page} loads ${m[1]}, which is not published`); }
+  }
+}
+if (missingScripts.length) {
+  console.error([...new Set(missingScripts)].join("\n"));
+  console.error("Add the file to the list in scripts/build-public.mjs.");
+  process.exit(1);
+}
+
 const files = await walk(output);
 const violations = files.filter((file) => {
   const segments = file.split(path.sep);

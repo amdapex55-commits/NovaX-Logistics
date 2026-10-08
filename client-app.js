@@ -7664,7 +7664,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        visible the menu entry stays hidden (body.nv-rc-on in client.html).
        A missing function, a failed call or a closed switch all mean hidden,
        silently: this must never get in a merchant's way. */
-    var NV_RECOVER_SRC="client-recover.js?v=90179626";
+    var NV_RECOVER_SRC="client-recover.js?v=ef6edf13";
     var NV_RC={ state:null, asked:"", p:null };
     function nvRcVisible(){ return !!(NV_RC.state && NV_RC.state.visible); }
     /* An order NovaX recovered carries meta.recover: the same parcel sent out
