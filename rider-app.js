@@ -137,7 +137,10 @@
     var sel = opts.select ? '<input type="checkbox" class="pick" data-pick="' + esc(p.awb) + '"' + (ui.sel.has(p.awb) && !lock ? " checked" : "") + (pend || lock ? " disabled" : "") + ' aria-label="Select ' + esc(p.awb) + '">' : "";
     var tag = p.meta.swapLeg === "out" ? '<p class="swaptag">NOVA SWAP · collect the old item' + (p.meta.swapPairAwb ? ' · return AWB <b>' + esc(p.meta.swapPairAwb) + '</b>' : '') + '</p>' :
               p.meta.swapLeg === "back" ? '<p class="swaptag back">NOVA SWAP RETURN · going back to the merchant</p>' :
-              isReturn(p) ? '<p class="swaptag back">RETURN · going back to ' + esc(p.shipper && p.shipper.name || "the shipper") + '</p>' : "";
+              isReturn(p) ? '<p class="swaptag back">RETURN · going back to ' + esc(p.shipper && p.shipper.name || "the shipper") + '</p>' :
+              /* Nova Recover: a support agent phoned the customer after a refusal and they agreed to take it. */
+              (p.meta.recover && p.meta.recover.by && !p.meta.recover.rebookedAs) ? '<p class="swaptag">NOVA RECOVER · customer agreed on the phone' +
+                (p.meta.recover.date ? ' · deliver ' + esc(p.meta.recover.date) : '') + (p.meta.recover.note ? ' · ' + esc(p.meta.recover.note) : '') + '</p>' : "";
     var money2 = (isReturn(p) || p.meta.swapLeg === "back") ? (LANG === "ur" ? "Shipper ko wapsi · kuch collect nahi karna" : "Return to shipper · collect nothing") : p.cod > 0 ? (pay.conflict ? '<span class="error-text">COD/prepaid conflict — marked Prepaid. Call the office.</span>' : "COD " + money(p.cod)) : "Prepaid · collect nothing";
     var att = Number(p.attempts || 0), attTxt = att ? (att + " " + t("attempts") + (att > 1 ? (LANG === "ur" ? "" : "s") : "")) : "";
     var route = (p.origin || "") + " → " + (p.city || "");

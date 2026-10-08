@@ -425,6 +425,35 @@
     '</div>';
   }
 
+  /* Nova Recover (8 Oct 2026): what NovaX recovered in this period, for a
+     merchant who has the tab. The server's own count (client_recover_summary,
+     by the day the order was recovered); nothing is shown when there is
+     nothing, or when the call fails. */
+  var RCL = { key:"", data:null };
+  function recoverLine(R){
+    var host = document.getElementById("nvrRecover"); if (!host) return;
+    if (!document.body.classList.contains("nv-rc-on")) return;
+    var key = (R.a || "") + "|" + R.b;
+    function put(d){
+      var h = document.getElementById("nvrRecover"); if (!h || !d) return;
+      var n = Number(d.recovered) || 0, dn = Number(d.delivered) || 0;
+      h.innerHTML = '<div class="nvr-ins"><div class="nvr-in is-good"><span class="nvr-in-i" aria-hidden="true">\u21bb</span><p><b>NovaX recovered ' + n + ' order' + (n === 1 ? "" : "s") +
+        ' worth ' + esc(rs(d.cod)) + ' in this period.</b> ' + (dn ? dn + ' delivered so far. ' : "") + 'Nova Recover fees: ' + esc(rs(d.fees)) + '.</p>' +
+        '<button type="button" class="nvr-link" data-rcgo="1">See them \u2192</button></div></div>';
+    }
+    if (RCL.key === key && RCL.data) { put(RCL.data); return; }
+    var p;
+    if (B.demo()) p = (window.NovaXRecover && window.NovaXRecover.summary) ? window.NovaXRecover.summary(R.a || null, R.b) : Promise.resolve(null);
+    else {
+      var sb = B.sb(); if (!sb || !sb.rpc) return;
+      p = Promise.resolve(sb.rpc("client_recover_summary", { p_from:R.a || null, p_to:R.b })).then(function(r){ return (r && !r.error) ? r.data : null; }, function(){ return null; });
+    }
+    Promise.resolve(p).then(function(d){
+      if (!d || !d.visible || !(Number(d.recovered) > 0)) return;
+      RCL = { key:key, data:d }; put(d);
+    }).catch(function(){});
+  }
+
   function insightsHtml(list){
     if (!list.length) return "";
     return '<div class="nvr-ins" aria-label="What changed">' + list.map(function(x, i){
@@ -603,12 +632,13 @@
         ? '<div class="nvr-card nvr-zero"><h4>Sign in again to see this report</h4><p>This page is no longer signed in to ' + esc(B.clientName() || "this account") + ', so NovaX did not send it any parcels. Nothing is wrong with the account or its parcels.</p><div><a class="nvr-btn is-primary" href="index.html#signin">Sign in again</a> <button type="button" class="nvr-btn" id="nvrRetry">Try again</button></div></div>'
         : m.total === 0
         ? '<div class="nvr-card nvr-zero"><h4>No parcels booked ' + (S.period === "today" ? "today" : "in this period") + '</h4><p>Pick a longer period above, or book a parcel and it shows up here straight away.</p><div><button type="button" class="nvr-btn" data-period="all">Show all time</button> <button type="button" class="nvr-btn is-primary" data-go="newBooking">Book a parcel</button></div></div>'
-        : kpis(m, pm, bk) + insightsHtml(INS) +
+        : kpis(m, pm, bk) + insightsHtml(INS) + '<div id="nvrRecover"></div>' +
           '<div class="nvr-grid">' + moneyFlow(m) + (small ? '<div class="nvr-card nvr-note"><h4 class="nvr-h">Charts</h4><p class="nvr-empty">Charts appear once you have 10 or more parcels in the period. You have ' + m.total + ' so far.</p></div>' : trend(bk)) + '</div>' +
           '<div class="nvr-grid">' + cities() + problems(m) + '</div>' + explorer()) +
       '</div>';
     if (!small) drawChart(bk);
     countUp();
+    recoverLine(R);
     if (focusId) { var el = document.getElementById(focusId); if (el) { el.focus(); if (caret != null && el.setSelectionRange) try{ el.setSelectionRange(caret, caret); }catch(e){} } }
   }
   /* The bar alone, so a period change shows the new chip at once while the
@@ -684,6 +714,7 @@
       if (t.hasAttribute("data-city")) { var c = t.getAttribute("data-city"); S.city = S.city === c ? "" : c; S.shown = 50; paintExplorer(); jump(); return; }
       if (t.hasAttribute("data-group")) { S.group = t.getAttribute("data-group"); S.shown = 50; paintExplorer(); if (t.classList.contains("nvr-link")) jump(); return; }
       if (t.hasAttribute("data-search")) { S.q = t.getAttribute("data-search"); S.group = "all"; S.city = ""; paintExplorer(); jump(); return; }
+      if (t.hasAttribute("data-rcgo")) { window.__nvRcOpenSeg = "won"; B.showTab("recover"); return; }
       if (t.hasAttribute("data-ins")) {
         var a = (INS[Number(t.getAttribute("data-ins"))] || {}).act || {};
         if (a.tab) { B.showTab(a.tab); return; }
@@ -790,7 +821,7 @@
     '.nvr-in p{margin:0;flex:1;font-size:13.5px;line-height:1.45;color:var(--nvu-ink-2)}.nvr-in p b{color:var(--nvu-ink)}',
     '.nvr-in-i{flex:0 0 30px;height:30px;border-radius:10px;display:grid;place-items:center;font-size:13px;font-weight:800}',
     '.nvr-in.is-bad{border-color:var(--nvu-bad-ln)}.nvr-in.is-bad .nvr-in-i{background:var(--nvu-bad-bg);color:var(--nvu-bad-fg)}',
-    '.nvr-in.is-warn{border-color:var(--nvu-warn-ln)}.nvr-in.is-warn .nvr-in-i{background:var(--nvu-warn-bg);color:var(--nvu-warn-fg)}',
+    '.nvr-in.is-warn{border-color:var(--nvu-warn-ln)}.nvr-in.is-good{border-color:var(--nvu-good-ln)}#nvrRecover:empty{display:none}.nvr-in.is-warn .nvr-in-i{background:var(--nvu-warn-bg);color:var(--nvu-warn-fg)}',
     '.nvr-in.is-good .nvr-in-i{background:var(--nvu-good-bg);color:var(--nvu-good-fg)}.nvr-in.is-info .nvr-in-i{background:var(--nvu-info-bg);color:var(--nvu-info-fg)}',
     '.nvr-link{appearance:none;border:0;background:none;color:var(--nvu-accent);font:inherit;font-size:13px;font-weight:750;cursor:pointer;padding:6px 2px;white-space:nowrap;min-height:32px}',
     '.nvr-link:hover{text-decoration:underline}',

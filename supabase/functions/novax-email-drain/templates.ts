@@ -1,6 +1,7 @@
 export type EmailKind = 'welcome' | 'first_booking' | 'payout_paid' | 'cnic_verified' | 'cnic_rejected'
   | 'first_parcel_d1' | 'first_parcel_d3' | 'first_parcel_d7'
-  | 'back_quiet' | 'back_tried' | 'setup_ready';
+  | 'back_quiet' | 'back_tried' | 'setup_ready'
+  | 'recover_refused' | 'recover_won' | 'recover_launch';
 export type EmailPayload = Record<string, unknown>;
 const PORTAL = 'https://novaxlogistics.com/client.html';
 const WEBSITE = 'https://novaxlogistics.com/';
@@ -279,6 +280,84 @@ function spec(kind: EmailKind, data: EmailPayload): Spec {
         ['Request pickup.', 'In the same tab, choose the parcels, confirm your pickup address and pick a time. Riders collect between 11 am and 9 pm on working days.'],
       ],
       note: `Pickup is free in Karachi, Lahore, Islamabad and Rawalpindi. Price: ${PRICE}`,
+    };
+  }
+  // Nova Recover (8 Oct 2026). A parcel was refused and NovaX no longer calls
+  // every refusal for free: the merchant decides. At most one a day.
+  if (kind === 'recover_refused') {
+    const awb = label(data.awb), customer = label(data.customer) || 'Your customer', city = label(data.city);
+    if (!awb) throw new Error('missing_awb');
+    const cod = currency(data.cod), fee = currency(data.fee);
+    const reason = label(data.reason);
+    return {
+      subject: `A customer refused parcel ${awb}`,
+      preheader: `${customer}${city ? ' in ' + city : ''} refused ${cod}. Choose what happens next.`,
+      pill: 'Parcel refused', tone: 'warn',
+      title: 'A customer refused your parcel.',
+      intro: `${customer}${city ? ' in ' + city : ''} refused this parcel${forBiz}. It is at our station, waiting for your decision.`,
+      fact: { label: 'COD ON THIS ORDER', value: cod, caption: 'Tracking number ' + awb, size: 30 },
+      rows: reason ? [['What the rider wrote', reason]] : undefined,
+      cta: 'Choose what to do', destination: PORTAL + '?tab=recover',
+      stepsTitle: 'Your three choices',
+      steps: [
+        ['Recover it.', `A NovaX agent phones the customer and sells the order again. ${fee} only if it works, nothing if it does not.`],
+        ['Try again.', 'We send the same parcel out once more.'],
+        ['Return to me.', 'We bring the parcel back to you.'],
+      ],
+      note: 'If more parcels are refused today they join the same list in your portal. This email comes at most once a day.',
+    };
+  }
+  // Sent once, by an admin, to a merchant who has the Nova Recover tab,
+  // has parcels that came back, and has not started.
+  if (kind === 'recover_launch') {
+    const n = count(data.count), cod = currency(data.cod);
+    const free = !(Number(data.fee) > 0), fee = free ? '' : currency(data.fee);
+    return {
+      subject: n === 1 ? 'An order came back. We can sell it again' : `${n} orders came back. We can sell them again`,
+      preheader: `${n === 1 ? 'One order' : n + ' orders'} worth ${cod} came back. A NovaX agent can phone the customer and sell it again.`,
+      pill: 'New: Nova Recover', tone: 'info',
+      title: 'Let us sell your returned orders again.',
+      intro: `${n === 1 ? 'One order' : n + ' orders'}${forBiz} came back from customers who refused them. With Nova Recover, a NovaX agent phones each customer and sells the order again.`,
+      fact: { label: n === 1 ? 'COD ON THAT ORDER' : 'COD ON THOSE ORDERS', value: cod, caption: n === 1 ? '1 order you can send us' : n + ' orders you can send us', size: 30 },
+      cta: 'Choose the orders', destination: PORTAL + '?tab=recover',
+      stepsTitle: 'How it works',
+      steps: [
+        ['You choose.', 'Open Nova Recover in your portal and pick the parcels. Start with the recent ones: they do best.'],
+        ['We call.', 'A NovaX agent phones the customer within one working day.'],
+        [free ? 'No fee for now.' : `${fee} only when it works.`, free ? 'A recovered order is delivered at your normal rate.' : 'For each order we recover. Nothing if we cannot. A recovered order is delivered at your normal rate.'],
+      ],
+      note: free ? 'You will be told, and asked to agree, before any fee is added.'
+                 : 'The fee comes from your NovaX Wallet, and it stays if the customer agrees on the call and then refuses again at the door.',
+    };
+  }
+  if (kind === 'recover_won') {
+    const awb = label(data.awb), was = label(data.was_awb), customer = label(data.customer) || 'Your customer', city = label(data.city);
+    if (!awb) throw new Error('missing_awb');
+    const cod = currency(data.cod), fee = currency(data.fee);
+    const rebook = data.mode === 'rebook';
+    const off = Number(data.was_cod) - Number(data.cod);
+    const rows: Array<[string, string]> = [['Customer', customer + (city ? ', ' + city : '')], ['Delivery day', day(data.deliver_on)], ['Tracking number', awb]];
+    if (rebook && was) rows.push(['Earlier tracking number', was]);
+    if (Number.isFinite(off) && off > 0) rows.push(['Taken off to save the sale', currency(off)]);
+    rows.push(['Nova Recover fee', Number(data.fee) > 0 ? fee : 'None']);
+    return {
+      subject: `We recovered an order for you: ${awb}`,
+      preheader: `${customer} agreed to take the order. COD ${cod}.`,
+      pill: 'Order recovered', tone: 'good',
+      title: 'NovaX recovered an order for you.',
+      intro: `${customer} had refused this order${forBiz}. A NovaX agent called, and they agreed to take it.`,
+      fact: { label: 'COD TO COLLECT', value: cod, caption: 'Tracking number ' + awb, size: 30 },
+      rows,
+      cta: rebook ? 'Print the new label' : 'See it in your portal',
+      destination: rebook ? PORTAL + '?tab=awbLabel&awb=' + encodeURIComponent(awb) : PORTAL + '?tab=recover',
+      stepsTitle: 'What happens next',
+      steps: rebook
+        ? [['Pack the order again.', 'It is booked under a new tracking number, so it needs the new label.'],
+           ['Hand it over at your next pickup.', 'It then travels like any other parcel.']]
+        : [['Nothing for you to do.', 'The same parcel goes out again on the delivery day above.']],
+      note: Number(data.fee) > 0
+        ? 'The fee comes from your NovaX Wallet. If the wallet is empty, it comes out of your next COD before you withdraw.'
+        : 'There is no fee for this one.',
     };
   }
   throw new Error('unknown_email_kind');

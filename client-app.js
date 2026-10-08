@@ -146,6 +146,44 @@ window.nvCount=function(n,one,many){
       return api;
     }
 
+    /* Nova Recover preview, on this machine only (never the public demo):
+       orders recovered in the Support Desk preview are added to the sample
+       data as the parcels and wallet lines the real functions would write,
+       so the mark on the order and the fee line can be seen. */
+    function nvRcDemoLocal(){ return !!window.__NOVAX_DEMO && /^(localhost|127\.0\.0\.1)$/.test(location.hostname); }
+    function nvRcDemoInject(D){
+      if(!nvRcDemoLocal() || !D || !D.tables) return;
+      var st=null; try{ st=JSON.parse(localStorage.getItem("nvRecoverPreview")||"null"); }catch(e){}
+      if(!st || !Array.isArray(st.cases)) return;
+      var CID=(D.tables.clients[0]||{}).id, spent=0;
+      st.cases.forEach(function(c){
+        if(c.status!=="recovered") return;
+        var rec={ "case":c.code, by:"NovaX", at:c.closed_at, date:c.agreed_date, cod:c.agreed_cod, wasCod:c.cod };
+        var base={ client_id:CID, consignee:c.agreed_name||c.consignee, phone:c.agreed_phone||c.phone||"", city:c.agreed_city||c.city,
+          address:c.agreed_address||c.address||"", cod_amount:c.agreed_cod, fee:225, exception:null, invoice_id:null, invoiced_at:null, rider_id:null,
+          pricing_mode:null, distance_km:null, quoted_fee:null, rate_version:null };
+        var meta={ weight:"0.5 kg", service:"COD Standard", branch:"Karachi Hub", paymentMode:"COD", steps:null, risk:0 };
+        if(c.mode==="rebook" && c.new_awb){
+          rec.from=c.awb;
+          D.tables.parcels.unshift(Object.assign({}, base, { id:"demo-p-"+c.new_awb, awb:c.new_awb, status:"New booked", booked_at:c.closed_at, updated_at:c.closed_at,
+            meta:Object.assign({}, meta, { source:"nova_recover", referenceNo:"Recovered from "+c.awb, recover:rec }) }));
+        } else {
+          D.tables.parcels.unshift(Object.assign({}, base, { id:"demo-p-"+c.awb, awb:c.awb, status:"Refused", booked_at:c.came_back_at, updated_at:c.closed_at,
+            exception:c.rider_reason||"", meta:Object.assign({}, meta, { reattemptRequestedAt:c.closed_at, recover:rec }) }));
+        }
+      });
+      (st.fees||[]).forEach(function(f){
+        spent+=-Number(f.amount||0);
+        D.tables.wallet_ledger.unshift({ id:f.id, client_id:CID, entry_type:"admin_adjustment", amount:Number(f.amount), affects_balance:true, status:"Adjustment",
+          reference_type:"recover_case", reference_id:f.case_id, reference_code:f.awb, created_at:f.at,
+          note:"Nova Recover fee: order "+f.awb+" recovered by NovaX"+(f.was?" (was "+f.was+").":".") });
+      });
+      if(spent){
+        if(D.tables.clients[0]) D.tables.clients[0].wallet_balance=Number(D.tables.clients[0].wallet_balance||0)-spent;
+        var w=D.rpcs&&D.rpcs.client_wallet_summary&&D.rpcs.client_wallet_summary[0]; if(w) w.available_balance=Number(w.available_balance||0)-spent;
+      }
+    }
+
     function nvDemoClient(){
       return {
         __isDemo: true,
@@ -751,6 +789,7 @@ window.nvCount=function(n,one,many){
       window.__nvSb = nvDemoClient();
       window.__nvGuardSb = window.__nvSb;
       window.__nvDemoData = nvDemoSeed();
+      try{ nvRcDemoInject(window.__nvDemoData); }catch(e){}
       window.__novaxVerifiedProfile = { role:"client", status:"active", clientId:"demo-client" };
       /* The data layer reuses the gate's session rather than re-fetching.
          Handing it a demo session makes the real loader run end to end:
@@ -915,7 +954,13 @@ window.nvCount=function(n,one,many){
         var armed = false;
         window.__nvDemoArmInvite = function(){
           if (armed) return; armed = true;
-          setTimeout(function(){ window.__nvDemoInvite(); }, 25000);
+          /* Never on top of something the visitor has open (a wallet sheet,
+             the Nova Recover pop-up): wait until it is closed. */
+          var tryInvite=function(){
+            if(document.querySelector(".nvw-back:not(.out)")){ setTimeout(tryInvite, 4000); return; }
+            window.__nvDemoInvite();
+          };
+          setTimeout(tryInvite, 25000);
         };
         setTimeout(function(){
           if (!document.getElementById("nvObDeck")) window.__nvDemoArmInvite();
@@ -3410,6 +3455,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
             ? (String(p.status||"")==="Delivered" ? "COD collected" : "COD to collect")
             : "no cash due")+'</small></div>'+
         '<div style="margin-top:8px">'+U.statusPill(p.status)+(paid?' <span class="nv-paid-tape">PAID</span>':'')+'</div>'+
+        (nvRcIs(p)?'<div class="nvdr-rc">'+nvRcTag(p)+'<span>'+escLabelText(nvRcLine(p))+'</span></div>':'')+
         (p.exception?'<div class="nvdr-why"><span>'+
             (/return|refus|cancel/i.test(String(p.status||"")) ? "Why it came back" : "What happened")+
           '</span>'+escLabelText(p.exception)+'</div>':'')+
@@ -3971,7 +4017,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          checkbox and action buttons, and a screen reader read the whole row as
          one "Open journey" button with controls inside it. The AWB is the
          real, focusable button; its click bubbles to the row. */
-      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><button type="button" class="nv-awb-open" aria-label="Open journey for ${escLabelText(p.awb)}">${escLabelText(p.awb)}</button> ${nvPaidPill(p)}<br><span class="footer-note" title="Last status update">${p.updated?"Updated "+escLabelText(p.updated):""}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${nvCodCell(p)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
+      if(rowsHost) rowsHost.innerHTML = cardsOnScreen ? "" : (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<tr data-awb="${escLabelText(p.awb)}" class="clickable-row ${p.awb===state.selectedAwb?"selected":""}${nvRcIs(p)?" nv-rc-hl":""}" onclick="openClientParcelJourney('${p.awb}')"><td style="width:34px" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></td><td><button type="button" class="nv-awb-open" aria-label="Open journey for ${escLabelText(p.awb)}">${escLabelText(p.awb)}</button> ${nvPaidPill(p)}<br><span class="footer-note" title="Last status update">${p.updated?"Updated "+escLabelText(p.updated):""}</span></td><td>${escLabelText(p.consignee)}<br><span class="footer-note">${escLabelText(p.city)}</span></td><td>${nvCodCell(p)}${nvPayConflictChip(p)}</td><td><span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span>${nvRcTag(p)}${pickupNotice(p)}</td><td>${nvJourneyCell(p,pr)}</td><td onclick="event.stopPropagation()">${nvPickupChipHtml(p)}${nvParcelCardActions(p)||''}${(!nvPickupChipHtml(p)&&!nvParcelCardActions(p))?'<span class="footer-note">&mdash;</span>':''}</td></tr>`; }).join("")||`<tr><td colspan="7">${nvParcelEmptyStateHtml()}</td></tr>`);
       /* 4 Oct 2026: phone cards are two lines now. Each was ~240px tall --
          checkbox, a centred AWB, a four-cell grid, a progress bar and a
          full-width "Report an issue" on every card -- so five parcels made a
@@ -3979,7 +4025,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
          city, COD. A slim bar and the ETA follow; only buttons that need the
          merchant (confirm re-delivery, change address) stay on the card.
          Edit, Cancel booking and Report an issue live in the drawer a tap away. */
-      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card nv-pc ${p.awb===state.selectedAwb?"selected":""}" onclick="openClientParcelJourney('${p.awb}')"><div class="nv-pc-l1"><label class="nv-pc-sel" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong class="nv-pc-awb">${escLabelText(p.awb)}</strong>${nvPaidPill(p)}<span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span></div><div class="nv-pc-l2"><span class="nv-pc-who">${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)}</span><span class="nv-pc-cod">${nvCodCell(p)}</span></div>${nvPayConflictChip(p)}${pickupNotice(p)}<div class="nv-pc-l3">${nvCardJourney(p,pr)}</div>${nvPickupChipHtml(p)}${nvParcelCardActions(p,{ decisionsOnly:true })}</article>`; }).join("")) : "";
+      if(cardsHost) cardsHost.innerHTML = cardsOnScreen ? (parcels.map(p=>{ const pr=nvProgressPct(p.status,p); return `<article data-awb="${escLabelText(p.awb)}" class="parcel-card nv-pc ${p.awb===state.selectedAwb?"selected":""}${nvRcIs(p)?" nv-rc-hl":""}" onclick="openClientParcelJourney('${p.awb}')"><div class="nv-pc-l1"><label class="nv-pc-sel" onclick="event.stopPropagation()"><input type="checkbox" data-nv-sel="${escLabelText(p.awb)}" aria-label="Select ${escLabelText(p.awb)}"${(window.__nvSel&&window.__nvSel[p.awb])?" checked":""}></label><strong class="nv-pc-awb">${escLabelText(p.awb)}</strong>${nvPaidPill(p)}<span class="status ${statusClass(p)}"><span class="mini-dot"></span>${escLabelText(nvStatusLabel(p.status))}</span></div>${nvRcIs(p)?'<div class="nv-pc-rc">'+nvRcTag(p)+'<span>'+escLabelText(nvRcLine(p))+'</span></div>':""}<div class="nv-pc-l2"><span class="nv-pc-who">${escLabelText(p.consignee)} &middot; ${escLabelText(p.city)}</span><span class="nv-pc-cod">${nvCodCell(p)}</span></div>${nvPayConflictChip(p)}${pickupNotice(p)}<div class="nv-pc-l3">${nvCardJourney(p,pr)}</div>${nvPickupChipHtml(p)}${nvParcelCardActions(p,{ decisionsOnly:true })}</article>`; }).join("")) : "";
       /* "Showing 25 of 189" with one control to load more. Without this the
          merchant cannot tell whether the list ended or was truncated. */
       (function(){
@@ -6406,6 +6452,9 @@ Track your parcel: ${trackingUrl(p.awb)}`;
     function renderClientReportFull(){
       if(state.activeClientTab==="reports"){ try{ nvReport2Open(); }catch(e){} }
       if(state.activeClientTab==="swap"){ try{ nvSwOpen(); }catch(e){} }
+      try{ nvRcCheck(); }catch(e){}
+      if(state.activeClientTab==="recover"){ try{ nvRcOpen(); }catch(e){} }
+      else if(window.NovaXRecover){ try{ window.NovaXRecover.leave(); }catch(e){} }
       if(state.activeClientTab==="profile"){ try{ nvPfOpen(); }catch(e){} try{ nvKycLoad(); }catch(e){} }
       const tbody=document.getElementById("clientReportFullRows"); if(!tbody) return;
       const sel=document.getElementById("repStatus");
@@ -7551,7 +7600,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        the portal through this bridge, so "delivered", "settled" and "rated"
        mean exactly what they mean on every other screen. Read-only. If the
        file cannot load, the classic report underneath is shown instead. */
-    var NV_REPORTS_SRC="client-reports.js?v=1387701e";
+    var NV_REPORTS_SRC="client-reports.js?v=4a3fb32b";
     window.__nvRepBridge={
       clientId:function(){ return state.client&&state.client.id; },
       clientName:function(){ return (state.client&&state.client.name)||""; },
@@ -7603,6 +7652,189 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       }).catch(function(){
         host.dataset.loading=""; host.hidden=true;
         const legacy=document.getElementById("nvReportLegacy"); if(legacy) legacy.hidden=false;
+      });
+    }
+
+    /* ═══ Nova Recover (8 Oct 2026, phase 1) ════════════════════════════
+       The merchant picks refused and returned parcels and sends them to the
+       NovaX Support Desk, where an agent phones the customer and sells the
+       order again. client-recover.js holds the screen and is loaded only
+       when the tab opens. This block decides whether the tab exists at all:
+       the server answers client_recover_state(), and until it says
+       visible the menu entry stays hidden (body.nv-rc-on in client.html).
+       A missing function, a failed call or a closed switch all mean hidden,
+       silently: this must never get in a merchant's way. */
+    var NV_RECOVER_SRC="client-recover.js?v=90179626";
+    var NV_RC={ state:null, asked:"", p:null };
+    function nvRcVisible(){ return !!(NV_RC.state && NV_RC.state.visible); }
+    /* An order NovaX recovered carries meta.recover: the same parcel sent out
+       again, or the new booking made for one that had gone back. The old
+       parcel of a new booking only points forward (rebookedAs) and is not
+       marked. */
+    function nvRcIs(p){ var r=p&&p._meta&&p._meta.recover; return !!(r && typeof r==="object" && !r.rebookedAs && r.by); }
+    function nvRcTag(p){ return nvRcIs(p)?'<span class="nv-rc-tag">Recovered by NovaX</span>':""; }
+    function nvRcLine(p){
+      var r=(p&&p._meta&&p._meta.recover)||{}, bits=[];
+      if(r.from) bits.push("Booked again from "+r.from); else bits.push("Going out again");
+      if(r.date){ try{ bits.push("delivery "+new Date(String(r.date).slice(0,10)+"T12:00:00Z").toLocaleDateString("en-GB",{ day:"numeric", month:"short", timeZone:"Asia/Karachi" })); }catch(e){} }
+      if(r.wasCod!=null && r.cod!=null && Number(r.cod)<Number(r.wasCod)) bits.push(money(Number(r.wasCod)-Number(r.cod))+" off");
+      return bits.join(" \u00b7 ");
+    }
+    /* "NovaX recovered 2 orders": on Home until the merchant has looked. */
+    function nvRcNotice(){
+      var host=document.getElementById("client-dashboard"); if(!host) return;
+      var n=nvRcVisible()?Number(NV_RC.state.unseen||0):0, el=document.getElementById("nvRcNotice");
+      if(!n){ if(el) el.remove(); return; }
+      if(!el){
+        el=document.createElement("div"); el.id="nvRcNotice"; el.className="nv-rc-notice"; el.setAttribute("role","status");
+        el.innerHTML='<span class="nv-rc-notice-t"></span><button type="button" class="action-btn">See them</button>';
+        el.querySelector("button").addEventListener("click",function(){ window.__nvRcOpenSeg="won"; showClientTab("recover"); });
+        host.insertBefore(el, host.firstChild);
+      }
+      el.querySelector(".nv-rc-notice-t").innerHTML="<b>NovaX recovered "+n+(n===1?" order":" orders")+" for you.</b> "+(n===1?"It is":"They are")+" on the way to your customer again.";
+    }
+    /* A merchant who has the tab, has parcels that came back, and has never
+       started: say how many and what they are worth, once, on Home. Gone as
+       soon as they start, or for two weeks if they say not now. */
+    function nvRcStartCard(){
+      var host=document.getElementById("client-dashboard"); if(!host) return;
+      var el=document.getElementById("nvRcStart"), st=NV_RC.state||{}, n=Number((st.counts||{}).to_recover||0), until=0;
+      try{ until=Number(localStorage.getItem("nvRcStartLater")||0); }catch(e){}
+      var show=nvRcVisible() && st.accepted===false && n>0 && st.may_push!==false && Date.now()>until;
+      if(!show){ if(el) el.remove(); return; }
+      if(!el){
+        el=document.createElement("section"); el.id="nvRcStart"; el.className="nv-rc-start"; el.setAttribute("aria-label","Nova Recover");
+        el.addEventListener("click",function(e){
+          var b=e.target.closest&&e.target.closest("[data-rcs]"); if(!b) return;
+          if(b.getAttribute("data-rcs")==="go"){ window.__nvRcOpenSeg="todo"; showClientTab("recover"); return; }
+          try{ localStorage.setItem("nvRcStartLater", String(Date.now()+14*86400000)); }catch(e2){}
+          el.remove();
+        });
+        var before=document.getElementById("nvRcRefused")||document.getElementById("nvRcNotice");
+        host.insertBefore(el, before?before.nextSibling:host.firstChild);
+      }
+      var fee=Number(st.fee||0), cod=Number(st.to_recover_cod||0);
+      el.innerHTML='<p class="nv-rc-start-e">Nova Recover</p><h3>'+n+(n===1?" order":" orders")+(cod>0?" worth "+escLabelText(money(cod)):"")+(n===1?" came back.":" came back.")+'</h3>'+
+        '<p>We phone those customers and sell the orders again. You choose which ones. '+(fee>0?escLabelText(money(fee))+' only for each order we recover, nothing if we cannot.':'No fee for now.')+'</p>'+
+        '<div class="nv-rc-start-a"><button type="button" class="action-btn" data-rcs="go">Recover them</button><button type="button" class="nv-rc-start-x" data-rcs="later">Not now</button></div>';
+    }
+    /* A refused parcel waits for the merchant: recover it, try again, or
+       take it back. The list is the server's (client_recover_state.refused);
+       a parcel the merchant has just decided on here is left out at once,
+       because "Return to me" opens a ticket and does not change the parcel. */
+    function nvRcDecided(){ try{ var j=JSON.parse(localStorage.getItem("nvRcDecided")||"{}"), now=Date.now(), o={}; Object.keys(j).forEach(function(k){ if(now-Number(j[k])<14*86400000) o[k]=j[k]; }); return o; }catch(e){ return {}; } }
+    function nvRcDecide(awb){ try{ var j=nvRcDecided(); j[awb]=Date.now(); localStorage.setItem("nvRcDecided",JSON.stringify(j)); }catch(e){} }
+    function nvRcRefusedNotice(){
+      var host=document.getElementById("client-dashboard"); if(!host) return;
+      var el=document.getElementById("nvRcRefused"), done=nvRcDecided();
+      var list=nvRcVisible()?((NV_RC.state.refused||[]).filter(function(x){ return x && !done[x.awb]; })):[];
+      if(!list.length){ if(el) el.remove(); return; }
+      if(!el){
+        el=document.createElement("section"); el.id="nvRcRefused"; el.className="nv-rc-ref"; el.setAttribute("aria-label","Refused parcels");
+        el.addEventListener("click",function(e){
+          var b=e.target.closest&&e.target.closest("[data-rcr]"); if(!b||b.disabled) return;
+          var how=b.getAttribute("data-rcr"), awb=b.getAttribute("data-awb"), id=b.getAttribute("data-id");
+          if(how==="more"){ showClientTab("recover"); return; }
+          if(how==="recover"){ window.__nvRcPick=[id]; window.__nvRcOpenSeg="todo"; showClientTab("recover"); return; }
+          var row=b.closest(".nv-rc-ref-row"); if(row) row.querySelectorAll("button").forEach(function(x){ x.disabled=true; });
+          var p=how==="again"?requestRedelivery(awb):requestReturnToOrigin(awb);
+          Promise.resolve(p).then(function(){ nvRcDecide(awb); nvRcCheck(true); nvRcRefusedNotice(); },
+            function(){ if(row) row.querySelectorAll("button").forEach(function(x){ x.disabled=false; }); });
+        });
+        var after=document.getElementById("nvRcNotice");
+        host.insertBefore(el, after?after.nextSibling:host.firstChild);
+      }
+      var feeN=Number(NV_RC.state.fee||0), fee=money(feeN), show=list.slice(0,3), may=NV_RC.state.may_push!==false && !NV_RC.state.wallet_low;
+      el.innerHTML='<h3>'+(list.length===1?"A parcel was refused.":list.length+" parcels were refused.")+' What should we do?</h3>'+
+        show.map(function(x){
+          return '<div class="nv-rc-ref-row"><p><b>'+escLabelText(x.consignee||"Customer")+'</b> \u00b7 '+escLabelText(x.city||"")+' \u00b7 '+escLabelText(money(Number(x.cod||0)))+
+            '<small>'+escLabelText(x.awb)+(x.reason?" \u00b7 "+escLabelText(x.reason):"")+'</small></p><div class="nv-rc-ref-acts">'+
+            '<button type="button" class="action-btn" data-rcr="recover" data-awb="'+escLabelText(x.awb)+'" data-id="'+escLabelText(x.parcel_id)+'"'+(may?"":" disabled")+'>Recover it'+(feeN>0?' \u00b7 '+escLabelText(fee):'')+'</button>'+
+            '<button type="button" class="action-btn ghost" data-rcr="again" data-awb="'+escLabelText(x.awb)+'">Try again</button>'+
+            '<button type="button" class="action-btn ghost" data-rcr="back" data-awb="'+escLabelText(x.awb)+'">Return to me</button></div></div>';
+        }).join("")+
+        (list.length>show.length?'<button type="button" class="nv-rc-ref-more" data-rcr="more">'+(list.length-show.length)+' more in Nova Recover</button>':'')+
+        '<p class="nv-rc-ref-note">Recover it: we call the customer and sell the order again'+(feeN>0?', '+escLabelText(fee)+' only if it works.':'. No fee for now.')+'</p>';
+    }
+    function nvRcApply(){
+      var on=nvRcVisible();
+      try{ document.body.classList.toggle("nv-rc-on", on); }catch(e){}
+      try{
+        var seen=false; try{ seen=localStorage.getItem("nvRcSeen")==="1"; }catch(e){}
+        document.body.classList.toggle("nv-rc-new", on && !seen);
+      }catch(e){}
+      if(!on && state.activeClientTab==="recover"){ try{ showClientTab("dashboard"); }catch(e){} }
+      try{ nvRcNotice(); }catch(e){}
+      try{ nvRcRefusedNotice(); }catch(e){}
+      try{ nvRcStartCard(); }catch(e){}
+      /* A link from an email (?tab=recover) lands here once the tab exists. */
+      if(on && !NV_RC.deep){
+        NV_RC.deep=true;
+        try{ if(new URLSearchParams(location.search).get("tab")==="recover" && state.activeClientTab!=="recover") showClientTab("recover"); }catch(e){}
+      }
+    }
+    function nvRcCheck(force){
+      var id=state.client&&state.client.id; if(!id) return;
+      if(NV_RC.asked===id && !force) return;
+      NV_RC.asked=id;
+      /* The demo portal has no backend. The tab is previewed on this
+         machine only; the public demo does not show it. */
+      if(window.__NOVAX_DEMO){
+        var dOn=/^(localhost|127\.0\.0\.1)$/.test(location.hostname), dUnseen=0, dRef=[], dCfg={};
+        if(dOn){
+          try{ dCfg=JSON.parse(localStorage.getItem("nvRecoverPreviewCfg")||"{}")||{}; }catch(e){}
+          try{
+            var dS=JSON.parse(localStorage.getItem("nvRecoverPreview")||"null")||{}, dC=dS.cases||[];
+            dUnseen=dC.filter(function(c){ return c.status==="recovered" && !c.seen; }).length;
+            dRef=(dS.parcels||[]).filter(function(q){ return q.kind==="refused" && !dC.some(function(c){ return c.parcel_id===q.parcel_id && c.status!=="withdrawn" && c.status!=="unreachable"; }); })
+                 .map(function(q){ return { parcel_id:q.parcel_id, awb:q.awb, consignee:q.consignee, city:q.city, cod:q.cod, came_back_at:q.came_back_at, reason:q.reason }; });
+          }catch(e){}
+          if(dCfg.merchant_tab==="off") dOn=false;
+        }
+        var dTodo=[], dAcc=false;
+        try{ var dS2=JSON.parse(localStorage.getItem("nvRecoverPreview")||"null");
+             if(dS2){ dAcc=!!dS2.accepted; dTodo=(dS2.parcels||[]).filter(function(q){ return !(dS2.cases||[]).some(function(c){ return c.parcel_id===q.parcel_id && c.status!=="withdrawn" && c.status!=="unreachable"; }); }); }
+             else { dTodo=[{cod:1200},{cod:3450},{cod:2499},{cod:1850},{cod:5200},{cod:990},{cod:2750},{cod:4100},{cod:1500},{cod:2200},{cod:3100},{cod:850}]; }
+        }catch(e){}
+        NV_RC.state={ visible:dOn, unseen:dUnseen, refused:dRef, fee:(dCfg.fee!=null?dCfg.fee:100), may_push:true, free_calls:dCfg.free_calls!==false,
+          accepted:dAcc, counts:{ to_recover:dTodo.length }, to_recover_cod:dTodo.reduce(function(t,q){ return t+Number(q.cod||0); },0) }; nvRcApply(); return;
+      }
+      var sb=window.__nvSb; if(!sb||!sb.rpc){ NV_RC.asked=""; return; }
+      Promise.resolve(sb.rpc("client_recover_state",{})).then(function(r){
+        NV_RC.state=(r && !r.error && r.data && r.data.visible) ? r.data : { visible:false };
+        nvRcApply();
+      },function(){ NV_RC.state={ visible:false }; nvRcApply(); });
+    }
+    window.__nvRcBridge={
+      takeSeg:function(){ var v=window.__nvRcOpenSeg||""; window.__nvRcOpenSeg=""; return v; },
+      takePick:function(){ var v=window.__nvRcPick||null; window.__nvRcPick=null; return v; },
+      sb:function(){ return window.__nvSb||null; },
+      demo:function(){ return !!window.__NOVAX_DEMO; },
+      clientName:function(){ return (state.client&&state.client.name)||""; },
+      esc:escLabelText, toast:toast,
+      sheet:function(inner,onAction,opts){ return nvwOpenSheet(inner,onAction,opts); },
+      setState:function(s){ NV_RC.state=s||{ visible:false }; nvRcApply(); },
+      showTab:function(id){ showClientTab(id); }
+    };
+    function nvRcLoad(){
+      if(!NV_RC.p) NV_RC.p=nvLoadScriptOnce(NV_RECOVER_SRC).catch(function(e){ NV_RC.p=null; throw e; });
+      return NV_RC.p;
+    }
+    function nvRcOpen(){
+      var host=document.getElementById("nvRcRoot"); if(!host) return;
+      try{ localStorage.setItem("nvRcSeen","1"); }catch(e){}
+      try{ document.body.classList.remove("nv-rc-new"); }catch(e){}
+      if(window.NovaXRecover){ window.NovaXRecover.open(host); return; }
+      if(host.dataset.loading) return;
+      host.dataset.loading="1";
+      if(!host.innerHTML.trim()) host.innerHTML='<div class="panel" style="padding:22px"><p class="footer-note" style="margin:0">Opening Nova Recover\u2026</p></div>';
+      nvRcLoad().then(function(){
+        host.dataset.loading="";
+        if(window.NovaXRecover) window.NovaXRecover.open(host); else throw new Error("no module");
+      }).catch(function(){
+        host.dataset.loading="";
+        host.innerHTML='<div class="panel" style="padding:22px"><p class="footer-note" style="margin:0 0 12px">Nova Recover could not load. Check your internet.</p><button type="button" class="action-btn" id="nvRcRetry">Try again</button></div>';
+        var b=document.getElementById("nvRcRetry"); if(b) b.addEventListener("click",function(){ host.innerHTML=""; nvRcOpen(); });
       });
     }
 
@@ -8130,6 +8362,10 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         x.kind="in"; x.icon="back"; x.title="Charges returned"; x.sub=ref;
       } else if(t==="due_payment"){
         x.kind="in"; x.icon="in"; x.title="Payment received by NovaX"; x.sub=ref;
+      } else if(t==="admin_adjustment" && String(l.referenceType||"")==="recover_case"){
+        /* Nova Recover: Rs 100 for an order NovaX recovered. It is stored as
+           an adjustment so every total treats it like one; here it is named. */
+        x.kind="charge"; x.icon="charge"; x.title="Nova Recover fee"; x.sub=ref?("Order "+ref+" recovered"):"Order recovered";
       } else if(t==="admin_adjustment"){
         x.kind=!x.affects?"info":(amt>=0?"in":"charge"); x.icon="adjust";
         x.title=x.affects?"Adjustment by NovaX":"Balance note";
@@ -14677,11 +14913,14 @@ Track your parcel: ${trackingUrl(p.awb)}`;
        A function declaration is fully hoisted, so keeping the data inside it
        makes the call safe from any point in the file. */
     function normalizeClientTab(id){
-      var TABS = ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","swap","integrations",
+      var TABS = ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","swap","recover","integrations",
                   "reports","money","profile","subAccounts","tickets","support"];
       var ALIASES = { wallet:"money", payments:"money", payment:"money", invoices:"money" };
       var v = String(id || "").trim();
       if(ALIASES[v]) v = ALIASES[v];
+      /* Nova Recover exists only for merchants the server has opened it for
+         (body.nv-rc-on, set by nvRcApply). Anyone else lands on the dashboard. */
+      if(v === "recover" && !(document.body && document.body.classList.contains("nv-rc-on"))) v = "dashboard";
       return TABS.indexOf(v) > -1 ? v : "dashboard";
     }
 
@@ -15114,11 +15353,11 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       // the old split was quietly acting as the permission boundary, so
       // merging the tabs without this change would have handed every Finance
       // sub-account the ability to withdraw to any IBAN they typed.
-      Owner:     ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","swap","integrations","reports","money","profile","subAccounts","tickets","support"],
+      Owner:     ["dashboard","newBooking","awbLabel","loadSheet","bulkBooking","swap","recover","integrations","reports","money","profile","subAccounts","tickets","support"],
       /* Profile is viewable by every seat (read-only); nv_profile_save
          refuses anyone but the owner. */
       Finance:   ["dashboard","reports","money","profile","tickets","support"],
-      Warehouse: ["dashboard","newBooking","bulkBooking","swap","awbLabel","loadSheet","profile","support"],
+      Warehouse: ["dashboard","newBooking","bulkBooking","swap","recover","awbLabel","loadSheet","profile","support"],
       Support:   ["dashboard","profile","tickets","support"]
     };
     /* Until the seat lookup has actually answered, act as the most limited
@@ -21434,6 +21673,7 @@ Track your parcel: ${trackingUrl(p.awb)}`;
       ["awbLabel","AWB label","Print labels, request a pickup"],
       ["bulkBooking","Bulk booking","Import a CSV of orders"],
       ["swap","Nova Swap","Exchange an item: new one out, old one back"],
+      ["recover","Nova Recover","We call customers who refused and sell the order again"],
       ["reports","Reports","Performance, COD and every parcel"],
       ["profile","Profile","Business name, logo, phone and address"],
       ["money","NovaX Wallet","Balance, payments, invoices, withdrawals and ledger"],
@@ -21449,6 +21689,8 @@ Track your parcel: ${trackingUrl(p.awb)}`;
         // Commands first when the query is short -- they are what a merchant
         // reaches for most, and they are cheap to scan.
         TABS.forEach(function(t){
+          /* Nova Recover is listed only for a merchant who has the tab. */
+          if(t[0]==="recover" && !(document.body && document.body.classList.contains("nv-rc-on"))) return;
           if(!q || t[1].toLowerCase().indexOf(q)>-1 || t[0].toLowerCase().indexOf(q)>-1 || String(t[2]||"").toLowerCase().indexOf(q)>-1){
             out.push({group:"Go to",icon:"→",title:t[1],subtitle:t[2],
               run:function(){ if(typeof showClientTab==="function") showClientTab(t[0]); }});

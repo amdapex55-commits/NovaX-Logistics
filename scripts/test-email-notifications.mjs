@@ -118,7 +118,38 @@ for (const kind of ['welcome', 'first_booking', 'payout_paid', 'cnic_verified', 
   assert.ok(m.html.includes('Automated account notification'));
   assert.ok(!m.html.includes('unsubscribe.html'));
 }
-console.log('PASS: eight templates, net payout, PKT dates, escaping, invalid-data guards and reminder stop links.');
+// Nova Recover: the two emails a merchant gets.
+{
+  const refused = buildEmail('recover_refused', 'owner@example.com', { business: 'Sample Store', awb: 'N7810001', customer: 'Ayesha <b>', city: 'Lahore', cod: 2499, fee: 100, reason: 'Refused at door' });
+  assert.equal(refused.subject, 'A customer refused parcel N7810001');
+  assert.ok(refused.html.includes('PKR 2,499.00'));
+  assert.ok(refused.html.includes('Recover it.') && refused.html.includes('Try again.') && refused.html.includes('Return to me.'));
+  assert.ok(refused.html.replaceAll('&nbsp;', ' ').includes('PKR 100.00 only if it works'));
+  assert.ok(refused.html.includes('client.html?tab=recover'));
+  assert.ok(!refused.html.includes('<b>,') && refused.html.includes('Ayesha &lt;b&gt;'));
+  assert.throws(() => buildEmail('recover_refused', 'owner@example.com', { cod: 100, fee: 100 }), /missing_awb/);
+  const won = buildEmail('recover_won', 'owner@example.com', { business: 'Sample Store', awb: 'N7810331', was_awb: 'N7810092', mode: 'rebook', customer: 'Bilal', city: 'Karachi', cod: 3900, was_cod: 4100, fee: 100, deliver_on: '2026-10-09' });
+  assert.equal(won.subject, 'We recovered an order for you: N7810331');
+  assert.ok(won.html.includes('Print the new label') && won.html.includes('tab=awbLabel&amp;awb=N7810331'));
+  assert.ok(won.html.includes('Earlier tracking number') && won.html.includes('N7810092'));
+  assert.ok(won.html.includes('PKR 200.00'));           // taken off
+  assert.ok(won.html.includes('9 October'));
+  const again = buildEmail('recover_won', 'owner@example.com', { awb: 'N7810277', was_awb: 'N7810277', mode: 'resend', customer: 'Sana', cod: 1200, was_cod: 1200, fee: 0, deliver_on: '2026-10-09' });
+  assert.ok(again.html.includes('Nothing for you to do.') && again.html.includes('There is no fee for this one.'));
+  assert.ok(!again.html.includes('Earlier tracking number') && !again.html.includes('Taken off'));
+  assert.throws(() => buildEmail('recover_won', 'owner@example.com', { awb: 'N1', cod: 100, fee: 100, deliver_on: 'soon' }), /invalid_event_date/);
+}
+{
+  const launch = buildEmail('recover_launch', 'owner@example.com', { business: 'Sample Store', count: 22, cod: 34977, recent: 22, fee: 100 });
+  assert.equal(launch.subject, '22 orders came back. We can sell them again');
+  assert.ok(launch.html.includes('PKR 34,977.00') && launch.html.includes('client.html?tab=recover'));
+  assert.ok(launch.html.replaceAll('&nbsp;', ' ').includes('PKR 100.00 only when it works.'));
+  const one = buildEmail('recover_launch', 'owner@example.com', { count: 1, cod: 1200, fee: 0 });
+  assert.equal(one.subject, 'An order came back. We can sell it again');
+  assert.ok(one.html.includes('No fee for now.') && !one.html.includes('PKR 0.00 only'));
+  assert.throws(() => buildEmail('recover_launch', 'owner@example.com', { count: 0, cod: 0, fee: 100 }), /invalid_parcel_count/);
+}
+console.log('PASS: eleven templates, net payout, PKT dates, escaping, invalid-data guards, reminder stop links and the three Nova Recover emails.');
 
 const config = { url: 'https://example.supabase.co', serviceKey: 'test-service-key',
   resendKey: 'test-resend-key', drainToken: 'a'.repeat(64) };

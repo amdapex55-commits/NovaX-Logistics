@@ -2667,7 +2667,7 @@ try{
   <script src="nv-payment.js?v=a14f4c65" defer></script>
   <script src="nv-journey.js?v=77db2b46" defer></script>
   <script src="nv-cnic.js?v=29eecafb" defer></script>
-  <script src="client-app.min.js?v=745b9484" defer></script>
+  <script src="client-app.min.js?v=4992f0a9" defer></script>
 <script>
 /* Dead-shell guard.
    The portal is now markup plus one deferred bundle. If that bundle fails --
@@ -2841,6 +2841,9 @@ try{
               <button class="client-tab" data-client-tab="loadSheet">Load sheet</button>
               <button class="client-tab" data-client-tab="bulkBooking">Bulk booking</button>
               <button class="client-tab" data-client-tab="swap">Nova Swap</button>
+              <!-- Nova Recover (8 Oct 2026). Hidden until the server says this
+                   merchant has it: see body.nv-rc-on and nvRcApply(). -->
+              <button class="client-tab" data-client-tab="recover">Nova Recover</button>
               <button class="client-tab" data-client-tab="reports">Reports</button>
               <button class="client-tab" data-client-tab="profile">Profile</button>
               <button class="client-tab" data-client-tab="subAccounts">Sub accounts</button>
@@ -3365,6 +3368,9 @@ try{
                  shown on this dashboard and on the tracking link only. -->
             <!-- NOVA SWAP (29 Sep 2026). Exchange in one visit; rendered by nvSwRender(). -->
             <section class="client-module" id="client-swap"><div id="nvSwRoot" class="nv-sw"></div></section>
+            <!-- NOVA RECOVER (8 Oct 2026). Refused and returned parcels the merchant
+                 sends to the Support Desk; rendered by client-recover.js. -->
+            <section class="client-module" id="client-recover"><div id="nvRcRoot" class="nv-rc"></div></section>
             <section class="client-module" id="client-profile">
               <div class="nv-pf-grid">
                 <div class="nv-pf-main">
@@ -6225,6 +6231,39 @@ html body .nv-mobile-book-bar button[disabled]{opacity:1;background:var(--nvu-bg
 #clientMenu .client-tab[data-client-tab="loadSheet"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%225%22%20y%3D%224%22%20width%3D%2214%22%20height%3D%2217%22%20rx%3D%222%22%2F%3E%3Cpath%20d%3D%22M9%204V3h6v1M8.5%2010h7M8.5%2013.5h7M8.5%2017h4%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Crect%20x%3D%225%22%20y%3D%224%22%20width%3D%2214%22%20height%3D%2217%22%20rx%3D%222%22%2F%3E%3Cpath%20d%3D%22M9%204V3h6v1M8.5%2010h7M8.5%2013.5h7M8.5%2017h4%22%2F%3E%3C%2Fsvg%3E")}
 #clientMenu .client-tab[data-client-tab="bulkBooking"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m12%203%209%205-9%205-9-5z%22%2F%3E%3Cpath%20d%3D%22m3%2013%209%205%209-5%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22m12%203%209%205-9%205-9-5z%22%2F%3E%3Cpath%20d%3D%22m3%2013%209%205%209-5%22%2F%3E%3C%2Fsvg%3E")}
 #clientMenu .client-tab[data-client-tab="swap"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%208h13l-3-3M20%2016H7l3%203%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%208h13l-3-3M20%2016H7l3%203%22%2F%3E%3C%2Fsvg%3E")}
+#clientMenu .client-tab[data-client-tab="recover"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%2012a8%208%200%201%200%202.6-5.9M4%204v4h4M9%2012.5l2.2%202.2L15.5%2010%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%2012a8%208%200%201%200%202.6-5.9M4%204v4h4M9%2012.5l2.2%202.2L15.5%2010%22%2F%3E%3C%2Fsvg%3E")}
+/* Nova Recover: an order NovaX recovered, wherever a parcel is listed. */
+.nv-rc-tag{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:6px;border:1px solid var(--nvu-good-ln);background:var(--nvu-good-bg);color:var(--nvu-good-fg);font-size:11.5px;font-weight:800;white-space:nowrap;vertical-align:middle}
+tr.nv-rc-hl>td:first-child{box-shadow:inset 3px 0 0 var(--nvu-good-fg)}
+.parcel-card.nv-rc-hl{box-shadow:inset 3px 0 0 var(--nvu-good-fg)}
+.nv-pc-rc,.nvdr-rc{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:6px;font-size:12.5px;color:var(--nvu-ink-2)}
+.nv-pc-rc .nv-rc-tag,.nvdr-rc .nv-rc-tag{margin-left:0}
+.nv-rc-notice{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 14px;margin:0 0 14px;padding:12px 14px;border:1px solid var(--nvu-good-ln);border-left:4px solid var(--nvu-good-fg);border-radius:12px;background:var(--nvu-good-bg);color:var(--nvu-ink);font-size:14px;line-height:1.45}
+.nv-rc-notice-t{flex:1 1 220px;min-width:0}.nv-rc-notice .action-btn{flex:none;min-height:40px;margin:0}
+.nv-rc-ref{margin:0 0 14px;padding:14px;border:1px solid var(--nvu-warn-ln);border-left:4px solid var(--nvu-warn-fg);border-radius:12px;background:var(--nvu-bg);color:var(--nvu-ink)}
+.nv-rc-ref h3{margin:0 0 4px;font-size:16px;line-height:1.3}
+.nv-rc-ref-row{display:grid;gap:8px;padding:12px 0;border-top:1px solid var(--nvu-line)}
+.nv-rc-ref-row:first-of-type{border-top:0;padding-top:8px}
+.nv-rc-ref-row p{margin:0;font-size:14.5px;line-height:1.4}.nv-rc-ref-row small{display:block;font-size:12.5px;color:var(--nvu-ink-2);overflow-wrap:anywhere}
+.nv-rc-ref-acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.nv-rc-ref-acts .action-btn{width:100%;min-height:44px;margin:0;padding-left:8px;padding-right:8px;font-size:14px}
+.nv-rc-ref-acts .action-btn:first-child{grid-column:1 / -1}
+#nvRcRefused .nv-rc-ref-acts .action-btn.ghost{background:transparent;background-image:none;color:var(--nvu-ink);border:1px solid var(--nvu-line-2);box-shadow:none}
+#nvRcRefused .nv-rc-ref-acts .action-btn.ghost:hover:not([disabled]){border-color:var(--nvu-ink-2)}
+.nv-rc-ref-more{appearance:none;border:0;background:none;padding:8px 0 0;font:inherit;font-size:13.5px;font-weight:750;color:var(--nvu-accent);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.nv-rc-ref-note{margin:8px 0 0;font-size:12.5px;line-height:1.45;color:var(--nvu-ink-2)}
+@media (min-width:700px){.nv-rc-ref-row{grid-template-columns:minmax(0,1fr) auto;align-items:center}.nv-rc-ref-acts{grid-template-columns:auto auto auto}.nv-rc-ref-acts .action-btn:first-child{grid-column:auto}.nv-rc-ref-acts .action-btn{width:auto;padding-left:14px;padding-right:14px}}
+.nv-rc-start{margin:0 0 14px;padding:16px;border:1px solid var(--nvu-line-2);border-left:4px solid var(--nvu-accent);border-radius:12px;background:var(--nvu-bg);color:var(--nvu-ink)}
+.nv-rc-start-e{margin:0 0 4px;font-size:11.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--nvu-accent)}
+.nv-rc-start h3{margin:0 0 6px;font-size:18px;line-height:1.25}
+.nv-rc-start p{margin:0;font-size:14px;line-height:1.5;color:var(--nvu-ink-2);max-width:60ch}
+.nv-rc-start-a{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin-top:12px}
+.nv-rc-start-a .action-btn{min-height:44px;margin:0;width:auto;padding-left:18px;padding-right:18px}
+.nv-rc-start-x{appearance:none;border:0;background:none;min-height:44px;padding:0 4px;font:inherit;font-size:14px;font-weight:700;color:var(--nvu-ink-2);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+@media (max-width:480px){.nv-rc-start-a .action-btn{flex:1 1 100%;width:100%}}
+/* Nova Recover: the menu entry exists only for merchants the server opened it for. */
+body:not(.nv-rc-on) .client-tab[data-client-tab="recover"]{display:none!important}
+body.nv-rc-new #clientMenu .client-tab[data-client-tab="recover"]::after{content:"";flex:none;width:8px;height:8px;margin-left:8px;border-radius:50%;background:var(--nvu-accent)}
 #clientMenu .client-tab[data-client-tab="reports"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%2020V10M10%2020V4M16%2020v-7M21%2020H3%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M4%2020V10M10%2020V4M16%2020v-7M21%2020H3%22%2F%3E%3C%2Fsvg%3E")}
 #clientMenu .client-tab[data-client-tab="profile"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%228%22%20r%3D%224%22%2F%3E%3Cpath%20d%3D%22M4%2021a8%208%200%200%201%2016%200%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%228%22%20r%3D%224%22%2F%3E%3Cpath%20d%3D%22M4%2021a8%208%200%200%201%2016%200%22%2F%3E%3C%2Fsvg%3E")}
 #clientMenu .client-tab[data-client-tab="subAccounts"]::before{-webkit-mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%229%22%20cy%3D%228%22%20r%3D%223.5%22%2F%3E%3Cpath%20d%3D%22M2.5%2020a6.5%206.5%200%200%201%2013%200M16%204.5a3.5%203.5%200%200%201%200%207M18%2014a6.5%206.5%200%200%201%203.5%206%22%2F%3E%3C%2Fsvg%3E");mask-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.9%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%229%22%20cy%3D%228%22%20r%3D%223.5%22%2F%3E%3Cpath%20d%3D%22M2.5%2020a6.5%206.5%200%200%201%2013%200M16%204.5a3.5%203.5%200%200%201%200%207M18%2014a6.5%206.5%200%200%201%203.5%206%22%2F%3E%3C%2Fsvg%3E")}
