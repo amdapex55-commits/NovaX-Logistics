@@ -10631,6 +10631,11 @@ html,body{ background:var(--bg); color:var(--ink); }
         </tr>
       `).join("") || `<tr><td colspan="5">No exceptions. Every journey is clean.</td></tr>`;
 
+      /* A staff login sees only the buttons the database will accept from it:
+         Edit needs order processing, Delete is for admins. */
+      const nvOrdLimited = typeof nvLimited === "function" && nvLimited();
+      const nvOrdMayEdit = !nvOrdLimited || nvStaffPerms().indexOf("orders-processing") > -1;
+      const nvOrdMayDelete = !nvOrdLimited;
       if (nvAdminShown("adminOrderRows")) document.getElementById("adminOrderRows").innerHTML = state.parcels.filter(p => {
         const client = clientById(p.clientId);
         const alert = alertForParcel(p);
@@ -10667,8 +10672,8 @@ html,body{ background:var(--bg); color:var(--ink); }
               ${/refused|return/i.test(p.status) ? `<details class="nv-ord-proof"${window.__nvProofOpen === p.awb ? " open" : ""} onclick="event.stopPropagation()" ontoggle="window.__nvProofOpen = this.open ? '${nvEscAttrJs(p.awb)}' : (window.__nvProofOpen === '${nvEscAttrJs(p.awb)}' ? '' : window.__nvProofOpen)"><summary class="${p.returnProof ? "done" : ""}">${p.returnProof ? "Return proof added" : "Return proof needed"}</summary><input id="proof-${p.awb}" aria-label="Return proof" value="${escLabelText(p.returnProof || "Photo proof + rider scan + branch receiving signature")}"><button class="ghost-btn" onclick="event.stopPropagation(); addReturnProof('${nvEscAttrJs(p.awb)}')">Save proof</button></details>` : ""}
             </td>
             <td class="nv-ord-act">
-              <button class="ghost-btn" onclick="event.stopPropagation(); nvOpenParcelEdit('${nvEscAttrJs(p.awb)}')">Edit</button>
-              ${p.status === "New booked" ? `<button class="ghost-btn nv-ord-del" onclick="event.stopPropagation(); nvAdminDeleteParcel('${nvEscAttrJs(p.awb)}')">Delete</button>` : ""}
+              ${nvOrdMayEdit ? `<button class="ghost-btn" onclick="event.stopPropagation(); nvOpenParcelEdit('${nvEscAttrJs(p.awb)}')">Edit</button>` : ""}
+              ${p.status === "New booked" && nvOrdMayDelete ? `<button class="ghost-btn nv-ord-del" onclick="event.stopPropagation(); nvAdminDeleteParcel('${nvEscAttrJs(p.awb)}')">Delete</button>` : ""}
             </td>
           </tr>
         `;
